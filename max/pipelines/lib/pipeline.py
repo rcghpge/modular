@@ -222,6 +222,7 @@ class PipelineModel(ABC, Generic[T]):
                 pipeline_config.lora_config,
                 pipeline_config.model_config.model_name,
                 self.dtype,
+                pipeline_config.zmq_endpoint_base,
             )
             if pipeline_config.lora_config
             else None
@@ -261,12 +262,11 @@ class PipelineModel(ABC, Generic[T]):
                             default=pipeline_config.max_length,
                         )
                     except ValueError as e:
-                        msg = (
+                        raise ValueError(
                             "Unable to infer max_length for Mistral, the provided "
                             f"max_length ({pipeline_config.max_length}) exceeds the "
                             f"model's max_seq_len ({huggingface_config.max_seq_len})."
-                        )
-                        raise ValueError(msg) from e
+                        ) from e
 
         Args:
             pipeline_config: Configuration for the pipeline.
@@ -866,8 +866,9 @@ class TextGenerationPipeline(
                 # Initialize a matcher if needed
                 if context.json_schema and context.matcher is None:
                     if not self._pipeline_config.sampling_config.enable_structured_output:
-                        msg = "json_schema provided but constrained decoding is not enabled."
-                        raise ValueError(msg)
+                        raise ValueError(
+                            "json_schema provided but constrained decoding is not enabled."
+                        )
 
                     try:
                         serialized_grammar = LLMatcher.grammar_from_json_schema(
@@ -943,7 +944,7 @@ class TextGenerationPipeline(
         )
 
     @traced
-    def _maybe_sort_loras(self, batch: dict[str, T]):
+    def _maybe_sort_loras(self, batch: dict[RequestID, T]):
         """
         Maybe sorts the batch by LoRA Ids. Requests that use the same LoRA need
         to be adjacent to each other.
@@ -1036,9 +1037,19 @@ class TextGenerationPipeline(
             tracer.push(f"step_{i}")
 
             # Execute the model and get next tokens.
-            model_outputs = self._pipeline_model.execute(
-                model_inputs=curr_step_inputs
-            )
+            try:
+                model_outputs = self._pipeline_model.execute(
+                    model_inputs=curr_step_inputs
+                )
+            except Exception:
+                batch_size = len(context_batch)
+                cache_tokens = sum(ctx.start_idx for ctx in context_batch)
+                input_tokens = sum(ctx.active_length for ctx in context_batch)
+                logger.error(
+                    "Encountered an exception while executing batch: "
+                    f"{batch_size=:}, {cache_tokens=:}, {input_tokens=:}, {num_steps=:}"
+                )
+                raise  # re-raise the original exception
 
             # Sample next token.
             tracer.next("sample_next_token")

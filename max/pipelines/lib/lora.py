@@ -33,7 +33,12 @@ from max.graph.type import DeviceRef, TensorType
 from max.graph.value import TensorValue
 from max.graph.weights import WeightData, WeightsFormat, load_weights
 from max.graph.weights.weights import _cast_to_dtype
-from max.interfaces import InputContext, LoRAStatus, LoRAType
+from max.interfaces import (
+    InputContext,
+    LoRAStatus,
+    LoRAType,
+    RequestID,
+)
 from max.interfaces.pipeline import (
     Pipeline,
     PipelineInputsType,
@@ -331,11 +336,10 @@ class LoRAModel:
         if unsupported_modules:
             supported_list = ", ".join(sorted(supported_modules))
             unsupported_list = ", ".join(unsupported_modules)
-            msg = (
+            raise ValueError(
                 f"LoRA adapter contains unsupported target modules: {unsupported_list}. "
                 f"Currently supported modules are: {supported_list}."
             )
-            raise ValueError(msg)
 
     def _normalize_lora_key(self, key: str) -> str:
         """
@@ -476,16 +480,17 @@ class LoRAManager:
         config: LoRAConfig,
         base_model_path: str,
         base_dtype: DType,
+        zmq_endpoint_base: str,
     ):
         """
         Initializes the LoRAManager with a given base weight structure and maximum number of LoRA models.
 
         Args:
+            config (LoRAConfig): The LoRA config.
             base_model_path (str): The name/path of the base model.
             base_dtype (DType): The base model dtype.
             max_num_loras (int): The maximum number of LoRA models to manage concurrently.
-            max_lora_rank (int): The maximum rank of all LoRAs loadable on the server.
-            lora_paths: (list[str]): An optional list of local LoRAs to load on initialization.
+            zmq_endpoint_base (str): The ZMQ endpoint base used to construct ZMQ lora request and response endpoints.
         """
         self.base_model_path = base_model_path
         self.base_dtype = base_dtype
@@ -497,11 +502,7 @@ class LoRAManager:
             max_size=self.max_num_loras
         )
 
-        self._request_processor = LoRARequestProcessor(
-            self,
-            config.lora_request_endpoint,
-            config.lora_response_endpoint,
-        )
+        self._request_processor = LoRARequestProcessor(self, zmq_endpoint_base)
 
         if config.lora_paths:
             self._load_adapters(config.lora_paths)
@@ -962,7 +963,9 @@ class LoRAManager:
                     lora_ids, lora_ranks, lora_grouped_offsets
                 )
 
-    def sort_lora_batch(self, context_batch: dict[str, T]) -> dict[str, T]:
+    def sort_lora_batch(
+        self, context_batch: dict[RequestID, T]
+    ) -> dict[RequestID, T]:
         """
         Sorts the LoRA batch by LRU cache id.
 

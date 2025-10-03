@@ -390,9 +390,7 @@ class TensorType(_TensorTypeBase[mo.TensorType]):
     device the tensor is associated with.
     """
 
-    _layout: FilterLayout | None = field(
-        default=None, compare=False, repr=False
-    )
+    _layout: FilterLayout | None = field(default=None, repr=False)
 
     def __init__(
         self,
@@ -405,7 +403,7 @@ class TensorType(_TensorTypeBase[mo.TensorType]):
         self._layout = _layout
 
     def __hash__(self) -> int:
-        return hash((self.dtype, tuple(self.shape), self.device))
+        return hash((self.dtype, tuple(self.shape), self.device, self._layout))
 
     @classmethod
     def from_mlir(cls, type: mo.TensorType) -> TensorType:
@@ -500,8 +498,7 @@ def _value_to_attribute(param: OpaqueParameter) -> Attribute:
         dtype = _graph.dtype_to_type(param)
         return builtin.TypeAttr(dtype)
 
-    msg = f"unsupported parameter type {type(param)} for custom op"
-    raise TypeError(msg)
+    raise TypeError(f"unsupported parameter type {type(param)} for custom op")
 
 
 def _attribute_to_value(value: Attribute) -> OpaqueParameter:

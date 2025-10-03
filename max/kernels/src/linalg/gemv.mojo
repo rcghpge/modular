@@ -53,7 +53,6 @@ from layout import (
     RuntimeTuple,
 )
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from layout.tensor_builder import LayoutTensorBuild as tb
 from logger import Logger
 from memory import stack_allocation
 
@@ -284,10 +283,24 @@ fn gemv_split_k[
     # which rows of the weight matrix each thread will process
     var tile_id_n = block_idx.y * tile_n
     var tid = thread_idx.x
-    var tile_w = tb[b_type]().row_major[tile_n, simd_width]().local().alloc()
+    var tile_w = LayoutTensor[
+        b_type,
+        Layout.row_major(tile_n, simd_width),
+        MutableAnyOrigin,
+        address_space = AddressSpace.LOCAL,
+    ].stack_allocation()
     # these are the partial accumlations for each thread this a matrix of values
     # since each thread will process a tile_m x tile_n partials of the output vector
-    var acc = tb[s_type]().row_major[tile_m, tile_n]().local().alloc().fill(0)
+    var acc = (
+        LayoutTensor[
+            s_type,
+            Layout.row_major(tile_m, tile_n),
+            MutableAnyOrigin,
+            address_space = AddressSpace.LOCAL,
+        ]
+        .stack_allocation()
+        .fill(0)
+    )
     var output_idx = tile_id_m * n + tile_id_n
     var iteration = 0
     alias WeightVecType = SIMD[b_type, simd_width]
@@ -343,12 +356,12 @@ fn gemv_split_k[
     # Warps are arranged along K.
     alias k_warp_num = num_threads // WARP_SIZE
     var warp_id = warp.broadcast(tid // WARP_SIZE)
-    var shmem = (
-        tb[s_type]()
-        .row_major[1, tile_m * tile_n * k_warp_num]()
-        .shared()
-        .alloc()
-    )
+    var shmem = LayoutTensor[
+        s_type,
+        Layout.row_major(1, tile_m * tile_n * k_warp_num),
+        MutableAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
 
     # Each warp sums across its threads and stages results in shared memory.
     # Shared memory data is row mojor (num_warps, tile_m, tile_n) stored in 1D.
@@ -558,32 +571,28 @@ fn gemv_gpu_dispatch[
                 )
             else:
                 # runtime transpose since layout_tensor.transpose requires static shape
-                alias b_alignment = b.alignment2
                 var aligned_b = b.data
 
                 alias has_K = a.shape.has_value[1]()
                 alias static_K = a.shape.get[1]() if has_K else UNKNOWN_VALUE
                 alias b_layout_template = Layout.row_major(static_N, static_K)
 
-                var b_runtime_shape = RuntimeTuple[
-                    b_layout_template.shape, element_type = DType.int32
-                ](n, k)
+                var b_runtime_shape = RuntimeTuple[b_layout_template.shape](
+                    n, k
+                )
 
-                var b_runtime_stride = RuntimeTuple[
-                    b_layout_template.stride, element_type = DType.int32
-                ](k, 1)
+                var b_runtime_stride = RuntimeTuple[b_layout_template.stride](
+                    k, 1
+                )
 
-                var b_runtime_layout = RuntimeLayout[
-                    b_layout_template,
-                    element_type = DType.int32,
-                    linear_idx_type = DType.int32,
-                ](b_runtime_shape, b_runtime_stride)
+                var b_runtime_layout = RuntimeLayout[b_layout_template](
+                    b_runtime_shape, b_runtime_stride
+                )
 
                 var b_tensor_n_major = LayoutTensor[
                     b.type,
                     b_layout_template,
                     MutableAnyOrigin,
-                    alignment=b_alignment,
                     address_space = aligned_b.address_space,
                 ](aligned_b, b_runtime_layout)
 
@@ -611,13 +620,13 @@ fn gemv_gpu_dispatch[
                         b.type,
                         c_tensor.layout,
                         a_tensor.layout,
-                        b_tensor_n_major.layout,
+                        b_layout_template,
                         simd_width = UInt(simd_width),
                         reduction_method = warp.ReductionMethod.WARP,
                         transpose_b=transpose_b,
                         elementwise_lambda_fn=elementwise_lambda_fn,
                     ]
-                    ctx.enqueue_function[kernel](
+                    ctx.enqueue_function_checked[kernel, kernel](
                         c_tensor,
                         a_tensor,
                         b_tensor_n_major,
@@ -641,7 +650,7 @@ fn gemv_gpu_dispatch[
                         transpose_b=transpose_b,
                         elementwise_lambda_fn=elementwise_lambda_fn,
                     ]
-                    ctx.enqueue_function[kernel](
+                    ctx.enqueue_function_checked[kernel, kernel](
                         c_tensor,
                         a_tensor,
                         b_tensor_n_major,

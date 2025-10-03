@@ -222,9 +222,7 @@ struct Span[
         # TODO: Introduce a new slice type that just has a start+end but no
         # step.  Mojo supports slice type inference that can express this in the
         # static type system instead of debug_assert.
-        debug_assert(
-            step == 1, "Slice step must be 1", location=__call_location()
-        )
+        debug_assert(step == 1, "Slice step must be 1")
 
         return Self(
             ptr=(self._data + start), length=UInt(len(range(start, end, step)))
@@ -421,7 +419,6 @@ struct Span[
             0 <= index(idx) < len(self),
             "Index out of bounds: ",
             index(idx),
-            location=__call_location(),
         )
         return self._data[idx]
 
@@ -463,7 +460,6 @@ struct Span[
         debug_assert(
             len(self) == len(other),
             "Spans must be of equal length",
-            location=__call_location(),
         )
         for i in range(len(self)):
             self[i] = other[i].copy()
@@ -550,30 +546,21 @@ struct Span[
 
         Safety:
             - Both `a` and `b` must be in: [0, len(self)).
-            - `a` cannot be equal to `b`.
         """
-        debug_assert(
-            a != b,
-            "`a` cannot be equal to `b`: ",
-            a,
-            location=__call_location(),
-        )
         debug_assert(
             0 <= a < len(self),
             "Index `a` out of bounds: ",
             a,
-            location=__call_location(),
         )
         debug_assert(
             0 <= b < len(self),
             "Index `b` out of bounds: ",
             b,
-            location=__call_location(),
         )
         var ptr = self.unsafe_ptr()
-        var tmp = ptr.offset(a).take_pointee()
-        ptr.offset(a).init_pointee_move_from(ptr.offset(b))
-        ptr.offset(b).init_pointee_move(tmp^)
+
+        # `a` and `b` may be equal, so we cannot use `swap` directly.
+        ptr.offset(a).swap_pointees(ptr.offset(b))
 
     fn swap_elements(self: Span[mut=True, T], a: Int, b: Int) raises:
         """
@@ -586,9 +573,6 @@ struct Span[
         Raises:
             If a or b are larger than the length of the span.
         """
-        if a == b:
-            return
-
         var length = UInt(len(self))
         if a > length or b > length:
             raise Error(
@@ -786,11 +770,9 @@ struct Span[
             0 <= offset < len(self),
             "offset out of bounds: ",
             offset,
-            location=__call_location(),
         )
         debug_assert(
             0 <= offset + length <= len(self),
             "subspan out of bounds.",
-            location=__call_location(),
         )
         return Self(ptr=self._data + offset, length=length)

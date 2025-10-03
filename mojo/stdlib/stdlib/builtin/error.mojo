@@ -69,7 +69,7 @@ struct StackTrace(ImplicitlyCopyable, Stringable):
 
         var ptr = UnsafePointer[UInt8]().alloc(num_bytes)
         self.value = ArcPointer[UnsafePointer[UInt8]](ptr)
-        memcpy(self.value[], buffer, num_bytes)
+        memcpy(dest=self.value[], src=buffer, count=num_bytes)
         # Explicitly free the buffer using free() instead of the Mojo allocator.
         _libc.free(buffer.bitcast[NoneType]())
 
@@ -109,7 +109,7 @@ struct Error(
     # Fields
     # ===-------------------------------------------------------------------===#
 
-    var data: UnsafePointer[UInt8]
+    var data: UnsafePointer[UInt8, mut=False]
     """A pointer to the beginning of the string data being referenced."""
 
     var loaded_length: Int
@@ -158,7 +158,7 @@ struct Error(
         """
         var length = src.byte_length()
         var dest = UnsafePointer[UInt8].alloc(length + 1)
-        memcpy(dest, src.unsafe_ptr(), length)
+        memcpy(dest=dest, src=src.unsafe_ptr(), count=length)
         dest[length] = 0
         self.data = dest
         self.loaded_length = -length
@@ -173,7 +173,7 @@ struct Error(
         """
         var length = src.byte_length()
         var dest = UnsafePointer[UInt8].alloc(length + 1)
-        memcpy(dest, src.unsafe_ptr(), length)
+        memcpy(dest=dest, src=src.unsafe_ptr(), count=length)
         dest[length] = 0
         self.data = dest
         self.loaded_length = -length
@@ -208,7 +208,9 @@ struct Error(
     fn __del__(deinit self):
         """Releases memory if allocated."""
         if self.loaded_length < 0:
-            self.data.free()
+            # Safety: if loaded_length < 0, we own the data allowing us to
+            # safely free (and mutate) it.
+            self.data.origin_cast[True]().free()
 
     fn __copyinit__(out self, existing: Self):
         """Creates a deep copy of an existing error.
@@ -219,7 +221,7 @@ struct Error(
         if existing.loaded_length < 0:
             var length = -existing.loaded_length
             var dest = UnsafePointer[UInt8].alloc(length + 1)
-            memcpy(dest, existing.data, length)
+            memcpy(dest=dest, src=existing.data, count=length)
             dest[length] = 0
             self.data = dest
         else:
@@ -284,7 +286,7 @@ struct Error(
     # Methods
     # ===-------------------------------------------------------------------===#
 
-    fn unsafe_cstr_ptr(self) -> UnsafePointer[c_char]:
+    fn unsafe_cstr_ptr(self) -> UnsafePointer[c_char, mut=False]:
         """Retrieves a C-string-compatible pointer to the underlying memory.
 
         The returned pointer is guaranteed to be NUL terminated, and not null.

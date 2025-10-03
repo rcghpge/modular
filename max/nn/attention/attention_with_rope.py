@@ -27,7 +27,6 @@ from max.graph import (
     ShardingStrategy,
     TensorValue,
     Weight,
-    _OpaqueValue,
     ops,
 )
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
@@ -49,7 +48,7 @@ from ..kernels import (
     quantize_static_scaled_float8,
     unfused_qkv_ragged_matmul_gguf_quantized,
 )
-from ..kv_cache import KVCacheParams, PagedKVCacheCollection
+from ..kv_cache import KVCacheParams, PagedCacheValues
 from ..layer import Module
 from ..linear import Linear
 from ..no_opaque_kernels import (
@@ -88,7 +87,7 @@ class AttentionWithRopeV1(AttentionImpl):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: PagedKVCacheCollection,
+        kv_collection: PagedCacheValues,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
@@ -191,7 +190,7 @@ class AttentionWithRope(Module):
             dtype: DType of the QKV and output projection weights.
             devices: Device to place the weights and run the computation. If
                 multiple are provided, the first device is used. Use
-                `DistributedAttentionWithRope` to use all devices during
+                `TensorParallelAttentionWithRope` to use all devices during
                 attention computation.
             linear_cls: Linear class to use for the outputs dense layer.
             stacked_qkv: Whether the weights are stacked together.
@@ -404,7 +403,7 @@ class AttentionWithRope(Module):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: PagedKVCacheCollection,
+        kv_collection: PagedCacheValues,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
@@ -418,14 +417,6 @@ class AttentionWithRope(Module):
             wqkv_bias = None
 
         if self.float8_config:
-            # TODO(GEX-2452): Find a cleaner way to write assertions like this
-            # or improve the subgraph code so that it can preserve the Python
-            # classes which wrap our opaque types.
-            assert isinstance(kv_collection, PagedKVCacheCollection) or (
-                isinstance(kv_collection, _OpaqueValue)
-                and kv_collection.type.name == "PagedKVCacheCollection"
-            )
-
             x_scales: TensorValue
             weight_scale = self.qkv_weight_scale
             if self.float8_config.is_static:
@@ -536,7 +527,7 @@ class GGUFQAttentionWithRope(AttentionWithRope):
             dtype: DType of the weights, should always be uint8.
             devices: Device to place the weights and run the computation. If
                 multiple are provided, the first device is used. Use
-                `DistributedAttentionWithRope` to use all devices during
+                `TensorParallelAttentionWithRope` to use all devices during
                 attention computation.
             quantization_encoding: Quantization encoding of the weights.
             linear_cls: Linear class to use for the outputs dense layer.
@@ -631,7 +622,7 @@ class GGUFQAttentionWithRope(AttentionWithRope):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: PagedKVCacheCollection,
+        kv_collection: PagedCacheValues,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
@@ -817,7 +808,7 @@ class GPTQAttentionWithRope(AttentionWithRope):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: PagedKVCacheCollection,
+        kv_collection: PagedCacheValues,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
@@ -880,7 +871,9 @@ def distribute_value(
     return [v.to(device) for device in devices]
 
 
-class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
+class TensorParallelAttentionWithRope(
+    AttentionWithRope, DistributedAttentionImpl
+):
     def __init__(
         self,
         *,
@@ -898,7 +891,7 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
         float8_config: Float8Config | None = None,
         clip_qkv: float | None = None,
     ) -> None:
-        """Initializes the distributed attention layer.
+        """Initializes the distributed (tensor parallel) attention layer.
 
         Args:
             rope: The rope layer to borrow the freqs_cis value from.
@@ -907,7 +900,7 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
             hidden_size: The dimension of the hidden states.
             kv_params: KV Cache Params, including the number of kv heads, the head dim, and data type.
             devices: Device to place the weights and run the computation. Must
-                provide at least 2 devices for distributed attention.
+                provide at least 2 devices for tensor parallel attention.
             dtype: DType of the QKV and output projection weights.
             linear_cls: Linear class to use for the outputs dense layer.
             stacked_qkv: Whether the weights are stacked together.
@@ -934,7 +927,7 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
         )
         if DeviceRef.CPU() in self.devices:
             raise ValueError(
-                "DistributedAttentionWithRope does not support CPU devices"
+                "TensorParallelAttentionWithRope does not support CPU devices"
             )
         # Shard weights into separate AttentionWithRope layers.
         num_devices = len(self.devices)
@@ -1006,7 +999,7 @@ class DistributedAttentionWithRope(AttentionWithRope, DistributedAttentionImpl):
         layer_idx: TensorValue,
         x: Sequence[TensorValue],
         signal_buffers: Sequence[BufferValue],
-        kv_collections: Sequence[PagedKVCacheCollection],
+        kv_collections: Sequence[PagedCacheValues],
         freqs_cis: Sequence[TensorValue],
         input_row_offsets: Sequence[TensorValue],
     ) -> list[TensorValue]:
@@ -1053,7 +1046,7 @@ class AttentionWithRopeQKV(AttentionImplQKV):
         self,
         layer_idx: TensorValue,
         x: TensorValue,
-        kv_collection: PagedKVCacheCollection,
+        kv_collection: PagedCacheValues,
         freqs_cis: TensorValue,
         input_row_offsets: TensorValue,
     ) -> TensorValue:
@@ -1145,7 +1138,7 @@ class AttentionWithRopeNoOpaque(Module):
             dtype: DType of the QKV and output projection weights.
             devices: Device to place the weights and run the computation. If
                 multiple are provided, the first device is used. Use
-                `DistributedAttentionWithRope` to use all devices during
+                `TensorParallelAttentionWithRope` to use all devices during
                 attention computation.
             linear_cls: Linear class to use for the outputs dense layer.
             scale: Value used to scale the results of the attention output.

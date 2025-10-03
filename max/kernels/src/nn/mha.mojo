@@ -41,7 +41,7 @@ from gpu import (
     lane_id,
     thread_idx,
 )
-from gpu.host import DeviceContext
+from gpu.host import DeviceContext, DeviceBuffer
 from gpu.host import Dim as LaunchDim
 from gpu.host import FuncAttribute
 from gpu.host.info import A100, B200, H100, GPUInfo
@@ -53,7 +53,7 @@ from gpu.memory import (
 )
 from kv_cache.types import KVCacheT
 from layout import Layout
-from layout.int_tuple import IntTuple
+from layout.int_tuple import IntTuple, UNKNOWN_VALUE
 from layout.layout import *
 from layout.layout_tensor import (
     LayoutTensor,
@@ -65,7 +65,6 @@ from layout.layout_tensor import (
 )
 from layout.runtime_layout import RuntimeLayout, RuntimeTuple
 from layout.swizzle import make_swizzle
-from layout.tensor_builder import LayoutTensorBuild as tb
 from layout.tensor_builder import static
 from layout.tensor_core import get_fragment_size, get_mma_shape
 from linalg.bmm import batched_matmul
@@ -456,6 +455,12 @@ fn flash_attention_dispatch[
     alias q_half_float = dtype in (DType.float16, DType.bfloat16)
     alias q_half_float_or_fp32 = dtype is DType.float32 or q_half_float
 
+    var q_device = DeviceBuffer[q.dtype](ctx, q.data, q.size(), owning=False)
+    var output_device = DeviceBuffer[output.dtype](
+        ctx, output.data, output.size(), owning=False
+    )
+    var valid_length_ndbuffer = managed_tensor_slice_to_ndbuffer(valid_length)
+
     @parameter
     if _is_flash_attention_applicable:
         alias is_sm90 = ctx.default_device_info is H100
@@ -543,6 +548,8 @@ fn flash_attention_dispatch[
                     output.dtype,
                     mask_t,
                     score_mod_t,
+                    valid_length_ndbuffer.shape,
+                    valid_length_ndbuffer.strides,
                     config,
                     group=group,
                     use_score_mod=use_score_mod,
@@ -554,16 +561,16 @@ fn flash_attention_dispatch[
                     _padded_ndbuffer=_padded_ndbuffer,
                 ]
 
-                ctx.enqueue_function[kernel](
-                    q.data,
+                ctx.enqueue_function_checked[kernel, kernel](
+                    q_device,
                     k,
                     v,
-                    output.data,
+                    output_device,
                     scale,
                     batch_size,
                     max_prompt_len,
                     max_cache_valid_length,
-                    valid_length,
+                    valid_length_ndbuffer,
                     kv_input_row_offsets,
                     sink_weights,
                     mask_functor,
@@ -621,6 +628,9 @@ fn flash_attention_dispatch[
                 batch_size, max_cache_valid_length, ctx
             )
 
+            var valid_length_ndbuffer = managed_tensor_slice_to_ndbuffer(
+                valid_length
+            )
             alias use_fa3_kernel = (
                 (is_sm90 or is_sm100)
                 and q_half_float
@@ -663,6 +673,8 @@ fn flash_attention_dispatch[
                     output.dtype,
                     mask_t,
                     score_mod_t,
+                    valid_length_ndbuffer.shape,
+                    valid_length_ndbuffer.strides,
                     BM=BM,
                     BN=BN,
                     BK = UInt(BK),
@@ -749,18 +761,22 @@ fn flash_attention_dispatch[
                             )
                     else:
                         alias nullptr = UnsafePointer[Scalar[accum_type]]()
-                        ctx.enqueue_function[kernel](
-                            q.data,
+
+                        var nullptr_device = DeviceBuffer[accum_type](
+                            ctx, nullptr, 0, owning=False
+                        )
+                        ctx.enqueue_function_checked[kernel, kernel](
+                            q_device,
                             k,
                             v,
-                            output.data,
-                            nullptr,
-                            nullptr,
+                            output_device,
+                            nullptr_device,
+                            nullptr_device,
                             scale,
                             batch_size,
                             num_partitions_value,
                             max_cache_valid_length,
-                            valid_length,
+                            valid_length_ndbuffer,
                             sink_weights,
                             mask_functor,
                             score_mod_functor,
@@ -789,7 +805,7 @@ fn flash_attention_dispatch[
                     ](num_heads * depth * batch_size * num_partitions_value)
 
                     var output_intermediate = NDBuffer[output.dtype, 4](
-                        output_intermediate_data._unsafe_ptr(),
+                        output_intermediate_data.unsafe_ptr(),
                         Index(
                             num_partitions_value,
                             batch_size,
@@ -809,12 +825,19 @@ fn flash_attention_dispatch[
                     ](2 * data_len)
 
                     var exp_sum = NDBuffer[accum_type, 3](
-                        exp_sum_qk_max_data._unsafe_ptr(), data_dim
+                        exp_sum_qk_max_data.unsafe_ptr(), data_dim
                     )
 
                     var qk_max = NDBuffer[accum_type, 3](
-                        exp_sum_qk_max_data._unsafe_ptr().offset(data_len),
+                        exp_sum_qk_max_data.unsafe_ptr().offset(data_len),
                         data_dim,
+                    )
+
+                    var exp_sum_device = DeviceBuffer[accum_type](
+                        ctx, exp_sum.data, exp_sum.size(), owning=False
+                    )
+                    var qk_max_device = DeviceBuffer[accum_type](
+                        ctx, qk_max.data, qk_max.size(), owning=False
                     )
 
                     @parameter
@@ -849,7 +872,7 @@ fn flash_attention_dispatch[
                                 kv_input_row_offsets,
                                 batch_size,
                                 SplitKPartition(
-                                    exp_sum_qk_max_data._unsafe_ptr(),
+                                    exp_sum_qk_max_data.unsafe_ptr(),
                                     num_partitions_value,
                                 ),
                                 ctx,
@@ -880,25 +903,25 @@ fn flash_attention_dispatch[
                                 kv_input_row_offsets,
                                 batch_size,
                                 SplitKPartition(
-                                    exp_sum_qk_max_data._unsafe_ptr(),
+                                    exp_sum_qk_max_data.unsafe_ptr(),
                                     num_partitions_value,
                                 ),
                                 ctx,
                                 sink_weights,
                             )
                     else:
-                        ctx.enqueue_function[kernel](
-                            q.data,
+                        ctx.enqueue_function_checked[kernel, kernel](
+                            q_device,
                             k,
                             v,
-                            output_intermediate.data,
-                            exp_sum.data,
-                            qk_max.data,
+                            output_intermediate_data,
+                            exp_sum_device,
+                            qk_max_device,
                             scale,
                             batch_size,
                             num_partitions_value,
                             max_cache_valid_length,
-                            valid_length,
+                            managed_tensor_slice_to_ndbuffer(valid_length),
                             sink_weights,
                             mask_functor,
                             score_mod_functor,
@@ -924,11 +947,11 @@ fn flash_attention_dispatch[
                         use_exp2=use_fa3_kernel,
                     ]
 
-                    ctx.enqueue_function[kernel_reduce](
-                        output_intermediate.data,
-                        output.data,
-                        exp_sum.data,
-                        qk_max.data,
+                    ctx.enqueue_function_checked[kernel_reduce, kernel_reduce](
+                        output_intermediate_data,
+                        output_device,
+                        exp_sum_device,
+                        qk_max_device,
                         batch_size,
                         num_partitions_value,
                         grid_dim=(
@@ -1191,6 +1214,8 @@ fn mha[
     output_type: DType,
     mask_t: MHAMask,
     score_mod_t: ScoreModTrait,
+    valid_length_shape: DimList,
+    valid_length_stride: DimList,
     config: MHAConfig,
     group: Int = 1,
     use_score_mod: Bool = False,
@@ -1209,7 +1234,13 @@ fn mha[
     batch_size: Int,
     seq_len_arg: Int,
     num_keys_arg: Int,
-    valid_length: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
+    valid_length: NDBuffer[
+        DType.uint32,
+        1,
+        MutableAnyOrigin,
+        valid_length_shape,
+        valid_length_stride,
+    ],
     kv_input_row_offsets: OptionalReg[
         NDBuffer[DType.uint32, 1, MutableAnyOrigin]
     ],
@@ -2773,6 +2804,8 @@ fn mha_decoding[
     output_type: DType,
     mask_t: MHAMask,
     score_mod_t: ScoreModTrait,
+    valid_length_shape: DimList,
+    valid_length_stride: DimList,
     BM: UInt,  # number of queries per block
     BN: UInt,  # number of keys per block
     BK: UInt,  # tile size in depth dimension
@@ -2802,7 +2835,11 @@ fn mha_decoding[
     num_partitions: Int,
     max_cache_valid_length: Int,  # longest KV cache entry
     valid_length: NDBuffer[
-        DType.uint32, 1, MutableAnyOrigin
+        DType.uint32,
+        1,
+        MutableAnyOrigin,
+        valid_length_shape,
+        valid_length_stride,
     ],  # valid length per batch
     sink_weights: OptionalReg[NDBuffer[q_type, 1, MutableAnyOrigin]],
     mask: mask_t,
@@ -4265,22 +4302,28 @@ fn mha_splitk_reduce[
     var qk_max = warp.shuffle_idx(warp.max(l), 0)
 
     # since num_partitions <= WARP_SIZE, allocate buffer using WARP_SIZE
-    var exp_sums = tb[accum_type]().layout[WARP_SIZE]().shared().alloc()
+    var exp_sums = LayoutTensor[
+        accum_type,
+        Layout(WARP_SIZE),
+        MutableAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
 
-    var intermediate_output = (
-        tb[output_type]()
-        .row_major(
-            num_partitions,
-            batch_size,
-            static[num_heads](),
-            static[depth](),
-        )
-        .view(intermediate_ptr)
+    alias intermediate_layout = Layout.row_major(
+        UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, depth
     )
-    var output = (
-        tb[output_type]()
-        .row_major(batch_size, static[num_heads](), static[depth]())
-        .view(output_ptr)
+    var intermediate_output = LayoutTensor[output_type, intermediate_layout](
+        intermediate_ptr,
+        RuntimeLayout[intermediate_layout].row_major(
+            Index(num_partitions, batch_size, num_heads, depth)
+        ),
+    )
+    alias output_layout = Layout.row_major(UNKNOWN_VALUE, num_heads, depth)
+    var output = LayoutTensor[output_type, output_layout](
+        output_ptr,
+        RuntimeLayout[output_layout].row_major(
+            Index(batch_size, num_heads, depth)
+        ),
     )
 
     var rescaled_exp_sum: Scalar[accum_type] = 0
@@ -4303,7 +4346,16 @@ fn mha_splitk_reduce[
     var inv_global_exp_sum = 1.0 / exp_sum
     # TODO: vectorize load and store operations
     alias width = Int(ceildiv(depth, num_threads))
-    acc = tb[accum_type]().layout[width]().local().alloc().fill(0)
+    acc = (
+        LayoutTensor[
+            accum_type,
+            Layout(width),
+            MutableAnyOrigin,
+            address_space = AddressSpace.LOCAL,
+        ]
+        .stack_allocation()
+        .fill(0)
+    )
     for partition_idx in range(num_partitions):
         var partition_exp_sum = exp_sums[partition_idx]
         if partition_exp_sum > 0:
@@ -4380,25 +4432,31 @@ fn mha_gpu_naive[
     )
     # FIXME: RUNP-356 Direct access to CUDA within DeviceContext
     var p_buffer = NDBuffer[p_type, 3](
-        p_device._unsafe_ptr(),
+        p_device.unsafe_ptr(),
         Index(batch_size * num_heads, max_prompt_len, num_keys),
     )
-    var q_ptr = q.data
+    var q_device = DeviceBuffer[q.dtype](ctx, q.data, q.size(), owning=False)
+    var output_device = DeviceBuffer[output.dtype](
+        ctx, output.data, output.size(), owning=False
+    )
+    var valid_length_ndbuffer = managed_tensor_slice_to_ndbuffer(valid_length)
     alias kernel = _bmm0_bs[
         q_type,
         k_t,
         mask_t,
         p_type,
+        valid_length_ndbuffer.shape,
+        valid_length_ndbuffer.strides,
         ragged=ragged,
         _use_valid_length=_use_valid_length,
         _is_cache_length_accurate=_is_cache_length_accurate,
     ]
 
-    ctx.enqueue_function[kernel](
+    ctx.enqueue_function_checked[kernel, kernel](
         p_device,
-        q_ptr,
+        q_device,
         k,
-        managed_tensor_slice_to_ndbuffer(valid_length),
+        valid_length_ndbuffer,
         scale,
         batch_size,
         max_prompt_len,
@@ -4431,20 +4489,21 @@ fn mha_gpu_naive[
         ctx,
         sink_weights=sink_weights,
     )
-    ctx.enqueue_function[
-        _bmm1_bs[
-            output_type,
-            p_type,
-            v_t,
-            ragged=ragged,
-            _use_valid_length=_use_valid_length,
-            _is_cache_length_accurate=_is_cache_length_accurate,
-        ]
-    ](
-        output.data,
+    alias kernel_1 = _bmm1_bs[
+        output_type,
+        p_type,
+        v_t,
+        valid_length_ndbuffer.shape,
+        valid_length_ndbuffer.strides,
+        ragged=ragged,
+        _use_valid_length=_use_valid_length,
+        _is_cache_length_accurate=_is_cache_length_accurate,
+    ]
+    ctx.enqueue_function_checked[kernel_1, kernel_1](
+        output_device,
         p_device,
         v,
-        valid_length,
+        valid_length_ndbuffer,
         max_prompt_len,
         max_cache_size,
         num_heads,
@@ -4468,6 +4527,8 @@ fn _bmm0_bs[
     k_t: MHAOperand,
     mask_t: MHAMask,
     p_type: DType,
+    valid_length_shape: DimList,
+    valid_length_stride: DimList,
     ragged: Bool = False,
     _use_valid_length: Bool = False,
     _is_cache_length_accurate: Bool = False,
@@ -4475,7 +4536,13 @@ fn _bmm0_bs[
     p_ptr: UnsafePointer[Scalar[p_type]],
     q_ptr: UnsafePointer[Scalar[q_type]],
     k: k_t,
-    valid_length: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
+    valid_length: NDBuffer[
+        DType.uint32,
+        1,
+        MutableAnyOrigin,
+        valid_length_shape,
+        valid_length_stride,
+    ],
     scale: Float32,
     batch_size: Int,
     max_prompt_len: Int,
@@ -4541,7 +4608,7 @@ fn _bmm0_bs[
 
     var p = p_ptr + Int(p_offset)
 
-    var accum = SIMD[p_type, 1](0.0)
+    var accum = Scalar[p_type](0.0)
 
     if x < UInt(cur_cache_len) and y < UInt(cur_query_len):
         var k_ptr = k.block_paged_ptr[1](batch, x, kv_head, 0)
@@ -4600,6 +4667,8 @@ fn _bmm1_bs[
     output_type: DType,
     p_type: DType,
     v_t: MHAOperand,
+    valid_length_shape: DimList,
+    valid_length_stride: DimList,
     ragged: Bool = False,
     _use_valid_length: Bool = False,
     _is_cache_length_accurate: Bool = False,
@@ -4607,7 +4676,13 @@ fn _bmm1_bs[
     output_ptr: UnsafePointer[Scalar[output_type]],
     p_ptr: UnsafePointer[Scalar[p_type]],
     v: v_t,
-    valid_length: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
+    valid_length: NDBuffer[
+        DType.uint32,
+        1,
+        MutableAnyOrigin,
+        valid_length_shape,
+        valid_length_stride,
+    ],
     max_prompt_len: Int,
     max_cache_size: Int,
     num_heads: Int,
@@ -4665,7 +4740,7 @@ fn _bmm1_bs[
     var kv_head = Int(head // group)
     var output = output_ptr + Int(output_offset)
 
-    var accum = SIMD[DType.float32, 1](0.0)
+    var accum = Scalar[DType.float32](0.0)
 
     for i in range(cur_cache_len):
         var v_ptr = v.block_paged_ptr[1](batch, i, kv_head, x)
@@ -4934,15 +5009,17 @@ fn _naive_attention[
 @always_inline
 fn managed_tensor_slice_to_ndbuffer[
     spec: StaticTensorSpec, //
-](tensor: ManagedTensorSlice[static_spec=spec]) -> NDBuffer[
-    spec.dtype,
-    spec.rank,
-    MutableAnyOrigin,
-    spec.shape,
-    spec.strides,
-    alignment2 = spec.alignment,
-    address_space = spec.address_space,
-    exclusive = spec.exclusive,
-]:
+](
+    tensor: ManagedTensorSlice[static_spec=spec],
+    out result: NDBuffer[
+        spec.dtype,
+        spec.rank,
+        MutableAnyOrigin,
+        spec.shape,
+        spec.strides,
+        address_space = spec.address_space,
+        exclusive = spec.exclusive,
+    ],
+):
     var ptr = tensor._ptr.address_space_cast[spec.address_space]()
-    return {ptr, tensor.shape(), tensor._runtime_strides}
+    return __type_of(result)(ptr, tensor.shape(), tensor._runtime_strides)

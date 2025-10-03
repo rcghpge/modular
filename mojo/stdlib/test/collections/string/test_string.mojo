@@ -848,11 +848,11 @@ def test_isspace():
     for i in List[String]("not", "space", "", "s", "a", "c"):
         assert_false(i.isspace())
 
-    for i in range(len(univ_sep_var)):
+    for sep1 in univ_sep_var:
         var sep = String()
-        for j in range(len(univ_sep_var)):
-            sep += univ_sep_var[i]
-            sep += univ_sep_var[j]
+        for sep2 in univ_sep_var:
+            sep += sep1
+            sep += sep2
         assert_true(sep.isspace())
         _ = sep
 
@@ -896,8 +896,8 @@ def test_ascii_aliases():
     assert_true("'" in String.PUNCTUATION)
 
     var text = "I love my Mom and Dad so much!!!\n"
-    for i in range(len(text)):
-        assert_true(text[i] in String.PRINTABLE)
+    for char in text:
+        assert_true(char in String.PRINTABLE)
 
 
 def test_rstrip():
@@ -1404,20 +1404,28 @@ def test_reserve():
 def test_uninit_ctor():
     var hello_len = len("hello")
     var s = String(unsafe_uninit_length=UInt(hello_len))
-    memcpy(s.unsafe_ptr(), StaticString("hello").unsafe_ptr(), hello_len)
+    memcpy(
+        dest=s.unsafe_ptr(),
+        src=StaticString("hello").unsafe_ptr(),
+        count=hello_len,
+    )
     assert_equal(s, "hello")
 
     # Resize with uninitialized memory.
     var s2 = String()
     s2.resize(unsafe_uninit_length=UInt(hello_len))
-    memcpy(s2.unsafe_ptr_mut(), StaticString("hello").unsafe_ptr(), hello_len)
+    memcpy(
+        dest=s2.unsafe_ptr_mut(),
+        src=StaticString("hello").unsafe_ptr(),
+        count=hello_len,
+    )
     assert_equal(s2, "hello")
     assert_equal(s2._is_inline(), True)
 
     var s3 = String()
     var long: StaticString = "hellohellohellohellohellohellohellohellohellohel"
     s3.resize(unsafe_uninit_length=len(long))
-    memcpy(s3.unsafe_ptr_mut(), long.unsafe_ptr(), len(long))
+    memcpy(dest=s3.unsafe_ptr_mut(), src=long.unsafe_ptr(), count=len(long))
     assert_equal(s3, long)
     assert_equal(s3._is_inline(), False)
 

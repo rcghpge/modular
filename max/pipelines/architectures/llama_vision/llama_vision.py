@@ -32,17 +32,19 @@ from max.graph import (
     SymbolicDim,
     TensorType,
     TensorValue,
+    Value,
     ops,
 )
 from max.graph.weights import Weights, WeightsAdapter
 from max.interfaces import InputContext
+from max.interfaces.nested_iterable import NestedIterableDataclass
 from max.interfaces.request import RequestID
 from max.nn import LinearV1, ReturnLogits
 from max.nn.kv_cache import (
     KVCacheInputs,
-    KVCacheInputSymbols,
     KVCacheParams,
     KVCacheStrategy,
+    PagedCacheValues,
     PagedKVCacheManager,
     RaggedKVCacheInputs,
     build_max_lengths_tensor,
@@ -76,9 +78,9 @@ _DO_PARALLEL_COMPILATION = False
 
 
 @dataclass
-class MultimodalKVCacheInputSymbols(KVCacheInputSymbols):
-    text_kv_input_symbols: KVCacheInputSymbols
-    vision_kv_input_symbols: KVCacheInputSymbols
+class MultimodalKVCacheInputSymbols(NestedIterableDataclass):
+    text_kv_input_symbols: NestedIterableDataclass
+    vision_kv_input_symbols: NestedIterableDataclass
 
 
 @dataclass
@@ -121,6 +123,8 @@ class MultimodalKVCacheManager(PagedKVCacheManager):
         available_cache_memory: int,
         page_size: int,
     ) -> None:
+        self.params = params
+
         assert max_batch_size, "Expected max_batch_size to be set"
         paged_text_kv_manager = load_kv_manager(
             params=params,
@@ -491,13 +495,15 @@ class LlamaVisionInputs(ModelInputs):
                     self.pixel_row_offsets,
                 )
             ):
-                msg = "provide all or none of Llama Vision vision model inputs"
-                raise ValueError(msg)
+                raise ValueError(
+                    "provide all or none of Llama Vision vision model inputs"
+                )
         else:
             for field_name in ("_aspect_ratio_ids", "_aspect_ratio_mask"):
                 if getattr(self, field_name) is not None:
-                    msg = f"{field_name} must be None if _pixel_values is None"
-                    raise ValueError(msg)
+                    raise ValueError(
+                        f"{field_name} must be None if _pixel_values is None"
+                    )
 
     @property
     def has_vision_inputs(self) -> bool:
@@ -592,8 +598,9 @@ class LlamaVisionModel(Layer):
         aspect_ratio_mask: TensorValue,
     ) -> TensorValue:
         if aspect_ratio_ids is None:
-            msg = "`aspect_ratio_ids` must be provided if `pixel_values` is provided"
-            raise ValueError(msg)
+            raise ValueError(
+                "`aspect_ratio_ids` must be provided if `pixel_values` is provided"
+            )
 
         # Get vision tokens from vision model.
         vision_outputs = self.vision_model(
@@ -664,15 +671,30 @@ class LlamaVisionLanguageModel(Layer):
         hidden_input_row_offsets: TensorValue,
         hidden_max_seq_len: TensorValue,
         cross_input_row_offsets: TensorValue,
-        *kv_cache_inputs: TensorValue,
+        *kv_cache_inputs: Value[Any],
     ) -> TensorValue:
+        text_kv_collection = PagedCacheValues(
+            kv_blocks=kv_cache_inputs[0].buffer,
+            cache_lengths=kv_cache_inputs[1].tensor,
+            lookup_table=kv_cache_inputs[2].tensor,
+            max_lengths=kv_cache_inputs[3].tensor,
+        )
+        vision_kv_collection = PagedCacheValues(
+            kv_blocks=kv_cache_inputs[self.num_text_kv_cache_inputs].buffer,
+            cache_lengths=kv_cache_inputs[
+                self.num_text_kv_cache_inputs + 1
+            ].tensor,
+            lookup_table=kv_cache_inputs[
+                self.num_text_kv_cache_inputs + 2
+            ].tensor,
+            max_lengths=kv_cache_inputs[
+                self.num_text_kv_cache_inputs + 3
+            ].tensor,
+        )
+
         logits = self.language_model(
-            text_kv_cache_inputs=kv_cache_inputs[
-                : self.num_text_kv_cache_inputs
-            ],
-            vision_kv_cache_inputs=kv_cache_inputs[
-                self.num_text_kv_cache_inputs :
-            ],
+            text_kv_collection=text_kv_collection,
+            vision_kv_collection=vision_kv_collection,
             input_ids=input_ids,
             hidden_input_row_offsets=hidden_input_row_offsets,
             hidden_max_seq_len=hidden_max_seq_len,
@@ -808,13 +830,12 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
                 default=pipeline_config.max_length,
             )
         except ValueError as e:
-            msg = (
+            raise ValueError(
                 "Unable to infer max_length for Llama Vision, the provided "
                 f"max_length ({pipeline_config.max_length}) exceeds the "
                 f"model's max_position_embeddings "
                 f"({huggingface_config.text_config.max_position_embeddings})."
-            )
-            raise ValueError(msg) from e
+            ) from e
 
     def _llama3_vision_language_graph(self) -> Graph:
         # Pre-allocate a buffer for input_row_offsets in multistep execution.
@@ -935,12 +956,14 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
             images.append(image)
 
             if "aspect_ratio_ids" not in context.extra_model_args:
-                msg = "aspect_ratio_ids is required for image / vision model input"
-                raise ValueError(msg)
+                raise ValueError(
+                    "aspect_ratio_ids is required for image / vision model input"
+                )
 
             if "aspect_ratio_mask" not in context.extra_model_args:
-                msg = "aspect_ratio_mask is required for image / vision model input"
-                raise ValueError(msg)
+                raise ValueError(
+                    "aspect_ratio_mask is required for image / vision model input"
+                )
 
             aspect_ratio_ids_list.append(
                 context.extra_model_args["aspect_ratio_ids"]
@@ -977,24 +1000,23 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
     ) -> LlamaVisionInputs:
         """Creates tensors of token and image inputs, if applicable."""
         if self.kv_cache_config.cache_strategy != KVCacheStrategy.PAGED:
-            msg = "Llama Vision only supports paged cache strategy"
-            raise ValueError(msg)
+            raise ValueError("Llama Vision only supports paged cache strategy")
 
         has_images = any(ctx.needs_vision_encoding for ctx in context_batch)
         if has_images and not all(
             ctx.needs_vision_encoding for ctx in context_batch
         ):
-            msg = (
+            raise RuntimeError(
                 "expected context batch to all have images, or no images at all"
             )
-            raise RuntimeError(msg)
 
         def initial_prompt_missing_image(ctx: TextAndVisionContext) -> bool:
             return ctx.is_initial_prompt and not ctx.pixel_values
 
         if any(initial_prompt_missing_image(ctx) for ctx in context_batch):
-            msg = "The Llama Vision model currently requires a prompt with an image. Consider using the regular text-only models for non-image prompts"
-            raise RuntimeError(msg)
+            raise RuntimeError(
+                "The Llama Vision model currently requires a prompt with an image. Consider using the regular text-only models for non-image prompts"
+            )
 
         # Prepare vision inputs if applicable.
         pixel_values = None

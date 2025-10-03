@@ -14,6 +14,7 @@
 from collections.set import Set
 
 from testing import assert_false, assert_true
+from test_utils import TestSuite
 
 
 def test_list_any():
@@ -99,8 +100,8 @@ def test_set_all():
 def test_simd_any():
     @parameter
     def _test_dtype[dtype: DType]():
-        assert_true(any(SIMD[dtype, 1](1)))
-        assert_false(any(SIMD[dtype, 1](0)))
+        assert_true(any(Scalar[dtype](1)))
+        assert_false(any(Scalar[dtype](0)))
         assert_true(any(SIMD[dtype, 4](1, 2, 3, 4)))
         assert_true(any(SIMD[dtype, 4](0, 2, 3, 4)))
         assert_true(any(SIMD[dtype, 4](1, 2, 3, 0)))
@@ -125,8 +126,8 @@ def test_simd_any():
 def test_simd_all():
     @parameter
     def _test_dtype[dtype: DType]():
-        assert_true(all(SIMD[dtype, 1](1)))
-        assert_false(all(SIMD[dtype, 1](0)))
+        assert_true(all(Scalar[dtype](1)))
+        assert_false(all(Scalar[dtype](0)))
         assert_true(all(SIMD[dtype, 4](1, 2, 3, 4)))
         assert_false(all(SIMD[dtype, 4](0, 2, 3, 4)))
         assert_false(all(SIMD[dtype, 4](1, 2, 3, 0)))
@@ -149,12 +150,13 @@ def test_simd_all():
 
 
 def main():
-    # any
-    test_list_any()
-    test_set_any()
-    test_simd_any()
+    var suite = TestSuite()
 
-    # all
-    test_list_all()
-    test_set_all()
-    test_simd_all()
+    suite.test[test_list_any]()
+    suite.test[test_set_any]()
+    suite.test[test_simd_any]()
+    suite.test[test_list_all]()
+    suite.test[test_set_all]()
+    suite.test[test_simd_all]()
+
+    suite^.run()

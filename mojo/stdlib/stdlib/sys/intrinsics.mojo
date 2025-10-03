@@ -793,7 +793,7 @@ struct _RegisterPackType[*a: AnyTrivialRegType]:
         Returns:
             The tuple element at the requested index.
         """
-        return __mlir_op.`kgen.pack.extract`[index = i.__index__()](
+        return __mlir_op.`kgen.pack.extract`[index = i.__mlir_index__()](
             self.storage
         )
 
@@ -921,6 +921,17 @@ fn lane_id() -> UInt:
                 llvm_intrinsic[
                     "llvm.amdgcn.mbcnt.hi", Int32, has_side_effect=False
                 ](none, t).cast[DType.uint32]()
+            )
+        )
+
+    elif is_apple_gpu():
+        return UInt(
+            Int(
+                llvm_intrinsic[
+                    "llvm.air.thread_index_in_simdgroup",
+                    Int32,
+                    has_side_effect=False,
+                ]().cast[DType.uint32]()
             )
         )
 
@@ -1275,6 +1286,19 @@ struct _GridDim(Defaultable):
                     return 2
 
             return _get_gcn_idx[_get_offset(), DType.uint32]()
+        elif is_apple_gpu():
+            alias intrinsic_name = "llvm.air.threads_per_grid." + dim
+            var gridDim = UInt(
+                Int(
+                    llvm_intrinsic[
+                        intrinsic_name, Int32, has_side_effect=False
+                    ]()
+                )
+            )
+            # Metal passes grid dimention as a gridDim.dim * blockDim.dim.
+            # To make things compatible with NVidia and AMDGPU, divide result
+            # by block_dim.dim
+            return gridDim // block_dim.__getattr__[dim]()
         else:
             return CompilationTarget.unsupported_target_error[
                 UInt,

@@ -413,7 +413,7 @@ class Graph:
                 [kgen.ParamDeclAttr(p, si64) for p in self._params]
             )
 
-            self._mlir_op = mlir.Operation._CAPICreate(op._CAPIPtr)  # type: ignore
+            self._mlir_op = mlir.Operation._CAPICreate(op._CAPIPtr)
             self._current_block = self._mlir_op.regions[0].blocks[0]
             self._graph_body = self._current_block
 
@@ -423,7 +423,7 @@ class Graph:
 
         if self._graph_body.arguments:
             mlir_maybe_chain_value = _Value._from_cmlir(
-                self._graph_body.arguments[-1]
+                self._graph_body.arguments[-1]  # type: ignore
             )
             if _is_chain_value(mlir_maybe_chain_value):
                 self._has_chain_input = True
@@ -475,7 +475,7 @@ class Graph:
         if self._has_chain_input:
             chain_count = 1 + len(self.device_chains)
         if body_args and chain_count:
-            body_args = body_args[:-chain_count]
+            body_args = body_args[:-chain_count]  # type: ignore
 
         return tuple(
             Value.from_mlir(_Value._from_cmlir(arg))
@@ -540,17 +540,18 @@ class Graph:
     def _update_chain(self, new_chain: _ChainValue) -> None:
         self._current_chain = new_chain
 
-    def _merge_chains(self, chains: Sequence[_ChainValue]) -> None:
+    def _merge_chains(self, chains: Sequence[_ChainValue]) -> _ChainValue:
         chain = self._add_op(mo.chain_create, chains)[0]
         assert isinstance(chain, _ChainValue)
         self._current_chain = chain
+        return self._current_chain
 
     def _add_chain_block_arg(self) -> _ChainValue:
         """Add a new chain as a graph block argument."""
         with self._context, _location() as loc:
             block = Block._from_cmlir(self._graph_body)
             block.add_argument(_ChainType().to_mlir(), loc)
-        mlir_value = _Value._from_cmlir(self._graph_body.arguments[-1])
+        mlir_value = _Value._from_cmlir(self._graph_body.arguments[-1])  # type: ignore
         assert _is_chain_value(mlir_value)
 
         return _ChainValue.from_mlir(mlir_value)
@@ -702,7 +703,7 @@ class Graph:
             diags = "\n  ".join(diagnostics)
             raise ValueError(f"Diagnostics:\n    {diags}\n{e}") from None
         finally:
-            handle.detach()
+            handle.detach()  # type: ignore
 
     @_classproperty
     def current(cls) -> Graph:
@@ -753,7 +754,7 @@ class Graph:
             if isinstance(arg, Value):
                 return mlir.Value._CAPICreate(arg._mlir_value._CAPIPtr)  # type: ignore
             elif isinstance(arg, Type):
-                return mlir.Type._CAPICreate(arg.to_mlir()._CAPIPtr)
+                return mlir.Type._CAPICreate(arg.to_mlir()._CAPIPtr)  # type: ignore
             elif isinstance(arg, (list, tuple)):
                 return [unwrap(elem) for elem in arg]
             elif isinstance(arg, _Attribute):
@@ -962,7 +963,7 @@ class Graph:
                 # Create the top level module op.
                 self._module = mlir.Module.create()
                 with mlir.InsertionPoint(self._module.body):
-                    self._module = self._module.parse(f.read(), ctx)
+                    self._module = self._module.parse(f.read(), ctx)  # type: ignore
                     # Set the mo.graph op, which is the first operation in the
                     # module body block.
                     self._mlir_op = self._module.body.operations[0]

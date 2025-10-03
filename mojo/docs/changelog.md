@@ -22,8 +22,8 @@ what we publish.
 ### Language enhancements
 
 Literals now have a default type. For example, you can now bind
-[1,2,3] to T in a call to a function defined as
- fn zip[T: Iterable](impl:T) because it will default to the
+`[1,2,3]` to `T` in a call to a function defined as
+ `fn zip[T: Iterable](impl:T)` because it will default to the
  standard library's List type.
 
 ### Language changes
@@ -34,8 +34,22 @@ Literals now have a default type. For example, you can now bind
 
 - The deprecated `DType.index` is now removed in favor of the `DType.int`.
 
+- `math.isqrt` has been renamed to `rsqrt` since it performs reciprocal square
+  root functionality.
+
+- Added `swap_pointees` function to `UnsafePointer` as an alternative to `swap`
+  when the pointers may potentially alias each other.
+
+- `memcpy` and `parallel_memcpy` without keyword arguments are deprecated.
+
 ### Tooling changes
+
+- Error messages now preserve symbolic calls to `always_inline("builtin")`
+  functions rather than inlining them into the error message.
 
 ### ❌ Removed
 
 ### 🛠️ Fixed
+
+- The `math.cos` and `math.sin` function can now be evaluated at compile time
+  (fixes #5111).

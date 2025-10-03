@@ -22,6 +22,7 @@ _EXTRA_CONSTRAINTS = {
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_matmul_amd.mojo": ["//:amd_gpu"],  # TODO: Disabled FIXME: KERN-1377
+    "test_structured_kernel_components.mojo": ["//:amd_gpu"],
     "test_matmul_selection_heuristic.mojo": ["//:a100_gpu"],
     "test_matmul_sm90_epilogue.mojo": ["//:h100_gpu"],
     "test_stream_k.mojo": ["//:nvidia_gpu"],
@@ -36,9 +37,10 @@ _EXTRA_CONSTRAINTS = {
     "test_matmul_sm100_epilogue.mojo": ["//:b200_gpu"],
     "test_matmul_sm100_bf16.mojo": ["//:b200_gpu"],
     "test_matmul_sm100_fp8.mojo": ["//:b200_gpu"],
+    "test_matmul_sm100_ptx.mojo": ["//:b200_gpu"],
     "test_matmul_tile_scheduler_sm100.mojo": ["//:b200_gpu"],
     "test_tma_wgmma.mojo": ["//:h100_gpu"],
-    "test_tma_wgmma_with_multicast.mojo": ["//:h100_gpu"],
+    "test_tma_wgmma_with_multicast.mojo": ["@platforms//:incompatible"],  # FIXME: KERN-2060
     "test_vendor_blas.mojo": [
         "//:nvidia_gpu",
         "//:has_multi_gpu",
@@ -95,8 +97,11 @@ _FILECHECK_TESTS = [
     "test_block_swizzle.mojo",
     "test_matmul_selection_heuristic.mojo",
     "test_matmul_tile_scheduler.mojo",
-    "test_gemv.mojo",  # TODO: Remove filecheck usage
     "test_matmul_tile_scheduler_sm100.mojo",
+]
+
+_ASM_CHECK_TESTS = [
+    "test_matmul_sm100_ptx.mojo",
 ]
 
 _GPU_MEMORY = {
@@ -142,6 +147,23 @@ _GPU_MEMORY = {
         name = src + ".test",
         size = "large",
         srcs = [src],
+        data = ["//open-source/max/max/kernels/test/testdata:ptx_files"],
+        enable_assertions = False,  # PTX comparison assertions disabled
+        deps = [
+            "@mojo//:linalg",
+            "@mojo//:stdlib",
+            "@mojo//:test_utils",
+            "@mojo//:testdata",
+        ],
+    )
+    for src in _ASM_CHECK_TESTS
+]
+
+[
+    mojo_test(
+        name = src + ".test",
+        size = "large",
+        srcs = [src],
         enable_assertions = not src in [
             "test_warp_specialization_gemm.mojo",
             "test_generated_sm90_matmul_ptx.mojo",
@@ -162,7 +184,7 @@ _GPU_MEMORY = {
     )
     for src in glob(
         ["**/*.mojo"],
-        exclude = _FILECHECK_TESTS,
+        exclude = _FILECHECK_TESTS + _ASM_CHECK_TESTS,
     )
 ]
 

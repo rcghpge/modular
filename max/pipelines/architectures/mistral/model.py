@@ -17,13 +17,13 @@ import logging
 import math
 import time
 from collections.abc import Sequence
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph, TensorType, TensorValue
+from max.graph import DeviceRef, Graph, TensorType, Value
 from max.graph.weights import (
     SafetensorWeights,
     WeightData,
@@ -34,6 +34,7 @@ from max.nn import Module, ReturnLogits, Signals
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
+    PagedCacheValues,
     PagedKVCacheManager,
     estimate_kv_cache_size,
     load_kv_manager,
@@ -172,8 +173,7 @@ class MistralModel(PipelineModel[TextContext]):
     ) -> MistralInputs:
         if not self.kv_cache_config.cache_strategy.uses_opaque():
             # TODO(MODELS-407): Consider deleting the padded path entirely.
-            msg = "Mistral unsupported for padded token batches"
-            raise ValueError(msg)
+            raise ValueError("Mistral unsupported for padded token batches")
 
         # Get input_row_offsets: start and end position of each batch in the
         # combined total_seq_len dimension.
@@ -211,8 +211,7 @@ class MistralModel(PipelineModel[TextContext]):
 
         if not self.kv_cache_config.cache_strategy.uses_opaque():
             # TODO(MODELS-407): Consider deleting the padded path entirely.
-            msg = "multistep unsupported for padded token batches"
-            raise ValueError(msg)
+            raise ValueError("multistep unsupported for padded token batches")
 
         row_offsets_size = prev_model_inputs.input_row_offsets.shape[0]
         next_row_offsets = self._input_row_offsets_prealloc[:row_offsets_size]
@@ -254,13 +253,12 @@ class MistralModel(PipelineModel[TextContext]):
                 default=pipeline_config.max_length,
             )
         except ValueError as e:
-            msg = (
+            raise ValueError(
                 "Unable to infer max_length for Mistral, the provided "
                 f"max_length ({pipeline_config.max_length}) exceeds the "
                 f"model's max_position_embeddings "
                 f"({huggingface_config.max_position_embeddings})."
-            )
-            raise ValueError(msg) from e
+            ) from e
 
     def load_kv_manager(
         self,
@@ -377,8 +375,8 @@ class MistralModel(PipelineModel[TextContext]):
             )
 
     def _unflatten_kv_inputs(
-        self, kv_inputs_flat: Sequence[TensorValue]
-    ) -> list[tuple[TensorValue, ...]]:
+        self, kv_inputs_flat: Sequence[Value[Any]]
+    ) -> list[PagedCacheValues]:
         kv_params = MistralConfig.get_kv_params(
             huggingface_config=self.huggingface_config,
             n_devices=len(self.devices),
@@ -388,15 +386,17 @@ class MistralModel(PipelineModel[TextContext]):
         n_devices = kv_params.n_devices
         fetch_types = self.kv_manager.input_symbols()[0]
         len_of_kv_tuple_per_dev = len(list(fetch_types))
-        kv_caches_per_dev = [
-            tuple(
-                kv_inputs_flat[
-                    i * len_of_kv_tuple_per_dev : (i + 1)
-                    * len_of_kv_tuple_per_dev
-                ]
+        kv_caches_per_dev: list[PagedCacheValues] = []
+        for i in range(n_devices):
+            start_idx = i * len_of_kv_tuple_per_dev
+            kv_caches_per_dev.append(
+                PagedCacheValues(
+                    kv_blocks=kv_inputs_flat[start_idx].buffer,
+                    cache_lengths=kv_inputs_flat[start_idx + 1].tensor,
+                    lookup_table=kv_inputs_flat[start_idx + 2].tensor,
+                    max_lengths=kv_inputs_flat[start_idx + 3].tensor,
+                )
             )
-            for i in range(n_devices)
-        ]
         return kv_caches_per_dev
 
     @traced
@@ -461,11 +461,9 @@ class MistralModel(PipelineModel[TextContext]):
                 ]
 
                 # Unmarshal the remaining arguments, which are for KV cache.
-                kv_cache = [
-                    v.tensor for v in variadic_args[len(self.devices) :]
-                ]
-
-                kv_caches_per_dev = self._unflatten_kv_inputs(kv_cache)
+                kv_caches_per_dev = self._unflatten_kv_inputs(
+                    variadic_args[len(self.devices) :]
+                )
 
                 outputs = nn_model(
                     tokens.tensor,
@@ -491,9 +489,15 @@ class MistralModel(PipelineModel[TextContext]):
                 tokens, input_row_offsets, return_n_logits, *kv_cache_inputs = (
                     graph.inputs
                 )
+                kv_collection = PagedCacheValues(
+                    kv_blocks=kv_cache_inputs[0].buffer,
+                    cache_lengths=kv_cache_inputs[1].tensor,
+                    lookup_table=kv_cache_inputs[2].tensor,
+                    max_lengths=kv_cache_inputs[3].tensor,
+                )
                 outputs = nn_model(
                     tokens.tensor,
-                    [inp.tensor for inp in kv_cache_inputs],
+                    kv_collection,
                     return_n_logits.tensor,
                     input_row_offsets.tensor,
                 )
@@ -506,8 +510,9 @@ class MistralModel(PipelineModel[TextContext]):
         session: InferenceSession,
     ) -> Model:
         if self.pipeline_config.enable_echo:
-            msg = "Mistral model does not currently implement enable echo."
-            raise ValueError(msg)
+            raise ValueError(
+                "Mistral model does not currently implement enable echo."
+            )
 
         # Pre-allocate a buffer for input_row_offsets in multistep execution.
         # We do this to avoid materializing and copying a buffer with each multistep step
@@ -519,8 +524,9 @@ class MistralModel(PipelineModel[TextContext]):
         ).to(self.devices[0])
 
         if not isinstance(self.weights, SafetensorWeights):
-            msg = "only safetensors weights are currently supported in Mistral models."
-            raise ValueError(msg)
+            raise ValueError(
+                "only safetensors weights are currently supported in Mistral models."
+            )
 
         logger.info("Building and compiling model...")
         before = time.perf_counter()

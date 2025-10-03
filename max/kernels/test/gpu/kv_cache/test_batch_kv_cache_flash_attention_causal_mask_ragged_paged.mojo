@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import Set
-from math import ceildiv, isqrt
+from math import ceildiv, rsqrt
 from random import random_ui64, seed
 
 from buffer import Dim, DimList
@@ -178,8 +178,8 @@ def execute_ragged_flash_attention[
                 )
                 n_cpy = block_sz * kv_params.num_heads * kv_params.head_size
                 memcpy(
-                    paged_ptr,
-                    kv_block_continuous_host.tensor._offset(
+                    dest=paged_ptr,
+                    src=kv_block_continuous_host.tensor._offset(
                         IndexList[6](
                             continuous_idx,
                             kv_idx,
@@ -189,7 +189,7 @@ def execute_ragged_flash_attention[
                             0,
                         )
                     ),
-                    n_cpy,
+                    count=n_cpy,
                 )
                 if block_sz < page_size:
                     memset_zero(
@@ -224,7 +224,7 @@ def execute_ragged_flash_attention[
             io_spec=IOUnknown,
             static_spec = StaticTensorSpec[DType.uint32, 1].create_unknown(),
         ](input_row_offsets_device.tensor),
-        isqrt(Float32(kv_params.head_size)),
+        rsqrt(Float32(kv_params.head_size)),
         ctx,
     )
 
@@ -240,7 +240,7 @@ def execute_ragged_flash_attention[
             io_spec=IOUnknown,
             static_spec = StaticTensorSpec[DType.uint32, 1].create_unknown(),
         ](input_row_offsets_device.tensor),
-        isqrt(Float32(kv_params.head_size)),
+        rsqrt(Float32(kv_params.head_size)),
         ctx,
     )
     ctx.enqueue_copy(test_output_host.tensor.data, test_output_device.buffer)

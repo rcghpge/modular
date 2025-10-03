@@ -18,7 +18,7 @@ from algorithm.functional import vectorize
 from buffer import NDBuffer
 from buffer.dimlist import DimList
 from gpu import block_idx, global_idx
-from gpu.host import DeviceContext
+from gpu.host import DeviceContext, DeviceBuffer
 from kv_cache.types import KVCacheT
 from nn.mha import MHAConfig, _kernel_mask
 from nn.mha_mask import MHAMask
@@ -92,7 +92,7 @@ fn _bmm0_bs[
 
     var p = p_ptr + Int(p_offset)
 
-    var accum = SIMD[p_type, 1](0.0)
+    var accum = Scalar[p_type](0.0)
 
     # Set total KV length: KV written previous to and during this forward.
     if x < UInt(num_keys) and y < UInt(cur_query_len):
@@ -186,7 +186,7 @@ fn _bmm1_bs[
     var kv_head = Int(head // group)
     var output = output_ptr + Int(output_offset)
 
-    var accum = SIMD[DType.float32, 1](0.0)
+    var accum = Scalar[DType.float32](0.0)
 
     for i in range(cur_kv_len + v_cache.cache_length(batch)):
         var v_ptr = v_cache.block_paged_ptr[tile_size=1](batch, i, kv_head, x)
@@ -280,13 +280,15 @@ fn mha_cross_gpu_naive[
 
     # FIXME: RUNP-356 Direct access to CUDA within DeviceContext
     var p_buffer = NDBuffer[p_type, 3](
-        p_device._unsafe_ptr(),
+        p_device.unsafe_ptr(),
         Index(batch_size * num_heads, q_max_seq_len, num_keys),
     )
+    var q_device = DeviceBuffer[q_type](ctx, q.data, q.size(), owning=False)
 
-    ctx.enqueue_function[_bmm0_bs[__type_of(k), mask_t, q_type, p_type]](
+    alias kernel_0 = _bmm0_bs[__type_of(k), mask_t, q_type, p_type]
+    ctx.enqueue_function_checked[kernel_0, kernel_0](
         p_device,
-        q.data,
+        q_device,
         k,
         q_input_row_offsets,
         kv_input_row_offsets,
@@ -295,9 +297,9 @@ fn mha_cross_gpu_naive[
         q_max_seq_len,
         kv_max_seq_len,
         max_cache_size,
-        num_heads,
-        depth,
-        group,
+        Int(num_heads),
+        Int(depth),
+        Int(group),
         mask_functor,
         grid_dim=(
             ceildiv(num_keys, 32),
@@ -317,9 +319,13 @@ fn mha_cross_gpu_naive[
     _softmax_gpu[p_type, 1, 3, DimList.create_unknown[3](), input_fn_device](
         Index(batch_size * num_heads, q_max_seq_len, num_keys), p_buffer, 2, ctx
     )
+    var output_device = DeviceBuffer[output.dtype](
+        ctx, output.data, output.size(), owning=False
+    )
 
-    ctx.enqueue_function[_bmm1_bs[__type_of(v), p_type, output.dtype]](
-        output.data,
+    alias kernel_1 = _bmm1_bs[__type_of(v), p_type, output.dtype]
+    ctx.enqueue_function_checked[kernel_1, kernel_1](
+        output_device,
         p_device,
         v,
         q_input_row_offsets,
@@ -327,9 +333,9 @@ fn mha_cross_gpu_naive[
         q_max_seq_len,
         kv_max_seq_len,
         max_cache_size,
-        num_heads,
-        depth,
-        group,
+        Int(num_heads),
+        Int(depth),
+        Int(group),
         grid_dim=(
             ceildiv(depth, 32),
             ceildiv(q_max_seq_len, 16),

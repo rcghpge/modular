@@ -68,13 +68,13 @@ struct UInt(
     # Aliases
     # ===-------------------------------------------------------------------===#
 
-    alias BITWIDTH = UInt(DType.int.bit_width())
+    alias BITWIDTH = UInt(DType.uint.bit_width())
     """The bit width of the integer type."""
 
-    alias MAX = UInt((1 << Self.BITWIDTH) - 1)
+    alias MAX = UInt(Scalar[DType.uint].MAX)
     """Returns the maximum integer value."""
 
-    alias MIN = UInt(0)
+    alias MIN = UInt(Scalar[DType.uint].MIN)
     """Returns the minimum value of type."""
 
     # ===------------------------------------------------------------------=== #
@@ -138,7 +138,7 @@ struct UInt(
         Args:
             value: The init value.
         """
-        self = UInt(mlir_value=value.__index__())
+        self = UInt(mlir_value=value.__mlir_index__())
 
     # ===------------------------------------------------------------------=== #
     # Operator dunders
@@ -709,7 +709,7 @@ struct UInt(
         return self != 0
 
     @always_inline("builtin")
-    fn __index__(self) -> __mlir_type.index:
+    fn __mlir_index__(self) -> __mlir_type.index:
         """Convert to index.
 
         Returns:

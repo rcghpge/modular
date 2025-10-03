@@ -1197,11 +1197,6 @@ struct DeviceBuffer[dtype: DType](
         Returns:
             The raw device pointer that was owned by this buffer.
         """
-        return self._take_ptr()
-
-    fn _take_ptr(
-        var self,
-    ) -> Self._DevicePtr:
         constrained[
             not is_gpu(),
             "DeviceBuffer is not supported on GPUs",
@@ -1226,11 +1221,6 @@ struct DeviceBuffer[dtype: DType](
         Returns:
             The raw device pointer owned by this buffer.
         """
-        return self._unsafe_ptr()
-
-    fn _unsafe_ptr(
-        self,
-    ) -> Self._DevicePtr:
         constrained[
             not is_gpu(),
             "DeviceBuffer is not supported on GPUs",
@@ -2041,37 +2031,33 @@ struct DeviceFunction[
             if _is_bool_like[env_val]():
                 alias env_bool_val = env_get_bool[env_var]()
                 return env_bool_val, _DumpPath(env_bool_val)
-
-            @parameter
-            if _is_path_like(env_val):
+            elif _is_path_like(env_val):
                 return True, _DumpPath(Path(env_val))
+            else:
+                constrained[
+                    False,
+                    "the environment variable '",
+                    env_var,
+                    (
+                        "' is not a valid value. The value should either be"
+                        " a boolean value or a path like value, but got '"
+                    ),
+                    env_val,
+                    "'",
+                ]()
+                return False, val
 
-            constrained[
-                False,
-                "the environment variable '",
-                env_var,
-                (
-                    "' is not a valid value. The value should either be"
-                    " a boolean value or a path like value, but got '"
-                ),
-                env_val,
-                "'",
-            ]()
-            return False, val
-
-        @parameter
-        if val.isa[Bool]():
+        elif val.isa[Bool]():
             return val.unsafe_get[Bool](), val
 
-        @parameter
-        if val.isa[Path]():
+        elif val.isa[Path]():
             return val.unsafe_get[Path]() != Path(""), val
 
-        @parameter
-        if val.isa[StaticString]():
+        elif val.isa[StaticString]():
             return val.unsafe_get[StaticString]() != "", val
 
-        return val.isa[fn () capturing -> Path](), val
+        else:
+            return val.isa[fn () capturing -> Path](), val
 
     @staticmethod
     fn _cleanup_asm(s: StringSlice) -> String:
@@ -2680,77 +2666,41 @@ struct DeviceFunction[
             )
             populate(capture_args_start.bitcast[NoneType]())
 
-            _checked_call[Self.func](
-                external_call[
-                    "AsyncRT_DeviceContext_enqueueFunctionDirect",
-                    _CharPtr,
-                    _DeviceContextPtr,
-                    _DeviceFunctionPtr,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UnsafePointer[LaunchAttribute],
-                    UInt32,
-                    UnsafePointer[OpaquePointer],
-                    UnsafePointer[UInt],
-                ](
-                    ctx._handle,
-                    self._handle,
-                    grid_dim.x(),
-                    grid_dim.y(),
-                    grid_dim.z(),
-                    block_dim.x(),
-                    block_dim.y(),
-                    block_dim.z(),
-                    shared_mem_bytes.or_else(0),
-                    attributes.unsafe_ptr(),
-                    len(attributes),
-                    dense_args_addrs,
-                    dense_args_sizes,
-                ),
-                device_context=self._context,
-                location=location.or_else(__call_location()),
-            )
-        else:
-            _checked_call[Self.func](
-                external_call[
-                    "AsyncRT_DeviceContext_enqueueFunctionDirect",
-                    _CharPtr,
-                    _DeviceContextPtr,
-                    _DeviceFunctionPtr,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UInt32,
-                    UnsafePointer[LaunchAttribute],
-                    UInt32,
-                    UnsafePointer[OpaquePointer],
-                    UnsafePointer[UInt],
-                ](
-                    ctx._handle,
-                    self._handle,
-                    grid_dim.x(),
-                    grid_dim.y(),
-                    grid_dim.z(),
-                    block_dim.x(),
-                    block_dim.y(),
-                    block_dim.z(),
-                    shared_mem_bytes.or_else(0),
-                    attributes.unsafe_ptr(),
-                    len(attributes),
-                    dense_args_addrs,
-                    dense_args_sizes,
-                ),
-                device_context=self._context,
-                location=location.or_else(__call_location()),
-            )
+        _checked_call[Self.func](
+            external_call[
+                "AsyncRT_DeviceContext_enqueueFunctionDirect",
+                _CharPtr,
+                _DeviceContextPtr,
+                _DeviceFunctionPtr,
+                UInt32,
+                UInt32,
+                UInt32,
+                UInt32,
+                UInt32,
+                UInt32,
+                UInt32,
+                UnsafePointer[LaunchAttribute],
+                UInt32,
+                UnsafePointer[OpaquePointer],
+                UnsafePointer[UInt],
+            ](
+                ctx._handle,
+                self._handle,
+                grid_dim.x(),
+                grid_dim.y(),
+                grid_dim.z(),
+                block_dim.x(),
+                block_dim.y(),
+                block_dim.z(),
+                shared_mem_bytes.or_else(0),
+                attributes.unsafe_ptr(),
+                len(attributes),
+                dense_args_addrs,
+                dense_args_sizes,
+            ),
+            device_context=self._context,
+            location=location.or_else(__call_location()),
+        )
 
         if num_captures > num_captures_static:
             dense_args_addrs.free()

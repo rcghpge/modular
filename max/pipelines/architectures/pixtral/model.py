@@ -34,6 +34,7 @@ from max.nn import Module, ReturnLogits
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
+    PagedCacheValues,
     PagedKVCacheManager,
     estimate_kv_cache_size,
     load_kv_manager,
@@ -292,13 +293,12 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
                 default=pipeline_config.max_length,
             )
         except ValueError as e:
-            msg = (
+            raise ValueError(
                 "Unable to infer max_length for Pixtral, the provided "
                 f"max_length ({pipeline_config.max_length}) exceeds the "
                 f"model's max_position_embeddings "
                 f"({huggingface_config.text_config.max_position_embeddings})."
-            )
-            raise ValueError(msg) from e
+            ) from e
 
     def load_kv_manager(
         self,
@@ -485,11 +485,17 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
                     return_n_logits,
                     *kv_cache_inputs,
                 ) = graph.inputs
+                kv_collection = PagedCacheValues(
+                    kv_blocks=kv_cache_inputs[0].buffer,
+                    cache_lengths=kv_cache_inputs[1].tensor,
+                    lookup_table=kv_cache_inputs[2].tensor,
+                    max_lengths=kv_cache_inputs[3].tensor,
+                )
                 outputs = nn_model(
                     input_ids=input_ids.tensor,
                     pixel_values=pixel_values.tensor,
                     attention_mask=attention_mask.tensor,
-                    kv_cache_inputs=[inp.tensor for inp in kv_cache_inputs],
+                    kv_collection=kv_collection,
                     return_n_logits=return_n_logits.tensor,
                     input_row_offsets=input_row_offsets.tensor,
                 )
@@ -502,8 +508,9 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
         session: InferenceSession,
     ) -> Model:
         if self.pipeline_config.enable_echo:
-            msg = "Pixtral model does not currently implement enable echo."
-            raise ValueError(msg)
+            raise ValueError(
+                "Pixtral model does not currently implement enable echo."
+            )
 
         # Pre-allocate a buffer for input_row_offsets in multistep execution.
         # We do this to avoid materializing and copying a buffer with each multistep step
@@ -515,8 +522,9 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
         ).to(self.devices[0])
 
         if not isinstance(self.weights, SafetensorWeights):
-            msg = "only safetensors weights are currently supported in Pixtral models."
-            raise ValueError(msg)
+            raise ValueError(
+                "only safetensors weights are currently supported in Pixtral models."
+            )
 
         logger.info("Building and compiling model...")
         before = time.perf_counter()

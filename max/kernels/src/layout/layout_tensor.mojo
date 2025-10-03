@@ -34,7 +34,7 @@ from gpu.host import DeviceBuffer, HostBuffer
 from gpu.host._nvidia_cuda import TensorMapSwizzle
 from gpu.id import block_dim, block_idx, lane_id, thread_idx
 from gpu.intrinsics import AMDBufferResource
-from gpu.memory import CacheEviction, Fill, async_copy
+from gpu.memory import CacheEviction, CacheOperation, Fill, async_copy
 from layout._fillers import BATCH_SIZE
 from layout._utils import make_amd_buffer_resource
 from layout.element import Element, MemoryElement
@@ -416,17 +416,7 @@ struct LayoutTensor[
         Args:
             span: The `Span` pointing to the underlying data.
         """
-
-        constrained[layout.all_dims_known(), "Layout must be fully static"]()
-
-        constrained[
-            layout_int_type.is_signed() and linear_idx_type.is_signed(),
-            "Layout integer type and linear index type must be signed.",
-        ]()
-
-        self.ptr = span.unsafe_ptr()
-        self.runtime_layout = {}
-        self.runtime_element_layout = {}
+        self = Self(span.unsafe_ptr())
 
     @always_inline
     fn __init__(
@@ -449,16 +439,7 @@ struct LayoutTensor[
             span: The `Span` pointing to the underlying data.
             runtime_layout: The runtime layout of the LayoutTensor.
         """
-
-        constrained[
-            element_layout.all_dims_known(), "Layout must be fully static"
-        ]()
-
-        self.ptr = span.unsafe_ptr()
-        self.runtime_layout = runtime_layout.cast[
-            layout_int_type, target_linear_idx_type=linear_idx_type
-        ]()
-        self.runtime_element_layout = {}
+        self = Self(span.unsafe_ptr(), runtime_layout)
 
     @always_inline
     fn __init__(
@@ -484,24 +465,12 @@ struct LayoutTensor[
             runtime_layout: The runtime layout of the `LayoutTensor`.
             element_runtime_layout: The runtime layout of each element.
         """
-
-        constrained[
-            layout_int_type.is_signed() and linear_idx_type.is_signed(),
-            "Layout integer type and linear index type must be signed.",
-        ]()
-
-        self.ptr = span.unsafe_ptr()
-        self.runtime_layout = runtime_layout.cast[
-            layout_int_type, target_linear_idx_type=linear_idx_type
-        ]()
-        self.runtime_element_layout = element_runtime_layout.cast[
-            DType.int32, target_linear_idx_type=linear_idx_type
-        ]()
+        self = Self(span.unsafe_ptr(), runtime_layout, element_runtime_layout)
 
     @always_inline
     fn __init__(
         out self,
-        ptr: UnsafePointer[
+        unsafe_ptr: UnsafePointer[
             Scalar[dtype],
             address_space=address_space,
             mut=mut,
@@ -514,7 +483,7 @@ struct LayoutTensor[
             Layout must be fully static.
 
         Args:
-            ptr: The `UnsafePointer` pointing to the underlying data.
+            unsafe_ptr: The `UnsafePointer` pointing to the underlying data.
         """
 
         constrained[layout.all_dims_known(), "Layout must be fully static"]()
@@ -524,14 +493,14 @@ struct LayoutTensor[
             "Layout integer type and linear index type must be signed.",
         ]()
 
-        self.ptr = ptr
+        self.ptr = unsafe_ptr
         self.runtime_layout = {}
         self.runtime_element_layout = {}
 
     @always_inline
     fn __init__(
         out self,
-        ptr: UnsafePointer[
+        unsafe_ptr: UnsafePointer[
             Scalar[dtype],
             address_space=address_space,
             mut=mut,
@@ -547,7 +516,7 @@ struct LayoutTensor[
             Element layout must be fully static.
 
         Args:
-            ptr: The UnsafePointer pointing to the underlying data.
+            unsafe_ptr: The UnsafePointer pointing to the underlying data.
             runtime_layout: The runtime layout of the LayoutTensor.
         """
 
@@ -555,7 +524,7 @@ struct LayoutTensor[
             element_layout.all_dims_known(), "Layout must be fully static"
         ]()
 
-        self.ptr = ptr
+        self.ptr = unsafe_ptr
         self.runtime_layout = runtime_layout.cast[
             layout_int_type, target_linear_idx_type=linear_idx_type
         ]()
@@ -564,7 +533,7 @@ struct LayoutTensor[
     @always_inline
     fn __init__(
         out self,
-        ptr: UnsafePointer[
+        unsafe_ptr: UnsafePointer[
             Scalar[dtype],
             address_space=address_space,
             mut=mut,
@@ -578,12 +547,12 @@ struct LayoutTensor[
         element type will be casted to the layout tensor layout integer type.
 
         Args:
-            ptr: The `UnsafePointer` pointing to the underlying data.
+            unsafe_ptr: The `UnsafePointer` pointing to the underlying data.
             runtime_layout: The runtime layout of the `LayoutTensor`.
             element_runtime_layout: The runtime layout of each element.
         """
 
-        self.ptr = ptr
+        self.ptr = unsafe_ptr
         self.runtime_layout = runtime_layout.cast[
             layout_int_type, target_linear_idx_type=linear_idx_type
         ]()
@@ -651,7 +620,7 @@ struct LayoutTensor[
         Args:
             device_buffer: Contains the underlying data to point to.
         """
-        self = Self.GenericLayoutTensorType(device_buffer._unsafe_ptr())
+        self = Self.GenericLayoutTensorType(device_buffer.unsafe_ptr())
 
     @always_inline
     fn __init__(
@@ -704,7 +673,7 @@ struct LayoutTensor[
             runtime_layout: The runtime layout of the LayoutTensor.
         """
         self = Self.GenericLayoutTensorType(
-            device_buffer._unsafe_ptr(), runtime_layout
+            device_buffer.unsafe_ptr(), runtime_layout
         )
 
     @always_inline
@@ -749,7 +718,7 @@ struct LayoutTensor[
             element_runtime_layout: The runtime layout of each element.
         """
         self = Self.GenericLayoutTensorType(
-            device_buffer._unsafe_ptr(), runtime_layout, element_runtime_layout
+            device_buffer.unsafe_ptr(), runtime_layout, element_runtime_layout
         )
 
     @always_inline
@@ -2254,6 +2223,23 @@ struct LayoutTensor[
                 dtype,
                 alignment=stack_alignment,
                 address_space=address_space,
+            ]()
+        )
+
+    @staticmethod
+    @always_inline("nodebug")
+    fn null() -> Self.StackTensorType:
+        """
+        Returns a null `LayoutTensor` object.
+
+        Returns:
+            A null `LayoutTensor` object.
+        """
+        return Self.StackTensorType(
+            UnsafePointer[
+                Scalar[dtype],
+                address_space=address_space,
+                origin = MutableOrigin.empty,
             ]()
         )
 
@@ -6981,6 +6967,7 @@ fn _copy_dram_to_local[
     num_threads: Int = src_thread_layout.size(),
     thread_scope: ThreadScope = ThreadScope.BLOCK,
     block_dim_count: Int = 1,
+    cache_policy: CacheOperation = CacheOperation.ALWAYS,
 ](
     dst: LayoutTensor,
     src: LayoutTensor,
@@ -7030,7 +7017,9 @@ fn _copy_dram_to_local[
                 alias dst_frag_idx = Layout.col_major(M, N)([i, j])
                 alias src_frag_idx = Int32(src_fragments.layout([i, j]))
                 dst[dst_frag_idx, 0] = rebind[dst.element_type](
-                    buffer.load[src.dtype, simd_width](
+                    buffer.load[
+                        src.dtype, simd_width, cache_policy=cache_policy
+                    ](
                         src_frag_offset,
                         scalar_offset=src_frag_idx,
                     )
@@ -7049,6 +7038,7 @@ fn copy_dram_to_local[
     num_threads: Int = src_thread_layout.size(),
     thread_scope: ThreadScope = ThreadScope.BLOCK,
     block_dim_count: Int = 1,
+    cache_policy: CacheOperation = CacheOperation.ALWAYS,
 ](
     dst: LayoutTensor,
     src: LayoutTensor,
@@ -7079,6 +7069,8 @@ fn copy_dram_to_local[
             while `WARP` scope restricts operations to threads within the same
             warp. Defaults to `ThreadScope.BLOCK`.
         block_dim_count: The number of dimensions in the thread block.
+        cache_policy: The cache policy to use for the copy operation.
+            Defaults to `CacheOperation.ALWAYS`.
 
     Args:
         dst: The destination tensor in register memory (LOCAL address space).
@@ -7099,7 +7091,11 @@ fn copy_dram_to_local[
     var buffer = make_amd_buffer_resource(src_base)
 
     _copy_dram_to_local[
-        src_thread_layout, num_threads, thread_scope, block_dim_count
+        src_thread_layout,
+        num_threads,
+        thread_scope,
+        block_dim_count,
+        cache_policy,
     ](dst, src, buffer, offset)
 
 
@@ -7109,6 +7105,7 @@ fn _copy_dram_to_local[
     num_threads: Int = src_thread_layout.size(),
     thread_scope: ThreadScope = ThreadScope.BLOCK,
     block_dim_count: Int = 1,
+    cache_policy: CacheOperation = CacheOperation.ALWAYS,
 ](dst: LayoutTensor, src_iter: LayoutTensorIter, buffer: AMDBufferResource):
     constrained[is_amd_gpu(), "This function is only supported on AMD GPUs."]()
     var src_tensor = src_iter[].vectorize[
@@ -7116,7 +7113,11 @@ fn _copy_dram_to_local[
     ]()
 
     _copy_dram_to_local[
-        src_thread_layout, num_threads, thread_scope, block_dim_count
+        src_thread_layout,
+        num_threads,
+        thread_scope,
+        block_dim_count,
+        cache_policy,
     ](dst, src_tensor, buffer, UInt(src_iter.offset))
 
 
@@ -7126,6 +7127,7 @@ fn copy_dram_to_local[
     num_threads: Int = src_thread_layout.size(),
     thread_scope: ThreadScope = ThreadScope.BLOCK,
     block_dim_count: Int = 1,
+    cache_policy: CacheOperation = CacheOperation.ALWAYS,
 ](dst: LayoutTensor, src_iter: LayoutTensorIter, bounds: UInt32):
     """Efficiently copy data from global memory (DRAM) to registers for AMD GPUs.
 
@@ -7146,6 +7148,8 @@ fn copy_dram_to_local[
             while `WARP` scope restricts operations to threads within the same
             warp. Defaults to `ThreadScope.BLOCK`.
         block_dim_count: The number of dimensions in the thread block.
+        cache_policy: The cache policy to use for the copy operation.
+            Defaults to `CacheOperation.ALWAYS`.
 
     Args:
         dst: The destination tensor in register memory (LOCAL address space).
@@ -7167,7 +7171,11 @@ fn copy_dram_to_local[
     var buffer = make_amd_buffer_resource(src_iter, Int(bounds))
 
     _copy_dram_to_local[
-        src_thread_layout, num_threads, thread_scope, block_dim_count
+        src_thread_layout,
+        num_threads,
+        thread_scope,
+        block_dim_count,
+        cache_policy,
     ](dst, src_iter, buffer)
 
 

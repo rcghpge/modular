@@ -226,7 +226,6 @@ fn _extract_tensor_spec[
     return static_spec
 
 
-@register_internal("rebuild_static_tensor_specs_with_input_lambda")
 @no_inline
 fn rebuild_static_tensor_specs_with_input_lambda[
     func_type: AnyTrivialRegType, //,
@@ -248,7 +247,6 @@ fn rebuild_static_tensor_specs_with_input_lambda[
     )
 
 
-@register_internal("rebuild_static_tensor_specs_with_output_lambda")
 @no_inline
 fn rebuild_static_tensor_specs_with_output_lambda[
     func_type: AnyTrivialRegType, //,
@@ -270,7 +268,6 @@ fn rebuild_static_tensor_specs_with_output_lambda[
     )
 
 
-@register_internal("rebuild_static_tensor_specs_with_compute_output_lambda")
 @no_inline
 fn rebuild_static_tensor_specs_with_compute_output_lambda[
     func_type: AnyTrivialRegType, //,
@@ -1164,7 +1161,7 @@ struct ManagedTensorSlice[
         ],
     ):
         alias layout = static_spec.to_layout()
-        return LayoutTensor[dtype, layout](
+        return __type_of(result)(
             self.unsafe_ptr(),
             __type_of(result.runtime_layout)(
                 self.shape().cast[result.layout_int_type](),

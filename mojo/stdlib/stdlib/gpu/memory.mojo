@@ -51,7 +51,13 @@ from memory.unsafe import bitcast
 from utils import IndexList, StaticTuple
 from utils.numerics import get_accum_type
 
-from ._utils import to_i16, to_i32, to_llvm_ptr, to_llvm_shared_mem_ptr
+from ._utils import (
+    to_i16,
+    to_i32,
+    to_llvm_ptr,
+    to_llvm_shared_mem_ptr,
+    to_llvm_shared_cluster_mem_ptr,
+)
 from .intrinsics import Scope
 
 # ===-----------------------------------------------------------------------===#
@@ -98,32 +104,38 @@ struct CacheOperation(EqualityComparable, Identifiable):
     May bypass certain cache levels for better throughput.
     """
 
-    alias LAST_USE = Self(3)
+    alias LAST_USE = Self(4)
     """Indicates the cache line will not be used again.
 
     Hints to the cache that this data can be evicted after this access.
     Helps optimize cache utilization.
     """
 
-    alias VOLATILE = Self(4)
+    alias VOLATILE = Self(8)
     """Don't cache, and fetch again.
 
     Forces reads/writes to bypass cache and go directly to memory.
     Useful for memory-mapped I/O or when cache coherency is required.
     """
 
-    alias WRITE_BACK = Self(5)
+    alias WRITE_BACK = Self(16)
     """Write back at all coherent levels.
 
     Updates all cache levels and eventually writes to memory.
     Most efficient for multiple writes to same location.
     """
 
-    alias WRITE_THROUGH = Self(6)
+    alias WRITE_THROUGH = Self(32)
     """Write through to system memory.
 
     Immediately writes updates to memory while updating cache.
     Provides stronger consistency but lower performance than write-back.
+    """
+
+    alias WORKGROUP = Self(64)
+    """Workgroup level coherency.
+
+    Caches data in the L1 cache and streams it to the wave.
     """
 
     fn __eq__(self, other: Self) -> Bool:
@@ -147,6 +159,10 @@ struct CacheOperation(EqualityComparable, Identifiable):
             True if the operations are identical, False otherwise.
         """
         return self == other
+
+    fn __or__(self, other: Self) -> Self:
+        """Returns the bitwise OR of two CacheOperation instances."""
+        return Self(self._value | other._value)
 
     @always_inline
     fn mnemonic(self) -> StaticString:
@@ -172,6 +188,8 @@ struct CacheOperation(EqualityComparable, Identifiable):
             return "wb"
         if self is Self.WRITE_THROUGH:
             return "wt"
+        if self is Self.WORKGROUP:
+            return "wg"
 
         return "unknown cache operation"
 
@@ -1057,10 +1075,16 @@ fn cp_async_bulk_tensor_shared_cluster_global[
 
         @parameter
         if cta_group == 1:
+            # We added the intrinsic before the SHARED_CLUSTER address space was
+            # introduced. Cast the address space here to avoid modifying all the
+            # callsites that use the old SHARED address space.
+            var dst_mem_cluster = dst_mem.address_space_cast[
+                GPUAddressSpace.SHARED_CLUSTER
+            ]()
             __mlir_op.`nvvm.cp.async.bulk.tensor.shared.cluster.global`[
                 _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1,1,3,1,0,0,0,0>}`
             ](
-                to_llvm_shared_mem_ptr(dst_mem),
+                to_llvm_shared_cluster_mem_ptr(dst_mem_cluster),
                 to_llvm_ptr(tma_descriptor),
                 to_i32(coords[0]),
                 to_i32(coords[1]),
@@ -1084,10 +1108,13 @@ fn cp_async_bulk_tensor_shared_cluster_global[
 
         @parameter
         if cta_group == 1:
+            var dst_mem_cluster = dst_mem.address_space_cast[
+                GPUAddressSpace.SHARED_CLUSTER
+            ]()
             __mlir_op.`nvvm.cp.async.bulk.tensor.shared.cluster.global`[
                 _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1,1,2,1,0,0,0,0>}`
             ](
-                to_llvm_shared_mem_ptr(dst_mem),
+                to_llvm_shared_cluster_mem_ptr(dst_mem_cluster),
                 to_llvm_ptr(tma_descriptor),
                 to_i32(coords[0]),
                 to_i32(coords[1]),
@@ -1109,10 +1136,13 @@ fn cp_async_bulk_tensor_shared_cluster_global[
 
         @parameter
         if cta_group == 1:
+            var dst_mem_cluster = dst_mem.address_space_cast[
+                GPUAddressSpace.SHARED_CLUSTER
+            ]()
             __mlir_op.`nvvm.cp.async.bulk.tensor.shared.cluster.global`[
                 _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1,1,1,1,0,0,0,0>}`
             ](
-                to_llvm_shared_mem_ptr(dst_mem),
+                to_llvm_shared_cluster_mem_ptr(dst_mem_cluster),
                 to_llvm_ptr(tma_descriptor),
                 to_i32(coords[0]),
                 to_llvm_shared_mem_ptr(mem_bar),
@@ -1197,10 +1227,13 @@ fn cp_async_bulk_tensor_shared_cluster_global_multicast[
 
         @parameter
         if cta_group == 1:
+            var dst_mem_cluster = dst_mem.address_space_cast[
+                GPUAddressSpace.SHARED_CLUSTER
+            ]()
             __mlir_op.`nvvm.cp.async.bulk.tensor.shared.cluster.global`[
                 _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1,1,2,1,0,1,0,0>}`
             ](
-                to_llvm_shared_mem_ptr(dst_mem),
+                to_llvm_shared_cluster_mem_ptr(dst_mem_cluster),
                 to_llvm_ptr(tma_descriptor),
                 to_i32(coords[0]),
                 to_i32(coords[1]),
@@ -1224,10 +1257,13 @@ fn cp_async_bulk_tensor_shared_cluster_global_multicast[
 
         @parameter
         if cta_group == 1:
+            var dst_mem_cluster = dst_mem.address_space_cast[
+                GPUAddressSpace.SHARED_CLUSTER
+            ]()
             __mlir_op.`nvvm.cp.async.bulk.tensor.shared.cluster.global`[
                 _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1,1,1,1,0,1,0,0>}`
             ](
-                to_llvm_shared_mem_ptr(dst_mem),
+                to_llvm_shared_cluster_mem_ptr(dst_mem_cluster),
                 to_llvm_ptr(tma_descriptor),
                 to_i32(coords[0]),
                 to_llvm_shared_mem_ptr(mem_bar),
@@ -1530,22 +1566,22 @@ fn _load_impl[
             has_side_effect=True,
         ](ptr.bitcast[NoneType](), res[0], res[1], res[2], res[3])
         return SIMD[dtype, width](tmp[0], tmp[1], tmp[2], tmp[3])
-
-    var lhs = _load_impl[
-        width = width // 2,
-        prefetch_size=prefetch_size,
-        cache_policy=cache_policy,
-        eviction_policy=eviction_policy,
-        alignment=alignment,
-    ](ptr)
-    var rhs = _load_impl[
-        width = width // 2,
-        prefetch_size=prefetch_size,
-        cache_policy=cache_policy,
-        eviction_policy=eviction_policy,
-        alignment=alignment,
-    ](ptr + width // 2)
-    return lhs.join(rhs)._refine[new_size=width]()
+    else:
+        var lhs = _load_impl[
+            width = width // 2,
+            prefetch_size=prefetch_size,
+            cache_policy=cache_policy,
+            eviction_policy=eviction_policy,
+            alignment=alignment,
+        ](ptr)
+        var rhs = _load_impl[
+            width = width // 2,
+            prefetch_size=prefetch_size,
+            cache_policy=cache_policy,
+            eviction_policy=eviction_policy,
+            alignment=alignment,
+        ](ptr + width // 2)
+        return lhs.join(rhs)._refine[new_size=width]()
 
 
 @always_inline

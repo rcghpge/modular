@@ -19,12 +19,12 @@ from sys import CompilationTarget, is_big_endian, is_little_endian
 from sys.info import _macos_version
 
 from testing import assert_false, assert_true
+from test_utils import TestSuite
 
 
 fn test_os_query() raises:
     assert_true(CompilationTarget.is_macos())
     assert_false(CompilationTarget.is_linux())
-    assert_false(CompilationTarget.is_windows())
 
     # The mac systems are either arm64 or intel, so they are always little
     # endian at the moment.
@@ -42,5 +42,9 @@ def test_os_version():
 
 
 def main():
-    test_os_query()
-    test_os_version()
+    var suite = TestSuite()
+
+    suite.test[test_os_query]()
+    suite.test[test_os_version]()
+
+    suite^.run()

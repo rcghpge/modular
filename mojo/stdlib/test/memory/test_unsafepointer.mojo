@@ -16,6 +16,7 @@ from test_utils import (
     MoveCounter,
     ObservableDel,
     ObservableMoveOnly,
+    TestSuite,
 )
 from testing import assert_equal, assert_false, assert_not_equal, assert_true
 
@@ -257,6 +258,8 @@ def test_indexing():
     assert_equal(ptr[Int(1)], 1)
     assert_equal(ptr[3], 3)
 
+    ptr.free()
+
 
 def test_indexing_simd():
     var ptr = UnsafePointer[Int].alloc(4)
@@ -279,6 +282,8 @@ def test_indexing_simd():
     assert_equal(ptr[Int32(3)], 3)
     assert_equal(ptr[Int64(1)], 1)
     assert_equal(ptr[Int64(3)], 3)
+
+    ptr.free()
 
 
 def test_bool():
@@ -332,12 +337,14 @@ def test_load_and_store_simd():
     for i in range(0, 16, 4):
         var vec = ptr.load[width=4](i)
         assert_equal(vec, SIMD[DType.int8, 4](i, i + 1, i + 2, i + 3))
+    ptr.free()
 
     var ptr2 = UnsafePointer[Int8].alloc(16)
     for i in range(0, 16, 4):
         ptr2.store(i, SIMD[DType.int8, 4](i))
     for i in range(16):
         assert_equal(ptr2[i], i // 4 * 4)
+    ptr2.free()
 
 
 def test_volatile_load_and_store_simd():
@@ -347,12 +354,14 @@ def test_volatile_load_and_store_simd():
     for i in range(0, 16, 4):
         var vec = ptr.load[width=4, volatile=True](i)
         assert_equal(vec, SIMD[DType.int8, 4](i, i + 1, i + 2, i + 3))
+    ptr.free()
 
     var ptr2 = UnsafePointer[Int8].alloc(16)
     for i in range(0, 16, 4):
         ptr2.store[volatile=True](i, SIMD[DType.int8, 4](i))
     for i in range(16):
         assert_equal(ptr2[i], i // 4 * 4)
+    ptr2.free()
 
 
 # Test pointer merging with ternary operation.
@@ -371,31 +380,69 @@ def test_merge():
     assert_equal(b, [4, 5, 6, 8])
 
 
+def test_swap_pointees_trivial_move():
+    var a = 42
+    UnsafePointer(to=a).origin_cast[True, MutableAnyOrigin]().swap_pointees(
+        UnsafePointer(to=a).origin_cast[True, MutableAnyOrigin]()
+    )
+    assert_equal(a, 42)
+
+    var x = 1
+    var y = 2
+    UnsafePointer(to=x).swap_pointees(UnsafePointer(to=y))
+    assert_equal(x, 2)
+    assert_equal(y, 1)
+
+
+def test_swap_pointees_non_trivial_move():
+    var counter = MoveCounter[Int](42)
+    UnsafePointer(to=counter).origin_cast[
+        True, MutableAnyOrigin
+    ]().swap_pointees(
+        UnsafePointer(to=counter).origin_cast[True, MutableAnyOrigin]()
+    )
+    # Pointers point to the same object, so no move should be performed
+    assert_equal(counter.value, 42)
+    assert_equal(counter.move_count, 0)
+
+    var counterA = MoveCounter[Int](1)
+    var counterB = MoveCounter[Int](2)
+    UnsafePointer(to=counterA).swap_pointees(UnsafePointer(to=counterB))
+
+    assert_equal(counterA.value, 2)
+    assert_equal(counterA.move_count, 1)
+
+    assert_equal(counterB.value, 1)
+    assert_equal(counterB.move_count, 2)
+
+
 def main():
-    test_address_of()
-    test_pointer_to()
+    var suite = TestSuite()
 
-    test_refitem()
-    test_refitem_offset()
+    suite.test[test_address_of]()
+    suite.test[test_pointer_to]()
+    suite.test[test_refitem]()
+    suite.test[test_refitem_offset]()
+    suite.test[test_unsafepointer_of_move_only_type]()
+    suite.test[test_unsafepointer_move_pointee_move_count]()
+    suite.test[test_unsafepointer_init_pointee_copy]()
+    suite.test[test_explicit_copy_of_pointer_address]()
+    suite.test[test_bitcast]()
+    suite.test[test_unsafepointer_string]()
+    suite.test[test_eq]()
+    suite.test[test_comparisons]()
+    suite.test[test_unsafepointer_address_space]()
+    suite.test[test_unsafepointer_aligned_alloc]()
+    suite.test[test_unsafepointer_alloc_origin]()
+    suite.test[test_indexing]()
+    suite.test[test_indexing_simd]()
+    suite.test[test_bool]()
+    suite.test[test_alignment]()
+    suite.test[test_offset]()
+    suite.test[test_load_and_store_simd]()
+    suite.test[test_volatile_load_and_store_simd]()
+    suite.test[test_merge]()
+    suite.test[test_swap_pointees_trivial_move]()
+    suite.test[test_swap_pointees_non_trivial_move]()
 
-    test_unsafepointer_of_move_only_type()
-    test_unsafepointer_move_pointee_move_count()
-    test_unsafepointer_init_pointee_copy()
-
-    test_explicit_copy_of_pointer_address()
-    test_bitcast()
-    test_unsafepointer_string()
-    test_eq()
-    test_comparisons()
-
-    test_unsafepointer_address_space()
-    test_unsafepointer_aligned_alloc()
-    test_unsafepointer_alloc_origin()
-    test_indexing()
-    test_indexing_simd()
-    test_bool()
-    test_alignment()
-    test_offset()
-    test_load_and_store_simd()
-    test_volatile_load_and_store_simd()
-    test_merge()
+    suite^.run()

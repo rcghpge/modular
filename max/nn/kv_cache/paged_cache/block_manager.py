@@ -24,10 +24,11 @@ This logic is largely borrowed from vLLM v1:
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections import defaultdict
 from collections.abc import Iterable
-from enum import Enum
+from dataclasses import dataclass
 
 from max.interfaces import RequestID, TextGenerationContext
 from max.profiler import traced
@@ -43,16 +44,36 @@ from .block_utils import KVCacheBlock, hash_request_tokens
 logger = logging.getLogger("max.pipelines")
 
 
-class SwappingStrategy(Enum):
-    """Strategy for offboarding blocks from the device when experimental paging to
-    CPU feature is enabled."""
+class InsufficientBlocksError(Exception):
+    pass
 
-    # Copy device blocks to host as soon as they are committed.
-    # This results in more copies but is efficient if copies can be hidden in a
-    # separate stream.
-    EAGER = "EAGER"
-    # Copy device blocks to host only when they are evicted.
-    LAZY = "LAZY"
+
+@dataclass
+class KVCacheMetrics:
+    """Metrics for the KV cache."""
+
+    input_tokens: int = 0
+    cache_tokens: int = 0
+    h2d_blocks_copied: int = 0
+    d2h_blocks_copied: int = 0
+
+    @property
+    def prompt_tokens(self) -> int:
+        return self.input_tokens + self.cache_tokens
+
+    @property
+    def cache_hit_rate(self) -> float:
+        if self.prompt_tokens == 0:
+            return 0.0
+        return self.cache_tokens / self.prompt_tokens
+
+    def __add__(self, other: KVCacheMetrics) -> KVCacheMetrics:
+        return KVCacheMetrics(
+            input_tokens=self.input_tokens + other.input_tokens,
+            cache_tokens=self.cache_tokens + other.cache_tokens,
+            h2d_blocks_copied=self.h2d_blocks_copied + other.h2d_blocks_copied,
+            d2h_blocks_copied=self.d2h_blocks_copied + other.d2h_blocks_copied,
+        )
 
 
 class BlockManager:
@@ -67,7 +88,7 @@ class BlockManager:
         enable_prefix_caching: bool,
         enable_runtime_checks: bool = False,
     ) -> None:
-        # The number of tokens in a single page.
+        self.total_num_blocks = total_num_blocks
         self.block_size = block_size
 
         # Whether to enable prefix caching.
@@ -122,6 +143,9 @@ class BlockManager:
 
         # Tracks recently committed device blocks to offload to host.
         self.recently_committed_device_blocks: list[KVCacheBlock] = []
+
+        # Metrics for the KV cache.
+        self._metrics = KVCacheMetrics()
 
         # Whether to enable runtime checks.
         self.enable_runtime_checks = enable_runtime_checks
@@ -195,6 +219,11 @@ class BlockManager:
         orig_start_idx = ctx.start_idx
 
         if len(prefix_cache_blocks) > 0:
+            # Update metrics.
+            self._metrics.cache_tokens += (
+                len(prefix_cache_blocks) * self.block_size
+            )
+
             # Since we got cache hits, clear out existing uncommitted blocks
             self.release_uncommitted_blocks(ctx)
 
@@ -267,6 +296,7 @@ class BlockManager:
             # Enqueue a H2D block copy operation.
             assert self.block_copy_engine is not None
             self.block_copy_engine.memcpy_h2d(device_block.bid, host_block.bid)
+            self._metrics.h2d_blocks_copied += 1
 
             # Commit the device block into the prefix cache.
             # We should use the hash from the host block.
@@ -402,9 +432,26 @@ class BlockManager:
             num_steps: Number of additional steps to allocate blocks for. Defaults to 1.
 
         Raises:
-            RuntimeError: If there are insufficient free blocks to satisfy the allocation.
+            InsufficientBlocksError: If there are insufficient free blocks to satisfy the allocation.
+            RuntimeError: If the request has a prompt length that exceeds the total capacity of the KVCache.
             AssertionError: If the current blocks cannot accommodate the completed tokens.
         """
+
+        # It is impossible to schedule this request, even if it was the only req
+        # and could use the entire KV cache.
+        # This should literally never happen unless the user sets an absurdly
+        # large max seq len or the KV cache is very small.
+        total_kv_slots = self.total_num_blocks * self.block_size
+        if ctx.current_length > total_kv_slots:
+            raise RuntimeError(
+                f"Insufficient KV pages for a single request with {ctx.current_length} tokens.\n"
+                f"The KVCache has {self.total_num_blocks} blocks with block size {self.block_size}. This is only enough to support {total_kv_slots} tokens.\n"
+                "You must restart your process and set a lower max seq len to prevent a single request from using the entire KV cache."
+            )
+
+        # Update metrics.
+        self._metrics.input_tokens += ctx.active_length
+
         # Determine number of new blocks to allocate.
         current_blocks = self.req_to_blocks[ctx.request_id]
         num_current_blocks = len(current_blocks)
@@ -421,7 +468,7 @@ class BlockManager:
 
         # Check that we have enough free blocks to allocate the new blocks.
         if num_new_blocks > len(self.device_block_pool.free_block_queue):
-            raise RuntimeError(
+            raise InsufficientBlocksError(
                 f"Cannot get {num_new_blocks} free blocks from the free block queue (only {len(self.device_block_pool.free_block_queue)} available)"
             )
 
@@ -460,6 +507,7 @@ class BlockManager:
         # Copy the block from the GPU to the host.
         assert self.block_copy_engine is not None
         self.block_copy_engine.memcpy_d2h(host_block.bid, gpu_block.bid)
+        self._metrics.d2h_blocks_copied += 1
 
         # Commit the host block into the host prefix cache.
         self.host_block_pool.commit_into_prefix_cache(old_hash, host_block)
@@ -493,6 +541,13 @@ class BlockManager:
     def get_req_blocks(self, request_id: RequestID) -> list[int]:
         """Get the block ids for a request."""
         return [block.bid for block in self.req_to_blocks[request_id]]
+
+    @property
+    def metrics(self) -> KVCacheMetrics:
+        return copy.copy(self._metrics)
+
+    def reset_metrics(self) -> None:
+        self._metrics = KVCacheMetrics()
 
     @traced
     def assert_runtime_invariants(self, ctx: TextGenerationContext) -> None:

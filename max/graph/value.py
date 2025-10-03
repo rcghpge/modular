@@ -27,10 +27,10 @@ from typing import (
 )
 
 import numpy as np
-import numpy.typing as npt
 from max._core import Type as _Type
 from max._core import Value as _Value
 from max._core.dialects import mo
+from max.driver import DLPackArray
 from max.dtype import DType
 from typing_extensions import TypeAlias, TypeGuard
 
@@ -131,8 +131,9 @@ class Value(Generic[MlirType]):
         if isinstance(self, BufferValue):
             return self
 
-        msg = f"Value is not a BufferValue, was '{type(self).__name__}'"
-        raise TypeError(msg)
+        raise TypeError(
+            f"Value is not a BufferValue, was '{type(self).__name__}'"
+        )
 
     @property
     def tensor(self) -> TensorValue:
@@ -143,8 +144,9 @@ class Value(Generic[MlirType]):
         if isinstance(self, TensorValue):
             return self
 
-        msg = f"Value is not a TensorValue, was '{type(self).__name__}'"
-        raise TypeError(msg)
+        raise TypeError(
+            f"Value is not a TensorValue, was '{type(self).__name__}'"
+        )
 
     @property
     def opaque(self) -> _OpaqueValue:
@@ -155,8 +157,9 @@ class Value(Generic[MlirType]):
         if isinstance(self, _OpaqueValue):
             return self
 
-        msg = f"Value is not a TensorValue, was '{type(self).__name__}'"
-        raise TypeError(msg)
+        raise TypeError(
+            f"Value is not an _OpaqueValue, was '{type(self).__name__}'"
+        )
 
     @property
     def type(self) -> Type[MlirType]:
@@ -1242,9 +1245,7 @@ class HasBufferValue(Protocol):
     def __buffervalue__(self) -> BufferValue: ...
 
 
-Numeric = Union[
-    int, float, np.integer[Any], np.floating[Any], npt.NDArray[np.number[Any]]
-]
+Numeric = Union[int, float, np.integer[Any], np.floating[Any], DLPackArray]
 Scalar = Union[int, float, np.integer[Any], np.floating[Any], Dim]
 StrongTensorValueLike = Union[
     _Value[mo.TensorType], TensorValue, Shape, Dim, HasTensorValue

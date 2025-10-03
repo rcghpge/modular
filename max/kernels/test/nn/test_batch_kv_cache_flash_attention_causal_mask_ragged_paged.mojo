@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import Set
-from math import ceildiv, isqrt
+from math import ceildiv, rsqrt
 from random import random_ui64, seed
 
 from buffer import Dim, DimList
@@ -165,10 +165,10 @@ def execute_ragged_flash_attention[
 
             for kv_idx in range(2):
                 memcpy(
-                    kv_block_paged.tensor._offset(
+                    dest=kv_block_paged.tensor._offset(
                         IndexList[6](randval, kv_idx, layer_idx, 0, 0, 0)
                     ),
-                    kv_block_continuous.tensor._offset(
+                    src=kv_block_continuous.tensor._offset(
                         IndexList[6](
                             continuous_idx,
                             kv_idx,
@@ -178,7 +178,7 @@ def execute_ragged_flash_attention[
                             0,
                         )
                     ),
-                    page_size * kv_params.num_heads * kv_params.head_size,
+                    count=page_size * kv_params.num_heads * kv_params.head_size,
                 )
 
     kv_collection_paged = PagedKVCacheCollection[dtype, kv_params, page_size](
@@ -198,7 +198,7 @@ def execute_ragged_flash_attention[
         kv_collection_continuous.get_key_cache(layer_idx),
         kv_collection_continuous.get_value_cache(layer_idx),
         CausalMask(),
-        isqrt(Float32(kv_params.head_size)),
+        rsqrt(Float32(kv_params.head_size)),
         ref_output.to_layout_tensor(),
     )
 
@@ -211,7 +211,7 @@ def execute_ragged_flash_attention[
         kv_collection_paged.get_key_cache(layer_idx),
         kv_collection_paged.get_value_cache(layer_idx),
         CausalMask(),
-        isqrt(Float32(kv_params.head_size)),
+        rsqrt(Float32(kv_params.head_size)),
         test_output.to_layout_tensor(),
     )
 

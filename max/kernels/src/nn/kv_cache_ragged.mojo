@@ -2230,7 +2230,7 @@ fn _flare_mla_decode_kv_cache_ragged[
         input_row_offsets: The start and end position of each Q entry in the batch.
         kv_collection: The Collection object storing out KVCache entries for this layer
         layer_idx: The current layer, used to retrieve kv_cache objects from kv_collection
-        scale: The scaled factor in scaled-dot product attention. Usually isqrt(head_size).
+        scale: The scaled factor in scaled-dot product attention. Usually rsqrt(head_size).
         output: The Pre-allocated output buffer to write results to. Has shape:
             (batch_size, num_heads, seq_len, head_size).
         context: Pointer containing the runtime context for the target device.
@@ -2390,7 +2390,7 @@ fn _flare_mla_prefill_kv_cache_ragged[
         input_row_offsets: The start and end position of each Q entry in the batch.
         kv_collection: The Collection object storing out KVCache entries for this layer
         layer_idx: The current layer, used to retrieve kv_cache objects from kv_collection
-        scale: The scaled factor in scaled-dot product attention. Usually isqrt(head_size).
+        scale: The scaled factor in scaled-dot product attention. Usually rsqrt(head_size).
         output: The Pre-allocated output buffer to write results to. Has shape:
             (total_seq_len, num_heads, kv_head_size).
         softmax_info: NDBuffer with shape (total_seq_len, num_heads, 2).
@@ -2836,7 +2836,8 @@ fn generic_kv_cache_radd_dispatch[
 
 
 fn kv_cache_store_ragged[
-    cache_t: KVCacheT, //,
+    cache_t: KVCacheT,
+    input_row_offsets_layout: Layout, //,
     target: StaticString,
     input_fn: fn[width: Int, alignment: Int] (
         idx: IndexList[3]
@@ -2844,11 +2845,21 @@ fn kv_cache_store_ragged[
 ](
     cache: cache_t,
     input_shape: IndexList[3],
-    input_row_offsets: NDBuffer[DType.uint32, 1, *_],
+    input_row_offsets: LayoutTensor[
+        DType.uint32, input_row_offsets_layout, MutableAnyOrigin
+    ],
     context: Optional[DeviceContext],
 ) raises:
+    constrained[
+        input_row_offsets.layout.rank() == 1,
+        (
+            "Expected input_row_offsets to be a 1D tensor of shape `(batch_size"
+            " + 1,)`"
+        ),
+    ]()
+
     @parameter
-    @__copy_capture(input_row_offsets, cache)
+    @__copy_capture(cache)
     fn write_to_cache[
         width: Int, rank: Int, alignment: Int = 1
     ](idx: IndexList[rank]):
@@ -2857,10 +2868,10 @@ fn kv_cache_store_ragged[
         )
         var batch_idx = get_batch_from_row_offsets(input_row_offsets, idx[0])
         var token_idx = Int(idx[0] - input_row_offsets[batch_idx])
-        var h_idx, hd_idx = divmod(UInt(idx[1]), cache_t.kv_params.head_size)
+        var h_idx = idx[1]
+        var hd_idx = idx[2]
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
-
         cache.store(
             batch_idx,
             h_idx,

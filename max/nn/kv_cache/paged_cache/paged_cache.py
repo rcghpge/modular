@@ -28,15 +28,15 @@ from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import (
+    BufferType,
+    BufferValue,
     DeviceRef,
     Graph,
     TensorType,
     TensorValue,
-    _OpaqueType,
-    _OpaqueValue,
-    ops,
 )
 from max.interfaces import RequestID, TextGenerationContext
+from max.interfaces.nested_iterable import NestedIterableDataclass
 from max.profiler import traced
 from max.serve.kvcache_agent.kvcache_agent_service_v1_pb2 import (  # type: ignore
     MemoryTier,
@@ -45,104 +45,28 @@ from max.support.human_readable_formatter import to_human_readable_bytes
 from max.support.math import ceildiv
 
 from ..cache_params import KVCacheParams
-from ..manager import KVCacheInputSymbols, RaggedKVCacheInputs
+from ..manager import RaggedKVCacheInputs
 from ..utils import build_max_lengths_tensor
-from .block_copy_engine import BlockCopyEngine, BlockCopyMetrics
-from .block_manager import BlockManager
+from .block_copy_engine import BlockCopyEngine
+from .block_manager import BlockManager, InsufficientBlocksError, KVCacheMetrics
 
 logger = logging.getLogger("max.pipelines")
 
 
 @dataclass
-class PagedCacheInputSymbols(KVCacheInputSymbols):
-    kv_blocks: TensorType
+class PagedCacheInputSymbols(NestedIterableDataclass):
+    kv_blocks: BufferType
     cache_lengths: TensorType
     lookup_table: TensorType
     max_lengths: TensorType
 
 
-class PagedKVCacheType(_OpaqueType):
-    """PagedAttention Mojo KV Cache graph type."""
-
-    def __init__(self) -> None:
-        """Creates an opaque type containing a paged KV Cache."""
-        super().__init__("PagedKVCache")
-
-
-class PagedKVCacheCollectionType(_OpaqueType):
-    """The graph type for a "view" of the cache for the given sequences in the
-    batch.
-
-    This object does not own the underlying buffers in k_cache and v_cache,
-    it's borrowing them from the BlockWrappers in our ContinuousKVCacheManager.
-    It does own the Pointer[NDBuffer[type, 3]] and valid_lengths buffer
-    """
-
-    def __init__(self) -> None:
-        """Creates an opaque type containing a paged KV cache collection."""
-        super().__init__("PagedKVCacheCollection")
-
-
-class PagedKVCacheCollection(_OpaqueValue):
-    """The graph value for a view of the KV cache."""
-
-
-class FetchPagedKVCacheCollection:
-    def __init__(self, kv_params: KVCacheParams, **kwargs: Any) -> None:
-        self.kv_params = kv_params
-
-    def __call__(
-        self,
-        blocks: TensorValue,  # NDBuffer[type, 6, Self.blocks_shape]
-        cache_lengths: TensorValue,  # NDBuffer[DType.uint32, 1],
-        lookup_table: TensorValue,  # NDBuffer[DType.uint32, 2],
-        is_cache_empty: TensorValue,
-    ) -> PagedKVCacheCollection:
-        """Constructs a PagedKVCacheCollection for use downstream."""
-
-        # Explicit validation.
-        if blocks.dtype != self.kv_params.dtype:
-            msg = (
-                f"expected blocks to be dtype: {self.kv_params.dtype}, got"
-                f" {blocks.dtype}"
-            )
-            raise ValueError(msg)
-
-        if blocks.rank != 6:
-            msg = f"expected blocks to be of rank 6, got {blocks.rank}"
-            raise ValueError(msg)
-
-        # For all tensors other than the blocks tensor, the length should be equivalent
-        # to batch size, which is unknown within the graph at this stage.
-        if cache_lengths.dtype != DType.uint32:
-            msg = f"expected cache lengths to be dtype: uint32, got {cache_lengths.dtype}"
-            raise ValueError(msg)
-
-        if cache_lengths.rank != 1:
-            msg = f"expected cache lengths to be of rank 1, got {cache_lengths.rank}"
-            raise ValueError(msg)
-
-        if lookup_table.dtype != DType.uint32:
-            msg = f"expected lookup_table to be dtype: uint32, got {lookup_table.dtype}"
-            raise ValueError(msg)
-
-        if lookup_table.rank != 2:
-            msg = f"expected lookup_table to be of rank 2, got {lookup_table.rank}"
-            raise ValueError(msg)
-
-        return PagedKVCacheCollection(
-            ops.custom(
-                "mo.kv_collection_ctor.paged",
-                device=blocks.device,
-                values=[blocks, cache_lengths, lookup_table, is_cache_empty],
-                out_types=[PagedKVCacheCollectionType()],
-                parameters={
-                    "num_heads": self.kv_params.n_kv_heads_per_device,
-                    "head_dim": self.kv_params.head_dim,
-                    "page_size": int(blocks.shape[3]),
-                },
-            )[0].opaque
-        )
+@dataclass
+class PagedCacheValues(NestedIterableDataclass):
+    kv_blocks: BufferValue
+    cache_lengths: TensorValue
+    lookup_table: TensorValue
+    max_lengths: TensorValue
 
 
 class PagedKVCacheManager:
@@ -512,7 +436,7 @@ class PagedKVCacheManager:
         # Allocating new blocks can fail if there are insufficient blocks.
         try:
             self.block_manager.allocate_new_blocks(data, num_steps)
-        except RuntimeError:
+        except InsufficientBlocksError:
             return False
         return True
 
@@ -614,7 +538,7 @@ class PagedKVCacheManager:
         self,
         devices: Sequence[Device] | None = None,
         num_layers: int | None = None,
-    ) -> Sequence[KVCacheInputSymbols]:
+    ) -> Sequence[NestedIterableDataclass]:
         return self._input_symbols(devices, num_layers, dynamic_dim_prefix="")
 
     def _input_symbols(
@@ -640,7 +564,7 @@ class PagedKVCacheManager:
 
         return [
             PagedCacheInputSymbols(
-                kv_blocks=TensorType(
+                kv_blocks=BufferType(
                     self.params.dtype,
                     shape=self.block_shape(
                         num_layers=num_layers, is_parameterized=True
@@ -743,19 +667,6 @@ class PagedKVCacheManager:
     def get_req_blocks(self, request_id: RequestID) -> Sequence[int]:
         """Get the block ids for a request."""
         return self.block_manager.get_req_blocks(request_id)
-
-    @property
-    def num_blocks_copied(self) -> BlockCopyMetrics:
-        """Get the number of blocks copied for each type."""
-        if self.block_copy_engine is None:
-            return BlockCopyMetrics()
-        return self.block_copy_engine.blocks_copied
-
-    def reset_num_blocks_copied(self) -> None:
-        """Reset the number of blocks copied for each type."""
-        if self.block_copy_engine is None:
-            return
-        self.block_copy_engine.blocks_copied.reset()
 
     def _create_increment_cache_lengths_graph(self) -> Graph:
         input_symbols = self.input_symbols()
@@ -882,3 +793,10 @@ class PagedKVCacheManager:
             True if the request ID is active in the cache, False otherwise.
         """
         return request_id in self._request_to_seq_id
+
+    @property
+    def metrics(self) -> KVCacheMetrics:
+        return self.block_manager.metrics
+
+    def reset_metrics(self) -> None:
+        self.block_manager.reset_metrics()
