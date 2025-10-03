@@ -53,10 +53,6 @@ def MO_DTypeAttr : MOAttr<"DType", "dtype"> {
   let assemblyFormat = [{
     `<` $dtype `>`
   }];
-
-  let builders = [
-    AttrBuilder<(ins "DType" : $dtype)>,
-  ];
 }
 
 def MO_ChainAttr : KGEN_ExprAttr<"Chain", "chain"> {
