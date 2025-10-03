@@ -37,11 +37,11 @@ import re
 import sys
 
 
-def process_module_string(module_str: str):
+def process_module_string(module_str: str):  # noqa: ANN201
     # Process text format of mlir module to lit-test pattern
     var_names = set()
 
-    def get_lit_var(m, group_num, prefix=""):  # noqa: ANN001
+    def get_lit_var(m, group_num, prefix=""):  # noqa: ANN001, ANN202
         var_name = prefix + m.group(group_num).upper()
         var_names.add(var_name)
         return var_name

@@ -23,7 +23,7 @@ Will pick up the class named `BasicTranspose` in this file.
 # Inherit from this to get some sensible defaults.
 class TestBase:
     @staticmethod
-    def compare_results(ours, theirs):  # noqa: ANN001
+    def compare_results(ours, theirs):  # noqa: ANN001, ANN205
         return np.allclose(ours, theirs, rtol=1e-05, atol=1e-08, equal_nan=True)
 
     @staticmethod
@@ -34,11 +34,11 @@ class TestBase:
 # Basic transpose test case.
 class BasicTranspose(TestBase):
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [([4, 2, 1, 6], [4])]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         # Create a test of rank 3 with and a permute vector of rank 1.
         return [
             ((None, None, None, None), np.float32),
@@ -46,7 +46,7 @@ class BasicTranspose(TestBase):
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         permute = np.arange(len(shapes[0])).astype(np.int32)
         permute = np.random.permutation(permute)
         return [
@@ -55,47 +55,47 @@ class BasicTranspose(TestBase):
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         return impl.transpose(inputs[0], inputs[1])
 
 
 # A normal batch matmul.
 class BatchMatmul(TestBase):
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [([5, 11, 6], [1, 6, 23])]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None, None), np.float32),
             ((None, None, None), np.float32),
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         return [
             np.random.uniform(-2.0, 2.0, shapes[0]).astype(np.float32),
             np.random.uniform(-2.0, 2.0, shapes[1]).astype(np.float32),
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         return impl.bmm(inputs[0], inputs[1])
 
 
 # A normal batch matmul.
 class BatchMatmulTrans(BatchMatmul):
     @staticmethod
-    def compare_results(ours, theirs):  # noqa: ANN001
+    def compare_results(ours, theirs):  # noqa: ANN001, ANN205
         return np.allclose(ours, theirs, rtol=1e-05, atol=1e-06, equal_nan=True)
 
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [([5, 11, 6], [1, 23, 6])]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         permute = impl.constant((0, 2, 1))
         trans = impl.transpose(inputs[1], permute)
         return impl.bmm(inputs[0], trans)
@@ -103,7 +103,7 @@ class BatchMatmulTrans(BatchMatmul):
 
 class BatchMatmulRelu(BatchMatmul):
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         x = impl.bmm(inputs[0], inputs[1])
         return impl.max(x, 0)
 
@@ -111,7 +111,7 @@ class BatchMatmulRelu(BatchMatmul):
 # Test for range
 class Range(TestBase):
     @staticmethod
-    def compare_results(ours, theirs):  # noqa: ANN001
+    def compare_results(ours, theirs):  # noqa: ANN001, ANN205
         return np.array_equal(ours, theirs)
 
     @staticmethod
@@ -119,15 +119,15 @@ class Range(TestBase):
         return 100
 
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [(3,)]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [((3,), np.int32)]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         start = np.random.randint(-64, 64)
         stop = np.random.randint(-64, 64)
         diff = stop - start
@@ -141,7 +141,7 @@ class Range(TestBase):
         return [np.array([start, stop, step], dtype=np.int32)]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         # Until `mt` supports the input type we have to slice them out #18187.
         start, stop, step = impl.split(inputs[0], [1, 1, 1], 0)
         start = impl.reshape(start, shape=())
@@ -152,7 +152,7 @@ class Range(TestBase):
 
 class Split(TestBase):
     @staticmethod
-    def compare_results(ours, theirs):  # noqa: ANN001
+    def compare_results(ours, theirs):  # noqa: ANN001, ANN205
         return np.array_equal(ours, theirs)
 
     @staticmethod
@@ -160,11 +160,11 @@ class Split(TestBase):
         return 300
 
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [([20, 12, 12], [6], [1])]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None, None), np.int32),
             ((6,), np.int32),
@@ -172,7 +172,7 @@ class Split(TestBase):
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         start = np.random.randint(-128, 128, size=shapes[0]).astype(np.int32)
         axis = np.random.randint(-start.ndim, start.ndim - 1, size=(1,)).astype(
             np.int32
@@ -209,12 +209,12 @@ class Split(TestBase):
         return [start, split_sizes, axis]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         axis = impl.reshape(inputs[2], shape=())
         return impl.split(inputs[0], inputs[1], axis)
 
 
-def get_test_case(target_name):  # noqa: ANN001
+def get_test_case(target_name):  # noqa: ANN001, ANN201
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj):
             if name == target_name:
@@ -224,13 +224,13 @@ def get_test_case(target_name):  # noqa: ANN001
 
 class TransposeReduce(TestBase):
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [
             ([65, 67, 3, 17], [1], [4]),
         ]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None, None, None), np.float32),
             ((1,), np.int32),
@@ -238,7 +238,7 @@ class TransposeReduce(TestBase):
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         permute = np.arange(len(shapes[0])).astype(np.int32)
         permute = np.random.permutation(permute)
         # use randint for input to avoid fp tolerance issues
@@ -250,7 +250,7 @@ class TransposeReduce(TestBase):
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         reduce_axis = impl.reshape(inputs[1], shape=())
         trans = impl.transpose(inputs[0], inputs[2])
         return impl.sum(trans, reduce_axis)
@@ -258,20 +258,20 @@ class TransposeReduce(TestBase):
 
 class GatherReduceConstAxis(TestBase):
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [
             ([30, 20], [10, 20]),
         ]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None), np.float32),
             ((None, None), np.int32),
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         return [
             # Use randint for input to avoid fp tolerance issues
             np.random.randint(-5, 5, size=shapes[0]).astype(np.float32),
@@ -279,7 +279,7 @@ class GatherReduceConstAxis(TestBase):
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         reduce_axis = impl.reshape(impl.constant((1,)), shape=())
         gathered = impl.gather(inputs[0], inputs[1], 0)
         return impl.sum(gathered, reduce_axis)
@@ -287,14 +287,14 @@ class GatherReduceConstAxis(TestBase):
 
 class GatherOfGathers(TestBase):
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         # 1st array to gather from, 2nd first indices to gather, then indices to gather from that.. and so on. Last input is the axis
         return [
             ([300, 100], [50], [25], [10], [1], [1]),
         ]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None), np.float32),
             ((50,), np.int32),
@@ -305,7 +305,7 @@ class GatherOfGathers(TestBase):
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         axis = random.randint(0, len(shapes[0]) - 1)
 
         return [
@@ -320,7 +320,7 @@ class GatherOfGathers(TestBase):
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         axis = impl.reshape(inputs[-1], shape=())
         g_1 = impl.gather(inputs[0], inputs[1], axis)
         g_2 = impl.gather(g_1, inputs[2], axis)
@@ -334,14 +334,14 @@ class MultiViewFusionBase(TestBase):
         return 100
 
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         # Input, transpose permutation, slice indices
         return [
             ([5, 10, 5], [3], [3], [3], [3]),
         ]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None, None), np.float32),
             ((3,), np.int32),
@@ -351,7 +351,7 @@ class MultiViewFusionBase(TestBase):
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         num_dims = len(shapes[0])
 
         # Create a transpose permutation.
@@ -380,7 +380,7 @@ class MultiViewFusionBase(TestBase):
 
 class MultiViewFusion(MultiViewFusionBase):
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         # Slice input
         sliced = impl.strided_slice(inputs[0], inputs[1], inputs[2], inputs[3])
         transposed = impl.transpose(sliced, inputs[-1])
@@ -389,7 +389,7 @@ class MultiViewFusion(MultiViewFusionBase):
 
 class MultiViewFusionNoAdd(MultiViewFusionBase):
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         # Slice input
         sliced = impl.strided_slice(inputs[0], inputs[1], inputs[2], inputs[3])
         return impl.transpose(sliced, inputs[-1])
@@ -401,29 +401,29 @@ class Elementwise(TestBase):
         return 100
 
     @staticmethod
-    def compare_results(ours, theirs):  # noqa: ANN001
+    def compare_results(ours, theirs):  # noqa: ANN001, ANN205
         return np.allclose(ours, theirs, rtol=1e-04, atol=1e-07, equal_nan=True)
 
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [([20, 5, 1, 6],)]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None, None, None), np.float32),
             ((None, None, None, None), np.float32),
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         return [
             np.random.uniform(-20.0, 20.0, shapes[0]).astype(np.float32),
             np.random.uniform(-20.0, 20.0, shapes[0]).astype(np.float32),
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         x = inputs[0]
         tanh = impl.tanh(inputs[1])
         sub = impl.sub(x, tanh)
@@ -470,7 +470,7 @@ class Elementwise(TestBase):
 # Test the case of static shape as this changes the broadcast & fusion logic.
 class ElementwiseStatic(Elementwise):
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [((20, 5, 1, 6), np.float32), ((20, 5, 1, 6), np.float32)]
 
 
@@ -480,18 +480,18 @@ class ElementwiseBoolOps(TestBase):
         return 100
 
     @staticmethod
-    def input_sizes_to_test():
+    def input_sizes_to_test():  # noqa: ANN205
         return [([20, 5, 1, 6],)]
 
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [
             ((None, None, None, None), bool),
             ((None, None, None, None), np.float32),
         ]
 
     @staticmethod
-    def generate_inputs(shapes):  # noqa: ANN001
+    def generate_inputs(shapes):  # noqa: ANN001, ANN205
         float_vals = [0.0, 1.0, np.inf, np.nan, -np.inf]
         return [
             np.random.rand(*shapes[0]) > 0.5,
@@ -499,7 +499,7 @@ class ElementwiseBoolOps(TestBase):
         ]
 
     @staticmethod
-    def run(inputs, impl):  # noqa: ANN001
+    def run(inputs, impl):  # noqa: ANN001, ANN205
         bool_input = inputs[0]
         float_input = inputs[1]
         isnan = impl.is_nan(float_input)
@@ -511,5 +511,5 @@ class ElementwiseBoolOps(TestBase):
 
 class ElementwiseBoolOpsStatic(ElementwiseBoolOps):
     @staticmethod
-    def get_input_specs():
+    def get_input_specs():  # noqa: ANN205
         return [((20, 5, 1, 6), bool), ((20, 5, 1, 6), np.float32)]
