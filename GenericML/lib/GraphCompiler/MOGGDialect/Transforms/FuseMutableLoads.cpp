@@ -174,27 +174,6 @@ ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
   return newKernelOp;
 }
 
-// Checks if `start` depends on `target` transitively.
-static bool valueDependsOnChain(Value start, Value target) {
-  if (start == target)
-    return true;
-
-  SmallVector<Value> worklist{start};
-  llvm::SmallPtrSet<Value, 16> visited;
-  while (!worklist.empty()) {
-    Value current = worklist.pop_back_val();
-    if (!visited.insert(current).second)
-      continue;
-
-    if (current == target)
-      return true;
-
-    if (Operation *def = current.getDefiningOp())
-      worklist.append(def->operand_begin(), def->operand_end());
-  }
-  return false;
-}
-
 // Replaces `loadOutChain` with `loadInChain` in all chain.create ops on the
 // path from a mutable.load op to a kernel op.
 // Attempts to "detach" the load's outgoing chain from the kernel's incoming
@@ -296,7 +275,7 @@ static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
     chainCreate->replaceUsesOfWith(loadOutChain, loadInChain);
 
   // Sanity-check that the rewrite fully severed the dependency.
-  ASSERT_STREAM(!valueDependsOnChain(kernelInChain, loadOutChain),
+  ASSERT_STREAM(!valueDependsTransitivelyOn(kernelInChain, loadOutChain),
                 "Expected exclusive chain path from mutable.load to kernel op "
                 "to be severed.");
 
@@ -320,7 +299,7 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   TypedValue<MO::ChainType> loadOutChain = loadOp.getOutChain();
   if (auto maybeKernelInChain = kernelOp.maybeGetInChain()) {
     if (*maybeKernelInChain != loadOutChain &&
-        valueDependsOnChain(*maybeKernelInChain, loadOutChain) &&
+        valueDependsTransitivelyOn(*maybeKernelInChain, loadOutChain) &&
         !detachExclusiveChainPath(loadOutChain, loadOp.getInChain(),
                                   *maybeKernelInChain)) {
       LLVM_DEBUG(loadOp.emitRemark() << "Skipping mutable load fusion to avoid "

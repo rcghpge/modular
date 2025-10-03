@@ -271,6 +271,31 @@ struct FuseProloguesEpilogues
         if (containsMutableStore(src) && haveSharedBufferOperand(src, dst))
           continue;
 
+        // Ensure we don't fuse src if another operand is dependant on dst.
+        // It would lead to an invalid IR with a cycle.
+        // Eg:
+        // ```
+        // %0 = foo(%arg0)
+        // %1 = bar(%0)
+        // %2 = mo.add(%1, %0)
+        // mo.output %2
+        // ```
+        // If we try to fuse foo with mo.add, we would get:
+        // ```
+        // %0 = foo_mo_add_fused(%arg0, %1) // Cycle %0 <-> %1
+        // %1 = bar(%0)
+        // mo.output %0
+        // ```
+        // We already check that `src` output has a single use, which avoid
+        // cycles in the simplest cases. But for ops with multiple outputs /
+        // chains (like allreduce), we could get a cycle because of the chain.
+        // This check ensures there is no dependency between dst -> src.
+        if (llvm::any_of(src.getOperands(), [&](Value otherOperand) {
+              return otherOperand != dstOutput &&
+                     valueDependsTransitivelyOn(otherOperand, dst);
+            }))
+          continue;
+
         // Check chain compatibility if both kernels have input and output
         // chains
         auto proInChain = dst.maybeGetInChain();

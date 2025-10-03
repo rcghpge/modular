@@ -99,6 +99,27 @@ KGEN::ParamDeclAttr bindAttrToParam(Location loc, TypedAttr toBind,
 // need to revisit it when the aliased constant is handled correctly.
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation);
 
+/// Checks if `start` depends on `target` transitively.
+/// Eg
+/// ```
+/// %1 = foo(%0)
+/// %2 = bar(%1)
+/// ```
+/// `valueDependsTransitivelyOn(%2, %0) == true`.
+/// Also returns true if start == target.
+bool valueDependsTransitivelyOn(Value start, Value target);
+
+/// Checks if `start` depends on `target` transitively.
+/// Eg
+/// ```
+/// %1 = foo(%0)
+/// %2 = bar(%1)
+/// ```
+/// `valueDependsTransitivelyOn(%2, foo) == true`.
+/// Same as `llvm::any_of(target->getResults(), [](Value targetResult) { return
+/// valueDependsTransitivelyOn(start, targetResult)}; )`.
+bool valueDependsTransitivelyOn(Value start, mlir::Operation *target);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

@@ -548,4 +548,35 @@ bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
   });
 }
 
+static bool valueDependsTransitivelyOnImpl(Value start, Value targetValue,
+                                           mlir::Operation *targetOp) {
+  SmallVector<Value> worklist{start};
+  llvm::SmallPtrSet<Value, 16> visited;
+  while (!worklist.empty()) {
+    Value current = worklist.pop_back_val();
+    if (!visited.insert(current).second)
+      continue;
+
+    if (current == targetValue)
+      return true;
+
+    if (Operation *def = current.getDefiningOp()) {
+      if (def == targetOp)
+        return true;
+      worklist.append(def->operand_begin(), def->operand_end());
+    }
+  }
+  return false;
+}
+
+bool valueDependsTransitivelyOn(Value start, Value target) {
+  if (start == target)
+    return true;
+  return valueDependsTransitivelyOnImpl(start, target, nullptr);
+}
+
+bool valueDependsTransitivelyOn(Value start, mlir::Operation *target) {
+  return valueDependsTransitivelyOnImpl(start, nullptr, target);
+}
+
 } // namespace M::MOGG
