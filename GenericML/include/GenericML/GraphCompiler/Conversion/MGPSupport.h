@@ -13,7 +13,7 @@
 
 namespace M::MGP {
 
-inline MGP::TensorSpecType createCpuTensorSpecType(MO::TensorType tensor) {
+inline MGP::TensorSpecType createTensorSpecType(MO::TensorType tensor) {
   if (tensor.hasRank()) {
     SmallVector<int64_t> shape{}; // Defaults to empty shape
     if (isa<MOSH::ShapeAttr>(tensor.getShapeAttr()))
@@ -24,7 +24,7 @@ inline MGP::TensorSpecType createCpuTensorSpecType(MO::TensorType tensor) {
   }
 }
 
-inline MGP::TensorSpecType createCpuTensorSpecType(mlir::ShapedType tensor) {
+inline MGP::TensorSpecType createTensorSpecType(mlir::ShapedType tensor) {
   if (tensor.hasRank())
     return MGP::TensorSpecType::get(tensor.getShape(), tensor.getElementType());
   else

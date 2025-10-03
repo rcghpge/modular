@@ -466,7 +466,7 @@ MGP::ListType MOGraphLowering::lowerListType(MO::ListType listTy) {
 
   MLIRContext *ctx = listTy.getContext();
   MGP::TensorSpecType outputTensorSpecTy =
-      MGP::createCpuTensorSpecType(outputTensorTy);
+      MGP::createTensorSpecType(outputTensorTy);
   DeviceRefAttr tensorDeviceRef = MO::getDeviceOrDefault(outputTensorTy);
   MGP::TypeBuilder *typeBuilder = loweringState.getTypeBuilder(tensorDeviceRef);
   auto mgpOutputTensorTy = typeBuilder->tensorType(ctx, outputTensorSpecTy);
@@ -760,8 +760,8 @@ MOGraphLowering::lowerShapeFromTensorOp(MO::Shape::FromTensorOp fromTensorOp) {
   auto tensorSpecType =
       MGP::TensorSpecType::get(shape, tensorType.getElementType());
 
-  auto result = opLoweringState.create<MGP::CpuTensorSpecCreateOp>(
-      tensorSpecType, indices);
+  auto result =
+      opLoweringState.create<MGP::TensorSpecCreateOp>(tensorSpecType, indices);
 
   loweringState.emplaceExecuteLoweredValue(fromTensorOp.getResult(), result);
 
@@ -779,8 +779,8 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
 
   // If the input and output specs are the same, we can just map to the
   // already lowered tensor.
-  auto outSpecTy = MGP::createCpuTensorSpecType(resTy);
-  auto inSpecTy = MGP::createCpuTensorSpecType(inputTy);
+  auto outSpecTy = MGP::createTensorSpecType(resTy);
+  auto inSpecTy = MGP::createTensorSpecType(inputTy);
   Value loweredInput = loweringState.lookupExecuteLoweredValue(inputTensor);
   if (outSpecTy == inSpecTy)
     return loweredInput;
@@ -816,8 +816,7 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
   // Create the output tensor.
   Value buffer = opLoweringState.tensorExtract(loweredInput, inputTy).first;
   TypedValue<MGP::TensorSpecType> tensorSpec =
-      opLoweringState.create<MGP::CpuTensorSpecCreateOp>(outSpecTy,
-                                                         runtimeDims);
+      opLoweringState.create<MGP::TensorSpecCreateOp>(outSpecTy, runtimeDims);
   return opLoweringState.tensorCreate(loweringState.getExecuteChain(), buffer,
                                       tensorSpec, inputTy);
 }

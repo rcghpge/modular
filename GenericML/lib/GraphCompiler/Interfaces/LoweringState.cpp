@@ -647,8 +647,7 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     SmallVector<std::optional<uint64_t>> dummyShape(dimVals.size());
     auto specTy =
         MGP::TensorSpecType::get(loc.getContext(), dummyShape, DType::si64);
-    auto specOp =
-        builder.create<MGP::CpuTensorSpecCreateOp>(loc, specTy, dimVals);
+    auto specOp = builder.create<MGP::TensorSpecCreateOp>(loc, specTy, dimVals);
     return specOp.getResult();
   } else {
     return Error("cannot lower parameter expression");
@@ -810,13 +809,12 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
   if (!moTensorType.hasRank())
     return opBeingLowered->emitOpError(
         "dynamically ranked MO tensors are not yet supported");
-  MGP::TensorSpecType tensorSpecType =
-      MGP::createCpuTensorSpecType(moTensorType);
+  MGP::TensorSpecType tensorSpecType = MGP::createTensorSpecType(moTensorType);
   if (tensorSpecType.getSizeInBytes()) {
     // Statically shaped.
     return builder
-        .create<MGP::CpuTensorSpecCreateOp>(loc,
-                                            /*spec=*/tensorSpecType)
+        .create<MGP::TensorSpecCreateOp>(loc,
+                                         /*spec=*/tensorSpecType)
         .getResult();
   }
 
@@ -826,9 +824,9 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
   if (runtimeDimsOr)
     return opBeingLowered->emitOpError(runtimeDimsOr.getError());
   return builder
-      .create<MGP::CpuTensorSpecCreateOp>(loc,
-                                          /*spec=*/tensorSpecType,
-                                          /*runtimeDims=*/*runtimeDimsOr)
+      .create<MGP::TensorSpecCreateOp>(loc,
+                                       /*spec=*/tensorSpecType,
+                                       /*runtimeDims=*/*runtimeDimsOr)
       .getResult();
 }
 

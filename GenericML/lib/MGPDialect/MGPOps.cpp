@@ -277,19 +277,18 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorSpecCreateOp
+// TensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-void CpuTensorSpecCreateOp::build(OpBuilder &odsBuilder,
-                                  OperationState &odsState, TensorSpecType spec,
-                                  ValueRange runtimeDims) {
+void TensorSpecCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                               TensorSpecType spec, ValueRange runtimeDims) {
   ASSERT_STREAM(spec.hasRank(),
                 << "can only construct an mgp.tensor_spec.create "
                    "for tensor specs of statically known rank");
-  CpuTensorSpecCreateOp::build(odsBuilder, odsState,
-                               /*runtimeDims=*/runtimeDims,
-                               /*aRawDims=*/spec.getRawDims(),
-                               /*bRawDType=*/spec.getRawDType());
+  TensorSpecCreateOp::build(odsBuilder, odsState,
+                            /*runtimeDims=*/runtimeDims,
+                            /*aRawDims=*/spec.getRawDims(),
+                            /*bRawDType=*/spec.getRawDType());
 }
 
 /// Parses a !mgp.tensor_spec type where the element type must be known,
@@ -318,13 +317,13 @@ static ParseResult parseRawDimsAndDType(AsmParser &p,
 }
 
 /// Prints a !mgp.tensor_spec type, but represented in 'raw form'.
-static void printRawDimsAndDType(AsmPrinter &p, const CpuTensorSpecCreateOp &op,
+static void printRawDimsAndDType(AsmPrinter &p, const TensorSpecCreateOp &op,
                                  IntArrayElementsAttr rawDims,
                                  IntegerAttr rawDType) {
   p << TensorSpecType::get(rawDims, rawDType);
 }
 
-LogicalResult CpuTensorSpecCreateOp::verify() {
+LogicalResult TensorSpecCreateOp::verify() {
   auto impliedSpecType =
       TensorSpecType::getChecked([this]() { return emitOpError(); },
                                  getContext(), getARawDims(), getBRawDType());
@@ -345,7 +344,7 @@ LogicalResult CpuTensorSpecCreateOp::verify() {
   return success();
 }
 
-LogicalResult CpuTensorSpecCreateOp::inferReturnTypes(
+LogicalResult TensorSpecCreateOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   auto rawDimsAttr = adaptor.getARawDimsAttr();
@@ -408,7 +407,7 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
     uint64_t dim = specType.getDims()[getAxis()].value();
     return IntegerAttr::get(indexTy, dim);
   }
-  if (auto specCreate = dyn_cast_or_null<CpuTensorSpecCreateOp>(specProducer)) {
+  if (auto specCreate = dyn_cast_or_null<TensorSpecCreateOp>(specProducer)) {
     return specCreate.getRuntimeDims()[specType.getDynamicDimIndex(getAxis())];
   }
 

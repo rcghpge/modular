@@ -82,7 +82,7 @@ static inline bool canDuplicate(Operation *op) {
 
   if (isa<MGP::BufferSliceOp, MGP::BufferConstantOp, MGP::TensorSpecGetDimOp,
           MGP::BufferConstantExternalOp, MGP::BufferGetCachedOp,
-          MGP::CpuTensorSpecCreateOp, MGP::TensorExtractBufferOp,
+          MGP::TensorSpecCreateOp, MGP::TensorExtractBufferOp,
           MGP::TensorExtractTensorSpecOp>(op))
     return true;
   return isa<KGEN::KGENDialect, KGEN::POP::POPDialect,
@@ -437,7 +437,7 @@ void LowerPrimitivesPass::runOnOperation() {
       MGP::BufferSetWithIndexOp, MGP::BufferSliceOp, MGP::BufferToBoolOp,      \
       MGP::BufferToIndexOp, MGP::DebugPrintOp, MGP::DebugTensorPrintOp,        \
       MGP::SyncOp, MGP::TensorCreateOp, MGP::TensorExtractBufferOp,            \
-      MGP::TensorExtractTensorSpecOp, MGP::CpuTensorSpecCreateOp,              \
+      MGP::TensorExtractTensorSpecOp, MGP::TensorSpecCreateOp,                 \
       MGP::TensorSpecGetDimOp
 #define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
   mlir::index::IndexDialect, KGEN::POP::POPDialect

@@ -227,10 +227,10 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorSpecCreateOp
+// TensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
-def CpuTensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
+def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
   Pure, InferTypeOpAdaptor
 ]> {
   let summary = [{

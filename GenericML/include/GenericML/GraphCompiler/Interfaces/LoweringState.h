@@ -52,14 +52,14 @@ public:
         [this](MO::TensorType type) -> std::optional<Type> {
           return getTypeBuilder(MO::getDeviceOrDefault(type))
               ->tensorType(this->graph.getContext(),
-                           MGP::createCpuTensorSpecType(type));
+                           MGP::createTensorSpecType(type));
         });
     typeConverter.addConversion(
         [this](MO::BufferType bufferType) -> std::optional<Type> {
           auto type = MO::BufferType::toTensorType(bufferType);
           return getTypeBuilder(MO::getDeviceOrDefault(type))
               ->tensorType(this->graph.getContext(),
-                           MGP::createCpuTensorSpecType(type));
+                           MGP::createTensorSpecType(type));
         });
     typeConverter.addConversion([this](
                                     MO::ListType type) -> std::optional<Type> {
@@ -68,7 +68,7 @@ public:
       ASSERT_STREAM(tensorTy, << "only support lowering list of tensors");
 
       MLIRContext *ctx = type.getContext();
-      MGP::TensorSpecType tensorSpecTy = MGP::createCpuTensorSpecType(tensorTy);
+      MGP::TensorSpecType tensorSpecTy = MGP::createTensorSpecType(tensorTy);
       DeviceRefAttr tensorDeviceRef = MO::getDeviceOrDefault(tensorTy);
       MGP::TypeBuilder *typeBuilder = getTypeBuilder(tensorDeviceRef);
       auto mgpTensorTy = typeBuilder->tensorType(ctx, tensorSpecTy);
