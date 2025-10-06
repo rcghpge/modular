@@ -8,7 +8,6 @@
 """Llasa TTS command-line interface."""
 
 import asyncio
-from typing import Optional
 
 import click
 from max import driver
@@ -94,7 +93,7 @@ def main(
     print_raw_text: bool,
     generate: bool,
     output: str,
-    max_tokens: Optional[int],
+    max_tokens: int | None,
 ) -> None:
     """Llasa TTS - Text-to-Speech using Llama + XCodec2."""
     config = LlasaConfig()

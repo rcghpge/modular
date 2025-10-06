@@ -149,7 +149,9 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
         # Check the dimensions match.
         for tensor in x:
             mo_shape = tensor.split("x")
-            for mo_dim, np_dim in zip(mo_shape, val_to_compare.shape):
+            for mo_dim, np_dim in zip(
+                mo_shape, val_to_compare.shape, strict=False
+            ):
                 if int(mo_dim) != np_dim:
                     print(val_to_compare)
                     print(line_as_str)
