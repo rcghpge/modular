@@ -970,7 +970,7 @@ def MGP_AllocateAsyncValuesOp : MGP_Op<"allocate_for_async_vals", [Pure]> {
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugPrintOp : MGP_Op<"debug.print"> {
+def DebugPrintOp : MGP_Op<"debug.print", [DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "Prints a debug string. For debugging and testing only.";
   let description = [{
     Prints a debug string. If a label attribute is supplied

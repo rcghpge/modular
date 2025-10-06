@@ -39,6 +39,7 @@ constexpr StringLiteral struct_Dim = "Dim";
 constexpr StringLiteral struct_AddressSpace = "pointer.AddressSpace";
 constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
+constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 
@@ -150,6 +151,8 @@ public:
       return HardcodedMojoSymbols::struct_Int;
     } else if (auto tensorType = dyn_cast<MO::TensorType>(mlirType)) {
       return mlirTensorTypeToMojoType(tensorType);
+    } else if (isa<MGP::ContextType>(mlirType)) {
+      return HardcodedMojoSymbols::struct_StateContext;
     } else {
       ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
       llvm_unreachable("Unsupported mlir type");

@@ -9,7 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
@@ -915,6 +917,43 @@ LogicalResult CallOp::verify() {
                          << "'s execute block.";
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DebugPrintOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::GeneratorOp generator =
+      state.analysis.getRegisteredMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(generator);
+
+  MOGG::MojoValue debugStringParam = MOGG::MojoValue(getADebugString()).quote();
+  MOGG::MojoValue labelParam = MOGG::MojoValue(getBLabel()).quote();
+  MOGG::MojoValue ctxVar = state.getMojoValueFor(getTheContext());
+
+  state.builder
+      .try_([&]() {
+        state.builder.call(function, {debugStringParam, labelParam}, ctxVar);
+        auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredMojoKernelFor(
+                MOGG::AsyncReadyOp::getOperationName()));
+        state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+      })
+      .except([&](const MOGG::MojoValue &e) {
+        auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredMojoKernelFor(
+                "builtin.create_error_async_values_and_destruct_error"));
+        /// TODO: This is too cumbersome. Add keyword arg support to function
+        /// calls in MojoBuilder. Also, consider adding a helper that creates an
+        /// `UnsafePointer` to any variable.
+        MOGG::MojoValue pointerToPointer = state.builder.var(
+            MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_UnsafePointer)(
+                {}, MOGG::MojoValue("to").equal(state.mojoReturnValues[0])));
+        state.builder.call(markAsyncErrorFunc, {},
+                           {pointerToPointer, MOGG::MojoValue(1), e});
+      });
   return success();
 }
 
