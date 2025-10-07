@@ -5266,10 +5266,6 @@ def MO_AllReduceSumOp : MO_TensorOp<"distributed.allreduce.sum", [
 
     Multiple instances of this op are created (one per device) to enable
     multi-threaded execution.
-
-    NOTE: the created instances comprise a synchronous group and currently must
-    be followed by a mo.fence op to ensure correctness when mixed with other
-    multi-device ops such as mo.transfer.
   }];
   let hasVerifier = 1;
   // Variadic allreduce has a folder since it can take 1 input.
