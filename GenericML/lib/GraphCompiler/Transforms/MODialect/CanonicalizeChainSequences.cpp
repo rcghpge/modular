@@ -140,7 +140,9 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
       parent = nullptr;
 
     if (parent && canSafelyReorderMutableOps(mutOp, parent)) {
-      mutOp.getInChainMutable().set(parent.getInChain());
+      rewriter.modifyOpInPlace(mutOp.getOperation(), [&]() {
+        mutOp.getInChainMutable().set(parent.getInChain());
+      });
 
       Value parentOutChain = parent.getOutChain();
 
@@ -184,7 +186,8 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
 
       rewriter.replaceAllUsesExcept(outChain, merge.getResult(), merge);
 
-      chainCreateOp->eraseOperands(eraseIdxs);
+      rewriter.modifyOpInPlace(
+          chainCreateOp, [&]() { chainCreateOp->eraseOperands(eraseIdxs); });
       return success();
     } else {
       return rewriter.notifyMatchFailure(
