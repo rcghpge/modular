@@ -48,7 +48,7 @@ class BasicTranspose(TestBase):
     @staticmethod
     def generate_inputs(shapes):  # noqa: ANN001, ANN205
         permute = np.arange(len(shapes[0])).astype(np.int32)
-        permute = np.random.permutation(permute)
+        permute = np.random.permutation(permute)  # type: ignore
         return [
             np.random.uniform(-2.0, 2.0, shapes[0]).astype(np.float32),
             permute,
@@ -240,7 +240,7 @@ class TransposeReduce(TestBase):
     @staticmethod
     def generate_inputs(shapes):  # noqa: ANN001, ANN205
         permute = np.arange(len(shapes[0])).astype(np.int32)
-        permute = np.random.permutation(permute)
+        permute = np.random.permutation(permute)  # type: ignore
         # use randint for input to avoid fp tolerance issues
         input = np.random.randint(-5, 5, size=shapes[0]).astype(np.float32)
         return [
@@ -356,7 +356,7 @@ class MultiViewFusionBase(TestBase):
 
         # Create a transpose permutation.
         permute = np.arange(num_dims).astype(np.int32)
-        permute = np.random.permutation(permute)
+        permute = np.random.permutation(permute)  # type: ignore
 
         # Get random data for the slice. Ensure we always step at least once
         step = np.random.randint(1, 3, size=(num_dims,), dtype=np.int32)
