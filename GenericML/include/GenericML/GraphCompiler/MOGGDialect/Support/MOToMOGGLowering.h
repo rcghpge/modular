@@ -68,19 +68,25 @@ private:
 
   DeviceRefAttr getHostDevice() const { return M::getHostDevice(graphOp); }
 
-  KernelCallInterface lowerToElementwiseKernel(ExpKernelOp kernelOp,
-                                               const OperandMapping &mapping,
-                                               const KernelAdaptor &adaptor);
+  template <class FuncT>
+  ErrorOr<ExpKernelOp> lowerToKernelBase();
 
-  ErrorOr<KernelCallInterface> lowerToViewKernel(ExpKernelOp kernelOp,
-                                                 const OperandMapping &mapping,
-                                                 const KernelAdaptor &adaptor);
+  template <class FuncT>
+  KernelCallInterface lowerToElementwiseKernel(
+      ExpKernelOp kernelOp, const OperandMapping &mapping,
+      const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
-  KernelCallInterface lowerToNormalKernel(ExpKernelOp kernelOp,
-                                          const OperandMapping &mapping,
-                                          const KernelAdaptor &adaptor);
+  template <class FuncT>
+  ErrorOr<KernelCallInterface>
+  lowerToViewKernel(ExpKernelOp kernelOp, const OperandMapping &mapping,
+                    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
-  ErrorOr<DictionaryAttr> forwardParameters(const KernelAdaptor &adaptor);
+  template <class FuncT>
+  KernelCallInterface lowerToNormalKernel(
+      ExpKernelOp kernelOp, const OperandMapping &mapping,
+      const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
+
+  ErrorOr<DictionaryAttr> forwardParameters();
 
   /// The original MO operation we are lowering.
   Operation *moOp;

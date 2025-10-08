@@ -121,7 +121,7 @@ MojoValue EmitMojoState::getReboundOutputTensorFor(Value value,
 }
 
 ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
-    KGEN::GeneratorOp function,
+    KGEN::LIT::FnOp function,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
   // First get the set of all parameters that can be inferred from the inputs.
   llvm::DenseSet<StringRef> inferByInputs;
@@ -135,16 +135,34 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
       if (auto inputParamDict = dyn_cast<DictionaryAttr>(inputParam))
         for (auto param : inputParamDict)
           if (auto funcParamName =
-                  dyn_cast<KGEN::ParamDeclRefAttr>(param.getValue()))
+                  dyn_cast<KGEN::ParamDeclRefAttr>(param.getValue())) {
             inferByInputs.insert(funcParamName.getName().getValue());
+          }
     }
   }
+
+  auto isIOSpecType = [](Type ty) {
+    auto structType = dyn_cast<KGEN::LIT::StructType>(ty);
+    return structType && HardcodedMojoSymbols::isMojoIOSpecTypeName(
+                             structType.getSymbol().getNestedReferences());
+  };
 
   // Now go through all params and infer those that need to be inferred.
   SmallVector<MojoValue> inferredParams;
   for (auto param : function.getInputParams()) {
     StringRef paramName = param.getName().getValue();
     if (inferByInputs.contains(paramName))
+      continue;
+
+    // TODO(GEX-2623): IOSpec / origin parameters are currently removed from the
+    // parameters list because in KGEN-land empty-strust params are removed
+    // during LITToKGEN. But they are still present in EmitMojo path (and would
+    // cause an error: failed to infer parameter). Instead just skip them for
+    // now, they'll be inferred automatically anyway. This is quite brittle as
+    // it assumes all IOSpec / origin are always inferred (which is true
+    // fortunately today). This test could be removed once EmitMojo is complete.
+    if (isa<KGEN::LIT::OriginType>(param.getType()) ||
+        isIOSpecType(param.getType()))
       continue;
 
     ErrorOr<MojoValue> maybeVal = inferCallback(paramName);

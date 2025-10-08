@@ -32,10 +32,10 @@ struct OperandMapping {
 /// is for attributes and kernel parameters. The act of validating an op is
 /// identical to the act of mapping. Therefore, the two are merged. To validate
 /// an op with its kernel, call this function and check that it has not failed.
+template <class FuncT>
 ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
     Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor);
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<FuncT> &adaptor);
 
 // The value is a vector because of variadics capturing multiple MO values.
 using KernelIndexToOpIndex = llvm::MapVector<uint64_t, SmallVector<uint64_t>>;

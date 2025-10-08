@@ -393,12 +393,12 @@ bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
 LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::GeneratorOp generator =
-      state.analysis.getRegisteredMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(generator);
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
 
   auto tensorSpec = getSpec().getType();
-  MOGG::MojoValue specRankParam = MOGG::MojoValue(tensorSpec.getRank());
+  MOGG::MojoValue specRankParam = MOGG::MojoValue(int(tensorSpec.getRank()));
   MOGG::MojoValue dtypeParam =
       state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
 
@@ -424,13 +424,13 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
             function, {specRankParam, dtypeParam},
             {bufferVar, tensorSpecAsyncVar, labelPtrVar, labelSizeVar});
         auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredMojoKernelFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
                 MOGG::AsyncReadyOp::getOperationName()));
         state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
       })
       .except([&](const MOGG::MojoValue &e) {
         auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredMojoKernelFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
                 "builtin.create_error_async_values_and_destruct_error"));
         /// TODO: This is too cumbersome. Add keyword arg support to function
         /// calls in MojoBuilder. Also, consider adding a helper that creates

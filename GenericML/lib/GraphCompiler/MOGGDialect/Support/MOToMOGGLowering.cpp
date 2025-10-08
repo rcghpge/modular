@@ -99,9 +99,11 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
-void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
-                         const KernelAdaptor &adaptor, OpBuilder &builder,
-                         bool forceAddContext = false) {
+template <class FuncT>
+void addContextIfPresent(
+    Operation *op, SmallVector<Value> &inputs,
+    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
+    OpBuilder &builder, bool forceAddContext = false) {
   bool hasContextType = forceAddContext;
   bool isVariadic = false;
   for (auto &&arg : adaptor.executeFunction->inputArguments) {
@@ -134,10 +136,10 @@ void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
   }
 }
 
-KernelCallInterface
-MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
-                                               const OperandMapping &mapping,
-                                               const KernelAdaptor &adaptor) {
+template <class FuncT>
+KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
+    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -215,10 +217,10 @@ MOGGExpKernelBuilder::lowerToElementwiseKernel(ExpKernelOp kernelOp,
   return ret;
 }
 
-ErrorOr<KernelCallInterface>
-MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
-                                        const OperandMapping &mapping,
-                                        const KernelAdaptor &adaptor) {
+template <class FuncT>
+ErrorOr<KernelCallInterface> MOGGExpKernelBuilder::lowerToViewKernel(
+    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   if (kernelOp->getNumResults() != 1)
     return Error("Expected view op to have exactly one result");
 
@@ -247,10 +249,10 @@ MOGGExpKernelBuilder::lowerToViewKernel(ExpKernelOp kernelOp,
   return view;
 }
 
-KernelCallInterface
-MOGGExpKernelBuilder::lowerToNormalKernel(ExpKernelOp kernelOp,
-                                          const OperandMapping &mapping,
-                                          const KernelAdaptor &adaptor) {
+template <class FuncT>
+KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
+    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
   SmallVector<Value> outputs;
@@ -320,8 +322,7 @@ getValidatedParameter(const NamedAttribute &attr) {
   return NamedAttribute(attr.getName(), value);
 }
 
-ErrorOr<DictionaryAttr>
-MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
+ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
   auto customOpOperationName =
       mlir::OperationName(MO::CustomOp::getOperationName(), moOp->getContext());
   SmallVector<NamedAttribute> forwardedParameters;
@@ -440,12 +441,14 @@ MOGGExpKernelBuilder::forwardParameters(const KernelAdaptor &adaptor) {
   return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
 }
 
-ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
-  auto maybeAdaptor = getMojoKernelAdaptor(mojoLibraryAnalysis, moOp);
+template <class FuncT>
+ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
+  auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(mojoLibraryAnalysis, moOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
-  KernelAdaptor adaptor = maybeAdaptor.takeValue();
+  KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> adaptor =
+      maybeAdaptor.takeValue();
   auto operandMappingOr =
       mapMOOpToKernelImplementation(moOp, *adaptor.executeFunction);
 
@@ -477,7 +480,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   if (!dpsReturns.empty())
     builder.create<OutputPlaceholdersOp>(loc, dpsReturns);
 
-  auto forwardedParametersOr = forwardParameters(adaptor);
+  auto forwardedParametersOr = forwardParameters();
   if (forwardedParametersOr.isError())
     return forwardedParametersOr.takeError();
 
@@ -514,5 +517,12 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
       kernelOp, kernelOp->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
 
   return kernelOp;
+}
+
+ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
+  if (useExperimentalMojoPath())
+    return lowerToKernelBase<KGEN::LIT::FnOp>();
+  else
+    return lowerToKernelBase<KGEN::GeneratorOp>();
 }
 } // namespace M::MOGG

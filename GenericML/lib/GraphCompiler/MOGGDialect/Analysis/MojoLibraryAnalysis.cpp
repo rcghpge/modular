@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OperationSupport.h"
@@ -21,6 +22,7 @@
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/MojoParser/EntryPoint.h"
+#include "KGEN/MojoParser/SharedState.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
 #include "Support/AssertStream.h"
@@ -30,6 +32,11 @@
 
 using namespace M;
 using namespace MOGG;
+
+// TODO(GEX-2488): The following are Mojo module names hardcoded for
+// convenience. We should determine them programmatically instead.
+constexpr StringLiteral MOGGKernelAPIModuleName = "MOGGKernelAPI";
+constexpr StringLiteral MOGGPrimitivesModuleName = "MOGGPrimitives";
 
 static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
                                 KGEN::GeneratorOp gen2) {
@@ -70,7 +77,8 @@ getEmbeddingsPrimitiveSourceBuffer() {
 
 static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
-                 const std::shared_ptr<llvm::SourceMgr> &sourceMgr) {
+                 const std::shared_ptr<llvm::SourceMgr> &sourceMgr,
+                 bool generateKGENLib) {
   AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
 
   // Intercept parsing diagnostics to display them at the end if an error occurs
@@ -101,6 +109,9 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
   // Reset the old state of the diagnostic handler
   sourceMgr->setDiagHandler(oldHandler, oldCtx);
 
+  if (!generateKGENLib)
+    return ownedModule;
+
   // Generate a library from the package, ensuring that dependencies are
   // materialized to make it self contained.
   KGEN::KGENCompiler compiler(*(ownedModule->getContext()),
@@ -108,16 +119,49 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
 
   // Show the mojo code when there is an error.
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(*sourceMgr, ctx);
+
   if (auto err = compiler.runGenerateLibraryPipeline(*ownedModule))
     return err.takeError();
 
   return ownedModule;
 }
 
+static ErrorOr<std::string> resolveLITModulePath(MLIRContext *ctx,
+                                                 llvm::SourceMgr &sourceMgr,
+                                                 StringRef moduleName) {
+  KGEN::CompilationOptions options;
+  KGEN::LIT::ParserConfig config(ctx, options);
+  KGEN::LIT::SharedState sharedState(sourceMgr, config);
+  std::optional<std::string> modulePath =
+      sharedState.resolveModulePath(moduleName, SMLoc());
+  if (!modulePath.has_value())
+    return Error(
+        llvm::formatv("Failed to resolve module path for `{}`", moduleName));
+  if (!Filesystem::isMojoBinaryPackagePath(*modulePath))
+    return Error(
+        llvm::formatv("Managed to resolve module path for `{}` to source "
+                      "directory `{}` but a .mojopkg file was expected instead",
+                      moduleName, *modulePath));
+  return *modulePath;
+}
+
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
     StringRef name, StringRef functionLabel) const {
   auto registeredFunctions = registeredKernelFunctionSymbols.find(name);
   if (registeredFunctions == registeredKernelFunctionSymbols.end())
+    return {};
+
+  auto registeredFunction = registeredFunctions->second.find(functionLabel);
+  if (registeredFunction == registeredFunctions->second.end())
+    return {};
+
+  return registeredFunction->getValue();
+}
+
+KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoFunctionFor(
+    StringRef name, StringRef functionLabel) const {
+  auto registeredFunctions = registeredLITKernelFunctionSymbols.find(name);
+  if (registeredFunctions == registeredLITKernelFunctionSymbols.end())
     return {};
 
   auto registeredFunction = registeredFunctions->second.find(functionLabel);
@@ -190,8 +234,7 @@ ErrorOr<OwningOpRef<ModuleOp>> MojoLibraryAnalysis::loadMLIRKernels(
                               sourceMgr);
 
   Block block;
-  if (failed(reader.readTopLevel(
-          &block, [&](Operation *op) { return isa<ModuleOp>(op); }))) {
+  if (failed(reader.readTopLevel(&block))) {
     return Error(
         "[MojoLibraryAnalysis] Could not load the mojo kernel operators in " +
         diag);
@@ -207,7 +250,8 @@ MojoLibraryAnalysis::loadAllMLIRKernels(ArrayRef<std::string> paths) {
   SmallVector<OwningOpRef<ModuleOp>> loadedModules;
   loadedModules.reserve(paths.size() + 2);
 
-  { // Load MOGGKernelAPI.mojo
+  // Load MOGGKernelAPI.mojo
+  if (!useExperimentalMojoPath()) {
     auto buffer = getEmbeddingsNewAPISourceBuffer();
     if (buffer.isError())
       return buffer.takeError();
@@ -242,6 +286,51 @@ MojoLibraryAnalysis::loadAllMLIRKernels(ArrayRef<std::string> paths) {
   return loadedModules;
 }
 
+ErrorOrSuccess
+MojoLibraryAnalysis::loadAllLITKernels(ArrayRef<std::string> paths) {
+  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+
+  auto loadModule = [&](bool isMOGGKernelAPI,
+                        StringRef path) -> ErrorOrSuccess {
+    ErrorOr<OwningOpRef<ModuleOp>> module = parseMojoPackage(
+        getContext(), path, sourceMgr, /*generateKGENLib=*/false);
+
+    if (module.isError())
+      return module.takeError();
+
+    if (isMOGGKernelAPI)
+      moggKernelAPILITPackage = std::move(*module);
+    else
+      litPackages.push_back(std::move(*module));
+    return success();
+  };
+
+  // Load MOGGkernelAPI
+  auto moggKernelAPIPkgPathOr =
+      resolveLITModulePath(getContext(), *sourceMgr, MOGGKernelAPIModuleName);
+  if (moggKernelAPIPkgPathOr.isError())
+    return moggKernelAPIPkgPathOr.takeError();
+  if (auto err = loadModule(/*isMOGGKernelAPI=*/true, *moggKernelAPIPkgPathOr))
+    return err.takeError();
+
+  // Load MOGGPrimitives
+  auto moggPrimitivesPathOr =
+      resolveLITModulePath(getContext(), *sourceMgr, MOGGPrimitivesModuleName);
+  if (moggPrimitivesPathOr.isError())
+    return moggPrimitivesPathOr.takeError();
+  if (auto err = loadModule(/*isMOGGKernelAPI=*/false, *moggPrimitivesPathOr))
+    return err.takeError();
+
+  // Load custom libraries.
+  for (const auto &path : paths) {
+    auto errOr = loadModule(/*isMOGGKernelAPI=*/false, path);
+    if (errOr.isError())
+      return errOr.takeError();
+  }
+
+  return success();
+}
+
 // Load a list of kernels from the provided user libraries.
 ErrorOr<OwningOpRef<ModuleOp>>
 MojoLibraryAnalysis::loadMojoPackageOrBytecode(StringRef kernelLibraryPath) {
@@ -253,8 +342,8 @@ MojoLibraryAnalysis::loadMojoPackageOrBytecode(StringRef kernelLibraryPath) {
     auto sourceMgr = std::make_shared<llvm::SourceMgr>();
 
     // Load user library that is a mojo package file.
-    ErrorOr<OwningOpRef<ModuleOp>> userModuleOr =
-        parseMojoPackage(getContext(), kernelLibraryPath, sourceMgr);
+    ErrorOr<OwningOpRef<ModuleOp>> userModuleOr = parseMojoPackage(
+        getContext(), kernelLibraryPath, sourceMgr, /*generateKGENLib=*/true);
     if (userModuleOr.isError())
       return userModuleOr.takeError();
 
@@ -515,6 +604,125 @@ ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
   return success();
 }
 
+ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
+    KGEN::LIT::FnOp func, bool isGeneratorFromStandardLibrary) {
+  auto registerKernelFunction = [&](StringRef name, StringRef label,
+                                    bool override = true) {
+    auto [it, _] = registeredLITKernelFunctionSymbols.try_emplace(
+        name, llvm::StringMap<KGEN::LIT::FnOp>{});
+
+    auto [it2, inserted] = it->second.try_emplace(label, func);
+    if (!inserted && override)
+      it2->second = func;
+  };
+
+  auto registerKernelCandidate = [&](StringRef name,
+                                     int64_t priority) -> ErrorOrSuccess {
+    if (shouldIncreasePriority(isGeneratorFromStandardLibrary, priority))
+      priority = 1;
+
+    auto [it, inserted] = registeredLITMojoKernelSymbol.try_emplace(
+        name, LITKernelCandidate(func, priority));
+    if (inserted) {
+      // First time we find the kernel, just register it.
+      return success();
+    }
+
+    // Returns an error if two kernels have the same priority.
+    int64_t oldPriority = it->getValue().priority;
+    if (oldPriority == priority) {
+      auto diag = func->emitError() << "override of operation named " << name
+                                    << " has multiple candidates";
+      diag.attachNote(it->getValue().fun.getLoc())
+          << "override with priority " << priority;
+      return Error("Operation overriding error");
+    }
+
+    // Replace it if the new kernel has an higher priority.
+    if (priority > oldPriority)
+      it->getValue() = LITKernelCandidate(func, priority);
+    return success();
+  };
+
+  // Detect foreach kernel, treat it specially.
+  if (func->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_ELEMWISE_FOR_EACH)) {
+    if (!litForeachKernel) {
+      litForeachKernel = func;
+    } else if (litForeachKernel.getLoc() == func.getLoc()) {
+      return Error(llvm::formatv(
+                       "Multiple elementwise foreach kernels detected.\n"
+                       "  Previous: {0} at {1}\n"
+                       "  New: {2} at {3}",
+                       litForeachKernel.getSymName(), litForeachKernel.getLoc(),
+                       func.getSymName(), func.getLoc())
+                       .str());
+    } else if (isGeneratorFromStandardLibrary) {
+      // There is an existing kernel, but this one is a different location.
+      // Favor the one from the standard library then.
+      litForeachKernel = func;
+    }
+  }
+
+  if (func->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_VIEW_MATERIALIZE)) {
+    if (!litViewMaterializeKernel) {
+      litViewMaterializeKernel = func;
+    } else if (litViewMaterializeKernel.getLoc() == func.getLoc()) {
+      return Error(llvm::formatv("Multiple materialize view kernels detected.\n"
+                                 "  Previous: {0} at {1}\n"
+                                 "  New: {2} at {3}",
+                                 litViewMaterializeKernel.getSymName(),
+                                 litViewMaterializeKernel.getLoc(),
+                                 func.getSymName(), func.getLoc())
+                       .str());
+    } else if (isGeneratorFromStandardLibrary) {
+      // There is an existing kernel, but this one is a different location.
+      // Favor the one from the standard library then.
+      litViewMaterializeKernel = func;
+    }
+  }
+
+  // Skipping functions that aren't exported.
+  if (!func.isExported())
+    return success();
+
+  // Check if the generator has a the registration attribute directly
+  // attached.
+  if (auto regs = func->getAttrOfType<ArrayAttr>(
+          KGEN::MOGGPreElab::kernelRegistrationAttr)) {
+    ArrayRef<Attribute> kernels = regs.getValue();
+    // Each kernel is stored as a pair of name / priority.
+    for (size_t i = 0; i < kernels.size(); i += 2) {
+      auto asString = cast<StringAttr>(kernels[i]).strref();
+      auto intPriority = cast<IntegerAttr>(kernels[i + 1]);
+      if (auto registerErr =
+              registerKernelCandidate(asString, intPriority.getInt()))
+        return registerErr;
+    }
+  }
+  if (auto kernelName = func->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
+    if (auto registerErr = registerKernelCandidate(kernelName, /*priority=*/0))
+      return registerErr;
+    registerKernelFunction(kernelName,
+                           KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+  }
+  if (auto name = func->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
+    registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
+  }
+  if (auto name = func->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel)) {
+    registerKernelFunction(name,
+                           KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
+  }
+  if (auto name = func->getAttrOfType<StringAttr>(
+          KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel)) {
+    registerKernelFunction(name,
+                           KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
+  }
+  return success();
+}
+
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   auto loadedModulesOr = loadAllMLIRKernels(kernelLibraryPaths);
@@ -524,7 +732,14 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
   SmallVector<OwningOpRef<ModuleOp>> loadedModules =
       loadedModulesOr.takeValue();
-  ASSERT_STREAM(loadedModules.size() >= 2,
+
+  // TODO: Currently For EmitMojo, MOGGKernelAPI is loaded using LIT, but
+  // MOGGPrimitives using KGEN. Switch to load everything using LIT.
+
+  bool loadLITModules = useExperimentalMojoPath();
+
+  // Standard library is loaded with KGEN only if emit mojo is disabled.
+  ASSERT_STREAM(loadLITModules || loadedModules.size() >= 2,
                 "Must contains standard library and MOGG primitives");
 
   // Pull out the loaded standard library.
@@ -537,7 +752,7 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   for (auto generator : getRawMojoKernels()) {
     // Mark standard library generators
     if (auto updateErr = updateRegisteredKernelsMap(
-            generator, /*isGeneratorFromStandardLibrary*/ true))
+            generator, /*isGeneratorFromStandardLibrary*/ !loadLITModules))
       return updateErr;
   }
 
@@ -546,6 +761,33 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
     if (auto updateErr = updateLoadedKernelsForCollisions(*loadedModule))
       return Error(Twine("failed to load kernel library: ") +
                    updateErr.getError());
+  }
+
+  // Take care of loading all LIT kernels if needed
+  if (loadLITModules) {
+    auto loadLitKernelsOr = loadAllLITKernels(kernelLibraryPaths);
+    if (loadLitKernelsOr.isError())
+      return loadLitKernelsOr.takeError();
+
+    ErrorOrSuccess maybeError = success();
+
+    auto registerLITFunctions = [&](ModuleOp package,
+                                    bool isGeneratorFromStandardLibrary) {
+      package->walk([&](KGEN::LIT::FnOp funcOp) {
+        if (auto updateErr = updateRegisteredKernelsMap(
+                funcOp, isGeneratorFromStandardLibrary))
+          maybeError = updateErr.takeError();
+      });
+    };
+
+    // Register all functions in the LIT packages
+    registerLITFunctions(*moggKernelAPILITPackage,
+                         /*isGeneratorFromStandardLibrary=*/true);
+    for (auto &package : litPackages)
+      registerLITFunctions(*package, /*isGeneratorFromStandardLibrary=*/false);
+
+    if (maybeError.isError())
+      return maybeError.takeError();
   }
 
   return success();
@@ -565,6 +807,15 @@ MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) const {
   return registeredFunction->getValue().generator;
 }
 
+KGEN::LIT::FnOp
+MojoLibraryAnalysis::getRegisteredLITMojoKernelFor(StringRef name) const {
+  auto registeredFunction = registeredLITMojoKernelSymbol.find(name);
+  if (registeredFunction == registeredLITMojoKernelSymbol.end())
+    return nullptr;
+
+  return registeredFunction->getValue().fun;
+}
+
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) const {
   return getRegisteredMojoFunctionFor(
@@ -577,15 +828,33 @@ KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoUpdateViewFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
 }
 
+KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoUpdateViewFunctionFor(
+    StringRef name) const {
+  return getRegisteredLITMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
+}
+
 KGEN::GeneratorOp
 MojoLibraryAnalysis::getRegisteredMojoExecuteFunctionFor(StringRef name) const {
   return getRegisteredMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
 }
 
+KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoExecuteFunctionFor(
+    StringRef name) const {
+  return getRegisteredLITMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
+}
+
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoElementwiseFunctionFor(
     StringRef name) const {
   return getRegisteredMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
+}
+
+KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoElementwiseFunctionFor(
+    StringRef name) const {
+  return getRegisteredLITMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
 }
 
@@ -597,8 +866,12 @@ using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
 
 ErrorOrSuccess
 MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
+  // TODO: Reimplement the validation for LIT.
+  if (useExperimentalMojoPath())
+    return success();
+
   // Find the kernel from the library.
-  auto maybeAdaptor = getMojoKernelAdaptor(*this, customOp);
+  auto maybeAdaptor = getMojoKernelAdaptor<KGEN::GeneratorOp>(*this, customOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
@@ -699,10 +972,12 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
   return success();
 }
 
-ErrorOrSuccess
-MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
+template <class FuncT>
+static ErrorOrSuccess
+verifyMOOpMatchesKernelImpl(const MojoLibraryAnalysis &libraryAnalysis,
+                            Operation *op) {
   // Find the kernel from the library.
-  auto maybeAdaptor = getMojoKernelAdaptor(*this, op);
+  auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(libraryAnalysis, op);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
@@ -713,9 +988,17 @@ MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
     return errOr.takeError();
 
   if (auto custom = dyn_cast<MO::CustomOp>(op))
-    return validateCustomOpParameters(custom);
+    return libraryAnalysis.validateCustomOpParameters(custom);
 
   return success();
+}
+
+ErrorOrSuccess
+MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
+  if (useExperimentalMojoPath())
+    return verifyMOOpMatchesKernelImpl<KGEN::LIT::FnOp>(*this, op);
+  else
+    return verifyMOOpMatchesKernelImpl<KGEN::GeneratorOp>(*this, op);
 }
 
 ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>

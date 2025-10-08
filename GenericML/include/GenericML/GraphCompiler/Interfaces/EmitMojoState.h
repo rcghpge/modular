@@ -83,6 +83,17 @@ constexpr StringLiteral packagesToImport[] = {
     "MOGGPrimitives", "MOGGKernelAPI", "tensor_internal", "compiler_internal",
     "utils",          "runtime",       "memory",          "buffer",
     "collections"};
+
+/// TODO(GEX-2488): Find another way to find that a type is an IOSpec without
+/// relying on package / type name.
+inline bool isMojoIOSpecTypeName(ArrayRef<FlatSymbolRefAttr> symbolRefs) {
+  constexpr StringLiteral mojoPackageName = "io_spec";
+  constexpr StringLiteral mojoTypeName = "IOSpec";
+  return symbolRefs.size() == 2 &&
+         symbolRefs[0].getValue() == mojoPackageName &&
+         symbolRefs[1].getValue() == mojoTypeName;
+}
+
 }; // namespace HardcodedMojoSymbols
 
 /// This struct holds all the necessary state to lower a MOGG operation into
@@ -235,11 +246,13 @@ public:
   MojoValue getReboundOutputTensorFor(Value value,
                                       bool expectsComputeLambda = false);
 
-  /// Returns the original Mojo name of the registered generator. The
+  /// Returns the original Mojo name of the registered function. The
   /// MOGGPreElab annotation will always tell you which .mojo file contains the
   /// generator. This is convenient for imports. Only packages need to be
   /// imported, not the .mojo file.
-  static MojoValue getOriginalMojoNameFor(KGEN::GeneratorOp op) {
+  static MojoValue getOriginalMojoNameFor(KGEN::LIT::FnOp op) {
+    // TODO: update the signature to only take a LIT::FuncOp when the move to
+    // LIT is complete.
     auto nameAttr =
         op->getAttrOfType<StringAttr>(KGEN::MOGGPreElab::mojoSymbolName);
     ASSERT_STREAM(nameAttr,
@@ -256,7 +269,7 @@ public:
   /// Looks at the named parameters of the output value of the function.
   /// Returns the corresponding parameter name of the function if found.
   static std::optional<MojoValue>
-  getOriginalResultParamNameFor(KGEN::GeneratorOp op, StringRef paramName) {
+  getOriginalResultParamNameFor(KGEN::LIT::FnOp op, StringRef paramName) {
     auto resultParams = op->getAttrOfType<ArrayAttr>(
         KGEN::MOGGPreElab::kKernelResultParameterAttrName);
     if (!resultParams)
@@ -275,7 +288,7 @@ public:
   /// Fill and return the list of inferred parameters to call `function`.
   /// Call `inferCallback` for each parameter that needs to be inferred.
   static ErrorOr<llvm::SmallVector<MojoValue>> inferKernelParameters(
-      KGEN::GeneratorOp function,
+      KGEN::LIT::FnOp function,
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 
   /// Base function to infer all parameter values of a kernel.

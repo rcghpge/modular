@@ -84,11 +84,10 @@ static StringRef moOperationName(Operation *op) {
 // If matchOperands is set to true, this function will not attempt to validate
 // results. Conversely, if set to false, it will do extra checks beyond DPS
 // arguments with result types.
-template <bool matchOperands>
+template <class FuncT, bool matchOperands>
 static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
     Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor) {
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<FuncT> &adaptor) {
   using namespace KGEN::MOGGPreElab;
   static const char *argumentKind = matchOperands ? "input" : "output";
 
@@ -314,15 +313,16 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   return mapping;
 }
 
+template <class FuncT>
 ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
     Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor) {
-  auto matchedInputsOrError = matchOperandsOrResults<true>(op, adaptor);
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<FuncT> &adaptor) {
+  auto matchedInputsOrError = matchOperandsOrResults<FuncT, true>(op, adaptor);
   if (matchedInputsOrError.isError())
     return matchedInputsOrError.takeError();
 
-  auto matchedOutputsOrError = matchOperandsOrResults<false>(op, adaptor);
+  auto matchedOutputsOrError =
+      matchOperandsOrResults<FuncT, false>(op, adaptor);
   if (matchedOutputsOrError.isError())
     return matchedOutputsOrError.takeError();
 
@@ -363,5 +363,15 @@ ErrorOr<InverseOperandMapping> mapKernelImplementationToMOOp(
 
   return invertMapping(*directMapping);
 }
+
+template ErrorOr<OperandMapping>
+mapMOOpToKernelImplementation<KGEN::GeneratorOp>(
+    Operation *op,
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
+        &adaptor);
+template ErrorOr<OperandMapping> mapMOOpToKernelImplementation<KGEN::LIT::FnOp>(
+    Operation *op,
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp>
+        &adaptor);
 
 } // namespace M::MOGG

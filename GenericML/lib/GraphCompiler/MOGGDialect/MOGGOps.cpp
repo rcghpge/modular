@@ -326,8 +326,8 @@ bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
 }
 
 LogicalResult CallOp::emitMojo(EmitMojoState &state) {
-  KGEN::GeneratorOp function =
-      state.analysis.getRegisteredMojoKernelFor(getMojoKernelTarget());
+  KGEN::LIT::FnOp function =
+      state.analysis.getRegisteredLITMojoKernelFor(getMojoKernelTarget());
   auto symbolName = state.getOriginalMojoNameFor(function);
 
   SmallVector<MojoValue> mojoOperands = state.getMojoValuesFor(getOperands());
@@ -690,7 +690,7 @@ SmallVector<Value> CallForeachOp::getKernelDPSOutputs() {
 Type CallForeachOp::getKernelReturnOutput() { return nullptr; }
 
 LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
-  auto function = state.analysis.getForeachKernel();
+  auto function = state.analysis.getLITForeachKernel();
   const MojoValue &bodyLambdaParam = state.getMojoValueFor(getInput());
 
   // Get the kernel operands.
@@ -751,7 +751,7 @@ SmallVector<Value> CallMaterializeOp::getKernelDPSOutputs() {
 Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
-  auto function = state.analysis.getViewMaterializeKernel();
+  auto function = state.analysis.getLITViewMaterializeKernel();
 
   // Get the kernel operands.
   SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
@@ -827,9 +827,9 @@ Type CallExecuteOp::getKernelReturnOutput() {
 
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto function =
-      state.analysis.getRegisteredMojoExecuteFunctionFor(getKernelName());
-  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-      functionAdaptor(function);
+      state.analysis.getRegisteredLITMojoExecuteFunctionFor(getKernelName());
+  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp> functionAdaptor(
+      function);
 
   SmallVector<MojoValue> kernelOperands;
   // Go through and rebind all outputs.
@@ -1604,7 +1604,7 @@ LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
   const MojoValue &input = state.getMojoValueFor(getInput());
 
   auto moggAsScalar = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   MOGG::MojoValue scalarValue = moggAsScalar(ArrayRef<MojoValue>{}, {input});
   state.setMojoValueFor(getResult(), state.builder.var(scalarValue));
   return success();
@@ -3141,11 +3141,11 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(getInput().getType())) {
     MOGG::MojoValue asyncUnpackFunc{
         HardcodedMojoSymbols::func_unpack_tensor_spec};
-    unpackedValue = asyncUnpackFunc({tensorSpec.getRank()},
+    unpackedValue = asyncUnpackFunc({int(tensorSpec.getRank())},
                                     {state.getMojoValueFor(getInput())});
   } else {
     auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
-        state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+        state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
     unpackedValue = moggAsyncUnpackFunc({state.mlirTypeToMojoType(getType())},
                                         state.getMojoValueFor(getInput()));
   }
@@ -3159,7 +3159,7 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
   auto moggAsyncDelFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   state.builder.call(moggAsyncDelFunc, {}, state.getMojoValueFor(getInput()));
   return success();
 }
@@ -3185,7 +3185,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   auto shapeVar = state.builder.var(
       state.getShapeAsIndexListMojoValue(tensorTy, getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   state.setMojoValueFor(getResult(),
                         state.builder.var(moggTensorInit(
                             {dTypeParam, rankParam, mutParam, ioParam,
@@ -3220,7 +3220,7 @@ LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
   auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
 
   return success();
@@ -3260,8 +3260,8 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
   for (Value val : getInputs())
     inputMojoValues.push_back(state.getReboundInputTensorFor(val));
 
-  KGEN::GeneratorOp function =
-      state.analysis.getRegisteredMojoUpdateViewFunctionFor(getKernelName());
+  KGEN::LIT::FnOp function =
+      state.analysis.getRegisteredLITMojoUpdateViewFunctionFor(getKernelName());
 
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
@@ -3292,8 +3292,8 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   // Get the lambda inputs
   SmallVector<MojoValue> inputs = state.getMojoValuesFor(getInputs());
 
-  auto function =
-      state.analysis.getRegisteredMojoElementwiseFunctionFor(getKernelName());
+  auto function = state.analysis.getRegisteredLITMojoElementwiseFunctionFor(
+      getKernelName());
 
   auto outputs = getOutputs();
   if (outputs.size() != 1)

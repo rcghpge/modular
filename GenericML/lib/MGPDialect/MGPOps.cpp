@@ -421,9 +421,9 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::GeneratorOp generator =
-      state.analysis.getRegisteredMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(generator);
+  KGEN::LIT::FnOp func =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
 
   MOGG::MojoValue conditionVar = state.getMojoValueFor(getCond());
   MOGG::MojoValue messageLiteral = MOGG::MojoValue(getMessage()).quote();
@@ -437,13 +437,13 @@ LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
         state.builder.call(function, {},
                            {conditionVar, messagePtr, messageSize});
         auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredMojoKernelFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
                 MOGG::AsyncReadyOp::getOperationName()));
         state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
       })
       .except([&](const MOGG::MojoValue &e) {
         auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredMojoKernelFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
                 "builtin.create_error_async_values_and_destruct_error"));
         /// TODO: This is too cumbersome. Add keyword arg support to function
         /// calls in MojoBuilder. Also, consider adding a helper that creates an
@@ -925,9 +925,9 @@ LogicalResult CallOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
-  KGEN::GeneratorOp generator =
-      state.analysis.getRegisteredMojoKernelFor(getOperationName());
-  MOGG::MojoValue function = state.getOriginalMojoNameFor(generator);
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
 
   MOGG::MojoValue debugStringParam = MOGG::MojoValue(getADebugString()).quote();
   MOGG::MojoValue labelParam = MOGG::MojoValue(getBLabel()).quote();
@@ -937,13 +937,13 @@ LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
       .try_([&]() {
         state.builder.call(function, {debugStringParam, labelParam}, ctxVar);
         auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredMojoKernelFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
                 MOGG::AsyncReadyOp::getOperationName()));
         state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
       })
       .except([&](const MOGG::MojoValue &e) {
         auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredMojoKernelFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
                 "builtin.create_error_async_values_and_destruct_error"));
         /// TODO: This is too cumbersome. Add keyword arg support to function
         /// calls in MojoBuilder. Also, consider adding a helper that creates an

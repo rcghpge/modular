@@ -9,6 +9,7 @@
 
 #include <string>
 
+#include "Support/AssertStream.h"
 #include "mlir/Pass/PassInstrumentation.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
@@ -18,6 +19,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "Support/SymbolExport.h"
 
 //===----------------------------------------------------------------------===//
@@ -68,6 +70,10 @@ public:
   /// registration.
   KGEN::GeneratorOp getRegisteredMojoKernelFor(StringRef name) const;
 
+  /// Looks up a registered Mojo symbol using the name that was used for
+  /// registration.
+  KGEN::LIT::FnOp getRegisteredLITMojoKernelFor(StringRef name) const;
+
   /// Returns true if a registered Mojo symbol using the name exists.
   bool hasRegisteredMojoKernelFor(StringRef name) const {
     return registeredMojoKernelSymbol.contains(name);
@@ -77,6 +83,13 @@ public:
     KernelCandidate(KGEN::GeneratorOp gen, int64_t priority)
         : generator(gen), priority(priority) {}
     KGEN::GeneratorOp generator;
+    int64_t priority;
+  };
+
+  struct LITKernelCandidate {
+    LITKernelCandidate(KGEN::LIT::FnOp fun, int64_t priority)
+        : fun(fun), priority(priority) {}
+    KGEN::LIT::FnOp fun;
     int64_t priority;
   };
 
@@ -94,25 +107,58 @@ public:
   /// for registration.
   KGEN::GeneratorOp getRegisteredMojoExecuteFunctionFor(StringRef name) const;
 
+  /// Looks up a registered Mojo execute function using the name that was used
+  /// for registration.
+  KGEN::LIT::FnOp getRegisteredLITMojoExecuteFunctionFor(StringRef name) const;
+
   /// Looks up a registered Mojo update_input_view function using the name that
   /// was used for registration.
   KGEN::GeneratorOp
   getRegisteredMojoUpdateViewFunctionFor(StringRef name) const;
+
+  /// Looks up a registered Mojo update_input_view function using the name that
+  /// was used for registration.
+  KGEN::LIT::FnOp
+  getRegisteredLITMojoUpdateViewFunctionFor(StringRef name) const;
 
   /// Looks up a registered elementwise function using the name that was used
   /// for registration.
   KGEN::GeneratorOp
   getRegisteredMojoElementwiseFunctionFor(StringRef name) const;
 
+  /// Looks up a registered elementwise function using the name that was used
+  /// for registration.
+  KGEN::LIT::FnOp
+  getRegisteredLITMojoElementwiseFunctionFor(StringRef name) const;
+
   /// Looks up the Mojo symbol of a registered, labeled kernel function
   /// using the name that was used for registration and the function label.
   KGEN::GeneratorOp getRegisteredMojoFunctionFor(StringRef name,
                                                  StringRef functionLabel) const;
 
+  /// Looks up the Mojo symbol of a registered, labeled kernel function
+  /// using the name that was used for registration and the function label.
+  KGEN::LIT::FnOp
+  getRegisteredLITMojoFunctionFor(StringRef name,
+                                  StringRef functionLabel) const;
+
   /// Looks up and returns a mojo function as is.
-  KGEN::GeneratorOp getForeachKernel() const { return foreachKernel; }
+  KGEN::GeneratorOp getForeachKernel() const {
+    ASSERT_STREAM(foreachKernel != nullptr, "foreach kernel not found");
+    return foreachKernel;
+  }
   KGEN::GeneratorOp getViewMaterializeKernel() const {
+    ASSERT_STREAM(viewMaterializeKernel != nullptr, "view kernel not found");
     return viewMaterializeKernel;
+  }
+
+  KGEN::LIT::FnOp getLITForeachKernel() const {
+    ASSERT_STREAM(litForeachKernel != nullptr, "foreach kernel not found");
+    return litForeachKernel;
+  }
+  KGEN::LIT::FnOp getLITViewMaterializeKernel() const {
+    ASSERT_STREAM(litViewMaterializeKernel != nullptr, "view kernel not found");
+    return litViewMaterializeKernel;
   }
 
   /// Looks up and returns a mojo function as is.
@@ -157,6 +203,12 @@ private:
   updateRegisteredKernelsMap(KGEN::GeneratorOp generator,
                              bool isGeneratorFromStandardLibrary);
 
+  /// Helper function to add `func` to the maps of registered kernels if
+  /// needed.
+  ErrorOrSuccess
+  updateRegisteredKernelsMap(KGEN::LIT::FnOp func,
+                             bool isGeneratorFromStandardLibrary);
+
   /// Load and process kernels from an MLIR buffer.
   ErrorOr<OwningOpRef<ModuleOp>>
   loadMLIRKernels(std::unique_ptr<llvm::MemoryBuffer> bufferRef,
@@ -165,13 +217,27 @@ private:
   ErrorOr<SmallVector<OwningOpRef<ModuleOp>>>
   loadAllMLIRKernels(ArrayRef<std::string> paths);
 
+  ErrorOrSuccess loadAllLITKernels(ArrayRef<std::string> paths);
+
+  /// Hold all .mojopkg (LIT) packages
+  OwningOpRef<ModuleOp> moggKernelAPILITPackage;
+  SmallVector<OwningOpRef<ModuleOp>> litPackages;
+
   KGEN::GeneratorOp foreachKernel;
   KGEN::GeneratorOp viewMaterializeKernel;
+
+  KGEN::LIT::FnOp litForeachKernel;
+  KGEN::LIT::FnOp litViewMaterializeKernel;
 
   /// Hold the symbol name mapping for registered mojo kernels. With
   /// struct-based mojo kernels, this will map to the `execute` method.
   /// The value holds the kernel as well as its priority.
   llvm::StringMap<KernelCandidate> registeredMojoKernelSymbol;
+
+  /// Hold the symbol name mapping for registered mojo kernels. With
+  /// struct-based mojo kernels, this will map to the `execute` method.
+  /// The value holds the kernel as well as its priority.
+  llvm::StringMap<LITKernelCandidate> registeredLITMojoKernelSymbol;
 
   /// Hold the registered, labeled functions that can be attached to a kernel.
   /// For struct-based mojo kernels, this will map to labeled struct member
@@ -180,6 +246,14 @@ private:
   /// function label (example: `mogg.shape` will map to the `shape` method).
   llvm::StringMap<llvm::StringMap<KGEN::GeneratorOp>>
       registeredKernelFunctionSymbols;
+
+  /// Hold the registered, labeled functions that can be attached to a kernel.
+  /// For struct-based mojo kernels, this will map to labeled struct member
+  /// methods.
+  /// The outer map key is the kernel name. The inner map key is the
+  /// function label (example: `mogg.shape` will map to the `shape` method).
+  llvm::StringMap<llvm::StringMap<KGEN::LIT::FnOp>>
+      registeredLITKernelFunctionSymbols;
 
   /// This module holds all mojo kernels from all mojo libraries.
   /// User-provided modules are cloned into this module after the full
