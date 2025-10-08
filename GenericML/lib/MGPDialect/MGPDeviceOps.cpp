@@ -4,6 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/Support/Diagnostic.h"
 #include "Support/AssertStream.h"
@@ -383,4 +387,59 @@ LogicalResult TensorCreateOp::inferReturnTypes(
 
 bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getBufferMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
+// DebugTensorPrintOp
+//===----------------------------------------------------------------------===//
+LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::GeneratorOp generator =
+      state.analysis.getRegisteredMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(generator);
+
+  auto tensorSpec = getSpec().getType();
+  MOGG::MojoValue specRankParam = MOGG::MojoValue(tensorSpec.getRank());
+  MOGG::MojoValue dtypeParam =
+      state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
+
+  MOGG::MojoValue tensorSpecAsyncVar = state.getMojoValueFor(getSpec());
+  MOGG::MojoValue bufferUnsafePtr = state.getMojoValueFor(getBuffer());
+  MOGG::MojoValue bufferUnsafePtrAsUint8 =
+      bufferUnsafePtr.get("bitcast")({MOGG::HardcodedMojoSymbols::alias_UInt8});
+  MOGG::MojoValue bufferVar = state.builder.var(
+      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_NDBuffer)(
+          {MOGG::MojoValue("DType.uint8"), MOGG::MojoValue(1)},
+          {bufferUnsafePtrAsUint8,
+           MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_IndexList)(
+               {MOGG::MojoValue(1)}, MOGG::MojoValue(1))}));
+  MOGG::MojoValue labelLiteral = MOGG::MojoValue(getBLabel()).quote();
+  MOGG::MojoValue labelString = state.builder.var(MOGG::MojoValue(
+      MOGG::HardcodedMojoSymbols::struct_String)({}, {labelLiteral}));
+  MOGG::MojoValue labelPtrVar = labelString.get("unsafe_ptr")();
+  MOGG::MojoValue labelSizeVar = labelString.get("__len__")();
+
+  state.builder
+      .try_([&]() {
+        state.builder.call(
+            function, {specRankParam, dtypeParam},
+            {bufferVar, tensorSpecAsyncVar, labelPtrVar, labelSizeVar});
+        auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredMojoKernelFor(
+                MOGG::AsyncReadyOp::getOperationName()));
+        state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+      })
+      .except([&](const MOGG::MojoValue &e) {
+        auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredMojoKernelFor(
+                "builtin.create_error_async_values_and_destruct_error"));
+        /// TODO: This is too cumbersome. Add keyword arg support to function
+        /// calls in MojoBuilder. Also, consider adding a helper that creates
+        /// an `UnsafePointer` to any variable.
+        MOGG::MojoValue pointerToPointer = state.builder.var(
+            MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_UnsafePointer)(
+                {}, MOGG::MojoValue("to").equal(state.mojoReturnValues[0])));
+        state.builder.call(markAsyncErrorFunc, {},
+                           {pointerToPointer, MOGG::MojoValue(1), e});
+      });
+  return success();
 }

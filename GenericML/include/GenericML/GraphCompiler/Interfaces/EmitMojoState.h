@@ -40,6 +40,7 @@ constexpr StringLiteral struct_AddressSpace = "pointer.AddressSpace";
 constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
+constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 
@@ -59,6 +60,8 @@ constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
     "managed_tensor_slice.rebuild_static_tensor_specs_with_input_lambda";
 constexpr StringLiteral func_reshape_contiguous_buffer =
     "MOGGPrimitives.reshape_contiguous_buffer_v2";
+constexpr StringLiteral func_unpack_tensor_spec =
+    "MOGGPrimitives.unpack_tensor_spec";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
@@ -70,6 +73,7 @@ constexpr StringLiteral alias_FusedComputeOutputTensor =
     "managed_tensor_slice._FusedComputeOutputTensor";
 constexpr StringLiteral alias_FusedInputTensor =
     "managed_tensor_slice._FusedInputTensor";
+constexpr StringLiteral alias_UInt8 = "UInt8";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
@@ -141,7 +145,8 @@ public:
 
   /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
-    if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
+    if (isa<MGP::DeviceBufferType, MEF::ChainType, MGP::TensorSpecType>(
+            mlirType)) {
       return HardcodedMojoSymbols::alias_OpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_DeviceContextPtr;

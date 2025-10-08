@@ -12,9 +12,11 @@
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
@@ -29,6 +31,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include <future>
 
 using namespace M;
 using namespace MOGG;
@@ -3134,11 +3137,19 @@ LogicalResult AsTupleOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
-  auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
-  state.setMojoValueFor(getResult(), state.builder.var(moggAsyncUnpackFunc(
-                                         {state.mlirTypeToMojoType(getType())},
-                                         state.getMojoValueFor(getInput()))));
+  MojoValue unpackedValue;
+  if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(getInput().getType())) {
+    MOGG::MojoValue asyncUnpackFunc{
+        HardcodedMojoSymbols::func_unpack_tensor_spec};
+    unpackedValue = asyncUnpackFunc({tensorSpec.getRank()},
+                                    {state.getMojoValueFor(getInput())});
+  } else {
+    auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
+        state.analysis.getRegisteredMojoKernelFor(this->getOperationName()));
+    unpackedValue = moggAsyncUnpackFunc({state.mlirTypeToMojoType(getType())},
+                                        state.getMojoValueFor(getInput()));
+  }
+  state.setMojoValueFor(getResult(), state.builder.var(unpackedValue));
   return success();
 }
 

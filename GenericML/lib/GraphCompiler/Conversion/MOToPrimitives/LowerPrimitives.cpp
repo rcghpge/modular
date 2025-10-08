@@ -435,10 +435,9 @@ void LowerPrimitivesPass::runOnOperation() {
       MGP::BufferDeviceToHostOp, MGP::BufferGetCachedOp, MGP::BufferGetSizeOp, \
       MGP::BufferHostToDeviceOp, MGP::BufferRemoveCachedOp,                    \
       MGP::BufferSetWithIndexOp, MGP::BufferSliceOp, MGP::BufferToBoolOp,      \
-      MGP::BufferToIndexOp, MGP::DebugTensorPrintOp, MGP::SyncOp,              \
-      MGP::TensorCreateOp, MGP::TensorExtractBufferOp,                         \
-      MGP::TensorExtractTensorSpecOp, MGP::TensorSpecCreateOp,                 \
-      MGP::TensorSpecGetDimOp
+      MGP::BufferToIndexOp, MGP::SyncOp, MGP::TensorCreateOp,                  \
+      MGP::TensorExtractBufferOp, MGP::TensorExtractTensorSpecOp,              \
+      MGP::TensorSpecCreateOp, MGP::TensorSpecGetDimOp
 #define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
   mlir::index::IndexDialect, KGEN::POP::POPDialect
 

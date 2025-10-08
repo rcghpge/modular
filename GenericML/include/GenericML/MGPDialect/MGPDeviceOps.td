@@ -884,7 +884,8 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
 def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
       "getLiftableAttributes"
-    ]>
+    ]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
   ]> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";
