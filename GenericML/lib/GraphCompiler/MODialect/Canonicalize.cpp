@@ -1871,6 +1871,136 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
 //===----------------------------------------------------------------------===//
 namespace {
 
+struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
+  using OpRewritePattern<WhileOp>::OpRewritePattern;
+
+  // Compute a mapping of duplicated operands back to their first occurrence
+  // in the operand sequence.
+  static llvm::DenseMap<unsigned, unsigned> duplicateMap(ValueRange inputs) {
+    llvm::DenseMap<Value, unsigned> firstIndex;
+    llvm::DenseMap<unsigned, unsigned> result;
+    for (auto [index, value] : llvm::enumerate(inputs)) {
+      auto [it, inserted] = firstIndex.try_emplace(value, index);
+      if (!inserted)
+        result[index] = it->second;
+    }
+    return result;
+  }
+
+  // Two values in the same block are duplicated if
+  // 1. Their backing values are identical,
+  // 2. They refer to block arguments that are known to be duplicates
+  static bool isDuplicate(Block *block, ValueRange values, unsigned index,
+                          unsigned firstOccurrence) {
+    auto x = values[index];
+    auto y = values[firstOccurrence];
+
+    // Same values count as duplicates
+    if (x == y)
+      return true;
+
+    auto blockArgX = dyn_cast<BlockArgument>(x);
+    auto blockArgY = dyn_cast<BlockArgument>(y);
+
+    // Block arguments that correspond to duplicate input operands also
+    // count as duplicates.
+    return blockArgX && blockArgY && blockArgX.getParentBlock() == block &&
+           blockArgY.getParentBlock() == block &&
+           blockArgX.getArgNumber() == index &&
+           blockArgY.getArgNumber() == firstOccurrence;
+  };
+
+  LogicalResult matchAndRewrite(WhileOp op,
+                                PatternRewriter &rewriter) const override {
+    WhileConditionOp condOp = op.getCondTerminator();
+    YieldOp yieldOp = op.getBodyTerminator();
+
+    ValueRange whileOpResults = op.getResults();
+
+    Block::BlockArgListType condBlockArgs = op.getCondArguments();
+    Block::BlockArgListType bodyBlockArgs = op.getBodyArguments();
+
+    ValueRange condOpArgs = condOp.getArgs();
+    ValueRange yieldOpArgs = yieldOp.getOperands();
+
+    // The duplication map acts as a seed for checking duplicates in the body
+    // and condition regions. Every duplicate operand must alias in an identical
+    // way on the region terminators.
+    auto duplicatedWhileOperands = duplicateMap(op.getOperands());
+    if (duplicatedWhileOperands.empty())
+      return rewriter.notifyMatchFailure(op, "no operands to remove");
+
+    llvm::SmallVector<Value> operandsToKeep;
+    llvm::SmallVector<Value> resultsToKeep;
+    llvm::BitVector toErase(op.getNumOperands());
+
+    // Check if each duplication candidate from the operands is also a
+    // duplicate within the predicate and body regions of the while op.
+    for (unsigned index : llvm::seq(op.getNumOperands())) {
+      auto it = duplicatedWhileOperands.find(index);
+      if (it == duplicatedWhileOperands.end()) {
+        operandsToKeep.push_back(op.getOperand(index));
+        resultsToKeep.push_back(op.getResult(index));
+        continue;
+      }
+
+      unsigned firstOccurrence = it->second;
+      // First check if cond op has duplicate candidates
+      if (!isDuplicate(op.getCondBlock(), condOpArgs, index, firstOccurrence) ||
+          !isDuplicate(op.getBodyBlock(), yieldOpArgs, index,
+                       firstOccurrence)) {
+        operandsToKeep.push_back(op.getOperand(index));
+        resultsToKeep.push_back(op.getResult(index));
+        continue;
+      }
+
+      // Found some duplicated operands/results, remap them to refer to the
+      // first occurrence of that value.
+      toErase.set(index);
+      rewriter.replaceAllUsesWith(condBlockArgs[index],
+                                  condBlockArgs[firstOccurrence]);
+      rewriter.replaceAllUsesWith(bodyBlockArgs[index],
+                                  bodyBlockArgs[firstOccurrence]);
+      rewriter.replaceAllUsesWith(whileOpResults[index],
+                                  whileOpResults[firstOccurrence]);
+    }
+
+    if (toErase.none())
+      return rewriter.notifyMatchFailure(op,
+                                         "no duplicate loop carried values");
+
+    // Construct the new arguments for the mo.while.condition and mo.yield
+    // terminators (ops do not have nice functions to erase arguments).
+    SmallVector<Value> newCondArgs;
+    SmallVector<Value> newYieldArgs;
+
+    for (auto index : llvm::seq(op.getNumOperands())) {
+      if (!toErase.test(index)) {
+        newCondArgs.push_back(condOp.getArgs()[index]);
+        newYieldArgs.push_back(yieldOpArgs[index]);
+      }
+    }
+
+    // Erase the duplicated block arguments
+    op.getCondBlock()->eraseArguments(toErase);
+    op.getBodyBlock()->eraseArguments(toErase);
+
+    // Erase the duplicated terminator arguments
+    condOp.getArgsMutable().assign(newCondArgs);
+    yieldOp.getOperandsMutable().assign(newYieldArgs);
+
+    auto newWhileOp = WhileOp::create(
+        rewriter, op.getLoc(), TypeRange(operandsToKeep), operandsToKeep);
+
+    newWhileOp.getCondRegion().takeBody(op.getCondRegion());
+    newWhileOp.getBodyRegion().takeBody(op.getBodyRegion());
+
+    rewriter.replaceAllUsesWith(resultsToKeep, newWhileOp.getResults());
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 /// Find unused results of the while loop that are also unused in the
 /// body block and remove them.
 ///
@@ -2014,7 +2144,9 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
 
 void WhileOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                           MLIRContext *ctx) {
-  patterns.add<RemoveLoopInvariantCarriedValues>(ctx);
+  patterns
+      .add<RemoveLoopInvariantCarriedValues, RemoveDuplicateLoopCarriedValues>(
+          ctx);
 }
 
 } // namespace M::MO

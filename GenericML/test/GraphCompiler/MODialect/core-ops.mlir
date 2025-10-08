@@ -291,6 +291,46 @@ mo.graph @while_op_remove_invariant_values(%arg0: !mo.tensor<[2], f32>, %cond : 
   mo.output %0#1 : !mo.tensor<[], bool>
 }
 
+// CHECK-LABEL: mo.graph @while_op_remove_duplicate_operands
+// CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[2], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+mo.graph @while_op_remove_duplicate_operands(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+  // CHECK: %[[RES:.*]] = mo.while (%[[ARG0]] as %[[ARGI:.*]]: !mo.tensor<[2], f32>) {
+  %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %arg0 as %argi1: !mo.tensor<[2], f32>) {
+    // CHECK: mo.while.condition(%[[COND]]) %[[ARGI]] : !mo.tensor<[2], f32>
+    mo.while.condition(%cond) %argi0, %argi1 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  // CHECK: } do {
+  } do {
+    // CHECK: %[[NEW_VAL:.*]] = mo.add(%[[ARGI]], %[[ARGI]]) : !mo.tensor<[2], f32>
+    %new_val = mo.add (%argi0, %argi1) : !mo.tensor<[2], f32>
+    // CHECK: mo.yield %[[NEW_VAL]] : !mo.tensor<[2], f32>
+    mo.yield %new_val, %new_val : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  }
+  // CHECK: mo.output %[[RES]], %[[RES]] : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  mo.output %0#0, %0#1 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+}
+
+// CHECK-LABEL: mo.graph @while_op_remove_duplicate_operands_no_change
+// CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[2], f32>, %[[COND:.*]]: !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+mo.graph @while_op_remove_duplicate_operands_no_change(%arg0: !mo.tensor<[2], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
+  // CHECK: %[[RES:.*]]:2 = mo.while (%[[ARG0]] as %[[ARGI0:.*]]: !mo.tensor<[2], f32>, %[[ARG0]] as %[[ARGI1:.*]]: !mo.tensor<[2], f32>) {
+  %0:2 = mo.while (%arg0 as %argi0: !mo.tensor<[2], f32>, %arg0 as %argi1: !mo.tensor<[2], f32>) {
+    // CHECK: mo.while.condition(%[[COND]]) %[[ARGI0]], %[[ARGI1]] : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+    mo.while.condition(%cond) %argi0, %argi1 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  // CHECK: } do {
+  } do {
+    // CHECK: %[[NEW_VAL1:.*]] = mo.add(%[[ARGI0]], %[[ARGI1]]) : !mo.tensor<[2], f32>
+    %new_val1 = mo.add (%argi0, %argi1) : !mo.tensor<[2], f32>
+
+    // CHECK: %[[NEW_VAL2:.*]] = mo.mul(%[[ARGI0]], %[[ARGI1]]) : !mo.tensor<[2], f32>
+    %new_val2 = mo.mul (%argi0, %argi1) : !mo.tensor<[2], f32>
+
+    // CHECK: mo.yield %[[NEW_VAL1]], %[[NEW_VAL2]] : !mo.tensor<[2], f32>
+    mo.yield %new_val1, %new_val2 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  }
+  // CHECK: mo.output %[[RES]]#0, %[[RES]]#1 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+  mo.output %0#0, %0#1 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
+}
+
 //===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
