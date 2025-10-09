@@ -123,12 +123,12 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       bool subMustAlsoReturn = inCfOp.getFlavor() == GRT::kLoopLike;
 
       // Collect the free values for the control flow op sub-blocks.
-      SetVector<Value> subFreeValues;
+      SetVector<Value> nestedFreeValues;
       for (Region &region : inCfOp->getRegions())
-        accumFreeValues(subFreeValues, &region.front(), &region.front());
-      assert(llvm::all_of(subFreeValues, [&](Value subFreeValue) {
-        return subFreeValue.getParentBlock() == inBlock ||
-               freeValues.contains(subFreeValue);
+        accumFreeValues(nestedFreeValues, &region.front(), &region.front());
+      assert(llvm::all_of(nestedFreeValues, [&](Value nestedFreeValue) {
+        return nestedFreeValue.getParentBlock() == inBlock ||
+               freeValues.contains(nestedFreeValue);
       }));
 
       // Rewrite existing operands.
@@ -139,10 +139,10 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         outOperands.emplace_back(outOperand);
       }
       // Include the additional arguments.
-      for (Value inSubFreeValue : subFreeValues) {
-        Value outSubFreeValue = mapping.lookupOrNull(inSubFreeValue);
-        ASSERT_STREAM(outSubFreeValue, << "unmapped sub free value");
-        outOperands.emplace_back(outSubFreeValue);
+      for (Value inNestedFreeValue : nestedFreeValues) {
+        Value outNestedFreeValue = mapping.lookupOrNull(inNestedFreeValue);
+        ASSERT_STREAM(outNestedFreeValue, << "unmapped free value");
+        outOperands.emplace_back(outNestedFreeValue);
       }
 
       // New op continues to return existing results (possibly excluding last).
@@ -156,8 +156,8 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         outResultTypes.emplace_back(inCfOp->getResult(i).getType());
       if (subMustAlsoReturn) {
         // But new op must also return a result for each new argument.
-        for (Value inSubFreeValue : subFreeValues)
-          outResultTypes.emplace_back(inSubFreeValue.getType());
+        for (Value inNestedFreeValue : nestedFreeValues)
+          outResultTypes.emplace_back(inNestedFreeValue.getType());
       }
       if (beforeLastOutput)
         // Account for last result.
@@ -188,7 +188,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
                                    inCfOp->getNumRegions() == 2 && i == 0;
         Block *inSubBlock = &inCfOp->getRegion(i).front();
         Block *outSubBlock = &outCfOp->getRegion(i).emplaceBlock();
-        fixup(builder, inSubBlock, subFreeValues, outSubBlock,
+        fixup(builder, inSubBlock, nestedFreeValues, outSubBlock,
               subMustAlsoReturn, subBeforeLastOutput);
       }
       builder.restoreInsertionPoint(insertPoint);

@@ -7,6 +7,7 @@
 #include "GenericML/MGPTransforms/Utils.h"
 #include "GenericML/MGPDialect/MGPTensorInterface.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
+#include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h"
 #include "GraphRT/MEFDialect/MEFNonStrictInterface.h"
 #include "Support/AssertStream.h"
@@ -102,16 +103,21 @@ namespace {
 struct Frame {
   Operation *frameOp;
   size_t nextOperandIndex;
+  SmallVector<Value, 4> extraValues; // For free values of control flow ops
+  size_t nextExtraValueIndex;
 
   /// Returns the next operand of frameOp to visit, or null if done.
   Value next() {
-    if (nextOperandIndex >= frameOp->getNumOperands())
-      return {};
-    return frameOp->getOperand(nextOperandIndex++);
+    if (nextOperandIndex < frameOp->getNumOperands())
+      return frameOp->getOperand(nextOperandIndex++);
+    if (nextExtraValueIndex < extraValues.size())
+      return extraValues[nextExtraValueIndex++];
+    return {};
   }
 
   Frame(Operation *frameOp, size_t nextOperandIndex)
-      : frameOp(frameOp), nextOperandIndex(nextOperandIndex) {}
+      : frameOp(frameOp), nextOperandIndex(nextOperandIndex),
+        nextExtraValueIndex(0) {}
 };
 } // namespace
 
@@ -124,6 +130,21 @@ static void startVisiting(DenseSet<Operation *> &visited,
 
   // Start with first operand (if any).
   stack.emplace_back(currOp, 0);
+
+  // For control flow operations, also collect free values from nested
+  // regions so they are treated as dependencies in the dataflow order.
+  if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(currOp)) {
+    mlir::SetVector<Value> freeValues;
+    for (Region &region : cfOp->getRegions())
+      accumFreeValues(freeValues, &region.front(), &region.front());
+
+    // Add free values from this block as extra dependencies
+    Frame &frame = stack.back();
+    for (Value freeValue : freeValues) {
+      if (freeValue.getParentBlock() == block)
+        frame.extraValues.push_back(freeValue);
+    }
+  }
 }
 
 /// Records that currOp has been fully visited.
