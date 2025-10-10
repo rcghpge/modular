@@ -171,15 +171,13 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
       assert(subgraphOutputChain &&
              "Subgraph init block is missing an output chain");
 
-      BufferBuilderContext builderCtx =
-          TensorBufferDialectInterface::getAllBufferBuilders(parentModelOp);
+      OpOperand &parentOutputChain =
+          parentInit->getTerminator()->getOpOperand(0);
+      auto newInit = initBuilder.create<GRT::ChainCreateOp>(
+          parentInit->getTerminator()->getLoc(),
+          ValueRange{parentOutputChain.get(), subgraphOutputChain});
 
-      if (failed(alsoWaitForChains(initBuilder, builderCtx,
-                                   parentInit->getTerminator(),
-                                   {subgraphOutputChain}))) {
-        return subgraph.emitError() << "failed to wait for inlined init chain";
-      }
-
+      parentOutputChain.set(newInit);
       continue;
     }
 
