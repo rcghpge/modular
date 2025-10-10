@@ -1090,6 +1090,50 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       llvm::map_to_vector(operands, [](Value v) { return v.getLoc(); });
   regionBody.addArguments(ValueRange(operands).getTypes(), locs);
 
+  // This mapping is similar to `outsideValueToOperandIndex`.
+  // But it covers the parameters needed inside the region stub.
+  // Usually these are fused parameters of fused-intermediate tensors.
+  // They are created inside the stub directly.
+  DenseMap<Value, uint64_t> outsideValueToStubOperandIndex;
+
+  auto getTensorDynamicDimensions =
+      [&](MO::TensorType asTensor,
+          bool isInsideStub) -> ErrorOr<SmallVector<Value>> {
+    SmallVector<Value> dynamicDimensions;
+    for (auto dim : asTensor.getDims()) {
+      if (isa<IntegerAttr>(dim))
+        continue;
+
+      auto outsideSSAIt = parameterToOutsideSSAValue.find(dim);
+      if (outsideSSAIt == parameterToOutsideSSAValue.end())
+        return Error(
+            llvm::formatv("Failed to find the runtime value of the dynamic "
+                          "tensor dimension #{} for tensor type {}",
+                          dim, asTensor));
+      Value outsideSSAValue = outsideSSAIt->second;
+
+      if (isInsideStub) {
+        if (!outsideValueToStubOperandIndex.contains(outsideSSAValue))
+          return Error(
+              llvm::formatv("Failed to find the stub argument of the dynamic "
+                            "tensor dimension #{} for tensor type {}",
+                            dim, asTensor));
+        dynamicDimensions.push_back(kernelStub.getBody().getArgument(
+            outsideValueToStubOperandIndex[outsideSSAValue]));
+      } else {
+        if (!outsideValueToOperandIndex.contains(outsideSSAValue))
+          return Error(
+              llvm::formatv("Failed to find the kernel argument of the dynamic "
+                            "tensor dimension #{} for tensor type {}",
+                            dim, asTensor));
+        dynamicDimensions.push_back(regionBody.getArgument(
+            outsideValueToOperandIndex[outsideSSAValue]));
+      }
+    }
+
+    return dynamicDimensions;
+  };
+
   // Call the previously created kernel stub by creating ops that bridge the gap
   // between MGP and MO/MOGG. We can safely zip_first iterate through the stub's
   // arguments and the regions operands (minus the chain that is always first)
@@ -1104,20 +1148,17 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
        llvm::zip_first(kernelStub.getBody().front().getArguments(),
                        regionBody.getArguments().drop_front())) {
     if (auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType())) {
-      SmallVector<Value> dynamicDimensions;
-      for (auto dim : asTensor.getDims()) {
-        auto outsideSSAValue = parameterToOutsideSSAValue.lookup(dim);
-        if (outsideSSAValue) {
-          dynamicDimensions.emplace_back(regionBody.getArgument(
-              outsideValueToOperandIndex[outsideSSAValue]));
-        }
-      }
+      auto dynamicDimensionsOr =
+          getTensorDynamicDimensions(asTensor, /*isInsideStub=*/false);
+      if (dynamicDimensionsOr.isError())
+        return emitError(dynamicDimensionsOr.getError());
+
       /// TODO: Support fusion enums
       IOKind io = (idx < endOfInputArguments) ? IOKind::Input : IOKind::Output;
       bool mut = idx >= endOfInputArguments ||
                  isa<MO::BufferType>(stubArgument.getType());
       auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
-          loc, stubArgument.getType(), regionArgument, dynamicDimensions,
+          loc, stubArgument.getType(), regionArgument, *dynamicDimensionsOr,
           BoolAttr::get(ctx, mut), IOKindAttr::get(ctx, io));
       stubCallOperands.emplace_back(tensorInitOp);
     } else {
@@ -1126,6 +1167,31 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     }
     ++idx;
   }
+
+  // Add extra arguments for the dynamic dimensions of fused tensors
+  kernelStub.walk([&](MOGG::BindLambdaOp bindOp) {
+    if (bindOp.getBindKind() != BindLambdaKind::InputLambda)
+      return;
+
+    Value fusedOutput = bindOp.getOutput();
+    auto asTensor = MO::castFromTensorLike(fusedOutput.getType());
+    for (auto dim : asTensor.getDims()) {
+      if (auto outsideSSAValue = parameterToOutsideSSAValue.lookup(dim)) {
+        // Check if the argument isn't already defined.
+        if (outsideValueToStubOperandIndex.contains(outsideSSAValue))
+          continue;
+
+        // Pass the dynamic dimension as an argument of the stub.
+        Value regionArg =
+            regionBody.getArgument(outsideValueToOperandIndex[outsideSSAValue]);
+        kernelStub.getBody().addArgument(regionArg.getType(), bindOp->getLoc());
+        outsideValueToStubOperandIndex[outsideSSAValue] =
+            stubCallOperands.size();
+        stubCallOperands.emplace_back(regionArg);
+      }
+    }
+  });
+
   assert(stubCallOperands.size() ==
          (kernelStub.getBody().front().getNumArguments()));
 
@@ -1170,7 +1236,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         moggContext.erase();
       };
 
-  auto lowerBindInputLambdaOp = [&](MOGG::BindLambdaOp bindOp) {
+  auto lowerBindInputLambdaOp =
+      [&](MOGG::BindLambdaOp bindOp) -> LogicalResult {
     builder.setInsertionPointAfter(bindOp);
 
     Value fusedOutput = bindOp.getOutput();
@@ -1178,9 +1245,13 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     // Replace the output of the lambda with an empty tensor
     Value emptyBuffer =
         builder.create<MOGG::EmptyBufferOp>(bindOp->getLoc(), mgpBufferType);
+    auto dynamicDimensionsOr = getTensorDynamicDimensions(
+        MO::castFromTensorLike(fusedOutput.getType()),
+        /*isInsideStub=*/true);
+    if (dynamicDimensionsOr.isError())
+      return emitError(dynamicDimensionsOr.getError());
     Value emptyTensor = builder.create<MOGG::TensorInitOp>(
-        loc, fusedOutput.getType(), emptyBuffer,
-        /*dynamicDimensions=*/ArrayRef<Value>{},
+        loc, fusedOutput.getType(), emptyBuffer, *dynamicDimensionsOr,
         /*mut=*/BoolAttr::get(ctx, false),
         /*io=*/IOKindAttr::get(ctx, IOKind::Input));
 
@@ -1190,6 +1261,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     // And finally replace it for the users of the lambda.
     fusedOutput.replaceAllUsesExcept(substituteOp.getResult(), substituteOp);
+    return success();
   };
 
   auto lowerConstantOp = [&](MO::ConstantOp constantOp) {
@@ -1209,15 +1281,20 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     constantOp->erase();
   };
 
-  kernelStub.walk([&](mlir::Operation *op) {
+  auto walkResult = kernelStub.walk([&](mlir::Operation *op) {
     if (auto moggContext = dyn_cast<MOGG::DeviceContextPlaceholderOp>(op))
       lowerDeviceContextPlaceholder(moggContext);
     else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op);
-             bindOp && bindOp.getBindKind() == BindLambdaKind::InputLambda)
-      lowerBindInputLambdaOp(bindOp);
-    else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
+             bindOp && bindOp.getBindKind() == BindLambdaKind::InputLambda) {
+      if (failed(lowerBindInputLambdaOp(bindOp)))
+        return WalkResult::interrupt();
+    } else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
       lowerConstantOp(constantOp);
+
+    return WalkResult::advance();
   });
+  if (walkResult.wasInterrupted())
+    return failure();
 
   // The following is to inform the lowering state of the values we have
   // created.
