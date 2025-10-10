@@ -648,36 +648,38 @@ ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
   if (func->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_ELEMWISE_FOR_EACH)) {
     if (!litForeachKernel) {
       litForeachKernel = func;
-    } else if (litForeachKernel.getLoc() == func.getLoc()) {
-      return Error(llvm::formatv(
-                       "Multiple elementwise foreach kernels detected.\n"
-                       "  Previous: {0} at {1}\n"
-                       "  New: {2} at {3}",
-                       litForeachKernel.getSymName(), litForeachKernel.getLoc(),
-                       func.getSymName(), func.getLoc())
-                       .str());
-    } else if (isGeneratorFromStandardLibrary) {
-      // There is an existing kernel, but this one is a different location.
-      // Favor the one from the standard library then.
-      litForeachKernel = func;
+    } else if (litForeachKernel.getLoc() != func.getLoc()) {
+      if (isGeneratorFromStandardLibrary)
+        litForeachKernel = func;
+      else {
+        return Error(
+            llvm::formatv("Multiple elementwise foreach kernels detected.\n"
+                          "  Previous: {0} at {1}\n"
+                          "  New: {2} at {3}",
+                          litForeachKernel.getSymName(),
+                          litForeachKernel.getLoc(), func.getSymName(),
+                          func.getLoc())
+                .str());
+      }
     }
   }
 
   if (func->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_VIEW_MATERIALIZE)) {
     if (!litViewMaterializeKernel) {
       litViewMaterializeKernel = func;
-    } else if (litViewMaterializeKernel.getLoc() == func.getLoc()) {
-      return Error(llvm::formatv("Multiple materialize view kernels detected.\n"
-                                 "  Previous: {0} at {1}\n"
-                                 "  New: {2} at {3}",
-                                 litViewMaterializeKernel.getSymName(),
-                                 litViewMaterializeKernel.getLoc(),
-                                 func.getSymName(), func.getLoc())
-                       .str());
-    } else if (isGeneratorFromStandardLibrary) {
-      // There is an existing kernel, but this one is a different location.
-      // Favor the one from the standard library then.
-      litViewMaterializeKernel = func;
+    } else if (litViewMaterializeKernel.getLoc() != func.getLoc()) {
+      if (isGeneratorFromStandardLibrary)
+        litViewMaterializeKernel = func;
+      else {
+        return Error(
+            llvm::formatv("Multiple materialize view kernels detected.\n"
+                          "  Previous: {0} at {1}\n"
+                          "  New: {2} at {3}",
+                          litViewMaterializeKernel.getSymName(),
+                          litViewMaterializeKernel.getLoc(), func.getSymName(),
+                          func.getLoc())
+                .str());
+      }
     }
   }
 

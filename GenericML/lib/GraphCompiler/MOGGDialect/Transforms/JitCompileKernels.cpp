@@ -75,7 +75,8 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     initLLVM();
 
     if (MOGG::useExperimentalMojoPath()) {
-      if (compileMojoToBinary(module, mojoLibraryAnalysis).isError())
+      if (compileMojoToBinary(module, mojoLibraryAnalysis, kernelLibraryPaths)
+              .isError())
         signalPassFailure();
     }
 
@@ -110,7 +111,8 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
   CompileDiagnosticOrSuccess
   compileMojoToBinary(ModuleOp module,
-                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
+                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
+                      ArrayRef<std::string> kernelLibraryPaths) {
     auto ctx = module.getContext();
     auto targetInfoAttr = getTargetInfo(ctx);
     if (targetInfoAttr.isError()) {
@@ -141,6 +143,9 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       src.AddNewSourceBuffer(std::move(mojoTextBuffer), llvm::SMLoc());
       AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
       KGEN::CompilationOptions kgenOpts;
+      for (const auto &libraryPath : kernelLibraryPaths)
+        kgenOpts.extraSearchPaths.push_back(
+            std::filesystem::path(libraryPath).parent_path().string());
       KGEN::LIT::ParserConfig config(ctx, kgenOpts);
       mlir::TimingScope ts;
       auto parsedMojoModule =

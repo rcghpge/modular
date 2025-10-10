@@ -169,6 +169,11 @@ struct EmitMojo
       MOGG::EmitMojoState state(*analysisOr.takeValue());
       for (auto package : MOGG::HardcodedMojoSymbols::packagesToImport)
         state.builder.import(package, "*");
+      // Import mojo packages for the custom kernel libraries.
+      for (const auto &kernelLibraryPath : kernelLibraryPaths) {
+        auto moduleName = std::filesystem::path(kernelLibraryPath).stem();
+        state.builder.import(moduleName.string(), "*");
+      }
 
       // First do all the stubs (in case they appear after their references).
       auto lowerKernelStubOps = [&](MOGG::KernelStubOp kernelStub) {
