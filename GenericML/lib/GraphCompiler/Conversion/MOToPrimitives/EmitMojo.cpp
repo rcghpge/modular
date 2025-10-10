@@ -215,6 +215,27 @@ struct EmitMojo
         return;
       }
 
+      // If no kernels were emitted, emit a single empty kernel_wrapper
+      // to avoid runtime errors about missing function symbols.
+      // TODO (GEX-2668): This is a bandaid fix to enable constant folded
+      // subgraphs. Prior to this change attempting to run a model that compiled
+      // with EMIT_MOJO=1 and had all ops constant folded away would lead to
+      // this error:
+      //
+      // mt: setup for model add returned error: expecting at least
+      // one function symbol to load
+      //
+      // We should properly fix this in the long term.
+      if (kernelsToLoad.empty()) {
+        std::string emptyKernelName =
+            createKernelWrapper(state, [&](const MOGG::FunctionBody &) {
+              state.builder.comment(
+                  "Empty kernel wrapper - no actual kernels to execute.");
+              state.builder.pass();
+            });
+        kernelsToLoad.insert(StringAttr::get(ctx, emptyKernelName));
+      }
+
       // Store the emitted text into a resource and point to it from a
       // MojoModuleOp.
       auto mojoText = state.builder.str();
