@@ -699,7 +699,10 @@ struct TMATensorTile[
                     dst.ptr + copy_offset,
                     UnsafePointer(to=self.descriptor).bitcast[NoneType](),
                     mem_barrier.unsafe_ptr(),
-                    Index(coords[0] + j * copy_dim1, coords[1] + i * copy_dim0),
+                    Index(
+                        coords[0] + UInt(j * copy_dim1),
+                        coords[1] + UInt(i * copy_dim0),
+                    ),
                 )
 
     @always_inline
@@ -769,9 +772,9 @@ struct TMATensorTile[
                         UnsafePointer(to=self.descriptor).bitcast[NoneType](),
                         mem_barrier.unsafe_ptr(),
                         Index(
-                            coords[0] + j * copy_dim2,
-                            coords[1] + i * copy_dim1,
-                            coords[2] + m * copy_dim0,
+                            coords[0] + UInt(j * copy_dim2),
+                            coords[1] + UInt(i * copy_dim1),
+                            coords[2] + UInt(m * copy_dim0),
                         ),
                     )
 
@@ -838,9 +841,69 @@ struct TMATensorTile[
                     dst.ptr + copy_offset,
                     UnsafePointer(to=self.descriptor).bitcast[NoneType](),
                     mem_barrier.unsafe_ptr(),
-                    Index(coords[0] + j * copy_dim1, coords[1] + i * copy_dim0),
+                    Index(
+                        coords[0] + UInt(j * copy_dim1),
+                        coords[1] + UInt(i * copy_dim0),
+                    ),
                     multicast_mask,
                 )
+
+    @always_inline
+    fn async_multicast_load_partitioned[
+        tma_rows: Int,
+        tma_load_size: Int,
+    ](
+        self,
+        dst: LayoutTensor[
+            dtype,
+            _,
+            address_space = AddressSpace.SHARED,
+            alignment=128,
+            *_, **_,
+        ],
+        ref [AddressSpace.SHARED]mem_barrier: SharedMemBarrier,
+        rank: UInt,
+        coords: Tuple[UInt, UInt],
+        multicast_mask: UInt16,
+    ):
+        """
+        Performs a partitioned multicast load where each rank loads a distinct slice of data.
+
+        This method is designed for clustered execution where different ranks (CTAs) load
+        different, contiguous slices of the source tensor. Each rank's slice is offset
+        by `rank * tma_rows` in the second dimension and stored at offset `rank * tma_load_size`
+        in shared memory.
+
+        Parameters:
+            tma_rows: The number of rows each rank is responsible for loading.
+            tma_load_size: The size in elements of each rank's slice in shared memory.
+
+        Args:
+            dst: The destination tensor in shared memory where data will be copied.
+                Must be 128-byte aligned.
+            mem_barrier: The memory barrier used to track and synchronize the asynchronous transfer.
+            rank: The rank ID (0-based) that determines which slice to load.
+            coords: The base 2D coordinates in the source tensor from which to copy data.
+                   The second coordinate will be offset by `rank * tma_rows`.
+            multicast_mask: A bit mask specifying which CTAs should receive the data.
+
+        Note:
+            This is typically used in matrix multiplication kernels where the input matrices
+            are partitioned across multiple CTAs for parallel processing.
+        """
+        var dst_slice = LayoutTensor[
+            dtype,
+            dst.layout,
+            address_space = AddressSpace.SHARED,
+            alignment=128,
+        ](dst.ptr + rank * UInt(tma_load_size))
+
+        self.async_multicast_load(
+            dst_slice,
+            mem_barrier,
+            (coords[0], coords[1] + rank * tma_rows),
+            multicast_mask,
+        )
 
     @always_inline
     fn async_store(
@@ -888,7 +951,10 @@ struct TMATensorTile[
                 cp_async_bulk_tensor_global_shared_cta(
                     src.ptr + copy_offset,
                     UnsafePointer(to=self.descriptor).bitcast[NoneType](),
-                    Index(coords[0] + j * copy_dim1, coords[1] + i * copy_dim0),
+                    Index(
+                        coords[0] + UInt(j * copy_dim1),
+                        coords[1] + UInt(i * copy_dim0),
+                    ),
                 )
 
     @always_inline

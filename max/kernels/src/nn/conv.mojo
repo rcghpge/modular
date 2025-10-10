@@ -65,6 +65,7 @@ from buffer.dimlist import Dim, DimList
 from gpu.host import DeviceContext
 from gpu.host._nvidia_cuda import CUDA
 from gpu.id import block_dim, block_idx, thread_idx
+from layout import Layout, LayoutTensor, RuntimeLayout, IntTuple, UNKNOWN_VALUE
 from linalg.accumulate import _Accumulator
 from linalg.utils import partition_work
 from runtime.asyncrt import parallelism_level
@@ -418,11 +419,16 @@ struct ConvDirectNHWC[
         # TODO: extend to 1d/3d.
         alias WO = output_shape.at[
             output_rank - 2
-        ]() if input_rank == 4 else Dim()
+        ]().get() if input_rank == 4 and output_shape.at[
+            output_rank - 2
+        ]().has_value() else UNKNOWN_VALUE
+        alias F = output_shape.at[output_rank - 1]().get() if output_shape.at[
+            output_rank - 1
+        ]().has_value() else UNKNOWN_VALUE
         alias micro_kernel_shape = get_micro_kernel_shape[
             input_rank - 2,
             WO,
-            output_shape.at[output_rank - 1](),  # F
+            F,
             conv_attr,
             simd_size,
         ]()
@@ -437,9 +443,9 @@ struct ConvDirectNHWC[
         )
 
         @parameter
-        if conv_attr.num_groups.has_value():
+        if conv_attr.num_groups != UNKNOWN_VALUE:
             constrained[
-                filter_packed or conv_attr.num_groups == Dim(1),
+                filter_packed or conv_attr.num_groups == 1,
                 (
                     "if number of conv groups is statically known, conv filter"
                     " must be prepacked when num_groups > 1"
@@ -572,7 +578,7 @@ struct ConvDirectNHWC[
         alias apply_static_shape_optimization = \
             self.packed_and_fully_static \
             and padded \
-            and conv_attr.num_groups == Dim(1) \
+            and conv_attr.num_groups == 1 \
             and input_rank == 4
         # fmt: on
 
@@ -2601,18 +2607,25 @@ fn pack_filter_shape[
     var F_per_group = F // num_groups
 
     alias conv_attr = ConvInfoStatic[filter.rank - 2](
-        pad=reorder_padding[filter.rank - 2](paddings),
-        stride=strides,
-        dilation=dilations,
+        pad=reorder_padding[filter.rank - 2](IntTuple(paddings)),
+        stride=IntTuple(strides),
+        dilation=IntTuple(dilations),
         num_groups=num_groups,
     )
 
     # TODO: extend to 1D/3D.
-    alias WO = output_shape.at[2]() if filter.rank == 4 else Dim()
+    alias WO = output_shape.at[
+        2
+    ]().get() if filter.rank == 4 and output_shape.at[
+        2
+    ]().has_value() else UNKNOWN_VALUE
+    alias F_NHWC = output_shape.at[filter.rank - 1]().get() if output_shape.at[
+        filter.rank - 1
+    ]().has_value() else UNKNOWN_VALUE
     alias micro_kernel_shape = get_micro_kernel_shape[
         filter.rank - 2,
         WO,
-        output_shape.at[filter.rank - 1](),  # F , NHWC layout
+        F_NHWC,
         conv_attr,
         simd_size,
     ]()
@@ -2972,9 +2985,42 @@ fn conv_nhwc_direct[
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
     ):
         var conv_shape = get_conv_shape[input_rank - 2, filter_packed](
-            output,
-            input,
-            filter,
+            LayoutTensor[
+                output.type,
+                Layout(IntTuple(output.shape), IntTuple(output.strides)),
+            ](
+                output.data,
+                RuntimeLayout[
+                    Layout(IntTuple(output.shape), IntTuple(output.strides))
+                ](
+                    output.get_shape().canonicalize(),
+                    output.get_strides().canonicalize(),
+                ),
+            ),
+            LayoutTensor[
+                input.type,
+                Layout(IntTuple(input.shape), IntTuple(input.strides)),
+            ](
+                input.data,
+                RuntimeLayout[
+                    Layout(IntTuple(input.shape), IntTuple(input.strides))
+                ](
+                    input.get_shape().canonicalize(),
+                    input.get_strides().canonicalize(),
+                ),
+            ),
+            LayoutTensor[
+                filter.type,
+                Layout(IntTuple(filter.shape), IntTuple(filter.strides)),
+            ](
+                filter.data,
+                RuntimeLayout[
+                    Layout(IntTuple(filter.shape), IntTuple(filter.strides))
+                ](
+                    filter.get_shape().canonicalize(),
+                    filter.get_strides().canonicalize(),
+                ),
+            ),
             stride,
             dilation,
             pad_d,
@@ -3079,9 +3125,9 @@ fn conv2d_gpu_naive_nhwc_rscf[
         var value = Scalar[accum_type](0)
         for r in range(R):
             for s in range(S):
-                var h_in = h * stride_h - pad_h + r * dil_h
-                var w_in = w * stride_w - pad_w + s * dil_w
-                if 0 <= h_in < H and 0 <= w_in < W:
+                var h_in = h * UInt(stride_h) - UInt(pad_h) + UInt(r * dil_h)
+                var w_in = w * UInt(stride_w) - UInt(pad_w) + UInt(s * dil_w)
+                if 0 <= h_in < UInt(H) and 0 <= w_in < UInt(W):
                     for ci in range(C_in):
                         value += (
                             input.load(IndexList[4](n, h_in, w_in, ci)).cast[
@@ -3521,8 +3567,8 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
     var x_thread_id = block_idx.x * block_dim.x + thread_idx.x
 
     # map back to separate height and width
-    var h_out_idx = x_thread_id // W_out  # integer division to get height
-    var w_out_idx = x_thread_id % W_out  # modulo to get width
+    var h_out_idx = x_thread_id // UInt(W_out)  # integer division to get height
+    var w_out_idx = x_thread_id % UInt(W_out)  # modulo to get width
 
     # calculate depth from y-dimension
     var d_out_idx = block_idx.y * block_dim.y + thread_idx.y
@@ -3531,8 +3577,8 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
     if (
         n >= UInt(N)
         or d_out_idx >= UInt(D_out)
-        or h_out_idx >= H_out
-        or w_out_idx >= W_out
+        or h_out_idx >= UInt(H_out)
+        or w_out_idx >= UInt(W_out)
     ):
         return
 
@@ -3544,9 +3590,21 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
         for q in range(Q):
             for r in range(R):
                 for s in range(S):
-                    var d_in = Int(d_out_idx * stride_d + q * dil_d - pad_d)
-                    var h_in = Int(h_out_idx * stride_h + r * dil_h - pad_h)
-                    var w_in = Int(w_out_idx * stride_w + s * dil_w - pad_w)
+                    var d_in = Int(
+                        d_out_idx * UInt(stride_d)
+                        + UInt(q * dil_d)
+                        - UInt(pad_d)
+                    )
+                    var h_in = Int(
+                        h_out_idx * UInt(stride_h)
+                        + UInt(r * dil_h)
+                        - UInt(pad_h)
+                    )
+                    var w_in = Int(
+                        w_out_idx * UInt(stride_w)
+                        + UInt(s * dil_w)
+                        - UInt(pad_w)
+                    )
 
                     # check all input bounds bro
                     if 0 <= d_in < D and 0 <= h_in < H and 0 <= w_in < W:

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
+import queue
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
@@ -35,12 +36,13 @@ from max.graph import (
     TensorType,
     TensorValue,
 )
-from max.interfaces import RequestID, TextGenerationContext
+from max.interfaces import RequestID, TextGenerationContext, get_blocking
 from max.interfaces.nested_iterable import NestedIterableDataclass
 from max.profiler import traced
 from max.serve.kvcache_agent.kvcache_agent_service_v1_pb2 import (  # type: ignore
     MemoryTier,
 )
+from max.serve.queue.zmq_queue import ZmqPullSocket, ZmqPushSocket
 from max.support.human_readable_formatter import to_human_readable_bytes
 from max.support.math import ceildiv
 
@@ -106,7 +108,8 @@ class PagedKVCacheManager:
         num_layers: int,
         devices: Sequence[Device],
         session: InferenceSession,
-        cache_memory: int,
+        available_cache_memory: int,
+        zmq_endpoint_base: str | None = None,
         page_size: int = 128,
         enable_runtime_checks: bool = False,
     ) -> None:
@@ -119,7 +122,7 @@ class PagedKVCacheManager:
             num_layers: The number of layers in the model.
             devices: The devices on which the manager will allocate memory.
             session: The inference session to load ops from.
-            cache_memory: The total amount of memory available for caching.
+            available_cache_memory: The total amount of memory available for caching.
                 This is aggregated across all devices.
             page_size: The number of tokens that will be stored in a single block.
             enable_runtime_checks: Whether to enable runtime correctness checks.
@@ -154,7 +157,7 @@ class PagedKVCacheManager:
         )
 
         # Normalize cache_memory across all devices.
-        cache_memory_per_device = cache_memory // len(devices)
+        cache_memory_per_device = available_cache_memory // len(devices)
 
         # The total number of blocks we'll have per-device.
         self.total_num_pages = int(
@@ -172,7 +175,7 @@ class PagedKVCacheManager:
         single_page_size_bytes_str = to_human_readable_bytes(
             single_page_size_bytes
         )
-        cache_memory_str = to_human_readable_bytes(cache_memory)
+        cache_memory_str = to_human_readable_bytes(available_cache_memory)
         across_x_devices_str = (
             f" across {len(devices)} devices" if len(devices) > 1 else ""
         )
@@ -209,6 +212,13 @@ class PagedKVCacheManager:
 
         # Whether prefix caching is enabled.
         self.enable_prefix_caching = self.params.enable_prefix_caching
+
+        # Watches for requests to reset the prefix cache.
+        self.reset_prefix_cache_backend: ResetPrefixCacheBackend | None = None
+        if zmq_endpoint_base is not None and self.enable_prefix_caching:
+            self.reset_prefix_cache_backend = ResetPrefixCacheBackend(
+                zmq_endpoint_base
+            )
 
         # Whether kvcache swapping to host is enabled
         self.enable_kvcache_swapping_to_host = (
@@ -455,6 +465,10 @@ class PagedKVCacheManager:
 
         if self.block_copy_engine is not None:
             self.block_copy_engine.wait_for_completion()
+
+        if self.reset_prefix_cache_backend is not None:
+            if self.reset_prefix_cache_backend.should_reset_prefix_cache():
+                self.reset_prefix_cache()
 
         max_seq_len = -1
         for batch_idx, ctx in enumerate(batch):  # noqa: B007
@@ -749,6 +763,7 @@ class PagedKVCacheManager:
         else:
             # Standard case: single tensor
             row_offsets = prev_model_inputs.input_row_offsets
+        row_offsets = row_offsets.to(self.devices[0])
 
         updated_cache_lengths = self.increment_cache_lengths_model.execute(
             row_offsets, *cache_lengths
@@ -769,8 +784,19 @@ class PagedKVCacheManager:
             )
         return kv_cache_inputs
 
-    def external_claim(self, request_id: RequestID) -> None:
+    def get_or_recommend_replica(self, _: TextGenerationContext) -> int:
+        """Return idx of the replica that should be used for the given request."""
+        # As there is only one replica, we always return 0
+        return 0
+
+    def external_claim(
+        self, request_id: RequestID, replica_idx: int = 0
+    ) -> None:
         """Reserve a sequence ID for the given request ID."""
+        if replica_idx != 0:
+            raise ValueError(
+                "PagedKVCacheManager does not support multiple replicas"
+            )
         if request_id in self._request_to_seq_id:
             raise ValueError(f"Request ID {request_id} is already claimed")
 
@@ -800,3 +826,42 @@ class PagedKVCacheManager:
 
     def reset_metrics(self) -> None:
         self.block_manager.reset_metrics()
+
+    def reset_prefix_cache(self) -> None:
+        self.block_manager.reset_prefix_cache()
+
+
+ZMQ_RESET_PREFIX_CACHE_ENDPOINT = "reset_prefix_cache"
+
+
+class ResetPrefixCacheBackend:
+    def __init__(self, zmq_endpoint_base: str):
+        self.socket = ZmqPullSocket[None](
+            endpoint=f"{zmq_endpoint_base}-{ZMQ_RESET_PREFIX_CACHE_ENDPOINT}",
+            payload_type=None,
+        )
+
+    def should_reset_prefix_cache(self, blocking: bool = False) -> bool:
+        # If blocking is True, we do not return until we receive a message from
+        # the frontend to reset the prefix cache. Hence, it will always return True.
+        if blocking:
+            get_blocking(self.socket)
+            return True
+
+        # If non-blocking, we return True if there is a message in the queue.
+        try:
+            self.socket.get_nowait()
+            return True
+        except queue.Empty:
+            return False
+
+
+class ResetPrefixCacheFrontend:
+    def __init__(self, zmq_endpoint_base: str):
+        self.socket = ZmqPushSocket[None](
+            endpoint=f"{zmq_endpoint_base}-{ZMQ_RESET_PREFIX_CACHE_ENDPOINT}",
+            payload_type=None,
+        )
+
+    def enqueue_reset_prefix_cache(self) -> None:
+        self.socket.put_nowait(None)

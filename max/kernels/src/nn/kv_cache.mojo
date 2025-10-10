@@ -240,7 +240,7 @@ fn _fused_qkv_matmul_kv_cache_impl[
             )
 
         var valid_len = cache.cache_length(b_idx)
-        var cache_t_idx = t_idx + valid_len
+        var cache_t_idx = t_idx + UInt(valid_len)
         cache.store(
             b_idx,
             h_idx,
@@ -363,11 +363,33 @@ fn generic_fused_qk_rope_bshd_continuous_batch[
         fused_qk_rope[
             kv_collection.CacheType, interleaved=interleaved, target=target
         ](
-            q_proj,
+            LayoutTensor[
+                q_proj.type, Layout.row_major[q_proj.rank](q_proj.shape)
+            ](
+                q_proj.data,
+                RuntimeLayout[
+                    Layout.row_major[q_proj.rank](q_proj.shape)
+                ].row_major(q_proj.get_shape().canonicalize()),
+            ),
             kv_collection,
-            freqs_cis,
+            LayoutTensor[
+                freqs_cis.type,
+                Layout.row_major[freqs_cis.rank](freqs_cis.shape),
+            ](
+                freqs_cis.data,
+                RuntimeLayout[
+                    Layout.row_major[freqs_cis.rank](freqs_cis.shape)
+                ].row_major(freqs_cis.get_shape().canonicalize()),
+            ),
             layer_idx,
-            output,
+            LayoutTensor[
+                output.type, Layout.row_major[output.rank](output.shape)
+            ](
+                output.data,
+                RuntimeLayout[
+                    Layout.row_major[output.rank](output.shape)
+                ].row_major(output.get_shape().canonicalize()),
+            ),
             dev_ctx,
         )
 
@@ -675,7 +697,18 @@ fn _flash_attention_dispatch_materialized_mask[
         score_mod_str,
         _dispatch_flash_attention,
         collection_t.kv_params.num_heads,
-    ](mask_nd)
+    ](
+        LayoutTensor[
+            mask_nd.type,
+            Layout.row_major[mask_nd.rank](mask_nd.shape),
+            MutableAnyOrigin,
+        ](
+            mask_nd.data,
+            RuntimeLayout[
+                Layout.row_major[mask_nd.rank](mask_nd.shape)
+            ].row_major(mask_nd.dynamic_shape.canonicalize()),
+        )
+    )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -764,7 +797,15 @@ def rms_norm_kv_cache_ragged_continuous_batching[
 
         var global_token_idx = idx[0]
         var batch_idx = get_batch_from_row_offsets(
-            input_row_offsets, global_token_idx
+            LayoutTensor[
+                DType.uint32, Layout.row_major[1](input_row_offsets.shape)
+            ](
+                input_row_offsets.data,
+                RuntimeLayout[
+                    Layout.row_major[1](input_row_offsets.shape)
+                ].row_major(input_row_offsets.get_shape().canonicalize()),
+            ),
+            global_token_idx,
         )
         var token_idx = Int(global_token_idx - input_row_offsets[batch_idx])
 
@@ -797,7 +838,15 @@ def rms_norm_kv_cache_ragged_continuous_batching[
     ](idx: IndexList[rank], val: SIMD[dtype, width]) -> None:
         var global_token_idx = idx[0]
         var batch_idx = get_batch_from_row_offsets(
-            input_row_offsets, global_token_idx
+            LayoutTensor[
+                DType.uint32, Layout.row_major[1](input_row_offsets.shape)
+            ](
+                input_row_offsets.data,
+                RuntimeLayout[
+                    Layout.row_major[1](input_row_offsets.shape)
+                ].row_major(input_row_offsets.get_shape().canonicalize()),
+            ),
+            global_token_idx,
         )
         var token_idx = Int(global_token_idx - input_row_offsets[batch_idx])
 
@@ -936,7 +985,15 @@ def rms_norm_kv_cache_ragged_paged[
 
         var global_token_idx = idx[0]
         var batch_idx = get_batch_from_row_offsets(
-            input_row_offsets, global_token_idx
+            LayoutTensor[
+                DType.uint32, Layout.row_major[1](input_row_offsets.shape)
+            ](
+                input_row_offsets.data,
+                RuntimeLayout[
+                    Layout.row_major[1](input_row_offsets.shape)
+                ].row_major(input_row_offsets.get_shape().canonicalize()),
+            ),
+            global_token_idx,
         )
         var token_idx = Int(global_token_idx - input_row_offsets[batch_idx])
 
@@ -969,7 +1026,15 @@ def rms_norm_kv_cache_ragged_paged[
     ](idx: IndexList[rank], val: SIMD[dtype, width]) -> None:
         var global_token_idx = idx[0]
         var batch_idx = get_batch_from_row_offsets(
-            input_row_offsets, global_token_idx
+            LayoutTensor[
+                DType.uint32, Layout.row_major[1](input_row_offsets.shape)
+            ](
+                input_row_offsets.data,
+                RuntimeLayout[
+                    Layout.row_major[1](input_row_offsets.shape)
+                ].row_major(input_row_offsets.get_shape().canonicalize()),
+            ),
+            global_token_idx,
         )
         var token_idx = Int(global_token_idx - input_row_offsets[batch_idx])
 

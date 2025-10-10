@@ -30,11 +30,11 @@ import sys
 import time
 import traceback
 import warnings
-from collections.abc import AsyncGenerator, Awaitable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import aiohttp
@@ -52,17 +52,18 @@ if TYPE_CHECKING:
     from max.diagnostics.gpu import GPUStats
 
 try:
-    from .benchmark_config import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from .benchmark_shared.config import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         ServingBenchmarkConfig,
         parse_benchmark_args,
     )
-    from .benchmark_cpu_metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from .benchmark_shared.cpu_metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         CpuMetricsCollector,
         collect_pids_for_port,
     )
-    from .benchmark_datasets import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from .benchmark_shared.datasets import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         ArxivSummarizationBenchmarkDataset,
         AxolotlBenchmarkDataset,
+        BatchJobBenchmarkDataset,
         BenchmarkDataset,
         ChatSession,
         CodeDebugBenchmarkDataset,
@@ -74,24 +75,29 @@ try:
         SonnetBenchmarkDataset,
         VisionArenaBenchmarkDataset,
     )
-    from .metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from .benchmark_shared.metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         BenchmarkMetrics,
         LoRAMetrics,
         StandardPercentileMetrics,
         ThroughputMetrics,
+    )
+    from .benchmark_shared.server_metrics import (  # type: ignore[import-not-found]
+        fetch_and_parse_metrics,
+        print_server_metrics,
     )
 except ImportError:
-    from benchmark_config import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from benchmark_shared.config import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         ServingBenchmarkConfig,
         parse_benchmark_args,
     )
-    from benchmark_cpu_metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from benchmark_shared.cpu_metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         CpuMetricsCollector,
         collect_pids_for_port,
     )
-    from benchmark_datasets import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from benchmark_shared.datasets import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         ArxivSummarizationBenchmarkDataset,
         AxolotlBenchmarkDataset,
+        BatchJobBenchmarkDataset,
         BenchmarkDataset,
         ChatSession,
         CodeDebugBenchmarkDataset,
@@ -103,11 +109,16 @@ except ImportError:
         SonnetBenchmarkDataset,
         VisionArenaBenchmarkDataset,
     )
-    from metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+    from benchmark_shared.metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         BenchmarkMetrics,
         LoRAMetrics,
         StandardPercentileMetrics,
         ThroughputMetrics,
+    )
+    from benchmark_shared.server_metrics import (
+        compute_metrics_delta,
+        fetch_and_parse_metrics,
+        print_server_metrics,
     )
 
 
@@ -115,10 +126,10 @@ except ImportError:
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=30 * 60)
 
 BENCHMARK_SERVING_ARGPARSER_DESCRIPTION = (
-    "This command runs comprehensive benchmark tests on a model server to measure "
-    "performance metrics including throughput, latency, and resource utilization. "
-    "Make sure that the MAX server is running and hosting a model before running "
-    "this command."
+    "This command runs comprehensive benchmark tests on a model server to"
+    " measure performance metrics including throughput, latency, and resource"
+    " utilization. Make sure that the MAX server is running and hosting a model"
+    " before running this command."
 )
 
 logger = logging.getLogger("benchmark_serving")
@@ -127,7 +138,7 @@ logger = logging.getLogger("benchmark_serving")
 @dataclass
 class RequestFuncInput:
     prompt: str | list[dict[str, Any]]
-    img: OpenAIImage | None
+    images: list[OpenAIImage]
     api_url: str
     prompt_len: int
     max_tokens: int | None
@@ -174,7 +185,8 @@ class RequestCounter:
         async with self.req_counter_lock:
             if self.total_sent_requests >= self.max_requests:
                 logger.warning(
-                    f"Ending run: max requests {self.max_requests} have been sent"
+                    f"Ending run: max requests {self.max_requests} have been"
+                    " sent"
                 )
                 return False
 
@@ -344,7 +356,10 @@ async def async_request_openai_completions(
                                 most_recent_timestamp = timestamp
                                 generated_text += data["choices"][0]["text"]
                     if not has_content:
-                        output.error = "No content returned, there could be an issue with accuracy"
+                        output.error = (
+                            "No content returned, there could be an issue with"
+                            " accuracy"
+                        )
                         output.success = False
                     else:
                         output.generated_text = generated_text
@@ -395,10 +410,10 @@ async def async_request_openai_chat_completions(
         if request_func_input.top_k is not None:
             payload["top_k"] = request_func_input.top_k
 
-        if request_func_input.img:
+        for img in request_func_input.images:
             # TODO: Remove this type ignore
             # (error: Value of type "object" is not indexable)
-            payload["messages"][0]["content"].append(request_func_input.img)  # type: ignore[index]
+            payload["messages"][0]["content"].append(img)  # type: ignore[index]
 
         headers = {
             "Content-Type": "application/json",
@@ -455,7 +470,10 @@ async def async_request_openai_chat_completions(
                             most_recent_timestamp = timestamp
 
                     if not has_content:
-                        output.error = "No content returned, there could be an issue with accuracy"
+                        output.error = (
+                            "No content returned, there could be an issue with"
+                            " accuracy"
+                        )
                         output.success = False
                     else:
                         output.generated_text = generated_text
@@ -553,8 +571,9 @@ def generate_lora_adapter(
             # Validate that module is supported (attention only for now)
             if module not in attn_module_dims:
                 raise ValueError(
-                    f"Unsupported target module '{module}'. "
-                    f"Only attention modules are currently supported: {list(attn_module_dims.keys())}"
+                    f"Unsupported target module '{module}'. Only attention"
+                    " modules are currently supported:"
+                    f" {list(attn_module_dims.keys())}"
                 )
 
             # Get the output dimension for this module type
@@ -653,7 +672,8 @@ async def async_request_lora_load(
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
                 if response.status == 200:
                     logger.debug(
-                        f"Successfully loaded LoRA '{lora_name}' in {elapsed_ms:.2f}ms"
+                        f"Successfully loaded LoRA '{lora_name}' in"
+                        f" {elapsed_ms:.2f}ms"
                     )
                     return True, elapsed_ms
                 else:
@@ -690,7 +710,8 @@ async def async_request_lora_unload(
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
                 if response.status == 200:
                     logger.debug(
-                        f"Successfully unloaded LoRA '{lora_name}' in {elapsed_ms:.2f}ms"
+                        f"Successfully unloaded LoRA '{lora_name}' in"
+                        f" {elapsed_ms:.2f}ms"
                     )
                     return True, elapsed_ms
                 else:
@@ -1075,7 +1096,7 @@ async def chat_session_driver(
         prompt_len=0,
         max_tokens=0,
         ignore_eos=True,
-        img=None,
+        images=[],
         session_id=str(chat_session.id),
     )
     content_idx = 0  # Assume user initiates the conversation
@@ -1119,7 +1140,8 @@ async def chat_session_driver(
         if not response.success:
             if not response.cancelled:
                 logger.error(
-                    f"Ending chat session {chat_session.id} due to server error response: {response.error}"
+                    f"Ending chat session {chat_session.id} due to server error"
+                    f" response: {response.error}"
                 )
             break
 
@@ -1144,7 +1166,7 @@ async def chat_session_driver(
     return session_outputs
 
 
-async def benchmark(
+async def benchmark(  # noqa: ANN201
     backend: str,
     chat: bool,
     api_url: str,
@@ -1160,6 +1182,7 @@ async def benchmark(
     do_test_prompt: bool,
     collect_gpu_stats: bool,
     collect_cpu_stats: bool,
+    collect_server_stats: bool,
     print_inputs_and_outputs: bool,
     max_requests: int,
     num_chat_sessions: int | None,
@@ -1179,7 +1202,9 @@ async def benchmark(
 ):
     if ignore_first_turn_stats and skip_first_n_requests:
         logger.warning(
-            "--ignore-first-turn-stats and --skip-first-n-requests both set. Ignoring --skip-first-n-requests due to first turn in each chat already being ignored."
+            "--ignore-first-turn-stats and --skip-first-n-requests both set."
+            " Ignoring --skip-first-n-requests due to first turn in each chat"
+            " already being ignored."
         )
         skip_first_n_requests = 0
 
@@ -1230,7 +1255,7 @@ async def benchmark(
             test_prompt_len = test_question.num_tokens
             test_max_tokens: int | None = test_answer.num_tokens
             test_ignore_eos = True
-            test_img = None
+            test_images = []
         else:
             test_request = input_requests[0]
             test_prompt = test_request.prompt_formatted
@@ -1238,8 +1263,8 @@ async def benchmark(
             test_max_tokens = min_ignore_none(
                 (test_request.output_len, max_output_len)
             )
-            test_ignore_eos = test_request.output_len is not None
-            test_img = test_request.encoded_img
+            test_ignore_eos = test_request.ignore_eos
+            test_images = test_request.encoded_images
 
         test_input = RequestFuncInput(
             model=model_id,
@@ -1248,7 +1273,7 @@ async def benchmark(
             prompt_len=test_prompt_len,
             max_tokens=test_max_tokens,
             ignore_eos=test_ignore_eos,
-            img=test_img,
+            images=test_images,
             top_k=top_k,
         )
         test_output = await request_func(
@@ -1287,7 +1312,8 @@ async def benchmark(
                 from max.diagnostics.gpu import BackgroundRecorder
             except ImportError:
                 logger.warning(
-                    "max.diagnostics not available, skipping GPU stats collection"
+                    "max.diagnostics not available, skipping GPU stats"
+                    " collection"
                 )
             else:
                 gpu_recorder = benchmark_stack.enter_context(
@@ -1304,7 +1330,8 @@ async def benchmark(
                 cpu_collector.start()
             except:
                 logger.warning(
-                    "Cannot access max-serve PIDs, skipping CPU stats collection"
+                    "Cannot access max-serve PIDs, skipping CPU stats"
+                    " collection"
                 )
 
         benchmark_start_time = time.perf_counter_ns()
@@ -1314,6 +1341,21 @@ async def benchmark(
             benchmark_should_end_time = (
                 benchmark_start_time + max_benchmark_duration_s * 1e9
             )
+
+        # Capture baseline server metrics before benchmark starts
+        baseline_server_metrics = None
+        if collect_server_stats:
+            try:
+                baseline_server_metrics = fetch_and_parse_metrics(
+                    backend=full_backend,
+                    base_url=base_url,
+                )
+                logger.info("Captured baseline server metrics")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to capture baseline server metrics: {e}"
+                )
+
         tasks: list[asyncio.Task] = []  # type: ignore[type-arg, unused-ignore]
         outputs: list[RequestFuncOutput] = []
         if not num_chat_sessions:
@@ -1345,14 +1387,9 @@ async def benchmark(
                     if time.perf_counter_ns() >= benchmark_should_end_time:
                         break
 
-                # If the request length is pinned, then we use ignore_eos+max_tokens
-                # to force the model's hand into the given request length. Otherwise,
-                # we run until the model generates EOS. Letting the model choose
-                # request lengths has some downsides (e.g., benchmarking is
-                # vulnerable to correctness bugs or even minor optimizations), but
-                # sometimes necessary if we have no other way to set the appropriate
-                # distribution of output lengths.
-                ignore_eos = request.output_len is not None
+                # Use the ignore_eos setting from the dataset.
+                # Each dataset determines whether to respect EOS based on its own logic.
+                ignore_eos = request.ignore_eos
                 max_tokens = min_ignore_none(
                     (request.output_len, max_output_len)
                 )
@@ -1371,7 +1408,7 @@ async def benchmark(
                     top_p=top_p,
                     top_k=top_k,
                     ignore_eos=ignore_eos,
-                    img=request.encoded_img,
+                    images=request.encoded_images,
                 )
                 tasks.append(
                     asyncio.create_task(
@@ -1379,7 +1416,6 @@ async def benchmark(
                     )
                 )
             outputs = await asyncio.gather(*tasks)
-
         else:
             # multi-turn chat scenario
             if disable_tqdm:
@@ -1497,6 +1533,37 @@ async def benchmark(
         cpu_metrics = cpu_collector.dump_stats()
     else:
         cpu_metrics = {}
+
+    # Parse server-side metrics from Prometheus endpoint
+    server_metrics = None
+    if collect_server_stats:
+        try:
+            final_server_metrics = fetch_and_parse_metrics(
+                backend=full_backend,
+                base_url=base_url,
+            )
+
+            # Compute delta if we have baseline metrics
+            if baseline_server_metrics is not None:
+                server_metrics = compute_metrics_delta(
+                    baseline=baseline_server_metrics,
+                    final=final_server_metrics,
+                )
+                logger.info(
+                    f"Computed server metrics delta: {len(server_metrics.counters)} counters, "
+                    f"{len(server_metrics.gauges)} gauges, "
+                    f"{len(server_metrics.histograms)} histograms"
+                )
+            else:
+                # If no baseline, use final metrics as-is
+                server_metrics = final_server_metrics
+                logger.info(
+                    f"Collected {len(server_metrics.counters)} counters, "
+                    f"{len(server_metrics.gauges)} gauges, "
+                    f"{len(server_metrics.histograms)} histograms from server"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to parse server metrics: {e}")
 
     metrics, actual_output_lens = calculate_metrics(
         outputs=outputs,
@@ -1696,6 +1763,10 @@ async def benchmark(
 
         print("=" * 50)
 
+    # Print server-side metrics if available
+    if server_metrics:
+        print_server_metrics(server_metrics)
+
     result = {
         "duration": benchmark_duration,
         "completed": metrics.completed,
@@ -1758,6 +1829,22 @@ async def benchmark(
             "total_unloads": lora_metrics.total_unloads,
             "load_times_ms": lora_metrics.load_times_ms,
             "unload_times_ms": lora_metrics.unload_times_ms,
+        }
+
+    # Add server-side metrics to result if available
+    if server_metrics:
+        result["server_metrics"] = {
+            "counters": server_metrics.counters,
+            "gauges": server_metrics.gauges,
+            "histograms": {
+                name: {
+                    "buckets": hist.buckets,
+                    "sum": hist.sum,
+                    "count": hist.count,
+                    "mean": hist.mean,
+                }
+                for name, hist in server_metrics.histograms.items()
+            },
         }
 
     return result
@@ -1844,7 +1931,8 @@ def main(args: argparse.Namespace) -> None:
         if args.num_chat_sessions:
             if args.output_lengths is not None:
                 raise NotImplementedError(
-                    "TODO: Add support for fixed output lengths with multi-turn code-debug"
+                    "TODO: Add support for fixed output lengths with multi-turn"
+                    " code-debug"
                 )
             chat_sessions = benchmark_dataset.gen_twoturn_longcontext_requests(
                 num_chat_sessions=args.num_chat_sessions,
@@ -1893,7 +1981,8 @@ def main(args: argparse.Namespace) -> None:
     elif isinstance(benchmark_dataset, ArxivSummarizationBenchmarkDataset):
         if output_lengths:
             ValueError(
-                "Arxiv summarization dataset does not support --output-lengths. Please use --max-output-len"
+                "Arxiv summarization dataset does not support --output-lengths."
+                " Please use --max-output-len"
             )
         input_requests = benchmark_dataset.sample_requests(
             num_requests=args.num_prompts,
@@ -1927,6 +2016,7 @@ def main(args: argparse.Namespace) -> None:
                 max_num_unique_sys_prompt=args.random_max_num_unique_sys_prompt,
                 distribution_type=args.random_distribution_type,
                 image_size=args.random_image_size,
+                image_count=args.random_image_count,
             )
     elif isinstance(benchmark_dataset, AxolotlBenchmarkDataset):
         input_requests = benchmark_dataset.sample_requests(
@@ -1959,6 +2049,16 @@ def main(args: argparse.Namespace) -> None:
             shuffle=args.obfuscated_conversations_shuffle,
             seed=args.seed,
         )
+    elif isinstance(benchmark_dataset, BatchJobBenchmarkDataset):
+        input_requests = benchmark_dataset.sample_requests(
+            num_requests=args.num_prompts,
+            tokenizer=tokenizer,
+            output_lengths=output_lengths,
+            shuffle=(
+                args.output_lengths is None and not args.record_output_lengths
+            ),
+            image_dir=args.batch_job_image_dir,
+        )
     else:
         raise ValueError(f"Unknown / unsupported dataset: {benchmark_dataset}")
 
@@ -1976,7 +2076,7 @@ def main(args: argparse.Namespace) -> None:
                     "output_len": request.output_len,
                     "prompt_len": request.prompt_len,
                     "prompt": request.prompt_formatted,
-                    "encoded_img": request.encoded_img,
+                    "encoded_images": request.encoded_images,
                 }
             )
 
@@ -1992,6 +2092,21 @@ def main(args: argparse.Namespace) -> None:
             args.lora_output_dir,
             args.lora_server_path,
         )
+
+    if args.max_concurrency is not None:
+        try:
+            args.max_concurrency = int(args.max_concurrency)
+        except ValueError as e:
+            raise ValueError(
+                f"Expected a single integer value for max_concurrency, got {args.max_concurrency}"
+            ) from e
+    if args.request_rate is not None:
+        try:
+            args.request_rate = float(args.request_rate)
+        except ValueError as e:
+            raise ValueError(
+                f"Expected a single float value for request_rate, got {args.request_rate}"
+            ) from e
 
     logger.info("starting benchmark run")
     benchmark_result = asyncio.run(
@@ -2011,6 +2126,7 @@ def main(args: argparse.Namespace) -> None:
             do_test_prompt=not args.skip_test_prompt,
             collect_gpu_stats=args.collect_gpu_stats,
             collect_cpu_stats=args.collect_cpu_stats,
+            collect_server_stats=args.collect_server_stats,
             print_inputs_and_outputs=args.print_inputs_and_outputs,
             max_requests=args.num_prompts,
             num_chat_sessions=args.num_chat_sessions,

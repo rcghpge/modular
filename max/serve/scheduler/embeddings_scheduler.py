@@ -19,12 +19,14 @@ from max.interfaces import (
     EmbeddingsGenerationContextType,
     EmbeddingsGenerationInputs,
     EmbeddingsGenerationOutput,
+    InputContext,
     MAXPullQueue,
     MAXPushQueue,
     RequestID,
     Scheduler,
     SchedulerResult,
 )
+from max.interfaces.queue import BackgroundQueueDrainer
 from max.pipelines.lib import EmbeddingsPipelineType
 from max.profiler import traced
 
@@ -51,12 +53,24 @@ class EmbeddingsScheduler(Scheduler):
             dict[RequestID, SchedulerResult[EmbeddingsGenerationOutput]]
         ],
         cancel_queue: MAXPullQueue[list[RequestID]],
+        offload_queue_draining: bool = False,
     ) -> None:
         self.scheduler_config = scheduler_config
         self.pipeline = pipeline
         self.request_queue = request_queue
         self.response_queue = response_queue
         self.cancel_queue = cancel_queue
+
+        # We are parameterizing the offload of queue draining to allow for
+        # the use case where we want to drain the queue in the main thread.
+        # This is useful for debugging and testing purposes.
+        self._queue_drainer: BackgroundQueueDrainer[InputContext] | None = None
+        if offload_queue_draining:
+            # Initialize the background queue drainer
+            self._queue_drainer = BackgroundQueueDrainer[InputContext](
+                self.request_queue,
+                max_items_per_drain=self.scheduler_config.max_batch_size * 2,
+            )
 
     @traced
     def _create_batch_to_execute(
@@ -65,14 +79,33 @@ class EmbeddingsScheduler(Scheduler):
         max_batch_size_to_create = self.scheduler_config.max_batch_size
 
         batch: dict[RequestID, EmbeddingsGenerationContextType] = {}
-        try:
-            while max_batch_size_to_create > 0:
-                data = self.request_queue.get_nowait()
-                req_id = data.request_id
-                batch[req_id] = data
-                max_batch_size_to_create -= 1
-        except queue.Empty:
-            pass
+
+        if self._queue_drainer is not None:
+            # Start draining the queue in the background
+            self._queue_drainer.start_draining()
+
+            # Process items from the drainer
+            while True:
+                if len(batch) < max_batch_size_to_create:
+                    try:
+                        item = self._queue_drainer.retrieve_item()
+                        batch[item.request_id] = item
+                    except queue.Empty:
+                        break
+                else:
+                    break
+        else:
+            # Synchronous draining
+            while True:
+                if len(batch) >= max_batch_size_to_create:
+                    break
+
+                try:
+                    item = self.request_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+                batch[item.request_id] = item
 
         return batch
 

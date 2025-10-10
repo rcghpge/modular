@@ -15,7 +15,7 @@ from collections import Set
 
 from testing import assert_equal as AE
 from testing import assert_false, assert_raises, assert_true
-from test_utils import TestSuite
+from testing import TestSuite
 
 
 fn assert_equal[T: EqualityComparable](lhs: T, rhs: T) raises:
@@ -515,16 +515,6 @@ def test_set_str():
     AE(Set[Int]().__str__(), "{}")
 
 
-fn test[name: String, test_fn: fn () raises]() raises:
-    print("Test", name, "...", end="")
-    try:
-        _ = test_fn()
-    except e:
-        print("FAIL")
-        raise e
-    print("PASS")
-
-
 def test_set_comprehension():
     var s1 = {x * x for x in range(10) if x & 1}
     assert_equal(s1, {1, 9, 25, 49, 81})
@@ -549,6 +539,7 @@ def main():
 
     suite.test[test_set_construction]()
     suite.test[test_set_move]()
+    suite.test[test_set_copy]()
     suite.test[test_len]()
     suite.test[test_in]()
     suite.test[test_equal]()

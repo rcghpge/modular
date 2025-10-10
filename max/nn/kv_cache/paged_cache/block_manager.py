@@ -242,7 +242,6 @@ class BlockManager:
             assert ctx.start_idx > orig_start_idx
             orig_start_idx = ctx.start_idx
 
-    @traced
     def _get_full_blocks_from_device_prefix_cache(
         self,
         desired_hashes: list[int],
@@ -542,6 +541,13 @@ class BlockManager:
         """Get the block ids for a request."""
         return [block.bid for block in self.req_to_blocks[request_id]]
 
+    @traced
+    def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache."""
+        self.device_block_pool.reset_prefix_cache()
+        if self.host_block_pool is not None:
+            self.host_block_pool.reset_prefix_cache()
+
     @property
     def metrics(self) -> KVCacheMetrics:
         return copy.copy(self._metrics)
@@ -584,5 +590,5 @@ class BlockManager:
         assert num_committed == num_committed_blocks
 
         # Check that the req block hashes are consistent with req blocks
-        for hash_value, block in zip(req_hashes, req_blocks):
+        for hash_value, block in zip(req_hashes, req_blocks, strict=False):
             assert block.block_hash is None or block.block_hash == hash_value

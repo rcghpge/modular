@@ -42,6 +42,16 @@ Literals now have a default type. For example, you can now bind
 
 - `memcpy` and `parallel_memcpy` without keyword arguments are deprecated.
 
+- The `math` package now has a mojo native implementation of `acos`, `asin`,
+  `cbrt`, and `erfc`.
+
+- Added support for NVIDIA GeForce GTX 970.
+
+- Added support for NVIDIA Jetson Thor.
+
+- `Optional` now conforms to `Iterable` and `Iterator` acting as a collection of
+  size 1 or 0.
+
 ### Tooling changes
 
 - Error messages now preserve symbolic calls to `always_inline("builtin")`

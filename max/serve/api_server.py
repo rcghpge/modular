@@ -25,6 +25,7 @@ from typing import Any
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from max.interfaces import PipelinesFactory, PipelineTask, PipelineTokenizer
+from max.nn.kv_cache.paged_cache import ResetPrefixCacheFrontend
 from max.pipelines.lib import PipelineConfig
 from max.serve.config import APIType, MetricRecordingMethod, Settings
 from max.serve.pipelines.llm import (
@@ -52,7 +53,7 @@ ROUTES = {
 logger = logging.getLogger("max.serve")
 
 
-def validate_port_is_free(port: int):
+def validate_port_is_free(port: int):  # noqa: ANN201
     # check if port is already in use
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         try:
@@ -67,14 +68,14 @@ def validate_port_is_free(port: int):
 @dataclass(frozen=True)
 class ServingTokenGeneratorSettings:
     # Pipeline config
-    model_factory: PipelinesFactory
+    model_factory: PipelinesFactory  # type: ignore
     pipeline_config: PipelineConfig
     tokenizer: PipelineTokenizer[Any, Any, Any]
     pipeline_task: PipelineTask = PipelineTask.TEXT_GENERATION
 
 
 @asynccontextmanager
-async def lifespan(
+async def lifespan(  # noqa: ANN201
     app: FastAPI,
     settings: Settings,
     serving_settings: ServingTokenGeneratorSettings,
@@ -170,7 +171,7 @@ async def lifespan(
         logger.debug("start_model_worker has completed")
 
 
-def version():
+def version():  # noqa: ANN201
     """Returns max-serve version information."""
     from importlib.metadata import PackageNotFoundError, version
 
@@ -187,7 +188,7 @@ async def health() -> Response:
     return Response(status_code=200)
 
 
-def make_metrics_app():
+def make_metrics_app():  # noqa: ANN201
     from prometheus_client import disable_created_metrics, make_asgi_app
 
     disable_created_metrics()
@@ -223,6 +224,25 @@ def fastapi_app(
 
     app.add_api_route("/version", version)
     app.add_api_route("/health", health)
+
+    reset_prefix_cache_frontend = ResetPrefixCacheFrontend(
+        serving_settings.pipeline_config.zmq_endpoint_base
+    )
+
+    async def reset_prefix_cache() -> Response:
+        """Reset the prefix cache."""
+        if not serving_settings.pipeline_config.model_config.kv_cache_config.enable_prefix_caching:
+            return Response(
+                status_code=400,
+                content="Prefix caching is not enabled. Ignoring request",
+            )
+
+        reset_prefix_cache_frontend.enqueue_reset_prefix_cache()
+        return Response(status_code=200, content="Success")
+
+    app.add_api_route(
+        "/reset_prefix_cache", reset_prefix_cache, methods=["POST"]
+    )
 
     for api_type in settings.api_types:
         app.include_router(ROUTES[api_type].router)

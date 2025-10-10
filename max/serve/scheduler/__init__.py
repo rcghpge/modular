@@ -45,11 +45,6 @@ from .audio_generation_scheduler import (
 from .base import CancelRequest, PrefillRequest, PrefillResponse
 from .decode_scheduler import load_decode_scheduler
 from .embeddings_scheduler import EmbeddingsScheduler, EmbeddingsSchedulerConfig
-from .lora_scheduler_utils import (
-    can_allocate_lora_request,
-    is_active_lora,
-    is_lora,
-)
 from .prefill_scheduler import load_prefill_scheduler
 from .text_generation_scheduler import load_text_generation_scheduler
 
@@ -93,6 +88,7 @@ def load_scheduler(
             ),
             response_queue=response_queue,
             cancel_queue=cancel_queue,
+            offload_queue_draining=pipeline_config.experimental_background_queue,
         )
     elif pipeline.__class__.__name__ == "AudioGeneratorPipeline":
         assert hasattr(pipeline, "speech_lm_pipeline")
@@ -126,6 +122,7 @@ def load_scheduler(
             response_queue=response_queue,
             cancel_queue=cancel_queue,
             paged_manager=paged_manager,
+            offload_queue_draining=pipeline_config.experimental_background_queue,
         )
     elif pipeline_config.pipeline_role == PipelineRole.PrefillAndDecode:
         assert isinstance(pipeline, Pipeline)

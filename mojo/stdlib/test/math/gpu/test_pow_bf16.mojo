@@ -17,7 +17,7 @@ from algorithm.functional import elementwise
 from buffer import NDBuffer
 from gpu import *
 from gpu.host import DeviceContext, get_gpu_target
-from testing import assert_almost_equal
+from testing import assert_almost_equal, TestSuite
 
 from utils import Index, IndexList
 
@@ -62,11 +62,11 @@ def run_elementwise[do_bfloat_exp: Bool](exponent: Int, ctx: DeviceContext):
 
     with in_device.map_to_host() as in_host, out_device.map_to_host() as out_host:
         for i in range(length):
-            var expected_value: Scalar[DType.float32]
+            var expected_value: Float32
 
             @parameter
             if do_bfloat_exp:
-                expected_value = in_host[i] ** Scalar[DType.float32](exponent)
+                expected_value = in_host[i] ** Float32(exponent)
             else:
                 expected_value = in_host[i] ** exponent
 
@@ -79,7 +79,7 @@ def run_elementwise[do_bfloat_exp: Bool](exponent: Int, ctx: DeviceContext):
             )
 
 
-def main():
+def test_pow_bf16():
     with DeviceContext() as ctx:
         run_elementwise[False](-1, ctx)
         run_elementwise[False](2, ctx)
@@ -90,3 +90,11 @@ def main():
         run_elementwise[True](3, ctx)
         run_elementwise[True](5, ctx)
         run_elementwise[True](6, ctx)
+
+
+def main():
+    var suite = TestSuite()
+
+    suite.test[test_pow_bf16]()
+
+    suite^.run()
