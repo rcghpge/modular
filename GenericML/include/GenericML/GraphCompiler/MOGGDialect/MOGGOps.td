@@ -1679,7 +1679,8 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   let arguments = (ins MGP_DeviceBufferType:$buffer,
                        Variadic<AnyInteger>:$dims,
                        BoolAttr:$mut,
-                       MOGG_IOKind:$io
+                       MOGG_IOKind:$io,
+                       BoolAttr:$exclusive
                   );
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
 

@@ -1157,9 +1157,15 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       IOKind io = (idx < endOfInputArguments) ? IOKind::Input : IOKind::Output;
       bool mut = idx >= endOfInputArguments ||
                  isa<MO::BufferType>(stubArgument.getType());
+      // Exclusive is True unless it's used by a view kernel.
+      bool isExclusive =
+          llvm::none_of(stubArgument.getUsers(), [](Operation *use) {
+            return isa<MOGG::CallViewOp>(use);
+          });
       auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
           loc, stubArgument.getType(), regionArgument, *dynamicDimensionsOr,
-          BoolAttr::get(ctx, mut), IOKindAttr::get(ctx, io));
+          BoolAttr::get(ctx, mut), IOKindAttr::get(ctx, io),
+          BoolAttr::get(ctx, isExclusive));
       stubCallOperands.emplace_back(tensorInitOp);
     } else {
       emitError("Type not yet support in the lowering");
@@ -1253,7 +1259,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Value emptyTensor = builder.create<MOGG::TensorInitOp>(
         loc, fusedOutput.getType(), emptyBuffer, *dynamicDimensionsOr,
         /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/IOKindAttr::get(ctx, IOKind::Input));
+        /*io=*/IOKindAttr::get(ctx, IOKind::Input),
+        /*exclusive=*/BoolAttr::get(ctx, true));
 
     // Then make the substitution with the original input.
     auto substituteOp = builder.create<MOGG::BindToOp>(
@@ -1265,6 +1272,12 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   };
 
   auto lowerConstantOp = [&](MO::ConstantOp constantOp) {
+    // Exclusive is True unless it's used by a view kernel.
+    bool isExclusive =
+        llvm::none_of(constantOp.getResult().getUsers(), [](Operation *use) {
+          return isa<MOGG::CallViewOp>(use);
+        });
+
     builder.setInsertionPoint(constantOp);
     Value bufferValue =
         builder
@@ -1276,7 +1289,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         loc, constantOp.getResult().getType(), bufferValue,
         /*dynamicDimensions=*/ArrayRef<Value>{},
         /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/IOKindAttr::get(ctx, IOKind::Input));
+        /*io=*/IOKindAttr::get(ctx, IOKind::Input),
+        BoolAttr::get(ctx, isExclusive));
     constantOp.getResult().replaceAllUsesWith(constantValue);
     constantOp->erase();
   };
@@ -3249,6 +3263,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   auto tensorTy = MO::dynCastFromTensorLike(getType());
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
   auto mutParam = getMut();
+  auto exclusiveParam = getExclusive();
   auto ioParam = MojoValue(HardcodedMojoSymbols::struct_IO)
                      .get(MOGG::stringifyIOKind(getIo()));
   MojoValue rankParam =
@@ -3263,11 +3278,11 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       state.getShapeAsIndexListMojoValue(tensorTy, getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.setMojoValueFor(getResult(),
-                        state.builder.var(moggTensorInit(
-                            {dTypeParam, rankParam, mutParam, ioParam,
-                             shapeParam, stridesParam, alignmentParam},
-                            {state.getMojoValueFor(getBuffer()), shapeVar})));
+  state.setMojoValueFor(
+      getResult(), state.builder.var(moggTensorInit(
+                       {dTypeParam, rankParam, mutParam, ioParam, shapeParam,
+                        stridesParam, alignmentParam, exclusiveParam},
+                       {state.getMojoValueFor(getBuffer()), shapeVar})));
 
   return success();
 }
