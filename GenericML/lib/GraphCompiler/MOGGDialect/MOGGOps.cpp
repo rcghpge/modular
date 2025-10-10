@@ -702,10 +702,41 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   MojoValue rebindOutput = state.getReboundOutputTensorFor(getOutput());
 
   // Infer the kernel parameters.
+
+  // Figure out the simd_width of the foreach kernel (depending on the tensor
+  // dtypes). First collect all dtypes used in the kernel.
+  llvm::SmallSetVector<DType, 4> allTensorDtypes;
+  auto lambdaOp = cast<MOGG::BindLambdaOp>(getInput().getDefiningOp());
+  lambdaOp.getBody()->walk([&](Operation *op) {
+    for (Type t :
+         llvm::concat<Type>(op->getOperandTypes(), op->getResultTypes())) {
+      ErrorOr<DType> dTypeOr = M::MO::fromMLIRType(t);
+      if (!dTypeOr.isError())
+        allTensorDtypes.insert(*dTypeOr);
+    }
+  });
+
+  // Now call mojo primitives to figure out the width from the dtypes.
+  llvm::SmallVector<MojoValue> allDtypeMojoParams;
+  for (DType dtype : allTensorDtypes)
+    allDtypeMojoParams.push_back(state.mlirDTypeToMojoType(dtype));
+  MojoValue paramsDtypesTuple = MojoValue(
+      HardcodedMojoSymbols::struct_StaticTuple)[{
+      HardcodedMojoSymbols::struct_DType,
+      MojoValue(int64_t(allDtypeMojoParams.size()))}]({}, allDtypeMojoParams);
+  MojoValue targetMojoParam =
+      MojoValue(MO::getDeviceOrDefaultAny(*this).getLabel()).quote();
+  MojoValue widthMojoParam =
+      MojoValue(HardcodedMojoSymbols::func_get_simd_width_for_dtypes)(
+          {paramsDtypesTuple, targetMojoParam});
+
   static const StringLiteral foreachBodyLambdaParamName = "func";
+  static const StringLiteral foreachSimdWidthParamName = "simd_width";
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     if (paramName == foreachBodyLambdaParamName)
       return bodyLambdaParam;
+    if (paramName == foreachSimdWidthParamName)
+      return widthMojoParam;
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =

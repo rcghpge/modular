@@ -41,6 +41,7 @@ constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
 constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
+constexpr StringLiteral struct_StaticTuple = "StaticTuple";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 
@@ -62,6 +63,8 @@ constexpr StringLiteral func_reshape_contiguous_buffer =
     "MOGGPrimitives.reshape_contiguous_buffer_v2";
 constexpr StringLiteral func_unpack_tensor_spec =
     "MOGGPrimitives.unpack_tensor_spec";
+constexpr StringLiteral func_get_simd_width_for_dtypes =
+    "MOGGPrimitives.get_simd_width_for_dtypes";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
