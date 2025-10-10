@@ -21,11 +21,7 @@ def MGP_TensorTypeInterface : TypeInterface<"MGPTensorTypeInterface"> {
   let cppNamespace = "::M::MGP";
   let methods = [
     InterfaceMethod<
-      "Get the tensor spec", "::M::MGP::TensorSpecType", "getTensorSpec", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_type.getTensorSpec();
-      }]
+      "Get the tensor spec", "::M::MGP::TensorSpecType", "getTensorSpec", (ins), "return $_type.getTensorSpec();"
     >
   ];
 }

@@ -69,19 +69,12 @@ def MGP_LiftableBufferCreateOpInterface : OpInterface<"MGPLiftableBufferCreateOp
     InterfaceMethod<
       "Returns the buffer created by the liftable op, or null if op is not liftable.",
       "mlir::Value", "getOutBuffer", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op->getNumResults() == 1 ? $_op->getResult(0) : nullptr;
-      }]
+      "return $_op->getNumResults() == 1 ? $_op->getResult(0) : nullptr;"
     >,
     InterfaceMethod<
       "Returns true if the op is 'trivial', in the sense that the op latency is "
       "comparable to that of retrieving a buffer from an `!mgp.context` slot.",
-      "bool", "isTrivial", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return false;
-      }]
+      "bool", "isTrivial", (ins), "", "return false;"
     >,
   ];
 }
@@ -102,10 +95,7 @@ def MGP_LiftableChainCreateOpInterface : OpInterface<"MGPLiftableChainCreateOpIn
     InterfaceMethod<
       "Returns the chain created by the liftable op, or null if op is not liftable.",
       "mlir::Value", "getOutChain", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op->getNumResults() == 1 ? $_op->getResult(0) : nullptr;
-      }]
+      "return $_op->getNumResults() == 1 ? $_op->getResult(0) : nullptr;"
     >,
   ];
 }
@@ -184,35 +174,19 @@ def MGP_TensorExtractOpInterface : OpInterface<"MGPTensorExtractOpInterface"> {
   let methods = [
     InterfaceMethod<
       "Get the resulting buffer",
-      "::mlir::Value", "getBufferResult", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getBufferResult();
-      }]
+      "::mlir::Value", "getBufferResult", (ins), "return $_op.getBufferResult();"
     >,
     InterfaceMethod<
       "Get the resulting tensor spec",
-      "::mlir::Value", "getTensorSpecResult", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getTensorSpecResult();
-      }]
+      "::mlir::Value", "getTensorSpecResult", (ins), "return $_op.getTensorSpecResult();"
     >,
     InterfaceMethod<
       "Get the input tensor",
-      "::mlir::Value", "getTensor", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getTensor();
-      }]
+      "::mlir::Value", "getTensor", (ins), "return $_op.getTensor();"
     >,
     InterfaceMethod<
       "Get the input tensor as a mutable operand",
-      "::mlir::OpOperand&", "getTensorMutable", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getTensorMutable();
-      }]
+      "::mlir::OpOperand&", "getTensorMutable", (ins), "return $_op.getTensorMutable();"
     >
   ];
 }
@@ -225,35 +199,19 @@ def MGP_CreateTensorOpInterface : OpInterface<"MGPCreateTensorOpInterface"> {
   let methods = [
     InterfaceMethod<
       "Get the input buffer",
-      "::mlir::Value", "getBuffer", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getBuffer();
-      }]
+      "::mlir::Value", "getBuffer", (ins), "return $_op.getBuffer();"
     >,
     InterfaceMethod<
       "Get the input chain",
-      "::mlir::Value", "getInChain", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getInChain();
-      }]
+      "::mlir::Value", "getInChain", (ins), "return $_op.getInChain();"
     >,
     InterfaceMethod<
       "Get the input tensor spec",
-      "::mlir::Value", "getTensorSpec", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getTensorSpec();
-      }]
+      "::mlir::Value", "getTensorSpec", (ins), "return $_op.getTensorSpec();"
     >,
     InterfaceMethod<
       "Get the output tensor",
-      "::mlir::Value", "getResult", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op->getResult(0);
-      }]
+      "::mlir::Value", "getResult", (ins), "return $_op.getResult();"
     >
   ];
 }
@@ -266,19 +224,11 @@ def MGP_BufferUnsizeOpInterface : OpInterface<"MGPBufferUnsizeOpInterface"> {
   let methods = [
     InterfaceMethod<
       "Get the input buffer",
-      "::mlir::Value", "getInBufferValue", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getInBuffer();
-      }]
+      "::mlir::Value", "getInBufferValue", (ins), "return $_op.getInBuffer();"
     >,
     InterfaceMethod<
       "Get the output buffer",
-      "::mlir::Value", "getOutBufferValue", (ins),
-      /*methodBody=*/[{}],
-      /*defaultImplementation=*/[{
-        return $_op.getOutBuffer();
-      }]
+      "::mlir::Value", "getOutBufferValue", (ins), "return $_op.getOutBuffer();"
     >,
   ];
 }
