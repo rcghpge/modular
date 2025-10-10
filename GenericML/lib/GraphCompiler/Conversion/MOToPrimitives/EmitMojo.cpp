@@ -27,31 +27,42 @@ namespace M::MGP {
 
 namespace {
 
-StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
-                                        MOGG::EmitMojoState &state,
-                                        OpBuilder &builder) {
+// Helper to create a kernel wrapper function with a given body
+using KernelBodyBuilder = llvm::function_ref<void(const MOGG::FunctionBody &)>;
+
+std::string createKernelWrapper(MOGG::EmitMojoState &state,
+                                KernelBodyBuilder bodyBuilder) {
   static const MOGG::MojoValue vUnsafePointer =
       MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
   static const MOGG::MojoValue vOpaquePointer =
       MOGG::HardcodedMojoSymbols::alias_OpaquePointer;
 
   static constexpr StringLiteral baseKernelName = "kernel_wrapper";
-  // Just a static local var should be fine for now, but if we ever parallelize
-  // this function we should change this.
   static int fooIdx = 0;
 
-  auto skernelName = llvm::formatv("{}_{}", baseKernelName, fooIdx++).str();
-  StringRef kernelName = skernelName;
+  std::string kernelName =
+      llvm::formatv("{}_{}", baseKernelName, fooIdx++).str();
 
+  state.builder.fn(StringRef(kernelName), {},
+                   {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
+                    MOGG::NamedMojoDef("arg", vOpaquePointer)},
+                   std::nullopt, true, false,
+                   [&](const MOGG::FunctionBody &functionBody) {
+                     bodyBuilder(functionBody);
+                   });
+
+  return kernelName;
+}
+
+StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
+                                        MOGG::EmitMojoState &state,
+                                        OpBuilder &builder) {
   // Clear any previous kernel's return values from the state
   state.mojoReturnValues.clear();
 
   bool errOccurred = false;
-  state.builder.fn(
-      kernelName, {},
-      {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
-       MOGG::NamedMojoDef("arg", vOpaquePointer)},
-      std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
+  std::string kernelName =
+      createKernelWrapper(state, [&](const MOGG::FunctionBody &functionBody) {
         state.builder.comment(
             "This is the entry point of the kernel. The first argument is a "
             "pointer to a list of inputs and outputs. The second is a pointer "
