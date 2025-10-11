@@ -145,8 +145,9 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
     driver->GetErrorString(err, &errStr);
 
     delete driver;
-    return Error(llvm::Twine("Call to hipInit failed with ") +
-                 llvm::Twine(err) + llvm::Twine(errName) + llvm::Twine(errStr));
+    return Error(llvm::Twine("Call to hipInit failed with error code: ") +
+                 llvm::Twine(err) + ", error name: " + llvm::Twine(errName) +
+                 ", error string: " + llvm::Twine(errStr));
   }
 
   return *driver;
