@@ -86,18 +86,10 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
               runtimeArgument[std::to_string(i + kernel->getNumOperands())]);
         }
 
-        state.builder
-            .try_([&]() {
-              errOccurred |=
-                  llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
-                    return state.lowerOpToMojo(&op).failed();
-                  });
-              state.genAllKeepAliveStatements();
-            })
-            .except([&](const MOGG::MojoValue &e) {
-              /// TODO: Set an error on the context.
-              state.builder.pass();
-            });
+        errOccurred |= llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
+          return state.lowerOpToMojo(&op).failed();
+        });
+        state.genAllKeepAliveStatements();
       });
 
   if (errOccurred)

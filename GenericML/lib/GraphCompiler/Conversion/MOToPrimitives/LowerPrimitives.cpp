@@ -515,7 +515,8 @@ void LowerPrimitivesPass::runOnOperation() {
       /// TODO(GEX-2588): Some of the operations covered by this issue will need
       /// their inputs to stay in the async format (ex: mgp.buffer.cache).
       mlir::BitVector unpackAllOperands(op->getNumOperands(), true);
-      MOGraphLoweringState::lowerMOGGABI(*newKernel, unpackAllOperands);
+      MOGraphLoweringState::lowerMOGGABI(*newKernel, unpackAllOperands,
+                                         /*callsThrowingMojoStub=*/false);
 
       op->replaceAllUsesWith(*newKernel);
       op->erase();

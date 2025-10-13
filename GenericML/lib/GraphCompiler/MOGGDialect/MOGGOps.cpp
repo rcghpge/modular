@@ -746,10 +746,6 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  /// TODO: It's okay to assume it always raises because we control the Mojo but
-  /// it would be better if we checked the function's signature instead. This
-  /// information is lost in KGEN and it's not worth adding an annotation for
-  /// it. When we move off of KGEN, we should do it.
   state.builder.call(mojoSymbolName, *maybeParams,
                      {rebindOutput, contextValue});
   state.genAllKeepAliveStatements();
@@ -801,10 +797,6 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  /// TODO: It's okay to assume it always raises because we control the Mojo but
-  /// it would be better if we checked the function's signature instead. This
-  /// information is lost in KGEN and it's not worth adding an annotation for
-  /// it. When we move off of KGEN, we should do it.
   state.builder.call(mojoSymbolName, *maybeParams, mojoOperands);
   state.genAllKeepAliveStatements();
 
@@ -899,15 +891,15 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  /// TODO: It's okay to assume it always raises because we control the Mojo but
-  /// it would be better if we checked the function's signature instead. This
-  /// information is lost in KGEN and it's not worth adding an annotation for
-  /// it. When we move off of KGEN, we should do it.
   state.builder.call(mojoSymbolName, *maybeParams, kernelOperands);
   state.genAllKeepAliveStatements();
 
   return success();
 }
+
+// These FuncOp attributes are disallowed while parsing since they can
+// be inferred. Likewise while printing we ignore them.
+static StringRef kernelStubOpdisallowedAttrNames[] = {"name", "returnType"};
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
@@ -923,6 +915,23 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   if (!resTypes.empty())
     state.addAttribute("returnType", TypeAttr::get(resTypes.front()));
 
+  // If function attributes are present, parse them.
+  NamedAttrList parsedAttributes;
+  llvm::SMLoc attributeDictLocation = parser.getCurrentLocation();
+  if (parser.parseOptionalAttrDictWithKeyword(parsedAttributes))
+    return failure();
+
+  // Disallow attributes that are inferred from elsewhere in the attribute
+  // dictionary.
+  for (StringRef disallowed : kernelStubOpdisallowedAttrNames) {
+    if (parsedAttributes.get(disallowed))
+      return parser.emitError(attributeDictLocation, "'")
+             << disallowed
+             << "' is an inferred attribute and should not be specified in the "
+                "explicit attribute dictionary";
+  }
+  state.attributes.append(parsedAttributes);
+
   if (failed(parser.parseRegion(*state.addRegion(), args)))
     return failure();
 
@@ -935,6 +944,8 @@ void KernelStubOp::print(OpAsmPrinter &p) {
   p << " ";
   printRegionArguments(p, getReturnType() ? *getReturnType() : TypeRange{},
                        getBody().getArguments());
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
+                                     kernelStubOpdisallowedAttrNames);
   p << " ";
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 }
@@ -983,6 +994,20 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     return failure();
   }
 
+  bool isThrows = llvm::any_of(getExecBody().getOps(), [](Operation &op) {
+    // ForEach / Materialize kernels always throw.
+    if (isa<CallForeachOp, CallMaterializeOp>(op))
+      return true;
+
+    if (auto execOp = dyn_cast<CallExecuteOp>(op)) {
+      // Some kernels throw.
+      return execOp.getIsThrows();
+    }
+
+    // We assume all other ops don't throw.
+    return false;
+  });
+
   // Create the stub op at the top of the module.
   /// TODO: Find a better way of naming stubs.
   static int stubCounter = 0;
@@ -991,7 +1016,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto kernelStub = builder.create<MOGG::KernelStubOp>(
       loc, stubName,
       resultTypes.empty() ? nullptr : TypeAttr::get(resultTypes.front()),
-      getSummaryAttr());
+      getSummaryAttr(), isThrows);
   kernelStub.getBody().takeBody(getExecBody());
 
   // This is a list of input operands in MGP but without the chain.
@@ -1362,7 +1387,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     scratchPlaceholdersOp.erase();
 
   mlir::BitVector unpackItAll(regionBody.getNumArguments(), true);
-  loweringState.lowerMOGGABI(newKernel, unpackItAll);
+  loweringState.lowerMOGGABI(newKernel, unpackItAll,
+                             /*callsThrowingMojoStub=*/isThrows);
 
   return success();
 }
@@ -3662,6 +3688,48 @@ LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
   } else {
     return emitError("TODO: unsupported scalar type");
   }
+}
+
+//===----------------------------------------------------------------------===//
+// TryOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TryOp::emitMojo(EmitMojoState &state) {
+
+  bool errOccurred = false;
+
+  state.builder
+      .try_([&]() {
+        // Lower try block.
+        errOccurred |=
+            llvm::any_of(getTryRegion().getOps(), [&](mlir::Operation &op) {
+              return state.lowerOpToMojo(&op).failed();
+            });
+      })
+      .except([&](const MojoValue &e) {
+        // Lower except block.
+        state.setMojoValueFor(getExceptRegion().getArgument(0), e);
+        errOccurred |=
+            llvm::any_of(getExceptRegion().getOps(), [&](mlir::Operation &op) {
+              return state.lowerOpToMojo(&op).failed();
+            });
+      });
+
+  return failure(errOccurred);
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncErrorOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
+  auto moggAsyncErrorFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  state.builder.call(
+      moggAsyncErrorFunc, {},
+      {state.mojoReturnValues[0], state.getMojoValueFor(getError())});
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

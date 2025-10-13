@@ -216,6 +216,7 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 
   let arguments = (ins StrAttr:$kernelName,
                        OptionalAttr<TypeAttr>:$regRetType,
+                       UnitAttr:$isThrows,
                        Variadic<AnyType>:$inputs,
                        Variadic<AnyType>:$outputs);
 
@@ -1646,7 +1647,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   }];
   let arguments = (ins SymbolNameAttr:$name,
                        OptionalAttr<TypeAttr>:$returnType,
-                       OptionalAttr<StrAttr>:$summary);
+                       OptionalAttr<StrAttr>:$summary,
+                       UnitAttr:$isThrows);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
@@ -1691,8 +1693,7 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
 
 def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  HasParent<"MOGG::GenericCompiledRegionOp">
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let results = (outs ChainType:$output);
 
@@ -1851,6 +1852,65 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,
   let arguments = (ins TypedAttrInterface:$value);
   let results = (outs MO_Scalar:$result);
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
+}
+
+def MOGG_YieldOp
+    : MOGG_Op<"yield",
+      [Terminator, HasParent<"MOGG::TryOp">]> {
+  let summary = "MOGG yield operation";
+  let description = [{
+    The "mogg.yield" operation specifies the output values for a mogg.try / except statement.
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+}
+
+def MOGG_TryOp : MOGG_Op<"try", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
+]> {
+  let summary = "Op that represent a try / except statement";
+  let description = [{
+    This op defines a try / except statement that will be lowered to mojo.
+  }];
+  let regions = (region SizedRegion<1>:$tryRegion, SizedRegion<1>:$exceptRegion);
+  let results = (outs ChainType:$output);
+
+  let assemblyFormat = [{
+    $tryRegion
+    `except` $exceptRegion
+    attr-dict
+  }];
+}
+
+def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
+]> {
+  let arguments = (ins MOGG_Error:$error);
+  let results = (outs ChainType:$output);
+
+  let summary = "Represents an error chain";
+  let description = [{
+    This represent a chain (asynchronous value) holding a Mojo Error object.
+    This is being emitted when a kernel throws:
+
+    ```
+    mogg.try {
+     ...
+    } catch (%err: !mogg.Error) {
+      %chain = mogg.async.error %err : !mgp.chain
+      mogg.yield %chain
+    }
+    ```
+
+    This op gets lowered to a mojo call to `mogg_async_error`, which assigns the error to the AsyncValue.
+  }];
+
+  let assemblyFormat = [{
+    $error attr-dict `:` type(results)
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

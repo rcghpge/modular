@@ -61,4 +61,13 @@ def MOGG_Context : MOGG_Type<"Context", "context"> {
   }];
 }
 
+def MOGG_Error : MOGG_Type<"Error", "error"> {
+  let summary = "A type mapping onto a mojo error";
+  let description = [{
+    This is the mogg representation of the runtime Mojo type `Error`.
+    This type is used by throwing functions to return errors.
+    Mojo kernels might throw errors that must be propagated to the graph runtime.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD

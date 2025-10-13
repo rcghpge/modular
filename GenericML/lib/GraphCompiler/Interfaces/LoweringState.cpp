@@ -657,12 +657,47 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
 }
 
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
-                                        const mlir::BitVector &shouldPack) {
+                                        const mlir::BitVector &shouldPack,
+                                        bool callsThrowingMojoStub) {
   auto kernel = cast<MOGG::GenericCompiledRegionOp>(kernelOp);
   OpBuilder builder{&kernel.getBody().front(),
                     kernel.getBody().front().begin()};
   auto loc = kernel->getLoc();
   Operation *terminator = kernel.getBody().front().getTerminator();
+
+  if (callsThrowingMojoStub) {
+    // If the kernel calls a mojo stub that throws, we need to insert a try /
+    // except statement.
+    auto tryOp = builder.create<MOGG::TryOp>(loc);
+
+    Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
+    SmallVector<Operation *> toMove;
+    for (Operation &op : kernel.getBody().getOps())
+      if (!isa<MOGG::TryOp, MOGG::OutputOp>(op))
+        toMove.push_back(&op);
+    for (Operation *op : toMove)
+      op->moveBefore(&tryBlock, tryBlock.end());
+
+    builder.setInsertionPointToEnd(&tryBlock);
+    builder.create<MOGG::YieldOp>(loc, terminator->getOperands());
+
+    // The except block return a chain error.
+    Block &exceptBlock = tryOp.getExceptRegion().emplaceBlock();
+    Value errArg =
+        exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
+    builder.setInsertionPointToStart(&exceptBlock);
+    Value errChain = builder.create<MOGG::AsyncErrorOp>(loc, errArg);
+    builder.create<MOGG::YieldOp>(loc, errChain);
+
+    // Update the final terminator output.
+    // TODO: Handle the case with multiple outputs.
+    ASSERT_STREAM(terminator->getOperands().size() == 1,
+                  << "multiple outputs not supported");
+    terminator->setOperands(tryOp.getOutput());
+
+    builder.setInsertionPointToStart(&kernel.getBody().front());
+  }
+
   SmallVector<Value> asyncValues;
   for (auto v : kernel.getBody().getArguments()) {
     // Do not attempt to unpack a chain as there is nothing that we could be

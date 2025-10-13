@@ -298,9 +298,10 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
       mapping.operandMapping, builder);
   addContextIfPresent(moOp, inputs, adaptor, builder);
   outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
+  bool isThrows = adaptor.executeFunction->mojoCode.isThrows();
 
-  return builder.create<CallExecuteOp>(loc, adaptor.registeredOpName,
-                                       regRetTypeAttr, inputs, outputs);
+  return builder.create<CallExecuteOp>(
+      loc, adaptor.registeredOpName, regRetTypeAttr, isThrows, inputs, outputs);
 }
 
 static ErrorOr<NamedAttribute>

@@ -8,7 +8,7 @@
 // CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
 // CHECK: summary = "mo.matmul:{{.*}}+mo.add_singleton_dim:{{.*}}"
 
 mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) ->  !mo.tensor<[1, seq_len, 4096], f32> {
@@ -26,7 +26,7 @@ mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 409
 // CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
 // CHECK: summary = "mo.matmul:{{.*}}+mo.add_singleton_dim:{{.*}}"
 
 // CHECK: mo.yield [[KER_RES:.*]]
@@ -54,7 +54,7 @@ mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>(%arg0: !mo.tensor<[
 // CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
 // CHECK: summary = "mo.matmul:{{.*}}+mo.add_singleton_dim:{{.*}}"
 
 // CHECK: mo.yield [[KER_RES:.*]]
@@ -98,7 +98,7 @@ mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 40
 // CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "split_dim_indices"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index} : !pop.array<2, index>, !pop.scalar<si64> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
 // CHECK: summary = "mo.matmul:{{.*}}+mo.split_dim:{{.*}}"
 
 
@@ -139,7 +139,7 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
 // CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "merge_dim_indices"(%[[INDICES]], %[[SIMD]]) {axis = 0 : index} : !pop.array<2, index>, !pop.scalar<si64> -> !pop.array<1, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<1, index>
 
-// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {kernel_param = {packed_b = false, transpose_b = false}}
+// CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
 // CHECK: summary = "mo.matmul:{{.*}}+mo.merge_dim:{{.*}}"
 mo.graph @merge_dim(%arg0: !mo.tensor<[8, 8], f32>, %arg1: !mo.tensor<[8, 8], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[64], f32> {
   %0 = mo.matmul(%arg0, %arg1) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[8, 8], f32>

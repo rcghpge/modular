@@ -19,7 +19,7 @@ LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
           "Could not lower this operation to Mojo");
     }
     return success();
-  } else if (isa<MOGG::OutputOp>(op)) {
+  } else if (isa<MOGG::OutputOp, MOGG::YieldOp>(op)) {
     // These ops don't need to be converted.
     return success();
   } else {
