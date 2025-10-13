@@ -38,7 +38,7 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
     %1 = mogg.call "mgp.assert"(%arg4) {message = "ASSERT_0" : !kgen.string} : i1 -> !mef.chain
     %2 = mogg.call "mgp.assert"(%arg5) {message = "ASSERT_1" : !kgen.string} : i1 -> !mef.chain
     mogg.output %1, %2 : !mef.chain, !mef.chain
-  } {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false, summary = "mgp.assert+mgp.assert"}
+  } {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false, summary = "mgp.assert+mgp.assert", emitsMojo = true}
   %res = "test.sink"(%0#0, %0#1) : (!mef.chain, !mef.chain) -> !mef.chain
   mef.output %res : !mef.chain
 }
@@ -46,4 +46,5 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
 // CHECK-LABEL: mgp.model @remove_redundant_chains
 // CHECK:         %[[OUT:[^ ]*]] = mogg.generic.compiled.region ({{.*}}) -> !mef.chain{
 // CHECK:           mogg.output %{{[^ ]*}} : !mef.chain
+// CHECK:           emitsMojo = true
 // CHECK:         "test.sink"(%[[OUT]], %[[OUT]])
