@@ -30,6 +30,32 @@ enum class nixl_ucx_mt_t { SINGLE, CTX, WORKER };
 
 using nixlUcxReq = void *;
 
+// Helper function to get backend parameters with default values
+template <typename T>
+[[nodiscard]] T nixl_b_params_get(const nixl_b_params_t *custom_params,
+                                  const std::string &key, T default_value) {
+  if (!custom_params) {
+    return default_value;
+  }
+
+  auto it = custom_params->find(key);
+  if (it == custom_params->end()) {
+    return default_value;
+  }
+
+  if constexpr (std::is_same_v<T, size_t>) {
+    const char *start = it->second.c_str();
+    char *end;
+    unsigned long long parsed = std::strtoull(start, &end, 10);
+    // Check for conversion errors: no digits parsed or invalid characters
+    if (end == start || *end != '\0') {
+      return default_value;
+    }
+    return static_cast<size_t>(parsed);
+  }
+  return default_value;
+}
+
 namespace UCX {
 class Rkey;
 }

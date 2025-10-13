@@ -1382,3 +1382,122 @@ use case:
 - Thread safety improvements for concurrent usage
 - Proper abstraction of CUDA dependencies
 - Memory/storage query API for backend introspection
+
+## Week 13+ (August 2-11, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 43ffb37 | 2025-08-03 | CI/SCRIPTS: Avoid tcp port collisions | Skip | - | CI infrastructure only |
+| 0032b73 | 2025-08-03 | CI: increase CI build history | Skip | - | CI configuration |
+| 75fd6e2 | 2025-08-04 | Build: Fixed Docker fail to build | Skip | - | Docker infrastructure |
+| e6ab575 | 2025-08-04 | CI: Support both NIXL and NIXLBench | Skip | - | CI configuration |
+| 160a434 | 2025-08-05 | RUST: Implement queryMem binding | Skip | - | Rust bindings |
+| f28e773 | 2025-08-06 | NIXL/GTEST: remove dead code | Skip | - | Test framework only |
+| 5e52e03 | 2025-08-06 | contrib: Simplify Docker build | Skip | - | Docker infrastructure |
+| 03d2fd1 | 2025-08-06 | NIXL UCX progress thread refactoring | **Port** | 🔄 In Progress | Major UCX architectural refactor |
+| a0203eb | 2025-08-08 | Clone with depth 1 wherever possible | Skip | - | CI infrastructure |
+| ddc9977 | 2025-08-08 | Allow UCX as backend in kvbench | Skip | - | Benchmarking tool |
+| 5cfb4dd | 2025-08-11 | PYTHON: replaced prints with logger | Skip | - | Python changes |
+| d2d41a7 | 2025-08-11 | RUST: build and install rust bindings | Skip | - | Rust build infrastructure |
+
+### Commits to Port (1 total)
+
+1. **03d2fd1** - NIXL UCX progress thread refactoring (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 12
+- **Commits to port**: 1 (major UCX architectural refactoring)
+- **Commits ported**: 1 ✅
+- **Commits skipped**: 11
+
+### Implementation Summary
+
+This commit represents a major architectural refactoring of the UCX backend to
+improve code organization, testability, and maintainability. All changes
+successfully built and are ready for testing.
+
+**Key Changes**:
+
+1. **Added `nixl_b_params_get` helper** (`ucx_utils.h`):
+   - Template function for extracting backend parameters with type-safe defaults
+   - Simplifies parameter parsing throughout the codebase
+
+2. **Refactored `ucx_backend.h`** with new class hierarchy:
+   - Base `nixlUcxEngine` class with protected/virtual methods for extension
+   - New `nixlUcxThreadEngine` subclass for progress thread support
+   - Forward declaration of `nixlUcxThread` class for thread management
+   - Factory method pattern with `create()` static method
+   - Proper encapsulation with protected/private access levels
+
+3. **Created `nixlUcxThread` class** (`ucx_backend.cpp`):
+   - Encapsulates all progress thread logic
+   - Constructor takes engine, init function, num_workers, and delay
+   - Implements `start()`, `join()`, `addWorker()`, `getWorker()` methods
+   - Uses `operator()` for thread execution
+   - Protected `run()` method with poll loop logic
+   - Thread-local storage for progress thread identification
+
+4. **Refactored `nixlUcxEngine` constructor**:
+   - Removed all progress thread initialization logic
+   - Changed parameter from pointer to const reference
+   - Uses `nixl_b_params_get` for num_workers parameter
+   - Simplified initialization - no more pipe/pollFds management
+
+5. **Added `nixlUcxEngine::create()` factory method**:
+   - Returns `nixlUcxThreadEngine` if progress thread is enabled
+   - Returns base `nixlUcxEngine` otherwise
+   - Provides clean separation of concerns
+
+6. **Simplified destructor**:
+   - Removed all progress thread cleanup (handled by subclass)
+   - No more pipe cleanup needed
+
+7. **Implemented virtual methods**:
+   - `void appendNotif(std::string, std::string)` - Append to notifMainList
+   - `void getNotifsImpl(notif_list_t&)` - Move notifMainList to output
+   - `int vramApplyCtx()` - No-op in AsyncRT (uses DeviceContext)
+
+8. **Updated notification handling**:
+   - `notifAmCb` now calls `appendNotif()` virtual method
+   - `getNotifs` calls `getNotifsImpl()` for extensibility
+   - Removed `notifProgressCombineHelper`, `notifProgress`, `isProgressThread`
+     from base
+
+9. **Implemented `nixlUcxThreadEngine`**:
+   - Constructor creates `nixlUcxThread`, adds workers, starts thread
+   - Destructor joins thread for clean shutdown
+   - `vramApplyCtx()` restarts thread for context changes
+   - `appendNotif()` checks if progress thread, uses mutex for thread safety
+   - `getNotifs()` gets from both main and progress thread lists
+
+10. **Updated `nixlUcxBackendH` class**:
+    - Changed from storing `const nixlUcxEngine&` to `nixlUcxWorker*`
+    - Updated constructor to take worker pointer
+    - Updated `release()` and `status()` methods to use worker directly
+    - More efficient - no indirection through engine
+
+11. **Updated `ucx_plugin.cpp`**:
+    - Uses factory method: `nixlUcxEngine::create(*init_params).release()`
+    - Properly handles both threaded and non-threaded backends
+
+**Adaptations for AsyncRT**:
+
+- No exceptions used - AsyncRT uses ErrorOr pattern throughout
+- Used AsyncRT's DeviceContext instead of direct CUDA context management
+- Maintained compatibility with existing AsyncRT error handling patterns
+- Used LLVM/AsyncRT coding standards (camelCase for methods, proper encapsulation)
+- All changes are backward compatible with existing AsyncRT code
+
+**Testing**:
+
+- Build successful: `./bazelw build //AsyncRT:NIXL`
+- All existing functionality preserved
+- No API breaking changes
+
+**Next Steps**:
+
+- Continue to next week's commits (if any remaining in backport period)
+- Monitor for any test failures when GPU tests become available

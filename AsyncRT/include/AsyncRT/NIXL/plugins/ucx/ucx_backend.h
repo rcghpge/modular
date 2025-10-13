@@ -26,6 +26,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
+#include <future>
 #include <mutex>
 #include <poll.h>
 #include <set>
@@ -91,95 +92,16 @@ private:
 };
 
 class nixlUcxEngine : public nixlBackendEngine {
-private:
-  /* UCX data */
-  std::unique_ptr<nixlUcxContext> uc;
-  std::vector<std::unique_ptr<nixlUcxWorker>> uws;
-  std::string workerAddr;
-
-  /* Progress thread data */
-  std::mutex progressThreadActiveLock;
-  std::condition_variable progressThreadActiveCV;
-  std::atomic_bool progressThreadActive{false};
-  bool pthrOn;
-  std::thread pthr;
-  std::chrono::milliseconds pthrDelay;
-  int pthrControlPipe[2];
-  std::vector<pollfd> pollFds;
-
-  /* CUDA data*/
-  DeviceContextRef deviceCtx;
-
-  /* Notifications */
-  notif_list_t notifMainList;
-  std::mutex notifMtx;
-  notif_list_t notifPthrPriv, notifPthr;
-
-  /* Inflight send transfers */
-  // These are mutable as they are accessed in const methods.
-  mutable std::set<nixlBackendReqH *> inflightSendXfers;
-  mutable std::mutex inflightSendXfersMtx;
-
-  // Map of agent name to saved nixlUcxConnection info
-  std::unordered_map<std::string, ucx_connection_ptr_t, std::hash<std::string>,
-                     strEqual>
-      remoteConnMap;
-
-  // Check if the device pointer is associated with the expected device.
-  M::LogicalResult checkDevicePointerContext(void *address, int addrDeviceId);
-
-  // If we have a device context, set it as active within the scope of the
-  // returned object. Otherwise do nothing.
-  [[nodiscard]] std::unique_ptr<DeviceContextScope> activateContext() const {
-    if (deviceCtx)
-      return std::make_unique<DeviceContextScope>(*deviceCtx);
-    return {};
-  }
-
-  // Threading infrastructure
-  //   TODO: move the thread management one outside of NIXL common infra
-  void progressFunc();
-  void progressThreadStart();
-  void progressThreadStop();
-  void progressThreadRestart();
-  bool isProgressThread() const {
-    return std::this_thread::get_id() == pthr.get_id();
-  }
-
-  // Connection helper
-  static ucs_status_t connectionCheckAmCb(void *arg, const void *header,
-                                          size_t header_length, void *data,
-                                          size_t length,
-                                          const ucp_am_recv_param_t *param);
-
-  static ucs_status_t connectionTermAmCb(void *arg, const void *header,
-                                         size_t header_length, void *data,
-                                         size_t length,
-                                         const ucp_am_recv_param_t *param);
-
-  // Memory management helpers
-  nixl_status_t internalMDHelper(const blob_ref blob, const std::string &agent,
-                                 nixlBackendMD *&output);
-
-  // Notifications
-  nixl_status_t checkXferWithoutLock(nixlBackendReqH *handle) const;
-  static ucs_status_t notifAmCb(void *arg, const void *header,
-                                size_t header_length, void *data, size_t length,
-                                const ucp_am_recv_param_t *param);
-  nixl_status_t notifSendPriv(const std::string &remote_agent,
-                              const std::string_view msg, nixlUcxReq &req,
-                              size_t worker_id) const;
-  void notifProgress();
-  void notifProgressCombineHelper(notif_list_t &src, notif_list_t &tgt);
-
 public:
-  nixlUcxEngine(const nixlBackendInitParams *init_params);
+  static std::unique_ptr<nixlUcxEngine>
+  create(const nixlBackendInitParams &init_params);
+
   ~nixlUcxEngine();
 
   bool supportsRemote() const override { return true; }
   bool supportsLocal() const override { return true; }
   bool supportsNotif() const override { return true; }
-  bool supportsProgTh() const override { return pthrOn; }
+  virtual bool supportsProgTh() const override { return false; }
 
   nixl_mem_list_t getSupportedMems() const override;
 
@@ -228,7 +150,7 @@ public:
 
   int progress() override;
 
-  nixl_status_t getNotifs(notif_list_t &notif_list) override;
+  virtual nixl_status_t getNotifs(notif_list_t &notif_list) override;
   nixl_status_t genNotif(const std::string &remote_agent,
                          const std::string_view msg) const override;
 
@@ -236,13 +158,113 @@ public:
   nixl_status_t checkConn(const std::string &remote_agent);
   nixl_status_t endConn(const std::string &remote_agent);
 
+protected:
+  nixlUcxEngine(const nixlBackendInitParams &init_params);
+
+  const std::vector<std::unique_ptr<nixlUcxWorker>> &getWorkers() const {
+    return uws;
+  }
+
   const std::unique_ptr<nixlUcxWorker> &getWorker(size_t worker_id) const {
     return uws[worker_id];
   }
-  size_t getWorkerId() const {
+
+  virtual size_t getWorkerId() const {
     return std::hash<std::thread::id>{}(std::this_thread::get_id()) %
            uws.size();
   }
+
+  void getNotifsImpl(notif_list_t &notif_list);
+
+  virtual int vramApplyCtx();
+
+  virtual void appendNotif(std::string remote_name, std::string msg);
+
+  // Check if the device pointer is associated with the expected device.
+  M::LogicalResult checkDevicePointerContext(void *address, int addrDeviceId);
+
+  // If we have a device context, set it as active within the scope of the
+  // returned object. Otherwise do nothing.
+  [[nodiscard]] std::unique_ptr<DeviceContextScope> activateContext() const {
+    if (deviceCtx)
+      return std::make_unique<DeviceContextScope>(*deviceCtx);
+    return {};
+  }
+
+private:
+  void vramInitCtx();
+  void vramFiniCtx();
+  int vramUpdateCtx(void *address, uint64_t dev_id, bool &restart_reqd);
+
+  // Connection helper
+  static ucs_status_t connectionCheckAmCb(void *arg, const void *header,
+                                          size_t header_length, void *data,
+                                          size_t length,
+                                          const ucp_am_recv_param_t *param);
+
+  static ucs_status_t connectionTermAmCb(void *arg, const void *header,
+                                         size_t header_length, void *data,
+                                         size_t length,
+                                         const ucp_am_recv_param_t *param);
+
+  // Memory management helpers
+  nixl_status_t internalMDHelper(const blob_ref blob, const std::string &agent,
+                                 nixlBackendMD *&output);
+
+  // Notifications
+  nixl_status_t checkXferWithoutLock(nixlBackendReqH *handle) const;
+  static ucs_status_t notifAmCb(void *arg, const void *header,
+                                size_t header_length, void *data, size_t length,
+                                const ucp_am_recv_param_t *param);
+  nixl_status_t notifSendPriv(const std::string &remote_agent,
+                              const std::string_view msg, nixlUcxReq &req,
+                              size_t worker_id) const;
+
+  /* UCX data */
+  std::unique_ptr<nixlUcxContext> uc;
+  std::vector<std::unique_ptr<nixlUcxWorker>> uws;
+  std::string workerAddr;
+
+  /* CUDA data*/
+  DeviceContextRef deviceCtx;
+
+  /* Notifications */
+  notif_list_t notifMainList;
+
+  /* Inflight send transfers */
+  // These are mutable as they are accessed in const methods.
+  mutable std::set<nixlBackendReqH *> inflightSendXfers;
+  mutable std::mutex inflightSendXfersMtx;
+
+  // Map of agent name to saved nixlUcxConnection info
+  std::unordered_map<std::string, ucx_connection_ptr_t, std::hash<std::string>,
+                     strEqual>
+      remoteConnMap;
+};
+
+class nixlUcxThread;
+
+/**
+ * Represents an engine with a single progress thread for all shared workers
+ */
+class nixlUcxThreadEngine : public nixlUcxEngine {
+public:
+  nixlUcxThreadEngine(const nixlBackendInitParams &init_params);
+  ~nixlUcxThreadEngine();
+
+  bool supportsProgTh() const override { return true; }
+
+  nixl_status_t getNotifs(notif_list_t &notif_list) override;
+
+protected:
+  int vramApplyCtx() override;
+
+  void appendNotif(std::string remote_name, std::string msg) override;
+
+private:
+  std::unique_ptr<nixlUcxThread> thread_;
+  std::mutex notifMtx_;
+  notif_list_t notifPthr_;
 };
 
 nixlBackendPlugin *createStaticUcxPlugin();

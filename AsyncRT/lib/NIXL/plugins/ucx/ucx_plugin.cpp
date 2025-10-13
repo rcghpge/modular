@@ -21,7 +21,7 @@ static const char *PLUGIN_VERSION = "0.1.0";
 // Function to create a new UCX backend engine instance
 static nixlBackendEngine *
 create_ucx_engine(const nixlBackendInitParams *init_params) {
-  return new nixlUcxEngine(init_params);
+  return nixlUcxEngine::create(*init_params).release();
 }
 
 static void destroy_ucx_engine(nixlBackendEngine *engine) { delete engine; }
