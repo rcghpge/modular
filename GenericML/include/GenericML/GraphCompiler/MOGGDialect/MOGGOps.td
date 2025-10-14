@@ -1754,7 +1754,8 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   Pure,
   SameOperandsAndResultType,
-  HasParent<"MOGG::GenericCompiledRegionOp">
+  HasParent<"MOGG::GenericCompiledRegionOp">,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);

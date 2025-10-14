@@ -3302,6 +3302,24 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// AsyncPackOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
+  using namespace MOGG;
+
+  MojoValue asyncPackHelperStruct =
+      HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
+  MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+  state.builder.call(
+      moggAsyncPackFunc, {},
+      asyncPackHelperStruct(
+          {}, {state.getMojoValueFor(getInput()), state.mojoReturnValues[0]}));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AsyncDelOp
 //===----------------------------------------------------------------------===//
 

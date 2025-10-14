@@ -42,6 +42,8 @@ constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
 constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
 constexpr StringLiteral struct_StaticTuple = "StaticTuple";
+constexpr StringLiteral struct_MoggAsyncPackHelper =
+    "MOGGPrimitives.MoggAsyncPackHelper";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 
@@ -159,8 +161,7 @@ public:
 
   /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
-    if (isa<MGP::DeviceBufferType, MEF::ChainType, MGP::TensorSpecType>(
-            mlirType)) {
+    if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
       return HardcodedMojoSymbols::alias_OpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_DeviceContextPtr;
@@ -170,6 +171,9 @@ public:
       return HardcodedMojoSymbols::struct_Int;
     } else if (auto tensorType = dyn_cast<MO::TensorType>(mlirType)) {
       return mlirTensorTypeToMojoType(tensorType);
+    } else if (auto tensorSpecType = dyn_cast<MGP::TensorSpecType>(mlirType)) {
+      return MojoValue(
+          HardcodedMojoSymbols::struct_IndexList)[tensorSpecType.getRank()];
     } else if (isa<MGP::ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_StateContext;
     } else {
