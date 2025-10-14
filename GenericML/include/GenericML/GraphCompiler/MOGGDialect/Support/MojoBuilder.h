@@ -146,6 +146,10 @@ public:
   /// value is the name of the variable.
   [[nodiscard]] MojoValue var(const MojoValue &value);
 
+  /// Creates a variable declaration with a type annotation. The returned value
+  /// is the name of the variable.
+  [[nodiscard]] MojoValue varDecl(const MojoValue &type);
+
   /// Creates an alias and assigns the provided value to it. The returned value
   /// is the name of the parameter.
   [[nodiscard]] MojoValue alias(const MojoValue &value);

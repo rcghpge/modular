@@ -161,6 +161,12 @@ MojoValue MojoBuilder::var(const MojoValue &value) {
 
   return name;
 }
+MojoValue MojoBuilder::varDecl(const MojoValue &type) {
+  auto name = newVar("var");
+  statement("var ", createTypedVar(name, type));
+
+  return name;
+}
 MojoValue MojoBuilder::alias(const MojoValue &value) {
   auto name = newVar("param");
   statement("alias ", name, " = ", value);
