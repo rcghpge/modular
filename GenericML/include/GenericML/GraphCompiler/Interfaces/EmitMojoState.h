@@ -172,8 +172,8 @@ public:
     } else if (auto tensorType = dyn_cast<MO::TensorType>(mlirType)) {
       return mlirTensorTypeToMojoType(tensorType);
     } else if (auto tensorSpecType = dyn_cast<MGP::TensorSpecType>(mlirType)) {
-      return MojoValue(
-          HardcodedMojoSymbols::struct_IndexList)[tensorSpecType.getRank()];
+      return MojoValue(HardcodedMojoSymbols::struct_IndexList)[int64_t(
+          tensorSpecType.getRank())];
     } else if (isa<MGP::ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_StateContext;
     } else {
