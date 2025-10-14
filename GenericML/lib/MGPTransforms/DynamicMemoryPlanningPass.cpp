@@ -8,6 +8,7 @@
 
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/MGPDialect/MGPOps.h"
+#include "GenericML/MGPDialect/MGPUtils.h"
 #include "GenericML/MGPTransforms/Utils.h"
 #include "KGEN/POPDialect/POPDialect.h"
 #include "Support/AssertStream.h"
@@ -152,6 +153,55 @@ class DynamicMemoryPlanningPass
       if (ineligibleAlloc)
         continue;
 
+      // Check if the buffer itself (not just any buffer operand) is mutated
+      // by any of its uses. We need to trace through the alias chain to find
+      // if the original buffer or any of its aliases are being written to.
+      SmallPtrSet<Value, 8> aliasSet;
+      SmallVector<Value> aliasWorklist;
+      aliasWorklist.push_back(allocOp.getResult());
+
+      while (!aliasWorklist.empty()) {
+        Value v = aliasWorklist.pop_back_val();
+        if (!aliasSet.insert(v).second)
+          continue;
+
+        for (OpOperand &use : v.getUses()) {
+          Operation *user = use.getOwner();
+          if (isa<MGP::DeviceBufferType>(use.get().getType()) &&
+              (isa<GRT::GRTMayAliasInterface, GRT::GRTExtendsLifetimeInterface>(
+                  *user))) {
+            // Add results that are buffer-typed aliases
+            for (Value result : user->getResults()) {
+              if (isa<MGP::DeviceBufferType>(result.getType())) {
+                aliasWorklist.push_back(result);
+              }
+            }
+          }
+        }
+      }
+
+      // Check if the buffer or any of its aliases is written to (kOut/kMut)
+      bool hasWriters = false;
+      for (Operation *use : allocUses.get()) {
+        bool isWriter =
+            llvm::any_of(use->getOpOperands(), [&](OpOperand &operand) {
+              return aliasSet.contains(operand.get()) &&
+                     MGP::isMutated(operand);
+            });
+        if (isWriter) {
+          hasWriters = true;
+          break;
+        }
+      }
+
+      // For buffers with writers, we need to be very conservative because the
+      // dependency tree doesn't properly track when written data becomes valid.
+      // Set both minPre=0 and minPost=maxPost to maximize the lifetime and
+      // minimize opportunities for incorrect reuse.
+      if (hasWriters) {
+        minPre = 0; // Make it look like the buffer is used from the start
+        minPost = maxPost; // Extend post lifetime to the end
+      }
       SmallVector<AllocInfo> &allocs = deviceToAllocs[allocOp.getDevice()];
       allocs.push_back({allocOp, allocOp.getRuntimeSize(),
                         allocOp.getRawAlign(), minPre, maxPre, minPost,
