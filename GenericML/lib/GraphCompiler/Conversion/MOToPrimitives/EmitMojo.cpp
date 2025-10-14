@@ -126,7 +126,9 @@ LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
 
   bool errOccurred = false;
   state.builder.fn(
-      kernelStub.getNameAttr().str(), {}, inputTypes, std::nullopt, false, true,
+      kernelStub.getNameAttr().str(), {}, inputTypes,
+      /*returnType=*/std::nullopt, /*exported=*/false,
+      /*raises=*/kernelStub.getIsThrows(),
       [&](const MOGG::FunctionBody &functionBody) {
         for (auto &&[mlirArg, mojoArg] : llvm::zip(
                  kernelStub.getBody().getArguments(), functionBody.arguments)) {
