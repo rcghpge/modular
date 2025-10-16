@@ -211,8 +211,12 @@ struct AddFallbackShapeFunctions
 
       if (auto asOp = dyn_cast<MO::CustomOp>(op.getOperation())) {
         auto analysisOr = getLibraryAnalysis();
-        if (analysisOr.isError())
+        if (analysisOr.isError()) {
+          emitError(asOp->getLoc(),
+                    llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                                  getPassName(), analysisOr.getError()));
           return WalkResult::interrupt();
+        }
 
         auto analysis = analysisOr.takeValue();
 

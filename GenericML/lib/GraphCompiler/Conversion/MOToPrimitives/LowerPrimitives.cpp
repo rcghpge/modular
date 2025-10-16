@@ -358,8 +358,12 @@ void LowerPrimitivesPass::runOnOperation() {
   MLIRContext *ctx = model->getContext();
 
   auto analysisOr = getLibraryAnalysis();
-  if (analysisOr.isError())
+  if (analysisOr.isError()) {
+    emitError(getOperation().getLoc(),
+              llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                            getPassName(), analysisOr.getError()));
     return signalPassFailure();
+  }
   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
 
   auto moggCallBodyBuilder =

@@ -163,9 +163,9 @@ struct EmitMojo
     auto analysisOr = getLibraryAnalysis();
     if (analysisOr.isError()) {
       emitError(getOperation().getLoc(),
-                Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
-                    analysisOr.getError());
-      return;
+                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                              getPassName(), analysisOr.getError()));
+      return signalPassFailure();
     }
 
     OpBuilder builder(ctx);

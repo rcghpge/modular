@@ -134,8 +134,8 @@ struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
     auto analysisOr = getLibraryAnalysis();
     if (analysisOr.isError()) {
       emitError(getOperation().getLoc(),
-                Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
-                    analysisOr.getError());
+                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                              getPassName(), analysisOr.getError()));
       return false;
     }
 
@@ -177,8 +177,8 @@ struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
     auto analysisOr = getLibraryAnalysis();
     if (analysisOr.isError()) {
       emitError(getOperation().getLoc(),
-                Twine("[MO_TO_MOGG] Failed to load MOJO analysis: ") +
-                    analysisOr.getError());
+                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                              getPassName(), analysisOr.getError()));
       return false;
     }
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
