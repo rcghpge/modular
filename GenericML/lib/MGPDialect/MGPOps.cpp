@@ -386,6 +386,41 @@ OpFoldResult BufferGetSizeOp::fold(FoldAdaptor adaptor) {
 // TensorSpecGetDimOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult TensorSpecGetDimOp::emitMojo(MOGG::EmitMojoState &state) {
+  auto generator =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue getDimFunc = state.getOriginalMojoNameFor(generator);
+
+  MOGG::MojoValue axisParam = MOGG::MojoValue(getAxis());
+  MOGG::MojoValue rankParam = getSpec().getType().getRank();
+  MOGG::MojoValue specVar = state.getMojoValueFor(getSpec());
+
+  auto result = state.builder.varDecl(
+      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_Int));
+
+  state.builder
+      .try_([&]() {
+        state.builder.assign(result,
+                             getDimFunc({rankParam, axisParam}, {specVar}));
+        state.setMojoValueFor(getResult(), result);
+      })
+      .except([&](const MOGG::MojoValue &e) {
+        auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
+            state.analysis.getRegisteredLITMojoKernelFor(
+                "builtin.create_error_async_values_and_destruct_error"));
+        /// TODO: This is too cumbersome. Add keyword arg support to function
+        /// calls in MojoBuilder. Also, consider adding a helper that creates an
+        /// `UnsafePointer` to any variable.
+        MOGG::MojoValue pointerToPointer = state.builder.var(
+            MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_UnsafePointer)(
+                {}, MOGG::MojoValue("to").equal(state.mojoReturnValues[0])));
+        state.builder.call(markAsyncErrorFunc, {},
+                           {pointerToPointer, MOGG::MojoValue(1), e});
+      });
+
+  return success();
+}
+
 LogicalResult TensorSpecGetDimOp::verify() {
   TensorSpecType specType = getSpec().getType();
   if (!specType.hasRank())
