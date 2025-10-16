@@ -344,7 +344,7 @@ struct PrintTensorSpecViewOp:
         print("x.exclusive =", x.exclusive)
 
     @staticmethod
-    fn update_input_view(input: InputTensor) -> __type_of(input):
+    fn update_input_view(input: InputTensor) -> type_of(input):
         Self.print_spec(input)
         return input
 
@@ -635,7 +635,7 @@ struct Transpose2DOp:
     ):
         var shape_and_strides = Self.build_view(input)
 
-        return __type_of(result)(
+        return type_of(result)(
             input.unsafe_ptr(), shape_and_strides[0], shape_and_strides[1]
         )
 
