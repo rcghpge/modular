@@ -286,7 +286,6 @@ def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
 def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = [{
     Return the dimension of the tensor_spec at the specified axis.
