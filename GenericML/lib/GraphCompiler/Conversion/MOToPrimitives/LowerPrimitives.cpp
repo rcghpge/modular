@@ -441,7 +441,7 @@ void LowerPrimitivesPass::runOnOperation() {
       MGP::BufferSetWithIndexOp, MGP::BufferSliceOp, MGP::BufferToBoolOp,      \
       MGP::BufferToIndexOp, MGP::SyncOp, MGP::TensorCreateOp,                  \
       MGP::TensorExtractBufferOp, MGP::TensorExtractTensorSpecOp,              \
-      MGP::TensorSpecCreateOp, MGP::TensorSpecGetDimOp
+      MGP::TensorSpecCreateOp
 #define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
   mlir::index::IndexDialect, KGEN::POP::POPDialect
 
