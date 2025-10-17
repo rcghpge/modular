@@ -24,7 +24,8 @@
 #define TWINE_PTR(ptr)                                                         \
   (llvm::Twine("0x") + llvm::Twine::utohexstr(reinterpret_cast<uintptr_t>(ptr)))
 
-static constexpr int KB = 1024; // NOLINT
+static constexpr int KB = 1024;                  // NOLINT
+static constexpr size_t GB = 1024 * 1024 * 1024; // NOLINT
 
 namespace M::AsyncRT {
 
@@ -1196,7 +1197,16 @@ BufferCache *BufferCache::onDevice(const Device &device,
 BufferCache *BufferCache::onHost(const Device &device, size_t alignment) {
 
   size_t maxCacheSize = llvm::alignToPowerOf2(
-      DeviceContext::configAsInt("host_buffer_cache_size", 0), 256 * KB);
+      DeviceContext::configAsInt("host_buffer_cache_size", 16 * GB), 256 * KB);
+
+  // Disable host buffer cache for Metal devices due to pointer tracking issues.
+  // Metal tracks buffers by exact pointer match, but the buffer cache uses
+  // sub-allocation with offset pointers that aren't in the tracking map.
+  // TODO: GEX-2688 - Enable host buffer cache for Metal.
+  if (device.api() == Device::metalAPI) {
+    maxCacheSize = 0;
+  }
+
   size_t chunkSize =
       std::min(maxCacheSize,
                static_cast<size_t>(llvm::alignToPowerOf2(
