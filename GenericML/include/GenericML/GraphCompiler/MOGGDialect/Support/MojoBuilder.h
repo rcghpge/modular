@@ -31,9 +31,8 @@ public:
   MojoValue(std::string &&str) : text(std::move(str)) {}
   MojoValue(StringLiteral str) : text(str) {}
   MojoValue(StringRef str) : text(str) {}
-  MojoValue(int integer) : text(std::to_string(integer)) {}
-  MojoValue(int64_t integer) : text(std::to_string(integer)) {}
-  MojoValue(uint64_t integer) : text(std::to_string(integer)) {}
+  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+  MojoValue(T integer) : text(std::to_string(integer)) {}
   MojoValue(const llvm::APSInt &integer) {
     SmallVector<char> chars;
     integer.toString(chars);
