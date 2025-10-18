@@ -108,7 +108,7 @@ def main(
         return
 
     if format_prompt and text:
-        input_ids, tokenizer = create_llasa_prompt(text, config)
+        input_ids, _tokenizer = create_llasa_prompt(text, config)
         click.echo(f"Input text: {text}")
         click.echo(f"Formatted prompt tokens shape: {input_ids.shape}")
         click.echo(f"First few tokens: {input_ids[:10].tolist()}")
