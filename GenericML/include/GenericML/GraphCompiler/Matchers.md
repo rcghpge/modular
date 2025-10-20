@@ -15,8 +15,8 @@ An example of adding such a logger to the layer_norm pattern can be seen below
 (with the layer_norm pattern locally modified to match a sum instead of a mean)
 
 ```cpp
-    graph_compiler::Logger log_tf;
-    graph_compiler::Logger log_pt;
+    GraphCompiler::Logger log_tf;
+    GraphCompiler::Logger log_pt;
     if (!t_layernorm.match(op.getResult(), &log_tf) &&
         !p_layernorm.match(op.getResult(), &log_pt)) {
       llvm::errs() << "\nMatch Failure Statck for TF"
