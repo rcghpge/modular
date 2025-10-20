@@ -91,7 +91,7 @@ int CpuDevice::deviceCount() const {
 ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize,
                                      bool isHost) const {
   assert(byteSize != 0);
-  *ptr = TCMallocGlobals::tc_new(byteSize, 1);
+  *ptr = TCMallocGlobals::tc_new(1, byteSize);
   return success();
 }
 
@@ -217,7 +217,7 @@ CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) const {
   assert(byteSize != 0);
-  *ptr = TCMallocGlobals::tc_new(byteSize, 1);
+  *ptr = TCMallocGlobals::tc_new(1, byteSize);
   if (*ptr == nullptr) {
     RAISE_ERROR();
   }
