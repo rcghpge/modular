@@ -17,6 +17,7 @@ mojo_library(
     name = "MOGGKernelAPITest",
     testonly = True,
     srcs = glob(["**/*.mojo"]),
+    validate_missing_docs = False,
     deps = [
         "@mojo//:compiler_internal",
         "@mojo//:stdlib",
