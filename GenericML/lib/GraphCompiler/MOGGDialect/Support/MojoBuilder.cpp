@@ -91,11 +91,11 @@ std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
   });
   stream << ")";
 
-  if (retType.has_value())
-    stream << " -> " << *retType;
-
   if (raises)
     stream << " raises";
+
+  if (retType.has_value())
+    stream << " -> " << *retType;
 
   stream << ":";
   return str;
