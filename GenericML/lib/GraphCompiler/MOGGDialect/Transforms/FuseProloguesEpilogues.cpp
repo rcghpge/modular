@@ -228,6 +228,9 @@ struct FuseProloguesEpilogues
       if (dst.getElemwiseBodyLambda())
         return;
 
+      if (dst.getNumResults() == 0)
+        return;
+
       bool isADistributedOp = containsDistributedOp(dst);
 
       for (int64_t fusionIdx = dst.getNumResults() - 1; fusionIdx >= 0;
