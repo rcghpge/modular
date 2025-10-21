@@ -252,7 +252,7 @@ def MGP_CreateTensorOpInterface : OpInterface<"MGPCreateTensorOpInterface"> {
       "::mlir::Value", "getResult", (ins),
       /*methodBody=*/[{}],
       /*defaultImplementation=*/[{
-        return $_op.getResult();
+        return $_op->getResult(0);
       }]
     >
   ];
