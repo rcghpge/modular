@@ -234,6 +234,12 @@ nixl_status_t nixlAgent::createBackend(const nixl_backend_t &type,
       return nixl_status_t::NIXL_ERR_BACKEND;
     }
 
+    // Enforce that any backend supporting remote also supports notifications
+    if (backend->supportsRemote() && !backend->supportsNotif()) {
+      delete backend;
+      return nixl_status_t::NIXL_ERR_BACKEND;
+    }
+
     if (backend->supportsRemote()) {
       ret = backend->getConnInfo(str);
       if (ret != nixl_status_t::NIXL_SUCCESS) {

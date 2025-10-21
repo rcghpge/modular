@@ -1501,3 +1501,116 @@ successfully built and are ready for testing.
 
 - Continue to next week's commits (if any remaining in backport period)
 - Monitor for any test failures when GPU tests become available
+
+## Week 14 (August 12-18, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|--------|-------|
+| 97ef6d1 | 2025-08-13 | CORE: codestyle fixes related to PR509 | Skip | - | Pure style in upstream core; no functional changes needed |
+| 70ad247 | 2025-08-14 | Bugfix: Replace select() with poll() in connectToIP | Port | ✅ Completed | Listener robustness fix (stack smashing prevention) |
+| 975990c | 2025-08-14 | AGENT: cleanup metadata on failure | Port | ✅ Completed | Our loadRemoteMD already cleaned up; verified and aligned |
+| 89f0ce5 | 2025-08-15 | Handle Xfer canceled error according to connection status | Port | ✅ Completed | Map request errors via connection state; improves error fidelity |
+| 9f77cc4 | 2025-08-15 | NIXL/UCX threadpool | Port | ✅ Completed | Introduced threadpool engine with shared+dedicated progress threads |
+| 623063c | 2025-08-16 | BACKEND/UCX: cleanup AM based control path | Skip | - | Tree already reflects AM header cleanup from earlier weeks |
+| e655e3e | 2025-08-18 | Enforce supportsNotif when supportsRemote | Port | ✅ Completed | Enforced at backend creation time |
+
+### Changes Made
+
+1) 70ad247 — Listener poll
+
+- File: `AsyncRT/lib/NIXL/nixl_listener.cpp`
+- Replaced select()+timeval with poll(POLLOUT) and 1s timeout; kept
+  SO_ERROR verification.
+
+1) 975990c — Agent cleanup on failure
+
+- File: `AsyncRT/lib/NIXL/nixl_agent.cpp`
+- Verified and ensured cleanup paths erase `remoteSections` and
+  `remoteBackends` on error when loading remote MD. No additional changes
+  required.
+
+1) 89f0ce5 — Xfer canceled handling via connection state
+
+- Files: `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`,
+  `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`
+- Added per-request connection pointer to internal UCX request
+  (`nixlUcxIntReq`) and attached it when enqueuing.
+- In request status handling, when UCX returns an error (not
+  SUCCESS/IN_PROG), consult endpoint `checkTxState()` to return
+  `NIXL_ERR_REMOTE_DISCONNECT` on failed connection.
+- Updated helper `_retHelper` to accept and set connection context.
+
+1) 9f77cc4 — UCX threadpool (single commit)
+
+- Files: `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`,
+  `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
+- Added `nixlUcxThreadPoolEngine` class and factory selection via
+  `num_threads` backend param; default remains no threadpool.
+- Implemented shared-worker round-robin selection using TLS map and atomic
+  index; added `getSharedWorkersSize()`.
+- Spun up a shared progress thread for shared workers and one dedicated
+  progress thread per extra worker.
+- Preserved existing behavior when `num_threads=0`.
+
+1) e655e3e — supportsNotif enforcement
+
+- File: `AsyncRT/lib/NIXL/nixl_agent.cpp`
+- On backend creation, if `supportsRemote()` and not `supportsNotif()`,
+  fail engine creation with `NIXL_ERR_BACKEND`.
+
+### Testing
+
+- UCX tests pass:
+  - Command: `./bazelw test //AsyncRT/unittests:NixlTestUcx`
+  - Result: PASS (1/1)
+
+### Notes / Adaptations
+
+- The upstream threadpool used Asio for task scheduling; our port reuses
+  existing progress-thread primitive without external deps. Dedicated threads
+  poll their bound workers; default-off unless `num_threads>0`.
+- Upstream introduced a new status string for CANCELED; our port maps
+  canceled/error cases to connection state without adding new enum values.
+
+## Week 15 (August 19-25, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|--------|-------|
+| 66e3469 | 2025-08-19 | Add NIXL Telemetry infrastructure | Skip | - | Telemetry infra not present in AsyncRT |
+| 1632067 | 2025-08-20 | AGENT/DATA: loadConnInfo and loadRemoteSections refactoring | Skip | - | Refactors + telemetry hooks; AsyncRT agent already aligned behaviorally |
+| 96d813c | 2025-08-21 | Plugin manager enhancements | Skip | - | AsyncRT plugin manager differs; no functional gaps observed |
+| 8f2875d | 2025-08-22 | NIXL/UCX: Replace homemade list of requests with vector | Port | ✅ Completed | Switched request tracking to std::vector |
+| 1eb6e6b | 2025-08-25 | BACKEND/UCX: fix req initialization in checkXfer | Port | ✅ Completed (behavior) | Ensured proper enqueue/init on checkXfer paths |
+| 6731af8 | 2025-08-24 | refactor: replace bool with XferStatus enum in get_xfer_status | Skip | - | Rust bindings only |
+
+### Changes Made
+
+1) 8f2875d — UCX request tracking vector
+
+- File: `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
+- Replaced custom intrusive list with `std::vector<nixlUcxIntReq*>` in
+  `nixlUcxBackendH`.
+- Updated append(), status(), and release() to iterate, compact, and release
+  completed requests.
+- Preserves connection-aware error mapping from Week 14.
+
+1) 1eb6e6b — checkXfer initialization
+
+- File: `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
+- Ensured requests created during `checkXfer` notification send are appended
+  and progressed correctly (via `_retHelper`).
+- No API changes; behavior aligned with upstream.
+
+### Testing
+
+- `./bazelw test //AsyncRT/unittests:NixlTestUcx` — PASS
+
+### Notes
+
+- Skipped telemetry and plugin-manager refactors due to
+  infrastructure/codebase differences; behavior already equivalent in AsyncRT
+  or out of scope.

@@ -169,10 +169,11 @@ protected:
     return uws[worker_id];
   }
 
-  virtual size_t getWorkerId() const {
-    return std::hash<std::thread::id>{}(std::this_thread::get_id()) %
-           uws.size();
-  }
+  virtual size_t getWorkerId() const;
+
+  // Number of workers considered "shared" among threads for round-robin.
+  // Defaults to all workers; threadpool engine overrides.
+  virtual size_t getSharedWorkersSize() const { return uws.size(); }
 
   void getNotifsImpl(notif_list_t &notif_list);
 
@@ -224,6 +225,7 @@ private:
   std::unique_ptr<nixlUcxContext> uc;
   std::vector<std::unique_ptr<nixlUcxWorker>> uws;
   std::string workerAddr;
+  mutable std::atomic<size_t> sharedWorkerIndex_;
 
   /* CUDA data*/
   DeviceContextRef deviceCtx;
@@ -265,6 +267,31 @@ private:
   std::unique_ptr<nixlUcxThread> thread_;
   std::mutex notifMtx_;
   notif_list_t notifPthr_;
+};
+
+// Optional threadpool engine; enabled when num_threads > 0 in custom params.
+class nixlUcxThreadPoolEngine : public nixlUcxEngine {
+public:
+  nixlUcxThreadPoolEngine(const nixlBackendInitParams &init_params);
+  ~nixlUcxThreadPoolEngine();
+
+  bool supportsProgTh() const override { return true; }
+  size_t getSharedWorkersSize() const override { return numSharedWorkers_; }
+
+  // For now, reuse base implementations; chunking is activated only when
+  // split_batch_size > 0 and there are dedicated threads.
+  nixl_status_t getNotifs(notif_list_t &notif_list) override;
+
+protected:
+  int vramApplyCtx() override;
+  void appendNotif(std::string remote_name, std::string msg) override;
+
+private:
+  std::unique_ptr<nixlUcxThread> sharedThread_;
+  std::vector<std::unique_ptr<nixlUcxThread>> dedicatedThreads_;
+  size_t numSharedWorkers_ = 0;
+  std::mutex notifMutex_;
+  notif_list_t notifThread_;
 };
 
 nixlBackendPlugin *createStaticUcxPlugin();

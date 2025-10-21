@@ -118,7 +118,8 @@ struct NixlAgentWithUCXBackend {
 
   static void create(NixlAgentWithUCXBackend &self, std::string agentName,
                      int port, std::string backendName, int gpuDeviceId = -1,
-                     int numWorkers = 1, std::string errorHandlingMode = "") {
+                     int numWorkers = 1, std::string errorHandlingMode = "",
+                     int numThreads = 0) {
     self.agentName = agentName;
     self.agent = std::make_unique<nixlAgent>(
         agentName, nixlAgentConfig(/*use_prog_thread=*/true,
@@ -150,6 +151,9 @@ struct NixlAgentWithUCXBackend {
     if (!errorHandlingMode.empty()) {
       backendParams["ucx_error_handling_mode"] = errorHandlingMode;
     }
+
+    if (numThreads > 0)
+      backendParams["num_threads"] = std::to_string(numThreads);
 
     ASSERT_SUCCESS(
         self.agent->createBackend(backendName, backendParams, self.backend));
@@ -280,6 +284,102 @@ static void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
 
 // Fixture for UCX Integration Tests
 class NixlUcxIntegrationTest : public ::testing::Test {};
+
+TEST_F(NixlUcxIntegrationTest, UcxThreadpoolSmoke) {
+  setenv("UCX_LOG_LEVEL", "warn", 1);
+
+  // Create two agents with UCX backend using a threadpool configuration:
+  // 2 workers total, 1 dedicated thread (leaves 1 shared worker).
+  const size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TP_Agent1", available_port(), "ucx",
+                                  /*gpuDeviceId=*/-1,
+                                  /*numWorkers=*/2, /*errMode=*/"",
+                                  /*numThreads=*/1);
+
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TP_Agent2", available_port(), "ucx",
+                                  /*gpuDeviceId=*/-1,
+                                  /*numWorkers=*/2, /*errMode=*/"",
+                                  /*numThreads=*/1);
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange connection/metadata and perform a small transfer
+  exchangeMetadata(nixl1, nixl2);
+
+  const size_t transferSize = bufferSize / 4;
+  std::fill(dramBuffer1.begin(), dramBuffer1.begin() + transferSize, 'X');
+  std::fill(dramBuffer2.begin(), dramBuffer2.end(), 'Z');
+
+  nixl_xfer_dlist_t src(nixl_mem_t::DRAM_SEG);
+  nixl_xfer_dlist_t dst(nixl_mem_t::DRAM_SEG);
+  src.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), transferSize}, 0));
+  dst.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), transferSize}, 0));
+
+  transferData(nixl1, nixl2, src, dst);
+
+  // Verify copy
+  ASSERT_EQ(std::memcmp(dramBuffer1.data(), dramBuffer2.data(), transferSize),
+            0);
+}
+
+TEST_F(NixlUcxIntegrationTest, UcxThreadpoolMultiThread) {
+  setenv("UCX_LOG_LEVEL", "warn", 1);
+
+  // Create two agents with UCX backend using a threadpool configuration:
+  // 3 workers total, 2 dedicated threads (leaves 1 shared worker).
+  // This tests the scenario with numThreads > 1.
+  const size_t bufferSize = 4096;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TP_MT_Agent1", available_port(),
+                                  "ucx",
+                                  /*gpuDeviceId=*/-1,
+                                  /*numWorkers=*/3, /*errMode=*/"",
+                                  /*numThreads=*/2);
+
+  std::vector<char> dramBuffer1(bufferSize);
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TP_MT_Agent2", available_port(),
+                                  "ucx",
+                                  /*gpuDeviceId=*/-1,
+                                  /*numWorkers=*/3, /*errMode=*/"",
+                                  /*numThreads=*/2);
+  std::vector<char> dramBuffer2(bufferSize);
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  // Exchange connection/metadata
+  exchangeMetadata(nixl1, nixl2);
+
+  // Perform multiple transfers to exercise multiple workers
+  const size_t transferSize = bufferSize / 2;
+  std::fill(dramBuffer1.begin(), dramBuffer1.begin() + transferSize, 'M');
+  std::fill(dramBuffer2.begin(), dramBuffer2.end(), 'N');
+
+  nixl_xfer_dlist_t src(nixl_mem_t::DRAM_SEG);
+  nixl_xfer_dlist_t dst(nixl_mem_t::DRAM_SEG);
+  src.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), transferSize}, 0));
+  dst.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), transferSize}, 0));
+
+  transferData(nixl1, nixl2, src, dst);
+
+  // Verify copy
+  ASSERT_EQ(std::memcmp(dramBuffer1.data(), dramBuffer2.data(), transferSize),
+            0);
+}
 
 TEST_F(NixlUcxIntegrationTest, DramTransfer) {
   // Explicitly enable verbose logging for UCX.
