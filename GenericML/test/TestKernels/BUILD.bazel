@@ -9,7 +9,7 @@ mojo_kgen_lib(
     deps = [
         "@mojo//:compiler_internal",
         "@mojo//:stdlib",
-        "@mojo//:tensor_internal",
+        "@mojo//:tensor",
     ],
 )
 
@@ -21,6 +21,6 @@ mojo_library(
     deps = [
         "@mojo//:compiler_internal",
         "@mojo//:stdlib",
-        "@mojo//:tensor_internal",
+        "@mojo//:tensor",
     ],
 )

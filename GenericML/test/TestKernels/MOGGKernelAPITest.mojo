@@ -14,7 +14,7 @@ from buffer import NDBuffer
 from buffer.dimlist import DimList
 from compiler_internal import StaticTensorSpec
 from runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
-from tensor_internal import (
+from tensor import (
     InputTensor,
     InputVariadicTensors,
     ManagedTensorSlice,
@@ -28,16 +28,16 @@ from tensor_internal import (
     simd_store_into_managed_tensor_slice,
     view_copy_impl,
 )
-from tensor_internal.managed_tensor_slice import (
+from tensor.managed_tensor_slice import (
     _FusedInputTensor as FusedInputTensor,
 )
-from tensor_internal.managed_tensor_slice import (
+from tensor.managed_tensor_slice import (
     _FusedInputVariadicTensors as FusedInputVariadicTensors,
 )
-from tensor_internal.managed_tensor_slice import (
+from tensor.managed_tensor_slice import (
     _FusedOutputTensor as FusedOutputTensor,
 )
-from tensor_internal.managed_tensor_slice import (
+from tensor.managed_tensor_slice import (
     _MutableInputTensor as MutableInputTensor,
 )
 

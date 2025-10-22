@@ -86,9 +86,8 @@ constexpr StringLiteral alias_UInt8 = "UInt8";
 /// relying on an `__init__.mojo` file that imports things or harcoding a
 /// package that could change/be moved around.
 constexpr StringLiteral packagesToImport[] = {
-    "MOGGPrimitives", "MOGGKernelAPI", "tensor_internal", "compiler_internal",
-    "utils",          "runtime",       "memory",          "buffer",
-    "collections"};
+    "MOGGPrimitives", "MOGGKernelAPI", "tensor", "compiler_internal", "utils",
+    "runtime",        "memory",        "buffer", "collections"};
 
 /// TODO(GEX-2488): Find another way to find that a type is an IOSpec without
 /// relying on package / type name.

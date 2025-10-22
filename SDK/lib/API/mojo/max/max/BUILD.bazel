@@ -8,9 +8,9 @@ mojo_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//SDK/lib/API/mojo/max/tensor",
         "@mojo//:compiler",
         "@mojo//:stdlib",
+        "@mojo//:tensor",
     ],
 )
 
@@ -25,7 +25,7 @@ pkg_filegroup(
     name = "max-mojo-doc",
     srcs = [
         ":docs",
-        "//open-source/max/max/kernels/src/extensibility/tensor_internal:docs",
+        "//open-source/max/max/kernels/src/extensibility/tensor:docs",
     ],
     visibility = ["//visibility:public"],
 )
