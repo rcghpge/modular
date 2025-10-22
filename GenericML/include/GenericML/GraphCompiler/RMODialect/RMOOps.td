@@ -158,7 +158,7 @@ def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
 }
 
 class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
+    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor, MO_SingleDevice]> {
   let arguments = (ins
     MO_KnownTensor:$input_x,
     MO_KnownTensor:$input_y,
@@ -261,7 +261,7 @@ def RMO_NotEqualOp : RMO_PureBinaryComparisonOp<"not_equal", [Commutative]> {
 }
 
 class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []>
-    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor]> {
+    : RMO_Op<name, traits # [Pure, InferTypeOpAdaptor, MO_SingleDevice]> {
   let arguments = (ins
     MO_BooleanMask:$input_x,
     MO_BooleanMask:$input_y,
@@ -495,6 +495,7 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
 def RMO_MatmulOp : RMO_Op<"matmul", [
   Pure,
   InferTypeOpAdaptor,
+  MO_SingleDevice,
 ]> {
   let summary = "Matrix multiplication operation";
   let description = [{
@@ -535,6 +536,7 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
 def RMO_ConvOp : RMO_Op<"conv", [
   Pure,
   InferTypeOpAdaptor,
+  MO_SingleDevice,
 ]> {
   let summary = "Convolution operation";
   let description = [{
@@ -617,6 +619,7 @@ def RMO_ConvOp : RMO_Op<"conv", [
 def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
   Pure,
   InferTypeOpAdaptor,
+  MO_SingleDevice,
 ]> {
   let summary = "Transposed convolution operation";
   let description = [{
@@ -697,8 +700,10 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
   }];
 }
 
-class RMO_PoolOp<string name>
-  : RMO_Op<name, [Pure, InferTypeOpAdaptor]> {
+class RMO_PoolOp<string name> : RMO_Op<name, [
+  Pure,
+  InferTypeOpAdaptor,
+]> {
     let arguments = (ins
       MO_KnownTensor:$input,
       KnownShapeAttr:$filter_shape,
@@ -796,6 +801,7 @@ def RMO_MaxPoolOp : RMO_PoolOp<"max_pool">{
 def RMO_SelectOp : RMO_Op<"select", [
   Pure,
   InferTypeOpAdaptor,
+  MO_SingleDevice,
 ]> {
   let summary = "Select operation with broadcasting and dtype casting";
   let description = [{
@@ -832,6 +838,7 @@ def RMO_SelectOp : RMO_Op<"select", [
 def RMO_TopKOp : RMO_Op<"top_k", [
   Pure,
   InferTypeOpAdaptor,
+  MO_SingleDevice,
 ]> {
   let summary = "Top-K operation";
   let description = [{

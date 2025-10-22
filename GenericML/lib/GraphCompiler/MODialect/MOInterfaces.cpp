@@ -22,6 +22,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
+#include <mlir/IR/OpImplementation.h>
 
 using namespace M;
 using namespace MO;
@@ -655,10 +656,6 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
 LogicalResult Impl::verifySingleDevice(Operation *op,
                                        ArrayRef<size_t> hostOperandIndices,
                                        ArrayRef<size_t> deviceOperandIndices) {
-  auto hasDevice = dyn_cast<MOHasDeviceInterface>(op);
-  // Skip verification when no device is assigned.
-  if (!hasDevice.getExecutionDevice())
-    return success();
   // If we are given a list of device operands, use the first one to determine
   // the device type. Otherwise, use the first result device.
   DeviceRefAttr singleDevice =
@@ -666,9 +663,16 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
           ? getFirstResultDevice(op)
           : getDeviceOrDefaultAny(
                 op->getOperand(deviceOperandIndices.front()).getType());
-  // Check the execution device constraint.
-  if (failed(checkExecutionDeviceConstraint(hasDevice, singleDevice)))
-    return failure();
+
+  if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
+    // Skip verification when no device is assigned.
+    if (!hasDevice.getExecutionDevice())
+      return success();
+    // Check the execution device constraint.
+    if (failed(checkExecutionDeviceConstraint(hasDevice, singleDevice)))
+      return failure();
+  }
+
   // Empty device operand list means check all non-scalar operands.
   llvm::SmallVector<size_t> operandIndices;
   for (size_t i = 0; i < op->getNumOperands(); ++i)
@@ -688,7 +692,6 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
   for (size_t i = 0; i < op->getNumResults(); ++i)
     if (failed(checkResultDeviceConstraint(op, i, singleDevice)))
       return failure();
-
   return success();
 }
 
