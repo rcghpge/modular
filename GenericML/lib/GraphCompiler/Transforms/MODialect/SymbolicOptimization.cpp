@@ -1138,19 +1138,16 @@ static bool shouldSkipPatternIfReshapeSqueezesFinalDims(Value val) {
   if (!isOnHost(val.getDefiningOp()))
     return false;
 
-  TensorType inputTy, outputTy;
-  if (auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>()) {
-    inputTy = reshapeOp.getInput().getType();
-    outputTy = reshapeOp.getType();
-  } else if (auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>()) {
-    inputTy = reshapeOp.getInput().getType();
-    outputTy = reshapeOp.getType();
-  } else {
+  auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>();
+  if (!reshapeOp) {
+    assert(!val.getDefiningOp<MO::ReshapeOp>());
     return false;
   }
 
-  auto inputShape = dyn_cast<MO::ShapeAttr>(inputTy.getShapeAttr());
-  auto outputShape = dyn_cast<MO::ShapeAttr>(outputTy.getShapeAttr());
+  auto inputShape =
+      dyn_cast<MO::ShapeAttr>(reshapeOp.getInput().getType().getShapeAttr());
+  auto outputShape =
+      dyn_cast<MO::ShapeAttr>(reshapeOp.getType().getShapeAttr());
 
   auto inputRank = inputShape.getRank();
   auto inputShapeHasTrailingOne = inputShape && inputShape.getRank() > 0 &&
