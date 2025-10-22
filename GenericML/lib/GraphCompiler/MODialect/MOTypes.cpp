@@ -214,6 +214,10 @@ static std::string asString(Type type) {
 /// `MO::TensorType` with this name as the key.
 static constexpr StringRef kLayoutMetadataName = "layout";
 
+/// A iospec attribute will always be stored in the metadata `DictionaryAttr` of
+/// `MO::TensorType` with this name as the key.
+static constexpr StringRef kIOKindMetadataName = "io";
+
 Type TensorType::parse(AsmParser &parser) {
   TensorLikeTypeParser tensorParser(parser);
 
@@ -493,6 +497,11 @@ LayoutAttr TensorType::getLayoutAttr() {
   return llvm::dyn_cast_or_null<LayoutAttr>(layoutAttrOrNull);
 }
 
+IOKindAttr TensorType::getIOKindAttr() {
+  return llvm::dyn_cast_or_null<IOKindAttr>(
+      getMetadata().get(kIOKindMetadataName));
+}
+
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype) const {
   auto shapeTy = ShapeType::get(getContext());
@@ -535,6 +544,22 @@ TensorType TensorType::cloneWith(LayoutAttr layoutAttr) const {
 TensorType TensorType::cloneWithoutLayout() const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.erase(kLayoutMetadataName);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
+                         newMetadata);
+}
+
+TensorType TensorType::cloneWith(IOKindAttr ioKindAttr) const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.set(kIOKindMetadataName, ioKindAttr);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
+                         newMetadata);
+}
+
+TensorType TensorType::cloneWithoutIOKind() const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.erase(kIOKindMetadataName);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
   return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
                          newMetadata);

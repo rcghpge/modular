@@ -1210,7 +1210,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         return emitError(dynamicDimensionsOr.getError());
 
       /// TODO: Support fusion enums
-      IOKind io = (idx < endOfInputArguments) ? IOKind::Input : IOKind::Output;
+      MO::IOKind io =
+          (idx < endOfInputArguments) ? MO::IOKind::Input : MO::IOKind::Output;
       bool mut = idx >= endOfInputArguments ||
                  isa<MO::BufferType>(stubArgument.getType());
       // Exclusive is True unless it's used by a view kernel.
@@ -1220,7 +1221,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           });
       auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
           loc, stubArgument.getType(), regionArgument, *dynamicDimensionsOr,
-          BoolAttr::get(ctx, mut), IOKindAttr::get(ctx, io),
+          BoolAttr::get(ctx, mut), MO::IOKindAttr::get(ctx, io),
           BoolAttr::get(ctx, isExclusive));
       stubCallOperands.emplace_back(tensorInitOp);
     } else {
@@ -1315,7 +1316,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Value emptyTensor = builder.create<MOGG::TensorInitOp>(
         loc, fusedOutput.getType(), emptyBuffer, *dynamicDimensionsOr,
         /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/IOKindAttr::get(ctx, IOKind::Input),
+        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
         /*exclusive=*/BoolAttr::get(ctx, true));
 
     // Then make the substitution with the original input.
@@ -1345,7 +1346,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         loc, constantOp.getResult().getType(), bufferValue,
         /*dynamicDimensions=*/ArrayRef<Value>{},
         /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/IOKindAttr::get(ctx, IOKind::Input),
+        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
         BoolAttr::get(ctx, isExclusive));
     constantOp.getResult().replaceAllUsesWith(constantValue);
     constantOp->erase();
@@ -3340,7 +3341,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   auto mutParam = getMut();
   auto exclusiveParam = getExclusive();
   auto ioParam = MojoValue(HardcodedMojoSymbols::struct_IO)
-                     .get(MOGG::stringifyIOKind(getIo()));
+                     .get(MO::stringifyIOKind(getIo()));
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   auto shapeParam =

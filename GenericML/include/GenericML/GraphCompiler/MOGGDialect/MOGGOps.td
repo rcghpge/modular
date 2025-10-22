@@ -18,6 +18,7 @@ include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "GenericML/MGPDialect/MGPTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
+include "GenericML/GraphCompiler/MODialect/MOEnums.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
 include "GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.td"
@@ -1681,7 +1682,7 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   let arguments = (ins MGP_DeviceBufferType:$buffer,
                        Variadic<AnyInteger>:$dims,
                        BoolAttr:$mut,
-                       MOGG_IOKind:$io,
+                       MO_IOKind:$io,
                        BoolAttr:$exclusive
                   );
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);

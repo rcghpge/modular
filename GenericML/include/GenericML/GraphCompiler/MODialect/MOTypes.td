@@ -124,6 +124,12 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     /// Returns a clone without the layout attribute.
     TensorType cloneWithoutLayout() const;
 
+    /// Returns a clone with a new iokind attribute.
+    TensorType cloneWith(IOKindAttr ioKindAttr) const;
+
+    /// Returns a clone without the IOKind attribute.
+    TensorType cloneWithoutIOKind() const;
+
     /// Returns clone with a new metadata attribute.
     TensorType cloneWith(DictionaryAttr metadataAttr) const;
 
@@ -215,6 +221,10 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     /// Return the layout attribute carried by this tensor type. If no layout
     /// attribute is specified, return a null attribute `LayoutAttr{}`.
     MO::LayoutAttr getLayoutAttr();
+
+    /// Return the IOKind attribute carried by this tensor type. If no iokind
+    /// attribute is specified, return a null attribute `IOKindAttr{}`.
+    MO::IOKindAttr getIOKindAttr();
 
     /// Duplicates a tensor type but with a dimension set to a new value.
     TensorType cloneWithNewDim(uint64_t dim, uint64_t size);
