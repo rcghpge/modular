@@ -594,11 +594,9 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
           outputTy.getRankNonZero())])};
   if (generateStoreForOutput) {
     // Output lambda has an extra argument which is the kernel output.
-    MO::TensorType inputTy =
-        MO::castFromTensorLike(getFusibleTensors().front().getType());
     lambdaArguments.push_back(NamedMojoDef(
         "input",
-        EmitMojoState::getSIMDType(inputTy.getDtype(),
+        EmitMojoState::getSIMDType(outputTy.getDtype(),
                                    state.builder.newVar(widthParamName))));
   }
 
@@ -1303,14 +1301,18 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         bindOp.getBindKind() != BindLambdaKind::OutputLambda)
       return success();
 
-    // We always pass an empty tensor to the kernels for fused input tensors.
+    Value tensorVal = bindOp.getFusibleTensors().front();
+    Value lambdaVal = bindOp.getOutput();
+
+    // We always pass an empty tensor to the kernels for fused input tensors or
+    // output lambdas with a cast.
+    bool lambdaHasCast =
+        MO::castFromTensorLike(tensorVal.getType()).getDtype() !=
+        MO::castFromTensorLike(lambdaVal.getType()).getDtype();
     bool substituteWithEmptyTensor =
-        bindOp.getBindKind() == BindLambdaKind::InputLambda;
+        bindOp.getBindKind() == BindLambdaKind::InputLambda || lambdaHasCast;
 
     builder.setInsertionPointAfter(bindOp);
-
-    Value lambdaVal = bindOp.getOutput();
-    Value tensorVal = bindOp.getFusibleTensors().front();
 
     // Replace the output of the lambda with an empty tensor.
     if (substituteWithEmptyTensor) {
