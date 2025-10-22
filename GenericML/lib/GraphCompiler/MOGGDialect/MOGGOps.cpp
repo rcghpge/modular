@@ -1219,10 +1219,11 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           llvm::none_of(stubArgument.getUsers(), [](Operation *use) {
             return isa<MOGG::CallViewOp>(use);
           });
+      auto ioAttr = MO::IOKindAttr::get(ctx, io);
+      stubArgument.setType(asTensor.cloneWith(ioAttr));
       auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
           loc, stubArgument.getType(), regionArgument, *dynamicDimensionsOr,
-          BoolAttr::get(ctx, mut), MO::IOKindAttr::get(ctx, io),
-          BoolAttr::get(ctx, isExclusive));
+          BoolAttr::get(ctx, mut), ioAttr, BoolAttr::get(ctx, isExclusive));
       stubCallOperands.emplace_back(tensorInitOp);
     } else {
       emitError("Type not yet support in the lowering");
@@ -3401,8 +3402,10 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
 LogicalResult TensorGetShapeOp::emitMojo(EmitMojoState &state) {
   /// TODO: Look it up in the MojoLibraryAnalysis instead.
   auto stubOp = getOperation()->getParentOfType<KernelStubOp>();
+  auto tensorTy = MO::castFromTensorLike(getTensor());
   for (auto arg : stubOp.getBody().getArguments()) {
-    if (arg.getType() == getTensor()) {
+    auto argTy = MO::dynCastFromTensorLike(arg.getType());
+    if (argTy && argTy.getShapeAttr() == tensorTy.getShapeAttr()) {
       auto tensorMojoValue = state.getMojoValueFor(arg);
       state.setMojoValueFor(
           getResult(),

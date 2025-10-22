@@ -43,11 +43,8 @@ MojoValue EmitMojoState::getReboundInputTensorFor(Value value) {
 
   auto bindLambdaOp = value.getDefiningOp<MOGG::BindLambdaOp>();
   if (!bindLambdaOp) {
-    // No fusion, just rebind to InputTensor.
-    MojoValue inputTensor = getMojoValueFor(value);
-    return builder.var(inputTensor.rebind(
-        MojoValue(HardcodedMojoSymbols::alias_InputTensor)
-            [MojoValue("static_spec").equal(inputTensor.get("static_spec"))]));
+    // No fusion, just return the original tensor.
+    return getMojoValueFor(value);
   }
 
   ASSERT_STREAM(bindLambdaOp.getBindKind() == MOGG::BindLambdaKind::InputLambda,
@@ -74,11 +71,8 @@ MojoValue EmitMojoState::getReboundOutputTensorFor(Value value,
   // TODO(GEX-2550): Get rid of this method and use `mlirValueToMojoValue` map.
   auto bindLambdaOp = value.getDefiningOp<MOGG::BindLambdaOp>();
   if (!bindLambdaOp) {
-    // No fusion, just rebind to OutputTensor.
-    MojoValue outputTensor = getMojoValueFor(value);
-    return builder.var(outputTensor.rebind(
-        MojoValue(HardcodedMojoSymbols::alias_OutputTensor)
-            [MojoValue("static_spec").equal(outputTensor.get("static_spec"))]));
+    // No fusion, just return the original tensor.
+    return getMojoValueFor(value);
   }
 
   ASSERT_STREAM(

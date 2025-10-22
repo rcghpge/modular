@@ -7,6 +7,7 @@
 #define GENERICML_INTERFACES_EMITMOJOSTATE_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
@@ -189,13 +190,25 @@ public:
   }
 
   static MojoValue mlirTensorTypeToMojoType(MO::TensorType tensorType) {
+    MO::IOKindAttr ioKind = tensorType.getIOKindAttr();
+    auto tensorTypeName = [&]() {
+      if (!ioKind)
+        return HardcodedMojoSymbols::struct_ManagedTensorSlice;
+      else if (ioKind.getValue() == MO::IOKind::Input)
+        return HardcodedMojoSymbols::alias_InputTensor;
+      else if (ioKind.getValue() == MO::IOKind::Output)
+        return HardcodedMojoSymbols::alias_OutputTensor;
+      else {
+        ASSERT_STREAM(false, << "Unsupported ioKind " << ioKind);
+        return HardcodedMojoSymbols::struct_ManagedTensorSlice;
+      }
+    }();
     auto rank = tensorType.getRank();
     // Always use rank 1 for scalar tensors.
     if (rank == 0)
       rank = 1;
     auto dtype = mlirDTypeToMojoType(tensorType.getDtype()).text;
-    return llvm::formatv("{}[dtype = {}, rank = {}]",
-                         HardcodedMojoSymbols::struct_ManagedTensorSlice, dtype,
+    return llvm::formatv("{}[dtype = {}, rank = {}]", tensorTypeName, dtype,
                          rank)
         .str();
   }
