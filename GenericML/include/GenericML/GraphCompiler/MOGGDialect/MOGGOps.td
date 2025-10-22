@@ -1806,35 +1806,56 @@ def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
-def MOGG_BindToOp : MOGG_Op<"bind_to", [
+def MOGG_TensorFusedOp : MOGG_Op<"tensor.fused", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
-  let summary = "Replace a fused tensor with a different (empty) tensor for the fused kernel call";
+  let summary = "Build a Mojo FusedInput / FusedOutput ManagedTensorSlice object";
   let description = [{
-    For some fusion types (eg input fusion), the kernel must take an empty tensor.
+    This operation takes a fusion `lambda`, a `tensor` object, and build a new tensor bind with the corresponding lambda.
+    `lambda` must be the output of a `BindLambdaOp`.
+
+    In most situations, `tensor` is the input of the BindLambdaOp.
+    Examples:
+    ```
+    %lambda = mogg.bind (%tensor) output_lambda (%arg12: f32, %arg13: !pop.array<4, index>) {
+        mogg.output %arg12, %arg13 : f32, !pop.array<4, index>
+      }: (!mo.tensor<[4, 5, 1, 3], f32, {io = 0 : i32}>) -> !mo.tensor<[4, 5, 1, 3], f32>
+    %fused_tensor = mogg.tensor.fused(%lambda, %tensor) : (!mo.tensor<[4, 5, 1, 3], f32>, !mo.tensor<[4, 5, 1, 3], f32>) -> !mo.tensor<[4, 5, 1, 3], f32>
+    ```
+
+    For some fusion types (eg input fusion), the kernel must take an empty / reshaped tensor.
     This is represented using this op
     - the lambda will load using the `fusedTensor`
     - the kernel call will take the `emptyTensor`.
 
     Example:
     ```
-      %empty_buff = mogg.empty_buffer : !mgp.buffer
-      %empty_tensor = mogg.tensor.__init__(%empty_buff) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32>
-      %fused = mogg.bind (%tensor) input_lambda (%arg8: f32, %arg9: !pop.array<4, index>) {
+      %lambda = mogg.bind (%tensor) input_lambda (%arg8: f32, %arg9: !pop.array<4, index>) {
         mogg.output %arg8, %arg9 : f32, !pop.array<4, index>
       }: (!mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
-      %bind_tensor = mogg.bind_to(%fused_tensor, %empty_tensor) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
+      %empty_buff = mogg.empty_buffer : !mgp.buffer
+      %empty_tensor = mogg.tensor.__init__(%empty_buff) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32>
+      %fused_tensor = mogg.tensor.fused(%lambda, %empty_tensor) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
     ```
   }];
 
-  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$fusedTensor,
-                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$boundTensor);
+  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$lambda,
+                       AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let extraClassDeclaration = [{
+
+    BindLambdaOp getBindLambdaOp() {
+      return cast<BindLambdaOp>(getLambda().getDefiningOp());
+    }
+  }];
+
+  let hasVerifier = 1;
 }
 
 def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,

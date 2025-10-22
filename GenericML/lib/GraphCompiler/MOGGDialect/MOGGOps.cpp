@@ -549,14 +549,12 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
   // Prepare the inputs
   SmallVector<MojoValue> fusedInputs;
-  for (Value input : getFusibleTensors()) {
-    // Rebind each argument to an InputTensor
-    MojoValue rebindMojoInput = state.getReboundInputTensorFor(input);
-    fusedInputs.push_back(rebindMojoInput);
+  for (MojoValue input : state.getMojoValuesFor(getFusibleTensors())) {
+    fusedInputs.push_back(input);
 
     // The Compiler doesn't know the body lambda is using the tensor, and can't
     // keep it alive.
-    state.markAsKeepAlive(rebindMojoInput);
+    state.markAsKeepAlive(input);
   }
 
   std::optional<MojoValue> returnType = std::nullopt;
@@ -699,7 +697,7 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
     return emitError(
         "Op must have exactly one context operand to be lowered to mojo");
   const MojoValue &contextValue = state.getMojoValueFor(contextInputs.front());
-  MojoValue rebindOutput = state.getReboundOutputTensorFor(getOutput());
+  MojoValue mojoOutput = state.getMojoValueFor(getOutput());
 
   // Infer the kernel parameters.
 
@@ -746,8 +744,7 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  state.builder.call(mojoSymbolName, *maybeParams,
-                     {rebindOutput, contextValue});
+  state.builder.call(mojoSymbolName, *maybeParams, {mojoOutput, contextValue});
   state.genAllKeepAliveStatements();
 
   return success();
@@ -783,8 +780,6 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   // Get the kernel operands.
   SmallVector<MojoValue> mojoOperands = {state.getMojoValuesFor(getOperands())};
   std::swap(mojoOperands[0], mojoOperands[1]);
-  // Rebind the tensor to ensure that all parameters are deduced.
-  mojoOperands[0] = state.getReboundOutputTensorFor(getOutput());
 
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
@@ -851,31 +846,14 @@ Type CallExecuteOp::getKernelReturnOutput() {
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto function =
       state.analysis.getRegisteredLITMojoExecuteFunctionFor(getKernelName());
-  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp> functionAdaptor(
-      function);
 
+  // Collect all kernel I/Os.
   SmallVector<MojoValue> kernelOperands;
-  // Go through and rebind all outputs.
-  for (auto [outputIdx, val] : llvm::enumerate(getKernelDPSOutputs())) {
-    if (auto asTupleOp = val.getDefiningOp<MOGG::AsTupleOp>()) {
-      kernelOperands.push_back(state.getMojoValueFor(val));
-    } else {
-      kernelOperands.push_back(state.getReboundOutputTensorFor(
-          val,
-          /*expectsComputeLambda=*/functionAdaptor.outputArguments[outputIdx]
-              .isTensorWithIOSpec(
-                  KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)));
-    }
-  }
+  for (Value val : getKernelDPSOutputs())
+    kernelOperands.push_back(state.getMojoValueFor(val));
+  for (Value val : getKernelInputs())
+    kernelOperands.push_back(state.getMojoValueFor(val));
 
-  // Rebind the inputs.
-  for (Value val : getKernelInputs()) {
-    if (auto asTupleOp = val.getDefiningOp<MOGG::AsTupleOp>()) {
-      kernelOperands.push_back(state.getMojoValueFor(val));
-    } else {
-      kernelOperands.push_back(state.getReboundInputTensorFor(val));
-    }
-  }
   // And the optional context.
   if (auto maybeContext = getDeviceContext())
     kernelOperands.push_back(state.getMojoValueFor(maybeContext));
@@ -1300,32 +1278,43 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         moggContext.erase();
       };
 
-  auto lowerBindInputLambdaOp =
-      [&](MOGG::BindLambdaOp bindOp) -> LogicalResult {
+  auto lowerBindLambdaOp = [&](MOGG::BindLambdaOp bindOp) -> LogicalResult {
+    // Only replace I/O lambdas.
+    if (bindOp.getBindKind() != BindLambdaKind::InputLambda &&
+        bindOp.getBindKind() != BindLambdaKind::OutputLambda)
+      return success();
+
+    // We always pass an empty tensor to the kernels for fused input tensors.
+    bool substituteWithEmptyTensor =
+        bindOp.getBindKind() == BindLambdaKind::InputLambda;
+
     builder.setInsertionPointAfter(bindOp);
 
-    Value fusedOutput = bindOp.getOutput();
+    Value lambdaVal = bindOp.getOutput();
+    Value tensorVal = bindOp.getFusibleTensors().front();
 
-    // Replace the output of the lambda with an empty tensor
-    Value emptyBuffer =
-        builder.create<MOGG::EmptyBufferOp>(bindOp->getLoc(), mgpBufferType);
-    auto dynamicDimensionsOr = getTensorDynamicDimensions(
-        MO::castFromTensorLike(fusedOutput.getType()),
-        /*isInsideStub=*/true);
-    if (dynamicDimensionsOr.isError())
-      return emitError(dynamicDimensionsOr.getError());
-    Value emptyTensor = builder.create<MOGG::TensorInitOp>(
-        loc, fusedOutput.getType(), emptyBuffer, *dynamicDimensionsOr,
-        /*mut=*/BoolAttr::get(ctx, false),
-        /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
-        /*exclusive=*/BoolAttr::get(ctx, true));
+    // Replace the output of the lambda with an empty tensor.
+    if (substituteWithEmptyTensor) {
+      Value emptyBuffer =
+          builder.create<MOGG::EmptyBufferOp>(bindOp->getLoc(), mgpBufferType);
+      auto dynamicDimensionsOr = getTensorDynamicDimensions(
+          MO::castFromTensorLike(lambdaVal.getType()),
+          /*isInsideStub=*/true);
+      if (dynamicDimensionsOr.isError())
+        return emitError(dynamicDimensionsOr.getError());
+      tensorVal = builder.create<MOGG::TensorInitOp>(
+          loc, lambdaVal.getType(), emptyBuffer, *dynamicDimensionsOr,
+          /*mut=*/BoolAttr::get(ctx, false),
+          /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
+          /*exclusive=*/BoolAttr::get(ctx, true));
+    }
 
-    // Then make the substitution with the original input.
-    auto substituteOp = builder.create<MOGG::BindToOp>(
-        bindOp->getLoc(), fusedOutput.getType(), fusedOutput, emptyTensor);
+    // Build the Fused tensor object.
+    auto fusedTensorOp = builder.create<MOGG::TensorFusedOp>(
+        bindOp->getLoc(), lambdaVal.getType(), lambdaVal, tensorVal);
 
     // And finally replace it for the users of the lambda.
-    fusedOutput.replaceAllUsesExcept(substituteOp.getResult(), substituteOp);
+    lambdaVal.replaceAllUsesExcept(fusedTensorOp.getResult(), fusedTensorOp);
     return success();
   };
 
@@ -1356,9 +1345,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto walkResult = kernelStub.walk([&](mlir::Operation *op) {
     if (auto moggContext = dyn_cast<MOGG::DeviceContextPlaceholderOp>(op))
       lowerDeviceContextPlaceholder(moggContext);
-    else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op);
-             bindOp && bindOp.getBindKind() == BindLambdaKind::InputLambda) {
-      if (failed(lowerBindInputLambdaOp(bindOp)))
+    else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op)) {
+      if (failed(lowerBindLambdaOp(bindOp)))
         return WalkResult::interrupt();
     } else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
       lowerConstantOp(constantOp);
@@ -3426,10 +3414,8 @@ LogicalResult TensorGetShapeOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
-  // Rebind all the input tensors to ensure that all parameters are deduced.
-  SmallVector<MojoValue> inputMojoValues;
-  for (Value val : getInputs())
-    inputMojoValues.push_back(state.getReboundInputTensorFor(val));
+  // Get the kernel inputs.
+  SmallVector<MojoValue> inputMojoValues = state.getMojoValuesFor(getInputs());
 
   KGEN::LIT::FnOp function =
       state.analysis.getRegisteredLITMojoUpdateViewFunctionFor(getKernelName());
@@ -3601,12 +3587,129 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// BindToOp
+// TensorFusedOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
-  // Replace with the fused tensor by default.
-  state.setMojoValueFor(getResult(), state.getMojoValueFor(getFusedTensor()));
+LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
+
+  BindLambdaOp lambdaOp = getBindLambdaOp();
+  MojoValue lambdaParam = state.getMojoValueFor(getLambda());
+  MojoValue tensorValue = state.getMojoValueFor(getTensor());
+
+  // Check if the called kernel takes a compute lambda.
+  auto kernelTakesAComputeLambda = [&]() -> ErrorOr<bool> {
+    Value fusedTensor = getResult();
+    // Find the kernel call op.
+    if (!fusedTensor.hasOneUse())
+      return Error("MaterializeFusedTensor should have a unique user");
+    auto executeOp = dyn_cast<CallExecuteOp>(*fusedTensor.getUsers().begin());
+    if (!executeOp)
+      return Error("TensorFusedOp user must be a kernel call "
+                   "(CallExecuteOp)");
+
+    // Find the corresponding output index.
+    std::optional<unsigned> outputIdx = std::nullopt;
+    for (auto [idx, outputVal] : llvm::enumerate(executeOp.getOutputs())) {
+      if (outputVal == fusedTensor) {
+        outputIdx = idx;
+        break;
+      }
+    }
+
+    if (!outputIdx.has_value())
+      return Error("TensorFusedOp result must be a kernel call output");
+
+    // Check if the output operand corresponds to an output lambda.
+    auto function = state.analysis.getRegisteredLITMojoExecuteFunctionFor(
+        executeOp.getKernelName());
+    KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp>
+        functionAdaptor(function);
+    return functionAdaptor.outputArguments[*outputIdx].isTensorWithIOSpec(
+        KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor);
+  };
+
+  if (lambdaOp.getBindKind() == BindLambdaKind::InputLambda) {
+    // Build the FusedTensor with the new spec.
+    // TODO(MOCO-2595): Use helper function instead of relying on rebind.
+    MojoValue newSpec = MojoValue(
+        HardcodedMojoSymbols::
+            func_rebuild_static_tensor_specs_with_input_lambda)(
+        {}, ArrayRef<MojoValue>({tensorValue.get("static_spec"), lambdaParam}));
+    MojoValue fusedTensor = tensorValue.rebind(MojoValue(
+        HardcodedMojoSymbols::alias_FusedInputTensor)[MojoValue("static_spec")
+                                                          .equal(newSpec)]);
+
+    state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
+  } else {
+
+    Value bindLambdaInput = lambdaOp.getFusibleTensors().front();
+    auto fromType = dyn_cast<MO::TensorType>(bindLambdaInput.getType());
+    auto toType = dyn_cast<MO::TensorType>(getLambda().getType());
+    // TODO(GEX-2550): Represent this transformation with a new MOGG op instead.
+    // It must also handle dynamic dimensions.
+    if (fromType && toType &&
+        fromType.getRankNonZero() != toType.getRankNonZero()) {
+      // The rank differs after applying the lambda.
+      // This might happens because of AffineFusion.
+      // In that case the input must be reshaped to the output shape.
+      MojoValue shapeValue = state.getShapeAsIndexListMojoValue(toType);
+      MojoValue shapeParam = state.getStaticShapeAsMojoValue(toType);
+      MojoValue stridesParam = state.getStaticStridesAsMojoValue(toType);
+      tensorValue = state.builder.var(
+          MojoValue(HardcodedMojoSymbols::func_reshape_contiguous_buffer)(
+              {MojoValue("static_shape").equal(shapeParam),
+               MojoValue("static_stride").equal(stridesParam)},
+              {tensorValue, shapeValue}));
+    }
+
+    // Check if we need a compute or an output lambda.
+    auto requiresComputeLambdaOr = kernelTakesAComputeLambda();
+    if (requiresComputeLambdaOr.isError())
+      return emitError(requiresComputeLambdaOr.getError());
+    auto spec = *requiresComputeLambdaOr
+                    ? HardcodedMojoSymbols::alias_FusedComputeOutputTensor
+                    : HardcodedMojoSymbols::alias_FusedOutputTensor;
+
+    // Build the FusedTensor with the new spec.
+    // TODO(MOCO-2595): Use helper function instead of relying on rebind.
+    MojoValue newSpec = MojoValue(
+        HardcodedMojoSymbols::
+            func_rebuild_static_tensor_specs_with_output_lambda)(
+        {}, ArrayRef<MojoValue>({tensorValue.get("static_spec"), lambdaParam}));
+    MojoValue fusedTensor = tensorValue.rebind(
+        MojoValue(spec)[MojoValue("static_spec").equal(newSpec)]);
+
+    state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
+  }
+
+  return success();
+}
+
+LogicalResult TensorFusedOp::verify() {
+  auto lambdaOp = getLambda().getDefiningOp<BindLambdaOp>();
+  if (!lambdaOp)
+    return emitError("`lambda` operand must be a BindLambdaOp");
+  if (lambdaOp.getBindKind() != BindLambdaKind::InputLambda &&
+      lambdaOp.getBindKind() != BindLambdaKind::OutputLambda)
+    return emitError("`lambda` operand must be an input or output lambda");
+
+  auto lambdaTy = MO::dynCastFromTensorLike(getLambda().getType());
+  auto tensorTy = MO::dynCastFromTensorLike(getTensor().getType());
+  auto resultTy = MO::dynCastFromTensorLike(getResult().getType());
+  if (!lambdaTy || !tensorTy || !resultTy)
+    return emitError("All operation types must be tensor / buffer");
+
+  if (resultTy.getDtype() != lambdaTy.getDtype() ||
+      resultTy.getDtype() != tensorTy.getDtype())
+    return emitError("All operation types must have the same dtype");
+
+#if 0
+  // TODO(GEX-2550): This is currently not true for affine fusion.
+  // Use an explicit MOGG op to reshape the buffer before enabling this condtion.
+  if (resultTy.getShapeAttr() != lambdaTy.getShapeAttr() || resultTy.getShapeAttr() != tensorTy.getShapeAttr())
+    return emitError("All operation types must have the same shape");
+#endif
+
   return success();
 }
 
@@ -3617,49 +3720,18 @@ LogicalResult BindToOp::emitMojo(EmitMojoState &state) {
 LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getInputs());
 
-  ASSERT_STREAM(!inputValues.empty(), << "mogg.as_tuple op has no inputs");
-
-  SmallVector<KernelTerminator> callOps;
-  for (auto user : getResult().getUsers()) {
-    if (auto callOp = dyn_cast<MOGG::KernelTerminator>(user))
-      callOps.push_back(callOp);
-  }
-
-  ASSERT_STREAM(callOps.size() == 1, "Expected to find exactly one call op.");
-
-  auto kernelOutputs = callOps.front().getKernelDPSOutputs();
-  auto kernelInputs = callOps.front().getKernelInputs();
-
-  bool toInput = false;
-  bool toOutput = false;
-
-  for (auto kernelInput : kernelInputs)
-    toInput |= kernelInput == getResult();
-
-  for (auto kernelOutput : kernelOutputs)
-    toOutput |= kernelOutput == getResult();
-
-  // Use the EmitMojoState's built-in rebinding methods
-  SmallVector<MojoValue> reboundInputValues;
-  for (auto input : getInputs()) {
-    if (toInput)
-      reboundInputValues.push_back(state.getReboundInputTensorFor(input));
-    else if (toOutput)
-      reboundInputValues.push_back(state.getReboundOutputTensorFor(input));
-  }
-
   // Create DynamicTensor variables for each input
   SmallVector<MojoValue> dynamicTensorVars;
-  for (const auto &reboundInput : reboundInputValues) {
+  for (const auto &inputVal : inputValues) {
     // Create a DynamicTensor from each rebound input (which is already rebuilt)
     // var aN = DynamicTensor[dtype = varN.dtype, rank = varN.rank](
     //     varN._ptr, varN.shape()
     // )
     MojoValue dynamicTensorConstructor = MojoValue(
-        "DynamicTensor")[{MojoValue("dtype").equal(reboundInput.get("dtype")),
-                          MojoValue("rank").equal(reboundInput.get("rank"))}];
+        "DynamicTensor")[{MojoValue("dtype").equal(inputVal.get("dtype")),
+                          MojoValue("rank").equal(inputVal.get("rank"))}];
     MojoValue dynamicTensorValue = dynamicTensorConstructor(
-        {}, {reboundInput.get("_ptr"), reboundInput.get("shape")()});
+        {}, {inputVal.get("_ptr"), inputVal.get("shape")()});
     dynamicTensorVars.push_back(state.builder.var(dynamicTensorValue));
   }
 
@@ -3675,7 +3747,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   //     var1.static_spec, var2.static_spec, ..., varN.static_spec
   // )
   SmallVector<MojoValue> staticSpecs;
-  for (const auto &reboundInput : reboundInputValues) {
+  for (const auto &reboundInput : inputValues) {
     staticSpecs.push_back(reboundInput.get("static_spec"));
   }
   MojoValue staticSpecsConstructor = MojoValue("StaticTuple")[{
@@ -3690,7 +3762,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   // Note: Using the first rebound input's io_spec as they should all be the
   // same
   MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
-      MojoValue("io_spec").equal(reboundInputValues[0].get("io_spec")),
+      MojoValue("io_spec").equal(inputValues[0].get("io_spec")),
       MojoValue("static_specs").equal(inputSpecsAlias)}];
   MojoValue variadicTensorsValue =
       variadicTensorsConstructor({}, {inputTupVar});

@@ -4,7 +4,7 @@
 // CHECK:       [[IN:%.*]] = mogg.bind ({{.*}}, {{.*}}) input_lambda
 // CHECK:       [[EMPTY_BUFF:%.*]] = mogg.empty_buffer : !mgp.buffer
 // CHECK-NEXT:  [[EMPTY_TENSOR:%.*]] = mogg.tensor.__init__([[EMPTY_BUFF]]) {exclusive = true, io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32>
-// CHECK-NEXT:  [[FUSED:%.*]] = mogg.bind_to([[IN]], [[EMPTY_TENSOR]]) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
+// CHECK-NEXT:  [[FUSED:%.*]] = mogg.tensor.fused([[IN]], [[EMPTY_TENSOR]]) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
 // CHECK:       mogg.call.execute["mo.reduce.add"] inputs([[FUSED]]
 
 mo.graph @reduce_fused_input(%arg0: !mo.tensor<[4, 5, 2, 3], f32>, %arg1: !mo.tensor<[4, 5, 2, 3], f32>, %arg2: !mo.tensor<[4, 5, 1, 3], f32>) -> (!mo.tensor<[4, 5, 1, 3], f32>) {

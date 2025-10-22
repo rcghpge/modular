@@ -257,15 +257,6 @@ public:
         operands, [&](Value operand) { return getMojoValueFor(operand); });
   }
 
-  /// Get the corresponding rebind input ManagedTensorSlice object, applying
-  /// lambda fusion.
-  MojoValue getReboundInputTensorFor(Value value);
-
-  /// Get the corresponding rebind output ManagedTensorSlice object, applying
-  /// lambda fusion.
-  MojoValue getReboundOutputTensorFor(Value value,
-                                      bool expectsComputeLambda = false);
-
   /// Returns the original Mojo name of the registered function. The
   /// MOGGPreElab annotation will always tell you which .mojo file contains the
   /// generator. This is convenient for imports. Only packages need to be
