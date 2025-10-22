@@ -517,6 +517,9 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
 
     // Whether the bound lambda is identity or not.
     bool isIdentityLambda();
+
+    // Returns true if the lambda contains some affine-view operations.
+    bool hasAffineViewOperation();
   }];
 
   let builders = [
@@ -1856,6 +1859,37 @@ def MOGG_TensorFusedOp : MOGG_Op<"tensor.fused", [
   }];
 
   let hasVerifier = 1;
+}
+
+def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
+]> {
+  let summary = "Reshape a ManagedTensorSlice object into a new aliased tensor with a different shape";
+  let description = [{
+    Reshape the ManagedTensorSlcie `tensor` into a new tensor.
+    If the output shape has dynamic dimensions, they must be specified with `dynamic_dims`.
+    Both `tensor` and `result` must have a compatible shape.
+    This op is used to represent the reshape operation before the kernel call with a fused output lambda with an affine operation.
+
+    Example:
+    ```
+    %lambda = mogg.bind (%output) output_lambda (%arg8: f32, %arg9: !pop.array<2, index>) {
+      %17 = mogg.call "split_dim_indices"(%arg9, %8) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<3, index>
+      mogg.output %arg8, %17 : f32, !pop.array<3, index>
+    }: (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32}>) -> !mo.tensor<[4, 1], f32>
+    %reshaped = mogg.tensor.reshape(%output) : (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32}>) -> !mo.tensor<[4, 1], f32>
+    %fused = mogg.materialize_fused_tensor(%lambda, %reshaped) : (!mo.tensor<[4, 1], f32>, !mo.tensor<[4, 1], f32>) -> !mo.tensor<[4, 1], f32>
+    ```
+  }];
+
+  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
+                       Variadic<AnyInteger>:$dynamic_dims);
+  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,

@@ -378,6 +378,21 @@ bool BindLambdaOp::isIdentityLambda() {
   });
 }
 
+bool BindLambdaOp::hasAffineViewOperation() {
+  // Only output lambdas can have affine operations.
+  if (getBindKind() != BindLambdaKind::OutputLambda)
+    return false;
+
+  return walk([](mlir::Operation *op) {
+           // MOGG::CallOp is only used inside a lambda to represent an affine
+           // function call
+           if (isa<MOGG::CallOp>(op))
+             return WalkResult::interrupt();
+           return WalkResult::advance();
+         })
+      .wasInterrupted();
+}
+
 LogicalResult BindLambdaOp::verify() {
   if (getFusibleTensors().empty())
     return success();
@@ -1212,7 +1227,11 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Add extra arguments for the dynamic dimensions of fused tensors
   kernelStub.walk([&](MOGG::BindLambdaOp bindOp) {
-    if (bindOp.getBindKind() != BindLambdaKind::InputLambda)
+    // We only need to get the dynamic dimensions when materializing an
+    // intermediate tensor for the fused kernel operand. This happens only for
+    // Input and AffineView fusion.
+    if (bindOp.getBindKind() != BindLambdaKind::InputLambda &&
+        !bindOp.hasAffineViewOperation())
       return;
 
     Value fusedOutput = bindOp.getOutput();
@@ -1307,6 +1326,18 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           /*mut=*/BoolAttr::get(ctx, false),
           /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
           /*exclusive=*/BoolAttr::get(ctx, true));
+    }
+
+    else if (bindOp.hasAffineViewOperation()) {
+      // The tensor needs to be reshaped to match the expected kernel operand
+      // shape.
+      auto dynamicDimensionsOr = getTensorDynamicDimensions(
+          MO::castFromTensorLike(lambdaVal.getType()),
+          /*isInsideStub=*/true);
+      if (dynamicDimensionsOr.isError())
+        return emitError(dynamicDimensionsOr.getError());
+      tensorVal = builder.create<MOGG::TensorReshapeOp>(
+          loc, lambdaVal.getType(), tensorVal, *dynamicDimensionsOr);
     }
 
     // Build the Fused tensor object.
@@ -3642,26 +3673,6 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
     state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
   } else {
 
-    Value bindLambdaInput = lambdaOp.getFusibleTensors().front();
-    auto fromType = dyn_cast<MO::TensorType>(bindLambdaInput.getType());
-    auto toType = dyn_cast<MO::TensorType>(getLambda().getType());
-    // TODO(GEX-2550): Represent this transformation with a new MOGG op instead.
-    // It must also handle dynamic dimensions.
-    if (fromType && toType &&
-        fromType.getRankNonZero() != toType.getRankNonZero()) {
-      // The rank differs after applying the lambda.
-      // This might happens because of AffineFusion.
-      // In that case the input must be reshaped to the output shape.
-      MojoValue shapeValue = state.getShapeAsIndexListMojoValue(toType);
-      MojoValue shapeParam = state.getStaticShapeAsMojoValue(toType);
-      MojoValue stridesParam = state.getStaticStridesAsMojoValue(toType);
-      tensorValue = state.builder.var(
-          MojoValue(HardcodedMojoSymbols::func_reshape_contiguous_buffer)(
-              {MojoValue("static_shape").equal(shapeParam),
-               MojoValue("static_stride").equal(stridesParam)},
-              {tensorValue, shapeValue}));
-    }
-
     // Check if we need a compute or an output lambda.
     auto requiresComputeLambdaOr = kernelTakesAComputeLambda();
     if (requiresComputeLambdaOr.isError())
@@ -3703,12 +3714,9 @@ LogicalResult TensorFusedOp::verify() {
       resultTy.getDtype() != tensorTy.getDtype())
     return emitError("All operation types must have the same dtype");
 
-#if 0
-  // TODO(GEX-2550): This is currently not true for affine fusion.
-  // Use an explicit MOGG op to reshape the buffer before enabling this condtion.
-  if (resultTy.getShapeAttr() != lambdaTy.getShapeAttr() || resultTy.getShapeAttr() != tensorTy.getShapeAttr())
+  if (resultTy.getShapeAttr() != lambdaTy.getShapeAttr() ||
+      resultTy.getShapeAttr() != tensorTy.getShapeAttr())
     return emitError("All operation types must have the same shape");
-#endif
 
   return success();
 }
@@ -3823,6 +3831,27 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
       moggAsyncErrorFunc, {},
       {state.mojoReturnValues[0], state.getMojoValueFor(getError())});
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorReshapeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
+  // Call "reshape_contiguous_buffer" primitive with the output shape / strides.
+  MO::TensorType toType = MO::castFromTensorLike(getResult().getType());
+  MojoValue tensorValue = state.getMojoValueFor(getTensor());
+  MojoValue shapeValue =
+      state.getShapeAsIndexListMojoValue(toType, getDynamicDims());
+  MojoValue shapeParam = state.getStaticShapeAsMojoValue(toType);
+  MojoValue stridesParam = state.getStaticStridesAsMojoValue(toType);
+  state.setMojoValueFor(
+      getResult(), state.builder.var(MojoValue(
+                       HardcodedMojoSymbols::func_reshape_contiguous_buffer)(
+                       {MojoValue("static_shape").equal(shapeParam),
+                        MojoValue("static_stride").equal(stridesParam)},
+                       {tensorValue, shapeValue})));
   return success();
 }
 
