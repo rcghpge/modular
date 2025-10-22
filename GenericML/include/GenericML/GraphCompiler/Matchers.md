@@ -42,11 +42,11 @@ Hit a Dead End at OpPattern mo.reduce.add! Rewinding Stack.
              !mo.tensor<[], si64>) -> !mo.tensor<[4, 3, 1], f32>
        %10 = mo.add(%8, %9) : !mo.tensor<[4, 3, 1], f32>
         %10 = mo.add(%8, %9) : !mo.tensor<[4, 3, 1], f32>
-         %11 = mo.isqrt(%10) : !mo.tensor<[4, 3, 1], f32>
+         %11 = mo.rsqrt(%10) : !mo.tensor<[4, 3, 1], f32>
           %12 = mo.static.broadcast_to(%11) : !mo.tensor<[4, 3, 1], f32>
                 -> !mo.tensor<[4, 3, 2], f32>
            %14 = mo.mul(%12, %13) : !mo.tensor<[4, 3, 2], f32>
-Hit a Dead End at OpPattern mo.isqrt! Rewinding Stack.
+Hit a Dead End at OpPattern mo.rsqrt! Rewinding Stack.
  %2 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.100000e+00, 2.100000e+00>
         : tensor<2xf32>} : !mo.tensor<[2], f32>
   %13 = mo.static.broadcast_to(%2) : !mo.tensor<[2], f32>

@@ -154,13 +154,13 @@ mo.graph @round_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
 
 // -----
 
-mo.graph @isqrt_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.isqrt(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+mo.graph @rsqrt_ok(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+  %1 = rmo.mo.rsqrt(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   mo.output %1 : !mo.tensor<?, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @isqrt_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.isqrt([[VARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
+// CHECK-SAME: @rsqrt_ok([[VARG0:[^ ]*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.rsqrt([[VARG0]]) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
 // CHECK-NEXT: mo.output [[V0]] : !mo.tensor<?, f32>
 
 // -----

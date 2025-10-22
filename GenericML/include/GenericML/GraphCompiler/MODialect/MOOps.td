@@ -1260,8 +1260,8 @@ def MO_ReluOp : MO_ElementWiseUnaryMonoTypeOp<"relu", [Idempotent]> {
   }];
 }
 
-def MO_IsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"isqrt"> {
-  let summary = "Inverse square root operation";
+def MO_RsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"rsqrt"> {
+  let summary = "Reciprocal square root operation";
   let description = [{
     Returns `1/sqrt(x)`, where `x` is the input tensor.
 
@@ -1269,7 +1269,7 @@ def MO_IsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"isqrt"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.isqrt(%arg) : !mo.tensor<[2, 3], f32>
+      %res = mo.rsqrt(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }

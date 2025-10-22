@@ -151,5 +151,5 @@ class NumpyImpl(CommonImpls):
     def logical_xor(self, x, y):  # noqa: ANN001, ANN201
         return np.logical_xor(x, y)
 
-    def isqrt(self, x):  # noqa: ANN001, ANN201
+    def rsqrt(self, x):  # noqa: ANN001, ANN201
         return 1.0 / np.sqrt(x)

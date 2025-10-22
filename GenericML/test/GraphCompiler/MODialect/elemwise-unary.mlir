@@ -42,10 +42,10 @@ mo.graph @exp(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 
-// CHECK: mo.graph @isqrt(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
-mo.graph @isqrt(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
-  // CHECK-NEXT: mo.isqrt(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
-  %0 = mo.isqrt(%arg0) : !mo.tensor<[4, 5], f32>
+// CHECK: mo.graph @rsqrt(%[[ARG0:.*]]: !mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32> {
+mo.graph @rsqrt(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
+  // CHECK-NEXT: mo.rsqrt(%[[ARG0]]) : !mo.tensor<[4, 5], f32>
+  %0 = mo.rsqrt(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
 

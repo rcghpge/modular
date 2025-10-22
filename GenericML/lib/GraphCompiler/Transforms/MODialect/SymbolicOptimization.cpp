@@ -4119,33 +4119,33 @@ struct MathematicalCanonicalizationChainsOfPowToSinglePow
   }
 };
 
-// isqrt(x) -> div(bcast(1), sqrt(x))
-struct ForwardMathematicalCanonicalizationIsqrtToDivSqrt
-    : public DeviceAwareRewritePattern<OpRewritePattern, MO::IsqrtOp> {
-  ForwardMathematicalCanonicalizationIsqrtToDivSqrt(MLIRContext *ctx)
+// rsqrt(x) -> div(bcast(1), sqrt(x))
+struct ForwardMathematicalCanonicalizationRsqrtToDivSqrt
+    : public DeviceAwareRewritePattern<OpRewritePattern, MO::RsqrtOp> {
+  ForwardMathematicalCanonicalizationRsqrtToDivSqrt(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 1) {}
   LogicalResult
-  deviceAwareMatchAndRewrite(MO::IsqrtOp isqrtOp,
+  deviceAwareMatchAndRewrite(MO::RsqrtOp rsqrtOp,
                              DeviceAwareRewriter &rewriter) const override {
-    Location loc = isqrtOp->getLoc();
-    TensorType tensorType = isqrtOp.getType();
+    Location loc = rsqrtOp->getLoc();
+    TensorType tensorType = rsqrtOp.getType();
     auto bcast1ErrOr =
         createBroadcastedScalarConstantOpOfType(tensorType, 1, rewriter, loc);
     if (bcast1ErrOr.isError())
-      return rewriter.notifyMatchFailure(isqrtOp, bcast1ErrOr.getError());
+      return rewriter.notifyMatchFailure(rsqrtOp, bcast1ErrOr.getError());
     auto sqrt =
-        rewriter.create<MO::SqrtOp>(loc, tensorType, isqrtOp.getInput());
+        rewriter.create<MO::SqrtOp>(loc, tensorType, rsqrtOp.getInput());
     auto div = rewriter.create<MO::DivOp>(loc, tensorType, *bcast1ErrOr, sqrt);
-    rewriter.replaceAllUsesWith(isqrtOp, div);
+    rewriter.replaceAllUsesWith(rsqrtOp, div);
 
     return success();
   }
 };
 
-// div(bcast(1), sqrt(x)) -> isqrt(x)
-struct BackwardMathematicalCanonicalizationDivSqrtToIsqrt
+// div(bcast(1), sqrt(x)) -> rsqrt(x)
+struct BackwardMathematicalCanonicalizationDivSqrtToRsqrt
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
-  BackwardMathematicalCanonicalizationDivSqrtToIsqrt(MLIRContext *ctx)
+  BackwardMathematicalCanonicalizationDivSqrtToRsqrt(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 2) {}
   LogicalResult
   deviceAwareMatchAndRewrite(MO::DivOp divOp,
@@ -4158,9 +4158,9 @@ struct BackwardMathematicalCanonicalizationDivSqrtToIsqrt
              .match(divOp)) {
       return failure();
     }
-    auto isqrt =
-        rewriter.create<MO::IsqrtOp>(divOp->getLoc(), divOp.getType(), x);
-    rewriter.replaceAllUsesWith(divOp, isqrt);
+    auto rsqrt =
+        rewriter.create<MO::RsqrtOp>(divOp->getLoc(), divOp.getType(), x);
+    rewriter.replaceAllUsesWith(divOp, rsqrt);
 
     return success();
   }
@@ -4767,7 +4767,7 @@ struct SymbolicOptimizationPass
     RewritePatternSet patterns(context);
 
     patterns.add<
-        ForwardMathematicalCanonicalizationIsqrtToDivSqrt,
+        ForwardMathematicalCanonicalizationRsqrtToDivSqrt,
         ForwardMathematicalCanonicalizationReluToMax,
         ForwardMathematicalCanonicalizationMulByTwoToAdd,
         ForwardMathematicalCanonicalizationPowByTwoToMul,
@@ -4786,7 +4786,7 @@ struct SymbolicOptimizationPass
     RewritePatternSet patterns(context);
 
     patterns.add<
-        BackwardMathematicalCanonicalizationDivSqrtToIsqrt,
+        BackwardMathematicalCanonicalizationDivSqrtToRsqrt,
         BackwardMathematicalCanonicalizationMaxToRelu,
         BackwardMathematicalCanonicalizationMulByTwoToAdd,
         BackwardMathematicalCanonicalizationDivAndPowToPowByNegativeOneOrTwo>(

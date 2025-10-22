@@ -303,13 +303,13 @@ mo.graph @pow_chain_different_types(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.
 // CHECK:        mo.pow
 // CHECK-NEXT:   mo.pow
 
-// isqrt(x) -> 1 / sqrt(x) -> isqrt(x)
-mo.graph @isqrt_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %0 = mo.isqrt(%input) : !mo.tensor<[1, 2, 3], f32>
+// rsqrt(x) -> 1 / sqrt(x) -> rsqrt(x)
+mo.graph @rsqrt_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
+  %0 = mo.rsqrt(%input) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
-// CHECK-LABEL: @isqrt_roundtrip
-// CHECK-NEXT:   %[[OUT:.*]] = mo.isqrt({{.*}}) : !mo.tensor<[1, 2, 3], f32>
+// CHECK-LABEL: @rsqrt_roundtrip
+// CHECK-NEXT:   %[[OUT:.*]] = mo.rsqrt({{.*}}) : !mo.tensor<[1, 2, 3], f32>
 // CHECK-NEXT:   mo.output %[[OUT]] : !mo.tensor<[1, 2, 3], f32>
 
 // relu(x) -> max(x, 0)

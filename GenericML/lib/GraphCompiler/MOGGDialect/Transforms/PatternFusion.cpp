@@ -907,7 +907,7 @@ struct LayerNormPattern
     auto tRDenom = m_BinaryCommutativeOp<MO::MulOp>(
         po(), gam,
         m_Op<MO::Static::BroadcastToOp>(
-            po(), m_Op<MO::IsqrtOp>(
+            po(), m_Op<MO::RsqrtOp>(
                       po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
     auto tTerm1 = m_BinaryCommutativeOp<MO::MulOp>(po(), x, tRDenom);
     auto tTerm2 = m_BinaryCommutativeOp<MO::MulOp>(po(), mean, tRDenom);

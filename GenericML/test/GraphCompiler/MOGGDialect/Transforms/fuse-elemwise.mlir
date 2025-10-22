@@ -54,17 +54,17 @@ mo.graph @leftmostTreeFusion(%arg0: !mo.tensor<[4, 3], f32>, %arg1: !mo.tensor<[
 
 mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>
-  %1 = mo.isqrt(%0) : !mo.tensor<[4, 3], f32>
+  %1 = mo.rsqrt(%0) : !mo.tensor<[4, 3], f32>
   %2 = mo.tanh(%0) : !mo.tensor<[4, 3], f32>
   %3 = mo.sub(%1, %2) : !mo.tensor<[4, 3], f32>
   %4 = mo.sqrt(%3) : !mo.tensor<[4, 3], f32>
-  %5 = mo.isqrt(%3) : !mo.tensor<[4, 3], f32>
+  %5 = mo.rsqrt(%3) : !mo.tensor<[4, 3], f32>
   %6 = mo.add(%4, %5) : !mo.tensor<[4, 3], f32>
   %7 = mo.sqrt(%6) : !mo.tensor<[4, 3], f32>
-  %8 = mo.isqrt(%6) : !mo.tensor<[4, 3], f32>
+  %8 = mo.rsqrt(%6) : !mo.tensor<[4, 3], f32>
   %9 = mo.mul(%7, %8) : !mo.tensor<[4, 3], f32>
   %10 = mo.sqrt(%9) : !mo.tensor<[4, 3], f32>
-  %11 = mo.isqrt(%9) : !mo.tensor<[4, 3], f32>
+  %11 = mo.rsqrt(%9) : !mo.tensor<[4, 3], f32>
   %12 = mo.mul(%10, %11) : !mo.tensor<[4, 3], f32>
   mo.output %12 : !mo.tensor<[4, 3], f32>
 }
@@ -73,15 +73,15 @@ mo.graph @multipleDiamondPattern(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<
 // CHECK: mogg.experimental.kernel
 // CHECK: mogg.call.elementwise["mo.sqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.tanh"]
-// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.sub"]
-// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.add"]
-// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.mul"]
-// CHECK-NEXT: mogg.call.elementwise["mo.isqrt"]
+// CHECK-NEXT: mogg.call.elementwise["mo.rsqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.sqrt"]
 // CHECK-NEXT: mogg.call.elementwise["mo.mul"]
 // CHECK-NOT: mogg.experimental.kernel

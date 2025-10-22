@@ -20,7 +20,7 @@ mo.graph @tf_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3
   %5 = mo.mean(%4, %ax) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %6 = mo.broadcast_to(%eps, %sh2) : (!mo.tensor<[], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %7 = mo.add(%5, %6) : !mo.tensor<[4, 3, 1], f32>
-  %8 = mo.isqrt(%7) : !mo.tensor<[4, 3, 1], f32>
+  %8 = mo.rsqrt(%7) : !mo.tensor<[4, 3, 1], f32>
   %9 = mo.broadcast_to(%8, %sh) : (!mo.tensor<[4, 3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %10 = mo.broadcast_to(%gamma, %sh) : (!mo.tensor<[2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %11 = mo.mul(%9, %10) : !mo.tensor<[4, 3, 2], f32>
@@ -54,7 +54,7 @@ mo.graph @tf_layer_norm_skip(%arg0 : !mo.tensor<[4, 3, 2], f32>, %arg1 : !mo.ten
   %5 = mo.mean(%4, %ax) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %6 = mo.broadcast_to(%eps, %sh2) : (!mo.tensor<[], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %7 = mo.add(%5, %6) : !mo.tensor<[4, 3, 1], f32>
-  %8 = mo.isqrt(%7) : !mo.tensor<[4, 3, 1], f32>
+  %8 = mo.rsqrt(%7) : !mo.tensor<[4, 3, 1], f32>
   %9 = mo.broadcast_to(%8, %sh) : (!mo.tensor<[4, 3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %10 = mo.broadcast_to(%gamma, %sh) : (!mo.tensor<[2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %11 = mo.mul(%9, %10) : !mo.tensor<[4, 3, 2], f32>
