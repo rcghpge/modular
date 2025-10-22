@@ -65,7 +65,6 @@ class VocosBackbone(nn.Module):
             n_heads=self.heads,  # 16
             theta=10000.0,  # Standard RoPE theta
             max_seq_len=2048,  # Reasonable max sequence length
-            device=config.device,
             head_dim=self.pos_emb_dim,  # 64
             interleaved=False,
         )
