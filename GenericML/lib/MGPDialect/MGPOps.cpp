@@ -432,6 +432,33 @@ OpFoldResult TensorSpecGetDimOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferGetCachedOp
+//===----------------------------------------------------------------------===//
+
+llvm::BitVector BufferGetCachedOp::operandsToUnpack() {
+  llvm::BitVector res(getNumOperands(), true);
+  res[1] = false; // Do not unpack the context because the type is defined in
+                  // C++ only.
+  return res;
+}
+
+llvm::BitVector BufferGetCachedOp::resultsToPack() {
+  return llvm::BitVector(1, false);
+}
+
+LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
+  auto mgpBufferGetCacheFunc =
+      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
+          "tmp.mgp.buffer.get_cached"));
+  auto cachedBuffer = state.builder.var(
+      mgpBufferGetCacheFunc({}, {state.getMojoValueFor(getTheContext()),
+                                 state.getMojoValueFor(getBBufferSlot())}));
+  state.setMojoValueFor(getResult(), cachedBuffer);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 

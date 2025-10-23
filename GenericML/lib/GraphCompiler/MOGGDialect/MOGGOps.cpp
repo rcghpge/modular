@@ -1410,7 +1410,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     scratchPlaceholdersOp.erase();
 
   mlir::BitVector unpackItAll(regionBody.getNumArguments(), true);
-  loweringState.lowerMOGGABI(newKernel, unpackItAll,
+  mlir::BitVector packItAll(newKernel.getNumResults(), true);
+  loweringState.lowerMOGGABI(newKernel, unpackItAll, packItAll,
                              /*callsThrowingMojoStub=*/isThrows);
 
   return success();
@@ -3329,16 +3330,25 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
-  using namespace MOGG;
-
+  ASSERT_STREAM(
+      llvm::any_of(getOutput().getUsers(),
+                   [](auto user) { return isa<MOGG::OutputOp>(user); }) == 1,
+      << "Expected at least one of the users to be an output op.");
+  uint64_t resultIndex;
+  for (auto &&use : getOutput().getUses()) {
+    if (isa<MOGG::OutputOp>(use.getOwner())) {
+      resultIndex = use.getOperandNumber();
+      break;
+    }
+  }
   MojoValue asyncPackHelperStruct =
       HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
   MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   state.builder.call(
       moggAsyncPackFunc, {},
-      asyncPackHelperStruct(
-          {}, {state.getMojoValueFor(getInput()), state.mojoReturnValues[0]}));
+      asyncPackHelperStruct({}, {state.getMojoValueFor(getInput()),
+                                 state.mojoReturnValues[resultIndex]}));
   return success();
 }
 
@@ -3414,6 +3424,44 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
   state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncPackBorrowOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
+  /// AsyncPackBorrowOp should feed into a OutputOp at all times. If it does
+  /// not, we assume it is about to be DCE-ed so a canonicalizer pass should be
+  /// run before emit mojo.
+  ASSERT_STREAM(
+      llvm::any_of(getOutput().getUsers(),
+                   [](auto user) { return isa<MOGG::OutputOp>(user); }) == 1,
+      << "Expected at least one of the users to be an output op. Missing a "
+         "canonicalizer pass before emit Mojo?");
+  uint64_t resultIndex;
+  for (auto &&use : getOutput().getUses()) {
+    if (isa<MOGG::OutputOp>(use.getOwner())) {
+      resultIndex = use.getOperandNumber();
+      break;
+    }
+  }
+  auto moggAsyncPackBorrowFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  state.builder.call(moggAsyncPackBorrowFunc, {},
+                     {/* borrower */ state.mojoReturnValues[resultIndex],
+                      /* borrowee */ state.getMojoValueFor(getInput())});
+
+  return success();
+}
+
+LogicalResult AsyncPackBorrowOp::canonicalize(AsyncPackBorrowOp borrowOp,
+                                              mlir::PatternRewriter &rewriter) {
+  rewriter.replaceOpUsesWithIf(
+      borrowOp, borrowOp.getInput(),
+      [](OpOperand &use) { return !isa<MOGG::OutputOp>(use.getOwner()); });
+
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3841,7 +3889,8 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
-  // Call "reshape_contiguous_buffer" primitive with the output shape / strides.
+  // Call "tmp_reshape_contiguous_buffer" primitive with the output shape /
+  // strides.
   MO::TensorType toType = MO::castFromTensorLike(getResult().getType());
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
   MojoValue shapeValue =

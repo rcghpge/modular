@@ -1774,6 +1774,48 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   }];
 }
 
+
+def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
+  Pure,
+  SameOperandsAndResultType,
+  HasParent<"MOGG::GenericCompiledRegionOp">,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
+  let summary = "Borrows the input async value";
+  let description = [{
+    When another operation returns an async value, we add this borrow to keep
+    track of the fact that the returned async value needs to be borrowed by the
+    output of the kernel.
+
+    For example, for an op like `mgp.buffer.get_cached`, the returned value will
+    be an AnyAsyncValueRef. If that value is immediately used by an output op,
+    at some point during the Mojo emission, we will have to grab the output from
+    the implicit void** (array of inputs and outputs) and assign to it this
+    value. This is effectively a borrow. The reason we don't do this in the op
+    that returns the async value is because this is re-usible. If a user of this
+    operation is not an output op, it should just use the input. This is done as
+    a canonicalization step. Also, if this operation has no user, it will be
+    folded. This is why it isn't pure at this time.
+
+    Note that this operation is effectively a symptom of an incomplete type
+    system in generic compiled regions. In reality, we should explicitly model
+    the void** input/output array and mark types as mogg.async<T>. This way, the
+    signature of this borrow op would instead be two inputs (borrow and
+    borrowee) and there would be no output op in a kernel.
+
+    Another similar op has this issue: mogg.async.ready. It does not create a
+    chain but rather gets the kernel chain from the void** and sets it to ready.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasCanonicalizeMethod = 1;
+}
+
 def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>

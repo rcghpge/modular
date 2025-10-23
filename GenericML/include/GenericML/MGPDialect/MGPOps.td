@@ -854,7 +854,10 @@ def RuntimeCreateOp : MGP_Op<"runtime.create", [
 // BufferGetCachedOp
 //===----------------------------------------------------------------------===//
 
-def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [Pure]> {
+def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack", "resultsToPack"]>
+]> {
   let summary = "Retrieves an `!mgp.buffer` from a dedicated state slot.";
   let description = [{
     Returns (a borrow of) the `!mgp.buffer` in the state slot with the given

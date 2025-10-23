@@ -81,6 +81,7 @@ public:
   /// The result will always be a 'borrow' of the underlying cached buffer.
   /// See getOrCreateBuffer for safety conditions.
   ErrorOr<TensorBufferRef> getBuffer(size_t bufferIndex);
+  ErrorOr<TensorBufferRef &> getBufferRef(size_t bufferIndex);
 
   /// Sets the cached buffer at bufferIndex to the given bufferRef. Returns
   /// error if bufferIndex already contains a buffer.

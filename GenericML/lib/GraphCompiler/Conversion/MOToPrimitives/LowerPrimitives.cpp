@@ -436,7 +436,7 @@ void LowerPrimitivesPass::runOnOperation() {
 #define MGP_PRIMITIVES_TEMPORARY_EXCLUSION_LIST                                \
   MGP::BufferAllocOp, MGP::BufferConcatOp, MGP::BufferConstantOp,              \
       MGP::BufferConstantExternalOp, MGP::BufferDeviceToDeviceOp,              \
-      MGP::BufferDeviceToHostOp, MGP::BufferGetCachedOp, MGP::BufferGetSizeOp, \
+      MGP::BufferDeviceToHostOp, MGP::BufferGetSizeOp,                         \
       MGP::BufferHostToDeviceOp, MGP::BufferRemoveCachedOp,                    \
       MGP::BufferSetWithIndexOp, MGP::BufferSliceOp, MGP::BufferToBoolOp,      \
       MGP::BufferToIndexOp, MGP::SyncOp, MGP::TensorCreateOp,                  \
@@ -463,6 +463,9 @@ void LowerPrimitivesPass::runOnOperation() {
 
   if (MOGG::useExperimentalMojoPath()) {
     const auto walkerFn = [&](Operation *op) {
+      auto implementsEmitsMojoInterface =
+          dyn_cast<MOGG::EmitsMojoInterface>(op);
+
       // Skip any operations nested within a region.
       if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
         return mlir::WalkResult::skip();
@@ -484,7 +487,6 @@ void LowerPrimitivesPass::runOnOperation() {
           return mlir::WalkResult::advance();
         }
 
-        bool implementsEmitsMojoInterface = isa<MOGG::EmitsMojoInterface>(op);
         if (isa<MGP_PRIMITIVES_TEMPORARY_EXCLUSION_LIST>(op)) {
           ASSERT_STREAM(
               !implementsEmitsMojoInterface,
@@ -517,10 +519,12 @@ void LowerPrimitivesPass::runOnOperation() {
       newKernel->setEmitsMojo(true);
 
       /// TODO(GEX-2588): Some of the operations covered by this issue will need
-      /// their inputs to stay in the async format (ex: mgp.buffer.cache).
-      mlir::BitVector unpackAllOperands(op->getNumOperands(), true);
-      MOGraphLoweringState::lowerMOGGABI(*newKernel, unpackAllOperands,
-                                         /*callsThrowingMojoStub=*/false);
+      /// their inputs or outputs in the async format (ex: mgp.buffer.cache or
+      /// mgp.buffer.get_cached).
+      MOGraphLoweringState::lowerMOGGABI(
+          *newKernel, implementsEmitsMojoInterface.operandsToUnpack(),
+          implementsEmitsMojoInterface.resultsToPack(),
+          /*callsThrowingMojoStub=*/false);
 
       op->replaceAllUsesWith(*newKernel);
       op->erase();

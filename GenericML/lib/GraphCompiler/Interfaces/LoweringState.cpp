@@ -657,6 +657,7 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
 }
 
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
+                                        const mlir::BitVector &shouldUnpack,
                                         const mlir::BitVector &shouldPack,
                                         bool callsThrowingMojoStub) {
   auto kernel = cast<MOGG::GenericCompiledRegionOp>(kernelOp);
@@ -704,7 +705,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     // doing with it internally but still decrement its async reference. Also,
     // do not unpack certain arguments if the primitive being lowered requests
     // it.
-    if (shouldPack.test(v.getArgNumber()) &&
+    if (shouldUnpack.test(v.getArgNumber()) &&
         !isa<MEF::ChainType>(v.getType())) {
       auto unpackOp = builder.create<MOGG::AsyncUnpackOp>(loc, v);
       v.replaceAllUsesExcept(unpackOp, unpackOp);
@@ -713,18 +714,24 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   }
 
   builder.setInsertionPoint(terminator);
-  for (auto asyncValue : asyncValues)
-    builder.create<MOGG::AsyncDelOp>(loc, asyncValue);
-
-  for (Value v : terminator->getOperands()) {
+  for (auto &&[i, v] : llvm::enumerate(terminator->getOperands())) {
     // Do not attempt to pack chains as they are never actually unpacked.
     // The only use of a chain is to be set by MOGG::CreateReadyChainOp
     // which does not have operands.
     if (isa<MEF::ChainType>(v.getType()))
       continue;
-    auto packOp = builder.create<MOGG::AsyncPackOp>(loc, v);
-    v.replaceAllUsesExcept(packOp, packOp);
+
+    Value newValue;
+    if (shouldPack.test(i)) {
+      newValue = builder.create<MOGG::AsyncPackOp>(loc, v);
+    } else {
+      newValue = builder.create<MOGG::AsyncPackBorrowOp>(loc, v);
+    }
+    v.replaceAllUsesExcept(newValue, newValue.getDefiningOp());
   }
+
+  for (auto asyncValue : asyncValues)
+    builder.create<MOGG::AsyncDelOp>(loc, asyncValue);
 }
 
 //===----------------------------------------------------------------------===//

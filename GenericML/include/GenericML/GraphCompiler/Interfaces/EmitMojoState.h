@@ -34,6 +34,7 @@ constexpr StringLiteral struct_DeviceContextPtr = "asyncrt.DeviceContextPtr";
 constexpr StringLiteral struct_ManagedTensorSlice =
     "managed_tensor_slice.ManagedTensorSlice";
 constexpr StringLiteral struct_Int = "Int";
+constexpr StringLiteral struct_UInt = "UInt";
 constexpr StringLiteral struct_Bool = "Bool";
 constexpr StringLiteral struct_DimList = "dimlist.DimList";
 constexpr StringLiteral struct_Dim = "Dim";
@@ -63,7 +64,7 @@ constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
 constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
     "managed_tensor_slice.rebuild_static_tensor_specs_with_input_lambda";
 constexpr StringLiteral func_reshape_contiguous_buffer =
-    "MOGGPrimitives.reshape_contiguous_buffer_v2";
+    "MOGGPrimitives.tmp_reshape_contiguous_buffer";
 constexpr StringLiteral func_unpack_tensor_spec =
     "MOGGPrimitives.unpack_tensor_spec";
 constexpr StringLiteral func_get_simd_width_for_dtypes =
@@ -108,8 +109,8 @@ struct EmitMojoState {
 
   /// The Mojo builder used to generate teh text.
   MojoBuilder builder;
-  /// The return actual values of the `mogg.generic.compiled.region`. This is
-  /// only used by `AsyncReadyOp::emitMojo`.
+  /// The actual return values of the `mogg.generic.compiled.region`. This is
+  /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;
   MojoLibraryAnalysis &analysis;
 
@@ -176,6 +177,8 @@ public:
           tensorSpecType.getRank())];
     } else if (isa<MGP::ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_StateContext;
+    } else if (isa<IndexType>(mlirType)) {
+      return HardcodedMojoSymbols::struct_Int;
     } else {
       ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
       llvm_unreachable("Unsupported mlir type");

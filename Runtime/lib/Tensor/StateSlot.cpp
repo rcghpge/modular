@@ -34,6 +34,15 @@ ErrorOr<TensorBufferRef> StateSlot::getBuffer(size_t bufferIndex) {
   return entry->borrow();
 }
 
+ErrorOr<TensorBufferRef &> StateSlot::getBufferRef(size_t bufferIndex) {
+  assert(bufferIndex < bufferCache.size() &&
+         "buffer index out of bounds in StateSlot");
+  auto &entry = bufferCache[bufferIndex];
+  if (!entry)
+    return Error("no buffer has been cached at the given index");
+  return *entry;
+}
+
 ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex,
                                     TensorBufferRef bufferRef) {
   assert(bufferIndex < bufferCache.size() &&
