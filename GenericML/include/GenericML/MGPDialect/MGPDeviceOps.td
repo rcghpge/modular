@@ -886,6 +886,7 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
       "getLiftableAttributes"
     ]>,
     DeclareOpInterfaceMethods<EmitsMojoInterface>,
+    DeclareOpInterfaceMethods<KernelTerminatorProvider>
   ]> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";

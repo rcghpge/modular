@@ -38,7 +38,7 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
     %1 = mogg.call "mgp.assert"(%arg4) {message = "ASSERT_0" : !kgen.string} : i1 -> !mef.chain
     %2 = mogg.call "mgp.assert"(%arg5) {message = "ASSERT_1" : !kgen.string} : i1 -> !mef.chain
     mogg.output %1, %2 : !mef.chain, !mef.chain
-  } {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false, summary = "mgp.assert+mgp.assert", emitsMojo = true}
+  } {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false, summary = "mgp.assert+mgp.assert", emitsMojo = false}
   %res = "test.sink"(%0#0, %0#1) : (!mef.chain, !mef.chain) -> !mef.chain
   mef.output %res : !mef.chain
 }
@@ -46,5 +46,21 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
 // CHECK-LABEL: mgp.model @remove_redundant_chains
 // CHECK:         %[[OUT:[^ ]*]] = mogg.generic.compiled.region ({{.*}}) -> !mef.chain{
 // CHECK:           mogg.output %{{[^ ]*}} : !mef.chain
-// CHECK:           emitsMojo = true
 // CHECK:         "test.sink"(%[[OUT]], %[[OUT]])
+
+mgp.model @preserve_kernel_attributes : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"cpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  %2 = mgp.runtime.create %0, %1[1]
+  mef.output %2, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain) {
+  %true = index.bool.constant true
+  %true_0 = index.bool.constant true
+  mogg.generic.compiled.region (%true, %true_0) : (%arg4: i1, %arg5: i1)  -> () {
+    mogg.output
+  } {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false, summary = "mgp.assert+mgp.assert", emitsMojo = true}
+  mef.output %arg0 : !mef.chain
+}
+
+// CHECK-LABEL: mgp.model @preserve_kernel_attributes
+// CHECK:           emitsMojo = true

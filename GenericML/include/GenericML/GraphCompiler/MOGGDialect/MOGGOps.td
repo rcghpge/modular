@@ -1697,7 +1697,8 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
 
 def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
   let results = (outs ChainType:$output);
 
@@ -1759,7 +1760,8 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   Pure,
   SameOperandsAndResultType,
   HasParent<"MOGG::GenericCompiledRegionOp">,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
@@ -1780,6 +1782,7 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   SameOperandsAndResultType,
   HasParent<"MOGG::GenericCompiledRegionOp">,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
@@ -1967,7 +1970,8 @@ def MOGG_YieldOp
 }
 
 def MOGG_TryOp : MOGG_Op<"try", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
   let summary = "Op that represent a try / except statement";
   let description = [{

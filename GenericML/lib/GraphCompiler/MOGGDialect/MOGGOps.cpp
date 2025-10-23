@@ -3115,6 +3115,18 @@ LogicalResult GenericCompiledRegionOp::verify() {
   if (!getExecutionDevice())
     return emitError("Compiled regions must have a device");
 
+  // Ensure that output ops are fed by only a certain set of operations.
+  if (getEmitsMojo()) {
+    auto outputOp = body.front().getTerminator();
+    for (auto &&operand : outputOp->getOperands()) {
+      if (!isa<KernelTerminatorProvider>(operand.getDefiningOp())) {
+        return operand.getDefiningOp()->emitError(
+            "This operation is feeding an output op but it is not marked as a "
+            "KernelTerminatorProvider");
+      }
+    }
+  }
+
   return success();
 }
 
@@ -3330,17 +3342,9 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
-  ASSERT_STREAM(
-      llvm::any_of(getOutput().getUsers(),
-                   [](auto user) { return isa<MOGG::OutputOp>(user); }) == 1,
-      << "Expected at least one of the users to be an output op.");
-  uint64_t resultIndex;
-  for (auto &&use : getOutput().getUses()) {
-    if (isa<MOGG::OutputOp>(use.getOwner())) {
-      resultIndex = use.getOperandNumber();
-      break;
-    }
-  }
+  auto resultIndexOr = getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
   MojoValue asyncPackHelperStruct =
       HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
   MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
@@ -3348,7 +3352,7 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   state.builder.call(
       moggAsyncPackFunc, {},
       asyncPackHelperStruct({}, {state.getMojoValueFor(getInput()),
-                                 state.mojoReturnValues[resultIndex]}));
+                                 state.mojoReturnValues[*resultIndexOr]}));
   return success();
 }
 
@@ -3419,9 +3423,13 @@ LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
+  auto resultIndexOr = getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
   auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+  state.builder.call(moggAsyncReadFunc, {},
+                     state.mojoReturnValues[*resultIndexOr]);
 
   return success();
 }
@@ -3431,25 +3439,13 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
-  /// AsyncPackBorrowOp should feed into a OutputOp at all times. If it does
-  /// not, we assume it is about to be DCE-ed so a canonicalizer pass should be
-  /// run before emit mojo.
-  ASSERT_STREAM(
-      llvm::any_of(getOutput().getUsers(),
-                   [](auto user) { return isa<MOGG::OutputOp>(user); }) == 1,
-      << "Expected at least one of the users to be an output op. Missing a "
-         "canonicalizer pass before emit Mojo?");
-  uint64_t resultIndex;
-  for (auto &&use : getOutput().getUses()) {
-    if (isa<MOGG::OutputOp>(use.getOwner())) {
-      resultIndex = use.getOperandNumber();
-      break;
-    }
-  }
+  auto resultIndexOr = getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
   auto moggAsyncPackBorrowFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
   state.builder.call(moggAsyncPackBorrowFunc, {},
-                     {/* borrower */ state.mojoReturnValues[resultIndex],
+                     {/* borrower */ state.mojoReturnValues[*resultIndexOr],
                       /* borrowee */ state.getMojoValueFor(getInput())});
 
   return success();
@@ -3847,9 +3843,7 @@ LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TryOp::emitMojo(EmitMojoState &state) {
-
   bool errOccurred = false;
-
   state.builder
       .try_([&]() {
         // Lower try block.
@@ -3875,11 +3869,15 @@ LogicalResult TryOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
+  auto tryOp = getOperation()->getParentOfType<MOGG::TryOp>();
+  auto resultIndexOr = tryOp.getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
   auto moggAsyncErrorFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(
-      moggAsyncErrorFunc, {},
-      {state.mojoReturnValues[0], state.getMojoValueFor(getError())});
+  state.builder.call(moggAsyncErrorFunc, {},
+                     {state.mojoReturnValues[*resultIndexOr],
+                      state.getMojoValueFor(getError())});
 
   return success();
 }

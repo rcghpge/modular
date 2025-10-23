@@ -314,6 +314,7 @@ def AssertOp : MGP_Op<"assert", [
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<EmitsMojoInterface>,
+    DeclareOpInterfaceMethods<KernelTerminatorProvider>
   ]> {
   let summary = "Assert that a boolean condition is true.";
   let description = [{
@@ -974,7 +975,10 @@ def MGP_AllocateAsyncValuesOp : MGP_Op<"allocate_for_async_vals", [Pure]> {
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
 
-def DebugPrintOp : MGP_Op<"debug.print", [DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+def DebugPrintOp : MGP_Op<"debug.print", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>
+]> {
   let summary = "Prints a debug string. For debugging and testing only.";
   let description = [{
     Prints a debug string. If a label attribute is supplied
