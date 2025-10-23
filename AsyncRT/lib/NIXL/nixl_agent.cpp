@@ -323,7 +323,7 @@ nixl_status_t nixlAgent::registerMemOnBackends(nixlAgentData &data,
   int successCount = 0;
 
   for (nixlBackendEngine *backend : backends) {
-    nixl_sec_dlist_t secDescs(descs.getType(), /*sorted=*/false);
+    nixl_sec_dlist_t secDescs(descs.getType());
 
     nixl_status_t ret =
         data.memorySection->addDescList(descs, *backend, secDescs);
@@ -537,8 +537,7 @@ nixl_status_t nixlAgent::prepXferDlist(
   }
 
   for (auto &backend : *backend_set) {
-    handle->descs[backend] =
-        new nixl_meta_dlist_t(descs.getType(), descs.isSorted());
+    handle->descs[backend] = new nixl_meta_dlist_t(descs.getType());
     if (init_side)
       ret = data->memorySection->populate(descs, backend,
                                           *(handle->descs[backend]));
@@ -676,10 +675,10 @@ nixl_status_t nixlAgent::makeXferReq(
   // which will be overwritten by [] assignment operator.
   nixlXferReqH *handle = new nixlXferReqH;
   handle->initiatorDescs =
-      new nixl_meta_dlist_t(local_descs->getType(), false, desc_count);
+      new nixl_meta_dlist_t(local_descs->getType(), desc_count);
 
   handle->targetDescs =
-      new nixl_meta_dlist_t(remote_descs->getType(), false, desc_count);
+      new nixl_meta_dlist_t(remote_descs->getType(), desc_count);
 
   if (extra_params && extra_params->skipDescMerge) {
     for (int i = 0; i < desc_count; ++i) {
@@ -816,11 +815,9 @@ nixl_status_t nixlAgent::createXferReq(
     // TODO [Perf]: Avoid heap allocation on the datapath, maybe use a mem pool
 
     handle = new nixlXferReqH;
-    handle->initiatorDescs =
-        new nixl_meta_dlist_t(local_descs.getType(), local_descs.isSorted());
+    handle->initiatorDescs = new nixl_meta_dlist_t(local_descs.getType());
 
-    handle->targetDescs =
-        new nixl_meta_dlist_t(remote_descs.getType(), remote_descs.isSorted());
+    handle->targetDescs = new nixl_meta_dlist_t(remote_descs.getType());
 
     // Currently we loop through and find first local match. Can use a
     // preference list or more exhaustive search.
@@ -1387,7 +1384,7 @@ nixl_status_t nixlAgent::checkRemoteMD(const std::string &remote_name,
     if (descs.descCount() == 0) {
       return nixl_status_t::NIXL_SUCCESS;
     } else {
-      nixl_meta_dlist_t dummy(descs.getType(), descs.isSorted());
+      nixl_meta_dlist_t dummy(descs.getType());
       for (const auto &[backend, conn_info] : data->remoteBackends[remote_name])
         if (data->remoteSections[remote_name]->populate(
                 descs, data->backendEngines[backend], dummy) ==

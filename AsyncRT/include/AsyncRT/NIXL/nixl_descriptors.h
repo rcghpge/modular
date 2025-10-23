@@ -180,14 +180,9 @@ public:
  */
 template <class T>
 class MODULAR_CXX_EXPORT nixlDescList {
-private:
+protected:
   /** @var NIXL memory type */
   nixl_mem_t type;
-  /** @var Flag for if list should be kept sorted
-   *       Comparison is done based on nixlBasicDesc (<) operator which
-   *       has comparison order of devID, then addr, then len.
-   */
-  bool sorted;
   /** @var Vector for storing nixlDescs */
   std::vector<T> descs;
 
@@ -196,13 +191,11 @@ public:
    * @brief Parametrized Constructor for nixlDescList
    *
    * @param type         NIXL memory type of descriptor list
-   * @param sorted       Flag to set sorted option (default = false)
    * @param init_size    initial size for descriptor list (default = 0)
    */
-  nixlDescList(nixl_mem_t type, bool sorted = false, int init_size = 0)
-      : type{type}, sorted{sorted} {
+  nixlDescList(nixl_mem_t type, int init_size = 0) : type{type} {
     static_assert(std::is_base_of<nixlBasicDesc, T>::value);
-    descs.reserve(init_size);
+    descs.resize(init_size);
   }
 
   /**
@@ -212,14 +205,17 @@ public:
    * @param deserialize nixlSerDes object to construct nixlDescList
    */
   nixlDescList(nixlSerDes *deserializer);
+
+  /**
+   * @brief nixlDescList Destructor
+   */
+  virtual ~nixlDescList() = default;
+
   /**
    * @brief      Get NIXL memory type for this DescList
    */
   nixl_mem_t getType() const { return type; }
-  /**
-   * @brief get sorted flag
-   */
-  bool isSorted() const { return sorted; }
+
   /**
    * @brief       Get count of descriptors
    */
@@ -241,7 +237,7 @@ public:
     assert(index < descs.size());
     return descs[index];
   }
-  T &operator[](size_t index) {
+  virtual T &operator[](size_t index) {
     assert(index < descs.size());
     return descs[index];
   }
@@ -249,10 +245,7 @@ public:
   /**
    * @brief Appends a descriptor to the end of the list
    */
-  void push_back(T &&obj) {
-    sorted = false;
-    descs.push_back(std::move(obj));
-  }
+  void push_back(T &&obj) { descs.push_back(std::move(obj)); }
 
   /**
    * @brief Vector like iterators for const and non-const elements
@@ -274,26 +267,21 @@ public:
   friend bool operator==(const nixlDescList<Y> &lhs,
                          const nixlDescList<Y> &rhs);
   /**
-   * @brief Resize nixlDescList object. If new size is more than the
-   *        original size, the sorted status will be negated if set.
+   * @brief Resize nixlDescList object.
    *
    * @param count Number of elements after resizing DescList object
    */
-  void resize(const size_t &count);
-  /**
-   * @brief Verify if a nixlDescList is sorted, for instance after using
-   *        resize and adding new elements. If true, the sorted flag is set.
-   */
-  bool verifySorted();
+  virtual void resize(const size_t &count);
+
   /**
    * @brief Empty the descriptors list
    */
   void clear() { descs.clear(); }
+
   /**
    * @brief     Add Descriptors to descriptor list
-   *               If nixlDescList object is sorted, this method keeps it sorted
    */
-  void addDesc(const T &desc);
+  virtual void addDesc(const T &desc);
   /**
    * @brief Remove descriptor from list at index
    *        Can throw std::out_of_range exception.
@@ -318,7 +306,7 @@ public:
    * @return int   index of the queried nixlBasicDesc if found, or negative
    * error value
    */
-  int getIndex(const nixlBasicDesc &query) const;
+  virtual int getIndex(const nixlBasicDesc &query) const;
   /**
    * @brief Serialize a descriptor list with nixlSerDes class
    * @param serializer nixlSerDes object to serialize nixlDescList

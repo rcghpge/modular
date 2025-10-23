@@ -1646,7 +1646,7 @@ successfully built and are ready for testing.
 | 9f496fb | 2025-09-02 | benchmark/kvbench: Add the remaining plugins to kvbench | Skip | - | Benchmark only |
 | 50fe345 | 2025-09-02 | Update ATTRIBUTIONS-Rust.md | Skip | - | Documentation only |
 | 7d003c7 | 2025-09-02 | BENCH/NIXL: error handling related fixes | Skip | - | Benchmark only |
-| 57c29f5 | 2025-09-02 | Remove sorted flag from user facing nixlDescList | Defer | 🔄 Deferred | Large refactoring, needs dedicated effort |
+| 57c29f5 | 2025-09-02 | Remove sorted flag from user facing nixlDescList | Port | ✅ Completed | API refactoring with new nixlSecDescList class |
 | 3614a37 | 2025-09-02 | BINDINGS: Package the OBJ plugin | Skip | - | Build/packaging only |
 | 0625b22 | 2025-09-02 | Agent: Add getXferTelemetry API | Skip | - | Telemetry not in AsyncRT |
 
@@ -1711,18 +1711,58 @@ All test suites pass with the changes:
 
 - **57c29f5**: Major API refactoring that removes the `sorted` flag from
   user-facing `nixlDescList` API and introduces `nixlSecDescList` for internal
-  use. This affects:
-  - `AsyncRT/include/AsyncRT/NIXL/nixl_descriptors.h` (API changes)
-  - `AsyncRT/lib/NIXL/nixl_descriptors.cpp` (implementation)
-  - `AsyncRT/lib/NIXL/nixl_agent.cpp` (all constructor call sites)
-  - `AsyncRT/lib/NIXL/nixl_memory_section.cpp`
-  - `AsyncRT/include/AsyncRT/NIXL/mem_section.h` (new nixlSecDescList class)
-  - Would also affect nanobind bindings in
-    `SDK/lib/API/python/max/_core/src/nixl.cpp`
+  use. Completed port with the following changes:
 
-  Deferred due to scope (hundreds of lines across 6+ files) and complexity.
-  Recommend dedicated effort in future week.
+  **Core API Changes:**
+  - `AsyncRT/include/AsyncRT/NIXL/nixl_descriptors.h`:
+    - Removed `sorted` member variable and methods (`isSorted()`, `verifySorted()`)
+    - Updated constructor signature from `nixlDescList(nixl_mem_t, bool, int)`
+      to `nixlDescList(nixl_mem_t, int=0)`
+    - Made methods virtual: `operator[]`, `addDesc()`, `resize()`, `getIndex()`
+    - Changed visibility to `protected:` for inheritance support
 
-- **Week 16 Summary**: Out of 28 commits, 1 fully ported, 1 partially ported,
-  1 deferred for later, 25 skipped (benchmarks, build system, CI, GPU device
-  APIs, other backends, bindings, telemetry).
+  **New Sorted List Class:**
+  - `AsyncRT/include/AsyncRT/NIXL/mem_section.h`:
+    - Created `nixlSecDescList` inheriting from `nixlDescList<nixlSectionDesc>`
+    - Implements sorted insertion using `std::upper_bound()`
+    - Binary search in `getIndex()` using `std::lower_bound()`
+    - Added `getCoveringIndex()` for efficient range queries
+    - Overrides `resize()` to prevent growth (maintains sorted invariant)
+
+  **Implementation Updates:**
+  - `AsyncRT/lib/NIXL/nixl_descriptors.cpp`:
+    - Implemented all `nixlSecDescList` methods with binary search optimization
+    - Simplified base `nixlDescList` methods to remove sorted logic
+    - Used `NIXL_FATAL` instead of exceptions (build has exceptions disabled)
+
+  **Call Site Updates:**
+  - `AsyncRT/lib/NIXL/nixl_memory_section.cpp`:
+    - Fixed 4 constructor calls to remove sorted parameter
+    - Simplified `populate()` to use new `getCoveringIndex()` method
+  - `AsyncRT/lib/NIXL/nixl_agent.cpp`:
+    - Updated 6 constructor call sites
+
+  **Python Bindings:**
+  - `SDK/lib/API/python/max/_core/src/nixl.cpp`:
+    - Removed `sorted` parameter from both `__init__` constructors
+    - Removed `is_sorted()` and `verify_sorted()` method bindings
+    - Updated documentation strings
+
+  **Test & Production Code:**
+  - `SDK/lib/API/python/tests/nixl/test_nixl_gpu.py`:
+    - Removed `sorted` parameter from 3 test constructor calls
+  - `SDK/lib/API/python/max/nn/kv_cache/paged_cache/transfer_engine.py`:
+    - Removed `sorted=True` from `KVTransferEngine.__init__()`
+
+  **Testing:**
+  - ✅ `//AsyncRT:NIXL` builds successfully
+  - ✅ `//AsyncRT/unittests:NixlTest` passes
+  - ✅ `//SDK/lib/API/python/tests/nixl:tests` passes
+  - ✅ `//SDK/integration-test/pipelines/python/nn/kv_cache/
+    transfer_engine:test_send_recv` passes
+  - ✅ `//SDK/integration-test/pipelines/python/nn/kv_cache/
+    transfer_engine:test_send_recv_multi_process_gpu` passes
+
+- **Week 16 Summary**: Out of 28 commits, 3 fully ported (45204fa, 4ccd41d, 57c29f5),
+  25 skipped (benchmarks, build system, CI, GPU device APIs, other backends,
+  bindings, telemetry).

@@ -40,9 +40,6 @@ nixl_status_t nixlMemSection::populate(const nixl_xfer_dlist_t &query,
 
   if (query.getType() != resp.getType())
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
-  // 1-to-1 mapping cannot hold
-  if (query.isSorted() != resp.isSorted())
-    return nixl_status_t::NIXL_ERR_INVALID_PARAM;
 
   section_key_t sec_key = std::make_pair(query.getType(), backend);
   auto it = sectionMap.find(sec_key);
@@ -53,94 +50,28 @@ nixl_status_t nixlMemSection::populate(const nixl_xfer_dlist_t &query,
   nixl_sec_dlist_t *base = it->second;
   resp.resize(query.descCount());
 
-  if (!base->isSorted()) {
-    int count = 0;
-    for (int i = 0; i < query.descCount(); ++i)
-      for (const auto &elm : *base)
-        if (elm.covers(query[i])) {
-          p = &resp[i];
-          *p = query[i];
-          resp[i].metadataP = elm.metadataP;
-          count++;
-          break;
-        }
+  // base is nixlSecDescList, which is always sorted. Use binary search.
+  const nixlBasicDesc *q;
+  bool found;
 
-    if (query.descCount() == count) {
-      return nixl_status_t::NIXL_SUCCESS;
-    } else {
+  for (int i = 0; i < query.descCount(); ++i) {
+    found = false;
+    q = &query[i];
+    int covering_index = base->getCoveringIndex(*q);
+
+    if (covering_index >= 0) {
+      found = true;
+      p = &resp[i];
+      *p = *q;
+      resp[i].metadataP = (*base)[covering_index].metadataP;
+    }
+
+    if (!found) {
       resp.clear();
       return nixl_status_t::NIXL_ERR_UNKNOWN;
     }
-  } else {
-    const nixlBasicDesc *q;
-    bool found, q_sorted = query.isSorted();
-
-    if (q_sorted) {
-      int s_index, q_index, size;
-      const nixlSectionDesc *s;
-
-      size = base->descCount();
-      s_index = 0;
-      q_index = 0;
-
-      while (q_index < query.descCount()) {
-        s = &(*base)[s_index];
-        q = &query[q_index];
-        if (s->covers(*q)) {
-          p = &resp[q_index];
-          *p = *q;
-          resp[q_index].metadataP = s->metadataP;
-          q_index++;
-        } else {
-          s_index++;
-          // TODO: add early termination if already (*q < *s),
-          // but s was not properly covering q
-          if (s_index == size) {
-            resp.clear();
-            return nixl_status_t::NIXL_ERR_UNKNOWN;
-          }
-        }
-      }
-
-      // To be added only in debug mode
-      // resp.verifySorted();
-      return nixl_status_t::NIXL_SUCCESS;
-
-    } else {
-      int last_found = 0;
-      for (int i = 0; i < query.descCount(); ++i) {
-        found = false;
-        q = &query[i];
-        auto itr =
-            std::lower_bound(base->begin() + last_found, base->end(), *q);
-
-        // Same start address case
-        if (itr != base->end()) {
-          if (itr->covers(*q)) {
-            found = true;
-          }
-        }
-
-        // query starts starts later, try previous entry
-        if ((!found) && (itr != base->begin())) {
-          itr = std::prev(itr, 1);
-          if (itr->covers(*q)) {
-            found = true;
-          }
-        }
-
-        if (found) {
-          p = &resp[i];
-          *p = *q;
-          resp[i].metadataP = itr->metadataP;
-        } else {
-          resp.clear();
-          return nixl_status_t::NIXL_ERR_UNKNOWN;
-        }
-      }
-      return nixl_status_t::NIXL_SUCCESS;
-    }
   }
+  return nixl_status_t::NIXL_SUCCESS;
 }
 
 /*** Class nixlLocalSection implementation ***/
@@ -155,7 +86,7 @@ nixl_status_t nixlLocalSection::addDescList(const nixl_reg_dlist_t &mem_elms,
 
   auto it = sectionMap.find(sec_key);
   if (it == sectionMap.end()) { // New desc list
-    sectionMap[sec_key] = new nixl_sec_dlist_t(nixl_mem, /*sorted=*/true);
+    sectionMap[sec_key] = new nixl_sec_dlist_t(nixl_mem);
     memToBackend[to_underlying(nixl_mem)].insert(&backend);
   }
   nixl_sec_dlist_t *target = sectionMap[sec_key];
@@ -316,8 +247,7 @@ nixlLocalSection::serializePartial(nixlSerDes &serializer,
     // nixl_meta_dlist_t.
     //       This will avoid the need to delete the nixl_sec_dlist_t instances.
     const nixl_sec_dlist_t *base = it->second;
-    nixl_sec_dlist_t *resp =
-        new nixl_sec_dlist_t(nixl_mem, mem_elms.isSorted());
+    nixl_sec_dlist_t *resp = new nixl_sec_dlist_t(nixl_mem);
     for (const auto &desc : mem_elms) {
       int index = base->getIndex(desc);
       if (index < 0) {
@@ -363,7 +293,7 @@ nixl_status_t nixlRemoteSection::addDescList(const nixl_reg_dlist_t &mem_elms,
   nixl_mem_t nixl_mem = mem_elms.getType();
   section_key_t sec_key = std::make_pair(nixl_mem, backend);
   if (sectionMap.count(sec_key) == 0)
-    sectionMap[sec_key] = new nixl_sec_dlist_t(nixl_mem, true);
+    sectionMap[sec_key] = new nixl_sec_dlist_t(nixl_mem);
   memToBackend[to_underlying(nixl_mem)].insert(
       backend); // Fine to overwrite, it's a set
   nixl_sec_dlist_t *target = sectionMap[sec_key];
@@ -434,7 +364,7 @@ nixl_status_t nixlRemoteSection::loadLocalData(const nixl_sec_dlist_t &mem_elms,
   section_key_t sec_key = std::make_pair(nixl_mem, backend);
 
   if (sectionMap.count(sec_key) == 0)
-    sectionMap[sec_key] = new nixl_sec_dlist_t(nixl_mem, true);
+    sectionMap[sec_key] = new nixl_sec_dlist_t(nixl_mem);
   memToBackend[to_underlying(nixl_mem)].insert(
       backend); // Fine to overwrite, it's a set
   nixl_sec_dlist_t *target = sectionMap[sec_key];
