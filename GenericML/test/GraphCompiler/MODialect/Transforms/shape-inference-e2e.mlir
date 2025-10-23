@@ -10,7 +10,7 @@ mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?],
   %arg0c = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<?, f32>
   %arg1c = mo.rebind(%arg1) : !mo.tensor<[?, ?], f32> -> !mo.tensor<?, f32>
   %0 = mo.add(%arg0c, %arg1c) : !mo.tensor<?, f32>
-  %1 = mo.gelu(%0) : !mo.tensor<?, f32>
+  %1 = mo.exp(%0) : !mo.tensor<?, f32>
   %2 = mo.sub(%1, %0) : !mo.tensor<?, f32>
   %3 = mo.relu(%2) : !mo.tensor<?, f32>
   mo.output %3 : !mo.tensor<?, f32>
@@ -20,7 +20,7 @@ mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?],
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D13]], [[D14]]], f32> -> !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   kgen.param.declare SORS_CH10: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, and(eq(:si64 [[D11]], [[D13]]), eq(:si64 [[D12]], [[D14]])))>
 // CHECK-NEXT:   [[V1:%.*]] = mo.add([[VARG0]], [[V0]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
-// CHECK-NEXT:   [[V2:%.*]] = mo.gelu([[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.exp([[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   [[V3:%.*]] = mo.sub([[V2]], [[V1]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   [[V4:%.*]] = mo.relu([[V3]]) : !mo.tensor<[[[D11]], [[D12]]], f32>
 // CHECK-NEXT:   mo.output [[V4]] : !mo.tensor<[[[D11]], [[D12]]], f32>
@@ -117,10 +117,10 @@ mo.graph @unresolved_rebinds(
   %arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>
 ) -> !mo.tensor<?, f32> {
   %0 = mo.add(%arg0, %arg1) : !mo.tensor<?, f32>
-  %1 = mo.gelu(%0) : !mo.tensor<?, f32>
+  %1 = mo.exp(%0) : !mo.tensor<?, f32>
   %2 = mo.batch_matmul(%1, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
   %3 = mo.relu(%2) : !mo.tensor<?, f32>
-  %4 = mo.gelu(%3) : !mo.tensor<?, f32>
+  %4 = mo.exp(%3) : !mo.tensor<?, f32>
   %5 = mo.sub(%4, %3) : !mo.tensor<?, f32>
   mo.output %5 : !mo.tensor<?, f32>
 }
@@ -130,10 +130,10 @@ mo.graph @unresolved_rebinds(
 // CHECK-NEXT:   kgen.param.declare SORS_EQ16: i1 = <apply(:(!mosh.ape, !mosh.ape) -> i1 "mosh.eq", [[Sh11]], [[Sh12]])>
 // CHECK-NEXT:   kgen.param.declare SORS_CH17: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[add] input shapes must match" : !kgen.string}, SORS_EQ16)>
 // CHECK-NEXT:   [[V1:%.*]] = mo.add([[VARG0]], [[V0]]) : !mo.tensor<[[Sh11]], f32>
-// CHECK-NEXT:   [[V2:%.*]] = mo.gelu([[V1]]) : !mo.tensor<[[Sh11]], f32>
+// CHECK-NEXT:   [[V2:%.*]] = mo.exp([[V1]]) : !mo.tensor<[[Sh11]], f32>
 // CHECK-NEXT:   [[V4:%.*]] = mo.batch_matmul<() -> [[Sh9:.*]]: !mosh.ape>([[V2]], [[VARG1]]) : (!mo.tensor<[[Sh11]], f32>, !mo.tensor<[[Sh12]], f32>) -> !mo.tensor<[[Sh9]], f32>
 // CHECK-NEXT:   [[V5:%.*]] = mo.relu([[V4]]) : !mo.tensor<[[P27:.*]], f32>
-// CHECK-NEXT:   [[V6:%.*]] = mo.gelu([[V5]]) : !mo.tensor<[[P27:.*]], f32>
+// CHECK-NEXT:   [[V6:%.*]] = mo.exp([[V5]]) : !mo.tensor<[[P27:.*]], f32>
 // CHECK-NEXT:   [[V7:%.*]] = mo.sub([[V6]], [[V5]]) : !mo.tensor<[[P27:.*]], f32>
 // CHECK-NEXT:   mo.output<:!mosh.ape [[P27:.*]]> [[V7]] : !mo.tensor<[[P27:.*]], f32>
 // CHECK-NEXT: }

@@ -84,20 +84,6 @@ mo.graph @floor_params_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 
 
 // -----
 
-mo.graph @gelu_params_mixed(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 10], f32> {
-  %1 = rmo.mo.gelu(%arg0) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, 10], f32>
-  mo.output %1 : !mo.tensor<[?, 10], f32>
-}
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @gelu_params_mixed<[[D1:[^ ]*]], [[D2:[^ ]*]] -> [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]], [[D2]]], f32>) -> !mo.tensor<[[[D3]], 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D4:[^ ]*]], [[D5:[^ ]*]]>([[VARG0]]) : !mo.tensor<[[[D1]], [[D2]]], f32> -> !mo.tensor<[[[D4]], [[D5]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.gelu([[V0]]) : !mo.tensor<[[[D4]], [[D5]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D6:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[[[D4]], [[D5]]], f32>) -> !mo.tensor<[[[D6]], 10], f32>
-// CHECK-NEXT: mo.output<[[D6]]> [[V2]] : !mo.tensor<[[[D6]], 10], f32>
-// CHECK-NEXT: }
-
-// -----
-
 mo.graph @log_params_static(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[20, 10], f32> {
   %1 = rmo.mo.log(%arg0) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[20, 10], f32>
   mo.output %1 : !mo.tensor<[20, 10], f32>

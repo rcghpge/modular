@@ -5,8 +5,8 @@
 mo.graph @output_param_decl_removed<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
   kgen.param.declare Sh2: !mosh.ape = <Sh0>
   %0 = mo.rebind(%arg0) : !mo.tensor<Sh0, f32> -> !mo.tensor<Sh2, f32>
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.gelu(%[[ARG0]]) : !mo.tensor<[[SH0]], f32>
-  %1 = mo.gelu(%0) : !mo.tensor<Sh2, f32>
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.exp(%[[ARG0]]) : !mo.tensor<[[SH0]], f32>
+  %1 = mo.exp(%0) : !mo.tensor<Sh2, f32>
   // CHECK-NEXT: mo.output %[[VAL0]] : !mo.tensor<[[SH0]], f32>
   mo.output<:!mosh.ape Sh2> %1 : !mo.tensor<Sh2, f32>
 }

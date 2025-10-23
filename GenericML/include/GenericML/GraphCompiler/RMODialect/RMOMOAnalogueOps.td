@@ -246,20 +246,6 @@ def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"floor"> {
   }];
 }
 
-def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu"> {
-  let summary = "Gaussian error linear unit operation";
-  let description = [{
-    Returns `(x / 2) * (1 + erf(x/sqrt(2)))`, where `erf` denotes the
-    (Gaussian) error function.
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
 
 def RMO_MOLogOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log"> {
   let summary = "Natural logarithm operation";

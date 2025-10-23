@@ -927,20 +927,6 @@ def MO_ErfOp : MO_ElementWiseUnaryMonoTypeOp<"erf"> {
   }];
 }
 
-def MO_GeluOp : MO_ElementWiseUnaryMonoTypeOp<"gelu"> {
-  let summary = "Gaussian error linear unit operation";
-  let description = [{
-    Returns `(x / 2) * (1 + erf(x/sqrt(2)))`, where `erf` denotes the
-    (Gaussian) error function.
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.gelu(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-}
 
 def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log"> {
   let summary = "Natural logarithm operation";

@@ -811,69 +811,6 @@ struct GathersToSplitPattern
   }
 };
 
-/// A pattern that detects a series of algebraic operations that are equivalent
-/// to a gelu op, and rewrites them into a new gelu op.
-///
-/// TODO remove once jit fusion can fuse this into a FC.
-///
-/// Example:
-///
-/// input : tensor<[...]>
-///
-///   res = input * 1/2 * (1 + erf(input/sqrt(2)))
-/// ===>
-///   res = gelu(input)
-struct GeluPattern : public DeviceAwareRewritePattern<OpRewritePattern, MulOp> {
-  GeluPattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 4) {}
-
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::MulOp op,
-                             DeviceAwareRewriter &rewriter) const override {
-    // Abbreviate the helper to try to keep things readable.
-    auto po = [&rewriter]() { return rewriter.pushOp(); };
-
-    Value input, inputErf;
-    // gelu = x * 1/2 * (1 + erf(x/sqrt(2)))
-    auto sq2 = m_Op<Static::BroadcastToOp>(
-        po(), m_ScalarConstant(llvm::numbers::sqrt2f));
-    auto divsq2 = m_Op<Static::BroadcastToOp>(
-        po(), m_ScalarConstant(llvm::numbers::inv_sqrt2f));
-
-    auto xErf = m_Any(&inputErf);
-    auto erf = m_Op<ErfOp>(
-        po(), m_Optional(m_Op<DivOp>(po(), xErf, sq2),
-                         m_BinaryCommutativeOp<MulOp>(po(), xErf, divsq2)));
-    auto one = m_Op<Static::BroadcastToOp>(po(), m_ScalarConstant(1.0f));
-    auto add = m_BinaryCommutativeOp<AddOp>(po(), one, erf);
-
-    auto half = m_Op<Static::BroadcastToOp>(po(), m_ScalarConstant(0.5f));
-    auto x = m_Any(&input);
-    // TODO: write an associative commutative matcher?
-    auto gelu =
-        m_Optional(m_BinaryCommutativeOp<MulOp>(
-                       po(), m_BinaryCommutativeOp<MulOp>(po(), x, half), add),
-                   m_BinaryCommutativeOp<MulOp>(
-                       po(), half, m_BinaryCommutativeOp<MulOp>(po(), x, add)));
-
-    if (!gelu.match(op->getResult(0)))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    if (!input || !inputErf)
-      return rewriter.notifyMatchFailure(op, "null input value");
-    if (!(input == inputErf))
-      return rewriter.notifyMatchFailure(op, "inputs don't match");
-
-    if (!rewriter.addOps()) {
-      return rewriter.notifyMatchFailure(
-          op, "matched ops have inconsistent devices");
-    }
-
-    rewriter.replaceOpWithNewOp<GeluOp>(op, input);
-
-    return mlir::success();
-  }
-};
-
 /// A pattern that detects broadcast ops preceded by a transpose, and rewrites
 /// them by moving the transpose after the broadcast.
 ///
@@ -4721,8 +4658,9 @@ struct SymbolicOptimizationPass
                  SwimConcatThroughReshapeLikeOpsPattern<RebindOp>>(context);
 
     // Miscellaneous rewrites.
-    patterns.add<GathersToSplitPattern, GeluPattern, SplitAndSqueezesPattern,
-                 PadConvPattern>(context);
+    patterns
+        .add<GathersToSplitPattern, SplitAndSqueezesPattern, PadConvPattern>(
+            context);
 
     // Elementwise optimizations.
     patterns
