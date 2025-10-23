@@ -502,7 +502,7 @@ nixlUcxEngine::create(const nixlBackendInitParams &init_params) {
 }
 
 nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams &init_params)
-    : nixlBackendEngine(&init_params), sharedWorkerIndex_(0) {
+    : nixlBackendEngine(&init_params), sharedWorkerIndex_(1) {
   std::vector<std::string_view> devs;
   nixl_b_params_t *customParams = init_params.customParams;
 

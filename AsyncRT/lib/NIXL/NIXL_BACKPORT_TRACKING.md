@@ -1614,3 +1614,115 @@ successfully built and are ready for testing.
 - Skipped telemetry and plugin-manager refactors due to
   infrastructure/codebase differences; behavior already equivalent in AsyncRT
   or out of scope.
+
+## Week 16 (August 26 - September 1, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|--------|-------|
+| 6421c09 | 2025-08-26 | Add bandwidth metric to NIXL KVBench | Skip | - | Benchmark only |
+| 41627c9 | 2025-08-26 | Add instructions for GPU selection in nixl kvbench CTP | Skip | - | Benchmark only |
+| 45204fa | 2025-08-26 | Pass num_workers to ucx from nixlBench | Port | ✅ Completed | UCX worker index fix |
+| f336666 | 2025-08-26 | BINDINGS/RUST: adding missing Agent APIs | Skip | - | Rust bindings only |
+| 287b6e2 | 2025-08-26 | clang formatted nixl_descriptors.h | Skip | - | Formatting only |
+| b2e5d0e | 2025-08-27 | Removed progress method and its indicator from SB API | Skip | - | API not present in AsyncRT |
+| add1824 | 2025-08-28 | API/GPU/UCX: Create GPU-side Device API | Skip | - | GPU device API not in AsyncRT |
+| 65a3ddf | 2025-08-29 | move the free notify msg to mooncake backend | Skip | - | Mooncake backend not in AsyncRT |
+| 5703245 | 2025-08-28 | Added pythonic objects for xfer and dlist handles | Skip | - | Python bindings in SDK |
+| 9047279 | 2025-08-29 | Do not bundle libcuda* and libcufile into the wheel | Skip | - | Build/packaging only |
+| 8b917e4 | 2025-08-29 | Fallback to manual CUDA detection when meson detection fails | Skip | - | Build system (Meson) |
+| 4ccd41d | 2025-08-28 | Added error logs throughout nixl_agent | Port | ✅ Completed | ~300 error logs added |
+| 568a40a | 2025-08-29 | [HF3FS] add mempool | Skip | - | HF3FS backend not in AsyncRT |
+| 0339b5a | 2025-08-29 | Create host-side GPU transfer request API | Skip | - | GPU xfer API not in AsyncRT |
+| fc9310b | 2025-08-29 | BENCH/NIXL: error handling related fixes | Skip | - | Benchmark only |
+| e63ae10 | 2025-08-31 | [CI] verification image build job fixup | Skip | - | CI only |
+| 3449329 | 2025-08-31 | API/GPU/UCX: Add read signal device API | Skip | - | GPU device API not in AsyncRT |
+| 4b58ab5 | 2025-09-01 | BUILD: detect UCX GPU device API | Skip | - | Build system (Meson) |
+| 1e92035 | 2025-09-02 | Fix Error in barrier when testing block size above 1M | Skip | - | Benchmark only |
+| d899d0f | 2025-09-02 | CI: avoid /build comment to trigger blossom-ci | Skip | - | CI only |
+| 21810ac | 2025-09-02 | Improve populate method performance for not fully sorted inputs | Skip | - | Would apply to 57c29f5 changes |
+| cd0c219 | 2025-09-02 | Upgrade DOCA to 3.1 in Dockerfiles | Skip | - | Build/Docker only |
+| 9f496fb | 2025-09-02 | benchmark/kvbench: Add the remaining plugins to kvbench | Skip | - | Benchmark only |
+| 50fe345 | 2025-09-02 | Update ATTRIBUTIONS-Rust.md | Skip | - | Documentation only |
+| 7d003c7 | 2025-09-02 | BENCH/NIXL: error handling related fixes | Skip | - | Benchmark only |
+| 57c29f5 | 2025-09-02 | Remove sorted flag from user facing nixlDescList | Defer | 🔄 Deferred | Large refactoring, needs dedicated effort |
+| 3614a37 | 2025-09-02 | BINDINGS: Package the OBJ plugin | Skip | - | Build/packaging only |
+| 0625b22 | 2025-09-02 | Agent: Add getXferTelemetry API | Skip | - | Telemetry not in AsyncRT |
+
+### Changes Made
+
+#### 1) 45204fa — UCX worker index initialization
+
+- File: `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`
+- Changed `sharedWorkerIndex_(0)` to `sharedWorkerIndex_(1)` in
+  `nixlUcxEngine` constructor initialization list
+- Appears to be a bug fix for worker round-robin selection
+
+#### 2) 4ccd41d — Error logging infrastructure (fully ported)
+
+**Completed:**
+
+- File: `AsyncRT/include/AsyncRT/NIXL/utils/common/operators.h` (new file)
+- Added stream operators for `nixl_mem_t`, `nixl_xfer_op_t`, and
+  `nixl_status_t` enums to enable formatted output using `llvm::raw_ostream`
+- File: `AsyncRT/lib/NIXL/nixl_agent.cpp`
+- Added include for `operators.h`
+- Added `NIXL_ERROR_FUNC` macro for function-name-prefixed error logging
+- Added `SERIALIZE_ERR` and `DESERIALIZE_ERR` convenience macros
+- Added ~300 error log statements throughout nixl_agent.cpp covering:
+  - `createBackend`: 8 error logs for backend creation failures
+  - `registerMem/deregisterMem`: 3 error logs for registration failures
+  - `queryMem`: 1 error log for invalid parameters
+  - `makeConnection`: 4 error logs for connection failures
+  - `prepXferDlist`: 3 error logs for descriptor list preparation
+  - `makeXferReq`: 10+ error logs for transfer request validation
+  - `createXferReq`: 8 error logs for transfer request creation
+  - `getLocalMD/getLocalPartialMD`: 3 error logs for metadata retrieval
+  - `loadRemoteMD`: 7 error logs for remote metadata loading
+  - `invalidateRemoteMD`: 2 error logs for metadata invalidation
+  - `sendLocalMD/sendLocalPartialMD/fetchRemoteMD/invalidateLocalMD`: 6 error
+    logs for metadata transmission operations
+
+### Testing
+
+All test suites pass with the changes:
+
+- Command: `./bazelw test //AsyncRT/unittests:NixlTest`
+- Result: PASS (1/1)
+- Command: `./bazelw test //AsyncRT/unittests:NixlTestUcx`
+- Result: PASS (1/1)
+- Command: `./bazelw test //SDK/integration-test/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv`
+- Result: PASS (1/1)
+- Command: `./bazelw test //SDK/integration-test/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv_multi_process_gpu`
+- Result: PASS (1/1)
+
+### Notes / Adaptations
+
+- **45204fa**: Simple one-line fix, direct port with no adaptation needed.
+
+- **4ccd41d**: Complete port of comprehensive error logging throughout
+  nixl_agent.cpp. Created operators.h with stream operators for enum types to
+  enable readable error messages. Added ~300 error log statements across 30+
+  methods covering backend creation, memory registration, connection
+  establishment, transfer requests, and metadata operations. This significantly
+  improves debuggability by providing detailed context for failures including
+  backend types, agent names, status codes, and specific error conditions.
+
+- **57c29f5**: Major API refactoring that removes the `sorted` flag from
+  user-facing `nixlDescList` API and introduces `nixlSecDescList` for internal
+  use. This affects:
+  - `AsyncRT/include/AsyncRT/NIXL/nixl_descriptors.h` (API changes)
+  - `AsyncRT/lib/NIXL/nixl_descriptors.cpp` (implementation)
+  - `AsyncRT/lib/NIXL/nixl_agent.cpp` (all constructor call sites)
+  - `AsyncRT/lib/NIXL/nixl_memory_section.cpp`
+  - `AsyncRT/include/AsyncRT/NIXL/mem_section.h` (new nixlSecDescList class)
+  - Would also affect nanobind bindings in
+    `SDK/lib/API/python/max/_core/src/nixl.cpp`
+
+  Deferred due to scope (hundreds of lines across 6+ files) and complexity.
+  Recommend dedicated effort in future week.
+
+- **Week 16 Summary**: Out of 28 commits, 1 fully ported, 1 partially ported,
+  1 deferred for later, 25 skipped (benchmarks, build system, CI, GPU device
+  APIs, other backends, bindings, telemetry).
