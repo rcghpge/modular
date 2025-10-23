@@ -107,11 +107,6 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   GET_FUNC(cuMemsetD32_v2);
   GET_FUNC(cuMemsetD2D32_v2)
 
-  GET_FUNC(cuLinkCreate_v2);
-  GET_FUNC(cuLinkDestroy);
-  GET_FUNC(cuLinkAddData_v2);
-  GET_FUNC(cuLinkComplete);
-
   GET_FUNC(cuModuleLoadDataEx);
   GET_FUNC(cuModuleGetGlobal_v2);
   GET_FUNC(cuModuleUnload);
