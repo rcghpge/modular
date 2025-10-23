@@ -205,7 +205,7 @@ mo.graph @scalar_to_tensor_reshapes_before_staticization(
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @scalar_to_tensor_reshapes_before_staticization<[[D18:.*]], [[D19:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D18]], [[D19]]], si32>) -> !mo.tensor<[[[D18]], [[D18]]], si32> {
-// CHECK-NEXT: kgen.param.declare [[P29:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D18, D19]> : !mosh.ape != #mosh<ape[D18, D18]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_no_wrap(D18, D18), mul_no_wrap(D18, D19)))>
+// CHECK-NEXT: kgen.param.declare [[P29:.*]]: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[reshape] input and output number of elements must match: #mosh<ape[D18, D19]> : !mosh.ape != #mosh<ape[D18, D18]> : !mosh.ape[[REST:.*]]" : !kgen.string}, eq(:si64 mul_no_wrap(D18, D18), mul_no_wrap(D18, D19)))>
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG0]]) : !mo.tensor<[[[D18]], [[D19]]], si32> -> !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT:   mo.output [[V0]] : !mo.tensor<[[[D18]], [[D18]]], si32>
 // CHECK-NEXT: }
@@ -1043,7 +1043,7 @@ mo.graph @reshape_neg_one_dim_in_const_shape<D0 -> D4, D5, D6>(
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME: {message = "[reshape] input and output number of elements must match:
-  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div3, 2]> : !mosh.ape" : !kgen.string}, eq(:si64 mul_no_wrap(div(mul_no_wrap(D0, 2), 3), 6), mul_no_wrap(D0, 4)))>
+  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div3, 2]> : !mosh.ape[[REST:.*]]" : !kgen.string}, eq(:si64 mul_no_wrap(div(mul_no_wrap(D0, 2), 3), 6), mul_no_wrap(D0, 4)))>
   // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <div(mul_no_wrap(D0, 2), 3)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[D0, 4], si32> -> !mo.tensor<[3, [[EXPR]], 2], si32>
   %shape = mo.constant {value = #M.dense_array<3, -1, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>

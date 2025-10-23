@@ -1391,11 +1391,20 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // Insert assertions
   Var inputNumElems = b.createVar(inputShape.getSymbolicNumElements());
   Var outputNumElems = b.createVar(outputShape.getSymbolicNumElements());
-  b.createAssert(inputNumElems == outputNumElems,
-                 llvm::formatv("[reshape] input and output number of elements "
-                               "must match: {0} != {1}",
-                               inputShape, outputShape)
-                     .str());
+  b.createAssert(
+      inputNumElems == outputNumElems,
+      llvm::formatv(
+          "[reshape] input and output number of elements must match: "
+          "{0} != {1}\n"
+          "If you are confident this is correct, consider a rebind to assert "
+          "that the reshape is valid.\n"
+          "Ex: ```\n"
+          "    n, m = x.shape\n"
+          "    x = x.rebind([(n // 4) * 4, m])\n"
+          "    x.reshape([n // 4, 4, m])\n"
+          "```",
+          inputShape, outputShape)
+          .str());
   return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
 }
 

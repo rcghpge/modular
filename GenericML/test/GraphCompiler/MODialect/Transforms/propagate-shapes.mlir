@@ -419,7 +419,7 @@ mo.graph @reshape_parametric_shape<D0, D1 -> D2, D3, D4>(
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME:  {message = "[reshape] input and output number of elements must match:
-  // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape" : !kgen.string},
+  // CHECK-SAME: #mosh<ape[D0, D1]> : !mosh.ape != #mosh<ape[D0, 4, 5]> : !mosh.ape[[REST:.*]]" : !kgen.string},
   // CHECK-SAME: eq(:si64 mul_no_wrap(D0, D1), mul_no_wrap(D0, 20)))>
   //
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]])
