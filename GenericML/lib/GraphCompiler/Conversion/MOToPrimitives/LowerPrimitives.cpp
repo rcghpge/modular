@@ -250,10 +250,9 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 
         if (extendsLifetime.extendsLifetime(operandIdx, resultIdx)) {
           outputs[resultIdx] =
-              builder
-                  .create<MOGG::BufferBorrowOp>(loc, op->getResultTypes(),
-                                                outputs[resultIdx],
-                                                inputs[operandIdx - numChains])
+              MOGG::BufferBorrowOp::create(builder, loc, op->getResultTypes(),
+                                           outputs[resultIdx],
+                                           inputs[operandIdx - numChains])
                   ->getResult(0);
         }
       }
@@ -408,9 +407,8 @@ void LowerPrimitivesPass::runOnOperation() {
       // lifetime of a cached buffer.
       SmallVector<Value> outputs = errOr.takeValue();
       ValueRange ret =
-          builder
-              .create<MOGG::BufferBorrowOp>(loc, op->getResultTypes()[0],
-                                            outputs.front(), asyncRef)
+          MOGG::BufferBorrowOp::create(builder, loc, op->getResultTypes()[0],
+                                       outputs.front(), asyncRef)
               ->getResults();
 
       // Override the result.

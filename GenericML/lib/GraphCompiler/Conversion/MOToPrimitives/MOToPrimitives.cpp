@@ -404,8 +404,8 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
-  auto modelOp = b.create<MGP::ModelOp>(
-      graph.getLoc(),
+  auto modelOp = MGP::ModelOp::create(
+      b, graph.getLoc(),
       /*name=*/graph.getNameAttr(),
       /*frameworkName=*/loweringState.getCompiledFrameworkLabel(),
       /*devices=*/devices,
@@ -423,15 +423,13 @@ LogicalResult MOGraphLowering::createModelOp() {
   // Get the chain and context values for the body.
   // This field tracks the current output chain as we lower into the init
   // body.
-  loweringState.setInitChain(
-      loweringState.getInitOpBuilder().create<GRT::ChainCreateOp>(
-          graph.getLoc()));
+  loweringState.setInitChain(GRT::ChainCreateOp::create(
+      loweringState.getInitOpBuilder(), graph.getLoc()));
 
   // Create the !mgp.context. Its numSlots attribute will be incremented
   // as needed.
-  loweringState.setInitMgpContext(
-      loweringState.getInitOpBuilder().create<MGP::ContextCreateOp>(
-          graph.getLoc(), /*numSlots=*/0));
+  loweringState.setInitMgpContext(MGP::ContextCreateOp::create(
+      loweringState.getInitOpBuilder(), graph.getLoc(), /*numSlots=*/0));
 
   // Initialize the execute state.
   Block *executeBlock = loweringState.getModelOp().getExecuteBlock();
@@ -493,8 +491,8 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   for (auto dev : loweringState.getModelOp().getDevices())
     outputs.push_back(
         loweringState.getInitDevice(dyn_cast<DeviceRefAttr>(dev)));
-  loweringState.getInitOpBuilder().create<MEF::OutputOp>(output.getLoc(),
-                                                         outputs);
+  MEF::OutputOp::create(loweringState.getInitOpBuilder(), output.getLoc(),
+                        outputs);
 
   // Execute phase lowering.
 
@@ -506,8 +504,8 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
   // Finally, we can create the mef.output op.
-  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(output.getLoc(),
-                                                            operands);
+  MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), output.getLoc(),
+                        operands);
   return success();
 }
 
@@ -523,8 +521,8 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
   // Finally, we can create the mef.output op.
-  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(yield.getLoc(),
-                                                            operands);
+  MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), yield.getLoc(),
+                        operands);
   return success();
 }
 
@@ -541,8 +539,8 @@ MOGraphLowering::lowerWhileCondition(MO::WhileConditionOp condition) {
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
   // Finally, we can create the mef.output op.
-  loweringState.getExecuteOpBuilder().create<MEF::OutputOp>(condition.getLoc(),
-                                                            operands);
+  MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), condition.getLoc(),
+                        operands);
   return success();
 }
 
@@ -672,8 +670,8 @@ MOGraphLowering::lowerIndexToTensorOp(MO::IndexToTensorOp toTensorOp) {
   // The input to mo.index.to_tensor is now an si64.
   // Cast to index to match the expectation of mgp.set_with_index.
   auto &builder = loweringState.getExecuteOpBuilder();
-  loweredIndexVal = builder.create<mlir::index::CastSOp>(
-      toTensorOp.getLoc(), builder.getIndexType(), loweredIndexVal);
+  loweredIndexVal = mlir::index::CastSOp::create(
+      builder, toTensorOp.getLoc(), builder.getIndexType(), loweredIndexVal);
 
   auto outChain = opLoweringState.bufferSetWithIndex(
       outputStorage.buffer, {loweredIndexVal},
@@ -1824,10 +1822,10 @@ LogicalResult MOGraphLowering::lowerWhile(MO::WhileOp whileOp) {
     Value chain = loweredOutputChain;
     if (Value guardChain =
             loweringState.getChainGuardingValueOrNull(origTensor)) {
-      chain = opLoweringState.builder
-                  .create<GRT::ChainCreateOp>(whileOp.getLoc(),
-                                              ValueRange{guardChain, chain})
-                  .getResult();
+      chain =
+          GRT::ChainCreateOp::create(opLoweringState.builder, whileOp.getLoc(),
+                                     ValueRange{guardChain, chain})
+              .getResult();
     }
     Value condBool =
         opLoweringState.bufferToBool(chain, condBuffer, condMoTensorType);

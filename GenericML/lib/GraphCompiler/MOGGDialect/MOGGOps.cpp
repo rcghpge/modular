@@ -1361,9 +1361,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     builder.setInsertionPoint(constantOp);
     Value bufferValue =
-        builder
-            .create<MOGG::InlineConstantBufferOp>(
-                constantOp->getLoc(), mgpBufferType, constantOp.getValue())
+        MOGG::InlineConstantBufferOp::create(
+            builder, constantOp->getLoc(), mgpBufferType, constantOp.getValue())
             .getResult();
     SmallVector<Value> dynamicDimensions;
     Value constantValue = MOGG::TensorInitOp::create(

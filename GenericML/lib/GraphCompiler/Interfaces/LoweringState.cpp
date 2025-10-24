@@ -856,9 +856,8 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
   MGP::TensorSpecType tensorSpecType = MGP::createTensorSpecType(moTensorType);
   if (tensorSpecType.getSizeInBytes()) {
     // Statically shaped.
-    return builder
-        .create<MGP::TensorSpecCreateOp>(loc,
-                                         /*spec=*/tensorSpecType)
+    return MGP::TensorSpecCreateOp::create(builder, loc,
+                                           /*spec=*/tensorSpecType)
         .getResult();
   }
 
@@ -867,10 +866,9 @@ MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
       opBeingLowered->getParentRegion(), moTensorType.getTypedShapeAttr(), loc);
   if (runtimeDimsOr)
     return opBeingLowered->emitOpError(runtimeDimsOr.getError());
-  return builder
-      .create<MGP::TensorSpecCreateOp>(loc,
-                                       /*spec=*/tensorSpecType,
-                                       /*runtimeDims=*/*runtimeDimsOr)
+  return MGP::TensorSpecCreateOp::create(builder, loc,
+                                         /*spec=*/tensorSpecType,
+                                         /*runtimeDims=*/*runtimeDimsOr)
       .getResult();
 }
 

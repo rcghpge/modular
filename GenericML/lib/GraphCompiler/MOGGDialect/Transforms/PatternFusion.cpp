@@ -1232,9 +1232,9 @@ public:
     if (attentionMatrixTrueBranch)
       return conditionalStatement;
     else
-      return builder.create<NotOp>(conditionalStatement.getLoc(),
-                                   conditionalStatement.getType(),
-                                   conditionalStatement);
+      return NotOp::create(builder, conditionalStatement.getLoc(),
+                           conditionalStatement.getType(),
+                           conditionalStatement);
   }
 
   TensorValue getAttentionMask(mlir::OpBuilder &builder) {
@@ -1254,14 +1254,14 @@ public:
     Location loc = bcastedMask.getLoc();
 
     if (attentionMatrixTrueBranch) {
-      TensorValue notCond = builder.create<NotOp>(loc, conditionalStatement);
-      TensorValue notCondCasted = builder.create<CastOp>(
-          loc, notCond, bcastedMask.getType().getDtype());
-      return builder.create<MulOp>(loc, bcastedMask, notCondCasted);
+      TensorValue notCond = NotOp::create(builder, loc, conditionalStatement);
+      TensorValue notCondCasted = CastOp::create(
+          builder, loc, notCond, bcastedMask.getType().getDtype());
+      return MulOp::create(builder, loc, bcastedMask, notCondCasted);
     } else {
-      TensorValue condCasted = builder.create<CastOp>(
-          loc, conditionalStatement, bcastedMask.getType().getDtype());
-      return builder.create<MulOp>(loc, bcastedMask, condCasted);
+      TensorValue condCasted = CastOp::create(
+          builder, loc, conditionalStatement, bcastedMask.getType().getDtype());
+      return MulOp::create(builder, loc, bcastedMask, condCasted);
     }
   }
 
@@ -1516,9 +1516,10 @@ public:
       // statically cast incoming mask to the current shape
       // note this is always assumed to be safe because of `allowUnsafeBCast`
       TensorValue otherMask = masks[i];
-      otherMask = builder.create<BroadcastToOp>(mask.getLoc(), otherMask, mask);
+      otherMask =
+          BroadcastToOp::create(builder, mask.getLoc(), otherMask, mask);
 
-      mask = builder.create<AddOp>(mask.getLoc(), mask, otherMask);
+      mask = AddOp::create(builder, mask.getLoc(), mask, otherMask);
     }
     return mask;
   }
@@ -1665,23 +1666,23 @@ public:
     DeviceRefAttr device = attentionMatrix.getType().getDeviceRef();
     if (!scalarConstant) {
       // No normalization, return one as an equivalent
-      TensorValue one = builder.create<ConstantOp>(loc, 1.0, device);
+      TensorValue one = ConstantOp::create(builder, loc, 1.0, device);
       TensorType targetType =
           one.getType().cloneWith(attentionMatrix.getType().getDtype());
-      TensorValue oneCasted = builder.create<CastOp>(loc, targetType, one);
+      TensorValue oneCasted = CastOp::create(builder, loc, targetType, one);
       return oneCasted;
     }
 
     if (isDiv) {
-      TensorValue one = builder.create<ConstantOp>(loc, 1.0, device);
+      TensorValue one = ConstantOp::create(builder, loc, 1.0, device);
       TensorType targetType =
           one.getType().cloneWith(scalarConstant.getType().getDtype());
-      TensorValue oneCasted = builder.create<CastOp>(loc, targetType, one);
+      TensorValue oneCasted = CastOp::create(builder, loc, targetType, one);
 
       // Must cast from shape `[]` to `[1]` possibly.
-      TensorValue oneBCast = builder.create<Static::BroadcastToOp>(
-          loc, scalarConstant.getType(), oneCasted);
-      return builder.create<DivOp>(loc, oneBCast, scalarConstant);
+      TensorValue oneBCast = Static::BroadcastToOp::create(
+          builder, loc, scalarConstant.getType(), oneCasted);
+      return DivOp::create(builder, loc, oneBCast, scalarConstant);
     }
 
     // already read for mul

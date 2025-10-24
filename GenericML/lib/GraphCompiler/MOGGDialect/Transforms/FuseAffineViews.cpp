@@ -138,11 +138,10 @@ struct FuseAffineViewsPass
 
     builder.setInsertionPoint(outputOp);
     auto newIndexValue =
-        builder
-            .create<MOGG::CallOp>(loc, TypeRange{newIndexValueType},
-                                  builder.getStringAttr(funcName), operands,
-                                  mlir::ArrayAttr{},
-                                  builder.getDictionaryAttr(parameters))
+        MOGG::CallOp::create(builder, loc, TypeRange{newIndexValueType},
+                             builder.getStringAttr(funcName), operands,
+                             mlir::ArrayAttr{},
+                             builder.getDictionaryAttr(parameters))
             .getResult(0);
     outputOp->setOperand(1, newIndexValue);
 

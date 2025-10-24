@@ -881,8 +881,8 @@ class ExecInvariantCodeMotionPass
     // ready only when all side effects on all buffers lifted to the 'init'
     // block have completed.
     placeholderBufferCacheInputChain.replaceAllUsesWith(
-        initState->builder
-            .create<GRT::ChainCreateOp>(outputLoc, potentialBufferActionChains)
+        GRT::ChainCreateOp::create(initState->builder, outputLoc,
+                                   potentialBufferActionChains)
             .getResult());
     placeholderBufferCacheInputChain.erase();
 

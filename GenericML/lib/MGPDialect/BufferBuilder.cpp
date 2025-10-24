@@ -166,16 +166,15 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
                                                Value srcBuffer, Value dstBuffer,
                                                Value deviceContext) {
   Value copyChain =
-      builder
-          .create<BufferHostToDeviceOp>(
-              loc,
-              /*inChain=*/inChain,
-              /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
-              /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-              /*deviceContext*/
-              cast<TypedValue<DeviceContextType>>(deviceContext),
-              /*cHostDevice=*/hostBufferBuilder->device,
-              /*dOtherDevice=*/device)
+      BufferHostToDeviceOp::create(
+          builder, loc,
+          /*inChain=*/inChain,
+          /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
+          /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+          /*deviceContext*/
+          cast<TypedValue<DeviceContextType>>(deviceContext),
+          /*cHostDevice=*/hostBufferBuilder->device,
+          /*dOtherDevice=*/device)
           .getResult();
 
   Value syncChain =
@@ -203,16 +202,15 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
                                              Value dstBuffer,
                                              Value deviceContext) {
   Value copyChain =
-      builder
-          .create<BufferDeviceToHostOp>(
-              loc,
-              /*inChain=*/inChain,
-              /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
-              /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
-              /*deviceContext*/
-              cast<TypedValue<DeviceContextType>>(deviceContext),
-              /*cOtherDevice=*/device,
-              /*dHostDevice=*/hostBufferBuilder->device)
+      BufferDeviceToHostOp::create(
+          builder, loc,
+          /*inChain=*/inChain,
+          /*otherBuffer=*/cast<TypedValue<DeviceBufferType>>(srcBuffer),
+          /*hostBuffer=*/cast<TypedValue<DeviceBufferType>>(dstBuffer),
+          /*deviceContext*/
+          cast<TypedValue<DeviceContextType>>(deviceContext),
+          /*cOtherDevice=*/device,
+          /*dHostDevice=*/hostBufferBuilder->device)
           .getResult();
   Value syncChain =
       MGP::SyncOp::create(builder, loc, copyChain, context, deviceContext,
@@ -407,8 +405,7 @@ Value MGPBufferBuilder::sync(OpBuilder &builder, Location loc,
                              TypedValue<ContextType> context,
                              TypedValue<DeviceContextType> deviceContext,
                              Value chain) {
-  return builder
-      .create<MGP::SyncOp>(loc, chain, context, deviceContext,
-                           /*bDevice*/ device)
+  return MGP::SyncOp::create(builder, loc, chain, context, deviceContext,
+                             /*bDevice*/ device)
       .getResult();
 }

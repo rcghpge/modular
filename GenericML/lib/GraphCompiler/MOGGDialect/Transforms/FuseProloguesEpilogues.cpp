@@ -352,9 +352,8 @@ struct FuseProloguesEpilogues
                             src.getElemwiseBodyLambda().getType())) {
           rewriter.setInsertionPointAfter(outHolderOp);
           auto scratchPlaceholder =
-              rewriter
-                  .create<MOGG::ScratchPlaceholdersOp>(outputLambda.getLoc(),
-                                                       outputLambda.getType())
+              MOGG::ScratchPlaceholdersOp::create(
+                  rewriter, outputLambda.getLoc(), outputLambda.getType())
                   .getResult(0);
           rewriter.setInsertionPointAfter(outputLambda);
           auto concretizeOp = MOGG::ConcretizeTensorOp::create(
