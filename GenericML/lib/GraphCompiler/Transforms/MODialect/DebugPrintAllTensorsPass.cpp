@@ -49,12 +49,12 @@ struct DebugPrintAllTensorsPass
 
     builder.setInsertionPointToStart(block);
 
-    Value currentChain = builder.create<MO::ChainCreateOp>(loc, ValueRange{});
+    Value currentChain = MO::ChainCreateOp::create(builder, loc, ValueRange{});
 
     for (Value arg : block->getArguments()) {
       if (isa<MO::TensorType>(arg.getType())) {
-        currentChain = builder.create<MO::DebugTensorPrintOp>(
-            loc, /*inChain=*/currentChain, /*input=*/arg,
+        currentChain = MO::DebugTensorPrintOp::create(
+            builder, loc, /*inChain=*/currentChain, /*input=*/arg,
             /*label=*/valueToLabel(arg));
       }
     }
@@ -66,8 +66,8 @@ struct DebugPrintAllTensorsPass
       builder.setInsertionPointAfter(&op);
       for (Value res : op.getResults()) {
         if (isa<MO::TensorType>(res.getType())) {
-          currentChain = builder.create<MO::DebugTensorPrintOp>(
-              op.getLoc(), /*inChain=*/currentChain, /*input=*/res,
+          currentChain = MO::DebugTensorPrintOp::create(
+              builder, op.getLoc(), /*inChain=*/currentChain, /*input=*/res,
               /*label=*/valueToLabel(res));
         }
       }

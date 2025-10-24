@@ -91,8 +91,8 @@ canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
   OpBuilder builder(op);
   builder.setInsertionPoint(op);
   int64_t newAxis = axis + inputTy.getRank();
-  auto newAxisOp = builder.create<ConstantOp>(op.getLoc(), newAxis,
-                                              getHostDevice(op.getContext()));
+  auto newAxisOp = ConstantOp::create(builder, op.getLoc(), newAxis,
+                                      getHostDevice(op.getContext()));
   rewriter.modifyOpInPlace(op,
                            [&] { op->setOperand(operandIndex, newAxisOp); });
   return success();
@@ -187,7 +187,7 @@ LogicalResult materializeShapeInference(RebindOp op,
         !doesShapeAttrContainUnknown(inputShapeAttr)) {
       // If there is a single declaration in rebind that is a shape parameter,
       // we materialize into a kgen.param.declare.
-      rewriter.create<KGEN::ParamDeclareOp>(loc, newDecl, inputShapeAttr);
+      KGEN::ParamDeclareOp::create(rewriter, loc, newDecl, inputShapeAttr);
       rewriter.modifyOpInPlace(op, [&] { op.setOutputParamDecls({}); });
       return success();
     }
@@ -217,7 +217,8 @@ LogicalResult materializeShapeInference(RebindOp op,
             (paramDecl = nameToParamDecl.lookup(outputDimParamRef.getName()))) {
           TypedAttr mlirOpCallAttr =
               MOSH::GetDimOp::emitStaticCall(inputShapeParamRef, axis);
-          rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl, mlirOpCallAttr);
+          KGEN::ParamDeclareOp::create(rewriter, loc, paramDecl,
+                                       mlirOpCallAttr);
         }
       }
       rewriter.modifyOpInPlace(op, [&] { op.setOutputParamDecls({}); });
@@ -245,8 +246,8 @@ LogicalResult materializeShapeInference(RebindOp op,
             if (isa<KGEN::UnknownAttr>(inputDimAttr)) {
               unknownParamDecls.insert(paramDecl);
             } else if (declaredParams.insert(paramDecl)) {
-              rewriter.create<KGEN::ParamDeclareOp>(loc, paramDecl,
-                                                    inputDimAttr);
+              KGEN::ParamDeclareOp::create(rewriter, loc, paramDecl,
+                                           inputDimAttr);
             }
           }
         }
@@ -587,8 +588,8 @@ LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
       SmallVector<Value> rankOneInputs;
       rankOneInputs.reserve(numInputs);
       for (size_t i = 0; i < numInputs; ++i) {
-        rankOneInputs.push_back(rewriter.create<Static::ReshapeOp>(
-            op->getLoc(), rankOneTy, listCreateOp.getInputTensor(i)));
+        rankOneInputs.push_back(Static::ReshapeOp::create(
+            rewriter, op->getLoc(), rankOneTy, listCreateOp.getInputTensor(i)));
       }
       rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, resultType, op.getAxis(),
                                                 rankOneInputs,
@@ -621,7 +622,7 @@ LogicalResult ConstantOp::canonicalize(ConstantOp op,
         cast<ShapedType>(elements.getType()).getShape(),
         elements.getElementType());
     auto constantOp =
-        rewriter.create<ConstantOp>(loc, staticTensorType, elements);
+        ConstantOp::create(rewriter, loc, staticTensorType, elements);
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), constantOp);
     return success();
   }
@@ -880,7 +881,7 @@ struct RemoveUnusedResults : public OpRewritePattern<IfOp> {
     auto newTypes = llvm::map_to_vector(
         usedResults, [](OpResult res) { return res.getType(); });
 
-    auto newOp = rewriter.create<IfOp>(op.getLoc(), newTypes, op.getCond());
+    auto newOp = IfOp::create(rewriter, op.getLoc(), newTypes, op.getCond());
     rewriter.createBlock(&newOp.getThenRegion());
     rewriter.createBlock(&newOp.getElseRegion());
 
@@ -906,10 +907,10 @@ struct ConditionPropagation : public OpRewritePattern<IfOp> {
   static Value createBoolOfType(PatternRewriter &rewriter, Location loc,
                                 Type type, bool value) {
     if (auto tensorTy = dyn_cast<TensorType>(type))
-      return rewriter.create<ConstantOp>(loc, value, tensorTy.getDeviceRef());
+      return ConstantOp::create(rewriter, loc, value, tensorTy.getDeviceRef());
 
     assert(isa<ScalarType>(type) && "must be a tensor or scalar type");
-    return rewriter.create<ConstantScalarOp>(loc, rewriter.getBoolAttr(value));
+    return ConstantScalarOp::create(rewriter, loc, rewriter.getBoolAttr(value));
   }
 
   LogicalResult matchAndRewrite(IfOp op,
@@ -1126,9 +1127,9 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   OpBuilder builder(*this); // insert before this op
   auto resTy = outTy.cloneWith({numResElements}, outTy.getElementType());
   auto constantOp =
-      builder.create<ConstantOp>(loc, resTy, cast<ElementsAttr>(foldedAttr));
+      ConstantOp::create(builder, loc, resTy, cast<ElementsAttr>(foldedAttr));
   auto rebindOp =
-      builder.create<RebindOp>(loc, outTy, constantOp, getOutputParamDecls());
+      RebindOp::create(builder, loc, outTy, constantOp, getOutputParamDecls());
   return rebindOp.getResult();
 }
 
@@ -1283,8 +1284,8 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   if (inputTy.getRank() == 0 && resTy.getRank() == 1) {
     auto inferredResTy =
         resTy.cloneWith(SmallVector<int64_t>({1}), resTy.getElementType());
-    auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
-        op.getLoc(), inferredResTy, inputVal);
+    auto newReshapeOp = Static::ReshapeOp::create(rewriter, op.getLoc(),
+                                                  inferredResTy, inputVal);
     rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp,
                                           op.getOutputParamDecls());
     return success();
@@ -1294,8 +1295,8 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   if (inputTy.getRank() == 1 && resTy.getRank() == 0) {
     auto inferredResTy =
         resTy.cloneWith(SmallVector<int64_t>({}), resTy.getElementType());
-    auto newReshapeOp = rewriter.create<Static::ReshapeOp>(
-        op.getLoc(), inferredResTy, inputVal);
+    auto newReshapeOp = Static::ReshapeOp::create(rewriter, op.getLoc(),
+                                                  inferredResTy, inputVal);
     rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newReshapeOp,
                                           op.getOutputParamDecls());
     return success();
@@ -1318,8 +1319,8 @@ LogicalResult ShapeOfOp::canonicalize(ShapeOfOp op, PatternRewriter &rewriter) {
       resTy.hasUnknownShape())
     return failure();
 
-  auto moshVal = rewriter.create<MOSH::ParamToValueOp>(op.getLoc(),
-                                                       inputTy.getShapeAttr());
+  auto moshVal = MOSH::ParamToValueOp::create(rewriter, op.getLoc(),
+                                              inputTy.getShapeAttr());
   rewriter.replaceOpWithNewOp<MO::Shape::ToTensorOp>(op, resTy, moshVal);
   return success();
 }
@@ -1368,7 +1369,7 @@ LogicalResult Shape::ToTensorOp::canonicalize(Shape::ToTensorOp op,
           {(int64_t)inputShapeAttr.getRank()}, rewriter.getType<ShapeType>()));
       Location loc = op.getLoc();
       auto newOp =
-          rewriter.create<Shape::ToTensorOp>(loc, newTy, paramToValueOp);
+          Shape::ToTensorOp::create(rewriter, loc, newTy, paramToValueOp);
       rewriter.replaceOpWithNewOp<RebindOp>(op, resTy, newOp);
       return success();
     }
@@ -1552,10 +1553,10 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
     return failure();
 
   // Construct new op with same dtypes for indices
-  TensorValue newIndices = rewriter.create<ConstantOp>(
-      op->getLoc(), indices, inputShapeType.getDeviceRef());
-  newIndices = rewriter.create<CastOp>(op->getLoc(), newIndices,
-                                       indicesValue.getType().getDtype());
+  TensorValue newIndices = ConstantOp::create(rewriter, op->getLoc(), indices,
+                                              inputShapeType.getDeviceRef());
+  newIndices = CastOp::create(rewriter, op->getLoc(), newIndices,
+                              indicesValue.getType().getDtype());
   rewriter.replaceOpWithNewOp<SqueezeShapeOp>(op, op.getResult().getType(),
                                               op.getInputShape(), newIndices);
   return success();
@@ -1611,7 +1612,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
       auto shape = ShapeAttr::get(SmallVector<TypedAttr>{param},
                                   rewriter.getType<ShapeType>());
       auto newConstOp =
-          rewriter.create<MOSH::ParamToValueOp>(op->getLoc(), shape);
+          MOSH::ParamToValueOp::create(rewriter, op->getLoc(), shape);
       rewriter.replaceOpWithNewOp<Shape::ToTensorOp>(op, resTy, newConstOp);
       return success();
     }
@@ -1622,7 +1623,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
       if (auto shape = dyn_cast<ShapeAttr>(param);
           shape && shape.getRank() == 1) {
         auto newConstOp =
-            rewriter.create<MOSH::ParamToValueOp>(op->getLoc(), shape[0]);
+            MOSH::ParamToValueOp::create(rewriter, op->getLoc(), shape[0]);
         rewriter.replaceOpWithNewOp<IndexToTensorOp>(op, resTy, newConstOp);
         return success();
       }
@@ -1718,9 +1719,9 @@ LogicalResult TileOp::canonicalize(TileOp op, PatternRewriter &rewriter) {
       inputTy.cloneWith({(int64_t)inputTy.getRank()},
                         rewriter.getIntegerType(64, /*isSigned=*/true));
   TensorValue inputShape =
-      rewriter.create<ShapeOfOp>(op.getLoc(), shapeTy, op.getInput());
-  TensorValue bcastShape = rewriter.create<BroadcastShapeOp>(
-      op.getLoc(), shapeTy, inputShape, op.getRepeats());
+      ShapeOfOp::create(rewriter, op.getLoc(), shapeTy, op.getInput());
+  TensorValue bcastShape = BroadcastShapeOp::create(
+      rewriter, op.getLoc(), shapeTy, inputShape, op.getRepeats());
   rewriter.replaceOpWithNewOp<BroadcastToOp>(
       op, op.getType(), op.getInput(), bcastShape, op.getOutputParamDecls());
   return success();
@@ -1826,8 +1827,9 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     // Compute the merged permutation, and replace the consecutive transpose
     // with a new transpose with the merged permutation.
     SmallVector<int64_t> mergedPerm = permute(inputPermVec, permVec);
-    auto mergedPermVal = rewriter.create<ConstantOp>(
-        op.getLoc(), mergedPerm, op.getPerm().getType().getDeviceRef());
+    auto mergedPermVal =
+        ConstantOp::create(rewriter, op.getLoc(), mergedPerm,
+                           op.getPerm().getType().getDeviceRef());
     rewriter.replaceOpWithNewOp<TransposeOp>(
         op, op.getType(), inputTransposeOp.getInput(), mergedPermVal,
         op.getOutputParamDecls());
@@ -2092,8 +2094,8 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
           condOp, condOp.getCondition(), newCondOpArgs);
     }
 
-    auto newWhile = rewriter.create<WhileOp>(
-        op.getLoc(), TypeRange(newInitArgs), newInitArgs);
+    auto newWhile = WhileOp::create(rewriter, op.getLoc(),
+                                    TypeRange(newInitArgs), newInitArgs);
 
     Block &newCondBlock = *rewriter.createBlock(
         &newWhile.getCondRegion(), /*insertPt*/ {},
@@ -2181,10 +2183,10 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
   if (!changedIndices)
     return failure();
   // Construct new op with same dtypes for indices
-  TensorValue newIndices = rewriter.create<ConstantOp>(
-      op->getLoc(), indices, inputShapeType.getDeviceRef());
-  newIndices = rewriter.create<CastOp>(op->getLoc(), newIndices,
-                                       indicesValue.getType().getDtype());
+  TensorValue newIndices = ConstantOp::create(rewriter, op->getLoc(), indices,
+                                              inputShapeType.getDeviceRef());
+  newIndices = CastOp::create(rewriter, op->getLoc(), newIndices,
+                              indicesValue.getType().getDtype());
   rewriter.replaceOpWithNewOp<UnsqueezeShapeOp>(op, op.getResult().getType(),
                                                 op.getInputShape(), newIndices);
   return success();

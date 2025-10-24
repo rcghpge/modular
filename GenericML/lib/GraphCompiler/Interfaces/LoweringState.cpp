@@ -76,8 +76,8 @@ MGP::TensorSpecGetDimOp MOGraphLoweringState::getDim(Location loc,
   TypedValue<MGP::TensorSpecType> tensorSpec =
       getBufferBuilder(device)->tensorExtractTensorSpec(builder, loc,
                                                         loweredTensor);
-  return builder.create<MGP::TensorSpecGetDimOp>(loc, /*spec=*/tensorSpec,
-                                                 /*axis=*/axis);
+  return MGP::TensorSpecGetDimOp::create(builder, loc, /*spec=*/tensorSpec,
+                                         /*axis=*/axis);
 }
 
 SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
@@ -96,7 +96,7 @@ SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
   for (size_t i = 0; i < specType.getRank(); ++i)
     if (specType.isDynamicDim(i))
       dynDims.push_back(
-          builder.create<MGP::TensorSpecGetDimOp>(loc, tensorSpec, i));
+          MGP::TensorSpecGetDimOp::create(builder, loc, tensorSpec, i));
 
   return dynDims;
 }
@@ -125,8 +125,8 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
   FailureOr<Type> targetType =
       builtinTypeToDType(builder.getContext(), previousValue.getType());
 
-  Value isEqual = builder.create<KGEN::POP::CmpOp>(
-      loc, KGEN::POP::CmpPredicate::EQ,
+  Value isEqual = KGEN::POP::CmpOp::create(
+      builder, loc, KGEN::POP::CmpPredicate::EQ,
       builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
                                                          previousValue),
       builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
@@ -227,10 +227,10 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
       // those assertions.
       if (!assertChains.empty()) {
         auto consolidatedChains =
-            builder.create<GRT::ChainCreateOp>(loc, assertChains);
+            GRT::ChainCreateOp::create(builder, loc, assertChains);
 
         auto guarded =
-            builder.create<MGP::GuardOp>(loc, consolidatedChains, outArg);
+            MGP::GuardOp::create(builder, loc, consolidatedChains, outArg);
 
         loweredArg = guarded.getResult(0);
       }
@@ -308,7 +308,7 @@ static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
   ValueRange rest = operands.drop_front();
 
   auto createBinop = [&](Value lhs, Value rhs) {
-    return builder.create<Op>(loc, resultType, lhs, rhs);
+    return Op::create(builder, loc, resultType, lhs, rhs);
   };
 
   return std::accumulate(rest.begin(), rest.end(), start, createBinop);
@@ -338,8 +338,9 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
   case KGEN::POC::EQ:
   case KGEN::POC::LT:
   case KGEN::POC::LE:
-    return builder.create<KGEN::POP::CmpOp>(
-        loc, resultType, getPopCmpPredicate(poc), operands[0], operands[1]);
+    return KGEN::POP::CmpOp::create(builder, loc, resultType,
+                                    getPopCmpPredicate(poc), operands[0],
+                                    operands[1]);
 
   // All potentially variadic ops
   case KGEN::POC::Add:
@@ -370,17 +371,17 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
 
   // Remaining ops
   case KGEN::POC::Shl:
-    return builder.create<KGEN::POP::ShlOp>(loc, resultType, operands);
+    return KGEN::POP::ShlOp::create(builder, loc, resultType, operands);
   case KGEN::POC::Shr:
-    return builder.create<KGEN::POP::ShrOp>(loc, resultType, operands);
+    return KGEN::POP::ShrOp::create(builder, loc, resultType, operands);
   case KGEN::POC::Mod:
-    return builder.create<KGEN::POP::RemOp>(loc, resultType, operands);
+    return KGEN::POP::RemOp::create(builder, loc, resultType, operands);
   case KGEN::POC::Cond: {
     auto condition = operands[0];
     auto trueValue = operands[1];
     auto falseValue = operands[2];
-    return builder.create<KGEN::POP::SIMDSelectOp>(loc, resultType, condition,
-                                                   trueValue, falseValue);
+    return KGEN::POP::SIMDSelectOp::create(builder, loc, resultType, condition,
+                                           trueValue, falseValue);
   }
   default:
     return Error(Twine("unsupported POC '") + stringifyPOC(poc) + "'");
@@ -431,7 +432,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
 
 Operation *MOGraphLoweringState::lowerIntAttr(OpBuilder &builder, Location loc,
                                               IntegerAttr intAttr) {
-  return builder.create<KGEN::ParamConstantOp>(loc, intAttr);
+  return KGEN::ParamConstantOp::create(builder, loc, intAttr);
 }
 
 /// sequenced assert lowering helper functions
@@ -608,8 +609,8 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
 
           ValueRange guardedValRange{v};
 
-          auto guardOp = builder.create<MGP::GuardOp>(
-              loc, guardedValRange.getTypes(), chain, guardedValRange);
+          auto guardOp = MGP::GuardOp::create(
+              builder, loc, guardedValRange.getTypes(), chain, guardedValRange);
 
           for (auto &&[guarded, original] :
                llvm::zip(guardOp.getResults(), bOperands)) {
@@ -624,8 +625,8 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     }();
 
     // We must be dealing with an assert.
-    MGP::AssertOp assertOp = builder.create<MGP::AssertOp>(
-        loc, ValueRange{cond}, opAttr.getAttrs().getValue());
+    MGP::AssertOp assertOp = MGP::AssertOp::create(
+        builder, loc, ValueRange{cond}, opAttr.getAttrs().getValue());
 
     newOp = assertOp;
     if (maybeParentAssert)
@@ -647,7 +648,8 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     SmallVector<std::optional<uint64_t>> dummyShape(dimVals.size());
     auto specTy =
         MGP::TensorSpecType::get(loc.getContext(), dummyShape, DType::si64);
-    auto specOp = builder.create<MGP::TensorSpecCreateOp>(loc, specTy, dimVals);
+    auto specOp =
+        MGP::TensorSpecCreateOp::create(builder, loc, specTy, dimVals);
     return specOp.getResult();
   } else {
     return Error("cannot lower parameter expression");
@@ -669,7 +671,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   if (callsThrowingMojoStub) {
     // If the kernel calls a mojo stub that throws, we need to insert a try /
     // except statement.
-    auto tryOp = builder.create<MOGG::TryOp>(loc);
+    auto tryOp = MOGG::TryOp::create(builder, loc);
 
     Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
     SmallVector<Operation *> toMove;
@@ -680,15 +682,15 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       op->moveBefore(&tryBlock, tryBlock.end());
 
     builder.setInsertionPointToEnd(&tryBlock);
-    builder.create<MOGG::YieldOp>(loc, terminator->getOperands());
+    MOGG::YieldOp::create(builder, loc, terminator->getOperands());
 
     // The except block return a chain error.
     Block &exceptBlock = tryOp.getExceptRegion().emplaceBlock();
     Value errArg =
         exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
     builder.setInsertionPointToStart(&exceptBlock);
-    Value errChain = builder.create<MOGG::AsyncErrorOp>(loc, errArg);
-    builder.create<MOGG::YieldOp>(loc, errChain);
+    Value errChain = MOGG::AsyncErrorOp::create(builder, loc, errArg);
+    MOGG::YieldOp::create(builder, loc, errChain);
 
     // Update the final terminator output.
     // TODO: Handle the case with multiple outputs.
@@ -707,7 +709,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     // it.
     if (shouldUnpack.test(v.getArgNumber()) &&
         !isa<MEF::ChainType>(v.getType())) {
-      auto unpackOp = builder.create<MOGG::AsyncUnpackOp>(loc, v);
+      auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
       v.replaceAllUsesExcept(unpackOp, unpackOp);
     }
     asyncValues.emplace_back(v);
@@ -723,15 +725,15 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
 
     Value newValue;
     if (shouldPack.test(i)) {
-      newValue = builder.create<MOGG::AsyncPackOp>(loc, v);
+      newValue = MOGG::AsyncPackOp::create(builder, loc, v);
     } else {
-      newValue = builder.create<MOGG::AsyncPackBorrowOp>(loc, v);
+      newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, v);
     }
     v.replaceAllUsesExcept(newValue, newValue.getDefiningOp());
   }
 
   for (auto asyncValue : asyncValues)
-    builder.create<MOGG::AsyncDelOp>(loc, asyncValue);
+    MOGG::AsyncDelOp::create(builder, loc, asyncValue);
 }
 
 //===----------------------------------------------------------------------===//

@@ -62,8 +62,8 @@ void flattenElemwiseOp(ElemwiseInterfaceT elemwise, OpBuilder &builder) {
         newShape, inpTt.getDtype(), inpTt.getDeviceRef(), inpTt.getMetadata());
 
     builder.setInsertionPoint(elemwise);
-    auto newReshapeOp = builder.create<MO::Static::ReshapeOp>(
-        elemwise.getLoc(), newInpTt, operand);
+    auto newReshapeOp = MO::Static::ReshapeOp::create(
+        builder, elemwise.getLoc(), newInpTt, operand);
 
     elemwise->setOperand(i, newReshapeOp.getResult());
   }
@@ -71,7 +71,7 @@ void flattenElemwiseOp(ElemwiseInterfaceT elemwise, OpBuilder &builder) {
   // add reshape for result. flattened -> unflattened
   builder.setInsertionPointAfter(elemwise);
   auto newReshapeOp =
-      builder.create<MO::Static::ReshapeOp>(elemwise.getLoc(), resTt, res);
+      MO::Static::ReshapeOp::create(builder, elemwise.getLoc(), resTt, res);
   res.replaceAllUsesExcept(newReshapeOp.getResult(), {newReshapeOp});
 
   // update elementwise op to use flattened shape

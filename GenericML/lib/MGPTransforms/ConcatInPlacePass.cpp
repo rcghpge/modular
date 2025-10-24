@@ -87,7 +87,7 @@ class ConcatInPlacePass
 
       SmallVector<Value> outBuffers;
       Value offset =
-          builder.create<mlir::index::ConstantOp>(loc, 0).getResult();
+          mlir::index::ConstantOp::create(builder, loc, 0).getResult();
       Value sliceSize = nullptr;
 
       // For each concat input buffer...
@@ -97,7 +97,7 @@ class ConcatInPlacePass
           execState.builder.setInsertionPoint(op);
 
         if (sliceSize)
-          offset = builder.create<mlir::index::AddOp>(loc, offset, sliceSize);
+          offset = mlir::index::AddOp::create(builder, loc, offset, sliceSize);
 
         // We'll need to pass a size argument as an operand to the slice.
         if (auto allocOp =

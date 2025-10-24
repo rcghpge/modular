@@ -475,7 +475,7 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
   Location loc = op->getLoc();
   for (const ParamBinding &binding : bindings) {
     auto declOp =
-        builder.create<KGEN::ParamDeclareOp>(loc, binding.decl, binding.value);
+        KGEN::ParamDeclareOp::create(builder, loc, binding.decl, binding.value);
     ops.push_back(declOp);
   }
   return ops;
@@ -920,14 +920,14 @@ struct PropagateShapes {
       //   %input = mo.shape.to_tensor(%tmp) : !mo.tensor<...>
       TypedAttr inputAttr = inputAttrs[idx];
       auto paramToValOp =
-          builder.create<MOSH::ParamToValueOp>(loc, inputAttrs[idx]);
+          MOSH::ParamToValueOp::create(builder, loc, inputAttrs[idx]);
       Value newInputVal;
       if (isa<ShapeType>(inputAttr.getType())) {
-        newInputVal = builder.create<Shape::ToTensorOp>(
-            loc, inputTensorTy, paramToValOp.getResult());
+        newInputVal = Shape::ToTensorOp::create(builder, loc, inputTensorTy,
+                                                paramToValOp.getResult());
       } else {
-        newInputVal = builder.create<IndexToTensorOp>(loc, inputTensorTy,
-                                                      paramToValOp.getResult());
+        newInputVal = IndexToTensorOp::create(builder, loc, inputTensorTy,
+                                              paramToValOp.getResult());
       }
       // Track the new ops so they'll get processed in the worklist loop later.
       newOps.push_back(paramToValOp);
@@ -1050,7 +1050,7 @@ struct PropagateShapes {
             ImplicitLocOpBuilder builder(op->getLoc(), op);
             auto rankAttr =
                 ShapeAttr::getDim(builder.getContext(), inputShape.getRank());
-            auto declOp = builder.create<KGEN::ParamDeclareOp>(decl, rankAttr);
+            auto declOp = KGEN::ParamDeclareOp::create(builder, decl, rankAttr);
             shapeOfOp.setOutputParamDecls({});
             worklist.push_back(op);
             worklist.push_back(declOp);
@@ -1183,8 +1183,8 @@ struct PropagateShapes {
     graphOp.walk([&](ShapeOfOp op) {
       ImplicitLocOpBuilder builder(op.getLoc(), op);
       TypedAttr inputShape = op.getInput().getType().getShapeAttr();
-      auto shConst = builder.create<MOSH::ParamToValueOp>(inputShape);
-      auto toTensor = builder.create<Shape::ToTensorOp>(op.getType(), shConst);
+      auto shConst = MOSH::ParamToValueOp::create(builder, inputShape);
+      auto toTensor = Shape::ToTensorOp::create(builder, op.getType(), shConst);
       op.replaceAllUsesWith(toTensor.getResult());
       op.erase();
       return WalkResult::advance();

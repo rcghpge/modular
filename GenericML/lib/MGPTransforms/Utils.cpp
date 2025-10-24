@@ -361,7 +361,7 @@ static Value waitForChainsReusing(
                existingUniqueChainCreateOp.getOperation())
         .getChainResult();
   }
-  return builder.create<GRT::ChainCreateOp>(loc, chains);
+  return GRT::ChainCreateOp::create(builder, loc, chains);
 }
 
 Value M::MGP::waitForChains(OpBuilder &builder, mlir::Location loc,

@@ -31,7 +31,7 @@ Operation *MODialect::materializeConstant(OpBuilder &b, Attribute value,
     return res;
 
   if (auto elements = dyn_cast_or_null<ElementsAttr>(value))
-    return b.create<ConstantOp>(loc, type, elements);
+    return ConstantOp::create(b, loc, type, elements);
 
   return nullptr;
 }

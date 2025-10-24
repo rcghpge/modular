@@ -110,10 +110,10 @@ ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
   auto newSummaryString =
       MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
 
-  auto newKernelOp = builder.create<MOGG::ExpKernelOp>(
-      kernelOp->getLoc(),
+  auto newKernelOp = MOGG::ExpKernelOp::create(
+      builder, kernelOp->getLoc(),
       /*results=*/newResults,
-      /*inputs=*/newOperandList,
+      /*operands=*/newOperandList,
       /*summary=*/newSummaryString,
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
       /*device*/ kernelOp.getExecutionDevice(),
@@ -142,7 +142,7 @@ ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
   }
 
   auto newOutputPlaceHolderOp =
-      builder.create<OutputPlaceholdersOp>(loc, newPlaceholderTypes);
+      OutputPlaceholdersOp::create(builder, loc, newPlaceholderTypes);
 
   for (auto &&[oldRes, newres] : llvm::zip(outputPlaceholder.getResults(),
                                            newOutputPlaceHolderOp.getResults()))

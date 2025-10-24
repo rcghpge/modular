@@ -37,8 +37,8 @@ protected:
   MO::TensorValue getTestValue(ShapeAttr shape, DeviceRefAttr deviceRef = {}) {
     auto type = MO::TensorType::get(shape, Float32Type::get(&ctx), deviceRef);
     SmallVector<APFloat> values(1, APFloat(0.f));
-    MO::TensorValue out = builder.create<ConstantOp>(
-        loc, ArrayRef<APFloat>(values), Float32Type::get(&ctx));
+    MO::TensorValue out = ConstantOp::create(
+        builder, loc, ArrayRef<APFloat>(values), Float32Type::get(&ctx));
     // Overwrite the output type
     out.setType(type);
     return out;

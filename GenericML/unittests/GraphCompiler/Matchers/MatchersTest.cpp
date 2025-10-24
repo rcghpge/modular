@@ -37,22 +37,22 @@ protected:
         MO::TensorType::get({1}, Float32Type::get(&ctx)),
         MO::TensorType::get({1, 2}, Float32Type::get(&ctx)),
         MO::TensorType::get({1, 2, 3}, Float32Type::get(&ctx))};
-    graph = builder.create<MO::GraphOp>(module.getLoc(), "test", inputTypes,
-                                        SmallVector<Type>{});
+    graph = MO::GraphOp::create(builder, module.getLoc(), "test", inputTypes,
+                                SmallVector<Type>{});
     builder.setInsertionPointToEnd(graph.getBodyBlock());
     Value in0 = graph.getBody().front().getArgument(0);
     Value in1 = graph.getBody().front().getArgument(1);
     Value in2 = graph.getBody().front().getArgument(2);
-    Value shape1 = builder.create<MO::ShapeOfOp>(graph.getLoc(),
-                                                 cast<MO::TensorValue>(in1));
-    Value shape2 = builder.create<MO::ShapeOfOp>(graph.getLoc(),
-                                                 cast<MO::TensorValue>(in2));
-    A = builder.create<MO::BroadcastToOp>(graph.getLoc(), in1.getType(), in0,
-                                          shape1);
-    B = builder.create<MO::AddOp>(graph.getLoc(), A, in1);
-    C = builder.create<MO::BroadcastToOp>(graph.getLoc(), B.getType(), B,
-                                          shape2);
-    D = builder.create<MO::SubOp>(graph.getLoc(), C, in2);
+    Value shape1 = MO::ShapeOfOp::create(builder, graph.getLoc(),
+                                         cast<MO::TensorValue>(in1));
+    Value shape2 = MO::ShapeOfOp::create(builder, graph.getLoc(),
+                                         cast<MO::TensorValue>(in2));
+    A = MO::BroadcastToOp::create(builder, graph.getLoc(), in1.getType(), in0,
+                                  shape1);
+    B = MO::AddOp::create(builder, graph.getLoc(), A, in1);
+    C = MO::BroadcastToOp::create(builder, graph.getLoc(), B.getType(), B,
+                                  shape2);
+    D = MO::SubOp::create(builder, graph.getLoc(), C, in2);
   }
 
   void TearDown() override { module->erase(); }
@@ -63,8 +63,8 @@ protected:
   MO::TensorValue getFloatConst(ArrayRef<int64_t> shape) {
     auto type = MO::TensorType::get(shape, Float32Type::get(&ctx));
     SmallVector<APFloat> values(1, APFloat(float(value)));
-    MO::TensorValue out = builder.create<ConstantOp>(
-        loc, ArrayRef<APFloat>(values), Float32Type::get(&ctx));
+    MO::TensorValue out = ConstantOp::create(
+        builder, loc, ArrayRef<APFloat>(values), Float32Type::get(&ctx));
     // Overwrite the output type
     out.setType(type);
     return out;
@@ -76,7 +76,7 @@ protected:
     auto type = MO::TensorType::get(shape, iType);
     SmallVector<int64_t> values{1};
     MO::TensorValue out =
-        builder.create<ConstantOp>(loc, ArrayRef<int64_t>(values));
+        ConstantOp::create(builder, loc, ArrayRef<int64_t>(values));
     // Overwrite the output type
     out.setType(type);
     return out;

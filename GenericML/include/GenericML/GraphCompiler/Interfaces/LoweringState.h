@@ -606,7 +606,7 @@ struct MOOpLoweringState {
   /// Creates an operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpTy create(Args &&...args) {
-    return builder.create<OpTy, Args...>(loc, std::forward<Args>(args)...);
+    return OpTy::create(builder, loc, std::forward<Args>(args)...);
   }
 
   /// Returns the buffer builder appropriate for the device on which the
@@ -786,7 +786,7 @@ struct MOOpLoweringState {
     // multiplying by dtype size
     int64_t dtypeSize =
         dyn_cast<MO::TensorType>(moTensorType).getDtype().getSizeInBytes();
-    Value numBytes = builder.create<mlir::index::ConstantOp>(loc, dtypeSize);
+    Value numBytes = mlir::index::ConstantOp::create(builder, loc, dtypeSize);
     for (size_t i = 0; i < tensorSpec.getType().getRank(); ++i) {
       Value dimVal =
           builder.createOrFold<MGP::TensorSpecGetDimOp>(loc, tensorSpec, i);

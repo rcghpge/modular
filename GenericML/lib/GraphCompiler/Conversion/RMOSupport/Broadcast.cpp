@@ -33,11 +33,11 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
   auto valueAttr = builder.getAttr<IntArrayElementsAttr>(
       ArrayRef<int64_t>(reshapeType.getIntDims()), mlir::IntegerType::Signed);
 
-  auto reshapeShapeValue = builder.create<MO::ConstantOp>(
-      loc, shapeType, cast<ElementsAttr>(valueAttr));
+  auto reshapeShapeValue = MO::ConstantOp::create(
+      builder, loc, shapeType, cast<ElementsAttr>(valueAttr));
 
-  auto reshapedValue = builder.create<RMO::MOReshapeOp>(loc, reshapeType, from,
-                                                        reshapeShapeValue);
+  auto reshapedValue = RMO::MOReshapeOp::create(builder, loc, reshapeType, from,
+                                                reshapeShapeValue);
 
   return broadcastTo(builder, loc, reshapedValue, to);
 }
@@ -56,7 +56,7 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue from, TensorType reshapeType,
                                   TensorValue reshapeShape, TensorValue to) {
   auto reshapedValue =
-      builder.create<RMO::MOReshapeOp>(loc, reshapeType, from, reshapeShape);
+      RMO::MOReshapeOp::create(builder, loc, reshapeType, from, reshapeShape);
   return broadcastTo(builder, loc, reshapedValue, to);
 }
 
@@ -64,8 +64,8 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
                                   TensorValue from,
                                   ArrayRef<int64_t> reshapeDims,
                                   TensorValue reshapeShape, TensorValue to) {
-  auto reshapedValue = builder.create<RMO::MOReshapeOp>(
-      loc,
+  auto reshapedValue = RMO::MOReshapeOp::create(
+      builder, loc,
       MO::TensorType::get(reshapeDims, from.getType().getElementType(),
                           from.getType().getDeviceRef()),
       from, reshapeShape);
@@ -107,21 +107,24 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   auto xShapeType =
       TensorType::get({(int64_t)xType.getRank()}, intType, deviceRef);
-  auto xShape = builder.create<RMO::MOShapeOfOp>(x.getLoc(), xShapeType, x);
+  auto xShape = RMO::MOShapeOfOp::create(builder, x.getLoc(), xShapeType, x);
 
   auto yShapeType =
       TensorType::get({(int64_t)yType.getRank()}, intType, deviceRef);
-  auto yShape = builder.create<RMO::MOShapeOfOp>(y.getLoc(), yShapeType, y);
+  auto yShape = RMO::MOShapeOfOp::create(builder, y.getLoc(), yShapeType, y);
 
   auto bcastShapeType = TensorType::get({(int64_t)bcastCommonShape.getRank()},
                                         intType, deviceRef);
-  auto bcastShape = builder.create<RMO::MOBroadcastShapeOp>(
-      x.getLoc(), bcastShapeType, xShape.getShape(), yShape.getShape());
+  auto bcastShape =
+      RMO::MOBroadcastShapeOp::create(builder, x.getLoc(), bcastShapeType,
+                                      xShape.getShape(), yShape.getShape());
 
-  auto bcastXOp = builder.create<RMO::MOBroadcastToOp>(
-      x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
-  auto bcastYOp = builder.create<RMO::MOBroadcastToOp>(
-      y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
+  auto bcastXOp = RMO::MOBroadcastToOp::create(
+      builder, x.getLoc(), x.getType().cloneWith(bcastCommonShape), x,
+      bcastShape);
+  auto bcastYOp = RMO::MOBroadcastToOp::create(
+      builder, y.getLoc(), y.getType().cloneWith(bcastCommonShape), y,
+      bcastShape);
   return {bcastXOp, bcastYOp};
 }
 
@@ -151,38 +154,41 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
 
   // Get the shapes of the inputs at runtime
 
-  auto xShape = builder.create<RMO::MOShapeOfOp>(
-      x.getLoc(),
+  auto xShape = RMO::MOShapeOfOp::create(
+      builder, x.getLoc(),
       TensorType::get({(int64_t)xType.getRank()}, intType, deviceRef), x);
 
-  auto yShape = builder.create<RMO::MOShapeOfOp>(
-      y.getLoc(),
+  auto yShape = RMO::MOShapeOfOp::create(
+      builder, y.getLoc(),
       TensorType::get({(int64_t)yType.getRank()}, intType, deviceRef), y);
 
-  auto zShape = builder.create<RMO::MOShapeOfOp>(
-      z.getLoc(),
+  auto zShape = RMO::MOShapeOfOp::create(
+      builder, z.getLoc(),
       TensorType::get({(int64_t)zType.getRank()}, intType, deviceRef), z);
 
-  auto bcastXYShape = builder.create<RMO::MOBroadcastShapeOp>(
-      x.getLoc(), xyShape, xShape.getShape(), yShape.getShape());
-  auto bcastShape = builder.create<RMO::MOBroadcastShapeOp>(
-      x.getLoc(), shape, bcastXYShape.getShape(), zShape.getShape());
+  auto bcastXYShape = RMO::MOBroadcastShapeOp::create(
+      builder, x.getLoc(), xyShape, xShape.getShape(), yShape.getShape());
+  auto bcastShape = RMO::MOBroadcastShapeOp::create(
+      builder, x.getLoc(), shape, bcastXYShape.getShape(), zShape.getShape());
 
-  auto bcastXOp = builder.create<RMO::MOBroadcastToOp>(
-      x.getLoc(), x.getType().cloneWith(bcastCommonShape), x, bcastShape);
-  auto bcastYOp = builder.create<RMO::MOBroadcastToOp>(
-      y.getLoc(), y.getType().cloneWith(bcastCommonShape), y, bcastShape);
-  auto bcastZOp = builder.create<RMO::MOBroadcastToOp>(
-      z.getLoc(), z.getType().cloneWith(bcastCommonShape), z, bcastShape);
+  auto bcastXOp = RMO::MOBroadcastToOp::create(
+      builder, x.getLoc(), x.getType().cloneWith(bcastCommonShape), x,
+      bcastShape);
+  auto bcastYOp = RMO::MOBroadcastToOp::create(
+      builder, y.getLoc(), y.getType().cloneWith(bcastCommonShape), y,
+      bcastShape);
+  auto bcastZOp = RMO::MOBroadcastToOp::create(
+      builder, z.getLoc(), z.getType().cloneWith(bcastCommonShape), z,
+      bcastShape);
   return {bcastXOp, bcastYOp, bcastZOp};
 }
 
 TensorValue broadcastToStaticShape(OpBuilder &builder, Location loc,
                                    TensorValue x, ShapeAttr s) {
-  auto constOp = builder.create<MO::ConstantOp>(loc, s.getIntDims(),
-                                                x.getType().getDeviceRef());
-  return builder.create<RMO::MOBroadcastToOp>(loc, x.getType().cloneWith(s), x,
-                                              constOp);
+  auto constOp = MO::ConstantOp::create(builder, loc, s.getIntDims(),
+                                        x.getType().getDeviceRef());
+  return RMO::MOBroadcastToOp::create(builder, loc, x.getType().cloneWith(s), x,
+                                      constOp);
 }
 
 std::pair<TensorValue, TensorValue>
@@ -274,11 +280,11 @@ TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
   auto toTy = cast<TensorType>(toVal.getType());
 
   auto graphOp = cast<MO::GraphOp>(toVal.getParentBlock()->getParentOp());
-  auto toShape = builder.create<RMO::MOShapeOfOp>(loc, toVal, graphOp);
+  auto toShape = RMO::MOShapeOfOp::create(builder, loc, toVal, graphOp);
 
-  auto scalarConst = builder.create<MO::ConstantOp>(
-      loc, scalar, toTy.getElementType(), toTy.getDeviceRef());
-  return builder.create<RMO::MOBroadcastToOp>(loc, toTy, scalarConst, toShape);
+  auto scalarConst = MO::ConstantOp::create(
+      builder, loc, scalar, toTy.getElementType(), toTy.getDeviceRef());
+  return RMO::MOBroadcastToOp::create(builder, loc, toTy, scalarConst, toShape);
 }
 
 SmallVector<MO::TensorValue>
@@ -286,20 +292,20 @@ broadcastToCompatibleShape(SmallVector<MO::TensorValue> &values,
                            OpBuilder &rewriter) {
   Operation *op = values[0].getDefiningOp();
   auto graphOp = op->getParentOfType<MO::GraphOp>();
-  MO::TensorValue commonShape = rewriter.create<RMO::MOShapeOfOp>(
-      op->getLoc(), ValueRange{values[0]}, graphOp);
+  MO::TensorValue commonShape = RMO::MOShapeOfOp::create(
+      rewriter, op->getLoc(), ValueRange{values[0]}, graphOp);
 
   SmallVector<MO::TensorValue> answer(values.size());
   for (size_t i = 1; i < values.size(); i++) {
-    MO::TensorValue curShape = rewriter.create<RMO::MOShapeOfOp>(
-        op->getLoc(), ValueRange{values[i]}, graphOp);
-    commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-        op->getLoc(), ValueRange{commonShape, curShape}, graphOp);
+    MO::TensorValue curShape = RMO::MOShapeOfOp::create(
+        rewriter, op->getLoc(), ValueRange{values[i]}, graphOp);
+    commonShape = RMO::MOBroadcastShapeOp::create(
+        rewriter, op->getLoc(), ValueRange{commonShape, curShape}, graphOp);
   }
   for (size_t i = 0; i < values.size(); i++) {
     MO::TensorValue cur = values[i];
-    cur = rewriter.create<RMO::MOBroadcastToOp>(
-        op->getLoc(), ValueRange{cur, commonShape}, graphOp);
+    cur = RMO::MOBroadcastToOp::create(rewriter, op->getLoc(),
+                                       ValueRange{cur, commonShape}, graphOp);
     answer[i] = cur;
   }
   return answer;

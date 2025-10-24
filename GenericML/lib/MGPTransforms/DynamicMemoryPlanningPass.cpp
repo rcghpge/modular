@@ -221,9 +221,9 @@ class DynamicMemoryPlanningPass
       // Since all planned runtimeSizes are not data-dependent, this
       // shouldn't introduce any graph cycles.
       for (size_t i = 0; i < allocs.size(); ++i) {
-        Value slice = execBuilder.create<BufferSliceOp>(
-            loc, memPoolBuffer, bufferPlanOp.getOffsets()[i],
-            allocs[i].runtimeSize);
+        Value slice = BufferSliceOp::create(execBuilder, loc, memPoolBuffer,
+                                            bufferPlanOp.getOffsets()[i],
+                                            allocs[i].runtimeSize);
 
         allocs[i].alloc->replaceAllUsesWith(ValueRange{slice});
         allocsToDelete.push_back(allocs[i].alloc);

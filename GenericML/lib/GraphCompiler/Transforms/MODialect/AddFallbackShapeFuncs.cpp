@@ -322,8 +322,9 @@ static ErrorOrSuccess buildForReductionOp(GraphOp &graph, OpBuilder &builder,
       graph, op.getResult().getType(), op.getOutputParamDecls());
 
   // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op->getOperands(), op->getName().getStringRef(), shapeParams,
+  MO::InvokeShapeFuncOp::create(
+      builder, op.getLoc(), op->getOperands(), op->getName().getStringRef(),
+      shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({1}));
 
@@ -336,8 +337,8 @@ static ErrorOrSuccess buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
       graph, op.getResult().getType(), op.getOutputParamDecls());
 
   // Create the shape function.
-  builder.create<MO::InvokeShapeFuncOp>(
-      op.getLoc(), op->getOperands(),
+  MO::InvokeShapeFuncOp::create(
+      builder, op.getLoc(), op->getOperands(),
       op.getOperation()->getName().getStringRef(), shapeParams,
       /*kgenAttrs*/ DictionaryAttr{},
       /*Data dependent input indices*/ builder.getI32ArrayAttr({3}));
@@ -364,9 +365,9 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
 
   // Create the shape function.
   Location loc = res.getLoc();
-  builder.create<MO::InvokeShapeFuncOp>(
-      loc, operands, shapeFuncName, shapeParams, kgenParamAttrs,
-      builder.getI32ArrayAttr(dataDepInputIdxs));
+  MO::InvokeShapeFuncOp::create(builder, loc, operands, shapeFuncName,
+                                shapeParams, kgenParamAttrs,
+                                builder.getI32ArrayAttr(dataDepInputIdxs));
 }
 
 //===----------------------------------------------------------------------===//
@@ -741,7 +742,7 @@ ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
   operands.push_back(nullptr); // placeholder for output_idx
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     operands.back() =
-        builder.create<MO::ConstantOp>(loc, static_cast<int64_t>(idx));
+        MO::ConstantOp::create(builder, loc, static_cast<int64_t>(idx));
     // This uses some special handling
     buildForOpResult(graph, builder, cast<TensorValue>(res),
                      "split_ith_output_shape", operands,

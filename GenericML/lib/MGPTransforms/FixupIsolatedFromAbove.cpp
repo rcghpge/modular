@@ -112,7 +112,7 @@ static void fixup(OpBuilder &builder, Block *inBlock,
           outOperands.emplace_back(outOperand);
         }
         [[maybe_unused]] Operation *outOutputOp =
-            builder.create<MEF::OutputOp>(inOp->getLoc(), outOperands);
+            MEF::OutputOp::create(builder, inOp->getLoc(), outOperands);
         ASSERT_STREAM(checkRewrite(inOutputOp, outOutputOp),
                       << "invalid rewrite for output op");
         continue;
@@ -212,14 +212,14 @@ ModelOp M::MGP::fixupIsolatedFromAbove(mlir::OpBuilder &builder,
   });
 
   builder.setInsertionPointAfter(inModelOp);
-  auto outModelOp = builder.create<MGP::ModelOp>(
-      inModelOp.getLoc(),
-      /*devices=*/inModelOp.getDevicesAttr(),
-      /*frameworkName=*/inModelOp.getFrameworkNameAttr(),
-      /*inputOutputTypes=*/inModelOp.getInputOutputTypes(),
-      /*sym_name=*/inModelOp.getName(),
-      /*isSubgraph=*/inModelOp.getIsSubgraph(),
-      /*theExtraAttrs=*/inModelOp.getTheExtraAttrsAttr());
+  auto outModelOp =
+      MGP::ModelOp::create(builder, inModelOp.getLoc(),
+                           /*devices=*/inModelOp.getDevicesAttr(),
+                           /*frameworkName=*/inModelOp.getFrameworkNameAttr(),
+                           /*inputOutputTypes=*/inModelOp.getInputOutputTypes(),
+                           /*sym_name=*/inModelOp.getName(),
+                           /*isSubgraph=*/inModelOp.getIsSubgraph(),
+                           /*theExtraAttrs=*/inModelOp.getTheExtraAttrsAttr());
   LLVM_DEBUG(llvm::dbgs() << "init\n");
   fixup(builder, inModelOp.getInitBlock(),
         /*freeValues=*/{}, &outModelOp.getInit().emplaceBlock(),

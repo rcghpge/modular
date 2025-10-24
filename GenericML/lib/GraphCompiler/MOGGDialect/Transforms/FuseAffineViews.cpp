@@ -80,7 +80,7 @@ struct FuseAffineViewsPass
     if (auto intAttr = dyn_cast<IntegerAttr>(dim)) {
       auto scalarTy = MO::ScalarType::get(intAttr.getContext(),
                                           *MO::fromMLIRType(intAttr.getType()));
-      return builder.create<MOGG::ConstantScalarOp>(loc, scalarTy, intAttr);
+      return MOGG::ConstantScalarOp::create(builder, loc, scalarTy, intAttr);
     } else {
       ASSERT_STREAM(false, << "TODO: Support dynamic dimensions");
       return nullptr;
@@ -100,9 +100,8 @@ struct FuseAffineViewsPass
     MO::TensorType newOutputTensorType = viewOpUser.getResult().getType();
     SmallVector<Type> newOutputPlaceHolderTy = {newOutputTensorType};
     builder.setInsertionPoint(oldOutputPlaceholder);
-    OutputPlaceholdersOp newOutputPlaceholder =
-        builder.create<OutputPlaceholdersOp>(oldOutputPlaceholder->getLoc(),
-                                             newOutputPlaceHolderTy);
+    OutputPlaceholdersOp newOutputPlaceholder = OutputPlaceholdersOp::create(
+        builder, oldOutputPlaceholder->getLoc(), newOutputPlaceHolderTy);
 
     BindLambdaOp outputLambda = kernel.getBoundOutputLambda(0);
     outputLambda->setOperand(0, newOutputPlaceholder.getResult(0));

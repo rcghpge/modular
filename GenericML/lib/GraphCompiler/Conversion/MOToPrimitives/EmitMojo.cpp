@@ -98,8 +98,8 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
   // Create a new ExecuteCompiledOp to replace the original kernel
   auto insertPoint = builder.saveInsertionPoint();
   builder.setInsertionPoint(kernel);
-  auto newOp = builder.create<MOGG::ExecuteCompiledOp>(
-      kernel->getLoc(),
+  auto newOp = MOGG::ExecuteCompiledOp::create(
+      builder, kernel->getLoc(),
       /*resultTypes=*/kernel->getResultTypes(),
       /*operands=*/kernel->getOperands(),
       /*kernelName=*/StringAttr::get(kernel->getContext(), kernelName),
@@ -246,10 +246,10 @@ struct EmitMojo
 
       auto loc = moduleOp.getLoc();
       builder.setInsertionPointToStart(modelOp.getInitBlock());
-      builder.create<MOGG::MojoModuleOp>(loc, mojoTextAttr);
+      MOGG::MojoModuleOp::create(builder, loc, mojoTextAttr);
       /// TODO: Add debug info support. For now, defaults to false.
-      builder.create<MOGG::LoadCompiledKernelOp>(
-          loc,
+      MOGG::LoadCompiledKernelOp::create(
+          builder, loc,
           builder.getArrayAttr(llvm::to_vector_of<Attribute>(kernelsToLoad)),
           mojoTextAttr, /*debug*/ false);
 

@@ -33,8 +33,8 @@ TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
   auto indicesType =
       TensorType::getVectorSI64Type(builder.getContext(), rank, device);
 
-  auto shapeConstant = builder.create<MOSH::ParamToValueOp>(loc, shape);
-  return builder.create<Shape::ToTensorOp>(loc, indicesType, shapeConstant);
+  auto shapeConstant = MOSH::ParamToValueOp::create(builder, loc, shape);
+  return Shape::ToTensorOp::create(builder, loc, indicesType, shapeConstant);
 }
 
 // Return whether the shapes in `a` and `b` can be rebound to each other.
@@ -67,7 +67,7 @@ promoteDTypes(OpBuilder &builder, Location loc, DType targetDType,
 
     if (tensor.getType().getDtype() != targetDType) {
       auto targetType = tensor.getType().cloneWith(targetDType);
-      value = builder.create<RMO::MOCastOp>(loc, targetType, value);
+      value = RMO::MOCastOp::create(builder, loc, targetType, value);
     }
     return value;
   };
@@ -80,9 +80,9 @@ std::pair<TensorValue, bool>
 _rebindToShape(MO::GraphOp graphOp, TensorValue input, TensorType newTy,
                mlir::RewriterBase &rewriter,
                ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
-  auto res = rewriter.create<RMO::RebindTensorShapeOp>(
-      input.getLoc(), newTy, input, newOutputParamDecl,
-      rewriter.getStringAttr(""));
+  auto res = RMO::RebindTensorShapeOp::create(rewriter, input.getLoc(), newTy,
+                                              input, newOutputParamDecl,
+                                              rewriter.getStringAttr(""));
 
   return {res.getResult(), isCompatibleShape(input.getType(), newTy)};
 }
@@ -295,8 +295,8 @@ struct LegalizeMutableLoadOp : public OpRewritePattern<RMO::MOMutableLoadOp> {
     moOperands.push_back(op.getInBuffer());
     moOperands.push_back(op.getInChain());
 
-    auto moOp = rewriter.create<MO::MutableLoadOp>(op->getLoc(), moResultTypes,
-                                                   moOperands);
+    auto moOp = MO::MutableLoadOp::create(rewriter, op->getLoc(), moResultTypes,
+                                          moOperands);
     moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     OpResult outTensorRes = moOp->getOpResult(0);
     auto reboundOutput = rebindToShape(graphOp, outTensorRes,
@@ -336,8 +336,8 @@ struct LegalizeMutableStoreOp : public OpRewritePattern<RMO::MOMutableStoreOp> {
     moOperands.push_back(reboundInTensor);
     moOperands.push_back(op.getInChain());
 
-    auto moOp = rewriter.create<MO::MutableStoreOp>(op->getLoc(), moResultTypes,
-                                                    moOperands);
+    auto moOp = MO::MutableStoreOp::create(rewriter, op->getLoc(),
+                                           moResultTypes, moOperands);
     moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
 
@@ -404,8 +404,8 @@ struct LegalizeMutableStoreSliceOp
 
     moOperands.push_back(op.getInChain());
 
-    auto moOp = rewriter.create<MO::MutableStoreSliceOp>(
-        op->getLoc(), moResultTypes, moOperands, op->getAttrs());
+    auto moOp = MO::MutableStoreSliceOp::create(
+        rewriter, op->getLoc(), moResultTypes, moOperands, op->getAttrs());
     moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
 
@@ -437,7 +437,7 @@ struct LowerRebindTensorShapeOp
                                     {operandShape, resultShape}, boolTy);
     KGEN::ParamDeclAttr condAttr =
         graphOp.getNewParamOfType("RMO_SH_EQ", boolTy);
-    rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
+    KGEN::ParamDeclareOp::create(rewriter, loc, condAttr, cmpAttr);
 
     // Add assertion, then return a rebind.
     std::string fullMsg = "rebind shape check failed";
@@ -453,11 +453,11 @@ struct LowerRebindTensorShapeOp
     auto chainTy = rewriter.getType<ChainType>();
     KGEN::ParamDeclAttr chainAttr =
         graphOp.getNewParamOfType("RMO_SH_CH", chainTy);
-    rewriter.create<KGEN::ParamDeclareOp>(loc, chainAttr, assertAttr);
+    KGEN::ParamDeclareOp::create(rewriter, loc, chainAttr, assertAttr);
 
     // Return rebound result
-    auto moRebind = rewriter.create<MO::RebindOp>(
-        loc, result.getType(), operand, op.getOutputParamDecls());
+    auto moRebind = MO::RebindOp::create(rewriter, loc, result.getType(),
+                                         operand, op.getOutputParamDecls());
     rewriter.replaceOp(op, moRebind);
 
     return success();
@@ -481,35 +481,35 @@ struct LowerThirdPartyBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
 
     // Deal with dtype casting if it is needed.
     if (xDtype != resultDtype) {
-      x = rewriter.create<RMO::MOCastOp>(loc,
-                                         x.getType().cloneWith(resultDtype), x);
+      x = RMO::MOCastOp::create(rewriter, loc,
+                                x.getType().cloneWith(resultDtype), x);
     }
     if (yDtype != resultDtype) {
-      y = rewriter.create<RMO::MOCastOp>(loc,
-                                         y.getType().cloneWith(resultDtype), y);
+      y = RMO::MOCastOp::create(rewriter, loc,
+                                y.getType().cloneWith(resultDtype), y);
     }
 
     TensorValue xFinal = x;
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
 
-      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-          loc, ValueRange{xShape, yShape}, graphOp);
+      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
+          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
 
-      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{y, commonShape}, graphOp);
+      TensorValue xBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{y, commonShape}, graphOp);
       xFinal = xBcast;
       yFinal = yBcast;
     }
 
-    auto answer = rewriter.create<MOAnalogueOpT>(
-        loc, ValueRange{xFinal, yFinal}, graphOp);
+    auto answer = MOAnalogueOpT::create(rewriter, loc,
+                                        ValueRange{xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer =
         rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
                       op.getOutputParamDecls());
@@ -535,23 +535,23 @@ struct LowerThirdPartyBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
 
-      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-          loc, ValueRange{xShape, yShape}, graphOp);
+      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
+          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
 
-      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{y, commonShape}, graphOp);
+      TensorValue xBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{y, commonShape}, graphOp);
       xFinal = xBcast;
       yFinal = yBcast;
     }
 
-    auto answer = rewriter.create<MOAnalogueOpT>(
-        loc, ValueRange{xFinal, yFinal}, graphOp);
+    auto answer = MOAnalogueOpT::create(rewriter, loc,
+                                        ValueRange{xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer =
         rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
                       op.getOutputParamDecls());
@@ -578,35 +578,35 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
 
     // Deal with dtype casting if it is needed.
     if (xDtype != resultDtype) {
-      x = rewriter.create<RMO::MOCastOp>(loc,
-                                         x.getType().cloneWith(resultDtype), x);
+      x = RMO::MOCastOp::create(rewriter, loc,
+                                x.getType().cloneWith(resultDtype), x);
     }
     if (yDtype != resultDtype) {
-      y = rewriter.create<RMO::MOCastOp>(loc,
-                                         y.getType().cloneWith(resultDtype), y);
+      y = RMO::MOCastOp::create(rewriter, loc,
+                                y.getType().cloneWith(resultDtype), y);
     }
 
     TensorValue xFinal = x;
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
 
-      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-          loc, ValueRange{xShape, yShape}, graphOp);
+      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
+          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
 
-      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{y, commonShape}, graphOp);
+      TensorValue xBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{y, commonShape}, graphOp);
       xFinal = xBcast;
       yFinal = yBcast;
     }
 
-    auto answer = rewriter.create<MOAnalogueOpT>(
-        loc, ValueRange{xFinal, yFinal}, graphOp);
+    auto answer = MOAnalogueOpT::create(rewriter, loc,
+                                        ValueRange{xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer =
         rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
                       op.getOutputParamDecls());
@@ -640,35 +640,35 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
         << promotedDtype.takeError());
     DType comparisonDtype = promotedDtype.takeValue();
     if (xDtype != comparisonDtype) {
-      x = rewriter.create<RMO::MOCastOp>(
-          loc, x.getType().cloneWith(comparisonDtype), x);
+      x = RMO::MOCastOp::create(rewriter, loc,
+                                x.getType().cloneWith(comparisonDtype), x);
     }
     if (yDtype != comparisonDtype) {
-      y = rewriter.create<RMO::MOCastOp>(
-          loc, y.getType().cloneWith(comparisonDtype), y);
+      y = RMO::MOCastOp::create(rewriter, loc,
+                                y.getType().cloneWith(comparisonDtype), y);
     }
 
     TensorValue xFinal = x;
     TensorValue yFinal = y;
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr()) {
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
 
-      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-          loc, ValueRange{xShape, yShape}, graphOp);
+      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
+          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
 
-      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{y, commonShape}, graphOp);
+      TensorValue xBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{y, commonShape}, graphOp);
       xFinal = xBcast;
       yFinal = yBcast;
     }
 
-    auto answer = rewriter.create<MOAnalogueOpT>(
-        loc, ValueRange{xFinal, yFinal}, graphOp);
+    auto answer = MOAnalogueOpT::create(rewriter, loc,
+                                        ValueRange{xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer =
         rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
                       op.getOutputParamDecls());
@@ -686,10 +686,10 @@ struct LowerBroadcastLike : public OpRewritePattern<RMO::BroadcastLikeOp> {
     auto graphOp = op->getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
 
-    TensorValue shapeLike = rewriter.create<RMO::MOShapeOfOp>(
-        loc, ValueRange{op.getShapeLike()}, graphOp);
-    auto answer = rewriter.create<RMO::MOBroadcastToOp>(
-        loc, ValueRange{op.getInput(), shapeLike}, graphOp);
+    TensorValue shapeLike = RMO::MOShapeOfOp::create(
+        rewriter, loc, ValueRange{op.getShapeLike()}, graphOp);
+    auto answer = RMO::MOBroadcastToOp::create(
+        rewriter, loc, ValueRange{op.getInput(), shapeLike}, graphOp);
     TensorValue reboundAnswer =
         rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
                       op.getOutputParamDecls());
@@ -708,12 +708,12 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
     // Create a tensor value for axis.
     Location loc = op->getLoc();
     int64_t axisInt = op.getAxis().getInt();
-    TensorValue axis = rewriter.create<MO::ConstantOp>(loc, axisInt);
+    TensorValue axis = MO::ConstantOp::create(rewriter, loc, axisInt);
 
     // Replace the `rmo.concat` op with a new `mo.concat` op.
     TensorValue concat =
-        rewriter.create<MO::ConcatOp>(loc, op.getResult().getType(), axis,
-                                      op.getInputs(), op.getOutputParamDecls());
+        MO::ConcatOp::create(rewriter, loc, op.getResult().getType(), axis,
+                             op.getInputs(), op.getOutputParamDecls());
 
     // If there is a user specified rebind for the axis dim, generate the
     // required assert.
@@ -882,11 +882,11 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     auto resultDtype = op.getResult().getType().getDtype();
     if (lhsDtype != resultDtype) {
       lhsType = lhsType.cloneWith(resultDtype);
-      lhs = rewriter.create<RMO::MOCastOp>(loc, lhsType, lhs);
+      lhs = RMO::MOCastOp::create(rewriter, loc, lhsType, lhs);
     }
     if (rhsDtype != resultDtype) {
       rhsType = rhsType.cloneWith(resultDtype);
-      rhs = rewriter.create<RMO::MOCastOp>(loc, rhsType, rhs);
+      rhs = RMO::MOCastOp::create(rewriter, loc, rhsType, rhs);
     }
 
     // Reshape to ensure both tensors have same rank.
@@ -895,13 +895,13 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
 
     auto lhsReshapeShape = ShapeAttr::get(lhsReshapeTarget, lhsShape.getType());
     if (lhsReshapeShape != lhsShape)
-      lhs = rewriter.create<MO::Static::ReshapeOp>(
-          loc, lhsType.cloneWith(lhsReshapeShape), lhs);
+      lhs = MO::Static::ReshapeOp::create(
+          rewriter, loc, lhsType.cloneWith(lhsReshapeShape), lhs);
 
     auto rhsReshapeShape = ShapeAttr::get(rhsReshapeTarget, rhsShape.getType());
     if (rhsReshapeShape != rhsShape)
-      rhs = rewriter.create<MO::Static::ReshapeOp>(
-          loc, rhsType.cloneWith(rhsReshapeShape), rhs);
+      rhs = MO::Static::ReshapeOp::create(
+          rewriter, loc, rhsType.cloneWith(rhsReshapeShape), rhs);
 
     // Calculated broadcast shapes and broadcast outer dims.
     auto intDim1 = MOSH::ShapeAttr::getDim(lhsShape.getContext(), 1ll);
@@ -921,14 +921,14 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     auto lhsBroadcastShape =
         ShapeAttr::get(lhsBroadcastTarget, lhsShape.getType());
     if (lhsBroadcastShape != lhsReshapeShape)
-      lhs = rewriter.create<MO::Static::BroadcastToOp>(
-          loc, lhsType.cloneWith(lhsBroadcastShape), lhs);
+      lhs = MO::Static::BroadcastToOp::create(
+          rewriter, loc, lhsType.cloneWith(lhsBroadcastShape), lhs);
 
     auto rhsBroadcastShape =
         ShapeAttr::get(rhsBroadcastTarget, rhsShape.getType());
     if (rhsBroadcastShape != rhsReshapeShape)
-      rhs = rewriter.create<MO::Static::BroadcastToOp>(
-          loc, rhsType.cloneWith(rhsBroadcastShape), rhs);
+      rhs = MO::Static::BroadcastToOp::create(
+          rewriter, loc, rhsType.cloneWith(rhsBroadcastShape), rhs);
 
     // Execute the actual matmul.
     SmallVector<TypedAttr> matmulTarget{lhsBroadcastTarget};
@@ -937,15 +937,15 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     auto matmulType = op.getType().cloneWith(matmulShape);
     TensorValue matmul;
     if (fullRank == 2)
-      matmul = rewriter.create<MO::MatmulOp>(loc, matmulType, lhs, rhs);
+      matmul = MO::MatmulOp::create(rewriter, loc, matmulType, lhs, rhs);
     else
-      matmul = rewriter.create<MO::BatchMatmulOp>(loc, matmulType, lhs, rhs);
+      matmul = MO::BatchMatmulOp::create(rewriter, loc, matmulType, lhs, rhs);
 
     // Reshape to remove extra one dimensions if they were introduced by vector
     // inputs.
     if (matmulShape != op.getType().getTypedShapeAttr())
       matmul =
-          rewriter.create<MO::Static::ReshapeOp>(loc, op.getType(), matmul);
+          MO::Static::ReshapeOp::create(rewriter, loc, op.getType(), matmul);
 
     rewriter.replaceAllUsesWith(op, matmul);
     return success();
@@ -981,7 +981,7 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
     auto dilationsConstant =
         shapeToIndicesTensor(rewriter, loc, dilations, device);
 
-    auto groupsConstant = rewriter.create<MO::ConstantOp>(loc, groups, device);
+    auto groupsConstant = MO::ConstantOp::create(rewriter, loc, groups, device);
 
     rewriter.replaceOpWithNewOp<RMO::MOConvOp>(
         conv, conv.getType(), promotedInput, promotedFilter, stridesConstant,
@@ -1144,12 +1144,12 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
 
     // Deal with dtype casting if it is needed.
     if (xDtype != resultDtype) {
-      x = rewriter.create<RMO::MOCastOp>(loc,
-                                         x.getType().cloneWith(resultDtype), x);
+      x = RMO::MOCastOp::create(rewriter, loc,
+                                x.getType().cloneWith(resultDtype), x);
     }
     if (yDtype != resultDtype) {
-      y = rewriter.create<RMO::MOCastOp>(loc,
-                                         y.getType().cloneWith(resultDtype), y);
+      y = RMO::MOCastOp::create(rewriter, loc,
+                                y.getType().cloneWith(resultDtype), y);
     }
 
     TensorValue condFinal = cond;
@@ -1158,30 +1158,30 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
     if (x.getType().getTypedShapeAttr() != y.getType().getTypedShapeAttr() ||
         x.getType().getTypedShapeAttr() != cond.getType().getTypedShapeAttr()) {
       TensorValue condShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{cond}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{cond}, graphOp);
       TensorValue xShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{x}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{x}, graphOp);
       TensorValue yShape =
-          rewriter.create<RMO::MOShapeOfOp>(loc, ValueRange{y}, graphOp);
+          RMO::MOShapeOfOp::create(rewriter, loc, ValueRange{y}, graphOp);
 
-      TensorValue xyShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-          loc, ValueRange{xShape, yShape}, graphOp);
-      TensorValue commonShape = rewriter.create<RMO::MOBroadcastShapeOp>(
-          loc, ValueRange{condShape, xyShape}, graphOp);
+      TensorValue xyShape = RMO::MOBroadcastShapeOp::create(
+          rewriter, loc, ValueRange{xShape, yShape}, graphOp);
+      TensorValue commonShape = RMO::MOBroadcastShapeOp::create(
+          rewriter, loc, ValueRange{condShape, xyShape}, graphOp);
 
-      TensorValue condBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{cond, commonShape}, graphOp);
-      TensorValue xBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{x, commonShape}, graphOp);
-      TensorValue yBcast = rewriter.create<RMO::MOBroadcastToOp>(
-          loc, ValueRange{y, commonShape}, graphOp);
+      TensorValue condBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{cond, commonShape}, graphOp);
+      TensorValue xBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{x, commonShape}, graphOp);
+      TensorValue yBcast = RMO::MOBroadcastToOp::create(
+          rewriter, loc, ValueRange{y, commonShape}, graphOp);
       condFinal = condBcast;
       xFinal = xBcast;
       yFinal = yBcast;
     }
 
-    auto answer = rewriter.create<RMO::MOSelectOp>(
-        loc, ValueRange{condFinal, xFinal, yFinal}, graphOp);
+    auto answer = RMO::MOSelectOp::create(
+        rewriter, loc, ValueRange{condFinal, xFinal, yFinal}, graphOp);
     TensorValue reboundAnswer =
         rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
                       op.getOutputParamDecls());
@@ -1236,16 +1236,17 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
 
     // Convert attributes to tensor constants expected by `mo.top_k`.
     auto k =
-        rewriter.create<MO::ConstantOp>(loc, op.getK(), getHostDevice(ctx));
+        MO::ConstantOp::create(rewriter, loc, op.getK(), getHostDevice(ctx));
     auto axis =
-        rewriter.create<MO::ConstantOp>(loc, op.getAxis(), getHostDevice(ctx));
-    auto sorted = rewriter.create<MO::ConstantOp>(loc, /*value=*/true,
-                                                  getHostDevice(ctx));
+        MO::ConstantOp::create(rewriter, loc, op.getAxis(), getHostDevice(ctx));
+    auto sorted = MO::ConstantOp::create(rewriter, loc, /*value=*/true,
+                                         getHostDevice(ctx));
 
     // Create the MO::TopKOp with proper result types
-    auto topkOp = rewriter.create<MO::TopKOp>(
-        op.getLoc(), op.getValues().getType(), op.getIndices().getType(), input,
-        k, axis, sorted, op.getOutputParamDecls());
+    auto topkOp =
+        MO::TopKOp::create(rewriter, op.getLoc(), op.getValues().getType(),
+                           op.getIndices().getType(), input, k, axis, sorted,
+                           op.getOutputParamDecls());
 
     rewriter.replaceOp(op, topkOp->getResults());
     return success();
@@ -1283,8 +1284,8 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
         DeviceRefAttr::get(ctx, kCPULabel, /*id=*/0));
     auto toTensorOp = [loc = loc, indicesType = indicesType,
                        &rewriter](ShapeAttr attr) -> Value {
-      auto constOp = rewriter.create<MOSH::ParamToValueOp>(loc, attr);
-      return rewriter.create<Shape::ToTensorOp>(loc, indicesType, constOp);
+      auto constOp = MOSH::ParamToValueOp::create(rewriter, loc, attr);
+      return Shape::ToTensorOp::create(rewriter, loc, indicesType, constOp);
     };
 
     auto starts = toTensorOp(startsAttr);
@@ -1321,8 +1322,8 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
     }
 
     // Create the mo.slice op.
-    auto res = rewriter.create<MO::SliceOp>(op->getLoc(), op.getType(), input,
-                                            starts, stops, steps);
+    auto res = MO::SliceOp::create(rewriter, op->getLoc(), op.getType(), input,
+                                   starts, stops, steps);
     res->setDiscardableAttrs(op->getRawDictionaryAttrs());
     rewriter.replaceAllOpUsesWith(op, res);
     return success();
@@ -1338,7 +1339,7 @@ struct LowerShapeToTensor : public OpRewritePattern<RMO::ShapeToTensorOp> {
     TypedAttr shape = op.getShape();
     TensorType resTy = op.getType();
 
-    auto shConst = rewriter.create<MOSH::ParamToValueOp>(loc, shape);
+    auto shConst = MOSH::ParamToValueOp::create(rewriter, loc, shape);
     rewriter.replaceOpWithNewOp<Shape::ToTensorOp>(op, resTy, shConst);
     return success();
   }
@@ -1382,10 +1383,10 @@ struct LowerThirdPartyPadConstantOp
 
     // We will split the paddings into negative (pure slice) and positive (pure
     // pad) components.
-    auto zeros = rewriter.create<MO::ConstantOp>(
-        loc, SmallVector<int64_t>(numDims * 2, 0), deviceRef);
-    auto negPadTensor = rewriter.create<RMO::MOMinOp>(loc, zeros.getType(),
-                                                      signedPadTensor, zeros);
+    auto zeros = MO::ConstantOp::create(
+        rewriter, loc, SmallVector<int64_t>(numDims * 2, 0), deviceRef);
+    auto negPadTensor = RMO::MOMinOp::create(rewriter, loc, zeros.getType(),
+                                             signedPadTensor, zeros);
 
     // The negative pads need to be split into begin (even indices) and end (odd
     // indices) pad sizes. We will do this with two gathers.
@@ -1397,9 +1398,10 @@ struct LowerThirdPartyPadConstantOp
       evenIndices.push_back(2 * r);
       oddIndices.push_back(2 * r + 1);
     }
-    auto oddConst = rewriter.create<MO::ConstantOp>(loc, oddIndices, deviceRef);
+    auto oddConst =
+        MO::ConstantOp::create(rewriter, loc, oddIndices, deviceRef);
     auto evenConst =
-        rewriter.create<MO::ConstantOp>(loc, evenIndices, deviceRef);
+        MO::ConstantOp::create(rewriter, loc, evenIndices, deviceRef);
 
     // To get the end indices, we need to take the negative indices and
     // increment them by the sizes of the dimensions, i.e. add the shape to it.
@@ -1409,19 +1411,19 @@ struct LowerThirdPartyPadConstantOp
     MO::TensorType sliceIdxType =
         oldPadType.cloneWith({numDims}, oldPadType.getElementType());
     auto shapeOf =
-        rewriter.create<RMO::MOShapeOfOp>(loc, sliceIdxType, inputTensor);
-    auto zero = rewriter.create<MO::ConstantOp>(loc, (int64_t)0, deviceRef);
-    MO::TensorValue end = rewriter.create<RMO::MOGatherOp>(
-        loc, sliceIdxType, negPadTensor, oddConst, zero);
-    end = rewriter.create<RMO::MOAddOp>(loc, sliceIdxType, end, shapeOf);
+        RMO::MOShapeOfOp::create(rewriter, loc, sliceIdxType, inputTensor);
+    auto zero = MO::ConstantOp::create(rewriter, loc, (int64_t)0, deviceRef);
+    MO::TensorValue end = RMO::MOGatherOp::create(rewriter, loc, sliceIdxType,
+                                                  negPadTensor, oddConst, zero);
+    end = RMO::MOAddOp::create(rewriter, loc, sliceIdxType, end, shapeOf);
 
     // A negative padding in the beginning is always equivalent to skipping
     // elements, so we multiply by -1 to get the slice start indices.
-    auto negOnes = rewriter.create<MO::ConstantOp>(
-        loc, SmallVector<int64_t>(numDims, -1), deviceRef);
-    MO::TensorValue start = rewriter.create<RMO::MOGatherOp>(
-        loc, sliceIdxType, negPadTensor, evenConst, zero);
-    start = rewriter.create<RMO::MOMulOp>(loc, sliceIdxType, start, negOnes);
+    auto negOnes = MO::ConstantOp::create(
+        rewriter, loc, SmallVector<int64_t>(numDims, -1), deviceRef);
+    MO::TensorValue start = RMO::MOGatherOp::create(
+        rewriter, loc, sliceIdxType, negPadTensor, evenConst, zero);
+    start = RMO::MOMulOp::create(rewriter, loc, sliceIdxType, start, negOnes);
 
     // We can now create a slice which will apply the negative pad sizes. This
     // slice uses the trivial step, but its shape must be dynamic.
@@ -1433,17 +1435,17 @@ struct LowerThirdPartyPadConstantOp
       newDimDecls.push_back(newDecl);
       newShapeDims.emplace_back(KGEN::ParamDeclRefAttr::get(newDecl));
     }
-    auto step = rewriter.create<MO::ConstantOp>(
-        loc, SmallVector<int64_t>(numDims, 1), deviceRef);
-    auto slicedInput = rewriter.create<RMO::MOSliceOp>(
-        loc, inputType.cloneWith(newShapeDims), inputTensor, start, end, step,
-        newDimDecls);
+    auto step = MO::ConstantOp::create(
+        rewriter, loc, SmallVector<int64_t>(numDims, 1), deviceRef);
+    auto slicedInput =
+        RMO::MOSliceOp::create(rewriter, loc, inputType.cloneWith(newShapeDims),
+                               inputTensor, start, end, step, newDimDecls);
 
     // Hurray, we have applied the negative pads. Extracting the positive pad
     // sizes is straightforward. Note that because we separate negative and
     // positive pad sizes, they never overlap.
-    auto posPadTensor = rewriter.create<RMO::MOMaxOp>(loc, zeros.getType(),
-                                                      signedPadTensor, zeros);
+    auto posPadTensor = RMO::MOMaxOp::create(rewriter, loc, zeros.getType(),
+                                             signedPadTensor, zeros);
 
     // We can now apply the positive pad sizes to the sliced input.
     rewriter.replaceOpWithNewOp<RMO::MOPadConstantOp>(

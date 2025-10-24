@@ -357,8 +357,9 @@ struct FuseProloguesEpilogues
                                                        outputLambda.getType())
                   .getResult(0);
           rewriter.setInsertionPointAfter(outputLambda);
-          auto concretizeOp = rewriter.create<MOGG::ConcretizeTensorOp>(
-              outputLambda.getLoc(), scratchPlaceholder, outputLambda);
+          auto concretizeOp = MOGG::ConcretizeTensorOp::create(
+              rewriter, outputLambda.getLoc(), scratchPlaceholder,
+              outputLambda);
           outputLambda->replaceUsesWithIf(
               concretizeOp, [&](OpOperand &operand) {
                 return operand.getOwner() != concretizeOp;
@@ -391,8 +392,9 @@ struct FuseProloguesEpilogues
           if (operand == srcFusionArgument) {
             argument.replaceAllUsesWith(outVal);
           } else {
-            Value loadedValue = rewriter.create<MOGG::LoadTensorOp>(
-                argument.getLoc(), argument.getType(), operand, indices);
+            Value loadedValue = MOGG::LoadTensorOp::create(
+                rewriter, argument.getLoc(), argument.getType(), operand,
+                indices);
             argument.replaceAllUsesWith(loadedValue);
           }
         }

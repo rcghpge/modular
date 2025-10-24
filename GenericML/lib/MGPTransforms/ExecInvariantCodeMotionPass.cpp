@@ -694,7 +694,7 @@ class ExecInvariantCodeMotionPass
     // completed. We'll replace this placeholder with the actual chain once
     // we've finished lifting all the ops. It is always a 'host' chain.
     auto placeholderBufferCacheInputChain =
-        initState->builder.create<GRT::ChainCreateOp>(outputLoc);
+        GRT::ChainCreateOp::create(initState->builder, outputLoc);
 
     // TODO(#24751): The following chain dependencies may be too aggressive,
     // relax via some analysis
@@ -889,8 +889,8 @@ class ExecInvariantCodeMotionPass
     // Make sure the final output !mef.chain waits for both the original
     // 'init' block output chain AND all the chains for the caching ops
     // we just inserted.
-    auto mergedFinalOutChain = initState->builder.create<GRT::ChainCreateOp>(
-        outputLoc, finalOutChains);
+    auto mergedFinalOutChain = GRT::ChainCreateOp::create(
+        initState->builder, outputLoc, finalOutChains);
     initState->updateFinalChain(mergedFinalOutChain);
   }
 

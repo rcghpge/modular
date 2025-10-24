@@ -37,7 +37,7 @@ void MGPDialect::initialize() {
 Operation *MGPDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (auto intAttr = dyn_cast<mlir::IntegerAttr>(value))
-    return builder.create<mlir::index::ConstantOp>(loc, type, intAttr);
+    return mlir::index::ConstantOp::create(builder, loc, type, intAttr);
 
   return nullptr;
 }

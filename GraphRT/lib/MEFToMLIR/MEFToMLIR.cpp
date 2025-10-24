@@ -984,9 +984,10 @@ bool RegionParser::parsePrimitiveList() {
       // If we lack type information, create a mef.opaque operation.  We
       // cannot necessarily create the correct operation when we're lacking
       // type info and attribute names because we'll trip the op verifier.
-      resultOp = bodyBuilder.create<MEF::OpaqueOp>(
-          loc, resultTypes, primitiveName, bodyBuilder.getArrayAttr(attrs),
-          nonStrict, operandValues, regions.size());
+      resultOp =
+          MEF::OpaqueOp::create(bodyBuilder, loc, resultTypes, primitiveName,
+                                bodyBuilder.getArrayAttr(attrs), nonStrict,
+                                operandValues, regions.size());
       // Clone all the region bodies.
       for (auto [index, region] : llvm::enumerate(regions))
         region->cloneInto(&resultOp->getRegion(index), map);
@@ -1019,7 +1020,7 @@ bool RegionParser::parsePrimitiveList() {
       return bodyReader.emitError("invalid result register #");
     operandValues.push_back(registerValues[resultReg]);
   }
-  bodyBuilder.create<MEF::OutputOp>(loc, operandValues);
+  MEF::OutputOp::create(bodyBuilder, loc, operandValues);
 
   return false;
 }

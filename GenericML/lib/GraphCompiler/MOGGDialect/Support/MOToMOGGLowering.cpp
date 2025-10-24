@@ -54,8 +54,8 @@ convertScalarsIfNeeded(ArrayRef<Value> originalInputs,
     // captured the infusible inputs.
     const auto &mappedArg = mapping.lookup(idx);
     if (mappedArg.isScalarType()) {
-      ret.push_back(builder.create<MOGG::AsScalarOp>(
-          v.getLoc(),
+      ret.push_back(MOGG::AsScalarOp::create(
+          builder, v.getLoc(),
           MO::ScalarType::get(v.getContext(),
                               cast<MO::TensorType>(v.getType()).getDtype()),
           v));
@@ -91,8 +91,8 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
     } while (idx < originalInputs.size() &&
              mapping.lookup(idx).sourceDescriptor->position ==
                  variadicType.sourceDescriptor->position);
-    ret.push_back(builder.create<MOGG::AsTupleOp>(
-        valuesThatMatchVariadics.front().getLoc(),
+    ret.push_back(MOGG::AsTupleOp::create(
+        builder, valuesThatMatchVariadics.front().getLoc(),
         builder.getTupleType(tupleTypes), valuesThatMatchVariadics));
   }
 
@@ -121,18 +121,19 @@ void addContextIfPresent(
   if (isVariadic) {
     SmallVector<Value> contexts;
     for (auto deviceAttr : MO::getUniqueDevicesFromKernel(op)) {
-      contexts.push_back(builder.create<MOGG::DeviceContextPlaceholderOp>(
-          loc, MOGG::ContextType::get(ctx), deviceAttr));
+      contexts.push_back(MOGG::DeviceContextPlaceholderOp::create(
+          builder, loc, MOGG::ContextType::get(ctx), deviceAttr));
     }
 
-    inputs.push_back(builder.create<MOGG::AsTupleOp>(
-        loc,
+    inputs.push_back(MOGG::AsTupleOp::create(
+        builder, loc,
         builder.getTupleType(
             SmallVector<Type>(contexts.size(), MOGG::ContextType::get(ctx))),
         contexts));
   } else {
-    inputs.push_back(builder.create<MOGG::DeviceContextPlaceholderOp>(
-        loc, MOGG::ContextType::get(ctx), MO::getDeviceOrDefaultAny(op)));
+    inputs.push_back(MOGG::DeviceContextPlaceholderOp::create(
+        builder, loc, MOGG::ContextType::get(ctx),
+        MO::getDeviceOrDefaultAny(op)));
   }
 }
 
@@ -175,8 +176,8 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
       fusibleTensors.push_back(inputs[idx]);
   }
 
-  auto bindOp = builder.create<BindLambdaOp>(loc, tensorType, fusibleTensors,
-                                             BindLambdaKind::ElemwiseLambda);
+  auto bindOp = BindLambdaOp::create(builder, loc, tensorType, fusibleTensors,
+                                     BindLambdaKind::ElemwiseLambda);
 
   Block *elemwiseBody = &bindOp.getLambda().front();
   unsigned fusedArgIdx = 0;
@@ -204,15 +205,15 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
     outlinedArgs.push_back(bindOp.getIndicesArg());
 
   builder.setInsertionPointToStart(elemwiseBody);
-  auto callElementwise = builder.create<CallElementwiseOp>(
-      loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
-  builder.create<OutputOp>(loc, callElementwise->getResults());
+  auto callElementwise = CallElementwiseOp::create(
+      builder, loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
+  OutputOp::create(builder, loc, callElementwise->getResults());
   builder.setInsertionPointAfter(bindOp);
 
   SmallVector<Value> contextValue;
   addContextIfPresent(moOp, contextValue, adaptor, builder, true);
-  auto ret = builder.create<CallForeachOp>(loc, bindOp.getOutput(), outputValue,
-                                           contextValue);
+  auto ret = CallForeachOp::create(builder, loc, bindOp.getOutput(),
+                                   outputValue, contextValue);
 
   return ret;
 }
@@ -230,21 +231,21 @@ ErrorOr<KernelCallInterface> MOGGExpKernelBuilder::lowerToViewKernel(
                             execBody->getArguments().end());
 
   if (isa<MO::Static::ReshapeOp, MO::Static::BroadcastToOp>(moOp)) {
-    inputs.push_back(builder.create<MOGG::TensorGetShapeOp>(
-        loc, TypeAttr::get(outputVal.getType())));
+    inputs.push_back(MOGG::TensorGetShapeOp::create(
+        builder, loc, TypeAttr::get(outputVal.getType())));
   }
 
   inputs = convertTuplesIfNeeded(
       convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
       mapping.operandMapping, builder);
-  auto view = builder.create<MOGG::CallViewOp>(
-      loc, outputVal.getType(), adaptor.registeredOpName, inputs);
+  auto view = MOGG::CallViewOp::create(builder, loc, outputVal.getType(),
+                                       adaptor.registeredOpName, inputs);
   // MaterializeOp always takes an input tensor (with view updated by the
   // mogg.call.view above).
   SmallVector<Value> contextValue;
   addContextIfPresent(moOp, contextValue, adaptor, builder, true);
-  builder.create<MOGG::CallMaterializeOp>(loc, view->getResult(0), outputVal,
-                                          contextValue);
+  MOGG::CallMaterializeOp::create(builder, loc, view->getResult(0), outputVal,
+                                  contextValue);
 
   return view;
 }
@@ -267,9 +268,9 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
     if (!arg.isFusedTensorType())
       continue;
     Value concreteInput = inputs[idx];
-    Value bound = builder.create<BindLambdaOp>(loc, concreteInput.getType(),
-                                               concreteInput,
-                                               BindLambdaKind::InputLambda);
+    Value bound =
+        BindLambdaOp::create(builder, loc, concreteInput.getType(),
+                             concreteInput, BindLambdaKind::InputLambda);
     inputs[idx] = bound;
   }
 
@@ -277,9 +278,9 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
     if (!arg.isFusedTensorType())
       continue;
     Value concreteOutput = outputs[idx];
-    Value bound = builder.create<BindLambdaOp>(loc, concreteOutput.getType(),
-                                               concreteOutput,
-                                               BindLambdaKind::OutputLambda);
+    Value bound =
+        BindLambdaOp::create(builder, loc, concreteOutput.getType(),
+                             concreteOutput, BindLambdaKind::OutputLambda);
     outputs[idx] = bound;
   }
 
@@ -300,8 +301,8 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
   outputs = convertTuplesIfNeeded(outputs, mapping.resultMapping, builder);
   bool isThrows = adaptor.executeFunction->mojoCode.isThrows();
 
-  return builder.create<CallExecuteOp>(
-      loc, adaptor.registeredOpName, regRetTypeAttr, isThrows, inputs, outputs);
+  return CallExecuteOp::create(builder, loc, adaptor.registeredOpName,
+                               regRetTypeAttr, isThrows, inputs, outputs);
 }
 
 static ErrorOr<NamedAttribute>
@@ -456,13 +457,12 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
   if (operandMappingOr.isError())
     return operandMappingOr.takeError();
 
-  auto kernelOp =
-      builder.create<ExpKernelOp>(loc,
-                                  /*results=*/moOp->getResultTypes(),
-                                  /*operands=*/moOp->getOperands(),
-                                  /*summary=*/getSummaryString(moOp),
-                                  /*isAsync=*/builder.getBoolAttr(isAsync),
-                                  /*device=*/getDevice());
+  auto kernelOp = ExpKernelOp::create(builder, loc,
+                                      /*results=*/moOp->getResultTypes(),
+                                      /*operands=*/moOp->getOperands(),
+                                      /*summary=*/getSummaryString(moOp),
+                                      /*isAsync=*/builder.getBoolAttr(isAsync),
+                                      /*device=*/getDevice());
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   if (auto memEffectOp = dyn_cast<mlir::MemoryEffectOpInterface>(moOp)) {
     kernelOp.setHasWriteEffect(
@@ -479,7 +479,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
   // Only need output place holder for dps returned value (they need to be
   // allocated by caller).
   if (!dpsReturns.empty())
-    builder.create<OutputPlaceholdersOp>(loc, dpsReturns);
+    OutputPlaceholdersOp::create(builder, loc, dpsReturns);
 
   auto forwardedParametersOr = forwardParameters();
   if (forwardedParametersOr.isError())

@@ -318,7 +318,7 @@ Value M::MO::tryConvertToShapeVal(Value val, Location loc) {
     // some other concat inputs aren't constant/shape)
     OpBuilder builder(val.getContext());
     builder.setInsertionPointAfterValue(val);
-    return builder.create<MOSH::ParamToValueOp>(loc, shapeAttr);
+    return MOSH::ParamToValueOp::create(builder, loc, shapeAttr);
   }
 
   return {};
@@ -1146,7 +1146,7 @@ void BroadcastToOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   // Note broadcastShape may be null
   if (!broadcastShape)
     broadcastShape =
-        odsBuilder.create<MO::ShapeOfOp>(input.getLoc(), broadcastLike);
+        MO::ShapeOfOp::create(odsBuilder, input.getLoc(), broadcastLike);
 
   build(odsBuilder, odsState, resultTy, input, broadcastShape);
 }
@@ -1654,8 +1654,8 @@ void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t axis, TensorType outputTy) {
   buildReductionOp<TOp>(
       odsBuilder, odsState, input,
-      odsBuilder.create<ConstantOp>(input.getLoc(), axis,
-                                    getHostDevice(odsBuilder.getContext())),
+      ConstantOp::create(odsBuilder, input.getLoc(), axis,
+                         getHostDevice(odsBuilder.getContext())),
       outputTy);
 }
 
@@ -2831,15 +2831,15 @@ void AssertOp::materializeAllAssertLogic(
         cast<KGEN::ParamDeclAttr>(assert.getParamDecl()));
 
     allChains.push_back(
-        rewriter.create<MOSH::ParamToValueOp>(op->getLoc(), declRefAttr));
+        MOSH::ParamToValueOp::create(rewriter, op->getLoc(), declRefAttr));
   }
 
   // fan in all the assertion chains as the guard op takes a single chain
   auto guardChain =
-      rewriter.create<MO::ChainCreateOp>(op->getLoc(), ValueRange{allChains});
+      MO::ChainCreateOp::create(rewriter, op->getLoc(), ValueRange{allChains});
 
-  auto guardOp =
-      rewriter.create<MO::GuardOp>(op->getLoc(), guardChain, op->getOperands());
+  auto guardOp = MO::GuardOp::create(rewriter, op->getLoc(), guardChain,
+                                     op->getOperands());
 
   rewriter.modifyOpInPlace(op, [&guardOp, &op] {
     for (auto &&[replacement, old] :

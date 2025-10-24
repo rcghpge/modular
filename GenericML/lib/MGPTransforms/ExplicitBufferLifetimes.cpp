@@ -84,8 +84,8 @@ class ExplicitBufferLifetimesPass
         }
         ASSERT_STREAM(chainOutput, "op should have chain output");
 
-        auto bufferFree = builder.create<MGP::BufferFreeOp>(
-            loc, chainOutput, allocOp.getOutBuffer());
+        auto bufferFree = MGP::BufferFreeOp::create(builder, loc, chainOutput,
+                                                    allocOp.getOutBuffer());
 
         chainOutput.replaceAllUsesExcept(bufferFree, bufferFree);
         numFreesAdded++;

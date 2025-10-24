@@ -341,8 +341,8 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
   auto loc = mlir::FusedLoc::get(ctx, locs);
 
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-  auto fusedCompiledRegionOp = builder.create<MOGG::GenericCompiledRegionOp>(
-      loc, fusedRegionOutputTypes, fusedRegionOperands.getArrayRef(),
+  auto fusedCompiledRegionOp = MOGG::GenericCompiledRegionOp::create(
+      builder, loc, fusedRegionOutputTypes, fusedRegionOperands.getArrayRef(),
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, operandSemantics),
       /*summary=*/
@@ -433,13 +433,13 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
         Value oldVal =
             op->getRegion(0).front().getTerminator()->getOperand(idx);
         Value newVal = mapper.lookup(oldVal);
-        builder.create<MOGG::ReleaseMojoValueOp>(oldVal.getLoc(), newVal);
+        MOGG::ReleaseMojoValueOp::create(builder, oldVal.getLoc(), newVal);
       }
     }
   }
 
   // Creating the output op and replacing outside SSA values.
-  builder.create<MOGG::OutputOp>(loc, valuesToOutput);
+  MOGG::OutputOp::create(builder, loc, valuesToOutput);
   for (auto [oldValue, newValue] :
        llvm::zip(resultsThatShouldBeReplaced.takeVector(),
                  fusedCompiledRegionOp.getResults())) {
@@ -514,7 +514,7 @@ KGEN::ParamDeclAttr bindAttrToParam(Location loc, TypedAttr toBind,
 
   Block *kernelBody = builder.getInsertionBlock();
   builder.setInsertionPointToStart(kernelBody);
-  builder.create<KGEN::ParamDeclareOp>(loc, newParameterDecl, toBind);
+  KGEN::ParamDeclareOp::create(builder, loc, newParameterDecl, toBind);
 
   return newParameterDecl;
 }

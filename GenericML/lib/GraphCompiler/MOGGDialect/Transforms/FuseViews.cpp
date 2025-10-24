@@ -71,8 +71,8 @@ void raiseBackReshapeKernels(MLIRContext *ctx,
   OpBuilder builder(ctx);
   for (auto k : reshapeKernels) {
     builder.setInsertionPointAfter(k);
-    auto reshapeOp = builder.create<MO::Static::ReshapeOp>(
-        k->getLoc(), k->getResultTypes(), k.getOperands());
+    auto reshapeOp = MO::Static::ReshapeOp::create(
+        builder, k->getLoc(), k->getResultTypes(), k.getOperands());
 
     k->replaceAllUsesWith(reshapeOp);
     k->erase();

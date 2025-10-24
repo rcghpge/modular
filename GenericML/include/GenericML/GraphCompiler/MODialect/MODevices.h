@@ -158,7 +158,7 @@ struct DeviceAwareRewriter {
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args &&...args) {
     return deviceAnnots.stamp(
-        rewriter.create<OpTy>(location, std::forward<Args>(args)...));
+        OpTy::create(rewriter, location, std::forward<Args>(args)...));
   }
 
   /// Create a constant that is stamped with the host device.
@@ -168,8 +168,8 @@ struct DeviceAwareRewriter {
   /// wrong device.
   template <typename... Args>
   ConstantOp createHostConstant(Location location, Args &&...args) {
-    return rewriter.create<ConstantOp>(location, std::forward<Args>(args)...,
-                                       getHostDevice(rewriter.getContext()));
+    return ConstantOp::create(rewriter, location, std::forward<Args>(args)...,
+                              getHostDevice(rewriter.getContext()));
   }
 
   /// Create a constant that is stamped with the current device.
@@ -179,8 +179,8 @@ struct DeviceAwareRewriter {
   /// stamped with the current device.
   template <typename... Args>
   ConstantOp createDeviceConstant(Location location, Args &&...args) {
-    return rewriter.create<ConstantOp>(location, std::forward<Args>(args)...,
-                                       deviceAnnots.device);
+    return ConstantOp::create(rewriter, location, std::forward<Args>(args)...,
+                              deviceAnnots.device);
   }
 
   template <typename CallableT>

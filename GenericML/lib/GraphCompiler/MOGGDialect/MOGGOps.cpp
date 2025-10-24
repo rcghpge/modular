@@ -209,7 +209,7 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       /*functionSymbols=*/getSymbols(),
       /*constantSymbols=*/{});
   SmallVector<Value> values = {outChain, loweringState.getInitChain()};
-  auto combined = builder.create<GRT::ChainCreateOp>(getLoc(), values);
+  auto combined = GRT::ChainCreateOp::create(builder, getLoc(), values);
   loweringState.setInitChain(combined);
   return success();
 }
@@ -548,7 +548,7 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
     return;
 
   b.setInsertionPointToStart(&block);
-  b.create<MOGG::OutputOp>(state.location, block.getArguments());
+  MOGG::OutputOp::create(b, state.location, block.getArguments());
 }
 
 LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
@@ -1004,8 +1004,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   static int stubCounter = 0;
   auto stubName =
       StringAttr::get(ctx, llvm::formatv("stub_{}", stubCounter++).str());
-  auto kernelStub = builder.create<MOGG::KernelStubOp>(
-      loc, stubName,
+  auto kernelStub = MOGG::KernelStubOp::create(
+      builder, loc, stubName,
       resultTypes.empty() ? nullptr : TypeAttr::get(resultTypes.front()),
       getSummaryAttr(), isThrows);
   kernelStub.getBody().takeBody(getExecBody());
@@ -1115,8 +1115,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   for (size_t i = 0; i < getOutputParamDecls().size(); i++)
     newKernelResTypes.push_back(getOutputParamDecls()[i].getType());
 
-  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
-      getLoc(), TypeRange{newKernelResTypes}, operands,
+  auto newKernel = MOGG::GenericCompiledRegionOp::create(
+      builder, getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
       getSummaryAttr(),        // summary
       getIsAsyncAttr(),        // isAsync
@@ -1212,9 +1212,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           });
       auto ioAttr = MO::IOKindAttr::get(ctx, io);
       stubArgument.setType(asTensor.cloneWith(ioAttr));
-      auto tensorInitOp = builder.create<MOGG::TensorInitOp>(
-          loc, stubArgument.getType(), regionArgument, *dynamicDimensionsOr,
-          BoolAttr::get(ctx, mut), ioAttr, BoolAttr::get(ctx, isExclusive));
+      auto tensorInitOp = MOGG::TensorInitOp::create(
+          builder, loc, stubArgument.getType(), regionArgument,
+          *dynamicDimensionsOr, BoolAttr::get(ctx, mut), ioAttr,
+          BoolAttr::get(ctx, isExclusive));
       stubCallOperands.emplace_back(tensorInitOp);
     } else {
       emitError("Type not yet support in the lowering");
@@ -1256,14 +1257,14 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // Create the call to the outlined kernel stub and use whatever return value
   // (if any) in the output op of the new kernel.
-  auto callStubOp = builder.create<MOGG::CallStubOp>(
-      loc, resultTypes.empty() ? TypeRange{} : resultTypes.front(),
+  auto callStubOp = MOGG::CallStubOp::create(
+      builder, loc, resultTypes.empty() ? TypeRange{} : resultTypes.front(),
       SymbolRefAttr::get(stubName), stubCallOperands);
-  auto readyChain = builder.create<MOGG::AsyncReadyOp>(getLoc());
+  auto readyChain = MOGG::AsyncReadyOp::create(builder, getLoc());
   auto outputs = llvm::map_to_vector(callStubOp.getResults(),
                                      [](Value val) { return val; });
   outputs.push_back(readyChain);
-  builder.create<MOGG::OutputOp>(getLoc(), outputs);
+  MOGG::OutputOp::create(builder, getLoc(), outputs);
 
   auto mgpBufferType = MGP::DeviceBufferType::get(device);
 
@@ -1317,14 +1318,14 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     // Replace the output of the lambda with an empty tensor.
     if (substituteWithEmptyTensor) {
       Value emptyBuffer =
-          builder.create<MOGG::EmptyBufferOp>(bindOp->getLoc(), mgpBufferType);
+          MOGG::EmptyBufferOp::create(builder, bindOp->getLoc(), mgpBufferType);
       auto dynamicDimensionsOr = getTensorDynamicDimensions(
           MO::castFromTensorLike(lambdaVal.getType()),
           /*isInsideStub=*/true);
       if (dynamicDimensionsOr.isError())
         return emitError(dynamicDimensionsOr.getError());
-      tensorVal = builder.create<MOGG::TensorInitOp>(
-          loc, lambdaVal.getType(), emptyBuffer, *dynamicDimensionsOr,
+      tensorVal = MOGG::TensorInitOp::create(
+          builder, loc, lambdaVal.getType(), emptyBuffer, *dynamicDimensionsOr,
           /*mut=*/BoolAttr::get(ctx, false),
           /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
           /*exclusive=*/BoolAttr::get(ctx, true));
@@ -1338,13 +1339,13 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           /*isInsideStub=*/true);
       if (dynamicDimensionsOr.isError())
         return emitError(dynamicDimensionsOr.getError());
-      tensorVal = builder.create<MOGG::TensorReshapeOp>(
-          loc, lambdaVal.getType(), tensorVal, *dynamicDimensionsOr);
+      tensorVal = MOGG::TensorReshapeOp::create(
+          builder, loc, lambdaVal.getType(), tensorVal, *dynamicDimensionsOr);
     }
 
     // Build the Fused tensor object.
-    auto fusedTensorOp = builder.create<MOGG::TensorFusedOp>(
-        bindOp->getLoc(), lambdaVal.getType(), lambdaVal, tensorVal);
+    auto fusedTensorOp = MOGG::TensorFusedOp::create(
+        builder, bindOp->getLoc(), lambdaVal.getType(), lambdaVal, tensorVal);
 
     // And finally replace it for the users of the lambda.
     lambdaVal.replaceAllUsesExcept(fusedTensorOp.getResult(), fusedTensorOp);
@@ -1365,8 +1366,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                 constantOp->getLoc(), mgpBufferType, constantOp.getValue())
             .getResult();
     SmallVector<Value> dynamicDimensions;
-    Value constantValue = builder.create<MOGG::TensorInitOp>(
-        loc, constantOp.getResult().getType(), bufferValue,
+    Value constantValue = MOGG::TensorInitOp::create(
+        builder, loc, constantOp.getResult().getType(), bufferValue,
         /*dynamicDimensions=*/ArrayRef<Value>{},
         /*mut=*/BoolAttr::get(ctx, false),
         /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
@@ -2020,8 +2021,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   bool canFuseIntoOther = !hasInternalAllocs;
 
   // Later update the isAsync instead of hard-coding
-  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
-      getLoc(), TypeRange{newKernelResTypes}, operands,
+  auto newKernel = MOGG::GenericCompiledRegionOp::create(
+      builder, getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
@@ -2052,7 +2053,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
       if (auto cst = dyn_cast<IntegerAttr>(dim)) {
         KGEN::ParamConstantOp op =
-            builder.create<KGEN::ParamConstantOp>(loc, cst);
+            KGEN::ParamConstantOp::create(builder, loc, cst);
         loweredParams[dim] = op.getResult();
       } else if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
         loweredParams[dim] =
@@ -2105,27 +2106,27 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
       MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
 
-      Value dataPtr = builder.create<MOGG::DataPointerFromBufferOp>(
-          input.getLoc(), voidStar, input);
+      Value dataPtr = MOGG::DataPointerFromBufferOp::create(
+          builder, input.getLoc(), voidStar, input);
 
       SmallVector<Value> operands;
       operands.push_back(dataPtr);
       for (auto dim : asTensor.getDims()) {
         auto loweredParam = loweredParams.at(dim);
         if (!loweredParam.getType().isIndex()) {
-          loweredParam = builder.create<mlir::index::CastSOp>(
-              input.getLoc(), builder.getIndexType(), loweredParam);
+          loweredParam = mlir::index::CastSOp::create(
+              builder, input.getLoc(), builder.getIndexType(), loweredParam);
         }
 
         operands.push_back(loweredParam);
       }
 
-      return builder.create<MOGG::ToTensorFromMGPOp>(input.getLoc(), asTensor,
-                                                     operands);
+      return MOGG::ToTensorFromMGPOp::create(builder, input.getLoc(), asTensor,
+                                             operands);
     } else if (auto asListTy = dyn_cast<MO::ListType>(oldTy)) {
       // Assume the new extensibility API uses KGEN types.
-      return builder.create<MOGG::ToListFromMGPOp>(input.getLoc(), oldTy,
-                                                   input);
+      return MOGG::ToListFromMGPOp::create(builder, input.getLoc(), oldTy,
+                                           input);
     } else {
       ASSERT_STREAM(false, << "Unknown type " << oldTy << " with value "
                            << input);
@@ -2215,8 +2216,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     }
   }
   if (!internalTensorAllocTypes.empty()) {
-    stackAllocOp = builder.create<MOGG::StackAllocateTensorsOp>(
-        getLoc(), internalTensorAllocTypes);
+    stackAllocOp = MOGG::StackAllocateTensorsOp::create(
+        builder, getLoc(), internalTensorAllocTypes);
     for (auto [oldOut, newAlloc] :
          llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
       mapper.map(oldOut, newAlloc);
@@ -2224,8 +2225,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   if (!internalOpaqueAllocTypes.empty()) {
     assert(!stackAllocOp &&
            "mix of tensor / opaque output types not supported");
-    stackAllocOp = builder.create<MOGG::StackAllocateOpaquesOp>(
-        getLoc(), internalOpaqueAllocTypes);
+    stackAllocOp = MOGG::StackAllocateOpaquesOp::create(
+        builder, getLoc(), internalOpaqueAllocTypes);
     for (auto [oldOut, newAlloc] :
          llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
       mapper.map(oldOut, newAlloc);
@@ -2241,8 +2242,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     if (auto getDim = dyn_cast<MOGG::GetDimOp>(op)) {
       auto dim = loweredParams.lookup(getDim.getDimension());
-      Value v = builder.create<KGEN::POP::CastFromBuiltinOp>(op.getLoc(),
-                                                             si64ScalarTy, dim);
+      Value v = KGEN::POP::CastFromBuiltinOp::create(builder, op.getLoc(),
+                                                     si64ScalarTy, dim);
       mapper.map(getDim.getResult(), v);
       continue;
     }
@@ -2257,20 +2258,20 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         // stride, type and size with a nullptr attached.
         auto voidStar =
             KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext()));
-        Value dataPtr =
-            builder.create<KGEN::POP::StackAllocationOp>(op.getLoc(), voidStar);
+        Value dataPtr = KGEN::POP::StackAllocationOp::create(
+            builder, op.getLoc(), voidStar);
         operands.push_back(dataPtr);
         for (auto dim : tensorTy.getDims()) {
           auto loweredParam = loweredParams.at(dim);
           if (!loweredParam.getType().isIndex()) {
-            loweredParam = builder.create<mlir::index::CastSOp>(
-                op.getLoc(), builder.getIndexType(), loweredParam);
+            loweredParam = mlir::index::CastSOp::create(
+                builder, op.getLoc(), builder.getIndexType(), loweredParam);
           }
           operands.push_back(loweredParam);
         }
 
-        Value newTensor = builder.create<MOGG::ToTensorFromMGPOp>(
-            op.getLoc(), tensorTy, operands);
+        Value newTensor = MOGG::ToTensorFromMGPOp::create(builder, op.getLoc(),
+                                                          tensorTy, operands);
         mapper.map(val, newTensor);
       }
       continue;
@@ -2284,8 +2285,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
             dyn_cast<KGEN::ParamDeclareRegionOp>(op)) {
       for (auto op : regionDeclarationOldOp.getOps<MOGG::GetDimOp>()) {
         auto loweredParam = loweredParams.lookup(op.getDimension());
-        Value v = builder.create<KGEN::POP::CastFromBuiltinOp>(
-            op.getLoc(), si64ScalarTy, loweredParam);
+        Value v = KGEN::POP::CastFromBuiltinOp::create(
+            builder, op.getLoc(), si64ScalarTy, loweredParam);
         loweredGetDimsNewOp.push_back(v);
       }
     }
@@ -2326,8 +2327,8 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> outputs(numPrependedOutputs + numInplaceOutputs +
                              outParamNum);
   // numPrependedOutputs: Create placeholder
-  outputs[0] = builder.create<MOGG::CreateReadyChainOp>(
-      getLoc(), TypeRange{newKernel->getResult(0).getType()});
+  outputs[0] = MOGG::CreateReadyChainOp::create(
+      builder, getLoc(), TypeRange{newKernel->getResult(0).getType()});
   // numInplaceOutputs: Add intrinsic to map to mgp for specific types
   for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
     // Get the output KGEN value for in-place allocs.
@@ -2357,13 +2358,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         }
       }
 
-      outputs[idx + numPrependedOutputs] =
-          builder.create<MOGG::ToMGPFromOpaqueOp>(getLoc(), TypeRange{resultTy},
-                                                  kgenVal);
+      outputs[idx + numPrependedOutputs] = MOGG::ToMGPFromOpaqueOp::create(
+          builder, getLoc(), TypeRange{resultTy}, kgenVal);
     } else {
-      outputs[idx + numPrependedOutputs] =
-          builder.create<MOGG::ToMGPFromTensorOp>(getLoc(), TypeRange{resultTy},
-                                                  kgenVal);
+      outputs[idx + numPrependedOutputs] = MOGG::ToMGPFromTensorOp::create(
+          builder, getLoc(), TypeRange{resultTy}, kgenVal);
     }
   }
 
@@ -2400,15 +2399,15 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   for (auto idx : needCast.set_bits()) {
     Value &toCast = outputs[idx];
-    toCast = builder.create<KGEN::POP::CastToBuiltinOp>(
-        toCast.getLoc(), newKernel->getResultTypes()[idx], toCast);
+    toCast = KGEN::POP::CastToBuiltinOp::create(
+        builder, toCast.getLoc(), newKernel->getResultTypes()[idx], toCast);
   }
 
   for (MOGG::SetParameterOp p : toRemove)
     p.erase();
 
   // Construct a mogg.output that newKernel spec
-  builder.create<MOGG::OutputOp>(getLoc(), outputs);
+  MOGG::OutputOp::create(builder, getLoc(), outputs);
 
   // Each of the parameter outputs now maps onto a concrete dimension value.
   for (const auto param : getOutputParamDecls()) {
@@ -2462,7 +2461,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
     builder.setInsertionPoint(placeholdCtx);
     Value toKGEN =
-        builder.create<ToKGENOp>(actualCtx.getLoc(), old.getType(), asArg);
+        ToKGENOp::create(builder, actualCtx.getLoc(), old.getType(), asArg);
     placeholdCtx.replaceAllUsesWith(toKGEN);
     placeholdCtx.erase();
 

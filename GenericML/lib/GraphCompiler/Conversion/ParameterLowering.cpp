@@ -23,7 +23,7 @@ ErrorOr<Value> M::ParameterLoweringState::lowerExpression(OpBuilder &b,
   Value newValue;
   if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(attr)) {
     // A decl ref we haven't seen before gets a placeholder.
-    newValue = b.create<PlaceholderOp>(loc, declRef).getResult();
+    newValue = PlaceholderOp::create(b, loc, declRef).getResult();
   } else if (auto opAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr)) {
     ArrayRef<TypedAttr> operands = opAttr.getOperands();
     TypedAttr newOpAttr = attr;

@@ -217,9 +217,9 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
       op->getResultTypes(), [](Type t) { return !isa<MEF::ChainType>(t); });
 
   // Add the call to the actual implementing function in mojo.
-  MOGG::CallOp call = builder.create<MOGG::CallOp>(
-      loc, callResultTps, op->getName().getStringRef(), inputs, ArrayAttr{},
-      getMoggCallAttrs(builder, op));
+  MOGG::CallOp call = MOGG::CallOp::create(
+      builder, loc, callResultTps, op->getName().getStringRef(), inputs,
+      ArrayAttr{}, getMoggCallAttrs(builder, op));
 
   SmallVector<Value> outputs;
   unsigned resultIdx = 0;
@@ -227,8 +227,8 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
     if (isa<MEF::ChainType>(t)) {
       // We create a separate op for chain creation, this allows us to optimize
       // redundant chains independently from the MOGG.call itself.
-      outputs.push_back(builder.create<MOGG::CreateReadyChainOp>(
-          loc, MEF::ChainType::get(builder.getContext())));
+      outputs.push_back(MOGG::CreateReadyChainOp::create(
+          builder, loc, MEF::ChainType::get(builder.getContext())));
     } else {
       outputs.push_back(call->getResult(resultIdx++));
     }
@@ -290,10 +290,10 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
     Value val = outputs[idx];
     auto moOpaqueTy = MO::OpaqueType::get(
         StringAttr::get(kernel->getContext(), "OpaquePrimitive"));
-    val = builder.create<MOGG::ToMOGGOp>(loc, moOpaqueTy, val,
-                                         *methodsDictAttrOr, isRegister);
-    outputs[idx] = builder.create<MOGG::ToMGPFromOpaqueOp>(
-        loc, outputs[idx].getType(), val);
+    val = MOGG::ToMOGGOp::create(builder, loc, moOpaqueTy, val,
+                                 *methodsDictAttrOr, isRegister);
+    outputs[idx] = MOGG::ToMGPFromOpaqueOp::create(builder, loc,
+                                                   outputs[idx].getType(), val);
   }
   return outputs;
 }
@@ -309,8 +309,8 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
   // Build compile region operation.
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
       op->getNumOperands(), InOutSignatureAttr::InOutSemantics::kNone);
-  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
-      loc, op->getResultTypes(), op->getOperands(),
+  auto newKernel = MOGG::GenericCompiledRegionOp::create(
+      builder, loc, op->getResultTypes(), op->getOperands(),
       KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
       InOutSignatureAttr::get(builder.getContext(), operandSemantics),
       MOGG::getSummaryString(op),           // summary
@@ -343,13 +343,13 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
        llvm::zip(outs, newKernel.getResultTypes())) {
     if (returnVal.getType() != returnType &&
         isa<IndexType>(returnVal.getType())) {
-      returnVal = builder.create<mlir::index::CastSOp>(returnVal.getLoc(),
-                                                       returnType, returnVal);
+      returnVal = mlir::index::CastSOp::create(builder, returnVal.getLoc(),
+                                               returnType, returnVal);
     }
     returns.push_back(returnVal);
   }
 
-  builder.create<MOGG::OutputOp>(loc, returns);
+  MOGG::OutputOp::create(builder, loc, returns);
   return newKernel;
 };
 
@@ -379,8 +379,8 @@ void LowerPrimitivesPass::runOnOperation() {
         ins.push_back(inputs[i + 2]);
 
       // Packs the variadic input buffers into tuple.
-      Value tuple = builder.create<MOGG::AsTupleOp>(
-          op->getLoc(),
+      Value tuple = MOGG::AsTupleOp::create(
+          builder, op->getLoc(),
           builder.getTupleType(bufferConcat.getInBuffers().getTypes()), ins);
 
       // Rebuild the input vector.
@@ -392,7 +392,7 @@ void LowerPrimitivesPass::runOnOperation() {
       inputVec.push_back(inputs[inputs.size() - 1]);
     } else if (isa<MGP::BufferGetCachedOp, MGP::BufferConstantOp>(op)) {
       // This is the storage_ref handle to the buffer.
-      Value asyncRef = builder.create<MOGG::AnyAsyncRefPlaceholderOp>(loc);
+      Value asyncRef = MOGG::AnyAsyncRefPlaceholderOp::create(builder, loc);
       // Both buffer get cache/constant create a new storage_ref handle.
       // Differently only buffer.get_cache inherit the lifetime, and constant
       // buffer only require a nullptr handle (to mark that this is a

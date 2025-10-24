@@ -579,9 +579,9 @@ private:
       }
 
       // Create new call with updated operands
-      auto newCallOp = builder.create<CallOp>(
-          callOp.getLoc(), callOp.getResultTypes(), newCallOperands,
-          callOp.getSymbol(), callOp.getPrefix());
+      auto newCallOp = CallOp::create(builder, callOp.getLoc(),
+                                      callOp.getResultTypes(), newCallOperands,
+                                      callOp.getSymbol(), callOp.getPrefix());
 
       // Replace uses of original call results
       callOp.replaceAllUsesWith(newCallOp.getResults());

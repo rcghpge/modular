@@ -474,8 +474,8 @@ StubCompiler::compile(const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp>
 
     ArrayAttr symbolsAttr = mlir::ArrayAttr::get(
         ctx, llvm::to_vector_of<mlir::Attribute>(cacheMissSymbols));
-    results.push_back(builder.create<MOGG::LoadCompiledKernelOp>(
-        loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
+    results.push_back(MOGG::LoadCompiledKernelOp::create(
+        builder, loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
         /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType)));
     results.back()->setAttr("cache_miss", builder.getUnitAttr());
   }
@@ -485,8 +485,8 @@ StubCompiler::compile(const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp>
         llvm::to_vector_of<Attribute>(symbolsAndBufferPair.first));
     DenseResourceElementsAttr archiveAttr =
         createArchiveAttr(ctx, symbolsAndBufferPair.second, blobHash);
-    results.push_back(builder.create<MOGG::LoadCompiledKernelOp>(
-        loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
+    results.push_back(MOGG::LoadCompiledKernelOp::create(
+        builder, loc, /*symbols=*/symbolsAttr, /*value=*/archiveAttr,
         /*debuginfo=*/debugKGENStubs || hasDebuginfo(kernelBuildType)));
     results.back()->setAttr("cache_hit", builder.getUnitAttr());
   }

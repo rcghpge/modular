@@ -50,9 +50,9 @@ struct SplatLargeConstants
       auto newConstantType =
           constantOpType.cloneWith(ShapeAttr::get({1}, shapeType));
       auto newConstantOp =
-          builder.create<ConstantOp>(loc, newConstantType, splatValue);
-      auto broadcastOp = builder.create<Static::BroadcastToOp>(
-          loc, constantOpType, newConstantOp);
+          ConstantOp::create(builder, loc, newConstantType, splatValue);
+      auto broadcastOp = Static::BroadcastToOp::create(
+          builder, loc, constantOpType, newConstantOp);
       constantOp->replaceAllUsesWith(broadcastOp);
       constantOp->erase();
     });

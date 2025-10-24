@@ -81,17 +81,18 @@ class VerifyModelArgumentsPass
       for (size_t i = 0; i < expectedTensorSpec.getRank(); ++i) {
         if (expectedTensorSpec.isDynamicDim(i))
           continue;
-        auto expectedDim = builder.create<mlir::index::ConstantOp>(
-            loc, expectedTensorSpec.getDims()[i].value());
+        auto expectedDim = mlir::index::ConstantOp::create(
+            builder, loc, expectedTensorSpec.getDims()[i].value());
         auto runtimeDim =
-            builder.create<TensorSpecGetDimOp>(loc, runtimeTensorSpec, i);
-        auto dimEqual = builder.create<mlir::index::CmpOp>(
-            loc, mlir::index::IndexCmpPredicate::EQ, runtimeDim, expectedDim);
+            TensorSpecGetDimOp::create(builder, loc, runtimeTensorSpec, i);
+        auto dimEqual = mlir::index::CmpOp::create(
+            builder, loc, mlir::index::IndexCmpPredicate::EQ, runtimeDim,
+            expectedDim);
         if (!areEqual)
           areEqual = dimEqual;
         else
-          areEqual = builder.create<KGEN::POP::AndOp>(loc, builder.getI1Type(),
-                                                      areEqual, dimEqual);
+          areEqual = KGEN::POP::AndOp::create(builder, loc, builder.getI1Type(),
+                                              areEqual, dimEqual);
       }
       if (!areEqual)
         // All dimensions are dynamic, so nothing to check
@@ -103,8 +104,8 @@ class VerifyModelArgumentsPass
           "Tensor type mismatch for argument %ld: Expected shape: [%s]",
           arg.getArgNumber() - model.getExecuteImplicitArguments().size(),
           shapeToString(expectedTensorSpec.getShape()).c_str());
-      builder.create<AssertOp>(loc, areEqual,
-                               StringAttr::get(&ctx, stream.str()));
+      AssertOp::create(builder, loc, areEqual,
+                       StringAttr::get(&ctx, stream.str()));
     }
   }
 };

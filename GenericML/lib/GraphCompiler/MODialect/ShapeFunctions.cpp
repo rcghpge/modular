@@ -20,7 +20,7 @@
 namespace M::MO {
 
 KGEN::ParamDeclareOp ParamBinding::toOp(Location loc, OpBuilder b) const {
-  return b.create<KGEN::ParamDeclareOp>(loc, decl, value);
+  return KGEN::ParamDeclareOp::create(b, loc, decl, value);
 }
 
 Var ParamExprBuilder::createVar(TypedAttr attr) {

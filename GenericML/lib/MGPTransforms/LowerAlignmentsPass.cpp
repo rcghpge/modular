@@ -121,9 +121,9 @@ class LowerAlignmentsPass
             [&](MOGG::AlignmentPlaceholderOp placeholderOp,
                 int64_t newAlignment) {
               builder.setInsertionPoint(placeholderOp);
-              builder.create<KGEN::ParamDeclareOp>(
-                  placeholderOp.getLoc(), placeholderOp.getParamDecl(),
-                  builder.getIndexAttr(newAlignment));
+              KGEN::ParamDeclareOp::create(builder, placeholderOp.getLoc(),
+                                           placeholderOp.getParamDecl(),
+                                           builder.getIndexAttr(newAlignment));
             };
 
         // Traverse and replace all placeholders

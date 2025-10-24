@@ -50,7 +50,7 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
       scalarShape, origStep.getType().getElementType());
 
   MO::ConstantOp one =
-      builder.create<MO::ConstantOp>(slice.getLoc(), static_cast<int64_t>(1));
+      MO::ConstantOp::create(builder, slice.getLoc(), static_cast<int64_t>(1));
 
   // We slice the tensor one dimension at a time and so only update the shape
   // one dimension at a time as well.
@@ -69,18 +69,18 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
     // We are slicing the start / stop / step one dimenson at a time. For dim 0
     // we slice [0:1:1], dim 1 [1:2:1] and so on.
     MO::ConstantOp startPos =
-        builder.create<MO::ConstantOp>(slice.getLoc(), asInt);
+        MO::ConstantOp::create(builder, slice.getLoc(), asInt);
     MO::ConstantOp stopPos =
-        builder.create<MO::ConstantOp>(slice.getLoc(), asInt + 1);
+        MO::ConstantOp::create(builder, slice.getLoc(), asInt + 1);
 
     // Slice out the start, step and stop.
     auto start =
-        builder.create<SliceDimOp>(slice.getLoc(), startScalar, origStart,
-                                   zeroAxis, startPos, stopPos, one);
-    auto stop = builder.create<SliceDimOp>(slice.getLoc(), stopScalar, origStop,
-                                           zeroAxis, startPos, stopPos, one);
-    auto step = builder.create<SliceDimOp>(slice.getLoc(), stepScalar, origStep,
-                                           zeroAxis, startPos, stopPos, one);
+        SliceDimOp::create(builder, slice.getLoc(), startScalar, origStart,
+                           zeroAxis, startPos, stopPos, one);
+    auto stop = SliceDimOp::create(builder, slice.getLoc(), stopScalar,
+                                   origStop, zeroAxis, startPos, stopPos, one);
+    auto step = SliceDimOp::create(builder, slice.getLoc(), stepScalar,
+                                   origStep, zeroAxis, startPos, stopPos, one);
 
     shape[i] = slice.getType().getDim(i);
 
@@ -91,9 +91,9 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
 
     if (!tryCreateSliceDimOuter()) {
       // Create the new slice along just one dimension.
-      SliceDimOp newSlice = builder.create<SliceDimOp>(
-          slice.getLoc(), slice.getType().cloneWith(shape), lastVal, axis,
-          start.getResult(), stop.getResult(), step.getResult());
+      SliceDimOp newSlice = SliceDimOp::create(
+          builder, slice.getLoc(), slice.getType().cloneWith(shape), lastVal,
+          axis, start.getResult(), stop.getResult(), step.getResult());
 
       lastVal = newSlice.getResult();
     }
@@ -137,8 +137,8 @@ static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
 
     // create the new merge_dim op using the new shape
     rollingShape = rollingShape.cloneWith(newShape);
-    auto mergeOp = builder.create<MergeDimOp>(
-        reshape.getLoc(), rollingShape, reshape.getInput(),
+    auto mergeOp = MergeDimOp::create(
+        builder, reshape.getLoc(), rollingShape, reshape.getInput(),
         /*axis*/ builder.getIndexAttr(dimIdx - 1));
 
     reshape.setOperand(mergeOp.getResult());
@@ -160,7 +160,7 @@ static void decomposeFlatteningReshape(Static::ReshapeOp reshape,
   auto finalOutput = lastMergeOp.getResult();
   if (finalOutput.getType() != oldOutType) {
     auto rebindOp =
-        builder.create<RebindOp>(reshape.getLoc(), oldOutType, finalOutput);
+        RebindOp::create(builder, reshape.getLoc(), oldOutType, finalOutput);
     finalOutput = rebindOp.getResult();
   }
 
@@ -243,9 +243,9 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
 
     // create the new split_dim op using the new shape
     rollingShape = rollingShape.cloneWith(newShape);
-    auto splitOp = builder.create<SplitDimOp>(
-        reshape.getLoc(), rollingShape, reshape.getInput(),
-        /*axis*/ builder.getIndexAttr(dimIdx));
+    auto splitOp = SplitDimOp::create(builder, reshape.getLoc(), rollingShape,
+                                      reshape.getInput(),
+                                      /*axis*/ builder.getIndexAttr(dimIdx));
 
     reshape.setOperand(splitOp.getResult());
     lastSplitOp = splitOp;
@@ -266,7 +266,7 @@ static void decomposeUnflatteningReshape(Static::ReshapeOp reshape,
   auto finalOutput = lastSplitOp.getResult();
   if (finalOutput.getType() != oldOutType) {
     auto rebindOp =
-        builder.create<RebindOp>(reshape.getLoc(), oldOutType, finalOutput);
+        RebindOp::create(builder, reshape.getLoc(), oldOutType, finalOutput);
     finalOutput = rebindOp.getResult();
   }
 
@@ -340,9 +340,9 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
                     MOSH::ShapeAttr::getDim(builder.getContext(), 1));
     rollingShape = rollingShape.cloneWith(newShape);
 
-    auto op = builder.create<AddSingletonDimOp>(
-        reshape.getLoc(), rollingShape, output,
-        /*axis=*/builder.getIndexAttr(idx));
+    auto op = AddSingletonDimOp::create(builder, reshape.getLoc(), rollingShape,
+                                        output,
+                                        /*axis=*/builder.getIndexAttr(idx));
 
     output.replaceAllUsesExcept(op.getResult(), op);
     output = op.getResult();
@@ -370,9 +370,9 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
         outShapeAttr[1] != inShapeAttr[0] &&
         outShapeAttr[2] == inShapeAttr[1]) {
 
-      Value split = builder.create<SplitDimOp>(
-          reshape.getLoc(), reshape.getType(), reshape.getInput(),
-          /*axis*/ builder.getIndexAttr(0));
+      Value split = SplitDimOp::create(builder, reshape.getLoc(),
+                                       reshape.getType(), reshape.getInput(),
+                                       /*axis*/ builder.getIndexAttr(0));
       reshape.replaceAllUsesWith(split);
       reshape.erase();
     }

@@ -65,10 +65,11 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
-  auto newExecuteOp = builder.create<MGP::ExecuteGenericOp>(
-      oldKernel.getLoc(), resultTypes, context, oldKernel->getOperands(),
-      runtimeSlot, module_index, kernel_index, oldKernel.getSummary(),
-      oldKernel.getIsAsync(), oldKernel.getConstantResources());
+  auto newExecuteOp = MGP::ExecuteGenericOp::create(
+      builder, oldKernel.getLoc(), resultTypes, context,
+      oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
+      oldKernel.getSummary(), oldKernel.getIsAsync(),
+      oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))
     result.replaceAllUsesWith(newExecuteOp.getResult(idx));
@@ -134,8 +135,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
 
       // Rewrite the MOGG::LoadCompiledKernelOp into a MGP::ModuleLoadOp
       builder.setInsertionPointAfter(insertionOp);
-      auto loadArchive = builder.create<MGP::ModuleLoadOp>(
-          insertionOp->getLoc(),
+      auto loadArchive = MGP::ModuleLoadOp::create(
+          builder, insertionOp->getLoc(),
           /*inChain=*/inChain,
           /*theContext=*/opContext,
           /*aSlot=*/runtimeSlot,
@@ -161,7 +162,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       Value newChain;
       if (moduleLoadChains.size() > 1) {
         newChain =
-            builder.create<GRT::ChainCreateOp>(op.getLoc(), moduleLoadChains);
+            GRT::ChainCreateOp::create(builder, op.getLoc(), moduleLoadChains);
       } else {
         newChain = moduleLoadChains[0];
       }

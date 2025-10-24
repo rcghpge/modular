@@ -163,8 +163,8 @@ SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
     if (!curTensor.getType().hasRank()) {
       TypedAttr newShape = createDynamicRankedShapeType(graphOp, newParamDecls);
       TensorType outTy = curTensor.getType().cloneWith(newShape);
-      curTensor = builder.create<RMO::RebindTensorShapeOp>(
-          loc, outTy, curTensor, newParamDecls);
+      curTensor = RMO::RebindTensorShapeOp::create(builder, loc, outTy,
+                                                   curTensor, newParamDecls);
     } else {
       SmallVector<TypedAttr> dims(curTensor.getType().getDims());
       for (int64_t j = 0, boundJ = dims.size(); j < boundJ; j++) {
@@ -175,8 +175,8 @@ SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
         }
       }
       TensorType outTy = curTensor.getType().cloneWith(dims);
-      curTensor = builder.create<RMO::RebindTensorShapeOp>(
-          loc, outTy, curTensor, newParamDecls);
+      curTensor = RMO::RebindTensorShapeOp::create(builder, loc, outTy,
+                                                   curTensor, newParamDecls);
     }
 
     valuesNoUnknowns[i] = curTensor;

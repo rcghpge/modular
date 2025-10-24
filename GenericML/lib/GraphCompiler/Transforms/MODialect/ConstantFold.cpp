@@ -624,9 +624,9 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   }
 
   // This name cannot be too long otherwise something breaks :(.
-  auto graphop = builder.create<GraphOp>(
-      module.getLoc(), (orig.getName() + "_constant_subgraphs").str(), argTypes,
-      resultTypes);
+  auto graphop = GraphOp::create(builder, module.getLoc(),
+                                 (orig.getName() + "_constant_subgraphs").str(),
+                                 argTypes, resultTypes);
   builder.setInsertionPointToEnd(graphop.getBodyBlock());
 
   llvm::MapVector<ConstantOp, BlockArgument> inputConstants;
@@ -673,8 +673,8 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
         if (llvm::isa<MOSH::ShapeType>(newOutput.getType())) {
           // Can't output shapes so we convert it to a rank 1 tensor of unknown
           // size.
-          newOutput = builder.create<Shape::ToTensorOp>(
-              loc,
+          newOutput = Shape::ToTensorOp::create(
+              builder, loc,
               TensorType::get(
                   MOSH::ShapeAttr::get(
                       SmallVector<TypedAttr>(
@@ -696,18 +696,19 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   Type indexType = IndexType::get(ctx);
   for (const Subgraph &subgraph : subgraphs) {
     for (auto param : subgraph.paramDeclarations()) {
-      Value index = builder.create<MOSH::ParamToValueOp>(
-          loc, indexType, KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
-      newOutputs.push_back(builder.create<IndexToTensorOp>(
-          loc,
+      Value index = MOSH::ParamToValueOp::create(
+          builder, loc, indexType,
+          KGEN::ParamDeclRefAttr::get(ctx, param, indexType));
+      newOutputs.push_back(IndexToTensorOp::create(
+          builder, loc,
           TensorType::get(ArrayRef<int64_t>({}),
                           IntegerType::get(ctx, 64, IntegerType::Unsigned)),
           index));
     }
   }
   // No output parameters because we bind them all locally.
-  auto out =
-      builder.create<OutputOp>(loc, newOutputs, KGEN::ParameterExprArrayAttr{});
+  auto out = OutputOp::create(builder, loc, newOutputs,
+                              KGEN::ParameterExprArrayAttr{});
   // Have to update the GraphOp's signature.
   auto functionType =
       mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes());
@@ -737,13 +738,13 @@ static Value runtimeTensorToConstant(OpBuilder &builder, Location loc,
         MOSH::ShapeAttr::get(SmallVector<int64_t>(shape.begin(), shape.end()),
                              MOSH::ShapeType::get(builder.getContext())),
         cast<TensorType>(type).getDtype());
-    auto constantOp = builder.create<ConstantOp>(loc, resolvedType, constant);
+    auto constantOp = ConstantOp::create(builder, loc, resolvedType, constant);
     // Rebind the shape so it matches what is expected. For example,
     // transform [1, 2] to [1, A] so that types shapes with
     // parameters match.
-    return builder.create<RebindOp>(loc, type, constantOp);
+    return RebindOp::create(builder, loc, type, constantOp);
   } else {
-    return builder.create<ConstantOp>(loc, type, constant);
+    return ConstantOp::create(builder, loc, type, constant);
   }
 }
 
@@ -787,9 +788,10 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
       } else if (llvm::isa<ShapeType>(type)) {
         auto intElems = dyn_cast<IntArrayElementsAttr>(
             std::get<RuntimeTensor>(constantTensor).first);
-        newResults.push_back(builder.create<MOSH::ParamToValueOp>(
-            op->getLoc(), ShapeAttr::get(intElems.asArrayRef<int64_t>(),
-                                         MOSH::ShapeType::get(ctx))));
+        newResults.push_back(MOSH::ParamToValueOp::create(
+            builder, op->getLoc(),
+            ShapeAttr::get(intElems.asArrayRef<int64_t>(),
+                           MOSH::ShapeType::get(ctx))));
       } else if (llvm::isa<ListType>(type)) {
         auto tensors =
             llvm::map_to_vector(std::get<RuntimeList>(constantTensor),
@@ -799,7 +801,7 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
                                       cast<ListType>(type).getElementType());
                                 });
         newResults.push_back(
-            builder.create<ListCreateOp>(op->getLoc(), type, tensors));
+            ListCreateOp::create(builder, op->getLoc(), type, tensors));
       } else {
         ASSERT_STREAM(false,
                       << "constants must be tensors or shapes but one is a "
@@ -817,8 +819,8 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
   // Add parameters that were defined in the subgraph.
   builder.setInsertionPointToStart(graph.getBodyBlock());
   for (auto [name, val] : modelResult.parameters) {
-    builder.create<KGEN::ParamDeclareOp>(
-        graph.getLoc(),
+    KGEN::ParamDeclareOp::create(
+        builder, graph.getLoc(),
         KGEN::ParamDeclAttr::get(ctx, name, IndexType::get(ctx)),
         builder.getIndexAttr(val));
   }
@@ -938,8 +940,8 @@ void ConstantFoldPass::runOnOperation() {
       // original model because passes can't create ops outside of what they
       // are operating on. We create a nested module in the current module
       // where we do everything. At the end we remove it.
-      auto module = builder.create<ModuleOp>(getOperation().getLoc(),
-                                             "constant_fold_subgraphs");
+      auto module = ModuleOp::create(builder, getOperation().getLoc(),
+                                     "constant_fold_subgraphs");
 
       // For each constant subgraph, we clone it into our submodule as a new
       // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.

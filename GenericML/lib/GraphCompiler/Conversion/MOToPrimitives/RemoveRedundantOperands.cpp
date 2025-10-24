@@ -28,8 +28,8 @@ buildRegionOpWithResultType(OpBuilder &builder,
                             MOGG::GenericCompiledRegionOp regionOp,
                             TypeRange resultTypes) {
   //  Replace the RegionOp with a new RegionOp, but with deduplicated result.
-  auto newKernel = builder.create<MOGG::GenericCompiledRegionOp>(
-      regionOp->getLoc(), resultTypes, regionOp.getOperands(),
+  auto newKernel = MOGG::GenericCompiledRegionOp::create(
+      builder, regionOp->getLoc(), resultTypes, regionOp.getOperands(),
       regionOp.getOutputParamDeclsAttr(), regionOp.getInOutSignatureAttr(),
       regionOp.getSummaryAttr(),           // summary
       regionOp.getIsAsyncAttr(),           // isAsync

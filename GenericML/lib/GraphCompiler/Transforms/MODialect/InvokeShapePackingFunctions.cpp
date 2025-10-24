@@ -193,8 +193,8 @@ struct InvokeShapePackingFunctions
       OpBuilder rewriter(invoke);
       for (auto [decl, value] : llvm::zip(outputDecls, inferredShapes)) {
         auto valueAttr = ShapeAttr::getDim(&getContext(), value);
-        auto newDecl = rewriter.create<KGEN::ParamDeclareOp>(invoke.getLoc(),
-                                                             decl, valueAttr);
+        auto newDecl = KGEN::ParamDeclareOp::create(rewriter, invoke.getLoc(),
+                                                    decl, valueAttr);
         newDecls.push_back(newDecl);
       }
 

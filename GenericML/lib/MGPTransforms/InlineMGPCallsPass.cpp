@@ -173,8 +173,8 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
 
       OpOperand &parentOutputChain =
           parentInit->getTerminator()->getOpOperand(0);
-      auto newInit = initBuilder.create<GRT::ChainCreateOp>(
-          parentInit->getTerminator()->getLoc(),
+      auto newInit = GRT::ChainCreateOp::create(
+          initBuilder, parentInit->getTerminator()->getLoc(),
           ValueRange{parentOutputChain.get(), subgraphOutputChain});
 
       parentOutputChain.set(newInit);
