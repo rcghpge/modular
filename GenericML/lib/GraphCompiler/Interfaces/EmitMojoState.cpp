@@ -14,6 +14,9 @@ namespace M::MOGG {
 
 LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
   if (auto emitMojoInterface = dyn_cast<MOGG::EmitsMojoInterface>(op)) {
+    if (enableOpTraceComments)
+      builder.comment(llvm::formatv("Emitting Mojo for: {0}", op->getName()));
+
     if (emitMojoInterface.emitMojo(*this).failed()) {
       return emitMojoInterface->emitError(
           "Could not lower this operation to Mojo");

@@ -7,7 +7,6 @@
 #define GENERICML_INTERFACES_EMITMOJOSTATE_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
@@ -105,7 +104,9 @@ inline bool isMojoIOSpecTypeName(ArrayRef<FlatSymbolRefAttr> symbolRefs) {
 /// This struct holds all the necessary state to lower a MOGG operation into
 /// Mojo text.
 struct EmitMojoState {
-  EmitMojoState(MojoLibraryAnalysis &analysis) : analysis(analysis) {}
+  EmitMojoState(MojoLibraryAnalysis &analysis,
+                bool enableOpTraceComments = false)
+      : analysis(analysis), enableOpTraceComments(enableOpTraceComments) {}
 
   /// The Mojo builder used to generate teh text.
   MojoBuilder builder;
@@ -127,6 +128,10 @@ struct EmitMojoState {
 private:
   /// A mapping between mlir::Value to MojoValue (text).
   mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
+
+  /// Enables the emission of additional comments detailing IR ops that are
+  /// currently being processed
+  bool enableOpTraceComments;
 
 public:
   /// Get the Mojovalue mapped to `val`.

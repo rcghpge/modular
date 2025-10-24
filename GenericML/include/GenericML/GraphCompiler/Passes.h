@@ -207,6 +207,11 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       *this, "dump-mojo-text",
       llvm::cl::desc("Dump generated mojo code of the kernels as text"),
       llvm::cl::init(false)};
+  Option<bool> enableOpTraceComments{
+      *this, "enable-op-trace-comments",
+      llvm::cl::desc("Flag to enable adding comments in the Mojo code "
+                     "detailing which operation is being emitted."),
+      llvm::cl::init(false)};
 };
 
 /// Registers the MO-to-MGP pipeline for use by testing tools.
