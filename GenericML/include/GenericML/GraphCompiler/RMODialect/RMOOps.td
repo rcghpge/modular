@@ -368,22 +368,6 @@ def RMO_BroadcastLikeOp : RMO_Op<"broadcast_like", [Pure]> {
   let hasVerifier = 1;
 }
 
-def RMO_SigmoidOp : RMO_Op<"sigmoid", [Pure]> {
-  let summary = "Logistic sigmoid operation";
-  let description = [{
-    Returns `\frac{1}{1+e^{-x}} = \fract{e^x}{e^x + 1}`, the logistic sigmoid.
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %result = rmo.sigmoid(%arg) : !mo.tensor<[2, 3], f32>
-    ```
-  }];
-  let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$result);
-}
-
 def RMO_ConcatOp : RMO_Op<"concat", [
   Pure,
   InferTypeOpAdaptor,

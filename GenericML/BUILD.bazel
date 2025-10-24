@@ -289,10 +289,6 @@ mlir_nanobind(
         # mlir::Attribute that's allowed to be null, while our bindings
         # generate as std::optional<mlir::Attribute>.
         "RMO_ConcatOp",
-        # rmo.sigmoid and rmo.mo_transfer both declare builders that
-        # we don't have definitions for, leading to linker errors
-        # at python import time.
-        "RMO_SigmoidOp",
         "RMO_MOTransferOp",
     ],
     output_dir = "include/GenericML/RMODialect/Nanobind",

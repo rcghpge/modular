@@ -815,49 +815,6 @@ struct LowerBroadcastTo : public OpRewritePattern<RMO::BroadcastToOp> {
   }
 };
 
-struct LowerSigmoid : public OpRewritePattern<RMO::SigmoidOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(RMO::SigmoidOp op,
-                                PatternRewriter &rewriter) const override {
-    auto graphOp = op->getParentOfType<MO::GraphOp>();
-    Location loc = op->getLoc();
-
-    // Let's decompose the sigmoid operation into RMO analogue operations to
-    // perform this calculation:
-    //
-    // 1/(1+e^-x)
-    //
-
-    TensorValue x = op.getInput();
-
-    TensorValue one =
-        rewriter.create<MO::ConstantOp>(loc, 1.0f, x.getType().getDeviceRef());
-
-    TensorValue oneAsInputDtype =
-        rewriter.create<RMO::MOCastOp>(loc, one, x.getType().getDtype());
-
-    TensorValue tensorOne = RMO::broadcastTo(rewriter, loc, oneAsInputDtype, x);
-
-    TensorValue negatedX =
-        rewriter.create<RMO::MONegativeOp>(loc, ValueRange{x}, graphOp);
-    TensorValue eToTheNegatedX =
-        rewriter.create<RMO::MOExpOp>(loc, ValueRange{negatedX}, graphOp);
-
-    TensorValue denominator = rewriter.create<RMO::MOAddOp>(
-        loc, ValueRange{tensorOne, eToTheNegatedX}, graphOp);
-    auto answer = rewriter.create<RMO::MODivOp>(
-        loc, ValueRange{tensorOne, denominator}, graphOp);
-
-    TensorValue reboundAnswer =
-        rebindToShape(graphOp, answer->getOpResult(0), op.getType(), rewriter,
-                      op.getOutputParamDecls());
-
-    rewriter.replaceAllUsesWith(op, reboundAnswer);
-    return success();
-  }
-};
-
 struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -1497,9 +1454,8 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::OrOp, RMO::MOOrOp>,
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
         LowerBroadcastLike, LowerConv, LowerConvTranspose, LowerAvgPool,
-        LowerMaxPool, LowerSigmoid, LowerConcat, LowerReshape, LowerMatmul,
-        LowerBroadcastTo, LowerSelect, LowerTopK, LowerSlice,
-        LowerShapeToTensor>(context);
+        LowerMaxPool, LowerConcat, LowerReshape, LowerMatmul, LowerBroadcastTo,
+        LowerSelect, LowerTopK, LowerSlice, LowerShapeToTensor>(context);
 
     // Lowering third party specific operations.
     // They have more flexible semantics that separate them from standard rmo
