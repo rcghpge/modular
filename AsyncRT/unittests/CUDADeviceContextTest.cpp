@@ -20,7 +20,7 @@ using M::ErrorOrSuccess;
 namespace {
 
 static const char *vecAddPtx = R"PTX(
-// From open-source/max/max/kernels/test/gpu/vec_add.ptx
+// From max/kernels/test/gpu/vec_add.ptx
 
 .version 6.3
 .target sm_75

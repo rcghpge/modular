@@ -28,7 +28,7 @@ def test_function_error(ctx: DeviceContext):
         ctx.synchronize()
         res_host.free()
     except e:
-        # Prints 'open-source/max/max/kernels/test/gpu/device_context/test_function_error.mojo:30:24'
+        # Prints 'max/kernels/test/gpu/device_context/test_function_error.mojo:30:24'
         # pointing to the ctx.synchronize() call.
         print(e)
 ```
@@ -63,7 +63,7 @@ error is raised from `ctx.enqueue_function[kernel](...)` rather than
 The full error generated looks like the following:
 
 ```text
-open-source/max/max/kernels/test/gpu/device_context/test_function_error_sync_mode.mojo:29:37 failed calling 'test_function_error_sync_mode::kernel' on device cuda:0 with error 'CUDA call failed: CUDA_ERROR_ILLEGAL_ADDRESS (an illegal memory access was encountered)'
+max/kernels/test/gpu/device_context/test_function_error_sync_mode.mojo:29:37 failed calling 'test_function_error_sync_mode::kernel' on device cuda:0 with error 'CUDA call failed: CUDA_ERROR_ILLEGAL_ADDRESS (an illegal memory access was encountered)'
 ```
 
 The `MODULAR_DEVICE_CONTEXT_SYNC_MODE` works in both standalone Mojo code as
