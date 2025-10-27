@@ -1759,7 +1759,6 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   Pure,
   SameOperandsAndResultType,
-  HasParent<"MOGG::GenericCompiledRegionOp">,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
@@ -1774,6 +1773,8 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 
@@ -1978,37 +1979,38 @@ def MOGG_TryOp : MOGG_Op<"try", [
     This op defines a try / except statement that will be lowered to mojo.
   }];
   let regions = (region SizedRegion<1>:$tryRegion, SizedRegion<1>:$exceptRegion);
-  let results = (outs ChainType:$output);
+  let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
     $tryRegion
     `except` $exceptRegion
-    attr-dict
+    attr-dict `:` type($outputs)
   }];
 }
 
 def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
-  Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let arguments = (ins MOGG_Error:$error);
-  let results = (outs ChainType:$output);
+  let results = (outs AnyType:$output);
 
-  let summary = "Represents an error chain";
+  let summary = "Represents setting an error on a kernel output";
   let description = [{
-    This represent a chain (asynchronous value) holding a Mojo Error object.
-    This is being emitted when a kernel throws:
+    This represent setting an error on a chain or non-tensor output of a kernel
+    and is emitted in the except block of a raising kernel.
 
     ```
     mogg.try {
      ...
-    } catch (%err: !mogg.Error) {
+    } except (%err: !mogg.Error) {
       %chain = mogg.async.error %err : !mgp.chain
-      mogg.yield %chain
+      %dim0 = mogg.async.error %err : !si64
+      mogg.yield %chain, %dim0
     }
     ```
 
-    This op gets lowered to a mojo call to `mogg_async_error`, which assigns the error to the AsyncValue.
+    This op gets lowered to a mojo call to `mogg_async_error`, which assigns
+    the error to the corresponding AsyncValue.
   }];
 
   let assemblyFormat = [{

@@ -668,10 +668,32 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   auto loc = kernel->getLoc();
   Operation *terminator = kernel.getBody().front().getTerminator();
 
+  // Helper lambda to create pack operations for a list of values
+  auto createPackOps = [&](ValueRange values, Operation *insertBefore,
+                           SmallVectorImpl<Value> &packedValues) {
+    builder.setInsertionPoint(insertBefore);
+    for (Value v : values) {
+      // Do not attempt to pack chains as they are never actually unpacked.
+      // The only use of a chain is to be set by MOGG::CreateReadyChainOp
+      // which does not have operands.
+      if (isa<MEF::ChainType>(v.getType())) {
+        packedValues.push_back(v);
+        continue;
+      }
+      auto packOp = MOGG::AsyncPackOp::create(builder, loc, v);
+      v.replaceUsesWithIf(packOp, [&](OpOperand &use) {
+        return use.getOwner() == insertBefore;
+      });
+      packedValues.push_back(packOp);
+    }
+  };
+
   if (callsThrowingMojoStub) {
     // If the kernel calls a mojo stub that throws, we need to insert a try /
     // except statement.
-    auto tryOp = MOGG::TryOp::create(builder, loc);
+    // Create a try op returning the same types as the kernel's outputs.
+    auto tryOp =
+        MOGG::TryOp::create(builder, loc, terminator->getOperandTypes());
 
     Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
     SmallVector<Operation *> toMove;
@@ -682,21 +704,35 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       op->moveBefore(&tryBlock, tryBlock.end());
 
     builder.setInsertionPointToEnd(&tryBlock);
-    MOGG::YieldOp::create(builder, loc, terminator->getOperands());
+    auto tryYieldOp =
+        MOGG::YieldOp::create(builder, loc, terminator->getOperands());
 
-    // The except block return a chain error.
+    // Create pack operations inside the try block before the yield
+    SmallVector<Value> tryPackedValues;
+    createPackOps(terminator->getOperands(), tryYieldOp, tryPackedValues);
+    tryYieldOp->setOperands(tryPackedValues);
+
+    // The except block returns a chain error and dummy values for other
+    // outputs.
     Block &exceptBlock = tryOp.getExceptRegion().emplaceBlock();
     Value errArg =
         exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
     builder.setInsertionPointToStart(&exceptBlock);
-    Value errChain = MOGG::AsyncErrorOp::create(builder, loc, errArg);
-    MOGG::YieldOp::create(builder, loc, errChain);
 
-    // Update the final terminator output.
-    // TODO: Handle the case with multiple outputs.
-    ASSERT_STREAM(terminator->getOperands().size() == 1,
-                  << "multiple outputs not supported");
-    terminator->setOperands(tryOp.getOutput());
+    // Create individual AsyncErrorOp for each output (chain and non-chain).
+    // Each AsyncErrorOp represents setting an error on one specific output.
+    SmallVector<Value> exceptYieldValues;
+    exceptYieldValues.reserve(tryYieldOp.getOperands().size());
+    for (Value tryYieldOperand : tryYieldOp.getOperands()) {
+      Value asyncError = MOGG::AsyncErrorOp::create(
+          builder, loc, tryYieldOperand.getType(), errArg);
+      exceptYieldValues.push_back(asyncError);
+    }
+
+    MOGG::YieldOp::create(builder, loc, exceptYieldValues);
+
+    // Update the final terminator outputs to the try op results.
+    terminator->setOperands(tryOp.getOutputs());
 
     builder.setInsertionPointToStart(&kernel.getBody().front());
   }
@@ -716,20 +752,25 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   }
 
   builder.setInsertionPoint(terminator);
-  for (auto &&[i, v] : llvm::enumerate(terminator->getOperands())) {
-    // Do not attempt to pack chains as they are never actually unpacked.
-    // The only use of a chain is to be set by MOGG::CreateReadyChainOp
-    // which does not have operands.
-    if (isa<MEF::ChainType>(v.getType()))
-      continue;
 
-    Value newValue;
-    if (shouldPack.test(i)) {
-      newValue = MOGG::AsyncPackOp::create(builder, loc, v);
-    } else {
-      newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, v);
+  // Only create pack operations here if we didn't create a try block
+  // (in which case they were already created inside the try/except blocks)
+  if (!callsThrowingMojoStub) {
+    for (auto &&[i, v] : llvm::enumerate(terminator->getOperands())) {
+      // Do not attempt to pack chains as they are never actually unpacked.
+      // The only use of a chain is to be set by MOGG::CreateReadyChainOp
+      // which does not have operands.
+      if (isa<MEF::ChainType>(v.getType()))
+        continue;
+
+      Value newValue;
+      if (shouldPack.test(i)) {
+        newValue = MOGG::AsyncPackOp::create(builder, loc, v);
+      } else {
+        newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, v);
+      }
+      v.replaceAllUsesExcept(newValue, newValue.getDefiningOp());
     }
-    v.replaceAllUsesExcept(newValue, newValue.getDefiningOp());
   }
 
   for (auto asyncValue : asyncValues)

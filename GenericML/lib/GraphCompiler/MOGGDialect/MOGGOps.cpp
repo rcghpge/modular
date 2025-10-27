@@ -3339,6 +3339,15 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 // AsyncPackOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AsyncPackOp::verify() {
+  Operation *parentOp = getOperation()->getParentOp();
+  if (!isa<TryOp, GenericCompiledRegionOp>(parentOp)) {
+    return emitError("async.pack must be nested within a mogg.try or "
+                     "mogg.generic.compiled.region operation");
+  }
+  return success();
+}
+
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
