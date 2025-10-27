@@ -54,6 +54,36 @@ def MOGG_Shape : MOGG_Type<"Shape", "shape"> {
   }];
 }
 
+// TODO(GEX-2729): Ideally we'd reuse !mogg.shape but I've chosen not to
+// (at the moment) for two reasons:
+//
+// 1. !mogg.shape is already used in the emit-mojo pipeline to
+//    represent DimList values.
+//
+// 2. It currently doesn't carry around any notion of the rank of its result
+//    (which we is information we need during lowering).
+//
+// In the future we should unify the two and also investigate why both
+// IndexList and DimList are used in kernels.
+def MOGG_ShapeFuncResult : MOGG_Type<"ShapeFuncResult", "shape_func_result"> {
+  let summary = "A type representing the result of a shape function with known rank";
+  let description = [{
+    This represents the result of a shape function computation with a statically
+    known rank. During emit-mojo lowering, this will be lowered to an IndexList
+    of the specified rank.
+
+    Examples:
+    ```mlir
+    !mogg.shape_func_result<3>     // Shape function result with rank 3
+    !mogg.shape_func_result<5>     // Shape function result with rank 5
+    ```
+  }];
+
+  // Keep this simple: concrete integer parameter so syntax is `<3>`.
+  let parameters = (ins "uint64_t":$rank);
+  let assemblyFormat = "`<` $rank `>`";
+}
+
 def MOGG_Context : MOGG_Type<"Context", "context"> {
   let summary = "A type mapping onto a context";
   let description = [{

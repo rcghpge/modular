@@ -38,3 +38,9 @@ mo.graph @getDim<N, K, L>(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 
   } { shapeFunc = "test", device = #M.device_ref<"cpu", 0>}
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
+
+// Test MOGG_ShapeFuncResult type roundtrip with different ranks
+func.func @shapeFuncResultTypeRoundTrip(%shape_rank3: !mogg.shape_func_result<3>,
+                                        %shape_rank5: !mogg.shape_func_result<5>) -> (!mogg.shape_func_result<3>, !mogg.shape_func_result<5>) {
+  return %shape_rank3, %shape_rank5 : !mogg.shape_func_result<3>, !mogg.shape_func_result<5>
+}
