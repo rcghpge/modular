@@ -215,7 +215,6 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
                        Device::MemInfo memInfo, size_t allocAlignment,
                        int64_t deviceMemoryLimit)
-    // GEX-1416: Do not expect hardcoded number.
     : Device(api, std::move(name), id, memInfo, allocAlignment,
              deviceMemoryLimit),
       driver_(driver), device_(device), context_(context) {}
