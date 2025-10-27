@@ -90,7 +90,7 @@ struct Device : M::ReferenceCounted<Device> {
   Device(const DeviceSpec &spec, AsyncRT::DeviceContextRef ctx)
       : ctx(ctx), deviceSpecification(spec), deviceDescription(toString()) {}
 
-  llvm::StringRef getString() const { return deviceDescription; };
+  llvm::StringRef getString() const { return deviceDescription; }
 
   /// Allocates `bytes` bytes on the device.
   ErrorOr<void *> allocateData(size_t bytes);
@@ -98,7 +98,7 @@ struct Device : M::ReferenceCounted<Device> {
   /// Frees ptr created with `allocateData`.
   ErrorOrSuccess freeData(void *ptr);
 
-  const DeviceSpec &getDeviceSpec() const { return deviceSpecification; };
+  const DeviceSpec &getDeviceSpec() const { return deviceSpecification; }
 
   /// Allocates `bytes` bytes of memory on the device
   /// and returns the allocation in a DeviceMemory object.
@@ -129,10 +129,10 @@ struct Device : M::ReferenceCounted<Device> {
   /// Returns true if this device can access the `peer` device.
   ErrorOr<bool> canAccess(const Device &peer) const {
     return ctx->canAccess(*peer.ctx);
-  };
+  }
 
   /// Blocks until any pending async work on the device completes.
-  ErrorOrSuccess synchronize() { return ctx->synchronize(); };
+  ErrorOrSuccess synchronize() { return ctx->synchronize(); }
 
   bool isHost() const {
     return ctx->device().api() == M::AsyncRT::Device::cpuAPI;

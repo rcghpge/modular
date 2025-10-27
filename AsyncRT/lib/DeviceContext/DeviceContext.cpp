@@ -965,10 +965,10 @@ bool DeviceContext::syncMode() const {
 }
 void DeviceContext::incSyncMode() const {
   syncMode_.fetch_add(1, std::memory_order_relaxed);
-};
+}
 void DeviceContext::decSyncMode() const {
   syncMode_.fetch_add(-1, std::memory_order_relaxed);
-};
+}
 
 bool DeviceContext::configAsBool(StringRef key, bool defaultValue,
                                  bool *isDefault) {

@@ -70,7 +70,7 @@ MetalDevice::~MetalDevice() {
   }
 }
 
-ErrorOr<int> MetalDevice::getApiVersion() const { return 0; };
+ErrorOr<int> MetalDevice::getApiVersion() const { return 0; }
 
 ErrorOr<DriverVersion &> MetalDevice::getDriverVersion() const {
   return driverVersion_;

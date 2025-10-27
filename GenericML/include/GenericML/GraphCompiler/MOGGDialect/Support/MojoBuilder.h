@@ -187,7 +187,7 @@ public:
   void import(const MojoValue &from, const MojoValue &import);
 
   /// Returns the generated Mojo module as a string.
-  const std::string &str() const { return sourceStr; };
+  const std::string &str() const { return sourceStr; }
 
   void increaseIdentation() {
     indentation.insert(indentation.size(), "    ", 4);

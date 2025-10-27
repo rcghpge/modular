@@ -1007,7 +1007,7 @@ LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
 static OpaqueType opaqueType(MLIRContext *ctx, StringRef symbol) {
   return OpaqueType::get(ctx, StringAttr::get(ctx, symbol),
                          /*metadata=*/{});
-};
+}
 
 // Extends args with the weights registry and device context implicit args.
 static void appendInitExecImplicitArgs(SmallVectorImpl<Type> &args,

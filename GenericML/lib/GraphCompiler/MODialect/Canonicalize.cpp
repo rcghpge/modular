@@ -1910,7 +1910,7 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
            blockArgY.getParentBlock() == block &&
            blockArgX.getArgNumber() == index &&
            blockArgY.getArgNumber() == firstOccurrence;
-  };
+  }
 
   LogicalResult matchAndRewrite(WhileOp op,
                                 PatternRewriter &rewriter) const override {

@@ -196,7 +196,7 @@ static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
   // cleanup
   dst.getExecBody().eraseArgument(opIdx + numSrcVal);
   dst.getInputsMutable().erase(opIdx + numSrcVal);
-};
+}
 
 static void fuseKernelsIntoLastKernel(ArrayRef<Operation *> subgraph) {
   auto dst = cast<ExpKernelOp>(subgraph.back());

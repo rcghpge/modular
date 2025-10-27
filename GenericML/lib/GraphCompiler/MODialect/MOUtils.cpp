@@ -51,4 +51,4 @@ M::MO::tryGetConstantBlob(mlir::ElementsAttr attr, DType dType) {
 
 bool M::MO::isMutableOperand(Value val) {
   return isa<MO::BufferType, MO::OpaqueType>(val.getType());
-};
+}

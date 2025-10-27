@@ -56,7 +56,7 @@ CpuDevice::CpuDevice(Device::MemInfo memInfo, int64_t deviceMemoryLimit)
 
 CpuDevice::~CpuDevice() { bufferCache().clear(); }
 
-ErrorOr<int> CpuDevice::getApiVersion() const { return 0; };
+ErrorOr<int> CpuDevice::getApiVersion() const { return 0; }
 
 ErrorOr<DriverVersion &> CpuDevice::getDriverVersion() const {
   static DriverVersion version("0.0.0");
@@ -148,7 +148,7 @@ ErrorOrSuccess CpuDevice::setCurrentDriverContext(void *ctx) const {
 
 const CpuDevice &CpuDevice::cast(const Device &device) {
   return static_cast<const CpuDevice &>(device);
-};
+}
 
 ErrorOr<const CpuDevice &> CpuDevice::get(int id, int64_t deviceMemoryLimit) {
   if (id != 0) {

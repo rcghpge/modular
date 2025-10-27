@@ -32,7 +32,7 @@ bool isConstantOne(TypedAttr attr) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr))
     return intAttr.getValue().isOne();
   return false;
-};
+}
 
 /// Return whether the input tensor type has shape `[1]`.
 bool is1dTensorWithOneElem(TensorType tensorTy) {

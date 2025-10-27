@@ -350,7 +350,7 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
 
   MOGG::OutputOp::create(builder, loc, returns);
   return newKernel;
-};
+}
 
 void LowerPrimitivesPass::runOnOperation() {
   ModelOp model = getOperation();

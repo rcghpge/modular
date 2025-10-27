@@ -486,7 +486,7 @@ ErrorOrSuccess CUDADevice::setCurrentDriverContext(void *ctx) const {
 
 const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
-};
+}
 
 ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   // On first call initialize devices and err. devices is only set if there was

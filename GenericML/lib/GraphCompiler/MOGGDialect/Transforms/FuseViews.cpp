@@ -64,7 +64,7 @@ bool isUnFusedReshapeKernel(Operation *op) {
   // This is a unfused reshape operations.
   return callViews.size() == 1 && callViews.front().getKernelName() ==
                                       MO::Static::ReshapeOp::getOperationName();
-};
+}
 
 void raiseBackReshapeKernels(MLIRContext *ctx,
                              ArrayRef<ExpKernelOp> reshapeKernels) {

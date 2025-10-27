@@ -135,7 +135,7 @@ public:
   virtual nixl_status_t getPublicData(const nixlBackendMD *meta,
                                       std::string &str) const {
     return nixl_status_t::NIXL_ERR_BACKEND;
-  };
+  }
 
   // Provide the required connection info for remote nodes, should be non-empty
   virtual nixl_status_t getConnInfo(std::string &str) const {
