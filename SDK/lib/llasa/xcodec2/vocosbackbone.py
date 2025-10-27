@@ -86,7 +86,7 @@ class VocosBackbone(nn.Module):
         # 5. Final layer normalization
         self.final_layer_norm = nn.LayerNorm(
             dims=self.hidden_dim,
-            device=config.device,
+            devices=[config.device],
             dtype=config.dtype,
             eps=1e-6,
         )
