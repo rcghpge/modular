@@ -79,16 +79,12 @@ mo.graph @chain_forwarding() -> !mo.chain
 }
 
 // CHECK-LABEL: @duplicate_removal
-// CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: [[ch1:%.*]] = mo.chain.create()
+// CHECK: ([[ch0:%.*]]: !mo.chain, [[ch1:%.*]]: !mo.chain)
 // CHECK: [[ch2:%.*]] = mo.chain.create([[ch0]], [[ch1]]) : !mo.chain, !mo.chain
 // CHECK: mo.output [[ch2]] : !mo.chain
-mo.graph @duplicate_removal() -> !mo.chain
+mo.graph @duplicate_removal(%ch0: !mo.chain, %ch1: !mo.chain) -> !mo.chain
 {
-  %ch0 = mo.chain.create()
-  %ch1 = mo.chain.create()
   %ch2 = mo.chain.create(%ch0, %ch0, %ch1) : !mo.chain, !mo.chain, !mo.chain
-
   mo.output %ch2: !mo.chain
 }
 
@@ -101,6 +97,21 @@ mo.graph @dedupe_and_forwarding() -> !mo.chain
   %ch1 = mo.chain.create(%ch0, %ch0) : !mo.chain, !mo.chain
 
   mo.output %ch1: !mo.chain
+}
+
+// CHECK-LABEL: @chain_flattening
+// CHECK: (%[[ARG0:.*]]: !mo.chain, %[[ARG1:.*]]: !mo.chain, %[[ARG2:.*]]: !mo.chain, %[[ARG3:.*]]: !mo.chain)
+mo.graph @chain_flattening(
+  %arg0: !mo.chain, %arg1: !mo.chain, %arg2: !mo.chain, %arg3: !mo.chain
+) -> !mo.chain {
+  %x = mo.chain.create(%arg0, %arg1) : !mo.chain, !mo.chain
+  %y = mo.chain.create(%arg2, %arg3) : !mo.chain, !mo.chain
+
+  // CHECK: %[[RES:.*]] = mo.chain.create(%[[ARG0]], %[[ARG1]], %[[ARG2]], %[[ARG3]])
+  %z = mo.chain.create(%x, %y) : !mo.chain, !mo.chain
+
+  // CHECK: mo.output %[[RES]]
+  mo.output %z: !mo.chain
 }
 
 //===----------------------------------------------------------------------===//

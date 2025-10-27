@@ -5032,6 +5032,7 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
   let hasCustomAssemblyFormat = 1;
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

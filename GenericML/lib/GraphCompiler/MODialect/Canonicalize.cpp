@@ -398,27 +398,15 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
     return getOperand(0);
 
   // Try to de-duplicate repeated values to the chain create.
-  SmallVector<Value> keptValues;
-  llvm::SmallPtrSet<Value, 4> seenValues;
+  llvm::SmallSetVector<Value, 4> keptValues;
 
   for (Value val : getInputs()) {
-    auto [_, inserted] = seenValues.insert(val);
-    if (!inserted)
-      continue;
-
     auto chainDefOp = val.getDefiningOp<MOSH::ParamToValueOp>();
 
-    if (!chainDefOp) {
-      keptValues.push_back(val);
+    if (chainDefOp && isa<MO::ChainAttr>(chainDefOp.getValue()))
       continue;
-    }
 
-    auto isConstantChain = isa<MO::ChainAttr>(chainDefOp.getValue());
-
-    if (!isConstantChain) {
-      keptValues.push_back(val);
-      continue;
-    }
+    keptValues.insert(val);
   }
 
   // In this case all the inputs were from 'constant' chains, that is:
@@ -433,7 +421,7 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
   if (keptValues.size() == getInputs().size())
     return nullptr;
 
-  getOperation()->setOperands(keptValues);
+  getOperation()->setOperands(keptValues.getArrayRef());
 
   // De-duplication may have simplified the chain to have just a single operand,
   // check again if its a chain and if so forward it.
@@ -441,6 +429,52 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
     return getOperand(0);
 
   return nullptr;
+}
+
+namespace {
+struct FlattenChainCreate final : public OpRewritePattern<ChainCreateOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ChainCreateOp op,
+                                PatternRewriter &rewriter) const override {
+    // Quick bail out if nothing to be done.
+    if (llvm::none_of(op.getOperands(), [](Value val) {
+          return val.getDefiningOp<ChainCreateOp>();
+        }))
+      return failure();
+
+    llvm::SmallSetVector<Value, 4> operands;
+    for (Value operand : op.getOperands()) {
+      if (auto innerChainCreate = operand.getDefiningOp<ChainCreateOp>()) {
+        // Ignore empty chain.create operands
+        if (innerChainCreate.getNumOperands() == 0)
+          continue;
+
+        // Unfold single-use chain creates into the consumer
+        if (innerChainCreate.getResult().getNumUses() == 1) {
+          operands.insert_range(innerChainCreate.getOperands());
+          continue;
+        }
+      }
+
+      operands.insert(operand);
+    }
+
+    llvm::SmallSetVector<Value, 4> oldOperands(llvm::from_range,
+                                               op.getOperands());
+    if (operands == oldOperands)
+      return failure();
+
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(operands.getArrayRef()); });
+    return success();
+  }
+};
+} // namespace
+
+void ChainCreateOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                                MLIRContext *ctx) {
+  patterns.add<FlattenChainCreate>(ctx);
 }
 
 //===----------------------------------------------------------------------===//
