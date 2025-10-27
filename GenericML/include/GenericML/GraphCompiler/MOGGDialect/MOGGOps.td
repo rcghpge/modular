@@ -554,7 +554,9 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     SingleBlock,
     SymbolTable,
     DeclInterface,
-    DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+    DeclareOpInterfaceMethods<MO_MutableOpInterface, [
+      "getInChains", "getOutChains", "getInChainsMutable"
+    ]>,
     DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,

@@ -46,6 +46,17 @@ using namespace MO;
 
 namespace M::MO {
 
+static SmallVector<ChainValue> getChainValues(ValueRange values) {
+  SmallVector<ChainValue> results;
+
+  for (auto value : values) {
+    if (auto chain = dyn_cast<ChainValue>(value))
+      results.push_back(chain);
+  }
+
+  return results;
+}
+
 static ParseResult
 parseParamDeclElement(OpAsmParser &parser,
                       SmallVectorImpl<ParamDeclAttr> &decls) {
@@ -460,77 +471,27 @@ LogicalResult CallOp::verify() {
   return success();
 }
 
-std::optional<ChainValue> CallOp::maybeGetInChain() {
-  for (Value operand : getOperands()) {
-    if (auto chain = dyn_cast<ChainValue>(operand))
-      return chain;
-  }
-  return std::nullopt;
-}
-
-std::optional<ChainValue> CallOp::maybeGetOutChain() {
-  for (Value result : getResults()) {
-    if (auto chain = dyn_cast<ChainValue>(result))
-      return chain;
-  }
-  return std::nullopt;
-}
-
-SmallVector<ChainValue> CallOp::getAllInChains() {
-  SmallVector<ChainValue> chains;
-  for (Value operand : getOperands()) {
-    if (auto chain = dyn_cast<ChainValue>(operand))
-      chains.push_back(chain);
-  }
-
-  return chains;
-}
-
-SmallVector<ChainValue> CallOp::getAllOutChains() {
-  SmallVector<ChainValue> chains;
-  for (Value result : getResults()) {
-    if (auto chain = dyn_cast<ChainValue>(result))
-      chains.push_back(chain);
-  }
-
-  return chains;
-}
-
-static void assertSingleChain(ArrayRef<ChainValue> chains, StringRef which) {
-  ASSERT_STREAM(chains.size() == 1, << which
-                                    << " expects exactly one chain but found "
-                                    << chains.size() << ".");
-}
-
 bool CallOp::isInPlace() {
-  return maybeGetInChain().has_value() && maybeGetOutChain().has_value();
+  return !getInChains().empty() && !getOutChains().empty();
 }
 
-ChainValue CallOp::getInChain() {
-  SmallVector<ChainValue> chains = getAllInChains();
-  assertSingleChain(chains, "CallOp::getInChain");
-  return chains.front();
+SmallVector<ChainValue> CallOp::getInChains() {
+  return getChainValues(getOperands());
 }
 
-ChainValue CallOp::getOutChain() {
-  SmallVector<ChainValue> chains = getAllOutChains();
-  assertSingleChain(chains, "CallOp::getOutChain");
-  return chains.front();
+SmallVector<ChainValue> CallOp::getOutChains() {
+  return getChainValues(getResults());
 }
 
-OpOperand &CallOp::getInChainMutable() {
-  OpOperand *chainOperand = nullptr;
-  for (OpOperand &operand : getOperation()->getOpOperands()) {
-    if (!isa<ChainValue>(operand.get()))
-      continue;
-    ASSERT_STREAM(chainOperand == nullptr,
-                  "CallOp::getInChainMutable expects exactly one input chain "
-                  "operand.");
-    chainOperand = &operand;
+SmallVector<OpOperand *> CallOp::getInChainsMutable() {
+  SmallVector<OpOperand *> results;
+
+  for (auto &value : getOperandsMutable()) {
+    if (isa<ChainType>(value.get().getType()))
+      results.push_back(&value);
   }
-  ASSERT_STREAM(chainOperand != nullptr,
-                "Expected to find an input chain operand.");
-  return *chainOperand;
+
+  return results;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1015,6 +976,25 @@ Block::BlockArgListType WhileOp::getCondArguments() {
 
 Block::BlockArgListType WhileOp::getBodyArguments() {
   return getBodyRegion().getArguments();
+}
+
+SmallVector<ChainValue> WhileOp::getInChains() {
+  return getChainValues(getOperands());
+}
+
+SmallVector<ChainValue> WhileOp::getOutChains() {
+  return getChainValues(getResults());
+}
+
+SmallVector<OpOperand *> WhileOp::getInChainsMutable() {
+  SmallVector<OpOperand *> results;
+
+  for (auto &value : getInputsMutable()) {
+    if (isa<ChainType>(value.get().getType()))
+      results.push_back(&value);
+  }
+
+  return results;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2867,28 +2847,23 @@ bool CustomOp::isInPlace() {
          maybeGetOutChain().has_value();
 }
 
-ChainValue CustomOp::getInChain() {
-  auto inChain = maybeGetInChain();
-  ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
-
-  return inChain.value();
+SmallVector<ChainValue> CustomOp::getInChains() {
+  return getChainValues(getOperands());
 }
 
-ChainValue CustomOp::getOutChain() {
-  auto outChain = maybeGetOutChain();
-  ASSERT_STREAM(outChain.has_value(), "Expected to find an output chain.");
-
-  return outChain.value();
+SmallVector<ChainValue> CustomOp::getOutChains() {
+  return getChainValues(getResults());
 }
 
-OpOperand &CustomOp::getInChainMutable() {
-  OpOperand &firstOpOperand =
-      getOperation()->getOpOperand(getNumOperands() - 1);
+SmallVector<OpOperand *> CustomOp::getInChainsMutable() {
+  SmallVector<OpOperand *> results;
 
-  ASSERT_STREAM(isa<ChainValue>(firstOpOperand.get()),
-                "Expected to find an input chain as the first operand.");
+  for (auto &value : getOperandsMutable()) {
+    if (isa<ChainType>(value.get().getType()))
+      results.push_back(&value);
+  }
 
-  return firstOpOperand;
+  return results;
 }
 
 std::optional<ChainValue> CustomOp::maybeGetInChain() {

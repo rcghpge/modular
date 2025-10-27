@@ -256,8 +256,7 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 def MO_CallOp : MO_ControlOp<"call", [
   HasParent<"MO::GraphOp">,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-  DeclareOpInterfaceMethods<MO_MultiChainMutableOpInterface>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   MO_ExecutesOnHost
 ]> {
@@ -283,14 +282,6 @@ def MO_CallOp : MO_ControlOp<"call", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) $symbol `(` operands `)` attr-dict `:`
        functional-type(operands, results)
-  }];
-
-  let extraClassDeclaration = [{
-    /// Returns the sole input chain (if present) and std::nullopt otherwise.
-    std::optional<ChainValue> maybeGetInChain();
-
-    /// Returns the sole output chain (if present) and std::nullopt otherwise.
-    std::optional<ChainValue> maybeGetOutChain();
   }];
 
   let hasVerifier = 1;
@@ -352,6 +343,7 @@ def IfOp : MO_ControlOp<"if", [
   DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions"]>,
   HasOnlyGraphRegion,
   NoRegionArguments,
+  RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
 ]> {
@@ -408,7 +400,9 @@ def WhileOp : MO_ControlOp<"while", [
     ["getRegionIterArgs", "getInitsMutable", "getYieldedValuesMutable"]>,
   DeclareOpInterfaceMethods<RegionBranchOpInterface,
     ["getEntrySuccessorOperands"]>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   HasOnlyGraphRegion,
+  RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlock,
 ]> {
@@ -4775,7 +4769,7 @@ def MO_ListSliceOp : MO_TensorOp<"list.slice", [
 
 def MO_CustomOp : MO_TensorOp<"custom", [
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
-  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_ExplicitDevice,
@@ -5228,8 +5222,11 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
 // Collective ops
 //===----------------------------------------------------------------------===//
 
-class MO_DistributedOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [MO_MultiDevice]> {
+class MO_DistributedOp<string name, list<Trait> traits = []> : MO_TensorOp<name, [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_SameVariadicOperandSize
+] # traits> {
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
   let results   = (outs Variadic<MO_Tensor>:$outputs);
   let assemblyFormat = [{
@@ -5237,10 +5234,7 @@ class MO_DistributedOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_AllReduceSumOp : MO_TensorOp<"distributed.allreduce.sum", [
-  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  MO_SameVariadicOperandSize,
+def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   MO_ExplicitDevice
 ]> {
   let summary = "Allreduce sum across N devices for a single device.";
@@ -5273,10 +5267,8 @@ def MO_AllReduceSumOp : MO_TensorOp<"distributed.allreduce.sum", [
 
 
 def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
-  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_HasDeviceInterface,
-  MO_SameVariadicOperandSize
+  MO_MultiDevice,
 ]> {
   let summary = "AllGather across N devices (variadic).";
   let description = [{
@@ -5299,10 +5291,8 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
 }
 
 def MO_MatmulAllReduceOp : MO_DistributedOp<"distributed.matmul_allreduce", [
-  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_HasDeviceInterface,
-  MO_SameVariadicOperandSize
+  MO_MultiDevice,
 ]> {
   let summary = "Split + overlap Matmul + Allreduce sum";
   let description = [{

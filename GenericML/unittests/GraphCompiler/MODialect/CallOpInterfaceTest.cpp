@@ -19,8 +19,11 @@ namespace {
 static CallOp findCallOpByCallee(ModuleOp module, StringRef calleeName) {
   CallOp found;
   module.walk([&](CallOp call) {
-    if (call.getSymbol().getLeafReference() == calleeName)
+    if (call.getSymbol().getLeafReference() == calleeName) {
       found = call;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
   });
   return found;
 }
@@ -57,17 +60,17 @@ module {
   CallOp call = findCallOpByCallee(*module, "store_buffer");
   ASSERT_TRUE(call);
 
-  auto multi = dyn_cast<MOMultiChainMutableOpInterface>(call.getOperation());
+  auto multi = dyn_cast<MOMutableOpInterface>(call.getOperation());
   ASSERT_TRUE(multi);
 
-  SmallVector<ChainValue> inChains = multi.getAllInChains();
+  SmallVector<ChainValue> inChains = multi.getInChains();
   ASSERT_EQ(inChains.size(), 1u);
 
-  SmallVector<ChainValue> outChains = multi.getAllOutChains();
+  SmallVector<ChainValue> outChains = multi.getOutChains();
   ASSERT_EQ(outChains.size(), 1u);
 
-  (void)call.getInChain();
-  (void)call.getOutChain();
+  (void)call.getInChains();
+  (void)call.getOutChains();
 }
 
 // Tests that MultiChainMutableOpInterface works with multi-chain mo.call ops.
@@ -97,21 +100,14 @@ module {
   CallOp call = findCallOpByCallee(*module, "callee_multi");
   ASSERT_TRUE(call);
 
-  auto multi = dyn_cast<MOMultiChainMutableOpInterface>(call.getOperation());
+  auto multi = dyn_cast<MOMutableOpInterface>(call.getOperation());
   ASSERT_TRUE(multi);
 
-  SmallVector<ChainValue> inChains = multi.getAllInChains();
+  SmallVector<ChainValue> inChains = multi.getInChains();
   EXPECT_EQ(inChains.size(), 2u);
 
-  SmallVector<ChainValue> outChains = multi.getAllOutChains();
+  SmallVector<ChainValue> outChains = multi.getOutChains();
   EXPECT_EQ(outChains.size(), 2u);
-
-#ifndef NDEBUG
-  EXPECT_DEATH(call.getInChain(),
-               "CallOp::getInChain expects exactly one chain");
-  EXPECT_DEATH(call.getOutChain(),
-               "CallOp::getOutChain expects exactly one chain");
-#endif // NDEBUG
 }
 
 } // namespace

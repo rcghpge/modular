@@ -53,7 +53,7 @@ def MO_ConditionallyInPlaceInterface : OpInterface<"MOConditionallyInPlaceInterf
   let cppNamespace = "::M::MO";
 }
 
-def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", [MemoryEffectsOpInterface]> {
+def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", []> {
   let description = [{
     Interface that all mutable ops under rmo/mo implement and any ops that
     could represent in-place compute should implement as well.
@@ -65,41 +65,46 @@ def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", [MemoryEffectsOp
 
   let methods = [
     InterfaceMethod<"Get the input chain as a ChainValue",
-      "::M::MO::ChainValue", "getInChain", (ins)>,
+      "llvm::SmallVector<::M::MO::ChainValue>",
+      "getInChains", (ins),
+      [{}],
+      [{ return {$_op.getInChain()}; }]>,
 
     InterfaceMethod<"Get the output chain as a ChainValue",
-      "::M::MO::ChainValue", "getOutChain", (ins)>,
+      "llvm::SmallVector<::M::MO::ChainValue>",
+      "getOutChains", (ins),
+      [{}],
+      [{ return {$_op.getOutChain()}; }]>,
 
     InterfaceMethod<"Get the input chain as a OpOperand ref",
-      "::mlir::OpOperand &", "getInChainMutable", (ins)>
+      "llvm::SmallVector<::mlir::OpOperand *>",
+      "getInChainsMutable", (ins),
+      [{}],
+      [{ return {&($_op.getInChainMutable())}; }]>
   ];
 
-  let extraClassOf = [{
-    if (auto iop = ::llvm::dyn_cast<MOConditionallyInPlaceInterface>($_op.getOperation()))
-      return iop.isInPlace();
-    else
-      return true;
+  let extraClassDeclaration = [{
+    std::optional<::M::MO::ChainValue> getUniqueInChain() {
+      auto chains = getInChains();
+      if (chains.size() != 1)
+        return {};
+      return chains[0];
+    }
+
+    std::optional<::M::MO::ChainValue> getUniqueOutChain() {
+      auto chains = getOutChains();
+      if (chains.size() != 1)
+        return {};
+      return chains[0];
+    }
+
+    ::mlir::OpOperand *getUniqueInChainMutable() {
+      auto chains = getInChainsMutable();
+      if (chains.size() != 1)
+        return nullptr;
+      return chains[0];
+    }
   }];
-}
-
-// TODO(GEX-2598): Unify with MO_MutableOpInterface.
-def MO_MultiChainMutableOpInterface
-    : OpInterface<"MOMultiChainMutableOpInterface", [MO_MutableOpInterface]> {
-  let description = [{
-    Extension of MOMutableOpInterface for ops that may thread multiple chain
-    operands/results, for example per-device sequencing plus primary chain.
-    Implementers must treat the first element returned by the single in/out
-    chain MOMutableOpInterface methods as the primary/global chain.
-  }];
-  let cppNamespace = "::M::MO";
-
-  let methods = [
-    InterfaceMethod<"Populate all input chains in order (primary first)",
-      "llvm::SmallVector<::M::MO::ChainValue>", "getAllInChains", (ins)>,
-
-    InterfaceMethod<"Populate all output chains in order (primary first)",
-      "llvm::SmallVector<::M::MO::ChainValue>", "getAllOutChains", (ins)>
-  ];
 }
 
 def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {

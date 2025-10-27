@@ -11,6 +11,7 @@
 #include "Support/AssertStream.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/SetOperations.h"
 
 namespace M::MO {
 
@@ -27,25 +28,20 @@ using namespace M;
 using namespace M::MO;
 
 static bool hasSingleChain(MOMutableOpInterface mutOp) {
-  if (auto multi =
-          dyn_cast<MOMultiChainMutableOpInterface>(mutOp.getOperation())) {
-    if (multi.getAllInChains().size() != 1)
-      return false;
-
-    if (multi.getAllOutChains().size() != 1)
-      return false;
-  }
-  return true;
+  return mutOp.getInChains().size() == 1 && mutOp.getOutChains().size() == 1;
 }
 
-static mlir::DenseSet<Value>
+static llvm::SmallDenseSet<Value>
 collectWriteEffectOperands(MOMutableOpInterface mutOp) {
-  SmallVector<mlir::MemoryEffects::EffectInstance> effects;
-  mutOp.getEffects(effects);
+  std::optional<llvm::SmallVector<mlir::MemoryEffects::EffectInstance>>
+      effects = mlir::getEffectsRecursively(mutOp);
 
-  llvm::DenseSet<Value> result;
+  if (!effects)
+    return {};
 
-  for (auto &&effect : effects) {
+  llvm::SmallDenseSet<Value> result;
+
+  for (auto &effect : *effects) {
     if (isa<mlir::MemoryEffects::Write>(effect.getEffect())) {
       Value val = effect.getValue();
       // NOTE: Alternately you could assume write effects on any operands that
@@ -68,27 +64,21 @@ static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
   auto r1 = llvm::make_filter_range(mutOp1->getOperands(), isMutableOperand);
   auto r2 = llvm::make_filter_range(mutOp2->getOperands(), isMutableOperand);
 
-  auto mutableOperands1 = llvm::DenseSet<Value>{r1.begin(), r1.end()};
-  auto mutableOperands2 = llvm::DenseSet<Value>{r2.begin(), r2.end()};
+  auto mutableOperands1 = llvm::SmallDenseSet<Value>{r1.begin(), r1.end()};
+  auto mutableOperands2 = llvm::SmallDenseSet<Value>{r2.begin(), r2.end()};
 
   auto writeEffectOperands1 = collectWriteEffectOperands(mutOp1);
   auto writeEffectOperands2 = collectWriteEffectOperands(mutOp2);
 
-  if (llvm::any_of(mutableOperands1, [&writeEffectOperands2](Value val) {
-        return writeEffectOperands2.contains(val);
-      }))
-    return false;
-
-  if (llvm::any_of(mutableOperands2, [&writeEffectOperands1](Value val) {
-        return writeEffectOperands1.contains(val);
-      }))
+  if (llvm::set_intersects(mutableOperands1, writeEffectOperands2) ||
+      llvm::set_intersects(mutableOperands2, writeEffectOperands1))
     return false;
 
   // It's my understanding that a kernel could potentially return a ref to an
   // input opaque type back out. In lieu of a more sophisticated alias analysis
   // (which will eventually be necessary) we simply check that there are no
   // opaque values that name the same type.
-  llvm::DenseSet<StringAttr> symbolSet;
+  llvm::SmallDenseSet<StringAttr> symbolSet;
   for (Value v : r1) {
     if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
       symbolSet.insert(opaqueType.getSymbol());
@@ -96,7 +86,7 @@ static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
 
   bool hasSameOpaqueType = llvm::any_of(r2, [&](Value v) {
     if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
-      return symbolSet.count(opaqueType.getSymbol()) > 0;
+      return symbolSet.contains(opaqueType.getSymbol());
     return false;
   });
 
@@ -105,51 +95,42 @@ static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
 
 namespace {
 
-struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
-
-  CanonicalizeBufferOpSequences(MLIRContext *ctx)
-      : RewritePattern(mlir::Pattern::MatchAnyOpTypeTag(), 1, ctx) {}
+struct CanonicalizeBufferOpSequences
+    : public mlir::OpInterfaceRewritePattern<MOMutableOpInterface> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
   LogicalResult
-  matchAndRewrite(Operation *op,
+  matchAndRewrite(MOMutableOpInterface mutOp,
                   mlir::PatternRewriter &origRewriter) const override {
-    DeviceAwareRewriter rewriter(op, origRewriter);
+    DeviceAwareRewriter rewriter(mutOp, origRewriter);
 
-    auto mutOp = dyn_cast<MOMutableOpInterface>(op);
-    if (!mutOp) {
+    std::optional<ChainValue> inChain = mutOp.getUniqueInChain();
+    std::optional<ChainValue> outChain = mutOp.getUniqueOutChain();
+    if (!inChain || !outChain)
       return rewriter.notifyMatchFailure(
-          op->getLoc(), "Expected op to be derived from MOMutableOpInterface");
-    }
-
-    if (!hasSingleChain(mutOp)) {
-      return rewriter.notifyMatchFailure(
-          op->getLoc(),
+          mutOp,
           "Mutable op has multiple chains; canonicalization not supported");
-    }
-
-    auto inChain = mutOp.getInChain();
-    auto outChain = mutOp.getOutChain();
 
     rewriter.setInsertionPointAfter(mutOp);
 
-    auto rawParent = inChain.getDefiningOp();
+    auto rawParent = inChain->getDefiningOp();
 
     auto parent = dyn_cast_if_present<MOMutableOpInterface>(rawParent);
 
-    if (parent && !hasSingleChain(parent))
-      parent = nullptr;
+    if (parent && hasSingleChain(parent) &&
+        canSafelyReorderMutableOps(mutOp, parent)) {
+      auto parentInChain = parent.getInChains()[0];
 
-    if (parent && canSafelyReorderMutableOps(mutOp, parent)) {
       rewriter.modifyOpInPlace(mutOp.getOperation(), [&]() {
-        mutOp.getInChainMutable().set(parent.getInChain());
+        mutOp.getUniqueInChainMutable()->set(parentInChain);
       });
 
-      Value parentOutChain = parent.getOutChain();
+      Value parentOutChain = parent.getOutChains()[0];
 
       auto merge = rewriter.create<ChainCreateOp>(
-          mutOp->getLoc(), ValueRange({outChain, parentOutChain}));
+          mutOp->getLoc(), ValueRange({*outChain, parentOutChain}));
 
-      rewriter.replaceAllUsesExcept(outChain, merge.getResult(), merge);
+      rewriter.replaceAllUsesExcept(*outChain, merge.getResult(), merge);
 
       return success();
     } else if (auto chainCreateOp =
@@ -164,9 +145,8 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
           continue;
 
         auto upstreamOp = operand.getDefiningOp<MOMutableOpInterface>();
-        if (upstreamOp && !hasSingleChain(upstreamOp))
-          upstreamOp = nullptr;
-        if (upstreamOp && canSafelyReorderMutableOps(mutOp, upstreamOp)) {
+        if (upstreamOp && hasSingleChain(upstreamOp) &&
+            canSafelyReorderMutableOps(mutOp, upstreamOp)) {
           eraseIdxs[idx] = true;
           newCreateOperands.push_back(operand);
         }
@@ -179,12 +159,12 @@ struct CanonicalizeBufferOpSequences : public mlir::RewritePattern {
             "other in-place operations on non-aliased buffers");
       }
 
-      newCreateOperands.push_back(outChain);
+      newCreateOperands.push_back(*outChain);
 
       auto merge =
           rewriter.create<ChainCreateOp>(mutOp->getLoc(), newCreateOperands);
 
-      rewriter.replaceAllUsesExcept(outChain, merge.getResult(), merge);
+      rewriter.replaceAllUsesExcept(*outChain, merge.getResult(), merge);
 
       rewriter.modifyOpInPlace(
           chainCreateOp, [&]() { chainCreateOp->eraseOperands(eraseIdxs); });

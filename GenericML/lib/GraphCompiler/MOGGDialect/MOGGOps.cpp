@@ -2763,27 +2763,31 @@ bool KernelOp::isInPlace() {
   return maybeGetInChain().has_value() && maybeGetOutChain().has_value();
 }
 
-MO::ChainValue KernelOp::getInChain() {
+SmallVector<MO::ChainValue> KernelOp::getInChains() {
   auto inChain = maybeGetInChain();
-  ASSERT_STREAM(inChain.has_value(), "Expected to find an input chain.");
 
-  return inChain.value();
+  if (!inChain)
+    return {};
+
+  return {*inChain};
 }
 
-MO::ChainValue KernelOp::getOutChain() {
+SmallVector<MO::ChainValue> KernelOp::getOutChains() {
   auto outChain = maybeGetOutChain();
-  ASSERT_STREAM(outChain.has_value(), "Expected to find an output chain.");
 
-  return outChain.value();
+  if (!outChain)
+    return {};
+
+  return {*outChain};
 }
 
-OpOperand &KernelOp::getInChainMutable() {
+SmallVector<OpOperand *> KernelOp::getInChainsMutable() {
   OpOperand &finalOpOperand = getOperation()->getOpOperands().back();
 
-  ASSERT_STREAM(isa<MO::ChainValue>(finalOpOperand.get()),
-                "Expected to find an input chain as the final operand.");
+  if (!isa<MO::ChainValue>(finalOpOperand.get()))
+    return {};
 
-  return finalOpOperand;
+  return {&finalOpOperand};
 }
 
 std::optional<MO::ChainValue> KernelOp::maybeGetInChain() {
