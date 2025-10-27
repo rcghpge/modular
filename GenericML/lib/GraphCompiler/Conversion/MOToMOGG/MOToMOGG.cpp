@@ -20,6 +20,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"
+#include "Support/Context.h"
 #include "Support/ML/TensorShape.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -113,7 +114,13 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
 
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
-  if (isa<MO::InvokeShapeFuncOp, MO::LayoutTransformOp>(op))
+
+  bool isaShapeFunc = isa<MO::InvokeShapeFuncOp>(op);
+  bool willEmitMojo = MOGG::useExperimentalMojoPath();
+
+  // Shape functions are only lowered under experimental Mojo path.
+  // LayoutTransforms are not yet lowered.
+  if (isa<MO::LayoutTransformOp>(op) || (isaShapeFunc && !willEmitMojo))
     return std::nullopt;
 
   MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,

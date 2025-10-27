@@ -3429,49 +3429,17 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
-  const MojoValue &inputValue = state.getMojoValueFor(getInput());
-
-  // Find the GenericCompiledRegionOp or TryOp that contains this pack operation
-  Operation *regionOp = getOperation()->getParentOp();
-  Block &block = regionOp->getRegion(0).front();
-
-  // Count how many AsyncPackOp operations come before this one in the region
-  // to determine which output pointer to use. If there's a ready op, offset
-  // by 1.
-  auto packOps = block.getOps<MOGG::AsyncPackOp>();
-  auto it = llvm::find_if(packOps, [&](MOGG::AsyncPackOp packOp) {
-    return packOp.getOperation() == getOperation();
-  });
-
-  if (it == packOps.end()) {
-    return emitOpError(
-        "Could not find this pack operation in its parent block");
-  }
-
-  // Async ready ops show up as the first pointer in the DPS outputs, offset for
-  // it if present.
-  bool hasReadyOp = !block.getOps<MOGG::AsyncReadyOp>().empty();
-
-  size_t packIndex = hasReadyOp + std::distance(packOps.begin(), it);
-
-  if (static_cast<size_t>(packIndex) >= state.mojoReturnValues.size()) {
-    return emitOpError(
-               "Could not find corresponding return value index. Found ")
-           << packIndex << " but have " << state.mojoReturnValues.size()
-           << " return values";
-  }
-
+  auto resultIndexOr = getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
   MojoValue asyncPackHelperStruct =
       HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
-
   MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-
-  // Generate: MOGGPrimitives.mogg_async_pack(inputValue, outputPointer)
-  const MojoValue &outputPointer = state.mojoReturnValues[packIndex];
-  state.builder.call(moggAsyncPackFunc, {},
-                     asyncPackHelperStruct({}, {inputValue, outputPointer}));
-
+  state.builder.call(
+      moggAsyncPackFunc, {},
+      asyncPackHelperStruct({}, {state.getMojoValueFor(getInput()),
+                                 state.mojoReturnValues[*resultIndexOr]}));
   return success();
 }
 

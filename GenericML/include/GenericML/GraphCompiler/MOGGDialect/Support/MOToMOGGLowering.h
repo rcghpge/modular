@@ -86,6 +86,16 @@ private:
       ExpKernelOp kernelOp, const OperandMapping &mapping,
       const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
+  template <class FuncT>
+  KernelCallInterface lowerToShapeKernel(
+      ExpKernelOp kernelOp, const OperandMapping &mapping,
+      const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
+
+  template <class FuncT>
+  ErrorOr<ExpKernelOp>
+  buildKernelOpImpl(KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
+                    const OperandMapping &operandMapping);
+
   ErrorOr<DictionaryAttr> forwardParameters();
 
   /// The original MO operation we are lowering.

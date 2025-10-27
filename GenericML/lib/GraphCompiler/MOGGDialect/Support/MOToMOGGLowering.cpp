@@ -305,6 +305,36 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
                                regRetTypeAttr, isThrows, inputs, outputs);
 }
 
+template <class FuncT>
+KernelCallInterface MOGGExpKernelBuilder::lowerToShapeKernel(
+    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
+  auto execBody = &kernelOp.getExecBody().front();
+  SmallVector<Value> inputs(execBody->getArguments().begin(),
+                            execBody->getArguments().end());
+
+  // Get the shape function from the adaptor
+  ASSERT_STREAM(adaptor.shapeFunction.has_value(),
+                "[MO-TO-MOGG] Shape function adaptor must have shape function");
+
+  // Determine the return type based on output param decls
+  auto shapeFuncOp = cast<MO::InvokeShapeFuncOp>(moOp);
+  const uint64_t rank = shapeFuncOp.getOutputParamDecls().size();
+  Type retType = MOGG::ShapeFuncResultType::get(builder.getContext(), rank);
+
+  // Convert scalars and tuples using existing machinery
+  inputs = convertTuplesIfNeeded(
+      convertScalarsIfNeeded(inputs, mapping.operandMapping, builder),
+      mapping.operandMapping, builder);
+
+  bool isThrows = adaptor.shapeFunction->mojoCode.isThrows();
+
+  return MOGG::CallShapeOp::create(
+      builder, loc, builder.getStringAttr(adaptor.registeredOpName),
+      TypeAttr::get(retType), isThrows ? builder.getUnitAttr() : UnitAttr(),
+      inputs);
+}
+
 static ErrorOr<NamedAttribute>
 getValidatedParameter(const NamedAttribute &attr) {
   auto value = attr.getValue();
@@ -353,6 +383,16 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     if (param.getName() ==
         MO::CustomOp::getOutputParamDeclsAttrName(customOpOperationName)) {
       continue;
+    }
+
+    // Shape function specific attributes that shouldn't be forwarded
+    if (isa<MO::InvokeShapeFuncOp>(moOp)) {
+      if (param.getName() == "shapeFuncName" ||
+          param.getName() == "outputParamDecls" ||
+          param.getName() == "dataDeptTensors" ||
+          param.getName() == "kgenParams") {
+        continue;
+      }
     }
 
     auto asTypeAttr = dyn_cast<TypeAttr>(param.getValue());
@@ -451,18 +491,56 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
 
   KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> adaptor =
       maybeAdaptor.takeValue();
-  auto operandMappingOr =
-      mapMOOpToKernelImplementation(moOp, *adaptor.executeFunction);
 
+  // For shape functions, use the shape function instead of execute function
+  // Shape functions return IndexList for dimension binding, not as SSA values,
+  // so we need to clear the outputResult to skip result validation.
+  auto *functionToMap = adaptor.shapeFunction.has_value()
+                            ? &*adaptor.shapeFunction
+                            : &*adaptor.executeFunction;
+
+  // Shape functions bind dimensions via parameter declarations, not SSA
+  // results, so we explicitly clear the outputResult to avoid validation
+  // errors.
+  if (adaptor.shapeFunction.has_value()) {
+    auto modifiedFunction = *functionToMap;
+    modifiedFunction.outputResult = std::nullopt;
+    auto operandMappingOr =
+        mapMOOpToKernelImplementation(moOp, modifiedFunction);
+    if (operandMappingOr.isError())
+      return operandMappingOr.takeError();
+
+    const OperandMapping &operandMapping = operandMappingOr.get();
+    return buildKernelOpImpl(adaptor, operandMapping);
+  }
+
+  auto operandMappingOr = mapMOOpToKernelImplementation(moOp, *functionToMap);
   if (operandMappingOr.isError())
     return operandMappingOr.takeError();
+
+  const OperandMapping &operandMapping = operandMappingOr.get();
+  return buildKernelOpImpl(adaptor, operandMapping);
+}
+
+// Helper to build the kernel op (common code for both paths)
+template <class FuncT>
+ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
+    KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
+    const OperandMapping &operandMapping) {
+
+  // For shape functions, forward the outputParamDecls
+  ArrayRef<KGEN::ParamDeclAttr> outputParamDecls = {};
+  if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(moOp)) {
+    outputParamDecls = shapeFuncOp.getOutputParamDecls();
+  }
 
   auto kernelOp = ExpKernelOp::create(builder, loc,
                                       /*results=*/moOp->getResultTypes(),
                                       /*operands=*/moOp->getOperands(),
                                       /*summary=*/getSummaryString(moOp),
                                       /*isAsync=*/builder.getBoolAttr(isAsync),
-                                      /*device=*/getDevice());
+                                      /*device=*/getDevice(),
+                                      /*outputParamDecls=*/outputParamDecls);
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   if (auto memEffectOp = dyn_cast<mlir::MemoryEffectOpInterface>(moOp)) {
     kernelOp.setHasWriteEffect(
@@ -471,7 +549,6 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
         memEffectOp.hasEffect<mlir::MemoryEffects::Read>());
   }
   SmallVector<Type> dpsReturns;
-  const OperandMapping &operandMapping = operandMappingOr.get();
   for (auto [idx, val] : operandMapping.resultMapping)
     if (val.isDpsOutput())
       dpsReturns.push_back(kernelOp->getResult(idx).getType());
@@ -486,7 +563,11 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
     return forwardedParametersOr.takeError();
 
   ErrorOr<KernelCallInterface> kernelCallingOperation = nullptr;
-  if (adaptor.isElementwise()) {
+  if (adaptor.shapeFunction.has_value()) {
+    // This is a shape function
+    kernelCallingOperation =
+        lowerToShapeKernel(kernelOp, operandMapping, adaptor);
+  } else if (adaptor.isElementwise()) {
     kernelCallingOperation =
         lowerToElementwiseKernel(kernelOp, operandMapping, adaptor);
   } else if (adaptor.executeFunction->isView()) {

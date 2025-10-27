@@ -126,18 +126,32 @@ getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                      Operation *op) {
   // Find the kernel from the library.
   MojoOperationInfo info = getMojoOperationInfo(op);
-  ErrorOr<FuncT> maybeExecuteFunc = getMojoKernelTarget<FuncT>(
+  ErrorOr<FuncT> maybeFuncOp = getMojoKernelTarget<FuncT>(
       mojoLibraryAnalysis, info.operationName, info.functionLabel);
-  FuncT executeFunc = maybeExecuteFunc.isError() ? nullptr : *maybeExecuteFunc;
+  FuncT funcOp = maybeFuncOp.isError() ? nullptr : *maybeFuncOp;
+
+  FuncT executeFunc = nullptr;
+  FuncT shapeFunc = nullptr;
   FuncT elemtwiseFunc =
       getElementwiseFunc<FuncT>(mojoLibraryAnalysis, info.operationName);
-  // We either need an execute or an elementwise function.
-  if (!executeFunc && !elemtwiseFunc) {
-    return maybeExecuteFunc.takeError();
+
+  // Determine which function type we retrieved based on the label
+  if (info.functionLabel == KGEN::MOGGPreElab::kMOGGShapeFunctionLabel) {
+    shapeFunc = funcOp;
+    // For shape functions, we don't require execute or elementwise
+    if (!shapeFunc) {
+      return maybeFuncOp.takeError();
+    }
+  } else {
+    executeFunc = funcOp;
+    // We either need an execute or an elementwise function.
+    if (!executeFunc && !elemtwiseFunc) {
+      return maybeFuncOp.takeError();
+    }
   }
 
   return KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT>(
-      "", /*execute=*/executeFunc, /*shape=*/nullptr,
+      "", /*execute=*/executeFunc, /*shape=*/shapeFunc,
       /*elementwise=*/elemtwiseFunc);
 }
 
