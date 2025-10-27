@@ -1208,11 +1208,8 @@ static ErrorOr<std::pair<SmallVector<CUjit_option>, SmallVector<uintptr_t>>>
 setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
   static constexpr int kDefaultOptimizationLevel = 4;
 
-  SmallVector<CUjit_option> optionKind;
-  SmallVector<uintptr_t> optionValues;
-
-  optionKind.reserve(2);
-  optionValues.reserve(2);
+  SmallVector<CUjit_option, 2> optionKind;
+  SmallVector<uintptr_t, 2> optionValues;
 
   // The default optimization level for NVIDIA GPUs is 4.
   if (optimizationLevel < 0)
@@ -1265,8 +1262,7 @@ SmallVector<std::string> setupCompilationOptionsNVPTXCompiler(
   if (optimizationLevel == 3)
     optimizationLevel = kDefaultOptimizationLevel;
 
-  SmallVector<std::string> options;
-  options.reserve(2);
+  SmallVector<std::string, 2> options;
   options.push_back("--gpu-name=" + gpuName.str());
 
   if (debugLevel == "full") {
