@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 
 using namespace M;
 
@@ -50,6 +51,12 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
           }
     }
   }
+
+  // TODO(GEX-2731); IndexList outputs of shape functions are actually promoted
+  // to function 'result' slots. This causes annotate-kernels pass to
+  // incorrectly note it as being an input parameter. Explicitly remove it
+  // here.
+  inferByInputs.erase(KGEN::MOGGPreElab::kMOGGOutputRankParameterName);
 
   auto isIOSpecType = [](Type ty) {
     auto structType = dyn_cast<KGEN::LIT::StructType>(ty);
@@ -140,6 +147,24 @@ static MojoValue getLambasHaveFusionValue(mlir::Operation *kernelCallOp) {
   });
 }
 
+// Helper to infer output_rank from the kernel stub's return type for shape
+// functions. Shape functions return !mogg.shape_func_result<rank>.
+static ErrorOr<MojoValue> inferOutputRankFromStub(Operation *callOp) {
+  auto stub = callOp->getParentOfType<MOGG::KernelStubOp>();
+  if (!stub)
+    return Error("no parent KernelStubOp found");
+
+  auto retTy = stub.getReturnType();
+  if (!retTy)
+    return Error("stub has no return type");
+
+  auto shapeResTy = dyn_cast<MOGG::ShapeFuncResultType>(*retTy);
+  if (!shapeResTy)
+    return Error("return type is not ShapeFuncResultType");
+
+  return MojoValue(static_cast<int64_t>(shapeResTy.getRank()));
+}
+
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
@@ -185,6 +210,8 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
   if (paramName == KGEN::MOGGPreElab::kMOGGLambdasHaveFusionParameterName)
     return getLambasHaveFusionValue(callOp);
+  if (paramName == KGEN::MOGGPreElab::kMOGGOutputRankParameterName)
+    return inferOutputRankFromStub(callOp);
 
   return Error("Failed to infer parameter");
 }

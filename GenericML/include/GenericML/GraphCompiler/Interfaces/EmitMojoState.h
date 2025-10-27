@@ -184,6 +184,10 @@ public:
       return HardcodedMojoSymbols::struct_StateContext;
     } else if (isa<IndexType>(mlirType)) {
       return HardcodedMojoSymbols::struct_Int;
+    } else if (auto shapeResultType = dyn_cast<ShapeFuncResultType>(mlirType)) {
+      MOGG::MojoValue rankParam = MOGG::MojoValue(shapeResultType.getRank());
+      return MOGG::MojoValue(
+          MOGG::HardcodedMojoSymbols::struct_IndexList)[rankParam];
     } else {
       ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
       llvm_unreachable("Unsupported mlir type");

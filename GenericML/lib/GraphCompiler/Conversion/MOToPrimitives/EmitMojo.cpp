@@ -124,10 +124,16 @@ LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
     inputTypes.push_back(
         MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
 
+  // Determine the Mojo return type from the stub's return type
+  std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
+  if (auto returnType = kernelStub.getReturnType()) {
+    mojoReturnType = state.mlirTypeToMojoType(*returnType);
+  }
+
   bool errOccurred = false;
   state.builder.fn(
       kernelStub.getNameAttr().str(), {}, inputTypes,
-      /*returnType=*/std::nullopt, /*exported=*/false,
+      /*returnType=*/mojoReturnType, /*exported=*/false,
       /*raises=*/kernelStub.getIsThrows(),
       [&](const MOGG::FunctionBody &functionBody) {
         for (auto &&[mlirArg, mojoArg] : llvm::zip(
