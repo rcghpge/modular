@@ -990,10 +990,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     if (isa<CallForeachOp, CallMaterializeOp>(op))
       return true;
 
-    if (auto execOp = dyn_cast<CallExecuteOp>(op)) {
-      // Some kernels throw.
+    if (auto execOp = dyn_cast<CallExecuteOp>(op))
       return execOp.getIsThrows();
-    }
+    if (auto shapeOp = dyn_cast<CallShapeOp>(op))
+      return shapeOp.getIsThrows();
 
     // We assume all other ops don't throw.
     return false;
@@ -1004,9 +1004,19 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   static int stubCounter = 0;
   auto stubName =
       StringAttr::get(ctx, llvm::formatv("stub_{}", stubCounter++).str());
+
+  // Determine the return type for the stub
+  Type stubReturnType = nullptr;
+  auto terminator = getTerminator();
+  if (!resultTypes.empty()) {
+    stubReturnType = resultTypes.front();
+  } else if (auto regOutput = terminator.getKernelReturnOutput()) {
+    stubReturnType = regOutput;
+  }
+
   auto kernelStub = MOGG::KernelStubOp::create(
       builder, loc, stubName,
-      resultTypes.empty() ? nullptr : TypeAttr::get(resultTypes.front()),
+      stubReturnType ? TypeAttr::get(stubReturnType) : nullptr,
       getSummaryAttr(), isThrows);
   kernelStub.getBody().takeBody(getExecBody());
 
@@ -1258,12 +1268,37 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // Create the call to the outlined kernel stub and use whatever return value
   // (if any) in the output op of the new kernel.
   auto callStubOp = MOGG::CallStubOp::create(
-      builder, loc, resultTypes.empty() ? TypeRange{} : resultTypes.front(),
+      builder, loc, stubReturnType ? TypeRange{stubReturnType} : TypeRange{},
       SymbolRefAttr::get(stubName), stubCallOperands);
   auto readyChain = MOGG::AsyncReadyOp::create(builder, getLoc());
-  auto outputs = llvm::map_to_vector(callStubOp.getResults(),
-                                     [](Value val) { return val; });
+
+  SmallVector<Value> outputs;
   outputs.push_back(readyChain);
+
+  // Check if the terminator returns a shape result that needs unpacking
+  if (callStubOp.getNumResults() > 0) {
+    Value result = callStubOp.getResults().front();
+    if (auto shapeResultType =
+            dyn_cast<MOGG::ShapeFuncResultType>(result.getType())) {
+      // For shape functions, extract individual dimensions from the shape
+      // result
+      size_t numDims = shapeResultType.getRank();
+
+      // Create individual getitem operations for each dimension
+      for (size_t i = 0; i < numDims; ++i) {
+        auto getItemOp = MOGG::ShapeResultGetItemOp::create(
+            builder, loc, builder.getIntegerType(64, true), result,
+            builder.getIntegerAttr(builder.getIntegerType(64, true), i));
+        outputs.push_back(getItemOp.getResult());
+      }
+    } else {
+      // Regular case: add call stub results directly
+      for (Value result : callStubOp.getResults()) {
+        outputs.push_back(result);
+      }
+    }
+  }
+
   MOGG::OutputOp::create(builder, getLoc(), outputs);
 
   auto mgpBufferType = MGP::DeviceBufferType::get(device);
@@ -1404,8 +1439,41 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                              newKernel.getResult(0));
   }
 
+  // Handle parameter binding for shape function kernels
+  // Doing this is necessary for mo-to-primtiives to properly map the output
+  // dims (SSA values) to downstream kernels with tensors making use of these
+  // params
+  ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
+  if (!decls.empty() && terminator.getKernelReturnOutput()) {
+    // For shape function kernels, the newKernel results are [chain, dim0, dim1,
+    // dim2, ...] The dimensions come from unpacking the shape result inside the
+    // kernel
+    if (newKernel.getNumResults() < decls.size() + 1) {
+      emitOpError() << "Expected at least " << (decls.size() + 1)
+                    << " results for shape function kernel, got "
+                    << newKernel.getNumResults();
+      return failure();
+    }
+    for (auto [idx, decl] : llvm::enumerate(decls)) {
+      // Get the dimension result from the kernel
+      Value dimResult = newKernel.getResult(idx + 1);
+
+      // Convert to dimension value
+      auto asDimension = loweringState.indexToDimension(
+          loweringState.getExecuteOpBuilder(), getLoc(), dimResult);
+
+      if (auto err = loweringState.lowerParamDecl(
+              getOperation()->getParentRegion(), decl, asDimension)) {
+        emitOpError() << "Failed to bind parameter " << decl.getName() << ": "
+                      << err.getError();
+        return failure();
+      }
+    }
+  }
+
   // Remove the placeholder ops that we replaced with DPS operands.
-  outputPlaceholdersOp.erase();
+  if (outputPlaceholdersOp)
+    outputPlaceholdersOp.erase();
   if (scratchPlaceholdersOp)
     scratchPlaceholdersOp.erase();
 
@@ -1582,10 +1650,13 @@ LogicalResult ExpKernelOp::verify() {
   }
 
   if (auto regOutput = term.getKernelReturnOutput()) {
-    if (regOutput != dpsResult.back().getType())
-      return emitError("Expect to return the same result types as terminator");
-
-    dpsResult = dpsResult.drop_back();
+    // Shape functions are somewhat weird because their outputs are really KGEN
+    // parameters (corresponds to symbolic dimensions) no SSA values are
+    // actually used by dependent kernel ops.
+    if (!isa<MOGG::ShapeFuncResultType>(regOutput) &&
+        regOutput == dpsResult.back().getType()) {
+      dpsResult = dpsResult.drop_back();
+    }
   }
 
   SmallVector<Type> dpsOutputTypesWithoutTuples;
@@ -1768,6 +1839,20 @@ OutputOp ExpKernelOp::getOutputOp() {
 LogicalResult AsScalarOp::verify() {
   if (getInput().getType().getElementType() != getResult().getType().getDType())
     return emitError("Expected input and result to have the same data type");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MOGG UnpackShapeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult M::MOGG::UnpackShapeOp::verify() {
+  auto shapeResTy = getShape().getType();
+  uint64_t rank = shapeResTy.getRank();
+  if (rank != getNumResults())
+    return emitError("expected ") << rank << " results for rank-" << rank
+                                  << " shape, but got " << getNumResults();
 
   return success();
 }
@@ -3343,27 +3428,59 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 // AsyncPackOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
+  const MojoValue &inputValue = state.getMojoValueFor(getInput());
+
+  // Find the GenericCompiledRegionOp or TryOp that contains this pack operation
+  Operation *regionOp = getOperation()->getParentOp();
+  Block &block = regionOp->getRegion(0).front();
+
+  // Count how many AsyncPackOp operations come before this one in the region
+  // to determine which output pointer to use. If there's a ready op, offset
+  // by 1.
+  auto packOps = block.getOps<MOGG::AsyncPackOp>();
+  auto it = llvm::find_if(packOps, [&](MOGG::AsyncPackOp packOp) {
+    return packOp.getOperation() == getOperation();
+  });
+
+  if (it == packOps.end()) {
+    return emitOpError(
+        "Could not find this pack operation in its parent block");
+  }
+
+  // Async ready ops show up as the first pointer in the DPS outputs, offset for
+  // it if present.
+  bool hasReadyOp = !block.getOps<MOGG::AsyncReadyOp>().empty();
+
+  size_t packIndex = hasReadyOp + std::distance(packOps.begin(), it);
+
+  if (static_cast<size_t>(packIndex) >= state.mojoReturnValues.size()) {
+    return emitOpError(
+               "Could not find corresponding return value index. Found ")
+           << packIndex << " but have " << state.mojoReturnValues.size()
+           << " return values";
+  }
+
+  MojoValue asyncPackHelperStruct =
+      HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
+
+  MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
+
+  // Generate: MOGGPrimitives.mogg_async_pack(inputValue, outputPointer)
+  const MojoValue &outputPointer = state.mojoReturnValues[packIndex];
+  state.builder.call(moggAsyncPackFunc, {},
+                     asyncPackHelperStruct({}, {inputValue, outputPointer}));
+
+  return success();
+}
+
 LogicalResult AsyncPackOp::verify() {
   Operation *parentOp = getOperation()->getParentOp();
   if (!isa<TryOp, GenericCompiledRegionOp>(parentOp)) {
     return emitError("async.pack must be nested within a mogg.try or "
                      "mogg.generic.compiled.region operation");
   }
-  return success();
-}
-
-LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
-  auto resultIndexOr = getOutputIndex();
-  if (!resultIndexOr)
-    return failure();
-  MojoValue asyncPackHelperStruct =
-      HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
-  MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(
-      moggAsyncPackFunc, {},
-      asyncPackHelperStruct({}, {state.getMojoValueFor(getInput()),
-                                 state.mojoReturnValues[*resultIndexOr]}));
   return success();
 }
 
@@ -3837,6 +3954,93 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// CallShapeOp
+//===----------------------------------------------------------------------===//
+
+// MOGG_KernelCallInterface methods
+Value CallShapeOp::getDeviceContext() {
+  // Shape functions typically don't need device contexts
+  return nullptr;
+}
+
+SmallVector<Value> CallShapeOp::getKernelInputs() { return getOperands(); }
+
+SmallVector<Value> CallShapeOp::getKernelDPSOutputs() {
+  // Shape functions don't have DPS outputs
+  return {};
+}
+
+Type CallShapeOp::getKernelReturnOutput() {
+  return getRetTypeAttr().getValue();
+}
+
+LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
+  // Get the shape function from the analysis
+  KGEN::LIT::FnOp function = state.analysis.getRegisteredLITMojoFunctionFor(
+      getShapeFuncName(), KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
+
+  if (!function) {
+    return emitError("Shape function ") << getShapeFuncName() << " not found";
+  }
+
+  // Rebind all inputs to ensure specs are deduced (tensors -> InputTensor,
+  // etc.)
+  SmallVector<MojoValue> kernelOperands;
+  for (Value operand : getOperands())
+    kernelOperands.push_back(state.getMojoValueFor(operand));
+
+  // Infer any kernel parameters required by the shape function.
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  ErrorOr<llvm::SmallVector<MojoValue>> maybeParams =
+      EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError("Failed to infer all the kernel parameters");
+
+  // Call the shape function and return its value via the kernel terminator.
+  auto mojoSymbolName = state.getOriginalMojoNameFor(function);
+  MojoValue result =
+      state.builder.var(mojoSymbolName(*maybeParams, kernelOperands));
+  state.genAllKeepAliveStatements();
+  state.builder.returnsValue(result);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeResultGetItemOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapeResultGetItemOp::verify() {
+  auto shapeType = dyn_cast<MOGG::ShapeFuncResultType>(getShape().getType());
+  if (!shapeType) {
+    return emitOpError("shape operand must be of ShapeFuncResultType");
+  }
+
+  int64_t index = getIndex().getValue().getSExtValue();
+  int64_t rank = shapeType.getRank();
+
+  if (index < 0 || index >= rank) {
+    return emitOpError("index ")
+           << index << " is out of bounds for shape result with rank " << rank;
+  }
+
+  return success();
+}
+
+LogicalResult ShapeResultGetItemOp::emitMojo(EmitMojoState &state) {
+  const MojoValue &shapeValue = state.getMojoValueFor(getShape());
+  int64_t index = getIndex().getValue().getSExtValue();
+
+  // Access the shape result element by index
+  MojoValue indexValue = MojoValue(std::to_string(index));
+  state.setMojoValueFor(getResult(), shapeValue[{indexValue}]);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantScalarOp
 //===----------------------------------------------------------------------===//
 
@@ -3880,15 +4084,37 @@ LogicalResult TryOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
-  auto tryOp = getOperation()->getParentOfType<MOGG::TryOp>();
-  auto resultIndexOr = tryOp.getOutputIndex();
-  if (!resultIndexOr)
-    return failure();
   auto moggAsyncErrorFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(moggAsyncErrorFunc, {},
-                     {state.mojoReturnValues[*resultIndexOr],
-                      state.getMojoValueFor(getError())});
+
+  // Each AsyncErrorOp corresponds to a specific output position in the try op.
+  // Find which output index this AsyncErrorOp is for by checking which yield
+  // operand uses this result.
+  auto tryOp = cast<MOGG::TryOp>(getOperation()->getParentOp());
+  auto exceptYield =
+      cast<MOGG::YieldOp>(tryOp.getExceptRegion().front().getTerminator());
+
+  // Find the index of this AsyncErrorOp's result in the yield operands
+  int outputIndex = -1;
+  for (auto [idx, operand] : llvm::enumerate(exceptYield.getOperands())) {
+    if (operand == getResult()) {
+      outputIndex = idx;
+      break;
+    }
+  }
+
+  if (outputIndex < 0 ||
+      static_cast<size_t>(outputIndex) >= state.mojoReturnValues.size()) {
+    return emitOpError("Could not find corresponding output index for "
+                       "AsyncErrorOp. Found index ")
+           << outputIndex << " but have " << state.mojoReturnValues.size()
+           << " return values";
+  }
+
+  // Emit only one call for this specific output pointer
+  state.builder.call(
+      moggAsyncErrorFunc, {},
+      {state.mojoReturnValues[outputIndex], state.getMojoValueFor(getError())});
 
   return success();
 }

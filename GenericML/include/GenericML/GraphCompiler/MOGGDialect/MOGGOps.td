@@ -326,6 +326,7 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
 
 def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     AttrSizedOperandSegments,
     IsolatedFromAbove,
     SingleBlock,
@@ -357,7 +358,7 @@ def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
 
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain, MOGG_ShapeFuncResult]>>:$results);
   let regions = (region SizedRegion<1>:$execBody);
 
   let extraClassDeclaration = [{
@@ -2018,6 +2019,88 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
   let assemblyFormat = [{
     $error attr-dict `:` type(results)
   }];
+}
+
+def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
+  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  Pure
+]> {
+  let summary = "Call a shape function";
+  let description = [{
+    This operation calls a shape function with the given name and operands,
+    returning a shape value via the kernel terminator interface rather than as an SSA value.
+
+    This follows the same pattern as other call operations like mogg.call.execute and
+    mogg.call.foreach, where the return value is accessed through getKernelReturnOutput().
+
+    Example:
+    ```mlir
+    mogg.call.shape["mo.avg_pool"](%input, %kernel_size, %strides, %dilations, %paddings) :
+      (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>,
+       !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> ()
+    ```
+  }];
+
+  let arguments = (ins
+    StrAttr:$shapeFuncName,
+    TypeAttr:$retType,
+    UnitAttr:$isThrows,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Scalar]>>:$operands
+  );
+  let assemblyFormat = [{
+    `[` $shapeFuncName `]` `(` $operands `:` type($operands) `)` `->` $retType attr-dict
+  }];
+}
+
+def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
+  let summary = "Gets a single dimension from a shape function result";
+  let description = [{
+    This operation extracts a single dimension at the specified index from a
+    !mogg.shape_func_result<rank> value.
+
+    Example:
+    ```
+    %dim0 = mogg.shape_result.__getitem__(%shape, 0) : (!mogg.shape_func_result<4>) -> si64
+    %dim1 = mogg.shape_result.__getitem__(%shape, 1) : (!mogg.shape_func_result<4>) -> si64
+    ```
+  }];
+
+  let arguments = (ins
+    MOGG_ShapeFuncResult:$shape,
+    Builtin_IntegerAttr:$index
+  );
+  let results = (outs SI64:$result);
+
+  let assemblyFormat = [{
+    `(` $shape `,` $index `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def MOGG_UnpackShapeOp : MOGG_Op<"unpack_shape", [Pure]> {
+  let summary = "Unpacks a shape value into individual dimensions";
+  let description = [{
+    This operation takes a !mogg.shape_func_result<rank> value and unpacks it into individual
+    si64 dimension values. The number of results is variadic and corresponds
+    to the rank of the shape.
+
+    Example:
+    ```
+    %dims:3 = mogg.unpack_shape(%shape) : (!mogg.shape_func_result<3>) -> (si64, si64, si64)
+    ```
+  }];
+
+  let arguments = (ins MOGG_ShapeFuncResult:$shape);
+  let results = (outs Variadic<SI64>:$dims);
+
+  let assemblyFormat = [{
+    `(` $shape `)` attr-dict `:` functional-type(operands, results)
+  }];
+
+  let hasVerifier = 1;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

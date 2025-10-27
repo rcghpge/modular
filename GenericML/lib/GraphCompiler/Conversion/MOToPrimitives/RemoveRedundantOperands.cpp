@@ -14,6 +14,9 @@
 
 #include "GraphRT/GRTDialect/GRTOps.h"
 
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+
 using namespace M;
 
 namespace M::MGP {
@@ -46,6 +49,93 @@ buildRegionOpWithResultType(OpBuilder &builder,
 namespace M::MGP {
 
 namespace {
+
+// Pattern to remove unused results from TryOp and update yield operations
+struct RemoveUnusedTryResults : public RewritePattern {
+  RemoveUnusedTryResults(MLIRContext *context)
+      : RewritePattern(MOGG::TryOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tryOp = cast<MOGG::TryOp>(op);
+
+    // Collect which results are actually used
+    SmallVector<unsigned> usedResultIndices;
+    SmallVector<Type> usedResultTypes;
+    for (auto [idx, result] : llvm::enumerate(tryOp.getResults())) {
+      if (!result.use_empty()) {
+        usedResultIndices.push_back(idx);
+        usedResultTypes.push_back(result.getType());
+      }
+    }
+
+    // If all results are used, no change needed
+    if (usedResultIndices.size() == tryOp.getNumResults())
+      return failure();
+
+    // Create a new try op with only the used result types
+    auto newTryOp = rewriter.create<MOGG::TryOp>(tryOp.getLoc(),
+                                                 TypeRange(usedResultTypes));
+
+    // Clone the try region
+    rewriter.cloneRegionBefore(tryOp.getTryRegion(), newTryOp.getTryRegion(),
+                               newTryOp.getTryRegion().begin());
+
+    // Clone the except region
+    rewriter.cloneRegionBefore(tryOp.getExceptRegion(),
+                               newTryOp.getExceptRegion(),
+                               newTryOp.getExceptRegion().begin());
+
+    // Update the yield operation in the try region
+    auto tryYield =
+        cast<MOGG::YieldOp>(newTryOp.getTryRegion().front().getTerminator());
+    SmallVector<Value> newTryYieldOperands;
+    for (unsigned idx : usedResultIndices) {
+      newTryYieldOperands.push_back(tryYield.getOperand(idx));
+    }
+    rewriter.setInsertionPoint(tryYield);
+    rewriter.replaceOpWithNewOp<MOGG::YieldOp>(tryYield, newTryYieldOperands);
+
+    // Update the yield operation in the except region
+    auto exceptYield =
+        cast<MOGG::YieldOp>(newTryOp.getExceptRegion().front().getTerminator());
+    SmallVector<Value> newExceptYieldOperands;
+    SmallVector<Value> usedExceptValues;
+    for (unsigned idx : usedResultIndices) {
+      Value operand = exceptYield.getOperand(idx);
+      newExceptYieldOperands.push_back(operand);
+      usedExceptValues.push_back(operand);
+    }
+    rewriter.setInsertionPoint(exceptYield);
+    rewriter.replaceOpWithNewOp<MOGG::YieldOp>(exceptYield,
+                                               newExceptYieldOperands);
+
+    // Erase unused AsyncErrorOp operations from the except block to prevent CSE
+    // from merging them. Each AsyncErrorOp must remain distinct because they
+    // correspond to specific output indices for emit-mojo code generation.
+    SmallVector<Operation *> opsToErase;
+    for (Operation &op : newTryOp.getExceptRegion().front()) {
+      if (auto asyncError = dyn_cast<MOGG::AsyncErrorOp>(&op)) {
+        if (!llvm::is_contained(usedExceptValues, asyncError.getResult())) {
+          opsToErase.push_back(&op);
+        }
+      }
+    }
+    for (Operation *op : opsToErase) {
+      rewriter.eraseOp(op);
+    }
+
+    // Replace uses of the old try op with the new one
+    // Map old results to new results for used indices
+    SmallVector<Value> replacements(tryOp.getNumResults());
+    for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices)) {
+      replacements[oldIdx] = newTryOp.getResult(newIdx);
+    }
+
+    rewriter.replaceOp(tryOp, replacements);
+    return success();
+  }
+};
 
 // This pass will remove any redundant operands within a
 // generic-compiled region and collapse the usage.  This reduces the number of
@@ -199,6 +289,13 @@ struct RemoveRedundantOperands
       regionOp.setInOutSignatureAttr(
           regionOp.getInOutSignature().remove(operandsToRemove));
     });
+
+    // Apply pattern rewrites for TryOp after all redundant operand removal
+    RewritePatternSet patterns(ctx);
+    patterns.add<RemoveUnusedTryResults>(ctx);
+
+    if (failed(applyPatternsGreedily(modelOp, std::move(patterns))))
+      return signalPassFailure();
   }
 };
 
