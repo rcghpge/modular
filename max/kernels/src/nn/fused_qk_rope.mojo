@@ -43,7 +43,7 @@ fn _rope[
 # while in safetensors, the data is stored as real, …, real, imag, …, imag.
 # This function return the indices for the real and imaginary part.
 @always_inline
-fn get_safetensors_idx(head_dim_idx: Int, head_size: Int) -> (Int, Int):
+fn get_safetensors_idx(head_dim_idx: Int, head_size: Int) -> Tuple[Int, Int]:
     return (head_dim_idx // 2, head_dim_idx // 2 + head_size // 2)
 
 
@@ -217,14 +217,14 @@ fn fused_qk_rope[
     var launch_shape = IndexList[4](
         batch_size,
         new_seq_len,
-        num_q_heads + num_k_heads,  # concat q and k along head dim
+        num_q_heads + Int(num_k_heads),  # concat q and k along head dim
         head_size,
     )
     alias compile_target = _current_target() if is_cpu[
         target
     ]() else get_gpu_target()
     alias target_simd_width = simd_width_of[dtype, target=compile_target]()
-    alias kernel_simd_width = gcd(target_simd_width, kv_params.head_size)
+    alias kernel_simd_width = gcd(target_simd_width, Int(kv_params.head_size))
     constrained[kernel_simd_width >= 2, "invalid simd_width and head size"]()
 
     @parameter
@@ -293,14 +293,15 @@ fn fused_qk_rope_ragged[
         "Need static shape for freqs_cis",
     ]()
     constrained[
-        rope_dim <= q_head_size and rope_dim <= k_head_size,
+        rope_dim <= q_head_size and rope_dim <= Int(k_head_size),
         "rope_dim must be smaller or equal to head size, but got rope_dim = "
         + String(rope_dim)
         + " and head_size = "
         + String(k_head_size),
     ]()
     constrained[
-        (rope_dim == q_head_size and rope_dim == k_head_size) or interleaved,
+        (rope_dim == q_head_size and rope_dim == Int(k_head_size))
+        or interleaved,
         "Partial RoPE operation only supported for interleaved pattern",
     ]()
     constrained[
@@ -393,7 +394,7 @@ fn fused_qk_rope_ragged[
 
                 head_idx -= num_q_heads
                 # in case k_head_size != q_head_size
-                head_dim_idx += k_head_size - UInt(q_head_size)
+                head_dim_idx += Int(k_head_size - UInt(q_head_size))
                 rope_k_cache[interleaved=interleaved](
                     k_cache,
                     batch_idx,
@@ -401,12 +402,12 @@ fn fused_qk_rope_ragged[
                     post_seq_idx,
                     head_dim_idx,
                     f_c_temp,
-                    k_head_size,
+                    Int(k_head_size),
                 )
 
     var launch_shape = IndexList[3](
         q_proj.dim[0](),
-        num_q_heads + num_k_heads,  # concat q and k along head dim
+        num_q_heads + Int(num_k_heads),  # concat q and k along head dim
         q_head_size,
     )
     alias compile_target = _current_target() if is_cpu[
