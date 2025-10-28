@@ -3410,10 +3410,13 @@ LogicalResult AsTupleOp::verify() {
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   MojoValue unpackedValue;
   if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(getInput().getType())) {
-    MOGG::MojoValue asyncUnpackFunc{
-        HardcodedMojoSymbols::func_unpack_tensor_spec};
+    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_tensor_spec};
     unpackedValue = asyncUnpackFunc({int(tensorSpec.getRank())},
                                     {state.getMojoValueFor(getInput())});
+  } else if (isa<MGP::DeviceBufferType>(getInput().getType())) {
+    // TODO: (GEX-2732) Move away from NDBuffer in MOGGPrimitives.mojo
+    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_buffer_ref};
+    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor(getInput())});
   } else {
     auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
         state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
@@ -3490,7 +3493,10 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       getResult(), state.builder.var(moggTensorInit(
                        {dTypeParam, rankParam, mutParam, ioParam, shapeParam,
                         stridesParam, alignmentParam, exclusiveParam},
-                       {state.getMojoValueFor(getBuffer()), shapeVar})));
+                       {state.getMojoValueFor(getBuffer())
+                            .get("data")
+                            .get("bitcast")({"NoneType"}),
+                        shapeVar})));
 
   return success();
 }
@@ -3718,8 +3724,12 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
       {}, {MOGG::MojoValue("value").equal(arrPtr)}));
 
   // Bitcast to NoneType (expected dtype for the buffers).
-  state.setMojoValueFor(getResult(), state.builder.var(altPtr.get("bitcast")(
-                                         {MOGG::MojoValue("NoneType")}, {})));
+  MOGG::MojoValue opaquePtrVar = state.builder.var(
+      altPtr.get("bitcast")({MOGG::MojoValue("NoneType")}, {}));
+  MOGG::MojoValue mgpBufferConstantFn{
+      MOGG::HardcodedMojoSymbols::func_buffer_constant};
+  state.setMojoValueFor(
+      getResult(), mgpBufferConstantFn({}, {opaquePtrVar, rawValue.size()}));
   return success();
 }
 
@@ -3754,8 +3764,9 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
   // Represent the empty buffer with a NULL pointer.
   state.setMojoValueFor(
       getResult(),
-      state.builder.var(MojoValue(
-          MOGG::HardcodedMojoSymbols::struct_UnsafePointer)({"NoneType"}, {})));
+      state.builder.var(MojoValue(MOGG::HardcodedMojoSymbols::struct_NDBuffer)(
+          {MojoValue(HardcodedMojoSymbols::struct_DType).get("uint8"), 1,
+           HardcodedMojoSymbols::alias_MutableAnyOrigin})));
   return success();
 }
 

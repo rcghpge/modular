@@ -68,6 +68,10 @@ constexpr StringLiteral func_unpack_tensor_spec =
     "MOGGPrimitives.unpack_tensor_spec";
 constexpr StringLiteral func_get_simd_width_for_dtypes =
     "MOGGPrimitives.get_simd_width_for_dtypes";
+constexpr StringLiteral func_unpack_buffer_ref =
+    "MOGGPrimitives.unpack_buffer_ref";
+constexpr StringLiteral func_buffer_constant =
+    "MOGGPrimitives.mgp_buffer_constant";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
@@ -80,6 +84,7 @@ constexpr StringLiteral alias_FusedComputeOutputTensor =
 constexpr StringLiteral alias_FusedInputTensor =
     "managed_tensor_slice._FusedInputTensor";
 constexpr StringLiteral alias_UInt8 = "UInt8";
+constexpr StringLiteral alias_MutableAnyOrigin = "MutableAnyOrigin";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than

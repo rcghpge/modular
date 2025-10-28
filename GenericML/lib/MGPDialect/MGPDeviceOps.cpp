@@ -403,15 +403,7 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
       state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
 
   MOGG::MojoValue tensorSpecAsyncVar = state.getMojoValueFor(getSpec());
-  MOGG::MojoValue bufferUnsafePtr = state.getMojoValueFor(getBuffer());
-  MOGG::MojoValue bufferUnsafePtrAsUint8 =
-      bufferUnsafePtr.get("bitcast")({MOGG::HardcodedMojoSymbols::alias_UInt8});
-  MOGG::MojoValue bufferVar = state.builder.var(
-      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_NDBuffer)(
-          {MOGG::MojoValue("DType.uint8"), MOGG::MojoValue(1)},
-          {bufferUnsafePtrAsUint8,
-           MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_IndexList)(
-               {MOGG::MojoValue(1)}, MOGG::MojoValue(1))}));
+  MOGG::MojoValue bufferVar = state.getMojoValueFor(getBuffer());
   MOGG::MojoValue labelLiteral = MOGG::MojoValue(getBLabel()).quote();
   MOGG::MojoValue labelString = state.builder.var(MOGG::MojoValue(
       MOGG::HardcodedMojoSymbols::struct_String)({}, {labelLiteral}));
