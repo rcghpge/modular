@@ -521,7 +521,7 @@ void LowerPrimitivesPass::runOnOperation() {
       MOGraphLoweringState::lowerMOGGABI(
           *newKernel, implementsEmitsMojoInterface.operandsToUnpack(),
           implementsEmitsMojoInterface.resultsToPack(),
-          /*callsThrowingMojoStub=*/false);
+          implementsEmitsMojoInterface.isRaising());
 
       op->replaceAllUsesWith(*newKernel);
       op->erase();

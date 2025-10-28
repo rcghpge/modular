@@ -314,6 +314,7 @@ LogicalResult BufferToBoolOp::verify() {
 //===----------------------------------------------------------------------===//
 // BufferSetWithIndexOp
 //===----------------------------------------------------------------------===//
+bool BufferSetWithIndexOp::isRaising() { return true; }
 
 LogicalResult BufferSetWithIndexOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -330,24 +331,11 @@ LogicalResult BufferSetWithIndexOp::emitMojo(MOGG::EmitMojoState &state) {
   args.emplace_back(state.getMojoValueFor(getBuffer()));
   args.append(state.getMojoValuesFor(getValues()));
 
-  state.builder
-      .try_([&]() {
-        state.builder.call(function, {deviceParam}, args);
-        auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredLITMojoKernelFor(
-                MOGG::AsyncReadyOp::getOperationName()));
-        state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
-      })
-      .except([&](const MOGG::MojoValue &e) {
-        auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredLITMojoKernelFor(
-                "builtin.create_error_async_values_and_destruct_error"));
-        MOGG::MojoValue pointerToPointer = state.builder.var(
-            MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_UnsafePointer)(
-                {}, MOGG::MojoValue("to").equal(state.mojoReturnValues[0])));
-        state.builder.call(markAsyncErrorFunc, {},
-                           {pointerToPointer, MOGG::MojoValue(1), e});
-      });
+  state.builder.call(function, {deviceParam}, args);
+  auto moggAsyncReadFunc =
+      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
+          MOGG::AsyncReadyOp::getOperationName()));
+  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
   return success();
 }
 
@@ -429,6 +417,8 @@ bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
+bool DebugTensorPrintOp::isRaising() { return true; }
+
 LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   KGEN::LIT::FnOp litFunction =
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
@@ -447,28 +437,13 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue labelPtrVar = labelString.get("unsafe_ptr")();
   MOGG::MojoValue labelSizeVar = labelString.get("__len__")();
 
-  state.builder
-      .try_([&]() {
-        state.builder.call(
-            function, {specRankParam, dtypeParam},
-            {bufferVar, tensorSpecAsyncVar, labelPtrVar, labelSizeVar});
-        auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredLITMojoKernelFor(
-                MOGG::AsyncReadyOp::getOperationName()));
-        state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
-      })
-      .except([&](const MOGG::MojoValue &e) {
-        auto markAsyncErrorFunc = state.getOriginalMojoNameFor(
-            state.analysis.getRegisteredLITMojoKernelFor(
-                "builtin.create_error_async_values_and_destruct_error"));
-        /// TODO: This is too cumbersome. Add keyword arg support to function
-        /// calls in MojoBuilder. Also, consider adding a helper that creates
-        /// an `UnsafePointer` to any variable.
-        MOGG::MojoValue pointerToPointer = state.builder.var(
-            MOGG::MojoValue(MOGG::HardcodedMojoSymbols::struct_UnsafePointer)(
-                {}, MOGG::MojoValue("to").equal(state.mojoReturnValues[0])));
-        state.builder.call(markAsyncErrorFunc, {},
-                           {pointerToPointer, MOGG::MojoValue(1), e});
-      });
+  state.builder.call(
+      function, {specRankParam, dtypeParam},
+      {bufferVar, tensorSpecAsyncVar, labelPtrVar, labelSizeVar});
+  auto moggAsyncReadFunc =
+      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
+          MOGG::AsyncReadyOp::getOperationName()));
+  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+
   return success();
 }

@@ -29,6 +29,10 @@ def EmitsMojoInterface : OpInterface<"EmitsMojoInterface"> {
       "Return a set of result indices that should be packed when lowering to a generic compiled region.",
       "mlir::BitVector", "resultsToPack", (ins), [{}], [{ return mlir::BitVector($_op->getNumResults(), true); }]
     >,
+    InterfaceMethod<
+      "Return a boolean to indicate whether the emitted code raises exceptions.",
+      "bool", "isRaising", (ins), [{}], [{ return false; }]
+    >,
   ];
 }
 
