@@ -74,8 +74,8 @@ struct RemoveUnusedTryResults : public RewritePattern {
       return failure();
 
     // Create a new try op with only the used result types
-    auto newTryOp = rewriter.create<MOGG::TryOp>(tryOp.getLoc(),
-                                                 TypeRange(usedResultTypes));
+    auto newTryOp = MOGG::TryOp::create(rewriter, tryOp.getLoc(),
+                                        TypeRange(usedResultTypes));
 
     // Clone the try region
     rewriter.cloneRegionBefore(tryOp.getTryRegion(), newTryOp.getTryRegion(),
