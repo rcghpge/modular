@@ -838,6 +838,8 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     // TODO: #37615
     /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
+    DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let summary = "Set a buffer with the values from index inputs.";
   let description = [{
