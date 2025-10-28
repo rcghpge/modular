@@ -1,4 +1,4 @@
-// RUN: mo-opt --canonicalize-chain-sequences %s | FileCheck %s
+// RUN: mo-opt --canonicalize-chain-sequences %s | FileCheck %s --enable-var-scope
 
 !tt = !mo.tensor<[3, 3], f32>
 !bt = !mo.buffer<[3, 3], f32>
@@ -107,13 +107,20 @@ mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
 // CHECK-SAME: ([[arg0:%.*]]: !mo.buffer<[3, 3], f32>, [[arg1:%.*]]: !mo.buffer<[3, 3], f32>, [[arg2:%.*]]: !mo.tensor<[3, 3], f32>) {
 // CHECK-DAG:  [[a0:%.*]] = mo.chain.create()
 // CHECK-DAG:  [[a1:%.*]] = mo.custom {symbol = "foo"}([[arg0]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+
 // CHECK-DAG:  [[outTensor_1:%.*]], [[outChain_0:%.*]] = mo.mutable.load([[arg0]], [[a1]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> (!mo.tensor<[3, 3], f32>, !mo.chain)
 // CHECK-DAG:  [[a3:%.*]] = mo.add([[outTensor_1]], [[arg2]]) : !mo.tensor<[3, 3], f32>
-// CHECK-DAG:  [[a5:%.*]] = mo.mutable.store([[arg0]], [[a3]], [[outChain_0]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
+// CHECK-DAG:  [[ch0:%.*]] = mo.chain.create([[outChain_0]], [[a1]])
+// CHECK-DAG:  [[a5:%.*]] = mo.mutable.store([[arg0]], [[a3]], [[ch0]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
+
 // CHECK-DAG:  [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load([[arg1]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> (!mo.tensor<[3, 3], f32>, !mo.chain)
 // CHECK-DAG:  [[a2:%.*]] = mo.add([[outTensor]], [[arg2]]) : !mo.tensor<[3, 3], f32>
 // CHECK-DAG:  [[a4:%.*]] = mo.mutable.store([[arg1]], [[a2]], [[outChain]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
-// CHECK-DAG:  [[a6:%.*]] = mo.custom {symbol = "foo"}([[arg1]], [[a4]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+
+// CHECK-DAG:  [[ch2:%.*]] = mo.chain.create([[a4]], [[outChain]])
+// CHECK-DAG:  [[a6:%.*]] = mo.custom {symbol = "foo"}([[arg1]], [[ch2]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+
+// CHECK: mo.output
 mo.graph @everything(%buf0: !bt, %buf1: !bt, %tensor: !tt)
 {
   %ch0 = mo.chain.create()
@@ -183,4 +190,41 @@ mo.graph @multi_chain_callee(%buf: !bt, %tensor: !tt, %main: !ct, %dev: !ct)
     -> (!bt, !ct, !ct) attributes {isSubgraph}
 {
   mo.output %buf, %main, %dev : !bt, !ct, !ct
+}
+
+// CHECK-LABEL: mo.graph @chain_canonicalization_bug
+// CHECK: (%[[BUF0:.*]]: !mo.buffer<[3, 3], f32>, %[[BUF1:.*]]: !mo.buffer<[3, 3], f32>, %[[TENSOR0:.*]]: !mo.tensor<[3, 3], f32>, %[[TENSOR1:.*]]: !mo.tensor<[3, 3], f32>, %[[INIT0:.*]]: !mo.chain, %[[INIT1:.*]]: !mo.chain)
+mo.graph @chain_canonicalization_bug(
+  %buf0: !bt,
+  %buf1: !bt,
+  %tensor0: !tt,
+  %tensor1: !tt,
+  %init0: !ct,
+  %init1: !ct
+) -> (!tt, !tt, !ct, !ct) {
+  // COM: Store to %buf0 which is merged with another chain. The chain.create
+  // COM: operation is important to trigger the correct rewrite pattern.
+
+  // CHECK-DAG: %[[CH1:.*]] = mo.mutable.store(%[[BUF0]], %[[TENSOR0]], %[[INIT0]])
+  %ch1 = mo.mutable.store(%buf0, %tensor0, %init0) : (!bt, !tt, !ct) -> !ct
+
+  // COM: Chain create to generate a composite chain
+  %merged = mo.chain.create(%ch1, %init0) : !ct, !ct
+
+  // Independent loads from buf0 and buf1 sequenced after the store.
+  // These will be split up such that only the load from %buf0 is sequenced
+  // after the store operation.
+
+  // CHECK-DAG: %[[MERGE1:.*]] = mo.chain.create(%[[CH1]], %[[INIT0]])
+  // CHECK-DAG: %[[OUT_TENSOR0:.*]], %[[OUT_CHAIN0:.*]] = mo.mutable.load(%[[BUF1]], %[[INIT0]])
+  %vbuf1, %ch6 = mo.mutable.load(%buf1, %merged) : (!bt, !ct) -> (!tt, !ct)
+
+  // CHECK-DAG: %[[MERGE2:.*]] = mo.chain.create(%[[CH1]], %[[OUT_CHAIN0]]) : !mo.chain, !mo.chain
+  // CHECK-DAG: %[[OUT_TENSOR1:.*]], %[[OUT_CHAIN1:.*]] = mo.mutable.load(%[[BUF0]], %[[MERGE1]])
+  %vbuf2, %ch7 = mo.mutable.load(%buf0, %merged) : (!bt, !ct) -> (!tt, !ct)
+
+  // COM: Ensure the returned chains only sequence on the correct buffers.
+
+  // CHECK: mo.output %[[OUT_TENSOR0]], %[[OUT_TENSOR1]], %[[MERGE2]], %[[OUT_CHAIN0]]
+  mo.output %vbuf1, %vbuf2, %ch6, %ch7 : !tt, !tt, !ct, !ct
 }

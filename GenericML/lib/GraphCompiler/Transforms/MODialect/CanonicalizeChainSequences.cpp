@@ -138,26 +138,32 @@ struct CanonicalizeBufferOpSequences
       mlir::BitVector eraseIdxs(chainCreateOp->getNumOperands());
 
       SmallVector<Value> newCreateOperands;
+      SmallVector<Value> residualOperands;
 
       for (auto &&[idx, operand] :
            llvm::enumerate(chainCreateOp->getOperands())) {
-        if (!isa<ChainType>(operand.getType()))
+        if (!isa<ChainType>(operand.getType())) {
+          residualOperands.push_back(operand);
           continue;
+        }
 
         auto upstreamOp = operand.getDefiningOp<MOMutableOpInterface>();
         if (upstreamOp && hasSingleChain(upstreamOp) &&
             canSafelyReorderMutableOps(mutOp, upstreamOp)) {
           eraseIdxs[idx] = true;
           newCreateOperands.push_back(operand);
+          llvm::append_range(residualOperands, upstreamOp.getInChains());
+          continue;
         }
+
+        residualOperands.push_back(operand);
       }
 
-      if (newCreateOperands.empty()) {
+      if (newCreateOperands.empty())
         return rewriter.notifyMatchFailure(
             mutOp,
             "Upstream mo.chain.create has no chain operands derived from "
             "other in-place operations on non-aliased buffers");
-      }
 
       newCreateOperands.push_back(*outChain);
 
@@ -166,8 +172,9 @@ struct CanonicalizeBufferOpSequences
 
       rewriter.replaceAllUsesExcept(*outChain, merge.getResult(), merge);
 
-      rewriter.modifyOpInPlace(
-          chainCreateOp, [&]() { chainCreateOp->eraseOperands(eraseIdxs); });
+      auto newInChain =
+          rewriter.create<ChainCreateOp>(mutOp->getLoc(), residualOperands);
+      mutOp.getInChainsMutable()[0]->set(newInChain);
       return success();
     } else {
       return rewriter.notifyMatchFailure(
@@ -188,6 +195,7 @@ struct CanonicalizeChainSequencesPass
     RewritePatternSet patterns{ctx};
 
     patterns.add<CanonicalizeBufferOpSequences>(ctx);
+    ChainCreateOp::getCanonicalizationPatterns(patterns, ctx);
 
     // Configure the greedy rewrite driver for potentially long chains.
     mlir::GreedyRewriteConfig config;
