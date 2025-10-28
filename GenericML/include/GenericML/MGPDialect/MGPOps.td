@@ -930,6 +930,7 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
 
 def BufferGetSizeOp : MGP_Op<"buffer.get_size", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Get the runtime size of a buffer in bytes.";
   let description = [{

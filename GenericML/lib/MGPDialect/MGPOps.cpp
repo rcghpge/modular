@@ -15,9 +15,11 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
+#include "Support/LogicalResult.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/ML/SizeUtils.h"
@@ -382,12 +384,25 @@ OpFoldResult BufferGetSizeOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+LogicalResult BufferGetSizeOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp generator =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue getSizeFunc = state.getOriginalMojoNameFor(generator);
+
+  MojoValue bufferVar = state.getMojoValueFor(getBuffer());
+  state.setMojoValueFor(getResult(), getSizeFunc({}, {bufferVar}));
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TensorSpecGetDimOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorSpecGetDimOp::emitMojo(MOGG::EmitMojoState &state) {
-  auto generator =
+  KGEN::LIT::FnOp generator =
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
   MOGG::MojoValue getDimFunc = state.getOriginalMojoNameFor(generator);
 
