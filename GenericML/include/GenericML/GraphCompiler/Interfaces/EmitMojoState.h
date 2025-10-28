@@ -58,6 +58,10 @@ constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
     "managed_tensor_slice.simd_load_from_managed_tensor_slice";
 constexpr StringLiteral func_rebuild_static_tensor_specs_with_output_lambda =
     "managed_tensor_slice.rebuild_static_tensor_specs_with_output_lambda";
+constexpr StringLiteral
+    func_rebuild_static_tensor_specs_with_compute_output_lambda =
+        "managed_tensor_slice.rebuild_static_tensor_specs_with_compute_output_"
+        "lambda";
 constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
     "managed_tensor_slice.simd_store_into_managed_tensor_slice";
 constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
@@ -110,8 +114,10 @@ inline bool isMojoIOSpecTypeName(ArrayRef<FlatSymbolRefAttr> symbolRefs) {
 /// Mojo text.
 struct EmitMojoState {
   EmitMojoState(MojoLibraryAnalysis &analysis,
-                bool enableOpTraceComments = false)
-      : analysis(analysis), enableOpTraceComments(enableOpTraceComments) {}
+                bool enableOpTraceComments = false,
+                bool enableComputeLambdas = false)
+      : analysis(analysis), enableComputeLambdas(enableComputeLambdas),
+        enableOpTraceComments(enableOpTraceComments) {}
 
   /// The Mojo builder used to generate teh text.
   MojoBuilder builder;
@@ -129,6 +135,9 @@ struct EmitMojoState {
   /// Keep track of the mojo arguments / parameters for the current function
   /// being lowered.
   FunctionBody currentFunctionBody;
+
+  /// If true, generate compute lambdas when possible.
+  bool enableComputeLambdas;
 
 private:
   /// A mapping between mlir::Value to MojoValue (text).

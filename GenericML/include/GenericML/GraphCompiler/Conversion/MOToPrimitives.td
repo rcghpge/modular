@@ -217,7 +217,9 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
     Option<"enableOpTraceComments", "enable-op-trace-comments", "bool", "false", "Flag to enable adding comments in the Mojo code detailing which operation is being emitted.">,
     Option<"saveTempPrefix", "save-temp-prefix", "std::string", /*default=*/"",
             "The prefix to use when saving temporary files. Setting this "
-            "option toggles on saveTemps.">
+            "option toggles on saveTemps.">,
+    Option<"enableComputeLambdas", "enable-compute-lambdas", "bool", "true",
+      "Enable compute lambdas for the fused I/O kernels">
   ];
 
   let dependentDialects = ["MEF::MEFDialect",

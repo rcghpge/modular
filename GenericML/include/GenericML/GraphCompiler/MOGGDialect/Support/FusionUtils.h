@@ -120,6 +120,27 @@ bool valueDependsTransitivelyOn(Value start, Value target);
 /// valueDependsTransitivelyOn(start, targetResult)}; )`.
 bool valueDependsTransitivelyOn(Value start, mlir::Operation *target);
 
+// As we transition from output to compute lambda, this represent currently the
+// 3 different kind of fused tensor types that we can have when build a lambda
+// and its corresponding fuser tensor object in the graph compiler.
+enum class KernelOutputFusionLambdaType {
+  Output, // Classic output fusion lambda with a store (kernel operand is
+          // FusedOutputTensor).
+  OutputLegacyForCompute, // Classic output fusion lambda with a store for
+                          // legacy support of mixed-precision (kernel operand
+                          // is _FusedComputeOutputTensor).
+  Compute, // New compute fusion lambda with a return (kernel operand is
+           // _FusedComputeOutputTensor).
+};
+
+// Returns the FusedTensor kind to be emitted by the Graph Compiler for
+// `fusedOp`. Or returns an error if the kernel is not found / the op is
+// invalid.
+ErrorOr<KernelOutputFusionLambdaType>
+getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
+                                MOGG::TensorFusedOp fusedOp,
+                                bool enableComputeLambdas);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H

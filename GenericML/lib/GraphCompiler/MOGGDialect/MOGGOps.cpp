@@ -11,6 +11,7 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
@@ -553,7 +554,25 @@ void BindLambdaOp::build(OpBuilder &b, OperationState &state, Type outputTp,
 
 LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
-  bool generateStoreForOutput = getBindKind() == BindLambdaKind::OutputLambda;
+  bool isOutputLambda = getBindKind() == BindLambdaKind::OutputLambda;
+  bool generateStoreForOutput = isOutputLambda;
+  if (isOutputLambda) {
+    // We need to check if we have a Compute Lambda (in that case we return the
+    // output instead of doing a store).
+    if (!getResult().hasOneUse())
+      return emitError("BindLambdaOp should have a unique use");
+    auto fusedOp =
+        dyn_cast<MOGG::TensorFusedOp>(*getResult().getUsers().begin());
+    if (!fusedOp)
+      return emitError("BindLamdbdaOp user should be a FusedTensorOp");
+    auto outputLambdaTypeOr = getKernelOutputFusionLambdaType(
+        state.analysis, fusedOp, state.enableComputeLambdas);
+    if (outputLambdaTypeOr.isError())
+      return emitError(outputLambdaTypeOr.getError());
+
+    generateStoreForOutput =
+        *outputLambdaTypeOr != KernelOutputFusionLambdaType::Compute;
+  }
 
   // Build the corresponding lambda.
   MO::TensorType outputTy = MO::castFromTensorLike(getOutput().getType());
@@ -592,7 +611,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
       "indices",
       MojoValue(HardcodedMojoSymbols::struct_IndexList)[static_cast<int64_t>(
           outputTy.getRankNonZero())])};
-  if (generateStoreForOutput) {
+  if (isOutputLambda) {
     // Output lambda has an extra argument which is the kernel output.
     lambdaArguments.push_back(NamedMojoDef(
         "input",
@@ -616,7 +635,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         // Do all load for each inputs.
         for (unsigned i = 0; i < fusedInputs.size(); ++i) {
           Value blockArg = lambdaBody->getArgument(i);
-          if (i == 0 && generateStoreForOutput) {
+          if (i == 0 && isOutputLambda) {
             // For the output lambda, just map the argument to the last operand.
             state.setMojoValueFor(blockArg, functionBody.arguments.back());
           } else {
@@ -3780,38 +3799,6 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
   MojoValue lambdaParam = state.getMojoValueFor(getLambda());
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
 
-  // Check if the called kernel takes a compute lambda.
-  auto kernelTakesAComputeLambda = [&]() -> ErrorOr<bool> {
-    Value fusedTensor = getResult();
-    // Find the kernel call op.
-    if (!fusedTensor.hasOneUse())
-      return Error("MaterializeFusedTensor should have a unique user");
-    auto executeOp = dyn_cast<CallExecuteOp>(*fusedTensor.getUsers().begin());
-    if (!executeOp)
-      return Error("TensorFusedOp user must be a kernel call "
-                   "(CallExecuteOp)");
-
-    // Find the corresponding output index.
-    std::optional<unsigned> outputIdx = std::nullopt;
-    for (auto [idx, outputVal] : llvm::enumerate(executeOp.getOutputs())) {
-      if (outputVal == fusedTensor) {
-        outputIdx = idx;
-        break;
-      }
-    }
-
-    if (!outputIdx.has_value())
-      return Error("TensorFusedOp result must be a kernel call output");
-
-    // Check if the output operand corresponds to an output lambda.
-    auto function = state.analysis.getRegisteredLITMojoExecuteFunctionFor(
-        executeOp.getKernelName());
-    KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp>
-        functionAdaptor(function);
-    return functionAdaptor.outputArguments[*outputIdx].isTensorWithIOSpec(
-        KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor);
-  };
-
   if (lambdaOp.getBindKind() == BindLambdaKind::InputLambda) {
     // Build the FusedTensor with the new spec.
     // TODO(MOCO-2595): Use helper function instead of relying on rebind.
@@ -3827,21 +3814,27 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
   } else {
 
     // Check if we need a compute or an output lambda.
-    auto requiresComputeLambdaOr = kernelTakesAComputeLambda();
-    if (requiresComputeLambdaOr.isError())
-      return emitError(requiresComputeLambdaOr.getError());
-    auto spec = *requiresComputeLambdaOr
-                    ? HardcodedMojoSymbols::alias_FusedComputeOutputTensor
-                    : HardcodedMojoSymbols::alias_FusedOutputTensor;
+    auto outputLambdaTypeOr = getKernelOutputFusionLambdaType(
+        state.analysis, *this, state.enableComputeLambdas);
+    if (outputLambdaTypeOr.isError())
+      return emitError(outputLambdaTypeOr.getError());
+    auto tensorTypeName =
+        *outputLambdaTypeOr == KernelOutputFusionLambdaType::Output
+            ? HardcodedMojoSymbols::alias_FusedOutputTensor
+            : HardcodedMojoSymbols::alias_FusedComputeOutputTensor;
+    auto rebuildSpecFuncName =
+        *outputLambdaTypeOr == KernelOutputFusionLambdaType::Compute
+            ? HardcodedMojoSymbols::
+                  func_rebuild_static_tensor_specs_with_compute_output_lambda
+            : HardcodedMojoSymbols::
+                  func_rebuild_static_tensor_specs_with_output_lambda;
 
     // Build the FusedTensor with the new spec.
     // TODO(MOCO-2595): Use helper function instead of relying on rebind.
-    MojoValue newSpec = MojoValue(
-        HardcodedMojoSymbols::
-            func_rebuild_static_tensor_specs_with_output_lambda)(
+    MojoValue newSpec = MojoValue(rebuildSpecFuncName)(
         {}, ArrayRef<MojoValue>({tensorValue.get("static_spec"), lambdaParam}));
     MojoValue fusedTensor = tensorValue.rebind(
-        MojoValue(spec)[MojoValue("static_spec").equal(newSpec)]);
+        MojoValue(tensorTypeName)[MojoValue("static_spec").equal(newSpec)]);
 
     state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
   }

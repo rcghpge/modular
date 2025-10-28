@@ -18,6 +18,7 @@
 #include "GenericML/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
+#include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 
@@ -577,6 +578,61 @@ bool valueDependsTransitivelyOn(Value start, Value target) {
 
 bool valueDependsTransitivelyOn(Value start, mlir::Operation *target) {
   return valueDependsTransitivelyOnImpl(start, nullptr, target);
+}
+
+ErrorOr<KernelOutputFusionLambdaType>
+getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
+                                MOGG::TensorFusedOp fusedOp,
+                                bool enableComputeLambdas) {
+  MOGG::BindLambdaOp lambdaOp = fusedOp.getBindLambdaOp();
+  if (lambdaOp.getBindKind() != MOGG::BindLambdaKind::OutputLambda)
+    return Error("BindLambdaOp kind must be a OutputLambda");
+
+  Value fusedTensor = fusedOp.getResult();
+  // Find the kernel call op.
+  if (!fusedTensor.hasOneUse())
+    return Error("TensorFusedOp should have a unique user");
+  auto executeOp = dyn_cast<CallExecuteOp>(*fusedTensor.getUsers().begin());
+  if (!executeOp)
+    return Error("TensorFusedOp user must be a kernel call "
+                 "(CallExecuteOp)");
+
+  // Find the corresponding output index.
+  std::optional<unsigned> outputIdx = std::nullopt;
+  for (auto [idx, outputVal] : llvm::enumerate(executeOp.getOutputs())) {
+    if (outputVal == fusedTensor) {
+      outputIdx = idx;
+      break;
+    }
+  }
+
+  if (!outputIdx.has_value())
+    return Error("TensorFusedOp result must be a kernel call output");
+
+  // Check if the output operand corresponds to an output lambda.
+  auto function = mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
+      executeOp.getKernelName());
+  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp> functionAdaptor(
+      function);
+  if (!functionAdaptor.outputArguments[*outputIdx].isTensorWithIOSpec(
+          KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)) {
+    return KernelOutputFusionLambdaType::Output;
+  }
+
+  // Now that we know the expect expects a _FusedComputeOutputTensor, let's
+  // check if we build an output or compute lambda.
+  if (!enableComputeLambdas)
+    return KernelOutputFusionLambdaType::OutputLegacyForCompute;
+
+  // Mixed-precision lambdas (eg cast) must use a classic output lambda.
+  MO::TensorType inputTy =
+      MO::dynCastFromTensorLike(lambdaOp.getFusibleTensors()[0].getType());
+  MO::TensorType outputTy =
+      MO::dynCastFromTensorLike(lambdaOp.getOutput().getType());
+  if (!inputTy || !outputTy || inputTy.getDtype() != outputTy.getDtype())
+    return KernelOutputFusionLambdaType::OutputLegacyForCompute;
+
+  return KernelOutputFusionLambdaType::Compute;
 }
 
 } // namespace M::MOGG
