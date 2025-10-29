@@ -136,7 +136,7 @@ private:
 
     // Then find all call sites by walking the module
     module.walk([&](CallOp callOp) {
-      StringRef calleeName = callOp.getSymbol().getLeafReference();
+      StringRef calleeName = callOp.getCallee();
       auto it = symbolToGraphOp.find(calleeName);
       if (it == symbolToGraphOp.end()) {
         callOp.emitError() << "Could not find callee graph named '"
@@ -579,9 +579,12 @@ private:
       }
 
       // Create new call with updated operands
-      auto newCallOp = CallOp::create(builder, callOp.getLoc(),
-                                      callOp.getResultTypes(), newCallOperands,
-                                      callOp.getSymbol(), callOp.getPrefix());
+      auto newCallOp = CallOp::create(
+          builder, callOp.getLoc(), callOp.getResultTypes(), newCallOperands,
+          callOp.getCalleeAttr(), callOp.getPrefixAttr(),
+          /*outputParamDecls=*/{},
+          /*arg_attrs=*/{},
+          /*res_attrs=*/{});
 
       // Replace uses of original call results
       callOp.replaceAllUsesWith(newCallOp.getResults());

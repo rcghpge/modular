@@ -424,25 +424,19 @@ void M::MO::synchronizeMetadataUpdates(GraphOp op) {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CallOp::verify() {
-  // We don't need a symbol table because we can rely on the graph ops are all
-  // top level ops within the module
-  auto moduleOp = getOperation()->getParentOfType<ModuleOp>();
-  if (!moduleOp)
-    return emitError() << "CallOp must be within a ModuleOp";
-  auto allGraphs = moduleOp.getOps<GraphOp>();
-  auto it = llvm::find_if(allGraphs, [&](GraphOp graphOp) {
-    return graphOp.getName() == getSymbol().getLeafReference();
-  });
+LogicalResult
+CallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
+  auto graphOp =
+      symbolTable.lookupNearestSymbolFrom<GraphOp>(*this, getCalleeAttr());
+  if (!graphOp)
+    return emitError("'") << getCalleeAttr()
+                          << "' does not reference a valid graph";
 
-  if (it == allGraphs.end())
-    return emitError() << "Cannot find graph for symbol " << getSymbol();
-
-  GraphOp graphOp = *it;
   if (!graphOp.getIsSubgraph())
     return emitError() << "Only subgraphs can be called";
 
-  if (getOperandTypes().size() != graphOp.getFunctionType().getInputs().size())
+  auto fnType = graphOp.getFunctionType();
+  if (fnType.getNumInputs() != getNumOperands())
     return emitError() << "Subgraph " << graphOp.getName()
                        << " has wrong number of arguments";
 
@@ -454,6 +448,7 @@ LogicalResult CallOp::verify() {
     diag.attachNote(graphOp.getLoc()) << "graph op here";
     return failure();
   };
+
   for (auto [idx, graphArgType, operandType] : llvm::enumerate(
            graphOp.getFunctionType().getInputs(), getOperandTypes())) {
     if (isa<TensorType>(graphArgType) && isa<TensorType>(operandType)) {
@@ -469,6 +464,15 @@ LogicalResult CallOp::verify() {
   }
 
   return success();
+}
+
+LogicalResult CallOp::verify() {
+  auto moduleOp = getOperation()->getParentOfType<ModuleOp>();
+
+  // Add this logic here to ensure eager verification of call operations
+  // at build time in the Graph API.
+  mlir::SymbolTableAnalysis symTabAnalysis(moduleOp);
+  return verifySymbolUses(symTabAnalysis.getSymbolTables());
 }
 
 bool CallOp::isInPlace() {
@@ -548,7 +552,8 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     bool isSubgraph) {
   // Below we basically inline and specialize `buildWithEntryBlock`, which
   // doesn't work because we use `signature` and not `function_type`.
-  state.addAttribute(getNameAttrName(state.name), builder.getStringAttr(name));
+  state.addAttribute(getSymNameAttrName(state.name),
+                     builder.getStringAttr(name));
   if (isSubgraph) {
     state.addAttribute(getIsSubgraphAttrName(state.name),
                        builder.getUnitAttr());
@@ -644,7 +649,7 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
 
   auto graph = cast<GraphOp>(op);
   SmallVector<StringRef, 6> elidedAttrs{
-      graph.getNameAttrName(), graph.getSignatureAttrName(),
+      graph.getSymNameAttrName(), graph.getSignatureAttrName(),
       graph.getFunctionTypeAttrName(), graph.getInputParametersAttrName(),
       graph.getResultParametersAttrName()};
   p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);

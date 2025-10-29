@@ -7,7 +7,7 @@ mo.graph @exp(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) attri
 }
 
 mo.graph @main(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
-  // expected-error@+1 {{Cannot find graph for symbol @exp_notfound}}
+  // expected-error@+1 {{'@exp_notfound' does not reference a valid graph}}
   %0 = mo.call @exp_notfound (%arg0) : (!mo.tensor<[4, 5], f32>) -> !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }

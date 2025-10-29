@@ -23,6 +23,7 @@ include "Support/MDialect/MAttrs.td"
 include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/RegionKindInterface.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -146,6 +147,7 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   // needed to leverage KGEN parameter infra
   DeclInterface,
   MO_PreservedDuringKernelLowering,
+  Symbol,
 ]> {
   let summary = "Computation graph operation";
   let description = [{
@@ -167,7 +169,7 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   }];
 
   let arguments = (ins
-    StrAttr:$name,
+    SymbolNameAttr:$sym_name,
     TypeAttrOf<KGEN_FuncTypeGeneratorType>:$signature,
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$inputParameters,
@@ -178,7 +180,7 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    custom<GraphOp>($name, $signature, $functionType, $inputParameters,
+    custom<GraphOp>($sym_name, $signature, $functionType, $inputParameters,
                     $resultParameters, attr-dict, $body, $counter)
   }];
 
@@ -254,10 +256,12 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 //===----------------------------------------------------------------------===//
 
 def MO_CallOp : MO_ControlOp<"call", [
-  HasParent<"MO::GraphOp">,
+  CallOpInterface,
+  DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
   DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
-  DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  HasParent<"MO::GraphOp">,
   MO_ExecutesOnHost
 ]> {
   let summary = "Call a computation graph";
@@ -273,18 +277,46 @@ def MO_CallOp : MO_ControlOp<"call", [
 
   let arguments = (ins
     Variadic<AnyType>:$operands,
-    SymbolRefAttr:$symbol,
+    FlatSymbolRefAttr:$callee,
     DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
-    MO_ParamDecls:$outputParamDecls
+    MO_ParamDecls:$outputParamDecls,
+
+    // Needed to satisfy CallOpInterface
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs
   );
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) $symbol `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) $callee `(` operands `)` attr-dict `:`
        functional-type(operands, results)
   }];
 
-  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+      /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return {arg_operand_begin(), arg_operand_end()};
+    }
+
+    MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+
+    operand_iterator arg_operand_begin() { return operand_begin(); }
+    operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getCalleeAttr();
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(CallInterfaceCallable callee) {
+      this->setCalleeAttr(cast<FlatSymbolRefAttr>(cast<SymbolRefAttr>(callee)));
+    }
+  }];
+
+  let hasVerifier = true;
 }
 
 

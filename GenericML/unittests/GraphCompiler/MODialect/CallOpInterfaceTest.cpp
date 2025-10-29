@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Parser/Parser.h"
 #include "llvm/ADT/StringRef.h"
 #include "gtest/gtest.h"
@@ -19,7 +20,7 @@ namespace {
 static CallOp findCallOpByCallee(ModuleOp module, StringRef calleeName) {
   CallOp found;
   module.walk([&](CallOp call) {
-    if (call.getSymbol().getLeafReference() == calleeName) {
+    if (call.getCallee() == calleeName) {
       found = call;
       return WalkResult::interrupt();
     }

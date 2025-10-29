@@ -2282,7 +2282,7 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
   OpBuilder b(callOp);
 
   // Get the target model name
-  StringRef targetModelName = callOp.getSymbol().getRootReference();
+  StringRef targetModelName = callOp.getCallee();
 
   // Lookup the target model in the module
   auto moduleOp = callOp->getParentOfType<ModuleOp>();
@@ -2393,7 +2393,7 @@ void MOToPrimitivesPass::runOnOperation() {
     StringRef graphName = graphOp.getName();
     auto &dependencies = graphDependencies[graphName];
     graphOp.walk([&](MO::CallOp callOp) {
-      StringRef calleeName = callOp.getSymbol().getRootReference();
+      StringRef calleeName = callOp.getCallee();
       dependencies.insert(calleeName);
     });
   }
