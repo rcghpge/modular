@@ -100,10 +100,6 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Evaluate parts of the program that can be evaluated at "
                      "compile time."),
       llvm::cl::init(true)};
-  Option<bool> lowerQDQOperators{
-      *this, "lower-quantized-operators",
-      llvm::cl::desc("Dispatch to quantized operations around Q-DQ regions."),
-      llvm::cl::init(true)};
   Option<std::string> defaultDeviceLabel{
       *this, "default-device-label",
       llvm::cl::desc(

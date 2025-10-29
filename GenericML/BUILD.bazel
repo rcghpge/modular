@@ -14,8 +14,6 @@ pkg_files(
         ":MOGGDialectPassesIncGen.doc",
         ":MOGGToKGENIncGen.doc",
         ":MONameInputDimsPassIncGen.doc",
-        ":MOQDialect.doc",
-        ":MOQTransformsIncGen.doc",
         ":MOSHDialect.doc",
         ":MOToMOGGIncGen.doc",
         ":MOToPrimitivesIncGen.doc",
@@ -68,8 +66,6 @@ modular_cc_library(
         ":MOGGToKGEN",
         ":MOGGTransforms",
         ":MONameInputDimsPass",
-        ":MOQDialect",
-        ":MOQTransforms",
         ":MOToMOGG",
         ":MOToPrimitives",
         ":MOTransforms",
@@ -1387,69 +1383,6 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOGGToKGENIncGen",
         "//KGEN:ToolCommon",
-    ],
-)
-
-##
-# MOQDialect
-##
-
-td_library(
-    name = "MOQDialectTdFiles",
-    srcs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_mlir_dialect(
-    name = "MOQDialectIncGen",
-    dialect = "moq",
-    td_file = "include/GenericML/GraphCompiler/MOQDialect/MOQ.td",
-    deps = [
-        ":MODialectTdFiles",
-        ":MOQDialectTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "MOQDialect",
-    srcs = glob(["lib/GraphCompiler/MOQDialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/MOQDialect/*.h"]),
-    deps = [
-        ":MOQDialectIncGen",
-        ":RMODialect",
-    ],
-)
-
-td_library(
-    name = "MOQTransformsTdFiles",
-    srcs = glob(["include/GenericML/GraphCompiler/Transforms/MOQDialect/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_modular_passes(
-    name = "MOQTransformsIncGen",
-    output_name = "MOQTransforms",
-    td_file = "include/GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.td",
-    deps = [
-        ":MOQTransformsTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "MOQTransforms",
-    srcs = glob(["lib/GraphCompiler/Transforms/MOQDialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MOQDialect/*.h"]),
-    deps = [
-        ":MOQDialect",
-        ":MOQTransformsIncGen",
     ],
 )
 

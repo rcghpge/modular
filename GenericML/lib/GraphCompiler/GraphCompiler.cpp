@@ -13,14 +13,12 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOQDialect/MOQDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/ConstantFoldPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
-#include "GenericML/GraphCompiler/Transforms/MOQDialect/MOQTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
@@ -50,9 +48,8 @@ using namespace M;
 using namespace MO;
 
 void M::MO::loadDialects(mlir::DialectRegistry &registry) {
-  registry.insert<MO::MODialect, MOQ::MOQDialect, MOSH::MOSHDialect,
-                  MOGG::MOGGDialect, MGP::MGPDialect, GRT::GRTDialect,
-                  RMO::RMODialect>();
+  registry.insert<MO::MODialect, MOSH::MOSHDialect, MOGG::MOGGDialect,
+                  MGP::MGPDialect, GRT::GRTDialect, RMO::RMODialect>();
   M::registerAllKGENDialects(registry);
   M::registerKGENToLLVMTranslation(registry);
 }
@@ -92,11 +89,6 @@ void M::MO::registerPasses() {
   MOGG::registerPasses();
   MOGG::registerMOGGToKGENPasses();
 
-  MOQ::registerFixupMOQOpDTypesPass();
-  MOQ::registerLegalizeMOQOpsToRMOPass();
-  MOQ::registerLowerQDQOperatorsToMOQPass();
-  MOQ::registerSimplifyQDQPatternsPass();
-
   RMO::registerLegalizeRMOOpsPass();
 
   mlir::registerCSEPass();
@@ -135,15 +127,6 @@ void M::MO::buildMoToMgpPipeline(
 
   pm.addPass(MO::createNameInputDimsPass(
       {llvm::to_vector_of<std::string>(opts.dimNames)}));
-
-  // MOQ pipeline:
-  // TODO: rename createLegalizeMOQOpsToMO to createLegalizeMOQOpsToRMO
-  if (opts.lowerQDQOperators) {
-    pm.addPass(MOQ::createLowerQDQOperatorsToMOQ());
-    pm.addPass(MOQ::createFixupMOQOpDTypes());
-    pm.addPass(MOQ::createSimplifyQDQPatterns());
-  }
-  pm.addPass(MOQ::createLegalizeMOQOpsToRMO());
 
   // RMO pipeline:
   pm.addPass(MO::createResolveUnknownParameters());
