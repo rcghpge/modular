@@ -478,6 +478,13 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
   } else if (auto sliceOp = dyn_cast<MO::SliceOp>(moOp)) {
     extractConstantValues(sliceOp.getStep(),
                           MOGG::PARAMETER_SLICE_STATIC_STEPS);
+  } else if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(moOp)) {
+    // Extract output_rank from the shape function's output parameter
+    // declarations
+    const uint64_t rank = shapeFuncOp.getOutputParamDecls().size();
+    forwardedParameters.push_back(NamedAttribute(
+        builder.getStringAttr(KGEN::MOGGPreElab::kMOGGOutputRankParameterName),
+        builder.getIndexAttr(rank)));
   }
 
   return DictionaryAttr::get(moOp->getContext(), forwardedParameters);

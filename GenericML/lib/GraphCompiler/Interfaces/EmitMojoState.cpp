@@ -147,24 +147,6 @@ static MojoValue getLambasHaveFusionValue(mlir::Operation *kernelCallOp) {
   });
 }
 
-// Helper to infer output_rank from the kernel stub's return type for shape
-// functions. Shape functions return !mogg.shape_func_result<rank>.
-static ErrorOr<MojoValue> inferOutputRankFromStub(Operation *callOp) {
-  auto stub = callOp->getParentOfType<MOGG::KernelStubOp>();
-  if (!stub)
-    return Error("no parent KernelStubOp found");
-
-  auto retTy = stub.getReturnType();
-  if (!retTy)
-    return Error("stub has no return type");
-
-  auto shapeResTy = dyn_cast<MOGG::ShapeFuncResultType>(*retTy);
-  if (!shapeResTy)
-    return Error("return type is not ShapeFuncResultType");
-
-  return MojoValue(static_cast<int64_t>(shapeResTy.getRank()));
-}
-
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
@@ -210,8 +192,6 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
   if (paramName == KGEN::MOGGPreElab::kMOGGLambdasHaveFusionParameterName)
     return getLambasHaveFusionValue(callOp);
-  if (paramName == KGEN::MOGGPreElab::kMOGGOutputRankParameterName)
-    return inferOutputRankFromStub(callOp);
 
   return Error("Failed to infer parameter");
 }
