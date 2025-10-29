@@ -65,8 +65,7 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
     return;
 
   graphOp.walk([&](CallOp call) {
-    GraphOp callee =
-        lookupCallee(moduleOp, call.getSymbol().getLeafReference());
+    GraphOp callee = lookupCallee(moduleOp, call.getCallee());
     if (!callee)
       return WalkResult::advance();
 
