@@ -80,7 +80,7 @@ ShapedType DeviceTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                        Type elementType) const {
   auto tensorSpec = llvm::dyn_cast<TensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
-  return CpuTensorType::get(getContext(), tensorSpec);
+  return DeviceTensorType::get(getDevice(), tensorSpec);
 }
 
 bool DeviceTensorType::hasRank() const { return getTensorSpec().hasRank(); }

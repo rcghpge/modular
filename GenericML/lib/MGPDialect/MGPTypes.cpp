@@ -135,91 +135,6 @@ void M::MGP::printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferType
-//===----------------------------------------------------------------------===//
-
-/// Verifies the buffer size and align constraints are valid.
-LogicalResult
-CpuBufferType::verify(function_ref<InFlightDiagnostic()> emitError,
-                      std::optional<uint64_t> optSize) {
-  if (!isValidOptSize(optSize))
-    return emitError() << "buffer size must be strictly positive.";
-  return success();
-}
-
-CpuBufferType CpuBufferType::get(MLIRContext *context, uint64_t rawSize) {
-  return CpuBufferType::get(context, rawSizeToOptSize(rawSize));
-}
-
-CpuBufferType
-CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                          MLIRContext *context, uint64_t rawSize) {
-  return CpuBufferType::get(context, rawSize);
-}
-
-CpuBufferType CpuBufferType::get(MLIRContext *context,
-                                 IntegerAttr rawSizeOrNull) {
-  std::optional<uint64_t> optSize;
-  if (rawSizeOrNull)
-    optSize = rawSizeToOptSize(rawSizeOrNull.getUInt());
-  return CpuBufferType::get(context, optSize);
-}
-
-CpuBufferType
-CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                          MLIRContext *context, IntegerAttr rawSizeOrNull) {
-  return CpuBufferType::get(context, rawSizeOrNull);
-}
-
-CpuBufferType CpuBufferType::get(TensorSpecType tensorSpecType) {
-  return CpuBufferType::get(tensorSpecType.getContext(),
-                            tensorSpecType.getSizeInBytes());
-}
-
-CpuBufferType
-CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                          TensorSpecType tensorSpecType) {
-  return get(tensorSpecType);
-}
-
-CpuBufferType CpuBufferType::get(CpuTensorType tensorType) {
-  return CpuBufferType::get(tensorType.getContext(),
-                            tensorType.getTensorSpec().getSizeInBytes());
-}
-
-CpuBufferType
-CpuBufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
-                          CpuTensorType tensorType) {
-  return get(tensorType);
-}
-
-IntegerAttr CpuBufferType::getRawSize() const {
-  Type ui64 = IntegerType::get(getContext(), 64, IntegerType::Unsigned);
-  APInt value(ui64.getIntOrFloatBitWidth(), optSizeToRawSize(getOptSize()),
-              ui64.isSignedInteger());
-  return IntegerAttr::get(ui64, value);
-}
-
-/// Implements ShapedType::cloneWith
-ShapedType CpuBufferType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                    Type elementType) const {
-  ASSERT_STREAM(!shape, << "cannot change shape in CpuBufferType::cloneWith");
-  ASSERT_STREAM(elementType.isUnsignedInteger(8),
-                << "invalid dtype for CpuBufferType::cloneWith");
-  return CpuBufferType::get(getContext(), getOptSize());
-}
-
-/// Implements ShapedType::getElementType
-Type CpuBufferType::getElementType() const {
-  return IntegerType::get(getContext(), /*width=*/8, IntegerType::Unsigned);
-}
-
-/// Implements ShapedType::hasRank
-bool CpuBufferType::hasRank() const { return true; }
-
-// We defer CpuBufferType::getShape till after ODS import since depends on impl.
-
-//===----------------------------------------------------------------------===//
 // ContextType
 //===----------------------------------------------------------------------===//
 
@@ -558,31 +473,6 @@ IntegerAttr TensorSpecType::getRawDType() const {
 }
 
 //===----------------------------------------------------------------------===//
-// CpuTensorType
-//===----------------------------------------------------------------------===//
-
-/// ShapedTypeInterface::cloneWith.
-ShapedType CpuTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
-                                    Type elementType) const {
-  auto tensorSpec = llvm::dyn_cast<TensorSpecType>(
-      getTensorSpec().cloneWith(shape, elementType));
-  return CpuTensorType::get(getContext(), tensorSpec);
-}
-
-/// ShapedTypeInterface::hasRank.
-bool CpuTensorType::hasRank() const { return getTensorSpec().hasRank(); }
-
-/// ShapedTypeInterface::getShape.
-ArrayRef<int64_t> CpuTensorType::getShape() const {
-  return getTensorSpec().getShape();
-}
-
-/// ShapedTypeInterface::getElementType.
-Type CpuTensorType::getElementType() const {
-  return getTensorSpec().getElementType();
-}
-
-//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
@@ -598,23 +488,6 @@ void MGPDialect::registerTypes() {
 #define GET_TYPEDEF_LIST
 #include "GenericML/MGPDialect/MGPTypes.cpp.inc"
       >();
-}
-
-//===----------------------------------------------------------------------===//
-// CpuBufferType (cont.)
-//===----------------------------------------------------------------------===//
-
-const int64_t CpuBufferType::unknownSize = ShapedType::kDynamic;
-
-/// Implements ShapedType::getShape
-ArrayRef<int64_t> CpuBufferType::getShape() const {
-  std::optional<uint64_t> &optSize = getImpl()->optSize;
-  if (!optSize)
-    return ArrayRef<int64_t>(&unknownSize, 1);
-  // Convert to raw signed size for assertion side effect.
-  (void)optSizeToRawSignedSize(optSize);
-  // We'll just reinterpret the uint64_t size as an int64_t since it's in range.
-  return ArrayRef<int64_t>(reinterpret_cast<const int64_t *>(&*optSize), 1);
 }
 
 //===----------------------------------------------------------------------===//
