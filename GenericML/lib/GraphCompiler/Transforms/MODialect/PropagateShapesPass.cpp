@@ -35,6 +35,69 @@ namespace M::MO {
 
 } // namespace M::MO
 
+// Look up the callee graph op by name in the containing module op.
+static GraphOp lookupCallee(ModuleOp moduleOp, StringRef name) {
+  for (GraphOp graph : moduleOp.getOps<GraphOp>())
+    if (graph.getName() == name)
+      return graph;
+
+  return nullptr;
+}
+
+// Collect unique parameter declarations referenced by the shape of a tensor
+// type; used to populate rebind's outputParamDecls when the expected type
+// refers to params not yet declared in the caller graph.
+static SmallVector<KGEN::ParamDeclAttr> collectDeclsFromShape(TensorType ty) {
+  llvm::SmallSetVector<KGEN::ParamDeclAttr, 4> decls;
+  if (auto shape = dyn_cast<MOSH::ShapeAttr>(ty.getShapeAttr())) {
+    for (TypedAttr dim : shape.getValues())
+      if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+        decls.insert(KGEN::ParamDeclAttr::get(ref));
+  }
+  return SmallVector<KGEN::ParamDeclAttr>(decls.begin(), decls.end());
+}
+
+// Normalize mo.call operands to match the callee signature by inserting
+// mo.rebind where shape symbols differ across the boundary.
+static void normalizeCallOperandsToCallee(GraphOp graphOp) {
+  ModuleOp moduleOp = graphOp->getParentOfType<ModuleOp>();
+  if (!moduleOp)
+    return;
+
+  graphOp.walk([&](CallOp call) {
+    GraphOp callee =
+        lookupCallee(moduleOp, call.getSymbol().getLeafReference());
+    if (!callee)
+      return WalkResult::advance();
+
+    auto calleeInputs = callee.getFunctionType().getInputs();
+    if (calleeInputs.size() != call->getNumOperands())
+      return WalkResult::advance();
+
+    OpBuilder b(call);
+    Location loc = call.getLoc();
+    for (auto [idx, operand] : llvm::enumerate(call.getOperands())) {
+      auto expected = dyn_cast<TensorType>(calleeInputs[idx]);
+      auto actual = dyn_cast<TensorType>(operand.getType());
+      if (!expected || !actual)
+        continue;
+
+      if (expected.cloneWithoutLayout() == actual.cloneWithoutLayout())
+        continue;
+
+      // Only rebind if dtype/device agree; otherwise let verifier report.
+      if ((expected.getDtype() != actual.getDtype()) ||
+          (expected.getDeviceRef() != actual.getDeviceRef()))
+        continue;
+
+      Value reb = RebindOp::create(b, loc, expected, operand,
+                                   collectDeclsFromShape(expected));
+      call->setOperand(idx, reb);
+    }
+    return WalkResult::advance();
+  });
+}
+
 namespace {
 
 bool isParamOperatorPure(KGEN::ParamOperatorAttr paramOperator) {
@@ -1189,6 +1252,9 @@ struct PropagateShapes {
       op.erase();
       return WalkResult::advance();
     });
+
+    // Normalize cross-graph call sites.
+    normalizeCallOperandsToCallee(graphOp);
 
     return success();
   }
