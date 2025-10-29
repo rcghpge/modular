@@ -110,19 +110,6 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// StripBufferAttributesPass
-//===----------------------------------------------------------------------===//
-
-def StripBufferAttributesPass : Pass<"strip-buffer-attributes", "MGP::ModelOp"> {
-  let summary = "Removes numOutputBuffers attributes.";
-  let description = [{
-    Removes numOutputBuffers attributes. These may be added during lowering
-    to help downstream passes distinguish between input and output buffer
-    arguments, but are not needed thereafter.
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // ConcatInPlacePass
 //===----------------------------------------------------------------------===//
 
