@@ -16,6 +16,7 @@
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/InferIntRangeInterface.h"
 #include "mlir/Interfaces/Utils/InferIntRangeCommon.h"
 #include "llvm/ADT/DenseSet.h"
@@ -35,15 +36,6 @@ namespace M::MO {
 
 } // namespace M::MO
 
-// Look up the callee graph op by name in the containing module op.
-static GraphOp lookupCallee(ModuleOp moduleOp, StringRef name) {
-  for (GraphOp graph : moduleOp.getOps<GraphOp>())
-    if (graph.getName() == name)
-      return graph;
-
-  return nullptr;
-}
-
 // Collect unique parameter declarations referenced by the shape of a tensor
 // type; used to populate rebind's outputParamDecls when the expected type
 // refers to params not yet declared in the caller graph.
@@ -54,7 +46,7 @@ static SmallVector<KGEN::ParamDeclAttr> collectDeclsFromShape(TensorType ty) {
       if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
         decls.insert(KGEN::ParamDeclAttr::get(ref));
   }
-  return SmallVector<KGEN::ParamDeclAttr>(decls.begin(), decls.end());
+  return decls.takeVector();
 }
 
 // Normalize mo.call operands to match the callee signature by inserting
@@ -64,8 +56,10 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
   if (!moduleOp)
     return;
 
+  SymbolTable symbolTable(moduleOp);
+
   graphOp.walk([&](CallOp call) {
-    GraphOp callee = lookupCallee(moduleOp, call.getCallee());
+    GraphOp callee = symbolTable.lookup<GraphOp>(call.getCallee());
     if (!callee)
       return WalkResult::advance();
 
