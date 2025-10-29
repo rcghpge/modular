@@ -57,11 +57,13 @@ mo.graph @static_ranks_unknown_to_static<D0, D1>(
 
 // CHECK: %[[CH_M1:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
 
-// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M1]],
+// CHECK: %[[CH_M2:.*]] = grt.chain.create (%[[CH_M1]], %[[CH0]])
 
-// CHECK: %[[CH_M2:.*]] = grt.chain.create (%[[CH3]], %[[CH0]])
+// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M2]],
 
-// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M2]]
+// CHECK: %[[CH_M3:.*]] = grt.chain.create (%[[CH3]], %[[CH0]])
+
+// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M3]]
 
 
 mo.graph @multiple_rebind<D0, D1>(

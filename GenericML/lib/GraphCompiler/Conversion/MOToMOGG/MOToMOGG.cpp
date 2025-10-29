@@ -159,6 +159,24 @@ struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
       if (outTy.getLayoutAttr() || inTy.getLayoutAttr())
         return WalkResult::advance();
 
+      // Preserve rebinds that refine types by replacing symbolic dimensions
+      // with static. This happens when LegalizeRMOOps lowers operations like
+      // rmo.mo.slice to mo.slice + mo.rebind
+      if (inTy.hasRank() && outTy.hasRank() &&
+          inTy.getRank() == outTy.getRank()) {
+        auto inShape = inTy.getTypedShapeAttr();
+        auto outShape = outTy.getTypedShapeAttr();
+
+        for (auto [inDim, outDim] :
+             llvm::zip_equal(inShape.getValues(), outShape.getValues())) {
+          // Check if the input dimension is symbolic and the output dimension
+          // is static (integer literal)
+          if (isa<KGEN::ParamDeclRefAttr>(inDim) && isa<IntegerAttr>(outDim)) {
+            return WalkResult::advance();
+          }
+        }
+      }
+
       // Don't mess up the signature of ops which are not lowered to MOGG.
       // This is to ensure things still type-check since we keep the old op IR.
       // The exception are rebinds which we need to propagate information.
