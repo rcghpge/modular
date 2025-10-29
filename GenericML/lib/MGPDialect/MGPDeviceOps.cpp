@@ -304,6 +304,27 @@ bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 }
 
 //===----------------------------------------------------------------------===//
+// BufferToIndexOp
+//===----------------------------------------------------------------------===//
+bool BufferToIndexOp::isRaising() { return true; }
+
+LogicalResult BufferToIndexOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue bufferVar = state.getMojoValueFor(getInBuffer());
+
+  MojoValue result = state.builder.var(function({}, {bufferVar}));
+
+  state.setMojoValueFor(getOut(), result);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BufferToBoolOp
 //===----------------------------------------------------------------------===//
 
