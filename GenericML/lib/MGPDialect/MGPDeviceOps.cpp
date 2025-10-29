@@ -11,6 +11,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/Support/Diagnostic.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
@@ -327,6 +328,20 @@ LogicalResult BufferToIndexOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // BufferToBoolOp
 //===----------------------------------------------------------------------===//
+LogicalResult BufferToBoolOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  DeviceBufferType bufferType = getBuffer().getType();
+  MojoValue deviceParam = MojoValue(bufferType.getDevice().getLabel()).quote();
+
+  state.setMojoValueFor(
+      getResult(),
+      function({deviceParam}, {state.getMojoValueFor(getBuffer())}));
+  return success();
+}
 
 LogicalResult BufferToBoolOp::verify() {
   return verifyConsistentDevices(getOperation(), {getBDevice()});

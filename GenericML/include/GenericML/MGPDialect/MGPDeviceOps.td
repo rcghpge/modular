@@ -801,6 +801,7 @@ def BufferToIndexOp : MGP_Op<"buffer.to_index", [
 
 def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Returns contents of a 1-byte buffer as an i1.";
   let description = [{
