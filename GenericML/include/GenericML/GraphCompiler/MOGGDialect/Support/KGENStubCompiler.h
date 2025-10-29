@@ -16,6 +16,8 @@
 
 namespace M::MOGG {
 
+using CompiledKernels = SmallVector<OwningOpRef<MOGG::LoadCompiledKernelOp>>;
+
 /// Compile to binary object. Tell the jit all of the given symbols as symbols
 /// within it that can be executed at runtime.
 CompileDiagnosticOr<SmallVector<MOGG::LoadCompiledKernelOp>> compileStubs(

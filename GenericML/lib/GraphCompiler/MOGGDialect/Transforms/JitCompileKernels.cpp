@@ -91,17 +91,20 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
   CompileDiagnosticOrSuccess
   compileKGENToBinary(ModuleOp module,
                       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-    for (auto modelOp : module.getOps<MGP::ModelOp>()) {
-      CompileDiagnosticOrSuccess err;
-      KernelBuildType bt = KernelBuildType::kRelease;
-      auto errOr = compileToBinary(
-          modelOp, mojoLibraryAnalysis, dumpStub.getValue(),
-          createMOGGReproducers.getValue(), saveTempPrefix.getValue(),
-          minimumCpuAlignment.getValue(), timeMOGGCompile.getValue(),
-          dryRun.getValue(), debugKGENStubs.getValue(), bt);
-      if (errOr.isError())
-        return errOr.takeError();
-    }
+    CompileDiagnosticOrSuccess errOr = compileToBinary(
+        /*moduleOp=*/module,
+        /*mojoLibraryAnalysis=*/mojoLibraryAnalysis,
+        /*dumpStub=*/dumpStub.getValue(),
+        /*createMOGGReproducers=*/createMOGGReproducers.getValue(),
+        /*saveTempPrefix=*/saveTempPrefix.getValue(),
+        /*minimumCpuAlignment=*/minimumCpuAlignment.getValue(),
+        /*enableTiming=*/timeMOGGCompile.getValue(),
+        /*dryRun=*/dryRun.getValue(),
+        /*debugKGENStubs=*/debugKGENStubs.getValue(),
+        /*kernelBuildType=*/KernelBuildType::kRelease);
+
+    if (errOr.isError())
+      return errOr.takeError();
 
     for (Operation &op : llvm::make_early_inc_range(module.getOps())) {
       if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp,

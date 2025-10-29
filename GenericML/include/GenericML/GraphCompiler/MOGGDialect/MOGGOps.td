@@ -873,6 +873,9 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     /// Returns the KGEN input parameters this depends on. Necessary to
     /// implement the DeclInterface.
     ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
+
+    /// Return the single body block for the operation.
+    Block &getBodyBlock() { return getBody().front(); }
   }];
 }
 
