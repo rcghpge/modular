@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "SDK/MOF/Options/LoweringOptions.h"
+#include "GenericML/MOFOptions.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace M;

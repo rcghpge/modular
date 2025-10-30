@@ -31,6 +31,7 @@ modular_cc_library(
     hdrs = ["include/GenericML/FrameworkFrontend.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":MOFOptions",
         "//AsyncRT:CompilerSupport",
         "//Cache",
         "//GenericML:CommonDriver",
@@ -38,7 +39,6 @@ modular_cc_library(
         "//GenericML:ExecutionDriver",
         "//GraphRT:MEFExecutor",
         "//SDK:MOFDriver",
-        "//SDK:MOFOptions",
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Context",
@@ -1448,6 +1448,17 @@ modular_cc_library(
         ":DeviceDriver",
         "//AsyncRT:DeviceContext",
         "//Support:Base",
+        "//Support:ML",
+    ],
+)
+
+modular_cc_library(
+    name = "MOFOptions",
+    srcs = glob(["lib/MOFOptions/*.cpp"]),
+    hdrs = ["include/GenericML/MOFOptions.h"],
+    deps = [
+        "//Support:Base",
+        "//Support:Context",
         "//Support:ML",
     ],
 )

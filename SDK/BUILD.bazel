@@ -25,17 +25,6 @@ filegroup(
 )
 
 modular_cc_library(
-    name = "MOFOptions",
-    srcs = glob(["lib/MOF/Options/**/*.cpp"]),
-    hdrs = glob(["include/SDK/MOF/Options/**/*.h"]),
-    deps = [
-        "//Support:Base",
-        "//Support:Context",
-        "//Support:ML",
-    ],
-)
-
-modular_cc_library(
     name = "MOFDriver",
     srcs = glob(["lib/MOF/Driver/**/*.cpp"]),
     hdrs = [

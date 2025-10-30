@@ -8,8 +8,8 @@ modular_cc_binary(
     deps = [
         "//GenericML:CommonDriver",
         "//GenericML:ExecutionDriver",
+        "//GenericML:MOFOptions",
         "//Init",
-        "//SDK:MOFOptions",
         "//SDK:max",
         "//Support:Context",
         "//Support:Globals",
