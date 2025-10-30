@@ -172,16 +172,16 @@ MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::freeData(void *ptr) {
 
 MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
 Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
-  auto byteSize = spec.getNumElements() * spec.getEltType().getSizeInBytes();
-  ASSIGN_OR_RETURN(buf, hostAlloc ? ctx->createHostBuffer(byteSize)
-                                  : ctx->enqueueCreateBuffer(byteSize));
+  ASSIGN_OR_RETURN(buf, hostAlloc
+                            ? ctx->createHostBuffer(spec.getSizeInBytes())
+                            : ctx->enqueueCreateBuffer(spec.getSizeInBytes()));
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
 MODULAR_DRIVER_EXPORT DeviceMemory *
 Device::createDeviceMemory(void *data, const TensorSpec &spec) {
-  auto byteSize = spec.getNumElements() * spec.getEltType().getSizeInBytes();
-  auto buf = ctx->createBufferOwning(data, byteSize, /*owning=*/true);
+  auto buf =
+      ctx->createBufferOwning(data, spec.getSizeInBytes(), /*owning=*/true);
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
