@@ -73,46 +73,6 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   ];
 }
 
-def MOGG_CompilableKernel : OpInterface<"CompilableKernel"> {
-  let description = [{
-    Implemented by operations which represent a compilable kernel so multiple
-    operations can be compiled rather than just MOGG::KernelOp.
-  }];
-
-  let cppNamespace = "::M::MOGG";
-
-  let methods = [
-    InterfaceMethod<
-      "Return the body of the kernel, which should be the code we will compile",
-      "mlir::Block&", "getBody", (ins), "return $_op.getBody().front();"
-    >,
-    InterfaceMethod<
-      "Get output parameter decls",
-      "::llvm::ArrayRef<M::KGEN::ParamDeclAttr>", "getOutputParamDecls", (ins),
-      "return $_op.getOutputParamDecls();"
-    >,
-    InterfaceMethod<
-      "Get output parameter decls attr",
-      "::M::KGEN::ParamDeclArrayAttr", "getOutputParamDeclsAttr", (ins),
-      "return $_op.getOutputParamDeclsAttr();"
-    >,
-    InterfaceMethod<
-      "Get the device attr for this kernel",
-      "::M::DeviceRefAttr", "getExecutionDevice", (ins),
-      "return $_op.getExecutionDevice();"
-    >,
-    InterfaceMethod<
-      "Returns true if kernel is to be implemented as a Mojo async function.",
-      "bool", "getIsAsync", (ins),
-      "return $_op.getIsAsync().value_or(false);"
-    >,
-    InterfaceMethod<
-      "Returns the attached constant resources to the kernel",
-      "mlir::ArrayAttr", "getConstantResources", (ins), "return $_op.getConstantResourcesAttr();"
-    >,
-  ];
-}
-
 def MOGG_MojoObjectInfosInterface : OpInterface<"MojoObjectInfosInterface"> {
   let description = [{
     Implemented by operations which might take a mojo object.

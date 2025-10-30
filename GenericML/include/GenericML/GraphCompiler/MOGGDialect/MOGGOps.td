@@ -814,7 +814,6 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     IsolatedFromAbove,
     SingleBlockImplicitTerminator<"MOGG::OutputOp">,
     SymbolTable,
-    DeclareOpInterfaceMethods<MOGG_CompilableKernel>,
     MO_HasDeviceInterface,
     MO_ExplicitDevice,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
