@@ -48,8 +48,6 @@ struct MOGGTypeTraits {
   static ErrorOr<MOGGTypeTraits> lookupDType(DType);
   // Checks if a Type has a corresponding DType.
   static bool isSupportedMOGGType(Type);
-  // Simd type for a given tensor type.
-  static ErrorOr<Type> simdTypeForTensor(Type type);
 
   MOGGTypeTraits(llvm::StringLiteral mojoTypeName, KGEN::KGENDType kgenType,
                  DType moggType)

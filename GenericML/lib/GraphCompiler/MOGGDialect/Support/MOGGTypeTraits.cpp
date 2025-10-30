@@ -209,12 +209,3 @@ ErrorOr<MOGGTypeTraits> MOGGTypeTraits::lookupDType(DType dtype) {
 bool MOGGTypeTraits::isSupportedMOGGType(Type type) {
   return !lookupType(type).isError();
 }
-
-ErrorOr<Type> MOGGTypeTraits::simdTypeForTensor(Type type) {
-  auto asTensor = cast<MO::TensorType>(type);
-  Type dtype = asTensor.getElementType();
-  auto traitsOr = lookupType(dtype);
-  if (traitsOr.isError())
-    return traitsOr.takeError();
-  return {MOGG::SimdType::get(type.getContext(), traitsOr->moggType)};
-}
