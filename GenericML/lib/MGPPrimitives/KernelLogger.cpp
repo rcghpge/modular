@@ -131,12 +131,6 @@ KernelLogger<OperandContainer, LoggingPolicy>::KernelLogger(
   double timestampMs = getRelativeTimestampMs();
   logKernelEvent(LoggingPolicy::launchEvent(), this->kernelName,
                  this->deviceInfo, this->kernelId, timestampMs, outputStream);
-
-  if (M::MotrTrace::getMotrEnabled()) {
-    std::string spanName = this->kernelName + " [" + this->deviceInfo + "]";
-    motrTrace =
-        std::make_unique<M::MotrTrace>(spanName, "kernel_execution", 0, true);
-  }
 }
 
 template <typename OperandContainer, typename LoggingPolicy>
