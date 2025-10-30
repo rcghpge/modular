@@ -673,10 +673,6 @@ OutputOp GraphOp::getOutputOp() {
 }
 
 LogicalResult GraphOp::verify() {
-  mlir::SymbolTableAnalysis symTabAnalysis(getOperation()->getParentOp());
-  mlir::LockedSymbolTableCollection symtabs(symTabAnalysis.getSymbolTables());
-  KGEN::SymTabEvaluationContext evaluationContext(getOperation()->getParentOp(),
-                                                  symtabs);
   KGEN::ParameterCollector::Analysis cache;
   KGEN::ParameterUseDefGraph useDefGraph(getRegion());
 
@@ -693,7 +689,8 @@ LogicalResult GraphOp::verify() {
     return emitError(
         "Expressions are not (currently) allowed in function signatures");
   }
-  return useDefGraph.verify(&evaluationContext, cache);
+
+  return useDefGraph.verify(nullptr, cache);
 }
 
 KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {

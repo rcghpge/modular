@@ -65,6 +65,18 @@ mo.graph @cycle<D0 -> O0, O1, O2, O3>(
 
 // -----
 
+// expected-note  @below {{see existing symbol definition here}}
+mo.graph @repro(%in: !mo.tensor<[1], f32>) -> !mo.tensor<[1], f32> {
+  mo.output %in : !mo.tensor<[1], f32>
+}
+
+// expected-error @below {{redefinition of symbol named 'repro'}}
+mo.graph @repro(%in: !mo.tensor<[1], f32>) -> !mo.tensor<[1], f32> {
+  mo.output %in : !mo.tensor<[1], f32>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
