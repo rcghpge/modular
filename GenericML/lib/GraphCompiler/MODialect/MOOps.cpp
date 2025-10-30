@@ -693,7 +693,7 @@ LogicalResult GraphOp::verify() {
     return emitError(
         "Expressions are not (currently) allowed in function signatures");
   }
-  return useDefGraph.verify(evaluationContext, cache);
+  return useDefGraph.verify(&evaluationContext, cache);
 }
 
 KGEN::ParamDeclAttr GraphOp::getNewDimParam(const Twine &prefix) {
