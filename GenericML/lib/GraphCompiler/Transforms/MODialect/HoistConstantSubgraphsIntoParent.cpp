@@ -70,6 +70,48 @@ enum class ConstLattice {
   Const     // Constant-derived
 };
 
+// Container holding the lattice state for every program point tracked by
+// our analysis.
+struct LatticeState {
+
+  // A program point corresponds to either:
+  //
+  // 1. A block argument for tracking the 'constness' of graph inputs.
+  // 2. An operation which tracks the 'constness' of every value produced by
+  //    that operation.
+  using ProgramPoint = llvm::PointerUnion<BlockArgument, Operation *>;
+
+  ProgramPoint getKey(Value v) const {
+    if (auto arg = dyn_cast<BlockArgument>(v))
+      return arg;
+    return v.getDefiningOp();
+  }
+
+  ConstLattice query(Value v) const {
+    return state.lookup_or(getKey(v), ConstLattice::NonConst);
+  }
+
+  ConstLattice query(Operation *v) const {
+    return state.lookup_or(v, ConstLattice::NonConst);
+  }
+
+  void set(Value v, ConstLattice l) { state[getKey(v)] = l; }
+
+  void set(Operation *v, ConstLattice l) { state[v] = l; }
+
+  bool update(Operation *v, ConstLattice l) {
+    auto oldValue = query(v);
+    if (oldValue != l) {
+      set(v, l);
+      return true;
+    }
+
+    return false;
+  }
+
+  llvm::DenseMap<ProgramPoint, ConstLattice> state;
+};
+
 struct HoistConstantSubgraphsIntoParentPass
     : public M::MO::impl::HoistConstantSubgraphsIntoParentBase<
           HoistConstantSubgraphsIntoParentPass> {
@@ -217,7 +259,7 @@ private:
     }
 
     // STEP 4: Perform dataflow analysis
-    llvm::DenseMap<Value, ConstLattice> lattice;
+    LatticeState lattice;
     performDataflowAnalysis(graphOp, effectiveInvariantArgMask, lattice);
 
     // STEP 5: Find constant operations and boundary values
@@ -303,15 +345,14 @@ private:
   // Perform dataflow analysis to find callsite-invariant-derived operations
   void performDataflowAnalysis(GraphOp graphOp,
                                const llvm::BitVector &effectiveInvariantArgMask,
-                               llvm::DenseMap<Value, ConstLattice> &lattice) {
-
+                               LatticeState &lattice) {
     Block *body = graphOp.getBodyBlock();
     SmallVector<Operation *> worklist;
 
     // Initialize lattice states for block arguments
     for (auto [idx, arg] : llvm::enumerate(body->getArguments())) {
-      lattice[arg] = effectiveInvariantArgMask[idx] ? ConstLattice::Const
-                                                    : ConstLattice::NonConst;
+      lattice.set(arg, effectiveInvariantArgMask[idx] ? ConstLattice::Const
+                                                      : ConstLattice::NonConst);
     }
 
     // Initialize worklist with all operations in the block
@@ -327,32 +368,16 @@ private:
       // An operation is considered "const" (invariant-derived) if all its
       // operands are invariant-derived (come from callsite-invariant arguments
       // or other invariant-derived operations)
-      ConstLattice newState = ConstLattice::NonConst;
+      bool allOperandsConst = op->getNumOperands() > 0 &&
+                              llvm::all_of(op->getOperands(), [&](Value v) {
+                                return lattice.query(v) == ConstLattice::Const;
+                              });
 
-      bool allOperandsConst = op->getNumOperands() > 0;
-      for (Value operand : op->getOperands()) {
-        auto it = lattice.find(operand);
-        if (it == lattice.end() || it->second != ConstLattice::Const) {
-          allOperandsConst = false;
-          break;
-        }
-      }
-
-      if (allOperandsConst)
-        newState = ConstLattice::Const;
-
-      // Update lattice states for all results
-      bool changed = false;
-      for (Value result : op->getResults()) {
-        auto it = lattice.find(result);
-        if (it == lattice.end() || it->second != newState) {
-          lattice[result] = newState;
-          changed = true;
-        }
-      }
+      ConstLattice newState =
+          allOperandsConst ? ConstLattice::Const : ConstLattice::NonConst;
 
       // If any result state changed, add all users to the worklist
-      if (changed) {
+      if (lattice.update(op, newState)) {
         for (Value result : op->getResults()) {
           for (Operation *user : result.getUsers()) {
             if (!user->hasTrait<OpTrait::IsTerminator>() &&
@@ -367,7 +392,7 @@ private:
 
   // Find callsite-invariant-derived operations and boundary values
   void findConstantOpsAndBoundaryValues(
-      GraphOp graphOp, const llvm::DenseMap<Value, ConstLattice> &lattice,
+      GraphOp graphOp, const LatticeState &lattice,
       const llvm::BitVector &effectiveInvariantArgMask,
       llvm::SmallSetVector<Operation *, 16> &constantOps,
       SetVector<Value> &boundaryValues, llvm::BitVector &preservedArgs,
@@ -377,14 +402,8 @@ private:
 
     // Identify operations with all invariant-derived results
     for (Operation &op : body->without_terminator()) {
-
       // Check if all results are invariant-derived
-      bool allResultsConst = llvm::all_of(op.getResults(), [&](Value result) {
-        auto it = lattice.find(result);
-        return it != lattice.end() && it->second == ConstLattice::Const;
-      });
-
-      if (allResultsConst)
+      if (lattice.query(&op) == ConstLattice::Const)
         constantOps.insert(&op);
     }
 
