@@ -12,10 +12,9 @@
 #define GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
 #include "llvm/Support/FormatVariadic.h"
-
-#include <iostream>
 
 namespace M::MOGG {
 
@@ -58,7 +57,14 @@ public:
   MojoValue equal(const MojoValue &value) const {
     return llvm::formatv("{} = {}", text, value.text).str();
   }
-  MojoValue quote() const { return llvm::formatv("\"{}\"", text).str(); }
+  MojoValue quote() const {
+    std::string res;
+    llvm::raw_string_ostream os(res);
+    os << '"';
+    KGEN::printAsMojoStringLiteral(text, os);
+    os << '"';
+    return MojoValue(res);
+  }
 
   std::string text;
 };
