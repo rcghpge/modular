@@ -7,11 +7,57 @@
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 
 using namespace M;
 
 namespace M::MOGG {
+
+/// Remove parameters from inferByInputs that appear in the function's result
+/// type but not in the actual input argument types.
+///
+/// This walks both the user result type and all input argument types (excluding
+/// byref result/error slots), collects all ParamDeclRefAttr references from
+/// each, and removes from inferByInputs any parameter names that appear in the
+/// result type but not in any input argument type.
+static void removeResultOnlyParams(KGEN::LIT::FnOp function,
+                                   llvm::DenseSet<StringRef> &inferByInputs) {
+  // Collect params from result type.
+  SmallVector<KGEN::ParamDeclRefAttr> resultParamRefs;
+  bool hasConstExpr = false;
+  Type userResultType = function.getUserResultType();
+  KGEN::collectParameterReferences(userResultType, resultParamRefs,
+                                   hasConstExpr);
+  llvm::DenseSet<StringRef> resultParams;
+  for (auto paramRef : resultParamRefs)
+    resultParams.insert(paramRef.getName().getValue());
+
+  // Collect params from actual input arguments (excluding byref result slot).
+  auto sig = function.getFuncTypeGenerator().getBody();
+  ArrayRef<Type> argTypes = function.getArgumentTypes();
+  if (sig.hasMemoryOnlyResult())
+    argTypes = argTypes.drop_back();
+  if (sig.isThrows())
+    argTypes = argTypes.drop_back();
+
+  llvm::DenseSet<StringRef> inputParams;
+  for (Type argType : argTypes) {
+    SmallVector<KGEN::ParamDeclRefAttr> argParamRefs;
+    KGEN::collectParameterReferences(argType, argParamRefs, hasConstExpr);
+    for (auto paramRef : argParamRefs)
+      inputParams.insert(paramRef.getName().getValue());
+  }
+
+  // Remove any parameters that are only in the result type, not in inputs.
+  SmallVector<StringRef> toRemove;
+  for (StringRef paramName : inferByInputs) {
+    if (resultParams.contains(paramName) && !inputParams.contains(paramName))
+      toRemove.push_back(paramName);
+  }
+  for (StringRef paramName : toRemove)
+    inferByInputs.erase(paramName);
+}
 
 LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
   if (auto emitMojoInterface = dyn_cast<MOGG::EmitsMojoInterface>(op)) {
@@ -52,11 +98,15 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
     }
   }
 
-  // TODO(GEX-2731); IndexList outputs of shape functions are actually promoted
-  // to function 'result' slots. This causes annotate-kernels pass to
-  // incorrectly note it as being an input parameter. Explicitly remove it
-  // here.
-  inferByInputs.erase(KGEN::MOGGPreElab::kMOGGOutputRankParameterName);
+  // TODO(GEX-2731): The annotate-kernels pass incorrectly marks result-only
+  // parameters as input parameters. For example, shape functions return
+  // !mogg.shape_func_result<rank>, where 'output_rank' is a parameter of the
+  // result type. This gets incorrectly added to the input parameter inference
+  // list by annotate-kernels, but should only be inferred from the result type.
+  // Remove any such parameters that appear only in the result type but not in
+  // actual input arguments. The proper fix would be to correct
+  // annotate-kernels.
+  removeResultOnlyParams(function, inferByInputs);
 
   auto isIOSpecType = [](Type ty) {
     auto structType = dyn_cast<KGEN::LIT::StructType>(ty);
