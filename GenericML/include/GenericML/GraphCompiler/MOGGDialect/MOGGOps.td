@@ -1763,11 +1763,11 @@ def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
 
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   Pure,
-  SameOperandsAndResultType,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
-  let arguments = (ins AnyType:$input);
+  let arguments = (ins AnyType:$input,
+                   Optional<MGP_DeviceContextType>:$deviceCtx);
   let results = (outs AnyType:$output);
   let summary = "Packs an sync value and returns it as async";
   let description = [{

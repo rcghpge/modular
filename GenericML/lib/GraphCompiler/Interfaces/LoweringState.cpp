@@ -8,6 +8,7 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPDialect.h"
@@ -680,7 +681,14 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
         packedValues.push_back(v);
         continue;
       }
-      auto packOp = MOGG::AsyncPackOp::create(builder, loc, v);
+      SmallVector<Value, 2> packOperands{v};
+      if (isa<MGP::DeviceBufferType>(v.getType())) {
+        if (auto mgpBufferAllocOp =
+                mlir::dyn_cast_or_null<MGP::BufferAllocOp>(v.getDefiningOp()))
+          packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
+      }
+      auto packOp =
+          MOGG::AsyncPackOp::create(builder, loc, v.getType(), packOperands);
       v.replaceUsesWithIf(packOp, [&](OpOperand &use) {
         return use.getOwner() == insertBefore;
       });
@@ -765,7 +773,14 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
 
       Value newValue;
       if (shouldPack.test(i)) {
-        newValue = MOGG::AsyncPackOp::create(builder, loc, v);
+        SmallVector<Value, 2> packOperands{v};
+        if (isa<MGP::DeviceBufferType>(v.getType())) {
+          if (auto mgpBufferAllocOp =
+                  dyn_cast_or_null<MGP::BufferAllocOp>(v.getDefiningOp()))
+            packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
+        }
+        newValue =
+            MOGG::AsyncPackOp::create(builder, loc, v.getType(), packOperands);
       } else {
         newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, v);
       }

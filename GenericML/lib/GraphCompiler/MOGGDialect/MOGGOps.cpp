@@ -3436,6 +3436,9 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
     // TODO: (GEX-2732) Move away from NDBuffer in MOGGPrimitives.mojo
     MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_buffer_ref};
     unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor(getInput())});
+  } else if (isa<MGP::DeviceContextType>(getInput().getType())) {
+    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_device_ctx};
+    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor((getInput()))});
   } else {
     auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
         state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
@@ -3458,10 +3461,13 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
       HardcodedMojoSymbols::struct_MoggAsyncPackHelper;
   MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(
-      moggAsyncPackFunc, {},
-      asyncPackHelperStruct({}, {state.getMojoValueFor(getInput()),
-                                 state.mojoReturnValues[*resultIndexOr]}));
+  SmallVector<MojoValue> operands;
+  for (Value operand : getOperands()) {
+    operands.push_back(state.getMojoValueFor(operand));
+  }
+  operands.push_back(state.mojoReturnValues[*resultIndexOr]);
+  state.builder.call(moggAsyncPackFunc, {},
+                     asyncPackHelperStruct({}, operands));
   return success();
 }
 
@@ -3471,6 +3477,9 @@ LogicalResult AsyncPackOp::verify() {
     return emitError("async.pack must be nested within a mogg.try or "
                      "mogg.generic.compiled.region operation");
   }
+  if (getInput().getType() != getResult().getType())
+    return emitError(
+        "async.pack requires the same type for the result and operand 0");
   return success();
 }
 

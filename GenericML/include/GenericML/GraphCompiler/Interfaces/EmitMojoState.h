@@ -76,6 +76,8 @@ constexpr StringLiteral func_unpack_buffer_ref =
     "MOGGPrimitives.unpack_buffer_ref";
 constexpr StringLiteral func_buffer_constant =
     "MOGGPrimitives.mgp_buffer_constant";
+constexpr StringLiteral func_unpack_device_ctx =
+    "MOGGPrimitives.unpack_device_ctx";
 
 constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";

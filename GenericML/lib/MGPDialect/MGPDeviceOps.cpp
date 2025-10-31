@@ -163,6 +163,24 @@ std::optional<uint64_t> BufferConstantOp::getOptAlign() {
 //===----------------------------------------------------------------------===//
 // BufferAllocOp
 //===----------------------------------------------------------------------===//
+bool BufferAllocOp::isRaising() { return true; }
+
+LogicalResult BufferAllocOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue byteSizeVar = state.getMojoValueFor(getRuntimeSize());
+  MojoValue deviceCtxVar = state.getMojoValueFor(getDeviceContext());
+
+  MojoValue result =
+      state.builder.var(function({}, {byteSizeVar, deviceCtxVar}));
+  state.setMojoValueFor(getResult(), result);
+
+  return success();
+}
 
 LogicalResult BufferAllocOp::verify() {
   if (getCDevice() != getOutBuffer().getType().getDevice()) {

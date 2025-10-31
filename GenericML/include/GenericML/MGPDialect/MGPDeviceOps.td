@@ -329,6 +329,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
     InferTypeOpAdaptor
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
