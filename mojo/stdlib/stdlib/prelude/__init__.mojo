@@ -131,4 +131,19 @@ from builtin.value import (
 from builtin.variadics import VariadicList, VariadicListMem, VariadicPack
 from documentation import doc_private
 from iter import Iterable, Iterator, enumerate, iter, map, next, zip
-from memory import AddressSpace, OpaquePointer, Pointer, Span, UnsafePointer
+from memory import (
+    AddressSpace,
+    ExternalImmutPointer,
+    ExternalMutPointer,
+    ExternalPointer,
+    OpaqueImmutPointer,
+    OpaqueMutPointer,
+    OpaquePointer,
+    OpaquePointerV2,
+    Pointer,
+    Span,
+    UnsafeImmutPointer,
+    UnsafeMutPointer,
+    UnsafePointer,
+    UnsafePointerV2,
+)

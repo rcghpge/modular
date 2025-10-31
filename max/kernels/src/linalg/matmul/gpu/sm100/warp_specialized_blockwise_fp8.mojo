@@ -26,7 +26,7 @@ from gpu.cluster import (
     elect_one_sync_with_mask,
 )
 from gpu.host import DeviceContext, FuncAttribute
-from gpu.host._nvidia_cuda import TensorMapSwizzle
+from gpu.host.nvidia.tma import TensorMapSwizzle
 from gpu.host.info import B200
 from gpu import block_id_in_cluster, block_idx, lane_id, thread_idx
 from gpu import warp_id as get_warp_id
@@ -326,10 +326,10 @@ fn multi_stage_reg_epilogue[
         var c_smem_warp_tile = c_smem_tile.tile[32, stageN](Int(warp_id), 0)
 
         # Pack the upper frag to shared memory
-        stsm_helper[swizzle](
+        stsm_helper[swizzle, UInt(stageN)](
             upper_frag, c_smem_warp_tile.tile[16, stageN](0, 0)
         )
-        stsm_helper[swizzle](
+        stsm_helper[swizzle, UInt(stageN)](
             lower_frag, c_smem_warp_tile.tile[16, stageN](1, 0)
         )
 

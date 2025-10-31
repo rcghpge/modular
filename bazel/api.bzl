@@ -25,7 +25,6 @@ modular_py_venv = _modular_py_venv
 mojo_filecheck_test = _mojo_filecheck_test
 mojo_test_environment = _mojo_test_environment
 proto_library = _proto_library
-py_grpc_library = _py_grpc_library
 requirement = _requirement
 strip_prefix = _strip_prefix
 
@@ -52,14 +51,14 @@ def _rewrite_deps(deps):
     """Rewrite dependencies to use the open-source package names, or to come from the wheel."""
     new_deps = []
     for dep in deps:
-        if dep.startswith("//SDK/lib/API/python/tests/graph"):
-            replaced_dep = dep.replace("//SDK/lib/API/python/tests/graph", "//tests/max/graph")
+        if dep.startswith("//SDK/lib/API/python/tests"):
+            replaced_dep = dep.replace("//SDK/lib/API/python/tests", "//max/tests/tests")
             new_deps.append(replaced_dep)
         elif dep.startswith("//SDK/lib/API/python/max/benchmark"):
             replaced_dep = dep.replace("//SDK/lib/API/python/max/benchmark", "//benchmark")
             new_deps.append(replaced_dep)
         elif dep.startswith("//SDK/lib/API/python/"):
-            replaced_dep = dep.replace("//SDK/lib/API/python/", "//")
+            replaced_dep = dep.replace("//SDK/lib/API/python/", "//max/python/")
             new_deps.append(replaced_dep)
         elif dep.startswith("//open-source/max/"):
             replaced_dep = dep.replace("//open-source/max/", "//")
@@ -73,8 +72,8 @@ def _rewrite_trivial_env(env):
         return env
     new_env = {}
     for k, v in env.items():
-        if v.startswith("SDK/lib/API/python/tests/graph"):
-            new_env[k] = v.replace("SDK/lib/API/python/tests/graph", "tests/max/graph")
+        if v.startswith("SDK/lib/API/python/tests"):
+            new_env[k] = v.replace("SDK/lib/API/python/tests", "max/tests/tests")
     return new_env
 
 # buildifier: disable=function-docstring
@@ -194,6 +193,13 @@ def lit_tests(tools = [], data = [], **kwargs):
 
 def modular_generate_stubfiles(name, **_kwargs):
     native.alias(name = name, actual = "@modular_wheel//:wheel", visibility = ["//visibility:public"])
+
+# buildifier: disable=unused-variable
+def py_grpc_library(strip_prefixes, **kwargs):
+    _py_grpc_library(
+        strip_prefixes = ["max.python."],
+        **kwargs
+    )
 
 def _noop(**_kwargs):
     pass

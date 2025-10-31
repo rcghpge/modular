@@ -22,6 +22,7 @@ from builtin.simd import _simd_construction_checks
 from memory import memcpy
 from memory.memory import _free, _malloc
 from memory.maybe_uninitialized import UnsafeMaybeUninitialized
+from memory.unsafe_pointer_v2 import UnsafePointerV2
 from os import abort
 from python import PythonObject
 
@@ -218,6 +219,17 @@ struct UnsafePointer[
             other.address
         )
 
+    @doc_private
+    @always_inline("builtin")
+    @implicit
+    fn __init__(
+        out self, other: UnsafePointerV2[type, address_space=address_space, **_]
+    ):
+        """Cast a V2 pointer to a V1 pointer."""
+        self.address = __mlir_op.`pop.pointer.bitcast`[_type = Self._mlir_type](
+            other.address
+        )
+
     fn __init__(
         out self: UnsafePointer[type, mut=mut, origin=origin],
         *,
@@ -244,10 +256,9 @@ struct UnsafePointer[
         count: Int, *, alignment: Int = align_of[type]()
     ) -> UnsafePointer[
         type,
+        mut=True,
         address_space = AddressSpace.GENERIC,
-        # This is a newly allocated pointer, so should not alias anything
-        # already existing.
-        origin = MutableOrigin.empty,
+        origin = MutableOrigin.external,
     ]:
         """Allocates contiguous storage for `count` elements of `type`
         with compile-time alignment `alignment`.

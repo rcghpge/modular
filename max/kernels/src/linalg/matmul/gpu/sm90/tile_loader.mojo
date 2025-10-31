@@ -35,7 +35,7 @@ from ....structuring import SharedMemBarrier, SMemBarrier, SMemTileType
 from layout.swizzle import make_swizzle
 from gpu import thread_idx
 from sys import simd_width_of
-from gpu.host._nvidia_cuda import TensorMapSwizzle
+from gpu.host.nvidia.tma import TensorMapSwizzle
 from layout.layout import coalesce
 
 
@@ -52,7 +52,7 @@ trait TileLoader:
     @always_inline
     fn load_tile(
         self,
-        dst: SMemTileType[Self._dtype, _, alignment=128],
+        dst: SMemTileType[Self._dtype, _, alignment=128, **_],
         mem_barrier: SMemBarrier,
         coords: Tuple[UInt, UInt],
     ):
@@ -124,7 +124,7 @@ struct TileLoaderTMA[
     @always_inline
     fn load_tile(
         self,
-        dst: SMemTileType[Self._dtype, _, alignment=128],
+        dst: SMemTileType[Self._dtype, _, alignment=128, **_],
         mem_barrier: SMemBarrier,
         _coords: Tuple[UInt, UInt],
     ):
@@ -236,7 +236,7 @@ struct TileLoaderCPAsync[
 
     fn load_tile(
         self,
-        dst: SMemTileType[Self._dtype, _, alignment=128],
+        dst: SMemTileType[Self._dtype, _, alignment=128, **_],
         mem_barrier: SMemBarrier,
         coords: Tuple[UInt, UInt],
     ):

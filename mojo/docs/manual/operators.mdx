@@ -141,7 +141,7 @@ var j_uint: UInt = 8
 sum_uint = i_uint + j_uint  # Result is type UInt
 print("UInt sum:", sum_uint)
 
-sum_mixed = a_int + i_uint  # Result is type Int
+sum_mixed = a_int + Int(i_uint)  # Result is type Int
 print("Mixed sum:", sum_mixed)
 
 quotient_int = a_int / b_int  # Result is type Float64
@@ -686,7 +686,7 @@ slice in the form `[start:end]` returns a substring starting with the character
 index specified by `start` and continuing up to but not including the character
 at index `end`. You can use positive or negative indexing for both the start and
 end values. Omitting `start` is the same as specifying `0`, and omitting `end`
-is the same as specifying 1 plus the length of the string.
+is the same as specifying the length of the string.
 
 ```mojo
 var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" # String type value

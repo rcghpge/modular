@@ -23,7 +23,6 @@ from sys import (
     is_nvidia_gpu,
     simd_width_of,
     size_of,
-    env_get_bool,
 )
 from sys.info import _cdna_4_or_newer
 import gpu.warp as warp
@@ -70,8 +69,9 @@ from linalg.bmm import batched_matmul
 from linalg.matmul.gpu._multistage_gemm_gpu import multistage_mma
 from linalg.transpose import transpose
 from memory import stack_allocation
-from .attention.gpu.amd.mha_gfx942 import Attention, MHAAttentionConfig
-from .attention.gpu.amd.mha_gfx950 import mha_single_batch_gfx950
+
+from .attention.gpu.amd.mha_gfx942 import MHAAttentionConfig
+from .attention.gpu.amd.mha_gfx950 import Attention
 from nn.mha_mask import MaterializedMask, MHAMask, TileMaskStatus
 from nn.mha_operand import (
     KVCacheMHAOperand,
@@ -81,7 +81,8 @@ from nn.mha_operand import (
 )
 from nn.mha_score_mod import IdentityScoreMod, ScoreModTrait
 from nn.mha_sm90 import mha_sm90_dispatch
-from nn.mha_sm100 import mha_sm100_dispatch
+from nn.mha_sm100_1q import mha_sm100_dispatch as mha_sm100_1q_dispatch
+from nn.mha_sm100_2q import mha_sm100_dispatch as mha_sm100_2q_dispatch
 from nn.mha_utils import (
     DynamicInt,
     FlashAttentionAlgorithm,
@@ -533,33 +534,64 @@ fn flash_attention_dispatch[
                     )
                 else:
                     constrained[is_sm100]()
-                    mha_sm100_dispatch[
-                        config=config,
-                        group = Int(group),
-                        use_score_mod=use_score_mod,
-                        ragged=ragged,
-                        sink=sink,
-                        _is_cache_length_accurate=_is_cache_length_accurate,
-                    ](
-                        output.ptr,
-                        q.ptr,
-                        k,
-                        rebind[k_t](v),
-                        num_rows_q,
-                        mask_functor,
-                        score_mod_functor,
-                        valid_length._ptr.address_space_cast[
-                            AddressSpace.GENERIC
-                        ](),
-                        DynamicInt(max_prompt_len),
-                        max_cache_valid_length,
-                        scale,
-                        kv_input_row_offsets,
-                        batch_size,
-                        NoPartition[get_accum_type[q.dtype]()](),
-                        ctx,
-                        sink_weights,
-                    )
+
+                    @parameter
+                    if depth == 256:
+                        mha_sm100_1q_dispatch[
+                            config=config,
+                            group = Int(group),
+                            use_score_mod=use_score_mod,
+                            ragged=ragged,
+                            sink=sink,
+                            _is_cache_length_accurate=_is_cache_length_accurate,
+                        ](
+                            output.ptr,
+                            q.ptr,
+                            k,
+                            rebind[k_t](v),
+                            num_rows_q,
+                            mask_functor,
+                            score_mod_functor,
+                            valid_length._ptr.address_space_cast[
+                                AddressSpace.GENERIC
+                            ](),
+                            DynamicInt(max_prompt_len),
+                            max_cache_valid_length,
+                            scale,
+                            kv_input_row_offsets,
+                            batch_size,
+                            NoPartition[get_accum_type[q.dtype]()](),
+                            ctx,
+                            sink_weights,
+                        )
+                    else:
+                        mha_sm100_2q_dispatch[
+                            config=config,
+                            group = Int(group),
+                            use_score_mod=use_score_mod,
+                            ragged=ragged,
+                            sink=sink,
+                            _is_cache_length_accurate=_is_cache_length_accurate,
+                        ](
+                            output.ptr,
+                            q.ptr,
+                            k,
+                            rebind[k_t](v),
+                            num_rows_q,
+                            mask_functor,
+                            score_mod_functor,
+                            valid_length._ptr.address_space_cast[
+                                AddressSpace.GENERIC
+                            ](),
+                            DynamicInt(max_prompt_len),
+                            max_cache_valid_length,
+                            scale,
+                            kv_input_row_offsets,
+                            batch_size,
+                            NoPartition[get_accum_type[q.dtype]()](),
+                            ctx,
+                            sink_weights,
+                        )
 
             else:
                 alias BM = config.block_m()
@@ -752,7 +784,7 @@ fn flash_attention_dispatch[
                                 sink_weights,
                             )
                         else:
-                            mha_sm100_dispatch[
+                            mha_sm100_1q_dispatch[
                                 config=config,
                                 group = Int(group),
                                 use_score_mod=use_score_mod,
@@ -923,7 +955,7 @@ fn flash_attention_dispatch[
                                 sink_weights,
                             )
                         else:
-                            mha_sm100_dispatch[
+                            mha_sm100_1q_dispatch[
                                 config=config,
                                 group = Int(group),
                                 use_score_mod=use_score_mod,
@@ -1462,40 +1494,26 @@ fn mha[
             "use_score_mod must be False for AMD flash attention",
         ]()
 
+        alias attention_config = MHAAttentionConfig[False, config, group]()
+        var attention = Attention[config, group, False, sink](
+            attention_config,
+            output_ptr.offset(q_batch_offset),
+            q_ptr.offset(q_batch_offset),
+            k,
+            v,
+            mask,
+            sink_weights,
+            Int(batch_idx),
+            scale,
+            seq_len,
+            num_keys,
+            Int(start_pos),
+        )
+
         @parameter
-        if (
-            _cdna_4_or_newer()
-            and env_get_bool["USE_EXPERIMENTAL_CDNA4_MHA_KERNEL", False]()
-        ):
-            mha_single_batch_gfx950[group=group, config=config, sink=sink](
-                output_ptr.offset(q_batch_offset),
-                q_ptr.offset(q_batch_offset),
-                k,
-                v,
-                seq_len,
-                num_keys,
-                scale,
-                Int(batch_idx),
-                Int(start_pos),
-                mask,
-                sink_weights,
-            )
+        if attention_config.USE_EXPERIMENTAL_CDNA4_MHA_KERNEL:
+            attention.mha_prefill_experimental()
         else:
-            alias attention_config = MHAAttentionConfig[False, config, group]()
-            var attention = Attention[config, group, False, sink](
-                attention_config,
-                output_ptr.offset(q_batch_offset),
-                q_ptr.offset(q_batch_offset),
-                k,
-                v,
-                mask,
-                sink_weights,
-                Int(batch_idx),
-                scale,
-                seq_len,
-                num_keys,
-                Int(start_pos),
-            )
             attention.mha_prefill()
     else:
         return CompilationTarget.unsupported_target_error[operation="mha"]()

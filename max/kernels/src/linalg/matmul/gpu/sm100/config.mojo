@@ -15,13 +15,14 @@ from hashlib.hasher import Hasher
 
 from bit import next_power_of_two
 from collections.set import Set
-from gpu.host._nvidia_cuda import TensorMapSwizzle
+from gpu.host.nvidia.tma import TensorMapSwizzle
 from gpu.host.info import B200
+from itertools.itertools import product
 from layout.tensor_core import get_mma_shape
 from memory.unsafe_pointer import UnsafePointer
 from utils.index import Index, IndexList
 from utils.numerics import get_accum_type
-
+from utils.math import align_down
 from ..tile_scheduler import RasterOrder
 
 
@@ -56,6 +57,8 @@ struct MatmulConfig[
     var b_swizzle: TensorMapSwizzle
     var c_swizzle: TensorMapSwizzle
 
+    var k_group_size: UInt
+
     fn __init__(
         out self,
         *,
@@ -65,7 +68,10 @@ struct MatmulConfig[
         AB_swapped: Bool = False,
         block_swizzle_size: Int = 0,
         raster_order: RasterOrder = RasterOrder.AlongM,
+        k_group_size: UInt = 1,
         num_pipeline_stages: Optional[UInt] = None,
+        num_accum_pipeline_stages: UInt = 2,
+        num_clc_pipeline_stages: UInt = 2,
     ):
         constrained[a_type == b_type]()
 
@@ -75,7 +81,7 @@ struct MatmulConfig[
         self.AB_swapped = AB_swapped
         self.block_swizzle_size = block_swizzle_size
         self.raster_order = raster_order
-
+        self.k_group_size = k_group_size
         self.block_tile_shape = Index(
             self.mma_shape[0] // self.cta_group,
             self.mma_shape[1] // self.cta_group,
@@ -91,7 +97,11 @@ struct MatmulConfig[
             ) else self.mma_shape[1]
             // 2
         )
-        var output_tile_n = 32 if c_tile_n % 32 == 0 else 16
+        var output_tile_n = 8
+        if c_tile_n % 32 == 0:
+            output_tile_n = 32
+        elif c_tile_n % 16 == 0:
+            output_tile_n = 16
 
         # MMA_M=128/256 cta_group=2 all use 128 rows in output tile.
         var output_tile_m = 128 if self.cta_group == 2 else self.mma_shape[0]
@@ -99,24 +109,30 @@ struct MatmulConfig[
             output_tile_n, output_tile_m
         ) if self.AB_swapped else Index(output_tile_m, output_tile_n)
 
-        self.num_clc_pipeline_stages = 2
-        self.num_accum_pipeline_stages = UInt(
-            512 // next_power_of_two(self.mma_shape[1])
-        )
+        self.num_clc_pipeline_stages = num_clc_pipeline_stages
+        self.num_accum_pipeline_stages = num_accum_pipeline_stages
         self.num_output_stages = 2
 
         self.a_swizzle = TensorMapSwizzle.SWIZZLE_128B
         self.b_swizzle = TensorMapSwizzle.SWIZZLE_128B
-        self.c_swizzle = TensorMapSwizzle.SWIZZLE_32B if self.AB_swapped else (
-            TensorMapSwizzle.SWIZZLE_64B if output_tile_n
-            == 32 else TensorMapSwizzle.SWIZZLE_32B
-        )
+        self.c_swizzle = TensorMapSwizzle.SWIZZLE_NONE
+        if self.AB_swapped:
+            self.c_swizzle = TensorMapSwizzle.SWIZZLE_32B
+        elif output_tile_n == 32:
+            self.c_swizzle = TensorMapSwizzle.SWIZZLE_64B
+        elif output_tile_n == 16:
+            self.c_swizzle = TensorMapSwizzle.SWIZZLE_32B
 
         self.num_pipeline_stages = 4  # Need for compilation
         self._maximize_pipline_stages_by_default()
 
         if num_pipeline_stages:
             self.num_pipeline_stages = num_pipeline_stages.value()
+
+        # SM100 kernel only supports k grouping when num_pipeline_stages is a multiple of k_group_size.
+        self.num_pipeline_stages = align_down(
+            self.num_pipeline_stages, self.k_group_size
+        )
 
     fn _maximize_pipline_stages_by_default(mut self):
         alias b200_smem = B200.shared_memory_per_multiprocessor - 1024
@@ -162,31 +178,6 @@ struct MatmulConfig[
             // AB_smem_per_stage
         )
 
-    fn copy_field(mut self, other: MatmulConfig):
-        self.cta_group = other.cta_group
-        self.mma_shape = other.mma_shape
-        self.cluster_shape = other.cluster_shape
-        self.AB_swapped = other.AB_swapped
-        self.num_pipeline_stages = other.num_pipeline_stages
-        self.num_clc_pipeline_stages = other.num_clc_pipeline_stages
-        self.num_accum_pipeline_stages = other.num_accum_pipeline_stages
-        self.num_output_stages = other.num_output_stages
-        self.output_tile_shape = other.output_tile_shape
-        self.a_swizzle = other.a_swizzle
-        self.b_swizzle = other.b_swizzle
-        self.c_swizzle = other.c_swizzle
-
-    fn swapAB(self) -> MatmulConfig[b_type, a_type, c_type, transpose_b]:
-        var new_config = UnsafePointer(to=self).bitcast[
-            MatmulConfig[b_type, a_type, c_type, transpose_b]
-        ]()[0]
-        # new_config.copy_field(self)
-        new_config.AB_swapped = not self.AB_swapped
-        # Swap A and B swizzles
-        new_config.a_swizzle = self.b_swizzle
-        new_config.b_swizzle = self.a_swizzle
-        return new_config
-
     fn __eq__(
         self, other: MatmulConfig[a_type, b_type, c_type, transpose_b]
     ) -> Bool:
@@ -206,6 +197,21 @@ struct MatmulConfig[
             and self.c_swizzle == other.c_swizzle
             and self.block_swizzle_size == other.block_swizzle_size
             and self.raster_order == other.raster_order
+            and self.k_group_size == other.k_group_size
+        )
+
+    fn swap_AB_type(self) -> MatmulConfig[b_type, a_type, c_type, transpose_b]:
+        return MatmulConfig[b_type, a_type, c_type, transpose_b](
+            cta_group=self.cta_group,
+            mma_shape=self.mma_shape,
+            cluster_shape=self.cluster_shape,
+            AB_swapped=self.AB_swapped,
+            num_pipeline_stages=self.num_pipeline_stages,
+            num_accum_pipeline_stages=self.num_accum_pipeline_stages,
+            num_clc_pipeline_stages=self.num_clc_pipeline_stages,
+            block_swizzle_size=self.block_swizzle_size,
+            raster_order=self.raster_order,
+            k_group_size=self.k_group_size,
         )
 
     fn __str__(self) -> String:
@@ -235,6 +241,7 @@ struct MatmulConfig[
             "_",
         )
         writer.write("stages", self.num_pipeline_stages, "_")
+        writer.write("k_group", self.k_group_size, "_")
         writer.write("clc", self.num_clc_pipeline_stages, "_")
         writer.write("accum", self.num_accum_pipeline_stages, "_")
         writer.write("out", self.num_output_stages, "_")
@@ -279,6 +286,7 @@ struct MatmulConfig[
         hasher.update(Int(self.b_swizzle))
         hasher.update(Int(self.c_swizzle))
         hasher.update(self.raster_order)
+        hasher.update(self.k_group_size)
 
 
 fn choose_config[
@@ -289,25 +297,40 @@ fn choose_config[
 ](M: Int, N: Int, K: Int) -> MatmulConfig[a_type, b_type, c_type, transpose_b]:
     constrained[a_type == b_type, "a_type and b_type must be the same"]()
 
-    # Hardcode to 2 now since main only dispatches 2xSM MMA
-    alias cta_group = 2
+    # Use 1 for small M and 2 for large shapes.
+    var cta_group = 1 if M <= 128 else 2
     alias num_SMs = B200.sm_count
     # Nvidia mma instruction process 32B in K.
     alias Kbytes_per_mma = 32
 
     var mma_mn = Tuple[Int, Int](64, 128)
     var min_num_waves = Int.MAX
+    var swapAB = M <= 128
+    var k_group_size = 1
+    # For M <= 128, swap A and B and use cta_group = 1
+    # The min mma_n we support for cta_group = 1 is 32 for now.
+    # TODO: support mma_n = 8, 16
+    if M <= 128:
+        mma_mn[1] = max(next_power_of_two(M), 16)
+        for bm in [64, 128]:
+            num_ctas = ceildiv(M, mma_mn[1]) * ceildiv(N, bm)
+            num_waves = ceildiv(num_ctas, num_SMs)
+            if num_waves < min_num_waves or (
+                num_waves == min_num_waves and bm < mma_mn[0]
+            ):
+                min_num_waves = num_waves
+                mma_mn[0] = bm
+
+    var BK = 128 // a_type.size_of()
+    if mma_mn[0] == 64 and mma_mn[1] <= 64:
+        if ceildiv(K, BK) % 2 == 0:
+            k_group_size = 2
 
     # Travers possible combinations of BM x MMA_N to choose the one minizes the
     # workload per SM. The computation per SM is the flops (ignoring 2x in 2MNK)
     # timed by max number of ctas per SM i.e. number of waves.
-    for bm in [64, 128]:
-        for mma_n in range(16, min(257, N), 16):
-            # We only support MMA_N % 32 == 0 for MMA_M=128 cta_group = 2
-            # TODO: lift the restriction, multiple of 16 is supported by instruction.
-            if bm == 64 and mma_n % 32 != 0:
-                continue
-
+    else:
+        for bm, mma_n in product([64, 128], range(16, min(257, N), 16)):
             num_ctas = ceildiv(M, bm) * ceildiv(N, mma_n)
             num_waves = ceildiv(num_ctas, num_SMs)
             if num_waves < min_num_waves or (
@@ -348,11 +371,23 @@ fn choose_config[
                 min_load_volume = load_volume_per_wave
                 optimal_block_swizzle_size = tile_size
 
+    # TODO: evaluate the comment's perf impact
+    # var num_clc_pipeline_stages: UInt = UInt(min(min_num_waves-1, 2))
+    var num_clc_pipeline_stages: UInt = UInt(0) if min_num_waves == 1 else UInt(
+        2
+    )
+
     return MatmulConfig[a_type, b_type, c_type, transpose_b](
         mma_shape=IndexList[3](
             mma_mn[0], mma_mn[1], Kbytes_per_mma // a_type.size_of()
         ),
+        cta_group=cta_group,
+        cluster_shape=Index(cta_group, 1, 1),
+        AB_swapped=swapAB,
         block_swizzle_size=optimal_block_swizzle_size,
+        num_accum_pipeline_stages=UInt(min(2, min_num_waves)),
+        num_clc_pipeline_stages=num_clc_pipeline_stages,
+        k_group_size=UInt(k_group_size),
     )
 
 

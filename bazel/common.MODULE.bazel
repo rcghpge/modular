@@ -260,18 +260,12 @@ filegroup(
     srcs = ["lib/libnvshmem_device.bc"],
 )
 
-# For linking the nvshmem hostlibs when compiling Mojo binaries from bazel
-cc_library(
-    name = "hostlibs",
-    srcs = glob(["lib/*.so*"]),
-)
-
 # This has three purposes:
+#  - enable bazel to dlopen the libs from test runfiles
 #  - copy the libs to python wheel `site-packages/modular/lib` folder
 #  - relink and copy the libs to conda package `lib` folder
-#  - enable `bmojo` to dlopen the libs from `bazel-bin/external/+http_archive+nvshmem_prebuilt`
 genrule(
-    name = "hostlibs_data",
+    name = "host",
     srcs = glob(["lib/*.so*"]),
     outs = [
         "libnvshmem_host.so.3",
@@ -311,13 +305,16 @@ mojo.gpu_toolchains(
         "RTX 4090": "rtx4090",
         "NVIDIA GeForce RTX 3090": "rtx3090",
         "NVIDIA GeForce GTX 1080 Ti": "gtx1080ti",
+        "NVIDIA GeForce GTX 1060": "gtx1060",
         "NVIDIA GeForce GTX 970": "gtx970",
         "MI300X": "mi300x",
         "MI325": "mi325",
         "MI355": "mi355",
-        "Navi": "radeon",
-        "AMD Radeon Graphics": "radeon",
+        "Navi 31": "W7900",
+        "Navi 31 [Radeon Pro W7900]": "W7900",
         "AMD Radeon RX 6900 XT": "rx6900xt",
+        "AMD Radeon PRO W7900": "W7900",
+        "AMD Radeon Pro W7900": "W7900",
         "Metal 1": "",  # Unsupported, macOS updates on any hardware get you to Metal 3+
         "Metal 2": "",  # Unsupported, macOS updates on any hardware get you to Metal 3+
         "Metal 3": "metal3",  # macOS 15
@@ -326,6 +323,7 @@ mojo.gpu_toolchains(
     # GPU name -> target accelerator
     supported_gpus = {
         "780M": "amdgpu:gfx1103",
+        "W7900": "amdgpu:gfx1100",
         "a10": "nvidia:86",
         "a100": "nvidia:80",
         "a3000": "nvidia:86",
@@ -340,6 +338,7 @@ mojo.gpu_toolchains(
         "rtx3090": "nvidia:86",
         "gtx970": "nvidia:52",
         "gtx1080ti": "nvidia:61",
+        "gtx1060": "nvidia:61",
         "rtx4090": "nvidia:89",
         "rtx5090": "nvidia:120a",
         "rx6900xt": "amdgpu:gfx1030",

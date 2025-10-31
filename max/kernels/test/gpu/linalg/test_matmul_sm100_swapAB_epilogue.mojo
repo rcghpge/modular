@@ -17,7 +17,7 @@ from sys import align_of, size_of
 import linalg.matmul.vendor.blas as vendor_blas
 from buffer.dimlist import DimList
 from gpu.host import DeviceContext
-from gpu.host._nvidia_cuda import TensorMapSwizzle
+from gpu.host.nvidia.tma import TensorMapSwizzle
 from internal_utils import (
     DeviceNDBuffer,
     HostNDBuffer,
@@ -51,6 +51,7 @@ def test_matmul_sm100_epilogue[
     test_lambda_fn: Bool = False,
     register_based_epilogue: Bool = False,
     swapAB: Bool = False,
+    k_group_size: UInt = 1,
 ](ctx: DeviceContext, m: ValOrDim, n: ValOrDim, k: ValOrDim):
     var M = m.value
     var N = n.value
@@ -80,6 +81,8 @@ def test_matmul_sm100_epilogue[
             register_based_epilogue,
             " swapAB=",
             swapAB,
+            " k_group_size=",
+            k_group_size,
         )
     )
 
@@ -149,6 +152,8 @@ def test_matmul_sm100_epilogue[
         ),
         mma_shape=mma_shape,
         cta_group=cta_group,
+        AB_swapped=swapAB,
+        k_group_size=k_group_size,
     )
 
     alias optional_lambda_fn = OptionalReg[elementwise_compute_lambda_type](
@@ -160,7 +165,6 @@ def test_matmul_sm100_epilogue[
         config=matmul_config,
         elementwise_compute_lambda_fn=optional_lambda_fn,
         register_based_epilogue=register_based_epilogue,
-        swapAB=swapAB,
     ](
         c_device.to_layout_tensor(),
         a_device.to_layout_tensor(),
@@ -248,7 +252,7 @@ def main():
         # swapAB with register based epilogue tests
         # swapAB only supports MMA_M == 256
         @parameter
-        for mma_n_scale in range(2, 17, 2):
+        for mma_n_scale in range(1, 17):
             alias block_tile_shape = Index(128, 8 * mma_n_scale, BK)
 
             alias umma_shape = Index(256, 16 * mma_n_scale, MMA_K)
@@ -264,6 +268,7 @@ def main():
                 test_lambda_fn=True,
                 register_based_epilogue=True,
                 swapAB=True,
+                k_group_size=2,
             ](
                 ctx,
                 dynamic(17),
@@ -289,17 +294,14 @@ def main():
                 static[1024](),
             )
 
+        # we support all range of mma_n_scales in range(1, 33) but the test will time out so we only test a subset
         @parameter
-        for mma_m_scale in range(1, 3):
+        for mma_m in [64, 128]:
 
             @parameter
-            for mma_n_scale in range(2, 33, 2):
-                alias block_tile_shape = Index(
-                    64 * mma_m_scale, 8 * mma_n_scale, BK
-                )
-                alias umma_shape = Index(
-                    64 * mma_m_scale, 8 * mma_n_scale, MMA_K
-                )
+            for mma_n in [8, 16, 32, 40, 48, 64, 88, 104, 128]:
+                alias block_tile_shape = Index(mma_m, mma_n, BK)
+                alias umma_shape = Index(mma_m, mma_n, MMA_K)
 
                 test_matmul_sm100_epilogue[
                     dtype,
@@ -312,6 +314,7 @@ def main():
                     test_lambda_fn=True,
                     register_based_epilogue=True,
                     swapAB=True,
+                    k_group_size=2,
                 ](
                     ctx,
                     dynamic(1000),

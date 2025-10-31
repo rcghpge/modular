@@ -20,7 +20,7 @@ import gpu.warp as warp
 from buffer import NDBuffer
 from gpu import WARP_SIZE, lane_id
 from gpu.host import DeviceContext, FuncAttribute, get_gpu_target
-from gpu.host._nvidia_cuda import TMADescriptor, create_tma_descriptor
+from gpu.host.nvidia.tma import TMADescriptor, create_tma_descriptor
 from gpu import block_dim, block_idx, thread_idx
 from gpu.memory import (
     AddressSpace,
@@ -94,9 +94,9 @@ fn global_reduction_kernel[
     var vec_data = SIMD[accum_type, simd_width](0)
 
     if idx < UInt(num_cols):
-        vec_data = input_fn[simd_width, 2](IndexList[2](row, idx)).cast[
-            accum_type
-        ]()
+        vec_data = input_fn[simd_width, 2](
+            IndexList[2](Int(row), Int(idx))
+        ).cast[accum_type]()
 
     var thread_sum = vec_data.reduce_add()
 

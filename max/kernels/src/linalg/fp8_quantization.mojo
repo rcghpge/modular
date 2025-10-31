@@ -113,7 +113,6 @@ fn quantize_dynamic_scaled_fp8[
     scales_dtype: DType,
     input_shape: DimList, //,
     group_size_or_per_token: Int,
-    input_hidden_size: Int,
 ](
     scaled_output: NDBuffer[mut=True, out_dtype, 2, MutableAnyOrigin],
     scales: NDBuffer[mut=True, scales_dtype, 2, MutableAnyOrigin],
@@ -130,8 +129,10 @@ fn quantize_dynamic_scaled_fp8[
         "output dtype should be float8_e4m3fn or float8_e4m3fnuz",
     ]()
 
-    alias group_size = input_hidden_size if group_size_or_per_token == -1 else group_size_or_per_token
-    alias n_groups = input_hidden_size // group_size
+    alias group_size = input.shape.get[
+        1
+    ]() if group_size_or_per_token == -1 else group_size_or_per_token
+    alias n_groups = input.shape.get[1]() // group_size
     alias simd_width = simd_width_of[in_dtype, target = get_gpu_target()]()
     alias max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
     alias warps_per_block = min(
@@ -141,20 +142,6 @@ fn quantize_dynamic_scaled_fp8[
         "quantize_dynamic_scaled_fp8",
         task_id=Int(ctx.id()),
     ):
-
-        @parameter
-        if n_groups == 0:
-
-            @parameter
-            if input_hidden_size != 0:
-                raise Error(
-                    "Cannot quantize small input where input shape[1] ="
-                    + String(input.shape.get[1]())
-                    + ". Must be greater than group_size "
-                    + String(group_size)
-                )
-            return
-
         if input.dim[0]() == 0:
             return
 
@@ -443,6 +430,13 @@ fn matmul_dynamic_scaled_fp8[
         input_scale_granularity == "colwise"
         and weight_scale_granularity == "rowwise"
     ) or (input_scale_granularity == weight_scale_granularity == "tensor"):
+        var logger = Logger()
+        logger.info(
+            "Dispatching Matmul Dynamic Scaled FP8. Input Scale Granularity: ",
+            input_scale_granularity,
+            ", Weight Scale Granularity: ",
+            weight_scale_granularity,
+        )
 
         @parameter
         if ctx.default_device_info is B200:
@@ -640,6 +634,9 @@ fn naive_blockwise_scaled_fp8_matmul[
     var b_scales_dim0 = b_scales.dim(0)
     var b_scales_dim1 = b_scales.dim(1)
 
+    if M == 0 or N == 0 or K == 0:
+        return
+
     # these checks are only applicable when A_SCALES_SIZE and B_SCALES_SIZE are not provided
     @parameter
     if not scales_granularity_mnk:
@@ -755,12 +752,12 @@ fn naive_blockwise_scaled_fp8_matmul[
     var N = c_device.dim(1)
     var K = a_device.dim(1)
 
-    if M == 0:
-        return
-
     var a_scales_dim0 = a_scales.dim(0)
     var b_scales_dim0 = b_scales.dim(0)
     var b_scales_dim1 = b_scales.dim(1)
+
+    if M == 0 or N == 0 or K == 0:
+        return
 
     # these checks are only applicable when A_SCALES_SIZE and B_SCALES_SIZE are not provided
     @parameter
@@ -1014,6 +1011,9 @@ fn naive_blockwise_scaled_fp8_grouped_matmul[
             " fp8 matmul"
         ),
     ]()
+
+    if max_num_tokens_per_expert == 0:
+        return
 
     var logger = Logger()
     logger.info("Executing Naive Grouped Blockwise Scaled FP8 GEMM")

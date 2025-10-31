@@ -25,3 +25,15 @@ from .pointer import (
 from .span import Span
 from .unsafe import bitcast, pack_bits
 from .unsafe_pointer import OpaquePointer, UnsafePointer
+from .unsafe_pointer_v2 import (
+    alloc,
+    ExternalImmutPointer,
+    ExternalMutPointer,
+    ExternalPointer,
+    OpaqueImmutPointer,
+    OpaqueMutPointer,
+    OpaquePointerV2,
+    UnsafeImmutPointer,
+    UnsafeMutPointer,
+    UnsafePointerV2,
+)
