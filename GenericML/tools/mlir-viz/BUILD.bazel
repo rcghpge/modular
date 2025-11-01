@@ -1,0 +1,27 @@
+load("//bazel:api.bzl", "modular_cc_binary")
+
+modular_cc_binary(
+    name = "mlir-viz",
+    srcs = glob(["*.cpp"]),
+    data = ["ProggyClean.ttf"],
+    env = {"MLIR_VIZ_FONT": "$(location ProggyClean.ttf)"},
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-lxcb",
+            "-lGL",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//GenericML:MGPDialect",
+        "//GenericML:MODialect",
+        "//GenericML:MOGGDialect",
+        "//GenericML:RMODialect",
+        "//KGEN:KGENDialect",
+        "@ImGuiColorTextEdit",
+        "@hello_imgui",
+        "@imgui",
+        "@imgui//backends:platform-glfw",
+        "@imgui//backends:renderer-opengl3",
+    ],
+)
