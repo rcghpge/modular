@@ -126,7 +126,7 @@ struct TileScheduler[
     @always_inline
     @staticmethod
     fn work_info_from_clc_response(
-        result: UnsafePointer[UInt128, address_space = AddressSpace.SHARED]
+        result: UnsafePointer[UInt128, address_space = AddressSpace.SHARED],
     ) -> WorkInfo:
         alias asm = """{
             .reg .pred p1;
@@ -162,7 +162,6 @@ struct TileScheduler[
     ) -> WorkInfo:
         var normalized_m = Int(work_info.m) / Self.log_cluster_m
         var normalized_n = Int(work_info.n) / Self.log_cluster_n
-        var normalized_k = Int(work_info.k_start) / Self.log_cluster_k
         alias log_block_swizzle_size = FastDiv[DType.uint32](
             Self.block_swizzle_size
         )
@@ -216,8 +215,7 @@ struct TileScheduler[
             + Int(block_id_in_cluster.x),
             n=Int(new_n_global) * Self.cluster_shape[1]
             + Int(block_id_in_cluster.y),
-            k_start=Int(normalized_k) * Self.cluster_shape[2]
-            + Int(block_id_in_cluster.z),
+            k_start=work_info.k_start,
             is_valid_tile=work_info.is_valid_tile,
         )
 

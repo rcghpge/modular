@@ -25,18 +25,21 @@ from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph, TensorType, Value
 from max.graph.weights import Weights, WeightsAdapter
 from max.interfaces import LogProbabilities
+from max.kv_cache import (
+    PagedKVCacheManager,
+    estimate_kv_cache_size,
+    load_kv_manager,
+)
 from max.nn import ReturnLogits, Signals
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheInputsSequence,
     KVCacheParams,
     PagedCacheValues,
-    PagedKVCacheManager,
-    estimate_kv_cache_size,
-    load_kv_manager,
 )
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
+    AlwaysSignalBuffersMixin,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -97,7 +100,9 @@ class Gemma3Inputs(ModelInputs):
         self.return_n_logits = return_n_logits
 
 
-class Gemma3Model(PipelineModel[TextContext], KVCacheMixin):
+class Gemma3Model(
+    AlwaysSignalBuffersMixin, PipelineModel[TextContext], KVCacheMixin
+):
     """A Gemma 3 pipeline model for text generation.
 
     This class integrates the Gemma 3 architecture with the MAX Engine pipeline
@@ -149,14 +154,6 @@ class Gemma3Model(PipelineModel[TextContext], KVCacheMixin):
             adapter,
             return_logits,
         )
-
-        # Initialize signal buffers for distributed execution
-        self.signal_buffers = [
-            Tensor.zeros(
-                shape=(Signals.NUM_BYTES,), dtype=DType.uint8, device=dev
-            )
-            for dev in self.devices
-        ]
 
         self.model = self.load_model(session)
         self.logprobs_device = devices[0]

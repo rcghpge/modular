@@ -54,7 +54,6 @@ from builtin.floatable import Floatable, FloatableRaising
 from builtin.format_int import bin, hex, oct
 from builtin.identifiable import Identifiable
 from builtin.int import (
-    ImplicitlyIntable,
     Indexer,
     Int,
     Intable,
@@ -76,7 +75,7 @@ from builtin.math import (
 )
 from builtin.none import NoneType
 from builtin.range import range
-from builtin.rebind import rebind, rebind_var
+from builtin.rebind import rebind, rebind_var, trait_downcast
 from builtin.repr import Representable, repr
 from builtin.reversed import ReversibleRange, reversed
 from builtin.simd import (
@@ -113,8 +112,10 @@ from builtin.type_aliases import (
     AnyTrivialRegType,
     ImmutableAnyOrigin,
     ImmutableOrigin,
+    ImmutOrigin,
     MutableAnyOrigin,
     MutableOrigin,
+    MutOrigin,
     Origin,
     OriginSet,
     StaticConstantOrigin,

@@ -28,7 +28,7 @@ import statistics
 import sys
 import time
 import warnings
-from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,9 +36,8 @@ from urllib.parse import urlparse
 
 import numpy as np
 import yaml
-from safetensors.numpy import save_file
 from tqdm.asyncio import tqdm
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
@@ -49,6 +48,7 @@ if TYPE_CHECKING:
 
 try:
     from max.benchmark.benchmark_shared.config import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+        Backend,
         ServingBenchmarkConfig,
         parse_benchmark_args,
     )
@@ -70,6 +70,12 @@ try:
         SonnetBenchmarkDataset,
         VisionArenaBenchmarkDataset,
     )
+    from max.benchmark.benchmark_shared.lora_driver import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+        LoRADriver,
+        LoRAOutputFormat,
+        benchmark_lora_loading,
+        benchmark_lora_unloading,
+    )
     from max.benchmark.benchmark_shared.metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         BenchmarkMetrics,
         LoRAMetrics,
@@ -77,12 +83,12 @@ try:
         ThroughputMetrics,
     )
     from max.benchmark.benchmark_shared.requests import (  # type: ignore[import-not-found, unused-ignore, no-redef]
-        ASYNC_REQUEST_FUNCS,
+        REQUEST_DRIVER_CLASSES,
+        ProgressBarRequestDriver,
         RequestCounter,
+        RequestDriver,
         RequestFuncInput,
         RequestFuncOutput,
-        async_request_lora_load,
-        async_request_lora_unload,
     )
     from max.benchmark.benchmark_shared.server_metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         fetch_and_parse_metrics,
@@ -90,6 +96,7 @@ try:
     )
 except ImportError:
     from benchmark_shared.config import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+        Backend,
         ServingBenchmarkConfig,
         parse_benchmark_args,
     )
@@ -111,6 +118,12 @@ except ImportError:
         SonnetBenchmarkDataset,
         VisionArenaBenchmarkDataset,
     )
+    from benchmark_shared.lora_driver import (  # type: ignore[import-not-found, unused-ignore, no-redef]
+        LoRADriver,
+        LoRAOutputFormat,
+        benchmark_lora_loading,
+        benchmark_lora_unloading,
+    )
     from benchmark_shared.metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         BenchmarkMetrics,
         LoRAMetrics,
@@ -118,12 +131,12 @@ except ImportError:
         ThroughputMetrics,
     )
     from benchmark_shared.requests import (  # type: ignore[import-not-found, unused-ignore, no-redef]
-        ASYNC_REQUEST_FUNCS,
+        REQUEST_DRIVER_CLASSES,
+        ProgressBarRequestDriver,
         RequestCounter,
+        RequestDriver,
         RequestFuncInput,
         RequestFuncOutput,
-        async_request_lora_load,
-        async_request_lora_unload,
     )
     from benchmark_shared.server_metrics import (  # type: ignore[import-not-found, unused-ignore, no-redef]
         compute_metrics_delta,
@@ -150,228 +163,6 @@ def compute_output_len(
             add_special_tokens=False,
         ).input_ids
     )
-
-
-def generate_lora_adapter(
-    base_model_id: str,
-    output_dir: str,
-    target_modules: list[str],
-    lora_rank: int,
-    adapter_name: str,
-) -> None:
-    """Generate a minimal LoRA adapter for testing.
-
-    Args:
-        base_model_id: HuggingFace model ID to generate adapter for
-        output_dir: Directory to save the adapter files
-        lora_rank: LoRA rank (r parameter)
-        lora_alpha: LoRA alpha parameter for scaling
-        target_modules: List of module names to apply LoRA to (q, k, v, o)
-        adapter_name: Name for the adapter (used in metadata)
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Load base model config to get dimensions
-    config = AutoConfig.from_pretrained(base_model_id)
-
-    # Create adapter config
-    adapter_config: dict[str, Any] = {
-        "alpha_pattern": {},
-        "auto_mapping": None,
-        "base_model_name_or_path": base_model_id,
-        "bias": "none",
-        "fan_in_fan_out": False,
-        "inference_mode": True,
-        "init_lora_weights": True,
-        "layers_pattern": None,
-        "layers_to_transform": None,
-        "loftq_config": {},
-        "lora_alpha": 16,
-        "lora_dropout": 0.0,
-        "megatron_config": None,
-        "megatron_core": "megatron.core",
-        "modules_to_save": None,
-        "peft_type": "LORA",
-        "r": lora_rank,
-        "rank_pattern": {},
-        "revision": None,
-        "target_modules": target_modules,
-        "task_type": "CAUSAL_LM",
-        "use_dora": False,
-        "use_rslora": False,
-    }
-
-    # Save adapter config
-    with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
-        json.dump(adapter_config, f, indent=2)
-
-    # Generate minimal LoRA weights
-    lora_weights = {}
-
-    # For each layer and target module, create LoRA A and B matrices
-    num_layers = config.num_hidden_layers
-    hidden_size = config.hidden_size
-
-    # Handle grouped query attention - k_proj and v_proj have different dimensions
-    num_heads = config.num_attention_heads
-    num_kv_heads = getattr(config, "num_key_value_heads", num_heads)
-    head_dim = hidden_size // num_heads
-
-    # Determine output dimensions for attention projection modules
-    attn_module_dims = {
-        "q_proj": hidden_size,  # hidden_size -> hidden_size
-        "k_proj": num_kv_heads * head_dim,  # hidden_size -> kv_hidden_size
-        "v_proj": num_kv_heads * head_dim,  # hidden_size -> kv_hidden_size
-        "o_proj": hidden_size,  # hidden_size -> hidden_size
-    }
-
-    for layer_idx in range(num_layers):
-        for module in target_modules:
-            # Validate that module is supported (attention only for now)
-            if module not in attn_module_dims:
-                raise ValueError(
-                    f"Unsupported target module '{module}'. Only attention"
-                    " modules are currently supported:"
-                    f" {list(attn_module_dims.keys())}"
-                )
-
-            # Get the output dimension for this module type
-            out_dim = attn_module_dims[module]
-            in_dim = (
-                hidden_size  # Input is always hidden_size for attention modules
-            )
-
-            # LoRA A: shape should be (lora_rank, in_dim)
-            lora_a_key = f"base_model.model.layers.{layer_idx}.self_attn.{module}.lora_A.weight"
-            lora_weights[lora_a_key] = (
-                np.random.randn(lora_rank, in_dim).astype(np.float32) * 0.01
-            )
-
-            # LoRA B: shape should be (out_dim, lora_rank)
-            lora_b_key = f"base_model.model.layers.{layer_idx}.self_attn.{module}.lora_B.weight"
-            lora_weights[lora_b_key] = np.zeros(
-                (out_dim, lora_rank), dtype=np.float32
-            )
-
-    # Save weights in safetensors format
-    save_file(
-        lora_weights, os.path.join(output_dir, "adapter_model.safetensors")
-    )
-
-
-def generate_loras(
-    model_id: str,
-    lora_rank: int,
-    num_loras: int,
-    lora_target_modules: list[str],
-    lora_paths: list[str],
-    lora_output_dir: str,
-    lora_server_path: str,
-) -> dict[str, str]:
-    # Generate test LoRA adapters if needed
-    lora_configs: dict[str, str] = {}
-
-    if lora_paths:
-        # Use provided LoRA paths
-        logger.info("Using provided LoRA paths")
-        for i, path in enumerate(lora_paths):
-            abs_path = os.path.abspath(path)
-            lora_configs[f"adapter_{i}"] = abs_path
-    else:
-        # Generate test LoRA adapters
-        logger.info(f"Preparing {num_loras} test LoRA adapters...")
-
-        # Use custom output directory if specified, otherwise use temp directory
-        base_output_dir = os.path.abspath(os.path.expanduser(lora_output_dir))
-        os.makedirs(base_output_dir, exist_ok=True)
-
-        for i in range(num_loras):
-            adapter_name = f"generated_adapter_{i}"
-            adapter_path = os.path.join(base_output_dir, adapter_name)
-
-            generate_lora_adapter(
-                base_model_id=model_id,
-                output_dir=adapter_path,
-                target_modules=lora_target_modules,
-                lora_rank=lora_rank,
-                adapter_name=adapter_name,
-            )
-
-            # Use server path if specified, otherwise use absolute local path
-            if lora_server_path:
-                relative_path = os.path.relpath(adapter_path, base_output_dir)
-                server_path = os.path.join(lora_server_path, relative_path)
-            else:
-                server_path = os.path.abspath(adapter_path)
-
-            lora_configs[adapter_name] = server_path
-    return lora_configs
-
-
-async def benchmark_lora_unloading(
-    api_url: str,
-    lora_configs: dict[str, str],
-    metrics: LoRAMetrics,
-    max_concurrent: int = 1,
-) -> None:
-    """Benchmark LoRA unloading performance.
-
-    Args:
-        api_url: Base API URL
-        lora_names: List of LoRA adapter names to unload
-        max_concurrent_unloads: Maximum concurrent unloading operations
-
-    Returns:
-        LoRAOperationMetrics with unloading performance data
-    """
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def unload_with_semaphore(name: str) -> None:
-        async with semaphore:
-            success, unload_time = await async_request_lora_unload(
-                api_url, name
-            )
-            if success:
-                metrics.unload_times_ms.append(unload_time)
-                metrics.total_unloads += 1
-            else:
-                logger.warning(f"Failed to unload LoRA '{name}'")
-
-    tasks = [unload_with_semaphore(name) for name in lora_configs]
-    await tqdm.gather(*tasks, desc="Unloading LoRAs...")
-
-
-async def benchmark_lora_loading(
-    api_url: str,
-    lora_configs: dict[str, str],  # List of (name, path) tuples
-    metrics: LoRAMetrics,
-    max_concurrent: int = 1,
-) -> None:
-    """Benchmark LoRA loading performance.
-
-    Args:
-        api_url: Base API URL
-        lora_configs: List of (name, path) tuples for LoRA adapters
-        max_concurrent_loads: Maximum concurrent loading operations
-        LoRAMetrics with loading performance data
-    """
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def load_with_semaphore(name: str, path: str) -> None:
-        async with semaphore:
-            success, load_time = await async_request_lora_load(
-                api_url, name, path
-            )
-            if success:
-                metrics.load_times_ms.append(load_time)
-                metrics.total_loads += 1
-            else:
-                logger.warning(f"Failed to load LoRA '{name}'")
-
-    tasks = [
-        load_with_semaphore(name, path) for name, path in lora_configs.items()
-    ]
-    await tqdm.gather(*tasks, desc="Loading LoRAs...")
 
 
 def get_tokenizer(
@@ -666,13 +457,14 @@ def calculate_metrics(
 async def chat_session_driver(
     model_id: str,
     api_url: str,
-    request_func: Callable[..., Awaitable[RequestFuncOutput]],
+    request_driver: RequestDriver,
     request_counter: RequestCounter,
     chat_session: ChatSession,
     max_chat_len: int,
     delay_between_chat_turns: int | None,
     skip_session_count: int | None = None,
     ignore_first_turn_stats: bool = False,
+    benchmark_should_end_time: int | None = None,
 ) -> list[RequestFuncOutput]:
     request_func_input = RequestFuncInput(
         model=model_id,
@@ -714,7 +506,15 @@ async def chat_session_driver(
         request_func_input.prompt = message_history
         request_func_input.prompt_len = chat_len
         request_func_input.max_tokens = output_len
-        response = await request_func(request_func_input)
+
+        # Check timeout before making request
+        if (
+            benchmark_should_end_time is not None
+            and time.perf_counter_ns() >= benchmark_should_end_time
+        ):
+            response = RequestFuncOutput(cancelled=True)
+        else:
+            response = await request_driver.request(request_func_input)
         if (
             skip_session_count is None
             or chat_session.id is None
@@ -758,7 +558,7 @@ async def run_single_turn_benchmark(
     timing_data: dict[str, list[float]] | None,
     semaphore: asyncio.Semaphore | None,
     benchmark_should_end_time: int | None,
-    request_func: Callable[..., Awaitable[RequestFuncOutput]],
+    request_driver: RequestDriver,
     model_id: str,
     api_url: str,
     max_output_len: int | None,
@@ -767,29 +567,23 @@ async def run_single_turn_benchmark(
     top_k: int | None,
     lora_configs: dict[str, str] | None,
     lora_request_ratio: float,
-    disable_tqdm: bool,
 ) -> list[RequestFuncOutput]:
     """Run single-turn benchmark scenario."""
     if timing_data is None:
         timing_data = {}
-    pbar: tqdm | None = (
-        None if disable_tqdm else tqdm(total=len(input_requests))
-    )
 
     async def limited_request_func(
         request_func_input: RequestFuncInput,
     ) -> RequestFuncOutput:
         if semaphore is None:
-            return await request_func(
-                request_func_input=request_func_input, pbar=pbar
-            )
+            return await request_driver.request(request_func_input)
         async with semaphore:
-            if benchmark_should_end_time is not None:
-                if time.perf_counter_ns() >= benchmark_should_end_time:
-                    return RequestFuncOutput(cancelled=True)
-            return await request_func(
-                request_func_input=request_func_input, pbar=pbar
-            )
+            if (
+                benchmark_should_end_time is not None
+                and time.perf_counter_ns() >= benchmark_should_end_time
+            ):
+                return RequestFuncOutput(cancelled=True)
+            return await request_driver.request(request_func_input)
 
     tasks: list[asyncio.Task[RequestFuncOutput]] = []
     async for request in get_request(
@@ -829,9 +623,6 @@ async def run_single_turn_benchmark(
 
     outputs = await asyncio.gather(*tasks)
 
-    if pbar is not None:
-        pbar.close()
-
     return outputs
 
 
@@ -840,7 +631,7 @@ async def run_multiturn_benchmark(
     max_requests: int,
     semaphore: asyncio.Semaphore | None,
     benchmark_should_end_time: int | None,
-    request_func: Callable[..., Awaitable[RequestFuncOutput]],
+    request_driver: RequestDriver,
     model_id: str,
     api_url: str,
     tokenizer: PreTrainedTokenizerBase,
@@ -851,33 +642,14 @@ async def run_multiturn_benchmark(
     lora_request_ratio: float,
     warmup_delay_ms: float,
     max_concurrency: int | None,
-    disable_tqdm: bool,
 ) -> list[RequestFuncOutput]:
     """Run multi-turn chat benchmark scenario."""
-    if disable_tqdm:
-        pbar = None
-    else:
-        num_qa_turns = [
-            (len(session.messages) // 2) for session in chat_sessions
-        ]
-        pbar = tqdm(total=sum(num_qa_turns))
 
     # Track total sent requests among chat sessions
     request_counter = RequestCounter(
         max_requests=max_requests,
         total_sent_requests=0,
     )
-
-    # Limit the request function only to deal with timeouts.
-    async def limited_request_func(
-        request_func_input: RequestFuncInput,
-    ) -> RequestFuncOutput:
-        if benchmark_should_end_time is not None:
-            if time.perf_counter_ns() >= benchmark_should_end_time:
-                return RequestFuncOutput(cancelled=True)
-        return await request_func(
-            request_func_input=request_func_input, pbar=pbar
-        )
 
     # apply the semaphore at the session level
     # ex: with max_concurrency = 1,
@@ -893,25 +665,27 @@ async def run_multiturn_benchmark(
             return await chat_session_driver(
                 model_id=model_id if lora_id is None else lora_id,
                 api_url=api_url,
-                request_func=limited_request_func,
+                request_driver=request_driver,
                 request_counter=request_counter,
                 chat_session=chat_session,
                 max_chat_len=tokenizer.model_max_length,
                 delay_between_chat_turns=delay_between_chat_turns,
                 skip_session_count=skip_first_n_requests,
                 ignore_first_turn_stats=ignore_first_turn_stats,
+                benchmark_should_end_time=benchmark_should_end_time,
             )
         async with semaphore:
             return await chat_session_driver(
                 model_id=model_id if lora_id is None else lora_id,
                 api_url=api_url,
-                request_func=limited_request_func,
+                request_driver=request_driver,
                 request_counter=request_counter,
                 chat_session=chat_session,
                 max_chat_len=tokenizer.model_max_length,
                 delay_between_chat_turns=delay_between_chat_turns,
                 skip_session_count=skip_first_n_requests,
                 ignore_first_turn_stats=ignore_first_turn_stats,
+                benchmark_should_end_time=benchmark_should_end_time,
             )
 
     tasks: list[asyncio.Task[list[RequestFuncOutput]]] = []
@@ -926,17 +700,85 @@ async def run_multiturn_benchmark(
         *tasks
     )
 
-    if pbar is not None:
-        pbar.close()
-
     return [output for sublist in session_outputs for output in sublist]
+
+
+def resolve_backend_for_chat(backend: Backend, chat: bool) -> Backend:
+    """Resolve the appropriate backend enum for chat or non-chat requests.
+
+    If chat is True and the backend doesn't already indicate chat usage,
+    attempts to find a chat variant of the backend (e.g., "vllm" -> "vllm-chat").
+    Otherwise, returns the original backend.
+
+    Args:
+        backend: The base backend enum.
+        chat: Whether chat completions endpoint is being used.
+
+    Returns:
+        The resolved Backend enum to use for the request driver.
+
+    Raises:
+        ValueError: If the resolved backend is not supported.
+    """
+    # Convert Backend enum to string value for manipulation
+    backend_str = backend.value
+
+    # Handle backend construction: add "-chat" only if not already present
+    # and if the resulting backend exists in REQUEST_DRIVER_CLASSES
+    if chat and not backend_str.endswith("-chat"):
+        potential_chat_backend_str = backend_str + "-chat"
+        try:
+            potential_chat_backend = Backend(potential_chat_backend_str)
+            if potential_chat_backend in REQUEST_DRIVER_CLASSES:
+                return potential_chat_backend
+        except ValueError:
+            pass
+
+    if backend not in REQUEST_DRIVER_CLASSES:
+        raise ValueError(
+            f"No associated request driver for backend '{backend.value}'. "
+            f"Supported backends: {', '.join(b.value for b in Backend if b in REQUEST_DRIVER_CLASSES)}"
+        )
+
+    return backend
+
+
+def create_benchmark_pbar(
+    disable_tqdm: bool,
+    num_chat_sessions: int | None,
+    input_requests: Sequence[SampledRequest],
+    chat_sessions: Sequence[ChatSession],
+) -> tqdm | None:
+    """Create a progress bar for benchmark runs.
+
+    Args:
+        disable_tqdm: Whether to disable the progress bar.
+        num_chat_sessions: Number of chat sessions (None for single-turn).
+        input_requests: Input requests for single-turn benchmarks.
+        chat_sessions: Chat sessions for multi-turn benchmarks.
+
+    Returns:
+        A tqdm progress bar instance or None if disabled.
+    """
+    if disable_tqdm:
+        return None
+
+    if not num_chat_sessions:
+        # single-turn chat scenario
+        return tqdm(total=len(input_requests))
+    else:
+        # multi-turn chat scenario
+        num_qa_turns = [
+            (len(session.messages) // 2) for session in chat_sessions
+        ]
+        return tqdm(total=sum(num_qa_turns))
 
 
 async def run_single_test_prompt(
     model_id: str,
     api_url: str,
     input_requests: Sequence[SampledRequest],
-    request_func: Callable[..., Awaitable[RequestFuncOutput]],
+    request_driver: RequestDriver,
     num_chat_sessions: int | None,
     chat_sessions: Sequence[ChatSession],
     top_k: int | None,
@@ -981,9 +823,7 @@ async def run_single_test_prompt(
         images=test_images,
         top_k=top_k,
     )
-    test_output = await request_func(
-        request_func_input=test_input,
-    )
+    test_output = await request_driver.request(test_input)
     if not test_output.success:
         raise ValueError(
             "Initial test run failed - Please make sure benchmark"
@@ -997,8 +837,7 @@ async def run_single_test_prompt(
 
 
 async def benchmark(
-    backend: str,
-    chat: bool,
+    backend: Backend,
     api_url: str,
     base_url: str,
     model_id: str,
@@ -1023,12 +862,12 @@ async def benchmark(
     top_p: float,
     top_k: int | None,
     max_benchmark_duration_s: int | None,
-    warmup_delay_ms: float = 0,
-    ignore_first_turn_stats: bool = False,
-    timing_data: dict[str, list[float]] | None = None,
-    lora_request_ratio: float = 0.0,
-    lora_configs: dict[str, str] | None = None,
-    max_concurrent_lora_ops: int = 1,
+    warmup_delay_ms: float,
+    ignore_first_turn_stats: bool,
+    timing_data: dict[str, list[float]] | None,
+    lora_request_ratio: float,
+    lora_configs: dict[str, str] | None,
+    max_concurrent_lora_ops: int,
 ) -> dict[str, Any]:
     if ignore_first_turn_stats and skip_first_n_requests:
         logger.warning(
@@ -1051,24 +890,10 @@ async def benchmark(
             max_concurrent=max_concurrent_lora_ops,
         )
 
-    # Handle backend construction: add "-chat" only if not already present
-    # and if the resulting backend exists in ASYNC_REQUEST_FUNCS
-    if chat and not backend.endswith("-chat"):
-        potential_chat_backend = backend + "-chat"
-        if potential_chat_backend in ASYNC_REQUEST_FUNCS:
-            full_backend = potential_chat_backend
-        else:
-            # If chat variant doesn't exist, use the base backend
-            full_backend = backend
-    else:
-        full_backend = backend
-
-    # TODO: This is another level of indirection we don't need. Create proper
-    # backend -> request_func interfaces for these.
-    if full_backend in ASYNC_REQUEST_FUNCS:
-        request_func = ASYNC_REQUEST_FUNCS[full_backend]
-    else:
-        raise ValueError(f"Unknown backend: {full_backend}")
+    request_driver_class: type[RequestDriver] = REQUEST_DRIVER_CLASSES[backend]
+    # Create a request driver instance without pbar for test prompt
+    # (pbar will be set later for the actual benchmark runs)
+    test_request_driver: RequestDriver = request_driver_class()
 
     if do_test_prompt:
         await run_single_test_prompt(
@@ -1077,7 +902,7 @@ async def benchmark(
             input_requests=input_requests,
             num_chat_sessions=num_chat_sessions,
             chat_sessions=chat_sessions,
-            request_func=request_func,
+            request_driver=test_request_driver,
             top_k=top_k,
             max_output_len=max_output_len,
         )
@@ -1139,7 +964,7 @@ async def benchmark(
         if collect_server_stats:
             try:
                 baseline_server_metrics = fetch_and_parse_metrics(
-                    backend=full_backend,
+                    backend=backend,
                     base_url=base_url,
                 )
                 logger.info("Captured baseline server metrics")
@@ -1148,7 +973,22 @@ async def benchmark(
                     f"Failed to capture baseline server metrics: {e}"
                 )
 
-        # Run the appropriate benchmark scenario
+        # Create pbar for actual benchmark runs
+        pbar = create_benchmark_pbar(
+            disable_tqdm=disable_tqdm,
+            num_chat_sessions=num_chat_sessions,
+            input_requests=input_requests,
+            chat_sessions=chat_sessions,
+        )
+
+        # Create base driver and wrap with ProgressBarRequestDriver if pbar is provided
+        base_driver: RequestDriver = request_driver_class()
+        request_driver: RequestDriver = (
+            ProgressBarRequestDriver(base_driver, pbar)
+            if pbar is not None
+            else base_driver
+        )
+
         if not num_chat_sessions:
             # single-turn chat scenario
             outputs = await run_single_turn_benchmark(
@@ -1158,7 +998,7 @@ async def benchmark(
                 timing_data=timing_data,
                 semaphore=semaphore,
                 benchmark_should_end_time=benchmark_should_end_time,
-                request_func=request_func,
+                request_driver=request_driver,
                 model_id=model_id,
                 api_url=api_url,
                 max_output_len=max_output_len,
@@ -1167,7 +1007,6 @@ async def benchmark(
                 top_k=top_k,
                 lora_configs=lora_configs,
                 lora_request_ratio=lora_request_ratio,
-                disable_tqdm=disable_tqdm,
             )
         else:
             # multi-turn chat scenario
@@ -1176,7 +1015,7 @@ async def benchmark(
                 max_requests=max_requests,
                 semaphore=semaphore,
                 benchmark_should_end_time=benchmark_should_end_time,
-                request_func=request_func,
+                request_driver=request_driver,
                 model_id=model_id,
                 api_url=api_url,
                 tokenizer=tokenizer,
@@ -1187,8 +1026,11 @@ async def benchmark(
                 lora_request_ratio=lora_request_ratio,
                 warmup_delay_ms=warmup_delay_ms,
                 max_concurrency=max_concurrency,
-                disable_tqdm=disable_tqdm,
             )
+
+        # Close pbar if it was created
+        if pbar is not None:
+            pbar.close()
 
         benchmark_duration = (
             time.perf_counter_ns() - benchmark_start_time
@@ -1229,7 +1071,7 @@ async def benchmark(
     if collect_server_stats:
         try:
             final_server_metrics = fetch_and_parse_metrics(
-                backend=full_backend,
+                backend=backend,
                 base_url=base_url,
             )
 
@@ -1573,7 +1415,6 @@ def main(args: argparse.Namespace) -> None:
     # so bump the file limit to make room for them
     set_ulimit()
 
-    backend = args.backend
     model_id = args.model
     tokenizer_id = args.tokenizer if args.tokenizer is not None else args.model
 
@@ -1775,17 +1616,20 @@ def main(args: argparse.Namespace) -> None:
         )
 
     # Generate LoRA configurations if needed
+    # TODO: make lora_configs a dataclass type than a dict[str, str]
     lora_configs = None
     if args.num_loras > 0 or args.lora_paths:
-        lora_configs = generate_loras(
-            model_id,
-            args.lora_rank,
-            args.num_loras,
-            args.lora_target_modules,
-            args.lora_paths,
-            args.lora_output_dir,
-            args.lora_server_path,
+        driver = LoRADriver(
+            model_id=model_id,
+            lora_rank=args.lora_rank,
+            num_loras=args.num_loras,
+            lora_target_modules=args.lora_target_modules,
+            lora_output_dir=args.lora_output_dir,
+            lora_paths=args.lora_paths,
+            lora_server_path=args.lora_server_path,
+            output_format=LoRAOutputFormat.PATH,  # benchmark_serving uses path format
         )
+        lora_configs = driver.generate_loras()
 
     if args.max_concurrency is not None:
         try:
@@ -1802,11 +1646,21 @@ def main(args: argparse.Namespace) -> None:
                 f"Expected a single float value for request_rate, got {args.request_rate}"
             ) from e
 
-    logger.info("starting benchmark run")
+    try:
+        backend = Backend(args.backend)
+    except ValueError as e:
+        raise ValueError(
+            f"Unknown backend: {args.backend}. "
+            f"Supported backends: {', '.join(b.value for b in Backend)}"
+        ) from e
+
+    # Resolve the appropriate backend for this request type
+    resolved_backend = resolve_backend_for_chat(backend=backend, chat=chat)
+
+    logger.info("Starting benchmark run")
     benchmark_result: dict[str, Any] = asyncio.run(
         benchmark(
-            backend=backend,
-            chat=chat,
+            backend=resolved_backend,
             api_url=api_url,
             base_url=base_url,
             model_id=model_id,
@@ -1833,6 +1687,7 @@ def main(args: argparse.Namespace) -> None:
             max_benchmark_duration_s=args.max_benchmark_duration_s,
             warmup_delay_ms=args.chat_warmup_delay_ms,
             ignore_first_turn_stats=args.ignore_first_turn_stats,
+            timing_data=None,
             lora_request_ratio=args.lora_request_ratio,
             lora_configs=lora_configs,
             max_concurrent_lora_ops=args.max_concurrent_lora_ops,

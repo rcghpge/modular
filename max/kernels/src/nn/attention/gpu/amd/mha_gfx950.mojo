@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import OptionalReg
+from itertools import product
 from math import ceildiv, recip
 from math.constants import log2e
 from sys import align_of, simd_width_of, size_of, llvm_intrinsic
@@ -32,6 +33,7 @@ from gpu.sync import (
     AMDScheduleBarrierMask,
     schedule_barrier,
     schedule_group_barrier,
+    s_waitcnt_barrier,
 )
 from memory.pointer import AddressSpace as BaseAddressSpace
 from layout import IntTuple, Layout, LayoutTensor
@@ -54,6 +56,7 @@ from layout.tensor_core import (
     get_mma_shape,
     num_matrix_reg,
     TiledTensorCore,
+    load_b_tr,
 )
 from memory import bitcast, stack_allocation
 from nn.mha_mask import MHAMask, TileMaskStatus
@@ -75,90 +78,27 @@ from .utils import SharedMemoryManager
 
 # Note: this is a experimental implementation of MHA for gfx950.
 
-# reference for waitcnt_arg and related synchronization utilities:
-# https://github.com/ROCm/rocm-libraries/blob/5ba64a9aa8557e465d1a5937609e23f34adb601e/projects/composablekernel/include/ck_tile/core/arch/arch.hpp#L140
-
-
-struct WaitCountArg:
-    """
-    Mojo struct to encapsulate waitcnt argument bitfields and helpers.
-    """
-
-    # bit numbers (hex) -------------------------> FE'DC'BA98'7'654'3210
-    # [V]M [E]XP [L]GKM counters and [U]NUSED ---> VV'UU'LLLL'U'EEE'VVVV
-
-    # Constants
-    alias MAX: UInt32 = 0b1100111101111111
-    alias MAX_VM_CNT: UInt32 = 0b111111
-    alias MAX_EXP_CNT: UInt32 = 0b111
-    alias MAX_LGKM_CNT: UInt32 = 0b1111
-
-    @staticmethod
-    fn from_vmcnt(cnt: UInt32) -> UInt32:
-        debug_assert(cnt >= 0 and (cnt >> 6) == 0, "valid range is [0..63]")
-        return WaitCountArg.MAX & ((cnt & 0b1111) | ((cnt & 0b110000) << 10))
-
-    @staticmethod
-    fn from_expcnt(cnt: UInt32) -> UInt32:
-        debug_assert(cnt >= 0 and (cnt >> 3) == 0, "valid range is [0..7]")
-        return WaitCountArg.MAX & (cnt << 4)
-
-    @staticmethod
-    fn from_lgkmcnt(cnt: UInt32) -> UInt32:
-        debug_assert(cnt >= 0 and (cnt >> 4) == 0, "valid range is [0..15]")
-        return WaitCountArg.MAX & (cnt << 8)
-
 
 @always_inline
-fn s_waitcnt(
-    vmcnt: UInt32 = WaitCountArg.MAX_VM_CNT,
-    expcnt: UInt32 = WaitCountArg.MAX_EXP_CNT,
-    lgkmcnt: UInt32 = WaitCountArg.MAX_LGKM_CNT,
-):
-    """
-    Issues an s_waitcnt with the specified counters.
-    """
-    # Compose the waitcnt argument
-    var waitcnt_val = (
-        WaitCountArg.from_vmcnt(vmcnt)
-        | WaitCountArg.from_expcnt(expcnt)
-        | WaitCountArg.from_lgkmcnt(lgkmcnt)
-    )
-    # Call the intrinsic (assuming a Mojo binding exists)
-    llvm_intrinsic["llvm.amdgcn.s.waitcnt", NoneType](waitcnt_val)
-
-
-@always_inline
-fn s_waitcnt_barrier(
-    vmcnt: UInt32 = WaitCountArg.MAX_VM_CNT,
-    expcnt: UInt32 = WaitCountArg.MAX_EXP_CNT,
-    lgkmcnt: UInt32 = WaitCountArg.MAX_LGKM_CNT,
-):
-    """
-    Issues an s_waitcnt followed by a barrier.
-    """
-    s_waitcnt(vmcnt, expcnt, lgkmcnt)
-    llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-
-
-@always_inline
-fn block_sync_lds(lgkmcnt: UInt32 = 0):
+fn block_sync_lds[
+    *,
+    lgkmcnt: UInt32 = 0,
+]():
     """
     Synchronize LDS (local data share) with waitcnt barrier.
     """
-    s_waitcnt_barrier(
-        WaitCountArg.MAX_VM_CNT, WaitCountArg.MAX_EXP_CNT, lgkmcnt
-    )
+    s_waitcnt_barrier[lgkmcnt=lgkmcnt]()
 
 
 @always_inline
-fn block_sync_lds_direct_load(vmcnt: UInt32 = 0):
+fn block_sync_lds_direct_load[
+    *,
+    vmcnt: UInt32 = 0,
+]():
     """
     Synchronize LDS for direct load with waitcnt barrier.
     """
-    s_waitcnt_barrier(
-        vmcnt, WaitCountArg.MAX_EXP_CNT, WaitCountArg.MAX_LGKM_CNT
-    )
+    s_waitcnt_barrier[vmcnt=vmcnt]()
 
 
 struct KVCacheIterator[
@@ -224,47 +164,58 @@ struct KVCacheIterator[
 fn copy_dram_to_sram_lds[
     swizzle: OptionalReg[Swizzle] = OptionalReg[Swizzle](),
 ](dst: LayoutTensor, src: LayoutTensor,) -> Int:
-    alias load_width = 8
     alias thread_layout = Layout.row_major(16, 4)
     var worker_idx = lane_id()
 
     var bc = make_amd_buffer_resource(src)
 
-    alias BN = src.shape[0]()
+    alias M = src.shape[0]()
+    alias N = src.shape[1]()
     var num_loads = 0
+    # we use 16x4 thread layout to load 16x32 tile from dram to sram
+    # but we need to load 32x16 tiles from sram for mma, so swizzle need to be applied to
+    # the whole 32x32 tile.
+    alias BM = 32
+    alias BN = 32
+    alias BM_SUB = thread_layout.shape[0].value()
 
     @parameter
-    for tile in range(BN // 32):
-
-        @parameter
-        for i in range(32 // 16):
-            var dst_partitions = dst.tile[32, 32](tile, 0).tile[16, 32](i, 0)
-            var src_partitions = src.tile[32, 32](tile, 0).tile[16, 32](i, 0)
-            var worker_idx_with_offset = worker_idx + UInt(i * Int(WARP_SIZE))
-            var src_dist = src_partitions.vectorize[1, load_width]().distribute[
-                thread_layout
-            ](
+    for n_tile, m_tile, m_sub_tile in product(
+        range(N // BN), range(M // BM), range(BM // BM_SUB)
+    ):
+        var dst_partitions = dst.tile[BM, BN](m_tile, n_tile).tile[BM_SUB, BN](
+            m_sub_tile, 0
+        )
+        var src_partitions = src.tile[BM, BN](m_tile, n_tile).tile[BM_SUB, BN](
+            m_sub_tile, 0
+        )
+        alias dst_layout = dst_partitions.layout
+        # dst need to be contiguous
+        constrained[dst_layout.stride[1].value() == 1, String(dst_layout)]()
+        constrained[dst_layout.stride[0].value() == 32, String(dst_layout)]()
+        var worker_idx_with_offset = worker_idx + UInt(m_sub_tile * WARP_SIZE)
+        var src_dist = src_partitions.vectorize[
+            1, simd_width_of[src.dtype]()
+        ]().distribute[thread_layout](
+            (
                 UInt(
-                    (
-                        swizzle.value()(
-                            Int(worker_idx_with_offset)
-                        ) if swizzle else Int(worker_idx_with_offset)
-                    )
-                    % Int(WARP_SIZE)
-                )
+                    swizzle.value()(Int(worker_idx_with_offset))
+                ) if swizzle else worker_idx_with_offset
             )
-            alias dtype = src.dtype
-            var src_offset = (Int(src_dist.ptr) - Int(src.ptr)) // size_of[
-                dtype
-            ]()
+            % UInt(WARP_SIZE)
+        )
+        alias dtype = src.dtype
+        var src_offset = (Int(src_dist.ptr) - Int(src.ptr)) // size_of[dtype]()
 
-            alias src_load_offset = src_dist.layout(0)
-            var ptr = dst_partitions.ptr
-            var dst_ptr = ptr.address_space_cast[AddressSpace.SHARED]()
-            bc.load_to_lds[width=load_width](
-                Int32(src_offset + src_load_offset), dst_ptr, scalar_offset=0
-            )
-            num_loads += 1
+        alias src_load_offset = src_dist.layout(0)
+        var ptr = dst_partitions.ptr
+        var dst_ptr = ptr.address_space_cast[AddressSpace.SHARED]()
+        bc.load_to_lds[width = simd_width_of[src.dtype]()](
+            Int32(src_offset + src_load_offset),
+            dst_ptr,
+            scalar_offset=0,
+        )
+        num_loads += 1
     return num_loads
 
 
@@ -307,52 +258,13 @@ fn load_b[
     var output_vectorized = output.vectorize[1, 8]()
 
     @parameter
-    for i in range(M):
-
-        @parameter
-        for j in range(N):
-            var out_reg = load_b_[swizzle, j](src.tile[32, 32](i, 0))
-            output_vectorized[i + j * M, 0] = rebind[
-                type_of(output_vectorized[i + j * M, 0])
-            ](out_reg)
+    for i, j in product(range(M), range(N)):
+        var out_reg = load_b_[swizzle, j](src.tile[32, 32](i, 0))
+        output_vectorized[i + j * M, 0] = rebind[
+            type_of(output_vectorized[i + j * M, 0])
+        ](out_reg)
 
     return output
-
-
-@always_inline
-fn load_4x16(tile: LayoutTensor, var lane_id_16: Int) -> SIMD[tile.dtype, 4]:
-    constrained[tile.dtype == DType.bfloat16, "tile.dtype == DType.bfloat16"]()
-    constrained[tile.shape[0]() == 4, "tile.shape[0]() == 4"]()
-    constrained[tile.shape[1]() == 16, "tile.shape[1]() == 16"]()
-    debug_assert(lane_id_16 < 16, "lane_id_16 < 16")
-    alias thread_layout = Layout.row_major(4, 4)
-    var dist_result = tile.vectorize[1, 4]().distribute_with_offset[
-        thread_layout
-    ](UInt(lane_id_16))
-    var offset = dist_result[2]
-    var ptr = tile.ptr.address_space_cast[AddressSpace.SHARED]() + Int(offset)
-    return ds_read_tr16_b64(ptr)
-
-
-@always_inline
-fn load_8x32(tile: LayoutTensor, var lane_id: Int) -> SIMD[tile.dtype, 4]:
-    constrained[tile.dtype == DType.bfloat16, "tile.dtype == DType.bfloat16"]()
-    constrained[tile.shape[0]() == 8, "tile.shape[0]() == 8"]()
-    constrained[tile.shape[1]() == 32, "tile.shape[1]() == 32"]()
-    var lane_id_32 = lane_id % 32
-    var shared_b_tile = tile.tile[4, 16](lane_id // 32, lane_id_32 // 16)
-    var lane_16 = lane_id % 16
-    return load_4x16(shared_b_tile, lane_16)
-
-
-@always_inline
-fn load_16x32(tile: LayoutTensor, var lane_id: Int) -> SIMD[tile.dtype, 8]:
-    constrained[tile.dtype == DType.bfloat16, "tile.dtype == DType.bfloat16"]()
-    constrained[tile.shape[0]() == 16, "tile.shape[0]() == 16"]()
-    constrained[tile.shape[1]() == 32, "tile.shape[1]() == 32"]()
-    var part_1 = load_8x32(tile.tile[8, 32](0, 0), lane_id)
-    var part_2 = load_8x32(tile.tile[8, 32](1, 0), lane_id)
-    return part_1.join(part_2)
 
 
 struct KVBuffer[
@@ -528,26 +440,9 @@ struct KVBuffer[
 
             var wtile_coord0 = Int(warp_col)
             var wtile_coord1 = 0
-            # constrained[False, ]()
             var warp_tile = smem_tile.tile[Self.wtile_dim0, Self.wtile_dim1](
                 wtile_coord0, wtile_coord1
             )
-            # constrained[
-            #     False,
-            #     String(warp_tile.shape[0](), " ", warp_tile.shape[1]())
-            #     + " "
-            #     + String(Self.wtile_dim0, " ", Self.wtile_dim1, " ", BN),
-            # ]()
-
-            # alias tensor_core_mma = TiledTensorCore[
-            #     accum_type,
-            #     mma_input_type,
-            #     mma_shape,
-            #     group_size=k_group_size,
-            #     transpose_b=transpose_b,
-            # ]()
-
-            # constrained[False, String(warp_tile.shape[0](), warp_tile.shape[1]())]()
             var load_b_tile = load_b[swizzle=swizzle](warp_tile)
 
             self.mma_tile.vectorize[1, Self.simd_width]().copy_from(
@@ -555,13 +450,18 @@ struct KVBuffer[
             )
 
         else:
+            alias MMA_M = mma_shape[0]
+            alias MMA_K = mma_shape[2]
+            constrained[
+                MMA_K == 16, "MMA_K must be 16 but got " + String(MMA_K)
+            ]()
 
             @parameter
-            for k in range(BK // 16):
+            for k in range(BK // MMA_K):
                 var smem_tile = (
                     self.smem_iter.next_unsafe(buffer)[]
                     .tile[BK, depth](Int(bk_tile), 0)
-                    .tile[16, depth](k, 0)
+                    .tile[MMA_K, depth](k, 0)
                 )
                 var frags = (
                     type_of(self.mma_tile.split[Self.num_k_mmas2]()[k])
@@ -570,23 +470,15 @@ struct KVBuffer[
                 )
 
                 @parameter
-                for i in range(depth // 32):
+                for i in range(depth // MMA_M):
                     frags[i, 0] = rebind[frags.element_type](
-                        load_16x32(smem_tile.tile[16, 32](0, i), Int(lane_id()))
+                        load_b_tr[Self.mma_shape](
+                            smem_tile.tile[MMA_K, MMA_M](0, i)
+                        )
                     )
-
                 self.mma_tile.split[Self.num_k_mmas2]()[k].vectorize[
                     1, Self.simd_width
                 ]().copy_from(frags)
-        # @parameter
-        # for k_mma_tile_idx in range(Self.num_k_mmas2):
-        #     tensor_core_mma.mma_op.load_b[swizzle = Self.swizzle](
-        #         warp_tile,
-        #         self.get_mma_tile[k_mma_tile_idx]().vectorize[
-        #             1, Self.simd_width
-        #         ](),
-        #         UInt(k_mma_tile_idx),
-        #     )
 
 
 __extension Attention:
@@ -645,7 +537,7 @@ __extension Attention:
             _ = k_buffer.load_from_dram()
             _ = v_buffer.load_from_dram()
             _ = k_buffer.load_from_dram()
-            block_sync_lds_direct_load(num_v_loads + num_k_loads)
+            block_sync_lds_direct_load[vmcnt = num_v_loads + num_k_loads]()
             # barrier()
             k_buffer.load_from_shared(0, 0)
 
@@ -661,7 +553,7 @@ __extension Attention:
         fn loop_over_kvcache[
             tile_size: Int
         ](kv_tile_start_row: UInt32, end: UInt32, not_last_iter: Bool):
-            block_sync_lds(k_lds_loads)
+            block_sync_lds[lgkmcnt=k_lds_loads]()
             # barrier()
             if self.mask_skip_and_advance(kv_tile_start_row):
                 k_buffer.kv_cache_iter.increment()
@@ -700,7 +592,7 @@ __extension Attention:
                         q_mma_tile, k_mma_tile, self.p_reg_buffer.reg_tile
                     )
 
-            block_sync_lds_direct_load(num_k_loads + num_v_loads)
+            block_sync_lds_direct_load[vmcnt = num_k_loads + num_v_loads]()
             # barrier()
             v_buffer.load_from_shared(UInt(loop_counter % 2), 0)
 
@@ -718,7 +610,7 @@ __extension Attention:
 
             self.online_softmax()
 
-            block_sync_lds(v_lds_loads)
+            block_sync_lds[lgkmcnt=v_lds_loads]()
             # barrier()
             # calculate v^T p^T
             _ = k_buffer.load_from_dram()
@@ -737,7 +629,7 @@ __extension Attention:
                         v_buffer.get_mma_tile[k_mma](),
                         self.out_reg_buffer.reg_tile,
                     )
-            block_sync_lds_direct_load(num_k_loads + num_v_loads)
+            block_sync_lds_direct_load[vmcnt = num_k_loads + num_v_loads]()
             # barrier()
             loop_counter = loop_counter ^ 1
             k_buffer.load_from_shared(UInt(loop_counter % 2), 0)

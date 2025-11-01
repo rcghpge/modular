@@ -33,18 +33,21 @@ from max.graph.weights import (
     Weights,
     WeightsAdapter,
 )
+from max.kv_cache import (
+    PagedKVCacheManager,
+    estimate_kv_cache_size,
+    load_kv_manager,
+)
 from max.nn import Module, ReturnLogits, Signals
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
     PagedCacheValues,
-    PagedKVCacheManager,
-    estimate_kv_cache_size,
-    load_kv_manager,
 )
 from max.nn.parallel import ParallelArrayOps
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
+    AlwaysSignalBuffersMixin,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -133,7 +136,9 @@ class Qwen2_5VLInputs(ModelInputs):
         return self.pixel_values is not None
 
 
-class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
+class Qwen2_5VLModel(
+    AlwaysSignalBuffersMixin, PipelineModel[TextAndVisionContext], KVCacheMixin
+):
     """A Qwen2.5VL pipeline model for multimodal text generation."""
 
     vision_model: Model
@@ -173,14 +178,6 @@ class Qwen2_5VLModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         )
 
         self.model_config = None
-
-        # Initialize signal buffers for distributed execution
-        self.signal_buffers = [
-            Tensor.zeros(
-                shape=(Signals.NUM_BYTES,), dtype=DType.uint8, device=dev
-            )
-            for dev in self.devices
-        ]
 
         self.vision_model, self.language_model = self.load_model(session)
 

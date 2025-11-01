@@ -21,6 +21,19 @@ what we publish.
 
 ### Language enhancements {#25-7-language-enhancements}
 
+- Mojo now supports compile-time trait conformance check (via `conforms_to`) and
+  downcast (via `trait_downcast`). This allows users to implement features like
+  static dispatching based on trait conformance, e.g.,
+
+  ```mojo
+  fn maybe_print[T : AnyType](maybe_printable : T):
+    @parameter
+    if conforms_to(T, Writable):
+      print(trait_downcast[Writable](maybe_printable))
+    else:
+      print("[UNPRINTABLE]")
+  ```
+
 - [Issue #3925](https://github.com/modular/modular/issues/3925): Mojo now allows
   methods to be overloaded based on "owned" vs "by-ref" argument conventions,
   selecting the owned overload when given an owned value, and selecting the
@@ -88,6 +101,9 @@ what we publish.
     old() # 'old' is deprecated, use 'new' instead
   ```
 
+- Added `DType.float4_e2m1fn` as the 4bit float `e2m1` format. This Float4_e2m1
+  type is defined by the [Open Compute MX Specification](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf).
+
 ### Language changes {#25-7-language-changes}
 
 - Expressions like `(Int, Float)` is no longer a syntax sugar for
@@ -153,12 +169,24 @@ what we publish.
   and should be updated to explicitly read `Int(uint_val)` or `UInt(int_val)`
   respectively.
 
+- The `ImplicitlyIntable` trait has been removed. Types implementing this trait
+  could be implicitly converted to `Int`.
+
+  `Bool` was the only Mojo standard library type to implement
+  `ImplicitlyIntable`. Conversions from `Bool` to `Int` can now be performed
+  explicitly, using `Int(bool-val)` (via the remaining `Intable` trait, which
+  only supports *explicit* conversions).
+
 - `assert_equal` now displays colored character-by-character diffs when string
   comparisons fail, making it easier to spot differences. Differing characters
   are highlighted in red for the left string and green for the right string.
 
 - Added `sys.compile.SanitizeAddress` providing a way for mojo code to detect
   `--sanitize address` at compile time.
+
+- The `mojo test` command has been removed. The recommended testing strategy is
+  to define test functions, call them explicitly from `main` (or use the new
+  `test_utils.TestSuite` framework), and run with `mojo run`.
 
 - Error messages now preserve symbolic calls to `always_inline("builtin")`
   functions rather than inlining them into the error message.
@@ -274,6 +302,8 @@ what we publish.
   available from `gpu.host.nvidia.tma` instead of `gpu.host._nvidia_cuda`.
 
 - The `empty` origin has been renamed to `external`.
+
+- Rename `MutableOrigin` to `MutOrigin` and `ImmutableOrigin` to `ImmutOrigin`.
 
 ### Tooling changes {#25-7-tooling-changes}
 
@@ -406,3 +436,10 @@ what we publish.
 
 - Fixed [PR5479](https://github.com/modular/modular/issues/5479): mojo crashes
   when compiling standalone `__del__` function without struct context.
+
+- [Issue #5500](https://github.com/modular/modular/issues/5500): Added
+  comprehensive documentation to `gpu/host/info.mojo` explaining GPU target
+  configuration and LLVM data layout strings. The documentation now includes
+  detailed explanations of all MLIR target components, vendor-specific patterns
+  for NVIDIA/AMD/Apple GPUs, step-by-step guides for adding new GPU
+  architectures, and practical methods for obtaining data layout strings.

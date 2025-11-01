@@ -184,6 +184,9 @@ class PipelineConfig(MAXConfig):
     - lora_response_zmq_endpoint: f"{zmq_endpoint_base}-lora_response"
     """
 
+    execute_empty_batches: bool = False
+    """Whether the scheduler should execute empty batches."""
+
     force: bool = field(default=False)
     """Skip validation of user provided flags against the architecture's required arguments."""
 
@@ -610,10 +613,11 @@ class PipelineConfig(MAXConfig):
                 "enable_structured_output is not currently supported on CPU."
             )
 
-        if self.sampling_config.do_penalties and self.draft_model_config:
-            raise ValueError(
+        if self.sampling_config.enable_penalties and self.draft_model_config:
+            logger.warning(
                 "frequency_penalty, presence_penalty and repetition_penalty are not currently supported with speculative decoding."
             )
+            self.sampling_config.enable_penalties = False
 
         # Validate LoRA compatibility with model configuration
         if self._lora_config and self._lora_config.enable_lora:
@@ -761,6 +765,13 @@ class PipelineConfig(MAXConfig):
         # Validate required arguments
         if not self.force:
             self._validate_required_arguments_against_architecture(arch)
+
+        # Validate that model supports empty batches, if being requested.
+        if self.execute_empty_batches and not arch.supports_empty_batches:
+            raise ValueError(
+                f"Architecture '{arch.name}' does not support empty batches. "
+                "Please set `execute_empty_batches` to False."
+            )
 
         devices = load_devices(model_config.device_specs)
 

@@ -32,7 +32,7 @@ from max.interfaces import (
     SchedulerResult,
 )
 from max.interfaces.queue import BackgroundQueueDrainer, drain_queue
-from max.nn.kv_cache import PagedKVCacheManager
+from max.kv_cache import PagedKVCacheManager
 from max.pipelines.core import TTSContext
 from max.pipelines.lib import LoRAManager
 from max.pipelines.lib.audio_generator_pipeline import (
@@ -419,9 +419,6 @@ class AudioGenerationScheduler(Scheduler):
                 continue
             del self.decode_reqs[req_id]
             self.pipeline.release(req_id)
-            self.response_queue.put_nowait(
-                {req_id: SchedulerResult.cancelled()}
-            )
             num_terminated_reqs += 1
         return num_terminated_reqs
 

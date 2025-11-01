@@ -22,7 +22,7 @@ from algorithm.functional import unswitch
 from builtin.variadics import VariadicOf
 from gpu import block_idx, thread_idx
 from gpu.globals import WARPGROUP_SIZE
-from gpu.host import DeviceContext
+from gpu.host import DeviceContext, DeviceBuffer
 from gpu.host.nvidia.tma import TensorMapSwizzle
 from gpu.mma import st_matrix
 from gpu.sync import async_copy_arrive
@@ -88,6 +88,10 @@ struct NonNullPointer[dtype_: DType](OptionalPointer):
         self.ptr = ptr
 
     @always_inline
+    fn __init__(out self, ptr: DeviceBuffer[Self.dtype]):
+        self.ptr = ptr.unsafe_ptr()
+
+    @always_inline
     fn value(self) -> UnsafePointer[Scalar[Self.dtype]]:
         debug_assert(
             Bool(self.ptr),
@@ -123,7 +127,7 @@ struct Pack[
     KVRowOffsetsType: OptionalPointer,
     MaxSeqLenType: OptionallyStaticInt,
     PartitionType: MHAPartitionScheme,
-]:
+](Copyable, DevicePassable):
     var mask: MaskType
     var score_mod: ScoreModType
     var scheduler: SchedulerType
@@ -132,6 +136,19 @@ struct Pack[
     var kv_input_row_offsets: KVRowOffsetsType
     var max_seq_len: MaxSeqLenType
     var partition: PartitionType
+
+    alias device_type: AnyType = Self
+
+    fn _to_device_type(self, target: OpaquePointer):
+        target.bitcast[Self.device_type]()[] = self
+
+    @staticmethod
+    fn get_type_name() -> String:
+        return "Pack"
+
+    @staticmethod
+    fn get_device_type_name() -> String:
+        return Self.get_type_name()
 
     @always_inline
     fn __init__(
@@ -184,9 +201,6 @@ struct MHAPosition[
     alias q_stride: Int = Self.depth if decoding else Self.depth * Self.q_num_heads
     alias q_output_gmem_layout = Layout(
         IntTuple(Self.BM, Self.depth), IntTuple(Self.q_stride, 1)
-    )
-    alias split_gmem_layout = Layout(
-        IntTuple(Self.BM // 2, Self.depth), IntTuple(Self.q_stride, 1)
     )
 
     @always_inline
@@ -260,38 +274,6 @@ struct MHAPosition[
     @always_inline
     fn __ne__(self, other: Self) -> Bool:
         return self.q_out_offset != other.q_out_offset
-
-    @always_inline
-    fn split_out_gmem_tensor[
-        dtype: DType, //,
-    ](
-        self,
-        ptr: UnsafePointer[Scalar[dtype]],
-        idx: UInt32,
-        out gmem_block: LayoutTensor[
-            dtype,
-            Self.split_gmem_layout,
-            MutableAnyOrigin,
-            layout_int_type = DType.int32,
-            linear_idx_type = DType.int32,
-            masked=True,
-        ],
-    ):
-        constrained[not decoding]()
-        alias splitBM = Self.BM // 2
-        num_rows = min(
-            splitBM,
-            Int32(self.seq_len)
-            - Int32(self.prompt_offset)
-            - Int32(idx * splitBM),
-        )
-        gmem_block = {
-            ptr + self.q_out_offset + idx * (Self.q_stride * splitBM),
-            type_of(gmem_block.runtime_layout)(
-                type_of(gmem_block.runtime_layout.shape)(Int(num_rows), depth),
-                type_of(gmem_block.runtime_layout.stride)(Self.q_stride, 1),
-            ),
-        }
 
     @always_inline
     fn q_out_gmem_tensor[
@@ -1042,85 +1024,31 @@ fn produce[
     produce_v(write_pipeline_states, kv_row_prev, kv_col_prev)
 
 
-@always_inline
-fn output_gmem_to_smem_STMatrix[
-    output_type: DType,
-    accum_type: DType,
-    num_m_mmas: Int,
-    o_frag_size: Int, //,
-    BM: Int,
-    padded_depth: Int,
-    swizzle: Swizzle,
-    num_consumer: Int,
-](
-    warp_group_thread_idx: UInt32,
-    local_warp_group_idx: UInt32,
-    output_reg_tile: LayoutTensor[
-        accum_type,
-        Layout.row_major(num_m_mmas, o_frag_size),
-        MutableAnyOrigin,
-        address_space = AddressSpace.LOCAL,
-    ],
-    accum_smem_tile: LayoutTensor[
-        output_type,
-        Layout.row_major(BM, padded_depth),
-        MutableAnyOrigin,
-        address_space = AddressSpace.SHARED,
-    ],
-):
-    var st_matrix_rt_layout = RuntimeLayout[
-        st_matrix_n_layout[
-            output_type, padded_depth, num_m_mmas, num_consumer
-        ](),
-        element_type = DType.int32,
-        linear_idx_type = DType.int32,
-    ]()
-
-    @parameter
-    for m_mma in range(num_m_mmas):
-
-        @parameter
-        for i in range(padded_depth // 16):
-            var st_matrix_args = RuntimeTuple[
-                IntTuple(UNKNOWN_VALUE, IntTuple(i, m_mma, UNKNOWN_VALUE))
-            ](
-                Int(warp_group_thread_idx),
-                i,
-                m_mma,
-                Int(local_warp_group_idx),
-            )
-            var accum_smem_idx = swizzle(st_matrix_rt_layout(st_matrix_args))
-            var offset = accum_smem_tile.ptr.offset(accum_smem_idx)
-            var output_frag = (
-                output_reg_tile.tile[1, 8](m_mma, i)
-                .load[8](0, 0)
-                .cast[output_type]()
-            )
-            var output_frag_f32_packed = bitcast[DType.float32, 4](output_frag)
-            st_matrix[simd_width=4](offset, output_frag_f32_packed)
-
-
-@always_inline
 fn output_reg_to_smem[
-    output_type: DType,
-    accum_type: DType,
-    num_m_mmas: Int,
-    o_frag_size: Int, //,
     BM: Int,
     BN: Int,
+    WM: Int,
     padded_depth: Int,
+    kv_type: DType,
+    output_type: DType,
+    accum_type: DType,
+    reg_layout: Layout,
+    o_frag_size: Int,
+    num_consumer_threads: Int,
+    simd_size: Int,
     swizzle: Swizzle,
+    num_m_mmas: Int,
     num_consumer: Int,
+    mma_thread_layout: Layout,
 ](
     tid: UInt32,
     local_warp_group_idx: UInt32,
+    warp_x: UInt32,
     warp_y: UInt32,
-    q_smem: UnsafePointer[
-        Scalar[output_type], address_space = AddressSpace.SHARED
-    ],
+    q_smem: UnsafePointer[Scalar[kv_type], address_space = AddressSpace.SHARED],
     output_reg_tile: LayoutTensor[
         accum_type,
-        Layout.row_major(num_m_mmas, o_frag_size),
+        reg_layout,
         MutableAnyOrigin,
         address_space = AddressSpace.LOCAL,
     ],
@@ -1134,23 +1062,50 @@ fn output_reg_to_smem[
         output_type,
         Layout.row_major(BM, padded_depth),
         address_space = AddressSpace.SHARED,
-    ](q_smem)
+    ](q_smem.bitcast[Scalar[output_type]]())
     alias use_stmatrix = accum_type is DType.float32 and padded_depth % 16 == 0 and size_of[
         output_type
     ]() == 2 and o_frag_size % 8 == 0
-
-    @parameter
     if use_stmatrix:
-        var warp_group_thread_idx = tid % WARPGROUP_SIZE
-        output_gmem_to_smem_STMatrix[BM, padded_depth, swizzle, num_consumer](
-            warp_group_thread_idx,
-            local_warp_group_idx,
-            output_reg_tile,
-            accum_smem_tile,
-        )
+        var st_matrix_rt_layout = RuntimeLayout[
+            st_matrix_n_layout[
+                output_type, padded_depth, num_m_mmas, num_consumer
+            ](),
+            element_type = DType.int32,
+            linear_idx_type = DType.int32,
+        ]()
+
+        @parameter
+        for m_mma in range(num_m_mmas):
+
+            @parameter
+            for i in range(padded_depth // 16):
+                var warp_group_thread_idx = tid % WARPGROUP_SIZE
+                var st_matrix_args = RuntimeTuple[
+                    IntTuple(UNKNOWN_VALUE, IntTuple(i, m_mma, UNKNOWN_VALUE))
+                ](
+                    Int(warp_group_thread_idx),
+                    i,
+                    m_mma,
+                    Int(local_warp_group_idx),
+                )
+                var accum_smem_idx = swizzle(
+                    st_matrix_rt_layout(st_matrix_args)
+                )
+                var offset = accum_smem_tile.ptr.offset(accum_smem_idx)
+                var output_frag = (
+                    output_reg_tile.tile[1, 8](m_mma, i)
+                    .load[8](0, 0)
+                    .cast[output_type]()
+                )
+                var output_frag_f32_packed = bitcast[DType.float32, 4](
+                    output_frag
+                )
+                st_matrix[simd_width=4](offset, output_frag_f32_packed)
     else:
-        alias mma_thread_layout = Layout.row_major(8, 4)
-        accum_smem_warp_tile = accum_smem_tile.tile[16, BN](Int(warp_y), Int(0))
+        accum_smem_warp_tile = accum_smem_tile.tile[WM, BN](
+            Int(warp_y), Int(warp_x)
+        )
         copy_local_to_shared[thread_layout=mma_thread_layout, swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
             output_reg_tile.vectorize[1, 2]().transpose(),

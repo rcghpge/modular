@@ -30,14 +30,16 @@ from max.graph.weights import (
     Weights,
     WeightsAdapter,
 )
+from max.kv_cache import (
+    PagedKVCacheManager,
+    estimate_kv_cache_size,
+    load_kv_manager,
+)
 from max.nn import Module, ReturnLogits, Signals
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
     PagedCacheValues,
-    PagedKVCacheManager,
-    estimate_kv_cache_size,
-    load_kv_manager,
 )
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
@@ -120,21 +122,6 @@ class MistralModel(PipelineModel[TextContext]):
             return_logits,
         )
         self.model = self.load_model(session)
-
-        # Initialize state needed for communication collectives.
-        # Contents of signal buffer should be filled with zeros.
-        self.signal_buffers = (
-            [
-                Tensor.zeros(
-                    shape=(Signals.NUM_BYTES,), dtype=DType.uint8, device=dev
-                )
-                for dev in self.devices
-            ]
-            if len(self.devices) > 1
-            # Skip creating buffers for single-device, where communication
-            # collectives shouldn't be called.
-            else []
-        )
 
     def execute(self, model_inputs: ModelInputs) -> ModelOutputs:
         """Runs the graph."""

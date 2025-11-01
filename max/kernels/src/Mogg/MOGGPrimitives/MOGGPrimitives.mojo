@@ -77,7 +77,7 @@ struct StateContext:
     fn __getitem__(self, index: Int) -> OpaquePointer:
         debug_assert(0 <= index < self.num_slots, "index must be within bounds")
         return external_call[
-            "KGEN_CompilerRT_GetContextPayloadPtr",
+            "MGP_RT_GetContextPayloadPtr",
             OpaquePointer,
         ](index, self.ctx_ptr)
 
@@ -115,24 +115,20 @@ fn create_error_async_values_and_destruct_error(
 @register_internal("builtin.create_index_async")
 @no_inline
 fn create_index_async(value: Int, async_ptr: OpaquePointer):
-    external_call["KGEN_CompilerRT_CreateAsync_ssizet", NoneType](
-        value, async_ptr
-    )
+    external_call["MGP_RT_CreateAsync_ssizet", NoneType](value, async_ptr)
 
 
 @register_internal("builtin.create_si64_async")
 @no_inline
 @export
 fn create_si64_async(value: Int64, async_ptr: OpaquePointer):
-    external_call["KGEN_CompilerRT_CreateAsync_int64t", NoneType](
-        value, async_ptr
-    )
+    external_call["MGP_RT_CreateAsync_int64t", NoneType](value, async_ptr)
 
 
 @register_internal("builtin.create_chain_async")
 @no_inline
 fn create_chain_async(async_ptr: OpaquePointer):
-    external_call["KGEN_CompilerRT_CreateAsync_chain", NoneType](async_ptr)
+    external_call["MGP_RT_CreateAsync_chain", NoneType](async_ptr)
 
 
 @register_internal("builtin.create_bool_async")
@@ -142,9 +138,7 @@ fn create_i1_async(
     value: Bool,
     async_ptr: OpaquePointer,
 ):
-    external_call["KGEN_CompilerRT_CreateAsync_bool", NoneType](
-        value, async_ptr
-    )
+    external_call["MGP_RT_CreateAsync_bool", NoneType](value, async_ptr)
 
 
 @register_internal("builtin.create_buffer_ref_async")
@@ -154,7 +148,7 @@ fn create_buffer_ref_async(
     async_ptr: OpaquePointer,
     call_ctx: DeviceContextPtr,
 ):
-    external_call["KGEN_CompilerRT_CreateAsyncDeviceBufferRef", NoneType](
+    external_call["MGP_RT_CreateAsyncDeviceBufferRef", NoneType](
         buffer.data, len(buffer), async_ptr, call_ctx._handle
     )
 
@@ -165,7 +159,7 @@ fn create_non_tracked_buffer_ref_async(
     buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin],
     async_ptr: OpaquePointer,
 ):
-    external_call["KGEN_CompilerRT_CreateAsyncNonTrackedBufferRef", NoneType](
+    external_call["MGP_RT_CreateAsyncNonTrackedBufferRef", NoneType](
         buffer.data, len(buffer), async_ptr
     )
 
@@ -183,7 +177,7 @@ fn create_non_tracked_tensor_async[
     constrained[
         tensor_rank == buffer_rank or (tensor_rank == 0 and buffer_rank == 1)
     ]()
-    external_call["KGEN_CompilerRT_CreateAsyncNonTrackedTensor", NoneType](
+    external_call["MGP_RT_CreateAsyncNonTrackedTensor", NoneType](
         buffer.data,
         bytecount_with_dtype(buffer.dynamic_shape, dtype),
         tensor_rank,
@@ -202,7 +196,7 @@ fn create_buffer_ref_with_borrow_async[
     async_to_borrow: OpaquePointer,
     output_async: OpaquePointer,
 ):
-    external_call["KGEN_CompilerRT_CreateAsyncBufferWithBorrow", NoneType](
+    external_call["MGP_RT_CreateAsyncBufferWithBorrow", NoneType](
         buffer.data,
         len(buffer),
         async_to_borrow,
@@ -225,7 +219,7 @@ fn create_tensor_spec_async[
     for i in range(spec_rank):
         shape_ptr[i] = spec[i]
 
-    external_call["KGEN_CompilerRT_CreateAsyncTensorShape", NoneType](
+    external_call["MGP_RT_CreateAsyncTensorShape", NoneType](
         shape_ptr, spec_rank, async_ptr
     )
     shape_ptr.free()
@@ -248,7 +242,7 @@ fn create_tensor_async[
     constrained[
         tensor_rank == buffer_rank or (tensor_rank == 0 and buffer_rank == 1)
     ]()
-    external_call["KGEN_CompilerRT_CreateAsyncTensorWithBorrow", NoneType](
+    external_call["MGP_RT_CreateAsyncTensorWithBorrow", NoneType](
         buffer.data,
         bytecount_with_dtype(buffer.dynamic_shape, dtype),
         tensor_rank,
@@ -278,18 +272,18 @@ fn create_mojo_value_async(
 ):
     # Check if we have a nullptr, if so, don't use a destructor.
     if not val_ptr:
-        external_call["KGEN_CompilerRT_CreateOwnedAsyncMojoValue", NoneType](
+        external_call["MGP_RT_CreateOwnedAsyncMojoValue", NoneType](
             val_ptr,
             empty_destructor,
             async_ptr,
         )
         return
     var dst_ptr = external_call[
-        "KGEN_CompilerRT_MojoValueAllocateBuffer", UnsafePointer[UInt8]
+        "MGP_RT_MojoValueAllocateBuffer", UnsafePointer[UInt8]
     ](size, align)
     move_fn(val_ptr, dst_ptr)
 
-    external_call["KGEN_CompilerRT_CreateOwnedAsyncMojoValue", NoneType](
+    external_call["MGP_RT_CreateOwnedAsyncMojoValue", NoneType](
         dst_ptr,
         destructor_fn,
         async_ptr,
@@ -307,11 +301,11 @@ fn create_python_mojo_value_async(
     move_fn: fn (UnsafePointer[UInt8], UnsafePointer[UInt8]) -> None,
 ):
     var dst_ptr = external_call[
-        "KGEN_CompilerRT_MojoValueAllocateBuffer", UnsafePointer[UInt8]
+        "MGP_RT_MojoValueAllocateBuffer", UnsafePointer[UInt8]
     ](size, align)
     move_fn(val_ptr, dst_ptr)
 
-    external_call["KGEN_CompilerRT_CreateOwnedAsyncPythonMojoValue", NoneType](
+    external_call["MGP_RT_CreateOwnedAsyncPythonMojoValue", NoneType](
         dst_ptr,
         destructor_fn,
         async_ptr,
@@ -325,7 +319,7 @@ fn transfer_async(
     async_dst: OpaquePointer,
 ):
     external_call[
-        "KGEN_CompilerRT_TransferAsyncRef",
+        "MGP_RT_TransferAsyncRef",
         NoneType,
     ](async_src, async_dst)
 
@@ -336,7 +330,7 @@ fn unpack_async(
     async_ptr: OpaquePointer,
 ) -> OpaquePointer:
     return external_call[
-        "KGEN_CompilerRT_GetValueFromAsync",
+        "MGP_RT_GetValueFromAsync",
         OpaquePointer,
     ](async_ptr)
 
@@ -347,7 +341,7 @@ fn unpack_device_ctx(
     async_ptr: OpaquePointer,
 ) -> DeviceContextPtr:
     var ptr = external_call[
-        "KGEN_CompilerRT_UnpackDeviceContext",
+        "MGP_RT_UnpackDeviceContext",
         OpaquePointer,
     ](async_ptr)
 
@@ -358,14 +352,14 @@ fn unpack_device_ctx(
 @no_inline
 fn unpack_buffer_ref(
     async_ptr: OpaquePointer,
-) -> NDBuffer[DType.uint8, 1, MutableAnyOrigin]:
+) -> NDBuffer[DType.int8, 1, MutableAnyOrigin]:
     var size: UInt64 = 0
     var data_ptr = external_call[
-        "KGEN_CompilerRT_GetDataFromBuffer",
+        "MGP_RT_GetDataFromBuffer",
         OpaquePointer,
     ](async_ptr, UnsafePointer(to=size))
     var shape = IndexList[1](Int(size))
-    return NDBuffer[DType.uint8, 1](data_ptr.bitcast[UInt8](), shape)
+    return NDBuffer[DType.int8, 1](data_ptr.bitcast[Int8](), shape)
 
 
 @register_internal("builtin.unpack_tensor")
@@ -384,7 +378,7 @@ fn unpack_tensor[
     ]()
     var shapes = IndexList[buffer_rank]()
     var buffer_ptr = external_call[
-        "KGEN_CompilerRT_GetShapeAndDataFromTensor",
+        "MGP_RT_GetShapeAndDataFromTensor",
         OpaquePointer,
     ](
         UnsafePointer(to=shapes.data),
@@ -407,7 +401,7 @@ fn unpack_tensor_spec[
 ](async_ptr: OpaquePointer) -> IndexList[spec_rank]:
     var shape_ptr = UnsafePointer[Int].alloc(spec_rank)
     external_call[
-        "KGEN_CompilerRT_GetTensorShapeFromAsync",
+        "MGP_RT_GetTensorShapeFromAsync",
         NoneType,
     ](shape_ptr, spec_rank, async_ptr)
     var shape = IndexList[spec_rank]()
@@ -428,7 +422,7 @@ fn unpack_context(
     # We want to construct this because we want all payloads to be implemented
     var num_slots: UInt64 = 0
     var ctx_ptr: OpaquePointer = external_call[
-        "KGEN_CompilerRT_GetContextAndSizeFromAsync",
+        "MGP_RT_GetContextAndSizeFromAsync",
         OpaquePointer,
     ](UnsafePointer(to=num_slots), async_ptr)
     return StateContext(Int(num_slots), ctx_ptr)
@@ -437,8 +431,8 @@ fn unpack_context(
 @register_internal("builtin.get_buffer_data")
 @always_inline
 fn get_buffer_data(
-    buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin]
-) -> UnsafePointer[UInt8]:
+    buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin]
+) -> UnsafePointer[Int8]:
     return buffer.data
 
 
@@ -454,7 +448,7 @@ fn mgp_tensor_create[
     buffer_rank: Int,
     dtype: DType,
 ](
-    buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
+    buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin],
     spec: IndexList[spec_rank],
 ) -> NDBuffer[dtype, buffer_rank, MutableAnyOrigin]:
     @parameter
@@ -500,11 +494,11 @@ fn mgp_tensor_extract_buffer[
     buffer_rank: Int,
     dtype: DType,
 ](buffer: NDBuffer[dtype, buffer_rank, MutableAnyOrigin]) -> NDBuffer[
-    DType.uint8, 1, MutableAnyOrigin
+    DType.int8, 1, MutableAnyOrigin
 ]:
     # Unwrap the tensor into a size-less buffer pointer.
-    return NDBuffer[DType.uint8, 1](
-        buffer.data.bitcast[UInt8](), buffer.bytecount()
+    return NDBuffer[DType.int8, 1](
+        buffer.data.bitcast[Int8](), buffer.bytecount()
     )
 
 
@@ -570,7 +564,7 @@ fn mgp_buffer_constant_external(
 @no_inline
 fn fill_buffer[
     dtype: DType
-](buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin], vals: VariadicList[Int]):
+](buf: NDBuffer[DType.int8, 1, MutableAnyOrigin], vals: VariadicList[Int]):
     var ptr = buf.data.bitcast[Scalar[dtype]]()
     var offset: Int = 0
     for val in vals:
@@ -582,7 +576,7 @@ fn fill_buffer[
 @no_inline
 fn mgp_buffer_set_with_index[
     bDevice: StaticString
-](buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin], *vals: Int) raises:
+](buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin], *vals: Int) raises:
     debug_assert(
         is_cpu[bDevice](), "set_with_index can only work on cpu buffers"
     )
@@ -606,7 +600,7 @@ fn mgp_buffer_set_with_index[
 @no_inline
 fn mgp_buffer_to_bool[
     bDevice: StaticString
-](buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin]) -> Bool:
+](buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin]) -> Bool:
     debug_assert(is_cpu[bDevice](), "to_bool can only work on cpu buffers")
     var bufSize = buffer.num_elements()
     debug_assert(
@@ -619,7 +613,7 @@ fn mgp_buffer_to_bool[
 @register_internal("mgp.buffer.to_index")
 @no_inline
 fn mgp_buffer_to_index(
-    buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin]
+    buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin]
 ) raises -> Int:
     var bufSize = buffer.num_elements()
     if bufSize == 4:
@@ -635,9 +629,9 @@ fn mgp_buffer_to_index(
 @register_internal("mgp.buffer.slice")
 @no_inline
 fn mgp_buffer_slice(
-    buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin], offset: Int, size: Int
-) -> NDBuffer[DType.uint8, 1, MutableAnyOrigin]:
-    return NDBuffer[DType.uint8, 1](buffer.data.offset(offset), Index(size))
+    buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin], offset: Int, size: Int
+) -> NDBuffer[DType.int8, 1, MutableAnyOrigin]:
+    return NDBuffer[DType.int8, 1](buffer.data.offset(offset), Index(size))
 
 
 @register_internal("mgp.buffer.concat")
@@ -645,17 +639,17 @@ fn mgp_buffer_slice(
 fn mgp_buffer_concat[
     bDevice: StaticString
 ](
-    output: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
-    inputs: StaticTuple[NDBuffer[DType.uint8, 1, MutableAnyOrigin], *_],
+    output: NDBuffer[DType.int8, 1, MutableAnyOrigin],
+    inputs: StaticTuple[NDBuffer[DType.int8, 1, MutableAnyOrigin], *_],
     call_ctx: DeviceContextPtr,
 ) raises:
     alias layout_1d = Layout.row_major(UNKNOWN_VALUE)
-    var output_lt = LayoutTensor[DType.uint8, layout_1d](
+    var output_lt = LayoutTensor[DType.int8, layout_1d](
         output.data,
         RuntimeLayout[layout_1d].row_major(IndexList[1](len(output))),
     )
     var input_tensors = StaticTuple[
-        LayoutTensor[DType.uint8, layout_1d, MutableAnyOrigin],
+        LayoutTensor[DType.int8, layout_1d, MutableAnyOrigin],
         inputs.size,
     ]()
     for i in range(len(inputs)):
@@ -664,11 +658,11 @@ fn mgp_buffer_concat[
             RuntimeLayout[layout_1d].row_major(IndexList[1](len(inputs[i]))),
         )
     if len(output) < 4096:
-        concat[inputs_layout=layout_1d, DType.uint8, True, bDevice, None](
+        concat[inputs_layout=layout_1d, DType.int8, True, bDevice, None](
             output_lt, 0, input_tensors, context=call_ctx
         )
     else:
-        concat[DType.uint8, False, bDevice, None](
+        concat[DType.int8, False, bDevice, None](
             output_lt, 0, input_tensors, context=call_ctx
         )
 
@@ -679,15 +673,15 @@ fn mgp_buffer_device_to_host[
     cOtherDevice: StaticString,
     dHostDevice: StaticString,
 ](
-    dev_buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
-    host_buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
+    dev_buf: NDBuffer[DType.int8, 1, MutableAnyOrigin],
+    host_buf: NDBuffer[DType.int8, 1, MutableAnyOrigin],
     dev_ctx: DeviceContextPtr,
 ) raises:
     @parameter
     if is_cpu[dHostDevice]() and is_gpu[cOtherDevice]():
-        dev_ctx[].enqueue_copy[DType.uint8](
+        dev_ctx[].enqueue_copy[DType.int8](
             host_buf.data,
-            DeviceBuffer[DType.uint8](
+            DeviceBuffer[DType.int8](
                 dev_ctx[],
                 dev_buf.data,
                 dev_buf.size(),
@@ -704,21 +698,21 @@ fn mgp_buffer_device_to_device[
     cSrcDevice: StaticString,
     dDstDevice: StaticString,
 ](
-    src_buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
-    dst_buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
+    src_buf: NDBuffer[DType.int8, 1, MutableAnyOrigin],
+    dst_buf: NDBuffer[DType.int8, 1, MutableAnyOrigin],
     src_dev_ctx: DeviceContextPtr,
     dst_dev_ctx: DeviceContextPtr,
 ) raises:
     @parameter
     if is_gpu[cSrcDevice]() and is_gpu[dDstDevice]():
-        dst_dev_ctx[].enqueue_copy[DType.uint8](
-            DeviceBuffer[DType.uint8](
+        dst_dev_ctx[].enqueue_copy[DType.int8](
+            DeviceBuffer[DType.int8](
                 dst_dev_ctx[],
                 dst_buf.data,
                 dst_buf.size(),
                 owning=False,
             ),
-            DeviceBuffer[DType.uint8](
+            DeviceBuffer[DType.int8](
                 src_dev_ctx[],
                 src_buf.data,
                 src_buf.size(),
@@ -740,14 +734,14 @@ fn mgp_buffer_host_to_device[
     cHostDevice: StaticString,
     dOtherDevice: StaticString,
 ](
-    host_buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
-    dev_buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
+    host_buf: NDBuffer[DType.int8, 1, MutableAnyOrigin],
+    dev_buf: NDBuffer[DType.int8, 1, MutableAnyOrigin],
     dev_ctx: DeviceContextPtr,
 ) raises:
     @parameter
     if is_gpu[dOtherDevice]() and is_cpu[cHostDevice]():
-        dev_ctx[].enqueue_copy[DType.uint8](
-            DeviceBuffer[DType.uint8](
+        dev_ctx[].enqueue_copy[DType.int8](
+            DeviceBuffer[DType.int8](
                 dev_ctx[],
                 dev_buf.data,
                 dev_buf.size(),
@@ -765,7 +759,7 @@ fn mgp_buffer_get_cached(
     ctx: StateContext,
     buffer_slot: UInt,
     storage_ref_addr: UnsafePointer[OpaquePointer],
-) raises -> NDBuffer[DType.uint8, 1, MutableAnyOrigin]:
+) raises -> NDBuffer[DType.int8, 1, MutableAnyOrigin]:
     var buffer_size: UInt64 = 0
     var buffer_data: OpaquePointer = external_call[
         "MGP_RT_GetCachedBuffer", OpaquePointer
@@ -776,8 +770,8 @@ fn mgp_buffer_get_cached(
         storage_ref_addr,
     )
 
-    return NDBuffer[DType.uint8, 1](
-        buffer_data.bitcast[UInt8](), Index(buffer_size)
+    return NDBuffer[DType.int8, 1](
+        buffer_data.bitcast[Int8](), Index(buffer_size)
     )
 
 
@@ -791,7 +785,7 @@ fn mgp_buffer_remove_cached(ctx: StateContext, buffer_slot: UInt64):
 
 @register_internal("mgp.buffer.get_size")
 @no_inline
-fn mgp_buffer_get_size(buf: NDBuffer[DType.uint8, 1, MutableAnyOrigin]) -> Int:
+fn mgp_buffer_get_size(buf: NDBuffer[DType.int8, 1, MutableAnyOrigin]) -> Int:
     return buf.num_elements()
 
 
@@ -802,7 +796,7 @@ fn destruct_async_refs(
     size: Int,
     direct_ref: Bool,
 ):
-    external_call["KGEN_CompilerRT_DestructAsyncRefs", NoneType](
+    external_call["MGP_RT_DestructAsyncRefs", NoneType](
         size, storage_ref_addr, direct_ref
     )
 
@@ -878,12 +872,12 @@ fn mgp_debug_tensor_print[
     spec_rank: Int,
     dtype: DType,
 ](
-    buffer: NDBuffer[DType.uint8, 1, MutableAnyOrigin],
+    buffer: NDBuffer[DType.int8, 1, MutableAnyOrigin],
     shape: IndexList[spec_rank],
     label_ptr: UnsafePointer[Byte],
     label_len: Int,
 ) raises:
-    external_call["KGEN_CompilerRT_DebugTensorPrint", NoneType](
+    external_call["MGP_RT_DebugTensorPrint", NoneType](
         label_ptr,
         UInt(label_len),
         dtype,
@@ -897,6 +891,11 @@ fn mgp_debug_tensor_print[
 # ===-----------------------------------------------------------------------===#
 # Mojo generation and general type lookups
 # ===-----------------------------------------------------------------------===#
+
+
+@register_internal("float4_e2m1fn")
+fn DTypeFloat4E2M1TypeDef(ty: DType._mlir_type) -> DType._mlir_type:
+    return DType.float4_e2m1fn._mlir_value
 
 
 @register_internal("float8_e5m2")
@@ -1423,7 +1422,7 @@ fn mogg_async_del(async_ptr: AnyAsyncValueRefPtr):
     all input and output operands.
     """
     var ptr = UnsafePointer(to=async_ptr)
-    external_call["KGEN_CompilerRT_DestructAsyncRefs", NoneType](1, ptr, False)
+    external_call["MGP_RT_DestructAsyncRefs", NoneType](1, ptr, False)
 
 
 @register_internal("mogg.async.unpack")
@@ -1432,7 +1431,7 @@ fn mogg_async_unpack[T: AnyTrivialRegType](async_ptr: AnyAsyncValueRefPtr) -> T:
     """
     Returns the value stored in the AnyAsyncValueRef.
     """
-    return external_call["KGEN_CompilerRT_GetValueFromAsync", OpaquePointer](
+    return external_call["MGP_RT_GetValueFromAsync", OpaquePointer](
         async_ptr
     ).bitcast[T]()[0]
 
@@ -1473,6 +1472,17 @@ struct MoggAsyncPackHelper:
         Calls create_tensor_spec_async to handle the packing.
         """
         create_tensor_spec_async(data, async_ptr)
+
+    fn __init__(
+        out self,
+        data: NDBuffer[DType.int8, 1, MutableAnyOrigin],
+        device_ctx_ptr: DeviceContextPtr,
+        async_ptr: AnyAsyncValueRefPtr,
+    ):
+        """
+        Packs a buffer reference instance (modeled by NDBuffer[DType.int8, 1, MutableAnyOrigin] for now) into the asynchronous context. Calls create_buffer_ref_async to handle the packing.
+        """
+        create_buffer_ref_async(data, async_ptr, device_ctx_ptr)
 
 
 @register_internal("mogg.async.pack")
@@ -1550,14 +1560,14 @@ fn mogg_async_ready(async_ptr: AnyAsyncValueRefPtr):
     """
     Marks the chain as ready.
     """
-    external_call["KGEN_CompilerRT_CreateAsync_chain", NoneType](async_ptr)
+    external_call["MGP_RT_CreateAsync_chain", NoneType](async_ptr)
 
 
 @register_internal("mogg.async.error")
 @no_inline
 fn mogg_async_error(async_ptr: AnyAsyncValueRefPtr, err: Error):
     """Indicates to the C++ runtime that the kernel has failed."""
-    external_call["KGEN_CompilerRT_AsyncRT_CreateAsync_Error", NoneType](
+    external_call["MGP_RT_AsyncRT_CreateAsync_Error", NoneType](
         async_ptr,
         err.unsafe_cstr_ptr(),
         err.byte_length(),
