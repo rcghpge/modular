@@ -237,7 +237,7 @@ expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape) {
 // These helpers have pretty uniform input types, where
 // - `GraphOp` is used for new parameter name generation
 // - `Location` is used for newly created instructions
-// - All the `TypedAttr`s are parameteric representation of the op's input
+// - All the `TypedAttr`s are parametric representation of the op's input
 
 /// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
 ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
