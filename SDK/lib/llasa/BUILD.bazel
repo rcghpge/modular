@@ -16,10 +16,10 @@ modular_py_library(
         requirement("numpy"),
         requirement("jinja2"),
         requirement("soundfile"),
-        "//SDK/lib/API/python/max/driver",
-        "//SDK/lib/API/python/max/interfaces",
-        "//SDK/lib/API/python/max/pipelines",
         "//SDK/lib/llasa/xcodec2",
+        "//max/python/max/driver",
+        "//max/python/max/interfaces",
+        "//max/python/max/pipelines",
     ],
 )
 

@@ -136,7 +136,7 @@ py_repl(
         "//GenericML:MGPRT",
     ],
     deps = [
-        "//SDK/lib/API/python/max",
+        "//max/python/max",
         requirement("hypothesis"),
         requirement("notebook"),
         requirement("nvitop"),
@@ -147,7 +147,7 @@ py_repl(
 
 alias(
     name = "pipelines",
-    actual = "//SDK/lib/API/python/max/entrypoints:pipelines",
+    actual = "//max/python/max/entrypoints:pipelines",
     tags = ["maybe-unused"],
 )
 

@@ -115,7 +115,7 @@ times are:
   following command:
 
 ```bash
-MODULAR_MAX_TEMPS_DIR="path/to/dump" bazel run //SDK/lib/API/python/max/entrypoints:pipelines -- generate --model-path=deepseek-ai/DeepSeek-V2.5-1210 --trust-remote-code --max-batch-size=1 --max-length=1024 --devices="gpu:0,1,2,3" --max-new-tokens=2
+MODULAR_MAX_TEMPS_DIR="path/to/dump" bazel run //max/python/max/entrypoints:pipelines -- generate --model-path=deepseek-ai/DeepSeek-V2.5-1210 --trust-remote-code --max-batch-size=1 --max-length=1024 --devices="gpu:0,1,2,3" --max-new-tokens=2
 ```
 
 - Use the MLIR pass timing infrastructure to capture the runtime of each pass

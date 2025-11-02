@@ -1692,9 +1692,9 @@ All test suites pass with the changes:
 - Result: PASS (1/1)
 - Command: `./bazelw test //AsyncRT/unittests:NixlTestUcx`
 - Result: PASS (1/1)
-- Command: `./bazelw test //SDK/integration-test/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv`
+- Command: `./bazelw test //max/tests/integration/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv`
 - Result: PASS (1/1)
-- Command: `./bazelw test //SDK/integration-test/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv_multi_process_gpu`
+- Command: `./bazelw test //max/tests/integration/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv_multi_process_gpu`
 - Result: PASS (1/1)
 
 ### Notes / Adaptations
@@ -1743,24 +1743,24 @@ All test suites pass with the changes:
     - Updated 6 constructor call sites
 
   **Python Bindings:**
-  - `SDK/lib/API/python/max/_core/src/nixl.cpp`:
+  - `max/python/max/_core/internal/src/nixl.cpp`:
     - Removed `sorted` parameter from both `__init__` constructors
     - Removed `is_sorted()` and `verify_sorted()` method bindings
     - Updated documentation strings
 
   **Test & Production Code:**
-  - `SDK/lib/API/python/tests/nixl/test_nixl_gpu.py`:
+  - `max/tests/tests/nixl/test_nixl_gpu.py`:
     - Removed `sorted` parameter from 3 test constructor calls
-  - `SDK/lib/API/python/max/nn/kv_cache/paged_cache/transfer_engine.py`:
+  - `max/python/max/nn/kv_cache/paged_cache/transfer_engine.py`:
     - Removed `sorted=True` from `KVTransferEngine.__init__()`
 
   **Testing:**
   - ✅ `//AsyncRT:NIXL` builds successfully
   - ✅ `//AsyncRT/unittests:NixlTest` passes
-  - ✅ `//SDK/lib/API/python/tests/nixl:tests` passes
-  - ✅ `//SDK/integration-test/pipelines/python/nn/kv_cache/
+  - ✅ `//max/tests/tests/nixl:tests` passes
+  - ✅ `//max/tests/integration/pipelines/python/nn/kv_cache/
     transfer_engine:test_send_recv` passes
-  - ✅ `//SDK/integration-test/pipelines/python/nn/kv_cache/
+  - ✅ `//max/tests/integration/pipelines/python/nn/kv_cache/
     transfer_engine:test_send_recv_multi_process_gpu` passes
 
 - **Week 16 Summary**: Out of 28 commits, 3 fully ported (45204fa, 4ccd41d, 57c29f5),
