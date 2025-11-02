@@ -67,7 +67,6 @@ modular_nanobind_library(
     deps = [
         ":max",
         "//SDK:DLPackPython",
-        "//SDK:Support",
     ],
 )
 
@@ -198,4 +197,6 @@ modular_shared_library(
 modular_nanobind_library(
     name = "Support",
     hdrs = glob(["include/SDK/Support/*.h"]),
+    # Added to targets to debug
+    tags = ["maybe-unused"],
 )
