@@ -20,6 +20,7 @@
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/Support/BuildInfo.h"
 #include "KGEN/ToolCommon/PassManagerConfigOptions.h"
 
 #include "Support/Context.h"
@@ -31,7 +32,6 @@
 #include "mlir/Support/FileUtilities.h"
 
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/TargetParser/Host.h"
 
@@ -353,6 +353,7 @@ StubCompiler::compile(const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp>
   createCompilationOptions(targetInfo, kernelBuildType, debugKGENStubs,
                            saveTempsPrefix)
       .print(*keyBufRef);
+  *keyBufRef << KGEN::getVersionString();
 
   auto keyBuffer = keyBufRef->getBuffer();
   std::string envKeyHash =
