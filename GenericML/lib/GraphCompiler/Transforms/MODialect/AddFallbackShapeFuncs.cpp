@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
@@ -112,7 +113,6 @@ HAS_FALLBACK(MO::TileOp)
 template <>
 struct Fallback<MO::CustomOp> {
   ErrorOrSuccess build(GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
-                       KGEN::GeneratorOp mojoKernel,
                        MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                        StringSet<> &inputParamsNeeded);
 };
@@ -220,26 +220,54 @@ struct AddFallbackShapeFunctions
 
         auto analysis = analysisOr.takeValue();
 
-        auto mojoKernel =
-            analysis->getRegisteredMojoKernelFor(asOp.getSymbol());
+        // Find the kernel input parameters.
+        ArrayRef<ParamDeclAttr> mojoKernelInputParams;
 
-        if (!mojoKernel) {
-          mojoKernel =
-              analysis->getRegisteredMojoShapeFunctionFor(asOp.getSymbol());
-        }
+        if (MOGG::useExperimentalMojoPath()) {
 
-        if (!mojoKernel) {
-          asOp.emitError() << "Could not find registered mojo kernel named "
-                           << asOp.getSymbol();
-          return mlir::WalkResult::interrupt();
+          auto mojoKernel =
+              analysis->getRegisteredLITMojoKernelFor(asOp.getSymbol());
+
+          if (!mojoKernel) {
+            mojoKernel = analysis->getRegisteredLITMojoShapeFunctionFor(
+                asOp.getSymbol());
+          }
+
+          if (!mojoKernel) {
+            asOp.emitError() << "Could not find registered mojo kernel named "
+                             << asOp.getSymbol();
+            return mlir::WalkResult::interrupt();
+          }
+
+          mojoKernelInputParams = mojoKernel.getInputParams();
+
+        } else {
+          // TODO(GEX-2613): Get rid of the KGEN path once we switched
+          // completely to LIT.
+
+          auto mojoKernel =
+              analysis->getRegisteredMojoKernelFor(asOp.getSymbol());
+
+          if (!mojoKernel) {
+            mojoKernel =
+                analysis->getRegisteredMojoShapeFunctionFor(asOp.getSymbol());
+          }
+
+          if (!mojoKernel) {
+            asOp.emitError() << "Could not find registered mojo kernel named "
+                             << asOp.getSymbol();
+            return mlir::WalkResult::interrupt();
+          }
+
+          mojoKernelInputParams = mojoKernel.getInputParams();
         }
 
         StringSet<> inputParams;
-        for (KGEN::ParamDeclAttr inputParam : mojoKernel.getInputParams())
+        for (KGEN::ParamDeclAttr inputParam : mojoKernelInputParams)
           inputParams.insert(inputParam.getName());
 
-        auto result = Fallback<MO::CustomOp>{}.build(
-            graph, builder, asOp, mojoKernel, *analysis, inputParams);
+        auto result = Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
+                                                     *analysis, inputParams);
         if (result.isError()) {
           asOp.emitError() << "Failed to fallback shape function with error: "
                            << result.takeError();
@@ -493,7 +521,7 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
 
 ErrorOrSuccess
 Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
-                              MO::CustomOp op, KGEN::GeneratorOp mojoKernel,
+                              MO::CustomOp op,
                               MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                               StringSet<> &inputParamsNeeded) {
   // Mark all inputs by default.

@@ -824,6 +824,12 @@ MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) const {
       name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
 }
 
+KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoShapeFunctionFor(
+    StringRef name) const {
+  return getRegisteredLITMojoFunctionFor(
+      name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
+}
+
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoUpdateViewFunctionFor(
     StringRef name) const {
   return getRegisteredMojoFunctionFor(
