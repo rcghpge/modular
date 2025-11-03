@@ -77,6 +77,7 @@ modular_nanobind_library(
     deps = [
         ":max",
         "//:MLIRBindingsPythonHeaders",
+        "//Support:NanobindUtils",
     ],
 )
 
@@ -192,11 +193,4 @@ modular_shared_library(
         "//Support:Globals",
         "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
     ],
-)
-
-modular_nanobind_library(
-    name = "Support",
-    hdrs = glob(["include/SDK/Support/*.h"]),
-    # Added to targets to debug
-    tags = ["maybe-unused"],
 )
