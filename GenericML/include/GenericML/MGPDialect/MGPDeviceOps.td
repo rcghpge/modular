@@ -467,6 +467,7 @@ def BufferFreeOp : MGP_Op<"buffer.free"> {
 def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Copies a host buffer into a non-host buffer.";
   let description = [{
@@ -519,6 +520,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Copies a non-host buffer into a host buffer.";
   let description = [{
@@ -572,6 +574,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Copies a non-host buffer into another non-host buffer.";
   let description = [{

@@ -210,6 +210,26 @@ void BufferAllocOp::setInChain(Value chain) {
 //===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
+bool BufferHostToDeviceOp::isRaising() { return true; }
+
+LogicalResult BufferHostToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue hostDeviceParam =
+      MojoValue(getCHostDevice() ? getCHostDevice().getLabel() : "cpu").quote();
+  MojoValue otherDeviceParam =
+      MojoValue(getDOtherDevice() ? getDOtherDevice().getLabel() : "gpu")
+          .quote();
+
+  state.builder.call(function, {hostDeviceParam, otherDeviceParam},
+                     state.getMojoValuesFor(getOperands().drop_front()));
+
+  return success();
+}
 
 LogicalResult BufferHostToDeviceOp::verify() {
   if (getHostBuffer().getType().getDevice() != getCHostDevice())
@@ -233,6 +253,27 @@ BufferHostToDeviceOp::getInOutSemantics(size_t index) {
 // BufferDeviceToHostOp
 //===----------------------------------------------------------------------===//
 
+bool BufferDeviceToHostOp::isRaising() { return true; }
+
+LogicalResult BufferDeviceToHostOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue otherDeviceParam =
+      MojoValue(getCOtherDevice() ? getCOtherDevice().getLabel() : "gpu")
+          .quote();
+  MojoValue hostDeviceParam =
+      MojoValue(getDHostDevice() ? getDHostDevice().getLabel() : "cpu").quote();
+
+  state.builder.call(function, {otherDeviceParam, hostDeviceParam},
+                     state.getMojoValuesFor(getOperands().drop_front()));
+
+  return success();
+}
+
 LogicalResult BufferDeviceToHostOp::verify() {
   if (getHostBuffer().getType().getDevice() != getDHostDevice())
     return emitOpError("expected host buffer to be on 'host' device ")
@@ -254,6 +295,24 @@ BufferDeviceToHostOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 // BufferDeviceToDeviceOp
 //===----------------------------------------------------------------------===//
+
+bool BufferDeviceToDeviceOp::isRaising() { return true; }
+
+LogicalResult BufferDeviceToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue srcDeviceParam = MojoValue(getCSrcDevice().getLabel()).quote();
+  MojoValue destDeviceParam = MojoValue(getDDstDevice().getLabel()).quote();
+
+  state.builder.call(function, {srcDeviceParam, destDeviceParam},
+                     state.getMojoValuesFor(getOperands().drop_front()));
+
+  return success();
+}
 
 LogicalResult BufferDeviceToDeviceOp::verify() {
   if (getCSrcDevice().getLabel() != getDDstDevice().getLabel()) {
