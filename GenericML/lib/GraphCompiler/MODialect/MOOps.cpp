@@ -850,7 +850,7 @@ void IfOp::getSuccessorRegions(
     SmallVectorImpl<mlir::RegionSuccessor> &regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.emplace_back(getOperation(), getResults());
+    regions.emplace_back(getResults());
     return;
   }
 
@@ -904,9 +904,8 @@ void WhileOp::print(OpAsmPrinter &p) {
   printRegion(p, getInputs(), getBodyRegion(), /*isIsolatedFromAbove=*/false);
 }
 
-OperandRange
-WhileOp::getEntrySuccessorOperands(mlir::RegionSuccessor successor) {
-  assert(successor.getSuccessor() == &getCondRegion() &&
+OperandRange WhileOp::getEntrySuccessorOperands(mlir::RegionBranchPoint point) {
+  assert(point == getCondRegion() &&
          "WhileOp is expected to branch only to the first region");
   return getOperands();
 }
@@ -920,18 +919,15 @@ void WhileOp::getSuccessorRegions(
     return;
   }
 
-  assert(llvm::is_contained(
-             {&getCondRegion(), &getBodyRegion()},
-             point.getTerminatorPredecessorOrNull()->getParentRegion()) &&
+  assert(llvm::is_contained({&getCondRegion(), &getBodyRegion()}, point) &&
          "there are only two regions in a WhileOp");
   // The body region always branches back to the condition region.
-  if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
-      &getBodyRegion()) {
+  if (point == getBodyRegion()) {
     regions.emplace_back(&getCondRegion(), getCondRegion().getArguments());
     return;
   }
 
-  regions.emplace_back(getOperation(), getResults());
+  regions.emplace_back(getResults());
   regions.emplace_back(&getBodyRegion(), getBodyRegion().getArguments());
 }
 
@@ -1016,13 +1012,12 @@ void WhileConditionOp::getSuccessorRegions(
   // depending on whether the condition is true or not.
   regions.emplace_back(&whileOp.getBodyRegion(),
                        whileOp.getBodyRegion().getArguments());
-  regions.emplace_back(whileOp.getOperation(), whileOp.getResults());
+  regions.emplace_back(whileOp.getResults());
 }
 
 MutableOperandRange
-WhileConditionOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
-  assert((successor.isParent() ||
-          successor.getSuccessor() == &getParentOp().getBodyRegion()) &&
+WhileConditionOp::getMutableSuccessorOperands(mlir::RegionBranchPoint point) {
+  assert((point.isParent() || point == getParentOp().getBodyRegion()) &&
          "condition op can only exit the loop or branch to the after"
          "region");
   // Pass all operands except the condition to the successor region.
