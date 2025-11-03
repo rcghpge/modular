@@ -949,6 +949,7 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
 def MGP_SyncOp : MGP_DeviceOp<"sync", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
     Pure
 ]> {
   let summary = "Schedules a device specific sync";

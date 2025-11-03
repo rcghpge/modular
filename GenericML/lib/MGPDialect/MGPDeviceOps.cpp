@@ -553,3 +553,22 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// SyncOp
+//===----------------------------------------------------------------------===//
+
+bool SyncOp::isRaising() { return true; }
+
+LogicalResult SyncOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  state.builder.call(function, {},
+                     state.getMojoValuesFor(getOperands().drop_front()));
+
+  return success();
+}
