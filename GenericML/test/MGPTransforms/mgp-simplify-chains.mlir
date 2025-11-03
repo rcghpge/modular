@@ -41,7 +41,7 @@ mgp.model @chains : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.o
     mef.output %ch13 : !mef.chain
   }
   // %ch14 -> expansion of %ch11
-  // CHECK: %[[CH14:.*]] = grt.chain.create (%[[CH5]], %[[CH6]], %[[CH7]], %[[CH12]])
+  // CHECK: %[[CH14:.*]] = grt.chain.create (%[[CH7]], %[[CH5]], %[[CH6]], %[[CH12]])
   %ch14 = grt.chain.create (%ch10, %ch11, %ch12)
   // CHECK: mef.output %[[CH14]]
   mef.output %ch14 : !mef.chain

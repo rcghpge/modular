@@ -19,6 +19,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include "Support/Compiler/Threading.h"
+
 #include <queue>
 
 using namespace mlir;
@@ -60,11 +62,11 @@ class SimplifyChainsPass
     std::queue<Value> stack;
     stack.push(chain);
 
-    DenseSet<Value> visited;
+    llvm::SmallDenseSet<Value> visited;
 
     // Depth-first walk through grt.chain.create ops.
     while (!stack.empty()) {
-      auto top = stack.front();
+      Value top = stack.front();
       stack.pop();
 
       if (!visited.insert(top).second)
@@ -99,24 +101,25 @@ class SimplifyChainsPass
   ///
   /// i.e. is any input to the `grt.chain.create` reachable from any other
   /// operands. Those that are reachable are deleted.
-  SmallVector<Value>
+  SmallVector<Value, 16>
   eliminateImpliedByOperands(GRT::ChainCreateOp chainCreate) {
     // Maintain an association between the values we are interested in and
     // a bool indicating whether they were found while walking the implied-by
     // relation.
-    llvm::MapVector<Value, bool> needles;
+    llvm::SmallSetVector<Value, 16> needles;
 
     // Initialize all values we're searching for to false.
     for (auto arg : chainCreate.getInputChains()) {
       for (auto needle : accumulatePrimitiveChains(arg))
-        needles[needle] = false;
+        needles.insert(needle);
     }
 
-    DenseSet<Value> visited;
-    SetVector<Value> currentGeneration;
+    llvm::SmallDenseSet<Value> visited;
+    llvm::SetVector<Value> currentGeneration;
+    llvm::SetVector<Value> newGeneration;
 
     // Seed the search with the immediate implied-by set of needles.
-    for (auto [needle, _] : needles)
+    for (auto needle : needles)
       currentGeneration.insert_range(getGatingOperands(needle.getDefiningOp()));
 
     // Iteratively walk the implied by relation, looking for any of the needles.
@@ -125,46 +128,54 @@ class SimplifyChainsPass
       visited.insert_range(currentGeneration);
 
       // See if any value in the current generation is one of the needles we're
-      // searching for.
-      for (auto &[needle, found] : needles)
-        found |= currentGeneration.contains(needle);
+      // searching for. If a needle is found, delete it from the needle set.
+      needles.remove_if([&](Value v) { return currentGeneration.contains(v); });
 
-      // takeVector has the effect of clearing currentGeneration
-      auto oldGeneration = currentGeneration.takeVector();
+      newGeneration.clear();
 
       // Determine the next generation by following the implied-by relation one
       // step.
-      for (auto val : oldGeneration) {
+      for (auto val : currentGeneration) {
         for (auto next : getGatingOperands(val.getDefiningOp())) {
           if (!visited.contains(next))
-            currentGeneration.insert(next);
+            newGeneration.insert(next);
         }
       }
+
+      std::swap(newGeneration, currentGeneration);
     }
 
-    SmallVector<Value> result;
-    for (auto [value, found] : needles) {
-      if (!found)
-        result.push_back(value);
-    }
-
-    return result;
+    return needles.takeVector();
   }
 
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
 
-    int64_t removed = 0;
-    modelOp->walk([&](GRT::ChainCreateOp chainOp) {
-      int64_t before = chainOp->getNumOperands();
+    SmallVector<GRT::ChainCreateOp> chainCreates;
 
-      auto values = eliminateImpliedByOperands(chainOp);
+    modelOp.walk([&](GRT::ChainCreateOp op) { chainCreates.push_back(op); });
+
+    using CacheT =
+        SmallVector<std::pair<GRT::ChainCreateOp, SmallVector<Value>>>;
+
+    auto consolidate = [](CacheT &source, MutableArrayRef<CacheT> others) {
+      for (CacheT &other : others)
+        source.append(std::move(other));
+    };
+
+    auto func = [&](CacheT &cache, GRT::ChainCreateOp op) {
+      cache.emplace_back(op, eliminateImpliedByOperands(op));
+      return success();
+    };
+
+    CacheT cache;
+    cache.reserve(chainCreates.size());
+
+    (void)failableParallelForEach(&getContext(), chainCreates, func, cache,
+                                  consolidate);
+
+    for (auto &[chainOp, values] : cache)
       chainOp.setInputChains(values);
-
-      removed += before - (int64_t)values.size();
-    });
-
-    numEliminatedChains = removed;
 
     RewritePatternSet patterns(&getContext());
     GRT::ChainCreateOp::getCanonicalizationPatterns(patterns, &getContext());
