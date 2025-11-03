@@ -224,11 +224,9 @@ struct Foo:
 @always_inline
 fn toNDBuffer[
     out_dtype: DType, out_rank: Int
-](tensor: ManagedTensorSlice) -> NDBuffer[
-    out_dtype, out_rank, MutableAnyOrigin
-]:
+](tensor: ManagedTensorSlice) -> NDBuffer[out_dtype, out_rank, MutAnyOrigin]:
     # TODO(GEX-734): forward other static params automatically
-    return rebind[NDBuffer[out_dtype, out_rank, MutableAnyOrigin]](
+    return rebind[NDBuffer[out_dtype, out_rank, MutAnyOrigin]](
         NDBuffer[tensor.dtype, tensor.rank](tensor._ptr, tensor.shape())
     )
 
@@ -1083,7 +1081,7 @@ struct CustomOpWithStaticStringParams:
 @fieldwise_init
 @register_passable
 struct TensorWrapper(ImplicitlyCopyable, Movable):
-    var buffer: NDBuffer[DType.float32, 2, MutableAnyOrigin]
+    var buffer: NDBuffer[DType.float32, 2, MutAnyOrigin]
 
 
 @compiler.register("to_tensor_wrapper")

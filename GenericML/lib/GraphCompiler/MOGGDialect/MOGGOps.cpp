@@ -3794,7 +3794,7 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
       getResult(),
       state.builder.var(MojoValue(MOGG::HardcodedMojoSymbols::struct_NDBuffer)(
           {MojoValue(HardcodedMojoSymbols::struct_DType).get("uint8"), 1,
-           HardcodedMojoSymbols::alias_MutableAnyOrigin})));
+           HardcodedMojoSymbols::alias_MutAnyOrigin})));
   return success();
 }
 

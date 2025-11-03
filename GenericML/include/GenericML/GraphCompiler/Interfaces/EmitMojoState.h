@@ -90,7 +90,7 @@ constexpr StringLiteral alias_FusedComputeOutputTensor =
 constexpr StringLiteral alias_FusedInputTensor =
     "managed_tensor_slice._FusedInputTensor";
 constexpr StringLiteral alias_UInt8 = "UInt8";
-constexpr StringLiteral alias_MutableAnyOrigin = "MutableAnyOrigin";
+constexpr StringLiteral alias_MutAnyOrigin = "MutAnyOrigin";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
