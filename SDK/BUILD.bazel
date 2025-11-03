@@ -50,10 +50,8 @@ modular_nanobind_library(
     name = "ModularFrameworkPython",
     srcs = glob(["lib/API/python/lib/Engine/*.cpp"]),
     hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
-    tags = ["no-clang-tidy-headers"],
     deps = [
         ":max",
-        "//Init",
         "//SDK:DLPackPython",
         "//SDK:DriverPython",
     ],
