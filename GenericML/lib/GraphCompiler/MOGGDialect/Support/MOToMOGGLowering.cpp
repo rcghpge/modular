@@ -485,6 +485,16 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     forwardedParameters.push_back(NamedAttribute(
         builder.getStringAttr(KGEN::MOGGPreElab::kMOGGOutputRankParameterName),
         builder.getIndexAttr(rank)));
+
+    // Forward parameters from the kgenParams dictionary.
+    if (DictionaryAttr kgenParams = shapeFuncOp.getKgenParamsAttr()) {
+      for (NamedAttribute attr : kgenParams.getValue()) {
+        // TODO: We might need to do some conversation to EmitMojo.
+        // Or instead build mojo-compatible attributes when building the shape
+        // function calls.
+        forwardedParameters.push_back(attr);
+      }
+    }
   }
 
   return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
