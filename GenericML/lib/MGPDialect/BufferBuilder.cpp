@@ -356,9 +356,21 @@ Value MGPBufferBuilder::removeCached(OpBuilder &builder, Location loc,
                                      TypedValue<ContextType> context,
                                      TypedValue<MEF::ChainType> inChain,
                                      uint64_t bufferSlot) {
+  auto parentOp = builder.getBlock()->getParentOp();
+  if (!isa<ModelOp>(parentOp))
+    parentOp = parentOp->getParentOfType<MGP::ModelOp>();
+
+  auto modelOp = cast<ModelOp>(parentOp);
+  Value bufferSlotIndex =
+      mlir::index::ConstantOp::create(builder, loc, bufferSlot);
+  if (modelOp.getIsSubgraph()) {
+    bufferSlotIndex = mlir::index::AddOp::create(builder, loc, bufferSlotIndex,
+                                                 modelOp.getSubgraphIndex());
+  }
+
   return BufferRemoveCachedOp::create(builder, loc, /*inChain=*/inChain,
                                       /*theContext=*/context,
-                                      /*bBufferSlot=*/bufferSlot);
+                                      /*bBufferSlot=*/bufferSlotIndex);
 }
 
 Value MGPBufferBuilder::bufferConcat(

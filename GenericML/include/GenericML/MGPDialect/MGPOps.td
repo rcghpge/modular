@@ -898,7 +898,10 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 //===----------------------------------------------------------------------===//
 
 def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
-  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>]> {
+  DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+]> {
   let summary = "Removes the buffer stored at the specified state slot.";
   let description = [{
     Removes the buffer stored at the specified state slot.
@@ -915,11 +918,11 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
-                       UI64Attr:$bufferSlot          // 1
+                       Index:$bBufferSlot         // 1
                        );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $theContext `[` $bufferSlot `]`
+    $inChain `,` $theContext `[` $bBufferSlot `]`
     attr-dict
   }];
 }

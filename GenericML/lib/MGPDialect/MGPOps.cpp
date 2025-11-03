@@ -363,8 +363,23 @@ LogicalResult TensorSpecCreateOp::inferReturnTypes(
 // BufferRemoveCachedOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<Attribute> BufferRemoveCachedOp::getLiftableAttributes() {
-  return {getBufferSlotAttr()};
+llvm::BitVector BufferRemoveCachedOp::operandsToUnpack() {
+  llvm::BitVector res(getNumOperands(), true);
+  res[1] = false; // Do not unpack the context because the type is defined in
+                  // C++ only.
+  return res;
+}
+
+LogicalResult BufferRemoveCachedOp::emitMojo(MOGG::EmitMojoState &state) {
+  /// TODO: Add error checking. The Mojo/C++ can return an error that we
+  auto mgpBufferRemoveCachedFunc =
+      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
+          "tmp.mgp.buffer.remove_cached"));
+  state.builder.call(mgpBufferRemoveCachedFunc, {},
+                     {state.getMojoValueFor(getTheContext()),
+                      state.getMojoValueFor(getBBufferSlot())});
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -492,10 +507,6 @@ LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue messageSize = messageString.get("__len__")();
 
   state.builder.call(function, {}, {conditionVar, messagePtr, messageSize});
-  auto moggAsyncReadFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          MOGG::AsyncReadyOp::getOperationName()));
-  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
 
   return success();
 }
@@ -978,10 +989,6 @@ LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue ctxVar = state.getMojoValueFor(getTheContext());
 
   state.builder.call(function, {debugStringParam, labelParam}, ctxVar);
-  auto moggAsyncReadFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          MOGG::AsyncReadyOp::getOperationName()));
-  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
 
   return success();
 }

@@ -41,9 +41,8 @@ namespace M::MGP {
 
 namespace {
 
-using CompiledRegionBodyBuilder =
-    llvm::function_ref<ErrorOr<SmallVector<Value>>(OpBuilder &, Location,
-                                                   Operation *, ValueRange)>;
+using CompiledRegionBodyBuilder = std::function<ErrorOr<SmallVector<Value>>(
+    OpBuilder &, Location, Operation *, ValueRange)>;
 struct LowerPrimitivesPass
     : public MOGG::MojoLibraryAnalysisPass<
           MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass>> {
@@ -96,8 +95,8 @@ isLowerableToMOGGCall(MLIRContext *ctx,
                       Operation *op) {
   // Operations that involve runtime slots should not be lowered to mojo
   // because they need special slot offsetting during inlining
-  if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::BufferRemoveCachedOp,
-          MGP::ModuleLoadOp, MGP::ExecuteGenericOp>(op))
+  if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
+          MGP::ExecuteGenericOp>(op))
     return false;
 
   // Constant external ops should not be lowered to mojo so they can be
@@ -434,10 +433,9 @@ void LowerPrimitivesPass::runOnOperation() {
 #define MGP_PRIMITIVES_TEMPORARY_EXCLUSION_LIST                                \
   MGP::BufferConcatOp, MGP::BufferConstantOp, MGP::BufferConstantExternalOp,   \
       MGP::BufferDeviceToDeviceOp, MGP::BufferDeviceToHostOp,                  \
-      MGP::BufferHostToDeviceOp, MGP::BufferRemoveCachedOp,                    \
-      MGP::BufferSliceOp, MGP::SyncOp, MGP::TensorCreateOp,                    \
-      MGP::TensorExtractBufferOp, MGP::TensorExtractTensorSpecOp,              \
-      MGP::TensorSpecCreateOp
+      MGP::BufferHostToDeviceOp, MGP::BufferSliceOp, MGP::SyncOp,              \
+      MGP::TensorCreateOp, MGP::TensorExtractBufferOp,                         \
+      MGP::TensorExtractTensorSpecOp, MGP::TensorSpecCreateOp
 #define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
   mlir::index::IndexDialect, KGEN::POP::POPDialect
 
@@ -477,8 +475,7 @@ void LowerPrimitivesPass::runOnOperation() {
       } else {
         /// TODO(GEX-2588): Remove this. These are not part of the exclusion
         /// list because they are not lowered in the KGEN codepath.
-        if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp,
-                MGP::BufferRemoveCachedOp, MGP::ModuleLoadOp,
+        if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
                 MGP::ExecuteGenericOp>(op)) {
           return mlir::WalkResult::advance();
         }
@@ -513,6 +510,10 @@ void LowerPrimitivesPass::runOnOperation() {
         return mlir::WalkResult::interrupt();
       }
       newKernel->setEmitsMojo(true);
+
+      auto resultToPack = implementsEmitsMojoInterface.resultsToPack();
+      if (op->getNumResults())
+        resultToPack[0] = isa<MEF::ChainType>(op->getResult(0).getType());
 
       /// TODO(GEX-2588): Some of the operations covered by this issue will need
       /// their inputs or outputs in the async format (ex: mgp.buffer.cache or

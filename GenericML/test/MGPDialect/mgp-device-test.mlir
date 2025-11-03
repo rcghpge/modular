@@ -98,9 +98,9 @@ func.func @buffer_get_cached(%ctx : !mgp.context, %ch0 : !mef.chain, %idx : inde
 //
 
 // CHECK-LABEL: @buffer_remove_cached
-func.func @buffer_remove_cached(%ctx : !mgp.context, %ch0 : !mef.chain) {
-  // CHECK: %{{.*}} = mgp.buffer.remove_cached %{{.*}}, %{{.*}}[5]
-  %ch1 = mgp.buffer.remove_cached %ch0, %ctx[5]
+func.func @buffer_remove_cached(%ctx : !mgp.context, %ch0 : !mef.chain, %idx : index) {
+  // CHECK: %{{.*}} = mgp.buffer.remove_cached %{{.*}}, %{{.*}}[{{.*}}]
+  %ch1 = mgp.buffer.remove_cached %ch0, %ctx[%idx]
   mef.output %ch1 : !mef.chain
 }
 

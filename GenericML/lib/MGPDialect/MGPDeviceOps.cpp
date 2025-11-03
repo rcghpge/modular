@@ -386,10 +386,7 @@ LogicalResult BufferSetWithIndexOp::emitMojo(MOGG::EmitMojoState &state) {
   args.append(state.getMojoValuesFor(getValues()));
 
   state.builder.call(function, {deviceParam}, args);
-  auto moggAsyncReadFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          MOGG::AsyncReadyOp::getOperationName()));
-  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
+
   return success();
 }
 
@@ -494,10 +491,6 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   state.builder.call(
       function, {specRankParam, dtypeParam},
       {bufferVar, tensorSpecAsyncVar, labelPtrVar, labelSizeVar});
-  auto moggAsyncReadFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          MOGG::AsyncReadyOp::getOperationName()));
-  state.builder.call(moggAsyncReadFunc, {}, state.mojoReturnValues[0]);
 
   return success();
 }

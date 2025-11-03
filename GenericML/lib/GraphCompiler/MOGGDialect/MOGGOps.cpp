@@ -3556,9 +3556,9 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-  auto moggAsyncReadFunc = state.getOriginalMojoNameFor(
+  auto moggAsyncReadyFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(moggAsyncReadFunc, {},
+  state.builder.call(moggAsyncReadyFunc, {},
                      state.mojoReturnValues[*resultIndexOr]);
 
   return success();

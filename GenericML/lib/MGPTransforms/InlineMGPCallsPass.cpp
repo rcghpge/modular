@@ -41,9 +41,6 @@ void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
     } else if (auto runtimeCreateOp = dyn_cast<RuntimeCreateOp>(op)) {
       uint64_t oldSlot = runtimeCreateOp.getARuntimeSlot();
       runtimeCreateOp.setARuntimeSlot(oldSlot + slotOffset);
-    } else if (auto bufferRemoveCachedOp = dyn_cast<BufferRemoveCachedOp>(op)) {
-      uint64_t oldSlot = bufferRemoveCachedOp.getBufferSlot();
-      bufferRemoveCachedOp.setBufferSlot(oldSlot + slotOffset);
     } else if (auto moduleLoadOp = dyn_cast<ModuleLoadOp>(op)) {
       uint64_t oldSlot = moduleLoadOp.getARuntimeSlot();
       moduleLoadOp.setARuntimeSlot(oldSlot + slotOffset);

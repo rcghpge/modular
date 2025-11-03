@@ -161,6 +161,15 @@ TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot,
   return &errOr.get();
 }
 
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+TMP_MGP_RT_RemoveCachedBuffer(size_t bufferSlot,
+                              AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync) {
+  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
+  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
+  auto &stateSlot = stateCtx.getStateSlot(bufferSlot);
+  stateSlot.clear();
+}
+
 /// This is the implementation of the mgp.buffer.borrow primitive.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_BufferBorrow(AsyncRTWrapper<AnyAsyncValueRef> borrower,

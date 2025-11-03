@@ -673,11 +673,13 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   auto createPackOps = [&](ValueRange values, Operation *insertBefore,
                            SmallVectorImpl<Value> &packedValues) {
     builder.setInsertionPoint(insertBefore);
-    for (Value v : values) {
+    for (auto &&[i, v] : llvm::enumerate(values)) {
       // Do not attempt to pack chains as they are never actually unpacked.
       // The only use of a chain is to be set by MOGG::CreateReadyChainOp
       // which does not have operands.
       if (isa<MEF::ChainType>(v.getType())) {
+        if (shouldPack[i])
+          v = MOGG::AsyncReadyOp::create(builder, loc);
         packedValues.push_back(v);
         continue;
       }
@@ -765,14 +767,11 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   // (in which case they were already created inside the try/except blocks)
   if (!callsThrowingMojoStub) {
     for (auto &&[i, v] : llvm::enumerate(terminator->getOperands())) {
-      // Do not attempt to pack chains as they are never actually unpacked.
-      // The only use of a chain is to be set by MOGG::CreateReadyChainOp
-      // which does not have operands.
-      if (isa<MEF::ChainType>(v.getType()))
-        continue;
-
       Value newValue;
-      if (shouldPack.test(i)) {
+      if (isa<MEF::ChainType>(v.getType())) {
+        if (shouldPack.test(i))
+          newValue = MOGG::AsyncReadyOp::create(builder, loc);
+      } else if (shouldPack.test(i)) {
         SmallVector<Value, 2> packOperands{v};
         if (isa<MGP::DeviceBufferType>(v.getType())) {
           if (auto mgpBufferAllocOp =
