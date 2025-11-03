@@ -45,12 +45,12 @@ MojoValue createTypedVar(const MojoValue &name, const MojoValue &type) {
 class MojoBuilderScopeGuard {
 public:
   MojoBuilderScopeGuard(MojoBuilder *e) : emitter(e) {
-    emitter->increaseIdentation();
+    emitter->increaseIndentation();
   }
   MojoBuilderScopeGuard() = delete;
   MojoBuilderScopeGuard(const MojoBuilderScopeGuard &other) = delete;
   ~MojoBuilderScopeGuard() {
-    emitter->decreaseIdentation();
+    emitter->decreaseIndentation();
     emitter->newline();
   }
   MojoBuilder *emitter;

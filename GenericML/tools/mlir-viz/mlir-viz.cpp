@@ -542,7 +542,7 @@ struct MLIRTreeRenderer {
     }
 
     // If this ops is the highlighted op, we adjust the Y position if it is
-    // not visibile and if we have not already done so and we actually
+    // not visible and if we have not already done so and we actually
     // highlight it.
     bool isOpToHighlight = &op == opToHighlight;
     ImGuiTreeNodeFlags flags = 0;

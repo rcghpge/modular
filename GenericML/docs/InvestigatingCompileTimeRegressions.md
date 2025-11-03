@@ -23,7 +23,7 @@ building/compiling a model:
 flowchart LR
   A("Graph API")
   A --> B("Graph Compiler")
-  B --> C("Mojo Compilier")
+  B --> C("Mojo Compiler")
   C --> D("LLVM Backend")
 ```
 
@@ -44,7 +44,7 @@ flowchart TD
   A --> E("Build Graph")
   A --> F("Compile Graph")
   F --> B("Graph Compiler")
-  B --> C("Mojo Compilier")
+  B --> C("Mojo Compiler")
   B --> D("LLVM Backend")
 ```
 

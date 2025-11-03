@@ -1803,7 +1803,7 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
     at some point during the Mojo emission, we will have to grab the output from
     the implicit void** (array of inputs and outputs) and assign to it this
     value. This is effectively a borrow. The reason we don't do this in the op
-    that returns the async value is because this is re-usible. If a user of this
+    that returns the async value is because this is re-usable. If a user of this
     operation is not an output op, it should just use the input. This is done as
     a canonicalization step. Also, if this operation has no user, it will be
     folded. This is why it isn't pure at this time.

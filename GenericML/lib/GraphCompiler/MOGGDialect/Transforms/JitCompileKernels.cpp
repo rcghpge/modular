@@ -199,8 +199,9 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       ErrorOr<BufferRef> bufferOr = objectCompiler.get()->emitArchive(
           std::move(parsedMojoModule), /*emitAssembly=*/false, &outKeyHash);
       if (bufferOr.isError()) {
-        return module->emitError("An error occured while lowering KGEN to LLVM "
-                                 "in the graph compiler");
+        return module->emitError(
+            "An error occurred while lowering KGEN to LLVM "
+            "in the graph compiler");
       }
 
       // Archiving the compiled code and storing it as a dense resource.

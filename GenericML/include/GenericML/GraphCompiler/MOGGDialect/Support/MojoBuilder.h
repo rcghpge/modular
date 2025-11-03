@@ -195,11 +195,11 @@ public:
   /// Returns the generated Mojo module as a string.
   const std::string &str() const { return sourceStr; }
 
-  void increaseIdentation() {
+  void increaseIndentation() {
     indentation.insert(indentation.size(), "    ", 4);
   }
 
-  void decreaseIdentation() { indentation.erase(indentation.size() - 4, 4); }
+  void decreaseIndentation() { indentation.erase(indentation.size() - 4, 4); }
 
   UniqueMojoIdentifier getIdentifier(StringLiteral prefix = "val") {
     return UniqueMojoIdentifier(prefix, variableCounter++);

@@ -3709,8 +3709,8 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
   // older KGEN path)
   //
   // Ideally we'd have this wrapped up in a nice function that we could just
-  // invoke on the Mojo side, but I wasn't able to figure out how to paramterize
-  // the raw mlir we're generating with the array size.
+  // invoke on the Mojo side, but I wasn't able to figure out how to
+  // parameterize the raw mlir we're generating with the array size.
   //
   // Instead directly invoke pop.global_constant op via the __mlir_op machinery
   // of Mojo.

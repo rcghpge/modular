@@ -127,7 +127,7 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
 
 int main(int argc, char **argv) {
   // Register all our command line options. Avoid calling InitLLVM as we don't
-  // want to register its signal handler. The Init::Init code will regsiter
+  // want to register its signal handler. The Init::Init code will register
   // our signal handler.
   GenericDriverOptions options;
   GenericDriverCLOptions parser(argc, argv, options, /*skipInitLLVM=*/true);

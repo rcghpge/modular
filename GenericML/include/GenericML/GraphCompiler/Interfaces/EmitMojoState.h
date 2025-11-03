@@ -18,7 +18,7 @@
 namespace M::MOGG {
 /// TODO(GEX-2488): The following are Mojo symbols that are hardcoded for
 /// convenience. The end goal is to remove them all and either register them in
-/// a Mojo file via `@compiler_register` or determine them programatically
+/// a Mojo file via `@compiler_register` or determine them programmatically
 /// (packages). Ideally, name changes or file movements should not break
 /// anything in C++ land and be contained in Mojo (ex: stdlib decide to rename
 /// IndexList to something else, all the changes will be in Mojo only).
@@ -94,7 +94,7 @@ constexpr StringLiteral alias_MutableAnyOrigin = "MutableAnyOrigin";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
-/// relying on an `__init__.mojo` file that imports things or harcoding a
+/// relying on an `__init__.mojo` file that imports things or hardcoding a
 /// package that could change/be moved around.
 constexpr StringLiteral packagesToImport[] = {
     "MOGGPrimitives", "MOGGKernelAPI", "tensor", "compiler_internal", "utils",
@@ -121,7 +121,7 @@ struct EmitMojoState {
       : analysis(analysis), enableComputeLambdas(enableComputeLambdas),
         enableOpTraceComments(enableOpTraceComments) {}
 
-  /// The Mojo builder used to generate teh text.
+  /// The Mojo builder used to generate the text.
   MojoBuilder builder;
   /// The actual return values of the `mogg.generic.compiled.region`. This is
   /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
