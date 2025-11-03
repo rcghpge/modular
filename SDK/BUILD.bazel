@@ -53,7 +53,6 @@ modular_nanobind_library(
     tags = ["no-clang-tidy-headers"],
     deps = [
         ":max",
-        "//:MLIRBindingsPythonHeaders",
         "//Init",
         "//SDK:DLPackPython",
         "//SDK:DriverPython",
@@ -76,7 +75,6 @@ modular_nanobind_library(
     hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
     deps = [
         ":max",
-        "//:MLIRBindingsPythonHeaders",
         "//Support:NanobindUtils",
     ],
 )
