@@ -983,11 +983,10 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   }
   int iterations = 0;
   // Try allocating from all free buffer lists in this BufferCacheFreeList,
-  // starting with the primary free buffer list.
+  // starting with the primare free buffer list.
   for (int i = 0; i < kNumFreeBufferLists; i++) {
-    int freeListIdToUse = (primaryFreeBuffers_ + i) % kNumFreeBufferLists;
     // Find a fit in the free list.
-    BufferCache::Desc *desc = freeBuffers_[freeListIdToUse];
+    BufferCache::Desc *desc = freeBuffers_[primaryFreeBuffers_];
     while ((desc != nullptr) && (desc->size_ < size)) {
       desc = desc->nextFree_;
       iterations++;
@@ -1008,8 +1007,8 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
       if (bufferCache_.doLog_) {
         bufferCache_.logErr(
             "allocate on " + TWINE_PTR(this) +
-                " from free buffer at id: " + TWINE(freeListIdToUse) + " (" +
-                TWINE_PTR(desc->ptr_) + " ; " + TWINE(size) + ")",
+                " from free buffer at id: " + TWINE(primaryFreeBuffers_) +
+                " (" + TWINE_PTR(desc->ptr_) + " ; " + TWINE(size) + ")",
             iterations, -size);
       }
 
