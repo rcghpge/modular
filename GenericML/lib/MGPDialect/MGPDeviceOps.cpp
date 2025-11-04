@@ -360,6 +360,30 @@ BufferConcatOp::getInOutSemantics(size_t index) {
              : InOutSignatureAttr::kIn;
 }
 
+bool BufferConcatOp::isRaising() { return true; }
+
+LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue bDevice = getBDevice().getLabel();
+  MojoValue output = state.getMojoValueFor(getOutBuffer());
+  MojoValue ctx = state.getMojoValueFor(getCtx());
+
+  MojoValue inputBuffers = state.builder.var(MojoValue(
+      HardcodedMojoSymbols::struct_StaticTuple)[{
+      HardcodedMojoSymbols::alias_NDBuffer_In_MGP, getInBuffers().size()}]());
+  for (auto &&[i, buffer] : llvm::enumerate(getInBuffers()))
+    state.builder.assign(inputBuffers[i], state.getMojoValueFor(buffer));
+
+  state.builder.call(function, bDevice.quote(), {output, inputBuffers, ctx});
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferSliceOp
 //===----------------------------------------------------------------------===//

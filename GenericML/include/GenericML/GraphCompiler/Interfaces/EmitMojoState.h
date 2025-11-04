@@ -92,6 +92,13 @@ constexpr StringLiteral alias_FusedInputTensor =
 constexpr StringLiteral alias_UInt8 = "UInt8";
 constexpr StringLiteral alias_MutAnyOrigin = "MutAnyOrigin";
 
+// The following could be built by combining multiple symbols but this is more
+// convenient. Note that NDBuffer will disappear and the GC will instead use a
+// custom type for managing these int8 buffers (probably just some simple
+// vector/string type).
+constexpr StringLiteral alias_NDBuffer_In_MGP =
+    "NDBuffer[DType.int8, 1, MutAnyOrigin]";
+
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
 /// relying on an `__init__.mojo` file that imports things or hardcoding a

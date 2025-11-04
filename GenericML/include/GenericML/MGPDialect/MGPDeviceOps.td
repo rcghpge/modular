@@ -637,6 +637,7 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Concatenates a sequence of input buffers into an output "
                 "buffer.";
