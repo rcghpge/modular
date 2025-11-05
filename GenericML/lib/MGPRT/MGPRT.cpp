@@ -187,6 +187,23 @@ MGP_RT_BufferBorrow(AsyncRTWrapper<AnyAsyncValueRef> borrower,
   }
 }
 
+/// Assigns to the borrower a tensor buffer that isn't owned by the runtime
+/// (used for constants).
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_BufferUntracked(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
+                       size_t size) {
+  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
+  TensorBufferRef buf =
+      ::M::TensorBufferRef::createWithNonTrackedMemory(data, size);
+  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
+    borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
+  } else {
+    Runtime &runtime = *Runtime::getCurrentRuntimeOrNull();
+    borrowerValue =
+        borrowerValue.createReady<TensorBufferRef>(runtime, std::move(buf));
+  }
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 MGP_RT_GetContextPayloadPtr(size_t index, AsyncRTWrapper<StateContext> rawCtx) {
   StateContext &ctx = unwrap(rawCtx);

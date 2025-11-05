@@ -1786,13 +1786,12 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   Pure,
   SameOperandsAndResultType,
-  HasParent<"MOGG::GenericCompiledRegionOp">,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
-  let summary = "Borrows the input async value";
+  let summary = "Borrows the input tensor ref value";
   let description = [{
     When another operation returns an async value, we add this borrow to keep
     track of the fact that the returned async value needs to be borrowed by the
@@ -1821,8 +1820,26 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+}
 
-  let hasCanonicalizeMethod = 1;
+def MOGG_AsyncPackUntrackedOp : MOGG_Op<"async.pack.untracked", [
+  Pure,
+  SameOperandsAndResultType,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+]> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
+  let summary = "Packs the input data + size";
+  let description = [{
+    This is very similar to async.pack.borrow except there is nothing to borrow
+    from. It is assumed that the input is an `NDBuffer` in Mojo and that the
+    data is managed externally.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [

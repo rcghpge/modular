@@ -669,35 +669,47 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   auto loc = kernel->getLoc();
   Operation *terminator = kernel.getBody().front().getTerminator();
 
-  // Helper lambda to create pack operations for a list of values
-  auto createPackOps = [&](ValueRange values, Operation *insertBefore,
-                           SmallVectorImpl<Value> &packedValues) {
+  auto packOutputValues = [&](ValueRange values,
+                              Operation *insertBefore) -> SmallVector<Value> {
+    SmallVector<Value> packedValues;
     builder.setInsertionPoint(insertBefore);
-    for (auto &&[i, v] : llvm::enumerate(values)) {
-      // Do not attempt to pack chains as they are never actually unpacked.
-      // The only use of a chain is to be set by MOGG::CreateReadyChainOp
-      // which does not have operands.
-      if (isa<MEF::ChainType>(v.getType())) {
+    for (auto &&[i, value] : llvm::enumerate(values)) {
+      Value newValue;
+      if (isa<MEF::ChainType>(value.getType())) {
         if (shouldPack[i])
-          v = MOGG::AsyncReadyOp::create(builder, loc);
-        packedValues.push_back(v);
-        continue;
+          newValue = MOGG::AsyncReadyOp::create(builder, loc);
+      } else if (shouldPack.test(i)) {
+        SmallVector<Value, 2> packOperands{value};
+        if (isa<MGP::DeviceBufferType>(value.getType())) {
+          if (auto mgpBufferAllocOp =
+                  mlir::dyn_cast_or_null<MGP::BufferAllocOp>(
+                      value.getDefiningOp()))
+            packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
+        }
+        newValue = MOGG::AsyncPackOp::create(builder, loc, value.getType(),
+                                             packOperands);
+      } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
+        /// TODO: Do this through an interface where the op that was lowered can
+        /// tell you how to pack its outputs (not just a boolean but maybe an
+        /// enum or a plain functon that does it).
+        newValue = MOGG::AsyncPackUntrackedOp::create(builder, loc, value);
+      } else {
+        newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
       }
-      SmallVector<Value, 2> packOperands{v};
-      if (isa<MGP::DeviceBufferType>(v.getType())) {
-        if (auto mgpBufferAllocOp =
-                mlir::dyn_cast_or_null<MGP::BufferAllocOp>(v.getDefiningOp()))
-          packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
+
+      if (newValue) {
+        value.replaceUsesWithIf(newValue, [&](OpOperand &use) {
+          return use.getOwner() == insertBefore;
+        });
+        packedValues.push_back(newValue);
       }
-      auto packOp =
-          MOGG::AsyncPackOp::create(builder, loc, v.getType(), packOperands);
-      v.replaceUsesWithIf(packOp, [&](OpOperand &use) {
-        return use.getOwner() == insertBefore;
-      });
-      packedValues.push_back(packOp);
     }
+
+    return packedValues;
   };
 
+  // First, wrap the kernel body with a try-except clause. If it is not raising
+  // anything, just pack outputs normally.
   if (callsThrowingMojoStub) {
     // If the kernel calls a mojo stub that throws, we need to insert a try /
     // except statement.
@@ -718,8 +730,8 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
         MOGG::YieldOp::create(builder, loc, terminator->getOperands());
 
     // Create pack operations inside the try block before the yield
-    SmallVector<Value> tryPackedValues;
-    createPackOps(terminator->getOperands(), tryYieldOp, tryPackedValues);
+    SmallVector<Value> tryPackedValues =
+        packOutputValues(terminator->getOperands(), tryYieldOp);
     tryYieldOp->setOperands(tryPackedValues);
 
     // The except block returns a chain error and dummy values for other
@@ -743,11 +755,14 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
 
     // Update the final terminator outputs to the try op results.
     terminator->setOperands(tryOp.getOutputs());
-
-    builder.setInsertionPointToStart(&kernel.getBody().front());
+  } else {
+    builder.setInsertionPoint(terminator);
+    packOutputValues(terminator->getOperands(), terminator);
   }
 
+  // Then, unpack all inputs that should be unpacked.
   SmallVector<Value> asyncValues;
+  builder.setInsertionPointToStart(&kernel.getBody().front());
   for (auto v : kernel.getBody().getArguments()) {
     // Do not attempt to unpack a chain as there is nothing that we could be
     // doing with it internally but still decrement its async reference. Also,
@@ -762,31 +777,6 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   }
 
   builder.setInsertionPoint(terminator);
-
-  // Only create pack operations here if we didn't create a try block
-  // (in which case they were already created inside the try/except blocks)
-  if (!callsThrowingMojoStub) {
-    for (auto &&[i, v] : llvm::enumerate(terminator->getOperands())) {
-      Value newValue;
-      if (isa<MEF::ChainType>(v.getType())) {
-        if (shouldPack.test(i))
-          newValue = MOGG::AsyncReadyOp::create(builder, loc);
-      } else if (shouldPack.test(i)) {
-        SmallVector<Value, 2> packOperands{v};
-        if (isa<MGP::DeviceBufferType>(v.getType())) {
-          if (auto mgpBufferAllocOp =
-                  dyn_cast_or_null<MGP::BufferAllocOp>(v.getDefiningOp()))
-            packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
-        }
-        newValue =
-            MOGG::AsyncPackOp::create(builder, loc, v.getType(), packOperands);
-      } else {
-        newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, v);
-      }
-      v.replaceAllUsesExcept(newValue, newValue.getDefiningOp());
-    }
-  }
-
   for (auto asyncValue : asyncValues)
     MOGG::AsyncDelOp::create(builder, loc, asyncValue);
 }

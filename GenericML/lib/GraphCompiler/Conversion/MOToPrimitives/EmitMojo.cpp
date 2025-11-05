@@ -59,6 +59,7 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
                                         OpBuilder &builder) {
   // Clear any previous kernel's return values from the state
   state.mojoReturnValues.clear();
+  state.mojoConstantResources.clear();
 
   bool errOccurred = false;
   std::string kernelName =
@@ -84,6 +85,21 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
         for (uint64_t i = 0; i < kernel->getNumResults(); ++i) {
           state.mojoReturnValues.emplace_back(
               runtimeArgument[std::to_string(i + kernel->getNumOperands())]);
+        }
+
+        // After inputs and outputs, there are constant resources appended to
+        // the void** array. These come in pairs of ptr + size which is handled
+        // here.
+        for (uint64_t i = 0; i < kernel.getConstantResources().size(); ++i) {
+          uint64_t flatIndex =
+              i * 2 + kernel->getNumOperands() + kernel->getNumResults();
+          MOGG::MojoValue ptr = runtimeArgument[flatIndex];
+          // The ABI is that the bytecount is directly stored as an
+          // OpaquePointer.
+          MOGG::MojoValue byteCount =
+              runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
+          state.mojoConstantResources.emplace_back(
+              std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
         }
 
         errOccurred |= llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {

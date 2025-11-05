@@ -73,7 +73,7 @@ public:
   /// memory.
   static TensorBufferRef
   createWithNonTrackedMemory(void *buffer, size_t size,
-                             std::optional<size_t> alignment);
+                             std::optional<size_t> alignment = std::nullopt);
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.

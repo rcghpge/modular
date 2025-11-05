@@ -3584,13 +3584,21 @@ LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
-LogicalResult AsyncPackBorrowOp::canonicalize(AsyncPackBorrowOp borrowOp,
-                                              mlir::PatternRewriter &rewriter) {
-  rewriter.replaceOpUsesWithIf(
-      borrowOp, borrowOp.getInput(),
-      [](OpOperand &use) { return !isa<MOGG::OutputOp>(use.getOwner()); });
+//===----------------------------------------------------------------------===//
+// AsyncPackUntrackedOp
+//===----------------------------------------------------------------------===//
 
-  return failure();
+LogicalResult AsyncPackUntrackedOp::emitMojo(EmitMojoState &state) {
+  auto resultIndexOr = getOutputIndex();
+  if (!resultIndexOr)
+    return failure();
+  auto moggAsyncPackUntrackedFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  state.builder.call(moggAsyncPackUntrackedFunc, {},
+                     {/* borrower */ state.mojoReturnValues[*resultIndexOr],
+                      /* borrowee */ state.getMojoValueFor(getInput())});
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

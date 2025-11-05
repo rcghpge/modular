@@ -249,7 +249,7 @@ static void printSrcDstBufferTypesToDevices(OpAsmPrinter &p, Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// CpuBufferConstantOp
+// BufferConstantOp
 //===----------------------------------------------------------------------===//
 
 /// Parses an elements attribute, and sets rawAlign to its alignment constraint.
@@ -278,6 +278,32 @@ static void printElementsAttrWithAlign(AsmPrinter &p, Operation *op,
                                        ElementsAttr value,
                                        IntegerAttr rawAlign) {
   p << value;
+}
+
+llvm::BitVector BufferConstantOp::resultsToPack() {
+  return llvm::BitVector(1, false);
+}
+
+LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::LIT::FnOp func =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+
+  auto elementsAttr = getAValue();
+  auto kernelOp =
+      getOperation()->getParentOfType<MOGG::GenericCompiledRegionOp>();
+  auto constantResources = kernelOp.getConstantResources();
+  auto it = llvm::find(constantResources, elementsAttr);
+  if (it == constantResources.end())
+    return emitError("The constant resource can't be found in the kernel");
+
+  uint64_t resourceIndex = std::distance(constantResources.begin(), it);
+  auto &[ptr, bytecount] = state.mojoConstantResources[resourceIndex];
+
+  MOGG::MojoValue result = state.builder.var(function({}, {ptr, bytecount}));
+  state.setMojoValueFor(getOutBuffer(), result);
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

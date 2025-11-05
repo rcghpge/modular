@@ -133,6 +133,10 @@ struct EmitMojoState {
   /// The actual return values of the `mogg.generic.compiled.region`. This is
   /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;
+  /// Kernels that dense resources will get these in the void** input after
+  /// inputs and outputs.
+  SmallVector<std::tuple<MojoValue, MojoValue>> mojoConstantResources;
+
   MojoLibraryAnalysis &analysis;
 
   /// In some cases values must be kept alive using `_ = someVar` at the end of
