@@ -340,9 +340,23 @@ getValidatedParameter(const NamedAttribute &attr) {
   auto value = attr.getValue();
 
   // Validate supported attribute types.
-  if (!isa<IntegerAttr, StringAttr, TypeAttr>(attr.getValue()))
+  if (!isa<IntegerAttr, StringAttr, TypeAttr, DenseIntElementsAttr>(
+          attr.getValue())) {
     return Error(llvm::formatv("Unsupported typed attribute {}: {}",
                                attr.getName(), attr.getValue()));
+  }
+
+  // This particular attr type is sometimes used to represent shape parameters
+  // of a kernel. (e.g. 'a_shape' in layout_transform_KN_to_KNkni).
+  if (auto vectorAttr = dyn_cast<DenseIntElementsAttr>(value)) {
+    SmallVector<Attribute> intAttrs;
+    for (const auto &intVal : vectorAttr.getValues<APInt>()) {
+      intAttrs.push_back(IntegerAttr::get(
+          IntegerType::get(vectorAttr.getContext(), intVal.getBitWidth()),
+          intVal));
+    }
+    value = ArrayAttr::get(vectorAttr.getContext(), intAttrs);
+  }
 
   // Convert TypeAttr to DTypeConstantAttr
   if (auto typeAttr = dyn_cast<TypeAttr>(value)) {
@@ -375,6 +389,36 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
   }
 
+  if (auto layoutTransform = dyn_cast<MO::LayoutTransformOp>(moOp)) {
+    if (auto params = layoutTransform.getKgenParamsAttr()) {
+      for (NamedAttribute param : layoutTransform.getKgenParamsAttr()) {
+        if (ErrorOr<NamedAttribute> validated = getValidatedParameter(param))
+          return validated.takeError();
+        else
+          forwardedParameters.push_back(validated.takeValue());
+      }
+    }
+    return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
+  }
+
+  if (auto invokeShapeFunc = dyn_cast<MO::InvokeShapeFuncOp>(moOp)) {
+
+    const uint64_t rank = invokeShapeFunc.getOutputParamDecls().size();
+    forwardedParameters.push_back(NamedAttribute(
+        builder.getStringAttr(KGEN::MOGGPreElab::kMOGGOutputRankParameterName),
+        builder.getIndexAttr(rank)));
+
+    if (auto params = invokeShapeFunc.getKgenParamsAttr()) {
+      for (NamedAttribute param : invokeShapeFunc.getKgenParamsAttr()) {
+        if (ErrorOr<NamedAttribute> validated = getValidatedParameter(param))
+          return validated.takeError();
+        else
+          forwardedParameters.push_back(validated.takeValue());
+      }
+    }
+    return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
+  }
+
   for (auto param : moOp->getAttrDictionary()) {
     if (isa<M::DeviceRefAttr>(param.getValue()))
       continue;
@@ -383,16 +427,6 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     if (param.getName() ==
         MO::CustomOp::getOutputParamDeclsAttrName(customOpOperationName)) {
       continue;
-    }
-
-    // Shape function specific attributes that shouldn't be forwarded
-    if (isa<MO::InvokeShapeFuncOp>(moOp)) {
-      if (param.getName() == "shapeFuncName" ||
-          param.getName() == "outputParamDecls" ||
-          param.getName() == "dataDeptTensors" ||
-          param.getName() == "kgenParams") {
-        continue;
-      }
     }
 
     auto asTypeAttr = dyn_cast<TypeAttr>(param.getValue());
@@ -478,23 +512,6 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
   } else if (auto sliceOp = dyn_cast<MO::SliceOp>(moOp)) {
     extractConstantValues(sliceOp.getStep(),
                           MOGG::PARAMETER_SLICE_STATIC_STEPS);
-  } else if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(moOp)) {
-    // Extract output_rank from the shape function's output parameter
-    // declarations
-    const uint64_t rank = shapeFuncOp.getOutputParamDecls().size();
-    forwardedParameters.push_back(NamedAttribute(
-        builder.getStringAttr(KGEN::MOGGPreElab::kMOGGOutputRankParameterName),
-        builder.getIndexAttr(rank)));
-
-    // Forward parameters from the kgenParams dictionary.
-    if (DictionaryAttr kgenParams = shapeFuncOp.getKgenParamsAttr()) {
-      for (NamedAttribute attr : kgenParams.getValue()) {
-        // TODO: We might need to do some conversation to EmitMojo.
-        // Or instead build mojo-compatible attributes when building the shape
-        // function calls.
-        forwardedParameters.push_back(attr);
-      }
-    }
   }
 
   return DictionaryAttr::get(moOp->getContext(), forwardedParameters);

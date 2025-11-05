@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 
@@ -211,6 +212,8 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
       return boolAttr.getValue();
     else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
       return intAttr.getInt();
+    else if (auto dtypeAttr = dyn_cast<KGEN::DTypeConstantAttr>(customParam))
+      return EmitMojoState::mlirDTypeToMojoType(dtypeAttr.getDType());
     else if (auto arrAttr = dyn_cast<ArrayAttr>(customParam);
              arrAttr && !arrAttr.empty() && isa<IntegerAttr>(arrAttr[0])) {
       SmallVector<int64_t> values;
