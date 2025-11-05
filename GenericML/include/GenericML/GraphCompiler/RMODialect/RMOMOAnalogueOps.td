@@ -276,7 +276,36 @@ def RMO_MOLog1pOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"log1p"> {
   }];
 }
 
-def RMO_MOLogSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"logsoftmax"> {
+class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :  RMO_MOAnaloguePureUnaryElementWiseOp<name, traits # [Pure, AllDTypesMatch<["input", "result"]>]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_IndicesTensor:$axis,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$result);
+
+  let extraClassDefinition = [{
+    void $cppClass::inferMOTypesImpl(
+        MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
+        std::optional<ValueRange> rmoResults, SmallVectorImpl<Type> &moOperandTypes,
+        SmallVectorImpl<Type> &moResultTypes,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
+        SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
+
+        MO::TensorType inputTy = cast<MO::TensorType>(operands.getInput().getType());
+        moOperandTypes.push_back(inputTy);
+        moInputParamDecls.push_back({});
+
+        MO::TensorType axisTy = cast<MO::TensorType>(operands.getAxis().getType());
+        moOperandTypes.push_back(axisTy);
+        moInputParamDecls.push_back({});
+
+        moResultTypes.push_back(inputTy);
+        moOutputParamDecls.push_back({});
+    }
+  }];
+}
+
+def RMO_MOLogSoftmaxOp : RMO_MOSoftmaxLikeOp<"logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -1826,7 +1855,7 @@ def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
   ];
 }
 
-def RMO_MOSoftmaxOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"softmax"> {
+def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"softmax"> {
   let summary = "Softmax operation";
   let description = [{
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.

@@ -1023,6 +1023,7 @@ private:
 
   // Top of the pattern
   TensorValue softmaxInput;
+  TensorValue softmaxAxis;
   Operation *softmaxProducer = nullptr;
 
   // For unsafe broadcasts
@@ -1051,8 +1052,8 @@ public:
     auto maybeReshape1 =
         pOptionalReshape(&matcher.optReshape1, m_Any(&matcher.softmaxInput));
     auto maybeBCast1 = pOptionalBroadcast(&matcher.optBCast1, maybeReshape1);
-    auto pSoftmaxAttnMatrix =
-        m_Op<SoftmaxOp>(&matcher.softmaxProducer, maybeBCast1);
+    auto pSoftmaxAttnMatrix = m_Op<SoftmaxOp>(
+        &matcher.softmaxProducer, maybeBCast1, m_Any(&matcher.softmaxAxis));
 
     // support up to two optional casts (from bf16 --> fp32 --> bf16)
     auto maybeCast1 = pOptionalCast(&matcher.optCast1, pSoftmaxAttnMatrix);
@@ -1070,6 +1071,12 @@ public:
     if (!matches)
       return Error("[MultiHeadAttentionEpilogueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
+
+    std::optional<int64_t> axis = MO::tryGetConstantInt(matcher.softmaxAxis);
+    if (!axis.has_value() ||
+        size_t(axis.value()) != matcher.softmaxInput.getType().getRank() - 1)
+      return Error("[MultiHeadAttentionEpilogueMatcher]: softmax axis is not "
+                   "the last axis");
 
     if (!allowUnsafeBCast && (matcher.optBCast1 || matcher.optBCast2))
       return Error("[MultiHeadAttentionEpilogueMatcher]: pattern matches but "

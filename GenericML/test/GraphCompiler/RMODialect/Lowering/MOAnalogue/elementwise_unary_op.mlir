@@ -112,14 +112,14 @@ mo.graph @log1p_mixed_dyn(%arg0: !mo.tensor<[20, ?], f32>) -> !mo.tensor<?, f32>
 
 // -----
 
-mo.graph @logsoftmax_mixed_params(%arg0: !mo.tensor<[20, ?], f32>) -> !mo.tensor<[?, ?], f32> {
-  %1 = rmo.mo.logsoftmax(%arg0) : (!mo.tensor<[20, ?], f32>) -> !mo.tensor<[?, ?], f32>
+mo.graph @logsoftmax_mixed_params(%arg0: !mo.tensor<[20, ?], f32>, %arg1: !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32> {
+  %1 = rmo.mo.logsoftmax(%arg0, %arg1) : (!mo.tensor<[20, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %1 : !mo.tensor<[?, ?], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @logsoftmax_mixed_params<[[D1:[^ ]*]] -> [[D2:[^ ]*]], [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, [[D1]]], f32>) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
+// CHECK-SAME: @logsoftmax_mixed_params<[[D1:[^ ]*]] -> [[D2:[^ ]*]], [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, [[D1]]], f32>, [[ARG1:[^ ]*]]: !mo.tensor<[], si64>) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D4:[^ ]*]]>([[VARG0]]) : !mo.tensor<[20, [[D1]]], f32> -> !mo.tensor<[20, [[D4]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.logsoftmax([[V0]]) : (!mo.tensor<[20, [[D4]]], f32>) -> !mo.tensor<[20, [[D4]]], f32>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.logsoftmax([[V0]], [[ARG1]]) : (!mo.tensor<[20, [[D4]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[20, [[D4]]], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D5:[^ ]*]], [[D6:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[20, [[D4]]], f32>) -> !mo.tensor<[[[D5]], [[D6]]], f32>
 // CHECK-NEXT: mo.output<[[D5]], [[D6]]> [[V2]] : !mo.tensor<[[[D5]], [[D6]]], f32>
 // CHECK-NEXT: }

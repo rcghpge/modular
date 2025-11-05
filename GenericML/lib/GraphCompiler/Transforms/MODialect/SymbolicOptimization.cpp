@@ -1586,9 +1586,10 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
   deviceAwareMatchAndRewrite(SoftmaxOp op,
                              DeviceAwareRewriter &rewriter) const override {
     TensorValue inputTensor;
+    TensorValue axisTensor;
     auto reshapeP =
         m_Op<Static::ReshapeOp>(rewriter.pushOp(), m_Any(&inputTensor));
-    auto softmaxOpP = m_Op<SoftmaxOp>(reshapeP);
+    auto softmaxOpP = m_Op<SoftmaxOp>(reshapeP, m_Any(&axisTensor));
 
     if (!softmaxOpP.match(op))
       return rewriter.notifyMatchFailure(op, "Pattern not matched.");
@@ -1604,18 +1605,27 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
 
     TensorType inputTy = inputTensor.getType();
     TensorType reshapedTy = op.getInput().getType();
-    // This avoids sinking reshape that modifies the last axis, which is the
-    // compute axis of softmax.
+
     if (!inputTy.hasRank() || !reshapedTy.hasRank())
       return rewriter.notifyMatchFailure(op, "Shape must be ranked");
-    if (inputTy.getRank() > 0 &&
-        inputTy.getTypedShapeAttr().getValues().back() !=
-            reshapedTy.getTypedShapeAttr().getValues().back())
-      return rewriter.notifyMatchFailure(op, "Last axis is modified");
 
     // This avoids creating a softmax op with unknown shapes.
     if (inputTy.hasUnknownShape())
       return rewriter.notifyMatchFailure(op, "Shape must be known");
+
+    std::optional<int64_t> maybeAxis = tryGetConstantInt(axisTensor);
+    if (!maybeAxis.has_value())
+      return rewriter.notifyMatchFailure(op, "Axis is not a constant");
+
+    // Only support sinking when the final axis is used for now.
+    if (maybeAxis.value() != clampAxis(-1, (int64_t)reshapedTy.getRank()))
+      return rewriter.notifyMatchFailure(op, "Can't sink non-last axis");
+
+    // Ensure the shape of the last axis is not changed
+    if (inputTy.getRank() > 0 &&
+        inputTy.getTypedShapeAttr().getValues().back() !=
+            reshapedTy.getTypedShapeAttr().getValues().back())
+      return rewriter.notifyMatchFailure(op, "Last axis is modified");
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
@@ -1628,6 +1638,11 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
     DType outputDType = newOp.getResult().getType().getDtype();
     newOp.getInputMutable().set(inputTensor);
     newOp.getResult().setType(inputTensor.getType().cloneWith(outputDType));
+
+    // Ensure the softmax axis still points to the last axis
+    newOp.getAxisMutable().set(rewriter.createHostConstant(
+        op->getLoc(), clampAxis(-1, (int64_t)inputTy.getRank())));
+
     TensorValue output = rewriter.create<Static::ReshapeOp>(
         op->getLoc(), op.getResult().getType(), newOp.getResult());
 

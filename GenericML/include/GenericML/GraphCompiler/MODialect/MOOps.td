@@ -1733,42 +1733,47 @@ def MO_TanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"tanh"> {
 //===----------------------------------------------------------------------===//
 
 class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
-    : MO_TensorOp<name, traits # [MO_SameOperandsAndResultType, Pure]> {
-  let arguments = (ins MO_Tensor:$input);
+    : MO_TensorOp<name, traits # [Pure,
+                                  AllDTypesMatch<["input", "result"]>,
+                                  AllShapeAttrsMatch<["input", "result"]>,
+                                  MO_SameFirstArgumentOutputShapesParameterization,
+                                  MO_SingleDeviceWithHostOperands<["axis"]>]> {
+  let arguments = (ins MO_Tensor:$input, MO_RankedScalarIndexTensor:$axis);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
 }
 
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax", [MO_SingleDevice]> {
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
-    Returns `log(softmax(x))`, where `x` is input tensor.
-
-    The softmax is applied along the last axis.
+    Returns `log(softmax(x, axis))`, where `x` is input tensor, and `axis` is
+    the axis along which `softmax` is applied.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+      %axis: !mo.tensor<[], si64>
+      %res = mo.logsoftmax(%arg, %axis) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
 
-def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax", [MO_SingleDevice]> {
+def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
   let summary = "Softmax operation";
   let description = [{
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
 
-    The `sum` reduction is applieed along the last axis.
+    The `sum` reduction is applied along `axis`.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
+      %axis: !mo.tensor<[], si64>
+      %res = mo.softmax(%arg, %axis) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
 }
