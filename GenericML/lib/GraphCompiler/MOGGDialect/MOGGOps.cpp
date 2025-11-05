@@ -970,6 +970,9 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   mlir::MLIRContext *ctx = getContext();
   auto loc = getLoc();
 
+  SmallVector<KGEN::ParamDeclRefAttr> usedKernelParameters =
+      getKernelUsedParameters(*this);
+
   // Outline the kernel into a stub by creating the op and taking the body of
   // the kernel op we are lowering. Output and scratch placeholders are part of
   // the MGP memory management analysis which means they will come from the
@@ -1116,7 +1119,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // lowered SSA value. We use TypedAttr instead of ParamDeclRefAttr to make it
   // possible to search integers (they won't be present obviously).
   DenseMap<TypedAttr, Value> parameterToOutsideSSAValue;
-  for (auto param : getKernelUsedParameters(*this)) {
+  for (auto param : usedKernelParameters) {
     auto symbolicDimOr = loweringState.lowerExpression(
         opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
         param);
