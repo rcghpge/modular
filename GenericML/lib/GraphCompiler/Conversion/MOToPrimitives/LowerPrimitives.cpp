@@ -431,8 +431,7 @@ void LowerPrimitivesPass::runOnOperation() {
 /// TODO(GEX-2486): Implement them one-by-one and remove them from the list each
 /// time (the TEMPORARY defines).
 #define MGP_PRIMITIVES_TEMPORARY_EXCLUSION_LIST                                \
-  MGP::BufferSliceOp, MGP::TensorCreateOp, MGP::TensorExtractBufferOp,         \
-      MGP::TensorSpecCreateOp
+  MGP::BufferSliceOp, MGP::TensorCreateOp, MGP::TensorExtractBufferOp
 #define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
   mlir::index::IndexDialect, KGEN::POP::POPDialect
 

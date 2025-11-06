@@ -233,7 +233,8 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 //===----------------------------------------------------------------------===//
 
 def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
-  Pure, InferTypeOpAdaptor
+  Pure, InferTypeOpAdaptor,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = [{
     Creates a CPU tensor spec from a mix of runtime and static dimensions and

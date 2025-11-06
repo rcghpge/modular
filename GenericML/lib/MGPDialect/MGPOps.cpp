@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/MGPDialect/BufferBuilder.h"
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "Support/AssertStream.h"
@@ -310,6 +311,37 @@ LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
 // TensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult TensorSpecCreateOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp func =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+
+  TensorSpecType tensorSpec = getResult().getType();
+  size_t rank = tensorSpec.getRank();
+  MojoValue rawDimsRankParam = rank;
+
+  // TODO:Update mgp_tensor_spec_create to use DimList directly, which will let
+  // us use EmitMojoState::getAsDimListMojoValue. Currently, the behavior of the
+  // mojo function is incompatible with the EmitMojoState function and the mojo
+  // function can't be updated until the EmitMojo path is the default path
+  // because the soon-to-be-defunct relies on the current behavior.
+  SmallVector<MojoValue> dims;
+  dims.reserve(rank);
+  llvm::transform(tensorSpec.getDims(), std::back_inserter(dims),
+                  [](const std::optional<int64_t> &d) {
+                    return d.value_or(mlir::ShapedType::kDynamic);
+                  });
+  MojoValue rawDimsParam =
+      MojoValue(HardcodedMojoSymbols::struct_DimList)({}, dims);
+
+  MojoValue result = function({rawDimsParam, rawDimsRankParam},
+                              state.getMojoValuesFor(getOperands()));
+  state.setMojoValueFor(getResult(), result);
+
+  return success();
+}
 void TensorSpecCreateOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                                TensorSpecType spec, ValueRange runtimeDims) {
   ASSERT_STREAM(spec.hasRank(),
