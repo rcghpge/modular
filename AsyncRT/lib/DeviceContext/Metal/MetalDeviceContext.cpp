@@ -302,13 +302,12 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
 }
 
 ErrorOr<int> MetalDevice::numberOfGPUs() {
-  MTL::Device *device = MTL::CreateSystemDefaultDevice();
-  if (device == nullptr) {
-    return 0;
+  int count = 0;
+  if (NS::Array *devices = MTL::CopyAllDevices()) {
+    count = devices->count();
+    devices->release();
   }
-
-  device->release();
-  return 1;
+  return count;
 }
 
 //
