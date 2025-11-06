@@ -16,6 +16,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 
+#include "GenericML/GraphCompiler/Version.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -116,30 +117,6 @@ struct SemanticHashKey {
 };
 
 } // namespace
-
-static KGEN::CompilationOptions
-createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,
-                         bool debugKGENStubs, StringRef saveTempsPrefix) {
-
-  KGEN::CompilationOptions compilationOptions;
-  compilationOptions.targetTriple = target.getTripleStr();
-  compilationOptions.targetCpu = target.getArch();
-  compilationOptions.targetFeatures = target.getFeatures();
-  compilationOptions.targetAccelerator =
-      AsyncRT::Device::getAcceleratorArchOrEmpty();
-  compilationOptions.enableLLVMPerFunctionSplitting = false;
-
-  if (kernelBuildType == KernelBuildType::kDebug)
-    compilationOptions.optimizationLevel = 0;
-
-  if (debugKGENStubs || hasDebuginfo(kernelBuildType))
-    compilationOptions.debugLevel = KGEN::CompilationOptions::kFullDebugInfo;
-
-  if (!saveTempsPrefix.empty())
-    compilationOptions.setSaveTemps(saveTempsPrefix.str());
-
-  return compilationOptions;
-}
 
 static std::unique_ptr<KGEN::ObjectCompiler>
 createObjectCompiler(ModuleOp kgenModule,
@@ -246,6 +223,8 @@ CompileDiagnosticOrSuccess StubCompiler::elaborateKGEN() {
     llvm::SourceMgr sourceMgr;
     mlir::SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, ctx);
 
+    setTargetInfo(*kgenModule, targetInfo);
+
     ErrorOrSuccess result = compiler.runElaborationPipeline(
         *kgenModule, targetInfo, *runtime, runtime->getReadyChain().copy(),
         Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
@@ -347,13 +326,18 @@ StubCompiler::compile(const llvm::MapVector<mlir::StringAttr, KGEN::GeneratorOp>
   // hash
   // 6. A vector of LoadCompiledKernelOps will be returned to the caller
 
-  KGEN::EnvAttr envAttr = setKGENEnvAttr();
   WriteableBufferRef keyBufRef = WriteableBuffer::get();
+  KGEN::EnvAttr envAttr = setKGENEnvAttr();
   envAttr.printStripped(*keyBufRef);
-  createCompilationOptions(targetInfo, kernelBuildType, debugKGENStubs,
-                           saveTempsPrefix)
-      .print(*keyBufRef);
-  *keyBufRef << KGEN::getVersionString();
+
+  MLIRContext *ctx = kgenModule->getContext();
+  if (auto error = graphCompilerCacheKey(*keyBufRef, ctx,
+                                         /*buildType=*/kernelBuildType,
+                                         /*debug=*/debugKGENStubs,
+                                         /*saveTempsPrefix=*/saveTempsPrefix);
+      error.isError()) {
+    return graph->emitError() << error.takeError();
+  }
 
   auto keyBuffer = keyBufRef->getBuffer();
   std::string envKeyHash =

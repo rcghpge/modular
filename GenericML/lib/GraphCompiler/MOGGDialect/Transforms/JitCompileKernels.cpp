@@ -46,21 +46,6 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
                                impl::JitCompileKernelsBase<JitCompileKernels>> {
   using Base::Base;
 
-  static void initLLVM() {
-    static std::once_flag initLLVMFlag;
-    std::call_once(initLLVMFlag, []() {
-      llvm::InitializeNativeTarget();
-      llvm::InitializeNativeTargetAsmParser();
-      llvm::InitializeNativeTargetAsmPrinter();
-
-      llvm::InitializeAllTargets();
-      llvm::InitializeAllTargetInfos();
-      llvm::InitializeAllTargetMCs();
-      llvm::InitializeAllAsmParsers();
-      llvm::InitializeAllAsmPrinters();
-    });
-  }
-
   void runOnOperation() override {
     ModuleOp module = getOperation();
 

@@ -19,6 +19,7 @@
 #include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/GraphCompiler/Version.h"
@@ -440,13 +441,9 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   mofLoweringOptions.print(*keyBuf);
   moToMgpOptions.print(*keyBuf);
   getMOToMGPPipelineKey(*keyBuf, mlirCtx, moToMgpOptions);
-  *keyBuf << M::MO::getGraphCompilerVersionString();
 
-  // We also cache the flags passed to mojo for compilation.
-  // If these change, the mojo kernels must be recompiled.
-  auto *compileCtx = maxContext->get<KGEN::CompilationContext>();
-  if (compileCtx)
-    compileCtx->print(*keyBuf);
+  if (auto result = M::MOGG::graphCompilerCacheKey(*keyBuf, mlirCtx))
+    return result.takeError();
 
   // We include the binary contents of any extra kernel mojo packages provided.
   // These paths have already been validated by MOToMGP pass pipeline.
@@ -527,6 +524,8 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
   MO::MoToMgpOptions moToMgpOptions;
   overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
 
+  MOGG::GraphCompilerCacheKey graphCompilerOptions{&compileCtx.mlirCtx};
+
   auto loweringTransform =
       [&, file = file.copy()]() mutable -> ErrorOr<BufferRef> {
     // Convert the input file to an MLIR module.
@@ -597,7 +596,8 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
   }
 
   WriteableBufferRef keyBuffer =
-      makeCacheKey(std::move(file), mofLoweringOptions, moToMgpOptions);
+      makeCacheKey(std::move(file), mofLoweringOptions, moToMgpOptions,
+                   graphCompilerOptions);
 
   return M::cacheMEFTransform("mof", loweringTransform, std::move(keyBuffer));
 }
