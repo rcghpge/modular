@@ -639,6 +639,27 @@ OpFoldResult TensorExtractBufferOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 // TensorExtractTensorSpecOp
 //===----------------------------------------------------------------------===//
+LogicalResult TensorExtractTensorSpecOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  DeviceTensorType tensorType = getTensor().getType();
+  MojoValue tensorRankParam = tensorType.getRank();
+  MojoValue bufferRankParam =
+      tensorType.getRank() == 0 ? MojoValue{1} : tensorRankParam;
+  auto tensorSpec = tensorType.getTensorSpec();
+  MojoValue tensorDtypeParam =
+      state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
+
+  MojoValue result = state.builder.var(
+      function({tensorRankParam, bufferRankParam, tensorDtypeParam},
+               state.getMojoValueFor(getTensor())));
+  state.setMojoValueFor(getResult(), result);
+  return success();
+}
 
 LogicalResult TensorExtractTensorSpecOp::verify() {
   TensorSpecType expectedSpecType = getTensor().getType().getTensorSpec();
@@ -647,6 +668,10 @@ LogicalResult TensorExtractTensorSpecOp::verify() {
                        "implied by the tensor type (")
            << getOutSpec().getType() << " vs " << expectedSpecType << ").";
   }
+  if (!expectedSpecType.hasRank())
+    return emitError() << "Expected to have rank information";
+  if (!expectedSpecType.getOptDType().has_value())
+    return emitError() << "Expected to have DType information for operand";
   return success();
 }
 

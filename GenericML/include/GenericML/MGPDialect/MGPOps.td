@@ -202,6 +202,7 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
 def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
     Pure,
     InferTypeOpAdaptor,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Extracts the `!mgp.tensor_spec` from a `!mgp.tensor`.";
   let description = [{

@@ -3431,23 +3431,51 @@ LogicalResult AsTupleOp::verify() {
 
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   MojoValue unpackedValue;
-  if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(getInput().getType())) {
+  mlir::TypedValue<mlir::Type> input = getInput();
+  mlir::Type inputType = input.getType();
+
+  if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(inputType)) {
+
     MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_tensor_spec};
     unpackedValue = asyncUnpackFunc({int(tensorSpec.getRank())},
-                                    {state.getMojoValueFor(getInput())});
-  } else if (isa<MGP::DeviceBufferType>(getInput().getType())) {
+                                    {state.getMojoValueFor(input)});
+
+  } else if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(inputType)) {
+
+    MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_tensor};
+    MGP::TensorSpecType tensorSpec = tensorType.getTensorSpec();
+    if (!tensorSpec.hasRank())
+      return emitError() << "Expected Tensor operand to have known rank";
+
+    auto tensorRank = tensorSpec.getRank();
+    auto bufferRank = tensorRank == 0 ? 1 : tensorRank;
+    std::optional<DType> maybeDType = tensorSpec.getOptDType();
+    if (!maybeDType)
+      return emitError() << "Expected Tensor operand to have DType";
+
+    unpackedValue = asyncUnpackFunc(
+        {bufferRank, tensorRank, state.mlirDTypeToMojoType(*maybeDType)},
+        state.getMojoValueFor(input));
+
+  } else if (isa<MGP::DeviceBufferType>(inputType)) {
+
     // TODO: (GEX-2732) Move away from NDBuffer in MOGGPrimitives.mojo
     MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_buffer_ref};
-    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor(getInput())});
-  } else if (isa<MGP::DeviceContextType>(getInput().getType())) {
+    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor(input)});
+
+  } else if (isa<MGP::DeviceContextType>(inputType)) {
+
     MojoValue asyncUnpackFunc{HardcodedMojoSymbols::func_unpack_device_ctx};
-    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor((getInput()))});
+    unpackedValue = asyncUnpackFunc({}, {state.getMojoValueFor((input))});
+
   } else {
+
     auto moggAsyncUnpackFunc = state.getOriginalMojoNameFor(
         state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
     unpackedValue = moggAsyncUnpackFunc({state.mlirTypeToMojoType(getType())},
-                                        state.getMojoValueFor(getInput()));
+                                        state.getMojoValueFor(input));
   }
+
   state.setMojoValueFor(getResult(), state.builder.var(unpackedValue));
   return success();
 }
