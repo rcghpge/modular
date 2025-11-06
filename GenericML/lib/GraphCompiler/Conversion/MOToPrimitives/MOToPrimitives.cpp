@@ -2408,12 +2408,13 @@ void MOToPrimitivesPass::runOnOperation() {
       auto &dependencies = graphDependencies[graphOp.getName()];
 
       // Check if any dependencies are still unprocessed
-      if (llvm::any_of(
-              dependencies, [&](llvm::StringMapEntry<std::nullopt_t> &dep) {
-                return llvm::find_if(unprocessedGraphs, [&](MO::GraphOp graph) {
-                         return graph.getName() == dep.first();
-                       }) != unprocessedGraphs.end();
-              })) {
+      if (llvm::any_of(dependencies,
+                       [&](llvm::StringMapEntry<llvm::EmptyStringSetTag> &dep) {
+                         return llvm::find_if(
+                                    unprocessedGraphs, [&](MO::GraphOp graph) {
+                                      return graph.getName() == dep.first();
+                                    }) != unprocessedGraphs.end();
+                       })) {
         // Skip this graph if any dependencies are still unprocessed
         continue;
       } else {
