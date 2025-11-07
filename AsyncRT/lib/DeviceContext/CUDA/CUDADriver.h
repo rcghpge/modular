@@ -14,10 +14,6 @@
 #include "Support/ErrorOr.h"
 #include "llvm/Support/raw_ostream.h"
 
-#ifdef MODULAR_LINUX
-#include "nvPTXCompiler.h"
-#endif // MODULAR_LINUX
-
 #include <sstream>
 #include <stddef.h>
 #include <thread>
@@ -34,8 +30,6 @@ using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
 using CUhostFn = void(void *);
-
-using nvPTXCompilerHandle = struct nvPTXCompiler *;
 
 enum class CUdevice_attribute {
   TEXTURE_ALIGNMENT = 14,
@@ -248,14 +242,16 @@ using CUmulticastObjectProp = struct CUmulticastObjectProp_st {
   unsigned long long flags;
 };
 
-#define CUDA_DRIVER_CALL_LOG()                                                 \
+#define CUDA_DRIVER_CALL_LOG_IMPL(class_name)                                  \
   if (do_call_log) {                                                           \
     /* Make sure we emit a single entry per log call. */                       \
     std::ostringstream buffer;                                                 \
-    buffer << "THR-" << std::this_thread::get_id()                             \
-           << ": CUDADriver::" << __FUNCTION__ << "\n";                        \
+    buffer << "THR-" << std::this_thread::get_id() << ": " << class_name       \
+           << "::" << __FUNCTION__ << "\n";                                    \
     llvm::errs() << buffer.str();                                              \
   }
+
+#define CUDA_DRIVER_CALL_LOG() CUDA_DRIVER_CALL_LOG_IMPL("CUDADriver")
 
 class CUDADriver {
 
@@ -707,80 +703,6 @@ public:
                                    l2Promotion, oobFill);
   }
 
-#ifdef MODULAR_LINUX
-  Result NVPTXCompilerGetVersion(unsigned int *major,
-                                 unsigned int *minor) const {
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(nvPTXCompilerGetVersion(major, minor));
-  }
-
-  Result NVPTXCompilerCompile(nvPTXCompilerHandle compiler,
-                              int numCompileOptions,
-                              const char *const *compileOptions) const {
-
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(
-        nvPTXCompilerCompile(compiler, numCompileOptions, compileOptions));
-  }
-
-  Result NVPTXCompilerCreate(nvPTXCompilerHandle *compiler, size_t ptxCodeLen,
-                             const char *ptxCode) const {
-
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(
-        nvPTXCompilerCreate(compiler, ptxCodeLen, ptxCode));
-  }
-
-  Result NVPTXCompilerDestroy(nvPTXCompilerHandle *compiler) const {
-
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(nvPTXCompilerDestroy(compiler));
-  }
-
-  Result NVPTXCompilerGetCompiledProgram(nvPTXCompilerHandle compiler,
-                                         void *binaryImage) const {
-
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(
-        nvPTXCompilerGetCompiledProgram(compiler, binaryImage));
-  }
-
-  Result NVPTXCompilerGetCompiledProgramSize(nvPTXCompilerHandle compiler,
-                                             size_t *binaryImageSize) const {
-
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(
-        nvPTXCompilerGetCompiledProgramSize(compiler, binaryImageSize));
-  }
-
-  Result NVPTXCompilerGetErrorLogSize(nvPTXCompilerHandle compiler,
-                                      size_t *errorLogSize) const {
-
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(
-        nvPTXCompilerGetErrorLogSize(compiler, errorLogSize));
-  }
-
-  Result NVPTXCompilerGetErrorLog(nvPTXCompilerHandle compiler,
-                                  char *errorLog) const {
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(nvPTXCompilerGetErrorLog(compiler, errorLog));
-  }
-
-  Result NVPTXCompilerGetInfoLog(nvPTXCompilerHandle compiler,
-                                 char *infoLog) const {
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(nvPTXCompilerGetInfoLog(compiler, infoLog));
-  }
-
-  Result NVPTXCompilerGetInfoLogSize(nvPTXCompilerHandle compiler,
-                                     size_t *infoLogSize) const {
-    CUDA_DRIVER_CALL_LOG();
-    return static_cast<Result>(
-        nvPTXCompilerGetInfoLogSize(compiler, infoLogSize));
-  }
-#endif // MODULAR_LINUX
-
   static ErrorOr<const CUDADriver &> get();
 
 private:
@@ -789,8 +711,6 @@ private:
 
   // Shared library name for the CUDA driver.
   static const char lib_name[];
-  static const char lib_nvptx_name[];
-  static const char lib_nvml_name[];
 
   // Once created, the CUDADriver object cannot be deleted.
   CUDADriver() = default;

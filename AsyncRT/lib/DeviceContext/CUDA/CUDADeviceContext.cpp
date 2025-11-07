@@ -12,6 +12,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
+#include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
@@ -100,8 +101,8 @@ private:
 
 #define NVPTXCOMPILER_SAFE_CALL(nvptxcompiler_call)                            \
   do {                                                                         \
-    CUDADriver::Result result = nvptxcompiler_call;                            \
-    if (result != CUDADriver::SUCCESS) {                                       \
+    CUDACompilationDriver::Result result = nvptxcompiler_call;                 \
+    if (result != CUDACompilationDriver::SUCCESS) {                            \
       return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result);        \
     }                                                                          \
   } while (0)
@@ -208,6 +209,18 @@ static Error formatCUDAError(const char *file, int line, const char *func,
                                       llvm::Twine("CUDA call failed: ") +
                                           llvm::Twine(result) + extra_msg);
   }
+}
+
+static Error formatCUDAError(const char *file, int line, const char *func,
+                             CUDACompilationDriver::Result result,
+                             std::string extra_msg = "") {
+  if (!extra_msg.empty()) {
+    extra_msg = std::string(" - ") + extra_msg;
+  }
+  return DeviceContext::formatError(
+      file, line, func,
+      llvm::Twine("NVPTX Compiler call failed: ") + llvm::Twine(result) +
+          extra_msg);
 }
 
 // ===== CUDADevice ===== //
@@ -1292,9 +1305,9 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   unsigned int minorVer, majorVer;
 
   NVPTXCOMPILER_SAFE_CALL(
-      driver_.NVPTXCompilerGetVersion(&majorVer, &minorVer));
+      CUDACompilationDriver::NVPTXCompilerGetVersion(&majorVer, &minorVer));
 
-  NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerCreate(
+  NVPTXCOMPILER_SAFE_CALL(CUDACompilationDriver::NVPTXCompilerCreate(
       &compiler, (size_t)ptx.size(), (const char *)ptx.data()));
 
   // FIXME: resize this if needed
@@ -1304,21 +1317,23 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
     compileOptions[idx] = option.c_str();
   }
 
-  CUDADriver::Result result = driver_.NVPTXCompilerCompile(
-      compiler, options.size(), /* numCompileOptions */
-      compileOptions);          /* compileOptions */
+  CUDACompilationDriver::Result result =
+      CUDACompilationDriver::NVPTXCompilerCompile(
+          compiler, options.size(), /* numCompileOptions */
+          compileOptions);          /* compileOptions */
 
-  if (result != CUDADriver::SUCCESS) {
-    NVPTXCOMPILER_SAFE_CALL(
-        driver_.NVPTXCompilerGetErrorLogSize(compiler, &errorSize));
+  if (result != CUDACompilationDriver::SUCCESS) {
+    NVPTXCOMPILER_SAFE_CALL(CUDACompilationDriver::NVPTXCompilerGetErrorLogSize(
+        compiler, &errorSize));
 
     std::string errorLog;
     if (errorSize != 0) {
       errorLog.resize(errorSize + 1);
-      CUDADriver::Result getErrorResult =
-          driver_.NVPTXCompilerGetErrorLog(compiler, errorLog.data());
+      CUDACompilationDriver::Result getErrorResult =
+          CUDACompilationDriver::NVPTXCompilerGetErrorLog(compiler,
+                                                          errorLog.data());
 
-      if (getErrorResult != CUDADriver::SUCCESS)
+      if (getErrorResult != CUDACompilationDriver::SUCCESS)
         return Error("compile to CUBIN failed and can't get error log\n");
     }
 
@@ -1326,15 +1341,17 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   }
 
   NVPTXCOMPILER_SAFE_CALL(
-      driver_.NVPTXCompilerGetCompiledProgramSize(compiler, &elfSize));
+      CUDACompilationDriver::NVPTXCompilerGetCompiledProgramSize(compiler,
+                                                                 &elfSize));
 
   auto resultBuf = M::WriteableBuffer::get(elfSize);
 
-  NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerGetCompiledProgram(
-      compiler, (void *)resultBuf->getBufferStart()));
+  NVPTXCOMPILER_SAFE_CALL(
+      CUDACompilationDriver::NVPTXCompilerGetCompiledProgram(
+          compiler, (void *)resultBuf->getBufferStart()));
 
   NVPTXCOMPILER_SAFE_CALL(
-      driver_.NVPTXCompilerGetInfoLogSize(compiler, &infoSize));
+      CUDACompilationDriver::NVPTXCompilerGetInfoLogSize(compiler, &infoSize));
 
   std::optional<std::string> printWarning =
       llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_WARN");
@@ -1344,10 +1361,11 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
   if (infoSize != 0 && (printWarning || werror)) {
     std::string infoLog;
     infoLog.resize(infoSize + 1);
-    CUDADriver::Result getLogResult =
-        driver_.NVPTXCompilerGetInfoLog(compiler, infoLog.data());
+    CUDACompilationDriver::Result getLogResult =
+        CUDACompilationDriver::NVPTXCompilerGetInfoLog(compiler,
+                                                       infoLog.data());
 
-    if (getLogResult != CUDADriver::SUCCESS)
+    if (getLogResult != CUDACompilationDriver::SUCCESS)
       return Error("compile to CUBIN has log info but can't get it\n");
 
     if (werror)
@@ -1356,7 +1374,8 @@ CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
       llvm::errs() << infoLog << "\n";
   }
 
-  NVPTXCOMPILER_SAFE_CALL(driver_.NVPTXCompilerDestroy(&compiler));
+  NVPTXCOMPILER_SAFE_CALL(
+      CUDACompilationDriver::NVPTXCompilerDestroy(&compiler));
 
   return resultBuf;
 #else  // MODULAR_LINUX
