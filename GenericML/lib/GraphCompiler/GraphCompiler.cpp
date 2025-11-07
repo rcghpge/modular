@@ -25,6 +25,7 @@
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GraphRT/GRTDialect/GRTDialect.h"
 #include "GraphRT/MLIRToMEF.h"
+#include "KGEN/ToolCommon/KGENPasses.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -96,6 +97,8 @@ void M::MO::registerPasses() {
   mlir::registerCanonicalizerPass();
   mlir::registerSymbolDCE();
   mlir::registerViewOpGraphPass();
+
+  KGEN::registerVerifyParametersPass();
 }
 
 LogicalResult
@@ -122,6 +125,8 @@ MO::lowerMOToMGP(ModuleOp module, const MoToMgpOptions &moToMgpOptions,
 void M::MO::buildMoToMgpPipeline(
     mlir::OpPassManager &pm, const MoToMgpOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+  pm.addPass(KGEN::createVerifyParameters());
+
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
@@ -379,6 +384,7 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   pm.addPass(MO::createPropagateShapes());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(KGEN::createVerifyParameters());
 }
 
 using BlobMap = DenseMap<const uint8_t *, mlir::AsmResourceBlob *>;

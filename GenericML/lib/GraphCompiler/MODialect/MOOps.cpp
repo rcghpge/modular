@@ -841,6 +841,9 @@ LogicalResult OutputOp::verify() {
 // IfOp
 //===----------------------------------------------------------------------===//
 
+ArrayRef<ParamDeclAttr> IfOp::getInputParams() { return {}; }
+SmallVector<ParamDeclAttr> IfOp::getAllParams() { return {}; }
+
 Block *IfOp::getThenBlock() { return &getThenRegion().front(); }
 
 Block *IfOp::getElseBlock() { return &getElseRegion().front(); }
@@ -868,6 +871,9 @@ void IfOp::getEntrySuccessorRegions(
 //===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
+
+ArrayRef<ParamDeclAttr> WhileOp::getInputParams() { return {}; }
+SmallVector<ParamDeclAttr> WhileOp::getAllParams() { return {}; }
 
 ParseResult WhileOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument> argumentInfo;

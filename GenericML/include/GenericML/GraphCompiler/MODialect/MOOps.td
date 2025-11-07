@@ -378,6 +378,7 @@ def IfOp : MO_ControlOp<"if", [
   RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
+  DeclInterface,
 ]> {
   let summary = "`if` control flow operation";
   let description = [{
@@ -413,6 +414,11 @@ def IfOp : MO_ControlOp<"if", [
   let extraClassDeclaration = [{
     Block *getThenBlock();
     Block *getElseBlock();
+
+    /// Implement the DeclInterface methods with our own parameter
+    /// implementation in MO.
+    ArrayRef<ParamDeclAttr> getInputParams();
+    SmallVector<ParamDeclAttr> getAllParams();
   }];
 
   let assemblyFormat = [{
@@ -437,6 +443,7 @@ def WhileOp : MO_ControlOp<"while", [
   RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlock,
+  DeclInterface,
 ]> {
   let summary = "`while` control flow operation";
   let description = [{
@@ -490,6 +497,11 @@ def WhileOp : MO_ControlOp<"while", [
 
     Block::BlockArgListType getCondArguments();
     Block::BlockArgListType getBodyArguments();
+
+    /// Implement the DeclInterface methods with our own parameter
+    /// implementation in MO.
+    ArrayRef<ParamDeclAttr> getInputParams();
+    SmallVector<ParamDeclAttr> getAllParams();
   }];
 
   // The assemblyFormat is almost:
