@@ -56,7 +56,11 @@ from gpu.host.compile import (
     _to_sass,
     get_gpu_target,
 )
-from memory import stack_allocation
+from memory import (
+    LegacyOpaquePointer as OpaquePointer,
+    LegacyUnsafePointer as UnsafePointer,
+    stack_allocation,
+)
 from memory.unsafe import bitcast
 
 from utils import Variant
@@ -1634,6 +1638,10 @@ struct DeviceStream(ImplicitlyCopyable, Movable):
 
     @parameter
     @always_inline
+    @deprecated(
+        "`enqueue_function` is deprecated. Use `enqueue_function_checked`"
+        " instead."
+    )
     fn enqueue_function[
         *Ts: AnyType
     ](
@@ -2701,7 +2709,7 @@ struct DeviceFunction[
         # time.
         @parameter
         fn calculate_args_size() -> Int:
-            var tmp_args_size = 8  # always reserve 8 extra bytes for aligment.
+            var tmp_args_size = 8  # always reserve 8 extra bytes for alignment.
 
             @parameter
             for i in range(num_passed_args):
@@ -4045,6 +4053,10 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
     @parameter
     @always_inline
+    @deprecated(
+        "`enqueue_function` is deprecated. Use `enqueue_function_checked`"
+        " instead."
+    )
     fn enqueue_function[
         func_type: AnyTrivialRegType, //,
         func: func_type,
@@ -4267,6 +4279,10 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
     @parameter
     @always_inline
+    @deprecated(
+        "`enqueue_function` is deprecated. Use `enqueue_function_checked`"
+        " instead."
+    )
     fn enqueue_function[
         *Ts: AnyType
     ](
@@ -4591,9 +4607,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
         from layout import Layout, LayoutTensor
 
         fn vector_add(
-            a: LayoutTensor[DType.float32, Layout.row_major(1000), MutableAnyOrigin],
-            b: LayoutTensor[DType.float32, Layout.row_major(1000), MutableAnyOrigin],
-            c: LayoutTensor[DType.float32, Layout.row_major(1000), MutableAnyOrigin],
+            a: LayoutTensor[DType.float32, Layout.row_major(1000), MutAnyOrigin],
+            b: LayoutTensor[DType.float32, Layout.row_major(1000), MutAnyOrigin],
+            c: LayoutTensor[DType.float32, Layout.row_major(1000), MutAnyOrigin],
         ):
             # ... kernel implementation ...
             pass
@@ -4819,7 +4835,7 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
                 var scale_factor = 2.0
 
                 # This kernel captures 'scale_factor' from the enclosing scope
-                fn scale_kernel(data: LayoutTensor[DType.float32, Layout.row_major(100), MutableAnyOrigin]):
+                fn scale_kernel(data: LayoutTensor[DType.float32, Layout.row_major(100), MutAnyOrigin]):
                     # Uses captured scale_factor variable
                     pass
 
@@ -5124,6 +5140,10 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
     @parameter
     @always_inline
+    @deprecated(
+        "`enqueue_function` is deprecated. Use `enqueue_function_checked`"
+        " instead."
+    )
     fn enqueue_function[
         *Ts: AnyType
     ](

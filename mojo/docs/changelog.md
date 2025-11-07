@@ -21,6 +21,14 @@ what we publish.
 
 ### Language enhancements {#25-7-language-enhancements}
 
+- Mojo now supports unpacking an alias tuple with a single statement when it is
+  not inside a `struct` or `trait`. For example:
+
+  ```mojo
+  alias i, f = (1, 3.0)
+  alias q, v = divmod(4, 5)
+  ```
+
 - Mojo now supports compile-time trait conformance check (via `conforms_to`) and
   downcast (via `trait_downcast`). This allows users to implement features like
   static dispatching based on trait conformance, e.g.,
@@ -118,6 +126,11 @@ what we publish.
 
 #### Libraries
 
+- Added `Span.binary_search_by()` which allows binary searching with a custom
+  comparator function.
+
+- `Codepoint` now conforms to `Writable`.
+
 - Added `os.isatty()` function to check whether a file descriptor refers to a
   terminal. This function accepts an `Int` file descriptor. If you have a
   `FileDescriptor` object, use its `isatty()` method instead.
@@ -191,6 +204,9 @@ what we publish.
 - Error messages now preserve symbolic calls to `always_inline("builtin")`
   functions rather than inlining them into the error message.
 
+- Error messages now preserve alias names in error messages in many cases,
+  rather than expanding the value inline.
+
 - `SIMD` now implements the `DivModable` trait.
 
 - Mojo now uses system allocators in programs built with `mojo build --sanitize address`.
@@ -255,6 +271,12 @@ what we publish.
   threadgroup memory ordering, use `barrier()` instead. Note that lane masks
   are not supported on Apple GPUs, so the mask argument is ignored.
 
+- `gpu.warp` now supports Apple GPUs with native SIMD-group shuffle operations.
+  This enables `shuffle_idx`, `shuffle_up`, `shuffle_down`, and `shuffle_xor`
+  on Apple hardware by mapping Metal `simd_shuffle*` intrinsics to AIR
+  (`llvm.air.simd_shuffle[_up/_down/_xor]`) instructions, achieving feature
+  parity with NVIDIA and AMD backends.
+
 - The `gpu` package has been reorganized into logical subdirectories for better
   code organization:
   - `gpu/primitives/` - Low-level GPU execution primitives (warp, block,
@@ -304,6 +326,28 @@ what we publish.
 - The `empty` origin has been renamed to `external`.
 
 - Rename `MutableOrigin` to `MutOrigin` and `ImmutableOrigin` to `ImmutOrigin`.
+
+- Rename `(Imm/M)utableAnyOrigin` to `(Imm/M)utAnyOrigin`.
+
+- Optimized float-to-string formatting performance by eliminating unnecessary
+  stack allocations. Internal lookup tables used for float formatting
+  (`cache_f32` and `cache_f64`) are now stored as global constants instead of
+  being materialized on the stack for each conversion. This reduces stack
+  overhead by ~10KB for `Float64` and ~600 bytes for `Float32` operations, improving
+  performance for all float formatting operations including `print()`, string
+  interpolation, and `str()` conversions.
+
+- Optimized number parsing performance by eliminating stack allocations for
+  large lookup tables. Internal lookup tables used for number parsing
+  (`powers_of_5_table` and `POWERS_OF_10`) are now stored as global constants
+  using the `global_constant` function instead of being materialized on the
+  stack for each parsing operation. This reduces stack overhead by ~10.6KB for
+  number parsing operations, improving performance for string-to-number
+  conversions including `atof()` and related float parsing operations.
+
+- Tuples now support comparison operations if the element types are also
+  comparable. For example, one can now write `(1, "a") == (1, "a")` or
+  `(1, "a") < (1, "b")`.
 
 ### Tooling changes {#25-7-tooling-changes}
 
@@ -357,6 +401,8 @@ what we publish.
    `0` means unlimited.
 
 - `--help-hidden` option is added to all mojo tools to show hidden options.
+
+- The Mojo language server will now report more coherent code actions.
 
 ### ❌ Removed {#25-7-removed}
 
@@ -443,3 +489,23 @@ what we publish.
   detailed explanations of all MLIR target components, vendor-specific patterns
   for NVIDIA/AMD/Apple GPUs, step-by-step guides for adding new GPU
   architectures, and practical methods for obtaining data layout strings.
+
+- [Issue #5492](https://github.com/modular/modular/issues/5492): Fixed
+  `FileHandle` "rw" mode unexpectedly truncating file contents. Opening a file
+  with `open(path, "rw")` now correctly preserves existing file content and
+  allows both reading and writing, similar to Python's "r+" mode. Previously,
+  "rw" mode would immediately truncate the file, making it impossible to read
+  existing content and causing potential data loss.
+
+- [Issue #3849](https://github.com/modular/mojo/issues/3849): Added support
+  for append mode ("a") when opening files. The `open()` function now accepts
+  "a" as a valid mode, which opens a file for appending. Content written to a
+  file opened in append mode is added to the end of the file without truncating
+  existing content. If the file doesn't exist, it will be created.
+
+- [Issue #3208](https://github.com/modular/mojo/issues/3208): Fixed
+  `FileHandle` raising "unable to remove existing file" error when opening a
+  FIFO (named pipe) in write mode. Opening special files like FIFOs, devices,
+  and sockets with `open(path, "w")` now works correctly. Previously, write
+  mode would attempt to remove the existing file before opening it, which
+  failed for special files that should not be removed.

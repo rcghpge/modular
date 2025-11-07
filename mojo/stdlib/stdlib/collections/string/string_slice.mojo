@@ -72,7 +72,13 @@ from sys.intrinsics import likely, unlikely
 
 from bit import count_trailing_zeros
 from bit._mask import is_negative, splat
-from memory import Span, memcmp, memcpy, pack_bits
+from memory import (
+    LegacyUnsafePointer as UnsafePointer,
+    Span,
+    memcmp,
+    memcpy,
+    pack_bits,
+)
 from memory.memory import _memcmp_impl_unconstrained
 from python import ConvertibleToPython, Python, PythonObject
 
@@ -853,7 +859,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut]](
 
     @doc_private
     fn __init__(
-        out self: StringSlice[ImmutableAnyOrigin],
+        out self: StringSlice[ImmutAnyOrigin],
         *,
         unsafe_borrowed_obj: PythonObject,
     ) raises:

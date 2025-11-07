@@ -13,6 +13,7 @@
 
 
 from math import ceildiv
+from memory import LegacyUnsafePointer as UnsafePointer
 from random import rand
 from sys import argv, size_of
 
@@ -68,9 +69,9 @@ fn gemv_tma_kernel[
 ](
     descriptor_a: TMADescriptor,
     descriptor_b: TMADescriptor,
-    c: LayoutTensor[dtype, c_layout, MutableAnyOrigin],
-    a: LayoutTensor[dtype, a_layout, MutableAnyOrigin],
-    b: LayoutTensor[dtype, b_layout, MutableAnyOrigin],
+    c: LayoutTensor[dtype, c_layout, MutAnyOrigin],
+    a: LayoutTensor[dtype, a_layout, MutAnyOrigin],
+    b: LayoutTensor[dtype, b_layout, MutAnyOrigin],
     M: UInt,
     N: UInt,
     K: UInt,
@@ -113,7 +114,7 @@ fn gemv_tma_kernel[
     var a_smem = LayoutTensorIter[
         dtype,
         a_smem_layout,
-        MutableAnyOrigin,
+        MutAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
         circular=False,
@@ -125,7 +126,7 @@ fn gemv_tma_kernel[
     var b_smem = LayoutTensorIter[
         dtype,
         b_smem_layout,
-        MutableAnyOrigin,
+        MutAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
         circular=False,

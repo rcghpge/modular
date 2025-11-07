@@ -28,6 +28,7 @@
 * `AbortOnCopy`
 """
 
+from memory import LegacyUnsafePointer as UnsafePointer
 from os import abort
 
 # ===----------------------------------------------------------------------=== #
@@ -359,7 +360,7 @@ struct DelRecorder[recorder_origin: ImmutOrigin](ImplicitlyCopyable, Movable):
 
 
 @fieldwise_init
-struct ObservableDel[origin: MutOrigin = MutableAnyOrigin](
+struct ObservableDel[origin: MutOrigin = MutAnyOrigin](
     ImplicitlyCopyable, Movable
 ):
     """Sets a boolean flag when destroyed.

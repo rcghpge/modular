@@ -15,7 +15,7 @@
 These are Mojo built-ins, so you don't need to import them.
 """
 
-from memory import Pointer
+from memory import LegacyUnsafePointer as UnsafePointer, Pointer
 
 alias Variadic[type: AnyType] = __mlir_type[`!kgen.variadic<`, type, `>`]
 """Represents a raw variadic sequence of values of the specified type."""
@@ -320,7 +320,7 @@ struct VariadicListMem[
     fn consume_elements[
         elt_handler: fn (idx: Int, var elt: element_type) capturing
     ](deinit self):
-        """Consume the variadic list by transfering ownership of each element
+        """Consume the variadic list by transferring ownership of each element
         into the provided closure one at a time.  This is only valid on 'owned'
         variadic lists.
 
@@ -509,7 +509,7 @@ struct VariadicPack[
     fn consume_elements[
         elt_handler: fn[idx: Int] (var elt: element_types[idx]) capturing
     ](deinit self):
-        """Consume the variadic pack by transfering ownership of each element
+        """Consume the variadic pack by transferring ownership of each element
         into the provided closure one at a time.  This is only valid on 'owned'
         variadic packs.
 

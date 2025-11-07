@@ -29,7 +29,7 @@ from max.pipelines.core import TextContext
 from max.serve.telemetry.metrics import METRICS
 from max.support.human_readable_formatter import to_human_readable_latency
 
-from .batch_constructor import TokenGenerationSchedulerConfig
+from .config import TokenGenerationSchedulerConfig
 
 logger = logging.getLogger("max.serve")
 
@@ -153,7 +153,7 @@ class SchedulerLogger:
         used_pct = paged_cache.used_blocks_pct
         # this might differ from cache_metrics.cache_hit_rate due to chunked prefill...
 
-        # We have to accomodate for the case in which a batch is empty.
+        # We have to accommodate for the case in which a batch is empty.
         denominator = cache_metrics.cache_tokens + num_input_tokens
         if denominator == 0:
             cache_hit_rate = 0.0

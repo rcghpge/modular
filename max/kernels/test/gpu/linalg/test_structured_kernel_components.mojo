@@ -19,6 +19,7 @@ from layout._fillers import random
 import linalg.matmul.vendor.blas as vendor_blas
 from testing import assert_equal
 from random import random_si64
+from linalg.matmul.gpu.amd.warp_spec_matmul import warp_specialized_matmul
 
 
 def test_warp_specialization_amd[
@@ -31,8 +32,8 @@ def test_warp_specialization_amd[
     WM: Int,
     WN: Int,
     WK: Int,
-    producer_warps_a: Int,
-    producer_warps_b: Int,
+    a_producer_warps: Int,
+    b_producer_warps: Int,
     consumer_warps: Int,
     pipeline_stages: Int = 1,
 ](ctx: DeviceContext):
@@ -67,42 +68,25 @@ def test_warp_specialization_amd[
         DType.float32, Layout.row_major(M, N)
     ](device_c_ref)
 
-    var global_c_device_tensor = c_device_tensor.address_space_cast[
-        AddressSpace.GLOBAL
-    ]()
-    var global_a_device_tensor = a_device_tensor.address_space_cast[
-        AddressSpace.GLOBAL
-    ]()
-    var global_b_device_tensor = b_device_tensor.address_space_cast[
-        AddressSpace.GLOBAL
-    ]()
-
-    alias kernel = warp_specialized_matmul[
-        a_device_tensor.dtype,
-        c_device_tensor.dtype,
-        a_device_tensor.layout,
-        b_device_tensor.layout,
-        c_device_tensor.layout,
+    warp_specialized_matmul[
+        M,
+        N,
+        K,
         BM,
         BN,
         BK,
         WM,
         WN,
         WK,
-        producer_warps_a=producer_warps_a,
-        producer_warps_b=producer_warps_b,
-        consumer_warps=consumer_warps,
-        pipeline_stages=pipeline_stages,
-    ]
-
-    ctx.enqueue_function_checked[kernel, kernel](
-        global_a_device_tensor,
-        global_b_device_tensor,
-        global_c_device_tensor,
-        grid_dim=(M // BM, N // BN),
-        block_dim=(
-            WARP_SIZE * (producer_warps_a + producer_warps_b + consumer_warps)
-        ),
+        a_producer_warps,
+        b_producer_warps,
+        consumer_warps,
+        pipeline_stages,
+    ](
+        a_device_tensor,
+        b_device_tensor,
+        c_device_tensor,
+        ctx,
     )
 
     vendor_blas.matmul(

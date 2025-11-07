@@ -13,6 +13,7 @@
 
 from collections import Set
 from math import rsqrt
+from memory import LegacyUnsafePointer as UnsafePointer
 from random import random_ui64, seed
 
 from buffer import Dim, DimList, NDBuffer
@@ -238,7 +239,7 @@ def execute_flash_attention[
             LayoutTensor[
                 mask_device.dtype,
                 type_of(mask_device.to_layout_tensor()).layout,
-                MutableAnyOrigin,
+                MutAnyOrigin,
             ](
                 mask_device.to_layout_tensor().ptr,
                 RuntimeLayout[

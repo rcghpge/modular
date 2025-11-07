@@ -28,6 +28,10 @@ from gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import UNKNOWN_VALUE, Layout, LayoutTensor
 from layout.runtime_layout import RuntimeLayout
 from layout.tma_async import TMANestedTensorTile, create_nested_tma_tile
+from memory import (
+    LegacyOpaquePointer as OpaquePointer,
+    LegacyUnsafePointer as UnsafePointer,
+)
 
 from utils import Index, IndexList
 from builtin.device_passable import DevicePassable
@@ -138,8 +142,9 @@ trait KVCacheT(DevicePassable, ImplicitlyCopyable, Movable):
 
     alias dtype: DType
     alias kv_params: KVCacheStaticParams
+    alias page_size_: Int
 
-    fn cache_lengths_nd(self) -> NDBuffer[DType.uint32, 1, MutableAnyOrigin]:
+    fn cache_lengths_nd(self) -> NDBuffer[DType.uint32, 1, MutAnyOrigin]:
         """Returns the cache lengths as a NDBuffer."""
         ...
 
@@ -253,7 +258,7 @@ struct ContinuousBatchingKVCache[
 
     alias dtype = dtype_
     alias kv_params = kv_params_
-
+    alias page_size_ = 0
     # Shape is [num_blocks, max_seq_len, num_heads, head_size].
     alias blocks_shape = DimList(
         Dim(),
@@ -263,12 +268,12 @@ struct ContinuousBatchingKVCache[
     )
     alias blocks_stride = _strides_from_shape[Self.blocks_shape, skip=1]()
     alias blocks_type = NDBuffer[
-        Self.dtype, 4, MutableAnyOrigin, Self.blocks_shape, Self.blocks_stride
+        Self.dtype, 4, MutAnyOrigin, Self.blocks_shape, Self.blocks_stride
     ]
 
     var blocks: Self.blocks_type
-    var cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin]
-    var lookup_table: NDBuffer[DType.uint32, 1, MutableAnyOrigin]
+    var cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin]
+    var lookup_table: NDBuffer[DType.uint32, 1, MutAnyOrigin]
 
     # The length of the longest sequence in the current request.
     # This length only considers tokens not in the KVCache.
@@ -318,8 +323,8 @@ struct ContinuousBatchingKVCache[
     fn __init__(
         out self,
         blocks: Self.blocks_type,
-        cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
-        lookup_table: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
+        cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin],
+        lookup_table: NDBuffer[DType.uint32, 1, MutAnyOrigin],
         max_seq_length: UInt32,
         max_cache_length: UInt32,
     ):
@@ -343,7 +348,7 @@ struct ContinuousBatchingKVCache[
         return self.cache_lengths.dim[0]()
 
     @always_inline
-    fn cache_lengths_nd(self) -> NDBuffer[DType.uint32, 1, MutableAnyOrigin]:
+    fn cache_lengths_nd(self) -> NDBuffer[DType.uint32, 1, MutAnyOrigin]:
         return self.cache_lengths
 
     @always_inline
@@ -455,7 +460,7 @@ struct ContinuousBatchingKVCache[
         )
 
         # Create a LayoutTensor view with compile-time shape
-        var tensor = LayoutTensor[Self.dtype, layout, MutableAnyOrigin](
+        var tensor = LayoutTensor[Self.dtype, layout, MutAnyOrigin](
             self.blocks.data, rt_layout
         )
 
@@ -498,6 +503,7 @@ struct PagedKVCache[
 
     alias dtype = dtype_
     alias kv_params = kv_params_
+    alias page_size_ = page_size
 
     # Shape is [total_num_blocks, page_size, num_heads, head_size].
     alias blocks_shape = DimList(
@@ -508,12 +514,12 @@ struct PagedKVCache[
     )
     alias blocks_stride = _strides_from_shape[Self.blocks_shape, skip=1]()
     alias blocks_type = NDBuffer[
-        Self.dtype, 4, MutableAnyOrigin, Self.blocks_shape, Self.blocks_stride
+        Self.dtype, 4, MutAnyOrigin, Self.blocks_shape, Self.blocks_stride
     ]
 
     var blocks: Self.blocks_type
-    var cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin]
-    var lookup_table: NDBuffer[DType.uint32, 2, MutableAnyOrigin]
+    var cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin]
+    var lookup_table: NDBuffer[DType.uint32, 2, MutAnyOrigin]
 
     # The length of the longest sequence in the current request.
     # This length only considers tokens not in the KVCache.
@@ -540,8 +546,8 @@ struct PagedKVCache[
     fn __init__(
         out self,
         blocks: Self.blocks_type,
-        cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
-        lookup_table: NDBuffer[DType.uint32, 2, MutableAnyOrigin],
+        cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin],
+        lookup_table: NDBuffer[DType.uint32, 2, MutAnyOrigin],
         max_seq_length: UInt32,
         max_cache_length: UInt32,
     ):
@@ -570,7 +576,7 @@ struct PagedKVCache[
         return page_size
 
     @always_inline
-    fn cache_lengths_nd(self) -> NDBuffer[DType.uint32, 1, MutableAnyOrigin]:
+    fn cache_lengths_nd(self) -> NDBuffer[DType.uint32, 1, MutAnyOrigin]:
         return self.cache_lengths
 
     fn cache_length(self, batch_idx: Int) -> Int:
@@ -649,7 +655,7 @@ struct PagedKVCache[
         var tensor = LayoutTensor[
             Self.dtype,
             layout,
-            MutableAnyOrigin,
+            MutAnyOrigin,
         ](self.blocks.data, rt_layout)
 
         return create_nested_tma_tile[
@@ -803,11 +809,11 @@ struct ContinuousBatchingKVCacheCollection[
     )
     alias blocks_stride = _strides_from_shape[Self.blocks_shape]()
     alias blocks_type = NDBuffer[
-        Self.dtype, 6, MutableAnyOrigin, Self.blocks_shape, Self.blocks_stride
+        Self.dtype, 6, MutAnyOrigin, Self.blocks_shape, Self.blocks_stride
     ]
 
-    var cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin]
-    var lookup_table: NDBuffer[DType.uint32, 1, MutableAnyOrigin]
+    var cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin]
+    var lookup_table: NDBuffer[DType.uint32, 1, MutAnyOrigin]
     var blocks: Self.blocks_type
     var max_seq_length: UInt32
     var max_cache_length: UInt32
@@ -816,9 +822,9 @@ struct ContinuousBatchingKVCacheCollection[
 
     fn __init__(
         out self,
-        blocks: NDBuffer[Self.dtype, 6, MutableAnyOrigin],
-        cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
-        lookup_table: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
+        blocks: NDBuffer[Self.dtype, 6, MutAnyOrigin],
+        cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin],
+        lookup_table: NDBuffer[DType.uint32, 1, MutAnyOrigin],
         max_seq_length: UInt32,
         max_cache_length: UInt32,
     ):
@@ -886,12 +892,12 @@ struct PagedKVCacheCollection[
     )
     alias blocks_stride = _strides_from_shape[Self.blocks_shape]()
     alias blocks_type = NDBuffer[
-        Self.dtype, 6, MutableAnyOrigin, Self.blocks_shape, Self.blocks_stride
+        Self.dtype, 6, MutAnyOrigin, Self.blocks_shape, Self.blocks_stride
     ]
 
     var blocks: Self.blocks_type
-    var cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin]
-    var lookup_table: NDBuffer[DType.uint32, 2, MutableAnyOrigin]
+    var cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin]
+    var lookup_table: NDBuffer[DType.uint32, 2, MutAnyOrigin]
     var max_seq_length: UInt32
     var max_cache_length: UInt32
     var kv_cache_dynamic_shape: IndexList[4]
@@ -899,9 +905,9 @@ struct PagedKVCacheCollection[
 
     fn __init__(
         out self,
-        blocks: NDBuffer[Self.dtype, 6, MutableAnyOrigin],
-        cache_lengths: NDBuffer[DType.uint32, 1, MutableAnyOrigin],
-        lookup_table: NDBuffer[DType.uint32, 2, MutableAnyOrigin],
+        blocks: NDBuffer[Self.dtype, 6, MutAnyOrigin],
+        cache_lengths: NDBuffer[DType.uint32, 1, MutAnyOrigin],
+        lookup_table: NDBuffer[DType.uint32, 2, MutAnyOrigin],
         max_seq_length: UInt32,
         max_cache_length: UInt32,
     ):

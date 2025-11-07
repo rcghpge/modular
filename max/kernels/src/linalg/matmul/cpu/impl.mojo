@@ -18,7 +18,7 @@ from sys.info import align_of, simd_width_of
 from algorithm import sync_parallelize, tile, vectorize
 from buffer.buffer import NDBuffer
 from buffer.dimlist import DimList
-from memory import memset_zero
+from memory import LegacyUnsafePointer as UnsafePointer, memset_zero
 from runtime.asyncrt import DeviceContextPtr, parallelism_level
 
 from utils.index import Index, IndexList
@@ -640,7 +640,7 @@ fn _matmul_cpu_impl[
                 alg,
                 c,
                 a_packed if use_i8mm else type_of(a).OriginCastType[
-                    True, MutableAnyOrigin
+                    True, MutAnyOrigin
                 ](
                     # TODO: This is VERY unsafe. `a` may not be mutable which could
                     # result in undefined behavior. `a` and all dependents of this

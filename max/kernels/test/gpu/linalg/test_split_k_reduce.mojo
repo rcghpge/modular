@@ -17,6 +17,7 @@ from random import rand
 from buffer import DimList, NDBuffer
 from gpu.host import DeviceBuffer, DeviceContext
 from linalg.matmul.gpu import split_k_reduce
+from memory import LegacyUnsafePointer as UnsafePointer
 from testing import assert_almost_equal
 
 from utils import IndexList
@@ -35,7 +36,7 @@ fn _size[rank: Int](dims: IndexList[rank]) -> Int:
 fn _create_device_buffer[
     dtype: DType, rank: Int, shape: DimList
 ](ctx: DeviceContext, dynamic_shape: IndexList[rank]) raises -> Tuple[
-    DeviceBuffer[dtype], NDBuffer[dtype, rank, MutableAnyOrigin, shape]
+    DeviceBuffer[dtype], NDBuffer[dtype, rank, MutAnyOrigin, shape]
 ]:
     var storage = ctx.enqueue_create_buffer[dtype](_size(dynamic_shape))
     return (
@@ -49,7 +50,7 @@ fn _create_device_buffer[
 fn _create_host_buffer[
     dtype: DType, rank: Int, shape: DimList
 ](dynamic_shape: IndexList[rank]) raises -> NDBuffer[
-    dtype, rank, MutableAnyOrigin, shape
+    dtype, rank, MutAnyOrigin, shape
 ]:
     var storage_ptr = UnsafePointer[Scalar[dtype]].alloc(_size(dynamic_shape))
     return NDBuffer[dtype, rank, _, shape](

@@ -12,13 +12,25 @@ modular_py_library(
     imports = ["../../.."],
     deps = [
         requirement("grpcio"),  # NOTE: Order matters for PYTHONPATH nonsense
-        ":kvcache_agent_service_v1_grpc_py",
-        ":kvcache_agent_service_v1_py",
-        "//SDK/lib/API/python/max/pipelines/core",
-        "//SDK/lib/API/python/max/serve:process_control",
-        "//SDK/lib/API/python/max/serve/queue",
+        "//max/python/max/pipelines/core",
+        "//max/python/max/serve:process_control",
+        "//max/python/max/serve/queue",
         requirement("pyzmq"),
         requirement("msgspec"),
+        ":kvcache_agent_proto_srcs",
+    ],
+)
+
+modular_py_library(
+    name = "kvcache_agent_proto_srcs",
+    srcs = [
+        ":kvcache_agent_service_v1_grpc_py",
+        ":kvcache_agent_service_v1_py",
+    ],
+    imports = ["../../.."],
+    tags = ["no-mypy"],
+    deps = [
+        requirement("protobuf"),
     ],
 )
 
@@ -27,12 +39,12 @@ proto_library(
     srcs = [
         "kvcache_agent_service_v1.proto",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
 )
 
 py_proto_library(
     name = "kvcache_agent_service_v1_py",
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [":kvcache_agent_service_v1"],
 )
 
@@ -42,7 +54,7 @@ py_grpc_library(
     # By default, the generated stubs use the fully-qualified names
     # We need to strip the prefix from the generated stubs, so that
     # it works with the modular_py_library and the imports above.
-    strip_prefixes = ["SDK.lib.API.python."],
-    visibility = ["//visibility:public"],
+    strip_prefixes = ["max.python."],
+    visibility = ["//visibility:private"],
     deps = [":kvcache_agent_service_v1_py"],
 )

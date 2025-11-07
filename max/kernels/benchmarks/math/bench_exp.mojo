@@ -29,7 +29,7 @@ from benchmark import (
 from buffer import NDBuffer
 from builtin.range import _StridedRange
 from compile import compile_info
-from memory import bitcast
+from memory import LegacyUnsafePointer as UnsafePointer, bitcast
 
 
 fn apply[
@@ -391,7 +391,7 @@ def accuracy_test():
     alias delta_range = delta_max - delta_min + 1
 
     var deltas = NDBuffer[
-        DType.int32, 1, MutableAnyOrigin, delta_range
+        DType.int32, 1, MutAnyOrigin, delta_range
     ].stack_allocation()
     deltas.zero()
 

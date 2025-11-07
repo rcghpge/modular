@@ -75,7 +75,12 @@ from builtin.device_passable import DevicePassable
 from builtin.format_int import _try_write_int
 from builtin.math import DivModable, Powable
 from documentation import doc_private
-from memory import bitcast, memcpy
+from memory import (
+    LegacyOpaquePointer as OpaquePointer,
+    LegacyUnsafePointer as UnsafePointer,
+    bitcast,
+    memcpy,
+)
 from python import ConvertibleToPython, Python, PythonObject
 
 from utils import IndexList, StaticTuple
@@ -947,32 +952,6 @@ struct SIMD[dtype: DType, size: Int](
 
         return Self(
             mlir_value=__mlir_op.`pop.mul`(self._mlir_value, rhs._mlir_value)
-        )
-
-    @always_inline("nodebug")
-    fn _mul_with_fastmath_none(self, rhs: Self) -> Self:
-        """Multiplies with fastmath='none'.
-
-        This is sometimes needed to circumvent the default fastmath='contract',
-        for numerical reasons.
-
-        Args:
-            rhs: The rhs value.
-
-        Returns:
-            A new vector whose element at position `i` is computed as
-            `self[i] * rhs[i]`, with fastmath='none'.
-        """
-
-        constrained[
-            dtype.is_floating_point(),
-            "expected mul {fastmath = none} is only used for float operands",
-        ]()
-
-        return Self(
-            mlir_value=__mlir_op.`pop.mul`[
-                fastmathFlags = __mlir_attr.`#pop<fmf none>`
-            ](self._mlir_value, rhs._mlir_value)
         )
 
     @always_inline("nodebug")

@@ -34,7 +34,11 @@ from layout.int_tuple import (
     _get_index_type,
     _get_layout_type,
 )
-from memory import stack_allocation
+from memory import (
+    LegacyOpaquePointer as OpaquePointer,
+    LegacyUnsafePointer as UnsafePointer,
+    stack_allocation,
+)
 from memory.unsafe import bitcast
 from shmem import SHMEM_SIGNAL_SET, SHMEMScope, shmem_put_nbi, shmem_signal_op
 
@@ -129,9 +133,7 @@ struct BF16TokenFormat[
     alias top_k = _top_k
     alias alignment = _alignment
 
-    alias TensorType = LayoutTensor[
-        DType.bfloat16, output_layout, MutableAnyOrigin
-    ]
+    alias TensorType = LayoutTensor[DType.bfloat16, output_layout, MutAnyOrigin]
     var output_tokens: Self.TensorType
 
     alias device_type: AnyType = Self
@@ -231,9 +233,9 @@ struct BlockwiseFP8TokenFormat[
     alias top_k = _top_k
     alias alignment = _alignment
 
-    alias TensorType = LayoutTensor[fp8_dtype, output_layout, MutableAnyOrigin]
+    alias TensorType = LayoutTensor[fp8_dtype, output_layout, MutAnyOrigin]
     alias ScalesTensorType = LayoutTensor[
-        scales_dtype, scales_layout, MutableAnyOrigin
+        scales_dtype, scales_layout, MutAnyOrigin
     ]
     var output_tokens: Self.TensorType
     var output_scales: Self.ScalesTensorType
@@ -420,10 +422,8 @@ fn dispatch_kernel[
     max_tokens_per_rank: Int,
     token_fmt_type: TokenFormat,
 ](
-    input_tokens: LayoutTensor[
-        input_type, input_tokens_layout, ImmutableAnyOrigin
-    ],
-    topk_ids: LayoutTensor[DType.int32, topk_ids_layout, ImmutableAnyOrigin],
+    input_tokens: LayoutTensor[input_type, input_tokens_layout, ImmutAnyOrigin],
+    topk_ids: LayoutTensor[DType.int32, topk_ids_layout, ImmutAnyOrigin],
     send_buf_p: UnsafePointer[UInt8],
     recv_buf_p: UnsafePointer[UInt8],
     recv_count_p: UnsafePointer[UInt64],
@@ -677,11 +677,9 @@ fn dispatch_cb_kernel[
     token_fmt_type: TokenFormat,
 ](
     format_handler: token_fmt_type,
-    row_offsets: LayoutTensor[
-        DType.uint32, row_offsets_layout, MutableAnyOrigin
-    ],
-    expert_ids: LayoutTensor[DType.int32, expert_ids_layout, MutableAnyOrigin],
-    src_info: LayoutTensor[DType.int32, src_info_layout, MutableAnyOrigin],
+    row_offsets: LayoutTensor[DType.uint32, row_offsets_layout, MutAnyOrigin],
+    expert_ids: LayoutTensor[DType.int32, expert_ids_layout, MutAnyOrigin],
+    src_info: LayoutTensor[DType.int32, src_info_layout, MutAnyOrigin],
     recv_buf_p: UnsafePointer[UInt8],
     recv_count_p: UnsafePointer[UInt64],
     atomic_counter: UnsafePointer[Int32],
@@ -949,10 +947,8 @@ fn combine_kernel[
     msg_bytes: Int,
     max_tokens_per_rank: Int,
 ](
-    input_tokens: LayoutTensor[
-        input_type, input_tokens_layout, ImmutableAnyOrigin
-    ],
-    src_info: LayoutTensor[DType.int32, src_info_layout, ImmutableAnyOrigin],
+    input_tokens: LayoutTensor[input_type, input_tokens_layout, ImmutAnyOrigin],
+    src_info: LayoutTensor[DType.int32, src_info_layout, ImmutAnyOrigin],
     send_buf_p: UnsafePointer[UInt8],
     recv_buf_p: UnsafePointer[UInt8],
     recv_count_p: UnsafePointer[UInt64],
@@ -1142,7 +1138,7 @@ fn combine_cb_kernel[
     max_tokens_per_rank: Int,
 ](
     output_tokens: LayoutTensor[
-        output_type, output_tokens_layout, MutableAnyOrigin
+        output_type, output_tokens_layout, MutAnyOrigin
     ],
     recv_buf_p: UnsafePointer[UInt8],
     recv_count_p: UnsafePointer[UInt64],

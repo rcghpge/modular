@@ -92,7 +92,7 @@ from sys.ffi import c_char
 from sys.info import is_32bit
 
 from bit import count_leading_zeros
-from memory import memcmp, memcpy, memset
+from memory import LegacyUnsafePointer as UnsafePointer, memcmp, memcpy, memset
 from python import ConvertibleFromPython, ConvertibleToPython, PythonObject
 
 # ===----------------------------------------------------------------------=== #
@@ -597,7 +597,7 @@ struct String(
     # Capacity Field Helpers
     # ===------------------------------------------------------------------=== #
 
-    # This includes getting and setting flags from the capcity field such as
+    # This includes getting and setting flags from the capacity field such as
     # null terminator, inline, and indirect. If indirect the length is also
     # stored in the capacity field.
 

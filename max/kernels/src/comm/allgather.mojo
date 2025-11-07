@@ -33,6 +33,7 @@ from math import ceildiv
 from sys import simd_width_of
 
 from buffer import NDBuffer
+from memory import LegacyUnsafePointer as UnsafePointer
 from gpu import WARP_SIZE, block_dim, global_idx, grid_dim
 from gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 
@@ -48,9 +49,9 @@ fn _allgather_naive[
     rank: Int,
     ngpus: Int,
 ](
-    input_buffers: InlineArray[NDBuffer[dtype, rank, MutableAnyOrigin], ngpus],
+    input_buffers: InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus],
     output_buffers: InlineArray[
-        NDBuffer[dtype, rank, MutableAnyOrigin], ngpus * ngpus
+        NDBuffer[dtype, rank, MutAnyOrigin], ngpus * ngpus
     ],
     ctxs: List[DeviceContext],
 ) raises:
@@ -157,9 +158,9 @@ fn _allgather_p2p[
     rank: Int,
     ngpus: Int,
 ](
-    input_buffers: InlineArray[NDBuffer[dtype, rank, MutableAnyOrigin], ngpus],
+    input_buffers: InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus],
     output_buffers: InlineArray[
-        NDBuffer[dtype, rank, MutableAnyOrigin], ngpus * ngpus
+        NDBuffer[dtype, rank, MutAnyOrigin], ngpus * ngpus
     ],
     rank_sigs: InlineArray[UnsafePointer[Signal], MAX_GPUS],
     max_num_blocks: Int,
@@ -229,9 +230,9 @@ fn allgather[
     rank: Int,
     ngpus: Int,
 ](
-    input_buffers: InlineArray[NDBuffer[dtype, rank, MutableAnyOrigin], ngpus],
+    input_buffers: InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus],
     output_buffers: InlineArray[
-        NDBuffer[dtype, rank, MutableAnyOrigin], ngpus * ngpus
+        NDBuffer[dtype, rank, MutAnyOrigin], ngpus * ngpus
     ],
     rank_sigs: InlineArray[UnsafePointer[Signal], MAX_GPUS],
     ctxs: List[DeviceContext],
@@ -280,9 +281,9 @@ fn allgather[
     rank: Int,
     ngpus: Int,
 ](
-    input_buffers: InlineArray[NDBuffer[dtype, rank, MutableAnyOrigin], ngpus],
+    input_buffers: InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus],
     output_buffers: InlineArray[
-        NDBuffer[dtype, rank, MutableAnyOrigin], ngpus * ngpus
+        NDBuffer[dtype, rank, MutAnyOrigin], ngpus * ngpus
     ],
     ctxs: List[DeviceContext],
 ) raises:

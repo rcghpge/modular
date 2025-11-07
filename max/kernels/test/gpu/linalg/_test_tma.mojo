@@ -44,7 +44,7 @@ from testing import assert_equal
 from linalg.arch.sm100.mma import max_contiguous_tile_shape, Major
 
 
-# funtionally equivalent to idx2crd
+# functionally equivalent to idx2crd
 # but avoids runtime_*
 # converts linear index to column-major coordinates
 fn calculate_coordinate[
@@ -189,7 +189,7 @@ fn test_tma_load_kernel[
     swizzle_mode: SwizzleMode,
     OOB_access: Bool = False,
 ](
-    dst: LayoutTensor[dtype, global_layout, MutableAnyOrigin],
+    dst: LayoutTensor[dtype, global_layout, MutAnyOrigin],
     load_policy: TMALoad[dtype, tile_shape, swizzle_mode],
 ):
     alias expected_bytes = smem_layout.size() * size_of[dtype]()
@@ -197,7 +197,7 @@ fn test_tma_load_kernel[
     var smem_tile = LayoutTensor[
         dtype,
         smem_layout,
-        MutableAnyOrigin,
+        MutAnyOrigin,
         address_space = _GPUAddressSpace.SHARED,
         alignment=128,
     ].stack_allocation()
@@ -429,7 +429,7 @@ def test_tma_load[
         assert_equal(total_errors, 0)
     else:
         alias GlobalTensorType = LayoutTensor[
-            dtype, Layout.row_major(global_shape), MutableAnyOrigin
+            dtype, Layout.row_major(global_shape), MutAnyOrigin
         ]
 
         var reference_tensor = GlobalTensorType(global_buffer_host_reference)

@@ -31,7 +31,7 @@ from sys.info import (
     is_gpu,
     is_nvidia_gpu,
 )
-from memory import AddressSpace
+from memory import AddressSpace, LegacyUnsafePointer as UnsafePointer
 
 from ..globals import WARP_SIZE
 from .warp import broadcast
@@ -407,7 +407,7 @@ struct _GridDim(Defaultable):
                     ]()
                 )
             )
-            # Metal passes grid dimention as a gridDim.dim * blockDim.dim.
+            # Metal passes grid dimension as a gridDim.dim * blockDim.dim.
             # To make things compatible with NVidia and AMDGPU, divide result
             # by block_dim.dim
             return gridDim // block_dim.__getattr__[dim]()

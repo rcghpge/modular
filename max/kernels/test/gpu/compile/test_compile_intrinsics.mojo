@@ -16,6 +16,7 @@ from math import exp2
 from gpu.host.compile import _compile_code
 from gpu.host.info import A100
 from gpu.intrinsics import *
+from memory import LegacyUnsafePointer as UnsafePointer
 
 
 fn kernel[
@@ -91,6 +92,16 @@ def test_compile_code():
     )
     # CHECK: fma.rn.f32
     print(_compile_code[exp_op, target = A100.target(), emission_kind="asm"]())
+
+    # CHECK: fma.rn.ftz.f32
+    print(
+        _compile_code[
+            exp_op,
+            target = A100.target(),
+            emission_kind="asm",
+            compile_options="nvptx-short-ptr=true,denormal-fp-math-f32=preserve-sign",
+        ]()
+    )
 
 
 def main():

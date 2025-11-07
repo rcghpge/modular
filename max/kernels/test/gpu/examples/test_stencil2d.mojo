@@ -18,6 +18,7 @@ from buffer.dimlist import DimList
 from gpu import barrier, block_dim, global_idx, thread_idx
 from gpu.host import DeviceContext
 
+from memory import LegacyUnsafePointer as UnsafePointer
 from utils.index import Index
 
 alias BLOCK_DIM = 4
@@ -80,7 +81,7 @@ fn stencil2d_smem(
     var a_shared = NDBuffer[
         DType.float32,
         2,
-        MutableAnyOrigin,
+        MutAnyOrigin,
         DimList(BLOCK_DIM + 2, BLOCK_DIM + 2),
         address_space = AddressSpace.SHARED,
     ].stack_allocation()

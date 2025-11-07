@@ -17,6 +17,7 @@ from gpu.host.info import MI300X, MI355X
 from layout import Layout, LayoutTensor
 from layout._fillers import arange
 from layout.tensor_core import TensorCore, load_b_tr
+from memory import LegacyUnsafePointer as UnsafePointer
 from test_tensor_core_amd_utils import test_load_and_mma_and_multiply_operands
 from testing import assert_equal
 from utils.index import Index, IndexList
@@ -2072,7 +2073,7 @@ fn test_load_b_tr(ctx: DeviceContext) raises:
         var smem = LayoutTensor[
             DType.bfloat16,
             Layout.row_major(mma_shape[2], mma_shape[1]),
-            MutableAnyOrigin,
+            MutAnyOrigin,
             address_space = AddressSpace.SHARED,
         ].stack_allocation()
 

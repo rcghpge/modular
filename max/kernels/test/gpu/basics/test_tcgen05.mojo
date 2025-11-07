@@ -25,7 +25,7 @@ from gpu.tcgen05 import (
     tcgen05_store_wait,
 )
 from layout import IntTuple, Layout, LayoutTensor
-from memory import stack_allocation
+from memory import LegacyUnsafePointer as UnsafePointer, stack_allocation
 from testing import assert_true
 
 
@@ -149,7 +149,7 @@ fn cp_test_fn():
     var smem_tile = LayoutTensor[
         DType.float32,
         Layout(IntTuple(32, 32)),
-        MutableAnyOrigin,
+        MutAnyOrigin,
         address_space = AddressSpace.SHARED,
         alignment=128,
     ].stack_allocation()
