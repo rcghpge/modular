@@ -451,27 +451,42 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     CanDuplicate canDuplicate, uint64_t maximumFusionSetSize) {
   FusionSubGraphs subgraphs;
   region.walk([&](Block *block) {
+    if (isa<GenericCompiledRegionOp>(block->getParentOp()))
+      return;
+
     int64_t numOps = block->getOperations().size();
     SmallVector<Operation *> topoSortedOps;
     topoSortedOps.reserve(numOps);
     for (auto &op : block->getOperations())
-      topoSortedOps.push_back(&op);
+      if (isEligible(&op))
+        topoSortedOps.push_back(&op);
 
     // This mutates `topoSortedOps` in place to a sorted order.
     completeDataflowGraph.computeTopologicalSorting(topoSortedOps);
 
     // Map each operation in the block to the topological index
     DenseMap<Operation *, int64_t> operationToTopoIndex;
-    operationToTopoIndex.reserve(numOps * 2);
+    operationToTopoIndex.reserve(topoSortedOps.size());
     for (auto [i, op] : llvm::enumerate(topoSortedOps))
       operationToTopoIndex[op] = i;
+
+    auto areSameBlockAndCompatible =
+        [&,
+         cache = llvm::DenseMap<std::pair<Operation *, Operation *>, bool>()](
+            Operation *parent, Operation *child) mutable {
+          auto [it, inserted] = cache.try_emplace({parent, child}, false);
+
+          if (inserted)
+            it->second = isEligible(parent) && isEligible(child) &&
+                         parent->getBlock() == child->getBlock() &&
+                         areCompatible(parent, child);
+
+          return it->second;
+        };
 
     // Set of operations included in a fuseable subgraph.
     DenseSet<Operation *> includedInASubgraph;
     for (auto op : llvm::reverse(topoSortedOps)) {
-      if (!isEligible(op))
-        continue;
-
       // If an op was fused, it means it will be DCE-ed later so we do not
       // attempt to fuse things into it.
       if (includedInASubgraph.contains(op))
@@ -492,16 +507,10 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
         return operationToTopoIndex.at(parentA) <
                operationToTopoIndex.at(parentB);
       };
+
       llvm::PriorityQueue<FusionPair, std::vector<FusionPair>, decltype(comp)>
           workQueue(comp);
       workQueue.emplace(op, nullptr);
-
-      auto areSameBlockAndCompatible = [&](Operation *parent,
-                                           Operation *child) {
-        return isEligible(parent) && isEligible(child) &&
-               parent->getBlock() == child->getBlock() &&
-               areCompatible(parent, child);
-      };
 
       // Parents we've visited already. Once we've visited we know whether they
       // are part of the subgraph or not already.
@@ -520,6 +529,8 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
           continue;
 
         if (child) {
+          auto canDup = canDuplicate(parent);
+
           bool proceed =
               completeDataflowGraph.forEachUser(parent, [&](Operation *user) {
                 if (!areSameBlockAndCompatible(parent, user))
@@ -530,7 +541,7 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
                 // if there are more than one user, this will fail because one
                 // of the users will be in another subgraph from a past
                 // iteration.
-                return canDuplicate(parent) || curSubgraph.contains(user);
+                return canDup || curSubgraph.contains(user);
               });
 
           if (!proceed)
