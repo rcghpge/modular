@@ -18,6 +18,7 @@
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
+#include "Virtual/VirtualDeviceContext.h"
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Process.h"
@@ -63,6 +64,22 @@
   type var = _err_or_##var.takeValue()
 
 namespace M::AsyncRT {
+
+// Global count of virtual devices for device creation.
+// When set to a positive value, Device::create() will return VirtualDevice
+// instead of real hardware devices for GPU APIs, and Device::numberOfDevices()
+// will return this count. Using atomic for thread-safe access.
+static std::atomic<int> g_virtualDeviceCount{0};
+
+MODULAR_CXX_EXPORT void setVirtualDeviceCount(int count) {
+  g_virtualDeviceCount = count;
+}
+
+MODULAR_CXX_EXPORT int getVirtualDeviceCount() { return g_virtualDeviceCount; }
+
+MODULAR_CXX_EXPORT bool isVirtualDeviceMode() {
+  return g_virtualDeviceCount > 0;
+}
 
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
     : prevCtx_(nullptr), err_(success()) {
@@ -193,6 +210,49 @@ MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceRef>
 Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
+  // Check if virtual device mode is enabled. If so, create a VirtualDevice
+  // instead of a real hardware device.
+  if (isVirtualDeviceMode() &&
+      (api == gpuAPI || api == cudaAPI || api == hipAPI || api == metalAPI)) {
+    // In virtual device mode, we need a single real device to back all virtual
+    // devices for compilation. Cache it in a static variable.
+    static DeviceRef cachedRealDevice;
+    static std::mutex cacheMutex;
+
+    std::lock_guard<std::mutex> lock(cacheMutex);
+
+    // Create the real device once (use device 0)
+    if (!cachedRealDevice) {
+      // Temporarily disable virtual device mode to create the real device
+      int savedCount = g_virtualDeviceCount;
+      g_virtualDeviceCount = 0;
+
+      // Try to create a real device (GPU 0)
+      ErrorOr<const Device &> deviceErr = Error("No GPU found");
+      if (api == cudaAPI || api == gpuAPI) {
+        deviceErr = CUDADevice::get(0, deviceMemoryLimit);
+      }
+
+      // Restore virtual device mode
+      g_virtualDeviceCount = savedCount;
+
+      if (deviceErr.isError()) {
+        return Error(
+            llvm::Twine(
+                "Virtual device mode requires at least one real GPU for "
+                "compilation: ") +
+            deviceErr.getError());
+      }
+
+      cachedRealDevice = DeviceRef::copy(&deviceErr.get());
+    }
+
+    // Create VirtualDevice backed by the real device
+    return VirtualDeviceRef::create(id, "VirtualGPU-" + std::to_string(id),
+                                    cachedRealDevice.getPointer(),
+                                    deviceMemoryLimit);
+  }
+
   // Only zero and positive values are allowed as device ids.
   if (id < 0) {
     RAISE_ERROR_MESSAGE("Device id must be positive. Got " + llvm::Twine(id));
@@ -922,6 +982,14 @@ DeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
 // ===== Device ===== //
 //
 MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
+  // In virtual device mode, return the virtual device count for GPU APIs.
+  // This allows validation checks to pass even when requesting more GPUs
+  // than are physically available.
+  int virtualCount = getVirtualDeviceCount();
+  if (virtualCount > 0 && api == gpuAPI) {
+    return virtualCount;
+  }
+
   // TODO(iposva): Implement dynamic registration mechanism.
   if ((api == gpuAPI) || (api == cudaAPI)) {
     ErrorOr<int> count = CUDADevice::numberOfGPUs();

@@ -51,6 +51,17 @@ using DeviceTimerRef = RCRef<const DeviceTimer>;
 
 size_t getPreferredAlignment(std::string label);
 
+// Virtual device mode control functions.
+// When virtual device mode is enabled (count > 0), Device::create() will return
+// VirtualDevice instances instead of real hardware devices, and
+// Device::numberOfDevices() will return the virtual count. This allows creating
+// devices for GPU configurations that don't match the current hardware.
+// These functions are thread-safe and the count applies globally to all
+// threads.
+void setVirtualDeviceCount(int count);
+int getVirtualDeviceCount();
+bool isVirtualDeviceMode();
+
 class DriverVersion {
 public:
   explicit DriverVersion(std::string version);

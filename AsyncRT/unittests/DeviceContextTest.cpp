@@ -730,4 +730,110 @@ TEST(DeviceContextTest, GetMemoryInfoDynamicUpdate) {
   EXPECT_EQ(afterFreeMemInfo.total, initialMemInfo.total);
 }
 
+TEST(DeviceContextTest, VirtualDeviceModeDefaultDisabled) {
+  // Test that virtual device mode is disabled by default
+  EXPECT_FALSE(isVirtualDeviceMode());
+  EXPECT_EQ(getVirtualDeviceCount(), 0);
+}
+
+TEST(DeviceContextTest, VirtualDeviceModeSetGet) {
+  // Test setting and getting virtual device count
+  EXPECT_FALSE(isVirtualDeviceMode());
+  EXPECT_EQ(getVirtualDeviceCount(), 0);
+
+  // Enable virtual device mode with 10 virtual devices
+  setVirtualDeviceCount(10);
+  EXPECT_TRUE(isVirtualDeviceMode());
+  EXPECT_EQ(getVirtualDeviceCount(), 10);
+
+  // Disable virtual device mode
+  setVirtualDeviceCount(0);
+  EXPECT_FALSE(isVirtualDeviceMode());
+  EXPECT_EQ(getVirtualDeviceCount(), 0);
+}
+
+TEST(DeviceContextTest, VirtualDeviceModeCreatesVirtualDevice) {
+  // Skip test if no GPU is available (virtual mode requires a real GPU)
+  if (Device::numberOfDevices(Device::cudaAPI) == 0) {
+    GTEST_SKIP() << "Skipping test: No GPU available for virtual device mode";
+  }
+
+  // Test that enabling virtual device mode creates VirtualDevice
+  setVirtualDeviceCount(10);
+
+  // Create a device - should be VirtualDevice
+  ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI, 0));
+
+  // Verify it's a VirtualDevice by checking the name
+  EXPECT_EQ(device->name(), "VirtualGPU-0");
+  EXPECT_EQ(device->api(), Device::cudaAPI);
+  EXPECT_EQ(device->id(), 0);
+
+  // Clean up
+  setVirtualDeviceCount(0);
+}
+
+TEST(DeviceContextTest, VirtualDeviceModeMultipleDevices) {
+  // Skip test if no GPU is available (virtual mode requires a real GPU)
+  if (Device::numberOfDevices(Device::cudaAPI) == 0) {
+    GTEST_SKIP() << "Skipping test: No GPU available for virtual device mode";
+  }
+
+  // Test creating multiple virtual devices
+  setVirtualDeviceCount(10);
+
+  ASSIGN_NO_ERR(DeviceRef, device0, Device::create(Device::gpuAPI, 0));
+  ASSIGN_NO_ERR(DeviceRef, device1, Device::create(Device::gpuAPI, 1));
+  ASSIGN_NO_ERR(DeviceRef, device2, Device::create(Device::gpuAPI, 2));
+
+  EXPECT_EQ(device0->name(), "VirtualGPU-0");
+  EXPECT_EQ(device0->id(), 0);
+
+  EXPECT_EQ(device1->name(), "VirtualGPU-1");
+  EXPECT_EQ(device1->id(), 1);
+
+  EXPECT_EQ(device2->name(), "VirtualGPU-2");
+  EXPECT_EQ(device2->id(), 2);
+
+  // Clean up
+  setVirtualDeviceCount(0);
+}
+
+TEST(DeviceContextTest, VirtualDeviceModeCpuDeviceUnaffected) {
+  // Test that CPU device creation is not affected by virtual device mode
+  setVirtualDeviceCount(10);
+
+  // Create a CPU device - should still be a real CPU device
+  ASSIGN_NO_ERR(DeviceRef, cpuDevice, Device::create(Device::cpuAPI, 0));
+
+  // Verify it's a real CPU device
+  EXPECT_EQ(cpuDevice->api(), Device::cpuAPI);
+  EXPECT_EQ(cpuDevice->id(), 0);
+
+  // Clean up
+  setVirtualDeviceCount(0);
+}
+
+TEST(DeviceContextTest, VirtualDeviceModeWithDeviceContext) {
+  // Skip test if no GPU is available (virtual mode requires a real GPU)
+  if (Device::numberOfDevices(Device::cudaAPI) == 0) {
+    GTEST_SKIP() << "Skipping test: No GPU available for virtual device mode";
+  }
+
+  // Test that VirtualDevice can create a context
+  setVirtualDeviceCount(10);
+
+  ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI, 0));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  // Verify the context's device is correct
+  EXPECT_EQ(ctx->device().name(), "VirtualGPU-0");
+  EXPECT_EQ(ctx->device().id(), 0);
+
+  // Test synchronize (should be a no-op for VirtualDevice)
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // Clean up
+  setVirtualDeviceCount(0);
+}
 } // namespace
