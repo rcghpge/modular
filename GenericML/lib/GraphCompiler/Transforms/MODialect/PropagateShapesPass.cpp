@@ -58,6 +58,26 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
 
   SymbolTable symbolTable(moduleOp);
 
+  // Collect all parameter names already declared in the graph's Region.
+  // This prevents redeclaration when multiple call sites need the same
+  // parameter.
+  llvm::DenseSet<StringAttr> declaredInRegion;
+
+  // Add graph input parameters.
+  for (KGEN::ParamDeclAttr decl : graphOp.getInputParameters())
+    declaredInRegion.insert(decl.getName());
+
+  // Add graph result parameters.
+  for (KGEN::ParamDeclAttr decl : graphOp.getResultParameters())
+    declaredInRegion.insert(decl.getName());
+
+  // Walk existing ops to collect their declared parameters.
+  graphOp.walk([&](KGEN::ParamOpInterface paramOp) {
+    paramOp.walkDeclarations([&](KGEN::ParamDeclAttr paramDecl) {
+      declaredInRegion.insert(paramDecl.getName());
+    });
+  });
+
   graphOp.walk([&](CallOp call) {
     GraphOp callee = symbolTable.lookup<GraphOp>(call.getCallee());
     if (!callee)
@@ -83,9 +103,21 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
           (expected.getDeviceRef() != actual.getDeviceRef()))
         continue;
 
-      Value reb = RebindOp::create(b, loc, expected, operand,
-                                   collectDeclsFromShape(expected));
+      // Compute expected decls and filter out already declared names.
+      SmallVector<KGEN::ParamDeclAttr> expectedDecls =
+          collectDeclsFromShape(expected);
+      SmallVector<KGEN::ParamDeclAttr> filteredDecls;
+      for (auto decl : expectedDecls) {
+        if (!declaredInRegion.contains(decl.getName()))
+          filteredDecls.push_back(decl);
+      }
+
+      Value reb = RebindOp::create(b, loc, expected, operand, filteredDecls);
       call->setOperand(idx, reb);
+
+      // Add newly declared names to the set for subsequent call sites.
+      for (KGEN::ParamDeclAttr decl : filteredDecls)
+        declaredInRegion.insert(decl.getName());
     }
     return WalkResult::advance();
   });

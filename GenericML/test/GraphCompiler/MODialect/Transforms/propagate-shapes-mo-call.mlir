@@ -44,3 +44,29 @@ mo.graph @caller<RMO_D0>(
          -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
   mo.output %out : !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
 }
+
+// CHECK-LABEL: @caller_twice
+// CHECK: rebind{{.*}}input_split_0
+// Same setup as @caller, but invoke the callee twice to stress that
+// normalization doesn’t re-declare the same parameter name in one scope.
+mo.graph @caller_twice<RMO_D0>(
+  %arg: !mo.tensor<[RMO_D0, 7168], bf16, gpu:0>
+) -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0> {
+  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step  = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop_mosh = mosh.param.to_value: !mosh.ape = <[RMO_D0, 7168]>
+  %stop = mo.shape.to_tensor(%stop_mosh) -> !mo.tensor<[2], si64>
+
+  %v = mo.slice<() -> input_split_0>(%arg, %start, %stop, %step)
+     : (!mo.tensor<[RMO_D0, 7168], bf16, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
+     -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
+
+  // Two call sites to ensure we don’t end up redeclaring params.
+  %out1 = mo.call @dist_transformer_block_0(%v)
+       : (!mo.tensor<[input_split_0, 7168], bf16, gpu:0>)
+         -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
+  %out2 = mo.call @dist_transformer_block_0(%v)
+       : (!mo.tensor<[input_split_0, 7168], bf16, gpu:0>)
+         -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
+  mo.output %out2 : !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
+}
