@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -346,6 +347,18 @@ private:
   void performDataflowAnalysis(GraphOp graphOp,
                                const llvm::BitVector &effectiveInvariantArgMask,
                                LatticeState &lattice) {
+    ParametricTopologyAnalysis topological(graphOp);
+
+    auto allInputsConstant = [&](Operation *op) {
+      return topological.forEachProvider(op, [&](Operation *input) {
+        if (input == graphOp)
+          return true;
+        return lattice.query(input) == ConstLattice::Const;
+      }) && llvm::all_of(op->getOperands(), [&](Value v) {
+               return lattice.query(v) == ConstLattice::Const;
+             });
+    };
+
     Block *body = graphOp.getBodyBlock();
     SmallVector<Operation *> worklist;
 
@@ -368,24 +381,22 @@ private:
       // An operation is considered "const" (invariant-derived) if all its
       // operands are invariant-derived (come from callsite-invariant arguments
       // or other invariant-derived operations)
-      bool allOperandsConst = op->getNumOperands() > 0 &&
-                              llvm::all_of(op->getOperands(), [&](Value v) {
-                                return lattice.query(v) == ConstLattice::Const;
-                              });
+      bool allOperandsConst =
+          (op->getNumOperands() > 0 || isa<KGEN::ParamDeclareOp>(op)) &&
+          allInputsConstant(op);
 
       ConstLattice newState =
           allOperandsConst ? ConstLattice::Const : ConstLattice::NonConst;
 
       // If any result state changed, add all users to the worklist
       if (lattice.update(op, newState)) {
-        for (Value result : op->getResults()) {
-          for (Operation *user : result.getUsers()) {
-            if (!user->hasTrait<OpTrait::IsTerminator>() &&
-                !llvm::is_contained(worklist, user)) {
-              worklist.push_back(user);
-            }
-          }
-        }
+        topological.forEachUser(op, [&](Operation *user) {
+          if (!user->hasTrait<OpTrait::IsTerminator>() &&
+              !llvm::is_contained(worklist, user))
+            worklist.push_back(user);
+
+          return true;
+        });
       }
     }
   }
