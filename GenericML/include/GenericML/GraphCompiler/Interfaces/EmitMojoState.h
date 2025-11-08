@@ -27,7 +27,7 @@ namespace HardcodedMojoSymbols {
 constexpr StringLiteral struct_IO = "io_spec.IO";
 constexpr StringLiteral struct_IndexList = "IndexList";
 constexpr StringLiteral struct_StaticTensorSpec = "directives.StaticTensorSpec";
-constexpr StringLiteral struct_UnsafePointer = "unsafe_pointer.UnsafePointer";
+constexpr StringLiteral struct_UnsafePointer = "memory.LegacyUnsafePointer";
 constexpr StringLiteral struct_String = "string.String";
 constexpr StringLiteral struct_DeviceContextPtr = "asyncrt.DeviceContextPtr";
 constexpr StringLiteral struct_ManagedTensorSlice =
@@ -80,7 +80,7 @@ constexpr StringLiteral func_unpack_device_ctx =
     "MOGGPrimitives.unpack_device_ctx";
 constexpr StringLiteral func_unpack_tensor = "MOGGPrimitives.unpack_tensor";
 
-constexpr StringLiteral alias_OpaquePointer = "unsafe_pointer.OpaquePointer";
+constexpr StringLiteral alias_OpaquePointer = "memory.LegacyOpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
 constexpr StringLiteral alias_OutputTensor =
     "managed_tensor_slice.OutputTensor";
