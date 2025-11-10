@@ -184,12 +184,10 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
 
   tree.runsAfter.resize(numOps);
   tree.runsAfterCounts.resize(numOps);
-  for (auto &kv : opToIdx) {
-    Operation *op = kv.first;
-    unsigned idx = kv.second;
-    tree.runsAfter[idx] = runsAfterSparse[op];
-    tree.runsAfterCounts[idx] =
-        static_cast<uint32_t>(tree.runsAfter[idx].count());
+
+  for (auto [index, op] : llvm::enumerate(idxToOp)) {
+    tree.runsAfter[index] = std::move(runsAfterSparse[op]);
+    tree.runsAfterCounts[index] = tree.runsAfter[index].count();
   }
 
   // Immediate runsAfter (closest successor in the set with largest size)
@@ -203,17 +201,15 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
     uint32_t maxSz = 0;
 
     // Iterate over all bits in the SparseBitVector
-    for (unsigned i = 0; i < numOps; ++i) {
-      if (mySet.test(i)) {
-        Operation *cand = idxToOp[i];
-        if (cand == op)
-          continue;
+    for (unsigned i : mySet) {
+      Operation *cand = idxToOp[i];
+      if (cand == op)
+        continue;
 
-        uint32_t sz = tree.runsAfterCounts[i];
-        if (sz > maxSz) {
-          closest = cand;
-          maxSz = sz;
-        }
+      uint32_t sz = tree.runsAfterCounts[i];
+      if (sz > maxSz) {
+        closest = cand;
+        maxSz = sz;
       }
     }
 
