@@ -821,13 +821,13 @@ public:
 
   static ErrorOr<const HIPDriver &> get();
 
+  // HIPDriver object lifetime is tied to a static unique_ptr.
+  HIPDriver() = default;
+  ~HIPDriver() = default;
+
 private:
   // Shared library name for the HIP driver.
   static const char lib_name[];
-
-  // Once created, the HIPDriver object cannot be deleted.
-  HIPDriver() = default;
-  ~HIPDriver() = default;
 
   // Driver is only initialized from internal code.
   Result Init(unsigned int flags) const { return hipInit_(flags); }
@@ -1038,7 +1038,7 @@ private:
                                             void *value);
   thsa_isa_get_info_alt *hsa_isa_get_info_alt_;
 
-  static ErrorOr<const HIPDriver &> allocAndInitDriver();
+  static ErrorOr<std::unique_ptr<HIPDriver>> allocAndInitDriver();
 };
 
 } // namespace M::AsyncRT

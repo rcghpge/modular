@@ -705,16 +705,16 @@ public:
 
   static ErrorOr<const CUDADriver &> get();
 
+  // CUDADriver object lifetime is tied to a static unique_ptr.
+  CUDADriver() = default;
+  ~CUDADriver() = default;
+
 private:
   // Enable in-depth logging at build time.
   static constexpr bool do_call_log = false;
 
   // Shared library name for the CUDA driver.
   static const char lib_name[];
-
-  // Once created, the CUDADriver object cannot be deleted.
-  CUDADriver() = default;
-  ~CUDADriver() = default;
 
   // Driver is only initialized from internal code.
   Result Init(unsigned int flags) const { return cuInit_(flags); }
@@ -1007,7 +1007,7 @@ private:
       CUtensorMapFloatOOBfill oobFill);
   tcuTensorMapEncodeTiled *cuTensorMapEncodeTiled_;
 
-  static ErrorOr<const CUDADriver &> allocAndInitDriver();
+  static ErrorOr<std::unique_ptr<CUDADriver>> allocAndInitDriver();
 };
 
 #undef CUDA_DRIVER_CALL_LOG

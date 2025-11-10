@@ -38,7 +38,7 @@ const char hsa_lib_name[] = "";
   driver->name##_ = reinterpret_cast<t##name *>(dlsym(hsa_lib, #name));        \
   // Note: We don't fail if HSA functions are not available
 
-ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
+ErrorOr<std::unique_ptr<HIPDriver>> HIPDriver::allocAndInitDriver() {
   // Attempt to open the shared library of the HIP driver.
   // RTLD_GLOBAL allows UCX ROCm backend to also use these loaded symbols.
   void *dl_lib = dlopen(lib_name, RTLD_NOW | RTLD_GLOBAL);
@@ -48,7 +48,7 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
   }
 
   // Allocate a driver and register all of the used shared library entry points.
-  HIPDriver *driver = new HIPDriver();
+  auto driver = std::make_unique<HIPDriver>();
   GET_FUNC(hipInit);
 
   GET_FUNC(hipDrvGetErrorName);
@@ -144,22 +144,21 @@ ErrorOr<const HIPDriver &> HIPDriver::allocAndInitDriver() {
     driver->GetErrorName(err, &errName);
     driver->GetErrorString(err, &errStr);
 
-    delete driver;
     return Error(llvm::Twine("Call to hipInit failed with error code: ") +
                  llvm::Twine(err) + ", error name: " + llvm::Twine(errName) +
                  ", error string: " + llvm::Twine(errStr));
   }
 
-  return *driver;
+  return driver;
 }
 
 ErrorOr<const HIPDriver &> HIPDriver::get() {
-  static ErrorOr<const HIPDriver &> errOrDriver = allocAndInitDriver();
+  static ErrorOr<std::unique_ptr<HIPDriver>> errOrDriver = allocAndInitDriver();
 
   if (errOrDriver) {
     return Error(errOrDriver.getError());
   }
-  return errOrDriver.get();
+  return *errOrDriver.get();
 }
 
 } // namespace M::AsyncRT

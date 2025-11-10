@@ -33,7 +33,7 @@ const char CUDADriver::lib_name[] = "";
                  "\" in \"" + lib_name + "\"");                                \
   }
 
-ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
+ErrorOr<std::unique_ptr<CUDADriver>> CUDADriver::allocAndInitDriver() {
   // Attempt to open the shared library of the CUDA driver.
   // We use RTLD_GLOBAL to allow UCX CUDA backend to also use these loaded CUDA
   // symbols.
@@ -43,7 +43,7 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   }
 
   // Allocate a driver and register all of the used shared library entry points.
-  CUDADriver *driver = new CUDADriver();
+  auto driver = std::make_unique<CUDADriver>();
   GET_FUNC(cuInit);
 
   GET_FUNC(cuGetErrorName);
@@ -147,20 +147,21 @@ ErrorOr<const CUDADriver &> CUDADriver::allocAndInitDriver() {
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
   if (err != SUCCESS) {
-    delete driver;
     return Error(llvm::Twine("Call to cuInit failed with ") + llvm::Twine(err));
   }
 
-  return *driver;
+  return driver;
 }
 
 ErrorOr<const CUDADriver &> CUDADriver::get() {
-  static const ErrorOr<const CUDADriver &> errOrDriver = allocAndInitDriver();
+  static ErrorOr<std::unique_ptr<CUDADriver>> errOrDriver =
+      allocAndInitDriver();
 
   if (errOrDriver) {
     return Error(errOrDriver.getError());
   }
-  return errOrDriver.get();
+
+  return *errOrDriver.get();
 }
 
 } // namespace M::AsyncRT
