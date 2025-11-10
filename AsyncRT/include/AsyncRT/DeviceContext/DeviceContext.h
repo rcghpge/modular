@@ -668,8 +668,14 @@ enum class Device::Attribute : int {
   COMPUTE_CAPABILITY_MAJOR = 75,
   // Minor compute capability version number
   COMPUTE_CAPABILITY_MINOR = 76,
+  // Maximum shared memory available per multiprocessor in bytes
+  MAX_SHARED_MEMORY_PER_MULTIPROCESSOR = 81,
   // Maximum number of 32-bit registers available per multiprocessor
   MAX_REGISTERS_PER_MULTIPROCESSOR = 82,
+  // Device supports launching cooperative kernels
+  COOPERATIVE_LAUNCH = 95,
+  // Maximum resident blocks per multiprocessor
+  MAX_BLOCKS_PER_MULTIPROCESSOR = 106,
   // CUDA-only: Maximum value of CUaccessPolicyWindow::num_bytes.
   MAX_ACCESS_POLICY_WINDOW_SIZE = 109,
 };
