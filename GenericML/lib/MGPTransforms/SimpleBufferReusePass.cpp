@@ -118,11 +118,9 @@ public:
     // allocs themselves, this is safe to do.
     markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
-    modelOp->walk([&](Block *block) {
-      // Skip blocks that are part of MOGG regions
-      if (block->getParent() &&
-          block->getParent()->getParentOfType<MOGG::GenericCompiledRegionOp>())
-        return;
+    modelOp->walk<mlir::WalkOrder::PreOrder>([&](Block *block) {
+      if (isa_and_present<MOGG::GenericCompiledRegionOp>(block->getParentOp()))
+        return WalkResult::skip();
 
       DenseMap<ReuseKey, SmallVector<MGP::BufferAllocOp>> allocGroups;
 
@@ -134,7 +132,7 @@ public:
       }
 
       if (allocGroups.empty())
-        return;
+        return WalkResult::advance();
 
       auto &depTree = analysis.getDepTree(block);
 
@@ -212,6 +210,8 @@ public:
           }
         }
       }
+
+      return WalkResult::advance();
     });
 
     LLVM_DEBUG(llvm::dbgs()

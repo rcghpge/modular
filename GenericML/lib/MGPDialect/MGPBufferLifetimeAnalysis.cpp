@@ -5,7 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
+#include "Support/Compiler/Threading.h"
 
 #include "llvm/ADT/SparseBitVector.h"
 #include "llvm/Support/Debug.h"
@@ -457,4 +459,33 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
 BufferLifetimeAnalysisPass::BufferLifetimeAnalysisPass(Operation *op) {
   ASSERT_STREAM(isa<ModelOp>(op),
                 "BufferLifetimeAnalysisPass can only run on an MGP::ModelOp");
+
+  SmallVector<Block *> blocks;
+  op->walk<mlir::WalkOrder::PreOrder>([&](Block *block) {
+    if (isa_and_present<MOGG::GenericCompiledRegionOp>(block->getParentOp()))
+      return WalkResult::skip();
+
+    blocks.push_back(block);
+    return WalkResult::advance();
+  });
+
+  using CacheT = llvm::DenseMap<Block *, DependencyTree>;
+
+  auto func = [&](CacheT &cache, Block *block) {
+    cache[block] = DependencyTree::getDependencyTree(block);
+    return success();
+  };
+
+  auto consolidate = [&](CacheT &cache, MutableArrayRef<CacheT> others) {
+    for (auto &other : others)
+      for (auto &[key, val] : other)
+        cache[key] = std::move(val);
+  };
+
+  CacheT cache;
+  (void)M::failableParallelForEach(op->getContext(), blocks, func, cache,
+                                   consolidate);
+
+  for (auto &[key, value] : cache)
+    dominatorTrees[key] = std::make_unique<DependencyTree>(std::move(value));
 }
