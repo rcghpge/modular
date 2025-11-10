@@ -211,6 +211,7 @@ static Error formatCUDAError(const char *file, int line, const char *func,
   }
 }
 
+#ifdef MODULAR_LINUX
 static Error formatCUDAError(const char *file, int line, const char *func,
                              CUDACompilationDriver::Result result,
                              std::string extra_msg = "") {
@@ -222,6 +223,7 @@ static Error formatCUDAError(const char *file, int line, const char *func,
       llvm::Twine("NVPTX Compiler call failed: ") + llvm::Twine(result) +
           extra_msg);
 }
+#endif
 
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
