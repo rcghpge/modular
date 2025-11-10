@@ -375,7 +375,7 @@ def ElideRedundantMutableOps :
   }];
 }
 
-def DecomposeViewOps : Pass<"decompose-views", "ModuleOp"> {
+def DecomposeViewOps : Pass<"decompose-views", "GraphOp"> {
   let summary = "Decompose view ops into simpler ops";
   let description = [{
     Breaks down large CISC like view ops into a series of simpler
