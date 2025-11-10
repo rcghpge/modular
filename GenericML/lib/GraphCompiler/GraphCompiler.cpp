@@ -375,15 +375,15 @@ void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
   //    staticization must alsp look through those reshapes for shape inputs.
   // 2. Materialize parameter definition for `mo.rebind` that still declare
   //    output parameters.
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MO::GraphOp>(mlir::createCanonicalizerPass());
 
   // Propagation does 3 things:
   // 1. Run calculations of certain constant ops in parameter domain
   // 2. Materializes shape functions using parameter domain values
   // 3. Simplifies parameter binding using substitution and constraint solving.
-  pm.addPass(MO::createPropagateShapes());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MO::GraphOp>(MO::createPropagateShapes());
+  pm.addNestedPass<MO::GraphOp>(mlir::createCSEPass());
+  pm.addNestedPass<MO::GraphOp>(mlir::createCanonicalizerPass());
   pm.addPass(KGEN::createVerifyParameters());
 }
 
