@@ -1,6 +1,6 @@
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES")
-load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind")
+load("//max/python/max/_core/internal/mlir_nanobind:tblgen.bzl", "mlir_nanobind")  # buildifier: disable=bzl-visibility
 
 package(default_visibility = ["//visibility:public"])
 

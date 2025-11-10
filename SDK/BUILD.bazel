@@ -1,5 +1,4 @@
-load("//bazel:api.bzl", "cc_autolink_deps", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
-load("//SDK/lib/API/python/bindings:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")
+load("//bazel:api.bzl", "cc_autolink_deps", "modular_cc_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
 
 modular_cc_library(
     name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
@@ -36,92 +35,6 @@ modular_cc_library(
         "//GenericML:GraphCompiler",
         "//Support:Base",
         "//Support:Buffer",
-    ],
-)
-
-modular_nanobind_library(
-    name = "DLPackPython",
-    srcs = glob(["lib/API/python/lib/DLPack/*.cpp"]),
-    hdrs = glob(["include/SDK/DLPack/python/*.h"]),
-    deps = ["@dlpack"],
-)
-
-modular_nanobind_library(
-    name = "ModularFrameworkPython",
-    srcs = glob(["lib/API/python/lib/Engine/*.cpp"]),
-    hdrs = glob(["include/SDK/EngineAPI/**/*.h"]),
-    deps = [
-        ":max",
-        "//SDK:DLPackPython",
-        "//SDK:DriverPython",
-    ],
-)
-
-modular_nanobind_library(
-    name = "DriverPython",
-    srcs = glob(["lib/API/python/lib/Driver/*.cpp"]),
-    hdrs = glob(["include/SDK/DriverAPI/python/*.h"]),
-    deps = [
-        ":max",
-        "//SDK:DLPackPython",
-    ],
-)
-
-modular_nanobind_library(
-    name = "GraphPython",
-    srcs = glob(["lib/API/python/lib/Graph/*.cpp"]),
-    hdrs = glob(["include/SDK/GraphAPI/python/*.h"]),
-    deps = [
-        ":max",
-        "//Support:NanobindUtils",
-    ],
-)
-
-modular_nanobind_library(
-    name = "ProfilerPython",
-    srcs = glob(["lib/Profiler/python/*.cpp"]),
-    hdrs = glob(["include/SDK/Profiler/python/*.h"]),
-    local_defines = select({
-        "//:kernel_e2e_gpu_profiling_setting": ["MODULAR_ENABLE_GPU_PROFILING"],
-        "//:kernel_e2e_gpu_profiling_detailed_setting": ["MODULAR_ENABLE_GPU_PROFILING_DETAILED"],
-        "//conditions:default": [],
-    }),
-    deps = [
-        "//Kernels:Tracing",
-    ],
-)
-
-tblgen_nanobind(
-    name = "MOSHDialectNanobindInc",
-    src = "//GenericML:mosh_json",
-    dialect = "MOSHDialect",
-    output = "include/SDK/GraphAPI/python/mosh_dialect_nanobind.cpp.inc",
-    visibility = ["//visibility:public"],
-)
-
-mlir_nanobind(
-    name = "BuiltinDialectNanobindInc",
-    srcs = [
-        "@llvm-project//mlir:include/mlir/IR/BuiltinAttributeInterfaces.td",
-        "@llvm-project//mlir:include/mlir/IR/BuiltinAttributes.td",
-        "@llvm-project//mlir:include/mlir/IR/BuiltinDialect.td",
-        "@llvm-project//mlir:include/mlir/IR/BuiltinLocationAttributes.td",
-        "@llvm-project//mlir:include/mlir/IR/BuiltinOps.td",
-        "@llvm-project//mlir:include/mlir/IR/BuiltinTypeInterfaces.td",
-        "@llvm-project//mlir:include/mlir/IR/BuiltinTypes.td",
-        "@llvm-project//mlir:include/mlir/Transforms/Passes.td",
-    ],
-    exclude = [
-        "Builtin_DenseResourceElementsAttr",  # can't deal with AsmResourceBlob yet
-        "Builtin_SparseElementsAttr",  # Table flip
-        "OpaqueLoc",  # constructors are templatized
-    ],
-    output_dir = "include/SDK/GraphAPI/python",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-        "@llvm-project//mlir:RewritePassBaseTdFiles",
     ],
 )
 
