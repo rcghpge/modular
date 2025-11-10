@@ -171,8 +171,10 @@ class SimplifyChainsPass
     CacheT cache;
     cache.reserve(chainCreates.size());
 
-    (void)failableParallelForEach(&getContext(), chainCreates, func, cache,
-                                  consolidate);
+    [[maybe_unused]] auto result = failableParallelForEach(
+        &getContext(), chainCreates, func, cache, consolidate);
+
+    ASSERT_STREAM(succeeded(result), "processing chain create ops failed");
 
     for (auto &[chainOp, values] : cache)
       chainOp.setInputChains(values);
@@ -180,8 +182,11 @@ class SimplifyChainsPass
     RewritePatternSet patterns(&getContext());
     GRT::ChainCreateOp::getCanonicalizationPatterns(patterns, &getContext());
 
-    if (failed(mlir::applyPatternsGreedily(modelOp, std::move(patterns))))
-      signalPassFailure();
+    auto asOperations = llvm::to_vector_of<Operation *>(chainCreates);
+
+    GreedyRewriteConfig config;
+    config.setStrictness(GreedyRewriteStrictness::ExistingAndNewOps);
+    (void)applyOpPatternsGreedily(asOperations, std::move(patterns), config);
   }
 };
 
