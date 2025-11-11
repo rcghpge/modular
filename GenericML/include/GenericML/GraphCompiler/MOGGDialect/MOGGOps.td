@@ -2065,7 +2065,7 @@ def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
     StrAttr:$shapeFuncName,
     TypeAttr:$retType,
     UnitAttr:$isThrows,
-    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Scalar]>>:$operands
+    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Scalar, AnyTuple]>>:$operands
   );
   let assemblyFormat = [{
     `[` $shapeFuncName `]` `(` $operands `:` type($operands) `)` `->` $retType attr-dict
