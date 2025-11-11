@@ -249,16 +249,11 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   return Error("Failed to infer parameter");
 }
 
-MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
+MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,
                                                       ValueRange dynamicDims) {
-  // TODO: Make sure this is actually valid for dynamic cases.
-  // The dimensions operand only contains the dynamic ones in
-  // MOGGTensorInitOp. So instead we get the static ones from the type
-  // directly.
-
   SmallVector<MojoValue> mojoDims;
   unsigned nextDymDim = 0;
-  for (TypedAttr dim : tensorTy.getDims()) {
+  for (TypedAttr dim : shapeAttr.getValues()) {
     if (auto staticDim = dyn_cast<IntegerAttr>(dim)) {
       mojoDims.push_back(MojoValue(staticDim.getSInt()));
     } else {
@@ -271,7 +266,7 @@ MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
     mojoDims.push_back(MojoValue(static_cast<int64_t>(1)));
 
   MojoValue rankParam =
-      MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
+      MojoValue(shapeAttr.getRank() == 0 ? 1 : shapeAttr.getRank());
 
   return MojoValue(HardcodedMojoSymbols::struct_IndexList)({rankParam},
                                                            mojoDims);

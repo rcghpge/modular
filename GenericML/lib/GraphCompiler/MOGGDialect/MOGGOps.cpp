@@ -1263,17 +1263,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     ++idx;
   }
 
-  // Add extra arguments for the dynamic dimensions of fused tensors
-  kernelStub.walk([&](MOGG::BindLambdaOp bindOp) {
-    // We only need to get the dynamic dimensions when materializing an
-    // intermediate tensor for the fused kernel operand. This happens only for
-    // Input and AffineView fusion.
-    if (bindOp.getBindKind() != BindLambdaKind::InputLambda &&
-        !bindOp.hasAffineViewOperation())
-      return;
-
-    Value fusedOutput = bindOp.getOutput();
-    auto asTensor = MO::castFromTensorLike(fusedOutput.getType());
+  // This function will update the KernelStub operands and mapping to take
+  // dynamic dimensions.
+  auto passTensorDynDimensionsToKernelStub = [&](Location loc,
+                                                 MO::TensorType asTensor) {
     for (auto dim : asTensor.getDims()) {
       if (auto outsideSSAValue = parameterToOutsideSSAValue.lookup(dim)) {
         // Check if the argument isn't already defined.
@@ -1283,11 +1276,34 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         // Pass the dynamic dimension as an argument of the stub.
         Value regionArg =
             regionBody.getArgument(outsideValueToOperandIndex[outsideSSAValue]);
-        kernelStub.getBody().addArgument(regionArg.getType(), bindOp->getLoc());
+        kernelStub.getBody().addArgument(regionArg.getType(), loc);
         outsideValueToStubOperandIndex[outsideSSAValue] =
             stubCallOperands.size();
         stubCallOperands.emplace_back(regionArg);
       }
+    }
+  };
+
+  // Add extra arguments for the dynamic dimensions for some ops
+  kernelStub.walk([&](mlir::Operation *stubOp) {
+    if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(stubOp)) {
+      // We only need to get the dynamic dimensions when materializing an
+      // intermediate tensor for the fused kernel operand. This happens only for
+      // Input and AffineView fusion.
+      if (bindOp.getBindKind() != BindLambdaKind::InputLambda &&
+          !bindOp.hasAffineViewOperation())
+        return;
+
+      Value fusedOutput = bindOp.getOutput();
+      passTensorDynDimensionsToKernelStub(
+          bindOp.getLoc(), MO::castFromTensorLike(fusedOutput.getType()));
+    }
+
+    else if (auto tensorShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(stubOp)) {
+      // The dynamic dimensions of TensorGetShapeOp must be lowered.
+      passTensorDynDimensionsToKernelStub(
+          tensorShapeOp.getLoc(),
+          MO::castFromTensorLike(tensorShapeOp.getTensor()));
     }
   });
 
@@ -1454,6 +1470,27 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     constantOp->erase();
   };
 
+  auto lowerTensorGetShapeOp =
+      [&](MOGG::TensorGetShapeOp getShapeOp) -> LogicalResult {
+    // Get the dynamic dimensions
+    auto asTensor = MO::castFromTensorLike(getShapeOp.getTensor());
+    auto dynamicDimensionsOr =
+        getTensorDynamicDimensions(asTensor,
+                                   /*isInsideStub=*/true);
+    if (dynamicDimensionsOr.isError())
+      return emitError(dynamicDimensionsOr.getError());
+
+    // Build a ShapeInitOp to materialize the new shape mojo value
+    builder.setInsertionPoint(getShapeOp);
+    Value shapeValue = MOGG::ShapeInitOp::create(builder, getShapeOp.getLoc(),
+                                                 *dynamicDimensionsOr,
+                                                 asTensor.getTypedShapeAttr());
+
+    getShapeOp.getResult().replaceAllUsesWith(shapeValue);
+    getShapeOp->erase();
+    return success();
+  };
+
   auto walkResult = kernelStub.walk([&](mlir::Operation *op) {
     if (auto moggContext = dyn_cast<MOGG::DeviceContextPlaceholderOp>(op))
       lowerDeviceContextPlaceholder(moggContext);
@@ -1462,6 +1499,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
         return WalkResult::interrupt();
     } else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
       lowerConstantOp(constantOp);
+    else if (auto tensorGetShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(op)) {
+      if (failed(lowerTensorGetShapeOp(tensorGetShapeOp)))
+        return WalkResult::interrupt();
+    }
 
     return WalkResult::advance();
   });
@@ -3566,8 +3607,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       state.builder.alias(state.getStaticStridesAsMojoValue(tensorTy));
   MojoValue alignmentParam(static_cast<uint64_t>(AsyncRT::getPreferredAlignment(
       MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
-  auto shapeVar = state.builder.var(
-      state.getShapeAsIndexListMojoValue(tensorTy, getDims()));
+  auto shapeVar = state.builder.var(state.getShapeAsIndexListMojoValue(
+      tensorTy.getTypedShapeAttr(), getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   state.setMojoValueFor(
@@ -3649,32 +3690,6 @@ LogicalResult AsyncPackUntrackedOp::emitMojo(EmitMojoState &state) {
                       /* borrowee */ state.getMojoValueFor(getInput())});
 
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// TensorGetShapeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TensorGetShapeOp::emitMojo(EmitMojoState &state) {
-  /// TODO: Look it up in the MojoLibraryAnalysis instead.
-  auto stubOp = getOperation()->getParentOfType<KernelStubOp>();
-  auto tensorTy = MO::castFromTensorLike(getTensor());
-  for (auto arg : stubOp.getBody().getArguments()) {
-    auto argTy = MO::dynCastFromTensorLike(arg.getType());
-    if (argTy && argTy.getShapeAttr() == tensorTy.getShapeAttr()) {
-      auto tensorMojoValue = state.getMojoValueFor(arg);
-      state.setMojoValueFor(
-          getResult(),
-          tensorMojoValue.get(
-              HardcodedMojoSymbols::func_ManagedTensorslice_shape)());
-
-      return success();
-    }
-  }
-
-  emitError("Could not find a tensor to get the shape");
-
-  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -4172,8 +4187,8 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
   // strides.
   MO::TensorType toType = MO::castFromTensorLike(getResult().getType());
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
-  MojoValue shapeValue =
-      state.getShapeAsIndexListMojoValue(toType, getDynamicDims());
+  MojoValue shapeValue = state.getShapeAsIndexListMojoValue(
+      toType.getTypedShapeAttr(), getDynamicDims());
   MojoValue shapeParam = state.getStaticShapeAsMojoValue(toType);
   MojoValue stridesParam = state.getStaticStridesAsMojoValue(toType);
   state.setMojoValueFor(
@@ -4182,6 +4197,17 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
                        {MojoValue("static_shape").equal(shapeParam),
                         MojoValue("static_stride").equal(stridesParam)},
                        {tensorValue, shapeValue})));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeInitOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ShapeInitOp::emitMojo(EmitMojoState &state) {
+  MojoValue shapeValue =
+      state.getShapeAsIndexListMojoValue(getShape(), getDynamicDims());
+  state.setMojoValueFor(getResult(), shapeValue);
   return success();
 }
 

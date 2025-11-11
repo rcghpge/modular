@@ -731,6 +731,7 @@ gentbl_mlir_dialect(
         ":MGPDialectTdFiles",
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
+        ":MOSHDialectTdFiles",
         "//GraphRT:GRTTdFiles",
     ],
 )
@@ -831,6 +832,7 @@ modular_cc_library(
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
+        ":MOSHDialect",
         ":Support",
         "//AsyncRT:DeviceContext",
         "//GraphRT:GRTDialect",

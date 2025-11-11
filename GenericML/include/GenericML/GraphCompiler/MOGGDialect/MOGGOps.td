@@ -20,6 +20,7 @@ include "GenericML/GraphCompiler/MODialect/MOTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOAttrs.td"
 include "GenericML/GraphCompiler/MODialect/MOEnums.td"
 include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
+include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.td"
 include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.td"
 include "GenericML/GraphCompiler/Interfaces/EmitsMojoInterface.td"
 include "GenericML/MGPDialect/MGPOpInterfaces.td"
@@ -1563,7 +1564,6 @@ def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
 
 def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [
   Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Gets the shape of a tensor";
   let arguments = (ins TypeAttr:$tensor);
@@ -2120,6 +2120,31 @@ def MOGG_UnpackShapeOp : MOGG_Op<"unpack_shape", [Pure]> {
   }];
 
   let hasVerifier = 1;
+}
+
+def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
+]> {
+  let summary = "Construct a mojo shape object";
+  let description = [{
+    Given a list of dimensions, build a mojo shape object (IndexList)
+    The op supports dynamic shapes by including both the static shape attribute and a list of dynamic dimensions.
+
+    Example:
+    ```
+      %shape = mogg.shape.__init__() {shape = #mosh<ape[1, 2, 3, 4]> : !mosh.ape} : (si64) -> !mogg.shape
+      %dyn_shape = mogg.shape.__init__(%d0_val) {shape = #mosh<ape[2, D0, 3]> : !mosh.ape} : (si64) -> !mogg.shape
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyInteger>:$dynamic_dims,
+                       MOSH_ShapeAttr:$shape);
+  let results = (outs MOGG_Shape:$result);
+
+  let assemblyFormat = [{
+    `(` $dynamic_dims `)` attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

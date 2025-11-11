@@ -294,7 +294,7 @@ public:
         MOGG::getStridesForTensor(type, /*unknown=*/false));
   }
 
-  MojoValue getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
+  MojoValue getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,
                                          ValueRange dynamicDims = {});
 
   /// Helper to simply forward a list of mlir::Value into their MojoValue mapped
