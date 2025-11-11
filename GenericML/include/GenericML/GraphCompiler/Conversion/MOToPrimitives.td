@@ -202,6 +202,27 @@ def CoalesceAsyncRefs: Pass<"coalesce-async-refs", "ModuleOp"> {
                            "MGP::MGPDialect"];
 }
 
+def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
+  let summary = "Dump Mojo text";
+  let description = [{
+    Dump to stderr the previously emitted Mojo as text.
+  }];
+
+    let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect",
+                          "M::KGEN::KGENDialect",
+                          "M::KGEN::LIT::LITDialect",
+                          "M::KGEN::POP::POPDialect",
+                          "M::HLCF::HLCFDialect",
+                          "M::DebugInfo::DebugInfoDialect",
+                          "mlir::NVVM::NVVMDialect",
+                          "mlir::ROCDL::ROCDLDialect",
+                          "mlir::index::IndexDialect",
+    ];
+}
+
 def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
   let summary = "Emit Mojo text";
   let description = [{

@@ -79,6 +79,7 @@ void M::MO::registerPasses() {
   MGP::registerMOToPrimitives();
   MGP::registerLowerAsyncRefs();
   MGP::registerEmitMojo();
+  MGP::registerDumpMojo();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
