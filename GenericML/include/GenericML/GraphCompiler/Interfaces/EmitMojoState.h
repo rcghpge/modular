@@ -7,6 +7,7 @@
 #define GENERICML_INTERFACES_EMITMOJOSTATE_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
@@ -79,6 +80,7 @@ constexpr StringLiteral func_buffer_constant =
 constexpr StringLiteral func_unpack_device_ctx =
     "MOGGPrimitives.unpack_device_ctx";
 constexpr StringLiteral func_unpack_tensor = "MOGGPrimitives.unpack_tensor";
+constexpr StringLiteral func_all_zeros = "MOGGPrimitives.all_zeros";
 
 constexpr StringLiteral alias_OpaquePointer = "memory.LegacyOpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
@@ -125,9 +127,11 @@ inline bool isMojoIOSpecTypeName(ArrayRef<FlatSymbolRefAttr> symbolRefs) {
 struct EmitMojoState {
   EmitMojoState(MojoLibraryAnalysis &analysis,
                 bool enableOpTraceComments = false,
-                bool enableComputeLambdas = false)
+                bool enableComputeLambdas = false,
+                bool enableDebugDumpFusedTensorSpecs = false)
       : analysis(analysis), enableComputeLambdas(enableComputeLambdas),
-        enableOpTraceComments(enableOpTraceComments) {}
+        enableOpTraceComments(enableOpTraceComments),
+        enableDebugDumpFusedTensorSpecs(enableDebugDumpFusedTensorSpecs) {}
 
   /// The Mojo builder used to generate the text.
   MojoBuilder builder;
@@ -160,6 +164,10 @@ private:
   /// Enables the emission of additional comments detailing IR ops that are
   /// currently being processed
   bool enableOpTraceComments;
+
+  /// Enable the emission of print statements intside the fused lambda to debug
+  /// the fused tensor specs.
+  bool enableDebugDumpFusedTensorSpecs;
 
 public:
   /// Get the Mojovalue mapped to `val`.
@@ -345,6 +353,17 @@ public:
   ErrorOr<MojoValue>
   inferDefaultKernelParamValue(Operation *callOp, StringRef paramName,
                                DictionaryAttr customParamDict = nullptr);
+
+  /// Debug print the spec of `tensorValue` if enabled.
+  void addDebugPrintTensorSpecs(const MojoValue &tensorValue,
+                                const MojoValue &indicesValue, bool isInput,
+                                unsigned operandIndex);
+
+  /// Debug print the parameters of a fused lambda if enabled.
+  void addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
+                                const MojoValue &widthParam,
+                                const MojoValue &alignmentParam,
+                                const MojoValue &indicesValue);
 };
 } // namespace M::MOGG
 

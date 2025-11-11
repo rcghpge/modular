@@ -277,4 +277,45 @@ MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MO::TensorType tensorTy,
                                                            mojoDims);
 }
 
+void EmitMojoState::addDebugPrintTensorSpecs(const MojoValue &tensorValue,
+                                             const MojoValue &indicesValue,
+                                             bool isInput,
+                                             unsigned operandIndex) {
+  if (!enableDebugDumpFusedTensorSpecs)
+    return;
+
+  // We check if all indices are 0 to only print once.
+  builder.if_(
+      MojoValue(HardcodedMojoSymbols::func_all_zeros)({}, indicesValue), [&]() {
+        builder.call(
+            "print", {},
+            {MojoValue(isInput ? "input" : "output").quote(),
+             MojoValue("#" + std::to_string(operandIndex) + ":").quote(),
+             MojoValue("shape =").quote(), tensorValue.get("_static_shape"),
+             MojoValue("strides =").quote(), tensorValue.get("_static_strides"),
+             MojoValue("alignment =").quote(), tensorValue.get("alignment")});
+      });
+}
+
+void EmitMojoState::addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
+                                             const MojoValue &widthParam,
+                                             const MojoValue &alignmentParam,
+                                             const MojoValue &indicesValue) {
+  if (!enableDebugDumpFusedTensorSpecs)
+    return;
+
+  // We check if all indices are 0 to only print once.
+  builder.if_(
+      MojoValue(HardcodedMojoSymbols::func_all_zeros)({}, indicesValue), [&]() {
+        builder.call("print", {},
+                     {
+                         MojoValue(stringifyBindLambdaKind(lambdaKind)).quote(),
+                         MojoValue("width =").quote(),
+                         widthParam,
+                         MojoValue("alignment =").quote(),
+                         alignmentParam,
+                     });
+      });
+}
+
 } // namespace M::MOGG

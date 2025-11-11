@@ -194,7 +194,8 @@ struct EmitMojo
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
       DenseSet<StringAttr> kernelsToLoad;
       MOGG::EmitMojoState state(*analysisOr.takeValue(), enableOpTraceComments,
-                                enableComputeLambdas);
+                                enableComputeLambdas,
+                                moggDebugDumpFusedTensorSpecs);
       for (auto package : MOGG::HardcodedMojoSymbols::packagesToImport)
         state.builder.import(package, "*");
       // Import mojo packages for the custom kernel libraries.

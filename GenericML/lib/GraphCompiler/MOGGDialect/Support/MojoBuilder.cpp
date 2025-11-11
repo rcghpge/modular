@@ -155,6 +155,20 @@ void MojoBuilder::except(std::function<void(const MojoValue &)> &&exceptBlock) {
   exceptBlock(e);
 }
 
+MojoBuilder &MojoBuilder::if_(const MojoValue &cond,
+                              std::function<void()> &&ifBlock) {
+  statement("if ", cond, ":");
+  MojoBuilderScopeGuard guard(this);
+  ifBlock();
+  return *this;
+}
+
+void MojoBuilder::else_(std::function<void()> &&elseBlock) {
+  statement("else:");
+  MojoBuilderScopeGuard guard(this);
+  elseBlock();
+}
+
 MojoValue MojoBuilder::var(const MojoValue &value) {
   auto name = newVar("var");
   statement("var ", name, " = ", value);

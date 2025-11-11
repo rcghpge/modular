@@ -147,6 +147,9 @@ public:
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);
   void except(std::function<void(const MojoValue &)> &&exceptBlock);
 
+  MojoBuilder &if_(const MojoValue &cond, std::function<void()> &&ifBlock);
+  void else_(std::function<void()> &&elseBlock);
+
   /// Creates a variable and assigns the provided value to it. The returned
   /// value is the name of the variable.
   [[nodiscard]] MojoValue var(const MojoValue &value);

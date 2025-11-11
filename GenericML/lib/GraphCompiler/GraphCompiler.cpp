@@ -348,6 +348,8 @@ void M::MO::buildMoToMgpPipeline(
   emitMojoOptions.saveTempPrefix = opts.saveTempPrefix;
   emitMojoOptions.enableOpTraceComments = opts.enableOpTraceComments;
   emitMojoOptions.enableComputeLambdas = opts.enableComputeLambdas;
+  emitMojoOptions.moggDebugDumpFusedTensorSpecs =
+      opts.moggDebugDumpFusedTensorSpecs;
   pm.addPass(MGP::createEmitMojo(emitMojoOptions));
 
   // If we are jitting then we need to compile the jit kernels as well.

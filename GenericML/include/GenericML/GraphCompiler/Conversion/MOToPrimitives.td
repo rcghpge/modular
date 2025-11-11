@@ -219,7 +219,9 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
             "The prefix to use when saving temporary files. Setting this "
             "option toggles on saveTemps.">,
     Option<"enableComputeLambdas", "enable-compute-lambdas", "bool", "true",
-      "Enable compute lambdas for the fused I/O kernels">
+      "Enable compute lambdas for the fused I/O kernels">,
+    Option<"moggDebugDumpFusedTensorSpecs", "mogg-debug-dump-fused-tensor-specs", "bool", "false",
+      "Flag to add prints for the fused tensor specs in the lambdas">
   ];
 
   let dependentDialects = ["MEF::MEFDialect",

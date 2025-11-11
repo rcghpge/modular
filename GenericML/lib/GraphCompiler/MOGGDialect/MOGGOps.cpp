@@ -631,8 +631,11 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         const MojoValue &widthParam = functionBody.parameters[0];
         const MojoValue &alignmentParam = functionBody.parameters[1];
         const MojoValue &indicesInput = functionBody.arguments[0];
+        state.addDebugPrintLambdaParam(getBindKind(), widthParam,
+                                       alignmentParam, indicesInput);
 
         // Do all load for each inputs.
+        unsigned inputIdx = 0;
         for (unsigned i = 0; i < fusedInputs.size(); ++i) {
           Value blockArg = lambdaBody->getArgument(i);
           if (i == 0 && isOutputLambda) {
@@ -641,6 +644,8 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
           } else {
             // Do a load from the input tensor
             const auto &mojoInput = fusedInputs[i];
+            state.addDebugPrintTensorSpecs(mojoInput, indicesInput,
+                                           /*isInput=*/true, inputIdx++);
             MOGG::MojoValue loadedSimd = MojoValue(
                 HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
                 {MojoValue("simd_width").equal(widthParam),
@@ -674,6 +679,8 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
         if (generateStoreForOutput) {
           // Store the output value.
+          state.addDebugPrintTensorSpecs(fusedInputs.front(), resultIndices,
+                                         /*isInput=*/false, /*operandIndex=*/0);
           state.builder.call(
               HardcodedMojoSymbols::func_simd_store_into_managed_tensor_slice,
               ArrayRef<MojoValue>{
@@ -3814,6 +3821,8 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
   // Mark the tensor as keep alive to ensure it doesn't get deallocated.
   state.markAsKeepAlive(tensor);
 
+  // TODO: Infer the correct operand index.
+  state.addDebugPrintTensorSpecs(tensor, indices, /*isInput=*/true, 0);
   MOGG::MojoValue loadedSimd =
       MojoValue(HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
           {MojoValue("simd_width").equal(widthParam),

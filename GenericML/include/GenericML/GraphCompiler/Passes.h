@@ -208,6 +208,12 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::desc("Flag to enable adding comments in the Mojo code "
                      "detailing which operation is being emitted."),
       llvm::cl::init(false)};
+  Option<bool> moggDebugDumpFusedTensorSpecs{
+      *this, "mogg-debug-dump-fused-tensor-specs",
+      llvm::cl::desc("Flag to enable adding prints of the fused tensor specs "
+                     "in the lambdas of Mojo code "
+                     "to easily debug / test kernel fusion."),
+      llvm::cl::init(false)};
 };
 
 /// Registers the MO-to-MGP pipeline for use by testing tools.
