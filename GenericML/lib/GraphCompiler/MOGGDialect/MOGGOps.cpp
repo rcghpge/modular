@@ -1369,6 +1369,21 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     Value tensorVal = bindOp.getFusibleTensors().front();
     Value lambdaVal = bindOp.getOutput();
 
+    // If the TensorFusedOp was already created, we don't need to change
+    // anything else.
+    // TODO: This is very confusing here. In MOGG dialect we just build the
+    // lambdas with the BindLambdaOp, and this op once lowered might require
+    // some transforms to generate a correct kernel call (eg pass an empty
+    // tensor, pass the same tensor, or reshape it). This transformation is
+    // implicit in MOGG IR, and the whole logic here figure this out and build
+    // the correct FusedTensor object. But there is one special case: some
+    // kernels require a scratchpad buffer when fused with a cast operation, and
+    // compared to the transformations above, this scratchpad buffer is explicit
+    // in the MOGG IR. We should either have all transformations implicit or all
+    // explicit in MOGG IR
+    if (isa<MOGG::TensorFusedOp>(*lambdaVal.getUsers().begin()))
+      return success();
+
     // We always pass an empty tensor to the kernels for fused input tensors or
     // output lambdas with a cast.
     bool lambdaHasCast =

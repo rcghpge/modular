@@ -356,13 +356,26 @@ struct FuseProloguesEpilogues
                   rewriter, outputLambda.getLoc(), outputLambda.getType())
                   .getResult(0);
           rewriter.setInsertionPointAfter(outputLambda);
-          auto concretizeOp = MOGG::ConcretizeTensorOp::create(
-              rewriter, outputLambda.getLoc(), scratchPlaceholder,
-              outputLambda);
-          outputLambda->replaceUsesWithIf(
-              concretizeOp, [&](OpOperand &operand) {
-                return operand.getOwner() != concretizeOp;
-              });
+
+          if (useExperimentalMojoPath()) {
+            auto concretizeOp = MOGG::TensorFusedOp::create(
+                rewriter, outputLambda.getLoc(), outputLambda.getType(),
+                outputLambda, scratchPlaceholder);
+            outputLambda->replaceUsesWithIf(
+                concretizeOp, [&](OpOperand &operand) {
+                  return operand.getOwner() != concretizeOp;
+                });
+
+          } else {
+            // TODO: Remove ConcretizeTensorOp once we moved to EmitMojo.
+            auto concretizeOp = MOGG::ConcretizeTensorOp::create(
+                rewriter, outputLambda.getLoc(), scratchPlaceholder,
+                outputLambda);
+            outputLambda->replaceUsesWithIf(
+                concretizeOp, [&](OpOperand &operand) {
+                  return operand.getOwner() != concretizeOp;
+                });
+          }
         }
         if (isa<MO::ChainType>(fusedResultTp)) {
           auto foreachCall = cast<MOGG::CallForeachOp>(src.getTerminator());
