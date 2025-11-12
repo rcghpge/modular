@@ -14,6 +14,7 @@
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDACompilationDevice.h"
 #include "CUDA/CUDADeviceContext.h"
+#include "HIP/HIPCompilationDevice.h"
 #include "HIP/HIPDeviceContext.h"
 #include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
@@ -249,10 +250,22 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
 
       compilationDevice = std::move(*compilationDeviceOrErr);
     } else if (api == hipAPI) {
-      // TODO: Implement HIPCompilationDevice for AMD GPU compilation
-      return Error("HIP virtual device mode not yet implemented. "
-                   "Only CUDA is currently supported in compile-only mode.");
-    } else if (api == metalAPI) {
+      // Create HIP compilation device
+      // Unlike CUDA, HIP does not require runtime compilation (PTX→CUBIN).
+      // All compilation is handled by KGEN through the LLVM AMDGPU backend.
+      // However, we still need a CompilationDevice to store the target
+      // architecture information.
+      StringRef targetArch = "gfx942";
+      auto compilationDeviceOrErr = HIPCompilationDevice::create(targetArch);
+      if (compilationDeviceOrErr.isError()) {
+        return Error(
+            llvm::Twine(
+                "Failed to create HIP compilation device for virtual mode: ") +
+            compilationDeviceOrErr.getError());
+      }
+
+      compilationDevice = std::move(*compilationDeviceOrErr);
+    } else if (api == "metal") {
       // TODO: Implement MetalCompilationDevice for Apple GPU compilation
       return Error("Metal virtual device mode not yet implemented. "
                    "Only CUDA is currently supported in compile-only mode.");

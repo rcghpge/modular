@@ -47,18 +47,27 @@ The device stack consists of several layers, from lowest to highest:
 │ • CUDADriver     │                    │ • CUDA:          │
 │ • HIPDriver      │                    │   CUDACompilation│
 │ • MetalDevice    │                    │   Device         │
-│                  │                    │ • Others: nullptr│
-│ Wraps:           │                    │                  │
-│ • libcuda.so.1   │                    │ Wraps:           │
-│ • libamdhip64.so │                    │ • libnvptx       │
-│ • Metal.framework│                    │   compiler.so    │
-└──────────────────┘                    └──────────────────┘
+│                  │                    │ • HIP:           │
+│ Wraps:           │                    │   HIPCompilation │
+│ • libcuda.so.1   │                    │   Device         │
+│ • libamdhip64.so │                    │ • Others: nullptr│
+│ • Metal.framework│                    │                  │
+└──────────────────┘                    │ CUDA wraps:      │
+                                        │ • libnvptx       │
+                                        │   compiler.so    │
+                                        │                  │
+                                        │ HIP stores arch: │
+                                        │ • gfx942, gfx950 │
+                                        │ • (KGEN handles  │
+                                        │   compilation)   │
+                                        └──────────────────┘
                                                   ↓
                                         ┌──────────────────┐
                                         │ CompilationDriver│
                                         ├──────────────────┤
                                         │ • CUDACompilation│
                                         │   Driver         │
+                                        │   (CUDA only)    │
                                         │                  │
                                         │ Wraps:           │
                                         │ • nvPTXCompiler  │
@@ -131,7 +140,15 @@ class VirtualDevice : public Device {
   }
 };
 
-// CPU/HIP/Metal - no compilation yet
+// HIP Device - has compilation device (architecture storage only)
+class HIPDevice : public Device {
+  std::unique_ptr<HIPCompilationDevice> compilationDevice_;
+  const CompilationDevice* compilationDevice() const override {
+    return compilationDevice_.get();
+  }
+};
+
+// CPU/Metal - no compilation yet
 class CpuDevice : public Device {
   const CompilationDevice* compilationDevice() const override {
     return nullptr;
@@ -160,7 +177,14 @@ physical hardware.
 **Current Implementations**:
 
 - `CUDACompilationDevice`: Compiles PTX → CUBIN using nvPTXCompiler
-- Future: `HIPCompilationDevice`, `MetalCompilationDevice`
+- `HIPCompilationDevice`: Stores target architecture for AMD GPUs
+  (gfx942, gfx950, etc.)
+  - **Note**: Unlike CUDA, HIP does not perform runtime compilation
+  - All AMD GPU compilation (LLVM IR → object files → shared objects) is
+    handled by KGEN through the LLVM AMDGPU backend and ld.lld linker
+  - The CompilationDevice exists primarily to store and provide the target
+    architecture
+- Future: `MetalCompilationDevice`
 
 ### Driver (Runtime Driver)
 
@@ -284,6 +308,29 @@ nvPTXCompiler API (libnvptxcompiler.so)
 - `CompilationDevice` does NOT require GPU hardware or driver context
 - Enables "compile-only" mode for model compilation without GPUs
 
+**HIP Compilation Path (AMD GPUs)**:
+
+HIP does not use the `compileFunction()` path shown above. Instead:
+
+```text
+KGEN ObjectCompiler
+    ↓
+LLVM LLC (AMDGPU backend) - compile LLVM IR → Object file (.o)
+    ↓
+ld.lld linker - link object file → Shared object (.so with HSACO)
+    ↓
+Load .so at runtime
+```
+
+The `HIPCompilationDevice` exists to:
+
+1. Store the target architecture string (e.g., "gfx942" for MI300X)
+2. Provide architecture via `getArchName()` to KGEN's ObjectCompiler
+3. Enable virtual device creation for compile-only mode
+
+**Key difference**: CUDA requires runtime compilation (PTX→CUBIN), while HIP
+compiles everything through LLVM at build time.
+
 ## Device Type Details
 
 ### CUDA Device
@@ -317,8 +364,10 @@ CUDADeviceContext → CUDADevice → CUDADriver (runtime)
 
 ```cpp
 VirtualDevice
-├── OWNS: CompilationDevice (typically CUDACompilationDevice)
-│   └── USES: CUDACompilationDriver
+├── OWNS: CompilationDevice (can be CUDA, HIP, or Metal)
+│   ├── CUDACompilationDevice → CUDACompilationDriver (nvPTXCompiler)
+│   ├── HIPCompilationDevice → No driver (KGEN handles compilation)
+│   └── MetalCompilationDevice (future)
 └── NO RUNTIME DRIVER (virtual device)
 ```
 
@@ -327,14 +376,36 @@ VirtualDevice
 **Capabilities**:
 
 - ❌ Runtime execution (no physical hardware)
-- ✅ Compilation (reuses CUDACompilationDevice)
+- ✅ Compilation (delegates to appropriate CompilationDevice)
 - ✅ Compile-only mode (primary use case)
+
+**Supported APIs**:
+
+- **CUDA**: Uses `CUDACompilationDevice` for PTX → CUBIN compilation
+- **HIP**: Uses `HIPCompilationDevice` to store target architecture (gfx942, gfx950)
+  - Compilation happens through KGEN's LLVM AMDGPU backend
+  - No runtime compilation needed
+- **Metal**: Future support
 
 **Use Cases**:
 
 - CI/CD pipelines without GPUs
 - Model compilation services
 - Cross-compilation for target architectures
+
+**Example - Virtual HIP Device**:
+
+```cpp
+// Create virtual AMD GPU device for gfx942 (MI300X)
+auto compilationDevOrErr = HIPCompilationDevice::create("gfx942");
+auto virtualDevice = new VirtualDevice(
+    0, "virtual-gfx942", std::move(*compilationDevOrErr)
+);
+
+// Architecture is available for KGEN
+auto archOrErr = virtualDevice->getArchName();  // Returns "gfx942"
+// ✅ KGEN uses this to compile for AMD MI300X without physical GPU
+```
 
 ### CPU Device
 
@@ -357,14 +428,48 @@ CpuDevice
 
 ```cpp
 HIPDevice
-├── NO COMPILATION DEVICE (future: HIPCompilationDevice)
+├── OWNS: HIPCompilationDevice (stores target architecture)
+│   └── NO CompilationDriver (compilation handled by KGEN)
 └── REFERENCES: HIPDriver (AMD HIP Runtime)
 ```
 
 **Capabilities**:
 
 - ✅ Runtime execution (via HIPDriver)
-- ❌ Compilation (future work)
+- ✅ Compilation (via KGEN's LLVM AMDGPU backend)
+- ✅ Compile-only mode (HIPCompilationDevice works without GPU)
+
+**Architecture Flow**:
+
+Unlike CUDA, AMD GPU compilation does not use runtime compilation:
+
+```text
+NVIDIA (CUDA):
+  LLVM IR → PTX (via LLC) → CUBIN (via nvPTXCompiler runtime compilation)
+                                    ↑
+                            CUDACompilationDevice performs this step
+
+AMD (HIP):
+  LLVM IR → Object file (.o) → Shared object (.so)
+      ↑              ↑                  ↑
+   KGEN's LLC   LLVM AMDGPU      ld.lld linker
+                  backend
+
+  HIPCompilationDevice only stores target arch (gfx942, gfx950, etc.)
+  - No runtime compilation needed
+  - All compilation happens at build time through LLVM
+```
+
+**Key Differences from CUDA**:
+
+1. **No Runtime Compilation**: HIP does not require a compilation driver like
+   nvPTXCompiler
+2. **LLVM Backend**: All AMD GPU code generation uses LLVM's AMDGPU backend
+   directly
+3. **Shared Objects**: HIP produces `.so` files containing HSACO (HSA Code
+   Object) format
+4. **Architecture Storage**: `HIPCompilationDevice` exists primarily to store
+   and provide the target architecture string to KGEN
 
 ### Metal Device
 
