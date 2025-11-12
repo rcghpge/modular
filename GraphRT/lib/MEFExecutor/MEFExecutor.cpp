@@ -14,26 +14,6 @@
 using namespace M;
 
 //===----------------------------------------------------------------------===//
-// Invokable implementation
-//===----------------------------------------------------------------------===//
-
-// NOTE: This could be moved out to somewhere non-MEF specific if there are
-// other kinds of invokables someday.
-void MEFInvokable::vtableAnchor() {}
-
-/// Invoke this using the specified runtime, passing the specified
-/// arguments. This fills in one AsyncValue for each result.  The caller is
-/// allowed to take from the `arguments` async values.
-SmallVector<AnyAsyncValueRef, 1>
-MEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
-                     Runtime &runtime) const {
-  SmallVector<AnyAsyncValueRef, 1> results;
-  results.resize(getNumResults());
-  invoke(arguments, results, runtime);
-  return results;
-}
-
-//===----------------------------------------------------------------------===//
 // RunnablePrimitiveDescriptor implementation
 //===----------------------------------------------------------------------===//
 

@@ -920,6 +920,26 @@ ErrorOrSuccess MEFInvokableImpl::walkPrimitives(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// MEFInvokable implementation
+//===----------------------------------------------------------------------===//
+
+// NOTE: This could be moved out to somewhere non-MEF specific if there are
+// other kinds of invokables someday.
+void MEFInvokable::vtableAnchor() {}
+
+/// Invoke this using the specified runtime, passing the specified
+/// arguments. This fills in one AsyncValue for each result.  The caller is
+/// allowed to take from the `arguments` async values.
+SmallVector<AnyAsyncValueRef, 1>
+MEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+                     Runtime &runtime) const {
+  SmallVector<AnyAsyncValueRef, 1> results;
+  results.resize(getNumResults());
+  invoke(arguments, results, runtime);
+  return results;
+}
+
 ErrorOrSuccess MEFInvokable::recursePrimitives(
     MEFInvokable::RecurseOrder order,
     std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
@@ -942,11 +962,4 @@ ErrorOrSuccess MEFInvokable::recursePrimitives(
 
         return success();
       });
-}
-
-/// Return the invokable with the specified Invokable ID.
-MEFInvokable *MEFFileImpl::getInvokableByID(size_t number) const {
-  assert(number < numInvokables && "invalid invokable");
-  // Invokables are stored consecutively in memory.
-  return invokables + number;
 }

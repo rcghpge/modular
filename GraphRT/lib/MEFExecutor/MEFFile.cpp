@@ -237,6 +237,13 @@ ErrorOrSuccess MEFFileImpl::enumeratePrimitiveNames(
   return success();
 }
 
+/// Return the invokable with the specified Invokable ID.
+MEFInvokable *MEFFileImpl::getInvokableByID(size_t number) const {
+  assert(number < numInvokables && "invalid invokable");
+  // Invokables are stored consecutively in memory.
+  return invokables + number;
+}
+
 //===----------------------------------------------------------------------===//
 // MEFFile implementation
 //===----------------------------------------------------------------------===//
