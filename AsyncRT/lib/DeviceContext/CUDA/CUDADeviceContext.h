@@ -12,6 +12,7 @@
 #define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "CUDACompilationDevice.h"
 #include "CUDADriver.h"
 #include "NVML.h"
 #include "Support/Buffer.h"
@@ -57,12 +58,17 @@ public:
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
              CUcontext context, std::string name, Device::MemInfo memInfo,
-             size_t allocAlignment, int64_t deviceMemoryLimit = -1);
+             size_t allocAlignment,
+             std::unique_ptr<CUDACompilationDevice> compilationDevice,
+             int64_t deviceMemoryLimit = -1);
   ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
   CUdevice cudaDevice() const;
   ErrorOr<CUcontext> cudaContext() const;
+
+  /// Get the compilation device for code generation
+  const CUDACompilationDevice *compilationDevice() const override;
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
@@ -134,6 +140,9 @@ private:
   // initialize this with the primary device context for the device to be able
   // to share resources with libraries using the CUDA Runtime API.
   CUcontext context_;
+
+  // Compilation device for PTX→CUBIN compilation without GPU context
+  std::unique_ptr<CUDACompilationDevice> compilationDevice_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
@@ -340,11 +349,7 @@ public:
   ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
                                   size_t valSize) const override;
 
-  // DeviceFunction compiling.
-  ErrorOr<M::BufferRef>
-  compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
-                  StringRef targetAccelerator) const override;
-
+  // DeviceFunction loading.
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName,
                const DeviceFunction::SignatureBuilder &signature,

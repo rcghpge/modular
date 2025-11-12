@@ -63,6 +63,10 @@ public:
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;
 
+  const CompilationDevice *compilationDevice() const override {
+    return nullptr; // CPU device does not have a compilation device
+  }
+
   static const CpuDevice &cast(const Device &device);
 
   static ErrorOr<const CpuDevice &> get(int id, int64_t deviceMemoryLimit = -1);

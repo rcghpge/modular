@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/lib/DeviceContext/Virtual/VirtualDeviceContext.h"
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDACompilationDevice.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -25,28 +26,38 @@ protected:
     realDevice_ = cpuDeviceErr.takeValue();
   }
 
+  // Helper to create a CUDA compilation device for testing
+  std::unique_ptr<CUDACompilationDevice>
+  createCompilationDevice(const char *arch = "sm_80") {
+    auto result = CUDACompilationDevice::create(arch);
+    if (result.isError()) {
+      return nullptr;
+    }
+    return std::move(*result);
+  }
+
   DeviceRef realDevice_;
 };
 
 TEST_F(VirtualDeviceContextTest, DeviceCreation) {
   // Test creating virtual devices with different IDs
   VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
   VirtualDeviceRef device1 = VirtualDeviceRef::create(
-      1, "VirtualGPU-1", realDevice_.getPointer(), 8LL * 1024 * 1024 * 1024);
+      1, "VirtualGPU-1", createCompilationDevice(), 8LL * 1024 * 1024 * 1024);
 
   EXPECT_EQ(device0->id(), 0);
   EXPECT_EQ(device1->id(), 1);
   EXPECT_EQ(device0->name(), "VirtualGPU-0");
   EXPECT_EQ(device1->name(), "VirtualGPU-1");
-  // Virtual device should use the same API as the real device
-  EXPECT_EQ(device0->api(), realDevice_->api());
-  EXPECT_EQ(device1->api(), realDevice_->api());
+  // Virtual device should use CUDA API (from compilation device)
+  EXPECT_EQ(device0->api(), Device::cudaAPI);
+  EXPECT_EQ(device1->api(), Device::cudaAPI);
 }
 
 TEST_F(VirtualDeviceContextTest, DeviceCompatibility) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
 
   // Virtual devices should always be compatible
   EXPECT_NO_ERR(device->isCompatible());
@@ -54,119 +65,22 @@ TEST_F(VirtualDeviceContextTest, DeviceCompatibility) {
   // Check API version
   ASSIGN_NO_ERR(int, apiVersion, device->getApiVersion());
   EXPECT_GE(apiVersion, 0);
-
-  // Check compute capability
-  ASSIGN_NO_ERR(int, computeCap, device->computeCapability());
-  EXPECT_GE(computeCap, 0);
-}
-
-TEST_F(VirtualDeviceContextTest, ApiVersionMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device API version should match the real device's API version
-  ASSIGN_NO_ERR(int, virtualApiVersion, virtualDevice->getApiVersion());
-  ASSIGN_NO_ERR(int, realApiVersion, realDevice_->getApiVersion());
-
-  EXPECT_EQ(virtualApiVersion, realApiVersion);
-}
-
-TEST_F(VirtualDeviceContextTest, DriverVersionMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device driver version should match the real device's driver version
-  ErrorOr<DriverVersion &> virtualDriverVersionErr =
-      virtualDevice->getDriverVersion();
-  ErrorOr<DriverVersion &> realDriverVersionErr =
-      realDevice_->getDriverVersion();
-
-  EXPECT_FALSE(virtualDriverVersionErr.isError());
-  EXPECT_FALSE(realDriverVersionErr.isError());
-
-  // Both should return the same reference
-  EXPECT_EQ(&virtualDriverVersionErr.get(), &realDriverVersionErr.get());
-}
-
-TEST_F(VirtualDeviceContextTest, IsCompatibleMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device compatibility should match the real device's compatibility
-  ErrorOrSuccess virtualCompatible = virtualDevice->isCompatible();
-  ErrorOrSuccess realCompatible = realDevice_->isCompatible();
-
-  EXPECT_EQ(virtualCompatible.isError(), realCompatible.isError());
-}
-
-TEST_F(VirtualDeviceContextTest, ComputeCapabilityMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device compute capability should match the real device's compute
-  // capability
-  ASSIGN_NO_ERR(int, virtualComputeCap, virtualDevice->computeCapability());
-  ASSIGN_NO_ERR(int, realComputeCap, realDevice_->computeCapability());
-
-  EXPECT_EQ(virtualComputeCap, realComputeCap);
-}
-
-TEST_F(VirtualDeviceContextTest, CanAccessMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device canAccess should match the real device's canAccess
-  ASSIGN_NO_ERR(bool, virtualCanAccess, virtualDevice->canAccess(*realDevice_));
-  ASSIGN_NO_ERR(bool, realCanAccess, realDevice_->canAccess(*realDevice_));
-
-  EXPECT_EQ(virtualCanAccess, realCanAccess);
-}
-
-TEST_F(VirtualDeviceContextTest, EnablePeerAccessMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device enablePeerAccess should match the real device's
-  // enablePeerAccess
-  ErrorOrSuccess virtualEnablePeer =
-      virtualDevice->enablePeerAccess(*realDevice_);
-  ErrorOrSuccess realEnablePeer = realDevice_->enablePeerAccess(*realDevice_);
-
-  EXPECT_EQ(virtualEnablePeer.isError(), realEnablePeer.isError());
-}
-
-TEST_F(VirtualDeviceContextTest, GetAttributeMatchesRealDevice) {
-  VirtualDeviceRef virtualDevice =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
-
-  // Virtual device getAttribute should match the real device's getAttribute
-  ASSIGN_NO_ERR(int, virtualAttr,
-                virtualDevice->getAttribute(Device::Attribute::WARP_SIZE));
-  ASSIGN_NO_ERR(int, realAttr,
-                realDevice_->getAttribute(Device::Attribute::WARP_SIZE));
-
-  EXPECT_EQ(virtualAttr, realAttr);
 }
 
 TEST_F(VirtualDeviceContextTest, PeerAccess) {
   VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
   VirtualDeviceRef device1 =
-      VirtualDeviceRef::create(1, "VirtualGPU-1", realDevice_.getPointer());
+      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
 
-  // Virtual devices delegate peer access queries to the real device
-  // Since both virtual devices share the same real CPU device, check
-  // what the real device reports about accessing itself
-  ASSIGN_NO_ERR(bool, realCanAccess, realDevice_->canAccess(*realDevice_));
+  // Virtual devices should report false for peer access
   ASSIGN_NO_ERR(bool, virtualCanAccess, device0->canAccess(*device1));
-
-  // Virtual devices should report the same as the real device
-  EXPECT_EQ(virtualCanAccess, realCanAccess);
+  EXPECT_FALSE(virtualCanAccess);
 }
 
 TEST_F(VirtualDeviceContextTest, MemoryInfo) {
   VirtualDeviceRef device = VirtualDeviceRef::create(
-      0, "VirtualGPU", realDevice_.getPointer(), 16LL * 1024 * 1024 * 1024);
+      0, "VirtualGPU", createCompilationDevice(), 16LL * 1024 * 1024 * 1024);
 
   ASSIGN_NO_ERR(Device::MemInfo, memInfo, device->getMemoryInfo());
   EXPECT_GT(memInfo.total, 0);
@@ -176,21 +90,21 @@ TEST_F(VirtualDeviceContextTest, MemoryInfo) {
 
 TEST_F(VirtualDeviceContextTest, MemoryInfoDefaultLimit) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
 
-  // Virtual device without explicit memory limit should query the real device
+  // Virtual device without explicit memory limit should return default (80GB)
   ASSIGN_NO_ERR(Device::MemInfo, memInfo, device->getMemoryInfo());
 
-  // Should return positive values from the real device
+  // Should return positive values
   EXPECT_GT(memInfo.total, 0);
   EXPECT_GT(memInfo.free, 0);
-  // For CPU devices, total should be much larger than the old 8GB default
-  EXPECT_GT(memInfo.total, 8LL * 1024 * 1024 * 1024);
+  // Default should be 80GB (typical for H100)
+  EXPECT_EQ(memInfo.total, 80LL * 1024 * 1024 * 1024);
 }
 
 TEST_F(VirtualDeviceContextTest, ContextCreation) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
 
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
   EXPECT_NE(ctx.getPointer(), nullptr);
@@ -199,7 +113,7 @@ TEST_F(VirtualDeviceContextTest, ContextCreation) {
 
 TEST_F(VirtualDeviceContextTest, Synchronization) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 
   // Synchronization should be a no-op and succeed
@@ -208,7 +122,7 @@ TEST_F(VirtualDeviceContextTest, Synchronization) {
 
 TEST_F(VirtualDeviceContextTest, EventCreation) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 
   // Test enqueue event
@@ -222,7 +136,7 @@ TEST_F(VirtualDeviceContextTest, EventCreation) {
 
 TEST_F(VirtualDeviceContextTest, EventOperations) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 
   ASSIGN_NO_ERR(DeviceEventRef, event, ctx->enqueueEvent());
@@ -237,9 +151,9 @@ TEST_F(VirtualDeviceContextTest, EventOperations) {
 
 TEST_F(VirtualDeviceContextTest, ContextEventWait) {
   VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
   VirtualDeviceRef device1 =
-      VirtualDeviceRef::create(1, "VirtualGPU-1", realDevice_.getPointer());
+      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, device0->createContext());
   ASSIGN_NO_ERR(DeviceContextRef, ctx1, device1->createContext());
 
@@ -252,7 +166,7 @@ TEST_F(VirtualDeviceContextTest, ContextEventWait) {
 
 TEST_F(VirtualDeviceContextTest, TimerOperations) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 
   // Start a timer
@@ -266,9 +180,9 @@ TEST_F(VirtualDeviceContextTest, TimerOperations) {
 
 TEST_F(VirtualDeviceContextTest, PeerAccessContext) {
   VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
   VirtualDeviceRef device1 =
-      VirtualDeviceRef::create(1, "VirtualGPU-1", realDevice_.getPointer());
+      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, device0->createContext());
   ASSIGN_NO_ERR(DeviceContextRef, ctx1, device1->createContext());
 
@@ -278,7 +192,7 @@ TEST_F(VirtualDeviceContextTest, PeerAccessContext) {
 
 TEST_F(VirtualDeviceContextTest, CastOperations) {
   VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
 
   // Test Device cast
   const Device &deviceBase = *device;
@@ -306,11 +220,11 @@ TEST_F(VirtualDeviceContextTest, CastOperations) {
 TEST_F(VirtualDeviceContextTest, MultipleVirtualDevices) {
   // Test creating multiple virtual devices and contexts
   VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", realDevice_.getPointer());
+      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
   VirtualDeviceRef device1 =
-      VirtualDeviceRef::create(1, "VirtualGPU-1", realDevice_.getPointer());
+      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
   VirtualDeviceRef device2 =
-      VirtualDeviceRef::create(2, "VirtualGPU-2", realDevice_.getPointer());
+      VirtualDeviceRef::create(2, "VirtualGPU-2", createCompilationDevice());
 
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, device0->createContext());
   ASSIGN_NO_ERR(DeviceContextRef, ctx1, device1->createContext());

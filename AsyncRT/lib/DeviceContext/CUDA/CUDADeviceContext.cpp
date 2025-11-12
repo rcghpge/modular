@@ -12,6 +12,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
+#include "CUDACompilationDevice.h"
 #include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
 #include "Support/Buffer.h"
@@ -22,6 +23,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cassert>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -96,14 +98,6 @@ private:
       /* print the message and abort().                                     */ \
       llvm::errs() << err << "\n";                                             \
       abort();                                                                 \
-    }                                                                          \
-  } while (0)
-
-#define NVPTXCOMPILER_SAFE_CALL(nvptxcompiler_call)                            \
-  do {                                                                         \
-    CUDACompilationDriver::Result result = nvptxcompiler_call;                 \
-    if (result != CUDACompilationDriver::SUCCESS) {                            \
-      return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, result);        \
     }                                                                          \
   } while (0)
 
@@ -229,10 +223,15 @@ static Error formatCUDAError(const char *file, int line, const char *func,
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
                        Device::MemInfo memInfo, size_t allocAlignment,
+                       std::unique_ptr<CUDACompilationDevice> compilationDevice,
                        int64_t deviceMemoryLimit)
     : Device(api, std::move(name), id, memInfo, allocAlignment,
              deviceMemoryLimit),
-      driver_(driver), device_(device), context_(context) {}
+      driver_(driver), device_(device), context_(context),
+      compilationDevice_(std::move(compilationDevice)) {
+  assert(compilationDevice_ &&
+         "CUDADevice requires a non-null compilation device");
+}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
@@ -250,34 +249,18 @@ CUdevice CUDADevice::cudaDevice() const { return device_; }
 
 ErrorOr<CUcontext> CUDADevice::cudaContext() const { return context_; }
 
+const CUDACompilationDevice *CUDADevice::compilationDevice() const {
+  return compilationDevice_.get();
+}
+
 ErrorOr<int> CUDADevice::getApiVersion() const {
-  int driverVersion = 0;
-  CUDA_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
-  return driverVersion;
+  // CUDADevice always has a compilation device - delegate to it
+  return compilationDevice_->getApiVersion();
 }
 
 ErrorOr<DriverVersion &> CUDADevice::getDriverVersion() const {
-  // Initialize the driver version once on first call of this method
-  // or remember the error.
-  static ErrorOr<std::string> errOrVersion = []() -> ErrorOr<std::string> {
-    ErrorOr<const NVML &> errOrNVML = NVML::get();
-    if (errOrNVML.isError()) {
-      return errOrNVML.takeError();
-    }
-    ErrorOr<std::string> errOrVersion = errOrNVML->GetDriverVersion();
-    if (errOrVersion.isError()) {
-      return errOrVersion.takeError();
-    }
-    return *errOrVersion;
-  }();
-
-  // Propagate the error if getting the version produced an error.
-  if (errOrVersion.isError()) {
-    return Error(errOrVersion.getError());
-  }
-  // Return the version string.
-  static DriverVersion version(*errOrVersion);
-  return version;
+  // CUDADevice always has a compilation device - delegate to it
+  return compilationDevice_->getDriverVersion();
 }
 
 // The value returned by `cuDriverGetVersion_` from the CUDA API is an integer
@@ -554,8 +537,27 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
     Device::MemInfo memInfo;
     CUDA_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
 
+    // Get compute capability to create compilation device
+    int computeCapabilityMajor, computeCapabilityMinor;
+    CUDA_CHECK_ERR(driver.DeviceGetAttribute(
+        &computeCapabilityMajor, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
+        cuDevice));
+    CUDA_CHECK_ERR(driver.DeviceGetAttribute(
+        &computeCapabilityMinor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
+        cuDevice));
+
+    int computeCap = computeCapabilityMajor * 10 + computeCapabilityMinor;
+    std::string targetArch = "sm_" + std::to_string(computeCap);
+
+    // Create compilation device for this GPU architecture
+    auto compilationDevOrErr = CUDACompilationDevice::create(targetArch);
+    if (compilationDevOrErr.isError()) {
+      return compilationDevOrErr.takeError();
+    }
+
     device = new CUDADevice(driver, id, cuDevice, cuContext, name, memInfo,
-                            alignment, deviceMemoryLimit);
+                            alignment, std::move(*compilationDevOrErr),
+                            deviceMemoryLimit);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;
@@ -1259,130 +1261,6 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
   }
 
   return std::make_pair(optionKind, optionValues);
-}
-
-SmallVector<std::string> setupCompilationOptionsNVPTXCompiler(
-    StringRef debugLevel, int32_t optimizationLevel, StringRef gpuName) {
-  // TODO: add more options needed.
-  // https://docs.nvidia.com/cuda/ptx-compiler-api/index.html#compilation-options
-
-  static constexpr int kDefaultOptimizationLevel = 4;
-  // The default optimization level for NVIDIA GPUs is 4.
-  if (optimizationLevel < 0)
-    optimizationLevel = kDefaultOptimizationLevel;
-
-  // The Mojo compiler uses optimization level 3 as the highest optimization
-  // level, but 4 is the highest for CUDA.
-  if (optimizationLevel == 3)
-    optimizationLevel = kDefaultOptimizationLevel;
-
-  SmallVector<std::string, 2> options;
-  options.push_back("--gpu-name=" + gpuName.str());
-
-  if (debugLevel == "full") {
-    options.push_back("-g");
-    optimizationLevel = 0;
-  } else if (debugLevel == "line-tables") {
-    options.push_back("--generate-line-info");
-  }
-
-  options.push_back("--opt-level=" + std::to_string(optimizationLevel));
-
-  return options;
-}
-
-ErrorOr<M::BufferRef>
-CUDADeviceContext::compileFunction(StringRef ptx, StringRef debugLevel,
-                                   int32_t optimizationLevel,
-                                   StringRef targetAccelerator) const {
-#ifdef MODULAR_LINUX
-  auto options = setupCompilationOptionsNVPTXCompiler(
-      debugLevel, optimizationLevel, targetAccelerator);
-
-  CUDA_WITH_CTX_ERR(*this);
-
-  nvPTXCompilerHandle compiler = nullptr;
-
-  size_t elfSize, infoSize, errorSize;
-  unsigned int minorVer, majorVer;
-
-  NVPTXCOMPILER_SAFE_CALL(
-      CUDACompilationDriver::NVPTXCompilerGetVersion(&majorVer, &minorVer));
-
-  NVPTXCOMPILER_SAFE_CALL(CUDACompilationDriver::NVPTXCompilerCreate(
-      &compiler, (size_t)ptx.size(), (const char *)ptx.data()));
-
-  // FIXME: resize this if needed
-  constexpr int maxNumOptions = 16;
-  const char *compileOptions[maxNumOptions];
-  for (auto [idx, option] : llvm::enumerate(options)) {
-    compileOptions[idx] = option.c_str();
-  }
-
-  CUDACompilationDriver::Result result =
-      CUDACompilationDriver::NVPTXCompilerCompile(
-          compiler, options.size(), /* numCompileOptions */
-          compileOptions);          /* compileOptions */
-
-  if (result != CUDACompilationDriver::SUCCESS) {
-    NVPTXCOMPILER_SAFE_CALL(CUDACompilationDriver::NVPTXCompilerGetErrorLogSize(
-        compiler, &errorSize));
-
-    std::string errorLog;
-    if (errorSize != 0) {
-      errorLog.resize(errorSize + 1);
-      CUDACompilationDriver::Result getErrorResult =
-          CUDACompilationDriver::NVPTXCompilerGetErrorLog(compiler,
-                                                          errorLog.data());
-
-      if (getErrorResult != CUDACompilationDriver::SUCCESS)
-        return Error("compile to CUBIN failed and can't get error log\n");
-    }
-
-    return Error(errorLog + "compile to CUBIN failed\n");
-  }
-
-  NVPTXCOMPILER_SAFE_CALL(
-      CUDACompilationDriver::NVPTXCompilerGetCompiledProgramSize(compiler,
-                                                                 &elfSize));
-
-  auto resultBuf = M::WriteableBuffer::get(elfSize);
-
-  NVPTXCOMPILER_SAFE_CALL(
-      CUDACompilationDriver::NVPTXCompilerGetCompiledProgram(
-          compiler, (void *)resultBuf->getBufferStart()));
-
-  NVPTXCOMPILER_SAFE_CALL(
-      CUDACompilationDriver::NVPTXCompilerGetInfoLogSize(compiler, &infoSize));
-
-  std::optional<std::string> printWarning =
-      llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_WARN");
-  std::optional<std::string> werror =
-      llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_WERROR");
-
-  if (infoSize != 0 && (printWarning || werror)) {
-    std::string infoLog;
-    infoLog.resize(infoSize + 1);
-    CUDACompilationDriver::Result getLogResult =
-        CUDACompilationDriver::NVPTXCompilerGetInfoLog(compiler,
-                                                       infoLog.data());
-
-    if (getLogResult != CUDACompilationDriver::SUCCESS)
-      return Error("compile to CUBIN has log info but can't get it\n");
-
-    if (werror)
-      return Error(infoLog + "compile to CUBIN failed due to warnings\n");
-    else
-      llvm::errs() << infoLog << "\n";
-  }
-
-  NVPTXCOMPILER_SAFE_CALL(
-      CUDACompilationDriver::NVPTXCompilerDestroy(&compiler));
-
-  return resultBuf;
-#else  // MODULAR_LINUX
-  llvm_unreachable("NVPTX compiler not supported on this platform");
-#endif // MODULAR_LINUX
 }
 
 ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(

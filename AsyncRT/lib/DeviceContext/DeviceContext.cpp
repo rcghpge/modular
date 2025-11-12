@@ -12,6 +12,7 @@
 
 #include "BufferCache.h"
 #include "CPU/CpuDeviceContext.h"
+#include "CUDA/CUDACompilationDevice.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPDeviceContext.h"
 #include "Metal/MetalDeviceContext.h"
@@ -168,6 +169,19 @@ Device::~Device() {
   funcMap_.clear();
 }
 
+// DeviceFunction compiling.
+ErrorOr<M::BufferRef>
+Device::compileFunction(StringRef ir, StringRef debugLevel,
+                        int32_t optimizationLevel,
+                        StringRef targetAccelerator) const {
+  const CompilationDevice *compDev = compilationDevice();
+  if (!compDev) {
+    return Error("No compilation device available for this device");
+  }
+
+  return compDev->compileFunction(ir, debugLevel, optimizationLevel,
+                                  targetAccelerator);
+}
 MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
 ErrorOr<std::string> Device::getArchName() const {
@@ -214,42 +228,39 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
   // instead of a real hardware device.
   if (isVirtualDeviceMode() &&
       (api == gpuAPI || api == cudaAPI || api == hipAPI || api == metalAPI)) {
-    // In virtual device mode, we need a single real device to back all virtual
-    // devices for compilation. Cache it in a static variable.
-    static DeviceRef cachedRealDevice;
-    static std::mutex cacheMutex;
+    // In virtual device mode, create a lightweight compilation device
+    // that can generate code without requiring physical GPU hardware.
 
-    std::lock_guard<std::mutex> lock(cacheMutex);
+    std::unique_ptr<CompilationDevice> compilationDevice;
 
-    // Create the real device once (use device 0)
-    if (!cachedRealDevice) {
-      // Temporarily disable virtual device mode to create the real device
-      int savedCount = g_virtualDeviceCount;
-      g_virtualDeviceCount = 0;
+    if (api == cudaAPI || api == gpuAPI) {
+      // Default to sm_80 (Ampere/A100) for broad compatibility.
+      // sm_80 supports modern features while being widely compatible.
+      // TODO: Make this configurable via environment variable or config.
+      StringRef targetArch = "sm_80";
 
-      // Try to create a real device (GPU 0)
-      ErrorOr<const Device &> deviceErr = Error("No GPU found");
-      if (api == cudaAPI || api == gpuAPI) {
-        deviceErr = CUDADevice::get(0, deviceMemoryLimit);
-      }
-
-      // Restore virtual device mode
-      g_virtualDeviceCount = savedCount;
-
-      if (deviceErr.isError()) {
+      auto compilationDeviceOrErr = CUDACompilationDevice::create(targetArch);
+      if (compilationDeviceOrErr.isError()) {
         return Error(
             llvm::Twine(
-                "Virtual device mode requires at least one real GPU for "
-                "compilation: ") +
-            deviceErr.getError());
+                "Failed to create CUDA compilation device for virtual mode: ") +
+            compilationDeviceOrErr.getError());
       }
 
-      cachedRealDevice = DeviceRef::copy(&deviceErr.get());
+      compilationDevice = std::move(*compilationDeviceOrErr);
+    } else if (api == hipAPI) {
+      // TODO: Implement HIPCompilationDevice for AMD GPU compilation
+      return Error("HIP virtual device mode not yet implemented. "
+                   "Only CUDA is currently supported in compile-only mode.");
+    } else if (api == metalAPI) {
+      // TODO: Implement MetalCompilationDevice for Apple GPU compilation
+      return Error("Metal virtual device mode not yet implemented. "
+                   "Only CUDA is currently supported in compile-only mode.");
     }
 
-    // Create VirtualDevice backed by the real device
+    // Create VirtualDevice with the compilation device
     return VirtualDeviceRef::create(id, "VirtualGPU-" + std::to_string(id),
-                                    cachedRealDevice.getPointer(),
+                                    std::move(compilationDevice),
                                     deviceMemoryLimit);
   }
 
@@ -975,7 +986,9 @@ ErrorOr<M::BufferRef>
 DeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
                                int32_t optimizationLevel,
                                StringRef targetAccelerator) const {
-  return Error("compileFunction for this device is not supported");
+  // Delegate to the device's compile function
+  return device().compileFunction(ir, debugLevel, optimizationLevel,
+                                  targetAccelerator);
 }
 
 //

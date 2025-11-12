@@ -10,6 +10,7 @@
 
 #include "VirtualDeviceContext.h"
 
+#include "AsyncRT/lib/DeviceContext/CUDA/CUDACompilationDevice.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 
@@ -22,46 +23,56 @@ namespace M::AsyncRT {
 // VirtualDevice
 //===----------------------------------------------------------------------===//
 
-VirtualDevice::VirtualDevice(int id, std::string name, const Device *realDevice,
-                             int64_t deviceMemoryLimit)
-    : Device(realDevice->api(), std::move(name), id, Device::MemInfo(),
+VirtualDevice::VirtualDevice(
+    int id, std::string name,
+    std::unique_ptr<CompilationDevice> compilationDevice,
+    int64_t deviceMemoryLimit)
+    : Device(compilationDevice->api(), std::move(name), id, Device::MemInfo(),
              M::kPreferredMemoryAlignment, deviceMemoryLimit),
-      realDevice_(realDevice), deviceMemoryLimit_(deviceMemoryLimit) {
-  assert(realDevice_ && "VirtualDevice requires a non-null real device");
+      compilationDevice_(std::move(compilationDevice)),
+      deviceMemoryLimit_(deviceMemoryLimit) {
+  assert(compilationDevice_ &&
+         "VirtualDevice requires a non-null compilation device");
 }
 
 VirtualDevice::~VirtualDevice() = default;
 
 ErrorOr<int> VirtualDevice::getApiVersion() const {
-  return realDevice_->getApiVersion();
+  return compilationDevice_->getApiVersion();
 }
 
 ErrorOr<DriverVersion &> VirtualDevice::getDriverVersion() const {
-  return realDevice_->getDriverVersion();
+  return compilationDevice_->getDriverVersion();
 }
 
-ErrorOrSuccess VirtualDevice::isCompatible() const {
-  return realDevice_->isCompatible();
-}
+ErrorOrSuccess VirtualDevice::isCompatible() const { return success(); }
 
 ErrorOr<int> VirtualDevice::computeCapability() const {
-  return realDevice_->computeCapability();
+  return DeviceContext::formatError(
+      __FILE__, __LINE__, __FUNCTION__,
+      "VirtualDevice does not support compute capability");
 }
 
 ErrorOr<std::string> VirtualDevice::getArchName() const {
-  return realDevice_->getArchName();
+  return compilationDevice_->getArchName();
 }
 
 ErrorOr<bool> VirtualDevice::canAccess(const Device &peer) const {
-  return realDevice_->canAccess(peer);
+  // Virtual devices don't support peer access
+  return false;
 }
 
 ErrorOrSuccess VirtualDevice::enablePeerAccess(const Device &peer) const {
-  return realDevice_->enablePeerAccess(peer);
+  // Virtual devices don't support peer access
+  return DeviceContext::formatError(
+      __FILE__, __LINE__, __FUNCTION__,
+      "VirtualDevice does not support peer access");
 }
 
 ErrorOr<int> VirtualDevice::getAttribute(Attribute attr) const {
-  return realDevice_->getAttribute(attr);
+  return DeviceContext::formatError(
+      __FILE__, __LINE__, __FUNCTION__,
+      "VirtualDevice does not support getAttribute");
 }
 
 int VirtualDevice::deviceCount() const {
@@ -85,16 +96,18 @@ ErrorOrSuccess VirtualDevice::chunkFree(void *ptr, bool isHost) const {
 }
 
 ErrorOr<Device::MemInfo> VirtualDevice::getMemoryInfo() const {
-  // If a memory limit was explicitly specified, use it
+  // Return simulated memory info
+  Device::MemInfo info;
   if (deviceMemoryLimit_ > 0) {
-    Device::MemInfo info;
+    // Use explicitly specified limit
     info.free = deviceMemoryLimit_;
     info.total = deviceMemoryLimit_;
-    return info;
+  } else {
+    // Return a reasonable default (80GB, typical for H100)
+    info.free = 80ULL * 1024 * 1024 * 1024;
+    info.total = 80ULL * 1024 * 1024 * 1024;
   }
-
-  // Otherwise, query the real device's memory
-  return realDevice_->getMemoryInfo();
+  return info;
 }
 
 ErrorOr<void *> VirtualDevice::getCurrentDriverContext() const {
@@ -112,14 +125,8 @@ ErrorOrSuccess VirtualDevice::setCurrentDriverContext(void *ctx) const {
 }
 
 ErrorOr<DeviceContextRef> VirtualDevice::createContext() const {
-  // Create a context from the real device for compilation operations
-  ErrorOr<DeviceContextRef> realContextErr = realDevice_->createContext();
-  if (realContextErr.isError()) {
-    return realContextErr.takeError();
-  }
-
-  DeviceContextRef realContext = realContextErr.takeValue();
-  return VirtualDeviceContextRef::create(*this, std::move(realContext));
+  // Create a virtual context that uses the compilation device
+  return VirtualDeviceContextRef::create(*this);
 }
 
 ErrorOr<DeviceStreamRef>
@@ -232,12 +239,8 @@ const VirtualDeviceTimer &VirtualDeviceTimer::cast(const DeviceTimer &timer) {
 // VirtualDeviceContext
 //===----------------------------------------------------------------------===//
 
-VirtualDeviceContext::VirtualDeviceContext(const VirtualDevice &device,
-                                           DeviceContextRef realContext)
-    : DeviceContext(device), realContext_(std::move(realContext)) {
-  assert(realContext_ &&
-         "VirtualDeviceContext requires a non-null real context");
-}
+VirtualDeviceContext::VirtualDeviceContext(const VirtualDevice &device)
+    : DeviceContext(device) {}
 
 VirtualDeviceContext::~VirtualDeviceContext() = default;
 
@@ -296,15 +299,6 @@ ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,
       "VirtualDevice does not support memory operations");
-}
-
-ErrorOr<M::BufferRef>
-VirtualDeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
-                                      int32_t optimizationLevel,
-                                      StringRef targetAccelerator) const {
-  // Delegate compilation to the real device context
-  return realContext_->compileFunction(ir, debugLevel, optimizationLevel,
-                                       targetAccelerator);
 }
 
 ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(

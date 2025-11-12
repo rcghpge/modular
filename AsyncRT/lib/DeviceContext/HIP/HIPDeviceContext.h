@@ -88,6 +88,10 @@ public:
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;
 
+  const CompilationDevice *compilationDevice() const override {
+    return nullptr; // HIP device does not have a compilation device yet
+  }
+
   static const HIPDevice &cast(const Device &device);
   static const HIPDevice *verified_cast(const Device *device);
 

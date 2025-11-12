@@ -15,6 +15,7 @@
 #ifndef ASYNCRT_LIB_DEVICECONTEXT_VIRTUAL_VIRTUALDEVICECONTEXT_H
 #define ASYNCRT_LIB_DEVICECONTEXT_VIRTUAL_VIRTUALDEVICECONTEXT_H
 
+#include "AsyncRT/DeviceContext/CompilationDevice.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
@@ -24,6 +25,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace M::AsyncRT {
@@ -45,15 +47,18 @@ using VirtualDeviceTimerRef = RCRef<const VirtualDeviceTimer>;
 /// This device mimics GPU devices but doesn't require actual hardware.
 /// It's used during compilation to validate graph structure and generate
 /// code without needing to execute on real GPUs.
-/// Virtual devices delegate compilation to a real backing device.
+/// Virtual devices use a CompilationDevice for compilation operations.
 class VirtualDevice : public Device {
 public:
-  VirtualDevice(int id, std::string name, const Device *realDevice,
+  VirtualDevice(int id, std::string name,
+                std::unique_ptr<CompilationDevice> compilationDevice,
                 int64_t deviceMemoryLimit = -1);
   ~VirtualDevice() override;
 
-  /// Get the real device backing this virtual device for compilation
-  const Device *realDevice() const { return realDevice_; }
+  /// Get the compilation device used for code generation
+  const CompilationDevice *compilationDevice() const override {
+    return compilationDevice_.get();
+  }
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
@@ -86,8 +91,8 @@ public:
   static const VirtualDevice &cast(const Device &device);
 
 private:
-  // Real device used for compilation operations
-  const Device *realDevice_;
+  // Compilation device used for code generation (e.g., PTX→CUBIN)
+  std::unique_ptr<CompilationDevice> compilationDevice_;
   // Simulated device memory limit
   int64_t deviceMemoryLimit_;
 };
@@ -148,15 +153,14 @@ public:
 /// This context provides minimal functionality needed for compilation:
 /// - Memory allocation tracking (doesn't actually allocate)
 /// - Stream/event creation (returns stub objects)
-/// - Function loading (delegates to real device context for compilation)
+/// - Function compilation (uses CompilationDevice)
 /// - Synchronization (no-ops)
 ///
-/// Compilation operations are delegated to a real device context, allowing
-/// compilation for virtual devices backed by a single physical device.
+/// Compilation operations use the VirtualDevice's CompilationDevice,
+/// which can compile code without requiring GPU hardware.
 class VirtualDeviceContext : public DeviceContext {
 public:
-  VirtualDeviceContext(const VirtualDevice &device,
-                       DeviceContextRef realContext);
+  VirtualDeviceContext(const VirtualDevice &device);
   ~VirtualDeviceContext() override;
 
   // DeviceBuffer copies - not implemented for virtual context
@@ -175,10 +179,6 @@ public:
                                   size_t valSize) const override;
 
   // DeviceFunction compiling - minimal implementation
-  ErrorOr<M::BufferRef>
-  compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
-                  StringRef targetAccelerator) const override;
-
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName,
                const DeviceFunction::SignatureBuilder &signature,
@@ -236,9 +236,6 @@ private:
 
   MMapFileImplResult
   memmapFileImpl(const std::filesystem::path &filename) const override;
-
-  // Real device context used for compilation operations
-  DeviceContextRef realContext_;
 };
 
 } // namespace M::AsyncRT
