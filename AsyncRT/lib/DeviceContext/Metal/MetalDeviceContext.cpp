@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "MetalDeviceContext.h"
-#include <limits>
 #ifdef MODULAR_MACOS
 
 #include "AsyncRT/Runtime/Globals/Globals.h"
@@ -130,133 +129,47 @@ ErrorOr<int> MetalDevice::computeCapability() const {
 ErrorOr<bool> MetalDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
-  // Constants pulled from the Metal feature set tables available in
-  // PDF/Numbers spreadsheet at:
-  // https://developer.apple.com/documentation/metal/detecting-gpu-features-and-metal-software-versions
-  //
-  // The families we care about:
-  // - M1 -> Apple7
-  // - M2 -> Apple8
-  // - M3 -> Apple9
-  // - M4 -> Apple9
-  // - M5 -> Apple10
-
-#define ATTRIBUTE_UNSUPPORTED(ATTR)                                            \
-  RAISE_ERROR_MESSAGE("Attribute \"" #ATTR "\" not supported for Apple GPU.")
-
   switch (attr) {
-  // 'Maximum threads per threadgroup' from 'Function arguments' section in the
-  // 'GPU implementation limits by family', same limit for Apple7 - Apple10.
-  case Device::Attribute::MAX_THREADS_PER_BLOCK: {
-    return 1024;
-  }
-
-  // Block dimensions map to max threads per threadgroup.
-  case Device::Attribute::MAX_BLOCK_DIM_X:
-    return device_->maxThreadsPerThreadgroup().width;
-  case Device::Attribute::MAX_BLOCK_DIM_Y:
-    return device_->maxThreadsPerThreadgroup().height;
-  case Device::Attribute::MAX_BLOCK_DIM_Z:
-    return device_->maxThreadsPerThreadgroup().depth;
-
-  // There is no limit to the size of a grid.
-  case Device::Attribute::MAX_GRID_DIM_X:
-    return std::numeric_limits<int>::max();
-  case Device::Attribute::MAX_GRID_DIM_Y:
-    return std::numeric_limits<int>::max();
-  case Device::Attribute::MAX_GRID_DIM_Z:
-    return std::numeric_limits<int>::max();
-
-  // 'Maximum total threadgroup memory allocation' from 'Function arguments'
-  // section in the 'GPU implementation limits by family', same limit for
-  // Apple7 - Apple10.
-  case Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK:
-    return 33554432; // 32KB
-
-  // The SIMD-group size is a dynamic property which is accessble through the
-  // computePipeline->threadExecutionWidth property, i.e. it's tied to a
-  // specific kernel invocation rather available as a static/dynamic device
-  // property.
-  case Device::Attribute::WARP_SIZE:
-    ATTRIBUTE_UNSUPPORTED(WARP_SIZE);
-
-  // Max registers per block is not documented.
-  case Device::Attribute::MAX_REGISTERS_PER_BLOCK:
-    ATTRIBUTE_UNSUPPORTED(MAX_REGISTERS_PER_BLOCK);
-
-  // Clock rate is exposed through performance counters not as a property of
-  // the device.
-  case Device::Attribute::CLOCK_RATE:
-    ATTRIBUTE_UNSUPPORTED(CLOCK_RATE);
-
-  // TODO: The GPU core count can be inferred from the device name.
-  case Device::Attribute::MULTIPROCESSOR_COUNT:
-    ATTRIBUTE_UNSUPPORTED(MULTIPROCESSOR_COUNT);
-
-  // The max total threads per threadgroup is a dynamic property which is
-  // accessible through the computePipeline->maxTotalThreadsPerThreadgroup size
-  // property, i.e. it's tied to a specific kernel invocation rather than
-  // available as a static/dynamic device property.
-  case Device::Attribute::MAX_THREADS_PER_MULTIPROCESSOR:
-    ATTRIBUTE_UNSUPPORTED(MAX_THREADS_PER_MULTIPROCESSOR);
-
-  // TODO: Would it make more sense to map the compute capability major/minor
-  // to the Apple GPU family instead?
-  // Note that M3 and M4 both map to the Apple9 family.
   case Device::Attribute::COMPUTE_CAPABILITY_MAJOR: {
     std::string deviceName;
     if (device_ && device_->name()) {
       deviceName = device_->name()->cString(NS::UTF8StringEncoding);
     }
+
     std::string nameToCheck;
     if (!deviceName.empty()) {
       nameToCheck = deviceName;
     } else {
       return 3;
     }
+
     if (nameToCheck.find("M4") != std::string::npos ||
         nameToCheck.find("m4") != std::string::npos) {
       return 4;
     }
+
     if (nameToCheck.find("M3") != std::string::npos ||
         nameToCheck.find("m3") != std::string::npos) {
       return 3;
     }
+
     if (nameToCheck.find("M2") != std::string::npos ||
         nameToCheck.find("m2") != std::string::npos) {
       return 2;
     }
+
     if (nameToCheck.find("M1") != std::string::npos ||
         nameToCheck.find("m1") != std::string::npos) {
       return 1;
     }
+
     RAISE_ERROR_MESSAGE("Unknown device name");
   }
   case Device::Attribute::COMPUTE_CAPABILITY_MINOR:
     return 0;
-
-  // Max shared memory per GPU core is not documented.
-  case Device::Attribute::MAX_SHARED_MEMORY_PER_MULTIPROCESSOR:
-    ATTRIBUTE_UNSUPPORTED(MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
-
-  // Max registers per GPU core is not documented.
-  case Device::Attribute::MAX_REGISTERS_PER_MULTIPROCESSOR:
-    ATTRIBUTE_UNSUPPORTED(MAX_REGISTERS_PER_MULTIPROCESSOR);
-
-  // Cooperative launch is not supported.
-  case Device::Attribute::COOPERATIVE_LAUNCH:
-    ATTRIBUTE_UNSUPPORTED(COOPERATIVE_LAUNCH);
-
-  // Max threadgroups per GPU core is not documented.
-  case Device::Attribute::MAX_BLOCKS_PER_MULTIPROCESSOR:
-    ATTRIBUTE_UNSUPPORTED(MAX_BLOCKS_PER_MULTIPROCESSOR);
-
-  // Max access policy window size is not supported.
-  case Device::Attribute::MAX_ACCESS_POLICY_WINDOW_SIZE:
-    ATTRIBUTE_UNSUPPORTED(MAX_ACCESS_POLICY_WINDOW_SIZE);
+  default:
+    return 0;
   }
-
-#undef ATTRIBUTE_UNSUPPORTED
 }
 
 int MetalDevice::deviceCount() const { return 1; }
