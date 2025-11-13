@@ -135,7 +135,6 @@ void M::MO::buildMoToMgpPipeline(
       {llvm::to_vector_of<std::string>(opts.dimNames)}));
 
   // RMO pipeline:
-  pm.addPass(MO::createResolveUnknownParameters());
   pm.addPass(RMO::createLegalizeRMOOps());
 
   // MO pipeline:
