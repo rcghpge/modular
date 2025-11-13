@@ -19,7 +19,7 @@
 #include <unordered_map>
 
 #ifdef MODULAR_MACOS
-#include "MetalImpl.hpp"
+#include "MetalDriver.hpp"
 
 namespace M::AsyncRT {
 

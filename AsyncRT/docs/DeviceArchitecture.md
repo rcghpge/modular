@@ -46,7 +46,7 @@ The device stack consists of several layers, from lowest to highest:
 ├──────────────────┤                    ├──────────────────┤
 │ • CUDADriver     │                    │ • CUDA:          │
 │ • HIPDriver      │                    │   CUDACompilation│
-│ • MetalDevice    │                    │   Device         │
+│ • MetalDriver    │                    │   Device         │
 │                  │                    │ • HIP:           │
 │ Wraps:           │                    │   HIPCompilation │
 │ • libcuda.so.1   │                    │   Device         │
