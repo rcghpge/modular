@@ -171,6 +171,7 @@ private:
 
 namespace M::AsyncRT {
 
+[[maybe_unused]]
 static Error formatCUDAError(const char *file, int line, const char *func,
                              CUDADriver::Result result,
                              std::string extra_msg = "") {
@@ -184,40 +185,38 @@ static Error formatCUDAError(const char *file, int line, const char *func,
     errDriver->GetErrorString(result, &errStr);
   }
 
-  if (!extra_msg.empty()) {
+  if (!extra_msg.empty())
     extra_msg = std::string(" - ") + extra_msg;
-  }
 
-  if ((errName != nullptr) && (errStr != nullptr)) {
+  if (errName && errStr) {
     return DeviceContext::formatError(file, line, func,
                                       llvm::Twine("CUDA call failed: ") +
                                           errName + " (" + errStr + ")" +
                                           extra_msg);
-  } else if ((errName != nullptr) || (errStr != nullptr)) {
+  }
+
+  if (errName || errStr) {
     return DeviceContext::formatError(
         file, line, func,
         llvm::Twine("CUDA call failed: ") +
             (errName != nullptr ? errName : errStr) + extra_msg);
-  } else {
-    return DeviceContext::formatError(file, line, func,
-                                      llvm::Twine("CUDA call failed: ") +
-                                          llvm::Twine(result) + extra_msg);
   }
+
+  return DeviceContext::formatError(
+      file, line, func, "CUDA call failed: " + llvm::Twine(result) + extra_msg);
 }
 
-#ifdef MODULAR_LINUX
+[[maybe_unused]]
 static Error formatCUDAError(const char *file, int line, const char *func,
                              CUDACompilationDriver::Result result,
                              std::string extra_msg = "") {
-  if (!extra_msg.empty()) {
+  if (!extra_msg.empty())
     extra_msg = std::string(" - ") + extra_msg;
-  }
+
   return DeviceContext::formatError(
       file, line, func,
-      llvm::Twine("NVPTX Compiler call failed: ") + llvm::Twine(result) +
-          extra_msg);
+      "NVPTX Compiler call failed: " + llvm::Twine(result) + extra_msg);
 }
-#endif
 
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
