@@ -9,26 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "CUDADeviceContext.h"
-
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "CUDACompilationDevice.h"
 #include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
 #include "Support/Buffer.h"
-#include "Support/ErrorOr.h"
-#include "Support/PlatformUtils.h"
-#include "llvm/ADT/Twine.h"
-#include "llvm/Support/MathExtras.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
 
-#include <cassert>
-#include <cstdint>
-#include <mutex>
-#include <string>
+using namespace M;
+using namespace M::AsyncRT;
 
-namespace M::AsyncRT {
 namespace {
 
 // The helper class CUDAContextScope is used to set and restore the CUcontext
@@ -69,7 +58,6 @@ private:
 };
 
 } // namespace
-} // namespace M::AsyncRT
 
 #define CUDA_CHECK_ERR(cuda_call)                                              \
   do {                                                                         \
@@ -168,8 +156,6 @@ private:
           cuda_ctx.cudaDriver().StreamSynchronize(cuda_ctx.cudaStream()));     \
     }                                                                          \
   } while (0)
-
-namespace M::AsyncRT {
 
 [[maybe_unused]]
 static Error formatCUDAError(const char *file, int line, const char *func,
@@ -1529,5 +1515,3 @@ CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
   }
   return static_cast<const CUDADeviceContext *>(ctx);
 }
-
-} // namespace M::AsyncRT
