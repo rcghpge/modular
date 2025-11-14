@@ -882,33 +882,6 @@ mo.graph @unsqueeze_shape_fallback_shape_func<D0, D1 -> D2>(
 // CHECK-NEXT: mo.output<[[D3]]> %[[RES]] : !mo.tensor<[[[D3]]], si64>
 
 
-mo.graph @broadcast_to_fallback_shape_func_unraned<D0 -> Sh1: !mosh.ape>(
-  %input: !mo.tensor<[1, 3], f32>,
-  %target_shape: !mo.tensor<[D0], si32>
-) -> !mo.tensor<Sh1, f32> {
-
-  %res = mo.broadcast_to<() -> Sh2: !mosh.ape>(%input, %target_shape) :
-    (!mo.tensor<[1, 3], f32>, !mo.tensor<[D0], si32>) -> !mo.tensor<Sh2, f32>
-
-    mo.output<:!mosh.ape Sh2> %res : !mo.tensor<Sh2, f32>
-}
-// CHECK-LABEL: mo.graph @broadcast_to_fallback_shape_func
-// CHECK-SAME: <[[D0:.*]] -> [[SH1:.*]]: !mosh.ape>(
-// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[1, 3], f32>,
-// CHECK-SAME:   %[[TARGET_SHAPE:.*]]: !mo.tensor<[[[D0]]], si32>
-// CHECK-SAME: ) -> !mo.tensor<[[SH1]], f32> {
-//
-// CHECK-NEXT: mo.invoke_shape_func["mo.broadcast_to"]<() -> [[SH2:.*]]: !mosh.ape>(%[[INPUT]], %[[TARGET_SHAPE]])
-// CHECK-SAME:   {dataDeptTensors = [1 : i32]} :
-// CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[[[D0]]], si32>)
-//
-// CHECK-NEXT: %[[RES:.*]] = mo.broadcast_to(%[[INPUT]], %[[TARGET_SHAPE]]) :
-// CHECK-SAME:   (!mo.tensor<[1, 3], f32>, !mo.tensor<[[[D0]]], si32>)
-// CHECK-SAME:   -> !mo.tensor<[[SH2]], f32>
-//
-// CHECK-NEXT: mo.output<{{.*}} %[[RES]] : {{.*}}
-
-
 // Note how the second invocation does not redefine "I1" or "B"
 // CHECK-LABEL: mo.graph @broadcast_partially_bound_params
 // CHECK: mo.invoke_shape_func["mo.broadcast_to"]<() -> I1, I2, I3>({{.*}}) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[A, B], f32>, !mo.tensor<[3], si32>)

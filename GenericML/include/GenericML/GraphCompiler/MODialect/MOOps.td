@@ -4360,6 +4360,8 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
     `[` $shapeFuncName `]` `` custom<ParamDecls>($outputParamDecls)
     `(` $inputs `)` attr-dict `:` `(` type($inputs) `)`
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

@@ -2460,6 +2460,18 @@ LogicalResult LinAlg::BandPartOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// InvokeShapeFuncOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult InvokeShapeFuncOp::verify() {
+  if (llvm::any_of(getOutputParamDecls(), [&](ParamDeclAttr decl) {
+        return isa<MOSH::ShapeType>(decl.getType());
+      }))
+    return emitError() << "dynamic rank isn't supported in shape function";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LayoutTransformOp
 //===----------------------------------------------------------------------===//
 
