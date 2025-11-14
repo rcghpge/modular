@@ -1024,16 +1024,6 @@ BufferCacheFreeList &DeviceContext::hostFreeList() const {
   return *hostFreeList_;
 }
 
-// DeviceFunction compiling, loading, and execution.
-ErrorOr<M::BufferRef>
-DeviceContext::compileFunction(StringRef ir, StringRef debugLevel,
-                               int32_t optimizationLevel,
-                               StringRef targetAccelerator) const {
-  // Delegate to the device's compile function
-  return device().compileFunction(ir, debugLevel, optimizationLevel,
-                                  targetAccelerator);
-}
-
 //
 // ===== Device ===== //
 //
