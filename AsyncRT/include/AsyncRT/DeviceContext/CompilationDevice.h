@@ -80,6 +80,11 @@ public:
   compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
                   StringRef targetAccelerator) const = 0;
 
+  /// \param api The api for which to create a compilation device
+  /// \return Compilation device or error
+  static ErrorOr<std::unique_ptr<CompilationDevice>> create(StringRef api,
+                                                            StringRef arch);
+
 protected:
   CompilationDevice(API api, std::string targetArch)
       : api_(api), targetArch_(std::move(targetArch)) {}

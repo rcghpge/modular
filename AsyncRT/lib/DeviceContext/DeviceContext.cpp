@@ -278,8 +278,6 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
     // In virtual device mode, create a lightweight compilation device
     // that can generate code without requiring physical GPU hardware.
 
-    std::unique_ptr<CompilationDevice> compilationDevice;
-
     // Get the configured API and target architecture from global config
     std::string virtualAPI = getVirtualDeviceAPI();
     std::string targetArch = getVirtualDeviceTargetArch();
@@ -298,44 +296,14 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
           "(e.g., 'sm_80', 'sm_90') before creating virtual devices.");
     }
 
-    // Branch based on the configured API (not the requested API which is often
-    // generic "gpu")
-    if (virtualAPI == "cuda") {
-      auto compilationDeviceOrErr = CUDACompilationDevice::create(targetArch);
-      if (compilationDeviceOrErr.isError()) {
-        return Error(
-            llvm::Twine(
-                "Failed to create CUDA compilation device for virtual mode: ") +
-            compilationDeviceOrErr.getError());
-      }
-
-      compilationDevice = std::move(*compilationDeviceOrErr);
-    } else if (virtualAPI == "hip") {
-      // Create HIP compilation device
-      // Unlike CUDA, HIP does not require runtime compilation (PTX→CUBIN).
-      // All compilation is handled by KGEN through the LLVM AMDGPU backend.
-      // However, we still need a CompilationDevice to store the target
-      // architecture information.
-      auto compilationDeviceOrErr = HIPCompilationDevice::create(targetArch);
-      if (compilationDeviceOrErr.isError()) {
-        return Error(
-            llvm::Twine(
-                "Failed to create HIP compilation device for virtual mode: ") +
-            compilationDeviceOrErr.getError());
-      }
-
-      compilationDevice = std::move(*compilationDeviceOrErr);
-    } else if (virtualAPI == "metal") {
-      // TODO: Implement MetalCompilationDevice for Apple GPU compilation
-      return Error("Metal virtual device mode not yet implemented. "
-                   "Only CUDA is currently supported in compile-only mode.");
-    } else {
-      return Error(llvm::Twine("Unknown virtual device API: ") + virtualAPI);
-    }
+    ErrorOr<std::unique_ptr<CompilationDevice>> compilationDevice =
+        CompilationDevice::create(virtualAPI, targetArch);
+    if (compilationDevice.isError())
+      return compilationDevice.takeError();
 
     // Create VirtualDevice with the compilation device
     return VirtualDeviceRef::create(id, "VirtualGPU-" + std::to_string(id),
-                                    std::move(compilationDevice),
+                                    std::move(*compilationDevice),
                                     deviceMemoryLimit);
   }
 
