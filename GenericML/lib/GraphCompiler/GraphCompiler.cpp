@@ -138,12 +138,12 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(RMO::createLegalizeRMOOps());
 
   // MO pipeline:
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addPass(MO::createCanonicalizeChainSequences());
 
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   // Label for constant fold.
   std::string_view compiledFrameworkLabel;
@@ -170,8 +170,8 @@ void M::MO::buildMoToMgpPipeline(
 
   // Add fallback shape functions for any remaining unhandled ops.
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
@@ -180,8 +180,8 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MO::createAddFallbackShapeFunctions({kernelLibraryPaths},
                                                  libraryAnalysis));
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
@@ -203,8 +203,8 @@ void M::MO::buildMoToMgpPipeline(
 
     pm.addPass(MO::createInvokeShapePackingFunctions(shapeFuncOptions));
     pm.addPass(MO::createPropagateShapes());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
+    pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<GraphOp>(mlir::createCSEPass());
   }
 
   MO::ValidateDevicesPassOptions validateDevicesPassOpt;
@@ -214,8 +214,8 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MO::createValidateDevicesPass(validateDevicesPassOpt));
 
   pm.addPass(MO::createDecomposeViewOps());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
