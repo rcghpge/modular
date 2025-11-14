@@ -17,6 +17,7 @@
 
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <string.h>
 
 namespace M::AsyncRT {
 
@@ -34,6 +35,11 @@ const char CUDADriver::lib_name[] = "";
   }
 
 ErrorOr<std::unique_ptr<CUDADriver>> CUDADriver::allocAndInitDriver() {
+  if (strcmp("", lib_name) == 0) {
+    return Error(
+        llvm::Twine("Failed to open CUDA library: "
+                    "cuda is not supported on this operating system."));
+  }
   // Attempt to open the shared library of the CUDA driver.
   // We use RTLD_GLOBAL to allow UCX CUDA backend to also use these loaded CUDA
   // symbols.

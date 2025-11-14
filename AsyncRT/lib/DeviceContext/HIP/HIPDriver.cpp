@@ -39,6 +39,10 @@ const char hsa_lib_name[] = "";
   // Note: We don't fail if HSA functions are not available
 
 ErrorOr<std::unique_ptr<HIPDriver>> HIPDriver::allocAndInitDriver() {
+  if (strcmp("", lib_name) == 0) {
+    return Error(llvm::Twine("Failed to open HIP library: "
+                             "hip is not supported on this operating system."));
+  }
   // Attempt to open the shared library of the HIP driver.
   // RTLD_GLOBAL allows UCX ROCm backend to also use these loaded symbols.
   void *dl_lib = dlopen(lib_name, RTLD_NOW | RTLD_GLOBAL);
