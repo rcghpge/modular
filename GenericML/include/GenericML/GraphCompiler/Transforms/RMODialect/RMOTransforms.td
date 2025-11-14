@@ -13,8 +13,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeRMOOps :
-    Pass<"legalize-rmo-operators", "ModuleOp"> {
+def LegalizeRMOOps : Pass<"legalize-rmo-operators", "GraphOp"> {
   let summary = "Legalize RMO operators to mo operators.";
   let description = [{
     There are broadly two categories of RMO operators. The first are those
@@ -30,6 +29,7 @@ def LegalizeRMOOps :
     "M::MO::MODialect",
     "M::RMO::RMODialect"
   ];
+
   let options = [
     Option<"skipRMORebind", "skip-rmo-rebinds", "bool", "false",
            "Whether to skip legalize rmo rebind operations. Useful for debugging.">,
