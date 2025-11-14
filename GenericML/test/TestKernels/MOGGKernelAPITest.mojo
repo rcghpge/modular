@@ -836,10 +836,10 @@ struct BasicTarget:
 
 @register_passable
 struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable, Movable):
-    var val: Scalar[dtype]
+    var val: Scalar[Self.dtype]
 
     @implicit
-    fn __init__(out self, val: Scalar[dtype]):
+    fn __init__(out self, val: Scalar[Self.dtype]):
         print("MyCustomScalarReg.__init__", val)
         self.val = val
 
@@ -1201,8 +1201,8 @@ struct InplaceNoOutFunc:
 @fieldwise_init
 @register_passable
 struct SIMDPair[S0: Int, S1: Int](ImplicitlyCopyable, Movable):
-    var x: SIMD[DType.int32, S0]
-    var y: SIMD[DType.int32, S1]
+    var x: SIMD[DType.int32, Self.S0]
+    var y: SIMD[DType.int32, Self.S1]
 
 
 @compiler.register("make_simd_pair")
