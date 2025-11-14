@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
@@ -661,103 +662,44 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
 
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
                                         const mlir::BitVector &shouldUnpack,
-                                        const mlir::BitVector &shouldPack,
-                                        bool callsThrowingMojoStub) {
+                                        const mlir::BitVector &shouldPack) {
   auto kernel = cast<MOGG::GenericCompiledRegionOp>(kernelOp);
   OpBuilder builder{&kernel.getBody().front(),
                     kernel.getBody().front().begin()};
   auto loc = kernel->getLoc();
   Operation *terminator = kernel.getBody().front().getTerminator();
 
-  auto packOutputValues = [&](ValueRange values,
-                              Operation *insertBefore) -> SmallVector<Value> {
-    SmallVector<Value> packedValues;
-    builder.setInsertionPoint(insertBefore);
-    for (auto &&[i, value] : llvm::enumerate(values)) {
-      Value newValue;
-      if (isa<MEF::ChainType>(value.getType())) {
-        if (shouldPack[i])
-          newValue = MOGG::AsyncReadyOp::create(builder, loc);
-      } else if (shouldPack.test(i)) {
-        SmallVector<Value, 2> packOperands{value};
-        if (isa<MGP::DeviceBufferType>(value.getType())) {
-          if (auto mgpBufferAllocOp =
-                  mlir::dyn_cast_or_null<MGP::BufferAllocOp>(
-                      value.getDefiningOp()))
-            packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
-        }
-        newValue = MOGG::AsyncPackOp::create(builder, loc, value.getType(),
-                                             packOperands);
-      } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
-        /// TODO: Do this through an interface where the op that was lowered can
-        /// tell you how to pack its outputs (not just a boolean but maybe an
-        /// enum or a plain functon that does it).
-        newValue = MOGG::AsyncPackUntrackedOp::create(builder, loc, value);
-      } else {
-        newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
+  builder.setInsertionPoint(terminator);
+  SmallVector<Value> packedValues;
+  for (auto &&[i, value] : llvm::enumerate(terminator->getOperands())) {
+    Value newValue;
+    if (isa<MEF::ChainType>(value.getType())) {
+      if (shouldPack[i])
+        newValue = MOGG::AsyncReadyOp::create(builder, loc);
+    } else if (shouldPack.test(i)) {
+      SmallVector<Value, 2> packOperands{value};
+      if (isa<MGP::DeviceBufferType>(value.getType())) {
+        if (auto mgpBufferAllocOp = mlir::dyn_cast_or_null<MGP::BufferAllocOp>(
+                value.getDefiningOp()))
+          packOperands.push_back(mgpBufferAllocOp.getDeviceContext());
       }
-
-      if (newValue) {
-        value.replaceUsesWithIf(newValue, [&](OpOperand &use) {
-          return use.getOwner() == insertBefore;
-        });
-        packedValues.push_back(newValue);
-      }
+      newValue = MOGG::AsyncPackOp::create(builder, loc, value.getType(),
+                                           packOperands);
+    } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
+      /// TODO: Do this through an interface where the op that was lowered can
+      /// tell you how to pack its outputs (not just a boolean but maybe an
+      /// enum or a plain functon that does it).
+      newValue = MOGG::AsyncPackUntrackedOp::create(builder, loc, value);
+    } else {
+      newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
     }
 
-    return packedValues;
-  };
-
-  // First, wrap the kernel body with a try-except clause. If it is not raising
-  // anything, just pack outputs normally.
-  if (callsThrowingMojoStub) {
-    // If the kernel calls a mojo stub that throws, we need to insert a try /
-    // except statement.
-    // Create a try op returning the same types as the kernel's outputs.
-    auto tryOp =
-        MOGG::TryOp::create(builder, loc, terminator->getOperandTypes());
-
-    Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
-    SmallVector<Operation *> toMove;
-    for (Operation &op : kernel.getBody().getOps())
-      if (!isa<MOGG::TryOp, MOGG::OutputOp>(op))
-        toMove.push_back(&op);
-    for (Operation *op : toMove)
-      op->moveBefore(&tryBlock, tryBlock.end());
-
-    builder.setInsertionPointToEnd(&tryBlock);
-    auto tryYieldOp =
-        MOGG::YieldOp::create(builder, loc, terminator->getOperands());
-
-    // Create pack operations inside the try block before the yield
-    SmallVector<Value> tryPackedValues =
-        packOutputValues(terminator->getOperands(), tryYieldOp);
-    tryYieldOp->setOperands(tryPackedValues);
-
-    // The except block returns a chain error and dummy values for other
-    // outputs.
-    Block &exceptBlock = tryOp.getExceptRegion().emplaceBlock();
-    Value errArg =
-        exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
-    builder.setInsertionPointToStart(&exceptBlock);
-
-    // Create individual AsyncErrorOp for each output (chain and non-chain).
-    // Each AsyncErrorOp represents setting an error on one specific output.
-    SmallVector<Value> exceptYieldValues;
-    exceptYieldValues.reserve(tryYieldOp.getOperands().size());
-    for (Value tryYieldOperand : tryYieldOp.getOperands()) {
-      Value asyncError = MOGG::AsyncErrorOp::create(
-          builder, loc, tryYieldOperand.getType(), errArg);
-      exceptYieldValues.push_back(asyncError);
+    if (newValue) {
+      value.replaceUsesWithIf(newValue, [&](OpOperand &use) {
+        return use.getOwner() == terminator;
+      });
+      packedValues.push_back(newValue);
     }
-
-    MOGG::YieldOp::create(builder, loc, exceptYieldValues);
-
-    // Update the final terminator outputs to the try op results.
-    terminator->setOperands(tryOp.getOutputs());
-  } else {
-    builder.setInsertionPoint(terminator);
-    packOutputValues(terminator->getOperands(), terminator);
   }
 
   // Then, unpack all inputs that should be unpacked.

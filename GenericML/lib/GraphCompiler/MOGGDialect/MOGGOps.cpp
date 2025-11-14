@@ -726,6 +726,8 @@ SmallVector<Value> CallForeachOp::getKernelDPSOutputs() {
 }
 Type CallForeachOp::getKernelReturnOutput() { return nullptr; }
 
+bool CallForeachOp::isRaising() { return true; }
+
 LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   auto function = state.analysis.getLITForeachKernel();
   const MojoValue &bodyLambdaParam = state.getMojoValueFor(getInput());
@@ -813,6 +815,8 @@ SmallVector<Value> CallMaterializeOp::getKernelDPSOutputs() {
 
 Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 
+bool CallMaterializeOp::isRaising() { return true; }
+
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   auto function = state.analysis.getLITViewMaterializeKernel();
 
@@ -882,6 +886,8 @@ Type CallExecuteOp::getKernelReturnOutput() {
   return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
 }
 
+bool CallExecuteOp::isRaising() { return getIsThrows(); }
+
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto function =
       state.analysis.getRegisteredLITMojoExecuteFunctionFor(getKernelName());
@@ -914,15 +920,67 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// KernelStubOp
+//===----------------------------------------------------------------------===//
+
+bool KernelStubOp::isRaising() {
+  bool raises = false;
+  walk([&](MOGG::EmitsMojoInterface emitMojoOp) {
+    if (emitMojoOp == *this)
+      return;
+
+    raises |= emitMojoOp.isRaising();
+  });
+
+  return raises;
+}
+
+LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
+  SmallVector<MOGG::NamedMojoDef> inputTypes;
+  for (auto arg : getBody().getArguments())
+    inputTypes.push_back(
+        MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
+
+  // Determine the Mojo return type from the stub's return type
+  std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
+  if (auto returnType = getReturnType())
+    mojoReturnType = state.mlirTypeToMojoType(*returnType);
+
+  bool errOccurred = false;
+  state.builder.fn(
+      getSymNameAttr().str(), {}, inputTypes,
+      /*returnType=*/mojoReturnType, /*exported=*/false,
+      /*raises=*/isRaising(), [&](const MOGG::FunctionBody &functionBody) {
+        for (auto &&[mlirArg, mojoArg] :
+             llvm::zip(getBody().getArguments(), functionBody.arguments)) {
+          state.setMojoValueFor(mlirArg, mojoArg);
+        }
+
+        errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
+          return state.lowerOpToMojo(&op).failed();
+        });
+
+        if (!errOccurred)
+          state.genAllKeepAliveStatements();
+      });
+
+  if (errOccurred)
+    return failure();
+
+  return success();
+}
+
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
-static StringRef kernelStubOpdisallowedAttrNames[] = {"name", "returnType"};
+static StringRef kernelStubOpdisallowedAttrNames[] = {"name", "returnType",
+                                                      "sym_name"};
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
   if (failed(parser.parseSymbolName(name)))
     return failure();
-  state.addAttribute("name", name);
+  state.addAttribute("sym_name", name);
 
   SmallVector<Type> resTypes;
   SmallVector<OpAsmParser::Argument> args;
@@ -957,7 +1015,7 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
 
 void KernelStubOp::print(OpAsmPrinter &p) {
   p << " ";
-  p.printSymbolName(getName());
+  p.printSymbolName(getSymNameAttr());
   p << " ";
   printRegionArguments(p, getReturnType() ? *getReturnType() : TypeRange{},
                        getBody().getArguments());
@@ -1014,22 +1072,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     return failure();
   }
 
-  bool isThrows = llvm::any_of(getExecBody().getOps(), [](Operation &op) {
-    // ForEach / Materialize kernels always throw.
-    if (isa<CallForeachOp, CallMaterializeOp>(op))
-      return true;
-
-    if (auto execOp = dyn_cast<CallExecuteOp>(op))
-      return execOp.getIsThrows();
-    if (auto shapeOp = dyn_cast<CallShapeOp>(op))
-      return shapeOp.getIsThrows();
-
-    // We assume all other ops don't throw.
-    return false;
-  });
-
   // Create the stub op at the top of the module.
-  /// TODO: Find a better way of naming stubs.
+  /// TODO: Find a better way of naming stubs. This is not thread safe.
   static int stubCounter = 0;
   auto stubName =
       StringAttr::get(ctx, llvm::formatv("stub_{}", stubCounter++).str());
@@ -1043,11 +1087,16 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     stubReturnType = regOutput;
   }
 
+  // Create the stub outside of the model op to ensure it is properly registered
+  // into the SymbolTable of the ModuleOp.
+  auto insertionPoint = builder.saveInsertionPoint();
+  builder.setInsertionPointToStart(loweringState.getModelOp()->getBlock());
   auto kernelStub = MOGG::KernelStubOp::create(
       builder, loc, stubName,
       stubReturnType ? TypeAttr::get(stubReturnType) : nullptr,
-      getSummaryAttr(), isThrows);
+      getSummaryAttr());
   kernelStub.getBody().takeBody(getExecBody());
+  builder.restoreInsertionPoint(insertionPoint);
 
   // This is a list of input operands in MGP but without the chain.
   auto loweredInputOperands = opLoweringState.getLoweredOperands();
@@ -1595,8 +1644,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   mlir::BitVector unpackItAll(regionBody.getNumArguments(), true);
   mlir::BitVector packItAll(newKernel.getNumResults(), true);
-  loweringState.lowerMOGGABI(newKernel, unpackItAll, packItAll,
-                             /*callsThrowingMojoStub=*/isThrows);
+  loweringState.lowerMOGGABI(newKernel, unpackItAll, packItAll);
 
   return success();
 }
@@ -3286,6 +3334,75 @@ void KernelOp::getEffects(
 // GenericCompiledRegionOp
 //===----------------------------------------------------------------------===//
 
+bool GenericCompiledRegionOp::isRaising() {
+  bool raises = false;
+  walk([&](MOGG::EmitsMojoInterface emitMojoOp) {
+    if (emitMojoOp == *this)
+      return;
+
+    raises |= emitMojoOp.isRaising();
+  });
+
+  return raises;
+}
+
+LogicalResult GenericCompiledRegionOp::emitMojo(EmitMojoState &state) {
+  // Clear any previous kernel's return values from the state
+  state.mojoReturnValues.clear();
+  state.mojoConstantResources.clear();
+
+  bool errOccurred = false;
+  state.createKernelWrapper([&](const MOGG::FunctionBody &functionBody) {
+    state.builder.comment(
+        "This is the entry point of the kernel. The first argument is a "
+        "pointer to a list of inputs and outputs. The second is a pointer "
+        "to a runtime context.");
+    auto runtimeArgument = functionBody.arguments.front();
+    auto &kernelBody = getBody().front();
+    // The order of arguments in runtimeArgument:
+    // 1. Inputs and DPS outputs
+    // 2. Return values (chain and non DPS outputs)
+    for (auto argument : kernelBody.getArguments()) {
+      state.setMojoValueFor(
+          argument, runtimeArgument[std::to_string(argument.getArgNumber())]);
+    }
+    // Return values, although in DPS form from the runtime's perspective,
+    // are still in value semantics inside of the kernel. Therefore, there
+    // is no value to associate them with. Instead, we have a mapping that
+    // mogg.return and mogg.async.pack will use.
+    for (uint64_t i = 0; i < getNumResults(); ++i) {
+      state.mojoReturnValues.emplace_back(
+          runtimeArgument[std::to_string(i + getNumOperands())]);
+    }
+
+    // After inputs and outputs, there are constant resources appended to
+    // the void** array. These come in pairs of ptr + size which is handled
+    // here.
+    for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
+      uint64_t flatIndex = i * 2 + getNumOperands() + getNumResults();
+      MOGG::MojoValue ptr = runtimeArgument[flatIndex];
+      // The ABI is that the bytecount is directly stored as an
+      // OpaquePointer.
+      MOGG::MojoValue byteCount =
+          runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
+      state.mojoConstantResources.emplace_back(
+          std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
+    }
+
+    errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
+      return state.lowerOpToMojo(&op).failed();
+    });
+
+    if (!errOccurred)
+      state.genAllKeepAliveStatements();
+  });
+
+  if (errOccurred)
+    return failure();
+
+  return success();
+}
+
 InOutSignatureAttr::InOutSemantics
 GenericCompiledRegionOp::getInOutSemantics(size_t index) {
   ASSERT_STREAM(
@@ -3657,6 +3774,13 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // CallStubOp
 //===----------------------------------------------------------------------===//
+
+bool CallStubOp::isRaising() {
+  mlir::SymbolTable symTable(getOperation()->getParentOfType<ModuleOp>());
+  auto stubOp =
+      cast<KernelStubOp>(symTable.lookup(getName().getLeafReference()));
+  return stubOp.isRaising();
+}
 
 LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
@@ -4063,6 +4187,8 @@ SmallVector<Value> CallShapeOp::getKernelDPSOutputs() {
 Type CallShapeOp::getKernelReturnOutput() {
   return getRetTypeAttr().getValue();
 }
+
+bool CallShapeOp::isRaising() { return getIsThrows(); }
 
 LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   // Get the shape function from the analysis

@@ -223,6 +223,8 @@ def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
     ];
 }
 
+// NOT safe to run in //. This has to run on the ModuleOp because of how we name
+// kernels.
 def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
   let summary = "Emit Mojo text";
   let description = [{
@@ -244,6 +246,29 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
     Option<"moggDebugDumpFusedTensorSpecs", "mogg-debug-dump-fused-tensor-specs", "bool", "false",
       "Flag to add prints for the fused tensor specs in the lambdas">
   ];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect",
+                          "M::KGEN::KGENDialect",
+                          "M::KGEN::LIT::LITDialect",
+                          "M::KGEN::POP::POPDialect",
+                          "M::HLCF::HLCFDialect",
+                          "M::DebugInfo::DebugInfoDialect",
+                          "mlir::NVVM::NVVMDialect",
+                          "mlir::ROCDL::ROCDLDialect",
+                          "mlir::index::IndexDialect",
+  ];
+}
+
+def AddTryExceptBlocks: Pass<"add-try-except-blocks", "ModuleOp"> {
+  let summary = "Adds a try-except block to raising kernels";
+  let description = [{
+    This pass should be run after sequence fusion and before Mojo codegen. It
+    adds a try-except block to raising kernels such that the emit mojo pass can
+    generate adequate Mojo.
+  }];
 
   let dependentDialects = ["MEF::MEFDialect",
                           "MGP::MGPDialect",

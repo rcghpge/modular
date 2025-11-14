@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt %s -mo-to-mogg -mogg-to-kgen -mo-to-primitives -lower-abi -canonicalize -emit-mojo=dump-mojo-text=true 2>&1 | FileCheck %s
+// RUN: EMIT_MOJO=1 mo-opt %s -mo-to-mogg -mogg-to-kgen -mo-to-primitives -lower-abi -canonicalize -add-try-except-blocks -emit-mojo -dump-mojo 2>&1 | FileCheck %s
 
 // Test that mo.concat with variadic inputs properly generates VariadicTensors in the emitted Mojo code
 

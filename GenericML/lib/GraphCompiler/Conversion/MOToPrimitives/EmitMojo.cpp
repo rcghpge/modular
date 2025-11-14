@@ -27,90 +27,10 @@ namespace M::MGP {
 
 namespace {
 
-// Helper to create a kernel wrapper function with a given body
-using KernelBodyBuilder = llvm::function_ref<void(const MOGG::FunctionBody &)>;
-
-std::string createKernelWrapper(MOGG::EmitMojoState &state,
-                                KernelBodyBuilder bodyBuilder) {
-  static const MOGG::MojoValue vUnsafePointer =
-      MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
-  static const MOGG::MojoValue vOpaquePointer =
-      MOGG::HardcodedMojoSymbols::alias_OpaquePointer;
-
-  static constexpr StringLiteral baseKernelName = "kernel_wrapper";
-  static int fooIdx = 0;
-
-  std::string kernelName =
-      llvm::formatv("{}_{}", baseKernelName, fooIdx++).str();
-
-  state.builder.fn(StringRef(kernelName), {},
-                   {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
-                    MOGG::NamedMojoDef("arg", vOpaquePointer)},
-                   std::nullopt, true, false,
-                   [&](const MOGG::FunctionBody &functionBody) {
-                     bodyBuilder(functionBody);
-                   });
-
-  return kernelName;
-}
-
-StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
-                                        MOGG::EmitMojoState &state,
-                                        OpBuilder &builder) {
-  // Clear any previous kernel's return values from the state
-  state.mojoReturnValues.clear();
-  state.mojoConstantResources.clear();
-
-  bool errOccurred = false;
-  std::string kernelName =
-      createKernelWrapper(state, [&](const MOGG::FunctionBody &functionBody) {
-        state.builder.comment(
-            "This is the entry point of the kernel. The first argument is a "
-            "pointer to a list of inputs and outputs. The second is a pointer "
-            "to a runtime context.");
-        auto runtimeArgument = functionBody.arguments.front();
-        auto &kernelBody = kernel.getBody().front();
-        // The order of arguments in runtimeArgument:
-        // 1. Inputs and DPS outputs
-        // 2. Return values (chain and non DPS outputs)
-        for (auto argument : kernelBody.getArguments()) {
-          state.setMojoValueFor(
-              argument,
-              runtimeArgument[std::to_string(argument.getArgNumber())]);
-        }
-        // Return values, although in DPS form from the runtime's perspective,
-        // are still in value semantics inside of the kernel. Therefore, there
-        // is no value to associate them with. Instead, we have a mapping that
-        // mogg.return and mogg.async.pack will use.
-        for (uint64_t i = 0; i < kernel->getNumResults(); ++i) {
-          state.mojoReturnValues.emplace_back(
-              runtimeArgument[std::to_string(i + kernel->getNumOperands())]);
-        }
-
-        // After inputs and outputs, there are constant resources appended to
-        // the void** array. These come in pairs of ptr + size which is handled
-        // here.
-        for (uint64_t i = 0; i < kernel.getConstantResources().size(); ++i) {
-          uint64_t flatIndex =
-              i * 2 + kernel->getNumOperands() + kernel->getNumResults();
-          MOGG::MojoValue ptr = runtimeArgument[flatIndex];
-          // The ABI is that the bytecount is directly stored as an
-          // OpaquePointer.
-          MOGG::MojoValue byteCount =
-              runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
-          state.mojoConstantResources.emplace_back(
-              std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
-        }
-
-        errOccurred |= llvm::any_of(kernel.getOps(), [&](mlir::Operation &op) {
-          return state.lowerOpToMojo(&op).failed();
-        });
-        state.genAllKeepAliveStatements();
-      });
-
-  if (errOccurred)
-    return nullptr;
-
+MOGG::ExecuteCompiledOp
+lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
+                             const std::string &kernelName,
+                             OpBuilder &builder) {
   // Create a new ExecuteCompiledOp to replace the original kernel
   auto insertPoint = builder.saveInsertionPoint();
   builder.setInsertionPoint(kernel);
@@ -130,45 +50,7 @@ StringAttr lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
   kernel->replaceAllUsesWith(newOp.getResults());
   kernel->erase();
 
-  return newOp.getKernelNameAttr();
-}
-
-LogicalResult lowerKernelStubOp(MOGG::KernelStubOp kernelStub,
-                                MOGG::EmitMojoState &state) {
-  SmallVector<MOGG::NamedMojoDef> inputTypes;
-  for (auto arg : kernelStub.getBody().getArguments())
-    inputTypes.push_back(
-        MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
-
-  // Determine the Mojo return type from the stub's return type
-  std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
-  if (auto returnType = kernelStub.getReturnType()) {
-    mojoReturnType = state.mlirTypeToMojoType(*returnType);
-  }
-
-  bool errOccurred = false;
-  state.builder.fn(
-      kernelStub.getNameAttr().str(), {}, inputTypes,
-      /*returnType=*/mojoReturnType, /*exported=*/false,
-      /*raises=*/kernelStub.getIsThrows(),
-      [&](const MOGG::FunctionBody &functionBody) {
-        for (auto &&[mlirArg, mojoArg] : llvm::zip(
-                 kernelStub.getBody().getArguments(), functionBody.arguments)) {
-          state.setMojoValueFor(mlirArg, mojoArg);
-        }
-
-        errOccurred |=
-            llvm::any_of(kernelStub.getOps(), [&](mlir::Operation &op) {
-              return state.lowerOpToMojo(&op).failed();
-            });
-        state.genAllKeepAliveStatements();
-      });
-
-  if (errOccurred)
-    return failure();
-  kernelStub.erase();
-
-  return success();
+  return newOp;
 }
 
 struct EmitMojo
@@ -191,6 +73,7 @@ struct EmitMojo
     }
 
     OpBuilder builder(ctx);
+    SymbolTable symTable(moduleOp);
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
       DenseSet<StringAttr> kernelsToLoad;
       MOGG::EmitMojoState state(*analysisOr.takeValue(), enableOpTraceComments,
@@ -205,27 +88,32 @@ struct EmitMojo
       }
 
       // First do all the stubs (in case they appear after their references).
-      auto lowerKernelStubOps = [&](MOGG::KernelStubOp kernelStub) {
-        if (lowerKernelStubOp(kernelStub, state).failed())
-          return WalkResult::interrupt();
-        return WalkResult::advance();
-      };
-      if (modelOp->walk(lowerKernelStubOps).wasInterrupted()) {
-        signalPassFailure();
-        return;
+      for (auto &&kernelStub : llvm::make_early_inc_range(
+               moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
+        // Skip if this stub is not used by this graph.
+        if (symTable.getSymbolUses(kernelStub, modelOp)->empty())
+          continue;
+
+        if (kernelStub.emitMojo(state).failed()) {
+          signalPassFailure();
+          return;
+        }
       }
 
       // Then do all the kernels that may reference them.
       auto lowerGenericCompiledRegionOps =
           [&](MOGG::GenericCompiledRegionOp kernel) {
             // If none of the ops emits Mojo, skip it.
-            if (kernel.getEmitsMojo()) {
-              auto kernelName =
-                  lowerGenericCompiledRegionOp(kernel, state, builder);
-              if (!kernelName)
-                return WalkResult::interrupt();
-              kernelsToLoad.insert(kernelName);
-            }
+            if (!kernel.getEmitsMojo())
+              return WalkResult::skip();
+
+            if (kernel.emitMojo(state).failed())
+              return WalkResult::interrupt();
+
+            auto kernelCall = lowerGenericCompiledRegionOp(
+                kernel, state.currentKernelName, builder);
+            kernelsToLoad.insert(kernelCall.getKernelNameAttr());
+
             return WalkResult::advance();
           };
       if (modelOp->walk(lowerGenericCompiledRegionOps).wasInterrupted()) {
@@ -245,13 +133,12 @@ struct EmitMojo
       //
       // We should properly fix this in the long term.
       if (kernelsToLoad.empty()) {
-        std::string emptyKernelName =
-            createKernelWrapper(state, [&](const MOGG::FunctionBody &) {
-              state.builder.comment(
-                  "Empty kernel wrapper - no actual kernels to execute.");
-              state.builder.pass();
-            });
-        kernelsToLoad.insert(StringAttr::get(ctx, emptyKernelName));
+        state.createKernelWrapper([&](const MOGG::FunctionBody &) {
+          state.builder.comment(
+              "Empty kernel wrapper - no actual kernels to execute.");
+          state.builder.pass();
+        });
+        kernelsToLoad.insert(StringAttr::get(ctx, state.currentKernelName));
       }
 
       // Store the emitted text into a resource and point to it from a
@@ -293,6 +180,10 @@ struct EmitMojo
         outFile->os() << mojoText << "\n";
         outFile->keep();
       }
+    }
+    for (auto &&kernelStub : llvm::make_early_inc_range(
+             moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
+      kernelStub->erase();
     }
   }
 };

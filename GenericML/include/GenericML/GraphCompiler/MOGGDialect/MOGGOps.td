@@ -168,7 +168,7 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoInterface>]>  {
+def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>]>  {
   let summary = "Calls into an outlined stub";
   let description = [{}];
   let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
@@ -179,7 +179,8 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoI
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>]>  {
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>
+]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
     This represents a call to the mojo implementation of `foreach` function. If
@@ -201,7 +202,7 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>]>  {
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>]>  {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -232,7 +233,7 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 
 
 def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>
 ]>  {
   let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
   let description = [{
@@ -814,11 +815,11 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
 def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     IsolatedFromAbove,
     SingleBlockImplicitTerminator<"MOGG::OutputOp">,
-    SymbolTable,
     MO_HasDeviceInterface,
     MO_ExplicitDevice,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
     DeclInterface
 ]> {
   let summary = "An abstract function representing a compiled body of code";
@@ -1647,17 +1648,18 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
 
 def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   IsolatedFromAbove,
-  SymbolTable,
-  SingleBlock
+  Symbol,
+  SingleBlock,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Op that outlines a kernel";
   let description = [{
     This op defines a kernel that will eventually be compiled to Mojo text.
   }];
-  let arguments = (ins SymbolNameAttr:$name,
+  let arguments = (ins SymbolNameAttr:$sym_name,
                        OptionalAttr<TypeAttr>:$returnType,
-                       OptionalAttr<StrAttr>:$summary,
-                       UnitAttr:$isThrows);
+                       OptionalAttr<StrAttr>:$summary
+                       );
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
@@ -1724,6 +1726,7 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   Pure,
   SameOperandsAndResultType,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<KernelArgumentConsumer>,
   HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins AnyType:$input);
@@ -2042,7 +2045,7 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
 
 def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
   Pure
 ]> {
   let summary = "Call a shape function";

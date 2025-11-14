@@ -317,7 +317,6 @@ def AssertOp : MGP_Op<"assert", [
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
-    DeclareOpInterfaceMethods<KernelTerminatorProvider>
   ]> {
   let summary = "Assert that a boolean condition is true.";
   let description = [{
@@ -903,7 +902,6 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
 def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
   DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface>,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let summary = "Removes the buffer stored at the specified state slot.";
   let description = [{
@@ -984,7 +982,6 @@ def MGP_AllocateAsyncValuesOp : MGP_Op<"allocate_for_async_vals", [Pure]> {
 
 def DebugPrintOp : MGP_Op<"debug.print", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
   let summary = "Prints a debug string. For debugging and testing only.";
   let description = [{

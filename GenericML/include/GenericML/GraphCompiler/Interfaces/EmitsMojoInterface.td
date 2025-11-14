@@ -85,4 +85,15 @@ def KernelTerminatorProvider : OpInterface<"KernelTerminatorProvider"> {
   let cppNamespace = "::M::MOGG";
 }
 
+def KernelArgumentConsumer : OpInterface<"KernelArgumentConsumer"> {
+  let description = [{
+    This is the mirror of KernelTerminatorProvider. Only these operations are
+    allowed to consume the argument of a kernel for unpacking purposes. This is
+    not yet enforced because some types like !mgp.context are never unpacked.
+    This interface is currently only used for AddTryExceptBlocks which must
+    identify unpacking operations.
+  }];
+  let cppNamespace = "::M::MOGG";
+}
+
 #endif // GENERICML_GRAPHCOMPILER_INTERFACES_EMITSMOJOINTERFACE_TD

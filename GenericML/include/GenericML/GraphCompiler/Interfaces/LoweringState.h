@@ -438,8 +438,7 @@ public:
   /// circular dependency.
   static void lowerMOGGABI(Operation *kernelOp,
                            const mlir::BitVector &shouldUnpack,
-                           const mlir::BitVector &shouldPack,
-                           bool callsThrowingMojoStub);
+                           const mlir::BitVector &shouldPack);
 
 private:
   //===-----------------------------------------------------------------===//

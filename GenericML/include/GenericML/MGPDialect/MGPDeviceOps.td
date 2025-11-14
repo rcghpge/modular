@@ -846,7 +846,6 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
     DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
-    DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
   let summary = "Set a buffer with the values from index inputs.";
   let description = [{
@@ -895,7 +894,6 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
       "getLiftableAttributes"
     ]>,
     DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
-    DeclareOpInterfaceMethods<KernelTerminatorProvider>
   ]> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";

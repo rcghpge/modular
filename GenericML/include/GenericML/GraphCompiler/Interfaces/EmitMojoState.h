@@ -157,6 +157,9 @@ struct EmitMojoState {
   /// If true, generate compute lambdas when possible.
   bool enableComputeLambdas;
 
+  /// Name of the entry point of the current kernel
+  std::string currentKernelName;
+
 private:
   /// A mapping between mlir::Value to MojoValue (text).
   mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
@@ -170,6 +173,13 @@ private:
   bool enableDebugDumpFusedTensorSpecs;
 
 public:
+  // Helper to create a kernel wrapper function with a given body
+  using KernelBodyBuilder =
+      llvm::function_ref<void(const MOGG::FunctionBody &)>;
+
+  /// Creates a new kernel entry point.
+  void createKernelWrapper(KernelBodyBuilder bodyBuilder);
+
   /// Get the Mojovalue mapped to `val`.
   const MojoValue &getMojoValueFor(Value val) const {
     auto it = mlirValueToMojoValue.find(val);
