@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize %s | FileCheck %s
+// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg --fuse-affine-views --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add_singleton_non_elementwise<seq_len>
 // CHECK-NEXT: mogg.experimental.kernel
@@ -133,10 +133,10 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
 // CHECK-LABEL: mo.graph @merge_dim
 // CHECK-NEXT: mogg.experimental.kernel
 
-// CHECK: %[[SIMD:.*]] = kgen.param.constant: scalar<si64> = <8>
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[64], f32>
+// CHECK: %[[SIMD:.*]] = mogg.constant.scalar {value = 8 : si64} : !mo.scalar<si64>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "merge_dim_indices"(%[[INDICES]], %[[SIMD]]) {axis = 0 : index} : !pop.array<2, index>, !pop.scalar<si64> -> !pop.array<1, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "merge_dim_indices"(%[[INDICES]], %[[SIMD]]) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<1, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<1, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}

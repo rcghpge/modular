@@ -3,7 +3,7 @@
 // RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s
 
 // Under new api we expect the matmul add to be fused followed by sequence fusing the cumsum
-// CHECK: summary = {{.*}}(mo.matmul:{{[0-9]+}}+mo.add:{{[0-9]+}})
+// CHECK: summary = {{.*}}mo.matmul:{{[0-9]+}}+mo.add:{{[0-9]+}}
 mo.graph @summary_string_simple(
     %arg0: !mo.tensor<[20, 30], f32>,
     %arg1: !mo.tensor<[30, 40], f32>,

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-prologues-epilogues --canonicalize %s | FileCheck %s
+// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-prologues-epilogues --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @inout_fusion<seq_len>
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1:.*]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %[[ARG2:.*]]: !mo.tensor<[1, seq_len, 4096], f32>)
@@ -34,7 +34,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 // CHECK: %[[CAST:.*]] = mogg.call.elementwise["mo.cast"] (%[[ARG4]]) : f32 -> si32
 // CHECK: mogg.output %[[CAST]], %[[INSERT_IDX]] : si32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], si32>) -> !mo.tensor<[seq_len, 4096], f32>
-// CHECK: %[[CONCRETIZE:.*]] = "mogg.concretize"(%[[SCRATCH]], %[[BIND]]) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
+// CHECK: %[[CONCRETIZE:.*]] = mogg.tensor.fused(%[[BIND]], %[[SCRATCH]]) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]], {{.*}}
 // CHECK: } {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true
 // CHECK-SAME: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.cast:{{[0-9]+}}"}

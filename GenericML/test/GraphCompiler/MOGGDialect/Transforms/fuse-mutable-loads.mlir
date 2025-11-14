@@ -1,13 +1,12 @@
-// RUN: mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_lib" --canonicalize --fuse-mutable-loads --mogg-to-kgen=kernel-library-paths="%kernel_api_test_lib" %s | FileCheck %s
+// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg="kernel-library-paths=%kernel_api_test_pkg" --canonicalize --fuse-mutable-loads %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK-NOT: mo.mutable.store
-// CHECK: [[out:%.*]]:2 = mogg.kernel ([[buffer]], [[rhs]], [[ch0]])
+// CHECK: [[out:%.*]]:2 = mogg.experimental.kernel([[buffer]]: !mo.buffer<[10, 10], f32>, [[rhs]]: !mo.tensor<[10, 10], f32>) chain([[ch0]])
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
-// CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
-// CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
+// CHECK: mogg.experimental.kernel([[buffer]]: !mo.buffer<[10, 10], f32>, [[out]]#0: !mo.tensor<[10, 10], f32>) chain([[out]]#1)
 mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   %outTensor, %outChain = mo.mutable.load(%buffer, %0) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> (!mo.tensor<[10, 10], f32>, !mo.chain)
@@ -20,10 +19,9 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK-NOT: mo.mutable.store
-// CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
+// CHECK: [[out:%.*]]:2 = mogg.experimental.kernel([[rhs]]: !mo.tensor<[10, 10], f32>, [[buffer]]: !mo.buffer<[10, 10], f32>) chain([[ch0]])
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
-// CHECK: [[cr:%.*]] = "mogg.create_ready_chain"() : () -> !mo.chain
-// CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
+// CHECK: mogg.experimental.kernel([[buffer]]: !mo.buffer<[10, 10], f32>, [[out]]#0: !mo.tensor<[10, 10], f32>) chain([[out]]#1)
 // CHECK: summary = "mo.mutable.store
 mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
@@ -36,8 +34,8 @@ mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK-LABEL: mo.graph @multiple_chain_users(
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[10, 10], f32>, [[rhs:%.*]]: !mo.tensor<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
-// CHECK: [[out:%.*]]:2 = mogg.kernel ([[rhs]], [[buffer]], [[ch0]])
-// CHECK: mogg.kernel ([[buffer]], [[out]]#0, [[out]]#1)
+// CHECK: [[out:%.*]]:2 = mogg.experimental.kernel([[rhs]]: !mo.tensor<[10, 10], f32>, [[buffer]]: !mo.buffer<[10, 10], f32>) chain([[ch0]])
+// CHECK: mogg.experimental.kernel([[buffer]]: !mo.buffer<[10, 10], f32>, [[out]]#0: !mo.tensor<[10, 10], f32>) chain([[out]]#1)
 // CHECK: summary = "mo.mutable.store
 mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
@@ -52,7 +50,7 @@ mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.ten
 // CHECK-LABEL: mo.graph @same_kernel_multiple_fusions(
 // CHECK-SAME: [[buf1:%.*]]: !mo.buffer<[10, 10], f32>, [[buf2:%.*]]: !mo.buffer<[10, 10], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create()
-// CHECK: mogg.kernel ([[buf1]], [[buf2]], [[ch0]])
+// CHECK: mogg.experimental.kernel([[buf1]]: !mo.buffer<[10, 10], f32>, [[buf2]]: !mo.buffer<[10, 10], f32>) chain([[ch0]])
 mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: !mo.buffer<[10, 10], f32>) {
 
   %ch0 = mo.chain.create()
@@ -71,9 +69,9 @@ mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: 
 // CHECK-NOT: mo.mutable.load
 // CHECK-NOT: mo.mutable.load
 // CHECK-NOT: mo.mutable.load
-// CHECK: mogg.kernel ([[buf]], [[ch0]])
-// CHECK: mogg.kernel ([[buf]], [[ch0]])
-// CHECK: mogg.kernel ([[buf]], [[buf]], [[ch0]])
+// CHECK: mogg.experimental.kernel([[buf]]: !mo.buffer<[2, 2], f32>) chain([[ch0]])
+// CHECK: mogg.experimental.kernel([[buf]]: !mo.buffer<[2, 2], f32>) chain([[ch0]])
+// CHECK: mogg.experimental.kernel([[buf]] as {{.*}}: !mo.buffer<[2, 2], f32>, [[buf]] as {{.*}}: !mo.buffer<[2, 2], f32>) chain([[ch0]])
 mo.graph @multiple_load_fusion(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 {
   %0 = mo.chain.create()
@@ -93,7 +91,7 @@ mo.graph @multiple_load_fusion(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2,
 // CHECK-SAME: [[buf:%.*]]: !mo.buffer
 // [[ch0:%.*]] = mo.chain.create()
 // CHECK-NOT: mo.mutable.load
-// CHECK: mogg.kernel ([[buf]]
+// CHECK: mogg.experimental.kernel([[buf]]
 mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 3], f32> {
   %0 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %1 = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -125,9 +123,9 @@ mo.graph @dont_merge_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %arg1: 
 // CHECK-LABEL: dont_parallelize_loads_across_blocks
 // CHECK: [[tensor:%.*]], {{.*}} = mo.mutable.load
 // CHECK: mo.if
-// CHECK: mogg.kernel ([[tensor]], [[tensor]])
+// CHECK: mogg.experimental.kernel([[tensor]] as {{.*}}: !mo.tensor<[2, 2], f32>, [[tensor]] as {{.*}}: !mo.tensor<[2, 2], f32>)
 // CHECK: else
-// CHECK: mogg.kernel ([[tensor]])
+// CHECK: mogg.experimental.kernel([[tensor]]
 mo.graph @dont_parallelize_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %arg1: !mo.tensor<[], bool>) -> !mo.buffer<[2, 2], f32> {
   %1 = mo.chain.create()
   %outTensor, %outChain = mo.mutable.load(%arg0, %1) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
@@ -147,7 +145,7 @@ mo.graph @dont_parallelize_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %
 // CHECK-SAME: [[buffer:%.*]]: !mo.buffer<[2, 2], f32>
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load([[buffer]], [[ch0]])
-// CHECK: mogg.kernel ([[buffer]], [[outTensor]], [[outChain]])
+// CHECK: mogg.experimental.kernel([[buffer]]: !mo.buffer<[2, 2], f32>, [[outTensor]]: !mo.tensor<[2, 2], f32>) chain([[outChain]])
 mo.graph @block_fusion_non_elementwise_inplace_kernel(%buffer: !mo.buffer<[2, 2], f32>) {
   %0 = mo.chain.create()
   %outTensor, %outChain = mo.mutable.load(%buffer, %0) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
