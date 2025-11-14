@@ -82,8 +82,10 @@ struct FuseAffineViewsPass
                                           *MO::fromMLIRType(intAttr.getType()));
       return MOGG::ConstantScalarOp::create(builder, loc, scalarTy, intAttr);
     } else {
-      ASSERT_STREAM(false, << "TODO: Support dynamic dimensions");
-      return nullptr;
+      // TODO: We should probably update GetDimOp to directly take the
+      // `KGEN::ParamDeclRefAttr` instead of a string.
+      return MOGG::GetDimOp::create(
+          builder, loc, cast<KGEN::ParamDeclRefAttr>(dim).getName());
     }
   }
 

@@ -1125,14 +1125,14 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // with the input signature. The following maps between a parameter to a
   // lowered SSA value. We use TypedAttr instead of ParamDeclRefAttr to make it
   // possible to search integers (they won't be present obviously).
-  DenseMap<TypedAttr, Value> parameterToOutsideSSAValue;
+  DenseMap<StringAttr, Value> parameterToOutsideSSAValue;
   for (auto param : usedKernelParameters) {
     auto symbolicDimOr = loweringState.lowerExpression(
         opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
         param);
     Value symbol = symbolicDimOr.takeValue();
     addOperandAndMapToIndex(symbol, InOutSignatureAttr::kIn);
-    parameterToOutsideSSAValue[param] = symbol;
+    parameterToOutsideSSAValue[param.getName()] = symbol;
   }
 
   // 6. Add a chain to the result types.
@@ -1182,38 +1182,49 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // They are created inside the stub directly.
   DenseMap<Value, uint64_t> outsideValueToStubOperandIndex;
 
+  auto getDynamicDimension = [&](StringAttr dim,
+                                 bool isInsideStub) -> ErrorOr<Value> {
+    auto outsideSSAIt = parameterToOutsideSSAValue.find(dim);
+    if (outsideSSAIt == parameterToOutsideSSAValue.end()) {
+      return Error(
+          llvm::formatv("Failed to find the runtime value of the parametric "
+                        "dimension `{}`",
+                        dim));
+    }
+    Value outsideSSAValue = outsideSSAIt->second;
+
+    if (isInsideStub) {
+      if (!outsideValueToStubOperandIndex.contains(outsideSSAValue)) {
+        return Error(llvm::formatv(
+            "Failed to find the stub argument for the runtime value "
+            "of the parametric dimension `{}`",
+            dim));
+      }
+      return kernelStub.getBody().getArgument(
+          outsideValueToStubOperandIndex[outsideSSAValue]);
+    } else {
+      if (!outsideValueToOperandIndex.contains(outsideSSAValue)) {
+        return Error(llvm::formatv(
+            "Failed to find the kernel argument for the runtime value "
+            "of the parametric dimension `{}`",
+            dim));
+      }
+      return regionBody.getArgument(
+          outsideValueToOperandIndex[outsideSSAValue]);
+    }
+  };
+
   auto getTensorDynamicDimensions =
       [&](MO::TensorType asTensor,
           bool isInsideStub) -> ErrorOr<SmallVector<Value>> {
     SmallVector<Value> dynamicDimensions;
     for (auto dim : asTensor.getDims()) {
-      if (isa<IntegerAttr>(dim))
-        continue;
-
-      auto outsideSSAIt = parameterToOutsideSSAValue.find(dim);
-      if (outsideSSAIt == parameterToOutsideSSAValue.end())
-        return Error(
-            llvm::formatv("Failed to find the runtime value of the dynamic "
-                          "tensor dimension #{} for tensor type {}",
-                          dim, asTensor));
-      Value outsideSSAValue = outsideSSAIt->second;
-
-      if (isInsideStub) {
-        if (!outsideValueToStubOperandIndex.contains(outsideSSAValue))
-          return Error(
-              llvm::formatv("Failed to find the stub argument of the dynamic "
-                            "tensor dimension #{} for tensor type {}",
-                            dim, asTensor));
-        dynamicDimensions.push_back(kernelStub.getBody().getArgument(
-            outsideValueToStubOperandIndex[outsideSSAValue]));
-      } else {
-        if (!outsideValueToOperandIndex.contains(outsideSSAValue))
-          return Error(
-              llvm::formatv("Failed to find the kernel argument of the dynamic "
-                            "tensor dimension #{} for tensor type {}",
-                            dim, asTensor));
-        dynamicDimensions.push_back(regionBody.getArgument(
-            outsideValueToOperandIndex[outsideSSAValue]));
+      if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
+        ErrorOr<Value> dimValueOr =
+            getDynamicDimension(dimParamAttr.getName(), isInsideStub);
+        if (dimValueOr.isError())
+          return dimValueOr.takeError();
+        dynamicDimensions.push_back(*dimValueOr);
       }
     }
 
@@ -1265,23 +1276,26 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // This function will update the KernelStub operands and mapping to take
   // dynamic dimensions.
+  auto passDynDimensionToKernelStub = [&](Location loc, StringAttr dim) {
+    Value outsideSSAValue = parameterToOutsideSSAValue.at(dim);
+
+    // Check if the argument isn't already defined.
+    if (outsideValueToStubOperandIndex.contains(outsideSSAValue))
+      return;
+
+    // Pass the dynamic dimension as an argument of the stub.
+    Value regionArg =
+        regionBody.getArgument(outsideValueToOperandIndex[outsideSSAValue]);
+    kernelStub.getBody().addArgument(regionArg.getType(), loc);
+    outsideValueToStubOperandIndex[outsideSSAValue] = stubCallOperands.size();
+    stubCallOperands.emplace_back(regionArg);
+  };
+
   auto passTensorDynDimensionsToKernelStub = [&](Location loc,
                                                  MO::TensorType asTensor) {
-    for (auto dim : asTensor.getDims()) {
-      if (auto outsideSSAValue = parameterToOutsideSSAValue.lookup(dim)) {
-        // Check if the argument isn't already defined.
-        if (outsideValueToStubOperandIndex.contains(outsideSSAValue))
-          continue;
-
-        // Pass the dynamic dimension as an argument of the stub.
-        Value regionArg =
-            regionBody.getArgument(outsideValueToOperandIndex[outsideSSAValue]);
-        kernelStub.getBody().addArgument(regionArg.getType(), loc);
-        outsideValueToStubOperandIndex[outsideSSAValue] =
-            stubCallOperands.size();
-        stubCallOperands.emplace_back(regionArg);
-      }
-    }
+    for (auto dim : asTensor.getDims())
+      if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+        passDynDimensionToKernelStub(loc, dimParamAttr.getName());
   };
 
   // Add extra arguments for the dynamic dimensions for some ops
@@ -1304,6 +1318,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       passTensorDynDimensionsToKernelStub(
           tensorShapeOp.getLoc(),
           MO::castFromTensorLike(tensorShapeOp.getTensor()));
+    }
+
+    else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(stubOp)) {
+      passDynDimensionToKernelStub(getDimOp.getLoc(), getDimOp.getDimension());
     }
   });
 
@@ -1470,6 +1488,16 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     constantOp->erase();
   };
 
+  auto lowerGetDimOp = [&](MOGG::GetDimOp getDimOp) -> LogicalResult {
+    ErrorOr<Value> dimValueOr =
+        getDynamicDimension(getDimOp.getDimension(), /*isInsideStub=*/true);
+    if (dimValueOr.isError())
+      return emitError(dimValueOr.getError());
+    getDimOp.getResult().replaceAllUsesWith(*dimValueOr);
+    getDimOp->erase();
+    return success();
+  };
+
   auto lowerTensorGetShapeOp =
       [&](MOGG::TensorGetShapeOp getShapeOp) -> LogicalResult {
     // Get the dynamic dimensions
@@ -1501,6 +1529,9 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       lowerConstantOp(constantOp);
     else if (auto tensorGetShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(op)) {
       if (failed(lowerTensorGetShapeOp(tensorGetShapeOp)))
+        return WalkResult::interrupt();
+    } else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(op)) {
+      if (failed(lowerGetDimOp(getDimOp)))
         return WalkResult::interrupt();
     }
 
