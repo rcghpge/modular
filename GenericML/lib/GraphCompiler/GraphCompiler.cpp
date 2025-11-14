@@ -160,7 +160,7 @@ void M::MO::buildMoToMgpPipeline(
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
 
   pm.addPass(MO::createHoistConstantSubgraphsIntoParent());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<MO::GraphOp>(mlir::createCSEPass());
 
   // Run symbolic operator set domain-specific optimizations
   SymbolicOptimizationOptions symbolicOptimizationOpts;
@@ -265,8 +265,8 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   // Add cleanup passes to catch e.g used/duplicated constants.
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   // Create the options for MoToPrimitives.
@@ -294,8 +294,8 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MGP::createVerifyModelArgumentsPass());
   pm.addPass(MGP::createPredicateAssertDependenciesPass());
   pm.addPass(MGP::createSimplifyChainsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
   MGP::HoistHarnessOptions harnessOpts;
   harnessOpts.kernelLibraryPaths = kernelLibraryPaths;
@@ -307,17 +307,17 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
 
   pm.addPass(MGP::createGlobalizeSlotIndicesPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts, libraryAnalysis));
   pm.addPass(MGP::createFuseGenericCompiledRegions());
   pm.addPass(MGP::createSimplifyChainsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createRemoveRedundantOperands());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 

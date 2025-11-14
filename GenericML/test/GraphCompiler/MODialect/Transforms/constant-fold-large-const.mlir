@@ -1,7 +1,6 @@
 // RUN: mo-opt --constant-fold --mlir-print-ir-before=cse %s 2>&1 | FileCheck %s
 
-// CHECK: constant_fold_subgraphs
-// CHECK-NEXT: mo.graph @large_const_constant_subgraphs{{.*}}(%arg0: !mo.tensor<[10], ui32>)
+// CHECK: mo.graph @large_const_constant_subgraphs{{.*}}(%arg0: !mo.tensor<[10], ui32>)
 // CHECK-NEXT: mo.add(%arg0, %arg0)
 // CHECK: mo.constant {value = #M.dense_array<2, 2, 2, 2, 2, 2, 2, 2, 2, 2> : !M.array<10xui32>}
 mo.graph @large_const() -> !mo.tensor<[10], ui32> {
