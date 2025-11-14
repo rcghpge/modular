@@ -26,7 +26,10 @@ from testing import (
     TestSuite,
 )
 from testing.prop import PropTest
-from testing.prop.strategy import SIMD
+
+# TODO(MOCO-522): Figure out desired behavior for importing files with only
+# extensions in them.
+from testing.prop.strategy import *
 
 from utils import StaticTuple
 from utils.numerics import isfinite, isinf, isnan, nan
@@ -2154,7 +2157,7 @@ def test_from_bytes_as_bytes():
     )
 
     # Test scalar roundtrip conversions
-    for x in List[Int16](10, 100, -12, 0, 1, -1, 1000, -1000):
+    for x in [Int16(10), 100, -12, 0, 1, -1, 1000, -1000]:
 
         @parameter
         for b in range(2):

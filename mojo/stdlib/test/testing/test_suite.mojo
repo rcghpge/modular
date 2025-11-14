@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from testing import assert_raises, assert_equal, assert_false, TestSuite
+from testing.suite import TestSuiteReport
 
 
 def nonconforming_name():
@@ -37,12 +38,25 @@ def test_skipped():
 def main():
     alias funcs = __functions_in_module()
     var suite = TestSuite.discover_tests[funcs]()
+
     suite.skip[test_skipped]()
+    suite.skip[nonconforming_name]()
+    with assert_raises(
+        contains=(
+            "trying to skip a test that is not registered in the suite:"
+            " nonconforming_name"
+        )
+    ):
+        suite^.run()
 
-    with assert_raises(contains="test not found in suite"):
-        suite.skip[nonconforming_name]()
-
-    var report = suite.generate_report()
+    suite = TestSuite.discover_tests[funcs]()
+    var report: TestSuiteReport
+    try:
+        suite.skip[test_skipped]()
+        report = suite.generate_report()
+    except e:
+        suite^.abandon()
+        raise e
 
     # Make sure running the suite fails, since we have a failing test.
     with assert_raises():
@@ -81,4 +95,5 @@ def main():
     with assert_raises(
         contains="'test_nonconforming_signature' has nonconforming signature"
     ):
-        var _ = TestSuite.discover_tests[failing_funcs]()
+        var suite = TestSuite.discover_tests[failing_funcs]()
+        suite^.abandon()

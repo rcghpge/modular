@@ -61,7 +61,6 @@ from layout.layout_tensor import (
 from layout.math import outer_product_acc
 from layout.swizzle import Swizzle
 from layout.tensor_core import TensorCore
-from memory import UnsafePointer
 from runtime.asyncrt import DeviceContextPtr
 from tensor import InputTensor, ManagedTensorSlice, OutputTensor
 
@@ -101,7 +100,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
 
             gpu_ctx = ctx.get_device_context()
 
-            var b_ptr_to_use: UnsafePointer[Float16]
+            var b_ptr_to_use: UnsafePointer[Float16, MutAnyOrigin]
 
             # Only transpose the B matrix if we are validating the results,
             # otherwise we can pretend the matrix is already transposed
@@ -134,7 +133,9 @@ struct TensorCoreMMA[algorithm: StaticString]:
             gpu_ctx.enqueue_memset(
                 DeviceBuffer[output.dtype](
                     gpu_ctx,
-                    rebind[UnsafePointer[Scalar[output.dtype]]](out_layout.ptr),
+                    rebind[LegacyUnsafePointer[Scalar[output.dtype]]](
+                        out_layout.ptr
+                    ),
                     M * N,
                     owning=False,
                 ),

@@ -26,6 +26,7 @@ from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph
 from max.graph.weights import WeightData, Weights, WeightsAdapter
 from max.kv_cache import (
+    NullKVCacheManager,
     PagedKVCacheManager,
     load_kv_manager,
 )
@@ -257,6 +258,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             graph_mode=graph_mode,
             data_parallel_degree=self.pipeline_config.model_config.data_parallel_degree,
             use_subgraphs=self.pipeline_config.model_config.use_subgraphs,
+            return_logits=self.return_logits,
         )
 
     @override
@@ -289,6 +291,10 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
         if config.ep_config is not None:
             self.ep_comm_initializer = EPCommInitializer(config.ep_config)
             self.ep_comm_initializer.ep_init(session)
+            if config.ep_config.node_id == -1:
+                raise ValueError(
+                    "EP node ID is not set. Please check if the EP initialization is successful."
+                )
 
         nn_model = DeepseekV3(config)
         nn_model.load_state_dict(state_dict, weight_alignment=1, strict=True)
@@ -461,7 +467,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
         self,
         session: InferenceSession,
         available_cache_memory: int,
-    ) -> PagedKVCacheManager:
+    ) -> PagedKVCacheManager | NullKVCacheManager:
         return load_kv_manager(
             params=DeepseekV3Config.get_kv_params(
                 huggingface_config=self.huggingface_config,

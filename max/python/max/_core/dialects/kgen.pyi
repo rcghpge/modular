@@ -1554,6 +1554,26 @@ class VariadicAttr(max._core.Attribute):
     @property
     def type(self) -> VariadicType: ...
 
+class VariadicMapAttr(max._core.Attribute):
+    """
+    The `#kgen.variadic.map` attribute is used to convert from a variadic of
+    (type) value to a variadic of (type) value by repeatedly applying the
+    provided generator on each element of the variadic.
+    """
+
+    def __init__(
+        self,
+        type: VariadicType,
+        variadic: max._core.dialects.builtin.TypedAttr,
+        generator: max._core.dialects.builtin.TypedAttr,
+    ) -> None: ...
+    @property
+    def type(self) -> VariadicType: ...
+    @property
+    def variadic(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def generator(self) -> max._core.dialects.builtin.TypedAttr: ...
+
 class VariantAttr(max._core.Attribute):
     """
     The `#kgen.variant` attribute represents a constant `!kgen.variant` value.
@@ -1609,6 +1629,10 @@ class EmitAs(enum.Enum):
     llvm_opt = 2
 
     object = 3
+
+    llvm_bitcode = 4
+
+    llvm_opt_bitcode = 5
 
 class ArgConvention(enum.Enum):
     read = 0

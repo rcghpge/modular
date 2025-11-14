@@ -28,7 +28,7 @@ from gpu import (
 from gpu.grid_controls import PDL, pdl_launch_attributes
 from gpu.host import DeviceContext
 from gpu.host.dim import Dim
-from gpu.random import Random
+from random import Random
 from layout import (
     UNKNOWN_VALUE,
     Layout,
@@ -37,8 +37,9 @@ from layout import (
 )
 from math import ceildiv, gcd
 from memory import stack_allocation
+from memory import LegacyUnsafePointer as UnsafePointer
 from os import Atomic
-from sys import simd_width_of, size_of
+from sys import simd_width_of, size_of, bit_width_of
 
 
 @always_inline
@@ -123,8 +124,8 @@ fn TopKMaskLogitsKernel[
     var tx = Int(thread_idx.x)
     var row_idx = bx
 
-    var logits_ptr = logits.ptr + bx * UInt(d)
-    var masked_logits_ptr = masked_logits.ptr + bx * UInt(d)
+    var logits_ptr = logits.ptr + bx * d
+    var masked_logits_ptr = masked_logits.ptr + bx * d
 
     alias row_layout = Layout.row_major(1, UNKNOWN_VALUE)
     var logits_row = LayoutTensor[dtype, row_layout, MutAnyOrigin](
@@ -167,7 +168,7 @@ fn TopKMaskLogitsKernel[
             for i in range(ceildiv(d, block_size * vec_size)):
                 if (i * block_size + Int(tx)) * vec_size < d:
                     logits_vec = logits_row.load[width=vec_size](
-                        0, i * block_size * vec_size + Int(tx * UInt(vec_size))
+                        0, i * block_size * vec_size + tx * vec_size
                     ).cast[DType.float32]()
 
                 var probs_gt_pivot_0_count = SIMD[DType.int32, vec_size]()
@@ -237,7 +238,7 @@ fn TopKMaskLogitsKernel[
         logits_vec = 0
         if (i * block_size + Int(tx)) * vec_size < d:
             logits_vec = logits_row.load[width=vec_size](
-                0, i * block_size * vec_size + Int(tx * UInt(vec_size))
+                0, i * block_size * vec_size + tx * vec_size
             ).cast[DType.float32]()
 
         logits_vec = (logits_vec.cast[DType.float64]().gt(pivot)).select(
@@ -247,7 +248,7 @@ fn TopKMaskLogitsKernel[
         if (i * block_size + Int(tx)) * vec_size < d:
             masked_logits_row.store[width=vec_size](
                 0,
-                i * block_size * vec_size + Int(tx * UInt(vec_size)),
+                i * block_size * vec_size + tx * vec_size,
                 logits_vec.cast[dtype](),
             )
 
@@ -330,7 +331,7 @@ fn device_sampling_from_prob[
     """Device-level sampling from probability distribution with atomic operations.
     """
 
-    var tx = thread_idx.x
+    var tx = Int(thread_idx.x)
 
     # Step 1: Filter probabilities based on predicate (prob > low).
     var prob_gt_threshold = SIMD[DType.float32, vec_size]()
@@ -815,25 +816,20 @@ fn topk_sampling_from_prob[
 
     @parameter
     fn launch_kernel[vec_size: Int, deterministic: Bool]() raises:
-        ctx.enqueue_function[
-            TopKSamplingFromProbKernel[
-                block_size,
-                vec_size,
-                dtype,
-                out_idx_type,
-                probs.layout,
-                output.layout,
-                deterministic,
-            ]
-        ](
+        alias kernel = TopKSamplingFromProbKernel[
+            block_size,
+            vec_size,
+            dtype,
+            out_idx_type,
+            probs.layout,
+            output.layout,
+            deterministic,
+        ]
+        ctx.enqueue_function_checked[kernel, kernel](
             probs,
             output,
-            indices.value().ptr if indices else UnsafePointer[
-                Scalar[out_idx_type]
-            ](),
-            top_k_arr.value().ptr if top_k_arr else UnsafePointer[
-                Scalar[out_idx_type]
-            ](),
+            indices.value().to_device_buffer(ctx),
+            top_k_arr.value().to_device_buffer(ctx),
             top_k_val,
             d,
             rng_seed,

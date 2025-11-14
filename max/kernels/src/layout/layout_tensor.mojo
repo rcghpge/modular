@@ -2166,7 +2166,7 @@ struct LayoutTensor[
     fn store[
         width: Int
     ](self: Self._AsMut, coords: IndexList[*_, **_], val: SIMD[dtype, width],):
-        """Store a SIMD vector to the tensor at the specified 2D coordinates.
+        """Store a SIMD vector to the tensor at the specified ND coordinates.
 
         Performs a vectorized store operation to the tensor's memory, writing
         'width' consecutive elements starting at position (m, n). This method
@@ -6137,7 +6137,7 @@ fn cp_async_mn_major[
     # of the warp group. Thus, we use the minimal desc layout.
     alias core_matrix_num_rows = 8
     alias swizzle_bytes = 128  # assume 128B swizzle
-    alias swizzle_granularity = swizzle_bytes // dtype.size_of()
+    alias swizzle_granularity = swizzle_bytes // size_of[dtype]()
     alias desc_layout = Layout.row_major(
         core_matrix_num_rows, swizzle_granularity
     )

@@ -30,7 +30,7 @@ from max.graph import (
     ops,
 )
 from max.graph.ops.allreduce import matmul_allreduce
-from max.kv_cache import PagedKVCacheManager
+from max.kv_cache import NullKVCacheManager, PagedKVCacheManager
 from max.nn import (
     MLP,
     ColumnParallelLinear,
@@ -414,7 +414,7 @@ class DeepseekV3(Module):
             ]
         else:
             self.subgraph_layer_groups = []
-        self.return_logits = ReturnLogits.LAST_TOKEN
+        self.return_logits = config.return_logits
         self.logits_scaling = 1.0
 
     def __call__(
@@ -606,7 +606,7 @@ class DeepseekV3(Module):
                 )[0],
                 DType.float32,
             )
-            offsets = input_row_offsets
+            offsets = input_row_offsets_[0]
 
         if self.logits_scaling != 1.0:
             last_logits = last_logits / self.logits_scaling
@@ -619,7 +619,7 @@ class DeepseekV3(Module):
             return (last_logits,)
 
     def input_types(
-        self, kv_manager: PagedKVCacheManager
+        self, kv_manager: PagedKVCacheManager | NullKVCacheManager
     ) -> tuple[TensorType | BufferType, ...]:
         # TODO: Move input symbol computation from the manager classes.
         # It should be possible to compute the input symbols from the model

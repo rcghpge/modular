@@ -225,7 +225,6 @@ fn load_AB[
         if elect_one_cta:
             tma_mbar[0].expect_bytes(expected_bytes)
 
-        @parameter
         for j in range(k_group_size):
             var a_smem_tile = a_smem.next(stage * k_group_size + j)[]
             var b_smem_tile = b_smem.next(stage * k_group_size + j)[]
@@ -311,8 +310,6 @@ fn consumer_main_loop[
 
     # Compose TMEM address: accum stage encoded in column field with stride in columns.
     if elect_one_sync():
-
-        @parameter
         for j in range(k_group_size):
             var a_smem_tile = a_smem_iter.next(stage * k_group_size + j)[]
             var b_smem_tile = b_smem_iter.next(stage * k_group_size + j)[]
@@ -2986,7 +2983,17 @@ fn _blackwell_matmul_tma_umma_warp_specialized_split_k[
     var N = c_device.dim[1]()
     var M_maybe_swapped = a_device.dim[0]()
     var N_maybe_swapped = b_device.dim[0]()
-    var K = a_device.dim[1]()
+    alias K = a_layout.shape[1].value()
+
+    constrained[
+        ceildiv(K, BK) % Int(config.k_group_size) == 0,
+        "K iterations must be a multiple of k_group_size",
+    ]()
+
+    constrained[
+        config.num_pipeline_stages % config.k_group_size == 0,
+        "num_pipeline_stages must be a multiple of k_group_size",
+    ]()
 
     a_tma_op = create_tma_tile[
         Index(BM // cluster_shape[1], BK), swizzle_mode = config.a_swizzle

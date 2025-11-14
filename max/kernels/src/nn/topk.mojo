@@ -13,6 +13,7 @@
 
 from collections import OptionalReg
 from math import ceildiv, exp, iota
+from memory import LegacyUnsafePointer as UnsafePointer
 from sys import align_of, simd_width_of, size_of, env_get_bool
 
 import gpu.warp as warp
@@ -35,7 +36,7 @@ from gpu.host import DeviceContext, DeviceBuffer
 from gpu.host.dim import Dim
 from gpu.host.info import is_cpu
 from gpu.memory import AddressSpace, external_memory
-from gpu.random import Random
+from random import Random
 from layout import (
     UNKNOWN_VALUE,
     Layout,

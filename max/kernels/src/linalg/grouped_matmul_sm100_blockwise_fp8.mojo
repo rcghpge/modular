@@ -44,6 +44,8 @@ from .matmul.gpu.sm100.blockwise_fp8 import (
 )
 from .utils import elementwise_epilogue_type
 
+alias logger = Logger()
+
 
 @__llvm_metadata(`nvvm.cluster_dim`=cluster_shape)
 @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
@@ -544,7 +546,6 @@ fn grouped_matmul_sm100_blockwise_scaled_fp8[
         ),
     )
 
-    var logger = Logger()
     logger.info(
         "Executing SM100 Basic Grouped 1D2D Blockwise Scaled FP8 GEMM"
         " (BLOCK_SCALE_SIZE = 128)"
@@ -709,6 +710,9 @@ fn grouped_matmul_dynamic_scaled_fp8[
     alias N = b.shape.get[1]()
     alias K = b.shape.get[2]()
     var seq_len = a.dim[0]()
+
+    if num_active_experts == 0 or max_num_tokens_per_expert == 0:
+        return
 
     @parameter
     if ctx.default_device_info is B200:

@@ -21,6 +21,21 @@ what we publish.
 
 ### Language enhancements {#25-7-language-enhancements}
 
+- Mojo now supports the `comptime` keyword as a synonym for `alias`. The
+  `comptime` keyword can be used interchangeably with `alias` for compile-time
+  declarations. Both keywords are fully supported and produce identical
+  behavior. For example:
+
+  ```mojo
+  comptime x = 5      # New preferred syntax
+  alias y = 10        # Still fully supported
+  comptime MyType[T: AnyType] = T  # Works with parametric declarations
+  ```
+
+  Note: Future updates will migrate error messages and internal terminology to
+  use "comptime". The `alias` keyword will remain supported for backward
+  compatibility.
+
 - Mojo now supports unpacking an alias tuple with a single statement when it is
   not inside a `struct` or `trait`. For example:
 
@@ -54,9 +69,10 @@ what we publish.
     fn __iter__(self) -> Self.BorrowingIterator: ...
   ```
 
-- Literals now have a default type. For example, you can now bind `[1,2,3]` to
-  `T` in a call to a function defined as `fn zip[T: Iterable](impl:T)` because
-  it will default to the standard library's List type.
+- Collection literals now have a default type. For example, you can now bind
+  `[1,2,3]` to `T` in a call to a function defined as
+  `fn zip[T: Iterable](impl:T)` because it will default to the standard
+  library's `List` type.
 
 - Mojo now has a `__functions_in_module` experimental intrinsic that allows
   reflection over the functions declared in the module where it is called. For
@@ -109,8 +125,56 @@ what we publish.
     old() # 'old' is deprecated, use 'new' instead
   ```
 
+- In struct instances that declare a parametric `__call__` method, but not
+  one of the subscript methods (`__getitem__`, `__setitem__`, or
+  `__getattr__`), the `__call__` method can now be invoked with parameters:
+
+  ```mojo
+  struct Callable:
+    fn __init__(out self):
+      pass
+
+    fn __call__[x: Int](self, y: Int) -> Int:
+      return x + y
+
+    fn main():
+      var c = Callable()
+      print(c[1](2)) # 3
+  ```
+
+  Previously you would have needed to explicitly look up `__call__`:
+
+  ```mojo
+  print(c.__call__[1](2))
+  ```
+
 - Added `DType.float4_e2m1fn` as the 4bit float `e2m1` format. This Float4_e2m1
   type is defined by the [Open Compute MX Specification](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf).
+
+- `deinit` methods may now transfer all of 'self' to another `deinit' method.
+
+- Error and warning messages now preserve `comptime` aliases in many cases, to
+  prevent extremely long type names for complex types.  The compiler will expand
+  these when necessary to understand the type based on a simple heuristic, for
+  example:
+
+  ```mojo
+  struct Dep[T: AnyType, v: T]: pass
+  alias MyDep[T: AnyType, v: T] = Dep[T, v]
+  alias MyDepGetAlias0 = MyDep.hello
+  ```
+
+  produces:
+
+  ```console
+  $ mojo t.mojo
+  t.mojo:10:29: error: 'MyDep' needs more parameters bound before accessing attributes
+  alias MyDepGetAlias0 = MyDep.hello
+                            ^
+  t.mojo:10:29: note: 'MyDep' is aka 'alias[T: AnyType, v: T] Dep[T, v]'
+  ```
+
+  please file issues in cases where more information needs to be exposed.
 
 ### Language changes {#25-7-language-changes}
 
@@ -119,10 +183,62 @@ what we publish.
   i.e., `(Int, Float) : Tuple[__typeof(Int), __typeof(Float)]`.
 
 - The `__type_of` magic function has been been renamed to `type_of`. Using the
-  old spelling will yield a deprecation warning. Similarly, `__origin_of` has
-  been deprecated in favor of the new `origin_of`.
+  old spelling will yield an error. Similarly, `__origin_of` has been removed in
+  favor of the new `origin_of`.
 
 ### Library changes {#25-7-library-changes}
+
+- `UnsafePointer` has been renamed to `LegacyUnsafePointer` and a new
+  `UnsafePointer` has [taken its place](https://forum.modular.com/t/proposal-unsafepointer-v2/2411?u=nate).
+  Similarly, `OpaquePointer` has been renamed to `LegacyOpaquePointer` and a new
+  `OpaquePointer` has taken its place.
+  The primary differences is the ordering or parameters now looks as such:
+
+  ```mojo
+  struct UnsafePointer[
+    mut: Bool, //, # Inferred mutability
+    type: AnyType,
+    origin: Origin[mut], # Non-defaulted origin
+    *,
+    address_space: AddressSpace = AddressSpace.GENERIC,
+  ]
+
+  alias OpaquePointer[
+    mut: Bool, //, # Inferred mutability
+    origin: Origin[mut], # Non-defaulted origin
+    *,
+    address_space: AddressSpace = AddressSpace.GENERIC,
+  ] = UnsafePointer[NoneType, origin, address_space=address_space]
+  ```
+
+  Its implicit constructors now no longer allow for unsafe casting between
+  mutabilities and origins. Code will need to update to the new `UnsafePointer`,
+  however, in the interim, users can find-and-replace their current usages of
+  `UnsafePointer` and rename them to `LegacyUnsafePointer`. Another option is
+  users can add the following import statement to the beginning of any files
+  relying on the old pointer type:
+
+  ```mojo
+  from memory import LegacyUnsafePointer as UnsafePointer
+  # and/or if you use OpaquePointer
+  from memory import LegacyOpaquePointer as OpaquePointer
+  ```
+
+  Users can also use the `as_legacy_pointer` and `as_unsafe_pointer` conversion
+  functions to convert between the two pointer types during this migration
+  period.
+
+  _Note_: `LegacyUnsafePointer` and `LegacyOpaquePointer` will eventually be
+  deprecated and removed in a future version of Mojo.
+
+  Lastly, `alloc` has been moved from a static method on UnsafePointer to a free
+  standing `alloc` function. Therefore, code that was written as:
+
+  ```mojo
+  var ptr = UnsafePointer[Int].alloc(3)
+  # will now be rewritten as
+  var ptr = alloc[Int](3)
+  ```
 
 #### Libraries
 
@@ -188,7 +304,7 @@ what we publish.
   `Bool` was the only Mojo standard library type to implement
   `ImplicitlyIntable`. Conversions from `Bool` to `Int` can now be performed
   explicitly, using `Int(bool-val)` (via the remaining `Intable` trait, which
-  only supports *explicit* conversions).
+  only supports _explicit_ conversions).
 
 - `assert_equal` now displays colored character-by-character diffs when string
   comparisons fail, making it easier to spot differences. Differing characters
@@ -277,6 +393,10 @@ what we publish.
   (`llvm.air.simd_shuffle[_up/_down/_xor]`) instructions, achieving feature
   parity with NVIDIA and AMD backends.
 
+- `gpu.intrinsics.store_release()` and `gpu.intrinsics.load_acquire()` now
+  support Apple silicon GPUs, expanding support for proper memory
+  synchronization on these devices.
+
 - The `gpu` package has been reorganized into logical subdirectories for better
   code organization:
   - `gpu/primitives/` - Low-level GPU execution primitives (warp, block,
@@ -349,6 +469,28 @@ what we publish.
   comparable. For example, one can now write `(1, "a") == (1, "a")` or
   `(1, "a") < (1, "b")`.
 
+- Added support for `DType` expressions in `where` clauses:
+
+  ```mojo
+  fn foo[dt: DType]() -> Int where dt is DType.int32:
+      return 42
+  ```
+
+  Currently, the following expressions are supported:
+  - equality and inequality
+  - `is_signed()`, `is_unsigned()`, `is_numeric()`, `is_integral()`,
+    `is_floating_point()`, `is_float8()`, `is_half_float()`
+
+- `DLHandle` is no longer part of the public API. Use `OwnedDLHandle` instead,
+  which provides RAII-based automatic resource management for dynamically linked
+  libraries. `DLHandle` has been renamed to `_DLHandle` and remains available
+  internally for use by the standard library.
+
+- The Philox random number generator (`Random` and `NormalRandom`) has been
+  moved from `gpu.random` to `random.philox`. These types now work on both CPU
+  and GPU. Import them using `from random import Random, NormalRandom` or
+  `from random.philox import Random, NormalRandom`.
+
 ### Tooling changes {#25-7-tooling-changes}
 
 - `mojo test` has [been deprecated](https://forum.modular.com/t/proposal-deprecating-mojo-test/2371)
@@ -402,7 +544,14 @@ what we publish.
 
 - `--help-hidden` option is added to all mojo tools to show hidden options.
 
+- `mojo debug` now rejects unknown options between `debug` and the target.
+
 - The Mojo language server will now report more coherent code actions.
+
+- The `mojo` driver now has a `--experimental-fixit` flag that automatically
+  applies FixIt hints emitted by the parser. This feature is highly
+  experimental, and users should ensure they back up their files (or check them
+  into source control) before using it.
 
 ### ❌ Removed {#25-7-removed}
 
@@ -445,6 +594,11 @@ what we publish.
         my_func()
     ...
     ```
+
+- The following traits have been removed: `LessThanComparable`,
+  `GreaterThanComparable`, `LessThanOrEqualComparable`,
+  `GreaterThanOrEqualComparable`. It is extremely rare that a type would only
+  implement one of these, so one can just use `Comparable` instead.
 
 ### 🛠️ Fixed {#25-7-fixed}
 
@@ -509,3 +663,19 @@ what we publish.
   and sockets with `open(path, "w")` now works correctly. Previously, write
   mode would attempt to remove the existing file before opening it, which
   failed for special files that should not be removed.
+
+- The `sys.intrinsics.compressed_store` function now includes a `debug_assert`
+  to catch null pointer usage, providing a clear error message instead of
+  crashing with a segmentation fault
+  ([#5142](https://github.com/modular/modular/issues/5142)).
+
+- The `sys.intrinsics.strided_load`, `sys.intrinsics.strided_store`,
+  `sys.intrinsics.masked_load`, and `sys.intrinsics.masked_store` functions now
+  include a `debug_assert` to catch null pointer usage, providing a clear error
+  message instead of crashing with a segmentation fault.
+
+- The `logger` package now prints its levels in color.
+
+- Throwing `deinit` methods now understand that `self` is deinitialized in error
+  paths, avoiding redundant calls to implicit destructors and improving linear
+  type support.

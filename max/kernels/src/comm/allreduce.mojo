@@ -875,6 +875,11 @@ fn _allreduce_p2p[
     """
     alias simd_width = simd_width_of[dtype, target = get_gpu_target()]()
     var num_elements = list_of_in_bufs[0].num_elements()
+
+    # Do nothing if there are no elements to reduce.
+    if num_elements == 0:
+        return
+
     if num_elements % simd_width != 0:
         raise Error(
             "non SIMD-width multiple number of elements unsupported by"
@@ -1084,6 +1089,14 @@ fn _dispatch_max_num_blocks[
     alias default_idx = allreduce_table.query_index[rule_eq_arch_default]()
     constrained[len(default_idx)]()
     alias default_entry = allreduce_table.configs[default_idx[0]]
+    var default_num_blocks = default_entry.num_blocks
+
+    # Override defaults for specific AMD CDNA3 parts regardless of sm_version aliasing
+    alias arch = _accelerator_arch()
+    if "gfx950" in arch:  # MI355 family
+        default_num_blocks = 64
+    elif "gfx942" in arch:  # MI300 family
+        default_num_blocks = 32
 
     # narrowing the search space to matching sm_version and ngpus
     @parameter
@@ -1094,7 +1107,7 @@ fn _dispatch_max_num_blocks[
 
     @parameter
     if not search_domain:
-        return default_entry.num_blocks
+        return default_num_blocks
 
     # get all static num_bytes values in table within the search space
     @parameter
@@ -1125,7 +1138,7 @@ fn _dispatch_max_num_blocks[
             else:
                 break
 
-    return default_entry.num_blocks
+    return default_num_blocks
 
 
 fn get_sm_version() -> StaticString:
@@ -1207,8 +1220,12 @@ fn allreduce[
       - The `use_multimem` parameter requires P2P access between GPUs to be enabled.
     """
 
-    # TODO: check all devices have the same GPU sm_version
+    # Return early, if the input buffer is empty
+    var num_elements = input_buffers[0].num_elements()
+    if num_elements == 0:
+        return
 
+    # TODO: check all devices have the same GPU sm_version
     alias sm_version = get_sm_version()
     var max_num_blocks = _max_num_blocks.or_else(
         _dispatch_max_num_blocks[ngpus, sm_version](

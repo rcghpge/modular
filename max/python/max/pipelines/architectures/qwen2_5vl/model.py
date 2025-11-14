@@ -34,6 +34,7 @@ from max.graph.weights import (
     WeightsAdapter,
 )
 from max.kv_cache import (
+    NullKVCacheManager,
     PagedKVCacheManager,
     estimate_kv_cache_size,
     load_kv_manager,
@@ -476,9 +477,6 @@ class Qwen2_5VLModel(
             ]
             signal_buffers = [inp.buffer for inp in all_inputs[8 * n_devices :]]
 
-            # Execute vision transformer using the vision encoder module with multi-GPU support
-            # For now, use the first device's inputs (keeping compatibility with single GPU approach)
-            # TODO: Implement proper multi-GPU execution when vision encoder is fully parallelized
             vision_outputs = vision_encoder(
                 pixel_values=pixel_values_list,
                 rot_pos_ids=rot_pos_ids_list,
@@ -1148,7 +1146,7 @@ class Qwen2_5VLModel(
 
     def load_kv_manager(
         self, session: InferenceSession, available_cache_memory: int | None
-    ) -> PagedKVCacheManager:
+    ) -> PagedKVCacheManager | NullKVCacheManager:
         """Loads and initializes the PagedKVCacheManager for the Qwen2.5VL model."""
         return load_kv_manager(
             params=Qwen2_5VLConfig.get_kv_params(

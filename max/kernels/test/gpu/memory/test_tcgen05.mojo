@@ -14,7 +14,7 @@
 from gpu import WARP_SIZE
 from gpu.host import DeviceContext
 from gpu.host.nvidia.tma import TensorMapSwizzle
-from gpu import thread_idx
+from gpu import thread_idx, warp_id
 from gpu.mma_sm100 import *
 from gpu.sync import barrier
 from gpu.tcgen05 import *
@@ -27,7 +27,7 @@ from testing import assert_almost_equal
 fn tcgen05_st_ld_roundtrip_kernel[
     M: Int, N: Int
 ](data: LayoutTensor[DType.float32, Layout.row_major(M, N), MutAnyOrigin]):
-    var elect_one_warp = thread_idx.x // WARP_SIZE == 0
+    var elect_one_warp = warp_id() == 0
     var elect_one_thread = thread_idx.x == 0
 
     var ptr_tmem_addr = stack_allocation[
@@ -46,7 +46,7 @@ fn tcgen05_st_ld_roundtrip_kernel[
 
     var data_st = SIMD[DType.float32, width]()
     for n in range(N):
-        data_st[n] = thread_idx.x * N + n
+        data_st[n] = thread_idx.x * UInt(N) + UInt(n)
 
     tcgen05_st[
         datapaths=16,
@@ -189,7 +189,7 @@ fn tcgen05_cp_ld_roundtrip_kernel[
     smem_tile[n + 8, k + 0] = Float32(thread_idx.x * 4 + 2)
     smem_tile[n + 8, k + 1] = Float32(thread_idx.x * 4 + 3)
 
-    var elect_one_warp = thread_idx.x // WARP_SIZE == 0
+    var elect_one_warp = warp_id() == 0
 
     var ptr_tmem_addr = stack_allocation[
         1, UInt32, address_space = AddressSpace.SHARED, alignment=16
@@ -227,7 +227,7 @@ fn tcgen05_cp_ld_roundtrip_kernel[
         tcgen05_dealloc[1](tmem_addr, num_cols)
 
     for n in range(N):
-        if data_ld[n] == thread_idx.x * N + n:
+        if data_ld[n] == thread_idx.x * UInt(N) + UInt(n):
             data[thread_idx.x, n] = data_ld[n]
 
 

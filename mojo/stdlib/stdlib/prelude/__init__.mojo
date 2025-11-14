@@ -36,13 +36,7 @@ from builtin.anytype import AnyType, Some, UnknownDestructibility
 from builtin.bool import Bool, Boolable, ImplicitlyBoolable, all, any
 from builtin.breakpoint import breakpoint
 from builtin.builtin_slice import Slice, slice
-from builtin.comparable import (
-    Comparable,
-    GreaterThanComparable,
-    GreaterThanOrEqualComparable,
-    LessThanComparable,
-    LessThanOrEqualComparable,
-)
+from builtin.comparable import Comparable
 from builtin.constrained import constrained
 from builtin.coroutine import AnyCoroutine, Coroutine, RaisingCoroutine
 from builtin.debug_assert import debug_assert
@@ -135,20 +129,16 @@ from builtin.variadics import VariadicList, VariadicListMem, VariadicPack
 from documentation import doc_private
 from iter import Iterable, Iterator, enumerate, iter, map, next, zip
 from memory import (
+    alloc,
     AddressSpace,
-    ExternalImmutPointer,
-    ExternalMutPointer,
-    ExternalPointer,
     LegacyOpaquePointer,
     LegacyUnsafePointer,
     OpaqueImmutPointer,
     OpaqueMutPointer,
     OpaquePointer,
-    OpaquePointerV2,
     Pointer,
     Span,
     UnsafeImmutPointer,
     UnsafeMutPointer,
     UnsafePointer,
-    UnsafePointerV2,
 )
