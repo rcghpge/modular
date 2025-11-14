@@ -63,6 +63,20 @@ void setVirtualDeviceCount(int count);
 int getVirtualDeviceCount();
 bool isVirtualDeviceMode();
 
+// Virtual device API control functions.
+// These functions set and get the API (e.g., "cuda", "hip", "metal") for
+// virtual devices created in compile-only mode. The API must be set before
+// creating virtual devices. Thread-safe.
+void setVirtualDeviceAPI(StringRef api);
+std::string getVirtualDeviceAPI();
+
+// Virtual device target architecture control functions.
+// These functions set and get the target GPU architecture (e.g., "sm_80",
+// "sm_90") for virtual devices created in compile-only mode. The architecture
+// must be set before creating virtual devices. Thread-safe.
+void setVirtualDeviceTargetArch(StringRef arch);
+std::string getVirtualDeviceTargetArch();
+
 class DriverVersion {
 public:
   explicit DriverVersion(std::string version);

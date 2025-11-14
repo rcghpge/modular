@@ -103,9 +103,9 @@ ErrorOr<Device::MemInfo> VirtualDevice::getMemoryInfo() const {
     info.free = deviceMemoryLimit_;
     info.total = deviceMemoryLimit_;
   } else {
-    // Return a reasonable default (80GB, typical for H100)
-    info.free = 80ULL * 1024 * 1024 * 1024;
-    info.total = 80ULL * 1024 * 1024 * 1024;
+    // Return a reasonable default (192GB, typical for B200)
+    info.free = 192ULL * 1024 * 1024 * 1024;
+    info.total = 192ULL * 1024 * 1024 * 1024;
   }
   return info;
 }

@@ -98,8 +98,8 @@ TEST_F(VirtualDeviceContextTest, MemoryInfoDefaultLimit) {
   // Should return positive values
   EXPECT_GT(memInfo.total, 0);
   EXPECT_GT(memInfo.free, 0);
-  // Default should be 80GB (typical for H100)
-  EXPECT_EQ(memInfo.total, 80LL * 1024 * 1024 * 1024);
+  // Default should be 192GB (typical for B200)
+  EXPECT_EQ(memInfo.total, 192LL * 1024 * 1024 * 1024);
 }
 
 TEST_F(VirtualDeviceContextTest, ContextCreation) {

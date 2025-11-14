@@ -83,6 +83,52 @@ MODULAR_CXX_EXPORT bool isVirtualDeviceMode() {
   return g_virtualDeviceCount > 0;
 }
 
+// Global API for virtual device compilation.
+// This specifies which API to use (e.g., "cuda", "hip", "metal") for
+// virtual devices created in compile-only mode.
+// Using function-local static for thread-safe lazy initialization.
+static std::string &getVirtualDeviceAPIImpl() {
+  static std::string api;
+  return api;
+}
+static std::mutex &getVirtualDeviceAPIMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+MODULAR_CXX_EXPORT void setVirtualDeviceAPI(StringRef api) {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceAPIMutex());
+  getVirtualDeviceAPIImpl() = api.str();
+}
+
+MODULAR_CXX_EXPORT std::string getVirtualDeviceAPI() {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceAPIMutex());
+  return getVirtualDeviceAPIImpl();
+}
+
+// Global target architecture for virtual device compilation.
+// This specifies the GPU architecture (e.g., "sm_80", "sm_90") for
+// virtual devices created in compile-only mode.
+// Using function-local static for thread-safe lazy initialization.
+static std::string &getVirtualDeviceTargetArchImpl() {
+  static std::string arch;
+  return arch;
+}
+static std::mutex &getVirtualDeviceTargetArchMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+MODULAR_CXX_EXPORT void setVirtualDeviceTargetArch(StringRef arch) {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceTargetArchMutex());
+  getVirtualDeviceTargetArchImpl() = arch.str();
+}
+
+MODULAR_CXX_EXPORT std::string getVirtualDeviceTargetArch() {
+  std::lock_guard<std::mutex> lock(getVirtualDeviceTargetArchMutex());
+  return getVirtualDeviceTargetArchImpl();
+}
+
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
     : prevCtx_(nullptr), err_(success()) {
   const Device &dev = ctx.device();
@@ -234,12 +280,27 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
 
     std::unique_ptr<CompilationDevice> compilationDevice;
 
-    if (api == cudaAPI || api == gpuAPI) {
-      // Default to sm_80 (Ampere/A100) for broad compatibility.
-      // sm_80 supports modern features while being widely compatible.
-      // TODO: Make this configurable via environment variable or config.
-      StringRef targetArch = "sm_80";
+    // Get the configured API and target architecture from global config
+    std::string virtualAPI = getVirtualDeviceAPI();
+    std::string targetArch = getVirtualDeviceTargetArch();
 
+    // Validate that both have been set
+    if (virtualAPI.empty()) {
+      return Error(
+          "Virtual device API not set. "
+          "Call setVirtualDeviceAPI() with target API "
+          "(e.g., 'cuda', 'hip', 'metal') before creating virtual devices.");
+    }
+    if (targetArch.empty()) {
+      return Error(
+          "Virtual device target architecture not set. "
+          "Call setVirtualDeviceTargetArch() with target GPU architecture "
+          "(e.g., 'sm_80', 'sm_90') before creating virtual devices.");
+    }
+
+    // Branch based on the configured API (not the requested API which is often
+    // generic "gpu")
+    if (virtualAPI == "cuda") {
       auto compilationDeviceOrErr = CUDACompilationDevice::create(targetArch);
       if (compilationDeviceOrErr.isError()) {
         return Error(
@@ -249,13 +310,12 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
       }
 
       compilationDevice = std::move(*compilationDeviceOrErr);
-    } else if (api == hipAPI) {
+    } else if (virtualAPI == "hip") {
       // Create HIP compilation device
       // Unlike CUDA, HIP does not require runtime compilation (PTX→CUBIN).
       // All compilation is handled by KGEN through the LLVM AMDGPU backend.
       // However, we still need a CompilationDevice to store the target
       // architecture information.
-      StringRef targetArch = "gfx942";
       auto compilationDeviceOrErr = HIPCompilationDevice::create(targetArch);
       if (compilationDeviceOrErr.isError()) {
         return Error(
@@ -265,10 +325,12 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
       }
 
       compilationDevice = std::move(*compilationDeviceOrErr);
-    } else if (api == "metal") {
+    } else if (virtualAPI == "metal") {
       // TODO: Implement MetalCompilationDevice for Apple GPU compilation
       return Error("Metal virtual device mode not yet implemented. "
                    "Only CUDA is currently supported in compile-only mode.");
+    } else {
+      return Error(llvm::Twine("Unknown virtual device API: ") + virtualAPI);
     }
 
     // Create VirtualDevice with the compilation device
