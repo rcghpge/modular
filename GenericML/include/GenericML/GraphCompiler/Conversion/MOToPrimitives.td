@@ -235,12 +235,7 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-    Option<"dumpMojoText", "dump-mojo-text", "bool", "false",
-       "Flag to dump the emitted mojo as text">,
     Option<"enableOpTraceComments", "enable-op-trace-comments", "bool", "false", "Flag to enable adding comments in the Mojo code detailing which operation is being emitted.">,
-    Option<"saveTempPrefix", "save-temp-prefix", "std::string", /*default=*/"",
-            "The prefix to use when saving temporary files. Setting this "
-            "option toggles on saveTemps.">,
     Option<"enableComputeLambdas", "enable-compute-lambdas", "bool", "true",
       "Enable compute lambdas for the fused I/O kernels">,
     Option<"moggDebugDumpFusedTensorSpecs", "mogg-debug-dump-fused-tensor-specs", "bool", "false",

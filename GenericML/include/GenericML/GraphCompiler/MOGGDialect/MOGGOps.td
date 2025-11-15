@@ -1665,20 +1665,6 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   let hasCustomAssemblyFormat = 1;
 }
 
-def MOGG_MojoModuleOp : MOGG_Op<"mojo.module", []> {
-  let summary = "Module containing all the emitted Mojo code";
-  let description = [{
-    The Mojo text that was emitted from the EmitMojo pass will be an attribute
-    of this operation. It is stored in a hex format, as a dialect resource.
-  }];
-  let arguments = (ins
-    ConfinedAttr<
-      ElementsAttr,
-      [AnyAttrOf<[Builtin_DenseResourceElementsAttr]>]
-    >:$module);
-  let assemblyFormat = [{ attr-dict }];
-}
-
 def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>

@@ -4,9 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Support/FileUtilities.h"
-#include "llvm/Support/ToolOutputFile.h"
-
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
@@ -63,59 +60,65 @@ struct EmitMojo
 
     auto moduleOp = getOperation();
     MLIRContext *ctx = &getContext();
+    auto loc = moduleOp->getLoc();
 
     auto analysisOr = getLibraryAnalysis();
     if (analysisOr.isError()) {
-      emitError(getOperation().getLoc(),
-                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                              getPassName(), analysisOr.getError()));
+      emitError(loc, llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                                   getPassName(), analysisOr.getError()));
       return signalPassFailure();
     }
 
     OpBuilder builder(ctx);
     SymbolTable symTable(moduleOp);
+    MOGG::EmitMojoState state(*analysisOr.takeValue(), enableOpTraceComments,
+                              enableComputeLambdas,
+                              moggDebugDumpFusedTensorSpecs);
+
+    // Import mojo stdlib packages and compiler directives.
+    for (auto package : MOGG::HardcodedMojoSymbols::packagesToImport)
+      state.builder.import(package, "*");
+
+    // Import mojo packages for the custom kernel libraries.
+    for (const auto &kernelLibraryPath : kernelLibraryPaths) {
+      auto moduleName = std::filesystem::path(kernelLibraryPath).stem();
+      state.builder.import(moduleName.string(), "*");
+    }
+
+    // Emit mojo for all the kernel stubs that exist in the current module.
+    for (auto &&kernelStub : llvm::make_early_inc_range(
+             moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
+      if (kernelStub.emitMojo(state).failed()) {
+        signalPassFailure();
+        return;
+      }
+    }
+
+    // For each model, emit Mojo for all the GenericCompiledRegionOps.
+    std::string emptyKernelName;
+    llvm::StringMap<DenseSet<StringAttr>> kernelsToLoadPerModel;
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      DenseSet<StringAttr> kernelsToLoad;
-      MOGG::EmitMojoState state(*analysisOr.takeValue(), enableOpTraceComments,
-                                enableComputeLambdas,
-                                moggDebugDumpFusedTensorSpecs);
-      for (auto package : MOGG::HardcodedMojoSymbols::packagesToImport)
-        state.builder.import(package, "*");
-      // Import mojo packages for the custom kernel libraries.
-      for (const auto &kernelLibraryPath : kernelLibraryPaths) {
-        auto moduleName = std::filesystem::path(kernelLibraryPath).stem();
-        state.builder.import(moduleName.string(), "*");
-      }
-
-      // First do all the stubs (in case they appear after their references).
-      for (auto &&kernelStub : llvm::make_early_inc_range(
-               moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
-        // Skip if this stub is not used by this graph.
-        if (symTable.getSymbolUses(kernelStub, modelOp)->empty())
-          continue;
-
-        if (kernelStub.emitMojo(state).failed()) {
-          signalPassFailure();
-          return;
-        }
-      }
-
-      // Then do all the kernels that may reference them.
+      DenseSet<StringAttr> &kernelsToLoadInThisModel =
+          kernelsToLoadPerModel[modelOp.getSymName()];
       auto lowerGenericCompiledRegionOps =
           [&](MOGG::GenericCompiledRegionOp kernel) {
-            // If none of the ops emits Mojo, skip it.
             if (!kernel.getEmitsMojo())
               return WalkResult::skip();
 
+            state.builder.comment(
+                llvm::formatv("Emitting kernel entry points for model named {}",
+                              modelOp.getSymName())
+                    .str());
             if (kernel.emitMojo(state).failed())
               return WalkResult::interrupt();
 
             auto kernelCall = lowerGenericCompiledRegionOp(
                 kernel, state.currentKernelName, builder);
-            kernelsToLoad.insert(kernelCall.getKernelNameAttr());
+            kernelsToLoadInThisModel.insert(kernelCall.getKernelNameAttr());
 
             return WalkResult::advance();
           };
+
       if (modelOp->walk(lowerGenericCompiledRegionOps).wasInterrupted()) {
         signalPassFailure();
         return;
@@ -132,55 +135,59 @@ struct EmitMojo
       // one function symbol to load
       //
       // We should properly fix this in the long term.
-      if (kernelsToLoad.empty()) {
-        state.createKernelWrapper([&](const MOGG::FunctionBody &) {
-          state.builder.comment(
-              "Empty kernel wrapper - no actual kernels to execute.");
-          state.builder.pass();
-        });
-        kernelsToLoad.insert(StringAttr::get(ctx, state.currentKernelName));
+      if (kernelsToLoadInThisModel.empty()) {
+        if (emptyKernelName.empty()) {
+          state.createKernelWrapper([&](const MOGG::FunctionBody &) {
+            state.builder.comment(
+                "Empty kernel wrapper - no actual kernels to execute.");
+            state.builder.pass();
+          });
+          emptyKernelName = state.currentKernelName;
+        }
+        kernelsToLoadInThisModel.insert(StringAttr::get(ctx, emptyKernelName));
       }
+    }
 
-      // Store the emitted text into a resource and point to it from a
-      // MojoModuleOp.
-      auto mojoText = state.builder.str();
-      auto attrType =
-          ArrayType::get((int64_t)mojoText.size(),
-                         IntegerType::get(ctx, 8, IntegerType::Unsigned));
-      auto blob = mlir::HeapAsmResourceBlob::allocateAndCopyInferAlign<char>(
-          {mojoText.data(), mojoText.size()});
-      auto resourceManager =
-          DenseResourceElementsHandle::getManagerInterface(ctx);
-      /// TODO: Find a better name than mojo, maybe a hash.
-      auto mojoTextAttr = DenseResourceElementsAttr::get(
-          attrType, resourceManager.insert("mojo", std::move(blob)));
+    // Store the emitted text into a resource.
+    auto mojoText = state.builder.str();
+    auto attrType =
+        ArrayType::get((int64_t)mojoText.size(),
+                       IntegerType::get(ctx, 8, IntegerType::Unsigned));
+    auto blob = mlir::HeapAsmResourceBlob::allocateAndCopyInferAlign<char>(
+        {mojoText.data(), mojoText.size()});
+    auto resourceManager =
+        DenseResourceElementsHandle::getManagerInterface(ctx);
+    auto &blobManager = resourceManager.getBlobManager();
 
-      auto loc = moduleOp.getLoc();
+    // If there is already a mojo resource, it's probably because of constant
+    // folding. Update it instead of inserting a new one that would have a
+    // different name.
+    DenseResourceElementsAttr mojoTextAttr;
+    static constexpr llvm::StringLiteral mojoResourceName = "mojo";
+    if (blobManager.lookup(mojoResourceName)) {
+      blobManager.update(mojoResourceName, std::move(blob));
+      auto blobHandle = mlir::DialectResourceBlobHandle<mlir::BuiltinDialect>(
+          blobManager.lookup(mojoResourceName),
+          cast<mlir::BuiltinDialect>(resourceManager.getDialect()));
+      mojoTextAttr = DenseResourceElementsAttr::get(attrType, blobHandle);
+    } else {
+      mojoTextAttr = DenseResourceElementsAttr::get(attrType, mojoResourceName,
+                                                    std::move(blob));
+    }
+
+    // For each model, add a reference to the Mojo from LoadCompiledKernelOp.
+    for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
+      const DenseSet<StringAttr> &kernelsToLoadInThisModel =
+          kernelsToLoadPerModel[modelOp.getSymName()];
       builder.setInsertionPointToStart(modelOp.getInitBlock());
-      MOGG::MojoModuleOp::create(builder, loc, mojoTextAttr);
       /// TODO: Add debug info support. For now, defaults to false.
       MOGG::LoadCompiledKernelOp::create(
           builder, loc,
-          builder.getArrayAttr(llvm::to_vector_of<Attribute>(kernelsToLoad)),
+          builder.getArrayAttr(
+              llvm::to_vector_of<Attribute>(kernelsToLoadInThisModel)),
           mojoTextAttr, /*debug*/ false);
-
-      if (dumpMojoText)
-        llvm::errs() << mojoText << "\n";
-
-      if (!saveTempPrefix.empty()) {
-        std::string outPath = saveTempPrefix + ".kernels.mojo";
-        auto outFile = mlir::openOutputFile(outPath);
-        if (!outFile) {
-          modelOp->emitError()
-              << "Could not open pre-elaboration dump file named " << outPath;
-          signalPassFailure();
-          return;
-        }
-
-        outFile->os() << mojoText << "\n";
-        outFile->keep();
-      }
     }
+
     for (auto &&kernelStub : llvm::make_early_inc_range(
              moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
       kernelStub->erase();

@@ -23,26 +23,15 @@ struct DumpMojo
   using Base::Base;
 
   void runOnOperation() override {
-    uint64_t moduleIdx = 0;
-    for (auto modelOp : getOperation().getOps<MGP::ModelOp>()) {
-      auto mojoModuleRange =
-          modelOp.getInitBlock()->getOps<MOGG::MojoModuleOp>();
-      if (mojoModuleRange.empty())
-        continue;
+    auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
+        getOperation()->getContext());
+    auto mojoTextResource = resourceManager.getBlobManager().lookup("mojo");
+    if (!mojoTextResource)
+      return;
 
-      /// TODO: This makes no sense as an op. Turn this op and
-      /// LoadCompiledKernelOp into attributes of the MGP::ModelOp.
-      ASSERT_STREAM(llvm::range_size(mojoModuleRange) == 1,
-                    << "Expected at most one mojo module per model op");
-      auto mojoModule = *mojoModuleRange.begin();
-      auto mojoTextAttr =
-          cast<DenseResourceElementsAttr>(mojoModule.getModule());
-      auto mojoText =
-          StringRef(mojoTextAttr.getData().data(), mojoTextAttr.size());
-
-      llvm::errs() << llvm::formatv("##### Module {} #####\n{}\n", ++moduleIdx,
-                                    mojoText);
-    }
+    auto mojoTextRef = mojoTextResource->getBlob()->getData();
+    auto mojoText = StringRef(mojoTextRef.data(), mojoTextRef.size());
+    llvm::errs() << mojoText << "\n";
   }
 };
 

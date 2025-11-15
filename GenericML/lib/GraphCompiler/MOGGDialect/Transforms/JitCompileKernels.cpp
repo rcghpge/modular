@@ -112,93 +112,87 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
              << targetInfoAttr.getError();
     }
 
-    for (auto modelOp : module.getOps<MGP::ModelOp>()) {
-      auto mojoModuleRange =
-          modelOp.getInitBlock()->getOps<MOGG::MojoModuleOp>();
-      if (mojoModuleRange.empty())
-        continue;
+    auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
+        getOperation()->getContext());
+    auto mojoTextResource = resourceManager.getBlobManager().lookup("mojo");
+    if (!mojoTextResource)
+      return success();
 
-      /// TODO: This makes no sense as an op. Turn this op and
-      /// LoadCompiledKernelOp into attributes of the MGP::ModelOp.
-      ASSERT_STREAM(llvm::range_size(mojoModuleRange) == 1,
-                    << "Expected at most one mojo module per model op");
-      auto mojoModule = *mojoModuleRange.begin();
+    auto mojoTextRef = mojoTextResource->getBlob()->getData();
+    auto mojoText = StringRef(mojoTextRef.data(), mojoTextRef.size());
+
+    auto mojoTextBuffer = llvm::MemoryBuffer::getMemBufferCopy(mojoText);
+    llvm::SourceMgr src;
+    src.AddNewSourceBuffer(std::move(mojoTextBuffer), llvm::SMLoc());
+    AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
+    KGEN::CompilationOptions kgenOpts;
+    for (const auto &libraryPath : kernelLibraryPaths) {
+      kgenOpts.extraSearchPaths.push_back(
+          std::filesystem::path(libraryPath).parent_path().string());
+    }
+
+    // Mojo parsing
+    KGEN::LIT::ParserConfig config(ctx, kgenOpts);
+    mlir::TimingScope ts;
+    auto parsedMojoModule = KGEN::LIT::importMojoFile(runtime, src, config, ts);
+    if (!parsedMojoModule) {
+      return module->emitError(
+          "The graph compiler could not parse its Mojo generated code");
+    }
+
+    // LITToKGEN
+    KGEN::CompilationOptions opts;
+    opts.saveTempsPrefix = saveTempPrefix.getValue();
+    opts.runMOGGPreElab = false;
+    KGEN::KGENCompiler compiler(*ctx, opts);
+    if (compiler.runGenerateLibraryPipeline(*parsedMojoModule).isError()) {
+      return module->emitError(
+          "The graph compiler could not lower LIT to KGEN");
+    }
+
+    // KGENToElaboratedKGEN
+    if (compiler
+            .runElaborationPipeline(
+                *parsedMojoModule, *targetInfoAttr, runtime,
+                runtime.getReadyChain().copy(),
+                Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
+                    "JitCompileKernels::elaborateKGEN",
+                    "mogg.elaborate.kgen.cache.miss.time",
+                    {{"pipeline", "JitCompileKernels::elaborateKGEN"}}),
+                Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
+                    "JitCompileKernels::elaborateKGEN"))
+            .isError()) {
+      return module->emitError(
+          "The graph compiler could not elaborate the generated KGEN");
+    }
+
+    // KGENToLLVM
+    auto objectCompiler = KGEN::ObjectCompiler::create(
+        ".mojo_cache", opts, /*isJit=*/true, *ctx, {});
+    if (objectCompiler.isError()) {
+      return module->emitError("The graph compiler could not create an "
+                               "object compiler for KGEN to LLVM lowering");
+    }
+    std::string outKeyHash;
+    ErrorOr<BufferRef> bufferOr = objectCompiler.get()->emitArchive(
+        std::move(parsedMojoModule), /*emitAssembly=*/false, &outKeyHash);
+    if (bufferOr.isError()) {
+      return module->emitError("An error occurred while lowering KGEN to LLVM "
+                               "in the graph compiler");
+    }
+
+    // Archiving the compiled code and storing it as a dense resource.
+    BufferRef buffer = bufferOr.takeValue();
+    auto compiledBlob = createArchiveAttr(ctx, std::move(buffer), outKeyHash);
+    DenseResourceElementsHandle binaryBlobHandle = compiledBlob.getRawHandle();
+    StringRef binaryBlobKey = binaryBlobHandle.getKey();
+    binaryBlobKey.consume_front("archive_");
+
+    // Replace the resource in LoadCompiledKernelOp with the compiled Mojo.
+    for (auto modelOp : module.getOps<MGP::ModelOp>()) {
       auto loadkernels =
           *modelOp.getInitBlock()->getOps<MOGG::LoadCompiledKernelOp>().begin();
-
-      auto mojoTextAttr =
-          cast<DenseResourceElementsAttr>(mojoModule.getModule());
-      auto mojoText =
-          StringRef(mojoTextAttr.getData().data(), mojoTextAttr.size());
-      auto mojoTextBuffer = llvm::MemoryBuffer::getMemBufferCopy(mojoText);
-      llvm::SourceMgr src;
-      src.AddNewSourceBuffer(std::move(mojoTextBuffer), llvm::SMLoc());
-      AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
-      KGEN::CompilationOptions kgenOpts;
-      for (const auto &libraryPath : kernelLibraryPaths)
-        kgenOpts.extraSearchPaths.push_back(
-            std::filesystem::path(libraryPath).parent_path().string());
-      KGEN::LIT::ParserConfig config(ctx, kgenOpts);
-      mlir::TimingScope ts;
-      auto parsedMojoModule =
-          KGEN::LIT::importMojoFile(runtime, src, config, ts);
-      if (!parsedMojoModule) {
-        return module->emitError(
-            "The graph compiler could not parse its Mojo generated code");
-      }
-
-      // LITToKGEN
-      KGEN::CompilationOptions opts;
-      opts.saveTempsPrefix = saveTempPrefix.getValue();
-      opts.runMOGGPreElab = false;
-      KGEN::KGENCompiler compiler(*ctx, opts);
-      if (compiler.runGenerateLibraryPipeline(*parsedMojoModule).isError()) {
-        return module->emitError(
-            "The graph compiler could not lower LIT to KGEN");
-      }
-
-      // KGENToElaboratedKGEN
-      if (compiler
-              .runElaborationPipeline(
-                  *parsedMojoModule, *targetInfoAttr, runtime,
-                  runtime.getReadyChain().copy(),
-                  Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
-                      "JitCompileKernels::elaborateKGEN",
-                      "mogg.elaborate.kgen.cache.miss.time",
-                      {{"pipeline", "JitCompileKernels::elaborateKGEN"}}),
-                  Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
-                      "JitCompileKernels::elaborateKGEN"))
-              .isError()) {
-        return module->emitError(
-            "The graph compiler could not elaborate the generated KGEN");
-      }
-
-      // KGENToLLVM
-      auto objectCompiler = KGEN::ObjectCompiler::create(
-          ".mojo_cache", opts, /*isJit=*/true, *ctx, {});
-      if (objectCompiler.isError()) {
-        return module->emitError("The graph compiler could not create an "
-                                 "object compiler for KGEN to LLVM lowering");
-      }
-      std::string outKeyHash;
-      ErrorOr<BufferRef> bufferOr = objectCompiler.get()->emitArchive(
-          std::move(parsedMojoModule), /*emitAssembly=*/false, &outKeyHash);
-      if (bufferOr.isError()) {
-        return module->emitError(
-            "An error occurred while lowering KGEN to LLVM "
-            "in the graph compiler");
-      }
-
-      // Archiving the compiled code and storing it as a dense resource.
-      BufferRef buffer = bufferOr.takeValue();
-      auto compiledBlob = createArchiveAttr(ctx, std::move(buffer), outKeyHash);
-      DenseResourceElementsHandle binaryBlobHandle =
-          compiledBlob.getRawHandle();
-      StringRef binaryBlobKey = binaryBlobHandle.getKey();
-      binaryBlobKey.consume_front("archive_");
       loadkernels.setValueAttr(compiledBlob);
-
-      mojoModule.erase();
     }
 
     return success();
