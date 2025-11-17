@@ -102,16 +102,12 @@ struct CanonicalizeBufferOpSequences
   LogicalResult
   matchAndRewrite(MOMutableOpInterface mutOp,
                   mlir::PatternRewriter &origRewriter) const override {
-    DeviceAwareRewriter rewriter(mutOp, origRewriter);
-
     std::optional<ChainValue> inChain = mutOp.getUniqueInChain();
     std::optional<ChainValue> outChain = mutOp.getUniqueOutChain();
     if (!inChain || !outChain)
-      return rewriter.notifyMatchFailure(
+      return origRewriter.notifyMatchFailure(
           mutOp,
           "Mutable op has multiple chains; canonicalization not supported");
-
-    rewriter.setInsertionPointAfter(mutOp);
 
     auto rawParent = inChain->getDefiningOp();
 
@@ -119,6 +115,9 @@ struct CanonicalizeBufferOpSequences
 
     if (parent && hasSingleChain(parent) &&
         canSafelyReorderMutableOps(mutOp, parent)) {
+      DeviceAwareRewriter rewriter(mutOp, origRewriter);
+      rewriter.setInsertionPointAfter(mutOp);
+
       auto parentInChain = parent.getInChains()[0];
 
       rewriter.modifyOpInPlace(mutOp.getOperation(), [&]() {
@@ -135,6 +134,9 @@ struct CanonicalizeBufferOpSequences
       return success();
     } else if (auto chainCreateOp =
                    dyn_cast_if_present<ChainCreateOp>(rawParent)) {
+      DeviceAwareRewriter rewriter(mutOp, origRewriter);
+      rewriter.setInsertionPointAfter(mutOp);
+
       mlir::BitVector eraseIdxs(chainCreateOp->getNumOperands());
 
       SmallVector<Value> newCreateOperands;
@@ -177,7 +179,7 @@ struct CanonicalizeBufferOpSequences
       mutOp.getInChainsMutable()[0]->set(newInChain);
       return success();
     } else {
-      return rewriter.notifyMatchFailure(
+      return origRewriter.notifyMatchFailure(
           mutOp, "The op upstream is not a chain.create or buffer mutating "
                  "operation.");
     }
@@ -192,22 +194,25 @@ struct CanonicalizeChainSequencesPass
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
 
-    RewritePatternSet patterns{ctx};
+    SmallVector<Operation *> opsToProcess;
 
+    getOperation()->walk<mlir::WalkOrder::PreOrder>([&](Operation *op) {
+      // This pass only modifies mutable operations and mo.chain.create
+      if (isa<MOMutableOpInterface, ChainCreateOp>(op))
+        opsToProcess.push_back(op);
+    });
+
+    RewritePatternSet patterns{ctx};
     patterns.add<CanonicalizeBufferOpSequences>(ctx);
     ChainCreateOp::getCanonicalizationPatterns(patterns, ctx);
 
     // Configure the greedy rewrite driver for potentially long chains.
     mlir::GreedyRewriteConfig config;
-    config.setMaxIterations(256).setUseTopDownTraversal();
+    config.setStrictness(mlir::GreedyRewriteStrictness::ExistingAndNewOps);
 
-    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
-                                     config))) {
-      mlir::emitError(getOperation()->getLoc(),
-                      "maximum number of iterations reached in "
-                      "canonicalize-chain-sequences");
+    if (failed(mlir::applyOpPatternsGreedily(opsToProcess, std::move(patterns),
+                                             config)))
       return signalPassFailure();
-    }
   }
 };
 

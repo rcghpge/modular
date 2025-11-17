@@ -117,7 +117,7 @@ mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
 // CHECK-DAG:  [[a2:%.*]] = mo.add([[outTensor]], [[arg2]]) : !mo.tensor<[3, 3], f32>
 // CHECK-DAG:  [[a4:%.*]] = mo.mutable.store([[arg1]], [[a2]], [[outChain]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
 
-// CHECK-DAG:  [[ch2:%.*]] = mo.chain.create([[a4]], [[outChain]])
+// CHECK-DAG:  [[ch2:%.*]] = mo.chain.create([[a1]], [[a4]], [[outChain]])
 // CHECK-DAG:  [[a6:%.*]] = mo.custom {symbol = "foo"}([[arg1]], [[ch2]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
 
 // CHECK: mo.output
