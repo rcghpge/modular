@@ -760,6 +760,8 @@ TEST(DeviceContextTest, VirtualDeviceModeCreatesVirtualDevice) {
 
   // Test that enabling virtual device mode creates VirtualDevice
   setVirtualDeviceCount(10);
+  setVirtualDeviceAPI("cuda");
+  setVirtualDeviceTargetArch("sm_90a");
 
   // Create a device - should be VirtualDevice
   ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI, 0));
@@ -781,6 +783,8 @@ TEST(DeviceContextTest, VirtualDeviceModeMultipleDevices) {
 
   // Test creating multiple virtual devices
   setVirtualDeviceCount(10);
+  setVirtualDeviceAPI("cuda");
+  setVirtualDeviceTargetArch("sm_90a");
 
   ASSIGN_NO_ERR(DeviceRef, device0, Device::create(Device::gpuAPI, 0));
   ASSIGN_NO_ERR(DeviceRef, device1, Device::create(Device::gpuAPI, 1));
@@ -802,6 +806,8 @@ TEST(DeviceContextTest, VirtualDeviceModeMultipleDevices) {
 TEST(DeviceContextTest, VirtualDeviceModeCpuDeviceUnaffected) {
   // Test that CPU device creation is not affected by virtual device mode
   setVirtualDeviceCount(10);
+  setVirtualDeviceAPI("cuda");
+  setVirtualDeviceTargetArch("sm_90a");
 
   // Create a CPU device - should still be a real CPU device
   ASSIGN_NO_ERR(DeviceRef, cpuDevice, Device::create(Device::cpuAPI, 0));
@@ -822,6 +828,8 @@ TEST(DeviceContextTest, VirtualDeviceModeWithDeviceContext) {
 
   // Test that VirtualDevice can create a context
   setVirtualDeviceCount(10);
+  setVirtualDeviceAPI("cuda");
+  setVirtualDeviceTargetArch("sm_90a");
 
   ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI, 0));
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
