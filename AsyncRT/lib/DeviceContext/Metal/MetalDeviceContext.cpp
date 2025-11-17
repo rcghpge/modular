@@ -16,6 +16,7 @@
 #include "MetalDriver.hpp"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
+#include "Support/Profiling/Tracy.h"
 
 #include "llvm/ADT/Twine.h"
 #include <chrono>
@@ -446,6 +447,9 @@ MetalDeviceContext::~MetalDeviceContext() {
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                        const void *src) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDevice",
+                       TRACY_COLOR_PURPLE);
+
   // Validate source
   if (src == nullptr)
     RAISE_ERROR_MESSAGE("Source pointer is null");
@@ -528,6 +532,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess
 MetalDeviceContext::enqueueCopyFromDevice(void *dst,
                                           const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDevice",
+                       TRACY_COLOR_PURPLE);
+
   if (dst == nullptr)
     RAISE_ERROR_MESSAGE("Destination pointer cannot be null");
   if (src.isHost())
@@ -595,6 +602,8 @@ MetalDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
 
 ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                                const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
+
   // 1) Basic validation
   if (src.byteSize() == 0 || dst.byteSize() == 0)
     return success(); // no-op for zero-size
@@ -618,6 +627,9 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
                                                     uint64_t val,
                                                     size_t valSize) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
+                       TRACY_COLOR_PURPLE);
+
   // 1) Validation
   if (dst.context().device().api() != Device::metalAPI)
     RAISE_ERROR_MESSAGE("Destination buffer must be a Metal buffer");
@@ -832,6 +844,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExec",
+                       TRACY_COLOR_PURPLE);
 
   // 1) Validate and get pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
@@ -898,6 +912,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void * /*attrs*/, uint32_t numAttrs, void **args,
     const size_t *argSizes) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
+                       TRACY_COLOR_PURPLE);
 
   // 1) Validate pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
@@ -998,6 +1014,8 @@ ErrorOr<DeviceStreamRef> MetalDeviceContext::stream() const {
 }
 
 ErrorOrSuccess MetalDeviceContext::synchronize() const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize", TRACY_COLOR_PURPLE);
+
   // Check for any pending errors first, similar to CUDA's behavior
   ErrorOrSuccess pendingErr = checkPendingWork();
   if (pendingErr.isError()) {
@@ -1018,6 +1036,8 @@ ErrorOrSuccess MetalDeviceContext::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create command buffer for event");
@@ -1035,6 +1055,8 @@ MetalDeviceContext::eventCreate(unsigned int flags) const {
 
 ErrorOrSuccess
 MetalDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
+                       TRACY_COLOR_PURPLE);
 
   // This is a synchronous implementation of the enqueueWaitFor().
   // Cast to MetalDeviceEvent to get the command buffer
@@ -1052,6 +1074,9 @@ MetalDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
 ErrorOrSuccess
 MetalDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
+                       TRACY_COLOR_PURPLE);
+
   // For context-based waiting, we synchronize with the other context
   // This ensures all operations on that context complete before we continue
   // This is a synchronous implementation of the enqueueWaitFor().
@@ -1091,6 +1116,8 @@ ErrorOrSuccess MetalDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
 
 ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                             Device::AllocMode mode) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
+
   if (ptr == nullptr)
     RAISE_ERROR_MESSAGE("Invalid allocation parameters: ptr is null");
   if (byteSize == 0) {
@@ -1146,6 +1173,8 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
 }
 
 ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, bool isHost) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memFree", TRACY_COLOR_PURPLE);
+
   if (ptr == nullptr)
     return success();
 
@@ -1178,6 +1207,9 @@ void *MetalDeviceContext::driverContext() const {
 ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
                                                     MTL::Buffer *dst,
                                                     size_t size) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueMetalCopy",
+                       TRACY_COLOR_PURPLE);
+
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr) {
     RAISE_ERROR_MESSAGE("Failed to create command buffer");
