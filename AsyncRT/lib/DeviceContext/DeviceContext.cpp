@@ -239,18 +239,6 @@ MODULAR_CXX_EXPORT int Device::id() const { return id_; }
 
 MODULAR_CXX_EXPORT Device::API Device::api() const { return api_; }
 
-MODULAR_CXX_EXPORT StringRef Device::vendor() const {
-  if (api() == cudaAPI)
-    return "nvidia";
-  if (api() == hipAPI)
-    return "amdgpu";
-  if (api() == cpuAPI)
-    return "cpu";
-  if (api() == metalAPI)
-    return "metal";
-  return "";
-}
-
 ErrorOr<bool> Device::supportsMulticast() const { return false; }
 
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
@@ -1156,36 +1144,25 @@ ErrorOr<Config> &DeviceContext::getConfig() {
 
 MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
-    ErrorOr<DeviceRef> device = Device::create(gpuAPI);
-    if (device.isError())
-      return std::string();
+    std::string vendor("nvidia");
+    ErrorOr<std::string> archName = CUDADevice::getFirstArchName();
 
-    // Try to get the arch name directly. For AMD GPUs, we need this to succeed,
-    // since major/minor compute capabilities don't describe the LLVM target
-    // sufficiently.
-    ErrorOr<std::string> archName = (*device)->getArchName();
-
-    if (!archName.isError())
-      return (llvm::Twine((*device)->vendor()) + ":" + archName.get()).str();
-
-    // Fallback to compute capability if arch name is not available.
-    ErrorOr<int> major =
-        (*device)->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MAJOR);
-    ErrorOr<int> minor =
-        (*device)->getAttribute(Device::Attribute::COMPUTE_CAPABILITY_MINOR);
-    if (major.isError() || minor.isError()) {
-      return std::string();
+    if (archName.isError()) {
+      vendor = "amdgpu";
+      archName = HIPDevice::getArchName(0);
     }
 
-    // For metal only return the major compute capability
-    if ((*device)->api() == Device::metalAPI) {
-      return (llvm::Twine((*device)->vendor()) + ":" + llvm::Twine(*major))
-          .str();
+#ifdef MODULAR_MACOS
+    if (archName.isError()) {
+      vendor = "metal";
+      archName = MetalDevice::getArchName(nullptr);
     }
-    // For CUDA and HIP return the major and minor compute capability
-    return (llvm::Twine((*device)->vendor()) + ":" + llvm::Twine(*major) +
-            llvm::Twine(*minor))
-        .str();
+#endif
+
+    if (archName.isError())
+      return std::string();
+
+    return (llvm::Twine(vendor) + ":" + archName.get()).str();
   }();
   return arch;
 }

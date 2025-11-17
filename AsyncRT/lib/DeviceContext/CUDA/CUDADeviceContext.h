@@ -102,6 +102,8 @@ public:
 
   static const CUDADevice &cast(const Device &device);
 
+  static ErrorOr<std::string> getFirstArchName();
+
   static ErrorOr<int> numberOfGPUs();
   static ErrorOr<const CUDADevice &> get(int id,
                                          int64_t deviceMemoryLimit = -1);

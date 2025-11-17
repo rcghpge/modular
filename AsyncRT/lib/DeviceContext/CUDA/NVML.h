@@ -15,21 +15,30 @@
 
 namespace M::AsyncRT {
 
+using nvmlDevice_t = struct nvmlDevice_st *;
+
 class NVML {
 public:
+  enum Result : unsigned int {
+    SUCCESS = 0,
+  };
+
   ~NVML();
 
   ErrorOr<std::string> GetDriverVersion() const;
+  Result DeviceGetHandleByIndex(int idx, nvmlDevice_t *dev) const {
+    return nvmlDeviceGetHandleByIndex_(idx, dev);
+  }
+  Result DeviceGetCudaComputeCapability(nvmlDevice_t dev, int *major,
+                                        int *minor) const {
+    return nvmlDeviceGetCudaComputeCapability_(dev, major, minor);
+  }
 
   static ErrorOr<const NVML &> get();
 
 private:
   // Enable in-depth logging at build time.
   static constexpr bool doCallLog = false;
-
-  enum Result : unsigned int {
-    SUCCESS = 0,
-  };
 
   static ErrorOr<const NVML &> allocAndInitNVML();
   static const char lib_name[];
@@ -45,6 +54,13 @@ private:
 
   using tnvmlSystemGetDriverVersion = Result(char *, int);
   tnvmlSystemGetDriverVersion *nvmlSystemGetDriverVersion_;
+
+  using tnvmlDeviceGetHandleByIndex = Result(int, nvmlDevice_t *);
+  tnvmlDeviceGetHandleByIndex *nvmlDeviceGetHandleByIndex_;
+
+  using tnvmlDeviceGetCudaComputeCapability = Result(nvmlDevice_t, int *,
+                                                     int *);
+  tnvmlDeviceGetCudaComputeCapability *nvmlDeviceGetCudaComputeCapability_;
 };
 
 } // namespace M::AsyncRT

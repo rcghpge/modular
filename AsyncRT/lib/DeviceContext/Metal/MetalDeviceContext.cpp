@@ -54,6 +54,25 @@
 
 namespace M::AsyncRT {
 
+static ErrorOr<int> getComputeCapability(StringRef name) {
+  if (name.empty())
+    return 3;
+
+  if (name.contains_insensitive("M4"))
+    return 4;
+
+  if (name.contains_insensitive("M3"))
+    return 3;
+
+  if (name.contains_insensitive("M2"))
+    return 2;
+
+  if (name.contains_insensitive("M1"))
+    return 1;
+
+  RAISE_ERROR_MESSAGE("Unknown device name");
+}
+
 //
 //
 // ===== MetalDevice ===== //
@@ -208,29 +227,7 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
     if (device_ && device_->name()) {
       deviceName = device_->name()->cString(NS::UTF8StringEncoding);
     }
-    std::string nameToCheck;
-    if (!deviceName.empty()) {
-      nameToCheck = deviceName;
-    } else {
-      return 3;
-    }
-    if (nameToCheck.find("M4") != std::string::npos ||
-        nameToCheck.find("m4") != std::string::npos) {
-      return 4;
-    }
-    if (nameToCheck.find("M3") != std::string::npos ||
-        nameToCheck.find("m3") != std::string::npos) {
-      return 3;
-    }
-    if (nameToCheck.find("M2") != std::string::npos ||
-        nameToCheck.find("m2") != std::string::npos) {
-      return 2;
-    }
-    if (nameToCheck.find("M1") != std::string::npos ||
-        nameToCheck.find("m1") != std::string::npos) {
-      return 1;
-    }
-    RAISE_ERROR_MESSAGE("Unknown device name");
+    return getComputeCapability(deviceName);
   }
   case Device::Attribute::COMPUTE_CAPABILITY_MINOR:
     return 0;
@@ -1235,6 +1232,14 @@ MetalDeviceContext::verified_cast(const DeviceContext *ctx) {
   if (ctx->device().api() != MetalDevice::api)
     return nullptr;
   return static_cast<const MetalDeviceContext *>(ctx);
+}
+
+ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
+  MTL::Device *device = d ? d : MTL::CreateSystemDefaultDevice();
+  if (device == nullptr)
+    RAISE_ERROR_MESSAGE("Failed to create Metal device.");
+  std::string name = device->name()->cString(NS::UTF8StringEncoding);
+  return getComputeCapability(name);
 }
 
 //

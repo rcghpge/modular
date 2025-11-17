@@ -141,7 +141,6 @@ public:
   int id() const;
 
   API api() const;
-  StringRef vendor() const;
 
   virtual ErrorOr<int> getApiVersion() const = 0;
   virtual ErrorOr<DriverVersion &> getDriverVersion() const = 0;

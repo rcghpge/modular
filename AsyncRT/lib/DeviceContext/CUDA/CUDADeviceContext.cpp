@@ -1515,3 +1515,20 @@ CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
   }
   return static_cast<const CUDADeviceContext *>(ctx);
 }
+
+ErrorOr<std::string> CUDADevice::getFirstArchName() {
+  ErrorOr<const NVML &> nvml = NVML::get();
+  if (nvml.isError())
+    return nvml.takeError();
+
+  nvmlDevice_t device;
+  if (nvml->DeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
+    RAISE_ERROR("NVML: Unable to get device index");
+
+  int major, minor;
+  if (nvml->DeviceGetCudaComputeCapability(device, &major, &minor) !=
+      NVML::SUCCESS)
+    RAISE_ERROR("NVML: Unable to get compute capability");
+
+  return (llvm::Twine(major) + llvm::Twine(minor)).str();
+}

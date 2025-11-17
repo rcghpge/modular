@@ -78,6 +78,8 @@ public:
                                           int64_t deviceMemoryLimit = -1);
   static ErrorOr<int> numberOfGPUs();
 
+  static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);
+
   MTL::Device *metalDevice() const { return device_; }
 
   // Buffer tracking methods

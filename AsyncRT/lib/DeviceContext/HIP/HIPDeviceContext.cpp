@@ -378,6 +378,10 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
 }
 
 ErrorOr<std::string> HIPDevice::getArchName() const {
+  return getArchName(hipDevice());
+}
+
+ErrorOr<std::string> HIPDevice::getArchName(hipDevice_t device) {
   // We do need the full AMD GPU architecture name in order to compie for the
   // right LLVM target. Parsing via KFD, as used by amd-smi and rocm-smi seems
   // to be one of the two reliable ways to get the full architecture name. The
@@ -389,21 +393,25 @@ ErrorOr<std::string> HIPDevice::getArchName() const {
   // `hipDeviceAttributeComputeCapabilityMajor` and
   // `hipDeviceAttributeComputeCapabilityMinor`, but lack the last digit.
 
+  ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
+  if (errDriver.isError())
+    return errDriver.takeError();
+  const HIPDriver &driver = *errDriver;
+
   // Initialize HSA runtime if available.
-  if (driver_.HsaInit() != HSA_STATUS_SUCCESS)
+  if (driver.HsaInit() != HSA_STATUS_SUCCESS)
     return Error("Failed to initialize HSA runtime");
 
   // Get HIP device PCIe info via device attributes
   int pciBusId = 0, pciDeviceId = 0, pciDomainId = 0;
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
-      &pciBusId, hipDeviceAttribute_t::hipDeviceAttributePciBusId,
-      hipDevice()));
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+  HIP_CHECK_ERR(driver.DeviceGetAttribute(
+      &pciBusId, hipDeviceAttribute_t::hipDeviceAttributePciBusId, device));
+  HIP_CHECK_ERR(driver.DeviceGetAttribute(
       &pciDeviceId, hipDeviceAttribute_t::hipDeviceAttributePciDeviceId,
-      hipDevice()));
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+      device));
+  HIP_CHECK_ERR(driver.DeviceGetAttribute(
       &pciDomainId, hipDeviceAttribute_t::hipDeviceAttributePciDomainID,
-      hipDevice()));
+      device));
 
   // Data structure to pass to HSA agent and ISA iteration callbacks.
   struct SearchData {
@@ -414,7 +422,7 @@ ErrorOr<std::string> HIPDevice::getArchName() const {
     std::string archName;
   };
 
-  SearchData search = {&driver_, static_cast<uint32_t>(pciBusId),
+  SearchData search = {&driver, static_cast<uint32_t>(pciBusId),
                        static_cast<uint32_t>(pciDeviceId),
                        static_cast<uint32_t>(pciDomainId), ""};
 
@@ -510,13 +518,13 @@ ErrorOr<std::string> HIPDevice::getArchName() const {
   };
 
   // Iterate through all HSA agents to find our device.
-  if (driver_.HsaIterateAgents(agentCallback, &search) != HSA_STATUS_SUCCESS) {
-    driver_.HsaShutDown();
+  if (driver.HsaIterateAgents(agentCallback, &search) != HSA_STATUS_SUCCESS) {
+    driver.HsaShutDown();
     return Error("Failed to iterate HSA agents");
   }
 
   // Clean up HSA runtime.
-  driver_.HsaShutDown();
+  driver.HsaShutDown();
 
   if (search.archName.empty())
     return Error("Could not determine architecture name for HIP device");
