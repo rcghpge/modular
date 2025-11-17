@@ -3775,12 +3775,53 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // CallStubOp
 //===----------------------------------------------------------------------===//
 
-bool CallStubOp::isRaising() {
+KernelStubOp CallStubOp::getCallee() {
   mlir::SymbolTable symTable(getOperation()->getParentOfType<ModuleOp>());
-  auto stubOp =
-      cast<KernelStubOp>(symTable.lookup(getName().getLeafReference()));
-  return stubOp.isRaising();
+  return dyn_cast_or_null<KernelStubOp>(
+      symTable.lookup(getName().getLeafReference()));
 }
+
+LogicalResult CallStubOp::verify() {
+  auto calleeFunc = getCallee();
+  if (!calleeFunc) {
+    return emitError(llvm::formatv("There is no kernel stub named '{}'",
+                                   getName().getLeafReference()));
+  }
+
+  auto calleeArgumentTypes = calleeFunc.getBody().front().getArgumentTypes();
+  auto callerOperandTypes = getOperandTypes();
+
+  if (calleeArgumentTypes.size() != callerOperandTypes.size()) {
+    return emitError(llvm::formatv("Callee expected {} arguments but got {}",
+                                   calleeArgumentTypes.size(),
+                                   callerOperandTypes.size()));
+  }
+
+  auto printType = [](Type t) {
+    std::string str;
+    llvm::raw_string_ostream stream(str);
+    t.print(stream);
+
+    return str;
+  };
+
+  for (uint64_t i = 0; i < calleeArgumentTypes.size(); ++i) {
+    if (calleeArgumentTypes[i] == callerOperandTypes[i])
+      continue;
+
+    if (isa<MOGG::ContextType>(calleeArgumentTypes[i]) &&
+        isa<MGP::DeviceContextType>(callerOperandTypes[i])) {
+      continue;
+    }
+
+    return emitError(llvm::formatv(
+        "Callee argument at position {} expected to be {} but got {}", i,
+        printType(calleeArgumentTypes[i]), printType(callerOperandTypes[i])));
+  }
+  return success();
+}
+
+bool CallStubOp::isRaising() { return getCallee().isRaising(); }
 
 LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();

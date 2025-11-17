@@ -174,7 +174,11 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoI
   let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyType>: $outputs);
   let assemblyFormat = "$name ($inputs^ `:` type($inputs))? (`->` type($outputs)^)? attr-dict";
-  /// TODO: Add verifier for at most 1 output.
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    KernelStubOp getCallee();
+  }];
 }
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
