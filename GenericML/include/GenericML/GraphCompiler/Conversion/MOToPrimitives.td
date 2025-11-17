@@ -127,7 +127,7 @@ def PostABIFuseGenericRegions: Pass<"post-abi-fuse-generic-regions", "ModuleOp">
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveRedundantOperands: Pass<"remove-redundant-operands", "ModuleOp"> {
+def RemoveRedundantOperands: Pass<"remove-redundant-operands", "MGP::ModelOp"> {
   let summary = "Removes all redundant operands as a result of seq fusion";
   let description = [{}];
 

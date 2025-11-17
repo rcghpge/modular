@@ -51,13 +51,11 @@ namespace M::MGP {
 namespace {
 
 // Pattern to remove unused results from TryOp and update yield operations
-struct RemoveUnusedTryResults : public RewritePattern {
-  RemoveUnusedTryResults(MLIRContext *context)
-      : RewritePattern(MOGG::TryOp::getOperationName(), 1, context) {}
+struct RemoveUnusedTryResults : public OpRewritePattern<MOGG::TryOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(MOGG::TryOp tryOp,
                                 PatternRewriter &rewriter) const override {
-    auto tryOp = cast<MOGG::TryOp>(op);
 
     // Collect which results are actually used
     SmallVector<unsigned> usedResultIndices;
