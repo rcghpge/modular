@@ -1139,7 +1139,7 @@ BufferCache *BufferCache::onDevice(const Device &device,
     int64_t percentMemoryLimit = DeviceContext::configAsInt(
         "buffer_cache_size_percent", 0, &shouldUseDefaultInstead);
     if (shouldUseDefaultInstead)
-      percentMemoryLimit = 99; // default percent of all free mem
+      percentMemoryLimit = 90; // default percent of all free mem
     memoryLimit = (memInfo.free * percentMemoryLimit) / 100;
   }
   size_t maxCacheSize = llvm::alignToPowerOf2(memoryLimit, 256 * KB);
