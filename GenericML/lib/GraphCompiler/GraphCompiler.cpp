@@ -132,9 +132,6 @@ void M::MO::buildMoToMgpPipeline(
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
-  pm.addPass(MO::createNameInputDimsPass(
-      {llvm::to_vector_of<std::string>(opts.dimNames)}));
-
   // RMO pipeline:
   pm.addPass(RMO::createLegalizeRMOOps());
 
