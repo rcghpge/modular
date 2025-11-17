@@ -476,10 +476,15 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
     MLIRContext *ctx = moGraph->getContext();
     OpBuilder builder{ctx};
 
+    SmallVector<Operation *> opsToProcess;
+    moGraph.walk(
+        [&](MO::MutableLoadOp loadOp) { opsToProcess.push_back(loadOp); });
+
     RewritePatternSet patterns{ctx};
     patterns.add<ParallelizeLoadsWithMultipleUsers>(ctx);
 
-    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+    if (failed(
+            mlir::applyOpPatternsGreedily(opsToProcess, std::move(patterns))))
       return signalPassFailure();
 
     LLVM_DEBUG(llvm::dbgs() << "Graph after load parallelization:\n";
