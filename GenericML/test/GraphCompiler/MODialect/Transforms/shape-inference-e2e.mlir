@@ -1043,7 +1043,7 @@ mo.graph @reshape_neg_one_dim_in_const_shape<D0 -> D4, D5, D6>(
 
   // CHECK-NEXT: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"
   // CHECK-SAME: {message = "[reshape] input and output number of elements must match:
-  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div3, 2]> : !mosh.ape[[REST:.*]]" : !kgen.string}, eq(:si64 mul_no_wrap(div(mul_no_wrap(D0, 2), 3), 6), mul_no_wrap(D0, 4)))>
+  // CHECK-SAME: #mosh<ape[D0, 4]> : !mosh.ape != #mosh<ape[3, var_div2, 2]> : !mosh.ape[[REST:.*]]" : !kgen.string}, eq(:si64 mul_no_wrap(div(mul_no_wrap(D0, 2), 3), 6), mul_no_wrap(D0, 4)))>
   // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <div(mul_no_wrap(D0, 2), 3)>
   // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[D0, 4], si32> -> !mo.tensor<[3, [[EXPR]], 2], si32>
   %shape = mo.constant {value = #M.dense_array<3, -1, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
@@ -1131,7 +1131,6 @@ mo.graph @consecutive_rebind_during_staticization(%arg1: !mo.tensor<[?, ?], si32
   %21 = mo.concat[%5 : !mo.tensor<[], si64>] (%18, %20) : (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2], si32>
   %22 = mo.reshape(%arg1, %21) : (!mo.tensor<[?, ?], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[?, ?], si32>
 
-  // CHECK-NEXT: "mo.assert"{{.*}}"[reshape] cannot infer dimension when a specified output dimension is 0"{{.*}}ne({{.*}}, 0))>
   // CHECK-NEXT: mo.output{{.*}} %[[ARG1]]
   mo.output %22 : !mo.tensor<[?, ?], si32>
 }
@@ -1186,7 +1185,6 @@ mo.graph @reshape_infer_dim_folded<D0, D1 -> D2, D3>(
   %input: !mo.tensor<[D0, D1], f32>
 ) -> !mo.tensor<[D2, D3], f32> {
 
-  // CHECK-NEXT: "mo.assert"{{.*}}"[reshape] cannot infer dimension when a specified output dimension is 0"{{.*}}ne(:si64 [[D1]], 0))>
   // CHECK-NEXT: %[[RESULT:.*]] = mo.static.reshape(%[[INPUT]]) : {{.*}} -> !mo.tensor<[[[D1]], [[D0]]], f32>
   %symbolic_target_shape = mosh.param.to_value: !mosh.ape = <[D1, -1]>
   %target_shape = mo.shape.to_tensor(%symbolic_target_shape) -> !mo.tensor<[2], si32>
@@ -1260,6 +1258,27 @@ mo.graph @fold_non_trivial_lt<X, Y -> D0, D1>(
   %res = mo.static.reshape(%input) : !mo.tensor<[X, Y], f32> -> !mo.tensor<[P2, P5], f32>
 
   mo.output<P2, P5> %res : !mo.tensor<[P2, P5], f32>
+}
+
+// Test that reshape correctly handles zero dimensions in both input and output shapes.
+// CHECK-LABEL: mo.graph @reshape_parametric_shape_inferred_neg_one_empty
+// CHECK-SAME:   <[[D0:.*]] -> [[D2:.*]]>(
+// CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], 0], f32>
+// CHECK-SAME:  ) -> !mo.tensor<[[[D2]], 4, 0], f32> {
+mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(%input: !mo.tensor<[D0, 0], f32>) -> !mo.tensor<[D2, D3, D4], f32> {
+
+  // CHECK-NEXT: kgen.param.declare [[EXPR:.*]]: si64 = <div([[D0]], 4)>
+  %param_shape = mosh.param.to_value: !mosh.ape = <[-1, 4, 0]>
+  %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
+
+  // CHECK-NEXT: %[[RES:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[[[D0]], 0], f32> -> !mo.tensor<[[[EXPR]], 4, 0], f32>
+  %res = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
+    !mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>
+  ) -> !mo.tensor<[D5, D6, D7], f32>
+
+  // CHECK-NEXT: %[[REB:.*]] = mo.rebind(%[[RES]]) : !mo.tensor<[[[EXPR]], 4, 0], f32> -> !mo.tensor<[div([[D0]], 4), 4, 0], f32>
+  // CHECK-NEXT: mo.output<div([[D0]], 4)> %[[REB]] : !mo.tensor<[div([[D0]], 4), 4, 0], f32>
+  mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
 }
 
 // CHECK-LABEL: mo.graph @split_shape

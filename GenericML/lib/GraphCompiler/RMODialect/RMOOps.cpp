@@ -547,8 +547,7 @@ ReshapeOp::inferReturnTypes(MLIRContext *context,
       adaptor.getInput().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
-      MO::materializeReshapeShape(graphOp, loc, inputShape, newShapeAttr,
-                                  /*allowParametricDenominator=*/true);
+      MO::materializeReshapeShape(graphOp, loc, inputShape, newShapeAttr);
 
   DType inputDtype = input.getType().getDtype();
   return runShapePropagation(adaptor.getOperands(), location, inputDtype,

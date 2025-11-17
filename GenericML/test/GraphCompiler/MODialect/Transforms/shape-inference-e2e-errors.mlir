@@ -57,23 +57,6 @@ mo.graph @reshape_bad_annotated_rank(%arg0: !mo.tensor<[?, 320], f32>) -> !mo.te
 
 // -----
 
-mo.graph @reshape_parametric_shape_inferred_neg_one_empty<D0 -> D2, D3, D4>(
-  %input: !mo.tensor<[D0, 0], f32>
-) -> !mo.tensor<[D2, D3, D4], f32> {
-
-  %param_shape = mosh.param.to_value: !mosh.ape = <[-1, 4, 0]>
-  %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
-
-  // expected-error@below {{[reshape] cannot infer dimension when a specified output dimension is 0}}
-  %res = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
-    !mo.tensor<[D0, 0], f32>, !mo.tensor<[3], si32>
-  ) -> !mo.tensor<[D5, D6, D7], f32>
-
-  mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
-}
-
-// -----
-
 mo.graph @concat_axis_out_of_bound(
   %input1: !mo.tensor<[?, 1], f32>,
   %input2: !mo.tensor<[?, 2], f32>

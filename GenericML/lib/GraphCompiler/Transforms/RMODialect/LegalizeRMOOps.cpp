@@ -771,23 +771,8 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
 
         nonNegOneDims.push_back(dim);
       }
-
       Location loc = op.getLoc();
-      MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
-
       SmallVector<ParamBinding> paramBindings;
-      ParamExprBuilder b(graphOp, loc, &paramBindings);
-
-      // Add a 1 to the shapes to multiply to ensure the denominator is valid
-      SmallVector<TypedAttr> mulDims = nonNegOneDims;
-      mulDims.emplace_back(ShapeAttr::getDim(getContext(), 1));
-      Var denominator = b.createVar(
-          KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, mulDims));
-
-      // Make sure we check for 0 denominator
-      b.createAssert(denominator != 0,
-                     "[reshape] cannot infer dimension when a specified output "
-                     "dimension is 0");
 
       // Add all ops for the assert to the graph.
       for (auto binding : paramBindings)

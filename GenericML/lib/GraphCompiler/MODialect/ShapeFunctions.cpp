@@ -1303,11 +1303,9 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
 /// invariant that `inputShapeAttr` and `targetShapeAttr` represent equal number
 /// of elements.
 ///
-/// allowParametricDenominator removes the `denominator != 0` check when
-/// parametric expressions are involved (e.g. [-1, X]). The default shape
-/// inference behaviour is very pessimistic. It assumes that `X` might be `0`,
-/// which fails the check. This flag allows a more optimistic view where `X` is
-/// assumed to not be `0` (requires runtime assert to be guaranteed).
+/// The `-1` dimension is computed as mul(input_dims) / mul(target_dims).
+/// Constant zero dimensions in the target shape are excluded from the
+/// denominator to avoid division by zero.
 ///
 /// Example:
 ///   inputShape = [3, D4]
@@ -1315,10 +1313,9 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
 ///   returns [D0, RS0, 42]
 /// with the following operation accumulated in `b`
 ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
-ShapeMaterializeResult
-materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
-                        TypedAttr targetShapeAttr,
-                        bool allowParametricDenominator) {
+ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr targetShapeAttr) {
   // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
@@ -1329,12 +1326,27 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   if (!inputShape || !targetShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Find index of `-1` dimension (if any), and collect all other dimensions.
+  // Find index of `-1` dimension (if any) and collect all other non-zero
+  // dimensions from input and target shapes.
   SmallVector<TypedAttr> targetNonNegOneDims;
+  SmallVector<TypedAttr> inputNonZeroDims;
   std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
-  for (auto [idx, targetDim] : llvm::enumerate(targetShape.getValues())) {
-    auto intDim = dyn_cast<IntegerAttr>(targetDim);
-    if (intDim && intDim.getSInt() == -1) {
+
+  ArrayRef<TypedAttr> inputDims = inputShape.getValues();
+  for (auto inputDim : inputDims) {
+    auto inputIntDim = dyn_cast<IntegerAttr>(inputDim);
+
+    // Check if input is 0
+    if (!inputIntDim || inputIntDim.getSInt() != 0)
+      inputNonZeroDims.push_back(inputDim);
+  }
+
+  ArrayRef<TypedAttr> targetDims = targetShape.getValues();
+  for (auto [idx, targetDim] : llvm::enumerate(targetDims)) {
+    auto targetIntDim = dyn_cast<IntegerAttr>(targetDim);
+
+    // Check if target is -1
+    if (targetIntDim && targetIntDim.getSInt() == -1) {
       // Detected multiple negative one, gives up and let runtime handle the
       // error via a shape function call.
       if (maybeTargetNegOneDimIdx.has_value()) {
@@ -1348,43 +1360,41 @@ materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
       // (e.g., `D0` or `mul(D0, D1)`) will be non-negative. To make this
       // completely safe, we'll need to extend and leverage the range
       // analysis here.
-      targetNonNegOneDims.push_back(targetDim);
+
+      // Use only non-zero dimensions
+      if (!targetIntDim || targetIntDim.getSInt() != 0)
+        targetNonNegOneDims.push_back(targetDim);
     }
   }
 
-  // resolve the `-1` in output shape if needed.
-  ShapeAttr outputShape = targetShape;
-  if (maybeTargetNegOneDimIdx.has_value()) {
-    // Now infer the actual value of `-1` dimension based on other dimensions
-    Var numerator = b.createVar(inputShape.getSymbolicNumElements());
+  auto calculateResolvedDim = [&]() -> Var {
+    // Correctly handle scalar tensors -> []
+    if (inputDims.empty())
+      return b.createVar(1);
 
-    // Add a 1 to the shapes to multiply to ensure the denominator is valid
+    // Handle a special case where input is just [0].
+    if (inputNonZeroDims.empty())
+      return b.createVar(0);
+
+    Var numerator = b.createVar(
+        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, inputNonZeroDims));
+
+    // Add a 1 to the shapes to multiply to ensure the denominator is valid.
     auto mulDims = targetNonNegOneDims;
     mulDims.emplace_back(IntegerAttr::get(numerator.getAttr().getType(), 1));
     Var denominator = b.createVar(
         KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, mulDims));
 
-    if (allowParametricDenominator) {
-      for (auto dim : mulDims) {
-        auto intDim = dyn_cast<IntegerAttr>(dim);
-        if (intDim && intDim.getSInt() == 0) {
-          // Guaranteed failure either way.
-          return ShapeMaterializeResult::error(
-              "[reshape] cannot infer dimension when a specified output "
-              "dimension is 0");
-        }
-      }
-    } else {
-      // Make sure we check for 0 denominator
-      b.createAssert(denominator != 0,
-                     "[reshape] cannot infer dimension when a specified output "
-                     "dimension is 0");
-    }
+    return numerator / denominator;
+  };
 
-    Var resolvedDim = numerator / denominator;
-    SmallVector<TypedAttr> resolvedDims = targetNonNegOneDims;
-    resolvedDims.insert(resolvedDims.begin() + maybeTargetNegOneDimIdx.value(),
-                        resolvedDim.getAttr());
+  // resolve the `-1` in output shape if needed.
+  ShapeAttr outputShape = targetShape;
+  if (maybeTargetNegOneDimIdx.has_value()) {
+    // Now infer the actual value of `-1` dimension based on other dimensions
+    Var resolvedDim = calculateResolvedDim();
+    SmallVector<TypedAttr> resolvedDims(targetDims.begin(), targetDims.end());
+    resolvedDims[maybeTargetNegOneDimIdx.value()] = resolvedDim.getAttr();
     outputShape = b.getShapeAttr(resolvedDims);
   }
 

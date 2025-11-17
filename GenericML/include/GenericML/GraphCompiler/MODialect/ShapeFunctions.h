@@ -474,11 +474,9 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
 /// invariant that `inputShapeAttr` and `targetShapeAttr` represent equal number
 /// of elements.
 ///
-/// allowParametricDenominator removes the `denominator != 0` check when
-/// parametric expressions are involved (e.g. [-1, X]). The default shape
-/// inference behaviour is very pessimistic. It assumes that `X` might be `0`,
-/// which fails the check. This flag allows a more optimistic view where `X` is
-/// assumed to not be `0` (requires runtime assert to be guaranteed).
+/// The `-1` dimension is computed as mul(input_dims) / mul(target_dims).
+/// Constant zero dimensions in the target shape are excluded from the
+/// denominator to avoid division by zero.
 ///
 /// Example:
 ///   inputShape = [3, D4]
@@ -486,10 +484,9 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
 ///   returns [D0, RS0, 42]
 /// with the following operation accumulated in `b`
 ///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
-ShapeMaterializeResult
-materializeReshapeShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
-                        TypedAttr targetShapeAttr,
-                        bool allowParametricDenominator = false);
+ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
+                                               TypedAttr inputShapeAttr,
+                                               TypedAttr targetShapeAttr);
 
 /// Materialize the shape logic for `MO::RoiAlignOp`.
 ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
