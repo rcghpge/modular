@@ -1239,7 +1239,11 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
   if (device == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create Metal device.");
   std::string name = device->name()->cString(NS::UTF8StringEncoding);
-  return getComputeCapability(name);
+
+  auto ccOrErr = getComputeCapability(name);
+  if (ccOrErr.isError())
+    return ccOrErr.takeError();
+  return std::to_string(*ccOrErr);
 }
 
 //
