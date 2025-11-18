@@ -1815,20 +1815,14 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   }];
 }
 
-def MOGG_AsyncPackUntrackedOp : MOGG_Op<"async.pack.untracked", [
+def MOGG_AsyncPackBorrowV2Op : MOGG_Op<"async.pack.borrow.v2", [
   Pure,
-  SameOperandsAndResultType,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
-  let arguments = (ins AnyType:$input);
+  let arguments = (ins AnyType:$input, AnyType:$mem);
   let results = (outs AnyType:$output);
-  let summary = "Packs the input data + size";
-  let description = [{
-    This is very similar to async.pack.borrow except there is nothing to borrow
-    from. It is assumed that the input is an `NDBuffer` in Mojo and that the
-    data is managed externally.
-  }];
+  let summary = "v2 version of AsyncPackBorrowOp";
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -2138,6 +2132,21 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
   let assemblyFormat = [{
     `(` $dynamic_dims `)` attr-dict `:` functional-type(operands, results)
   }];
+}
+
+def MOGG_AsyncPlaceholderAnyAsyncValueRefOp : MOGG_Op<"async.placeholder.AnyAsyncValueRef", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
+  let summary = "Returns an empty AsyncRT::AnyAsyncValueRef";
+  let description = [{
+    Required to serve as the borrowee for mogg.async.pack.borrow when the value
+    is coming from a mgp.buffer.constant. The content of the placeholder is
+    initialized to be nullptr.
+  }];
+
+  let assemblyFormat = [{attr-dict}];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

@@ -10,11 +10,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/Runtime.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "GenericML/Support/List.h"
 #include "Runtime/MojoValue.h"
 #include "Runtime/Tensor/StateContext.h"
+#include "Runtime/Tensor/TensorBufferRef.h"
 #include "Support/SymbolExport.h"
 
 using namespace M;
@@ -178,6 +180,23 @@ MGP_RT_BufferBorrow(AsyncRTWrapper<AnyAsyncValueRef> borrower,
   TensorBufferRef buf =
       ::M::TensorBufferRef::create(borrowee->getBuffer(), borrowee->getSize(),
                                    borrowee->getMemStorageHandle());
+  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
+    borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
+  } else {
+    Runtime &runtime = *Runtime::getCurrentRuntimeOrNull();
+    borrowerValue =
+        borrowerValue.createReady<TensorBufferRef>(runtime, std::move(buf));
+  }
+}
+
+/// This is the implementation of the mgp.buffer.borrow primitive.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
+                      size_t size, AnyAsyncValueRef *mem) {
+  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
+  TensorBufferRef buf =
+      mem ? ::M::TensorBufferRef::create(data, size, mem->releaseRCRef())
+          : ::TensorBufferRef::createWithNonTrackedMemory(data, size);
   if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
     borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
   } else {

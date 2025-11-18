@@ -686,10 +686,9 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       newValue = MOGG::AsyncPackOp::create(builder, loc, value.getType(),
                                            packOperands);
     } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
-      /// TODO: Do this through an interface where the op that was lowered can
-      /// tell you how to pack its outputs (not just a boolean but maybe an
-      /// enum or a plain functon that does it).
-      newValue = MOGG::AsyncPackUntrackedOp::create(builder, loc, value);
+      newValue = MOGG::AsyncPackBorrowV2Op::create(
+          builder, loc, value.getType(), value,
+          MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
     } else {
       newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
     }

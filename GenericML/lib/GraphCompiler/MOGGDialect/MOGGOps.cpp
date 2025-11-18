@@ -3872,18 +3872,19 @@ LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// AsyncPackUntrackedOp
+// AsyncPackBorrowV2Op
 //===----------------------------------------------------------------------===//
 
-LogicalResult AsyncPackUntrackedOp::emitMojo(EmitMojoState &state) {
+LogicalResult AsyncPackBorrowV2Op::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-  auto moggAsyncPackUntrackedFunc = state.getOriginalMojoNameFor(
+  auto moggAsyncPackBorrowFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
-  state.builder.call(moggAsyncPackUntrackedFunc, {},
+  state.builder.call(moggAsyncPackBorrowFunc, {},
                      {/* borrower */ state.mojoReturnValues[*resultIndexOr],
-                      /* borrowee */ state.getMojoValueFor(getInput())});
+                      /* borrowee */ state.getMojoValueFor(getInput()),
+                      state.getMojoValueFor(getMem())});
 
   return success();
 }
@@ -4395,6 +4396,17 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
                        {MojoValue("static_shape").equal(shapeParam),
                         MojoValue("static_stride").equal(stridesParam)},
                        {tensorValue, shapeValue})));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncPlaceholderAnyAsyncValueRefOp
+//===----------------------------------------------------------------------===//
+LogicalResult
+AsyncPlaceholderAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
+  MojoValue result =
+      state.builder.var(MojoValue{HardcodedMojoSymbols::alias_OpaquePointer}());
+  state.setMojoValueFor(getResult(), result);
   return success();
 }
 
