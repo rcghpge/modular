@@ -16,7 +16,6 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/ConstantFoldPass.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
@@ -74,7 +73,6 @@ void M::MO::registerPasses() {
   MO::registerMoToMgpPipeline();
   MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
-  MO::registerNameInputDimsPass();
   MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
   MGP::registerLowerAsyncRefs();

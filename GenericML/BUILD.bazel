@@ -13,7 +13,6 @@ pkg_files(
         ":MOGGDialect.doc",
         ":MOGGDialectPassesIncGen.doc",
         ":MOGGToKGENIncGen.doc",
-        ":MONameInputDimsPassIncGen.doc",
         ":MOSHDialect.doc",
         ":MOToMOGGIncGen.doc",
         ":MOToPrimitivesIncGen.doc",
@@ -65,7 +64,6 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOGGToKGEN",
         ":MOGGTransforms",
-        ":MONameInputDimsPass",
         ":MOToMOGG",
         ":MOToPrimitives",
         ":MOTransforms",
@@ -537,38 +535,6 @@ modular_cc_library(
         ":RMODialect",
         ":RMOSupport",
         "//Support:Context",
-    ],
-)
-
-td_library(
-    name = "MONameInputDimsPassTdFiles",
-    srcs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/Addons/*.td"]),
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_modular_passes(
-    name = "MONameInputDimsPassIncGen",
-    output_name = "MONameInputDimsPass",
-    td_file = "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.td",
-    deps = [
-        ":MONameInputDimsPassTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "MONameInputDimsPass",
-    srcs = ["lib/GraphCompiler/Transforms/MODialect/Addons/NameInputDimsPass.cpp"],
-    hdrs = [
-        "include/GenericML/GraphCompiler/Transforms/MODialect/Addons/MONameInputDimsPass.h",
-    ],
-    copts = ["-fvisibility=default"],
-    deps = [
-        ":MONameInputDimsPassIncGen",
-        ":MOTransforms",
     ],
 )
 

@@ -89,7 +89,6 @@ modular_shared_library(
         "//GenericML:FrameworkFrontend",
         "//GenericML:GraphCompiler",
         "//GenericML:MEFModel",
-        "//GenericML:MONameInputDimsPass",
         "//GenericML:MOTransforms",
         "//GenericML:RMOTransforms",
         "//GenericML:SafeTensor",
