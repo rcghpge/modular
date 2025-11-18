@@ -27,7 +27,6 @@
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
-#include "Support/Profiling/Tracy.h"
 #include "Support/Threading/SpinWaiter.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -83,8 +82,6 @@ template <typename OperandTy, typename ResultTy>
 llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
                                           ResultTy &results,
                                           MEFListAttr constantResources) {
-  TRACY_ZONE_SCOPED_NC("getKernelInputs", TRACY_COLOR_TEAL);
-
   llvm::SmallVector<void *> kernelInputs;
   kernelInputs.reserve(results.size() + operands.size() +
                        constantResources.size());
@@ -127,8 +124,6 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
 
 /// Extract device hint from DeviceContext if present in operands.
 static int deviceHintFor(const RemainingArguments &operands) {
-  TRACY_ZONE_SCOPED_NC("deviceHintFor", TRACY_COLOR_TEAL);
-
   llvm::SmallSet<int, 8> acceleratorIds;
 
   for (const AnyAsyncValueRef &operand : operands) {
@@ -157,9 +152,6 @@ static void mgp_generic_execute(
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
     MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
     MEFAttr<bool> eIsAsync, MEFListAttr fConstantResources, Runtime &runtime) {
-  TRACY_ZONE_SCOPED_NCT("mgp_generic_execute", TRACY_COLOR_TEAL,
-                        "(Summary: " + dSummary.get().str() + ")");
-
   M::MGP::KernelExecutionState &kernelExecutionState =
       ctx.getStateSlotPayload<M::MGP::KernelExecutionState>(
           static_cast<size_t>(*aSlot));
@@ -178,9 +170,6 @@ static void mgp_generic_execute(
   //     - Otherwise, sync already on preferred device thread: run inline.
   if (eIsAsync.get() ||
       !runtime.getWorkQueue()->shouldRunInlineFor(deviceHint)) {
-    TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (async)", TRACY_COLOR_TEAL,
-                          "(Summary: " + dSummary.get().str() + ")");
-
     // Allocate indirect results as GraphRT is expecting result async values to
     // be allocated. The kernel will set them to ready when it is finished. We
     // only need to do this for async primitives as they outlive this function.
@@ -193,18 +182,11 @@ static void mgp_generic_execute(
                                         constantResources =
                                             std::move(fConstantResources),
                                         kernelPtr, dSummary]() {
-      TRACY_ZONE_SCOPED_NCT("runKernelAndExtendLifetimes", TRACY_COLOR_TEAL,
-                            "(Summary: " + dSummary.get().str() + ")");
-
       llvm::SmallVector<void *> kernelInputs =
           getKernelInputs(takenOperands, outResults, constantResources);
       MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, outResults);
-      {
-        TRACY_ZONE_SCOPED_NCT("Invoke Mojo function", TRACY_COLOR_ORANGE,
-                              "(Summary: " + dSummary.get().str() + ")");
+      kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
 
-        kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
-      }
       // Must have all been released/reset by the compiled kernel.
       assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
         return !ref.getPointer();
@@ -216,20 +198,12 @@ static void mgp_generic_execute(
     workItem.deviceHint = deviceHint;
     runtime.getWorkQueue()->addTask(std::move(workItem));
   } else {
-    TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (sync kernel)",
-                          TRACY_COLOR_TEAL,
-                          "(Summary: " + dSummary.get().str() + ")");
-
     // Run the kernel on this thread.
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     MAYBE_LOG_SYNC_KERNEL(*dSummary, operands, outResults.get());
-    {
-      TRACY_ZONE_SCOPED_NCT("Invoke Mojo function", TRACY_COLOR_ORANGE,
-                            "(Summary: " + dSummary.get().str() + ")");
+    kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
 
-      kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
-    }
     // Must have all been released/reset by the compiled kernel.
     assert(llvm::all_of(operands, [](const AnyAsyncValueRef &ref) {
       return !ref.getPointer();
@@ -243,8 +217,6 @@ static void mgp_generic_execute(
 
 static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
                             Result<List> output) {
-  TRACY_ZONE_SCOPED_NC("mgp_list_append", TRACY_COLOR_TEAL);
-
   if (element.isType<Tensor>()) {
     if (!inputList.getElements().empty() &&
         inputList.getElements().front().getValue().getPointer()->getTypeID() !=
@@ -265,8 +237,6 @@ static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
 //===----------------------------------------------------------------------===//
 
 static void mgp_list_concat(List &lhs, List &rhs, Result<List> output) {
-  TRACY_ZONE_SCOPED_NC("mgp_list_concat", TRACY_COLOR_TEAL);
-
   List resultList = lhs.copy();
   resultList.getElements().insert(resultList.getElements().end(),
                                   rhs.getElements().begin(),
@@ -281,8 +251,6 @@ static void mgp_list_concat(List &lhs, List &rhs, Result<List> output) {
 
 static void mgp_list_create(RemainingArguments operands,
                             Result<List> outputList) {
-  TRACY_ZONE_SCOPED_NC("mgp_list_create", TRACY_COLOR_TEAL);
-
   std::move(outputList).emplace(List{operands.copyAsVector()});
 }
 
@@ -292,8 +260,6 @@ static void mgp_list_create(RemainingArguments operands,
 
 static void mgp_list_get(List &inputList, Tensor &idxTensor,
                          RemainingResults outputs, EncodedLocation loc) {
-  TRACY_ZONE_SCOPED_NC("mgp_list_get", TRACY_COLOR_TEAL);
-
   // We must unbox the index value from the tensor.
   // TODO: Should be ssize_t.
   idxTensor.getEltType()
@@ -329,8 +295,6 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
 
 static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
                             Tensor &idxTensor, Result<List> output) {
-  TRACY_ZONE_SCOPED_NC("mgp_list_insert", TRACY_COLOR_TEAL);
-
   // We must unbox the index value from the tensor.
   // TODO: Should be ssize_t.
   idxTensor.getEltType()
@@ -365,7 +329,6 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
 static void mgp_list_slice(List &inputList, Tensor &startTensor,
                            Tensor &endTensor, Tensor &stepTensor,
                            Result<List> output) {
-  TRACY_ZONE_SCOPED_NC("mgp_list_slice", TRACY_COLOR_TEAL);
 
   auto sliceFunctor = [&](auto start, auto end, auto step) {
     List resultList;
@@ -442,7 +405,6 @@ static void mgp_buffer_plan(
     MEFAttr<ArrayRef<uint64_t>> minPre, MEFAttr<ArrayRef<uint64_t>> minPost,
     MEFAttr<ArrayRef<uint64_t>> maxPre, MEFAttr<ArrayRef<uint64_t>> maxPost,
     Runtime &runtime) {
-  TRACY_ZONE_SCOPED_NC("mgp_buffer_plan", TRACY_COLOR_TEAL);
 
   // This function implements a simple greedy algorithm to reuse memory blocks
   // from allocations that do not overlap in lifetime.
@@ -559,8 +521,6 @@ static void mgp_buffer_plan(
 
 static void mgp_guard(Chain inChain, RemainingArguments inputs,
                       RemainingResults results) {
-  TRACY_ZONE_SCOPED_NC("mgp_guard", TRACY_COLOR_TEAL);
-
   assert(inputs.size() == results.size());
 
   auto inputAsyncVals = inputs.get();
@@ -577,8 +537,6 @@ static void mgp_guard(Chain inChain, RemainingArguments inputs,
 //===----------------------------------------------------------------------===//
 
 static void mgp_model() {
-  TRACY_ZONE_SCOPED_NC("mgp_model", TRACY_COLOR_TEAL);
-
   ASSERT_STREAM(false, << "mgp.model should never be invoked");
 }
 
@@ -589,8 +547,6 @@ static void mgp_model() {
 // No-op, will be scheduled once all are ready (preventing the inputs from being
 // freed).
 static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
-  TRACY_ZONE_SCOPED_NC("mgp_nop", TRACY_COLOR_TEAL);
-
   std::move(outChain).emplace();
 }
 
@@ -601,8 +557,6 @@ static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
 void mgp_runtime_create(Chain inChain, StateContext &theContext,
                         Result<Chain> outChain, MEFAttr<uint64_t> aRuntimeSlot,
                         Runtime &runtime) {
-  TRACY_ZONE_SCOPED_NC("mgp_runtime_create", TRACY_COLOR_TEAL);
-
   // Establish an execution engine, to be shared amongst all loaded models
   // across all models using this runtime.
   //
@@ -652,8 +606,6 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
                              AsyncValueRef<TensorBufferRef> buffer,
                              Result<Chain> outChain,
                              MEFAttr<uint64_t> bBufferSlot, Runtime &runtime) {
-  TRACY_ZONE_SCOPED_NC("mgp_buffer_cache", TRACY_COLOR_TEAL);
-
   theContext.emplaceStateSlot<DefaultStateSlot>(
       static_cast<size_t>(*bBufferSlot), /*numBuffers=*/1);
   auto &defaultStateSlot = theContext.getStateSlot(*bBufferSlot);
@@ -674,8 +626,6 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
 static void mgp_buffer_get_cached(Chain inChain, StateContext &theContext,
                                   AsyncValueRef<size_t> bBufferSlot,
                                   Result<TensorBufferRef> outBuffer) {
-  TRACY_ZONE_SCOPED_NC("mgp_buffer_get_cached", TRACY_COLOR_TEAL);
-
   auto &stateSlot = theContext.getStateSlot(*bBufferSlot);
   ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
   if (errOr)
@@ -691,8 +641,6 @@ static void mgp_buffer_get_cached(Chain inChain, StateContext &theContext,
 static void mgp_buffer_remove_cached(Chain inChain, StateContext &theContext,
                                      Result<Chain> outChain,
                                      MEFAttr<uint64_t> bufferSlot) {
-  TRACY_ZONE_SCOPED_NC("mgp_buffer_remove_cached", TRACY_COLOR_TEAL);
-
   auto &stateSlot = theContext.getStateSlot(*bufferSlot);
   stateSlot.clear();
   std::move(outChain).emplace();
