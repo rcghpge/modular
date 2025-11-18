@@ -14,6 +14,7 @@
 #include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
 #include "Support/Buffer.h"
+#include "Support/Profiling/Tracy.h"
 
 using namespace M;
 using namespace M::AsyncRT;
@@ -1030,6 +1031,8 @@ CUDADeviceContext::~CUDADeviceContext() {
 
 ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
                                            Device::AllocMode mode) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memAlloc", TRACY_COLOR_PURPLE);
+
   assert(byteSize != 0);
   CUDA_WITH_CTX_ERR(*this);
   switch (mode) {
@@ -1051,6 +1054,8 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
 }
 
 ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
+
   CUDA_WITH_CTX(*this);
   if (isHost) {
     CUDA_CHECK_ERR(driver_.MemFreeHost(ptr));
@@ -1065,6 +1070,9 @@ void *CUDADeviceContext::driverContext() const { return cudaContext(); }
 
 ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                       const void *src) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyToDevice",
+                       TRACY_COLOR_PURPLE);
+
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
@@ -1078,6 +1086,9 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess
 CUDADeviceContext::enqueueCopyFromDevice(void *dst,
                                          const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyFromDevice",
+                       TRACY_COLOR_PURPLE);
+
   CHECK_IS_CUDA_ERR(src.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
@@ -1091,6 +1102,9 @@ CUDADeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess
 CUDADeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                                             size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyToDeviceSized",
+                       TRACY_COLOR_PURPLE);
+
   CUDA_WITH_CTX_ERR(*this);
 
   CUDA_CHECK_ERR(driver_.MemcpyHtoDAsync(dst, src, byteSize, stream_));
@@ -1101,6 +1115,9 @@ CUDADeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
 ErrorOrSuccess
 CUDADeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                               size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyFromDeviceSized",
+                       TRACY_COLOR_PURPLE);
+
   CUDA_WITH_CTX_ERR(*this);
 
   CUDA_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, src, byteSize, stream_));
@@ -1110,6 +1127,8 @@ CUDADeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
 
 ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                               const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
+
   CHECK_IS_CUDA_ERR(src.context().device());
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
@@ -1154,6 +1173,9 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
                                                    uint64_t val,
                                                    size_t valSize) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueSetMemory",
+                       TRACY_COLOR_PURPLE);
+
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
   void *ptr = dst.ptr();
@@ -1314,6 +1336,9 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueFunctionExec",
+                       TRACY_COLOR_PURPLE);
+
   if (args.hasError()) {
     RAISE_ERROR(args.getError().getError());
   }
@@ -1330,6 +1355,9 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueFunctionExecDirect",
+                       TRACY_COLOR_PURPLE);
+
   const auto &cudaFunc = CUDADeviceFunction::cast(func);
 
   CUDA_WITH_CTX_ERR(*this);
@@ -1370,6 +1398,8 @@ CUDADeviceContext::streamPriorityRange(int *leastPriority,
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::synchronize", TRACY_COLOR_PURPLE);
+
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamSynchronize(stream_));
   // Handle any pending events after synchronization.
@@ -1378,6 +1408,8 @@ ErrorOrSuccess CUDADeviceContext::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+
   CUDA_WITH_CTX_ERR(*this);
   DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
   CUDA_CHECK_ERR(driver_.EventRecord(event, stream_));
@@ -1386,6 +1418,8 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
 
 ErrorOr<DeviceEventRef>
 CUDADeviceContext::eventCreate(unsigned int flags) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);
+
   CUDA_WITH_CTX_ERR(*this);
   CUevent event;
   CUDA_CHECK_ERR(
@@ -1395,6 +1429,8 @@ CUDADeviceContext::eventCreate(unsigned int flags) const {
 
 ErrorOrSuccess
 CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
+
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.StreamWaitEvent(stream_, cudaEvent.cudaEvent(), 0));
@@ -1404,6 +1440,8 @@ CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
 ErrorOrSuccess
 CUDADeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
+
   DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
   ERR_CHECK_ERR(enqueueWaitFor(*event));
   return success();

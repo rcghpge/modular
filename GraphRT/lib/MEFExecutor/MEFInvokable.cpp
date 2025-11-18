@@ -17,6 +17,7 @@
 #include "GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "MEFFileImpl.h"
 #include "Support/AssertStream.h"
+#include "Support/Profiling/Tracy.h"
 #include "llvm/Support/TrailingObjects.h"
 #include <cassert>
 
@@ -409,6 +410,7 @@ void MEFExecutor::execute(const MEFInvokableImpl &invokable,
                           MutableArrayRef<AnyAsyncValueRef> arguments,
                           MutableArrayRef<AnyAsyncValueRef> results,
                           ArrayRef<unsigned> resultRegIndex) {
+  TRACY_ZONE_SCOPED_NC("MEFExecutor::execute", TRACY_COLOR_RED);
   // Now that the executor is all set up and ready to go, kick off the ready
   // primitives.
 
@@ -548,6 +550,9 @@ void MEFExecutor::processArgumentsPseudo(
 /// from the end of the vector to the start - worklist style.
 void MEFExecutor::decrementOperandsNotReadyCounts(
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
+  TRACY_ZONE_SCOPED_NC("MEFExecutor::decrementOperandsNotReadyCounts",
+                       TRACY_COLOR_RED);
+
   RunnablePrimitiveDescriptorBuilder frame(runtime, mefFile->attributes, *this);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
@@ -690,6 +695,8 @@ void MEFExecutor::processUsedByRecords(
     AnyAsyncValueRef result, AsyncValue *registerVal, ArrayRef<uint32_t> users,
     uint32_t totalUserRefCount,
     SmallVectorImpl<uint32_t> &primitiveIDWorklist) {
+  TRACY_ZONE_SCOPED_NC("MEFExecutor::processUsedByRecords", TRACY_COLOR_RED);
+
   assert(users.size() <= totalUserRefCount &&
          "totalUserRefCount is primitive users + mef.output");
 
@@ -798,6 +805,8 @@ MEFInvokableImpl::decode(const EncodedLocation &loc) const {
 void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
                               MutableArrayRef<AnyAsyncValueRef> results,
                               Runtime &runtime) const {
+  TRACY_ZONE_SCOPED_NC("MEFInvokableImpl::invoke", TRACY_COLOR_RED);
+
   ASSERT_STREAM(arguments.size() == getNumArgs(),
                 << "incorrect number of argument to an invokable. "
                 << arguments.size() << " vs " << getNumArgs());

@@ -14,6 +14,7 @@
 #include "AsyncRT/lib/DeviceContext/BufferCache.h"
 #include "HIPDriver.h"
 #include "Support/ErrorOr.h"
+#include "Support/Profiling/Tracy.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -968,6 +969,8 @@ HIPDeviceContext::~HIPDeviceContext() {
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
+
   assert(byteSize != 0);
   HIP_WITH_CTX_ERR(*this);
   switch (mode) {
@@ -989,6 +992,8 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
 }
 
 ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memFree", TRACY_COLOR_PURPLE);
+
   HIP_WITH_CTX_ERR(*this);
   if (isHost) {
     HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
@@ -1005,6 +1010,9 @@ void *HIPDeviceContext::driverContext() const {
 
 ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                      const void *src) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyToDevice",
+                       TRACY_COLOR_PURPLE);
+
   CHECK_IS_HIP_ERR(dst.context().device());
   HIP_WITH_CTX_ERR(*this);
 
@@ -1018,6 +1026,9 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess
 HIPDeviceContext::enqueueCopyFromDevice(void *dst,
                                         const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyFromDevice",
+                       TRACY_COLOR_PURPLE);
+
   CHECK_IS_HIP_ERR(src.context().device());
   HIP_WITH_CTX_ERR(*this);
 
@@ -1031,6 +1042,9 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess
 HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                                            size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyToDeviceSized",
+                       TRACY_COLOR_PURPLE);
+
   HIP_WITH_CTX_ERR(*this);
 
   HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst, src, byteSize, stream_));
@@ -1041,6 +1055,9 @@ HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
 ErrorOrSuccess
 HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                              size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyFromDeviceSized",
+                       TRACY_COLOR_PURPLE);
+
   HIP_WITH_CTX_ERR(*this);
 
   hipDeviceptr_t srcPtr = src;
@@ -1051,6 +1068,8 @@ HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
 
 ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                              const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
+
   CHECK_IS_HIP_ERR(src.context().device());
   CHECK_IS_HIP_ERR(dst.context().device());
 
@@ -1093,6 +1112,9 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
                                                   uint64_t val,
                                                   size_t valSize) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueSetMemory",
+                       TRACY_COLOR_PURPLE);
+
   CHECK_IS_HIP_ERR(dst.context().device());
   void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
@@ -1194,6 +1216,9 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const DeviceFunction::Arguments &args) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueFunctionExec",
+                       TRACY_COLOR_PURPLE);
+
   if (args.hasError()) {
     RAISE_ERROR(args.getError().getError());
   }
@@ -1219,6 +1244,9 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueFunctionExecDirect",
+                       TRACY_COLOR_PURPLE);
+
   const auto &hipFunc = HIPDeviceFunction::cast(func);
   if (numAttrs > 0)
     RAISE_ERROR("Function launch attributes not supported;");
@@ -1257,6 +1285,8 @@ HIPDeviceContext::streamPriorityRange(int *leastPriority,
 }
 
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::synchronize", TRACY_COLOR_PURPLE);
+
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
   // Handle any pending events after synchronization.
@@ -1265,6 +1295,8 @@ ErrorOrSuccess HIPDeviceContext::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.EventCreate(&event, 0));
@@ -1274,6 +1306,8 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
 
 ErrorOr<DeviceEventRef>
 HIPDeviceContext::eventCreate(unsigned int flags) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
+
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.EventCreate(&event, flags));
@@ -1282,6 +1316,8 @@ HIPDeviceContext::eventCreate(unsigned int flags) const {
 
 ErrorOrSuccess
 HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
+
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
@@ -1290,6 +1326,8 @@ HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
 ErrorOrSuccess
 HIPDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
+
   DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
   ERR_CHECK_ERR(enqueueWaitFor(*event));
   return success();
