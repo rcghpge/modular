@@ -37,6 +37,15 @@
 using namespace M;
 using namespace MOGG;
 
+template <typename T>
+static auto stringifyMLIRObject(T entity) {
+  std::string str;
+  llvm::raw_string_ostream stream(str);
+  entity.print(stream);
+
+  return str;
+}
+
 static void printSetDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
                         Value val) {
   KGEN::printParamName(p, dim);
@@ -924,6 +933,21 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 // KernelStubOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult KernelStubOp::verify() {
+  FunctionType funcType = getFunctionType();
+  if (funcType.getNumResults() > 1)
+    return emitError("Only at most one result is currently supported");
+
+  if (!llvm::equal(funcType.getInputs(), getBodyBlock().getArgumentTypes())) {
+    return emitError(
+        llvm::formatv("Function input and body argument types do not match. "
+                      "Expected function signature is {}",
+                      stringifyMLIRObject(funcType)));
+  }
+
+  return success();
+}
+
 bool KernelStubOp::isRaising() {
   bool raises = false;
   walk([&](MOGG::EmitsMojoInterface emitMojoOp) {
@@ -944,8 +968,9 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
 
   // Determine the Mojo return type from the stub's return type
   std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
-  if (auto returnType = getReturnType())
-    mojoReturnType = state.mlirTypeToMojoType(*returnType);
+  FunctionType functionType = getFunctionType();
+  if (functionType.getNumResults())
+    mojoReturnType = state.mlirTypeToMojoType(functionType.getResult(0));
 
   bool errOccurred = false;
   state.builder.fn(
@@ -973,22 +998,27 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
 
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
-static StringRef kernelStubOpdisallowedAttrNames[] = {"name", "returnType",
-                                                      "sym_name"};
+static StringRef kernelStubOpdisallowedAttrNames[] = {
+    "name", "returnType", "sym_name", "function_type"};
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
   if (failed(parser.parseSymbolName(name)))
     return failure();
-  state.addAttribute("sym_name", name);
+  state.addAttribute(getSymNameAttrName(state.name), name);
 
   SmallVector<Type> resTypes;
   SmallVector<OpAsmParser::Argument> args;
   if (failed(parseRegionArguments(parser, resTypes, args)))
     return failure();
 
-  if (!resTypes.empty())
-    state.addAttribute("returnType", TypeAttr::get(resTypes.front()));
+  SmallVector<Type> argTypes;
+  for (auto &&arg : args)
+    argTypes.push_back(arg.type);
+
+  state.addAttribute(getFunctionTypeAttrName(state.name),
+                     TypeAttr::get(FunctionType::get(parser.getContext(),
+                                                     argTypes, resTypes)));
 
   // If function attributes are present, parse them.
   NamedAttrList parsedAttributes;
@@ -1017,7 +1047,7 @@ void KernelStubOp::print(OpAsmPrinter &p) {
   p << " ";
   p.printSymbolName(getSymNameAttr());
   p << " ";
-  printRegionArguments(p, getReturnType() ? *getReturnType() : TypeRange{},
+  printRegionArguments(p, getFunctionType().getResults(),
                        getBody().getArguments());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
                                      kernelStubOpdisallowedAttrNames);
@@ -1091,10 +1121,11 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // into the SymbolTable of the ModuleOp.
   auto insertionPoint = builder.saveInsertionPoint();
   builder.setInsertionPointToStart(loweringState.getModelOp()->getBlock());
-  auto kernelStub = MOGG::KernelStubOp::create(
-      builder, loc, stubName,
-      stubReturnType ? TypeAttr::get(stubReturnType) : nullptr,
-      getSummaryAttr());
+  // First, we create a () -> () function type because we don't yet set the
+  // value of certain things like IOKind.
+  auto functionType = FunctionType::get(ctx, {}, {});
+  auto kernelStub = MOGG::KernelStubOp::create(builder, loc, stubName,
+                                               functionType, getSummaryAttr());
   kernelStub.getBody().takeBody(getExecBody());
   builder.restoreInsertionPoint(insertionPoint);
 
@@ -1291,7 +1322,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   SmallVector<Value> stubCallOperands;
   builder.setInsertionPointToStart(&regionBody);
   for (auto &&[stubArgument, regionArgument] :
-       llvm::zip_first(kernelStub.getBody().front().getArguments(),
+       llvm::zip_first(kernelStub.getBodyBlock().getArguments(),
                        regionBody.getArguments().drop_front())) {
     if (auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType())) {
       auto dynamicDimensionsOr =
@@ -1375,7 +1406,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   });
 
   assert(stubCallOperands.size() ==
-         (kernelStub.getBody().front().getNumArguments()));
+         (kernelStub.getBodyBlock().getNumArguments()));
 
   // Create the call to the outlined kernel stub and use whatever return value
   // (if any) in the output op of the new kernel.
@@ -1419,7 +1450,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   auto lowerDeviceContextPlaceholder =
       [&](MOGG::DeviceContextPlaceholderOp moggContext) {
-        Value moggContextArg = kernelStub.getBody().front().addArgument(
+        Value moggContextArg = kernelStub.getBodyBlock().addArgument(
             moggContext.getType(), moggContext.getLoc());
         moggContext.replaceAllUsesWith(moggContextArg);
 
@@ -1645,6 +1676,12 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   mlir::BitVector unpackItAll(regionBody.getNumArguments(), true);
   mlir::BitVector packItAll(newKernel.getNumResults(), true);
   loweringState.lowerMOGGABI(newKernel, unpackItAll, packItAll);
+
+  // We can now safely set the function type because we have added all arguments
+  // and attributes.
+  kernelStub.setFunctionType(
+      FunctionType::get(ctx, kernelStub.getBodyBlock().getArgumentTypes(),
+                        stubReturnType ? stubReturnType : TypeRange{}));
 
   return success();
 }
@@ -3788,7 +3825,7 @@ LogicalResult CallStubOp::verify() {
                                    getName().getLeafReference()));
   }
 
-  auto calleeArgumentTypes = calleeFunc.getBody().front().getArgumentTypes();
+  auto calleeArgumentTypes = calleeFunc.getBodyBlock().getArgumentTypes();
   auto callerOperandTypes = getOperandTypes();
 
   if (calleeArgumentTypes.size() != callerOperandTypes.size()) {
@@ -3796,14 +3833,6 @@ LogicalResult CallStubOp::verify() {
                                    calleeArgumentTypes.size(),
                                    callerOperandTypes.size()));
   }
-
-  auto printType = [](Type t) {
-    std::string str;
-    llvm::raw_string_ostream stream(str);
-    t.print(stream);
-
-    return str;
-  };
 
   for (uint64_t i = 0; i < calleeArgumentTypes.size(); ++i) {
     if (calleeArgumentTypes[i] == callerOperandTypes[i])
@@ -3816,7 +3845,8 @@ LogicalResult CallStubOp::verify() {
 
     return emitError(llvm::formatv(
         "Callee argument at position {} expected to be {} but got {}", i,
-        printType(calleeArgumentTypes[i]), printType(callerOperandTypes[i])));
+        stringifyMLIRObject(calleeArgumentTypes[i]),
+        stringifyMLIRObject(callerOperandTypes[i])));
   }
   return success();
 }

@@ -1654,6 +1654,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   IsolatedFromAbove,
   Symbol,
   SingleBlock,
+  FunctionOpInterface,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Op that outlines a kernel";
@@ -1661,12 +1662,31 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     This op defines a kernel that will eventually be compiled to Mojo text.
   }];
   let arguments = (ins SymbolNameAttr:$sym_name,
-                       OptionalAttr<TypeAttr>:$returnType,
+                       TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<StrAttr>:$summary
                        );
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    Block &getBodyBlock() { return getBody().front(); }
+    Region *getCallableRegion() { return &getBodyRegion(); }
+    ArrayRef<Type> getArgumentTypes() {
+      return getFunctionType().getInputs();
+    }
+    ArrayRef<Type> getResultTypes() {
+      return getFunctionType().getResults();
+    }
+
+    mlir::ArrayAttr getArgAttrsAttr() { return nullptr; }
+    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(mlir::ArrayAttr attrs){}
+    void setResAttrsAttr(mlir::ArrayAttr attrs){}
+    mlir::Attribute removeArgAttrsAttr() { return nullptr; }
+    mlir::Attribute removeResAttrsAttr() { return nullptr; }
+  }];
 }
 
 def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
