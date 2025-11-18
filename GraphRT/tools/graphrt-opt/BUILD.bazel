@@ -11,6 +11,7 @@ modular_cc_binary(
         "//Support:Context",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
 )

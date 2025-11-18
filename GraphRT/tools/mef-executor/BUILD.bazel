@@ -11,7 +11,10 @@ modular_cc_binary(
         "//GraphRT:MEFExecutor",
         "//GraphRT:Primitives",
         "//Init",
+        "//Support:Base",
         "//Support:CommonCLOptions",
         "//Support:Globals",
+        "//Support:ML",
+        "@llvm-project//llvm:Support",
     ],
 )
