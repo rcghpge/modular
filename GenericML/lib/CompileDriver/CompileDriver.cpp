@@ -34,12 +34,12 @@ std::optional<std::filesystem::path> M::getMaxCacheDir() {
       return std::filesystem::path(maxCacheDir.str());
   }
 
-  // Try using modular data directory.
-  auto dataDirOr = Config::getModularDataFolderPath(/*create=*/true);
-  if (dataDirOr.isError())
+  // Try using modular cache directory.
+  auto cacheDirOr = Config::getModularCacheFolderPath(/*create=*/true);
+  if (cacheDirOr.isError())
     return std::nullopt;
 
-  return dataDirOr.takeValue() / ".max_cache";
+  return cacheDirOr.takeValue() / ".max_cache";
 }
 
 bool M::isModelIRCacheEnabled() {
