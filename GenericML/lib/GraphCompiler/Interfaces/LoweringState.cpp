@@ -689,6 +689,16 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       newValue = MOGG::AsyncPackBorrowV2Op::create(
           builder, loc, value.getType(), value,
           MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
+    } else if (auto bufferGetCachedOp =
+                   value.getDefiningOp<MGP::BufferGetCachedOp>()) {
+      auto memStorageType = KGEN::PointerType::get(
+          KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext())));
+      auto newBufferGetCachedOp = MGP::BufferGetCachedOp::create(
+          builder, loc, {value.getType(), memStorageType},
+          bufferGetCachedOp->getOperands(), bufferGetCachedOp->getAttrs());
+      newValue = MOGG::AsyncPackBorrowV2Op::create(
+          builder, loc, value.getType(), newBufferGetCachedOp.getOutBuffer(),
+          newBufferGetCachedOp.getMemStorageHandle());
     } else {
       newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
     }

@@ -81,6 +81,10 @@ constexpr StringLiteral func_unpack_device_ctx =
     "MOGGPrimitives.unpack_device_ctx";
 constexpr StringLiteral func_unpack_tensor = "MOGGPrimitives.unpack_tensor";
 constexpr StringLiteral func_all_zeros = "MOGGPrimitives.all_zeros";
+constexpr StringLiteral func_mgp_get_buffer_handle_from_tensor_buffer_ref =
+    "MOGGPrimitives.mgp_get_buffer_handle_from_tensor_buffer_ref";
+constexpr StringLiteral func_mogg_async_pack_borrow_v2 =
+    "MOGGPrimitives.mogg_async_pack_borrow_v2";
 
 constexpr StringLiteral alias_OpaquePointer = "memory.LegacyOpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";

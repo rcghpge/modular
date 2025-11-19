@@ -11,6 +11,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/AsyncValue.h"
 #include "AsyncRT/Runtime/Runtime.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "GenericML/Support/List.h"
@@ -204,6 +205,14 @@ MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
     borrowerValue =
         borrowerValue.createReady<TensorBufferRef>(runtime, std::move(buf));
   }
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_BufferBorrowForTensorRef(AsyncRTWrapper<AnyAsyncValueRef> borrower,
+                                TensorBufferRef *borrowee,
+                                AnyAsyncValueRef *mem) {
+  return MGP_RT_BufferBorrowV2(borrower, borrowee->getBuffer(),
+                               borrowee->getSize(), mem);
 }
 
 /// Assigns to the borrower a tensor buffer that isn't owned by the runtime
@@ -586,4 +595,12 @@ MGP_RT_AsyncRT_CreateAsync_Error(AsyncRTWrapper<AnyAsyncValueRef> async,
     value.copy().setToError(std::move(diagnostic));
   else
     value = value.createError(runtime, std::move(diagnostic));
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_GetMemBufferHandleFromTensorBufferRef(
+    TensorBufferRef *bufferRefPtr, AnyAsyncValueRef *memStorageHandle) {
+  if (!bufferRefPtr)
+    return;
+  new (memStorageHandle) AnyAsyncValueRef(bufferRefPtr->getMemStorageHandle());
 }

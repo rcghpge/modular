@@ -16,7 +16,10 @@
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITOps.h"
+#include "KGEN/POPDialect/POPOps.h"
+#include "KGEN/POPDialect/POPTypes.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
@@ -530,18 +533,51 @@ llvm::BitVector BufferGetCachedOp::operandsToUnpack() {
 }
 
 llvm::BitVector BufferGetCachedOp::resultsToPack() {
-  return llvm::BitVector(1, false);
+  return llvm::BitVector(2, false);
 }
 
 LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
   auto mgpBufferGetCacheFunc =
       state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
           "tmp.mgp.buffer.get_cached"));
   auto cachedBuffer = state.builder.var(
       mgpBufferGetCacheFunc({}, {state.getMojoValueFor(getTheContext()),
                                  state.getMojoValueFor(getBBufferSlot())}));
-  state.setMojoValueFor(getResult(), cachedBuffer);
+  state.setMojoValueFor(getResult(0), cachedBuffer);
 
+  auto opaquePtr =
+      state.builder.var(MojoValue{HardcodedMojoSymbols::alias_OpaquePointer}());
+  auto opaquePtrPtr = state.builder.var(
+      MojoValue{HardcodedMojoSymbols::struct_UnsafePointer}(
+          {}, MojoValue("to").equal(opaquePtr))
+          .get(HardcodedMojoSymbols::func_UnsafePointer_bitcast)({"NoneType"}));
+
+  state.builder.call(
+      HardcodedMojoSymbols::func_mgp_get_buffer_handle_from_tensor_buffer_ref,
+      {}, {cachedBuffer, opaquePtrPtr});
+  state.setMojoValueFor(getMemStorageHandle(), opaquePtrPtr);
+
+  return success();
+}
+
+LogicalResult BufferGetCachedOp::verify() {
+  if (getOptionalMemStorageHandle().size() > 1)
+    return emitOpError("Unexpected mem storage handle result");
+  return success();
+}
+
+LogicalResult BufferGetCachedOp::canonicalize(BufferGetCachedOp op,
+                                              PatternRewriter &rewriter) {
+  if (op.getOptionalMemStorageHandle().size() == 1 &&
+      op.getMemStorageHandle().use_empty()) {
+    auto cachedBufferOp = BufferGetCachedOp::create(
+        rewriter, op->getLoc(), op.getOutBuffer().getType(), op->getOperands(),
+        op->getAttrs());
+    rewriter.replaceAllUsesWith(op.getOutBuffer(),
+                                cachedBufferOp.getOutBuffer());
+    rewriter.eraseOp(op);
+  }
   return success();
 }
 
@@ -1395,5 +1431,6 @@ void MGPDialect::registerOperations() {
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
+using PointerType = KGEN::PointerType;
 #define GET_OP_CLASSES
 #include "GenericML/MGPDialect/MGP.cpp.inc"

@@ -342,6 +342,7 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MGP::createOutlineKernels());
   pm.addPass(MGP::createAddTryExceptBlocks());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
 
   MGP::EmitMojoOptions emitMojoOptions;
   emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;

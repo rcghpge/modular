@@ -8,6 +8,7 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
+#include "KGEN/KGENDialect/KGENTypes.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 
@@ -349,7 +350,8 @@ Value MGPBufferBuilder::getCached(OpBuilder &builder, Location loc,
 
   return BufferGetCachedOp::create(builder, loc, expectedBufferType,
                                    /*inChain=*/inChain, /*theContext=*/context,
-                                   /*bBufferSlot=*/bufferSlotIndex);
+                                   /*bBufferSlot=*/bufferSlotIndex)
+      .getOutBuffer();
 }
 
 Value MGPBufferBuilder::removeCached(OpBuilder &builder, Location loc,

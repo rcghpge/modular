@@ -23,6 +23,8 @@ include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td"
 include "GraphRT/GRTDialect/GRTMayAliasInterface.td"
 include "GraphRT/MEFDialect/MEFTypes.td"
+include "KGEN/KGENDialect/KGENTypes.td"
+include "KGEN/POPDialect/POPTypes.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/RegionKindInterface.td"
@@ -885,14 +887,20 @@ def BufferGetCachedOp : MGP_Op<"buffer.get_cached", [
   let arguments = (ins ChainType:$inChain,
                        MGP_ContextType:$theContext,
                        Index:$bBufferSlot);         // 1
-  let results = (outs MGP_DeviceBufferType:$outBuffer);
+  let results = (outs MGP_DeviceBufferType:$outBuffer, Variadic<PointerOf<PointerOf<KGEN_NoneType>>>:$optional_memStorageHandle);
   let assemblyFormat = [{
     $inChain `,` $theContext `[` $bBufferSlot `]` attr-dict
-    `:` qualified(type($outBuffer))
+    `:` qualified(type($outBuffer)) (`,` qualified(type($optional_memStorageHandle))^)?
   }];
 
-  let extraClassDefinition = [{
-  }];
+  let extraClassDeclaration = [{
+      ::mlir::Value getMemStorageHandle() {
+          assert(!getOptionalMemStorageHandle().empty() && "memStorageHandle result not present");
+          return getOptionalMemStorageHandle()[0];
+        }
+    }];
+  let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//

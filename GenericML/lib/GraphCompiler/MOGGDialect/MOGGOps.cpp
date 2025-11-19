@@ -3917,8 +3917,8 @@ LogicalResult AsyncPackBorrowV2Op::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
-  auto moggAsyncPackBorrowFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  MojoValue moggAsyncPackBorrowFunc{
+      HardcodedMojoSymbols::func_mogg_async_pack_borrow_v2};
   state.builder.call(moggAsyncPackBorrowFunc, {},
                      {/* borrower */ state.mojoReturnValues[*resultIndexOr],
                       /* borrowee */ state.getMojoValueFor(getInput()),
