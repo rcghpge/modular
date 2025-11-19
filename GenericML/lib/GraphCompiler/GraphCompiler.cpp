@@ -77,6 +77,7 @@ void M::MO::registerPasses() {
   MGP::registerMOToPrimitives();
   MGP::registerLowerAsyncRefs();
   MGP::registerAddTryExceptBlocksPass();
+  MGP::registerOutlineKernelsPass();
   MGP::registerEmitMojo();
   MGP::registerDumpMojo();
   MGP::registerLowerMOGGRegionCompiles();
@@ -338,6 +339,7 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MGP::createLowerAsyncRefs(lowerAsyncopt, libraryAnalysis));
   pm.addPass(MGP::createCoalesceAsyncRefs());
 
+  pm.addPass(MGP::createOutlineKernels());
   pm.addPass(MGP::createAddTryExceptBlocks());
   pm.addPass(mlir::createSymbolDCEPass());
 

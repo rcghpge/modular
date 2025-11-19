@@ -24,32 +24,6 @@ namespace M::MGP {
 
 namespace {
 
-MOGG::ExecuteCompiledOp
-lowerGenericCompiledRegionOp(MOGG::GenericCompiledRegionOp kernel,
-                             const std::string &kernelName,
-                             OpBuilder &builder) {
-  // Create a new ExecuteCompiledOp to replace the original kernel
-  auto insertPoint = builder.saveInsertionPoint();
-  builder.setInsertionPoint(kernel);
-  auto newOp = MOGG::ExecuteCompiledOp::create(
-      builder, kernel->getLoc(),
-      /*resultTypes=*/kernel->getResultTypes(),
-      /*operands=*/kernel->getOperands(),
-      /*kernelName=*/StringAttr::get(kernel->getContext(), kernelName),
-      /*usedParams=*/builder.getArrayAttr({}),
-      /*outputParamDecls=*/kernel.getOutputParamDecls(),
-      /*summary=*/MOGG::getSummaryString(kernel),
-      /*isAsync=*/*kernel.getIsAsync(),
-      /*constantResources=*/kernel.getConstantResources());
-  builder.restoreInsertionPoint(insertPoint);
-
-  newOp.setDeviceRef(kernel.getExecutionDevice());
-  kernel->replaceAllUsesWith(newOp.getResults());
-  kernel->erase();
-
-  return newOp;
-}
-
 struct EmitMojo
     : public MOGG::MojoLibraryAnalysisPass<impl::EmitMojoBase<EmitMojo>> {
   using Base::Base;
@@ -94,58 +68,35 @@ struct EmitMojo
       }
     }
 
-    // For each model, emit Mojo for all the GenericCompiledRegionOps.
-    std::string emptyKernelName;
-    llvm::StringMap<DenseSet<StringAttr>> kernelsToLoadPerModel;
+    // Replace stub calls with ExecuteCompiledOp.
+    llvm::DenseMap<StringAttr, llvm::SetVector<StringAttr>>
+        kernelsToLoadPerModel;
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      DenseSet<StringAttr> &kernelsToLoadInThisModel =
-          kernelsToLoadPerModel[modelOp.getSymName()];
-      auto lowerGenericCompiledRegionOps =
-          [&](MOGG::GenericCompiledRegionOp kernel) {
-            if (!kernel.getEmitsMojo())
-              return WalkResult::skip();
+      auto &kernelsToLoadInThisModel =
+          kernelsToLoadPerModel[modelOp.getSymNameAttr()];
+      modelOp.walk([&](MOGG::CallStubOp callOp) {
+        kernelsToLoadInThisModel.insert(callOp.getName().getLeafReference());
+        // Create a new ExecuteCompiledOp to replace the original kernel
+        auto insertPoint = builder.saveInsertionPoint();
+        auto stubOp = callOp.getCallee();
+        builder.setInsertionPoint(callOp);
+        auto newOp = MOGG::ExecuteCompiledOp::create(
+            builder, stubOp->getLoc(),
+            /*resultTypes=*/callOp->getResultTypes(),
+            /*operands=*/callOp->getOperands(),
+            /*kernelName=*/callOp.getName().getLeafReference(),
+            /*usedParams=*/builder.getArrayAttr({}),
+            /*outputParamDecls=*/
+            KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
+            /*summary=*/stubOp.getSummaryAttr(),
+            /*isAsync=*/*stubOp.getIsAsync(),
+            /*constantResources=*/stubOp.getConstantResources());
+        builder.restoreInsertionPoint(insertPoint);
 
-            state.builder.comment(
-                llvm::formatv("Emitting kernel entry points for model named {}",
-                              modelOp.getSymName())
-                    .str());
-            if (kernel.emitMojo(state).failed())
-              return WalkResult::interrupt();
-
-            auto kernelCall = lowerGenericCompiledRegionOp(
-                kernel, state.currentKernelName, builder);
-            kernelsToLoadInThisModel.insert(kernelCall.getKernelNameAttr());
-
-            return WalkResult::advance();
-          };
-
-      if (modelOp->walk(lowerGenericCompiledRegionOps).wasInterrupted()) {
-        signalPassFailure();
-        return;
-      }
-
-      // If no kernels were emitted, emit a single empty kernel_wrapper
-      // to avoid runtime errors about missing function symbols.
-      // TODO (GEX-2668): This is a bandaid fix to enable constant folded
-      // subgraphs. Prior to this change attempting to run a model that compiled
-      // with EMIT_MOJO=1 and had all ops constant folded away would lead to
-      // this error:
-      //
-      // mt: setup for model add returned error: expecting at least
-      // one function symbol to load
-      //
-      // We should properly fix this in the long term.
-      if (kernelsToLoadInThisModel.empty()) {
-        if (emptyKernelName.empty()) {
-          state.createKernelWrapper([&](const MOGG::FunctionBody &) {
-            state.builder.comment(
-                "Empty kernel wrapper - no actual kernels to execute.");
-            state.builder.pass();
-          });
-          emptyKernelName = state.currentKernelName;
-        }
-        kernelsToLoadInThisModel.insert(StringAttr::get(ctx, emptyKernelName));
-      }
+        newOp.setDeviceRef(stubOp.getExecutionDevice());
+        callOp->replaceAllUsesWith(newOp.getResults());
+        callOp->erase();
+      });
     }
 
     // Store the emitted text into a resource.
@@ -177,8 +128,11 @@ struct EmitMojo
 
     // For each model, add a reference to the Mojo from LoadCompiledKernelOp.
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      const DenseSet<StringAttr> &kernelsToLoadInThisModel =
-          kernelsToLoadPerModel[modelOp.getSymName()];
+      const auto &kernelsToLoadInThisModel =
+          kernelsToLoadPerModel[modelOp.getSymNameAttr()];
+      if (kernelsToLoadInThisModel.empty())
+        continue;
+
       builder.setInsertionPointToStart(modelOp.getInitBlock());
       /// TODO: Add debug info support. For now, defaults to false.
       MOGG::LoadCompiledKernelOp::create(

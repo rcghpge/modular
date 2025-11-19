@@ -291,8 +291,7 @@ LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
 
   auto elementsAttr = getAValue();
-  auto kernelOp =
-      getOperation()->getParentOfType<MOGG::GenericCompiledRegionOp>();
+  auto kernelOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
   auto constantResources = kernelOp.getConstantResources();
   auto it = llvm::find(constantResources, elementsAttr);
   if (it == constantResources.end())

@@ -190,9 +190,11 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
     // Replace the resource in LoadCompiledKernelOp with the compiled Mojo.
     for (auto modelOp : module.getOps<MGP::ModelOp>()) {
-      auto loadkernels =
-          *modelOp.getInitBlock()->getOps<MOGG::LoadCompiledKernelOp>().begin();
-      loadkernels.setValueAttr(compiledBlob);
+      auto loadkernelOps =
+          modelOp.getInitBlock()->getOps<MOGG::LoadCompiledKernelOp>();
+      if (!loadkernelOps.empty()) {
+        (*loadkernelOps.begin()).setValueAttr(compiledBlob);
+      }
     }
 
     return success();

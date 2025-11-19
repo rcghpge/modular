@@ -15,27 +15,6 @@ using namespace M;
 
 namespace M::MOGG {
 
-void EmitMojoState::createKernelWrapper(KernelBodyBuilder bodyBuilder) {
-  static const MOGG::MojoValue vUnsafePointer =
-      MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
-  static const MOGG::MojoValue vOpaquePointer =
-      MOGG::HardcodedMojoSymbols::alias_OpaquePointer;
-
-  static constexpr StringLiteral baseKernelName = "kernel_wrapper";
-  static int kernelNameIdx = 0;
-
-  currentKernelName =
-      llvm::formatv("{}_{}", baseKernelName, kernelNameIdx++).str();
-
-  builder.fn(StringRef(currentKernelName), {},
-             {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
-              MOGG::NamedMojoDef("arg", vOpaquePointer)},
-             std::nullopt, true, false,
-             [&](const MOGG::FunctionBody &functionBody) {
-               bodyBuilder(functionBody);
-             });
-}
-
 /// Remove parameters from inferByInputs that appear in the function's result
 /// type but not in the actual input argument types.
 ///

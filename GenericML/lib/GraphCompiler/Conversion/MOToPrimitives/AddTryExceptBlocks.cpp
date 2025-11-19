@@ -32,9 +32,10 @@ struct AddTryExceptBlocks
       return;
 
     OpBuilder builder(getOperation()->getContext());
-    getOperation().walk([&](MOGG::GenericCompiledRegionOp kernelOp) {
-      if (!kernelOp.getEmitsMojo() || !kernelOp.isRaising())
-        return;
+    for (auto kernelOp :
+         getOperation().getBody(0)->getOps<MOGG::KernelStubOp>()) {
+      if (kernelOp.getAbi() != MOGG::ABIKind::MGP || !kernelOp.isRaising())
+        continue;
 
       auto &kernelBody = kernelOp.getBodyBlock();
       Location loc = kernelOp->getLoc();
@@ -89,7 +90,7 @@ struct AddTryExceptBlocks
 
       // Update the final terminator outputs to the try op results.
       terminator->setOperands(tryOp.getOutputs());
-    });
+    }
   }
 };
 

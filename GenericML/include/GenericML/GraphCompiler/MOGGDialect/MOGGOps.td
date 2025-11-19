@@ -823,7 +823,6 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     MO_ExplicitDevice,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
     DeclInterface
 ]> {
   let summary = "An abstract function representing a compiled body of code";
@@ -1655,6 +1654,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   Symbol,
   SingleBlock,
   FunctionOpInterface,
+  MO_ExplicitDevice,
+  MO_HasDeviceInterface,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
 ]> {
   let summary = "Op that outlines a kernel";
@@ -1663,8 +1664,12 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   }];
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
-                       OptionalAttr<StrAttr>:$summary
+                       OptionalAttr<StrAttr>:$summary,
+                       OptionalAttr<BoolAttr>:$isAsync,
+                       DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
+                       MOGG_ABIKind:$abi
                        );
+
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
@@ -1737,7 +1742,6 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   SameOperandsAndResultType,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelArgumentConsumer>,
-  HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
@@ -1760,7 +1764,6 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
 
 def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  HasParent<"MOGG::GenericCompiledRegionOp">
 ]> {
   let arguments = (ins AnyType:$input);
   let summary = "Decrements the async reference of the underlying object";

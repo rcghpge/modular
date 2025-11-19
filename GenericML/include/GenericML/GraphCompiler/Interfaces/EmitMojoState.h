@@ -177,9 +177,6 @@ public:
   using KernelBodyBuilder =
       llvm::function_ref<void(const MOGG::FunctionBody &)>;
 
-  /// Creates a new kernel entry point.
-  void createKernelWrapper(KernelBodyBuilder bodyBuilder);
-
   /// Get the Mojovalue mapped to `val`.
   const MojoValue &getMojoValueFor(Value val) const {
     auto it = mlirValueToMojoValue.find(val);

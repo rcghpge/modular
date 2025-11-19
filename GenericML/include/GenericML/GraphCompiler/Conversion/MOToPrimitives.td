@@ -265,19 +265,19 @@ def AddTryExceptBlocks: Pass<"add-try-except-blocks", "ModuleOp"> {
     generate adequate Mojo.
   }];
 
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect",
-                          "M::KGEN::KGENDialect",
-                          "M::KGEN::LIT::LITDialect",
-                          "M::KGEN::POP::POPDialect",
-                          "M::HLCF::HLCFDialect",
-                          "M::DebugInfo::DebugInfoDialect",
-                          "mlir::NVVM::NVVMDialect",
-                          "mlir::ROCDL::ROCDLDialect",
-                          "mlir::index::IndexDialect",
-  ];
+  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
+}
+
+def OutlineKernels: Pass<"outline-kernels", "ModuleOp"> {
+  let summary = "Outline kernels into stubs";
+  let description = [{
+    The same way MOGG kernels are outlined into KernelStubOp as we lower to MGP,
+    outline GenericCompiledRegionOp into KernelStubOp. This should be done after
+    all optimization passes, just before Mojo codegen. The purpose of this pass
+    is to stage things for the merging of identical kernel stubs.
+  }];
+
+  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
 

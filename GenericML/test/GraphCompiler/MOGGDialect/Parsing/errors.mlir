@@ -2,7 +2,8 @@
 
 !tt = !mo.tensor<[10, 10], f32>
 
-mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>) {
+mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
+  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""} {
   mogg.output
 }
 
@@ -47,5 +48,13 @@ mo.graph @does_not_exist() -> () {
     mogg.call.stub @stub_that_does_not_exist
     mogg.call.execute["foo"]
   } {device = #M.device_ref<"cpu", 0>}
+  mo.output
+}
+
+// -----
+
+mo.graph @wrong_abi(%0 : !mo.tensor<[], f32>) -> () {
+    // expected-error@below{{Call site is outside a kernel but the callee's ABI is not MGP}}
+  mogg.call.stub @stub_0 %0 : !mo.tensor<[], f32>
   mo.output
 }

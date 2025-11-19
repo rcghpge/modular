@@ -21,5 +21,12 @@ def MOGG_BindLambdaKind : I32EnumAttr<"BindLambdaKind", "lambda kind", [
   let cppNamespace = "::M::MOGG";
 }
 
+def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
+  I32EnumAttrCase<"MOGG", 0, "MOGG">,
+  I32EnumAttrCase<"MGP", 1, "MGP">,
+]> {
+  let cppNamespace = "::M::MOGG";
+}
+
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGENUMS_TD

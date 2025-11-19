@@ -935,15 +935,13 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult KernelStubOp::verify() {
   FunctionType funcType = getFunctionType();
-  if (funcType.getNumResults() > 1)
-    return emitError("Only at most one result is currently supported");
-
-  if (!llvm::equal(funcType.getInputs(), getBodyBlock().getArgumentTypes())) {
+  if (getAbi() == ABIKind::MOGG && funcType.getNumResults() > 1) {
     return emitError(
-        llvm::formatv("Function input and body argument types do not match. "
-                      "Expected function signature is {}",
-                      stringifyMLIRObject(funcType)));
+        "Only at most one result is currently supported for MOGG ABI");
   }
+
+  // No need to verify arguments because the FunctionOpInterface already does
+  // it.
 
   return success();
 }
@@ -961,37 +959,105 @@ bool KernelStubOp::isRaising() {
 }
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
-  SmallVector<MOGG::NamedMojoDef> inputTypes;
-  for (auto arg : getBody().getArguments())
-    inputTypes.push_back(
-        MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
+  // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
+  // GenericCompiledRegionOp which has that implicit void** ABI.
+  if (getAbi() == ABIKind::MOGG) {
+    SmallVector<MOGG::NamedMojoDef> inputTypes;
+    for (auto arg : getBody().getArguments())
+      inputTypes.push_back(
+          MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
 
-  // Determine the Mojo return type from the stub's return type
-  std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
-  FunctionType functionType = getFunctionType();
-  if (functionType.getNumResults())
-    mojoReturnType = state.mlirTypeToMojoType(functionType.getResult(0));
+    // Determine the Mojo return type from the stub's return type
+    std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
+    FunctionType functionType = getFunctionType();
+    if (functionType.getNumResults())
+      mojoReturnType = state.mlirTypeToMojoType(functionType.getResult(0));
 
-  bool errOccurred = false;
-  state.builder.fn(
-      getSymNameAttr().str(), {}, inputTypes,
-      /*returnType=*/mojoReturnType, /*exported=*/false,
-      /*raises=*/isRaising(), [&](const MOGG::FunctionBody &functionBody) {
-        for (auto &&[mlirArg, mojoArg] :
-             llvm::zip(getBody().getArguments(), functionBody.arguments)) {
-          state.setMojoValueFor(mlirArg, mojoArg);
-        }
+    bool errOccurred = false;
+    state.builder.fn(
+        getSymNameAttr().str(), {}, inputTypes,
+        /*returnType=*/mojoReturnType, /*exported=*/false,
+        /*raises=*/isRaising(), [&](const MOGG::FunctionBody &functionBody) {
+          for (auto &&[mlirArg, mojoArg] :
+               llvm::zip(getBody().getArguments(), functionBody.arguments)) {
+            state.setMojoValueFor(mlirArg, mojoArg);
+          }
 
-        errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
-          return state.lowerOpToMojo(&op).failed();
+          errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
+            return state.lowerOpToMojo(&op).failed();
+          });
+
+          if (!errOccurred)
+            state.genAllKeepAliveStatements();
         });
 
-        if (!errOccurred)
-          state.genAllKeepAliveStatements();
-      });
+    if (errOccurred)
+      return failure();
+  } else {
+    // Clear any previous kernel's return values from the state
+    state.mojoReturnValues.clear();
+    state.mojoConstantResources.clear();
 
-  if (errOccurred)
-    return failure();
+    bool errOccurred = false;
+    static const MOGG::MojoValue vUnsafePointer =
+        MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
+    static const MOGG::MojoValue vOpaquePointer =
+        MOGG::HardcodedMojoSymbols::alias_OpaquePointer;
+    state.builder.fn(
+        getSymNameAttr().strref(), {},
+        {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
+         MOGG::NamedMojoDef("arg", vOpaquePointer)},
+        std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
+          state.builder.comment(
+              "This is the entry point of the kernel. The first argument is a "
+              "pointer to a list of inputs and outputs. The second is a "
+              "pointer "
+              "to a runtime context.");
+          auto runtimeArgument = functionBody.arguments.front();
+          auto &kernelBody = getBody().front();
+          // The order of arguments in runtimeArgument:
+          // 1. Inputs and DPS outputs
+          // 2. Return values (chain and non DPS outputs)
+          for (auto argument : kernelBody.getArguments()) {
+            state.setMojoValueFor(
+                argument,
+                runtimeArgument[std::to_string(argument.getArgNumber())]);
+          }
+          // Return values, although in DPS form from the runtime's perspective,
+          // are still in value semantics inside of the kernel. Therefore, there
+          // is no value to associate them with. Instead, we have a mapping that
+          // mogg.return and mogg.async.pack will use.
+          uint64_t numArguments = getBodyBlock().getNumArguments();
+          for (uint64_t i = 0; i < getNumResults(); ++i) {
+            state.mojoReturnValues.emplace_back(
+                runtimeArgument[std::to_string(i + numArguments)]);
+          }
+
+          // After inputs and outputs, there are constant resources appended to
+          // the void** array. These come in pairs of ptr + size which is
+          // handled here.
+          for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
+            uint64_t flatIndex = i * 2 + numArguments + getNumResults();
+            MOGG::MojoValue ptr = runtimeArgument[flatIndex];
+            // The ABI is that the bytecount is directly stored as an
+            // OpaquePointer.
+            MOGG::MojoValue byteCount =
+                runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
+            state.mojoConstantResources.emplace_back(
+                std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
+          }
+
+          errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
+            return state.lowerOpToMojo(&op).failed();
+          });
+
+          if (!errOccurred)
+            state.genAllKeepAliveStatements();
+        });
+
+    if (errOccurred)
+      return failure();
+  }
 
   return success();
 }
@@ -1123,9 +1189,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   builder.setInsertionPointToStart(loweringState.getModelOp()->getBlock());
   // First, we create a () -> () function type because we don't yet set the
   // value of certain things like IOKind.
-  auto functionType = FunctionType::get(ctx, {}, {});
-  auto kernelStub = MOGG::KernelStubOp::create(builder, loc, stubName,
-                                               functionType, getSummaryAttr());
+  auto functionType = TypeAttr::get(FunctionType::get(ctx, {}, {}));
+  auto kernelStub = MOGG::KernelStubOp::create(
+      builder, loc, stubName, functionType, getSummaryAttr(), getIsAsyncAttr(),
+      ArrayAttr::get(ctx, {}), ABIKindAttr::get(ctx, ABIKind::MOGG));
   kernelStub.getBody().takeBody(getExecBody());
   builder.restoreInsertionPoint(insertionPoint);
 
@@ -1247,6 +1314,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, true)               // emitsMojo
   );
   newKernel.setDeviceRef(device);
+  kernelStub.setDeviceRef(device);
 
   // Add a body to the created operation and mirror its operands with block
   // arguments.
@@ -3371,75 +3439,6 @@ void KernelOp::getEffects(
 // GenericCompiledRegionOp
 //===----------------------------------------------------------------------===//
 
-bool GenericCompiledRegionOp::isRaising() {
-  bool raises = false;
-  walk([&](MOGG::EmitsMojoInterface emitMojoOp) {
-    if (emitMojoOp == *this)
-      return;
-
-    raises |= emitMojoOp.isRaising();
-  });
-
-  return raises;
-}
-
-LogicalResult GenericCompiledRegionOp::emitMojo(EmitMojoState &state) {
-  // Clear any previous kernel's return values from the state
-  state.mojoReturnValues.clear();
-  state.mojoConstantResources.clear();
-
-  bool errOccurred = false;
-  state.createKernelWrapper([&](const MOGG::FunctionBody &functionBody) {
-    state.builder.comment(
-        "This is the entry point of the kernel. The first argument is a "
-        "pointer to a list of inputs and outputs. The second is a pointer "
-        "to a runtime context.");
-    auto runtimeArgument = functionBody.arguments.front();
-    auto &kernelBody = getBody().front();
-    // The order of arguments in runtimeArgument:
-    // 1. Inputs and DPS outputs
-    // 2. Return values (chain and non DPS outputs)
-    for (auto argument : kernelBody.getArguments()) {
-      state.setMojoValueFor(
-          argument, runtimeArgument[std::to_string(argument.getArgNumber())]);
-    }
-    // Return values, although in DPS form from the runtime's perspective,
-    // are still in value semantics inside of the kernel. Therefore, there
-    // is no value to associate them with. Instead, we have a mapping that
-    // mogg.return and mogg.async.pack will use.
-    for (uint64_t i = 0; i < getNumResults(); ++i) {
-      state.mojoReturnValues.emplace_back(
-          runtimeArgument[std::to_string(i + getNumOperands())]);
-    }
-
-    // After inputs and outputs, there are constant resources appended to
-    // the void** array. These come in pairs of ptr + size which is handled
-    // here.
-    for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
-      uint64_t flatIndex = i * 2 + getNumOperands() + getNumResults();
-      MOGG::MojoValue ptr = runtimeArgument[flatIndex];
-      // The ABI is that the bytecount is directly stored as an
-      // OpaquePointer.
-      MOGG::MojoValue byteCount =
-          runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
-      state.mojoConstantResources.emplace_back(
-          std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
-    }
-
-    errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
-      return state.lowerOpToMojo(&op).failed();
-    });
-
-    if (!errOccurred)
-      state.genAllKeepAliveStatements();
-  });
-
-  if (errOccurred)
-    return failure();
-
-  return success();
-}
-
 InOutSignatureAttr::InOutSemantics
 GenericCompiledRegionOp::getInOutSemantics(size_t index) {
   ASSERT_STREAM(
@@ -3751,11 +3750,6 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult AsyncPackOp::verify() {
-  Operation *parentOp = getOperation()->getParentOp();
-  if (!isa<TryOp, GenericCompiledRegionOp>(parentOp)) {
-    return emitError("async.pack must be nested within a mogg.try or "
-                     "mogg.generic.compiled.region operation");
-  }
   if (getInput().getType() != getResult().getType())
     return emitError(
         "async.pack requires the same type for the result and operand 0");
@@ -3848,6 +3842,20 @@ LogicalResult CallStubOp::verify() {
         stringifyMLIRObject(calleeArgumentTypes[i]),
         stringifyMLIRObject(callerOperandTypes[i])));
   }
+
+  bool callIsInAKernelStub =
+      getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  bool callIsInAKernelRegion =
+      getOperation()->getParentOfType<MOGG::GenericCompiledRegionOp>();
+  bool callIsInAKernel = callIsInAKernelStub || callIsInAKernelRegion;
+  if (callIsInAKernel && calleeFunc.getAbi() != ABIKind::MOGG) {
+    return emitError(
+        "Call site is in a kernel but the callee's ABI is not MOGG");
+  } else if (!callIsInAKernel && calleeFunc.getAbi() != ABIKind::MGP) {
+    return emitError(
+        "Call site is outside a kernel but the callee's ABI is not MGP");
+  }
+
   return success();
 }
 
