@@ -28,6 +28,8 @@ static constexpr size_t kHeaderMaxSize = 100'000'000;
   X(si16, I16)                                                                 \
   X(si32, I32)                                                                 \
   X(si64, I64)                                                                 \
+  X(f4e2m1fn, F4)                                                              \
+  X(f8e8m0fnu, F8_E8M0)                                                        \
   X(f8e4m3fn, F8_E4M3)                                                         \
   X(f8e5m2, F8_E5M2)                                                           \
   X(f16, F16)                                                                  \
