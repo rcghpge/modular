@@ -208,12 +208,14 @@ static Error formatCUDAError(const char *file, int line, const char *func,
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
-                       Device::MemInfo memInfo, size_t allocAlignment,
+                       int computeCapability, Device::MemInfo memInfo,
+                       size_t allocAlignment,
                        std::unique_ptr<CUDACompilationDevice> compilationDevice,
                        int64_t deviceMemoryLimit)
     : Device(api, std::move(name), id, memInfo, allocAlignment,
              deviceMemoryLimit),
       driver_(driver), device_(device), context_(context),
+      computeCapability_(computeCapability),
       compilationDevice_(std::move(compilationDevice)) {
   assert(compilationDevice_ &&
          "CUDADevice requires a non-null compilation device");
@@ -265,10 +267,7 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
   return Error("MAX with GPUs is only supported on Linux based systems.");
 #endif
 
-  ErrorOr<int> compute = computeCapability();
-  if (compute.isError())
-    return compute.takeError();
-  if (*compute < MIN_COMPUTE_CAPABILITY) {
+  if (computeCapability_ < MIN_COMPUTE_CAPABILITY) {
     RAISE_ERROR("MAX only supports CUDA Pascal architectures or higher");
   }
 
@@ -289,14 +288,7 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
 }
 
 ErrorOr<int> CUDADevice::computeCapability() const {
-  int computeMajor = 0, computeMinor = 0;
-  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
-      &computeMajor, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
-      cudaDevice()));
-  CUDA_CHECK_ERR(driver_.DeviceGetAttribute(
-      &computeMinor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
-      cudaDevice()));
-  return 10 * computeMajor + computeMinor;
+  return computeCapability_;
 }
 
 ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
@@ -552,9 +544,10 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
       return compilationDevOrErr.takeError();
     }
 
-    device = new CUDADevice(driver, id, cuDevice, cuContext, name, memInfo,
-                            alignment, std::move(*compilationDevOrErr),
-                            deviceMemoryLimit);
+    device = new CUDADevice(
+        driver, id, cuDevice, cuContext, name,
+        computeCapabilityMajor * 10 + computeCapabilityMinor, memInfo,
+        alignment, std::move(*compilationDevOrErr), deviceMemoryLimit);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;

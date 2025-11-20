@@ -57,8 +57,8 @@ public:
   using DeviceList = std::vector<CUDADevice *>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             CUcontext context, std::string name, Device::MemInfo memInfo,
-             size_t allocAlignment,
+             CUcontext context, std::string name, int computeCapability,
+             Device::MemInfo memInfo, size_t allocAlignment,
              std::unique_ptr<CUDACompilationDevice> compilationDevice,
              int64_t deviceMemoryLimit = -1);
   ~CUDADevice() override;
@@ -142,6 +142,8 @@ private:
   // initialize this with the primary device context for the device to be able
   // to share resources with libraries using the CUDA Runtime API.
   CUcontext context_;
+
+  const int computeCapability_;
 
   // Compilation device for PTX→CUBIN compilation without GPU context
   std::unique_ptr<CUDACompilationDevice> compilationDevice_;
