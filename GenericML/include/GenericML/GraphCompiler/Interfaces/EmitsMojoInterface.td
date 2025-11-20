@@ -31,7 +31,7 @@ def EmitsMojoInterface : OpInterface<"EmitsMojoInterface"> {
     >,
     InterfaceMethod<
       "Return a boolean to indicate whether the emitted code raises exceptions.",
-      "bool", "isRaising", (ins), [{}], [{ return false; }]
+      "bool", "isThrows", (ins), [{}], [{ return false; }]
     >,
   ];
 }

@@ -329,7 +329,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
     DeclareOpInterfaceMethods<MGP_BufferAllocOpInterface, ["getOutBuffer"]>,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
     InferTypeOpAdaptor
 ]> {
   let summary = "Allocates a buffer with dynamically provided byte size on "
@@ -467,7 +467,7 @@ def BufferFreeOp : MGP_Op<"buffer.free"> {
 def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Copies a host buffer into a non-host buffer.";
   let description = [{
@@ -520,7 +520,7 @@ def BufferHostToDeviceOp : MGP_DeviceOp<"buffer.host_to_device", [
 def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Copies a non-host buffer into a host buffer.";
   let description = [{
@@ -574,7 +574,7 @@ def BufferDeviceToHostOp : MGP_DeviceOp<"buffer.device_to_host", [
 def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Copies a non-host buffer into another non-host buffer.";
   let description = [{
@@ -637,7 +637,7 @@ def BufferDeviceToDeviceOp : MGP_DeviceOp<"buffer.device_to_device", [
 def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Concatenates a sequence of input buffers into an output "
                 "buffer.";
@@ -773,7 +773,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 def BufferToIndexOp : MGP_Op<"buffer.to_index", [
     Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Returns contents of the buffer to an `index`";
   let description = [{
@@ -844,7 +844,7 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     // TODO: #37615
     /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
     DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Set a buffer with the values from index inputs.";
   let description = [{
@@ -892,7 +892,7 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
       "getLiftableAttributes"
     ]>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   ]> {
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";
@@ -947,7 +947,7 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
 def MGP_SyncOp : MGP_DeviceOp<"sync", [
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getIgnorableAttributes"]>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
     Pure
 ]> {
   let summary = "Schedules a device specific sync";

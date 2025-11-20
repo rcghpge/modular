@@ -34,7 +34,7 @@ struct AddTryExceptBlocks
     OpBuilder builder(getOperation()->getContext());
     for (auto kernelOp :
          getOperation().getBody(0)->getOps<MOGG::KernelStubOp>()) {
-      if (kernelOp.getAbi() != MOGG::ABIKind::MGP || !kernelOp.isRaising())
+      if (kernelOp.getAbi() != MOGG::ABIKind::MGP || !kernelOp.isThrows())
         continue;
 
       auto &kernelBody = kernelOp.getBodyBlock();

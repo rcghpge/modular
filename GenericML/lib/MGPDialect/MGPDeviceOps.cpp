@@ -165,7 +165,7 @@ std::optional<uint64_t> BufferConstantOp::getOptAlign() {
 //===----------------------------------------------------------------------===//
 // BufferAllocOp
 //===----------------------------------------------------------------------===//
-bool BufferAllocOp::isRaising() { return true; }
+bool BufferAllocOp::isThrows() { return true; }
 
 LogicalResult BufferAllocOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -212,7 +212,7 @@ void BufferAllocOp::setInChain(Value chain) {
 //===----------------------------------------------------------------------===//
 // BufferHostToDeviceOp
 //===----------------------------------------------------------------------===//
-bool BufferHostToDeviceOp::isRaising() { return true; }
+bool BufferHostToDeviceOp::isThrows() { return true; }
 
 LogicalResult BufferHostToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -255,7 +255,7 @@ BufferHostToDeviceOp::getInOutSemantics(size_t index) {
 // BufferDeviceToHostOp
 //===----------------------------------------------------------------------===//
 
-bool BufferDeviceToHostOp::isRaising() { return true; }
+bool BufferDeviceToHostOp::isThrows() { return true; }
 
 LogicalResult BufferDeviceToHostOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -298,7 +298,7 @@ BufferDeviceToHostOp::getInOutSemantics(size_t index) {
 // BufferDeviceToDeviceOp
 //===----------------------------------------------------------------------===//
 
-bool BufferDeviceToDeviceOp::isRaising() { return true; }
+bool BufferDeviceToDeviceOp::isThrows() { return true; }
 
 LogicalResult BufferDeviceToDeviceOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -362,7 +362,7 @@ BufferConcatOp::getInOutSemantics(size_t index) {
              : InOutSignatureAttr::kIn;
 }
 
-bool BufferConcatOp::isRaising() { return true; }
+bool BufferConcatOp::isThrows() { return true; }
 
 LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -423,7 +423,7 @@ bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 // BufferToIndexOp
 //===----------------------------------------------------------------------===//
-bool BufferToIndexOp::isRaising() { return true; }
+bool BufferToIndexOp::isThrows() { return true; }
 
 LogicalResult BufferToIndexOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -466,7 +466,7 @@ LogicalResult BufferToBoolOp::verify() {
 //===----------------------------------------------------------------------===//
 // BufferSetWithIndexOp
 //===----------------------------------------------------------------------===//
-bool BufferSetWithIndexOp::isRaising() { return true; }
+bool BufferSetWithIndexOp::isThrows() { return true; }
 
 LogicalResult BufferSetWithIndexOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -566,7 +566,7 @@ bool TensorCreateOp::mayAlias(size_t operandIndex, size_t resultIndex) {
 //===----------------------------------------------------------------------===//
 // DebugTensorPrintOp
 //===----------------------------------------------------------------------===//
-bool DebugTensorPrintOp::isRaising() { return true; }
+bool DebugTensorPrintOp::isThrows() { return true; }
 
 LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   KGEN::LIT::FnOp litFunction =
@@ -597,7 +597,7 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
 // SyncOp
 //===----------------------------------------------------------------------===//
 
-bool SyncOp::isRaising() { return true; }
+bool SyncOp::isThrows() { return true; }
 
 LogicalResult SyncOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;

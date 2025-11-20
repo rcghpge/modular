@@ -585,7 +585,7 @@ LogicalResult BufferGetCachedOp::canonicalize(BufferGetCachedOp op,
 // AssertOp
 //===----------------------------------------------------------------------===//
 
-bool AssertOp::isRaising() { return true; }
+bool AssertOp::isThrows() { return true; }
 
 LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
   KGEN::LIT::FnOp func =
@@ -1138,7 +1138,7 @@ LogicalResult CallOp::verify() {
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
 
-bool DebugPrintOp::isRaising() { return true; }
+bool DebugPrintOp::isThrows() { return true; }
 
 LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   KGEN::LIT::FnOp litFunction =

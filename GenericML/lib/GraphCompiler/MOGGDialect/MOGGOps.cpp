@@ -736,7 +736,7 @@ SmallVector<Value> CallForeachOp::getKernelDPSOutputs() {
 }
 Type CallForeachOp::getKernelReturnOutput() { return nullptr; }
 
-bool CallForeachOp::isRaising() { return true; }
+bool CallForeachOp::isThrows() { return true; }
 
 LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   auto function = state.analysis.getLITForeachKernel();
@@ -825,7 +825,7 @@ SmallVector<Value> CallMaterializeOp::getKernelDPSOutputs() {
 
 Type CallMaterializeOp::getKernelReturnOutput() { return nullptr; }
 
-bool CallMaterializeOp::isRaising() { return true; }
+bool CallMaterializeOp::isThrows() { return true; }
 
 LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   auto function = state.analysis.getLITViewMaterializeKernel();
@@ -896,7 +896,7 @@ Type CallExecuteOp::getKernelReturnOutput() {
   return getRegRetTypeAttr() ? getRegRetTypeAttr().getValue() : nullptr;
 }
 
-bool CallExecuteOp::isRaising() { return getIsThrows(); }
+bool CallExecuteOp::isThrows() { return getIsThrows(); }
 
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto function =
@@ -947,13 +947,13 @@ LogicalResult KernelStubOp::verify() {
   return success();
 }
 
-bool KernelStubOp::isRaising() {
+bool KernelStubOp::isThrows() {
   bool raises = false;
   walk([&](MOGG::EmitsMojoInterface emitMojoOp) {
     if (emitMojoOp == *this)
       return;
 
-    raises |= emitMojoOp.isRaising();
+    raises |= emitMojoOp.isThrows();
   });
 
   return raises;
@@ -978,7 +978,7 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
     state.builder.fn(
         getSymNameAttr().str(), {}, inputTypes,
         /*returnType=*/mojoReturnType, /*exported=*/false,
-        /*raises=*/isRaising(), [&](const MOGG::FunctionBody &functionBody) {
+        /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
           for (auto &&[mlirArg, mojoArg] :
                llvm::zip(getBody().getArguments(), functionBody.arguments)) {
             state.setMojoValueFor(mlirArg, mojoArg);
@@ -3860,7 +3860,7 @@ LogicalResult CallStubOp::verify() {
   return success();
 }
 
-bool CallStubOp::isRaising() { return getCallee().isRaising(); }
+bool CallStubOp::isThrows() { return getCallee().isThrows(); }
 
 LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
@@ -4309,7 +4309,7 @@ Type CallShapeOp::getKernelReturnOutput() {
   return getRetTypeAttr().getValue();
 }
 
-bool CallShapeOp::isRaising() { return getIsThrows(); }
+bool CallShapeOp::isThrows() { return getIsThrows(); }
 
 LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   // Get the shape function from the analysis

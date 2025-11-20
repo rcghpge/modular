@@ -168,7 +168,7 @@ def MOGG_OutputOp
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>]>  {
+def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>]>  {
   let summary = "Calls into an outlined stub";
   let description = [{}];
   let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
@@ -183,7 +183,7 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoI
 
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
 ]>  {
   let summary = "call the registered foreach kernel";
   let description = [{
@@ -206,7 +206,7 @@ def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
 def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
     AttrSizedOperandSegments,
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>]>  {
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>]>  {
   let summary = "Call the registered `execute` function for a particular kernel";
   let description = [{
     This represents a call to the mojo implementation of `Kernel::execute`
@@ -237,7 +237,7 @@ def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
 
 
 def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
 ]>  {
   let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
   let description = [{
@@ -1656,7 +1656,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   FunctionOpInterface,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Op that outlines a kernel";
   let description = [{
@@ -2052,7 +2052,7 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
 
 def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   Pure
 ]> {
   let summary = "Call a shape function";

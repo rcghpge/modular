@@ -320,7 +320,7 @@ def TensorSpecGetDimOp : MGP_Op<"tensor_spec.get_dim", [
 def AssertOp : MGP_Op<"assert", [
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, ["getLiftableAttributes"]>,
     DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   ]> {
   let summary = "Assert that a boolean condition is true.";
   let description = [{
@@ -991,7 +991,7 @@ def MGP_AllocateAsyncValuesOp : MGP_Op<"allocate_for_async_vals", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def DebugPrintOp : MGP_Op<"debug.print", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isRaising"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Prints a debug string. For debugging and testing only.";
   let description = [{
