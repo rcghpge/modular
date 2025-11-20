@@ -12,7 +12,7 @@
 #include "Support/AssertStream.h"
 #include "Support/HashUtils.h"
 
-#include "llvm/ADT/ScopeExit.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 
 using namespace M;
 
@@ -155,30 +155,35 @@ bool Graph::setGeneratorHash(Node *node) {
   //
   // Instead, map all reference to functions in the current SCC to a unique
   // number.
-  DenseMap<Attribute, Attribute> attrMap;
+  llvm::SmallDenseMap<SymbolRefAttr, SymbolRefAttr> attrMap;
   for (auto [index, sccNode] : llvm::enumerate(node->scc->nodes)) {
-    auto name = sccNode->functionName;
-    attrMap[name] = builder.getIndexAttr(static_cast<int64_t>(index));
+    auto name = FlatSymbolRefAttr::get(sccNode->functionName);
+    attrMap[name] =
+        FlatSymbolRefAttr::get(builder.getStringAttr(std::to_string(index)));
   }
 
-  auto emptyString = builder.getStringAttr("");
-  auto replacer = [&](Attribute attr) -> Attribute {
-    if (auto symbol = dyn_cast<FlatSymbolRefAttr>(attr))
-      return attrMap.lookup_or(symbol.getAttr(), emptyString);
-    return attr;
-  };
+  auto emptyString = FlatSymbolRefAttr::get(builder.getStringAttr(""));
+  auto unknownLoc = UnknownLoc::get(ctx);
 
-  {
-    // Set the function name so we do not incorporate the function name into
-    // the bytecode hash.
-    auto oldName = node->func.getSymName();
-    auto guard = llvm::make_scope_exit([&]() { node->func.setName(oldName); });
+  mlir::AttrTypeReplacer replacer;
+  replacer.addReplacement([&](FlatSymbolRefAttr symbol) -> SymbolRefAttr {
+    return attrMap.lookup_or(symbol, emptyString);
+  });
+  replacer.addReplacement(
+      [&](LocationAttr loc) -> LocationAttr { return unknownLoc; });
 
-    node->func.setSymName("");
+  // Set the function name so we do not incorporate the function name into
+  // the bytecode hash.
+  OwningOpRef<KGEN::GeneratorOp> clone = node->func.clone();
+  clone->setName("");
 
-    // Hash the bytecode of the backing generator.
-    (void)M::writeBytecode(node->func, *node->hasher, replacer);
-  }
+  replacer.recursivelyReplaceElementsIn(*clone,
+                                        /*replaceAttrs=*/true,
+                                        /*replaceLocs=*/true,
+                                        /*replaceTypes=*/true);
+
+  // Hash the bytecode of the backing generator.
+  (void)mlir::writeBytecodeToFile(*clone, *node->hasher);
 
   node->generatorHash = builder.getStringAttr(node->hasher->hashString());
   return true;
