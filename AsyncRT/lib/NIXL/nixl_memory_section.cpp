@@ -38,7 +38,7 @@ nixl_status_t nixlMemSection::populate(const nixl_xfer_dlist_t &query,
                                        nixlBackendEngine *backend,
                                        nixl_meta_dlist_t &resp) const {
 
-  if (query.getType() != resp.getType())
+  if ((query.getType() != resp.getType()) || (query.descCount() == 0))
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
 
   section_key_t sec_key = std::make_pair(query.getType(), backend);
@@ -46,30 +46,41 @@ nixl_status_t nixlMemSection::populate(const nixl_xfer_dlist_t &query,
   if (it == sectionMap.end())
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
 
-  nixlBasicDesc *p;
   nixl_sec_dlist_t *base = it->second;
   resp.resize(query.descCount());
 
-  // base is nixlSecDescList, which is always sorted. Use binary search.
-  const nixlBasicDesc *q;
-  bool found;
+  int size = base->descCount();
+  int s_index = 0;
 
-  for (int i = 0; i < query.descCount(); ++i) {
-    found = false;
-    q = &query[i];
-    int covering_index = base->getCoveringIndex(*q);
+  // Use logN search for the first element, instead of linear search
+  s_index = base->getCoveringIndex(query[0]);
+  if (s_index < 0) {
+    resp.clear();
+    return nixl_status_t::NIXL_ERR_UNKNOWN;
+  }
+  static_cast<nixlBasicDesc &>(resp[0]) = query[0];
+  resp[0].metadataP = (*base)[s_index].metadataP;
 
-    if (covering_index >= 0) {
-      found = true;
-      p = &resp[i];
-      *p = *q;
-      resp[i].metadataP = (*base)[covering_index].metadataP;
+  // Walk forward for non-decreasing elements; logN search on temporal disorder
+  for (int i = 1; i < query.descCount(); ++i) {
+    if (query[i] < query[i - 1]) {
+      // Disorder in the list, resolve this element using logN search
+      s_index = base->getCoveringIndex(query[i]);
+      if (s_index < 0) {
+        resp.clear();
+        return nixl_status_t::NIXL_ERR_UNKNOWN;
+      }
+    } else {
+      while (s_index < size && !(*base)[s_index].covers(query[i]))
+        ++s_index;
+      if (s_index == size) {
+        resp.clear();
+        return nixl_status_t::NIXL_ERR_UNKNOWN;
+      }
     }
 
-    if (!found) {
-      resp.clear();
-      return nixl_status_t::NIXL_ERR_UNKNOWN;
-    }
+    static_cast<nixlBasicDesc &>(resp[i]) = query[i];
+    resp[i].metadataP = (*base)[s_index].metadataP;
   }
   return nixl_status_t::NIXL_SUCCESS;
 }

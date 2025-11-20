@@ -557,6 +557,16 @@ std::string nixlUcxContext::packRkey(nixlUcxMem &mem) {
 
 void nixlUcxContext::memDereg(nixlUcxMem &mem) { ucp_mem_unmap(ctx, mem.memh); }
 
+M::ErrorOr<int>
+nixlUcxContext::prepGpuSignal([[maybe_unused]] const nixlUcxMem &mem,
+                              [[maybe_unused]] void *signal) const {
+  return M::Error("UCX was not compiled with GPU device API support");
+}
+
+M::ErrorOr<size_t> nixlUcxContext::getGpuSignalSize() const {
+  return M::Error("UCX was not compiled with GPU device API support");
+}
+
 /* ===========================================
  * Active message handling
  * =========================================== */

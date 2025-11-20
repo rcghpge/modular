@@ -1766,3 +1766,179 @@ All test suites pass with the changes:
 - **Week 16 Summary**: Out of 28 commits, 3 fully ported (45204fa, 4ccd41d, 57c29f5),
   25 skipped (benchmarks, build system, CI, GPU device APIs, other backends,
   bindings, telemetry).
+
+## Week 17 (September 3-9, 2025)
+
+### Commits Analysis
+
+| Hash | Date | Description | Relevance | Status | Notes |
+|------|------|-------------|-----------|---------|-------|
+| 1e92035 | 2025-09-02 | Fix Error in barrier when testing block size above 1M | Skip | - | Benchmarking tool only |
+| d899d0f | 2025-09-02 | CI: avoid /build comment to trigger blossom-ci | Skip | - | CI configuration |
+| 21810ac | 2025-09-02 | Improve populate method performance for not fully sorted inputs | **Port** | ✅ Completed | Performance optimization for populate() |
+| cd0c219 | 2025-09-02 | Upgrade DOCA to 3.1 in Dockerfiles | Skip | - | Build/Docker infrastructure |
+| 9f496fb | 2025-09-02 | benchmark/kvbench: Add the remaining plugins to kvbench | Skip | - | Benchmarking tool |
+| 50fe345 | 2025-09-02 | Update ATTRIBUTIONS-Rust.md | Skip | - | Documentation |
+| 7d003c7 | 2025-09-02 | BENCH/NIXL: error handling related fixes | Skip | - | Benchmarking tool |
+| 57c29f5 | 2025-09-02 | Remove sorted flag from user facing nixlDescList | Skip | - | Already ported in Week 16 |
+| 3614a37 | 2025-09-02 | BINDINGS: Package the OBJ plugin | Skip | - | Build/packaging |
+| 0625b22 | 2025-09-02 | Agent: Add getXferTelemetry API | Skip | - | Telemetry not in AsyncRT |
+| 3911d60 | 2025-09-03 | SRC/BINDINGS/RUST: Added get_local_partial_md, send_local_partial_md and query_xfer_backend | Skip | - | Rust bindings |
+| 1d68e70 | 2025-09-03 | chore: Update release version for NIXL | Skip | - | Version management |
+| 2a7b80b | 2025-09-04 | Nixlbench: Install torch with CUDA support | Skip | - | Benchmarking tool |
+| 531e803 | 2025-09-04 | CI: fix for blossom-ci auto trigger without comment | Skip | - | CI configuration |
+| 8d78f89 | 2025-09-04 | Revert "CI: fix for blossom-ci auto trigger without comment" | Skip | - | CI configuration |
+| fc3ed17 | 2025-09-04 | Codeowners: create entry for python | Skip | - | Repository maintenance |
+| 292e28a | 2025-09-04 | CODEWONERS: Fix syntax | Skip | - | Repository maintenance |
+| 237ac84 | 2025-09-04 | Added debug prints to serdes class and removed the macros in nixl_agent | Skip | - | Already incorporated in Week 16 |
+| f0ee4a3 | 2025-09-04 | NIXLBENCH: Add CUDA detection fallback to build script | Skip | - | Build/benchmarking tool |
+| 920335b | 2025-09-07 | Make ETCD watch timeout configurable | Skip | - | ETCD not in AsyncRT |
+| 98f8f06 | 2025-09-08 | [CI] run test on DGX host | Skip | - | CI infrastructure |
+| 3cc77c6 | 2025-09-08 | LISTENER: Prevent double-set of promise in etcd metadata watcher | Skip | - | ETCD functionality not in AsyncRT |
+| 3449329 | 2025-08-31 | API/GPU/UCX: Add read signal device API | **Port** | ✅ Completed | Part of GPU signal API (device-side, header only) |
+| 18b9f1d | 2025-09-08 | Add host-side signal device API + implementation | **Port** | ✅ Completed | Host-side GPU signal API |
+| 0d74ea7 | 2025-09-08 | API/GPU/UCX: Implement GPU Device API | Skip | - | Device-side CUDA implementation not needed |
+| 97dbf40 | 2025-09-09 | CORE: Do not delete requests unless we own them | **Port** | ✅ Completed | Memory management fix |
+| 7060d70 | 2025-09-09 | Telemetry small fixes | Skip | - | Telemetry not in AsyncRT |
+| 86da616 | 2025-09-09 | Add a flag to agent config to captureTelemetry | Skip | - | Telemetry not in AsyncRT |
+
+### Commits to Port (3 total)
+
+1. **21810ac** - Improve populate method performance for not fully sorted
+inputs (✅ Completed)
+2. **97dbf40** - CORE: Do not delete requests unless we own them (✅ Completed)
+3. **18b9f1d + 3449329** - GPU signal device API (host-side) (✅ Completed)
+
+### Summary
+
+- **Total commits reviewed**: 27
+- **Commits to port**: 3 (performance optimization + memory management fix +
+GPU signal API)
+- **Commits ported**: 3 ✅
+- **Commits skipped**: 24
+
+### Changes Made
+
+#### 1. 21810ac - Improve populate method performance ✅
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_memory_section.cpp`: Optimized populate() method
+
+**Key changes**:
+
+- Added empty list check to parameter validation
+- Use binary search for first element instead of linear iteration
+- Walk forward for monotonically increasing elements (common case)
+- Fall back to binary search only when temporal disorder detected
+- Significantly improves performance for partially ordered lists
+
+**Technical details**:
+
+- Best case: O(n) for fully sorted query lists (vs O(n log n) before)
+- Worst case: Still O(n log n) for completely disordered lists
+- Common case: Mixed behavior optimizes for typical usage patterns
+- Removed `assert(base->isSorted())` as AsyncRT's nixlSecDescList is sorted by design
+
+#### 2. 97dbf40 - Do not delete requests unless we own them ✅
+
+**Files modified**:
+
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Removed premature request handle deletes
+
+**Key changes**:
+
+- Removed `delete req_hndl` from 5 error paths in:
+  - `makeXferReq()`: 1 delete removed
+  - `postXferReq()`: 3 deletes removed
+  - `getXferStatus()`: 1 delete removed
+- Only `releaseXferReq()` should delete request handles
+- User must always call `releaseXferReq()` regardless of error status
+
+**Technical details**:
+
+- Fixes potential double-free bugs
+- Simplifies error handling - caller always responsible for cleanup
+- Makes API more consistent with standard C++ RAII patterns
+- Prevents memory leaks when users check errors and properly release
+
+#### 3. 18b9f1d + 3449329 - GPU signal device API (host-side) ✅
+
+**Files modified**:
+
+- `AsyncRT/include/AsyncRT/NIXL/backend/backend_engine.h`: Added GPU signal
+virtual methods
+- `AsyncRT/include/AsyncRT/NIXL/nixl.h`: Added public GPU signal API
+- `AsyncRT/lib/NIXL/nixl_agent.cpp`: Implemented GPU signal agent methods
+- `AsyncRT/include/AsyncRT/NIXL/plugins/ucx/ucx_backend.h`: Added UCX backend declarations
+- `AsyncRT/lib/NIXL/plugins/ucx/ucx_backend.cpp`: Implemented UCX backend methods
+- `AsyncRT/include/AsyncRT/NIXL/utils/ucx/ucx_utils.h`: Added UCX utils declarations
+- `AsyncRT/lib/NIXL/utils/ucx/ucx_utils.cpp`: Implemented UCX signal functions
+
+**Key changes**:
+
+1. **Backend Interface**: Added two virtual methods to `nixlBackendEngine`:
+   - `getGpuSignalSize()` - returns size required for GPU signal allocation
+   - `prepGpuSignal()` - initializes GPU signal in registered memory
+
+2. **Public API**: Added two methods to `nixlAgent`:
+   - `getGpuSignalSize(const nixlBackendH&, size_t&)` - query signal size from backend
+   - `prepGpuSignal(const nixl_reg_dlist_t&)` - prepare signal with registered memory
+
+3. **UCX Backend**: Implemented GPU signal support using UCX device counter API:
+   - Caches signal size on first query for performance
+   - Delegates to UCX context methods
+   - Returns `NIXL_ERR_NOT_SUPPORTED` when UCX lacks GPU device API
+
+**Technical details**:
+
+- GPU signals enable GPU-to-GPU synchronization without CPU involvement
+- Host-side API allows allocating and preparing signals for device-side use
+- API requires memory to be allocated and registered before signal preparation
+- Default backend implementation returns `NIXL_ERR_NOT_SUPPORTED`
+- UCX implementation properly wrapped with ErrorOr pattern
+- All functionality is opt-in and won't break existing code
+
+**Adaptations for AsyncRT**:
+
+- Used `ErrorOr<int>` return type instead of exceptions
+- Used AsyncRT's error handling patterns throughout
+- Added `<optional>` include for caching signal size
+- Made `gpuSignalSize_` mutable for const method caching
+
+### Testing
+
+All changes tested successfully:
+
+- Build: `./bazelw build //AsyncRT/unittests:NixlTest` - SUCCESS
+- Tests: `./bazelw test //AsyncRT/unittests:NixlTest` - PASS (1/1)
+
+### Reasons for skipping commits
+
+- Benchmarking tool changes (NIXLBench, kvbench)
+- CI/build infrastructure differences
+- ETCD functionality (removed from AsyncRT)
+- GPU device API (not in AsyncRT scope)
+- Telemetry infrastructure (not in AsyncRT)
+- Rust/Python bindings
+- Documentation and version management
+- Repository maintenance (CODEOWNERS, etc.)
+- Changes already incorporated in previous weeks
+
+### Notes
+
+Week 17 represents continued maturation of NIXL with focus on:
+
+- Performance optimizations for common usage patterns
+- Memory management improvements and API consistency
+- GPU signal device API for GPU-to-GPU synchronization
+- Telemetry and observability features
+
+The three ported commits provide important improvements:
+
+1. **Performance**: populate() optimization benefits real-world workloads
+with partially ordered descriptor lists
+2. **Correctness**: Request ownership clarification prevents double-free bugs
+and simplifies error handling
+3. **GPU Signals**: Host-side API for GPU-to-GPU synchronization (opt-in,
+requires UCX GPU device API support)

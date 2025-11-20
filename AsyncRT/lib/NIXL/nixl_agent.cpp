@@ -428,6 +428,55 @@ nixl_status_t nixlAgent::queryMem(const nixl_reg_dlist_t &descs,
   return extra_params->backends[0]->engine->queryMem(descs, resp);
 }
 
+nixl_status_t nixlAgent::getGpuSignalSize(const nixlBackendH &backend,
+                                          size_t &signal_size) const {
+  NIXL_SHARED_LOCK_GUARD(data->lock);
+  return backend.engine->getGpuSignalSize(signal_size);
+}
+
+nixl_status_t
+nixlAgent::prepGpuSignal(const nixl_reg_dlist_t &signal_descs) const {
+  if (signal_descs.descCount() == 0) {
+    NIXL_ERROR_FUNC << "signal descriptor list is empty";
+    return nixl_status_t::NIXL_ERR_INVALID_PARAM;
+  }
+
+  NIXL_SHARED_LOCK_GUARD(data->lock);
+
+  // Convert reg_dlist to xfer_dlist for populate call
+  nixl_xfer_dlist_t xfer_descs = signal_descs.trim();
+
+  // Find backends that have registrations for this memory type
+  backend_set_t *backends =
+      data->memorySection->queryBackends(signal_descs.getType());
+  if (!backends || backends->empty()) {
+    NIXL_ERROR_FUNC << "no available backends for mem type '"
+                    << signal_descs.getType() << "'";
+    return nixl_status_t::NIXL_ERR_NOT_FOUND;
+  }
+
+  // Try each backend to find the signal metadata
+  for (const auto &backend : *backends) {
+    nixl_meta_dlist_t result(signal_descs.getType());
+    nixl_status_t ret =
+        data->memorySection->populate(xfer_descs, backend, result);
+
+    if (ret == nixl_status_t::NIXL_SUCCESS) {
+      void *signal = reinterpret_cast<void *>(result[0].addr);
+      ret = backend->prepGpuSignal(*result[0].metadataP, signal);
+
+      if ((ret == nixl_status_t::NIXL_SUCCESS) ||
+          (ret != nixl_status_t::NIXL_ERR_NOT_SUPPORTED)) {
+        return ret;
+      }
+    }
+  }
+
+  NIXL_ERROR_FUNC << "signal memory is not registered with any backend that "
+                     "supports GPU signals";
+  return nixl_status_t::NIXL_ERR_NOT_FOUND;
+}
+
 nixl_status_t nixlAgent::makeConnection(const std::string &remote_agent,
                                         const nixl_opt_args_t *extra_params) {
   nixl_status_t ret;
@@ -597,7 +646,6 @@ nixl_status_t nixlAgent::makeXferReq(
     NIXL_ERROR_FUNC
         << "remote agent '" << remote_side->remoteAgent
         << "' was invalidated in between prepXferDlist and this call";
-    delete req_hndl;
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
   }
 
@@ -890,7 +938,6 @@ nixlAgent::postXferReq(nixlXferReqH *req_hndl,
   NIXL_LOCK_GUARD(data->lock);
   // Check if the remote was invalidated before post/repost
   if (data->remoteSections.count(req_hndl->remoteAgent) == 0) {
-    delete req_hndl;
     return nixl_status_t::NIXL_ERR_NOT_FOUND;
   }
 
@@ -898,7 +945,6 @@ nixlAgent::postXferReq(nixlXferReqH *req_hndl,
   if (req_hndl->status == nixl_status_t::NIXL_IN_PROG) {
     req_hndl->status = req_hndl->engine->checkXfer(req_hndl->backendHandle);
     if (req_hndl->status == nixl_status_t::NIXL_IN_PROG) {
-      delete req_hndl;
       return nixl_status_t::NIXL_ERR_REPOST_ACTIVE;
     }
   }
@@ -923,7 +969,6 @@ nixlAgent::postXferReq(nixlXferReqH *req_hndl,
   }
 
   if (opt_args.hasNotif && (!req_hndl->engine->supportsNotif())) {
-    delete req_hndl;
     return nixl_status_t::NIXL_ERR_BACKEND;
   }
 
@@ -942,7 +987,6 @@ nixl_status_t nixlAgent::getXferStatus(nixlXferReqH *req_hndl) const {
   if (req_hndl->status == nixl_status_t::NIXL_IN_PROG) {
     // Check if the remote was invalidated before completion
     if (data->remoteSections.count(req_hndl->remoteAgent) == 0) {
-      delete req_hndl;
       return nixl_status_t::NIXL_ERR_NOT_FOUND;
     }
     req_hndl->status = req_hndl->engine->checkXfer(req_hndl->backendHandle);

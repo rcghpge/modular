@@ -151,6 +151,10 @@ public:
   std::string packRkey(nixlUcxMem &mem);
   void memDereg(nixlUcxMem &mem);
 
+  /* GPU signal support */
+  M::ErrorOr<int> prepGpuSignal(const nixlUcxMem &mem, void *signal) const;
+  M::ErrorOr<size_t> getGpuSignalSize() const;
+
   friend class nixlUcxWorker;
 };
 

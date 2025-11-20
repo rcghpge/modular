@@ -196,6 +196,17 @@ public:
     // For now, return not supported - for object backends
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
+
+  // Get the size required for a GPU signal
+  virtual nixl_status_t getGpuSignalSize(size_t &signal_size) const {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
+  // Initialize a signal for GPU transfer using memory handle from descriptor
+  virtual nixl_status_t prepGpuSignal(const nixlBackendMD &meta,
+                                      void *signal) const {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
 };
 
 } // namespace M::AsyncRT::NIXL

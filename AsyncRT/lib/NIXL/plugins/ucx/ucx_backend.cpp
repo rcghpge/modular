@@ -1225,6 +1225,31 @@ nixl_status_t nixlUcxEngine::genNotif(const std::string &remote_agent,
   return nixl_status_t::NIXL_SUCCESS;
 }
 
+nixl_status_t nixlUcxEngine::getGpuSignalSize(size_t &signal_size) const {
+  if (gpuSignalSize_) {
+    signal_size = *gpuSignalSize_;
+    return nixl_status_t::NIXL_SUCCESS;
+  }
+
+  auto sizeOrError = uc->getGpuSignalSize();
+  if (sizeOrError.isError()) {
+    return nixl_status_t::NIXL_ERR_BACKEND;
+  }
+
+  gpuSignalSize_ = signal_size = sizeOrError.takeValue();
+  return nixl_status_t::NIXL_SUCCESS;
+}
+
+nixl_status_t nixlUcxEngine::prepGpuSignal(const nixlBackendMD &meta,
+                                           void *signal) const {
+  auto *ucx_meta = static_cast<const nixlUcxPrivateMetadata *>(&meta);
+  auto ret = uc->prepGpuSignal(ucx_meta->mem, signal);
+  if (ret.isError()) {
+    return nixl_status_t::NIXL_ERR_BACKEND;
+  }
+  return nixl_status_t::NIXL_SUCCESS;
+}
+
 /****************************************
  * nixlUcxThreadEngine implementation
  *****************************************/

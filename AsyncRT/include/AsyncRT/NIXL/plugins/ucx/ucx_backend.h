@@ -28,6 +28,7 @@
 #include <cstring>
 #include <future>
 #include <mutex>
+#include <optional>
 #include <poll.h>
 #include <set>
 #include <string_view>
@@ -158,6 +159,10 @@ public:
   nixl_status_t checkConn(const std::string &remote_agent);
   nixl_status_t endConn(const std::string &remote_agent);
 
+  nixl_status_t getGpuSignalSize(size_t &signal_size) const override;
+  nixl_status_t prepGpuSignal(const nixlBackendMD &meta,
+                              void *signal) const override;
+
 protected:
   nixlUcxEngine(const nixlBackendInitParams &init_params);
 
@@ -229,6 +234,7 @@ private:
 
   /* CUDA data*/
   DeviceContextRef deviceCtx;
+  mutable std::optional<size_t> gpuSignalSize_;
 
   /* Notifications */
   notif_list_t notifMainList;
