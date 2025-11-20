@@ -223,6 +223,7 @@ LogicalResult verifyOpaqueArgumentsArePassedByReference(
     for (const auto &arg : func->inputArguments) {
       auto convention = conventions[arg.sourceDescriptor->position];
       if (arg.isOpaqueType() && (convention == KGEN::ArgConvention::OwnedMem ||
+                                 convention == KGEN::ArgConvention::DeinitMem ||
                                  convention == KGEN::ArgConvention::OwnedReg)) {
         func->mojoCode.emitError()
             << "Argument convention for argument at position "
