@@ -11,6 +11,7 @@
 
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "AsyncRT/ForwardDecls.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "AsyncRT/Runtime/AsyncValue.h"
 #include "AsyncRT/Runtime/Runtime.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
@@ -190,7 +191,28 @@ MGP_RT_BufferBorrow(AsyncRTWrapper<AnyAsyncValueRef> borrower,
   }
 }
 
-/// This is the implementation of the mgp.buffer.borrow primitive.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_TensorBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
+                      size_t byteCount, size_t rank, size_t *dims, int8_t type,
+                      AnyAsyncValueRef *mem) {
+  AnyAsyncValueRef &borrowerValue = unwrap(borrower);
+
+  TensorBufferRef buf =
+      mem ? ::M::TensorBufferRef::create(data, byteCount, mem->releaseRCRef())
+          : ::TensorBufferRef::createWithNonTrackedMemory(data, byteCount);
+
+  // Pack buffer and spec into tensor.
+  TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
+  if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect())
+    borrowerValue.copy().emplaceIndirect<Tensor>(std::move(buf),
+                                                 std::move(spec));
+  else {
+    Runtime &rt = *Runtime::getCurrentRuntimeOrNull();
+    borrowerValue =
+        borrowerValue.createReady<Tensor>(rt, std::move(buf), std::move(spec));
+  }
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
                       size_t size, AnyAsyncValueRef *mem) {
@@ -603,4 +625,19 @@ MGP_RT_GetMemBufferHandleFromTensorBufferRef(
   if (!bufferRefPtr)
     return;
   new (memStorageHandle) AnyAsyncValueRef(bufferRefPtr->getMemStorageHandle());
+}
+
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_GetBufferMemStorageHandle(AsyncRTWrapper<AnyAsyncValueRef> buffer,
+                                 size_t type,
+                                 AnyAsyncValueRef *memStorageHandle) {
+  AnyAsyncValueRef &unwrappedBuffer = unwrap(buffer);
+  if (type == kBuffer)
+    new (memStorageHandle) AnyAsyncValueRef(
+        unwrappedBuffer.get<TensorBufferRef>().getMemStorageHandle());
+  else if (type == kTensor)
+    new (memStorageHandle) AnyAsyncValueRef(
+        unwrappedBuffer.get<Tensor>().getBufferRef().getMemStorageHandle());
+  else
+    llvm_unreachable("Unexpected buffer type");
 }

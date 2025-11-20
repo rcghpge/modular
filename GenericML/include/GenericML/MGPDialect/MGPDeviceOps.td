@@ -726,6 +726,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
     InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
 ]> {
   let summary = "Borrows a slice of parent buffer on device with dynamically "
                 "known offset and size.";
@@ -763,8 +764,6 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
     $inBuffer `,` $offset `,` $size attr-dict
       `:` type($inBuffer)
   }];
-
-  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

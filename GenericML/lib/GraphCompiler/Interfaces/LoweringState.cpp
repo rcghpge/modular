@@ -699,6 +699,26 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       newValue = MOGG::AsyncPackBorrowV2Op::create(
           builder, loc, value.getType(), newBufferGetCachedOp.getOutBuffer(),
           newBufferGetCachedOp.getMemStorageHandle());
+    } else if (auto tensorExtractBufferOp =
+                   value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
+      auto asyncUnpackAnyAsyncValueRefOp =
+          MOGG::AsyncUnpackAnyAsyncValueRefOp::create(
+              builder, loc, tensorExtractBufferOp.getTensor());
+      newValue = MOGG::AsyncPackBorrowV2Op::create(
+          builder, loc, value.getType(), value, asyncUnpackAnyAsyncValueRefOp);
+    } else if (auto tensorCreateOp =
+                   value.getDefiningOp<MGP::TensorCreateOp>()) {
+      auto asyncUnpackAnyAsyncValueRefOp =
+          MOGG::AsyncUnpackAnyAsyncValueRefOp::create(
+              builder, loc, tensorCreateOp.getBuffer());
+      newValue = MOGG::AsyncPackBorrowV2Op::create(
+          builder, loc, value.getType(), value, asyncUnpackAnyAsyncValueRefOp);
+    } else if (auto bufferSliceOp = value.getDefiningOp<MGP::BufferSliceOp>()) {
+      auto asyncUnpackAnyAsyncValueRefOp =
+          MOGG::AsyncUnpackAnyAsyncValueRefOp::create(
+              builder, loc, bufferSliceOp.getInBuffer());
+      newValue = MOGG::AsyncPackBorrowV2Op::create(
+          builder, loc, value.getType(), value, asyncUnpackAnyAsyncValueRefOp);
     } else {
       newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
     }
@@ -722,7 +742,10 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     if (shouldUnpack.test(v.getArgNumber()) &&
         !isa<MEF::ChainType>(v.getType())) {
       auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
-      v.replaceAllUsesExcept(unpackOp, unpackOp);
+      v.replaceUsesWithIf(unpackOp, [](mlir::OpOperand &operand) {
+        return !isa<MOGG::AsyncUnpackOp, MOGG::AsyncUnpackAnyAsyncValueRefOp>(
+            operand.getOwner());
+      });
     }
     asyncValues.emplace_back(v);
   }

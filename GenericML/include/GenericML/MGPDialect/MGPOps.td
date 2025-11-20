@@ -130,6 +130,7 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<MGP_CreateTensorOpInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
 ]> {
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
                 "`!mgp.buffer`.";
@@ -171,6 +172,7 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
     InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<GRTMayAliasInterface>,
     DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
 ]> {
   let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
   let description = [{

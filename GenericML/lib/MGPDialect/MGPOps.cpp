@@ -667,6 +667,23 @@ static bool isSubtype(Type ty1, Type ty2) {
 //===----------------------------------------------------------------------===//
 // TensorExtractBufferOp
 //===----------------------------------------------------------------------===//
+mlir::BitVector TensorExtractBufferOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
+
+LogicalResult TensorExtractBufferOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue res =
+      state.builder.var(function({}, state.getMojoValueFor(getTensor())));
+  state.setMojoValueFor(getOutBuffer(), res);
+
+  return success();
+}
 
 LogicalResult TensorExtractBufferOp::verify() {
   DeviceBufferType expectedBufferType =
@@ -1021,6 +1038,32 @@ bool GuardOp::mayAlias(size_t operandIndex, size_t resultIndex) { return true; }
 // TensorCreateOp
 //===----------------------------------------------------------------------===//
 
+mlir::BitVector TensorCreateOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
+
+LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  DeviceTensorType tensorType = getOutTensor().getType();
+  MojoValue tensorRankParam = tensorType.getRank();
+  MojoValue bufferRankParam =
+      tensorType.getRank() == 0 ? MojoValue{1} : tensorRankParam;
+  auto tensorSpec = tensorType.getTensorSpec();
+  MojoValue tensorDtypeParam =
+      state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
+
+  MojoValue result = state.builder.var(
+      function({tensorRankParam, bufferRankParam, tensorDtypeParam},
+               state.getMojoValuesFor(getOperands().drop_front())));
+  state.setMojoValueFor(getOutTensor(), result);
+
+  return success();
+}
 bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getBufferMutable().getOperandNumber();
 }

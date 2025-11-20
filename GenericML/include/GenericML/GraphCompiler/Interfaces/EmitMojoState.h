@@ -85,6 +85,8 @@ constexpr StringLiteral func_mgp_get_buffer_handle_from_tensor_buffer_ref =
     "MOGGPrimitives.mgp_get_buffer_handle_from_tensor_buffer_ref";
 constexpr StringLiteral func_mogg_async_pack_borrow_v2 =
     "MOGGPrimitives.mogg_async_pack_borrow_v2";
+constexpr StringLiteral func_get_buffer_mem_storage_handle =
+    "MOGGPrimitives.get_buffer_mem_storage_handle";
 
 constexpr StringLiteral alias_OpaquePointer = "memory.LegacyOpaquePointer";
 constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";

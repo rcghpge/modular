@@ -13,6 +13,7 @@
 #include "GenericML/Support/Diagnostic.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "Support/AssertStream.h"
+#include "Support/Buffer.h"
 #include "Support/Compiler/VerifyUtils.h"
 #include "Support/ErrorOr.h"
 #include "Support/MDialect/MAttrs.h"
@@ -26,6 +27,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Base64.h"
+#include <mlir/Support/LLVM.h>
 
 using namespace M;
 using namespace MGP;
@@ -387,9 +389,22 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // BufferSliceOp
 //===----------------------------------------------------------------------===//
+mlir::BitVector BufferSliceOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
 
-LogicalResult BufferSliceOp::verify() { return success(); }
+LogicalResult BufferSliceOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
 
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MojoValue res = function({}, state.getMojoValuesFor(getOperands()));
+  state.setMojoValueFor(getOutBuffer(), res);
+
+  return success();
+}
 LogicalResult BufferSliceOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {

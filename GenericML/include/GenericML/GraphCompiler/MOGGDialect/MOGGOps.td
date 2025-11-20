@@ -2172,4 +2172,24 @@ def MOGG_AsyncPlaceholderAnyAsyncValueRefOp : MOGG_Op<"async.placeholder.AnyAsyn
   let assemblyFormat = [{attr-dict}];
 }
 
+def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef", [
+  Pure,
+  SameOperandsAndResultType,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Returns the memory storage handle of a tensor or buffer.";
+  let description = [{
+    For a given MGP device buffer or tensor, returns the AnyAsyncValueRef that
+    represents the memory storage. This is required as the borrowee to
+    mogg.async.pack.borrow.
+  }];
+
+  let arguments = (ins AnyTypeOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>:$value);
+  let results = (outs AnyTypeOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

@@ -33,6 +33,7 @@
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include <future>
+#include <mlir/Support/LLVM.h>
 
 using namespace M;
 using namespace MOGG;
@@ -3919,11 +3920,51 @@ LogicalResult AsyncPackBorrowV2Op::emitMojo(EmitMojoState &state) {
     return failure();
   MojoValue moggAsyncPackBorrowFunc{
       HardcodedMojoSymbols::func_mogg_async_pack_borrow_v2};
-  state.builder.call(moggAsyncPackBorrowFunc, {},
+  MojoValue specRankParam;
+  MojoValue isTensorParam;
+  if (isa<MGP::DeviceBufferType>(getInput().getType())) {
+    specRankParam = 1;
+    isTensorParam = false;
+  } else if (auto tensorType =
+                 dyn_cast<MGP::DeviceTensorType>(getInput().getType())) {
+    specRankParam = tensorType.getRank();
+    isTensorParam = true;
+  }
+
+  state.builder.call(moggAsyncPackBorrowFunc, {specRankParam, isTensorParam},
                      {/* borrower */ state.mojoReturnValues[*resultIndexOr],
                       /* borrowee */ state.getMojoValueFor(getInput()),
                       state.getMojoValueFor(getMem())});
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncUnpackAnyAsyncValueRefOp
+//===----------------------------------------------------------------------===//
+enum class MGPRT_BorroweeType : size_t {
+  kHandle = 0,
+  kBuffer = 1,
+  kTensor = 2,
+};
+
+LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
+  MojoValue getBufferMemStorageHandleFn =
+      HardcodedMojoSymbols::func_get_buffer_mem_storage_handle;
+  MojoValue inputVar = state.getMojoValueFor(getValue());
+  MojoValue typeVar = isa<MGP::DeviceBufferType>(getValue().getType())
+                          ? (size_t)MGPRT_BorroweeType::kBuffer
+                          : (size_t)MGPRT_BorroweeType::kTensor;
+  auto opaquePtr =
+      state.builder.var(MojoValue{HardcodedMojoSymbols::alias_OpaquePointer}());
+  auto opaquePtrPtr = state.builder.var(
+      MojoValue{HardcodedMojoSymbols::struct_UnsafePointer}(
+          {}, MojoValue("to").equal(opaquePtr))
+          .get(HardcodedMojoSymbols::func_UnsafePointer_bitcast)({"NoneType"}));
+
+  state.builder.call(getBufferMemStorageHandleFn, {},
+                     {inputVar, typeVar, opaquePtrPtr});
+  state.setMojoValueFor(getResult(), opaquePtrPtr);
   return success();
 }
 
