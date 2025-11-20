@@ -78,7 +78,7 @@ public:
   /// \return Compiled binary code or error
   virtual ErrorOr<M::BufferRef>
   compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
-                  StringRef targetAccelerator) const = 0;
+                  StringRef targetAccelerator = "") const = 0;
 
   /// \param api The api for which to create a compilation device
   /// \return Compilation device or error

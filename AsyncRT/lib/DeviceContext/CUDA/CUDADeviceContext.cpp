@@ -472,6 +472,19 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 }
 
+static std::string cudaCCToSM(int major, int minor) {
+  std::string sm = "sm_";
+  int cc = major * 10 + minor;
+  sm += std::to_string(cc);
+
+  // For architectures above 90 we use the "a" variants to enable hardware
+  // specific features at the cost of backward and forward compatibility.
+  if (cc >= 90)
+    sm += "a";
+
+  return sm;
+}
+
 ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
@@ -532,11 +545,9 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
         &computeCapabilityMinor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
         cuDevice));
 
-    int computeCap = computeCapabilityMajor * 10 + computeCapabilityMinor;
-    std::string targetArch = "sm_" + std::to_string(computeCap);
-
     // Create compilation device for this GPU architecture
-    auto compilationDevOrErr = CUDACompilationDevice::create(targetArch);
+    auto compilationDevOrErr = CUDACompilationDevice::create(
+        cudaCCToSM(computeCapabilityMajor, computeCapabilityMinor));
     if (compilationDevOrErr.isError()) {
       return compilationDevOrErr.takeError();
     }
@@ -1568,5 +1579,5 @@ ErrorOr<std::string> CUDADevice::getFirstArchName() {
       NVML::SUCCESS)
     RAISE_ERROR("NVML: Unable to get compute capability");
 
-  return (llvm::Twine(major) + llvm::Twine(minor)).str();
+  return cudaCCToSM(major, minor);
 }

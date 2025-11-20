@@ -53,7 +53,7 @@ public:
   ErrorOr<M::BufferRef>
   compileFunction(StringRef ptx, StringRef debugLevel,
                   int32_t optimizationLevel,
-                  StringRef targetAccelerator) const override;
+                  StringRef targetAccelerator = "") const override;
 
   /// Setup compilation options for NVPTX compiler.
   ///
