@@ -20,8 +20,8 @@ lit_tests(
         "//GenericML/test/TestKernels:MOGGKernelAPITestLib",
     ],
     mojo_deps = [
-        "@mojo//:MOGGKernelAPI",
-        "@mojo//:MOGGPrimitives",
+        "//max:MOGGKernelAPI",
+        "//max:MOGGPrimitives",
     ],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],

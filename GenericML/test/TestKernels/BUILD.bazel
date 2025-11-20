@@ -7,9 +7,9 @@ mojo_kgen_lib(
     testonly = True,
     srcs = glob(["**/*.mojo"]),
     deps = [
-        "@mojo//:compiler_internal",
+        "//max:compiler_internal",
+        "//max:tensor",
         "@mojo//:stdlib",
-        "@mojo//:tensor",
     ],
 )
 
@@ -19,8 +19,8 @@ mojo_library(
     srcs = glob(["**/*.mojo"]),
     validate_missing_docs = False,
     deps = [
-        "@mojo//:compiler_internal",
+        "//max:compiler_internal",
+        "//max:tensor",
         "@mojo//:stdlib",
-        "@mojo//:tensor",
     ],
 )
