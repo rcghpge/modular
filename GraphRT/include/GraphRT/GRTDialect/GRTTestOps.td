@@ -27,7 +27,6 @@ def TestcaseOp : GRTOp<"testcase",
   }];
 
   let arguments = (ins);
-  let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;

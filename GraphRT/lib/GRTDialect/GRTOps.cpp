@@ -363,11 +363,6 @@ ParseResult TestcaseOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseRegion(*body, {}, false))
     return failure();
 
-  // Infer the return types from the terminator's operands.
-  Operation *bodyTerminator = body->front().getTerminator();
-  result.types.assign(bodyTerminator->operand_type_begin(),
-                      bodyTerminator->operand_type_end());
-
   return success();
 }
 
