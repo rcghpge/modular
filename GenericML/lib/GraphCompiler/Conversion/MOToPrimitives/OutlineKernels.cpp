@@ -36,7 +36,6 @@ struct OutlineKernels : public MGP::impl::OutlineKernelsBase<OutlineKernels> {
     auto ctx = moduleOp->getContext();
 
     uint64_t stubNumber = 0;
-    SmallVector<MOGG::GenericCompiledRegionOp> kernelsToDelete;
     moduleOp.walk<mlir::WalkOrder::PreOrder>(
         [&](MOGG::GenericCompiledRegionOp kernelOp) {
           if (!kernelOp.getEmitsMojo())
@@ -58,18 +57,25 @@ struct OutlineKernels : public MGP::impl::OutlineKernelsBase<OutlineKernels> {
           stubOp.setDeviceRef(device);
 
           builder.setInsertionPoint(kernelOp);
-          auto callOp = MOGG::CallStubOp::create(builder, loc, resultTypes,
-                                                 SymbolRefAttr::get(stubName),
-                                                 kernelOp->getOperands());
+          auto callOp = MOGG::ExecuteCompiledOp::create(
+              builder, stubOp->getLoc(),
+              /*resultTypes=*/resultTypes,
+              /*operands=*/kernelOp->getOperands(),
+              /*kernelName=*/FlatSymbolRefAttr::get(stubName),
+              /*usedParams=*/builder.getArrayAttr({}),
+              /*outputParamDecls=*/
+              KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
+              /*summary=*/stubOp.getSummaryAttr(),
+              /*isAsync=*/stubOp.getIsAsyncAttr(),
+              /*constantResources=*/stubOp.getConstantResources());
+          callOp.setDeviceRef(stubOp.getExecutionDevice());
+
           kernelOp->replaceAllUsesWith(callOp);
+          kernelOp.erase();
           builder.setInsertionPoint(stubOp);
-          kernelsToDelete.push_back(kernelOp);
 
           return mlir::WalkResult::skip();
         });
-
-    for (auto &&kernel : llvm::reverse(kernelsToDelete))
-      kernel.erase();
   }
 };
 
