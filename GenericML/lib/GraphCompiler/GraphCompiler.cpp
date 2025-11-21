@@ -224,7 +224,7 @@ void M::MO::buildMoToMgpPipeline(
   }
 
   pm.addPass(MO::createHoistParameterExpressions());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
 
   pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
                                 libraryAnalysis));
@@ -273,8 +273,8 @@ void M::MO::buildMoToMgpPipeline(
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
   pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
 
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(MGP::createConcatInPlacePass());
   // Note: LowerAlignmentsPass must be before Dynamic MemoryPlanning or it can
@@ -318,7 +318,7 @@ void M::MO::buildMoToMgpPipeline(
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 
-  pm.addPass(MGP::createLowerMOGGABI());
+  pm.addNestedPass<MGP::ModelOp>(MGP::createLowerMOGGABI());
 
   if (opts.enablePostABIRegionFusion && opts.fuseJitKernels) {
     pm.addPass(MGP::createPostABIFuseGenericRegions());
@@ -336,8 +336,9 @@ void M::MO::buildMoToMgpPipeline(
   // Lower async pack/unpack intrinsic.
   MGP::LowerAsyncRefsOptions lowerAsyncopt;
   lowerAsyncopt.kernelLibraryPaths = kernelLibraryPaths;
-  pm.addPass(MGP::createLowerAsyncRefs(lowerAsyncopt, libraryAnalysis));
-  pm.addPass(MGP::createCoalesceAsyncRefs());
+  pm.addNestedPass<MGP::ModelOp>(
+      MGP::createLowerAsyncRefs(lowerAsyncopt, libraryAnalysis));
+  pm.addNestedPass<MGP::ModelOp>(MGP::createCoalesceAsyncRefs());
 
   pm.addPass(MGP::createOutlineKernels());
   pm.addPass(MGP::createAddTryExceptBlocks());

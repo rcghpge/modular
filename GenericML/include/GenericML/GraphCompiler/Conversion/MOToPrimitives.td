@@ -75,7 +75,7 @@ def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
   ];
 }
 
-def LowerMOGGABI: Pass<"lower-abi", "ModuleOp"> {
+def LowerMOGGABI: Pass<"lower-abi", "MGP::ModelOp"> {
   let summary = "Lower MGP kernels into the correct ABI";
   let description = [{
     For each generic compilable function this pass will convert them from their
@@ -137,7 +137,7 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "MGP::ModelOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def LowerAsyncRefs: Pass<"lower-async-refs", "ModuleOp"> {
+def LowerAsyncRefs: Pass<"lower-async-refs"> {
   let summary = "Lower mogg.pack/unpack to mogg.calls";
   let description = [{
     Lower mogg.pack/upack calls to/from async refs to the corresponding
@@ -166,7 +166,7 @@ def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "Mod
 }
 
 
-def CoalesceAsyncRefs: Pass<"coalesce-async-refs", "ModuleOp"> {
+def CoalesceAsyncRefs: Pass<"coalesce-async-refs"> {
   let summary = "coalesce async ref (de)allocation sites";
   let description = [{
     Coalesces async ref (de)allocation sites and hoist the allocation sites to
