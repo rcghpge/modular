@@ -68,37 +68,6 @@ struct EmitMojo
       }
     }
 
-    // Replace stub calls with ExecuteCompiledOp.
-    llvm::DenseMap<StringAttr, llvm::SetVector<StringRef>>
-        kernelsToLoadPerModel;
-    for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      auto &kernelsToLoadInThisModel =
-          kernelsToLoadPerModel[modelOp.getSymNameAttr()];
-      modelOp.walk([&](MOGG::CallStubOp callOp) {
-        kernelsToLoadInThisModel.insert(callOp.getName());
-        // Create a new ExecuteCompiledOp to replace the original kernel
-        auto insertPoint = builder.saveInsertionPoint();
-        auto stubOp = callOp.getCallee();
-        builder.setInsertionPoint(callOp);
-        auto newOp = MOGG::ExecuteCompiledOp::create(
-            builder, stubOp->getLoc(),
-            /*resultTypes=*/callOp->getResultTypes(),
-            /*operands=*/callOp->getOperands(),
-            /*kernelName=*/callOp.getName(),
-            /*usedParams=*/builder.getArrayAttr({}),
-            /*outputParamDecls=*/
-            KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
-            /*summary=*/stubOp.getSummaryAttr(),
-            /*isAsync=*/*stubOp.getIsAsync(),
-            /*constantResources=*/stubOp.getConstantResources());
-        builder.restoreInsertionPoint(insertPoint);
-
-        newOp.setDeviceRef(stubOp.getExecutionDevice());
-        callOp->replaceAllUsesWith(newOp.getResults());
-        callOp->erase();
-      });
-    }
-
     // Store the emitted text into a resource.
     auto mojoText = state.builder.str();
     auto attrType =
@@ -126,10 +95,14 @@ struct EmitMojo
                                                     std::move(blob));
     }
 
-    // For each model, add a reference to the Mojo from LoadCompiledKernelOp.
+    // For each model, add a reference to the Mojo symbols in
+    // LoadCompiledKernelOp.
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      const auto &kernelsToLoadInThisModel =
-          kernelsToLoadPerModel[modelOp.getSymNameAttr()];
+      llvm::SetVector<StringRef> kernelsToLoadInThisModel;
+      modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
+        kernelsToLoadInThisModel.insert(callOp.getCalleeSymbol());
+      });
+
       if (kernelsToLoadInThisModel.empty())
         continue;
 
