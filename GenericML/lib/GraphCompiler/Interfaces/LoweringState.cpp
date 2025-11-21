@@ -660,6 +660,17 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
   return newOp->getResult(0);
 }
 
+/// Helper function to create AsyncPackBorrowV2Op with an async unpack from a
+/// source value. This is used for operations that need to borrow a
+/// buffer/tensor and track its async reference.
+static Value createAsyncPackBorrowV2WithUnpack(OpBuilder &builder, Location loc,
+                                               Value value, Value sourceValue) {
+  auto asyncUnpackAnyAsyncValueRefOp =
+      MOGG::AsyncUnpackAnyAsyncValueRefOp::create(builder, loc, sourceValue);
+  return MOGG::AsyncPackBorrowV2Op::create(builder, loc, value.getType(), value,
+                                           asyncUnpackAnyAsyncValueRefOp);
+}
+
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
                                         const mlir::BitVector &shouldUnpack,
                                         const mlir::BitVector &shouldPack) {
@@ -703,24 +714,15 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
           bufferGetCachedOp.getMemStorageHandle());
     } else if (auto tensorExtractBufferOp =
                    value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
-      auto asyncUnpackAnyAsyncValueRefOp =
-          MOGG::AsyncUnpackAnyAsyncValueRefOp::create(
-              builder, loc, tensorExtractBufferOp.getTensor());
-      newValue = MOGG::AsyncPackBorrowV2Op::create(
-          builder, loc, value.getType(), value, asyncUnpackAnyAsyncValueRefOp);
+      newValue = createAsyncPackBorrowV2WithUnpack(
+          builder, loc, value, tensorExtractBufferOp.getTensor());
     } else if (auto tensorCreateOp =
                    value.getDefiningOp<MGP::TensorCreateOp>()) {
-      auto asyncUnpackAnyAsyncValueRefOp =
-          MOGG::AsyncUnpackAnyAsyncValueRefOp::create(
-              builder, loc, tensorCreateOp.getBuffer());
-      newValue = MOGG::AsyncPackBorrowV2Op::create(
-          builder, loc, value.getType(), value, asyncUnpackAnyAsyncValueRefOp);
+      newValue = createAsyncPackBorrowV2WithUnpack(builder, loc, value,
+                                                   tensorCreateOp.getBuffer());
     } else if (auto bufferSliceOp = value.getDefiningOp<MGP::BufferSliceOp>()) {
-      auto asyncUnpackAnyAsyncValueRefOp =
-          MOGG::AsyncUnpackAnyAsyncValueRefOp::create(
-              builder, loc, bufferSliceOp.getInBuffer());
-      newValue = MOGG::AsyncPackBorrowV2Op::create(
-          builder, loc, value.getType(), value, asyncUnpackAnyAsyncValueRefOp);
+      newValue = createAsyncPackBorrowV2WithUnpack(builder, loc, value,
+                                                   bufferSliceOp.getInBuffer());
     } else {
       newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
     }
