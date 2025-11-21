@@ -691,14 +691,16 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
           MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
     } else if (auto bufferGetCachedOp =
                    value.getDefiningOp<MGP::BufferGetCachedOp>()) {
-      auto memStorageType = KGEN::PointerType::get(
-          KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext())));
-      auto newBufferGetCachedOp = MGP::BufferGetCachedOp::create(
-          builder, loc, {value.getType(), memStorageType},
-          bufferGetCachedOp->getOperands(), bufferGetCachedOp->getAttrs());
+      if (bufferGetCachedOp.getOptionalMemStorageHandle().empty()) {
+        auto memStorageType = KGEN::PointerType::get(
+            KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext())));
+        bufferGetCachedOp = MGP::BufferGetCachedOp::create(
+            builder, loc, {value.getType(), memStorageType},
+            bufferGetCachedOp->getOperands(), bufferGetCachedOp->getAttrs());
+      }
       newValue = MOGG::AsyncPackBorrowV2Op::create(
-          builder, loc, value.getType(), newBufferGetCachedOp.getOutBuffer(),
-          newBufferGetCachedOp.getMemStorageHandle());
+          builder, loc, value.getType(), bufferGetCachedOp.getOutBuffer(),
+          bufferGetCachedOp.getMemStorageHandle());
     } else if (auto tensorExtractBufferOp =
                    value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
       auto asyncUnpackAnyAsyncValueRefOp =
