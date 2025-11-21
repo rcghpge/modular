@@ -76,6 +76,7 @@ void M::MO::registerPasses() {
   MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
   MGP::registerLowerAsyncRefs();
+  MGP::registerMergeIdenticalKernelStubs();
   MGP::registerAddTryExceptBlocksPass();
   MGP::registerOutlineKernelsPass();
   MGP::registerEmitMojo();
@@ -341,6 +342,7 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(MGP::createCoalesceAsyncRefs());
 
   pm.addPass(MGP::createOutlineKernels());
+  pm.addPass(MGP::createMergeIdenticalKernelStubs());
   pm.addPass(MGP::createAddTryExceptBlocks());
   pm.addPass(mlir::createSymbolDCEPass());
 

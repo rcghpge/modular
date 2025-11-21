@@ -178,6 +178,9 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoI
 
   let extraClassDeclaration = [{
     KernelStubOp getCallee();
+    FlatSymbolRefAttr getCalleeSymbol() {
+      return getNameAttr();
+    }
   }];
 }
 
@@ -1667,7 +1670,9 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
                        OptionalAttr<StrAttr>:$summary,
                        OptionalAttr<BoolAttr>:$isAsync,
                        DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
-                       MOGG_ABIKind:$abi
+                       MOGG_ABIKind:$abi,
+                       // The following is necessary for -symbol-dce
+                       DefaultValuedAttr<StrAttr, "\"private\"">:$sym_visibility
                        );
 
   let regions = (region SizedRegion<1>:$body);

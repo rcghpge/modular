@@ -280,5 +280,19 @@ def OutlineKernels: Pass<"outline-kernels", "ModuleOp"> {
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
+def MergeIdenticalKernelStubs: Pass<"merge-identical-kernel-stubs", "ModuleOp"> {
+  let summary = "Merge kernel stubs that are identical";
+  let description = [{
+    This is the equivalent of CSE but for MOGG::KernelStubOp. It can improve
+    compilation time by reducing the IR size and emitted Mojo text.
+  }];
+
+  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
+
+  let statistics = [
+    Statistic<"numMergedStubs", "# of stubs that were merged", "Number of stubs that were merged">
+  ];
+}
+
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
