@@ -38,35 +38,32 @@ logger = logging.getLogger("max.pipelines")
 
 
 class PagedKVCacheManager:
-    """Paged KVCache manager with data and tensor parallelism support. This is
-    essentially N _TPPagedKVCacheManagers in a trench coat.
+    """Paged KVCache manager with data and tensor parallelism support.
 
-    Basic usage:
+    .. code-block:: python
 
-    ```python
-    # Allocate metadata for requests in batch
-    kv_manager.external_claim(ctx1.request_id, replica_idx=0)
-    kv_manager.external_claim(ctx2.request_id, replica_idx=1)
+        # Allocate metadata for requests in batch
+        kv_manager.claim(ctx1.request_id, replica_idx=0)
+        kv_manager.claim(ctx2.request_id, replica_idx=1)
 
-    # Allocate blocks for these requests
-    kv_manager.prefetch(ctx1, num_steps=10)
-    kv_manager.prefetch(ctx2, num_steps=10)
+        # Allocate blocks for these requests
+        kv_manager.alloc(ctx1, num_steps=10)
+        kv_manager.alloc(ctx2, num_steps=10)
 
-    # Get KVCache inputs to feed to graph
-    kv_cache_inputs = kv_manager.fetch([ctx1, ctx2], num_steps=10)
+        # Get KVCache inputs to feed to graph
+        kv_cache_inputs = kv_manager.get_runtime_inputs([ctx1, ctx2], num_steps=10)
 
-    # Run model...
-    # Update requests with newly generated tokens
-    ctx1.update(42)
-    ctx2.update(42)
+        # Run model...
+        # Update requests with newly generated tokens
+        ctx1.update(42)
+        ctx2.update(42)
 
-    # Commit newly written blocks to prefix cache
-    kv_manager.step([ctx1, ctx2])
+        # Commit newly written blocks to prefix cache
+        kv_manager.step([ctx1, ctx2])
 
-    # Release metadata and KV blocks for these requests
-    kv_manager.release(ctx1.request_id)
-    kv_manager.release(ctx2.request_id)
-    ```
+        # Release metadata and KV blocks for these requests
+        kv_manager.release(ctx1.request_id)
+        kv_manager.release(ctx2.request_id)
     """
 
     def __init__(
@@ -108,6 +105,13 @@ class PagedKVCacheManager:
         max_batch_size_per_replica = (
             max_batch_size // params.data_parallel_degree
         )
+        if max_batch_size_per_replica == 0:
+            raise ValueError(
+                f"Cannot use {max_batch_size=} with {params.data_parallel_degree}"
+                " KV cache replicas. The minimum value of max_batch_size allowed"
+                f" is {params.data_parallel_degree}."
+            )
+
         cache_memory_per_replica = (
             available_cache_memory // params.data_parallel_degree
         )
@@ -185,10 +189,10 @@ class PagedKVCacheManager:
                 by replica index (so contexts that are on the same replica
                 are adjacent in the batch, and the replica must be in order).
 
-        returns:
-            An int64 Tensor with shape (self.num_replicas + 1) that contains the
-            number of requests on each device:
-                [0, num_requests_on_replica_0, num_requests_on_replica_1, ...]
+        Returns:
+            Tensor: An int64 tensor with shape (self.num_replicas + 1) that
+            contains the number of requests on each device:
+            [0, num_requests_on_replica_0, num_requests_on_replica_1, ...]
         """
         splits = np.zeros(self.num_replicas + 1, dtype=np.int64)
         for ctx in context_batch:
@@ -198,28 +202,60 @@ class PagedKVCacheManager:
 
         return Tensor.from_numpy(splits)
 
-    def maybe_reserve(
+    def get_pct_used_blocks_after_allocation(
+        self, ctx: TextGenerationContext, num_steps: int = 1
+    ) -> float:
+        """Get the percentage of blocks used after allocating for a request.
+
+        Args:
+            ctx: The request context containing sequence information and token indices.
+            num_steps: Number of additional steps to allocate blocks for. Defaults to 1.
+
+        Returns:
+            The percentage of total blocks used after allocating for the request.
+        """
+        return self._replica_managers[
+            self._request_to_replica_idx[ctx.request_id]
+        ].get_pct_used_blocks_after_allocation(ctx, num_steps)
+
+    def alloc(
         self,
         data: TextGenerationContext,
         num_steps: int = 1,
-    ) -> bool:
+    ) -> None:
+        """Allocates blocks for a request to run for N steps.
+
+        This method allocates blocks needed by a request to run for N steps.
+        When prefix caching is enabled, some of the allocated blocks may be
+        retrieved from the prefix cache.
+
+        Args:
+            data: The text generation context for the request. The request ID
+                must already be assigned to a replica via `claim`.
+            num_steps: The number of steps to reserve blocks for. Default: 1.
+
+        Raises:
+            InsufficientBlocksError: If there are insufficient free blocks to
+            satisfy the allocation.
+        """
         assert data.request_id in self._request_to_replica_idx, (
             f"Request ID {data.request_id} must already be assigned to a "
-            "replica before prefetching"
+            "replica before reserving"
         )
         replica_idx = self._request_to_replica_idx[data.request_id]
-        return self._replica_managers[replica_idx].maybe_reserve(
-            data, num_steps
-        )
+        return self._replica_managers[replica_idx].alloc(data, num_steps)
 
-    def fetch(
+    def get_runtime_inputs(
         self, batch: Sequence[TextGenerationContext], num_steps: int = 1
     ) -> list[RaggedKVCacheInputs]:
-        """Fetch KV cache blocks for a batch of requests.
+        """Get the graph inputs for a batch of requests.
+
+        This method will raise a RuntimeError if any request has insufficient blocks
+        already allocated to it to run for the given number of steps.
 
         Args:
             batch: Batch of requests
-            num_steps: Number of steps to fetch
+            num_steps: Number of steps to run for
         """
 
         batch_by_replica: list[list[TextGenerationContext]] = [
@@ -233,11 +269,13 @@ class PagedKVCacheManager:
         ret_list: list[RaggedKVCacheInputs] = []
         for replica_idx, ctxs in enumerate(batch_by_replica):
             ret_list.extend(
-                self._replica_managers[replica_idx].fetch(ctxs, num_steps)
+                self._replica_managers[replica_idx].get_runtime_inputs(
+                    ctxs, num_steps
+                )
             )
         return ret_list
 
-    def input_symbols(
+    def get_symbolic_inputs(
         self,
         devices: Sequence[Device] | None = None,
         num_layers: int | None = None,
@@ -255,7 +293,7 @@ class PagedKVCacheManager:
         self._request_count_per_replica[replica_idx] -= 1
         self._replica_managers[replica_idx].release(request_id)
 
-    def external_claim(
+    def claim(
         self, request_id: RequestID, replica_idx: int | None = None
     ) -> None:
         """Reserve a sequence ID for the given request ID."""
@@ -269,7 +307,7 @@ class PagedKVCacheManager:
             raise ValueError(
                 f"Request ID {request_id} is already claimed for replica {self._request_to_replica_idx[request_id]}"
             )
-        self._replica_managers[replica_idx].external_claim(request_id)
+        self._replica_managers[replica_idx].claim(request_id)
         self._request_to_replica_idx[request_id] = replica_idx
         self._request_count_per_replica[replica_idx] += 1
 
@@ -301,7 +339,7 @@ class PagedKVCacheManager:
             manager.reset_metrics()
 
     def _create_ragged_increment_cache_lengths_graph(self) -> Graph:
-        input_symbols = self.input_symbols()
+        input_symbols = self.get_symbolic_inputs()
         cache_lengths_types = [
             input_symbols[i][1] for i in range(len(self.devices))
         ]

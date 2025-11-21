@@ -136,14 +136,14 @@ struct String(
     """The capacity and bit flags for this String."""
 
     # Useful string aliases.
-    alias ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
-    alias ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    alias ASCII_LETTERS = Self.ASCII_LOWERCASE + Self.ASCII_UPPERCASE
-    alias DIGITS = "0123456789"
-    alias HEX_DIGITS = Self.DIGITS + "abcdef" + "ABCDEF"
-    alias OCT_DIGITS = "01234567"
-    alias PUNCTUATION = """!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"""
-    alias PRINTABLE = Self.DIGITS + Self.ASCII_LETTERS + Self.PUNCTUATION + " \t\n\r\v\f"
+    comptime ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
+    comptime ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    comptime ASCII_LETTERS = Self.ASCII_LOWERCASE + Self.ASCII_UPPERCASE
+    comptime DIGITS = "0123456789"
+    comptime HEX_DIGITS = Self.DIGITS + "abcdef" + "ABCDEF"
+    comptime OCT_DIGITS = "01234567"
+    comptime PUNCTUATION = """!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"""
+    comptime PRINTABLE = Self.DIGITS + Self.ASCII_LETTERS + Self.PUNCTUATION + " \t\n\r\v\f"
 
     # ===------------------------------------------------------------------=== #
     # String Implementation Details
@@ -151,23 +151,23 @@ struct String(
     # This is the number of bytes that can be stored inline in the string value.
     # 'String' is 3 words in size and we use the top byte of the capacity field
     # to store flags.
-    alias INLINE_CAPACITY = Int.BITWIDTH // 8 * 3 - 1
+    comptime INLINE_CAPACITY = Int.BITWIDTH // 8 * 3 - 1
     # When FLAG_HAS_NUL_TERMINATOR is set, the byte past the end of the string
     # is known to be an accessible 'nul' terminator.
-    alias FLAG_HAS_NUL_TERMINATOR = 1 << (Int.BITWIDTH - 3)
+    comptime FLAG_HAS_NUL_TERMINATOR = 1 << (Int.BITWIDTH - 3)
     # When FLAG_IS_REF_COUNTED is set, the string is pointing to a mutable buffer
     # that may have other references to it.
-    alias FLAG_IS_REF_COUNTED = 1 << (Int.BITWIDTH - 2)
+    comptime FLAG_IS_REF_COUNTED = 1 << (Int.BITWIDTH - 2)
     # When FLAG_IS_INLINE is set, the string is inline or "Short String
     # Optimized" (SSO). The first 23 bytes of the fields are treated as UTF-8
     # data
-    alias FLAG_IS_INLINE = 1 << (Int.BITWIDTH - 1)
+    comptime FLAG_IS_INLINE = 1 << (Int.BITWIDTH - 1)
     # gives us 5 bits for the length.
-    alias INLINE_LENGTH_START = Int.BITWIDTH - 8
-    alias INLINE_LENGTH_MASK = 0b1_1111 << Self.INLINE_LENGTH_START
+    comptime INLINE_LENGTH_START = Int.BITWIDTH - 8
+    comptime INLINE_LENGTH_MASK = 0b1_1111 << Self.INLINE_LENGTH_START
     # This is the size to offset the pointer by, to get access to the
     # atomic reference count prepended to the UTF-8 data.
-    alias REF_COUNT_SIZE = size_of[Atomic[DType.int]]()
+    comptime REF_COUNT_SIZE = size_of[Atomic[DType.int]]()
 
     # ===------------------------------------------------------------------=== #
     # Life cycle methods
@@ -306,7 +306,7 @@ struct String(
         print(string) # "1, 2.0, three"
         ```
         """
-        alias length = args.__len__()
+        comptime length = args.__len__()
         var total_bytes = _TotalWritableBytes()
 
         @parameter
@@ -376,7 +376,7 @@ struct String(
         %# assert_equal(string, "1, 2.0, three")
         ```
         """
-        alias length = args.__len__()
+        comptime length = args.__len__()
         var total_bytes = _TotalWritableBytes()
 
         @parameter
@@ -428,7 +428,7 @@ struct String(
         Returns:
             A string formed by formatting the argument sequence.
         """
-        alias length = args.__len__()
+        comptime length = args.__len__()
         var total_bytes = _TotalWritableBytes()
 
         @parameter
@@ -474,7 +474,7 @@ struct String(
         Args:
             args: Sequence of arguments to write to this Writer.
         """
-        alias length = args.__len__()
+        comptime length = args.__len__()
         var total_bytes = _TotalWritableBytes()
         total_bytes.size += self.byte_length()
 
@@ -1047,7 +1047,7 @@ struct String(
 
     fn join[
         T: Copyable & Movable & Writable
-    ](self, elems: List[T, *_]) -> String:
+    ](self, elems: Span[T, *_]) -> String:
         """Joins string elements using the current string as a delimiter.
         Defaults to writing to the stack if total bytes of `elems` is less than
         `buffer_size`, otherwise will allocate once to the heap and write
@@ -1758,36 +1758,91 @@ struct String(
     fn rjust(self, width: Int, fillchar: StaticString = " ") -> String:
         """Returns the string right justified in a string of specified width.
 
+        Pads the string on the left with the specified fill character so that
+        the total length of the resulting string equals `width`. If the original
+        string is already longer than or equal to `width`, returns the original
+        string unchanged.
+
         Args:
-            width: The width of the field containing the string.
-            fillchar: Specifies the padding character.
+            width: The total width (in bytes) of the resulting string. This is
+                not the amount of padding, but the final length of the returned
+                string.
+            fillchar: The padding character to use (defaults to space). Must be
+                a single-byte character.
 
         Returns:
-            Returns right justified string, or self if width is not bigger than self length.
+            A right-justified string of length `width`, or the original string
+            if its length is already greater than or equal to `width`.
+
+        Examples:
+
+        ```mojo
+        var s = String("hello")
+        print(s.rjust(10))        # "     hello"
+        print(s.rjust(10, "*"))   # "*****hello"
+        print(s.rjust(3))         # "hello" (no padding)
+        ```
         """
         return self.as_string_slice().rjust(width, fillchar)
 
     fn ljust(self, width: Int, fillchar: StaticString = " ") -> String:
         """Returns the string left justified in a string of specified width.
 
+        Pads the string on the right with the specified fill character so that
+        the total length of the resulting string equals `width`. If the original
+        string is already longer than or equal to `width`, returns the original
+        string unchanged.
+
         Args:
-            width: The width of the field containing the string.
-            fillchar: Specifies the padding character.
+            width: The total width (in bytes) of the resulting string. This is
+                not the amount of padding, but the final length of the returned
+                string.
+            fillchar: The padding character to use (defaults to space). Must be
+                a single-byte character.
 
         Returns:
-            Returns left justified string, or self if width is not bigger than self length.
+            A left-justified string of length `width`, or the original string
+            if its length is already greater than or equal to `width`.
+
+        Examples:
+
+        ```mojo
+        var s = String("hello")
+        print(s.ljust(10))        # "hello     "
+        print(s.ljust(10, "*"))   # "hello*****"
+        print(s.ljust(3))         # "hello" (no padding)
+        ```
         """
         return self.as_string_slice().ljust(width, fillchar)
 
     fn center(self, width: Int, fillchar: StaticString = " ") -> String:
         """Returns the string center justified in a string of specified width.
 
+        Pads the string on both sides with the specified fill character so that
+        the total length of the resulting string equals `width`. If the padding
+        needed is odd, the extra character goes on the right side. If the
+        original string is already longer than or equal to `width`, returns the
+        original string unchanged.
+
         Args:
-            width: The width of the field containing the string.
-            fillchar: Specifies the padding character.
+            width: The total width (in bytes) of the resulting string. This is
+                not the amount of padding, but the final length of the returned
+                string.
+            fillchar: The padding character to use (defaults to space). Must be
+                a single-byte character.
 
         Returns:
-            Returns center justified string, or self if width is not bigger than self length.
+            A center-justified string of length `width`, or the original string
+            if its length is already greater than or equal to `width`.
+
+        Examples:
+
+        ```mojo
+        var s = String("hello")
+        print(s.center(10))        # "  hello   "
+        print(s.center(11, "*"))   # "***hello***"
+        print(s.center(3))         # "hello" (no padding)
+        ```
         """
         return self.as_string_slice().center(width, fillchar)
 
@@ -2074,9 +2129,9 @@ fn atol(str_slice: StringSlice, base: Int = 10) raises -> Int:
 
     start, is_negative = _trim_and_handle_sign(str_slice, str_len)
 
-    alias ord_0 = ord("0")
-    alias ord_letter_min = (ord("a"), ord("A"))
-    alias ord_underscore = ord("_")
+    comptime ord_0 = ord("0")
+    comptime ord_letter_min = (ord("a"), ord("A"))
+    comptime ord_underscore = ord("_")
 
     if base == 0:
         var real_base_new_start = _identify_base(str_slice, start)

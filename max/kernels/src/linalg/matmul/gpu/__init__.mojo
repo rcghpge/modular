@@ -376,6 +376,7 @@ fn _matmul_gpu[
         MatmulConfig[a_type, b_type, c_type, transpose_b]
     ] = None,
     pdl_level: PDLLevel = PDLLevel(),
+    register_based_epilogue: Bool = True,
 ](
     c: NDBuffer[mut=True, c_type, 2, _, _],
     a: NDBuffer[a_type, 2, _, _],
@@ -503,6 +504,7 @@ fn _matmul_gpu[
             elementwise_lambda_fn=elementwise_lambda_fn,
             elementwise_lambda_wrapper=elementwise_lambda_wrapper,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+            register_based_epilogue=register_based_epilogue,
             pdl_level=pdl_level,
         ](c, a, b, ctx)
 
@@ -670,9 +672,18 @@ fn _matmul_gpu[
                     and ctx.default_device_info is A100
                     and transpose_b
                 ):
-                    alias Ms = List[Int32](
-                        16, 32, 64, 128, 256, 512, 768, 1024, 2048, 4096
-                    )
+                    alias Ms: List[Int32] = [
+                        16,
+                        32,
+                        64,
+                        128,
+                        256,
+                        512,
+                        768,
+                        1024,
+                        2048,
+                        4096,
+                    ]
                     try:
 
                         @parameter

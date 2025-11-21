@@ -21,15 +21,15 @@ from os import abort
 from sys import CompilationTarget, bit_width_of, size_of
 from sys.intrinsics import _type_is_eq
 
-alias _mIsSigned = __mlir_attr.`#pop.simd<1> : !pop.scalar<ui8>`
-alias _mIsInteger = __mlir_attr.`#pop.simd<128> : !pop.scalar<ui8>`
-alias _mIsNotInteger = __mlir_attr.`#pop.simd<127> : !pop.scalar<ui8>`
-alias _mIsFloat = __mlir_attr.`#pop.simd<64> : !pop.scalar<ui8>`
+comptime _mIsSigned = __mlir_attr.`#pop.simd<1> : !pop.scalar<ui8>`
+comptime _mIsInteger = __mlir_attr.`#pop.simd<128> : !pop.scalar<ui8>`
+comptime _mIsNotInteger = __mlir_attr.`#pop.simd<127> : !pop.scalar<ui8>`
+comptime _mIsFloat = __mlir_attr.`#pop.simd<64> : !pop.scalar<ui8>`
 
 
 @register_passable("trivial")
 struct DType(
-    EqualityComparable,
+    Equatable,
     Hashable,
     Identifiable,
     ImplicitlyCopyable,
@@ -81,7 +81,7 @@ struct DType(
     # Fields
     # ===-------------------------------------------------------------------===#
 
-    alias _mlir_type = __mlir_type.`!kgen.dtype`
+    comptime _mlir_type = __mlir_type.`!kgen.dtype`
 
     var _mlir_value: Self._mlir_type
     """The underlying storage for the DType value."""
@@ -90,88 +90,88 @@ struct DType(
     # Aliases
     # ===-------------------------------------------------------------------===#
 
-    alias invalid = DType(
+    comptime invalid = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<invalid> : !kgen.dtype`
     )
     """Represents an invalid or unknown data type."""
 
-    alias bool = DType(
+    comptime bool = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<bool> : !kgen.dtype`
     )
     """Represents a boolean data type."""
 
-    alias int = DType(
+    comptime int = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<index> : !kgen.dtype`
     )
     """Represents an integral type whose bitwidth is the maximum integral value
     on the system."""
 
-    alias uint = DType(
+    comptime uint = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<uindex> : !kgen.dtype`
     )
     """Represents an unsigned integral type whose bitwidth is the maximum
     unsigned integral value on the system."""
 
-    alias _uint1 = DType(
+    comptime _uint1 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui1> : !kgen.dtype`
     )
-    alias _uint2 = DType(
+    comptime _uint2 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui2> : !kgen.dtype`
     )
-    alias _uint4 = DType(
+    comptime _uint4 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui4> : !kgen.dtype`
     )
 
-    alias uint8 = DType(
+    comptime uint8 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui8> : !kgen.dtype`
     )
     """Represents an unsigned integer type whose bitwidth is 8."""
-    alias int8 = DType(
+    comptime int8 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<si8> : !kgen.dtype`
     )
     """Represents a signed integer type whose bitwidth is 8."""
-    alias uint16 = DType(
+    comptime uint16 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui16> : !kgen.dtype`
     )
     """Represents an unsigned integer type whose bitwidth is 16."""
-    alias int16 = DType(
+    comptime int16 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<si16> : !kgen.dtype`
     )
     """Represents a signed integer type whose bitwidth is 16."""
-    alias uint32 = DType(
+    comptime uint32 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui32> : !kgen.dtype`
     )
     """Represents an unsigned integer type whose bitwidth is 32."""
-    alias int32 = DType(
+    comptime int32 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<si32> : !kgen.dtype`
     )
     """Represents a signed integer type whose bitwidth is 32."""
-    alias uint64 = DType(
+    comptime uint64 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui64> : !kgen.dtype`
     )
     """Represents an unsigned integer type whose bitwidth is 64."""
-    alias int64 = DType(
+    comptime int64 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<si64> : !kgen.dtype`
     )
     """Represents a signed integer type whose bitwidth is 64."""
-    alias uint128 = DType(
+    comptime uint128 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui128> : !kgen.dtype`
     )
     """Represents an unsigned integer type whose bitwidth is 128."""
-    alias int128 = DType(
+    comptime int128 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<si128> : !kgen.dtype`
     )
     """Represents a signed integer type whose bitwidth is 128."""
-    alias uint256 = DType(
+    comptime uint256 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<ui256> : !kgen.dtype`
     )
     """Represents an unsigned integer type whose bitwidth is 256."""
-    alias int256 = DType(
+    comptime int256 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<si256> : !kgen.dtype`
     )
     """Represents a signed integer type whose bitwidth is 256."""
 
-    alias float4_e2m1fn = DType(
+    comptime float4_e2m1fn = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f4e2m1fn> : !kgen.dtype`
     )
     """Represents a 4-bit `e2m1` floating point format, encoded as
@@ -183,7 +183,21 @@ struct DType(
     - exponent_bias: 1
     """
 
-    alias float8_e3m4 = DType(
+    comptime float8_e8m0fnu = DType(
+        mlir_value=__mlir_attr.`#kgen.dtype.constant<f8e8m0fnu> : !kgen.dtype`
+    )
+    """Represents the 8-bit `E8M0Fnu` floating point format defined in the
+    [OFP8 standard](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-12-01-pdf-1),
+    encoded as `eeeeeeee`:
+
+    - (e)xponent: 8 bits
+    - (m)antissa: 0 bits
+    - exponent bias: 127
+    - nan: 11111111
+    - fn: finite (no inf or -inf encodings)
+    - u: no sign or zero value.
+    """
+    comptime float8_e3m4 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f8e3m4> : !kgen.dtype`
     )
     """Represents an 8-bit `e3m4` floating point format, encoded as
@@ -197,11 +211,7 @@ struct DType(
     - fn: finite (no inf or -inf encodings)
     - -0: 1.000.0000
     """
-
-    # reference for the 4 float8 types
-    # https://onnx.ai/onnx/technical/float8.html
-
-    alias float8_e4m3fn = DType(
+    comptime float8_e4m3fn = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f8e4m3fn> : !kgen.dtype`
     )
     """Represents the 8-bit `E4M3` floating point format defined in the
@@ -222,7 +232,7 @@ struct DType(
     - fn: finite (no inf or -inf encodings)
     - -0: 1.0000.000
     """
-    alias float8_e4m3fnuz = DType(
+    comptime float8_e4m3fnuz = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f8e4m3fnuz> : !kgen.dtype`
     )
     """Represents an 8-bit `e4m3fnuz` floating point format
@@ -236,7 +246,7 @@ struct DType(
     - fn: finite (no inf or -inf encodings)
     - uz: unsigned zero (no -0 encoding)
     """
-    alias float8_e5m2 = DType(
+    comptime float8_e5m2 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f8e5m2> : !kgen.dtype`
     )
     """Represents the 8-bit `E5M2` floating point format defined in the
@@ -251,7 +261,7 @@ struct DType(
     - inf: {0,1}.11111.00
     - -0: 1.00000.00
     """
-    alias float8_e5m2fnuz = DType(
+    comptime float8_e5m2fnuz = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f8e5m2fnuz> : !kgen.dtype`
     )
     """Represents an 8-bit `e5m2fnuz` floating point format
@@ -266,21 +276,21 @@ struct DType(
     - uz: unsigned zero (no -0 encoding)
     """
 
-    alias bfloat16 = DType(
+    comptime bfloat16 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<bf16> : !kgen.dtype`
     )
     """Represents a brain floating point value whose bitwidth is 16."""
-    alias float16 = DType(
+    comptime float16 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f16> : !kgen.dtype`
     )
     """Represents an IEEE754-2008 `binary16` floating point value."""
 
-    alias float32 = DType(
+    comptime float32 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f32> : !kgen.dtype`
     )
     """Represents an IEEE754-2008 `binary32` floating point value."""
 
-    alias float64 = DType(
+    comptime float64 = DType(
         mlir_value=__mlir_attr.`#kgen.dtype.constant<f64> : !kgen.dtype`
     )
     """Represents an IEEE754-2008 `binary64` floating point value."""
@@ -348,6 +358,8 @@ struct DType(
             return DType.float8_e4m3fn
         elif str == "float8_e4m3fnuz":
             return DType.float8_e4m3fnuz
+        elif str == "float8_e8m0fnu":
+            return DType.float8_e8m0fnu
         elif str == "float8_e5m2":
             return DType.float8_e5m2
         elif str == "float8_e5m2fnuz":
@@ -427,6 +439,8 @@ struct DType(
             return writer.write("float8_e4m3fn")
         elif self is DType.float8_e4m3fnuz:
             return writer.write("float8_e4m3fnuz")
+        elif self is DType.float8_e8m0fnu:
+            return writer.write("float8_e8m0fnu")
         elif self is DType.float8_e5m2:
             return writer.write("float8_e5m2")
         elif self is DType.float8_e5m2fnuz:
@@ -633,7 +647,8 @@ struct DType(
         """
 
         return (
-            self is DType.float8_e3m4
+            self is DType.float8_e8m0fnu
+            or self is DType.float8_e3m4
             or self is DType.float8_e4m3fn
             or self is DType.float8_e4m3fnuz
             or self is DType.float8_e5m2
@@ -660,7 +675,13 @@ struct DType(
             Returns True if the input type parameter is either integral or
               floating-point.
         """
-        return self.is_integral() or self.is_floating_point()
+        return self.is_integral() or (
+            self.is_floating_point()
+            and (
+                self is not DType.float4_e2m1fn
+                and self is not DType.float8_e8m0fnu
+            )
+        )
 
     # ===-------------------------------------------------------------------===#
     # Floating point generics
@@ -696,7 +717,9 @@ struct DType(
         constrained[dtype.is_floating_point(), "dtype must be floating point"]()
 
         @parameter
-        if dtype in (DType.float8_e4m3fn, DType.float8_e4m3fnuz):
+        if dtype is DType.float4_e2m1fn:
+            return 2
+        elif dtype in (DType.float8_e4m3fn, DType.float8_e4m3fnuz):
             return 8
         elif dtype in (DType.float8_e5m2, DType.float8_e5m2fnuz, DType.float16):
             return 16
@@ -722,7 +745,9 @@ struct DType(
         constrained[dtype.is_floating_point(), "dtype must be floating point"]()
 
         @parameter
-        if dtype in (DType.float8_e4m3fn, DType.float8_e4m3fnuz):
+        if dtype is DType.float4_e2m1fn:
+            return 2
+        elif dtype in (DType.float8_e4m3fn, DType.float8_e4m3fnuz):
             return 4
         elif dtype in (DType.float8_e5m2, DType.float8_e5m2fnuz, DType.float16):
             return 5
@@ -798,6 +823,8 @@ struct DType(
         if self is DType.float4_e2m1fn:
             return __mlir_attr.f4E2M1FN
 
+        if self is DType.float8_e8m0fnu:
+            return __mlir_attr.f8E8M0FNU
         if self is DType.float8_e3m4:
             return __mlir_attr.f8E3M4
         if self is DType.float8_e4m3fn:
@@ -874,6 +901,8 @@ struct DType(
         elif _type_is_eq[T, SIMD[DType.float4_e2m1fn, size]]():
             return DType.float4_e2m1fn
 
+        elif _type_is_eq[T, SIMD[DType.float8_e8m0fnu, size]]():
+            return DType.float8_e8m0fnu
         elif _type_is_eq[T, SIMD[DType.float8_e3m4, size]]():
             return DType.float8_e3m4
         elif _type_is_eq[T, SIMD[DType.float8_e4m3fn, size]]():

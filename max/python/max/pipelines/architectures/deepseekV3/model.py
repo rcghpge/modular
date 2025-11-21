@@ -20,23 +20,19 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
-from max.driver import Device, Tensor
+from max.driver import Tensor
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph
-from max.graph.weights import WeightData, Weights, WeightsAdapter
+from max.graph.weights import WeightData
 from max.kv_cache import (
     NullKVCacheManager,
     PagedKVCacheManager,
     load_kv_manager,
 )
-from max.nn import ReturnLogits
 from max.nn.comm.ep import EPCommInitializer, EPConfig
 from max.nn.float8_config import parse_float8_config
-from max.nn.kv_cache import (
-    KVCacheInputs,
-    KVCacheParams,
-)
+from max.nn.kv_cache import KVCacheInputs, KVCacheParams
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
@@ -44,9 +40,9 @@ from max.pipelines.lib import (
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
-    SupportedEncoding,
 )
 from max.pipelines.lib.config_enums import PipelineRole
+from max.support.human_readable_formatter import to_human_readable_bytes
 from transformers import AutoConfig
 from typing_extensions import override
 
@@ -85,8 +81,7 @@ class DeepseekV3Inputs(DeepseekV2Inputs):
 
 
 def _choose_correct_data_parallel_degree(
-    pipeline_config: PipelineConfig,
-    devices: list[Device],
+    pipeline_config: PipelineConfig, num_devices: int
 ) -> None:
     """Ensures the data parallel degree is set correctly in the PipelineConfig.
 
@@ -94,40 +89,22 @@ def _choose_correct_data_parallel_degree(
     TP), so the DP degree must be equal to the number of devices.
     """
     data_parallel_degree = pipeline_config.model_config.data_parallel_degree
-    if data_parallel_degree > 1 and data_parallel_degree != len(devices):
+    if data_parallel_degree > 1 and data_parallel_degree != num_devices:
         raise ValueError(
-            "--data-parallel-degree for DeepSeekV3 must be "
-            " equal to the number of devices"
+            f"--data-parallel-degree for DeepSeekV3 ({data_parallel_degree}) must be "
+            f" equal to the number of devices ({num_devices})"
         )
-    pipeline_config.model_config.data_parallel_degree = len(devices)
+    pipeline_config.model_config.data_parallel_degree = num_devices
 
 
 class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
     """A DeepseekV3 model."""
 
-    def __init__(
-        self,
-        pipeline_config: PipelineConfig,
-        session: InferenceSession,
-        huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
-        devices: list[Device],
-        kv_cache_config: KVCacheConfig,
-        weights: Weights,
-        adapter: WeightsAdapter | None = None,
-        return_logits: ReturnLogits = ReturnLogits.ALL,
-    ) -> None:
-        _choose_correct_data_parallel_degree(pipeline_config, devices)
-        super().__init__(
-            pipeline_config,
-            session,
-            huggingface_config,
-            encoding,
-            devices,
-            kv_cache_config,
-            weights,
-            adapter,
-            return_logits,
+    @classmethod
+    def finalize_pipeline_config(cls, pipeline_config: PipelineConfig) -> None:
+        """Finalizes the pipeline configuration."""
+        _choose_correct_data_parallel_degree(
+            pipeline_config, len(pipeline_config.model_config.device_specs)
         )
 
     @classmethod
@@ -261,6 +238,90 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             return_logits=self.return_logits,
         )
 
+    @classmethod
+    def estimate_weights_size(cls, pipeline_config: PipelineConfig) -> int:
+        """Calculates the estimated memory consumption of our model."""
+
+        model_config = pipeline_config.model_config
+        weights_size = model_config.weights_size()
+        n_gpus_per_node = len(model_config.device_specs)
+
+        # If the model is running with multi-node expert parallelism.
+        if pipeline_config.ep_size > n_gpus_per_node:
+            assert pipeline_config.ep_size % n_gpus_per_node == 0
+            n_nodes = pipeline_config.ep_size // n_gpus_per_node
+            weights_size //= n_nodes
+
+        return weights_size
+
+    @classmethod
+    def estimate_activation_memory(
+        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
+    ) -> int:
+        """Estimates the activation memory required for model execution.
+
+        This accounts for temporary memory buffers used during model execution,
+        such as intermediate activations and working buffers.
+
+        Args:
+            pipeline_config: Pipeline configuration
+            huggingface_config: HuggingFace model configuration
+
+        Returns:
+            Estimated activation memory in bytes
+        """
+
+        encoding = pipeline_config.model_config.quantization_encoding
+        assert encoding is not None
+        activation_memory: int = 0
+
+        # During the prefill, we need to up-project all the KV cache for
+        # current requests. The total context length of requests in a batch
+        # should be limited by max_batch_context_length.
+        if pipeline_config.pipeline_role != PipelineRole.DecodeOnly:
+            max_kv_length: int = 0
+
+            if pipeline_config.max_batch_context_length is None:
+                logger.info(
+                    "Estimation for activation memory might be inaccurate, "
+                    "max-batch-context-length is not set."
+                )
+            else:
+                max_kv_length = pipeline_config.max_batch_context_length
+
+            activation_memory += (
+                pipeline_config.model_config.data_parallel_degree
+                * 2  # 2 for K and V
+                * max_kv_length
+                * huggingface_config.num_attention_heads
+                * huggingface_config.qk_nope_head_dim
+                * encoding.cache_dtype.size_in_bytes
+            )
+
+        # Estimate activation memory during Expert Parallel MoE.
+        if pipeline_config.ep_size > 1:
+            n_gpus_per_node = len(pipeline_config.model_config.device_specs)
+            max_input_len_per_rank = pipeline_config.prefill_chunk_size
+
+            # Calculate the maximum number of tokens a rank may receive during all-to-all routing.
+            max_recv_tokens_per_rank = (
+                max_input_len_per_rank * huggingface_config.n_routed_experts
+            )
+
+            activation_memory += (
+                n_gpus_per_node
+                * max_recv_tokens_per_rank
+                * huggingface_config.hidden_size
+                * DType.bfloat16.size_in_bytes  # expert output is bfloat16, no matter the quantization type.
+            )
+
+        if activation_memory != 0:
+            logger.info(
+                f"Estimated activation memory: {to_human_readable_bytes(activation_memory)}"
+            )
+
+        return activation_memory
+
     @override
     def load_model(self, session: InferenceSession) -> Model:
         """Load the model with the given weights."""
@@ -320,7 +381,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             ]
 
             # Unmarshal the KV cache arguments.
-            fetch_types = self.kv_manager.input_symbols()[0]
+            fetch_types = self.kv_manager.get_symbolic_inputs()[0]
             len_of_kv_inputs = len(list(fetch_types)) * len(self.devices)
             kv_caches_per_dev = self._unflatten_kv_inputs(
                 [next(variadic_args_iter) for _ in range(len_of_kv_inputs)]

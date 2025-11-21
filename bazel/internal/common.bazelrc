@@ -132,6 +132,7 @@ common --incompatible_modify_execution_info_additive
 # Reduce the impact of transitions on rebuilding C++ files
 build --modify_execution_info=CppArchive=+supports-path-mapping
 build --modify_execution_info=CppCompile=+supports-path-mapping
+build --modify_execution_info=CppModuleMap=+supports-path-mapping
 build --modify_execution_info=Objc.*=+supports-path-mapping
 build --experimental_output_paths=strip
 
@@ -234,19 +235,6 @@ build:ci-remote-b200 --config=ci-gpu-common
 build:ci-remote-b200 --config=remote-b200
 build:ci-remote-b200 --test_keep_going=false
 
-build:remote-mi300 --config=remote
-build:remote-mi300 --repo_env=MODULAR_SKIP_AUTO_PLATFORMS=1
-build:remote-mi300 --platforms=//:mi300-platform
-build:remote-mi300 --extra_execution_platforms=//:m7i-platform,//:mi300-platform,@mojo_host_platform
-build:remote-mi300 --spawn_strategy=remote,worker,sandboxed,standalone
-build:remote-mi300 --repo_env=MODULAR_TARGET=linux:x86_64
-build:remote-mi300 --build_metadata=TAG_GPU=mi300
-build:remote-mi300 --build_metadata=TAG_TARGET_OS=linux
-
-build:ci-remote-mi300 --config=ci-gpu-common
-build:ci-remote-mi300 --config=remote-mi300
-build:ci-remote-mi300 --test_keep_going=false
-
 build:remote-mi355 --config=remote
 build:remote-mi355 --repo_env=MODULAR_SKIP_AUTO_PLATFORMS=1
 build:remote-mi355 --platforms=//:mi355-platform
@@ -262,4 +250,4 @@ build:ci-remote-mi355 --config=remote-mi355
 # build:ci-remote-mi355 --test_keep_going=false
 
 # TODO: Remove once transitives are fixed
-common --incompatible_autoload_externally=@rules_shell,@com_google_protobuf,java_binary,+JavaInfo
+common --incompatible_autoload_externally=@rules_shell,@com_google_protobuf,java_binary,+JavaInfo,+@rules_cc

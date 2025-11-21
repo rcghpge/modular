@@ -26,13 +26,13 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from max.driver import Device, DLPackArray, Tensor
+from max.driver import CPU, Device, DLPackArray, Tensor
 from max.dtype import DType
 from max.graph import Weight
+from max.graph.tensor_utils import cast_dlpack_to, cast_tensor_to
 from max.graph.type import DeviceRef, TensorType
 from max.graph.value import TensorValue
 from max.graph.weights import WeightData, WeightsFormat, load_weights
-from max.graph.weights.weights import _cast_to_dtype
 from max.interfaces import (
     LoRAStatus,
     LoRAType,
@@ -432,7 +432,8 @@ class LoRAModel:
                     weight_np = padded
 
                 # Cast to base dtype after padding
-                data.data = _cast_to_dtype(weight_np, data.dtype, base_dtype)
+                weight_tensor = Tensor.from_numpy(weight_np)
+                data.data = cast_tensor_to(weight_tensor, base_dtype)
                 self._lora_A[key] = data
             elif LoRAType.B.value in key:
                 # A minor optimization so we don't have to multiply scale
@@ -452,10 +453,13 @@ class LoRAModel:
                     weight_np = padded
 
                 # Cast to base dtype after padding
-                data.data = _cast_to_dtype(weight_np, data.dtype, base_dtype)
+                weight_tensor = Tensor.from_numpy(weight_np)
+                data.data = cast_tensor_to(weight_tensor, base_dtype)
                 self._lora_B[key] = data
             elif LoRAType.BIAS.value in key:
-                data.data = _cast_to_dtype(data.data, data.dtype, base_dtype)
+                data.data = cast_dlpack_to(
+                    data.data, data.dtype, base_dtype, CPU()
+                )
                 self._lora_bias[key] = data
             else:
                 raise ValueError(f"Invalid LoRA type got key: {key}")
@@ -588,6 +592,9 @@ class LoRAManager:
                 prev_id = id_
 
         grouped_offsets.append(input_row_offsets[-1])
+        last_lora_idx = (
+            grouped_ids.index(-1) if -1 in grouped_ids else len(grouped_ids)
+        )
 
         lora_ids = Tensor.from_numpy(np.array(grouped_ids, dtype=np.int32)).to(
             device
@@ -598,8 +605,11 @@ class LoRAManager:
         lora_grouped_offsets = Tensor.from_numpy(
             np.array(grouped_offsets, dtype=np.uint32)
         ).to(device)
+        lora_input_slice_idx = Tensor.from_numpy(
+            np.array([last_lora_idx], dtype=np.int64)
+        )
 
-        return lora_ids, lora_ranks, lora_grouped_offsets
+        return lora_ids, lora_ranks, lora_grouped_offsets, lora_input_slice_idx
 
     def _validate_lora_path(self, path: str) -> LoRAStatus:
         """
@@ -843,9 +853,10 @@ class LoRAManager:
         # cast from fp32 -> target dtype
         # if target dtype is bfloat16, this technically returns a float16 np.ndarray
         # we then view the MAX Tensor to get the correct dtype
-        weight = _cast_to_dtype(
-            Tensor.from_numpy(weight_np), DType.float32, base_weight.dtype
-        ).copy(base_weight.device.to_device())
+        weight_tensor = Tensor.from_numpy(weight_np)
+        weight = cast_tensor_to(weight_tensor, base_weight.dtype).copy(
+            base_weight.device.to_device()
+        )
 
         lora_weights = WeightData(
             weight,
@@ -919,7 +930,7 @@ class LoRAManager:
 
                 self._alias_buffers[state_key] = state_dict[state_key].data
 
-    def input_symbols(self, device_ref: DeviceRef) -> list[TensorType]:
+    def get_symbolic_inputs(self, device_ref: DeviceRef) -> list[TensorType]:
         """
         Returns the input symbols needed for the graph inputs
 
@@ -938,13 +949,23 @@ class LoRAManager:
         lora_grouped_offsets_type = TensorType(
             DType.uint32, shape=["lora_grouped_offsets"], device=device_ref
         )
-        return [lora_ids_type, lora_ranks_type, lora_grouped_offsets_type]
+        lora_input_slice_idx = TensorType(
+            DType.int64, shape=[1], device=DeviceRef.CPU()
+        )
+
+        return [
+            lora_ids_type,
+            lora_ranks_type,
+            lora_grouped_offsets_type,
+            lora_input_slice_idx,
+        ]
 
     def set_graph_info(
         self,
         lora_ids: TensorValue,
         lora_ranks: TensorValue,
         lora_grouped_offsets: TensorValue,
+        lora_input_slice_idx: TensorValue,
     ) -> None:
         """
         Sets the lora batch info required for the forward-pass.
@@ -956,7 +977,10 @@ class LoRAManager:
         for _, layer in self._lora_layers.items():
             if isinstance(layer, SupportsLoRA):
                 layer.set_lora_batch_info(
-                    lora_ids, lora_ranks, lora_grouped_offsets
+                    lora_ids,
+                    lora_ranks,
+                    lora_grouped_offsets,
+                    lora_input_slice_idx,
                 )
 
     def sort_lora_batch(

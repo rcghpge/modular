@@ -78,8 +78,9 @@ fn named_barrier[
     constrained[
         is_nvidia_gpu(), "named barrier is only supported by NVIDIA GPUs"
     ]()
-    __mlir_op.`nvvm.barrier`[
-        _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1,1>}`
+    _ = __mlir_op.`nvvm.barrier`[
+        _properties = __mlir_attr.`{operandSegmentSizes = array<i32: 1, 1, 0>}`,
+        _type = __mlir_type.i32,
     ](to_i32(id), to_i32(num_threads))
 
 
@@ -141,7 +142,7 @@ fn barrier():
 
 @fieldwise_init
 @register_passable("trivial")
-struct AMDScheduleBarrierMask(EqualityComparable, Intable):
+struct AMDScheduleBarrierMask(Equatable, Intable):
     """Represents different instruction scheduling masks for AMDGPU scheduling instructions.
 
     These masks control which types of instructions can be reordered across a barrier for
@@ -669,7 +670,7 @@ fn mbarrier_arrive_expect_tx_shared[
 
     @parameter
     if is_nvidia_gpu():
-        __mlir_op.`nvvm.mbarrier.arrive.expect_tx.shared`(
+        __mlir_op.`nvvm.mbarrier.arrive.expect_tx`(
             to_llvm_shared_mem_ptr(addr), to_i32(tx_count)
         )
     else:
@@ -780,7 +781,7 @@ fn mbarrier_try_wait_parity_shared[
 
     @parameter
     if is_nvidia_gpu():
-        __mlir_op.`nvvm.mbarrier.try_wait.parity.shared`(
+        __mlir_op.`nvvm.mbarrier.try_wait.parity`(
             to_llvm_shared_mem_ptr(addr), to_i32(phase), to_i32(ticks)
         )
     else:

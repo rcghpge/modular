@@ -345,13 +345,13 @@ class MultimodalKVCacheManager:
         return min(text_batch_size, vision_batch_size)
 
     @final
-    def fetch(
+    def get_runtime_inputs(
         self, batch: Sequence[TextGenerationContext], num_steps: int = 1
     ) -> Sequence[RaggedKVCacheInputs]:
         """Returns KV cache inputs for both modalities' KV managers."""
-        # Here we call into the text KV manager's fetch method to update
-        # its fetch metadata.
-        text_fetch_results = self.text_kv_manager.fetch(batch, num_steps)[0]
+        text_fetch_results = self.text_kv_manager.get_runtime_inputs(
+            batch, num_steps
+        )[0]
 
         # For the vision KV manager, fetch metadata isn't applicable since
         # autoregressive generation is text only.
@@ -394,9 +394,9 @@ class MultimodalKVCacheManager:
             np.array(
                 [
                     [
-                        vision_kv_manager_replica._request_to_seq_id[
+                        vision_kv_manager_replica.get_req_blocks(
                             ctx.request_id
-                        ],
+                        )[0],
                         1,
                     ]
                     for ctx in batch
@@ -420,7 +420,7 @@ class MultimodalKVCacheManager:
         return cast(Sequence[RaggedKVCacheInputs], multimodal_kv_inputs)
 
     @final
-    def input_symbols(
+    def get_symbolic_inputs(
         self,
         devices: Sequence[Device] | None = None,
         num_layers: int | None = None,
@@ -434,10 +434,12 @@ class MultimodalKVCacheManager:
 
         # Get input symbols from both managers
         text_symbols = cast(
-            PagedCacheInputSymbols, self.text_kv_manager.input_symbols()[0]
+            PagedCacheInputSymbols,
+            self.text_kv_manager.get_symbolic_inputs()[0],
         )
         vision_symbols = cast(
-            PagedCacheInputSymbols, self.vision_kv_manager.input_symbols()[0]
+            PagedCacheInputSymbols,
+            self.vision_kv_manager.get_symbolic_inputs()[0],
         )
 
         # Rename conflicting symbolic dimensions in text symbols
@@ -487,7 +489,7 @@ class MultimodalKVCacheManager:
         # As there is only one replica, we always return 0
         return 0
 
-    def external_claim(
+    def claim(
         self, request_id: RequestID, replica_idx: int | None = None
     ) -> None:
         """Reserves sequence IDs for the given request ID in both modalities' KV caches.
@@ -500,8 +502,8 @@ class MultimodalKVCacheManager:
             raise ValueError(
                 "replica_idx must be 0 for MultimodalKVCacheManager"
             )
-        self.text_kv_manager.external_claim(request_id, replica_idx)
-        self.vision_kv_manager.external_claim(request_id, replica_idx)
+        self.text_kv_manager.claim(request_id, replica_idx)
+        self.vision_kv_manager.claim(request_id, replica_idx)
 
     def release(self, request_id: RequestID) -> None:
         """Marks the sequence complete for both modalities' KV caches.
@@ -529,17 +531,11 @@ class MultimodalKVCacheManager:
 
         return text_kv_contains
 
-    def maybe_reserve(
-        self, data: TextGenerationContext, num_steps: int = 1
-    ) -> bool:
-        """Pre-reserve blocks for both text and vision caches.
-
-        Returns True only if reservation succeeds for both managers.
-        """
-        text_reserved = self.text_kv_manager.maybe_reserve(data, num_steps)
+    def alloc(self, data: TextGenerationContext, num_steps: int = 1) -> None:
+        """Allocates blocks for a request to run for N steps."""
+        self.text_kv_manager.alloc(data, num_steps)
         # For vision, reserve using provided num_steps to maintain symmetry.
-        vision_reserved = self.vision_kv_manager.maybe_reserve(data, num_steps)
-        return bool(text_reserved and vision_reserved)
+        self.vision_kv_manager.alloc(data, num_steps)
 
     def num_kv_inputs(self) -> int:
         """Returns the sum of the KV input lengths for both modalities.
@@ -1003,7 +999,7 @@ class LlamaVision(PipelineModel[TextAndVisionContext]):
         assert hasattr(self, "kv_manager") and isinstance(
             self.kv_manager, MultimodalKVCacheManager
         )
-        input_symbols = self.kv_manager.input_symbols()[0]
+        input_symbols = self.kv_manager.get_symbolic_inputs()[0]
         text_kv_input_symbols = input_symbols.text_kv_input_symbols
         vision_kv_input_symbols = input_symbols.vision_kv_input_symbols
 

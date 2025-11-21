@@ -28,13 +28,7 @@ import numpy as np
 from max.driver import Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession
-from max.graph import (
-    BufferType,
-    DeviceRef,
-    Graph,
-    TensorType,
-    TensorValue,
-)
+from max.graph import BufferType, DeviceRef, Graph, TensorType, TensorValue
 from max.interfaces import RequestID, TextGenerationContext, get_blocking
 from max.nn.kv_cache.cache_params import KVCacheParams
 from max.nn.kv_cache.manager import RaggedKVCacheInputs
@@ -50,7 +44,7 @@ from max.support.human_readable_formatter import to_human_readable_bytes
 from max.support.math import ceildiv
 
 from .block_copy_engine import BlockCopyEngine
-from .block_manager import BlockManager, InsufficientBlocksError
+from .block_manager import BlockManager
 
 logger = logging.getLogger("max.pipelines")
 
@@ -77,7 +71,7 @@ class _TPPagedKVCacheManager:
 
     total_num_pages: int
     """Total number of logical pages (complete token slots) available.
-    
+
     In tensor parallelism, each page's KV data is sharded across all devices,
     but this count represents complete logical pages (where all shards together
     form one complete page of `page_size` tokens).
@@ -97,9 +91,6 @@ class _TPPagedKVCacheManager:
 
     enable_prefix_caching: bool
     """Flag indicating if prefix caching (block reuse) is enabled."""
-
-    gpu_device: Device | None
-    """An arbitrary GPU device which holds KV cache blocks, should one exist."""
 
     enable_kvcache_swapping_to_host: bool
     """Flag indicating if swapping blocks to host memory is enabled."""
@@ -155,11 +146,8 @@ class _TPPagedKVCacheManager:
                 "_TPPagedKVCacheManager does not support data parallelism."
             )
 
-        # Attributes for managing available slots.
-        self._available = set(range(self.max_batch_size))
-
-        # Mappings between request IDs and sequence IDs.
-        self._request_to_seq_id: dict[RequestID, int] = {}
+        # Track the set of requests that are currently claimed.
+        self._claimed_requests: set[RequestID] = set()
 
         # The number of tokens in a single block.
         self.page_size = page_size
@@ -553,37 +541,53 @@ class _TPPagedKVCacheManager:
         return seq_len > num_blocks * self.page_size
 
     @traced
-    def maybe_reserve(
-        self, data: TextGenerationContext, num_steps: int = 1
-    ) -> bool:
-        """Prepares blocks for a request prior to a subsequent fetch call.
-
-        This will reuse blocks from prefix cache and allocate new blocks for the
-        request. If a request is prefetched, it is guaranteed to not OOM in a
-        subsequent call to `fetch`.
-
-        Returns `True` if the request was prefetched, `False` otherwise.
-        """
-        self.block_manager.reuse_blocks_from_prefix_cache(data)
-
-        # Allocating new blocks can fail if there are insufficient blocks.
-        try:
-            self.block_manager.allocate_new_blocks(data, num_steps)
-        except InsufficientBlocksError:
-            return False
-        return True
+    def get_pct_used_blocks_after_allocation(
+        self, ctx: TextGenerationContext, num_steps: int = 1
+    ) -> float:
+        """Get the percentage of blocks used after allocating for a request."""
+        num_used_blocks = self.total_num_pages - self.num_free_blocks
+        num_needed_blocks = (
+            num_used_blocks
+            + self.block_manager.num_blocks_to_allocate(ctx, num_steps)
+        )
+        assert self.total_num_pages > 0
+        return min(
+            1.0,
+            num_needed_blocks / self.total_num_pages,
+        )
 
     @traced
-    def fetch(
+    def alloc(self, data: TextGenerationContext, num_steps: int = 1) -> None:
+        """Allocates blocks for a request to run for N steps.
+
+        This method allocates blocks needed by a request to run for N steps.
+        When prefix caching is enabled, some of the allocated blocks may be
+        retrieved from the prefix cache.
+
+        Args:
+            data: The text generation context for the request. The request ID
+                must already be assigned to a replica via `claim`.
+            num_steps: The number of steps to reserve blocks for. Default: 1.
+
+        Raises:
+            InsufficientBlocksError: If there are insufficient free blocks to
+            satisfy the allocation.
+        """
+        self.block_manager.reuse_blocks_from_prefix_cache(data)
+        self.block_manager.allocate_new_blocks(data, num_steps)
+
+    @traced
+    def get_runtime_inputs(
         self, batch: Sequence[TextGenerationContext], num_steps: int = 1
     ) -> Sequence[RaggedKVCacheInputs]:
-        """Reuses blocks from prefix cache and allocates new blocks for requests in batch.
+        """Get the graph inputs for a batch of requests.
 
-        On cache hits, the input context may have their start_idx bumped upwards in order
-        to trim the prompt. Additionally, this method may launch COW memcpy kernel.
+        This method will raise a RuntimeError if any request has insufficient blocks
+        already allocated to it to run for the given number of steps.
 
-        This can fail if there are insufficient blocks to satisfy the batch. In such a case,
-        we raise a RuntimeError.
+        Args:
+            batch: Batch of requests
+            num_steps: Number of steps to run for
         """
 
         if self.block_copy_engine is not None:
@@ -597,8 +601,9 @@ class _TPPagedKVCacheManager:
         for batch_idx, ctx in enumerate(batch):  # noqa: B007
             # Allocate blocks for request if we need more.
             if self._does_req_need_more_blocks(ctx, num_steps):
-                self.block_manager.reuse_blocks_from_prefix_cache(ctx)
-                self.block_manager.allocate_new_blocks(ctx, num_steps)
+                raise ValueError(
+                    f"Called fetch with request {ctx.request_id} but it does not have sufficient blocks. `alloc` must be called first."
+                )
 
             # Compute the total sequence length
             seq_len = ctx.current_length + num_steps - 1
@@ -671,7 +676,7 @@ class _TPPagedKVCacheManager:
 
         return ret_list
 
-    def input_symbols(
+    def get_symbolic_inputs(
         self,
         devices: Sequence[Device] | None = None,
         num_layers: int | None = None,
@@ -735,25 +740,12 @@ class _TPPagedKVCacheManager:
         This returns the sequence ID back to the available pool of cache memory,
         allowing it to be reused when a new sequence is claimed.
         """
-        # Get the sequence ID from the request ID for internal use
-        if request_id not in self._request_to_seq_id:
+        if request_id not in self._claimed_requests:
             raise ValueError(
                 f"Attempted to release request ID {request_id} but it is not claimed"
             )
 
-        # Call the base class release method with the request_id
-        if request_id not in self._request_to_seq_id:
-            raise ValueError(
-                f"Attempted to release request ID {request_id} but it is not claimed"
-            )
-
-        # Look up the sequence ID
-        seq_id = self._request_to_seq_id[request_id]
-
-        # Clean up mappings
-        del self._request_to_seq_id[request_id]
-
-        self._available.add(seq_id)
+        self._claimed_requests.remove(request_id)
 
         # Call the block manager release method with the request_id
         self.block_manager.release(request_id)
@@ -806,7 +798,7 @@ class _TPPagedKVCacheManager:
         return self.block_manager.get_req_blocks(request_id)
 
     def _create_increment_cache_lengths_graph(self) -> Graph:
-        input_symbols = self.input_symbols()
+        input_symbols = self.get_symbolic_inputs()
         cache_lengths_types = [
             input_symbols[i][1] for i in range(len(self.devices))
         ]
@@ -908,19 +900,15 @@ class _TPPagedKVCacheManager:
             )
         return kv_cache_inputs
 
-    def external_claim(self, request_id: RequestID) -> None:
+    def claim(self, request_id: RequestID) -> None:
         """Reserve a sequence ID for the given request ID."""
-        if request_id in self._request_to_seq_id:
+        if request_id in self._claimed_requests:
             raise ValueError(f"Request ID {request_id} is already claimed")
-
-        if not self._available:
-            raise ValueError("No available sequence IDs to claim")
-
-        # Get the next available sequence ID
-        seq_id = self._available.pop()
-
-        # Update mappings
-        self._request_to_seq_id[request_id] = seq_id
+        if len(self._claimed_requests) == self.max_batch_size:
+            raise ValueError(
+                f"Unable to claim request ID {request_id} due to batch size limit."
+            )
+        self._claimed_requests.add(request_id)
 
     def contains(self, request_id: RequestID) -> bool:
         """Check if the given request ID is currently active in the cache.
@@ -931,7 +919,7 @@ class _TPPagedKVCacheManager:
         Returns:
             True if the request ID is active in the cache, False otherwise.
         """
-        return request_id in self._request_to_seq_id
+        return request_id in self._claimed_requests
 
     @property
     def metrics(self) -> KVCacheMetrics:

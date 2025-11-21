@@ -414,6 +414,7 @@ fn matmul_dispatch_sm100[
     elementwise_compute_lambda_fn: OptionalReg[
         elementwise_compute_lambda_type
     ] = None,
+    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: NDBuffer[mut=True, c_type, 2, _, _],
@@ -459,6 +460,7 @@ fn matmul_dispatch_sm100[
         return blackwell_matmul_tma_umma_warp_specialized[
             transpose_b=transpose_b,
             config=config,
+            register_based_epilogue=register_based_epilogue,
         ](c_tensor, a_tensor, b_tensor, ctx)
 
     var m = c.dim[0]()
@@ -1736,6 +1738,7 @@ fn _bf16_experimental[
                 num_accum_pipeline_stages=tuning_config.num_accum_pipeline_stages,
                 num_clc_pipeline_stages=tuning_config.num_clc_pipeline_stages,
                 k_group_size=tuning_config.k_group_size,
+                num_split_k=tuning_config.num_split_k,
             )
             _matmul_dispatch_sm100[
                 transpose_b=transpose_b,
@@ -2402,6 +2405,7 @@ fn _matmul_dispatch_sm100[
             transpose_b=transpose_b,
             config=config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+            pdl_level=pdl_level,
         ](c_tensor, a_tensor, b_tensor, ctx)
         return
 
@@ -2440,6 +2444,7 @@ fn _matmul_dispatch_sm100[
                 transpose_b=transpose_b,
                 config=config,
                 elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+                pdl_level=pdl_level,
             ](c_tensor, a_tensor, b_tensor, ctx)
 
             elementwise[epilogue_wrapper, simd_size, target="gpu"](

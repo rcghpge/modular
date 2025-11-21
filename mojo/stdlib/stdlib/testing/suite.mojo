@@ -28,10 +28,10 @@ struct _Indent[W: Writable, origin: ImmutOrigin](Writable):
 
     alias IndentStr = "  "
 
-    var writable: Pointer[W, origin]
+    var writable: Pointer[Self.W, Self.origin]
     var level: Int
 
-    fn __init__(out self, ref [origin]w: W, *, level: Int):
+    fn __init__(out self, ref [Self.origin]w: Self.W, *, level: Int):
         self.writable = Pointer(to=w)
         self.level = level
 
@@ -77,7 +77,7 @@ fn _writeln[
 
 
 @fieldwise_init
-struct TestResult(EqualityComparable, ImplicitlyCopyable, Movable, Writable):
+struct TestResult(Equatable, ImplicitlyCopyable, Movable, Writable):
     """A test result code."""
 
     var _value: Int
@@ -534,7 +534,7 @@ struct TestSuite(Movable):
         return test.name not in self.allow_list.unsafe_value()
 
     fn _validate_skip_list(self) raises:
-        # TODO: _Test doesn't conform to EqualityComparable, so we can't use
+        # TODO: _Test doesn't conform to Equatable, so we can't use
         # `in` here. Also, we might wanna do this in O(1) time.
         for test_name in self.skip_list:
             var found = False

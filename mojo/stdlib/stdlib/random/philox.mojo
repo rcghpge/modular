@@ -51,7 +51,7 @@ fn _mulhilow(a: UInt32, b: UInt32) -> SIMD[DType.uint32, 2]:
     return bitcast[DType.uint32, 2](res)
 
 
-struct Random[rounds: Int = 10]:
+struct Random[rounds: Int = 10](Copyable, Movable):
     """A high-performance random number generator using the Philox algorithm.
 
     The Philox algorithm is a counter-based random number generator designed for parallel
@@ -98,7 +98,7 @@ struct Random[rounds: Int = 10]:
         var key = self._key
 
         @parameter
-        for i in range(rounds - 1):
+        for i in range(Self.rounds - 1):
             counter = self._single_round(counter, key)
             key += K_PHILOX_10
         var res = self._single_round(counter, key)
@@ -167,7 +167,7 @@ struct Random[rounds: Int = 10]:
         )
 
 
-struct NormalRandom[rounds: Int = 10]:
+struct NormalRandom[rounds: Int = 10](Copyable, Movable):
     """A high-performance random number generator using the Box-Muller transform.
 
     The Box-Muller transform is a method for generating pairs of independent standard normal
@@ -179,7 +179,7 @@ struct NormalRandom[rounds: Int = 10]:
                performance. Default is 10.
     """
 
-    var _rng: Random[rounds]
+    var _rng: Random[Self.rounds]
 
     fn __init__(
         out self,
@@ -195,7 +195,7 @@ struct NormalRandom[rounds: Int = 10]:
             subsequence: Subsequence number for the RNG.
             offset: Offset value for the RNG.
         """
-        self._rng = Random[rounds](
+        self._rng = Random[Self.rounds](
             seed=seed, subsequence=subsequence, offset=offset
         )
 

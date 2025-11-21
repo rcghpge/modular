@@ -72,16 +72,16 @@ struct UInt(
     # Aliases
     # ===-------------------------------------------------------------------===#
 
-    alias BITWIDTH = UInt(bit_width_of[DType.uint]())
+    comptime BITWIDTH = UInt(bit_width_of[DType.uint]())
     """The bit width of the integer type."""
 
-    alias MAX = UInt(Scalar[DType.uint].MAX)
+    comptime MAX = UInt(Scalar[DType.uint].MAX)
     """Returns the maximum integer value."""
 
-    alias MIN = UInt(Scalar[DType.uint].MIN)
+    comptime MIN = UInt(Scalar[DType.uint].MIN)
     """Returns the minimum value of type."""
 
-    alias device_type: AnyType = Self
+    comptime device_type: AnyType = Self
     """UInt is remapped to the same type when passed to accelerator devices."""
 
     fn _to_device_type(self, target: OpaquePointer):
@@ -152,7 +152,6 @@ struct UInt(
         self = value.__uint__()
 
     @always_inline("builtin")
-    @implicit(deprecated=True)
     fn __init__(out self, value: Int):
         """Construct UInt from the given Int value.
 
@@ -346,6 +345,9 @@ struct UInt(
         Returns:
             `floor(self/rhs)` value.
         """
+        if rhs == 0:
+            # this should raise an exception.
+            return 0
         return UInt(
             mlir_value=__mlir_op.`index.divu`(self._mlir_value, rhs._mlir_value)
         )
@@ -360,6 +362,9 @@ struct UInt(
         Returns:
             The remainder of dividing self by rhs.
         """
+        if rhs == 0:
+            # this should raise an exception
+            return 0
         return UInt(
             mlir_value=__mlir_op.`index.remu`(self._mlir_value, rhs._mlir_value)
         )
@@ -374,6 +379,9 @@ struct UInt(
         Returns:
             The quotient and remainder as a `Tuple(self // rhs, self % rhs)`.
         """
+        if rhs == 0:
+            # this should raise an exception
+            return UInt(0), UInt(0)
         return self // rhs, self % rhs
 
     @always_inline("nodebug")

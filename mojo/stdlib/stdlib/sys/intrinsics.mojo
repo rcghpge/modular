@@ -60,7 +60,7 @@ fn llvm_intrinsic[
 
     var loaded_pack = args.get_loaded_kgen_pack()
 
-    alias intrin_kgen_string = _get_kgen_string[intrin]()
+    comptime intrin_kgen_string = _get_kgen_string[intrin]()
 
     @parameter
     if _mlirtype_is_eq[type, NoneType]():
@@ -806,10 +806,10 @@ fn _type_is_eq_parse_time[t1: AnyType, t2: AnyType]() -> Bool:
 
 @register_passable("trivial")
 struct _RegisterPackType[*a: AnyTrivialRegType]:
-    var storage: __mlir_type[`!kgen.pack<`, a, `>`]
+    var storage: __mlir_type[`!kgen.pack<`, Self.a, `>`]
 
     @always_inline("nodebug")
-    fn __getitem__[i: Int](self) -> a[i]:
+    fn __getitem__[i: Int](self) -> Self.a[i]:
         """Get the element.
 
         Parameters:

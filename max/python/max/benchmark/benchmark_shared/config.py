@@ -37,7 +37,6 @@ from max.config import (
 class Backend(str, enum.Enum):
     vllm = "vllm"
     vllm_chat = "vllm-chat"
-    trt_llm = "trt-llm"
     modular = "modular"
     modular_chat = "modular-chat"
     sglang = "sglang"
@@ -217,7 +216,7 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
             "group_description": "Configuration for backend selection and API endpoints",
         },
     )
-    """Backend to use for benchmarking. Choices: vllm, vllm-chat, trt-llm, modular, modular-chat, sglang, sglang-chat"""
+    """Backend to use for benchmarking. Choices: vllm, vllm-chat, modular, modular-chat, sglang, sglang-chat"""
 
     base_url: str | None = field(
         default=None, metadata={"group": "Backend and API Configuration"}
@@ -475,6 +474,9 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
         default_factory=lambda: ["q_proj", "k_proj", "v_proj", "o_proj"],
         metadata={"group": "LoRA Configuration"},
     )
+    """List of module names to apply LoRA to when generating random test adapters.
+    Only used when num_loras > 0 and generating adapters (not when using existing lora_paths).
+    Example values: q_proj, k_proj, v_proj, o_proj."""
 
     @staticmethod
     def help() -> dict[str, str]:
@@ -486,7 +488,7 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
         # Get base help and extend with serving-specific parameters
         base_help = BaseBenchmarkConfig.help()
         serving_help = {
-            "backend": "Backend to use for benchmarking. Choices: vllm, vllm-chat, trt-llm, modular, modular-chat, sglang, sglang-chat",
+            "backend": "Backend to use for benchmarking. Choices: vllm, vllm-chat, modular, modular-chat, sglang, sglang-chat",
             "base_url": "Server or API base url if not using http host and port.",
             "host": "Server host.",
             "port": "Server port.",
@@ -534,7 +536,7 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
             "lora_request_ratio": "Ratio of requests to send with LoRA adapters (0.0-1.0). E.g., 0.5 means 50%% of requests use LoRA.",
             "max_concurrent_lora_ops": "Maximum concurrent LoRA loading/unloading operations during benchmarking.",
             "max_num_loras": "Maximum number of LoRA adapters cached on GPU. ***This should match the server configuration.***",
-            "lora_target_modules": "List of module names to apply LoRA to (e.g., q_proj, k_proj, v_proj, o_proj).",
+            "lora_target_modules": "List of module names to apply LoRA to when generating random test adapters (e.g., q_proj, k_proj, v_proj, o_proj). Only used when num_loras > 0 and generating adapters (not when using existing lora_paths).",
         }
         return {**base_help, **serving_help}
 

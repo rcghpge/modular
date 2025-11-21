@@ -285,7 +285,7 @@ struct HostBuffer[dtype: DType](
         dtype: Data type to be stored in the buffer.
     """
 
-    alias _HostPtr = UnsafePointer[Scalar[dtype]]
+    alias _HostPtr = UnsafePointer[Scalar[Self.dtype]]
 
     # We cache the pointer of the buffer here to provide access to elements.
     var _host_ptr: Self._HostPtr
@@ -304,7 +304,7 @@ struct HostBuffer[dtype: DType](
             not is_gpu(),
             "HostBuffer is not supported on GPUs",
         ]()
-        alias elem_size = size_of[dtype]()
+        alias elem_size = size_of[Self.dtype]()
         var cpp_handle = _DeviceBufferPtr()
         var host_ptr = Self._HostPtr()
 
@@ -352,7 +352,7 @@ struct HostBuffer[dtype: DType](
             not is_gpu(),
             "HostBuffer is not supported on GPUs",
         ]()
-        alias elem_size = size_of[dtype]()
+        alias elem_size = size_of[Self.dtype]()
         var cpp_handle = _DeviceBufferPtr()
         # void AsyncRT_DeviceContext_createBuffer_owning(
         #     const DeviceBuffer **result, const DeviceContext *ctx,
@@ -439,7 +439,7 @@ struct HostBuffer[dtype: DType](
             external_call[
                 "AsyncRT_DeviceBuffer_bytesize", Int, _DeviceBufferPtr
             ](self._handle)
-            // size_of[dtype]()
+            // size_of[Self.dtype]()
         )
 
     fn create_sub_buffer[
@@ -495,7 +495,7 @@ struct HostBuffer[dtype: DType](
         )
         return HostBuffer[view_type](new_handle, new_host_ptr)
 
-    fn enqueue_copy_to(self, dst: HostBuffer[dtype, **_]) raises:
+    fn enqueue_copy_to(self, dst: HostBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy from this buffer to another host buffer.
 
         This method schedules a memory copy operation from this buffer to the destination
@@ -510,7 +510,7 @@ struct HostBuffer[dtype: DType](
         """
         dst.context().enqueue_copy(dst, self)
 
-    fn enqueue_copy_to(self, dst: DeviceBuffer[dtype, **_]) raises:
+    fn enqueue_copy_to(self, dst: DeviceBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy from this buffer to a device buffer.
 
         This method schedules a memory copy operation from this buffer to the destination
@@ -529,7 +529,7 @@ struct HostBuffer[dtype: DType](
         ]()
         dst.context().enqueue_copy(dst, self)
 
-    fn enqueue_copy_to(self, dst_ptr: UnsafePointer[Scalar[dtype]]) raises:
+    fn enqueue_copy_to(self, dst_ptr: UnsafePointer[Scalar[Self.dtype]]) raises:
         """Enqueues an asynchronous copy from this buffer to host memory.
 
         This method schedules a memory copy operation from this device buffer to the
@@ -548,7 +548,7 @@ struct HostBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(dst_ptr, self)
 
-    fn enqueue_copy_from(self, src: HostBuffer[dtype, **_]) raises:
+    fn enqueue_copy_from(self, src: HostBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy to this buffer from another host buffer.
 
         This method schedules a memory copy operation to this buffer from the source
@@ -567,7 +567,7 @@ struct HostBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(self, src)
 
-    fn enqueue_copy_from(self, src: DeviceBuffer[dtype, **_]) raises:
+    fn enqueue_copy_from(self, src: DeviceBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy to this buffer from a device buffer.
 
         This method schedules a memory copy operation to this buffer from the source
@@ -586,7 +586,9 @@ struct HostBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(self, src)
 
-    fn enqueue_copy_from(self, src_ptr: UnsafePointer[Scalar[dtype]]) raises:
+    fn enqueue_copy_from(
+        self, src_ptr: UnsafePointer[Scalar[Self.dtype]]
+    ) raises:
         """Enqueues an asynchronous copy to this buffer from host memory.
 
         This method schedules a memory copy operation to this device buffer from the
@@ -605,7 +607,7 @@ struct HostBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(self, src_ptr)
 
-    fn enqueue_fill(self, val: Scalar[dtype]) raises:
+    fn enqueue_fill(self, val: Scalar[Self.dtype]) raises:
         """Enqueues an operation to fill this buffer with a specified value.
 
         This method schedules a memory set operation that fills the entire buffer
@@ -764,7 +766,7 @@ struct HostBuffer[dtype: DType](
         ]()
         return String.write(self)
 
-    fn __getitem__(self, idx: Int) -> Scalar[dtype]:
+    fn __getitem__(self, idx: Int) -> Scalar[Self.dtype]:
         """Retrieves the element at the specified index from the host buffer.
 
         This operator allows direct access to individual elements in the host buffer
@@ -782,7 +784,9 @@ struct HostBuffer[dtype: DType](
         ]()
         return self._host_ptr[idx]
 
-    fn __setitem__(self: HostBuffer[dtype], idx: Int, val: Scalar[dtype]):
+    fn __setitem__(
+        self: HostBuffer[Self.dtype], idx: Int, val: Scalar[Self.dtype]
+    ):
         """Sets the element at the specified index in the host buffer.
 
         This operator allows direct modification of individual elements in the host buffer
@@ -800,7 +804,7 @@ struct HostBuffer[dtype: DType](
 
     fn as_span[
         mut: Bool, origin: Origin[mut], //
-    ](ref [origin]self) -> Span[Scalar[dtype], origin]:
+    ](ref [origin]self) -> Span[Scalar[Self.dtype], origin]:
         """Returns a `Span` pointing to the underlying memory of the `HostBuffer`.
 
         Parameters:
@@ -835,7 +839,7 @@ struct DeviceBuffer[dtype: DType](
     """
 
     # Implementation of `DevicePassable`
-    alias device_type: AnyType = UnsafePointer[Scalar[dtype]]
+    alias device_type: AnyType = UnsafePointer[Scalar[Self.dtype]]
     """DeviceBuffer dtypes are remapped to UnsafePointer when passed to accelerator devices."""
 
     fn _to_device_type(self, target: OpaquePointer):
@@ -856,7 +860,7 @@ struct DeviceBuffer[dtype: DType](
         Returns:
             This dtype's name.
         """
-        return String("DeviceBuffer[", dtype, "]")
+        return String("DeviceBuffer[", Self.dtype, "]")
 
     @staticmethod
     fn get_device_type_name() -> String:
@@ -869,9 +873,9 @@ struct DeviceBuffer[dtype: DType](
         Returns:
             This dtype's name.
         """
-        return String("UnsafePointer[Scalar[", dtype, "]]")
+        return String("UnsafePointer[Scalar[", Self.dtype, "]]")
 
-    alias _DevicePtr = UnsafePointer[Scalar[dtype]]
+    alias _DevicePtr = UnsafePointer[Scalar[Self.dtype]]
     # _device_ptr must be the first word in the struct to enable passing of
     # DeviceBuffer to kernels. The first word is passed to the kernel and
     # it needs to contain the value registered with the driver.
@@ -893,7 +897,7 @@ struct DeviceBuffer[dtype: DType](
             not is_gpu(),
             "DeviceBuffer is not supported on GPUs",
         ]()
-        alias elem_size = size_of[dtype]()
+        alias elem_size = size_of[Self.dtype]()
         var cpp_handle = _DeviceBufferPtr()
         var device_ptr = Self._DevicePtr()
 
@@ -971,7 +975,7 @@ struct DeviceBuffer[dtype: DType](
             not is_gpu(),
             "DeviceBuffer is not supported on GPUs",
         ]()
-        alias elem_size = size_of[dtype]()
+        alias elem_size = size_of[Self.dtype]()
         var cpp_handle = _DeviceBufferPtr()
         # void AsyncRT_DeviceContext_createBuffer_owning(
         #     const DeviceBuffer **result, const DeviceContext *ctx,
@@ -1059,7 +1063,7 @@ struct DeviceBuffer[dtype: DType](
             external_call[
                 "AsyncRT_DeviceBuffer_bytesize", Int, _DeviceBufferPtr
             ](self._handle)
-            // size_of[dtype]()
+            // size_of[Self.dtype]()
         )
 
     @always_inline
@@ -1117,7 +1121,7 @@ struct DeviceBuffer[dtype: DType](
         )
         return DeviceBuffer[view_type](new_handle, new_device_ptr)
 
-    fn enqueue_copy_to(self, dst: DeviceBuffer[dtype, **_]) raises:
+    fn enqueue_copy_to(self, dst: DeviceBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy from this buffer to another device buffer.
 
         This method schedules a memory copy operation from this buffer to the destination
@@ -1136,7 +1140,7 @@ struct DeviceBuffer[dtype: DType](
         ]()
         dst.context().enqueue_copy(dst, self)
 
-    fn enqueue_copy_to(self, dst: HostBuffer[dtype, **_]) raises:
+    fn enqueue_copy_to(self, dst: HostBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy from this buffer to a host buffer.
 
         This method schedules a memory copy operation from this buffer to the destination
@@ -1155,7 +1159,7 @@ struct DeviceBuffer[dtype: DType](
         ]()
         dst.context().enqueue_copy(dst, self)
 
-    fn enqueue_copy_to(self, dst_ptr: UnsafePointer[Scalar[dtype]]) raises:
+    fn enqueue_copy_to(self, dst_ptr: UnsafePointer[Scalar[Self.dtype]]) raises:
         """Enqueues an asynchronous copy from this buffer to host memory.
 
         This method schedules a memory copy operation from this device buffer to the
@@ -1174,7 +1178,7 @@ struct DeviceBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(dst_ptr, self)
 
-    fn enqueue_copy_from(self, src: DeviceBuffer[dtype, **_]) raises:
+    fn enqueue_copy_from(self, src: DeviceBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy to this buffer from another device buffer.
 
         This method schedules a memory copy operation to this buffer from the source
@@ -1193,7 +1197,7 @@ struct DeviceBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(self, src)
 
-    fn enqueue_copy_from(self, src: HostBuffer[dtype, **_]) raises:
+    fn enqueue_copy_from(self, src: HostBuffer[Self.dtype, **_]) raises:
         """Enqueues an asynchronous copy to this buffer from a host buffer.
 
         This method schedules a memory copy operation to this buffer from the source
@@ -1212,7 +1216,9 @@ struct DeviceBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(self, src)
 
-    fn enqueue_copy_from(self, src_ptr: UnsafePointer[Scalar[dtype]]) raises:
+    fn enqueue_copy_from(
+        self, src_ptr: UnsafePointer[Scalar[Self.dtype]]
+    ) raises:
         """Enqueues an asynchronous copy to this buffer from host memory.
 
         This method schedules a memory copy operation to this device buffer from the
@@ -1231,7 +1237,7 @@ struct DeviceBuffer[dtype: DType](
         ]()
         self.context().enqueue_copy(self, src_ptr)
 
-    fn enqueue_fill(self, val: Scalar[dtype]) raises:
+    fn enqueue_fill(self, val: Scalar[Self.dtype]) raises:
         """Enqueues an operation to fill this buffer with a specified value.
 
         This method schedules a memory set operation that fills the entire buffer
@@ -1344,7 +1350,7 @@ struct DeviceBuffer[dtype: DType](
 
     fn map_to_host(
         self,
-        out mapped_buffer: _HostMappedBuffer[dtype],
+        out mapped_buffer: _HostMappedBuffer[Self.dtype],
     ) raises:
         """Maps this device buffer to host memory for CPU access.
 
@@ -1384,7 +1390,7 @@ struct DeviceBuffer[dtype: DType](
             not is_gpu(),
             "DeviceBuffer is not supported on GPUs",
         ]()
-        mapped_buffer = _HostMappedBuffer[dtype](self.context(), self)
+        mapped_buffer = _HostMappedBuffer[Self.dtype](self.context(), self)
 
     fn write_to(self, mut writer: Some[Writer]):
         """Writes a string representation of this buffer to the provided writer.
@@ -1687,9 +1693,9 @@ struct DeviceStream(ImplicitlyCopyable, Movable):
         from gpu.host import DeviceContext
 
         with DeviceContext() as ctx:
-            var compiled_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
+            var compiled_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -1721,6 +1727,57 @@ struct DeviceStream(ImplicitlyCopyable, Movable):
             constant_memory=constant_memory^,
         )
 
+    @always_inline
+    fn enqueue_function_checked[
+        *Ts: DevicePassable
+    ](
+        self,
+        f: DeviceFunction,
+        *args: *Ts,
+        grid_dim: Dim,
+        block_dim: Dim,
+        cluster_dim: OptionalReg[Dim] = None,
+        shared_mem_bytes: OptionalReg[Int] = None,
+        var attributes: List[LaunchAttribute] = [],
+        var constant_memory: List[ConstantMemoryMapping] = [],
+    ) raises:
+        """Enqueues a checked compiled function for execution on this stream.
+
+        Parameters:
+            Ts: Argument types (must be DevicePassable).
+
+        Args:
+            f: The checked compiled function to execute.
+            args: Arguments to pass to the function.
+            grid_dim: Dimensions of the compute grid, made up of thread blocks.
+            block_dim: Dimensions of each thread block in the grid.
+            cluster_dim: Dimensions of clusters (if the thread blocks are
+                grouped into clusters).
+            shared_mem_bytes: Amount of shared memory per thread block.
+            attributes: Launch attributes.
+            constant_memory: Constant memory mapping.
+
+        Raises:
+            If the operation fails.
+        """
+        _check_dim["DeviceStream.enqueue_function_checked", "grid_dim"](
+            grid_dim, location=__call_location()
+        )
+        _check_dim["DeviceStream.enqueue_function_checked", "block_dim"](
+            block_dim, location=__call_location()
+        )
+
+        self._enqueue_function_checked(
+            f,
+            args,
+            grid_dim=grid_dim,
+            block_dim=block_dim,
+            cluster_dim=cluster_dim,
+            shared_mem_bytes=shared_mem_bytes,
+            attributes=attributes^,
+            constant_memory=constant_memory^,
+        )
+
     @parameter
     @always_inline
     fn _enqueue_function_unchecked[
@@ -1738,6 +1795,34 @@ struct DeviceStream(ImplicitlyCopyable, Movable):
         location: OptionalReg[_SourceLocation] = None,
     ) raises:
         f._call_with_pack(
+            self,
+            args,
+            grid_dim=grid_dim,
+            block_dim=block_dim,
+            cluster_dim=cluster_dim,
+            shared_mem_bytes=shared_mem_bytes,
+            attributes=attributes^,
+            constant_memory=constant_memory^,
+            location=location.or_else(__call_location()),
+        )
+
+    @parameter
+    @always_inline
+    fn _enqueue_function_checked[
+        *Ts: DevicePassable
+    ](
+        self,
+        f: DeviceFunction,
+        args: VariadicPack[_, _, DevicePassable, *Ts],
+        grid_dim: Dim,
+        block_dim: Dim,
+        cluster_dim: OptionalReg[Dim] = None,
+        shared_mem_bytes: OptionalReg[Int] = None,
+        var attributes: List[LaunchAttribute] = [],
+        var constant_memory: List[ConstantMemoryMapping] = [],
+        location: OptionalReg[_SourceLocation] = None,
+    ) raises:
+        f._call_with_pack_checked(
             self,
             args,
             grid_dim=grid_dim,
@@ -1933,18 +2018,7 @@ fn _is_nvidia_gpu[target: _TargetType]() -> Bool:
 
 
 fn _is_path_like(ss: StringSlice) -> Bool:
-    # Ideally we want to use `val.start_with` but we hit a compiler bug if we do
-    # that. So, instead we implement the function inline, since we only care
-    # about whether the string starts with a `/`, `~`, or "./".
-    if len(ss) == 0:
-        return False
-    if len(ss) >= 1:
-        if ss[0] == "/" or ss[0] == "~":
-            return True
-    if len(ss) >= 2:
-        if ss[0] == "." and ss[1] == "/":
-            return True
-    return False
+    return ss.startswith("/") or ss.startswith("~") or ss.startswith("./")
 
 
 struct DeviceFunction[
@@ -1981,19 +2055,19 @@ struct DeviceFunction[
         pass
 
     var ctx = DeviceContext()
-    var kernel = ctx.compile_function[my_kernel]()
-    ctx.enqueue_function(kernel, grid_dim=(1,1,1), block_dim=(32,1,1))
+    var kernel = ctx.compile_function_checked[my_kernel, my_kernel]()
+    ctx.enqueue_function_checked(kernel, grid_dim=(1,1,1), block_dim=(32,1,1))
     ```
     """
 
     # emit asm if cross compiling for nvidia gpus.
     alias _emission_kind = "asm" if (
-        _cross_compilation() and _is_nvidia_gpu[target]()
+        _cross_compilation() and _is_nvidia_gpu[Self.target]()
     ) else "object"
     var _handle: _DeviceFunctionPtr
     """Internal handle to the compiled device function."""
 
-    var _func_impl: CompiledFunctionInfo[func_type, func, target]
+    var _func_impl: CompiledFunctionInfo[Self.func_type, Self.func, Self.target]
     """Compilation information for the function."""
 
     var _context: DeviceContext
@@ -2073,10 +2147,10 @@ struct DeviceFunction[
         #     int32_t optimizationLevel)
         var result = _DeviceFunctionPtr()
         self._func_impl = _compile_code[
-            func,
+            Self.func,
             emission_kind = self._emission_kind,
-            target=target,
-            compile_options=compile_options,
+            target = Self.target,
+            compile_options = Self.compile_options,
         ]()
         var debug_level = String(DebugLevel)
         _checked(
@@ -2227,15 +2301,15 @@ struct DeviceFunction[
             if Self._emission_kind == "asm":
                 return self._func_impl.asm
             return _compile_code[
-                func,
+                Self.func,
                 emission_kind="asm",
-                target=target,
-                compile_options=compile_options,
+                target = Self.target,
+                compile_options = Self.compile_options,
             ]().asm
 
         @parameter
-        if _ptxas_info_verbose:
-            print(_ptxas_compile[target](String(get_asm()), options="-v"))
+        if Self._ptxas_info_verbose:
+            print(_ptxas_compile[Self.target](String(get_asm()), options="-v"))
 
         alias dump_asm_tup = Self._dump_q["asm", dump_asm]()
         alias do_dump_asm = dump_asm_tup[0]
@@ -2269,7 +2343,7 @@ struct DeviceFunction[
         @parameter
         if do_dump_sass:
             var ptx = Self._cleanup_asm(get_asm())
-            var sass = _to_sass[target](ptx)
+            var sass = _to_sass[Self.target](ptx)
 
             @parameter
             if dump_sass_val.isa[fn () capturing -> Path]():
@@ -2297,8 +2371,8 @@ struct DeviceFunction[
             var llvm = _compile_code[
                 Self.func,
                 emission_kind="llvm-opt",
-                target=target,
-                compile_options=compile_options,
+                target = Self.target,
+                compile_options = Self.compile_options,
             ]().asm
 
             @parameter
@@ -2601,6 +2675,208 @@ struct DeviceFunction[
             dense_args_addrs.free()
 
     @always_inline
+    @staticmethod
+    fn _validate_arguments[
+        *Ts: DevicePassable,
+        num_args: Int,
+    ]() -> Tuple[Int, InlineArray[Int, num_args]]:
+        alias declared_num_args = len(
+            VariadicList(Self.declared_arg_types.value())
+        )
+        constrained[
+            declared_num_args == num_args,
+            "Wrong number of arguments to enqueue",
+        ]()
+
+        # For each argument determine the size of the device dtype and
+        # calculate the offset into a contiguous memory area which will
+        # be used to remap the passed arguments into the device dtypes.
+        var tmp_arg_offset = 0
+        var translated_arg_offsets = InlineArray[Int, num_args](
+            uninitialized=True
+        )
+        var num_translated_args = 0
+
+        @parameter
+        for i in range(num_args):
+            alias declared_arg_type = Self.declared_arg_types.value()[i]
+            alias actual_arg_type = Ts[i]
+
+            # Now we'll check if the given argument's device_type is
+            # what the kernel expects.
+
+            # First, check if they're handing in a device dtype, in other
+            # words, a dtype that can be passed directly and doesn't need to
+            # be mapped. For example, Int, IndexList, etc.
+            @parameter
+            if _type_is_eq[actual_arg_type, actual_arg_type.device_type]():
+                # Now check if they handed in the *correct* device dtype.
+                constrained[
+                    _type_is_eq[
+                        declared_arg_type, actual_arg_type.device_type
+                    ](),
+                    "Handed in wrong argument dtype for argument #",
+                    String(i),
+                    ", received a ",
+                    actual_arg_type.get_type_name(),
+                    ", but actual type name is: ",
+                    get_type_name[declared_arg_type](),
+                ]()
+            elif _is_pointer_convertible[
+                declared_arg_type, actual_arg_type.device_type
+            ]():
+                # This is a temporary check for the conversions between
+                # LegacyUnsafePointer and UnsafePointer (v2). Since type
+                # checking would fail between these two types, this allows
+                # you to convert between them without type checking errors.
+                pass
+            else:
+                # They handed in a host dtype, in other words, a dtype that
+                # needs to be mapped before handing it to the device. In
+                # this case, we use a more informative error message.
+                constrained[
+                    _type_is_eq[
+                        declared_arg_type, actual_arg_type.device_type
+                    ](),
+                    "Handed in wrong argument dtype for argument #",
+                    String(i),
+                    ", received a ",
+                    actual_arg_type.get_type_name(),
+                    " (which became device dtype ",
+                    actual_arg_type.get_device_type_name(),
+                    ")",
+                ]()
+            var aligned_type_size = align_up(
+                size_of[actual_arg_type.device_type](), 8
+            )
+            if aligned_type_size != 0:
+                num_translated_args += 1
+                translated_arg_offsets[i] = tmp_arg_offset
+                tmp_arg_offset += aligned_type_size
+            else:
+                translated_arg_offsets[i] = -1
+
+        return (num_translated_args, translated_arg_offsets)
+
+    @always_inline
+    @parameter
+    fn _call_with_pack_checked[
+        *Ts: DevicePassable
+    ](
+        self,
+        stream: DeviceStream,
+        args: VariadicPack[_, _, DevicePassable, *Ts],
+        grid_dim: Dim,
+        block_dim: Dim,
+        cluster_dim: OptionalReg[Dim] = None,
+        shared_mem_bytes: OptionalReg[Int] = None,
+        var attributes: List[LaunchAttribute] = [],
+        var constant_memory: List[ConstantMemoryMapping] = [],
+        location: OptionalReg[_SourceLocation] = None,
+    ) raises:
+        alias num_args = len(VariadicList(Ts))
+        var num_captures = self._func_impl.num_captures
+        alias populate = type_of(self._func_impl).populate
+        alias num_captures_static = 16
+
+        @parameter
+        if Self.declared_arg_types:
+            _ = Self._validate_arguments[*Ts, num_args=num_args]()
+
+        # NOTE: Manual short buffer optimization. We could use a
+        # Variant[List, InlineArray] instead, but it would look a lot more
+        # verbose. This way, however, we need to conditionally free at the end.
+        var dense_args_addrs: UnsafePointer[OpaquePointer]
+        if num_captures > num_captures_static:
+            dense_args_addrs = dense_args_addrs.alloc(num_captures + num_args)
+        else:
+            dense_args_addrs = stack_allocation[
+                num_captures_static + num_args, OpaquePointer
+            ]()
+
+        @parameter
+        for i in range(num_args):
+            # TODO(MSTDL-1904): Validate the safety of this.
+            dense_args_addrs[i] = (
+                UnsafePointer(to=args[i])
+                .bitcast[NoneType]()
+                .unsafe_mut_cast[True]()
+            )
+
+        if cluster_dim:
+            attributes.append(
+                LaunchAttribute.from_cluster_dim(cluster_dim.value())
+            )
+
+        for i in range(len(constant_memory)):
+            self._copy_to_constant_memory(constant_memory[i])
+
+        # const char *AsyncRT_DeviceContext_enqueueFunctionDirect(
+        #     const DeviceContext *ctx, const DeviceFunction *func,
+        #     uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+        #     uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+        #     uint32_t sharedMemBytes, void *attrs, uint32_t num_attrs,
+        #     void **args)
+
+        if num_captures > 0:
+            # Call the populate function to initialize the captured values in the arguments array.
+            # The captured values are always at the end of the argument list.
+            # This function (generated by the compiler) has to be inlined here
+            # and be in the same scope as the user of dense_args_addr
+            # (i.e. the following external_call).
+            # Because this closure uses stack allocated ptrs
+            # to store the captured values in dense_args_addrs, they need to
+            # not go out of the scope before dense_args_addr is being use.
+            var capture_args_start = dense_args_addrs.offset(num_args)
+            populate(capture_args_start.bitcast[NoneType]())
+            _checked_call[Self.func](
+                external_call[
+                    "AsyncRT_DeviceStream_enqueueFunctionDirect",
+                    _ConstCharPtr,
+                ](
+                    stream,
+                    self._handle,
+                    grid_dim.x(),
+                    grid_dim.y(),
+                    grid_dim.z(),
+                    block_dim.x(),
+                    block_dim.y(),
+                    block_dim.z(),
+                    shared_mem_bytes.or_else(0),
+                    attributes.unsafe_ptr(),
+                    len(attributes),
+                    dense_args_addrs,
+                ),
+                device_context=self._context,
+                location=location.or_else(__call_location()),
+            )
+        else:
+            _checked_call[Self.func](
+                external_call[
+                    "AsyncRT_DeviceStream_enqueueFunctionDirect",
+                    _ConstCharPtr,
+                ](
+                    stream,
+                    self._handle,
+                    grid_dim.x(),
+                    grid_dim.y(),
+                    grid_dim.z(),
+                    block_dim.x(),
+                    block_dim.y(),
+                    block_dim.z(),
+                    shared_mem_bytes.or_else(0),
+                    attributes.unsafe_ptr(),
+                    len(attributes),
+                    dense_args_addrs,
+                ),
+                device_context=self._context,
+                location=location.or_else(__call_location()),
+            )
+
+        if num_captures > num_captures_static:
+            dense_args_addrs.free()
+
+    @always_inline
     @parameter
     fn _call_with_pack_checked[
         *Ts: DevicePassable
@@ -2628,78 +2904,10 @@ struct DeviceFunction[
         # Validate that all actual arguments do remap to the declared device
         # dtype in the kernel.
         @parameter
-        if declared_arg_types:
-            alias declared_num_args = len(
-                VariadicList(declared_arg_types.value())
+        if Self.declared_arg_types:
+            num_translated_args, translated_arg_offsets = (
+                Self._validate_arguments[*Ts, num_args=num_passed_args]()
             )
-            constrained[
-                declared_num_args == num_passed_args,
-                "Wrong number of arguments to enqueue",
-            ]()
-
-            # For each argument determine the size of the device dtype and
-            # calculate the offset into a contiguous memory area which will
-            # be used to remap the passed arguments into the device dtypes.
-            var tmp_arg_offset = 0
-
-            @parameter
-            for i in range(num_passed_args):
-                alias declared_arg_type = declared_arg_types.value()[i]
-                alias actual_arg_type = Ts[i]
-
-                # Now we'll check if the given argument's device_type is
-                # what the kernel expects.
-
-                # First, check if they're handing in a device dtype, in other
-                # words, a dtype that can be passed directly and doesn't need to
-                # be mapped. For example, Int, IndexList, etc.
-                @parameter
-                if _type_is_eq[actual_arg_type, actual_arg_type.device_type]():
-                    # Now check if they handed in the *correct* device dtype.
-                    constrained[
-                        _type_is_eq[
-                            declared_arg_type, actual_arg_type.device_type
-                        ](),
-                        "Handed in wrong argument dtype for argument #",
-                        String(i),
-                        ", received a ",
-                        actual_arg_type.get_type_name(),
-                        ", but actual type name is: ",
-                        get_type_name[declared_arg_type](),
-                    ]()
-                elif _is_pointer_convertible[
-                    declared_arg_type, actual_arg_type.device_type
-                ]():
-                    # This is a temporary check for the conversions between
-                    # LegacyUnsafePointer and UnsafePointer (v2). Since type
-                    # checking would fail between these two types, this allows
-                    # you to convert between them without type checking errors.
-                    pass
-                else:
-                    # They handed in a host dtype, in other words, a dtype that
-                    # needs to be mapped before handing it to the device. In
-                    # this case, we use a more informative error message.
-                    constrained[
-                        _type_is_eq[
-                            declared_arg_type, actual_arg_type.device_type
-                        ](),
-                        "Handed in wrong argument dtype for argument #",
-                        String(i),
-                        ", received a ",
-                        actual_arg_type.get_type_name(),
-                        " (which became device dtype ",
-                        actual_arg_type.get_device_type_name(),
-                        ")",
-                    ]()
-                var aligned_type_size = align_up(
-                    size_of[actual_arg_type.device_type](), 8
-                )
-                if aligned_type_size != 0:
-                    num_translated_args += 1
-                    translated_arg_offsets[i] = tmp_arg_offset
-                    tmp_arg_offset += aligned_type_size
-                else:
-                    translated_arg_offsets[i] = -1
 
         var num_captures = self._func_impl.num_captures
         alias populate = type_of(self._func_impl).populate
@@ -4134,9 +4342,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
         ```mojo
         with DeviceContext() as ctx:
-            var compile_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
+            var compile_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -4242,9 +4450,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
         ```mojo
         with DeviceContext() as ctx:
-            var compile_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
+            var compile_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -4338,9 +4546,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
         from gpu.host import DeviceContext
 
         with DeviceContext() as ctx:
-            var compiled_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
+            var compiled_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -4429,9 +4637,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
         from gpu.host import DeviceContext
 
         with DeviceContext() as ctx:
-            var compiled_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
+            var compiled_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -4528,6 +4736,94 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
             Bool(f.declared_arg_types), "Calling a non-checked function."
         ]()
         self._enqueue_function_checked(
+            f,
+            args,
+            grid_dim=grid_dim,
+            block_dim=block_dim,
+            cluster_dim=cluster_dim,
+            shared_mem_bytes=shared_mem_bytes,
+            attributes=attributes^,
+            constant_memory=constant_memory^,
+            location=location.or_else(__call_location()),
+        )
+
+    @always_inline
+    fn enqueue_function_checked[
+        *Ts: AnyType
+    ](
+        self,
+        f: DeviceExternalFunction,
+        *args: *Ts,
+        grid_dim: Dim,
+        block_dim: Dim,
+        cluster_dim: OptionalReg[Dim] = None,
+        shared_mem_bytes: OptionalReg[Int] = None,
+        var attributes: List[LaunchAttribute] = [],
+        var constant_memory: List[ConstantMemoryMapping] = [],
+        location: OptionalReg[_SourceLocation] = None,
+    ) raises:
+        """Enqueues an external device function for execution on this device.
+
+        This overload accepts a `DeviceExternalFunction` that was loaded from
+        assembly code (PTX/SASS). External functions are pre-compiled GPU kernels
+        that can be integrated with Mojo code.
+
+        Parameters:
+            Ts: Argument types to pass to the external function.
+
+        Args:
+            f: The external device function to execute.
+            args: Arguments to pass to the function.
+            grid_dim: Dimensions of the compute grid, made up of thread blocks.
+            block_dim: Dimensions of each thread block in the grid.
+            cluster_dim: Dimensions of clusters (if the thread blocks are
+                grouped into clusters).
+            shared_mem_bytes: Amount of shared memory per thread block.
+            attributes: Launch attributes.
+            constant_memory: Constant memory mapping.
+            location: Source location for the function call.
+
+        Example:
+
+        ```mojo
+        from gpu.host import DeviceContext
+
+        fn vec_add_sig(
+            in0: UnsafePointer[Float32],
+            in1: UnsafePointer[Float32],
+            out: UnsafePointer[Float32],
+            len: Int,
+        ):
+            pass
+
+        with DeviceContext() as ctx:
+            var func = ctx.load_function[vec_add_sig](
+                function_name="vectorAdd",
+                asm=ptx_code,
+            )
+            ctx.enqueue_function_checked(
+                func,
+                in0_buf,
+                in1_buf,
+                out_buf,
+                1024,
+                grid_dim=Dim(32),
+                block_dim=Dim(32),
+            )
+            ctx.synchronize()
+        ```
+
+        Raises:
+            If the operation fails.
+        """
+        _check_dim["DeviceContext.enqueue_function_checked", "grid_dim"](
+            grid_dim, location=__call_location()
+        )
+        _check_dim["DeviceContext.enqueue_function_checked", "block_dim"](
+            block_dim, location=__call_location()
+        )
+
+        self._enqueue_external_function(
             f,
             args,
             grid_dim=grid_dim,
@@ -4727,9 +5023,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
         ```mojo
         with DeviceContext() as ctx:
-            var compile_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
+            var compile_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -4952,9 +5248,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
 
         ```mojo
         with DeviceContext() as ctx:
-            var compile_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
+            var compile_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compile_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -5052,9 +5348,9 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
         from gpu.host import DeviceContext
 
         with DeviceContext() as ctx:
-            var compiled_func = ctx.compile_function[kernel]()
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compiled_func, grid_dim=1, block_dim=1)
+            var compiled_func = ctx.compile_function_checked[kernel, kernel]()
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
+            ctx.enqueue_function_checked(compiled_func, grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
 
@@ -5129,89 +5425,6 @@ struct DeviceContext(ImplicitlyCopyable, Movable):
     ) raises:
         f._call_with_pack_checked(
             self,
-            args,
-            grid_dim=grid_dim,
-            block_dim=block_dim,
-            cluster_dim=cluster_dim,
-            shared_mem_bytes=shared_mem_bytes,
-            attributes=attributes^,
-            constant_memory=constant_memory^,
-            location=location.or_else(__call_location()),
-        )
-
-    @parameter
-    @always_inline
-    @deprecated(
-        "`enqueue_function` is deprecated. Use `enqueue_function_checked`"
-        " instead."
-    )
-    fn enqueue_function[
-        *Ts: AnyType
-    ](
-        self,
-        f: DeviceExternalFunction,
-        *args: *Ts,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: OptionalReg[_SourceLocation] = None,
-    ) raises:
-        """Enqueues an external device function for asynchronous execution on the GPU.
-
-        This method schedules an external device function to be executed on the GPU with the
-        specified execution configuration. The function and its arguments are passed to the
-        underlying GPU runtime, which will execute them when resources are available.
-
-        Parameters:
-            Ts: The dtypes of the arguments to be passed to the device function.
-
-        Args:
-            f: The external device function to execute.
-            args: The arguments to pass to the device function.
-            grid_dim: The dimensions of the grid (number of thread blocks).
-            block_dim: The dimensions of each thread block (number of threads per block).
-            cluster_dim: Optional dimensions for thread block clusters (for newer GPU architectures).
-            shared_mem_bytes: Optional amount of dynamic shared memory to allocate per block.
-            attributes: Optional list of launch attributes for fine-grained control.
-            constant_memory: Optional list of constant memory mappings to use during execution.
-            location: Source location for the function call.
-
-        Raises:
-            If there's an error enqueuing the function or if the function execution fails.
-
-        Example:
-
-        ```mojo
-        from gpu.host import DeviceContext
-        from gpu.host.device_context import DeviceExternalFunction
-
-        # Create a device context and load an external function
-        with DeviceContext() as ctx:
-            var ext_func = DeviceExternalFunction("my_kernel")
-
-            # Enqueue the external function with execution configuration
-            ctx.enqueue_function(
-                ext_func,
-                grid_dim=Dim(16),
-                block_dim=Dim(256)
-            )
-
-            # Wait for completion
-            ctx.synchronize()
-        ```
-        """
-        _check_dim["DeviceContext.enqueue_function", "grid_dim"](
-            grid_dim, location=__call_location()
-        )
-        _check_dim["DeviceContext.enqueue_function", "block_dim"](
-            block_dim, location=__call_location()
-        )
-
-        self._enqueue_external_function(
-            f,
             args,
             grid_dim=grid_dim,
             block_dim=block_dim,
@@ -6658,7 +6871,7 @@ struct DeviceMulticastBuffer[dtype: DType]:
         var contexts: List[DeviceContext],
         size: Int,
     ) raises:
-        alias elem_size = size_of[dtype]()
+        alias elem_size = size_of[Self.dtype]()
         var handle = _DeviceMulticastBufferPtr()
 
         var ctxs_len = len(contexts)
@@ -6690,17 +6903,17 @@ struct DeviceMulticastBuffer[dtype: DType]:
     @doc_private
     fn unicast_buffer_for(
         self, ctx: DeviceContext
-    ) raises -> DeviceBuffer[dtype]:
+    ) raises -> DeviceBuffer[Self.dtype]:
         # const char* AsyncRT_DeviceMulticastBuffer_unicastBufferFor(const DeviceBuffer **result, void **devicePtr, const DeviceMulticastBuffer *multiBuffer, const DeviceContext* ctx)
         var buf_handle = _DeviceBufferPtr()
-        var buf_ptr = UnsafePointer[Scalar[dtype]]()
+        var buf_ptr = UnsafePointer[Scalar[Self.dtype]]()
 
         _checked(
             external_call[
                 "AsyncRT_DeviceMulticastBuffer_unicastBufferFor",
                 _ConstCharPtr,
                 UnsafePointer[_DeviceBufferPtr],
-                UnsafePointer[UnsafePointer[Scalar[dtype]]],
+                UnsafePointer[UnsafePointer[Scalar[Self.dtype]]],
                 _DeviceMulticastBufferPtr,
                 _DeviceContextPtr,
             ](
@@ -6711,22 +6924,22 @@ struct DeviceMulticastBuffer[dtype: DType]:
             )
         )
 
-        return DeviceBuffer[dtype](buf_handle, buf_ptr)
+        return DeviceBuffer[Self.dtype](buf_handle, buf_ptr)
 
     @doc_private
     fn multicast_buffer_for(
         self, ctx: DeviceContext
-    ) raises -> DeviceBuffer[dtype]:
+    ) raises -> DeviceBuffer[Self.dtype]:
         # const char* AsyncRT_DeviceMulticastBuffer_multicastBufferFor(const DeviceBuffer **result, void **devicePtr, const DeviceMulticastBuffer *multiBuffer, const DeviceContext* ctx)
         var buf_handle = _DeviceBufferPtr()
-        var buf_ptr = UnsafePointer[Scalar[dtype]]()
+        var buf_ptr = UnsafePointer[Scalar[Self.dtype]]()
 
         _checked(
             external_call[
                 "AsyncRT_DeviceMulticastBuffer_multicastBufferFor",
                 _ConstCharPtr,
                 UnsafePointer[_DeviceBufferPtr],
-                UnsafePointer[UnsafePointer[Scalar[dtype]]],
+                UnsafePointer[UnsafePointer[Scalar[Self.dtype]]],
                 _DeviceMulticastBufferPtr,
                 _DeviceContextPtr,
             ](
@@ -6737,16 +6950,18 @@ struct DeviceMulticastBuffer[dtype: DType]:
             )
         )
 
-        return DeviceBuffer[dtype](buf_handle, buf_ptr)
+        return DeviceBuffer[Self.dtype](buf_handle, buf_ptr)
 
 
 struct _HostMappedBuffer[dtype: DType]:
     var _ctx: DeviceContext
-    var _dev_buf: DeviceBuffer[dtype]
-    var _cpu_buf: HostBuffer[dtype]
+    var _dev_buf: DeviceBuffer[Self.dtype]
+    var _cpu_buf: HostBuffer[Self.dtype]
 
-    fn __init__(out self, ctx: DeviceContext, buf: DeviceBuffer[dtype]) raises:
-        var cpu_buf = ctx.enqueue_create_host_buffer[dtype](len(buf))
+    fn __init__(
+        out self, ctx: DeviceContext, buf: DeviceBuffer[Self.dtype]
+    ) raises:
+        var cpu_buf = ctx.enqueue_create_host_buffer[Self.dtype](len(buf))
         self._ctx = ctx
         self._dev_buf = buf
         self._cpu_buf = cpu_buf
@@ -6754,7 +6969,7 @@ struct _HostMappedBuffer[dtype: DType]:
     fn __del__(deinit self):
         pass
 
-    fn __enter__(mut self) raises -> HostBuffer[dtype]:
+    fn __enter__(mut self) raises -> HostBuffer[Self.dtype]:
         self._dev_buf.enqueue_copy_to(self._cpu_buf)
         self._ctx.synchronize()
         return self._cpu_buf
