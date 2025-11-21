@@ -3809,15 +3809,14 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 
 KernelStubOp CallStubOp::getCallee() {
   mlir::SymbolTable symTable(getOperation()->getParentOfType<ModuleOp>());
-  return dyn_cast_or_null<KernelStubOp>(
-      symTable.lookup(getName().getLeafReference()));
+  return dyn_cast_or_null<KernelStubOp>(symTable.lookup(getName()));
 }
 
 LogicalResult CallStubOp::verify() {
   auto calleeFunc = getCallee();
   if (!calleeFunc) {
-    return emitError(llvm::formatv("There is no kernel stub named '{}'",
-                                   getName().getLeafReference()));
+    return emitError(
+        llvm::formatv("There is no kernel stub named '{}'", getName()));
   }
 
   auto calleeArgumentTypes = calleeFunc.getBodyBlock().getArgumentTypes();
@@ -3864,7 +3863,7 @@ bool CallStubOp::isThrows() { return getCallee().isThrows(); }
 
 LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
-  MojoValue func(getName().getLeafReference().str());
+  MojoValue func(getName());
   if (getNumResults()) {
     state.setMojoValueFor(
         getResult(0),

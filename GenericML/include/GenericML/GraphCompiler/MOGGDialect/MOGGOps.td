@@ -171,7 +171,7 @@ def MOGG_OutputOp
 def MOGG_CallStubOp : MOGG_Op<"call.stub", [DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>]>  {
   let summary = "Calls into an outlined stub";
   let description = [{}];
-  let arguments = (ins SymbolRefAttr:$name, Variadic<AnyType>:$inputs);
+  let arguments = (ins FlatSymbolRefAttr:$name, Variadic<AnyType>:$inputs);
   let results = (outs Variadic<AnyType>: $outputs);
   let assemblyFormat = "$name ($inputs^ `:` type($inputs))? (`->` type($outputs)^)? attr-dict";
   let hasVerifier = 1;

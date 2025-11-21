@@ -69,13 +69,13 @@ struct EmitMojo
     }
 
     // Replace stub calls with ExecuteCompiledOp.
-    llvm::DenseMap<StringAttr, llvm::SetVector<StringAttr>>
+    llvm::DenseMap<StringAttr, llvm::SetVector<StringRef>>
         kernelsToLoadPerModel;
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
       auto &kernelsToLoadInThisModel =
           kernelsToLoadPerModel[modelOp.getSymNameAttr()];
       modelOp.walk([&](MOGG::CallStubOp callOp) {
-        kernelsToLoadInThisModel.insert(callOp.getName().getLeafReference());
+        kernelsToLoadInThisModel.insert(callOp.getName());
         // Create a new ExecuteCompiledOp to replace the original kernel
         auto insertPoint = builder.saveInsertionPoint();
         auto stubOp = callOp.getCallee();
@@ -84,7 +84,7 @@ struct EmitMojo
             builder, stubOp->getLoc(),
             /*resultTypes=*/callOp->getResultTypes(),
             /*operands=*/callOp->getOperands(),
-            /*kernelName=*/callOp.getName().getLeafReference(),
+            /*kernelName=*/callOp.getName(),
             /*usedParams=*/builder.getArrayAttr({}),
             /*outputParamDecls=*/
             KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
@@ -137,8 +137,11 @@ struct EmitMojo
       /// TODO: Add debug info support. For now, defaults to false.
       MOGG::LoadCompiledKernelOp::create(
           builder, loc,
-          builder.getArrayAttr(
-              llvm::to_vector_of<Attribute>(kernelsToLoadInThisModel)),
+          builder.getArrayAttr(llvm::map_to_vector(
+              kernelsToLoadInThisModel,
+              [&](auto name) {
+                return cast<Attribute>(StringAttr::get(ctx, name));
+              })),
           mojoTextAttr, /*debug*/ false);
     }
 
