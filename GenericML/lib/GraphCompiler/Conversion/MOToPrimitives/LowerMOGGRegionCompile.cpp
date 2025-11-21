@@ -175,7 +175,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     builder.setInsertionPoint(init.getTerminator());
     init.walk([&](MOGG::ExecuteCompiledOp kernel) {
       auto [moduleIndex, kernelIndex] =
-          kernelModuleAndFnIndex[kernel.getKernelName()];
+          kernelModuleAndFnIndex[kernel.getCalleeSymbol()];
       rewriteExecuteCompiledOp(builder, lastDeviceRuntimeOp.getTheContext(),
                                lastDeviceRuntimeOp.getSlot(), moduleIndex,
                                kernelIndex, kernel);
@@ -199,7 +199,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                     << "Cannot find execute context in bounding region of "
                        "generic.execute");
       auto [moduleIndex, kernelIndex] =
-          kernelModuleAndFnIndex[kernel.getKernelName()];
+          kernelModuleAndFnIndex[kernel.getCalleeSymbol()];
       rewriteExecuteCompiledOp(builder, executeContext,
                                lastDeviceRuntimeOp.getSlot(), moduleIndex,
                                kernelIndex, kernel);

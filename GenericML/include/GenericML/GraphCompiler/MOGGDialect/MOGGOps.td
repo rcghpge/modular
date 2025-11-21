@@ -1639,7 +1639,7 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands,
-                       StrAttr:$kernelName,
+                       FlatSymbolRefAttr:$calleeSymbol,
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
                        StrAttr:$summary,

@@ -13,7 +13,7 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
   %0 = grt.chain.create ()
   %1 = index.constant 42
   %2 = index.constant -20
-  %3 = "mogg.execute_kernel"(%1, %2) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
+  %3 = "mogg.execute_kernel"(%1, %2) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, calleeSymbol = @__gen_0, outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
   %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
   mef.output %4 : !mef.chain
 }
@@ -37,7 +37,7 @@ mgp.model @basic_control_flow : mof devices [#M.device_ref<"cpu", 0>] init (%wei
   %rhs = index.constant -20
   %1 = mgp.buffer.to_bool %ch0, %arg2 : !mgp.buffer
   %2 = grt.if %1 (%ch0: !mef.chain, %lhs: index, %rhs: index, %arg1 as %new: !mgp.context) -> !mef.chain {
-    %3 = "mogg.execute_kernel"(%lhs, %rhs) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
+    %3 = "mogg.execute_kernel"(%lhs, %rhs) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, calleeSymbol = @__gen_0, outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, index) -> index
     mef.output %ch0 : !mef.chain
   } else {
     mef.output %ch0 : !mef.chain
@@ -67,7 +67,7 @@ mgp.model @basic_init : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
   %ch = "mgp.module.load.placeholder"() : () -> !mef.chain
 
   %cst = index.constant 42
-  %3 = "mogg.execute_kernel"(%cst, %ch) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, kernelName = "__gen_0", outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, !mef.chain) -> index
+  %3 = "mogg.execute_kernel"(%cst, %ch) {constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = false, calleeSymbol = @__gen_0, outputParamDecls = #kgen<param.decls[]>, summary = "mogg.generic.compiled.region:14", usedParams = []} : (index, !mef.chain) -> index
   %4 = "test.sink"(%3, %0) : (index, !mef.chain) -> !mef.chain
 
   mef.output %4, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
