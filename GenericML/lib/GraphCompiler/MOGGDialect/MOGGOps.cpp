@@ -3848,8 +3848,18 @@ LogicalResult CallStubOp::verify() {
         stringifyMLIRObject(callerOperandTypes[i])));
   }
 
-  if (calleeFunc.getAbi() != ABIKind::MOGG)
-    return emitError("Call site should be in the MOGG ABI");
+  bool callIsInAKernelStub =
+      getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  bool callIsInAKernelRegion =
+      getOperation()->getParentOfType<MOGG::GenericCompiledRegionOp>();
+  bool callIsInAKernel = callIsInAKernelStub || callIsInAKernelRegion;
+  if (callIsInAKernel && calleeFunc.getAbi() != ABIKind::MOGG) {
+    return emitError(
+        "Call site is in a kernel but the callee's ABI is not MOGG");
+  } else if (!callIsInAKernel && calleeFunc.getAbi() != ABIKind::MGP) {
+    return emitError(
+        "Call site is outside a kernel but the callee's ABI is not MGP");
+  }
 
   return success();
 }
