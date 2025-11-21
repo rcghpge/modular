@@ -1704,6 +1704,11 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
                                              newKernel.getResult(0));
   }
 
+  // Shape functions have no explicit users so we gate the rest of the program
+  // on them.
+  if (newKernel->getUsers().empty())
+    loweringState.setCurrentExecuteChain(newKernel->getResult(0));
+
   // Handle parameter binding for shape function kernels
   // Doing this is necessary for mo-to-primtiives to properly map the output
   // dims (SSA values) to downstream kernels with tensors making use of these
