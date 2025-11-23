@@ -47,10 +47,10 @@ from utils import IndexList, StaticTuple
 # TODO(MOCO-1413): remove this need to keep imported exported funcs alive.
 @export
 fn export():
-    alias _simd_load_from_managed_tensor_slice = simd_load_from_managed_tensor_slice
-    alias _simd_store_into_managed_tensor_slice = simd_store_into_managed_tensor_slice
-    alias __input_fusion_hook_impl = _input_fusion_hook_impl
-    alias __output_fusion_hook_impl = _output_fusion_hook_impl
+    comptime _simd_load_from_managed_tensor_slice = simd_load_from_managed_tensor_slice
+    comptime _simd_store_into_managed_tensor_slice = simd_store_into_managed_tensor_slice
+    comptime __input_fusion_hook_impl = _input_fusion_hook_impl
+    comptime __output_fusion_hook_impl = _output_fusion_hook_impl
 
 
 # ===-----------------------------------------------------------------------===#
@@ -256,7 +256,7 @@ fn _matmul[
 
             @parameter
             if elementwise_lambda_fn:
-                alias func = elementwise_lambda_fn.value()
+                comptime func = elementwise_lambda_fn.value()
                 func(IndexList[2](i, j), c_val)
             else:
                 c.store[1](IndexList[2](i, j), c_val)
@@ -479,10 +479,10 @@ struct MatmulFuseOut:
         b: InputTensor,
         ctx: DeviceContextPtr,
     ) capturing raises:
-        alias rank = a.rank
-        alias a_dtype = a.dtype
-        alias b_dtype = b.dtype
-        alias c_dtype = c.dtype
+        comptime rank = a.rank
+        comptime a_dtype = a.dtype
+        comptime b_dtype = b.dtype
+        comptime c_dtype = c.dtype
 
         # Convert everything to NDBuffer
         # var c_buffer = toNDBuffer[c_dtype, 2](c)
@@ -1163,8 +1163,8 @@ struct MySquareComputeOutFusion:
         input: InputTensor[dtype=dtype, rank=1],
     ) capturing:
         var res = input[0] * input[0]
-        alias has_compute_lambda = outp.static_spec.out_compute_lambda is not None
-        alias has_store_lambda = outp.static_spec.out_lambda is not None
+        comptime has_compute_lambda = outp.static_spec.out_compute_lambda is not None
+        comptime has_store_lambda = outp.static_spec.out_lambda is not None
         print("has_compute_lambda =", has_compute_lambda)
         print("has_store_lambda =", has_store_lambda)
 
