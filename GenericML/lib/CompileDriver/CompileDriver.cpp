@@ -24,18 +24,18 @@ using namespace M;
 #define STRINGIFY_MAX_CONFIG(path) _X_STRINGIFY(MAX_CONFIG_SECTION) path
 
 std::optional<std::filesystem::path> M::getMaxCacheDir() {
-  auto configOr = Config::open();
-
   // If config is accessible look if it's set or not. If it's set we are done.
-  if (!configOr.isError()) {
-    M::Config config = configOr.takeValue();
-    auto maxCacheDir = config.getValue(STRINGIFY_MAX_CONFIG(".cache_dir"));
-    if (!maxCacheDir.empty())
-      return std::filesystem::path(maxCacheDir.str());
-  }
+  auto configOr = Config::open();
+  if (configOr.isError())
+    return std::nullopt;
+
+  M::Config config = configOr.takeValue();
+  auto maxCacheDir = config.getValue(STRINGIFY_MAX_CONFIG(".cache_dir"));
+  if (!maxCacheDir.empty())
+    return std::filesystem::path(maxCacheDir.str());
 
   // Try using modular cache directory.
-  auto cacheDirOr = Config::getModularCacheFolderPath(/*create=*/true);
+  auto cacheDirOr = config.getModularCacheFolderPath(/*create=*/true);
   if (cacheDirOr.isError())
     return std::nullopt;
 
