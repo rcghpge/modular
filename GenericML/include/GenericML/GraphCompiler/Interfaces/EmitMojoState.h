@@ -98,6 +98,8 @@ constexpr StringLiteral alias_FusedComputeOutputTensor =
     "managed_tensor_slice._FusedComputeOutputTensor";
 constexpr StringLiteral alias_FusedInputTensor =
     "managed_tensor_slice._FusedInputTensor";
+constexpr StringLiteral alias_MutableInputTensor =
+    "managed_tensor_slice._MutableInputTensor";
 constexpr StringLiteral alias_UInt8 = "UInt8";
 constexpr StringLiteral alias_MutAnyOrigin = "MutAnyOrigin";
 
@@ -254,9 +256,14 @@ public:
     auto tensorTypeName = [&]() {
       if (!ioKind)
         return HardcodedMojoSymbols::struct_ManagedTensorSlice;
-      else if (ioKind.getValue() == MO::IOKind::Input)
-        return HardcodedMojoSymbols::alias_InputTensor;
-      else if (ioKind.getValue() == MO::IOKind::Output)
+      else if (ioKind.getValue() == MO::IOKind::Input) {
+        BoolAttr isMutable = tensorType.getIsMutableAttr();
+        if (isMutable && isMutable.getValue()) {
+          return HardcodedMojoSymbols::alias_MutableInputTensor;
+        } else {
+          return HardcodedMojoSymbols::alias_InputTensor;
+        }
+      } else if (ioKind.getValue() == MO::IOKind::Output)
         return HardcodedMojoSymbols::alias_OutputTensor;
       else {
         ASSERT_STREAM(false, << "Unsupported ioKind " << ioKind);

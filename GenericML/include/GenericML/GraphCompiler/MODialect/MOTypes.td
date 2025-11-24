@@ -226,6 +226,12 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     /// attribute is specified, return a null attribute `IOKindAttr{}`.
     MO::IOKindAttr getIOKindAttr();
 
+    /// Returns true if the tensor is mutable.
+    BoolAttr getIsMutableAttr();
+
+    /// Returns a clone with a new mutability attribute.
+    TensorType cloneWithMut(BoolAttr isMutable) const;
+
     /// Duplicates a tensor type but with a dimension set to a new value.
     TensorType cloneWithNewDim(uint64_t dim, uint64_t size);
   }];

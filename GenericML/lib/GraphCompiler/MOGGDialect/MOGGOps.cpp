@@ -898,16 +898,93 @@ Type CallExecuteOp::getKernelReturnOutput() {
 
 bool CallExecuteOp::isThrows() { return getIsThrows(); }
 
+namespace {
+/// Check if input value is a mutable tensor
+bool isMutableInputTensor(Value input) {
+  auto tensorType = dyn_cast<MO::TensorType>(input.getType());
+  if (!tensorType)
+    return false;
+  auto ioKindAttr = tensorType.getIOKindAttr();
+  auto isMutableAttr = tensorType.getIsMutableAttr();
+  return ioKindAttr && isMutableAttr && isMutableAttr.getValue();
+}
+
+/// Generate mogg_tensor_init to transform MutableInputTensor to InputTensor
+MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
+  auto tensorType = cast<MO::TensorType>(input.getType());
+  MojoValue inputValue = state.getMojoValueFor(input);
+
+  // Extract dtype
+  ErrorOr<DType> dTypeOr = M::MO::fromMLIRType(tensorType.getElementType());
+  ASSERT_STREAM(!dTypeOr.isError(),
+                "Failed to extract dtype from mutable input tensor");
+  MojoValue dtype = state.mlirDTypeToMojoType(*dTypeOr);
+
+  // Extract rank
+  ASSERT_STREAM(tensorType.hasRank(),
+                "Mutable input tensor must have statically known rank");
+  MojoValue rank(static_cast<int64_t>(tensorType.getRank()));
+
+  // Get static_spec fields
+  MojoValue staticSpec = inputValue.get("static_spec");
+
+  // Build template parameters
+  SmallVector<MojoValue> templateParams = {dtype,
+                                           rank,
+                                           MojoValue(false), // False constant
+                                           MojoValue("io_spec.IO.Input"),
+                                           staticSpec.get("shape"),
+                                           staticSpec.get("strides"),
+                                           staticSpec.get("alignment"),
+                                           staticSpec.get("exclusive")};
+
+  // Build runtime arguments
+  SmallVector<MojoValue> runtimeArgs = {
+      inputValue.get("_ptr").get("bitcast")[MojoValue("NoneType")](),
+      inputValue.get("shape")()};
+
+  // Generate the mogg_tensor_init call
+  MojoValue moggTensorInit("MOGGPrimitives.mogg_tensor_init");
+  return state.builder.var(moggTensorInit(templateParams, runtimeArgs));
+}
+} // namespace
+
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   auto function =
       state.analysis.getRegisteredLITMojoExecuteFunctionFor(getKernelName());
 
-  // Collect all kernel I/Os.
+  // Build kernel adaptor to check what types the kernel expects
+  using namespace KGEN::MOGGPreElab;
+  MojoKernelFunctionAdaptor<KGEN::LIT::FnOp> kernelAdaptor(function);
+
+  // Collect all kernel I/Os
   SmallVector<MojoValue> kernelOperands;
   for (Value val : getKernelDPSOutputs())
     kernelOperands.push_back(state.getMojoValueFor(val));
-  for (Value val : getKernelInputs())
-    kernelOperands.push_back(state.getMojoValueFor(val));
+
+  auto inputs = getKernelInputs();
+  for (unsigned i = 0; i < inputs.size(); ++i) {
+    Value input = inputs[i];
+    MojoValue inputValue = state.getMojoValueFor(input);
+
+    // Transform mutable inputs if kernel expects InputTensor
+    if (isMutableInputTensor(input) &&
+        i < kernelAdaptor.inputArguments.size()) {
+      auto *tensorInfo = std::get_if<TensorOperandAdaptor>(
+          &kernelAdaptor.inputArguments[i].underlyingType);
+      ASSERT_STREAM(tensorInfo, "Expected tensor operand for kernel input #"
+                                    << i
+                                    << " when "
+                                       "matching "
+                                       "mutable "
+                                       "MO "
+                                       "operand");
+      if (tensorInfo->ioSpec == IOSpec::InputTensor)
+        inputValue = generateMutableTensorInit(input, state);
+    }
+
+    kernelOperands.push_back(inputValue);
+  }
 
   // And the optional context.
   if (auto maybeContext = getDeviceContext())
@@ -1198,10 +1275,11 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   builder.restoreInsertionPoint(insertionPoint);
 
   // This is a list of input operands in MGP but without the chain.
+  auto maybeInChain = maybeGetInChain();
   auto loweredInputOperands = opLoweringState.getLoweredOperands();
   Value chain = loweringState.getCurrentExecuteChain();
-  if (maybeGetInChain()) {
-    chain = loweringState.lookupExecuteLoweredValue(*maybeGetInChain());
+  if (maybeInChain) {
+    chain = loweringState.lookupExecuteLoweredValue(*maybeInChain);
     loweredInputOperands.pop_back();
   }
   chain = opLoweringState.getGuardChain(chain);
@@ -1252,8 +1330,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // 2. Add the inputs with the input or mutable input signature.
   // Use zip_first because we removed the original chain from the list.
+  auto operandsRange = getOperands();
+  auto operandsToZip = maybeInChain ? operandsRange.drop_back() : operandsRange;
   for (auto &&[origOperand, loweredInputOperand] :
-       llvm::zip_first(getOperands(), loweredInputOperands)) {
+       llvm::zip_first(operandsToZip, loweredInputOperands)) {
     auto sig = isa<MO::BufferType>(origOperand.getType())
                    ? InOutSignatureAttr::kMut
                    : InOutSignatureAttr::kIn;
@@ -1381,46 +1461,92 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   };
 
   // Call the previously created kernel stub by creating ops that bridge the gap
-  // between MGP and MO/MOGG. We can safely zip_first iterate through the stub's
-  // arguments and the regions operands (minus the chain that is always first)
-  // because the stub and the region have the same arguments (except for the
-  // added dimensions). Remember that we added them in the same order: inputs,
-  // outputs then scratch.
-  const uint64_t endOfInputArguments = getNumOperands();
-  uint64_t idx = 0;
+  // between MGP and MO/MOGG.
   SmallVector<Value> stubCallOperands;
   builder.setInsertionPointToStart(&regionBody);
-  for (auto &&[stubArgument, regionArgument] :
-       llvm::zip_first(kernelStub.getBodyBlock().getArguments(),
-                       regionBody.getArguments().drop_front())) {
-    if (auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType())) {
-      auto dynamicDimensionsOr =
-          getTensorDynamicDimensions(asTensor, /*isInsideStub=*/false);
-      if (dynamicDimensionsOr.isError())
-        return emitError(dynamicDimensionsOr.getError());
 
-      /// TODO: Support fusion enums
-      MO::IOKind io =
-          (idx < endOfInputArguments) ? MO::IOKind::Input : MO::IOKind::Output;
-      bool mut = idx >= endOfInputArguments ||
-                 isa<MO::BufferType>(stubArgument.getType());
-      // Exclusive is True unless it's used by a view kernel.
-      bool isExclusive =
-          llvm::none_of(stubArgument.getUsers(), [](Operation *use) {
-            return isa<MOGG::CallViewOp>(use);
-          });
-      auto ioAttr = MO::IOKindAttr::get(ctx, io);
-      stubArgument.setType(asTensor.cloneWith(ioAttr));
-      auto tensorInitOp = MOGG::TensorInitOp::create(
-          builder, loc, stubArgument.getType(), regionArgument,
-          *dynamicDimensionsOr, BoolAttr::get(ctx, mut), ioAttr,
-          BoolAttr::get(ctx, isExclusive));
-      stubCallOperands.emplace_back(tensorInitOp);
-    } else {
-      emitError("Type not yet support in the lowering");
-      return failure();
+  // Analyze which stub arguments are used as outputs in kernel terminator
+  // operations
+  DenseSet<Value> outputArguments;
+  kernelStub.walk([&](Operation *op) {
+    if (auto terminator = dyn_cast<KernelTerminator>(op)) {
+      for (Value output : terminator.getKernelDPSOutputs()) {
+        outputArguments.insert(output);
+      }
     }
-    ++idx;
+  });
+
+  // Explicitly track operand counts for correct mapping between stub and region
+  // arguments. The stub body arguments are structured as:
+  // [input operands..., output placeholders..., scratch placeholders...]
+  // The region body arguments are structured as:
+  // [chain, input operands..., output storage buffers..., scratch storage
+  // buffers..., parameters...]
+  const uint64_t numInputOperands = loweredInputOperands.size();
+  const uint64_t numOutputOperands = loweredOutputsStorage.size();
+  const uint64_t numScratchOperands = scratchOutputsStorage.size();
+
+  // Helper to calculate region argument index based on tensor argument position
+  auto getRegionArgIndex = [&](uint64_t tensorIdx) -> uint64_t {
+    // Region args: [chain, inputs..., outputs..., scratch...]
+    // Add 1 for the chain argument at position 0
+    return 1 + tensorIdx;
+  };
+
+  uint64_t tensorArgIdx = 0;
+  for (auto stubArgument : kernelStub.getBody().front().getArguments()) {
+    auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType());
+    if (!asTensor) {
+      // Non-tensor arguments need placeholders that will be replaced later by
+      // lowerDeviceContextPlaceholder. Use chain as placeholder.
+      stubCallOperands.emplace_back(regionBody.getArguments()[0]);
+      continue;
+    }
+
+    auto dynamicDimensionsOr =
+        getTensorDynamicDimensions(asTensor, /*isInsideStub=*/false);
+    if (dynamicDimensionsOr.isError())
+      return emitError(dynamicDimensionsOr.getError());
+
+    // Determine if this is an output: either in output/scratch range or
+    // explicitly marked
+    bool isOutput = (tensorArgIdx >= numInputOperands) ||
+                    outputArguments.contains(stubArgument);
+    MO::IOKind io = isOutput ? MO::IOKind::Output : MO::IOKind::Input;
+    bool mut = isOutput || isa<MO::BufferType>(stubArgument.getType());
+
+    // Exclusive is True unless it's used by a view kernel
+    bool isExclusive =
+        llvm::none_of(stubArgument.getUsers(), [](Operation *use) {
+          return isa<MOGG::CallViewOp>(use);
+        });
+
+    // Update stub argument type
+    auto ioAttr = MO::IOKindAttr::get(ctx, io);
+    auto mutAttr = BoolAttr::get(ctx, mut);
+    stubArgument.setType(asTensor.cloneWith(ioAttr).cloneWithMut(mutAttr));
+
+    // Verify tensor index is within expected bounds
+    if (tensorArgIdx >=
+        numInputOperands + numOutputOperands + numScratchOperands) {
+      return emitError(
+          "Stub argument index exceeds expected tensor argument count");
+    }
+
+    // Get corresponding region argument
+    uint64_t regionArgIndex = getRegionArgIndex(tensorArgIdx);
+    if (regionArgIndex >= regionBody.getArguments().size()) {
+      return emitError("Region argument index out of bounds");
+    }
+    Value regionValue = regionBody.getArguments()[regionArgIndex];
+
+    // Create tensor initialization
+    auto tensorInitOp = MOGG::TensorInitOp::create(
+        builder, loc, stubArgument.getType(), regionValue, *dynamicDimensionsOr,
+        mutAttr, ioAttr, BoolAttr::get(ctx, isExclusive));
+    stubCallOperands.emplace_back(tensorInitOp);
+
+    ++tensorArgIdx;
   }
 
   // This function will update the KernelStub operands and mapping to take
@@ -1586,8 +1712,12 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           /*isInsideStub=*/true);
       if (dynamicDimensionsOr.isError())
         return emitError(dynamicDimensionsOr.getError());
+      MO::TensorType tensorType = MO::castFromTensorLike(lambdaVal.getType());
+      tensorType =
+          tensorType.cloneWith(MO::IOKindAttr::get(ctx, MO::IOKind::Input))
+              .cloneWithMut(BoolAttr::get(ctx, false));
       tensorVal = MOGG::TensorInitOp::create(
-          builder, loc, lambdaVal.getType(), emptyBuffer, *dynamicDimensionsOr,
+          builder, loc, tensorType, emptyBuffer, *dynamicDimensionsOr,
           /*mut=*/BoolAttr::get(ctx, false),
           /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
           /*exclusive=*/BoolAttr::get(ctx, true));
@@ -1627,8 +1757,13 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
             builder, constantOp->getLoc(), mgpBufferType, constantOp.getValue())
             .getResult();
     SmallVector<Value> dynamicDimensions;
+    MO::TensorType tensorType =
+        MO::castFromTensorLike(constantOp.getResult().getType());
+    tensorType =
+        tensorType.cloneWith(MO::IOKindAttr::get(ctx, MO::IOKind::Input))
+            .cloneWithMut(BoolAttr::get(ctx, false));
     Value constantValue = MOGG::TensorInitOp::create(
-        builder, loc, constantOp.getResult().getType(), bufferValue,
+        builder, loc, tensorType, bufferValue,
         /*dynamicDimensions=*/ArrayRef<Value>{},
         /*mut=*/BoolAttr::get(ctx, false),
         /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
@@ -3968,7 +4103,15 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
   // Get the kernel inputs.
-  SmallVector<MojoValue> inputMojoValues = state.getMojoValuesFor(getInputs());
+  SmallVector<MojoValue> inputMojoValues;
+  for (auto input : getInputs()) {
+    MojoValue inputValue = state.getMojoValueFor(input);
+    // Transform mutable input tensors - view ops always expect InputTensor
+    if (isMutableInputTensor(input)) {
+      inputValue = generateMutableTensorInit(input, state);
+    }
+    inputMojoValues.push_back(inputValue);
+  }
 
   KGEN::LIT::FnOp function =
       state.analysis.getRegisteredLITMojoUpdateViewFunctionFor(getKernelName());

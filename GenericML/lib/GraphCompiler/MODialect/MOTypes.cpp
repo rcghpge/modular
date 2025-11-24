@@ -218,6 +218,10 @@ static constexpr StringRef kLayoutMetadataName = "layout";
 /// `MO::TensorType` with this name as the key.
 static constexpr StringRef kIOKindMetadataName = "io";
 
+/// A mutability attribute will always be stored in the metadata
+/// `DictionaryAttr` of `MO::TensorType` with this name as the key.
+static constexpr StringRef kIsMutableMetadataName = "mut";
+
 Type TensorType::parse(AsmParser &parser) {
   TensorLikeTypeParser tensorParser(parser);
 
@@ -560,6 +564,19 @@ TensorType TensorType::cloneWith(IOKindAttr ioKindAttr) const {
 TensorType TensorType::cloneWithoutIOKind() const {
   NamedAttrList namedAttrs(getMetadata());
   namedAttrs.erase(kIOKindMetadataName);
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
+                         newMetadata);
+}
+
+BoolAttr TensorType::getIsMutableAttr() {
+  return llvm::dyn_cast_or_null<BoolAttr>(
+      getMetadata().get(kIsMutableMetadataName));
+}
+
+TensorType TensorType::cloneWithMut(BoolAttr isMutable) const {
+  NamedAttrList namedAttrs(getMetadata());
+  namedAttrs.set(kIsMutableMetadataName, isMutable);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
   return TensorType::get(getShapeAttr(), getDtype(), getDeviceRef(),
                          newMetadata);
