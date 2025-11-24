@@ -1,10 +1,9 @@
 # `mt` <u>m</u>odular <u>t</u>ool
 
 `mt` is meant to be a driver for functionally *any* framework that we want to
-use. It uses an API defined in
-[DriverAPI.h](../include/GenericML/CommonDriver/DriverAPI.h) to call into
-frameworks built as dynamic libraries and provide the basic commands we expect
-from a driver like `-execute`, `-inspect`, etc.
+use. It uses a driver API to call into frameworks built as dynamic libraries
+and provide the basic commands we expect from a driver like `-execute`,
+`-inspect`, etc.
 
 The tool is designed with extensibility at the forefront - anyone who defines
 the correct API can export a dynamic library that `mt` can load and take
@@ -32,7 +31,7 @@ into a MEF file, then ask the framework to execute the resulting MEF file.
 
 The tool has a set of command line options that it recognizes and parses into
 a C++ structure. These are the set of options that can be found in
-[DriverCLOptions.h](../include/GenericML/ExecutionDriver/DriverCLOptions.h).
+`GenericML/include/GenericML/ExecutionDriver/DriverCLOptions.h`.
 These options are passed into the loaded framework. For example:
 
 ```shell

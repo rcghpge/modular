@@ -6,8 +6,8 @@ users who want to invoke the resulting functions.
 
 ## Registering a New Kernel
 
-An example can be found
-[here](https://github.com/modularml/modular/blob/adacf509639cd7925f9d702fec652d6844e4ac16/Kernels/mojo/Mogg/MOGGKernelAPI.mojo#L3724).
+An example can be found in
+`max/kernels/src/Mogg/MOGGKernelAPI/MOGGKernelAPI.mojo` around line 3527.
 
 ```python
 @compiler.register("mo.bottom_k")
@@ -336,8 +336,8 @@ You can access the input/output lambdas via `static_spec` parameter.
 
 ### Converting Between Tensor Types
 
-Plenty of examples can be found in invoking this
-[method](https://github.com/modularml/modular/blob/adacf509639cd7925f9d702fec652d6844e4ac16/Kernels/mojo/Mogg/MOGGKernelAPI.mojo#L527).
+Plenty of examples can be found in the `managed_tensor_slice_to_ndbuffer`
+method in `max/kernels/src/Mogg/MOGGKernelAPI/MOGGKernelAPI.mojo`.
 
 ## Calling a New Kernel in the Graph API
 
