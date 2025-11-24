@@ -115,8 +115,8 @@ ErrorOr<DriverVersion &> CUDACompilationDevice::getDriverVersion() const {
   return version;
 }
 
-ErrorOr<std::string> CUDACompilationDevice::getArchName() const {
-  return targetArch();
+ErrorOr<const char *> CUDACompilationDevice::getArchName() const {
+  return targetArch().c_str();
 }
 
 ErrorOr<M::BufferRef>

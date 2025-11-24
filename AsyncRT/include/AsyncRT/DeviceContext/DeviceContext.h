@@ -136,7 +136,7 @@ public:
 
   const std::string &name() const;
 
-  virtual ErrorOr<std::string> getArchName() const;
+  virtual ErrorOr<const char *> getArchName() const;
 
   int id() const;
 

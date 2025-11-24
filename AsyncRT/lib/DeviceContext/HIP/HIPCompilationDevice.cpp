@@ -51,9 +51,9 @@ ErrorOr<DriverVersion &> HIPCompilationDevice::getDriverVersion() const {
       "compile-only mode");
 }
 
-ErrorOr<std::string> HIPCompilationDevice::getArchName() const {
+ErrorOr<const char *> HIPCompilationDevice::getArchName() const {
   // Return the target architecture that was provided during creation
-  return targetArch();
+  return targetArch().c_str();
 }
 
 ErrorOr<M::BufferRef>

@@ -44,7 +44,7 @@ public:
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
-  ErrorOr<std::string> getArchName() const override;
+  ErrorOr<const char *> getArchName() const override;
 
   /// Compile PTX to CUBIN using libnvptxcompiler.
   ///

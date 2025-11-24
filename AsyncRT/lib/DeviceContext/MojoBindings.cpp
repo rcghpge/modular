@@ -100,7 +100,7 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_deviceApi(llvm::StringRef *result,
 
 MODULAR_EXPORT void AsyncRT_DeviceContext_archName(llvm::StringRef *result,
                                                    const DeviceContext *ctx) {
-  ErrorOr<std::string> archName = ctx->device().getArchName();
+  ErrorOr<const char *> archName = ctx->device().getArchName();
   if (archName.isError())
     *result = "";
   else

@@ -50,11 +50,11 @@ public:
 
   using DeviceList = std::vector<HIPDevice *>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-            std::string name, MemInfo memInfo, size_t allocAlignment,
-            int64_t deviceMemoryLimit = -1);
+            std::string name, std::string arch, MemInfo memInfo,
+            size_t allocAlignment, int64_t deviceMemoryLimit = -1);
   ~HIPDevice() override;
 
-  ErrorOr<std::string> getArchName() const override;
+  ErrorOr<const char *> getArchName() const override;
   static ErrorOr<std::string> getArchName(hipDevice_t device = 0);
 
   const HIPDriver &hipDriver() const;
@@ -107,6 +107,7 @@ private:
   static constexpr int MIN_HIP_DRIVER_VERSION_MINOR = 3;
   static constexpr int MIN_HIP_DRIVER_VERSION_PATCH = 30000;
 
+  const std::string arch_;
   const HIPDriver &driver_;
   hipDevice_t device_;
 };

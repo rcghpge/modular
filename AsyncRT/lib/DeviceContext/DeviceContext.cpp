@@ -231,8 +231,8 @@ Device::compileFunction(StringRef ir, StringRef debugLevel,
 }
 MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
-ErrorOr<std::string> Device::getArchName() const {
-  return Error(Twine("Not implemented for device: ") + name());
+ErrorOr<const char *> Device::getArchName() const {
+  return Error(Twine("Not implemented for device: ") + Twine(name_));
 }
 
 MODULAR_CXX_EXPORT int Device::id() const { return id_; }

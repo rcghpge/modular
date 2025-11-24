@@ -53,7 +53,7 @@ ErrorOr<int> VirtualDevice::computeCapability() const {
       "VirtualDevice does not support compute capability");
 }
 
-ErrorOr<std::string> VirtualDevice::getArchName() const {
+ErrorOr<const char *> VirtualDevice::getArchName() const {
   return compilationDevice_->getArchName();
 }
 

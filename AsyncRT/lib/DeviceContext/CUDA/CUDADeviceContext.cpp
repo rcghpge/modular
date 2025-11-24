@@ -555,6 +555,10 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   return *device;
 }
 
+ErrorOr<const char *> CUDADevice::getArchName() const {
+  return *compilationDevice_->getArchName();
+}
+
 void CUDADevice::eventCacheClear() const {
   std::lock_guard<std::mutex> lock(mu_);
   for (const auto &event : eventCache_) {

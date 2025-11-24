@@ -100,6 +100,8 @@ public:
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;
 
+  ErrorOr<const char *> getArchName() const override;
+
   static const CUDADevice &cast(const Device &device);
 
   static ErrorOr<std::string> getFirstArchName();

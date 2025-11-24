@@ -236,10 +236,10 @@ gethipDeviceAttribute(Device::Attribute attr) {
 }
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
-                     std::string name, MemInfo memInfo, size_t allocAlignment,
-                     int64_t deviceMemoryLimit)
+                     std::string name, std::string arch, MemInfo memInfo,
+                     size_t allocAlignment, int64_t deviceMemoryLimit)
     : Device(api, name, id, memInfo, allocAlignment, deviceMemoryLimit),
-      driver_(driver), device_(device) {}
+      arch_(arch), driver_(driver), device_(device) {}
 
 HIPDevice::~HIPDevice() {
   // Destroy the function map before destroying other device structures.
@@ -378,9 +378,7 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   return value;
 }
 
-ErrorOr<std::string> HIPDevice::getArchName() const {
-  return getArchName(hipDevice());
-}
+ErrorOr<const char *> HIPDevice::getArchName() const { return arch_.c_str(); }
 
 ErrorOr<std::string> HIPDevice::getArchName(hipDevice_t device) {
   // We do need the full AMD GPU architecture name in order to compie for the
@@ -672,8 +670,13 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
     Device::MemInfo memInfo;
     HIP_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
 
-    device = new HIPDevice(driver, id, hipDevice, name, memInfo, alignment,
-                           deviceMemoryLimit);
+    ErrorOr<std::string> errArch = getArchName(hipDevice);
+    if (errArch)
+      RAISE_ERROR(llvm::Twine("HIP architecture query failed: ") +
+                  errArch.getError());
+
+    device = new HIPDevice(driver, id, hipDevice, name, *errArch, memInfo,
+                           alignment, deviceMemoryLimit);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;

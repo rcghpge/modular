@@ -62,7 +62,7 @@ public:
   virtual ErrorOr<DriverVersion &> getDriverVersion() const = 0;
 
   /// Get the architecture name string (e.g., "sm_80")
-  virtual ErrorOr<std::string> getArchName() const = 0;
+  virtual ErrorOr<const char *> getArchName() const = 0;
 
   /// Compile intermediate representation (IR) to device binary.
   ///

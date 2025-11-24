@@ -64,7 +64,7 @@ public:
   ErrorOr<DriverVersion &> getDriverVersion() const override;
   ErrorOrSuccess isCompatible() const override;
   ErrorOr<int> computeCapability() const override;
-  ErrorOr<std::string> getArchName() const override;
+  ErrorOr<const char *> getArchName() const override;
 
   ErrorOr<bool> canAccess(const Device &peer) const override;
 

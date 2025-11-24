@@ -47,7 +47,7 @@ public:
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
-  ErrorOr<std::string> getArchName() const override;
+  ErrorOr<const char *> getArchName() const override;
 
   /// HIP does not require runtime compilation like CUDA.
   ///
