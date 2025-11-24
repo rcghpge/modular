@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "cc_autolink_deps", "modular_cc_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
+load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
 
 modular_cc_library(
     name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
@@ -60,13 +60,6 @@ alias(
     tags = ["maybe-unused"],
 )
 
-cc_autolink_deps(
-    name = "deps",
-    deps = [
-        "//GenericML:SafeTensor",
-    ],
-)
-
 modular_shared_library(
     name = "max",
     srcs = glob([
@@ -80,7 +73,6 @@ modular_shared_library(
     includes = ["include/SDK/API"],
     deps = [
         ":MOFDriver",
-        ":deps",
         "//AsyncRT:NIXL",
         "//GenericML:CommonDriver",
         "//GenericML:CompileDriver",

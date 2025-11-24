@@ -1418,6 +1418,7 @@ modular_cc_library(
         "//Support:Base",
         "//Support:ML",
     ],
+    alwayslink = True,
 )
 
 modular_cc_library(
