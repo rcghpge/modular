@@ -257,7 +257,7 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
   ];
 }
 
-def AddTryExceptBlocks: Pass<"add-try-except-blocks", "ModuleOp"> {
+def AddTryExceptBlocks: Pass<"add-try-except-blocks", "MOGG::KernelStubOp"> {
   let summary = "Adds a try-except block to raising kernels";
   let description = [{
     This pass should be run after sequence fusion and before Mojo codegen. It
