@@ -1142,8 +1142,31 @@ ErrorOr<Config> &DeviceContext::getConfig() {
   return configuration;
 }
 
+// Maps a device API name to its vendor prefix for accelerator arch strings.
+static StringRef apiToVendorPrefix(StringRef api) {
+  if (api == "cuda")
+    return "nvidia";
+  if (api == "hip")
+    return "amdgpu";
+  if (api == "metal")
+    return "metal";
+  return api;
+}
+
 MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
   static std::string arch = [] {
+    // First check if we're in virtual device mode (cross-compilation).
+    // Virtual device config is set at startup and takes precedence over
+    // physical hardware detection.
+    std::string virtualTargetArch = getVirtualDeviceTargetArch();
+    if (!virtualTargetArch.empty()) {
+      std::string virtualAPI = getVirtualDeviceAPI();
+      return (llvm::Twine(apiToVendorPrefix(virtualAPI)) + ":" +
+              virtualTargetArch)
+          .str();
+    }
+
+    // Otherwise, detect from physical hardware
     std::string vendor("nvidia");
     ErrorOr<std::string> archName = CUDADevice::getFirstArchName();
 
