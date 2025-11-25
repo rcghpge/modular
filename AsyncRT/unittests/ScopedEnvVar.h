@@ -20,7 +20,7 @@ static char **listOfEnvironmentVariables(void) {
 
 #else
 
-#include <cstdlib>
+#include <unistd.h>
 static char **listOfEnvironmentVariables(void) {
   return environ; // from cstdlib
 }
