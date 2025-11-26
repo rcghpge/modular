@@ -479,7 +479,7 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
 
   }];
 
-  let arguments = (ins MO_Tensor:$tensor, POP_ArrayType:$indices);
+  let arguments = (ins AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor, POP_ArrayType:$indices);
   let results = (outs AnyType: $outputs);
 }
 
