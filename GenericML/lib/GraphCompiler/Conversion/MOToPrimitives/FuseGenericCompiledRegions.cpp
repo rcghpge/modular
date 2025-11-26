@@ -116,8 +116,10 @@ static inline bool isComputationallySignificant(Operation *op) {
 template <bool allowDuplication>
 static void doSourceDestinationSequenceFusion(MGP::ModelOp model) {
   auto canDuplicate = [](Operation *op) -> bool { return allowDuplication; };
+  // After fusion, the ParametricTopologyAnalysis won't change because there are
+  // no parameters in MGP.
+  MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
   for (auto &region : model->getRegions()) {
-    MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
     auto subgraphs = MOGG::sourceDestinationSequenceFusionAnalysis(
         region, parametricTopologyAnalysis, isaGenericCompiledRegionOp,
         areCompatibleForFusion<true, allowDuplication>, canDuplicate);
@@ -145,8 +147,10 @@ static void doSourceDestinationSequenceFusion(MGP::ModelOp model) {
 // maintain parallelism of computationally expensive operations.
 [[maybe_unused]] static void
 doTransitiveDependencySequenceFusion(MGP::ModelOp model) {
+  // After fusion, the ParametricTopologyAnalysis won't change because there are
+  // no parameters in MGP.
+  MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
   for (auto &region : model->getRegions()) {
-    MO::ParametricTopologyAnalysis parametricTopologyAnalysis(model);
     auto subgraphs = MOGG::transitiveDependencySequenceFusionAnalysis(
         region, parametricTopologyAnalysis, isFusibleIntoOther,
         areCompatibleForFusion<false>, isComputationallySignificant, true);
