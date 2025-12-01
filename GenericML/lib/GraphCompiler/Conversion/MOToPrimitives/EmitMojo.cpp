@@ -11,6 +11,9 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
 
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
+
 using namespace M;
 
 namespace M::MGP {
@@ -28,14 +31,38 @@ struct EmitMojo
     : public MOGG::MojoLibraryAnalysisPass<impl::EmitMojoBase<EmitMojo>> {
   using Base::Base;
 
+  void stripDeviceAttributes() {
+    for (auto &&kernelStub : getOperation().getOps<MOGG::KernelStubOp>()) {
+      mlir::AttrTypeReplacer walker;
+      walker.addReplacement([&](M::DeviceRefAttr deviceRef) {
+        return M::DeviceRefAttr::get(kernelStub->getContext(),
+                                     deviceRef.getLabel(), 0);
+      });
+
+      walker.recursivelyReplaceElementsIn(kernelStub, true, true, true);
+    }
+  }
+
   void runOnOperation() override {
     if (!MOGG::useExperimentalMojoPath())
       return;
 
+    stripDeviceAttributes();
     auto moduleOp = getOperation();
-    MLIRContext *ctx = &getContext();
-    auto loc = moduleOp->getLoc();
+    mergeIdenticalKernelStubs(moduleOp);
 
+    MLIRContext *ctx = &getContext();
+    auto pm = mlir::PassManager::on<ModuleOp>(ctx);
+    pm.addPass(mlir::createSymbolDCEPass());
+
+    // We disable the verifier because we have stripped device attributes. The
+    // IR is in an invalid state and we do not want the verifiers to catch that
+    // as we run SymbolDCE.
+    pm.enableVerifier(false);
+    if (pm.run(moduleOp).failed())
+      return signalPassFailure();
+
+    auto loc = moduleOp->getLoc();
     auto analysisOr = getLibraryAnalysis();
     if (analysisOr.isError()) {
       emitError(loc, llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",

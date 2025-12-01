@@ -69,6 +69,8 @@ std::unique_ptr<mlir::Pass>
 createEmitMojo(const EmitMojoOptions &opts,
                std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
 
+void mergeIdenticalKernelStubs(ModuleOp module);
+
 } // namespace M::MGP
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H

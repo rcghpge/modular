@@ -342,9 +342,7 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(MGP::createCoalesceAsyncRefs());
 
   pm.addPass(MGP::createOutlineKernels());
-  pm.addPass(MGP::createMergeIdenticalKernelStubs());
   pm.addPass(MGP::createAddTryExceptBlocks());
-  pm.addPass(mlir::createSymbolDCEPass());
 
   MGP::EmitMojoOptions emitMojoOptions;
   emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;
