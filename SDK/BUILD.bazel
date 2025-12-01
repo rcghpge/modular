@@ -1,5 +1,19 @@
 load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
 
+# gazelle:default_visibility //SDK:consumers
+
+package(default_visibility = ["//SDK:consumers"])
+
+package_group(
+    name = "consumers",
+    packages = [
+        "//GenericML/...",
+        "//docs/...",
+        "//max/...",
+        "//utils/...",
+    ],
+)
+
 modular_cc_library(
     name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
     testonly = True,

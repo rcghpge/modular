@@ -1,6 +1,8 @@
 load("//bazel:api.bzl", "mojo_kgen_lib", "mojo_library")
 
-package(default_visibility = ["//visibility:public"])
+# gazelle:default_visibility //GenericML:__subpackages__
+
+package(default_visibility = ["//GenericML:__subpackages__"])
 
 mojo_kgen_lib(
     name = "MOGGKernelAPITestLib",

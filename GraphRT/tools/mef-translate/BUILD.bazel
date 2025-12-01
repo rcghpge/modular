@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "modular_cc_binary")
 
+package(default_visibility = ["//GraphRT:__subpackages__"])
+
 modular_cc_binary(
     name = "mef-translate",
     srcs = glob(["*.cpp"]),

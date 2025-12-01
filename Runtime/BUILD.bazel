@@ -1,6 +1,18 @@
 load("//bazel:api.bzl", "modular_cc_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
+# gazelle:default_visibility //Runtime:consumers
+
+package(default_visibility = ["//Runtime:consumers"])
+
+package_group(
+    name = "consumers",
+    packages = [
+        "//GenericML/...",
+        "//KGEN/...",
+    ],
+)
+
 modular_cc_library(
     name = "Runtime",
     srcs = ["lib/MojoValue.cpp"],
