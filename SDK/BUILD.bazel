@@ -26,7 +26,6 @@ modular_cc_library(
 pkg_files(
     name = "API.c.headers",
     srcs = glob(["include/SDK/API/max/c/*.h"]),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(

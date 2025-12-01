@@ -12,7 +12,6 @@ modular_py_library(
         "speech_lm.py",
     ],
     imports = [".."],
-    visibility = ["//visibility:public"],
     deps = [
         requirement("transformers"),
         requirement("numpy"),
@@ -30,7 +29,6 @@ modular_py_binary(
     srcs = ["entrypoint.py"],
     imports = ["."],
     main = "entrypoint.py",
-    visibility = ["//visibility:public"],
     deps = [
         ":llasa_lib",
         requirement("click"),

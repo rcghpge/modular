@@ -16,7 +16,6 @@ modular_py_library(
         "xcodec2.py",
     ],
     imports = ["../.."],
-    visibility = ["//visibility:public"],
     deps = [
         requirement("numpy"),
         requirement("huggingface-hub"),

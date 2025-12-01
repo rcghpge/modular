@@ -9,6 +9,7 @@ package(default_visibility = ["//GenericML:consumers"])
 package_group(
     name = "consumers",
     packages = [
+        "//GenericML/...",
         "//SDK/...",
         "//max/...",
         "//utils/...",
@@ -32,14 +33,13 @@ pkg_files(
         ":RMOTransformsIncGen.doc",
     ],
     prefix = "GenericML/docs",
-    visibility = ["//visibility:public"],
+    visibility = ["//docs:__subpackages__"],
 )
 
 modular_cc_library(
     name = "FrameworkFrontend",
     srcs = glob(["lib/FrameworkFrontend/**/*.cpp"]),
     hdrs = ["include/GenericML/FrameworkFrontend.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":MOFOptions",
         "//AsyncRT:CompilerSupport",
@@ -160,7 +160,6 @@ td_library(
     name = "GraphCompilerInterfacesTdFiles",
     srcs = glob(["include/GenericML/GraphCompiler/Interfaces/*.td"]),
     includes = ["include"],
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
     ],
@@ -259,7 +258,6 @@ td_library(
     name = "MODialectTdFiles",
     srcs = glob(["include/GenericML/GraphCompiler/MODialect/*.td"]),
     includes = ["include"],
-    visibility = ["//visibility:public"],
     deps = [
         "//KGEN:KGENDialectTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -275,7 +273,6 @@ mlir_nanobind(
         "include/GenericML/GraphCompiler/Conversion/**/*.td",
     ]),
     output_dir = "include/GenericML/MODialect/Nanobind",
-    visibility = ["//visibility:public"],
     deps = [
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
@@ -297,7 +294,6 @@ mlir_nanobind(
         "RMO_MOTransferOp",
     ],
     output_dir = "include/GenericML/RMODialect/Nanobind",
-    visibility = ["//visibility:public"],
     deps = [
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
@@ -842,7 +838,6 @@ td_library(
     name = "MGPDialectTdFiles",
     srcs = glob(["include/GenericML/MGPDialect/*.td"]),
     includes = ["include"],
-    visibility = ["//visibility:public"],
     deps = [
         ":GraphCompilerInterfacesTdFiles",
         ":MODialectTdFiles",
