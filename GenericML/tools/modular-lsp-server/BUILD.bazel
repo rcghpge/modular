@@ -1,6 +1,9 @@
 load("//bazel:api.bzl", "modular_cc_binary")
 
-package(default_visibility = ["//GenericML:__subpackages__"])
+package(default_visibility = [
+    "//:__pkg__",
+    "//GenericML:__subpackages__",
+])
 
 modular_cc_binary(
     name = "modular-lsp-server",

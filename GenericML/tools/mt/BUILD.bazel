@@ -1,7 +1,10 @@
 load("//bazel:api.bzl", "modular_cc_binary")
 load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES")
 
-package(default_visibility = ["//GenericML:__subpackages__"])
+package(default_visibility = [
+    "//:__pkg__",
+    "//GenericML:__subpackages__",
+])
 
 modular_cc_binary(
     name = "mt",

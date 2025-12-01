@@ -7,7 +7,9 @@ package(default_visibility = ["//SDK:consumers"])
 package_group(
     name = "consumers",
     packages = [
+        "//",  # root BUILD.bazel file
         "//GenericML/...",
+        "//SDK/...",
         "//docs/...",
         "//max/...",
         "//utils/...",
