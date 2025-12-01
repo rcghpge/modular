@@ -122,6 +122,13 @@ public:
     return storageRef.copy();
   }
 
+  /// If the buffer is owning return the memory block which owns the memory.
+  AnyAsyncValueRef *getMemStorageHandleRef() {
+    if (!storageRef)
+      return nullptr;
+    return &storageRef;
+  }
+
   void printDebug(raw_ostream &os) const;
   void swap(TensorBufferRef &rhs);
 

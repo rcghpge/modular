@@ -541,22 +541,13 @@ LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   auto mgpBufferGetCacheFunc =
       state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
           "tmp.mgp.buffer.get_cached"));
-  auto cachedBuffer = state.builder.var(
+  auto res = state.builder.var(
       mgpBufferGetCacheFunc({}, {state.getMojoValueFor(getTheContext()),
                                  state.getMojoValueFor(getBBufferSlot())}));
-  state.setMojoValueFor(getResult(0), cachedBuffer);
+  state.setMojoValueFor(getResult(0), res[0]);
 
-  auto opaquePtr =
-      state.builder.var(MojoValue{HardcodedMojoSymbols::alias_OpaquePointer}());
-  auto opaquePtrPtr = state.builder.var(
-      MojoValue{HardcodedMojoSymbols::struct_UnsafePointer}(
-          {}, MojoValue("to").equal(opaquePtr))
-          .get(HardcodedMojoSymbols::func_UnsafePointer_bitcast)({"NoneType"}));
-
-  state.builder.call(
-      HardcodedMojoSymbols::func_mgp_get_buffer_handle_from_tensor_buffer_ref,
-      {}, {cachedBuffer, opaquePtrPtr});
-  state.setMojoValueFor(getMemStorageHandle(), opaquePtrPtr);
+  if (!getOptionalMemStorageHandle().empty())
+    state.setMojoValueFor(getMemStorageHandle(), res[1]);
 
   return success();
 }

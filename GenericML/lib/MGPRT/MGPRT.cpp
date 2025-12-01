@@ -152,7 +152,8 @@ MGP_RT_ListPopulate(AsyncRTWrapper<GML::List> asyncList, void **dataPtr,
 /// The old one is not prefixed with TMP_.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot,
-                           AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync) {
+                           AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync,
+                           size_t *size, void **data) {
   void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
   StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
 
@@ -162,7 +163,11 @@ TMP_MGP_RT_GetCachedBuffer(size_t bufferSlot,
   if (errOr) {
   }
 
-  return &errOr.get();
+  TensorBufferRef &ref = errOr.get();
+  *size = ref.getSize();
+  *data = ref.getBuffer();
+
+  return ref.getMemStorageHandleRef();
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
@@ -617,14 +622,6 @@ MGP_RT_AsyncRT_CreateAsync_Error(AsyncRTWrapper<AnyAsyncValueRef> async,
     value.copy().setToError(std::move(diagnostic));
   else
     value = value.createError(runtime, std::move(diagnostic));
-}
-
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_GetMemBufferHandleFromTensorBufferRef(
-    TensorBufferRef *bufferRefPtr, AnyAsyncValueRef *memStorageHandle) {
-  if (!bufferRefPtr)
-    return;
-  new (memStorageHandle) AnyAsyncValueRef(bufferRefPtr->getMemStorageHandle());
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
