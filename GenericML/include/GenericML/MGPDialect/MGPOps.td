@@ -48,6 +48,7 @@ def BufferConstantOp : MGP_Op<"buffer.constant", [
     ]>,
     DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface, ["isTrivial"]>,
     DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+    Pure,
 ]> {
   let summary = "Allocates and initializes a buffer from a host attribute.";
   let description = [{
