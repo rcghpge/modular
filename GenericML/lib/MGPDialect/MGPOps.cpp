@@ -338,8 +338,8 @@ LogicalResult TensorSpecCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue rawDimsParam =
       MojoValue(HardcodedMojoSymbols::struct_DimList)({}, dims);
 
-  MojoValue result = function({rawDimsParam, rawDimsRankParam},
-                              state.getMojoValuesFor(getOperands()));
+  MojoValue result = state.builder.var(function(
+      {rawDimsParam, rawDimsRankParam}, state.getMojoValuesFor(getOperands())));
   state.setMojoValueFor(getResult(), result);
 
   return success();

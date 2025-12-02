@@ -400,7 +400,8 @@ LogicalResult BufferSliceOp::emitMojo(MOGG::EmitMojoState &state) {
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
   MojoValue function = state.getOriginalMojoNameFor(litFunction);
 
-  MojoValue res = function({}, state.getMojoValuesFor(getOperands()));
+  MojoValue res =
+      state.builder.var(function({}, state.getMojoValuesFor(getOperands())));
   state.setMojoValueFor(getOutBuffer(), res);
 
   return success();
@@ -454,8 +455,8 @@ LogicalResult BufferToBoolOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue deviceParam = MojoValue(bufferType.getDevice().getLabel()).quote();
 
   state.setMojoValueFor(
-      getResult(),
-      function({deviceParam}, {state.getMojoValueFor(getBuffer())}));
+      getResult(), state.builder.var(function(
+                       {deviceParam}, {state.getMojoValueFor(getBuffer())})));
   return success();
 }
 
