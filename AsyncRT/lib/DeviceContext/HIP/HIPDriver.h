@@ -640,7 +640,9 @@ public:
   }
 
   Result MemAllocHost(void **pp, size_t bytesize) const {
-    return hipHostMalloc_(pp, bytesize, 0);
+    // Use hipHostMallocPortable (0x1) to make pinned memory accessible from all
+    // GPU contexts, enabling cross-device copies from pinned host memory.
+    return hipHostMalloc_(pp, bytesize, /*hipHostMallocPortable=*/0x1);
   }
   Result MemFreeHost(void *p) const { return hipHostFree_(p); }
 
