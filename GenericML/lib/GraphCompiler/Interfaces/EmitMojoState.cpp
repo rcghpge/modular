@@ -70,11 +70,10 @@ LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
           "Could not lower this operation to Mojo");
     }
     return success();
-  } else if (isa<MOGG::OutputOp, MOGG::YieldOp>(op)) {
-    // These ops don't need to be converted.
-    return success();
   } else {
-    return op->emitError("This operation doesn't implement EmitsMojoInterface");
+    return op->emitError(
+        "This operation doesn't implement EmitsMojoInterface and it is not a "
+        "supported index or pop dialect operation");
   }
 }
 

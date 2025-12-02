@@ -145,7 +145,7 @@ def MOGG_AsTupleOp
 //===----------------------------------------------------------------------===//
 
 def MOGG_OutputOp
-    : MOGG_Op<"output", [Terminator]> {
+    : MOGG_Op<"output", [Terminator, DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "MOGG output operation";
   let description = [{
     The "mogg.output" operation specifies the output values for a region in a
@@ -1996,7 +1996,7 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [Pure,
 
 def MOGG_YieldOp
     : MOGG_Op<"yield",
-      [Terminator, HasParent<"MOGG::TryOp">]> {
+      [Terminator, HasParent<"MOGG::TryOp">, DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "MOGG yield operation";
   let description = [{
     The "mogg.yield" operation specifies the output values for a mogg.try / except statement.
