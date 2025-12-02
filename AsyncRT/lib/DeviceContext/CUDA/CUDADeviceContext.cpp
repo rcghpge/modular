@@ -205,21 +205,34 @@ static Error formatCUDAError(const char *file, int line, const char *func,
       "NVPTX Compiler call failed: " + llvm::Twine(result) + extra_msg);
 }
 
+static int cudaCCMonolithic(int major, int minor) { return major * 10 + minor; }
+
+static std::string cudaCCToSM(int major, int minor) {
+  std::string sm = "sm_";
+  int cc = cudaCCMonolithic(major, minor);
+  sm += std::to_string(cc);
+
+  // For architectures above 90 we use the "a" variants to enable hardware
+  // specific features at the cost of backward and forward compatibility.
+  if (cc >= 90)
+    sm += "a";
+
+  return sm;
+}
+
 // ===== CUDADevice ===== //
 CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
                        CUcontext context, std::string name,
-                       int computeCapability, Device::MemInfo memInfo,
-                       size_t allocAlignment,
-                       std::unique_ptr<CUDACompilationDevice> compilationDevice,
+                       int computeCapabilityMajor, int computeCapabilityMinor,
+                       Device::MemInfo memInfo, size_t allocAlignment,
                        int64_t deviceMemoryLimit)
     : Device(api, std::move(name), id, memInfo, allocAlignment,
              deviceMemoryLimit),
+      CUDACompilationDevice(
+          cudaCCToSM(computeCapabilityMajor, computeCapabilityMinor)),
       driver_(driver), device_(device), context_(context),
-      computeCapability_(computeCapability),
-      compilationDevice_(std::move(compilationDevice)) {
-  assert(compilationDevice_ &&
-         "CUDADevice requires a non-null compilation device");
-}
+      computeCapability_(
+          cudaCCMonolithic(computeCapabilityMajor, computeCapabilityMinor)) {}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
@@ -238,17 +251,17 @@ CUdevice CUDADevice::cudaDevice() const { return device_; }
 ErrorOr<CUcontext> CUDADevice::cudaContext() const { return context_; }
 
 const CUDACompilationDevice *CUDADevice::compilationDevice() const {
-  return compilationDevice_.get();
+  return this;
 }
 
 ErrorOr<int> CUDADevice::getApiVersion() const {
   // CUDADevice always has a compilation device - delegate to it
-  return compilationDevice_->getApiVersion();
+  return CUDACompilationDevice::getApiVersion();
 }
 
 ErrorOr<DriverVersion &> CUDADevice::getDriverVersion() const {
   // CUDADevice always has a compilation device - delegate to it
-  return compilationDevice_->getDriverVersion();
+  return CUDACompilationDevice::getDriverVersion();
 }
 
 // The value returned by `cuDriverGetVersion_` from the CUDA API is an integer
@@ -464,19 +477,6 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 }
 
-static std::string cudaCCToSM(int major, int minor) {
-  std::string sm = "sm_";
-  int cc = major * 10 + minor;
-  sm += std::to_string(cc);
-
-  // For architectures above 90 we use the "a" variants to enable hardware
-  // specific features at the cost of backward and forward compatibility.
-  if (cc >= 90)
-    sm += "a";
-
-  return sm;
-}
-
 ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
@@ -537,17 +537,9 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
         &computeCapabilityMinor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
         cuDevice));
 
-    // Create compilation device for this GPU architecture
-    auto compilationDevOrErr = CUDACompilationDevice::create(
-        cudaCCToSM(computeCapabilityMajor, computeCapabilityMinor));
-    if (compilationDevOrErr.isError()) {
-      return compilationDevOrErr.takeError();
-    }
-
-    device = new CUDADevice(
-        driver, id, cuDevice, cuContext, name,
-        computeCapabilityMajor * 10 + computeCapabilityMinor, memInfo,
-        alignment, std::move(*compilationDevOrErr), deviceMemoryLimit);
+    device = new CUDADevice(driver, id, cuDevice, cuContext, name,
+                            computeCapabilityMajor, computeCapabilityMinor,
+                            memInfo, alignment, deviceMemoryLimit);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;
@@ -556,7 +548,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
 }
 
 ErrorOr<const char *> CUDADevice::getArchName() const {
-  return *compilationDevice_->getArchName();
+  return CUDACompilationDevice::getArchName();
 }
 
 void CUDADevice::eventCacheClear() const {

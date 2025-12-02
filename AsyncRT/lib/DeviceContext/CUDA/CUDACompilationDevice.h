@@ -62,7 +62,7 @@ public:
   static SmallVector<std::string> setupCompilationOptionsNVPTXCompiler(
       StringRef debugLevel, int32_t optimizationLevel, StringRef gpuName);
 
-private:
+protected:
   CUDACompilationDevice(std::string targetArch);
 };
 

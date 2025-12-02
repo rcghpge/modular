@@ -50,17 +50,16 @@ using CUDADeviceMulticastBufferRef = RCRef<const CUDADeviceMulticastBuffer>;
 using CUDADeviceStreamRef = RCRef<const CUDADeviceStream>;
 using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
-class CUDADevice : public Device {
+class CUDADevice : public Device, public CUDACompilationDevice {
 public:
   static constexpr API api = Device::cudaAPI;
 
   using DeviceList = std::vector<CUDADevice *>;
 
   CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             CUcontext context, std::string name, int computeCapability,
-             Device::MemInfo memInfo, size_t allocAlignment,
-             std::unique_ptr<CUDACompilationDevice> compilationDevice,
-             int64_t deviceMemoryLimit = -1);
+             CUcontext context, std::string name, int computeCapabilityMajor,
+             int computeCapabilityMinor, Device::MemInfo memInfo,
+             size_t allocAlignment, int64_t deviceMemoryLimit = -1);
   ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
@@ -146,9 +145,6 @@ private:
   CUcontext context_;
 
   const int computeCapability_;
-
-  // Compilation device for PTX→CUBIN compilation without GPU context
-  std::unique_ptr<CUDACompilationDevice> compilationDevice_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
