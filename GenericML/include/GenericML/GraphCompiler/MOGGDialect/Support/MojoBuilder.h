@@ -219,6 +219,9 @@ public:
   void call(const MojoValue &funcName, ArrayRef<MojoValue> parameters = {},
             ArrayRef<MojoValue> operands = {});
 
+  /// Print a statement as-is, followed by a newline.
+  void verbatim(const MojoValue &text);
+
   /// Apply the assign operator `=` to a specific value.
   /// This is different from `var`, here assign doesn't declare anything.
   /// It can be used to set field / array entries for example.

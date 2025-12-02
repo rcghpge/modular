@@ -345,6 +345,30 @@ public:
     return nameAttr.str();
   }
 
+  static MojoValue getOriginalMojoNamePrefixFor(KGEN::LIT::FnOp op) {
+    // A hack that will always work because we know there is a dot before the
+    // call to execute or shape. Will be fixed once we remove
+    // MojoLibraryAnalysis (no more annotations, can just look at the LIT). For
+    // now, we do the easy thing.
+    std::string fullName = getOriginalMojoNameFor(op).text;
+    uint64_t indexOfLastDot = fullName.find_last_of(".");
+    fullName.resize(indexOfLastDot);
+
+    return fullName;
+  }
+
+  static MojoValue getOriginalMojoNameSuffixFor(KGEN::LIT::FnOp op) {
+    // A hack that will always work because we know there is a dot before the
+    // call to execute or shape. Will be fixed once we remove
+    // MojoLibraryAnalysis (no more annotations, can just look at the LIT). For
+    // now, we do the easy thing.
+    std::string fullName = getOriginalMojoNameFor(op).text;
+    uint64_t indexOfLastDot = fullName.find_last_of(".");
+    fullName.erase(0, indexOfLastDot + 1);
+
+    return fullName;
+  }
+
   // Returns the corresponding SIMD type given its dtpype and its width
   static MojoValue getSIMDType(DType dtype, MojoValue width) {
     return MojoValue(
@@ -370,9 +394,13 @@ public:
     return std::nullopt;
   }
 
+  struct InferedParameters {
+    llvm::SmallVector<MojoValue> structParameters;
+    llvm::SmallVector<MojoValue> functionParameters;
+  };
   /// Fill and return the list of inferred parameters to call `function`.
   /// Call `inferCallback` for each parameter that needs to be inferred.
-  static ErrorOr<llvm::SmallVector<MojoValue>> inferKernelParameters(
+  static ErrorOr<InferedParameters> inferKernelParameters(
       KGEN::LIT::FnOp function,
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 

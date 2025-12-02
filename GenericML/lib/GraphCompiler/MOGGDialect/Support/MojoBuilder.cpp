@@ -193,6 +193,8 @@ void MojoBuilder::call(const MojoValue &funcName,
   statement(funcName(parameters, operands));
 }
 
+void MojoBuilder::verbatim(const MojoValue &text) { statement(text); }
+
 void MojoBuilder::assign(const MojoValue &dst, const MojoValue &value) {
   statement(dst, " = ", value);
 }

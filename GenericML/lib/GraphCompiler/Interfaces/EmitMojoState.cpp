@@ -504,7 +504,7 @@ LogicalResult emitMojo(KGEN::ParamConstantOp op, EmitMojoState &state) {
   return success();
 }
 
-ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
+ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
     KGEN::LIT::FnOp function,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
   // First get the set of all parameters that can be inferred from the inputs.
@@ -542,41 +542,62 @@ ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(
   };
 
   // Now go through all params and infer those that need to be inferred.
-  SmallVector<MojoValue> inferredParams;
-  for (auto param : function.getInputParams()) {
-    StringRef paramName = param.getName().getValue();
-    if (inferByInputs.contains(paramName))
-      continue;
-
-    // TODO(GEX-2623): IOSpec / origin parameters are currently removed from the
-    // parameters list because in KGEN-land empty-strust params are removed
-    // during LITToKGEN. But they are still present in EmitMojo path (and would
-    // cause an error: failed to infer parameter). Instead just skip them for
-    // now, they'll be inferred automatically anyway. This is quite brittle as
-    // it assumes all IOSpec / origin are always inferred (which is true
-    // fortunately today). This test could be removed once EmitMojo is complete.
-    if (isa<KGEN::LIT::OriginType>(param.getType()) ||
-        isIOSpecType(param.getType()))
-      continue;
-
-    ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
-    if (maybeVal.isError()) {
-      if (defaultAttrs && defaultAttrs.contains(paramName)) {
-        // If there is already a default value we can skip it.
-        // TODO: It might be worth making the distinction between "we didn't
-        // found a parameter" vs we found it but the logic to infer its value
-        // failed. In the latter case we should still emit an error.
+  auto inferParametersInner =
+      [&](ArrayRef<ParamDeclAttr> params,
+          SmallVector<MojoValue> &inferredParams) -> ErrorOrSuccess {
+    for (auto param : params) {
+      StringRef paramName = param.getName().getValue();
+      if (inferByInputs.contains(paramName))
         continue;
+
+      // TODO(GEX-2623): IOSpec / origin parameters are currently removed from
+      // the parameters list because in KGEN-land empty-strust params are
+      // removed during LITToKGEN. But they are still present in EmitMojo path
+      // (and would cause an error: failed to infer parameter). Instead just
+      // skip them for now, they'll be inferred automatically anyway. This is
+      // quite brittle as it assumes all IOSpec / origin are always inferred
+      // (which is true fortunately today). This test could be removed once
+      // EmitMojo is complete.
+      if (isa<KGEN::LIT::OriginType>(param.getType()) ||
+          isIOSpecType(param.getType()))
+        continue;
+
+      ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
+      if (maybeVal.isError()) {
+        if (defaultAttrs && defaultAttrs.contains(paramName)) {
+          // If there is already a default value we can skip it.
+          // TODO: It might be worth making the distinction between "we didn't
+          // found a parameter" vs we found it but the logic to infer its value
+          // failed. In the latter case we should still emit an error.
+          continue;
+        }
+        function.emitError(Twine("Failed to infer kernel parameter `") +
+                           paramName + "`: " + maybeVal.getError());
+        return maybeVal.takeError();
       }
-      function.emitError(Twine("Failed to infer kernel parameter `") +
-                         paramName + "`: " + maybeVal.getError());
-      return maybeVal.takeError();
+
+      inferredParams.push_back(MojoValue(paramName).equal(*maybeVal));
     }
 
-    inferredParams.push_back(MojoValue(paramName).equal(*maybeVal));
-  }
+    return success();
+  };
 
-  return inferredParams;
+  EmitMojoState::InferedParameters ret;
+  auto errOr =
+      inferParametersInner(function.getInputParams(), ret.functionParameters);
+  if (errOr.isError())
+    return errOr.takeError();
+
+  auto structDeclOp = function->getParentOfType<KGEN::LIT::StructDeclOp>();
+  if (!structDeclOp)
+    return ret;
+
+  errOr =
+      inferParametersInner(structDeclOp.getInputParams(), ret.structParameters);
+  if (errOr.isError())
+    return errOr.takeError();
+
+  return ret;
 }
 
 // Returns the trace name attribute, or none if summary is not set.
