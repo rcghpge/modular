@@ -4442,6 +4442,17 @@ LogicalResult TensorFusedOp::verify() {
 
 LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getInputs());
+  if (isa<MOGG::ContextType>(getInputs().front().getType())) {
+    MojoValue tupleConstructor =
+        MojoValue(HardcodedMojoSymbols::struct_StaticTuple)[{
+            MojoValue("size").equal(std::to_string(inputValues.size()))}];
+    MojoValue deviceContextPtrListConstructor =
+        MojoValue(HardcodedMojoSymbols::struct_DeviceContextPtrList);
+    MojoValue inputTupleValue =
+        deviceContextPtrListConstructor({}, tupleConstructor({}, inputValues));
+    state.setMojoValueFor(getResult(), state.builder.var(inputTupleValue));
+    return success();
+  }
 
   // Create DynamicTensor variables for each input
   SmallVector<MojoValue> dynamicTensorVars;
@@ -4460,8 +4471,9 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
 
   // Create StaticTuple with the DynamicTensor variables
   // var inputTup = StaticTuple[size=N](a1, a2, ..., aN)
-  MojoValue inputTupleConstructor = MojoValue("StaticTuple")[{
-      MojoValue("size").equal(std::to_string(dynamicTensorVars.size()))}];
+  MojoValue inputTupleConstructor =
+      MojoValue(HardcodedMojoSymbols::struct_StaticTuple)[{
+          MojoValue("size").equal(std::to_string(dynamicTensorVars.size()))}];
   MojoValue inputTupleValue = inputTupleConstructor({}, dynamicTensorVars);
   MojoValue inputTupVar = state.builder.var(inputTupleValue);
 

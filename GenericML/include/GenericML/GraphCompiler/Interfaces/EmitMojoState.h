@@ -31,6 +31,8 @@ constexpr StringLiteral struct_StaticTensorSpec = "directives.StaticTensorSpec";
 constexpr StringLiteral struct_UnsafePointer = "memory.LegacyUnsafePointer";
 constexpr StringLiteral struct_String = "string.String";
 constexpr StringLiteral struct_DeviceContextPtr = "asyncrt.DeviceContextPtr";
+constexpr StringLiteral struct_DeviceContextPtrList =
+    "asyncrt.DeviceContextPtrList";
 constexpr StringLiteral struct_ManagedTensorSlice =
     "managed_tensor_slice.ManagedTensorSlice";
 constexpr StringLiteral struct_Int = "Int";
