@@ -10,6 +10,7 @@
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "KGEN/POPDialect/POPOps.h"
 
 using namespace M;
 
@@ -60,6 +61,53 @@ static void removeResultOnlyParams(KGEN::LIT::FnOp function,
     inferByInputs.erase(paramName);
 }
 
+#define EMITS_MOJO_EXTERNALLY(OpTy)                                            \
+  LogicalResult emitMojo(OpTy op, EmitMojoState &state);
+#define EMIT_MOJO_EXTERNALLY(OpTy)                                             \
+  if (auto asOp = dyn_cast<OpTy>(op)) {                                        \
+    if (emitMojo(asOp, state).failed()) {                                      \
+      return op->emitError("Could not lower this operation to Mojo");          \
+    }                                                                          \
+    return success();                                                          \
+  }
+
+EMITS_MOJO_EXTERNALLY(mlir::index::AddOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::CastSOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::CmpOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::ConstantOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::BoolConstantOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::DivSOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::DivUOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::CeilDivSOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::CeilDivUOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::MinSOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::MaxSOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::MulOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::RemSOp);
+EMITS_MOJO_EXTERNALLY(mlir::index::RemUOp);
+
+EMITS_MOJO_EXTERNALLY(KGEN::POP::AndOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::AddOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::MulOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::DivOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::CastFromBuiltinOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::CastToBuiltinOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::CmpOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::RemOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::SelectOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::ShlOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::ShrOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::MinOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::MaxOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::OrOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::XOrOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::SIMDAndOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::SIMDSelectOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::SIMDOrOp);
+EMITS_MOJO_EXTERNALLY(KGEN::POP::SIMDXOrOp);
+
+EMITS_MOJO_EXTERNALLY(KGEN::ParamConstantOp);
+
 LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
   if (auto emitMojoInterface = dyn_cast<MOGG::EmitsMojoInterface>(op)) {
     if (enableOpTraceComments)
@@ -70,11 +118,390 @@ LogicalResult EmitMojoState::lowerOpToMojo(Operation *op) {
           "Could not lower this operation to Mojo");
     }
     return success();
-  } else {
-    return op->emitError(
-        "This operation doesn't implement EmitsMojoInterface and it is not a "
-        "supported index or pop dialect operation");
   }
+
+  auto &state = *this;
+
+  EMIT_MOJO_EXTERNALLY(mlir::index::AddOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::CastSOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::CmpOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::ConstantOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::BoolConstantOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::DivSOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::DivUOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::CeilDivSOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::CeilDivUOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::MinSOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::MaxSOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::MulOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::RemSOp);
+  EMIT_MOJO_EXTERNALLY(mlir::index::RemUOp);
+
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::AndOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::AddOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::MulOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::DivOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::CastFromBuiltinOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::CastToBuiltinOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::CmpOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::RemOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::SelectOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::ShlOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::ShrOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::MinOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::MaxOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::OrOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::XOrOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::SIMDAndOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::SIMDSelectOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::SIMDOrOp);
+  EMIT_MOJO_EXTERNALLY(KGEN::POP::SIMDXOrOp);
+
+  EMIT_MOJO_EXTERNALLY(KGEN::ParamConstantOp);
+
+  return op->emitError(
+      "This operation doesn't implement EmitsMojoInterface and it is not a "
+      "supported index or pop dialect operation");
+}
+
+//===----------------------------------------------------------------------===//
+// index dialect implementations
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitMojo(mlir::index::AddOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] + operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::CastSOp op, EmitMojoState &state) {
+  /// TODO: Check if this has any ramifications. The reason this op is emitted
+  /// at all in MGP is just to please the type system (pop operations need pop
+  /// types to operate on, not index). Therefore, it's likely that keeping them
+  /// as-is (Int) is perfectly fine for the index calculations we do in MGP
+  /// (shape function stuff only).
+  state.setMojoValueFor(op.getResult(), state.getMojoValueFor(op.getInput()));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::CmpOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  MojoValue replacementValue;
+  switch (op.getPred()) {
+  case mlir::index::IndexCmpPredicate::EQ:
+    replacementValue = operands[0].eq(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::NE:
+    replacementValue = operands[0].neq(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::SGE:
+    replacementValue = operands[0].ge(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::SGT:
+    replacementValue = operands[0].gt(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::SLE:
+    replacementValue = operands[0].le(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::SLT:
+    replacementValue = operands[0].lt(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::UGE:
+    replacementValue = operands[0].ge(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::UGT:
+    replacementValue = operands[0].gt(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::ULE:
+    replacementValue = operands[0].le(operands[1]);
+    break;
+  case mlir::index::IndexCmpPredicate::ULT:
+    replacementValue = operands[0].lt(operands[1]);
+    break;
+  }
+  state.setMojoValueFor(op.getResult(), state.builder.var(replacementValue));
+
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::ConstantOp op, EmitMojoState &state) {
+  state.setMojoValueFor(op.getResult(), op.getValue().getSExtValue());
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::BoolConstantOp op, EmitMojoState &state) {
+  state.setMojoValueFor(op.getResult(), op.getValue());
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::DivSOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0].idiv(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::DivUOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0].idiv(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::CeilDivSOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0].sdiv(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::CeilDivUOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0].sdiv(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::MinSOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  static const MojoValue minFunc = "min";
+  state.setMojoValueFor(op.getResult(), state.builder.var(minFunc(
+                                            {}, {operands[0], operands[1]})));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::MaxSOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  static const MojoValue maxFunc = "max";
+  state.setMojoValueFor(op.getResult(), state.builder.var(maxFunc(
+                                            {}, {operands[0], operands[1]})));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::MulOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] * operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::RemSOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] % operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(mlir::index::RemUOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] % operands[1]));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// POP dialect implementations
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitMojo(KGEN::POP::AndOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(
+      op.getResult(),
+      state.builder.var(operands[0].bitwise_logical_and(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::AddOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] + operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::MulOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] * operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::DivOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  if (op.getType().isFloat()) {
+    state.setMojoValueFor(op.getResult(),
+                          state.builder.var(operands[0].div(operands[1])));
+  } else {
+    state.setMojoValueFor(op.getResult(),
+                          state.builder.var(operands[0].idiv(operands[1])));
+  }
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::CastFromBuiltinOp op, EmitMojoState &state) {
+  state.setMojoValueFor(op.getResult(), state.getMojoValueFor(op.getInput()));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::CastToBuiltinOp op, EmitMojoState &state) {
+  state.setMojoValueFor(op.getResult(), state.getMojoValueFor(op.getInput()));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::CmpOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  MojoValue replacementValue;
+  switch (op.getPred()) {
+  case KGEN::POP::CmpPredicate::EQ:
+    replacementValue = operands[0].eq(operands[1]);
+    break;
+  case KGEN::POP::CmpPredicate::NE:
+    replacementValue = operands[0].neq(operands[1]);
+    break;
+  case KGEN::POP::CmpPredicate::GE:
+    replacementValue = operands[0].ge(operands[1]);
+    break;
+  case KGEN::POP::CmpPredicate::GT:
+    replacementValue = operands[0].gt(operands[1]);
+    break;
+  case KGEN::POP::CmpPredicate::LE:
+    replacementValue = operands[0].le(operands[1]);
+    break;
+  case KGEN::POP::CmpPredicate::LT:
+    replacementValue = operands[0].lt(operands[1]);
+    break;
+  }
+  state.setMojoValueFor(op.getResult(), state.builder.var(replacementValue));
+
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::RemOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] % operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::SelectOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  auto selectFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(op.getOperationName()));
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(selectFunc({}, operands)));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::ShlOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] << operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::ShrOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(operands[0] >> operands[1]));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::MinOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  static const MojoValue minFunc = "min";
+  state.setMojoValueFor(op.getResult(), state.builder.var(minFunc(
+                                            {}, {operands[0], operands[1]})));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::MaxOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  static const MojoValue maxFunc = "max";
+  state.setMojoValueFor(op.getResult(), state.builder.var(maxFunc(
+                                            {}, {operands[0], operands[1]})));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::OrOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(
+      op.getResult(),
+      state.builder.var(operands[0].bitwise_logical_or(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::XOrOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(
+      op.getResult(),
+      state.builder.var(operands[0].bitwise_logical_xor(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::SIMDAndOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(
+      op.getResult(),
+      state.builder.var(operands[0].bitwise_logical_and(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::SIMDSelectOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  auto selectFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(op.getOperationName()));
+  state.setMojoValueFor(op.getResult(),
+                        state.builder.var(selectFunc({}, operands)));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::SIMDOrOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(
+      op.getResult(),
+      state.builder.var(operands[0].bitwise_logical_or(operands[1])));
+  return success();
+}
+
+LogicalResult emitMojo(KGEN::POP::SIMDXOrOp op, EmitMojoState &state) {
+  auto operands = state.getMojoValuesFor(op->getOperands());
+  state.setMojoValueFor(
+      op.getResult(),
+      state.builder.var(operands[0].bitwise_logical_xor(operands[1])));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// KGEN::ParamConstantOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitMojo(KGEN::ParamConstantOp op, EmitMojoState &state) {
+  if (auto vals = dyn_cast<KGEN::POP::SIMDAttr>(op.getValue())) {
+    ASSERT_STREAM(vals, << "Expected a SIMD parameter constant");
+    ASSERT_STREAM(vals.getValues().size() == 1,
+                  << "Only scalars are supported");
+    auto val = vals.getValues().front();
+    auto data = val.getData();
+    if (data.getBitWidth() == 1)
+      state.setMojoValueFor(op.getResult(), val.getBoolVal());
+    else
+      state.setMojoValueFor(op.getResult(), val.getIntVal());
+  } else if (auto val = dyn_cast<IntegerAttr>(op.getValue())) {
+    auto apInt = val.getValue();
+    if (val.getValue().getBitWidth() == 1) {
+      state.setMojoValueFor(op.getResult(), apInt.getBoolValue());
+    } else {
+      state.setMojoValueFor(
+          op.getResult(),
+          APSInt(apInt, cast<IntegerType>(val.getType()).isSigned()));
+    }
+  } else {
+    ASSERT_STREAM(false, << "Unsupported param constant type "
+                         << op.getValue().getType());
+    llvm_unreachable("Unsupported mlir type");
+  }
+
+  return success();
 }
 
 ErrorOr<llvm::SmallVector<MojoValue>> EmitMojoState::inferKernelParameters(

@@ -4041,6 +4041,16 @@ LogicalResult ChainSinkOp::emitMojo(EmitMojoState &) {
   return success();
 }
 
+LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
+                                        mlir::PatternRewriter &rewriter) {
+  if (auto dummyOp = sinkOp.getChain().getDefiningOp<ChainDummyOp>()) {
+    rewriter.eraseOp(sinkOp);
+    return success();
+  }
+
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // AsyncPackBorrowOp
 //===----------------------------------------------------------------------===//

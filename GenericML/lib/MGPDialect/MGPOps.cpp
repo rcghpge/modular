@@ -485,8 +485,8 @@ LogicalResult TensorSpecGetDimOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue rankParam = getSpec().getType().getRank();
   MOGG::MojoValue specVar = state.getMojoValueFor(getSpec());
 
-  state.setMojoValueFor(getResult(),
-                        getDimFunc({rankParam, axisParam}, {specVar}));
+  state.setMojoValueFor(getResult(), state.builder.var(getDimFunc(
+                                         {rankParam, axisParam}, {specVar})));
 
   return success();
 }
@@ -600,11 +600,22 @@ SmallVector<Attribute> AssertOp::getLiftableAttributes() {
 }
 
 LogicalResult AssertOp::canonicalize(AssertOp op, PatternRewriter &rewriter) {
+  bool isInKernel = false;
+  if (op->getParentOfType<MOGG::GenericCompiledRegionOp>())
+    isInKernel = true;
+
+  if (op->getParentOfType<MOGG::KernelStubOp>())
+    isInKernel = true;
+
   // remove assert(true)
   BoolAttr condAttr;
   if (mlir::matchPattern(op.getCond(), mlir::m_Constant(&condAttr))) {
     if (condAttr.getValue()) {
-      rewriter.replaceOpWithNewOp<GRT::ChainCreateOp>(op);
+      if (isInKernel) {
+        rewriter.replaceOpWithNewOp<MOGG::ChainDummyOp>(op);
+      } else {
+        rewriter.replaceOpWithNewOp<GRT::ChainCreateOp>(op);
+      }
       return success();
     }
   }

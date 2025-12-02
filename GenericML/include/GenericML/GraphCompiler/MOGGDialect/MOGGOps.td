@@ -2235,6 +2235,8 @@ def MOGG_ChainSinkOp : MOGG_Op<"chain.sink", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

@@ -316,6 +316,7 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createRemoveRedundantOperands());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 

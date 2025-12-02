@@ -65,6 +65,57 @@ public:
     os << '"';
     return MojoValue(res);
   }
+  MojoValue operator+(const MojoValue &other) const {
+    return llvm::formatv("{} + {}", text, other.text).str();
+  }
+  MojoValue operator*(const MojoValue &other) const {
+    return llvm::formatv("{} * {}", text, other.text).str();
+  }
+  MojoValue operator%(const MojoValue &other) const {
+    return llvm::formatv("{} % {}", text, other.text).str();
+  }
+  MojoValue operator<<(const MojoValue &other) const {
+    return llvm::formatv("{} << {}", text, other.text).str();
+  }
+  MojoValue operator>>(const MojoValue &other) const {
+    return llvm::formatv("{} >> {}", text, other.text).str();
+  }
+  MojoValue bitwise_logical_and(const MojoValue &other) const {
+    return llvm::formatv("{} & {}", text, other.text).str();
+  }
+  MojoValue bitwise_logical_or(const MojoValue &other) const {
+    return llvm::formatv("{} | {}", text, other.text).str();
+  }
+  MojoValue bitwise_logical_xor(const MojoValue &other) const {
+    return llvm::formatv("{} ^ {}", text, other.text).str();
+  }
+  MojoValue div(const MojoValue &other) const {
+    return llvm::formatv("{} / {}", text, other.text).str();
+  }
+  MojoValue idiv(const MojoValue &other) const {
+    return llvm::formatv("{} // {}", text, other.text).str();
+  }
+  MojoValue sdiv(const MojoValue &other) const {
+    return llvm::formatv("-((-{}) // {})", text, other.text).str();
+  }
+  MojoValue eq(const MojoValue &other) const {
+    return llvm::formatv("{} == {}", text, other.text).str();
+  }
+  MojoValue neq(const MojoValue &other) const {
+    return llvm::formatv("{} != {}", text, other.text).str();
+  }
+  MojoValue ge(const MojoValue &other) const {
+    return llvm::formatv("{} >= {}", text, other.text).str();
+  }
+  MojoValue gt(const MojoValue &other) const {
+    return llvm::formatv("{} > {}", text, other.text).str();
+  }
+  MojoValue le(const MojoValue &other) const {
+    return llvm::formatv("{} <= {}", text, other.text).str();
+  }
+  MojoValue lt(const MojoValue &other) const {
+    return llvm::formatv("{} < {}", text, other.text).str();
+  }
 
   std::string text;
 };

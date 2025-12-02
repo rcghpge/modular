@@ -428,32 +428,8 @@ void LowerPrimitivesPass::runOnOperation() {
     return newOp->getResults();
   };
 
-/// TODO(GEX-2486): Implement them one-by-one and remove them from the list each
-/// time (the TEMPORARY defines).
-#define DIALECT_TEMPORARY_EXCLUSION_LIST                                       \
-  mlir::index::IndexDialect, KGEN::POP::POPDialect
-
-  auto isPartOfAnotherDialect = [](Operation *op) {
-    if (isa_and_nonnull<mlir::index::IndexDialect, KGEN::POP::POPDialect>(
-            op->getDialect())) {
-      return true;
-    }
-
-    // Unsure if this appears in the IR today.
-    return isa<KGEN::ParamConstantOp>(op);
-  };
-  auto isPartOfATemporarilyExcludedDialect = [](Operation *op) {
-    if (isa_and_nonnull<DIALECT_TEMPORARY_EXCLUSION_LIST>(op->getDialect()))
-      return true;
-
-    return isa<KGEN::ParamConstantOp>(op);
-  };
-
   if (MOGG::useExperimentalMojoPath()) {
     const auto walkerFn = [&](Operation *op) {
-      auto implementsEmitsMojoInterface =
-          dyn_cast<MOGG::EmitsMojoInterface>(op);
-
       // Skip any operations nested within a region.
       if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
         return mlir::WalkResult::skip();
@@ -463,17 +439,19 @@ void LowerPrimitivesPass::runOnOperation() {
       if (isa<MGP::BufferConstantExternalOp>(op))
         return mlir::WalkResult::advance();
 
-      if (isPartOfAnotherDialect(op)) {
-        if (isPartOfATemporarilyExcludedDialect(op))
-          return mlir::WalkResult::advance();
-      } else {
-        /// TODO(GEX-2588): Remove this. These are not part of the exclusion
-        /// list because they are not lowered in the KGEN codepath.
-        if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
-                MGP::ExecuteGenericOp>(op)) {
-          return mlir::WalkResult::advance();
-        }
+      /// TODO(GEX-2588): Remove this.
+      if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
+              MGP::ExecuteGenericOp>(op)) {
+        return mlir::WalkResult::advance();
+      }
 
+      auto implementsEmitsMojoInterface =
+          dyn_cast<MOGG::EmitsMojoInterface>(op);
+      bool isAnIndexOrPOPOrParamConstantOp =
+          isa_and_nonnull<mlir::index::IndexDialect, KGEN::POP::POPDialect>(
+              op->getDialect()) ||
+          isa<KGEN::ParamConstantOp>(op);
+      if (!isAnIndexOrPOPOrParamConstantOp) {
         if (!mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
                 op->getName().getStringRef())) {
           // Operations that do not have a registration function can't be
@@ -486,6 +464,7 @@ void LowerPrimitivesPass::runOnOperation() {
                       << " has a Mojo implementation but it does not implement "
                          "the EmitsMojoInterface");
       }
+
       Location opLoc = op->getLoc();
       OpBuilder builder{op};
 
@@ -497,16 +476,16 @@ void LowerPrimitivesPass::runOnOperation() {
       }
       newKernel->setEmitsMojo(true);
 
-      auto resultToPack = implementsEmitsMojoInterface.resultsToPack();
-      if (op->getNumResults())
-        resultToPack[0] = isa<MEF::ChainType>(op->getResult(0).getType());
+      mlir::BitVector resultsToPack(op->getNumResults(), true);
+      mlir::BitVector operandsToUnpack(op->getNumOperands(), true);
 
-      /// TODO(GEX-2588): Some of the operations covered by this issue will need
-      /// their inputs or outputs in the async format (ex: mgp.buffer.cache or
-      /// mgp.buffer.get_cached).
-      MOGraphLoweringState::lowerMOGGABI(
-          *newKernel, implementsEmitsMojoInterface.operandsToUnpack(),
-          implementsEmitsMojoInterface.resultsToPack());
+      if (implementsEmitsMojoInterface) {
+        resultsToPack = implementsEmitsMojoInterface.resultsToPack();
+        operandsToUnpack = implementsEmitsMojoInterface.operandsToUnpack();
+      }
+
+      MOGraphLoweringState::lowerMOGGABI(*newKernel, operandsToUnpack,
+                                         resultsToPack);
 
       op->replaceAllUsesWith(*newKernel);
       op->erase();

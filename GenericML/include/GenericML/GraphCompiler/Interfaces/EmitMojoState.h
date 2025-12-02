@@ -233,6 +233,13 @@ public:
       return HardcodedMojoSymbols::struct_StateContext;
     } else if (isa<IndexType>(mlirType)) {
       return HardcodedMojoSymbols::struct_Int;
+    } else if (auto simdType = dyn_cast<KGEN::POP::SIMDType>(mlirType)) {
+      /// FIXME(GEX-2867)
+      // The only reason we would be manipulating SIMD types in the IR is for
+      // doing shape calculations which all operate on index/Int.
+      if (simdType.getResolvedDType()->isBool())
+        return HardcodedMojoSymbols::struct_Bool;
+      return HardcodedMojoSymbols::struct_Int;
     } else if (auto shapeResultType = dyn_cast<ShapeFuncResultType>(mlirType)) {
       MOGG::MojoValue rankParam = MOGG::MojoValue(shapeResultType.getRank());
       return MOGG::MojoValue(
