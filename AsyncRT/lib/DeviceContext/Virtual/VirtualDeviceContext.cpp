@@ -144,6 +144,86 @@ const VirtualDevice &VirtualDevice::cast(const Device &device) {
 }
 
 //===----------------------------------------------------------------------===//
+// VirtualDeviceEvent
+//===----------------------------------------------------------------------===//
+
+VirtualDeviceEvent::VirtualDeviceEvent(const VirtualDevice &device)
+    : DeviceEvent(device) {}
+
+ErrorOrSuccess VirtualDeviceEvent::synchronize() const {
+  // No-op for virtual devices
+  return success();
+}
+
+ErrorOr<bool> VirtualDeviceEvent::isReady() const {
+  // Virtual events are always ready
+  return true;
+}
+
+const VirtualDeviceEvent &VirtualDeviceEvent::cast(const DeviceEvent &event) {
+  // Virtual device events can have any API based on their backing device.
+  return static_cast<const VirtualDeviceEvent &>(event);
+}
+
+//===----------------------------------------------------------------------===//
+// VirtualDeviceStream
+//===----------------------------------------------------------------------===//
+
+VirtualDeviceStream::VirtualDeviceStream(const VirtualDevice &device)
+    : DeviceStream(device) {}
+
+ErrorOrSuccess VirtualDeviceStream::synchronize() const {
+  // No-op for virtual devices
+  return success();
+}
+
+ErrorOr<DeviceEventRef> VirtualDeviceStream::enqueueEvent() const {
+  return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
+}
+
+ErrorOrSuccess
+VirtualDeviceStream::eventRecord(const DeviceEvent &event) const {
+  // No-op for virtual devices
+  return success();
+}
+
+ErrorOrSuccess VirtualDeviceStream::waitEvent(const DeviceEvent &event,
+                                              unsigned int flags) const {
+  // No-op for virtual devices
+  return success();
+}
+
+ErrorOrSuccess
+VirtualDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
+  // No-op for virtual devices
+  return success();
+}
+
+ErrorOrSuccess VirtualDeviceStream::enqueueFunctionExecDirect(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    void *attrs, uint32_t numAttrs, void **args) const {
+  assert(false &&
+         "VirtualDeviceStream::enqueueFunctionExecDirect not implemented");
+  return DeviceContext::formatError(
+      __FILE__, __LINE__, __FUNCTION__,
+      "VirtualDevice does not support function execution");
+}
+
+void *VirtualDeviceStream::ptr() const {
+  // Return nullptr for virtual streams
+  return nullptr;
+}
+
+const VirtualDeviceStream *
+VirtualDeviceStream::verified_cast(const DeviceStream *stream) {
+  if (!stream)
+    return nullptr;
+  // Virtual device streams can have any API based on their backing device.
+  return static_cast<const VirtualDeviceStream *>(stream);
+}
+
+//===----------------------------------------------------------------------===//
 // VirtualDeviceTimer
 //===----------------------------------------------------------------------===//
 
@@ -255,20 +335,20 @@ ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
 
 ErrorOr<DeviceStreamRef> VirtualDeviceContext::stream() const {
   // Return a virtual stream for compile-only mode
-  return Error("Unimplemented");
+  return VirtualDeviceStreamRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOr<DeviceStreamRef>
 VirtualDeviceContext::streamCreate(unsigned int flags) const {
   // Return a virtual stream for compile-only mode
-  return Error("Unimplemented");
+  return VirtualDeviceStreamRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOr<DeviceStreamRef>
 VirtualDeviceContext::streamCreateWithPriority(unsigned int flags,
                                                int priority) const {
   // Return a virtual stream for compile-only mode (ignore priority)
-  return Error("Unimplemented");
+  return VirtualDeviceStreamRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOrSuccess
@@ -288,12 +368,12 @@ ErrorOrSuccess VirtualDeviceContext::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() const {
-  return Error("Unimplemented");
+  return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOr<DeviceEventRef>
 VirtualDeviceContext::eventCreate(unsigned int flags) const {
-  return Error("Unimplemented");
+  return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOrSuccess
