@@ -32,13 +32,11 @@ namespace M::AsyncRT {
 
 class VirtualDevice;
 class VirtualDeviceContext;
-class VirtualDeviceEvent;
 class VirtualDeviceStream;
 class VirtualDeviceTimer;
 
 using VirtualDeviceRef = RCRef<const VirtualDevice>;
 using VirtualDeviceContextRef = RCRef<const VirtualDeviceContext>;
-using VirtualDeviceEventRef = RCRef<const VirtualDeviceEvent>;
 using VirtualDeviceStreamRef = RCRef<const VirtualDeviceStream>;
 using VirtualDeviceTimerRef = RCRef<const VirtualDeviceTimer>;
 
@@ -95,48 +93,6 @@ private:
   std::unique_ptr<CompilationDevice> compilationDevice_;
   // Simulated device memory limit
   int64_t deviceMemoryLimit_;
-};
-
-/// Virtual Device Event for compile-only mode.
-class VirtualDeviceEvent : public DeviceEvent {
-public:
-  VirtualDeviceEvent(const VirtualDevice &device);
-  ~VirtualDeviceEvent() override = default;
-
-  ErrorOrSuccess synchronize() const override;
-
-  ErrorOr<bool> isReady() const override;
-
-  static const VirtualDeviceEvent &cast(const DeviceEvent &event);
-};
-
-/// Virtual Device Stream for compile-only mode.
-class VirtualDeviceStream : public DeviceStream {
-public:
-  VirtualDeviceStream(const VirtualDevice &device);
-  ~VirtualDeviceStream() override = default;
-
-  ErrorOrSuccess synchronize() const override;
-
-  ErrorOr<DeviceEventRef> enqueueEvent() const override;
-
-  ErrorOrSuccess eventRecord(const DeviceEvent &event) const override;
-  ErrorOrSuccess waitEvent(const DeviceEvent &event,
-                           unsigned int flags) const override;
-
-  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
-
-  ErrorOrSuccess enqueueFunctionExecDirect(const DeviceFunction &func,
-                                           uint32_t gridX, uint32_t gridY,
-                                           uint32_t gridZ, uint32_t blockX,
-                                           uint32_t blockY, uint32_t blockZ,
-                                           uint32_t sharedMemBytes, void *attrs,
-                                           uint32_t numAttrs,
-                                           void **args) const override;
-
-  void *ptr() const override;
-
-  static const VirtualDeviceStream *verified_cast(const DeviceStream *stream);
 };
 
 /// Virtual Device Timer for compile-only mode.

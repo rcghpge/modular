@@ -120,50 +120,6 @@ TEST_F(VirtualDeviceContextTest, Synchronization) {
   EXPECT_NO_ERR(ctx->synchronize());
 }
 
-TEST_F(VirtualDeviceContextTest, EventCreation) {
-  VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
-  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
-
-  // Test enqueue event
-  ASSIGN_NO_ERR(DeviceEventRef, event1, ctx->enqueueEvent());
-  EXPECT_NE(event1.getPointer(), nullptr);
-
-  // Test event create with flags
-  ASSIGN_NO_ERR(DeviceEventRef, event2, ctx->eventCreate(0));
-  EXPECT_NE(event2.getPointer(), nullptr);
-}
-
-TEST_F(VirtualDeviceContextTest, EventOperations) {
-  VirtualDeviceRef device =
-      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
-  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
-
-  ASSIGN_NO_ERR(DeviceEventRef, event, ctx->enqueueEvent());
-
-  // Event should always be ready
-  ASSIGN_NO_ERR(bool, isReady, event->isReady());
-  EXPECT_TRUE(isReady);
-
-  // Event synchronization should be a no-op
-  EXPECT_NO_ERR(event->synchronize());
-}
-
-TEST_F(VirtualDeviceContextTest, ContextEventWait) {
-  VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
-  VirtualDeviceRef device1 =
-      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
-  ASSIGN_NO_ERR(DeviceContextRef, ctx0, device0->createContext());
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1, device1->createContext());
-
-  ASSIGN_NO_ERR(DeviceEventRef, event, ctx0->enqueueEvent());
-
-  // Context should be able to wait for events (no-op)
-  EXPECT_NO_ERR(ctx1->enqueueWaitFor(*event));
-  EXPECT_NO_ERR(ctx1->enqueueWaitFor(*ctx0));
-}
-
 TEST_F(VirtualDeviceContextTest, TimerOperations) {
   VirtualDeviceRef device =
       VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
