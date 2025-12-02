@@ -234,4 +234,18 @@ def HashModuleContents: Pass<"hash-module-contents", "mlir::ModuleOp"> {
   ];
 }
 
+def NormalizeAllNames: Pass<"normalize-all-names", "mlir::ModuleOp"> {
+  let summary = "Normalize all names in the module";
+  let description = [{
+    This pass normalizes all symbol and parameter names to a canonical form.
+    Symbol names are renamed to __S0, __S1, etc., and parameter names are
+    renamed to __P0, __P1, etc. This makes the IR less sensitive to naming
+    variations, which is useful for caching and hashing purposes.
+  }];
+  let dependentDialects = [
+    "M::MOGG::MOGGDialect",
+    "M::KGEN::KGENDialect",
+  ];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD
