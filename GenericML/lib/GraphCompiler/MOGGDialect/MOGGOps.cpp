@@ -4023,6 +4023,25 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// ChainDummyOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ChainDummyOp::emitMojo(EmitMojoState &) {
+  // Do nothing because the consuming op should never be using the chain.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ChainSinkOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ChainSinkOp::emitMojo(EmitMojoState &) {
+  // Do nothing because the producing op should never be returning a chain
+  // anyway.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AsyncPackBorrowOp
 //===----------------------------------------------------------------------===//
 

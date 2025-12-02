@@ -680,8 +680,16 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   auto loc = kernel->getLoc();
   Operation *terminator = kernel.getBody().front().getTerminator();
 
+  // Chain inputs should never be used by any ops. Replace them with a dummy
+  // chain.
+  for (auto &&arg : kernel.getBody().front().getArguments()) {
+    if (isa<MEF::ChainType>(arg.getType())) {
+      arg.replaceAllUsesWith(
+          MOGG::ChainDummyOp::create(builder, loc).getResult());
+    }
+  }
+
   builder.setInsertionPoint(terminator);
-  SmallVector<Value> packedValues;
   for (auto &&[i, value] : llvm::enumerate(terminator->getOperands())) {
     Value newValue;
     if (isa<MEF::ChainType>(value.getType())) {
@@ -735,7 +743,12 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       value.replaceUsesWithIf(newValue, [&](OpOperand &use) {
         return use.getOwner() == terminator;
       });
-      packedValues.push_back(newValue);
+
+      // If the value being replaced is a chain, be sure to drop it in a
+      // ChainSinkOp to avoid it being DCE-ed if it's the only output.
+      if (isa<MEF::ChainType>(value.getType()) &&
+          !isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
+        MOGG::ChainSinkOp::create(builder, loc, value);
     }
   }
 

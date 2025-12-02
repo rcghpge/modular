@@ -2197,4 +2197,44 @@ def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef"
   }];
 }
 
+def MOGG_ChainDummyOp : MOGG_Op<"chain.dummy", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Returns a chain to feed MRP primitives";
+  let description = [{
+    MGP primitives that consume a chain and get lowered into a kernel still need
+    a chain internally. During sequence fusion, those input chains may become
+    intermediate results. Instead of handling those specially after sequence
+    fusion, we always feed them with this dummy op that does absolutely nothing.
+    The better approach would be to change the signature of the op when we lower
+    it into a kernel. Tracked here in GEX-2764.
+  }];
+
+  let arguments = (ins);
+  let results = (outs ChainType:$chain);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MOGG_ChainSinkOp : MOGG_Op<"chain.sink", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Consumes a chain and does nothing with it";
+  let description = [{
+    This is the same as ChainDummyOp but it consumes a chain for the sake of not
+    DCE-ing MGP primitives that lower to kernels but don't end up having a
+    consumer for their result.
+  }];
+
+  let arguments = (ins ChainType:$chain);
+  let results = (outs);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD
