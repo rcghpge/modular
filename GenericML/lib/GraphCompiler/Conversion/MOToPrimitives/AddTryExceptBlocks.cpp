@@ -28,17 +28,21 @@ struct AddTryExceptBlocks
   using AddTryExceptBlocksBase::AddTryExceptBlocksBase;
 
   void runOnOperation() override {
-    if (!MOGG::useExperimentalMojoPath())
-      return;
-
     auto kernelOp = getOperation();
     OpBuilder builder(kernelOp->getContext());
-    if (kernelOp.getAbi() != MOGG::ABIKind::MGP || !kernelOp.isThrows())
+    auto &kernelBody = kernelOp.getBodyBlock();
+    auto terminator = kernelBody.getTerminator();
+    Location loc = kernelOp->getLoc();
+
+    if (kernelOp.getAbi() != MOGG::ABIKind::MGP)
       return;
 
-    auto &kernelBody = kernelOp.getBodyBlock();
-    Location loc = kernelOp->getLoc();
-    auto terminator = kernelBody.getTerminator();
+    builder.setInsertionPoint(terminator);
+    for (auto arg : kernelBody.getArguments())
+      MOGG::AsyncDelOp::create(builder, loc, arg);
+
+    if (!kernelOp.isThrows())
+      return;
 
     // Seek the first non unpacking op.
     builder.setInsertionPointToStart(&kernelBody);

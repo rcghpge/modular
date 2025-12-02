@@ -753,7 +753,6 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   }
 
   // Then, unpack all inputs that should be unpacked.
-  SmallVector<Value> asyncValues;
   builder.setInsertionPointToStart(&kernel.getBody().front());
   for (auto v : kernel.getBody().getArguments()) {
     // Do not attempt to unpack a chain as there is nothing that we could be
@@ -768,12 +767,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
             operand.getOwner());
       });
     }
-    asyncValues.emplace_back(v);
   }
-
-  builder.setInsertionPoint(terminator);
-  for (auto asyncValue : asyncValues)
-    MOGG::AsyncDelOp::create(builder, loc, asyncValue);
 }
 
 //===----------------------------------------------------------------------===//
