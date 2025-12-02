@@ -684,8 +684,16 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
 
   // Some special parameters are common to all kernels.
-  if (paramName == KGEN::MOGGPreElab::kMOGGTargetParameterName)
-    return MojoValue(MO::getDeviceOrDefaultAny(callOp).getLabel()).quote();
+  /// TODO(GEX-2847): Do not check it on the KernelStubOp but instead directly
+  /// on the op itself in case these get sequence fused. Today, this won't
+  /// happen because we outline the stubs before sequence fusion and the ones
+  /// that do get sequence fused will always be on the host and have matching
+  /// devices.
+  if (paramName == KGEN::MOGGPreElab::kMOGGTargetParameterName) {
+    auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
+    return MojoValue(MO::getDeviceOrDefaultAny(kernelStubOp).getLabel())
+        .quote();
+  }
   if (paramName == KGEN::MOGGPreElab::kMOGGTraceNameParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return getTraceNameValue(kernelStubOp.getSummaryAttr());

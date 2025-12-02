@@ -30,6 +30,7 @@
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
+#include "Support/MDialect/MAttrs.h"
 #include "Support/Telemetry/Telemetry.h"
 
 using namespace M;
@@ -125,14 +126,15 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     llvm::SourceMgr src;
     src.AddNewSourceBuffer(std::move(mojoTextBuffer), llvm::SMLoc());
     AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
-    KGEN::CompilationOptions kgenOpts;
+    KGEN::CompilationOptions opts;
+    opts.targetAccelerator = targetInfoAttr->getAcceleratorArch();
     for (const auto &libraryPath : kernelLibraryPaths) {
-      kgenOpts.extraSearchPaths.push_back(
+      opts.extraSearchPaths.push_back(
           std::filesystem::path(libraryPath).parent_path().string());
     }
 
     // Mojo parsing
-    KGEN::LIT::ParserConfig config(ctx, kgenOpts);
+    KGEN::LIT::ParserConfig config(ctx, opts);
     mlir::TimingScope ts;
     auto parsedMojoModule = KGEN::LIT::importMojoFile(runtime, src, config, ts);
     if (!parsedMojoModule) {
@@ -140,8 +142,9 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
           "The graph compiler could not parse its Mojo generated code");
     }
 
+    setTargetInfo(*parsedMojoModule, *targetInfoAttr);
+
     // LITToKGEN
-    KGEN::CompilationOptions opts;
     opts.saveTempsPrefix = saveTempPrefix.getValue();
     opts.runMOGGPreElab = false;
     KGEN::KGENCompiler compiler(*ctx, opts);
