@@ -1765,6 +1765,7 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
@@ -2195,6 +2196,7 @@ def MOGG_AsyncUnpackAnyAsyncValueRefOp : MOGG_Op<"async.unpack.AnyAsyncValueRef"
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
+  let hasCanonicalizeMethod = 1;
 }
 
 def MOGG_ChainDummyOp : MOGG_Op<"chain.dummy", [

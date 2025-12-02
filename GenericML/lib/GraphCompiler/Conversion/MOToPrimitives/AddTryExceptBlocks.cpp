@@ -44,33 +44,20 @@ struct AddTryExceptBlocks
     if (!kernelOp.isThrows())
       return;
 
-    // Seek the first non unpacking op.
-    builder.setInsertionPointToStart(&kernelBody);
-    for (auto &&op : kernelBody.getOperations()) {
-      if (!isa<MOGG::KernelArgumentConsumer>(op)) {
-        builder.setInsertionPointAfter(&op);
-        break;
-      }
-    }
-
     // Move all ops inside the Try clause.
+    builder.setInsertionPointToStart(&kernelBody);
     auto tryOp =
         MOGG::TryOp::create(builder, loc, terminator->getOperandTypes());
     Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
-    SmallVector<Value> tryPackedValues;
     for (Operation &op :
          llvm::make_early_inc_range(kernelBody.getOperations())) {
-      if (!isa<MOGG::TryOp, MOGG::OutputOp, MOGG::AsyncDelOp,
-               MOGG::KernelArgumentConsumer>(op)) {
+      if (!isa<MOGG::TryOp, MOGG::OutputOp, MOGG::AsyncDelOp>(op))
         op.moveBefore(&tryBlock, tryBlock.end());
-
-        if (isa<MOGG::KernelTerminatorProvider>(op))
-          tryPackedValues.push_back(op.getResult(0));
-      }
     }
 
     builder.setInsertionPointToEnd(&tryBlock);
-    auto tryYieldOp = MOGG::YieldOp::create(builder, loc, tryPackedValues);
+    auto tryYieldOp =
+        MOGG::YieldOp::create(builder, loc, terminator->getOperands());
 
     // The except block returns a chain error and dummy values for other
     // outputs.

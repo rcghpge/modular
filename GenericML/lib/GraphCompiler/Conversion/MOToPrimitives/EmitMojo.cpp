@@ -10,6 +10,8 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -47,17 +49,16 @@ struct EmitMojo
     if (!MOGG::useExperimentalMojoPath())
       return;
 
-    stripDeviceAttributes();
-    auto moduleOp = getOperation();
-    mergeIdenticalKernelStubs(moduleOp);
-
     MLIRContext *ctx = &getContext();
-    auto pm = mlir::PassManager::on<ModuleOp>(ctx);
+    mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
+        ctx, mlir::OpPassManager::Nesting::Implicit);
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createSymbolDCEPass());
 
     // We disable the verifier because we have stripped device attributes. The
     // IR is in an invalid state and we do not want the verifiers to catch that
     // as we run SymbolDCE.
+    auto moduleOp = getOperation();
     pm.enableVerifier(false);
     if (pm.run(moduleOp).failed())
       return signalPassFailure();

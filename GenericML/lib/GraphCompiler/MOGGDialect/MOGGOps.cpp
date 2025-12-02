@@ -3817,6 +3817,21 @@ LogicalResult AsTupleOp::verify() {
 // AsyncUnpackOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AsyncUnpackOp::canonicalize(AsyncUnpackOp unpackOp,
+                                          mlir::PatternRewriter &rewriter) {
+  if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackOp>()) {
+    rewriter.replaceOp(unpackOp, packOp.getInput());
+    return success();
+  }
+
+  if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackBorrowV2Op>()) {
+    rewriter.replaceOp(unpackOp, packOp.getInput());
+    return success();
+  }
+
+  return failure();
+}
+
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
   MojoValue unpackedValue;
   mlir::TypedValue<mlir::Type> input = getInput();
@@ -4011,6 +4026,17 @@ LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
+  // If none of the users of this op is an output op, this is probably because
+  // we sequence fused and then we remove the output chain because nothing was
+  // using it from the outside. The result is an AsyncReadyOp with no output op
+  // as a user. There is nothing to emit and this op can be treated as a no-op.
+  /// TODO: Canonicalize this op into a placeholder for a chain instead of doing
+  /// this context sensitive logic.
+  if (llvm::none_of(this->getResult().getUsers(), [](auto user) {
+        return isa<MOGG::OutputOp, MOGG::YieldOp>(user);
+      })) {
+    return success();
+  }
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
@@ -4100,6 +4126,20 @@ LogicalResult AsyncPackBorrowV2Op::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 // AsyncUnpackAnyAsyncValueRefOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult AsyncUnpackAnyAsyncValueRefOp::canonicalize(
+    AsyncUnpackAnyAsyncValueRefOp unpackOp, mlir::PatternRewriter &rewriter) {
+  ASSERT_STREAM(!unpackOp.getValue().getDefiningOp<AsyncPackOp>(),
+                << "WE do not support unpacking async memory refs from packed "
+                   "operations. This should not happen.");
+  if (auto packOp = unpackOp.getValue().getDefiningOp<AsyncPackBorrowV2Op>()) {
+    rewriter.replaceOp(unpackOp, packOp.getMem());
+    return success();
+  }
+
+  return failure();
+}
+
 enum class MGPRT_BorroweeType : size_t {
   kHandle = 0,
   kBuffer = 1,

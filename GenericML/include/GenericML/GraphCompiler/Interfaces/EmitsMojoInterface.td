@@ -62,18 +62,23 @@ def KernelTerminatorProvider : OpInterface<"KernelTerminatorProvider"> {
         if (llvm::none_of($_op->getResult(0).getUsers(),
                    [](auto user) { return user->template hasTrait<mlir::OpTrait::IsTerminator>(); })) {
           $_op->emitError() <<
-            "Expected at least one user to be an output op. Canonicalizer pass"
+            "Expected at least one user to be an output op. Canonicalizer pass "
             "could be missing before Emit Mojo";
           return std::nullopt;
         }
 
         uint64_t resultIndex;
+        bool alreadyProcessed = false;
         for (auto &&use : $_op->getResult(0).getUses()) {
           // Can't use MOGG::OutputOp because this interface can't depend on the
           // MOGG dialect.
           if (use.getOwner()->template hasTrait<mlir::OpTrait::IsTerminator>()) {
+            if (alreadyProcessed) {
+              $_op->emitError() << "Expected at most one output use from this op";
+              return std::nullopt;
+            }
+            alreadyProcessed = true;
             resultIndex = use.getOperandNumber();
-            break;
           }
         }
 

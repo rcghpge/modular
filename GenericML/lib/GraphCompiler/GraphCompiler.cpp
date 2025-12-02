@@ -312,6 +312,7 @@ void M::MO::buildMoToMgpPipeline(
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts, libraryAnalysis));
   pm.addPass(MGP::createFuseGenericCompiledRegions());
+  pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createRemoveRedundantOperands());
