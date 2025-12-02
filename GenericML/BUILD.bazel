@@ -343,6 +343,10 @@ gentbl_filegroup(
     )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = ":include/GenericML/GraphCompiler/MODialect/MO.td",
+    visibility = [
+        "//max:__subpackages__",
+        "//open-source/max/max/python/max/_mlir/dialects:__pkg__",
+    ],
     deps = [
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
@@ -598,6 +602,10 @@ gentbl_filegroup(
     )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = ":include/GenericML/GraphCompiler/RMODialect/RMO.td",
+    visibility = [
+        "//max:__subpackages__",
+        "//open-source/max/max/python/max/_mlir/dialects:__pkg__",
+    ],
     deps = [
         ":GraphCompilerInterfacesTdFiles",
         ":MGPDialectTdFiles",
