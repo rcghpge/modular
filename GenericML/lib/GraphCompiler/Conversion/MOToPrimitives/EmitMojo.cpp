@@ -52,14 +52,16 @@ struct EmitMojo
     MLIRContext *ctx = &getContext();
     mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
         ctx, mlir::OpPassManager::Nesting::Implicit);
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createSymbolDCEPass());
-
     // We disable the verifier because we have stripped device attributes. The
     // IR is in an invalid state and we do not want the verifiers to catch that
     // as we run SymbolDCE.
-    auto moduleOp = getOperation();
     pm.enableVerifier(false);
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createSymbolDCEPass());
+
+    auto moduleOp = getOperation();
+    stripDeviceAttributes();
+    mergeIdenticalKernelStubs(moduleOp);
     if (pm.run(moduleOp).failed())
       return signalPassFailure();
 
