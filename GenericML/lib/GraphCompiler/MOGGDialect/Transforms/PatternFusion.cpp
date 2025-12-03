@@ -2390,6 +2390,21 @@ struct MultiHeadAttentionPattern
     TensorValue normScalarAsFP32 = rewriter.create<CastOp>(
         rootOp.getLoc(), normScalar.getType().cloneWith(DType::f32),
         normScalar);
+
+    // The scale operand to all variants of masked_flash_attention are scalar
+    // values, which must always be on the host. If they are not present on
+    // the host, transfer the value.
+    if (!isOnHost(normScalarAsFP32.getDefiningOp())) {
+      ChainValue inChain =
+          rewriter.create<ChainCreateOp>(rootOp.getLoc(), ValueRange{});
+
+      normScalarAsFP32 = cast<TensorValue>(
+          rewriter
+              .create<TransferOp>(rootOp.getLoc(), normScalarAsFP32,
+                                  getHostDevice(rootOp), inChain)
+              .getResult());
+    }
+
     customOpInputs.push_back(normScalarAsFP32);
 
     StringRef kernelName;
