@@ -143,12 +143,6 @@ std::optional<SmallVector<APFloat>> tryGetConstantAPFloatVector(ListValue val);
 /// constants, convert it to an APInt vector, else return None.
 std::optional<SmallVector<APInt>> tryGetConstantAPIntVector(ListValue val);
 
-/// Convert `val` to a value (of MOSH::ShapeType) if possible, else return
-/// `null`.
-/// NOTE possible side-effect: if `val` is a tensor constant, a
-/// `ParamToValueOp` will be created to hold the shape value.
-Value tryConvertToShapeVal(Value val, Location loc);
-
 /// Extract the `MOSH::ShapeAttr` represented by `val` if possible, else return
 /// `null`.
 ShapeAttr tryGetShapeAttr(Value val);

@@ -319,22 +319,6 @@ static ShapeAttr tryGetConstantShapeAttr(Value val) {
   return {};
 }
 
-Value M::MO::tryConvertToShapeVal(Value val, Location loc) {
-  if (Value shapeVal = tryGetShapeValue(val))
-    return shapeVal;
-
-  if (ShapeAttr shapeAttr = tryGetConstantShapeAttr(val)) {
-    // We don't insert via pattern rewriter because it might prevent rewriter
-    // from reaching convergence (e.g., if this is called by LowerConcat, and
-    // some other concat inputs aren't constant/shape)
-    OpBuilder builder(val.getContext());
-    builder.setInsertionPointAfterValue(val);
-    return MOSH::ParamToValueOp::create(builder, loc, shapeAttr);
-  }
-
-  return {};
-}
-
 ShapeAttr M::MO::tryGetShapeAttr(Value val) {
   if (Value shapeVal = tryGetShapeValue(val)) {
     if (auto paramToValueOp = shapeVal.getDefiningOp<MOSH::ParamToValueOp>())
