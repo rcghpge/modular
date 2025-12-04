@@ -27,6 +27,30 @@ struct AddTryExceptBlocks
     : public MGP::impl::AddTryExceptBlocksBase<AddTryExceptBlocks> {
   using AddTryExceptBlocksBase::AddTryExceptBlocksBase;
 
+  /// Helper to set the builder insertion point for AsyncDelOp operations.
+  /// Sets insertion point before the first AsyncReadyOp if one exists in the
+  /// block, otherwise before the fallback operation (or at block end if
+  /// nullptr).
+  void setDelInsertionPoint(OpBuilder &builder, Block &block,
+                            Operation *fallback) {
+    auto asyncReadyOps = block.getOps<MOGG::AsyncReadyOp>();
+    if (!asyncReadyOps.empty()) {
+      builder.setInsertionPoint((*asyncReadyOps.begin()).getOperation());
+    } else if (fallback) {
+      builder.setInsertionPoint(fallback);
+    } else {
+      builder.setInsertionPointToEnd(&block);
+    }
+  }
+
+  /// Helper to insert AsyncDelOp for all kernel arguments at the current
+  /// insertion point.
+  void insertAsyncDelOps(OpBuilder &builder, Location loc,
+                         ArrayRef<BlockArgument> args) {
+    for (auto arg : args)
+      MOGG::AsyncDelOp::create(builder, loc, arg);
+  }
+
   void runOnOperation() override {
     auto kernelOp = getOperation();
     OpBuilder builder(kernelOp->getContext());
@@ -37,12 +61,30 @@ struct AddTryExceptBlocks
     if (kernelOp.getAbi() != MOGG::ABIKind::MGP)
       return;
 
-    builder.setInsertionPoint(terminator);
-    for (auto arg : kernelBody.getArguments())
-      MOGG::AsyncDelOp::create(builder, loc, arg);
+    // Collect arguments that need cleanup. We need to do this before moving
+    // ops around.
+    SmallVector<BlockArgument> argsToDelete(kernelBody.getArguments().begin(),
+                                            kernelBody.getArguments().end());
 
-    if (!kernelOp.isThrows())
+    // For non-throwing kernels, insert AsyncDelOp before AsyncReadyOp.
+    // AsyncReadyOp signals that the output chain is ready, which tells
+    // downstream consumers they can start. By inserting cleanup before
+    // AsyncReadyOp, we ensure that when await() returns for downstream
+    // consumers, all cleanup from this kernel has completed.
+    //
+    // Note: We specifically look for AsyncReadyOp and not AsyncPackOp because
+    // pack operations (especially AsyncPackBorrowV2Op) may still reference
+    // values derived from arguments (like memory storage handles from cached
+    // buffers). The chain ready is what triggers downstream execution.
+    if (!kernelOp.isThrows()) {
+      setDelInsertionPoint(builder, kernelBody, terminator);
+      insertAsyncDelOps(builder, loc, argsToDelete);
       return;
+    }
+
+    // For throwing kernels, we need AsyncDelOp in BOTH the try and except
+    // blocks to ensure cleanup happens before signaling ready/error to
+    // downstream consumers, regardless of whether an exception is thrown.
 
     // Move all ops inside the Try clause.
     builder.setInsertionPointToStart(&kernelBody);
@@ -51,9 +93,14 @@ struct AddTryExceptBlocks
     Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
     for (Operation &op :
          llvm::make_early_inc_range(kernelBody.getOperations())) {
-      if (!isa<MOGG::TryOp, MOGG::OutputOp, MOGG::AsyncDelOp>(op))
+      if (!isa<MOGG::TryOp, MOGG::OutputOp>(op))
         op.moveBefore(&tryBlock, tryBlock.end());
     }
+
+    // Insert AsyncDelOp in try block before AsyncReadyOp (or at the end if
+    // no AsyncReadyOp found).
+    setDelInsertionPoint(builder, tryBlock, /*fallback=*/nullptr);
+    insertAsyncDelOps(builder, loc, argsToDelete);
 
     builder.setInsertionPointToEnd(&tryBlock);
     auto tryYieldOp =
@@ -65,6 +112,10 @@ struct AddTryExceptBlocks
     Value errArg =
         exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
     builder.setInsertionPointToStart(&exceptBlock);
+
+    // Insert AsyncDelOp in except block too - cleanup must happen before
+    // signaling error to downstream.
+    insertAsyncDelOps(builder, loc, argsToDelete);
 
     // Create individual AsyncErrorOp for each output (chain and non-chain).
     // Each AsyncErrorOp represents setting an error on one specific output.
