@@ -12,6 +12,7 @@ package_group(
         "//GenericML/...",
         "//SDK/...",
         "//max/...",
+        "//open-source/max/max/...",
         "//utils/...",
     ],
 )
