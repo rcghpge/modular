@@ -665,22 +665,6 @@ const ErrorOrSuccess &DeviceFunction::Arguments::getError() const {
   return err_;
 }
 
-MODULAR_CXX_EXPORT void
-DeviceFunction::Arguments::checkArg(int index, const uint64_t &val) {
-  if (err_)
-    return;
-  err_ = fn_->checkSignatureAt(index, UINT64);
-  pushArg(index, val);
-}
-
-MODULAR_CXX_EXPORT void
-DeviceFunction::Arguments::checkArg(int index, const DeviceBuffer &val) {
-  if (err_)
-    return;
-  err_ = fn_->checkSignatureAt(index, BUFFER);
-  pushArg(index, val);
-}
-
 //
 // ===== DeviceTimer ===== //
 //

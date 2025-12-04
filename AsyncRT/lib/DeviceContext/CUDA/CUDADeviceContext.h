@@ -239,9 +239,6 @@ public:
   CUDADeviceFunctionArguments(const CUDADeviceFunction &fn);
   ~CUDADeviceFunctionArguments() override = default;
 
-  void pushArg(int index, const uint64_t &val) override;
-  void pushArg(int index, const DeviceBuffer &val) override;
-
   std::vector<void *> cudaArgs() const;
 
   static const CUDADeviceFunctionArguments &

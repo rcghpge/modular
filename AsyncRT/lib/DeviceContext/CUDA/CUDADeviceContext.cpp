@@ -850,18 +850,6 @@ CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
     const CUDADeviceFunction &fn)
     : DeviceFunction::Arguments(fn) {}
 
-void CUDADeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
-  argValues_.push_back(reinterpret_cast<void *>(val));
-}
-
-void CUDADeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
-  // Ensure buffer is preserved by increasing the reference count through
-  // copy().
-  assert(val.context().device().api() == Device::cudaAPI);
-  refs_.emplace_back(DeviceBufferRef::copy(&val));
-  argValues_.push_back(val.ptr());
-}
-
 std::vector<void *> CUDADeviceFunctionArguments::cudaArgs() const {
   std::vector<void *> launchArgs;
   launchArgs.reserve(argValues_.size());

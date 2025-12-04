@@ -171,10 +171,16 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
 
     constexpr uint32_t blockDim = 32;
 
-    EXPECT_NO_ERR(ctx->enqueueFunctionExec(
+    void *outPtr = outDevice->ptr();
+    void *in0Ptr = in0Device->ptr();
+    void *in1Ptr = in1Device->ptr();
+    void *args[] = {&outPtr, &in0Ptr, &in1Ptr, (void *)&length};
+    size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                         sizeof(length)};
+
+    EXPECT_NO_ERR(ctx->enqueueFunctionExecDirect(
         *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
-        *deviceFunction->buildArguments(*outDevice, *in0Device, *in1Device,
-                                        length)));
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, argSizes));
 
     EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(outHost, *outDevice));
 
@@ -198,30 +204,6 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
       EXPECT_EQ(deviceFunction->getNumReferences(), 1);
       EXPECT_EQ(deviceFunction2->getNumReferences(), 1);
     }
-
-    // Check error cases of mismatched arguments being passed.
-    EXPECT_ERR_MSG(
-        ctx->enqueueFunctionExec(*deviceFunction, length / blockDim, 1, 1,
-                                 blockDim, 1, 1, 0,
-                                 *deviceFunction->buildArguments(
-                                     *outDevice, *in0Device, 12, length)),
-        "Argument mismatch at 3th position: "
-        "Expected DeviceBuffer, got uint64.");
-
-    EXPECT_ERR_MSG(ctx->enqueueFunctionExec(
-                       *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1,
-                       0,
-                       *deviceFunction->buildArguments(*outDevice, *in0Device,
-                                                       *in1Device, *in1Device)),
-                   "Argument mismatch at 4th position: "
-                   "Expected uint64, got DeviceBuffer.");
-
-    EXPECT_ERR_MSG(
-        ctx->enqueueFunctionExec(
-            *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
-            *deviceFunction->buildArguments(*outDevice, *in0Device, *in1Device,
-                                            length, length)),
-        "Argument count mismatch at 5th position: Expected 4 arguments.");
 
     free(outHost);
     free(in1Host);
@@ -366,9 +348,15 @@ $L__BB0_2:
 
     constexpr uint32_t blockDim = 256;
 
-    EXPECT_NO_ERR(srcCtx->enqueueFunctionExec(
+    void *dstBufPtr = dstBuf->ptr();
+    void *srcBufPtr = srcBuf->ptr();
+    void *args[] = {&dstBufPtr, &srcBufPtr, (void *)&numElems};
+    size_t argSizes[] = {sizeof(dstBufPtr), sizeof(srcBufPtr),
+                         sizeof(numElems)};
+
+    EXPECT_NO_ERR(srcCtx->enqueueFunctionExecDirect(
         *deviceFunction, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        *deviceFunction->buildArguments(*dstBuf, *srcBuf, numElems)));
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, argSizes));
 
     EXPECT_NO_ERR(srcCtx->synchronize());
 
@@ -646,9 +634,15 @@ $L__BB0_2:
                                          .addUInt64(),
                                      copyPtx));
 
-      EXPECT_NO_ERR(ctx.enqueueFunctionExec(
+      void *mapPtr = mapBuf->ptr();
+      void *devPtr = devBuf->ptr();
+      void *copyArgs[] = {&mapPtr, &devPtr, (void *)&numElems};
+      size_t copyArgSizes[] = {sizeof(mapPtr), sizeof(devPtr),
+                               sizeof(numElems)};
+
+      EXPECT_NO_ERR(ctx.enqueueFunctionExecDirect(
           *copyFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-          *copyFun->buildArguments(*mapBuf, *devBuf, numElems)));
+          /*attrs=*/nullptr, /*numAttrs=*/0, copyArgs, copyArgSizes));
 
       bzero(hostPtr, allocLen);
       EXPECT_NO_ERR(mapBuf->copyTo(*hostBuf));
@@ -674,9 +668,14 @@ $L__BB0_2:
     // No synchronization with producing streams on other devices necessary
     // since the verification code above did synchronization.
     std::cerr << "Using multicast to map from all devices.\n";
-    EXPECT_NO_ERR(ctx0.enqueueFunctionExec(
+    void *devPtr = devBuf->ptr();
+    void *mapPtr = mapBuf->ptr();
+    void *mapArgs[] = {&devPtr, &mapPtr, (void *)&numElems};
+    size_t mapArgSizes[] = {sizeof(devPtr), sizeof(mapPtr), sizeof(numElems)};
+
+    EXPECT_NO_ERR(ctx0.enqueueFunctionExecDirect(
         *mapFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        *mapFun->buildArguments(*devBuf, *mapBuf, numElems)));
+        /*attrs=*/nullptr, /*numAttrs=*/0, mapArgs, mapArgSizes));
 
     bzero(hostPtr, allocLen); // Reset the memory used to validate.
     EXPECT_NO_ERR(devBuf->copyTo(*hostBuf));
@@ -698,9 +697,15 @@ $L__BB0_2:
     }
     EXPECT_NO_ERR(hostBuf->copyTo(*devBuf));
 
-    EXPECT_NO_ERR(ctx0.enqueueFunctionExec(
+    void *splatMapPtr = mapBuf->ptr();
+    void *splatDevPtr = devBuf->ptr();
+    void *splatArgs[] = {&splatMapPtr, &splatDevPtr, (void *)&numElems};
+    size_t splatArgSizes[] = {sizeof(splatMapPtr), sizeof(splatDevPtr),
+                              sizeof(numElems)};
+
+    EXPECT_NO_ERR(ctx0.enqueueFunctionExecDirect(
         *splatFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        *splatFun->buildArguments(*mapBuf, *devBuf, numElems)));
+        /*attrs=*/nullptr, /*numAttrs=*/0, splatArgs, splatArgSizes));
 
     EXPECT_NO_ERR(ctx0.synchronize());
     for (int i = 0; i < numDevices; i++) {

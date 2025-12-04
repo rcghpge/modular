@@ -1386,24 +1386,6 @@ MetalDeviceFunctionArguments::MetalDeviceFunctionArguments(
     const MetalDeviceFunction &fn)
     : DeviceFunction::Arguments(fn), metalFnPtr_(&fn) {}
 
-void MetalDeviceFunctionArguments::pushArg(int index, const uint64_t &val) {
-  // For scalar values, we need to create a temporary buffer
-  const MetalDevice &metalDevice =
-      MetalDevice::cast(getFunction()->context().device());
-  MTL::Buffer *tmpBuffer = metalDevice.metalDevice()->newBuffer(
-      sizeof(uint64_t), MTL::ResourceStorageModeShared);
-  // Copy the value to the buffer
-  memcpy(tmpBuffer->contents(), &val, sizeof(uint64_t));
-  argValues_.push_back(tmpBuffer);
-}
-
-void MetalDeviceFunctionArguments::pushArg(int index, const DeviceBuffer &val) {
-  // Ensure buffer is preserved by increasing the reference count
-  assert(val.context().device().api() == Device::metalAPI);
-  refs_.emplace_back(DeviceBufferRef::copy(&val));
-  argValues_.push_back(const_cast<DeviceBuffer *>(&val));
-}
-
 const std::vector<void *> &MetalDeviceFunctionArguments::metalArgs() const {
   return argValues_;
 }

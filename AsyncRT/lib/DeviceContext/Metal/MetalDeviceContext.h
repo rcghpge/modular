@@ -233,9 +233,6 @@ public:
   explicit MetalDeviceFunctionArguments(const MetalDeviceFunction &fn);
   ~MetalDeviceFunctionArguments() override = default;
 
-  void pushArg(int index, const uint64_t &val) override;
-  void pushArg(int index, const DeviceBuffer &val) override;
-
   const std::vector<void *> &metalArgs() const;
 
   static const MetalDeviceFunctionArguments &

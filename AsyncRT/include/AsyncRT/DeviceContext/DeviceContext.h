@@ -365,9 +365,6 @@ public:
 
   size_t argumentCount() const;
 
-  template <typename... Ts>
-  ArgumentsRef buildArguments(const Ts &...ts) const;
-
 protected:
   DeviceFunction(const DeviceContext &context,
                  const DeviceFunction::SignatureBuilder &signature);
@@ -407,30 +404,11 @@ public:
 protected:
   Arguments(const DeviceFunction &func);
 
-  // The implementations of these methods are being called based on the
-  // arguments being passed to the DeviceFunction::buildArguments() method.
-  // TODO: Add argument types incrementally as needed.
-  virtual void pushArg(int index, const uint64_t &val) = 0;
-  virtual void pushArg(int index, const DeviceBuffer &val) = 0;
-
 private:
   friend class DeviceFunction;
 
   DeviceFunctionRef fn_;
   ErrorOrSuccess err_;
-
-  template <typename... Ts>
-  void build(const Ts &...ts);
-
-  template <int index, typename T0, typename... T1s>
-  void pushArgs(const T0 &&t0, const T1s &&...t1s);
-
-  template <int index, typename T0>
-  void pushArgs(const T0 &&t0);
-
-  // TODO: Add argument types incrementally as needed.
-  void checkArg(int index, const uint64_t &val);
-  void checkArg(int index, const DeviceBuffer &val);
 };
 
 class DeviceTimer : public ReferenceCounted<DeviceTimer> {
@@ -712,33 +690,6 @@ public:
 private:
   const std::string name_;
 };
-
-//
-// Private template definitions used by external code.
-//
-template <typename... Ts>
-DeviceFunction::ArgumentsRef
-DeviceFunction::buildArguments(const Ts &...ts) const {
-  Arguments *args = allocateArguments(*this);
-  args->build(std::forward<const Ts>(ts)...);
-  return ArgumentsRef::take(args);
-}
-
-template <typename... Ts>
-void DeviceFunction::Arguments::build(const Ts &...ts) {
-  pushArgs<0>(std::forward<const Ts>(ts)...);
-}
-
-template <int index, typename T0, typename... T1s>
-void DeviceFunction::Arguments::pushArgs(const T0 &&t0, const T1s &&...t1s) {
-  checkArg(index, t0);
-  pushArgs<index + 1, const T1s...>(std::forward<const T1s>(t1s)...);
-}
-
-template <int index, typename T0>
-void DeviceFunction::Arguments::pushArgs(const T0 &&t0) {
-  checkArg(index, t0);
-}
 
 } // namespace M::AsyncRT
 

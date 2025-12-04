@@ -166,9 +166,6 @@ public:
   HIPDeviceFunctionArguments(const HIPDeviceFunction &fn);
   ~HIPDeviceFunctionArguments() override = default;
 
-  void pushArg(int index, const uint64_t &val) override;
-  void pushArg(int index, const DeviceBuffer &val) override;
-
   std::vector<void *> hipArgs() const;
 
   static const HIPDeviceFunctionArguments &
