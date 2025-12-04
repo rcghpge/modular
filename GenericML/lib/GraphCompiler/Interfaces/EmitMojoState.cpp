@@ -480,9 +480,9 @@ LogicalResult emitMojo(KGEN::ParamConstantOp op, EmitMojoState &state) {
     ASSERT_STREAM(vals, << "Expected a SIMD parameter constant");
     ASSERT_STREAM(vals.getValues().size() == 1,
                   << "Only scalars are supported");
-    auto val = vals.getValues().front();
-    auto data = val.getData();
-    if (data.getBitWidth() == 1)
+    KGEN::POP::DTypeValue val = vals.getValues().front();
+    KGEN::KGENDType valDType = val.getDType();
+    if (valDType.isBool())
       state.setMojoValueFor(op.getResult(), val.getBoolVal());
     else
       state.setMojoValueFor(op.getResult(), val.getIntVal());
