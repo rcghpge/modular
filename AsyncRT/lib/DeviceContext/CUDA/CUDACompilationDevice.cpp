@@ -49,8 +49,7 @@ CUDACompilationDevice::setupCompilationOptionsNVPTXCompiler(
   if (optimizationLevel == 3)
     optimizationLevel = kDefaultOptimizationLevel;
 
-  SmallVector<std::string> options;
-  options.reserve(3);
+  SmallVector<std::string, 3> options;
   options.push_back("--gpu-name=" + gpuName.str());
 
   if (debugLevel == "full") {
