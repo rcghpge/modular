@@ -135,7 +135,7 @@ AsyncRT_DeviceContext_cuda_current_context(CUcontext *result) {
   if (errDriver.isError()) {
     return raiseError(errDriver.getError());
   }
-  if ((*errDriver).CtxGetCurrent(result) != CUDADriver::SUCCESS) {
+  if ((*errDriver).cuCtxGetCurrent(result) != CUDADriver::SUCCESS) {
     return raiseError("cuCtxGetCurrent failed.");
   }
   return nullptr;

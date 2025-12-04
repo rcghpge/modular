@@ -79,8 +79,8 @@ static int cudaQueryAddr(void *address, bool &is_dev, CUdevice &dev,
   attr_data[3] = &ctx;
 
   const CUDADriver &driver = CUDADriver::get().get();
-  result = driver.PointerGetAttributes(4, attr_type, attr_data,
-                                       (CUdeviceptr)address);
+  result = driver.cuPointerGetAttributes(4, attr_type, attr_data,
+                                         (CUdeviceptr)address);
 
   is_dev = (mem_type == CU_MEMORYTYPE_DEVICE);
 
