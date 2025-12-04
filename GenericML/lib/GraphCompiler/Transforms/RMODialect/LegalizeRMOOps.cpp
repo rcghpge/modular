@@ -657,31 +657,6 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
 
   LogicalResult matchAndRewrite(RMO::ReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    // If the newShape contains `-1`, at runtime, ensure all other dimensions
-    // multiplied together do not equal 0. Otherwise, the shape of the `-1` dim
-    // is not clear.
-    ArrayRef<TypedAttr> dims = op.getNewShape().getValues();
-    bool containsNegOne = llvm::any_of(dims, [](auto dim) {
-      auto intDim = dyn_cast<IntegerAttr>(dim);
-      return intDim && intDim.getSInt() == -1;
-    });
-    if (containsNegOne) {
-      SmallVector<TypedAttr> nonNegOneDims;
-      for (auto dim : dims) {
-        auto intDim = dyn_cast<IntegerAttr>(dim);
-        if (intDim && intDim.getSInt() == -1)
-          continue;
-
-        nonNegOneDims.push_back(dim);
-      }
-      Location loc = op.getLoc();
-      SmallVector<ParamBinding> paramBindings;
-
-      // Add all ops for the assert to the graph.
-      for (auto binding : paramBindings)
-        binding.toOp(loc, rewriter);
-    }
-
     // Since the shape is already resolved and can't contain any unknown dims,
     // simply lower to static reshape.
     rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(
