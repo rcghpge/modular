@@ -12,6 +12,7 @@ package_group(
         "//SDK/...",
         "//docs/...",
         "//max/...",
+        "//open-source/max/max/...",
         "//utils/...",
     ],
 )
