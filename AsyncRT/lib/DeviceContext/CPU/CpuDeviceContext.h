@@ -138,11 +138,6 @@ public:
                const DeviceFunction::SignatureBuilder &signature,
                StringRef code, int32_t maxDynamicSharedBytes,
                StringRef debugLevel, int32_t optimizationLevel) const override;
-  ErrorOrSuccess
-  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
-                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-                      const DeviceFunction::Arguments &args) const override;
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,

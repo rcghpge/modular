@@ -845,25 +845,6 @@ CUDADeviceStream::verified_cast(const DeviceStream *stream) {
   return static_cast<const CUDADeviceStream *>(stream);
 }
 
-// ===== CUDADeviceFunctionArguments ===== //
-CUDADeviceFunctionArguments::CUDADeviceFunctionArguments(
-    const CUDADeviceFunction &fn)
-    : DeviceFunction::Arguments(fn) {}
-
-std::vector<void *> CUDADeviceFunctionArguments::cudaArgs() const {
-  std::vector<void *> launchArgs;
-  launchArgs.reserve(argValues_.size());
-  for (size_t i = 0; i < argValues_.size(); i++) {
-    launchArgs.push_back(const_cast<void **>(&argValues_[i]));
-  }
-  return launchArgs;
-}
-
-const CUDADeviceFunctionArguments &
-CUDADeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
-  return static_cast<const CUDADeviceFunctionArguments &>(args);
-}
-
 // ===== CUDAModuleFunction ===== //
 CUDAModuleFunction::CUDAModuleFunction(const std::string name,
                                        const CUDADriver &driver,
@@ -891,22 +872,6 @@ CUDADeviceFunction::CUDADeviceFunction(
     CUDAModuleFunctionRef modFunc)
     : DeviceFunction(context, signature), moduleFunction_(std::move(modFunc)) {}
 CUDADeviceFunction::~CUDADeviceFunction() {}
-
-DeviceFunction::Arguments *
-CUDADeviceFunction::allocateArguments(const DeviceFunction &fn) const {
-  return new CUDADeviceFunctionArguments(CUDADeviceFunction::cast(fn));
-}
-
-ErrorOrSuccess CUDADeviceFunction::cuda_callKernel(
-    uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const CUDADeviceFunctionArguments &args, CUstream stream) const {
-  CUDA_CHECK_ERR(moduleFunction_->cudaDriver().cuLaunchKernel(
-      moduleFunction_->cudaFunction(), gridX, gridY, gridZ, blockX, blockY,
-      blockZ, sharedMemBytes, stream, args.cudaArgs().data(), nullptr));
-  MAYBE_SYNC(CUDADeviceContext::cast(context()));
-  return success();
-}
 
 ErrorOrSuccess CUDADeviceFunction::cudaCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
@@ -1328,25 +1293,6 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
       *this, signature,
       CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release())));
   return result;
-}
-
-ErrorOrSuccess CUDADeviceContext::enqueueFunctionExec(
-    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const DeviceFunction::Arguments &args) const {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueFunctionExec",
-                       TRACY_COLOR_PURPLE);
-
-  if (args.hasError()) {
-    RAISE_ERROR(args.getError().getError());
-  }
-
-  const auto &cudaFunc = CUDADeviceFunction::cast(func);
-
-  CUDA_WITH_CTX_ERR(*this);
-  return cudaFunc.cuda_callKernel(
-      gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
-      CUDADeviceFunctionArguments::cast(args), stream_);
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(

@@ -312,16 +312,6 @@ ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(
       "VirtualDevice does not support function loading");
 }
 
-ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExec(
-    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const DeviceFunction::Arguments &args) const {
-  assert(false && "VirtualDeviceContext::enqueueFunctionExec not implemented");
-  return DeviceContext::formatError(
-      __FILE__, __LINE__, __FUNCTION__,
-      "VirtualDevice does not support function execution");
-}
-
 ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,

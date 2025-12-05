@@ -271,7 +271,7 @@ Used for executing operations on hardware:
 ```text
 User Code
     ↓
-DeviceContext::enqueueFunctionExec()
+DeviceContext::enqueueFunctionExecDirect()
     ↓
 DeviceContext::loadFunction()  // JIT compile if needed
     ↓

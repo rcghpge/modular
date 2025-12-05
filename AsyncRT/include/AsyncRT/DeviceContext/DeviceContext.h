@@ -366,9 +366,6 @@ class DeviceFunction : public ReferenceCounted<DeviceFunction> {
 public:
   enum ArgumentType : uint8_t;
   class SignatureBuilder;
-  class Arguments;
-
-  using ArgumentsRef = RCRef<const Arguments>;
 
   virtual ~DeviceFunction() = default;
 
@@ -387,14 +384,9 @@ protected:
   DeviceFunction(const DeviceContext &context,
                  const DeviceFunction::SignatureBuilder &signature);
 
-  virtual Arguments *allocateArguments(const DeviceFunction &fn) const = 0;
-
 private:
   DeviceContextRef context_;
   std::vector<ArgumentType> signature_;
-
-  ErrorOrSuccess checkSignatureAt(int index, ArgumentType argType) const;
-  static const char *typeName(ArgumentType argType);
 };
 
 class DeviceFunction::SignatureBuilder {
@@ -409,24 +401,6 @@ private:
   friend class DeviceFunction;
 
   std::vector<ArgumentType> types_;
-};
-
-class DeviceFunction::Arguments
-    : public ReferenceCounted<DeviceFunction::Arguments> {
-public:
-  virtual ~Arguments() = default;
-
-  bool hasError() const;
-  const ErrorOrSuccess &getError() const;
-
-protected:
-  Arguments(const DeviceFunction &func);
-
-private:
-  friend class DeviceFunction;
-
-  DeviceFunctionRef fn_;
-  ErrorOrSuccess err_;
 };
 
 class DeviceTimer : public ReferenceCounted<DeviceTimer> {
@@ -496,11 +470,6 @@ public:
                StringRef code, int32_t maxDynamicSharedBytes = -1,
                StringRef debugLevel = "",
                int32_t optimizationLevel = -1) const = 0;
-  virtual ErrorOrSuccess
-  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
-                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-                      const DeviceFunction::Arguments &args) const = 0;
   virtual ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,

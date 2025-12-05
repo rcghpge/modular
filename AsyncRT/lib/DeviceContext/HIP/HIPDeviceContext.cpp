@@ -803,25 +803,6 @@ HIPDeviceStream::verified_cast(const DeviceStream *stream) {
   return static_cast<const HIPDeviceStream *>(stream);
 }
 
-// ===== HIPDeviceFunctionArguments ===== //
-HIPDeviceFunctionArguments::HIPDeviceFunctionArguments(
-    const HIPDeviceFunction &fn)
-    : DeviceFunction::Arguments(fn) {}
-
-std::vector<void *> HIPDeviceFunctionArguments::hipArgs() const {
-  std::vector<void *> launchArgs;
-  launchArgs.reserve(argValues_.size());
-  for (size_t i = 0; i < argValues_.size(); i++) {
-    launchArgs.push_back(const_cast<void **>(&argValues_[i]));
-  }
-  return launchArgs;
-}
-
-const HIPDeviceFunctionArguments &
-HIPDeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
-  return static_cast<const HIPDeviceFunctionArguments &>(args);
-}
-
 // ===== HIPModuleFunction ===== //
 HIPModuleFunction::HIPModuleFunction(const std::string name,
                                      const HIPDriver &driver,
@@ -850,21 +831,6 @@ HIPDeviceFunction::HIPDeviceFunction(
     : DeviceFunction(context, signature), moduleFunction_(std::move(modFunc)) {}
 
 HIPDeviceFunction::~HIPDeviceFunction() {}
-
-DeviceFunction::Arguments *
-HIPDeviceFunction::allocateArguments(const DeviceFunction &fn) const {
-  return new HIPDeviceFunctionArguments(HIPDeviceFunction::cast(fn));
-}
-
-ErrorOrSuccess HIPDeviceFunction::hipCallKernel(
-    uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-    uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const HIPDeviceFunctionArguments &args, hipStream_t stream) const {
-  HIP_CHECK_ERR(moduleFunction_->hipDriver().hipModuleLaunchKernel(
-      moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
-      blockZ, sharedMemBytes, stream, args.hipArgs().data(), nullptr));
-  return success();
-}
 
 ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
@@ -1209,25 +1175,6 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
       *this, signature,
       HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release())));
   return result;
-}
-
-ErrorOrSuccess HIPDeviceContext::enqueueFunctionExec(
-    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const DeviceFunction::Arguments &args) const {
-  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueFunctionExec",
-                       TRACY_COLOR_PURPLE);
-
-  if (args.hasError()) {
-    RAISE_ERROR(args.getError().getError());
-  }
-
-  const auto &hipFunc = HIPDeviceFunction::cast(func);
-
-  HIP_WITH_CTX_ERR(*this);
-  return hipFunc.hipCallKernel(gridX, gridY, gridZ, blockX, blockY, blockZ,
-                               sharedMemBytes,
-                               HIPDeviceFunctionArguments::cast(args), stream_);
 }
 
 ErrorOrSuccess HIPDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(

@@ -234,21 +234,6 @@ private:
   CUstream stream_;
 };
 
-class CUDADeviceFunctionArguments : public DeviceFunction::Arguments {
-public:
-  CUDADeviceFunctionArguments(const CUDADeviceFunction &fn);
-  ~CUDADeviceFunctionArguments() override = default;
-
-  std::vector<void *> cudaArgs() const;
-
-  static const CUDADeviceFunctionArguments &
-  cast(const DeviceFunction::Arguments &args);
-
-private:
-  std::vector<void *> argValues_;
-  std::vector<DeviceBufferRef> refs_;
-};
-
 class CUDAModuleFunction : public DeviceFunctionCacheEntry {
 public:
   CUDAModuleFunction(const std::string name, const CUDADriver &driver,
@@ -281,14 +266,6 @@ public:
 
   ErrorOr<int32_t> getAttribute(int32_t code) const override;
 
-  DeviceFunction::Arguments *
-  allocateArguments(const DeviceFunction &fn) const override;
-
-  ErrorOrSuccess cuda_callKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-                                 uint32_t blockX, uint32_t blockY,
-                                 uint32_t blockZ, uint32_t sharedMemBytes,
-                                 const CUDADeviceFunctionArguments &args,
-                                 CUstream stream) const;
   ErrorOrSuccess
   cudaCallKernelDirect(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
                        uint32_t blockX, uint32_t blockY, uint32_t blockZ,
@@ -354,11 +331,6 @@ public:
                const DeviceFunction::SignatureBuilder &signature,
                StringRef code, int32_t maxDynamicSharedBytes,
                StringRef debugLevel, int32_t optimizationLevel) const override;
-  ErrorOrSuccess
-  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
-                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-                      const DeviceFunction::Arguments &args) const override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,

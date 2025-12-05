@@ -840,73 +840,6 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
   return func;
 }
 
-ErrorOrSuccess MetalDeviceContext::enqueueFunctionExec(
-    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const DeviceFunction::Arguments &args) const {
-  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExec",
-                       TRACY_COLOR_PURPLE);
-
-  // 1) Validate and get pipeline
-  const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
-  MTL::ComputePipelineState &pipeline = metalFunc.getPipelineState();
-
-  // 2) Create command buffer (always use ASYNC for enqueue)
-
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr) {
-    RAISE_ERROR_MESSAGE("Failed to create command buffer");
-  }
-
-  // 3) Encode compute work
-  MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
-  if (encoder == nullptr) {
-    cmdBuffer->release();
-    RAISE_ERROR_MESSAGE("Failed to create compute encoder");
-  }
-
-  encoder->setComputePipelineState(&pipeline);
-
-  // 4) Set up arguments
-  size_t numArgs = func.argumentCount();
-  const MetalDeviceFunctionArguments &mArgs =
-      MetalDeviceFunctionArguments::cast(args);
-
-  const std::vector<void *> &ptrs = mArgs.metalArgs();
-  for (uint32_t i = 0; i < numArgs; ++i) {
-    MTL::Buffer *buf = nullptr;
-
-    // Check if this is already a Metal buffer (scalar args) or a DeviceBuffer
-    // pointer
-    if (isMetalBuffer(ptrs[i])) {
-      // This is a DeviceBuffer pointer - convert to Metal buffer
-      buf = getMetalBuffer(ptrs[i]);
-    } else {
-      // This is already a Metal buffer (scalar argument)
-      buf = static_cast<MTL::Buffer *>(ptrs[i]);
-    }
-
-    if (buf == nullptr) {
-      encoder->endEncoding(); // Ensure encoder is ended before returning error
-      cmdBuffer->release();
-      RAISE_ERROR_MESSAGE("Null Metal buffer argument at index " +
-                          std::to_string(i));
-    }
-    encoder->setBuffer(buf, 0, i);
-  }
-
-  // 5) Dispatch
-  MTL::Size grid{gridX, gridY, gridZ};
-  MTL::Size threads{blockX, blockY, blockZ};
-  encoder->dispatchThreadgroups(grid, threads);
-  encoder->endEncoding();
-
-  // 6) Commit and release
-  cmdBuffer->commit();
-  cmdBuffer->release();
-  return success();
-}
-
 ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
@@ -1366,33 +1299,9 @@ ErrorOr<int32_t> MetalDeviceFunction::getAttribute(int32_t code) const {
   RAISE_ERROR_MESSAGE("Attributes not supported in Metal");
 }
 
-DeviceFunction::Arguments *
-MetalDeviceFunction::allocateArguments(const DeviceFunction &fn) const {
-  return new MetalDeviceFunctionArguments(
-      static_cast<const MetalDeviceFunction &>(fn));
-}
-
 const MetalDeviceFunction &
 MetalDeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const MetalDeviceFunction &>(func);
-}
-
-//
-//
-// ===== MetalDeviceFunctionArguments ===== //
-//
-
-MetalDeviceFunctionArguments::MetalDeviceFunctionArguments(
-    const MetalDeviceFunction &fn)
-    : DeviceFunction::Arguments(fn), metalFnPtr_(&fn) {}
-
-const std::vector<void *> &MetalDeviceFunctionArguments::metalArgs() const {
-  return argValues_;
-}
-
-const MetalDeviceFunctionArguments &
-MetalDeviceFunctionArguments::cast(const DeviceFunction::Arguments &args) {
-  return static_cast<const MetalDeviceFunctionArguments &>(args);
 }
 
 } // namespace M::AsyncRT

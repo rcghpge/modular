@@ -350,14 +350,6 @@ ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
-ErrorOrSuccess CpuDeviceContext::enqueueFunctionExec(
-    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    const DeviceFunction::Arguments &args) const {
-  // Currently not implemented. Maybe never to be implemented.
-  RAISE_ERROR_MESSAGE("Unimplemented");
-}
-
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,

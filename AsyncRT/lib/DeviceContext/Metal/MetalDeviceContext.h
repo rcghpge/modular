@@ -128,12 +128,6 @@ public:
                StringRef code, int32_t maxDynamicSharedBytes,
                StringRef debugLevel, int32_t optimizationLevel) const override;
 
-  ErrorOrSuccess
-  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
-                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-                      const DeviceFunction::Arguments &args) const override;
-
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
@@ -228,24 +222,6 @@ private:
   const std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
-class MetalDeviceFunctionArguments : public DeviceFunction::Arguments {
-public:
-  explicit MetalDeviceFunctionArguments(const MetalDeviceFunction &fn);
-  ~MetalDeviceFunctionArguments() override = default;
-
-  const std::vector<void *> &metalArgs() const;
-
-  static const MetalDeviceFunctionArguments &
-  cast(const DeviceFunction::Arguments &args);
-
-  const MetalDeviceFunction *getFunction() const { return metalFnPtr_; }
-
-private:
-  std::vector<void *> argValues_;
-  std::vector<DeviceBufferRef> refs_;
-  const MetalDeviceFunction *metalFnPtr_ = nullptr;
-};
-
 class MetalDeviceFunction : public DeviceFunction {
 public:
   MetalDeviceFunction(const MetalDeviceContext &context, StringRef moduleName,
@@ -260,9 +236,6 @@ public:
                                      size_t byteSize) const override;
 
   ErrorOr<int32_t> getAttribute(int32_t code) const override;
-
-  DeviceFunction::Arguments *
-  allocateArguments(const DeviceFunction &fn) const override;
 
   MTL::ComputePipelineState &getPipelineState() const { return pipelineState_; }
 

@@ -594,18 +594,6 @@ enum DeviceFunction::ArgumentType : uint8_t {
   _NUM_ENTRIES_ // This entry must be last.
 };
 
-const char *DeviceFunction::typeName(ArgumentType argType) {
-  const char *typeNames[] = {"unset",   "uint8",   "uint16",      "uint32",
-                             "uint64",  "int8",    "int16",       "int32",
-                             "int64",   "float4",  "float8",      "float16",
-                             "float32", "float64", "DeviceBuffer"};
-  static_assert(sizeof(typeNames) ==
-                (static_cast<int>(_NUM_ENTRIES_) * sizeof(*typeNames)));
-  int index = static_cast<int>(argType);
-  return ((index >= 0) && (index < _NUM_ENTRIES_)) ? typeNames[index]
-                                                   : "unknown";
-}
-
 DeviceFunction::DeviceFunction(
     const DeviceContext &context,
     const DeviceFunction::SignatureBuilder &signature)
@@ -615,23 +603,6 @@ DeviceFunction::DeviceFunction(
 const DeviceContext &DeviceFunction::context() const { return *context_; }
 
 size_t DeviceFunction::argumentCount() const { return signature_.size(); }
-
-ErrorOrSuccess DeviceFunction::checkSignatureAt(int index,
-                                                ArgumentType argType) const {
-  int expectedSize = signature_.size();
-  if ((index < 0) || index >= expectedSize) {
-    return Error("Argument count mismatch at " + Twine(index + 1) +
-                 "th position: Expected " + Twine(expectedSize) +
-                 " arguments.");
-  }
-  ArgumentType expectedType = signature_.at(index);
-  if (expectedType != argType) {
-    return Error(llvm::Twine("Argument mismatch at ") + Twine(index + 1) +
-                 "th position: Expected " + typeName(expectedType) + ", got " +
-                 typeName(argType) + ".");
-  }
-  return success();
-}
 
 //
 // ===== DeviceFunction::SignatureBuilder ===== //
@@ -646,18 +617,6 @@ MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
 DeviceFunction::SignatureBuilder::addBuffer() {
   types_.push_back(BUFFER);
   return *this;
-}
-
-//
-// ===== DeviceFunction::Arguments ===== //
-//
-DeviceFunction::Arguments::Arguments(const DeviceFunction &fn)
-    : fn_(DeviceFunctionRef::copy(&fn)) {}
-
-bool DeviceFunction::Arguments::hasError() const { return err_.isError(); }
-
-const ErrorOrSuccess &DeviceFunction::Arguments::getError() const {
-  return err_;
 }
 
 //

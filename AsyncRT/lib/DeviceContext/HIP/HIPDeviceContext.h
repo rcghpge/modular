@@ -161,21 +161,6 @@ private:
   hipStream_t stream_;
 };
 
-class HIPDeviceFunctionArguments : public DeviceFunction::Arguments {
-public:
-  HIPDeviceFunctionArguments(const HIPDeviceFunction &fn);
-  ~HIPDeviceFunctionArguments() override = default;
-
-  std::vector<void *> hipArgs() const;
-
-  static const HIPDeviceFunctionArguments &
-  cast(const DeviceFunction::Arguments &args);
-
-private:
-  std::vector<void *> argValues_;
-  std::vector<DeviceBufferRef> refs_;
-};
-
 class HIPModuleFunction : public DeviceFunctionCacheEntry {
 public:
   HIPModuleFunction(const std::string name, const HIPDriver &driver,
@@ -207,15 +192,6 @@ public:
                                      size_t byteSize) const override;
 
   ErrorOr<int32_t> getAttribute(int32_t code) const override;
-
-  DeviceFunction::Arguments *
-  allocateArguments(const DeviceFunction &fn) const override;
-
-  ErrorOrSuccess hipCallKernel(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
-                               uint32_t blockX, uint32_t blockY,
-                               uint32_t blockZ, uint32_t sharedMemBytes,
-                               const HIPDeviceFunctionArguments &args,
-                               hipStream_t stream) const;
 
   ErrorOrSuccess hipCallKernelDirect(uint32_t gridX, uint32_t gridY,
                                      uint32_t gridZ, uint32_t blockX,
@@ -279,11 +255,6 @@ public:
                const DeviceFunction::SignatureBuilder &signature,
                StringRef code, int32_t maxDynamicSharedBytes,
                StringRef debugLevel, int32_t optimizationLevel) const override;
-  ErrorOrSuccess
-  enqueueFunctionExec(const DeviceFunction &func, uint32_t gridX,
-                      uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                      uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-                      const DeviceFunction::Arguments &args) const override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
