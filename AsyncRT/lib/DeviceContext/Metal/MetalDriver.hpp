@@ -4,13 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file centralizes all metal-cpp includes with proper warning
-// suppressions.
+// This file centralizes all metal-cpp includes with proper warning suppressions.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_LIB_DEVICECONTEXT_METAL_METALDRIVER_HPP
-#define ASYNCRT_LIB_DEVICECONTEXT_METAL_METALDRIVER_HPP
+#ifndef ASYNCRT_LIB_DEVICECONTEXT_METAL_METALIMPL_HPP
+#define ASYNCRT_LIB_DEVICECONTEXT_METAL_METALIMPL_HPP
 
 #include "Support/PlatformUtils.h"
 
@@ -23,11 +22,11 @@
 #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
 #pragma clang diagnostic ignored "-Wnested-anon-types"
 
-#include "Foundation/Foundation.hpp"
 #include "Metal/Metal.hpp"
+#include "Foundation/Foundation.hpp"
 
 #pragma clang diagnostic pop
 
 #endif // MODULAR_MACOS
 
-#endif // ASYNCRT_LIB_DEVICECONTEXT_METAL_METALDRIVER_HPP
+#endif // ASYNCRT_LIB_DEVICECONTEXT_METAL_METALIMPL_HPP

@@ -40,9 +40,10 @@ class MetalDevice : public Device {
 public:
   static constexpr API api = Device::metalAPI;
 
-  MetalDevice(int id, NS::SharedPtr<MTL::Device> device, std::string name,
+  MetalDevice(int id, MTL::Device *device, std::string name,
               Device::MemInfo memInfo, size_t allocAlignment,
               int64_t deviceMemoryLimit = -1);
+  ~MetalDevice() override;
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
@@ -79,7 +80,7 @@ public:
 
   static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);
 
-  MTL::Device *metalDevice() const { return device_.get(); }
+  MTL::Device *metalDevice() const { return device_; }
 
   // Buffer tracking methods
   void trackBuffer(void *ptr, MTL::Buffer *buffer) const;
@@ -89,7 +90,7 @@ public:
   std::unordered_map<void *, MTL::Buffer *> getTrackedBuffers() const;
 
 private:
-  NS::SharedPtr<MTL::Device> device_;
+  MTL::Device *device_;
   std::string name_;
   Device::MemInfo memInfo_;
   mutable DriverVersion driverVersion_;
@@ -102,7 +103,8 @@ private:
 class MetalDeviceContext : public DeviceContext {
 public:
   MetalDeviceContext(const MetalDevice &device,
-                     NS::SharedPtr<MTL::CommandQueue> commandQueue);
+                     MTL::CommandQueue *commandQueue);
+  ~MetalDeviceContext() override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
@@ -186,7 +188,7 @@ public:
   }
 
 private:
-  NS::SharedPtr<MTL::CommandQueue> commandQueue_;
+  MTL::CommandQueue *commandQueue_;
   // Memory allocation
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) const override;
@@ -200,8 +202,8 @@ private:
 
 class MetalDeviceEvent : public DeviceEvent {
 public:
-  // TODO: do we want to take ownership of the MTL::CommandBuffer here?
   MetalDeviceEvent(const MetalDevice &device, MTL::CommandBuffer *buffer);
+  ~MetalDeviceEvent() override;
 
   ErrorOrSuccess synchronize() const override;
   ErrorOr<bool> isReady() const override;
@@ -249,7 +251,8 @@ public:
   MetalDeviceFunction(const MetalDeviceContext &context, StringRef moduleName,
                       StringRef functionName,
                       const DeviceFunction::SignatureBuilder &signature,
-                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState);
+                      MTL::ComputePipelineState &pipelineState);
+  ~MetalDeviceFunction() override;
 
   const std::string &name() const override;
 
@@ -261,15 +264,13 @@ public:
   DeviceFunction::Arguments *
   allocateArguments(const DeviceFunction &fn) const override;
 
-  MTL::ComputePipelineState &getPipelineState() const {
-    return *pipelineState_.get();
-  }
+  MTL::ComputePipelineState &getPipelineState() const { return pipelineState_; }
 
   static const MetalDeviceFunction &cast(const DeviceFunction &func);
 
 private:
   std::string name_;
-  NS::SharedPtr<MTL::ComputePipelineState> pipelineState_;
+  MTL::ComputePipelineState &pipelineState_;
 };
 
 } // namespace M::AsyncRT
