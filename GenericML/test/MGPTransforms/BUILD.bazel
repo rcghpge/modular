@@ -1,0 +1,25 @@
+load("//bazel:api.bzl", "lit_tests")
+
+package(default_visibility = ["//visibility:private"])
+
+lit_tests(
+    name = "test",
+    srcs = glob(["**/*.mlir"]),
+    custom_substitutions = {
+        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITestLib)",
+    },
+    data = [
+        "//GenericML/test/TestKernels:MOGGKernelAPITestLib",
+    ],
+    mojo_deps = [
+        "//max:MOGGKernelAPI",
+        "//max:MOGGPrimitives",
+    ],
+    target_compatible_with = select({
+        "//:tsan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tools = [
+        "//GenericML/tools/mo-opt",
+    ],
+)
