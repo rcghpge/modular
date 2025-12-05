@@ -1,5 +1,7 @@
 // RUN: mo-opt %s --resolve-unknown-parameters --mo-to-mgp=constant-fold=false | FileCheck %s
 
+// RUN: EMIT_MOJO=1 mo-opt %s --resolve-unknown-parameters --mo-to-mgp=constant-fold=false | FileCheck %s
+
 // Just check we can compile it.
 
 // CHECK: mgp.model @dlrm

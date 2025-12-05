@@ -1,5 +1,7 @@
 // RUN: mo-opt --mo-to-mogg --mogg-to-kgen --mo-to-primitives %s | FileCheck %s
 
+// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg --mo-to-primitives %s | FileCheck %s
+
 !tt = !mo.tensor<[2, 2], f32>
 !bt = !mo.buffer<[2, 2], f32>
 !ct = !mo.chain
