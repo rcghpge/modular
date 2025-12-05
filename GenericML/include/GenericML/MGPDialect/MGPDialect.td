@@ -19,9 +19,9 @@ def MGPDialect : Dialect {
   let summary = "Buffers, contexts and other framework/kernel independent "
                 "glue.";
   let description = [{
-    The MGP (pronounced "em-goop") dialect is intended to provide the 'glue'
-    for binding framework-specific (eg `mo.add`) and KGENned kernels/ops
-    together into a single executable model.
+    The MGP dialect is intended to provide the 'glue' for binding
+    framework-specific (eg `mo.add`) and KGENned kernels/ops together into a
+    single executable model.
 
     MGP itself does not provide any op implementations. MGP is directly
     translatable to MEF (see MLIRToMEF.cpp) without any additional passes,
