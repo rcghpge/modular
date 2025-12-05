@@ -154,7 +154,7 @@ M::LogicalResult nixlUcxEngine::checkDevicePointerContext(void *address,
   HIPDriver const &hipDriver = hipDriverOr.get();
   hipPointerAttribute_t addressAttr;
   if (HIPDriver::Result::SUCCESS !=
-      hipDriver.PointerGetAttributes(&addressAttr, address)) {
+      hipDriver.hipPointerGetAttributes(&addressAttr, address)) {
     return failure();
   }
   bool const isDevicePointer =

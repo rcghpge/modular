@@ -107,7 +107,7 @@
     const HIPDeviceContext &hip_ctx = (ctx);                                   \
     if (hip_ctx.syncMode()) {                                                  \
       HIP_CHECK_ERR(                                                           \
-          hip_ctx.hipDriver().StreamSynchronize(hip_ctx.hipStream()));         \
+          hip_ctx.hipDriver().hipStreamSynchronize(hip_ctx.hipStream()));      \
     }                                                                          \
   } while (0)
 
@@ -134,10 +134,10 @@ public:
   HIPDeviceScope(hipDevice_t device, const HIPDriver &driver)
       : driver_(driver), device_(device), prevDevice_(-1),
         status_(HIPDriver::SUCCESS) {
-    driver_.GetDevice(&prevDevice_);
+    driver_.hipGetDevice(&prevDevice_);
     if (prevDevice_ == device_)
       return;
-    status_ = driver_.SetDevice(device_);
+    status_ = driver_.hipSetDevice(device_);
   }
 
   ~HIPDeviceScope() {
@@ -146,8 +146,8 @@ public:
 
     // Only pop the context if push was necessary and successful.
     hipDevice_t device = -1;
-    driver_.GetDevice(&device);
-    driver_.SetDevice(prevDevice_);
+    driver_.hipGetDevice(&device);
+    driver_.hipSetDevice(prevDevice_);
     assert(device == device_);
   }
 
@@ -168,8 +168,8 @@ static Error formatHipError(const char *file, int line, const char *func,
 
   if (!errDriver) {
     // Ignore errors and use nullptr of char* instead.
-    errDriver->GetErrorName(result, &errName);
-    errDriver->GetErrorString(result, &errStr);
+    errDriver->hipDrvGetErrorName(result, &errName);
+    errDriver->hipDrvGetErrorString(result, &errStr);
   }
 
   if ((errName != nullptr) && (errStr != nullptr)) {
@@ -253,7 +253,7 @@ hipDevice_t HIPDevice::hipDevice() const { return device_; }
 
 ErrorOr<int> HIPDevice::getApiVersion() const {
   int driverVersion = 0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersion));
+  HIP_CHECK_ERR(driver_.hipDriverGetVersion(&driverVersion));
   return driverVersion;
 }
 
@@ -276,7 +276,7 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
   }
 
   int driverVersionCoded = 0;
-  HIP_CHECK_ERR(driver_.DriverGetVersion(&driverVersionCoded));
+  HIP_CHECK_ERR(driver_.hipDriverGetVersion(&driverVersionCoded));
 
   // Deconstruct the driverVersionCoded into major, minor and patch.
   constexpr int driverVersionMinorFactor = 100000;
@@ -314,11 +314,11 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
 
 ErrorOr<int> HIPDevice::computeCapability() const {
   int computeMajor = 0, computeMinor = 0;
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+  HIP_CHECK_ERR(driver_.hipDeviceGetAttribute(
       &computeMajor,
       hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMajor,
       hipDevice()));
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(
+  HIP_CHECK_ERR(driver_.hipDeviceGetAttribute(
       &computeMinor,
       hipDeviceAttribute_t::hipDeviceAttributeComputeCapabilityMinor,
       hipDevice()));
@@ -337,8 +337,8 @@ ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const {
   }
 
   int canAccess = 0;
-  HIP_CHECK_ERR(driver_.DeviceCanAccessPeer(&canAccess, hipDevice(),
-                                            peerDevice->hipDevice()));
+  HIP_CHECK_ERR(driver_.hipDeviceCanAccessPeer(&canAccess, hipDevice(),
+                                               peerDevice->hipDevice()));
   return canAccess == 1;
 }
 
@@ -353,10 +353,10 @@ ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
 
   // Tolerate "already enabled" as success to keep idempotent.
   HIPDriver::Result res =
-      driver_.DeviceEnablePeerAccess(peerHipDev.hipDevice(), /*flags=*/0);
+      driver_.hipDeviceEnablePeerAccess(peerHipDev.hipDevice(), /*flags=*/0);
   if (res != HIPDriver::SUCCESS) {
     const char *name = nullptr;
-    driver_.GetErrorName(res, &name);
+    driver_.hipDrvGetErrorName(res, &name);
     if (!(name && (Twine(name) == "hipErrorPeerAccessAlreadyEnabled")))
       return formatHipError(__FILE__, __LINE__, __FUNCTION__, res);
   }
@@ -374,7 +374,8 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   if (errorOrAttr.isError())
     return errorOrAttr.takeError();
   int value = 0;
-  HIP_CHECK_ERR(driver_.DeviceGetAttribute(&value, *errorOrAttr, hipDevice()));
+  HIP_CHECK_ERR(
+      driver_.hipDeviceGetAttribute(&value, *errorOrAttr, hipDevice()));
   return value;
 }
 
@@ -403,12 +404,12 @@ ErrorOr<std::string> HIPDevice::getArchName(hipDevice_t device) {
 
   // Get HIP device PCIe info via device attributes
   int pciBusId = 0, pciDeviceId = 0, pciDomainId = 0;
-  HIP_CHECK_ERR(driver.DeviceGetAttribute(
+  HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
       &pciBusId, hipDeviceAttribute_t::hipDeviceAttributePciBusId, device));
-  HIP_CHECK_ERR(driver.DeviceGetAttribute(
+  HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
       &pciDeviceId, hipDeviceAttribute_t::hipDeviceAttributePciDeviceId,
       device));
-  HIP_CHECK_ERR(driver.DeviceGetAttribute(
+  HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
       &pciDomainId, hipDeviceAttribute_t::hipDeviceAttributePciDomainID,
       device));
 
@@ -536,7 +537,7 @@ ErrorOr<DeviceContextRef> HIPDevice::createContext() const {
   HIP_WITH_DEV_ERR(*this);
 
   hipStream_t stream;
-  HIP_CHECK_ERR(this->hipDriver().StreamCreate(&stream, 0));
+  HIP_CHECK_ERR(this->hipDriver().hipStreamCreate(&stream, 0));
 
   return HIPDeviceContextRef::create(*this, stream);
 }
@@ -555,7 +556,7 @@ ErrorOr<int> HIPDevice::numberOfGPUs() {
       return errDriver.takeError();
 
     int result;
-    HIP_CHECK_ERR((*errDriver).DeviceGetCount(&result));
+    HIP_CHECK_ERR((*errDriver).hipGetDeviceCount(&result));
     return result;
   }();
 
@@ -579,9 +580,10 @@ ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize,
   assert(byteSize != 0);
   HIP_WITH_DEV_ERR(*this);
   if (isHost) {
-    HIP_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
+    HIP_CHECK_ERR(
+        driver_.hipHostMalloc(ptr, byteSize, /* hipHostMallocPortable */ 0x1));
   } else {
-    HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    HIP_CHECK_ERR(driver_.hipMalloc(ptr, byteSize));
   }
   return success();
 }
@@ -589,9 +591,9 @@ ErrorOrSuccess HIPDevice::chunkAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess HIPDevice::chunkFree(void *ptr, bool isHost) const {
   HIP_WITH_DEV_ERR(*this);
   if (isHost) {
-    HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
+    HIP_CHECK_ERR(driver_.hipHostFree(ptr));
   } else {
-    HIP_CHECK_ERR(driver_.MemFree(ptr));
+    HIP_CHECK_ERR(driver_.hipFree(ptr));
   }
   return success();
 }
@@ -599,17 +601,17 @@ ErrorOrSuccess HIPDevice::chunkFree(void *ptr, bool isHost) const {
 ErrorOr<Device::MemInfo> HIPDevice::getMemoryInfo() const {
   Device::MemInfo memInfo;
   HIP_WITH_DEV_ERR(*this);
-  HIP_CHECK_ERR(driver_.GetMemInfo(&memInfo.free, &memInfo.total));
+  HIP_CHECK_ERR(driver_.hipMemGetInfo(&memInfo.free, &memInfo.total));
   return memInfo;
 }
 
 ErrorOr<void *> HIPDevice::getCurrentDriverContext() const {
   hipDevice_t curDev = 0;
-  HIP_CHECK_ERR(driver_.GetDevice(&curDev));
+  HIP_CHECK_ERR(driver_.hipGetDevice(&curDev));
   return hipDeviceToPtr(curDev);
 }
 ErrorOrSuccess HIPDevice::setCurrentDriverContext(void *ctx) const {
-  HIP_CHECK_ERR(driver_.SetDevice(ptrToHipDevice(ctx)));
+  HIP_CHECK_ERR(driver_.hipSetDevice(ptrToHipDevice(ctx)));
   return success();
 }
 
@@ -661,14 +663,14 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
     int alignment;
 
     hipDevice_t hipDevice = static_cast<hipDevice_t>(id);
-    HIP_CHECK_ERR(driver.DeviceGetName(name, sizeof(name), hipDevice));
-    HIP_CHECK_ERR(driver.DeviceGetAttribute(
+    HIP_CHECK_ERR(driver.hipDeviceGetName(name, sizeof(name), hipDevice));
+    HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
         &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
         hipDevice));
 
     HIPDeviceScope withDev(hipDevice, driver);
     Device::MemInfo memInfo;
-    HIP_CHECK_ERR(driver.GetMemInfo(&memInfo.free, &memInfo.total));
+    HIP_CHECK_ERR(driver.hipMemGetInfo(&memInfo.free, &memInfo.total));
 
     ErrorOr<std::string> errArch = getArchName(hipDevice);
     if (errArch)
@@ -692,20 +694,20 @@ HIPDeviceEvent::~HIPDeviceEvent() {
   const auto &hipDevice = HIPDevice::cast(device());
 
   HIP_WITH_DEV(hipDevice);
-  HIP_CHECK(hipDevice.hipDriver().EventDestroy(event_));
+  HIP_CHECK(hipDevice.hipDriver().hipEventDestroy(event_));
 }
 
 ErrorOrSuccess HIPDeviceEvent::synchronize() const {
   const auto &hipDevice = HIPDevice::cast(device());
   HIP_WITH_DEV_ERR(hipDevice);
-  HIP_CHECK_ERR(hipDevice.hipDriver().EventSynchronize(event_));
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipEventSynchronize(event_));
   return success();
 }
 
 ErrorOr<bool> HIPDeviceEvent::isReady() const {
   const auto &hipDevice = HIPDevice::cast(device());
   HIP_WITH_DEV_ERR(hipDevice);
-  HIPDriver::Result res = hipDevice.hipDriver().EventQuery(event_);
+  HIPDriver::Result res = hipDevice.hipDriver().hipEventQuery(event_);
   if (res == HIPDriver::SUCCESS)
     return true;
   else if (res == HIPDriver::NOT_READY) {
@@ -732,7 +734,7 @@ ErrorOrSuccess HIPDeviceStream::synchronize() const {
   const auto &hipDevice = HIPDevice::cast(device());
 
   HIP_WITH_DEV_ERR(hipDevice);
-  HIP_CHECK_ERR(hipDevice.hipDriver().StreamSynchronize(stream_));
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamSynchronize(stream_));
   return success();
 }
 
@@ -741,8 +743,8 @@ ErrorOr<DeviceEventRef> HIPDeviceStream::enqueueEvent() const {
 
   HIP_WITH_DEV_ERR(hipDevice);
   hipEvent_t event;
-  HIP_CHECK_ERR(hipDevice.hipDriver().EventCreate(&event, 0));
-  HIP_CHECK_ERR(hipDevice.hipDriver().EventRecord(event, stream_));
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipEventCreateWithFlags(&event, 0));
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipEventRecord(event, stream_));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
 }
 
@@ -752,8 +754,8 @@ HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   const auto &hipDevice = HIPDevice::cast(device());
 
   HIP_WITH_DEV_ERR(hipDevice);
-  HIP_CHECK_ERR(
-      hipDevice.hipDriver().StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitEvent(
+      stream_, hipEvent.hipEvent(), 0));
   return success();
 }
 
@@ -762,7 +764,7 @@ ErrorOrSuccess HIPDeviceStream::eventRecord(const DeviceEvent &event) const {
   const auto &hipDevice = HIPDevice::cast(device());
   HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(
-      hipDevice.hipDriver().EventRecord(hipEvent.hipEvent(), stream_));
+      hipDevice.hipDriver().hipEventRecord(hipEvent.hipEvent(), stream_));
   return success();
 }
 
@@ -771,7 +773,7 @@ ErrorOrSuccess HIPDeviceStream::waitEvent(const DeviceEvent &event,
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   const auto &hipDevice = HIPDevice::cast(device());
   HIP_WITH_DEV_ERR(hipDevice);
-  HIP_CHECK_ERR(hipDevice.hipDriver().StreamWaitEvent(
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitEvent(
       stream_, hipEvent.hipEvent(), flags));
   return success();
 }
@@ -828,7 +830,7 @@ HIPModuleFunction::HIPModuleFunction(const std::string name,
       module_(module), function_(function) {}
 
 HIPModuleFunction::~HIPModuleFunction() {
-  HIP_CHECK(hipDriver().ModuleUnload(module_));
+  HIP_CHECK(hipDriver().hipModuleUnload(module_));
 }
 
 const HIPDriver &HIPModuleFunction::hipDriver() const { return driver_; }
@@ -858,7 +860,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernel(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     const HIPDeviceFunctionArguments &args, hipStream_t stream) const {
-  HIP_CHECK_ERR(moduleFunction_->hipDriver().ModuleLaunchKernel(
+  HIP_CHECK_ERR(moduleFunction_->hipDriver().hipModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args.hipArgs().data(), nullptr));
   return success();
@@ -868,7 +870,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
     hipStream_t stream) const {
-  HIP_CHECK_ERR(moduleFunction_->hipDriver().ModuleLaunchKernel(
+  HIP_CHECK_ERR(moduleFunction_->hipDriver().hipModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args, nullptr));
   return success();
@@ -886,14 +888,14 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
   const auto &hipContext = HIPDeviceContext::cast(context());
 
   HIP_WITH_CTX_ERR(hipContext);
-  HIP_CHECK_ERR(hipContext.hipDriver().ModuleGetGlobal(
+  HIP_CHECK_ERR(hipContext.hipDriver().hipModuleGetGlobal(
       &devicePtr, &deviceSize, moduleFunction_->hipModule(), name));
 
   if (deviceSize < byteSize) {
     RAISE_ERROR("byteSize too big");
   }
 
-  HIP_CHECK_ERR(hipContext.hipDriver().MemcpyHtoDAsync(
+  HIP_CHECK_ERR(hipContext.hipDriver().hipMemcpyHtoDAsync(
       devicePtr, data, byteSize, hipContext.hipStream()));
   MAYBE_SYNC(HIPDeviceContext::cast(context()));
   return success();
@@ -904,7 +906,7 @@ ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   const auto &hipContext = HIPDeviceContext::cast(context());
 
   HIP_WITH_CTX_ERR(hipContext);
-  HIP_CHECK_ERR(hipContext.hipDriver().FuncGetAttribute(
+  HIP_CHECK_ERR(hipContext.hipDriver().hipFuncGetAttribute(
       &result, static_cast<hipFunction_attribute>(code),
       moduleFunction_->hipFunction()));
   return result;
@@ -916,7 +918,7 @@ ErrorOrSuccess HIPDeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
 
   HIP_WITH_CTX_ERR(hipContext);
   HIP_CHECK_ERR(
-      hipContext.hipDriver().ModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+      hipContext.hipDriver().hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
           numBlocks, moduleFunction_->hipFunction(), blockSize,
           dynamicSharedMemSize));
 
@@ -936,8 +938,8 @@ HIPDeviceTimer::~HIPDeviceTimer() {
   const auto &hipContext = HIPDeviceContext::cast(context());
 
   HIP_WITH_CTX(hipContext);
-  HIP_CHECK(hipContext.hipDriver().EventDestroy(start_));
-  HIP_CHECK(hipContext.hipDriver().EventDestroy(stop_));
+  HIP_CHECK(hipContext.hipDriver().hipEventDestroy(start_));
+  HIP_CHECK(hipContext.hipDriver().hipEventDestroy(stop_));
 }
 
 hipEvent_t HIPDeviceTimer::hipStartEvent() const { return start_; }
@@ -954,8 +956,8 @@ HIPDeviceContext::HIPDeviceContext(const HIPDevice &device, hipStream_t stream)
 
 HIPDeviceContext::~HIPDeviceContext() {
   HIP_WITH_CTX(*this);
-  HIP_CHECK(driver_.StreamSynchronize(stream_));
-  HIP_CHECK(driver_.StreamDestroy(stream_));
+  HIP_CHECK(driver_.hipStreamSynchronize(stream_));
+  HIP_CHECK(driver_.hipStreamDestroy(stream_));
 }
 
 ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
@@ -966,16 +968,17 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
   HIP_WITH_CTX_ERR(*this);
   switch (mode) {
   case Device::AllocMode::ASYNC: {
-    HIP_CHECK_ERR(driver_.MemAllocAsync(ptr, byteSize, stream_));
+    HIP_CHECK_ERR(driver_.hipMallocAsync(ptr, byteSize, stream_));
     MAYBE_SYNC(*this);
     break;
   }
   case Device::AllocMode::HOST: {
-    HIP_CHECK_ERR(driver_.MemAllocHost(ptr, byteSize));
+    HIP_CHECK_ERR(
+        driver_.hipHostMalloc(ptr, byteSize, /* hipHostMallocPortable */ 0x1));
     break;
   }
   case Device::AllocMode::SYNC: {
-    HIP_CHECK_ERR(driver_.MemAlloc(ptr, byteSize));
+    HIP_CHECK_ERR(driver_.hipMalloc(ptr, byteSize));
     break;
   }
   }
@@ -987,9 +990,9 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
 
   HIP_WITH_CTX_ERR(*this);
   if (isHost) {
-    HIP_CHECK_ERR(driver_.MemFreeHost(ptr));
+    HIP_CHECK_ERR(driver_.hipHostFree(ptr));
   } else {
-    HIP_CHECK_ERR(driver_.MemFreeAsync(ptr, stream_));
+    HIP_CHECK_ERR(driver_.hipFreeAsync(ptr, stream_));
     MAYBE_SYNC(*this);
   }
   return success();
@@ -1009,7 +1012,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 
   hipDeviceptr_t dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
-  HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
+  HIP_CHECK_ERR(driver_.hipMemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1025,7 +1028,7 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 
   hipDeviceptr_t srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
-  HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1038,7 +1041,7 @@ HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
 
   HIP_WITH_CTX_ERR(*this);
 
-  HIP_CHECK_ERR(driver_.MemcpyHtoDAsync(dst, src, byteSize, stream_));
+  HIP_CHECK_ERR(driver_.hipMemcpyHtoDAsync(dst, src, byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1052,7 +1055,7 @@ HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
   HIP_WITH_CTX_ERR(*this);
 
   hipDeviceptr_t srcPtr = src;
-  HIP_CHECK_ERR(driver_.MemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1086,7 +1089,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     ERR_CHECK_ERR(dstCtx.enqueueWaitForEvent(*srcEvent));
 
     HIP_CHECK_ERR(
-        driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+        driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
 
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).
@@ -1094,7 +1097,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     ERR_CHECK_ERR(srcCtx.enqueueWaitForEvent(*dstEvent));
   } else {
     HIP_CHECK_ERR(
-        driver_.MemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+        driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
   }
   MAYBE_SYNC(*this);
   return success();
@@ -1110,22 +1113,22 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
-    HIP_CHECK_ERR(driver_.MemsetD8Async(ptr, static_cast<uint8_t>(val),
-                                        byteSize, stream_));
+    HIP_CHECK_ERR(driver_.hipMemsetD8Async(ptr, static_cast<uint8_t>(val),
+                                           byteSize, stream_));
   } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 1;
-    HIP_CHECK_ERR(
-        driver_.MemsetD16Async(ptr, static_cast<uint16_t>(val), len, stream_));
+    HIP_CHECK_ERR(driver_.hipMemsetD16Async(ptr, static_cast<uint16_t>(val),
+                                            len, stream_));
   } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
-    HIP_CHECK_ERR(
-        driver_.MemsetD32Async(ptr, static_cast<uint32_t>(val), len, stream_));
+    HIP_CHECK_ERR(driver_.hipMemsetD32Async(ptr, static_cast<uint32_t>(val),
+                                            len, stream_));
   } else {
     if (valSize != 8) {
       return Error("unsupported valSize");
@@ -1137,7 +1140,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
     uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
     if (hiBits == loBits) {
       size_t len = byteSize >> 2; // Divide by 4 as we are using 32-bit memset.
-      HIP_CHECK_ERR(driver_.MemsetD32Async(ptr, loBits, len, stream_));
+      HIP_CHECK_ERR(driver_.hipMemsetD32Async(ptr, loBits, len, stream_));
     } else {
       size_t len = byteSize >> 3;
       // For each 64-bit element, set the low and high 32-bit parts separately
@@ -1146,8 +1149,8 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
             reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) + i * 8);
         void *hiPtr = reinterpret_cast<void *>(
             reinterpret_cast<uintptr_t>(ptr) + i * 8 + 4);
-        HIP_CHECK_ERR(driver_.MemsetD32Async(loPtr, loBits, 1, stream_));
-        HIP_CHECK_ERR(driver_.MemsetD32Async(hiPtr, hiBits, 1, stream_));
+        HIP_CHECK_ERR(driver_.hipMemsetD32Async(loPtr, loBits, 1, stream_));
+        HIP_CHECK_ERR(driver_.hipMemsetD32Async(hiPtr, hiBits, 1, stream_));
       }
     }
   }
@@ -1183,11 +1186,11 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   hipModule_t module;
 
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.ModuleLoadData(&module, code.data()));
+  HIP_CHECK_ERR(driver_.hipModuleLoadData(&module, code.data()));
 
   hipFunction_t function;
   HIP_CHECK_ERR(
-      driver_.ModuleGetFunction(&function, module, functionName.data()));
+      driver_.hipModuleGetFunction(&function, module, functionName.data()));
 
   // Allocate func outside of the lock region to reduce the time spent under
   // lock. If this functionName has been registered concurrently, then we will
@@ -1254,7 +1257,7 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
 ErrorOr<DeviceStreamRef>
 HIPDeviceContext::streamCreate(unsigned int flags) const {
   hipStream_t stream;
-  HIP_CHECK_ERR(this->hipDriver().StreamCreate(&stream, flags));
+  HIP_CHECK_ERR(this->hipDriver().hipStreamCreate(&stream, flags));
   return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream);
 }
 
@@ -1263,7 +1266,7 @@ HIPDeviceContext::streamCreateWithPriority(unsigned int flags,
                                            int priority) const {
   hipStream_t stream;
   HIP_CHECK_ERR(
-      this->hipDriver().StreamCreateWithPriority(&stream, flags, priority));
+      this->hipDriver().hipStreamCreateWithPriority(&stream, flags, priority));
   return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream);
 }
 
@@ -1271,7 +1274,8 @@ ErrorOrSuccess
 HIPDeviceContext::streamPriorityRange(int *leastPriority,
                                       int *greatestPriority) const {
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.StreamPriorityRange(leastPriority, greatestPriority));
+  HIP_CHECK_ERR(
+      driver_.hipDeviceGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
 }
 
@@ -1279,7 +1283,7 @@ ErrorOrSuccess HIPDeviceContext::synchronize() const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::synchronize", TRACY_COLOR_PURPLE);
 
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  HIP_CHECK_ERR(driver_.hipStreamSynchronize(stream_));
   // Handle any pending events after synchronization.
   ERR_CHECK_ERR(checkPendingWork());
   return success();
@@ -1290,8 +1294,8 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
 
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.EventCreate(&event, 0));
-  HIP_CHECK_ERR(driver_.EventRecord(event, stream_));
+  HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&event, 0));
+  HIP_CHECK_ERR(driver_.hipEventRecord(event, stream_));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
 }
 
@@ -1301,7 +1305,7 @@ HIPDeviceContext::eventCreate(unsigned int flags) const {
 
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.EventCreate(&event, flags));
+  HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&event, flags));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
 }
 
@@ -1311,7 +1315,7 @@ HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.StreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
+  HIP_CHECK_ERR(driver_.hipStreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
 }
 
@@ -1329,12 +1333,12 @@ ErrorOr<DeviceTimerRef> HIPDeviceContext::startTimer() const {
   hipEvent_t stop;
 
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.EventCreate(&start, 0));
-  HIP_CHECK_ERR(driver_.EventCreate(&stop, 0));
+  HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&start, 0));
+  HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&stop, 0));
 
   auto timer = HIPDeviceTimerRef::create(*this, start, stop);
 
-  HIP_CHECK_ERR(driver_.EventRecord(timer->hipStartEvent(), stream_));
+  HIP_CHECK_ERR(driver_.hipEventRecord(timer->hipStartEvent(), stream_));
 
   return timer;
 }
@@ -1344,12 +1348,12 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   const auto &hipTimer = HIPDeviceTimer::cast(timer);
 
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.EventRecord(hipTimer.hipStopEvent(), stream_));
-  HIP_CHECK_ERR(driver_.EventSynchronize(hipTimer.hipStopEvent()));
+  HIP_CHECK_ERR(driver_.hipEventRecord(hipTimer.hipStopEvent(), stream_));
+  HIP_CHECK_ERR(driver_.hipEventSynchronize(hipTimer.hipStopEvent()));
 
   float millis;
-  HIP_CHECK_ERR(driver_.EventElapsedTime(&millis, hipTimer.hipStartEvent(),
-                                         hipTimer.hipStopEvent()));
+  HIP_CHECK_ERR(driver_.hipEventElapsedTime(&millis, hipTimer.hipStartEvent(),
+                                            hipTimer.hipStopEvent()));
 
   constexpr double nanosPerMillisecond = 1000.0 * 1000.0;
   double nanos = static_cast<double>(millis) * nanosPerMillisecond;
@@ -1369,7 +1373,7 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   }
 
   HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.DeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
+  HIP_CHECK_ERR(driver_.hipDeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
   return success();
 }
 
@@ -1377,7 +1381,7 @@ ErrorOr<Device::MemInfo> HIPDeviceContext::getDeviceMemoryInfo() const {
   HIP_WITH_CTX(*this);
   // To get more accurate memory stats, ensure that at least all pending memory
   // allocations and frees have completed for this context's stream.
-  HIP_CHECK_ERR(driver_.StreamSynchronize(stream_));
+  HIP_CHECK_ERR(driver_.hipStreamSynchronize(stream_));
 
   return device().getMemoryInfo();
 }
