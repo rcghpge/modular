@@ -62,6 +62,9 @@ using namespace M;
 using namespace M::GML;
 using namespace M::MGP;
 
+/// Indicates that a work item has no device preference for execution.
+static constexpr int kNoDevicePreference = -1;
+
 //===----------------------------------------------------------------------===//
 // mgp.context.create
 //===----------------------------------------------------------------------===//
@@ -126,6 +129,7 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
 }
 
 /// Extract device hint from DeviceContext if present in operands.
+/// Returns kNoDevicePreference if no single accelerator device is found.
 static int deviceHintFor(const RemainingArguments &operands) {
   TRACY_ZONE_SCOPED_NC("deviceHintFor", TRACY_COLOR_TEAL);
 
@@ -152,6 +156,25 @@ static int deviceHintFor(const RemainingArguments &operands) {
   return kNoDevicePreference;
 }
 
+/// Compute the taskId for a device hint.
+/// Returns kDefaultTaskId if no affinity is needed.
+/// Always uses workers 1..N-1 for device affinity to avoid potential stalls
+/// when worker 0 is the main/donating thread.
+static int taskIdForDevice(int deviceHint, size_t numWorkers) {
+  if (deviceHint == kNoDevicePreference)
+    return kDefaultTaskId;
+
+  assert(deviceHint >= 0 &&
+         "expected kNoDevicePreference or non-negative device hint");
+
+  if (numWorkers <= 1)
+    return kDefaultTaskId;
+
+  // Conservative: always skip worker 0 for affinity tasks.
+  // This avoids stalls regardless of mainWillDonate setting.
+  return 1 + (deviceHint % static_cast<int>(numWorkers - 1));
+}
+
 static void mgp_generic_execute(
     StateContext &ctx, RemainingArguments operands, RemainingResults outResults,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
@@ -169,15 +192,18 @@ static void mgp_generic_execute(
   // Extract device hint from DeviceContext if present in operands.
   int deviceHint = deviceHintFor(operands);
 
+  // Compute taskId for worker affinity. Uses conservative worker 0 avoidance.
+  AsyncRT::WorkQueue *workQueue = runtime.getWorkQueue();
+  int taskId = taskIdForDevice(deviceHint, workQueue->getParallelismLevel());
+
   // Launch the kernel on a new thread when:
   // - isAsync = true: always run out of line.
   // - Otherwise, sync kernel:
-  //   - Kernel has no device preference => run inline.
-  //   - Otherwise, kernel has device preference:
-  //     - Run out of line if we're on the wrong thread for this device.
-  //     - Otherwise, sync already on preferred device thread: run inline.
-  if (eIsAsync.get() ||
-      !runtime.getWorkQueue()->shouldRunInlineFor(deviceHint)) {
+  //   - Kernel has no task affinity => run inline.
+  //   - Otherwise, kernel has task affinity:
+  //     - Run out of line if we're on the wrong worker for this taskId.
+  //     - Otherwise, already on preferred worker: run inline.
+  if (eIsAsync.get() || !workQueue->shouldRunInlineForTask(taskId)) {
     TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (async)", TRACY_COLOR_TEAL,
                           "(Summary: " + dSummary.get().str() + ")");
 
@@ -211,10 +237,9 @@ static void mgp_generic_execute(
       }));
     };
 
-    // Launch the kernel on a new thread with device hint.
+    // Launch the kernel on a new thread with worker affinity.
     AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
-    workItem.deviceHint = deviceHint;
-    runtime.getWorkQueue()->addTask(std::move(workItem));
+    workQueue->addTask(std::move(workItem), taskId);
   } else {
     TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (sync kernel)",
                           TRACY_COLOR_TEAL,
