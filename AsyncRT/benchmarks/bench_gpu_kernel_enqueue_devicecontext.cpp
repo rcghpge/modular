@@ -38,8 +38,9 @@ static const char *kernelPTX = R"PTX(
 )PTX";
 
 // Constants
-constexpr size_t NUM_KERNELS_PER_ITERATION = 100;
-constexpr size_t NUM_WARMUP_ITERATIONS = 10;
+constexpr size_t NUM_KERNELS_PER_ITERATION = 128;
+constexpr size_t NUM_WARMUP_ITERATIONS = 3;
+constexpr size_t NUM_ITERATIONS = 1000;
 
 // Benchmark the time taken to enqueue a minimal kernel
 int minimalKernelEnqueue() {
@@ -124,7 +125,10 @@ int minimalKernelEnqueue() {
 
   // Configure benchmark options
   M::MicroBenchmark::RunOptions runOpts;
-  runOpts.minRuntime = std::chrono::seconds(2);
+  runOpts.minRuntime = std::chrono::seconds(1);
+  runOpts.maxRuntime = std::chrono::seconds(600);
+  runOpts.maxBenchmarkIterations = NUM_ITERATIONS;
+  runOpts.maxBatchSize = 100;
   runOpts.warmupIterations = NUM_WARMUP_ITERATIONS;
 
   // Add epilogue to synchronize the stream after each batch
