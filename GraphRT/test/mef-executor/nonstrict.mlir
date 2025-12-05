@@ -1,7 +1,7 @@
 // RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t.mef
 // RUN: mef-executor %t.mef | FileCheck %s
 
-mef.invokable @return_first_arg(%x: si32, %y: si32) -> si32 {
+mef.callable @return_first_arg(%x: si32, %y: si32) -> si32 {
   mef.output %x : si32
 }
 

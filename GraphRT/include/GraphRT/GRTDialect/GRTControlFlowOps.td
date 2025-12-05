@@ -68,7 +68,7 @@ def ChainCreateOp : GRTOp<"chain.create", [Pure, Commutative,
 
 def InvokeOp : GRTOp<"invoke", [DeclareOpInterfaceMethods<SymbolUserOpInterface>,
                                 NonStrictInterface]> {
-  let summary = "Invoke an invokable (non-strictly).";
+  let summary = "Invoke a callable (non-strictly).";
 
   let arguments = (ins FlatSymbolRefAttr:$target, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);

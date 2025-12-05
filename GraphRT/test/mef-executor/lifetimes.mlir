@@ -33,7 +33,7 @@ grt.testcase @test_linear {
   mef.output
 }
 
-mef.invokable @no_op(%x: !vt.value) -> !vt.value {
+mef.callable @no_op(%x: !vt.value) -> !vt.value {
   mef.output %x : !vt.value
 }
 
@@ -60,7 +60,7 @@ grt.testcase @call_no_op {
   mef.output
 }
 
-mef.invokable @add_one(%x: !vt.value) -> !vt.value {
+mef.callable @add_one(%x: !vt.value) -> !vt.value {
   %v1 = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value
   %r = "test.vt.add"(%v1, %x) : (!vt.value,  !vt.value) -> !vt.value
   mef.output %r : !vt.value
@@ -123,7 +123,7 @@ grt.testcase @share_to_two {
 
 // Testing calling a invokable that forwards its argument into two results.
 
-mef.invokable @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
+mef.callable @call_share_to_two(%x: !vt.value) -> (!vt.value, !vt.value) {
   %x1, %x2 = "test.vt_share_to_two_2"(%x) : (!vt.value) -> (!vt.value, !vt.value)
   mef.output %x1, %x2 : !vt.value, !vt.value
 }
@@ -176,7 +176,7 @@ grt.testcase @share_to_four {
 
 // Testing calling a invokable that forwards its argument into four results.
 
-mef.invokable @call_share_to_four(%x: !vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value) {
+mef.callable @call_share_to_four(%x: !vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value) {
   %results:4 = "test.vt_share_to_four_2"(%x) : (!vt.value) -> (!vt.value, !vt.value, !vt.value, !vt.value)
   mef.output %results#0, %results#1, %results#2, %results#3 : !vt.value, !vt.value, !vt.value, !vt.value
 }
@@ -207,7 +207,7 @@ grt.testcase @share_to_four_caller {
   mef.output
 }
 
-mef.invokable @repeat_n_inc(%n: si32) -> !mef.chain {
+mef.callable @repeat_n_inc(%n: si32) -> !mef.chain {
   // Returns 1 + %n by initializing %x to 1 and incrementing in a loop.
   %ch0 = grt.chain.create ()
   %x = "test.vt.constant"() { value = 1 : si32 } : () -> !vt.value

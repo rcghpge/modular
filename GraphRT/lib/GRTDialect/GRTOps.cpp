@@ -128,7 +128,7 @@ LogicalResult ChainCreateOp::canonicalize(ChainCreateOp createOp,
 
 LogicalResult InvokeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // Check that the target attribute was specified.
-  MEF::InvokableOp fn = symbolTable.lookupNearestSymbolFrom<MEF::InvokableOp>(
+  MEF::CallableOp fn = symbolTable.lookupNearestSymbolFrom<MEF::CallableOp>(
       *this, getTargetAttr());
   if (!fn)
     return emitOpError() << "'" << getTargetAttr()

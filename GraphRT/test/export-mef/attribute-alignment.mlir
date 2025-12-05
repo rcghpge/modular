@@ -8,7 +8,7 @@
 // in the MEF file before the attributes, so a change to the name or addition of more
 // test functions will require the check validations to be adjusted.
 
-mef.invokable @after_si8() {
+mef.callable @after_si8() {
   "simple.primitive"() { x = 42 : si8, y = 43 : ui32 }: () -> ()
   mef.output
 }
@@ -25,7 +25,7 @@ mef.invokable @after_si8() {
 // 0000120 2b # value for ui32 (43)
 
 
-mef.invokable @after_ui32() {
+mef.callable @after_ui32() {
   "simple.primitive"() { x = 44 : ui32, y = 45 : ui32 }: () -> ()
   mef.output
 }

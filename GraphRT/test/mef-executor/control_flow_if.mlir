@@ -4,7 +4,7 @@
 
 // This invokable is just a select: "cond ? v1 : v2", exercising grt.if with
 // result values.
-mef.invokable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
+mef.callable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
   %res = grt.if %cond (%v1: si32, %v2: si32) -> (si32) {
     mef.output %v1 : si32
   } else {

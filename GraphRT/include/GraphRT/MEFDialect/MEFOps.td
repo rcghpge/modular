@@ -18,14 +18,14 @@ class MEFOp<string mnemonic, list<Trait> traits = []> :
     Op<MEFDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// InvokableOp
+// CallableOp
 //===----------------------------------------------------------------------===//
 
-def InvokableOp
-  : MEFOp<"invokable", [HasParent<"ModuleOp">, FunctionOpInterface,
+def CallableOp
+  : MEFOp<"callable", [HasParent<"ModuleOp">, FunctionOpInterface,
                         Symbol, IsolatedFromAbove,
                         SingleBlockImplicitTerminator<"OutputOp">]> {
-  let summary = "Named invokable in a MEF file";
+  let summary = "Named callable in a MEF file";
   let arguments = (ins TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
@@ -40,17 +40,17 @@ def InvokableOp
 
     OutputOp getOutputOp();
 
-    /// Returns the argument types of this invokable.
+    /// Returns the argument types of this callable.
     ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
-    /// Returns the result types of this invokable.
+    /// Returns the result types of this callable.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     Region *getCallableRegion() { return &getFunctionBody(); }
   }];
 
   let builders = [
-    /// Create a new mef.invokable with an empty body.
+    /// Create a new mef.callable with an empty body.
     OpBuilder<(ins "StringAttr":$name, "ArrayRef<Type>":$inputTypes,
                    "ArrayRef<Type>":$resultTypes,
                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
@@ -92,14 +92,14 @@ def OpaqueOp : MEFOp<"opaque"> {
 def OutputOp : MEFOp<"output", [Terminator, ReturnLike]> {
   let summary = "MEF output operation";
   let description = [{
-    The `mef.output` operation specifies the returned values for invokables in
+    The `mef.output` operation specifies the returned values for callable in
     a MEF MLIR file.
     The operation takes variable number of operands and produces no results.
-    The operand number and types must match the signature of the `mef.invokable`
+    The operand number and types must match the signature of the `mef.callable`
     (or enclosing region) that contains the operation. For example:
 
     ```mlir
-      mef.invokable @foo() : i32, f8 {
+      mef.callable @foo() : i32, f8 {
         ...
         mef.output %0, %1 : i32, f8
       }

@@ -2,9 +2,9 @@
 
 // Eliminate chain operands whose readiness is implied by other operands.
 
-// CHECK-LABEL: mef.invokable @eliminate_implied_chains
+// CHECK-LABEL: mef.callable @eliminate_implied_chains
 // CHECK: (%[[CH0:.*]]: !mef.chain) -> !mef.chain
-mef.invokable @eliminate_implied_chains(%ch0: !mef.chain) -> !mef.chain {
+mef.callable @eliminate_implied_chains(%ch0: !mef.chain) -> !mef.chain {
 
   // CHECK: %[[OUT:.*]] = "foo"(%[[CH0]]) : (!mef.chain) -> !mef.chain
   %ch1 = "foo"(%ch0) : (!mef.chain) -> (!mef.chain)
@@ -16,9 +16,9 @@ mef.invokable @eliminate_implied_chains(%ch0: !mef.chain) -> !mef.chain {
 
 // -----
 
-// CHECK-LABEL: mef.invokable @eliminate_implied_chains_control_flow
+// CHECK-LABEL: mef.callable @eliminate_implied_chains_control_flow
 // CHECK: (%[[CH0:.*]]: !mef.chain, %[[COND:.*]]: i1) -> !mef.chain
-mef.invokable @eliminate_implied_chains_control_flow(%ch0: !mef.chain, %cond: i1) -> !mef.chain {
+mef.callable @eliminate_implied_chains_control_flow(%ch0: !mef.chain, %cond: i1) -> !mef.chain {
 
   // CHECK: %[[IF:.*]] = grt.if %[[COND]]
   %res1 = grt.if %cond (%ch0: !mef.chain) -> !mef.chain {
@@ -39,9 +39,9 @@ mef.invokable @eliminate_implied_chains_control_flow(%ch0: !mef.chain, %cond: i1
 
 // -----
 
-// CHECK-LABEL: mef.invokable @eliminate_implied_chains_control_flow
+// CHECK-LABEL: mef.callable @eliminate_implied_chains_control_flow
 // CHECK: (%[[CH0:.*]]: !mef.chain, %[[COND:.*]]: i1) -> !mef.chain
-mef.invokable @eliminate_implied_chains_control_flow(%ch0: !mef.chain, %cond: i1) -> !mef.chain {
+mef.callable @eliminate_implied_chains_control_flow(%ch0: !mef.chain, %cond: i1) -> !mef.chain {
 
   // CHECK: %[[IF:.*]] = grt.if %[[COND]]
   %res1 = grt.if %cond (%ch0: !mef.chain) -> !mef.chain {

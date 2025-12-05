@@ -8,37 +8,37 @@
 
 // CHECK: module {
 
-// CHECK-LABEL: "mef.invokable" ["trivial"]
+// CHECK-LABEL: "mef.callable" ["trivial"]
 // CHECK-NEXT:    %{{.*}}:2 = mef.opaque "simple.primitive" []() : () -> (!mef.unknown, !mef.unknown)
 // CHECK-NEXT:    mef.opaque "grt.invoke" [@trivial]() : () -> ()
 // CHECK-NEXT:    mef.output
 // CHECK-NEXT:  }
-// MD-LABEL: "mef.invokable" ["trivial"]
+// MD-LABEL: "mef.callable" ["trivial"]
 // MD-NEXT:    %{{.*}}:2 = "simple.primitive"() : () -> (i8, i16)
 // MD-NEXT:    "grt.invoke"() {target = @trivial} : () -> ()
 // MD-NEXT:    mef.output
 // MD-NEXT:  }
-mef.invokable @trivial() {
+mef.callable @trivial() {
   %a, %b = "simple.primitive"() : () -> (i8, i16)
   grt.invoke @trivial() : () -> ()
   mef.output
 }
 
-// CHECK-LABEL:  "mef.invokable" ["args_results"]
+// CHECK-LABEL:  "mef.callable" ["args_results"]
 // CHECK-NEXT:   ^bb0(%[[ARG0:.*]]: !mef.unknown, %[[ARG1:.*]]: !mef.unknown):
 // CHECK-NEXT:     mef.output %[[ARG1]], %[[ARG0]] : !mef.unknown, !mef.unknown
 // CHECK-NEXT:   }
-// MD-LABEL:  "mef.invokable" ["args_results"]
+// MD-LABEL:  "mef.callable" ["args_results"]
 // MD-NEXT:   ^bb0(%[[ARG0:.*]]: si32, %[[ARG1:.*]]: si8):
 // MD-NEXT:     mef.output %[[ARG1]], %[[ARG0]] : si8, si32
 // MD-NEXT:   }
-mef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
+mef.callable @args_results(%a: si32, %b: si8) -> (si8, si32) {
   mef.output %b, %a : si8, si32
 }
 
-// CHECK-LABEL:  "mef.invokable" ["attributes"]
-// MD-LABEL:  "mef.invokable" ["attributes"]
-mef.invokable @attributes() {
+// CHECK-LABEL:  "mef.callable" ["attributes"]
+// MD-LABEL:  "mef.callable" ["attributes"]
+mef.callable @attributes() {
   // CHECK-NEXT: "a.b" [true]
   // MD-NEXT: "a.b"() {a = true}
   "a.b"() { a = 1 : i1 }: () -> ()
@@ -130,12 +130,12 @@ mef.invokable @attributes() {
    // CHECK-NEXT:     mef.output
 }  // CHECK-NEXT:   }
 
-// CHECK-LABEL: "mef.invokable" ["opaque_round_trip"]
+// CHECK-LABEL: "mef.callable" ["opaque_round_trip"]
 // CHECK-NEXT:    %[[V0:.*]]:2 = mef.opaque "simple.primitive" []() : () -> (!mef.unknown, !mef.unknown)
 // CHECK-NEXT:    mef.opaque "other.primitive" [42 : si8](%[[V0]]#1, %[[V0]]#0) : (!mef.unknown, !mef.unknown) -> ()
 // CHECK-NEXT:    mef.output
 // CHECK-NEXT:  }
-mef.invokable @opaque_round_trip() {
+mef.callable @opaque_round_trip() {
   %0:2 = "mef.opaque"() {attrs = [], opName = "simple.primitive"} : () -> (!mef.unknown, !mef.unknown)
   "mef.opaque"(%0#1, %0#0) {attrs = [42 : si8], opName = "other.primitive"} : (!mef.unknown, !mef.unknown) -> ()
   mef.output
@@ -154,7 +154,7 @@ mef.invokable @opaque_round_trip() {
   "a.secondregion"() : () -> ()
 }) {sym_name = "multi_region"} : () -> ()
 
-// CHECK-LABEL: "mef.invokable" ["controlflow_if"]
+// CHECK-LABEL: "mef.callable" ["controlflow_if"]
 // CHECK-NEXT: ^bb0(%[[ARG0:.*]]: !mef.unknown, %[[ARG1:.*]]: !mef.unknown, %[[ARG2:.*]]: !mef.unknown):
 // CHECK-NEXT:   %[[V0:.*]] = mef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (!mef.unknown, !mef.unknown, !mef.unknown) -> !mef.unknown {
 // CHECK-NEXT:   ^bb0(%[[ARG3:.*]]: !mef.unknown, %[[ARG4:.*]]: !mef.unknown):
@@ -165,7 +165,7 @@ mef.invokable @opaque_round_trip() {
 // CHECK-NEXT:   }
 // CHECK-NEXT:   mef.output %[[V0]] : !mef.unknown
 // CHECK-NEXT: }
-mef.invokable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
+mef.callable @controlflow_if(%cond: i1, %v1: si32, %v2: si32) -> si32 {
   %res = grt.if %cond (%v1: si32, %v2: si32) -> (si32) {
     mef.output %v1 : si32
   } else {

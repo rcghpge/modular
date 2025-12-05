@@ -24,12 +24,12 @@ struct PrimitiveRegistry::Impl {
 // PrimitiveRegistry
 //===----------------------------------------------------------------------===//
 
-static void mef_invokable() {}
+static void mef_callable() {}
 static void builtin_module() {}
 
 PrimitiveRegistry::PrimitiveRegistry() : impl(std::make_unique<Impl>()) {
-  // FIXME: remove this and the mef_invokable primitive impl above
-  ADD_PRIMITIVE(*this, "mef.invokable", mef_invokable);
+  // FIXME: remove this and the mef_callable primitive impl above
+  ADD_PRIMITIVE(*this, "mef.callable", mef_callable);
   // FIXME: We should make it possible for others to implement this to do some
   //        substantive thing.
   ADD_PRIMITIVE(*this, "builtin.module", builtin_module);

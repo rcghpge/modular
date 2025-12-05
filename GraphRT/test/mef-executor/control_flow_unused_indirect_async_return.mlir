@@ -4,7 +4,7 @@
 
 // MEFExecutor will allocate an IndirectAsyncValue for this invokable's return
 // value.
-mef.invokable @indirect_async_return(%c1: si32) -> si32 {
+mef.callable @indirect_async_return(%c1: si32) -> si32 {
   %v2 = "test.async.add.i32"(%c1, %c1) : (si32, si32) -> si32
   %v3 = "test.async.add.i32"(%v2, %v2) : (si32, si32) -> si32
   // We can't return %v2 because it's an unavailable ConcreteAsyncValue (not an

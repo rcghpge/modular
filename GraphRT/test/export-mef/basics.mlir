@@ -5,15 +5,15 @@
 
 // CHECK: 0000000 ee f0 03
 
-mef.invokable @trivial() {
+mef.callable @trivial() {
   "simple.primitive"() { x = 42 : si8 }: () -> ()
   mef.output
 }
 
-mef.invokable @args_results(%a: si32, %b: si8) -> (si8, si32) {
+mef.callable @args_results(%a: si32, %b: si8) -> (si8, si32) {
   mef.output %b, %a : si8, si32
 }
 
-mef.invokable @unknown_args(%a: !mef.unknown, %b: !mef.unknown) -> !mef.unknown {
+mef.callable @unknown_args(%a: !mef.unknown, %b: !mef.unknown) -> !mef.unknown {
   mef.output %b : !mef.unknown
 }

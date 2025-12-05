@@ -1,7 +1,7 @@
 // RUN: graphrt-opt -allow-unregistered-dialect -split-input-file --verify-diagnostics %s
 
 // CHECK-LABEL: --- Running 'trivial':
-mef.invokable @trivial() {
+mef.callable @trivial() {
   // expected-error @+1 {{'grt.invoke' op '@foo' does not reference a valid invokable}}
   grt.invoke @foo() : () -> ()
   mef.output
@@ -10,7 +10,7 @@ mef.invokable @trivial() {
 // -----
 
 // CHECK-LABEL: --- Running 'controlflow_if_invalid1':
-mef.invokable @controlflow_if_invalid1(%cond: i1, %x: si32) {
+mef.callable @controlflow_if_invalid1(%cond: i1, %x: si32) {
   // expected-error @+1 {{custom op 'grt.if' has duplicate SSA values in its operand list which have not been renamed apart by 'as' clauses.}}
   %res = grt.if %cond (%x: si32, %x: si32) -> si32 {
     mef.output %x : si32
@@ -23,7 +23,7 @@ mef.invokable @controlflow_if_invalid1(%cond: i1, %x: si32) {
 // -----
 
 // CHECK-LABEL: --- Running 'controlflow_while_invalid1':
-mef.invokable @controlflow_while_invalid1() {
+mef.callable @controlflow_while_invalid1() {
   %i = grt.constant.si32 0
   %n = grt.constant.si32 4
   // expected-error @+1 {{'grt.while' op expected 'cond' block to return additional i1 result for loop condition}}
@@ -39,7 +39,7 @@ mef.invokable @controlflow_while_invalid1() {
 // -----
 
 // CHECK-LABEL: --- Running 'controlflow_while_invalid2':
-mef.invokable @controlflow_while_invalid2() {
+mef.callable @controlflow_while_invalid2() {
   %i = grt.constant.si32 0
   %n = grt.constant.si32 4
   // expected-error @+1 {{'grt.while' op expected 2 mef.output operands in 'body' block entries, but given 1}}
@@ -55,7 +55,7 @@ mef.invokable @controlflow_while_invalid2() {
 // -----
 
 // CHECK-LABEL: --- Running 'controlflow_while_invalid3':
-mef.invokable @controlflow_while_invalid3() {
+mef.callable @controlflow_while_invalid3() {
   %i = grt.constant.si32 0
   %n = grt.constant.si32 4
   // expected-error @+1 {{'grt.while' op actual mef.output operands in 'body' block #1 has type 'i1' but expected 'si32'}}
@@ -72,7 +72,7 @@ mef.invokable @controlflow_while_invalid3() {
 // -----
 
 // CHECK-LABEL: --- Running 'controlflow_while_invalid4':
-mef.invokable @controlflow_while_invalid4() {
+mef.callable @controlflow_while_invalid4() {
   %i = grt.constant.si32 0
   %bogus = grt.constant.si32 42
   %res = grt.while (%i: si32) {

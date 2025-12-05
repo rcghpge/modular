@@ -1,7 +1,7 @@
 // RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t.mef
 // RUN: mef-executor %t.mef -verify-diagnostics | FileCheck %s
 
-mef.invokable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {
+mef.callable @args_results(%a: si32, %b: ui8) -> (ui8, si32) {
   mef.output %b, %a : ui8, si32
 }
 
@@ -30,7 +30,7 @@ grt.testcase @three_print {
 }
 
 // CHECK-LABEL: --- Running 'basic.i32_driver'
-mef.invokable @basic.i32() {
+mef.callable @basic.i32() {
   %x = grt.constant.si32 42
 
   %ch0 = grt.chain.create ()
@@ -62,7 +62,7 @@ grt.testcase @test_result {
 }
 
 // CHECK-LABEL: --- Running 'errors_driver'
-mef.invokable @errors() -> (si32, si32, si32) {
+mef.callable @errors() -> (si32, si32, si32) {
   // expected-error @+1 {{something bad happened}}
   %a = "test.fail"() : () -> si32
   // expected-error @+1 {{something partially bad happened}}
@@ -90,13 +90,13 @@ grt.testcase @simple_calls {
   // CHECK: 'simple_calls' returned <error: something bad happened>, 42
 }
 
-mef.invokable @call_print.i32(%x: si32) -> !mef.chain {
+mef.callable @call_print.i32(%x: si32) -> !mef.chain {
   %ch0 = grt.chain.create ()
   %ch1 = grt.print.si32 %x, %ch0
   mef.output %ch1 : !mef.chain
 }
 
-mef.invokable @add_one(%x: si32) -> si32 {
+mef.callable @add_one(%x: si32) -> si32 {
   %c1 = grt.constant.si32 1
   %y = grt.add.si32 %x, %c1
   mef.output %y : si32

@@ -1,7 +1,7 @@
 // RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t
 // RUN: mef-translate -import-mef -allow-unregistered-dialect %t | FileCheck %s
 
-mef.invokable @attributes() {
+mef.callable @attributes() {
   // CHECK: "a.b" [#M.dense_array<42> : !M.array<1xui64>]
   "a.b"() { a = #M.dense_array<42> : !M.array<1xui64> }  : () -> ()
 

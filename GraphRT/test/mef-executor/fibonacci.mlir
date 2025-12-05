@@ -1,7 +1,7 @@
 // RUN: mef-translate -export-mef -allow-unregistered-dialect %s -o %t.mef
 // RUN: mef-executor %t.mef | FileCheck %s
 
-mef.invokable @fib(%arg: si32) -> si32 {
+mef.callable @fib(%arg: si32) -> si32 {
   %one = grt.constant.si32 1
   %cond = grt.lessequal.si32 %arg, %one
   %res = grt.if %cond (%arg: si32) -> si32 {

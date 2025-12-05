@@ -17,34 +17,34 @@ using namespace M;
 using namespace MEF;
 
 //===----------------------------------------------------------------------===//
-// InvokableOp
+// CallableOp
 //===----------------------------------------------------------------------===//
 
-void InvokableOp::build(OpBuilder &builder, OperationState &state,
-                        StringAttr name, ArrayRef<Type> inputTypes,
-                        ArrayRef<Type> resultTypes,
-                        ArrayRef<NamedAttribute> attrs) {
+void CallableOp::build(OpBuilder &builder, OperationState &state,
+                       StringAttr name, ArrayRef<Type> inputTypes,
+                       ArrayRef<Type> resultTypes,
+                       ArrayRef<NamedAttribute> attrs) {
   buildWithEntryBlock(builder, state, name,
                       builder.getFunctionType(inputTypes, resultTypes), attrs,
                       inputTypes);
 }
 
-void InvokableOp::build(OpBuilder &builder, OperationState &state,
-                        ArrayRef<NamedAttribute> attrs) {
+void CallableOp::build(OpBuilder &builder, OperationState &state,
+                       ArrayRef<NamedAttribute> attrs) {
   state.addAttributes(attrs);
   state.addRegion();
 }
 
-OutputOp InvokableOp::getOutputOp() {
+OutputOp CallableOp::getOutputOp() {
   return cast<OutputOp>(getBodyBlock()->getTerminator());
 }
 
-/// Parses a MEF invokable.
+/// Parses a MEF callable.
 ///
 // operation ::=
-/// `mef.invokable` function-signature function-attributes? function-body
+/// `mef.callable` function-signature function-attributes? function-body
 ///
-ParseResult InvokableOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult CallableOp::parse(OpAsmParser &parser, OperationState &result) {
   auto buildFuncType =
       [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
          mlir::function_interface_impl::VariadicFlag,
@@ -56,15 +56,15 @@ ParseResult InvokableOp::parse(OpAsmParser &parser, OperationState &result) {
       getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
 }
 
-// Print the InvokableOp. Collects argument and result types and passes them to
+// Print the CallableOp. Collects argument and result types and passes them to
 // helper functions. Drops "void" result since it cannot be parsed back.
-void InvokableOp::print(OpAsmPrinter &p) {
+void CallableOp::print(OpAsmPrinter &p) {
   mlir::function_interface_impl::printFunctionOp(
       p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
       getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
-LogicalResult InvokableOp::verifyRegions() {
+LogicalResult CallableOp::verifyRegions() {
   return checkOperandTypes(getOutputOp(), getResultTypes());
 }
 
