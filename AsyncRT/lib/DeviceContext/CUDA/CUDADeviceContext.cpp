@@ -1269,7 +1269,9 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   DeviceFunctionCacheEntryRef entry =
-      device().findInFunctionCache(moduleName.empty() ? code : moduleName);
+      device().findInFunctionCache(Device::FunctionCacheKey(
+          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
+          optimizationLevel, maxDynamicSharedBytes));
   if (entry.getPointer() != nullptr) {
     CUDAModuleFunctionRef moduleFunc =
         CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release()));
@@ -1317,8 +1319,11 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   auto moduleFunc = CUDAModuleFunctionRef::create(
       std::string(functionName), this->cudaDriver(), module, function);
   CUDADeviceFunctionRef result;
-  entry = device().insertInFunctionCache(moduleName.empty() ? code : moduleName,
-                                         *moduleFunc);
+  entry = device().insertInFunctionCache(
+      Device::FunctionCacheKey(
+          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
+          optimizationLevel, maxDynamicSharedBytes),
+      *moduleFunc);
   result = CUDADeviceFunctionRef::create(
       *this, signature,
       CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release())));

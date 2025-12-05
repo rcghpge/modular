@@ -1169,7 +1169,9 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   DeviceFunctionCacheEntryRef entry =
-      device().findInFunctionCache(moduleName.empty() ? code : moduleName);
+      device().findInFunctionCache(Device::FunctionCacheKey(
+          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
+          optimizationLevel, maxDynamicSharedBytes));
   if (entry.getPointer() != nullptr) {
     HIPModuleFunctionRef moduleFunc =
         HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release()));
@@ -1198,8 +1200,11 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   auto moduleFunc = HIPModuleFunctionRef::create(
       std::string(functionName), this->hipDriver(), module, function);
   HIPDeviceFunctionRef result;
-  entry = device().insertInFunctionCache(moduleName.empty() ? code : moduleName,
-                                         *moduleFunc);
+  entry = device().insertInFunctionCache(
+      Device::FunctionCacheKey(
+          moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),
+          optimizationLevel, maxDynamicSharedBytes),
+      *moduleFunc);
   result = HIPDeviceFunctionRef::create(
       *this, signature,
       HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release())));

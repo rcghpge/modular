@@ -366,22 +366,17 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
   return Error(llvm::Twine("Unsupported device api: \"") + api + "\"");
 }
 
-DeviceFunctionCacheEntryRef Device::findInFunctionCache(StringRef key) const {
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    auto iter = funcMap_.find(key);
-    if (iter != funcMap_.end()) {
-      return iter->second;
-    }
-  }
-  return DeviceFunctionCacheEntryRef();
+DeviceFunctionCacheEntryRef
+Device::findInFunctionCache(const FunctionCacheKey &key) const {
+  std::scoped_lock<std::mutex> lock(mu_);
+  return funcMap_.lookup(key);
 }
 
 DeviceFunctionCacheEntryRef
-Device::insertInFunctionCache(StringRef key,
+Device::insertInFunctionCache(const FunctionCacheKey &key,
                               const DeviceFunctionCacheEntry &entry) const {
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::scoped_lock<std::mutex> lock(mu_);
     auto iter = funcMap_.find(key);
     if (iter != funcMap_.end()) {
       return iter->second;
@@ -392,7 +387,7 @@ Device::insertInFunctionCache(StringRef key,
 }
 
 void Device::clearFunctionCache() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  std::scoped_lock<std::mutex> lock(mu_);
   funcMap_.clear();
 }
 

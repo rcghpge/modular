@@ -18,6 +18,8 @@
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
+#include "llvm/ADT/DenseMap.h"
+
 #include <chrono>
 #include <cstdint>
 #include <mutex>
@@ -197,10 +199,26 @@ public:
   /// `nvidia:80`.
   static const std::string &getAcceleratorArchOrEmpty();
 
+  /// Function cache key for the function cache. This accounts for how the
+  /// function is compiled including debug level and other properties.
+  struct FunctionCacheKey {
+    std::string name;
+    std::string debugLevel = "";
+    int32_t maxDynamicSharedBytes = -1;
+    int32_t optimizationLevel = -1;
+
+    bool operator==(const FunctionCacheKey &other) const {
+      return name == other.name && debugLevel == other.debugLevel &&
+             maxDynamicSharedBytes == other.maxDynamicSharedBytes &&
+             optimizationLevel == other.optimizationLevel;
+    }
+  };
+
   // Internal implementation helpers for DeviceContexts.
-  DeviceFunctionCacheEntryRef findInFunctionCache(StringRef key) const;
   DeviceFunctionCacheEntryRef
-  insertInFunctionCache(StringRef key,
+  findInFunctionCache(const FunctionCacheKey &key) const;
+  DeviceFunctionCacheEntryRef
+  insertInFunctionCache(const FunctionCacheKey &key,
                         const DeviceFunctionCacheEntry &entry) const;
   void clearFunctionCache() const;
 
@@ -223,7 +241,7 @@ private:
   mutable std::mutex mu_;
   // The function cache holds the lower-level function references which do not
   // contain a device context reference to avoid reference counting cycles.
-  mutable llvm::StringMap<DeviceFunctionCacheEntryRef> funcMap_;
+  mutable DenseMap<FunctionCacheKey, DeviceFunctionCacheEntryRef> funcMap_;
 };
 
 class DeviceBuffer final : public ReferenceCounted<DeviceBuffer> {
@@ -692,5 +710,26 @@ private:
 };
 
 } // namespace M::AsyncRT
+
+namespace llvm {
+template <>
+struct DenseMapInfo<M::AsyncRT::Device::FunctionCacheKey> {
+  static inline M::AsyncRT::Device::FunctionCacheKey getEmptyKey() {
+    return {""};
+  }
+  static inline M::AsyncRT::Device::FunctionCacheKey getTombstoneKey() {
+    return {""};
+  }
+  static unsigned
+  getHashValue(const M::AsyncRT::Device::FunctionCacheKey &val) {
+    return llvm::hash_combine(val.name, val.debugLevel,
+                              val.maxDynamicSharedBytes, val.optimizationLevel);
+  }
+  static bool isEqual(const M::AsyncRT::Device::FunctionCacheKey &lhs,
+                      const M::AsyncRT::Device::FunctionCacheKey &rhs) {
+    return lhs == rhs;
+  }
+};
+} // namespace llvm
 
 #endif // ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
