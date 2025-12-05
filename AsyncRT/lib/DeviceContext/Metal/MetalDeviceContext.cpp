@@ -55,6 +55,13 @@
 
 namespace M::AsyncRT {
 
+void ensureThreadlocalAutoreleasePoolExists() {
+  thread_local NS::SharedPtr<NS::AutoreleasePool> autoreleasePool;
+  if (!autoreleasePool) {
+    autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  }
+}
+
 static ErrorOr<int> getComputeCapability(StringRef name) {
   if (name.empty())
     return 3;
@@ -153,6 +160,8 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   // - M3 -> Apple9
   // - M4 -> Apple9
   // - M5 -> Apple10
+
+  ensureThreadlocalAutoreleasePoolExists();
 
 #define ATTRIBUTE_UNSUPPORTED(ATTR)                                            \
   RAISE_ERROR_MESSAGE("Attribute \"" #ATTR "\" not supported for Apple GPU.")
@@ -256,6 +265,8 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
                                        bool isHost) const {
   assert(byteSize != 0);
 
+  ensureThreadlocalAutoreleasePoolExists();
+
   MTL::Device *metalDev = metalDevice();
   if (metalDev == nullptr)
     RAISE_ERROR_MESSAGE("Invalid Metal device: null pointer");
@@ -311,6 +322,8 @@ ErrorOrSuccess MetalDevice::setCurrentDriverContext(void *ctx) const {
 }
 
 ErrorOr<DeviceContextRef> MetalDevice::createContext() const {
+  ensureThreadlocalAutoreleasePoolExists();
+
   NS::SharedPtr<MTL::CommandQueue> commandQueue =
       NS::TransferPtr(device_->newCommandQueue());
   if (!commandQueue)
@@ -355,6 +368,8 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
   static RCRef<MetalDevice> metalDeviceInstance;
 
   if (!metalDeviceInstance) {
+    ensureThreadlocalAutoreleasePoolExists();
+
     NS::SharedPtr<MTL::Device> device =
         NS::TransferPtr(MTL::CreateSystemDefaultDevice());
     if (!device)
@@ -382,6 +397,7 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
 }
 
 ErrorOr<int> MetalDevice::numberOfGPUs() {
+  ensureThreadlocalAutoreleasePoolExists();
   int count = 0;
   NS::SharedPtr<NS::Array> devices = NS::TransferPtr(MTL::CopyAllDevices());
   if (devices) {
@@ -434,6 +450,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                        const void *src) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
+
+  ensureThreadlocalAutoreleasePoolExists();
 
   // Validate source
   if (src == nullptr)
@@ -517,6 +535,8 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst,
                                           const DeviceBuffer &src) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
+
+  ensureThreadlocalAutoreleasePoolExists();
 
   if (dst == nullptr)
     RAISE_ERROR_MESSAGE("Destination pointer cannot be null");
@@ -612,6 +632,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
 
+  ensureThreadlocalAutoreleasePoolExists();
+
   // 1) Validation
   if (dst.context().device().api() != Device::metalAPI)
     RAISE_ERROR_MESSAGE("Destination buffer must be a Metal buffer");
@@ -684,6 +706,8 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  ensureThreadlocalAutoreleasePoolExists();
+
   // Get the Metal device
   MTL::Device *mtlDevice = MetalDevice::cast(device()).metalDevice();
   if (mtlDevice == nullptr)
@@ -807,6 +831,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExec(
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExec",
                        TRACY_COLOR_PURPLE);
 
+  ensureThreadlocalAutoreleasePoolExists();
+
   // 1) Validate and get pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
   MTL::ComputePipelineState &pipeline = metalFunc.getPipelineState();
@@ -872,6 +898,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     const size_t *argSizes) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
+
+  ensureThreadlocalAutoreleasePoolExists();
 
   // 1) Validate pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
@@ -971,6 +999,8 @@ ErrorOr<DeviceStreamRef> MetalDeviceContext::stream() const {
 ErrorOrSuccess MetalDeviceContext::synchronize() const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize", TRACY_COLOR_PURPLE);
 
+  ensureThreadlocalAutoreleasePoolExists();
+
   // Check for any pending errors first, similar to CUDA's behavior
   ErrorOrSuccess pendingErr = checkPendingWork();
   if (pendingErr.isError()) {
@@ -991,6 +1021,8 @@ ErrorOrSuccess MetalDeviceContext::synchronize() const {
 
 ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+
+  ensureThreadlocalAutoreleasePoolExists();
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
@@ -1071,6 +1103,8 @@ ErrorOrSuccess MetalDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
 ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                             Device::AllocMode mode) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
+
+  ensureThreadlocalAutoreleasePoolExists();
 
   if (ptr == nullptr)
     RAISE_ERROR_MESSAGE("Invalid allocation parameters: ptr is null");
@@ -1163,6 +1197,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueMetalCopy",
                        TRACY_COLOR_PURPLE);
 
+  ensureThreadlocalAutoreleasePoolExists();
+
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr) {
     RAISE_ERROR_MESSAGE("Failed to create command buffer");
@@ -1218,6 +1254,7 @@ MetalDeviceContext::verified_cast(const DeviceContext *ctx) {
 }
 
 ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
+  ensureThreadlocalAutoreleasePoolExists();
   MTL::Device *device = d ? d : MTL::CreateSystemDefaultDevice();
   if (device == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create Metal device.");
