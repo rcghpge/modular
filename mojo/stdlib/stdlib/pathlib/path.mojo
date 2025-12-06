@@ -20,7 +20,6 @@ from sys import CompilationTarget, external_call
 from sys.ffi import c_char
 
 from builtin._location import __call_location
-from memory import LegacyUnsafePointer as UnsafePointer
 
 comptime DIR_SEPARATOR = "/"
 
@@ -37,15 +36,16 @@ fn cwd() raises -> Path:
     comptime MAX_CWD_BUFFER_SIZE = 1024
     var buf = InlineArray[c_char, MAX_CWD_BUFFER_SIZE](uninitialized=True)
 
-    var res = external_call["getcwd", UnsafePointer[c_char]](
-        buf.unsafe_ptr(), Int(MAX_CWD_BUFFER_SIZE)
+    var ptr = buf.unsafe_ptr()
+    var res = external_call["getcwd", type_of(ptr)](
+        ptr, Int(MAX_CWD_BUFFER_SIZE)
     )
 
     # If we get a nullptr, then we raise an error.
-    if res == UnsafePointer[c_char]():
+    if not res:
         raise Error("unable to query the current directory")
 
-    return String(unsafe_from_utf8_ptr=buf.unsafe_ptr())
+    return String(unsafe_from_utf8_ptr=ptr)
 
 
 @always_inline
@@ -70,7 +70,6 @@ struct Path(
     Hashable,
     ImplicitlyCopyable,
     KeyElement,
-    Movable,
     PathLike,
     Stringable,
     Writable,
@@ -370,7 +369,7 @@ struct Path(
         var start = self.path.rfind(DIR_SEPARATOR) + 2
         var i = self.path.rfind(".", start)
         if 0 < i < (len(self.path) - 1):
-            return self.path[i:]
+            return String(self.path[i:])
 
         return ""
 

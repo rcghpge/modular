@@ -42,11 +42,13 @@ from max.pipelines.lib import (
     PipelineConfig,
 )
 from max.pipelines.lib.config_enums import PipelineRole
+from max.support.algorithm import flatten2d
 from max.support.human_readable_formatter import to_human_readable_bytes
 from transformers import AutoConfig
 from typing_extensions import override
 
 from ..deepseekV2.model import DeepseekV2Inputs, DeepseekV2Model
+from ..llama3.data_parallel_llama import compute_data_parallel_splits
 from .deepseekV3 import DeepseekV3
 from .model_config import DeepseekV3Config
 
@@ -226,7 +228,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             tie_word_embeddings=config.tie_word_embeddings,
             rope_theta=config.rope_theta,
             rope_scaling=config.rope_scaling,
-            rope_interleave=config.rope_interleave,
+            rope_interleave=getattr(config, "rope_interleave", True),
             scoring_func=config.scoring_func,
             attention_bias=config.attention_bias,
             attention_dropout=config.attention_dropout,
@@ -273,7 +275,8 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
 
         encoding = pipeline_config.model_config.quantization_encoding
         assert encoding is not None
-        activation_memory: int = 0
+        mla_activation_memory: int = 0
+        moe_activation_memory: int = 0
 
         # During the prefill, we need to up-project all the KV cache for
         # current requests. The total context length of requests in a batch
@@ -282,14 +285,12 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             max_kv_length: int = 0
 
             if pipeline_config.max_batch_context_length is None:
-                logger.info(
-                    "Estimation for activation memory might be inaccurate, "
-                    "max-batch-context-length is not set."
-                )
+                # If max_batch_context_length is not set, we use max_length.
+                max_kv_length = pipeline_config.max_length or 0
             else:
                 max_kv_length = pipeline_config.max_batch_context_length
 
-            activation_memory += (
+            mla_activation_memory += (
                 pipeline_config.model_config.data_parallel_degree
                 * 2  # 2 for K and V
                 * max_kv_length
@@ -308,12 +309,30 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
                 max_input_len_per_rank * huggingface_config.n_routed_experts
             )
 
-            activation_memory += (
-                n_gpus_per_node
-                * max_recv_tokens_per_rank
-                * huggingface_config.hidden_size
-                * DType.bfloat16.size_in_bytes  # expert output is bfloat16, no matter the quantization type.
+            # The maximal activation memory usage happens at the second
+            # grouped_matmul in the MoE layer. The input for that matmul would
+            # of shape [max_recv_tokens_per_rank, moe_intermediate_size].
+            moe_activation_memory += (
+                max_recv_tokens_per_rank
+                * huggingface_config.moe_intermediate_size
+                * encoding.dtype.size_in_bytes
             )
+
+            # The output would be of shape [max_recv_tokens_per_rank, hidden_size].
+            moe_activation_memory += (
+                max_recv_tokens_per_rank
+                * huggingface_config.hidden_size
+                * DType.bfloat16.size_in_bytes  # output is always bfloat16.
+            )
+
+            # Adding 256MB per GPU to account for misc items (e.g. FP8 scalars).
+            moe_activation_memory += 256 * 1024 * 1024
+
+            moe_activation_memory *= n_gpus_per_node
+
+        # We only need to consider the maximum of the MLA and MoE activation
+        # memories, because the MLA and MoE layers are executed sequentially.
+        activation_memory = max(mla_activation_memory, moe_activation_memory)
 
         if activation_memory != 0:
             logger.info(
@@ -459,10 +478,17 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
 
     def prepare_initial_token_inputs(
         self,
-        context_batch: Sequence[TextContext],
+        replica_batches: Sequence[Sequence[TextContext]],
         kv_cache_inputs: KVCacheInputs | None = None,
         return_n_logits: int = 1,
     ) -> DeepseekV3Inputs:
+        dp = self.pipeline_config.model_config.data_parallel_degree
+        if len(replica_batches) != dp:
+            raise ValueError(
+                "Number of replica batches must match data parallel degree"
+            )
+
+        context_batch = flatten2d(replica_batches)
         # Create tokens
         if len(context_batch) == 0:
             tokens = Tensor(shape=[0], dtype=DType.int64).to(self.devices[0])
@@ -483,16 +509,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
                 )
             )
 
-        data_parallel_splits: Tensor
-        if self.pipeline_config.model_config.data_parallel_degree > 1:
-            assert isinstance(self.kv_manager, PagedKVCacheManager)
-            data_parallel_splits = self.kv_manager.get_data_parallel_splits(
-                context_batch
-            )
-        else:
-            data_parallel_splits = Tensor.from_numpy(
-                np.array([0, len(context_batch)], dtype=np.int64)
-            )
+        data_parallel_splits = compute_data_parallel_splits(replica_batches)
 
         return DeepseekV3Inputs(
             tokens=tokens,
@@ -502,7 +519,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             return_n_logits=Tensor.from_numpy(
                 np.array([return_n_logits], dtype=np.int64)
             ).to(self.devices[0]),
-            data_parallel_splits=data_parallel_splits,
+            data_parallel_splits=Tensor.from_numpy(data_parallel_splits),
         )
 
     def prepare_next_token_inputs(
@@ -541,9 +558,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
             max_seq_len=self.calculate_max_seq_len(
                 self.pipeline_config, huggingface_config=self.huggingface_config
             ),
-            num_layers=self.huggingface_config.num_hidden_layers,
             devices=self.devices,
             available_cache_memory=available_cache_memory,
-            page_size=self.kv_cache_config.kv_cache_page_size,
             session=session,
         )

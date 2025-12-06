@@ -151,10 +151,15 @@ class MistralModel(PipelineModel[TextContext]):
 
     def prepare_initial_token_inputs(
         self,
-        context_batch: Sequence[TextContext],
+        replica_batches: Sequence[Sequence[TextContext]],
         kv_cache_inputs: KVCacheInputs | None = None,
         return_n_logits: int = 1,
     ) -> MistralInputs:
+        if len(replica_batches) > 1:
+            raise ValueError("Model does not support DP>1")
+
+        context_batch = replica_batches[0]
+
         if not self.kv_cache_config.cache_strategy.uses_opaque():
             # TODO(MODELS-407): Consider deleting the padded path entirely.
             raise ValueError("Mistral unsupported for padded token batches")
@@ -261,12 +266,8 @@ class MistralModel(PipelineModel[TextContext]):
             max_seq_len=self.calculate_max_seq_len(
                 self.pipeline_config, huggingface_config=self.huggingface_config
             ),
-            num_layers=MistralConfig.get_num_layers(
-                huggingface_config=self.huggingface_config
-            ),
             devices=self.devices,
             available_cache_memory=available_cache_memory,
-            page_size=self.kv_cache_config.kv_cache_page_size,
             session=session,
         )
 
@@ -293,9 +294,7 @@ class MistralModel(PipelineModel[TextContext]):
             max_seq_len=cls.calculate_max_seq_len(
                 pipeline_config, huggingface_config=huggingface_config
             ),
-            num_layers=MistralConfig.get_num_layers(huggingface_config),
             available_cache_memory=available_cache_memory,
-            devices=devices,
         )
 
     def _get_state_dict(

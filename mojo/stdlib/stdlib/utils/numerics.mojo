@@ -25,7 +25,7 @@ from sys.ffi import _external_call_const
 
 from builtin.dtype import _integral_type_of, _unsigned_integral_type_of
 from builtin.simd import _simd_apply
-from memory import LegacyUnsafePointer as UnsafePointer, bitcast
+from memory import bitcast
 
 # ===----------------------------------------------------------------------=== #
 # FPUtils
@@ -33,9 +33,9 @@ from memory import LegacyUnsafePointer as UnsafePointer, bitcast
 
 
 fn _constrain_fp_type[dtype: DType]():
-    constrained[
-        dtype.is_floating_point(), "dtype must be a floating point type"
-    ]()
+    __comptime_assert (
+        dtype.is_floating_point()
+    ), "dtype must be a floating point type"
 
 
 struct FPUtils[
@@ -161,7 +161,7 @@ struct FPUtils[
         Returns:
             The quiet NaN mask.
         """
-        alias mantissa_width_val = Self.mantissa_width()
+        comptime mantissa_width_val = Self.mantissa_width()
         return (1 << Self.exponent_width() - 1) << mantissa_width_val + (
             1 << (mantissa_width_val - 1)
         )
@@ -411,7 +411,7 @@ struct FlushDenormals(Defaultable):
             _ = mxcsr
             return
 
-        alias ARM_FPCR_FZ = Int64(1) << 24
+        comptime ARM_FPCR_FZ = Int64(1) << 24
         var fpcr = self.state.cast[DType.int64]()
         if enable:
             fpcr |= ARM_FPCR_FZ
@@ -429,7 +429,7 @@ struct FlushDenormals(Defaultable):
         if CompilationTarget.has_sse4():
             return (state & 0x8000) != 0 and (state & 0x40) != 0
 
-        alias ARM_FPCR_FZ = Int32(1) << 24
+        comptime ARM_FPCR_FZ = Int32(1) << 24
         return (state & ARM_FPCR_FZ) != 0
 
     @always_inline
@@ -480,10 +480,9 @@ fn nan[dtype: DType]() -> Scalar[dtype]:
     Returns:
         The NaN value of the given dtype.
     """
-    constrained[
-        dtype.is_floating_point(),
-        "Only floating point dtypes support NaN.",
-    ]()
+    __comptime_assert (
+        dtype.is_floating_point()
+    ), "Only floating point dtypes support NaN."
 
     @parameter
     if dtype is DType.float8_e4m3fn:
@@ -594,10 +593,9 @@ fn inf[dtype: DType]() -> Scalar[dtype]:
     Returns:
         The +inf value of the given dtype.
     """
-    constrained[
-        dtype.is_floating_point(),
-        "Only floating point dtypes support +inf.",
-    ]()
+    __comptime_assert (
+        dtype.is_floating_point()
+    ), "Only floating point dtypes support +inf."
 
     @parameter
     if dtype is DType.float8_e4m3fnuz:
@@ -651,10 +649,9 @@ fn neg_inf[dtype: DType]() -> Scalar[dtype]:
     Returns:
         The -inf value of the given dtype.
     """
-    constrained[
-        dtype.is_floating_point(),
-        "Only floating point dtypes support -inf.",
-    ]()
+    __comptime_assert (
+        dtype.is_floating_point()
+    ), "Only floating point dtypes support -inf."
 
     @parameter
     if dtype is DType.float8_e4m3fn:
@@ -976,10 +973,10 @@ fn nextafter[
     Returns:
         The `nextafter` of the inputs.
     """
-    constrained[
-        dtype in (DType.float32, DType.float64),
-        "nextafter only supports float32 and float64 types",
-    ]()
+    __comptime_assert dtype in (
+        DType.float32,
+        DType.float64,
+    ), "nextafter only supports float32 and float64 types"
 
     @always_inline("nodebug")
     @parameter
@@ -999,9 +996,9 @@ fn nextafter[
             arg0, arg1
         )
 
-    constrained[
-        dtype.is_floating_point(), "input dtype must be floating point"
-    ]()
+    __comptime_assert (
+        dtype.is_floating_point()
+    ), "input dtype must be floating point"
 
     @parameter
     if dtype is DType.float64:

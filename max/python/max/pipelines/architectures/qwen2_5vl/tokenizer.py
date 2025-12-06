@@ -13,10 +13,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import numpy as np
@@ -34,7 +36,11 @@ from max.pipelines.architectures.qwen2_5vl.nn.qwen_vl_utils import (
     fetch_image,
     process_vision_info,
 )
-from max.pipelines.lib import TextAndVisionTokenizer, max_tokens_to_generate
+from max.pipelines.lib import (
+    TextAndVisionTokenizer,
+    float32_to_bfloat16_as_uint16,
+    max_tokens_to_generate,
+)
 from max.pipelines.lib.config import PipelineConfig
 from max.support.image import find_contiguous_ranges
 from PIL import Image
@@ -52,7 +58,7 @@ def qwen2_5vl_image_preprocessing(
     patch_size: int = 14,
     temporal_patch_size: int = 2,
     merge_size: int = 2,
-) -> tuple[npt.NDArray[np.float32], tuple[int, int, int]]:
+) -> tuple[npt.NDArray[np.uint16], tuple[int, int, int]]:
     """Preprocess image for Qwen2.5VL vision model.
 
     This function assumes the image has already been processed by fetch_image
@@ -146,7 +152,9 @@ def qwen2_5vl_image_preprocessing(
     # Create grid dimensions (temporal, height, width)
     image_grid_thw = (grid_t, grid_h, grid_w)
 
-    return flatten_patches, image_grid_thw
+    flatten_patches_uint16 = float32_to_bfloat16_as_uint16(flatten_patches)
+
+    return flatten_patches_uint16, image_grid_thw
 
 
 class Qwen2_5VLImageProcessor:
@@ -178,7 +186,7 @@ class Qwen2_5VLImageProcessor:
         images: list[Image.Image] | Image.Image,
         return_tensors: str = "np",
         **kwargs,
-    ) -> tuple[dict[str, npt.NDArray[Any]], list[npt.NDArray[np.float32]]]:
+    ) -> tuple[dict[str, npt.NDArray[Any]], list[npt.NDArray[np.uint16]]]:
         """Process images for Qwen2.5VL.
 
         Args:
@@ -197,7 +205,7 @@ class Qwen2_5VLImageProcessor:
             images = [images]
 
         # Process each image
-        pixel_values_list: list[npt.NDArray[np.float32]] = []
+        pixel_values_list: list[npt.NDArray[np.uint16]] = []
         image_grid_thw_list: list[tuple[int, int, int]] = []
 
         for image in images:
@@ -226,7 +234,7 @@ class Qwen2_5VLImageProcessor:
         images: list[Image.Image] | Image.Image,
         return_tensors: str = "np",
         **kwargs,
-    ) -> tuple[dict[str, npt.NDArray[Any]], list[npt.NDArray[np.float32]]]:
+    ) -> tuple[dict[str, npt.NDArray[Any]], list[npt.NDArray[np.uint16]]]:
         """Alias for __call__ to match transformers interface."""
         return self.__call__(images, return_tensors=return_tensors, **kwargs)
 
@@ -340,14 +348,12 @@ class Qwen2_5VLTokenizer(TextAndVisionTokenizer):
                 raise ValueError(
                     "vision_config must be provided in HuggingFace Config"
                 )
+        self.executor: ThreadPoolExecutor | None = None
 
     def apply_chat_template(
         self, messages: list[TextGenerationRequestMessage]
     ) -> str:
         """Apply chat template using tokenizer directly (not processor)."""
-        # Use tokenizer directly instead of processor to avoid AutoProcessor dependency
-        # TODO(E2EOPT-621): Wrap message content more generically.
-        messages = self._wrap_str_message_content(messages)
         templated_message = self.delegate.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
@@ -362,6 +368,18 @@ class Qwen2_5VLTokenizer(TextAndVisionTokenizer):
         This method processes both text and vision inputs using the Qwen2.5VL
         processor and extracts the necessary components for model execution.
         """
+        if self.executor is None:
+            # lazy init the executor because the tokenizer gets pickled
+            # when launching the model worker, and the executor is not pickle-safe
+            self.executor = ThreadPoolExecutor(max_workers=2)
+
+        return await asyncio.get_running_loop().run_in_executor(
+            self.executor, self.new_context_blocking, request
+        )
+
+    def new_context_blocking(
+        self, request: TextGenerationRequest
+    ) -> Qwen2_5VLTextAndVisionContext:
         # Determine prompt
         prompt: str | Sequence[int]
         add_special_tokens = True
@@ -420,7 +438,7 @@ class Qwen2_5VLTokenizer(TextAndVisionTokenizer):
 
         # Step 2: Process images with custom image processor (if any)
         processed_images: dict[str, npt.NDArray[Any]] = {}
-        pixel_values_list: list[npt.NDArray[np.float32]] = []
+        pixel_values_list: list[npt.NDArray[np.uint16]] = []
 
         image_grid_thw = None
         if image_inputs:

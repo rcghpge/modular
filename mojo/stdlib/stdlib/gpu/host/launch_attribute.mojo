@@ -29,10 +29,6 @@ These structures enable optimizing GPU kernel performance by controlling executi
 at a granular level, similar to CUDA's native launch attribute system.
 """
 
-from memory import (
-    LegacyOpaquePointer as OpaquePointer,
-    LegacyUnsafePointer as UnsafePointer,
-)
 from sys import size_of
 
 from utils import StaticTuple
@@ -55,25 +51,25 @@ struct LaunchAttributeID(Identifiable, Writable):
     var _value: Int32
     """The underlying integer value representing the attribute type."""
 
-    alias IGNORE = Self(0)
+    comptime IGNORE = Self(0)
     """Ignored entry, for convenient composition."""
 
-    alias ACCESS_POLICY_WINDOW = Self(1)
+    comptime ACCESS_POLICY_WINDOW = Self(1)
     """Valid for streams, graph nodes, launches."""
 
-    alias COOPERATIVE = Self(2)
+    comptime COOPERATIVE = Self(2)
     """Valid for graph nodes, launches."""
 
-    alias SYNCHRONIZATION_POLICY = Self(3)
+    comptime SYNCHRONIZATION_POLICY = Self(3)
     """Valid for streams."""
 
-    alias CLUSTER_DIMENSION = Self(4)
+    comptime CLUSTER_DIMENSION = Self(4)
     """Valid for graph nodes, launches."""
 
-    alias CLUSTER_SCHEDULING_POLICY_PREFERENCE = Self(5)
+    comptime CLUSTER_SCHEDULING_POLICY_PREFERENCE = Self(5)
     """Valid for graph nodes, launches."""
 
-    alias PROGRAMMATIC_STREAM_SERIALIZATION = Self(6)
+    comptime PROGRAMMATIC_STREAM_SERIALIZATION = Self(6)
     """Valid for launches. Setting CUlaunchAttributeValue::
     programmaticStreamSerializationAllowed to non-0 signals that the kernel
     will use programmatic means to resolve its stream dependency, so that the
@@ -82,7 +78,7 @@ struct LaunchAttributeID(Identifiable, Writable):
     The dependent launches can choose to wait on the dependency using the
     programmatic sync."""
 
-    alias PROGRAMMATIC_EVENT = Self(7)
+    comptime PROGRAMMATIC_EVENT = Self(7)
     """Valid for launches. Set CUlaunchAttributeValue::programmaticEvent to
     record the event. Event recorded through this launch attribute is guaranteed
     to only trigger after all block in the associated kernel trigger the event.
@@ -101,16 +97,16 @@ struct LaunchAttributeID(Identifiable, Writable):
     interprocess or interop event. The event must disable timing (i.e. must be
     created with the CU_EVENT_DISABLE_TIMING flag set)."""
 
-    alias PRIORITY = Self(8)
+    comptime PRIORITY = Self(8)
     """Valid for streams, graph nodes, launches."""
 
-    alias MEM_SYNC_DOMAIN_MAP = Self(9)
+    comptime MEM_SYNC_DOMAIN_MAP = Self(9)
     """Valid for streams, graph nodes, launches."""
 
-    alias MEM_SYNC_DOMAIN = Self(10)
+    comptime MEM_SYNC_DOMAIN = Self(10)
     """Valid for streams, graph nodes, launches."""
 
-    alias LAUNCH_COMPLETION_EVENT = Self(12)
+    comptime LAUNCH_COMPLETION_EVENT = Self(12)
     """Valid for launches. Set CUlaunchAttributeValue::launchCompletionEvent to
     record the event. Nominally, the event is triggered once all blocks of the
     kernel have begun execution. Currently this is a best effort. If a kernel
@@ -126,7 +122,7 @@ struct LaunchAttributeID(Identifiable, Writable):
     event. The event must disable timing (i.e. must be created with the
     CU_EVENT_DISABLE_TIMING flag set)."""
 
-    alias DEVICE_UPDATABLE_KERNEL_NODE = Self(13)
+    comptime DEVICE_UPDATABLE_KERNEL_NODE = Self(13)
     """Valid for graph nodes, launches. This attribute is graphs-only,
     and passing it to a launch in a non-capturing stream will result in an
     error. CUlaunchAttributeValue::deviceUpdatableKernelNode::deviceUpdatable
@@ -152,7 +148,7 @@ struct LaunchAttributeID(Identifiable, Writable):
     updates are made to the device-updatable nodes, the graph must be uploaded
     before it is launched again."""
 
-    alias PREFERRED_SHARED_MEMORY_CARVEOUT = Self(14)
+    comptime PREFERRED_SHARED_MEMORY_CARVEOUT = Self(14)
     """Valid for launches. On devices where the L1 cache and shared memory use
     the same hardware resources, setting CUlaunchAttributeValue::sharedMemCarveout
     to a percentage between 0-100 signals the CUDA driver to set the shared
@@ -234,7 +230,7 @@ struct LaunchAttributeValue(Defaultable):
         defined in the CUDA Driver API's CUlaunchAttributeValue.
     """
 
-    alias _storage_type = StaticTuple[UInt8, 64]
+    comptime _storage_type = StaticTuple[UInt8, 64]
     var _storage: Self._storage_type
     """Internal storage for the attribute value, represented as a fixed-size byte array."""
 
@@ -288,13 +284,13 @@ struct AccessProperty(Identifiable, Writable):
     var _value: Int32
     """The underlying integer value representing the access property."""
 
-    alias NORMAL = Self(0)
+    comptime NORMAL = Self(0)
     """Normal cache persistence with default caching behavior."""
 
-    alias STREAMING = Self(1)
+    comptime STREAMING = Self(1)
     """Streaming access is less likely to persist in cache, optimized for single-use data."""
 
-    alias PERSISTING = Self(2)
+    comptime PERSISTING = Self(2)
     """Persisting access is more likely to persist in cache, optimized for reused data."""
 
     @always_inline("nodebug")
@@ -357,7 +353,7 @@ struct AccessProperty(Identifiable, Writable):
 
 @fieldwise_init
 @register_passable("trivial")
-struct LaunchAttribute(Defaultable, ImplicitlyCopyable, Movable):
+struct LaunchAttribute(Defaultable, ImplicitlyCopyable):
     """Represents a complete launch attribute with ID and value.
 
     This struct combines a `LaunchAttributeID` and `LaunchAttributeValue` to form
@@ -439,7 +435,7 @@ struct AccessPolicyWindow(Defaultable, Writable):
         The CUDA driver may align the `base_ptr` and restrict the maximum size.
     """
 
-    var base_ptr: OpaquePointer
+    var base_ptr: OpaquePointer[MutAnyOrigin]
     """Starting address of the access policy window. Driver may align it."""
 
     var num_bytes: Int
@@ -459,7 +455,7 @@ struct AccessPolicyWindow(Defaultable, Writable):
 
     fn __init__(out self):
         """Initializes a new AccessPolicyWindow with default values."""
-        self.base_ptr = OpaquePointer()
+        self.base_ptr = {}
         self.num_bytes = 0
         self.hit_ratio = 0
         self.hit_prop = AccessProperty.NORMAL
@@ -470,7 +466,7 @@ struct AccessPolicyWindow(Defaultable, Writable):
     ](
         out self,
         *,
-        base_ptr: UnsafePointer[T, **_],
+        base_ptr: UnsafePointer[T, MutAnyOrigin, **_],
         count: Int,
         hit_ratio: Float32,
         hit_prop: AccessProperty = AccessProperty.NORMAL,

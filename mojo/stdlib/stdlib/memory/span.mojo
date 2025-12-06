@@ -19,7 +19,7 @@ You can import these APIs from the `memory` module. For example:
 from memory import Span
 ```
 """
-
+from builtin.builtin_slice import ContiguousSlice
 from builtin._location import __call_location
 from bit._mask import splat
 from collections._index_normalization import normalize_index
@@ -34,10 +34,10 @@ from compile import get_type_name
 @fieldwise_init
 struct _SpanIter[
     mut: Bool, //,
-    T: Copyable & Movable,
+    T: Copyable,
     origin: Origin[mut],
     forward: Bool = True,
-](ImplicitlyCopyable, Movable):
+](ImplicitlyCopyable, Iterable, Iterator):
     """Iterator for Span.
 
     Parameters:
@@ -47,11 +47,16 @@ struct _SpanIter[
         forward: The iteration direction. False is backwards.
     """
 
+    comptime IteratorType[
+        iterable_mut: Bool, //, iterable_origin: Origin[iterable_mut]
+    ]: Iterator = Self
+    comptime Element = Self.T
+
     var index: Int
     var src: Span[Self.T, Self.origin]
 
     @always_inline
-    fn __iter__(self) -> Self:
+    fn __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
         return self.copy()
 
     @always_inline
@@ -73,10 +78,19 @@ struct _SpanIter[
             self.index -= 1
             return self.src[self.index]
 
+    @always_inline
+    fn __next__(mut self) -> Self.T:
+        return self.__next_ref__().copy()
+
 
 @register_passable("trivial")
-struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
-    Boolable, Defaultable, DevicePassable, ImplicitlyCopyable, Movable, Sized
+struct Span[mut: Bool, //, T: Copyable, origin: Origin[mut]](
+    Boolable,
+    Defaultable,
+    DevicePassable,
+    ImplicitlyCopyable,
+    Iterable,
+    Sized,
 ):
     """A non-owning view of contiguous data.
 
@@ -95,6 +109,9 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
         Self.T,
         Self.origin,
     ]
+    comptime IteratorType[
+        iterable_mut: Bool, //, iterable_origin: Origin[iterable_mut]
+    ]: Iterator = _SpanIter[Self.T, Self.origin]
     """The UnsafePointer type that corresponds to this `Span`."""
     # Fields
     var _data: Self.UnsafePointerType
@@ -222,7 +239,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
         return self._data[normalized_idx]
 
     @always_inline
-    fn __getitem__(self, slc: Slice) -> Self:
+    fn __getitem__(self, slc: ContiguousSlice) -> Self:
         """Get a new span from a slice of the current span.
 
         Args:
@@ -235,21 +252,12 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
             This function allocates when the step is negative, to avoid a memory
             leak, take ownership of the value.
         """
-        var start, end, step = slc.indices(len(self))
+        var start, end = slc.indices(len(self))
 
-        # TODO: Introduce a new slice type that just has a start+end but no
-        # step.  Mojo supports slice type inference that can express this in the
-        # static type system instead of debug_assert.
-        debug_assert(step == 1, "Slice step must be 1")
-
-        return Self(
-            ptr=(self._data + start), length=len(range(start, end, step))
-        )
+        return Self(ptr=(self._data + start), length=end - start)
 
     @always_inline
-    fn __iter__(
-        self,
-    ) -> _SpanIter[Self.T, Self.origin,]:
+    fn __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
         """Get an iterator over the elements of the `Span`.
 
         Returns:
@@ -296,14 +304,14 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
             True if the value is contained in the list, False otherwise.
         """
 
-        alias widths = InlineArray[Int, 6](256, 128, 64, 32, 16, 8)
+        comptime widths = InlineArray[Int, 6](256, 128, 64, 32, 16, 8)
         var ptr = self.unsafe_ptr()
         var length = len(self)
         var processed = 0
 
         @parameter
         for i in range(len(widths)):
-            alias width = widths[i]
+            comptime width = widths[i]
 
             @parameter
             if simd_width_of[dtype]() >= width:
@@ -318,9 +326,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
         return False
 
     @no_inline
-    fn __str__[
-        U: Representable & Copyable & Movable, //
-    ](self: Span[U, *_]) -> String:
+    fn __str__[U: Representable & Copyable, //](self: Span[U, *_]) -> String:
         """Returns a string representation of a `Span`.
 
         Parameters:
@@ -352,7 +358,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
 
     @no_inline
     fn write_to[
-        U: Representable & Copyable & Movable, //
+        U: Representable & Copyable, //
     ](self: Span[U, *_], mut writer: Some[Writer]):
         """Write `my_span.__str__()` to a `Writer`.
 
@@ -371,9 +377,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
         writer.write("]")
 
     @no_inline
-    fn __repr__[
-        U: Representable & Copyable & Movable, //
-    ](self: Span[U, *_]) -> String:
+    fn __repr__[U: Representable & Copyable, //](self: Span[U, *_]) -> String:
         """Returns a string representation of a `Span`.
 
         Parameters:
@@ -490,13 +494,13 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
     # accesses to the origin.
     @__unsafe_disable_nested_origin_exclusivity
     fn __eq__[
-        _T: Equatable & Copyable & Movable, //,
+        _T: Equatable & Copyable, //,
     ](self: Span[_T, Self.origin], rhs: Span[_T, _],) -> Bool:
         """Verify if span is equal to another span.
 
         Parameters:
             _T: The type of the elements must implement the
-              traits `Equatable`, `Copyable` and `Movable`.
+              traits `Equatable`, `Copyable`.
 
         Args:
             rhs: The span to compare against.
@@ -519,13 +523,13 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
 
     @always_inline
     fn __ne__[
-        _T: Equatable & Copyable & Movable, //
+        _T: Equatable & Copyable, //
     ](self: Span[_T, Self.origin], rhs: Span[_T]) -> Bool:
         """Verify if span is not equal to another span.
 
         Parameters:
             _T: The type of the elements in the span. Must implement the
-              traits `Equatable`, `Copyable` and `Movable`.
+              traits `Equatable`, `Copyable`.
 
         Args:
             rhs: The span to compare against.
@@ -633,7 +637,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
             O: The origin of the `Span`.
         """
 
-        alias widths = (256, 128, 64, 32, 16, 8, 4, 2)
+        comptime widths = (256, 128, 64, 32, 16, 8, 4, 2)
         var ptr = self.unsafe_ptr()
         var length = len(self)
         var middle = length // 2
@@ -642,7 +646,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
 
         @parameter
         for i in range(len(widths)):
-            alias w = widths[i]
+            comptime w = widths[i]
 
             @parameter
             if simd_width_of[dtype]() >= w:
@@ -673,14 +677,14 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
             func: The function to evaluate.
         """
 
-        alias widths = (256, 128, 64, 32, 16, 8, 4)
+        comptime widths = (256, 128, 64, 32, 16, 8, 4)
         var ptr = self.unsafe_ptr()
         var length = len(self)
         var processed = 0
 
         @parameter
         for i in range(len(widths)):
-            alias w = widths[i]
+            comptime w = widths[i]
 
             @parameter
             if simd_width_of[dtype]() >= w:
@@ -709,14 +713,14 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
             cond: The condition to apply the function.
         """
 
-        alias widths = (256, 128, 64, 32, 16, 8, 4)
+        comptime widths = (256, 128, 64, 32, 16, 8, 4)
         var ptr = self.unsafe_ptr()
         var length = len(self)
         var processed = 0
 
         @parameter
         for i in range(len(widths)):
-            alias w = widths[i]
+            comptime w = widths[i]
 
             @parameter
             if simd_width_of[dtype]() >= w:
@@ -751,8 +755,9 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
         var countv = SIMD[DType.int, simdwidth](0)
         var count = Scalar[DType.int](0)
 
-        @parameter
-        fn do_count[width: Int](idx: Int):
+        fn do_count[
+            width: Int
+        ](idx: Int) unified {mut count, mut countv, read ptr}:
             var vec = func(ptr.load[width=width](idx)).cast[DType.int]()
 
             @parameter
@@ -761,7 +766,7 @@ struct Span[mut: Bool, //, T: Copyable & Movable, origin: Origin[mut]](
             else:
                 countv += rebind[type_of(countv)](vec)
 
-        vectorize[do_count, simdwidth](length)
+        vectorize[simdwidth](length, do_count)
 
         return UInt(countv.reduce_add() + count)
 

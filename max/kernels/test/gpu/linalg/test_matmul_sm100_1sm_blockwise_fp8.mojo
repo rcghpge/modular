@@ -20,9 +20,8 @@ from buffer.buffer import NDBuffer
 from buffer.dimlist import DimList
 from gpu.host import DeviceContext
 from gpu.host.nvidia.tma import TensorMapSwizzle
+from memory import LegacyUnsafePointer as UnsafePointer
 from internal_utils import (
-    DeviceNDBuffer,
-    HostNDBuffer,
     assert_almost_equal,
     assert_with_measure,
     random,
@@ -74,7 +73,7 @@ fn test_blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
     var N = n.value
     var K = k.value
 
-    alias BLOCK_SCALE_K = 128
+    comptime BLOCK_SCALE_K = 128
 
     if M * size_of[DType.float32]() % 16 != 0:
         raise Error("TMA expects M to be divisible by 16 bytes")
@@ -111,21 +110,21 @@ fn test_blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
             sep="",
         )
 
-    alias static_a_shape = DimList(m.dim, k.dim)
-    alias static_b_shape = DimList(n.dim, k.dim) if transpose_b else DimList(
+    comptime static_a_shape = DimList(m.dim, k.dim)
+    comptime static_b_shape = DimList(n.dim, k.dim) if transpose_b else DimList(
         k.dim, n.dim
     )
-    alias static_c_shape = DimList(m.dim, n.dim)
+    comptime static_c_shape = DimList(m.dim, n.dim)
     var dynamic_a_shape = DimList(m.value, k.value)
     var dynamic_b_shape = DimList(n.value, k.value) if transpose_b else DimList(
         k.value, n.value
     )
     var dynamic_c_shape = DimList(m.value, n.value)
 
-    alias static_a_scales_shape = DimList(
+    comptime static_a_scales_shape = DimList(
         ceildiv(Int(k.dim), BLOCK_SCALE_K), m.dim
     )
-    alias static_b_scales_shape = DimList(
+    comptime static_b_scales_shape = DimList(
         ceildiv(Int(n.dim), BLOCK_SCALE_K), ceildiv(Int(k.dim), BLOCK_SCALE_K)
     )
 
@@ -136,83 +135,111 @@ fn test_blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
         ceildiv(n.value, BLOCK_SCALE_K), ceildiv(k.value, BLOCK_SCALE_K)
     )
 
-    var a_host = HostNDBuffer[a_type, 2, static_a_shape](dynamic_a_shape)
-    var b_host = HostNDBuffer[b_type, 2, static_b_shape](dynamic_b_shape)
-    var c_host = HostNDBuffer[c_type, 2, static_c_shape](dynamic_c_shape)
-    var c_host_ref = HostNDBuffer[c_type, 2, static_c_shape](dynamic_c_shape)
-
-    var a_device = DeviceNDBuffer[a_type, 2, static_a_shape](
-        dynamic_a_shape, ctx=ctx
-    )
-    var b_device = DeviceNDBuffer[b_type, 2, static_b_shape](
-        dynamic_b_shape, ctx=ctx
-    )
-    var c_device = DeviceNDBuffer[c_type, 2, static_c_shape](
-        dynamic_c_shape, ctx=ctx
-    )
-    var c_device_ref = DeviceNDBuffer[c_type, 2, static_c_shape](
-        dynamic_c_shape, ctx=ctx
+    var a_size = m.value * k.value
+    var b_size = n.value * k.value if transpose_b else k.value * n.value
+    var c_size = m.value * n.value
+    var a_scales_size = ceildiv(k.value, BLOCK_SCALE_K) * m.value
+    var b_scales_size = ceildiv(n.value, BLOCK_SCALE_K) * ceildiv(
+        k.value, BLOCK_SCALE_K
     )
 
-    var a_scales_host = HostNDBuffer[scales_type, 2, static_a_scales_shape](
-        dynamic_a_scales_shape
+    var a_host_ptr = UnsafePointer[Scalar[a_type]].alloc(a_size)
+    var a_host = NDBuffer[a_type, 2, _, static_a_shape](
+        a_host_ptr, dynamic_a_shape
     )
-    var b_scales_host = HostNDBuffer[scales_type, 2, static_b_scales_shape](
-        dynamic_b_scales_shape
+    var b_host_ptr = UnsafePointer[Scalar[b_type]].alloc(b_size)
+    var b_host = NDBuffer[b_type, 2, _, static_b_shape](
+        b_host_ptr, dynamic_b_shape
+    )
+    var c_host_ptr = UnsafePointer[Scalar[c_type]].alloc(c_size)
+    var c_host = NDBuffer[c_type, 2, _, static_c_shape](
+        c_host_ptr, dynamic_c_shape
+    )
+    var c_host_ref_ptr = UnsafePointer[Scalar[c_type]].alloc(c_size)
+    var c_host_ref = NDBuffer[c_type, 2, _, static_c_shape](
+        c_host_ref_ptr, dynamic_c_shape
     )
 
-    var a_scales_device = DeviceNDBuffer[scales_type, 2, static_a_scales_shape](
-        dynamic_a_scales_shape, ctx=ctx
+    var a_device = ctx.enqueue_create_buffer[a_type](a_size)
+    var a_device_nd = NDBuffer[a_type, 2, _, static_a_shape](
+        a_device.unsafe_ptr(), dynamic_a_shape
     )
-    var b_scales_device = DeviceNDBuffer[scales_type, 2, static_b_scales_shape](
-        dynamic_b_scales_shape, ctx=ctx
+    var b_device = ctx.enqueue_create_buffer[b_type](b_size)
+    var b_device_nd = NDBuffer[b_type, 2, _, static_b_shape](
+        b_device.unsafe_ptr(), dynamic_b_shape
+    )
+    var c_device = ctx.enqueue_create_buffer[c_type](c_size)
+    var c_device_nd = NDBuffer[c_type, 2, _, static_c_shape](
+        c_device.unsafe_ptr(), dynamic_c_shape
+    )
+    var c_device_ref = ctx.enqueue_create_buffer[c_type](c_size)
+    var c_device_ref_nd = NDBuffer[c_type, 2, _, static_c_shape](
+        c_device_ref.unsafe_ptr(), dynamic_c_shape
     )
 
-    zero(c_host.tensor)
-    zero(c_host_ref.tensor)
+    var a_scales_host_ptr = UnsafePointer[Scalar[scales_type]].alloc(
+        a_scales_size
+    )
+    var a_scales_host = NDBuffer[scales_type, 2, _, static_a_scales_shape](
+        a_scales_host_ptr, dynamic_a_scales_shape
+    )
+    var b_scales_host_ptr = UnsafePointer[Scalar[scales_type]].alloc(
+        b_scales_size
+    )
+    var b_scales_host = NDBuffer[scales_type, 2, _, static_b_scales_shape](
+        b_scales_host_ptr, dynamic_b_scales_shape
+    )
+
+    var a_scales_device = ctx.enqueue_create_buffer[scales_type](a_scales_size)
+    var a_scales_device_nd = NDBuffer[scales_type, 2, _, static_a_scales_shape](
+        a_scales_device.unsafe_ptr(), dynamic_a_scales_shape
+    )
+    var b_scales_device = ctx.enqueue_create_buffer[scales_type](b_scales_size)
+    var b_scales_device_nd = NDBuffer[scales_type, 2, _, static_b_scales_shape](
+        b_scales_device.unsafe_ptr(), dynamic_b_scales_shape
+    )
+
+    zero(c_host)
+    zero(c_host_ref)
 
     # Initialize matmul operands
     if simple_init():
-        var at = a_host.tensor
-        var bt = b_host.tensor
         for m in range(M):
             for k in range(K):
-                at[m, k] = Scalar[a_type](1.0)
+                a_host[m, k] = Scalar[a_type](1.0)
         for n in range(N):
             for k in range(K):
-                bt[n, k] = Scalar[b_type](1.0)
+                b_host[n, k] = Scalar[b_type](1.0)
 
         for m in range(M):
             for k in range(K):
-                a_scales_host.tensor[k // BLOCK_SCALE_K, m] = Scalar[
+                a_scales_host[k // BLOCK_SCALE_K, m] = Scalar[scales_type](0.5)
+        for n in range(N):
+            for k in range(K):
+                b_scales_host[n // BLOCK_SCALE_K, k // BLOCK_SCALE_K] = Scalar[
                     scales_type
                 ](0.5)
-        for n in range(N):
-            for k in range(K):
-                b_scales_host.tensor[
-                    n // BLOCK_SCALE_K, k // BLOCK_SCALE_K
-                ] = Scalar[scales_type](0.5)
 
     else:
-        random(a_host.tensor)
-        random(b_host.tensor)
-        random(a_scales_host.tensor)
-        random(b_scales_host.tensor)
+        random(a_host)
+        random(b_host)
+        random(a_scales_host)
+        random(b_scales_host)
 
     # Move operands to the Device
-    ctx.enqueue_copy(a_device.buffer, a_host.tensor.data)
-    ctx.enqueue_copy(b_device.buffer, b_host.tensor.data)
+    ctx.enqueue_copy(a_device, a_host_ptr)
+    ctx.enqueue_copy(b_device, b_host_ptr)
 
-    ctx.enqueue_copy(a_scales_device.buffer, a_scales_host.tensor.data)
-    ctx.enqueue_copy(b_scales_device.buffer, b_scales_host.tensor.data)
+    ctx.enqueue_copy(a_scales_device, a_scales_host_ptr)
+    ctx.enqueue_copy(b_scales_device, b_scales_host_ptr)
 
-    var a = from_ndbuffer_row_major(a_device.tensor)
-    var b = from_ndbuffer_row_major(b_device.tensor)
-    var c = from_ndbuffer_row_major(c_device.tensor)
-    var a_scales = from_ndbuffer_row_major(a_scales_device.tensor)
-    var b_scales = from_ndbuffer_row_major(b_scales_device.tensor)
+    var a = from_ndbuffer_row_major(a_device_nd)
+    var b = from_ndbuffer_row_major(b_device_nd)
+    var c = from_ndbuffer_row_major(c_device_nd)
+    var a_scales = from_ndbuffer_row_major(a_scales_device_nd)
+    var b_scales = from_ndbuffer_row_major(b_scales_device_nd)
 
-    alias matmul_config = MatmulConfig[a_type, b_type, c_type, transpose_b](
+    comptime matmul_config = MatmulConfig[a_type, b_type, c_type, transpose_b](
         cluster_shape=Index(
             cluster_shape[0], cluster_shape[1], cluster_shape[2]
         ),
@@ -237,13 +264,13 @@ fn test_blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
 
     @parameter
     if benchmark:
-        alias num_runs = 100
-        alias num_warmup = 100
+        comptime num_runs = 100
+        comptime num_warmup = 100
 
         @always_inline
         @parameter
         fn run_kernel(ctx: DeviceContext) raises:
-            alias matmul_config = MatmulConfig[
+            comptime matmul_config = MatmulConfig[
                 a_type, b_type, c_type, transpose_b
             ](
                 cluster_shape=Index(
@@ -291,43 +318,44 @@ fn test_blackwell_matmul_tma_umma_warp_specialized_blockwise_fp8[
             transpose_b=transpose_b,
             scales_granularity_mnk = Index(1, BLOCK_SCALE_K, BLOCK_SCALE_K),
         ](
-            c_device_ref.tensor,
-            a_device.tensor,
-            b_device.tensor,
-            a_scales_device.tensor,
-            b_scales_device.tensor,
+            c_device_ref_nd,
+            a_device_nd,
+            b_device_nd,
+            a_scales_device_nd,
+            b_scales_device_nd,
             ctx,
         )
 
         ctx.synchronize()
 
-        ctx.enqueue_copy(c_host.tensor.data, c_device.buffer)
-        ctx.enqueue_copy(c_host_ref.tensor.data, c_device_ref.buffer)
+        ctx.enqueue_copy(c_host_ptr, c_device)
+        ctx.enqueue_copy(c_host_ref_ptr, c_device_ref)
         ctx.synchronize()
 
         assert_with_measure[relative_difference](
-            c_host.tensor, c_host_ref.tensor, threshold=0.001
+            c_host, c_host_ref, threshold=0.001
         )
 
         assert_almost_equal(
-            c_host.tensor,
-            c_host_ref.tensor,
+            c_host,
+            c_host_ref,
             atol=1e-2,
             rtol=1e-2,
         )
 
-    _ = c_device
-    _ = c_device_ref
-    _ = a_host
-    _ = b_host
-    _ = c_host_ref
-    _ = c_host
-    _ = a_device
-    _ = b_device
-    _ = a_scales_device
-    _ = b_scales_device
-    _ = a_scales_host
-    _ = b_scales_host
+    # Cleanup
+    a_host_ptr.free()
+    b_host_ptr.free()
+    c_host_ptr.free()
+    c_host_ref_ptr.free()
+    a_scales_host_ptr.free()
+    b_scales_host_ptr.free()
+    _ = a_device^
+    _ = b_device^
+    _ = c_device^
+    _ = c_device_ref^
+    _ = a_scales_device^
+    _ = b_scales_device^
 
     return tflops_rounded
 
@@ -356,13 +384,13 @@ fn make_shapes_dict() -> Dict[Int, Tuple[Int, Int], default_comp_time_hasher]:
 
 
 fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
-    alias dtype = DType.float8_e4m3fn
-    alias swizzle = TensorMapSwizzle.SWIZZLE_128B
-    alias BK = (swizzle.bytes() // size_of[dtype]())
-    alias MMA_K = 32
+    comptime dtype = DType.float8_e4m3fn
+    comptime swizzle = TensorMapSwizzle.SWIZZLE_128B
+    comptime BK = (swizzle.bytes() // size_of[dtype]())
+    comptime MMA_K = 32
 
-    alias c_type = DType.bfloat16
-    alias shapes_dict = make_shapes_dict()
+    comptime c_type = DType.bfloat16
+    comptime shapes_dict = make_shapes_dict()
 
     print("Benchmarking warp-specialized blockwise fp8 (fp32 scalers)")
     print("============================================")
@@ -370,7 +398,7 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
 
     @parameter
     for i in range(len(shapes_dict)):
-        alias shape_nk = get_shapes_dict(i, shapes_dict)
+        comptime shape_nk = get_shapes_dict(i, shapes_dict)
 
         for m in [128, 4096]:
             var max_flops: Float64 = 0.0
@@ -400,10 +428,10 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
                     24,
                     32,
                 ]:
-                    alias block_tile_shape = Index(
+                    comptime block_tile_shape = Index(
                         64 * mma_m_scale, 8 * mma_n_scale, BK
                     )
-                    alias umma_shape = Index(
+                    comptime umma_shape = Index(
                         64 * mma_m_scale, 8 * mma_n_scale, MMA_K
                     )
 
@@ -443,11 +471,11 @@ def main():
             benchmark_blackwell_matmul(ctx)
             return
 
-        alias swizzle = TensorMapSwizzle.SWIZZLE_128B
-        alias in_dtype = DType.float8_e4m3fn
-        alias BK = (swizzle.bytes() // size_of[in_dtype]())
-        alias MMA_K = 32
-        alias out_dtype = DType.bfloat16
+        comptime swizzle = TensorMapSwizzle.SWIZZLE_128B
+        comptime in_dtype = DType.float8_e4m3fn
+        comptime BK = (swizzle.bytes() // size_of[in_dtype]())
+        comptime MMA_K = 32
+        comptime out_dtype = DType.bfloat16
 
         @parameter
         for mma_m_scale in range(1, 3):
@@ -474,10 +502,10 @@ def main():
                 24,
                 32,
             ]:
-                alias block_tile_shape = Index(
+                comptime block_tile_shape = Index(
                     64 * mma_m_scale, 8 * mma_n_scale, BK
                 )
-                alias umma_shape = Index(
+                comptime umma_shape = Index(
                     64 * mma_m_scale, 8 * mma_n_scale, MMA_K
                 )
 

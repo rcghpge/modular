@@ -1,13 +1,14 @@
 load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
-load("@protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("//bazel:api.bzl", "modular_py_library", "requirement")
+
+package(default_visibility = ["//max:consumers"])
 
 modular_py_library(
     name = "kvcache_agent",
     srcs = [
         "__init__.py",
-        "dispatcher_factory.py",
         "dispatcher_v2.py",
         "kvcache_agent.py",
     ],

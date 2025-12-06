@@ -173,10 +173,15 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
 
     def prepare_initial_token_inputs(
         self,
-        context_batch: Sequence[TextAndVisionContext],
+        replica_batches: Sequence[Sequence[TextAndVisionContext]],
         kv_cache_inputs: KVCacheInputs | None = None,
         return_n_logits: int = 1,
     ) -> PixtralInputs:
+        if len(replica_batches) > 1:
+            raise ValueError("Model does not support DP>1")
+
+        context_batch = replica_batches[0]
+
         # Input row offset type: ["input_row_offsets_len"], UInt32
         input_row_offsets = Tensor.from_numpy(
             np.cumsum(
@@ -325,12 +330,8 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
             max_seq_len=self.calculate_max_seq_len(
                 self.pipeline_config, huggingface_config=self.huggingface_config
             ),
-            num_layers=self.get_num_layers(
-                huggingface_config=self.huggingface_config
-            ),
             devices=self.devices,
             available_cache_memory=available_cache_memory,
-            page_size=self.kv_cache_config.kv_cache_page_size,
             session=session,
         )
 
@@ -356,11 +357,7 @@ class PixtralModel(PipelineModel[TextAndVisionContext]):
             max_seq_len=cls.calculate_max_seq_len(
                 pipeline_config, huggingface_config=huggingface_config
             ),
-            num_layers=cls.get_num_layers(
-                huggingface_config=huggingface_config
-            ),
             available_cache_memory=available_cache_memory,
-            devices=devices,
         )
 
     def _get_state_dict(

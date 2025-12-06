@@ -204,6 +204,9 @@ class PipelineConfig(MAXConfig):
     found to cause more preemptions.
     """
 
+    use_module_v3: bool = False
+    """Whether to use the ModuleV3 architecture if it exists."""
+
     _model_config: MAXModelConfig = field(default_factory=MAXModelConfig)
     """The model config."""
 
@@ -697,7 +700,8 @@ class PipelineConfig(MAXConfig):
         # Validate that both the `draft_model` and target model `model_path` have the same
         # architecture
         draft_arch = PIPELINE_REGISTRY.retrieve_architecture(
-            huggingface_repo=self.draft_model_config.huggingface_model_repo
+            huggingface_repo=self.draft_model_config.huggingface_model_repo,
+            use_module_v3=self.use_module_v3,
         )
 
         if not draft_arch:
@@ -706,7 +710,8 @@ class PipelineConfig(MAXConfig):
             )
 
         target_arch = PIPELINE_REGISTRY.retrieve_architecture(
-            huggingface_repo=self.model_config.huggingface_model_repo
+            huggingface_repo=self.model_config.huggingface_model_repo,
+            use_module_v3=self.use_module_v3,
         )
         if not target_arch:
             raise ValueError(
@@ -782,7 +787,8 @@ class PipelineConfig(MAXConfig):
         reason."""
         # Retrieve the architecture
         arch = PIPELINE_REGISTRY.retrieve_architecture(
-            huggingface_repo=model_config.huggingface_model_repo
+            huggingface_repo=model_config.huggingface_model_repo,
+            use_module_v3=self.use_module_v3,
         )
 
         # If nothing is provided, we should not update any more params.
@@ -858,7 +864,10 @@ class PipelineConfig(MAXConfig):
         arch.pipeline_model.finalize_pipeline_config(self)
 
         MemoryEstimator.estimate_memory_footprint(
-            self, arch.pipeline_model, model_config, devices
+            self,
+            arch.pipeline_model,
+            model_config,
+            devices,
         )
 
         if clamped_max_seq_len := MemoryEstimator.max_supported_sequence_length(
@@ -871,6 +880,18 @@ class PipelineConfig(MAXConfig):
                     f"Clamping max_length from {self.max_length} to {clamped_max_seq_len} due to capacity of KV Cache"
                 )
                 self.max_length = clamped_max_seq_len
+
+        # Validate whether the architecture requires a max batch context length to be specified.
+        # This needs to be done after max_length is resolved.
+        if (
+            arch.requires_max_batch_context_length
+            and self.max_batch_context_length is None
+        ):
+            logger.warning(
+                f"Architecture '{arch.name}' requires max-batch-context-length to be specified but found None. "
+                f"Defaulting to the max sequence length of the model: {self.max_length}"
+            )
+            self.max_batch_context_length = self.max_length
 
     def __getstate__(self) -> dict[str, Any]:
         """Override `__getstate__` to exclude the Hugging Face config."""
@@ -895,7 +916,8 @@ class PipelineConfig(MAXConfig):
 
         # Retrieve architecture - this should always exist after config resolution
         arch = PIPELINE_REGISTRY.retrieve_architecture(
-            huggingface_repo=self.model_config.huggingface_model_repo
+            huggingface_repo=self.model_config.huggingface_model_repo,
+            use_module_v3=self.use_module_v3,
         )
 
         if arch is None:
@@ -1038,7 +1060,8 @@ class PipelineConfig(MAXConfig):
         """
         # Retrieve architecture - this should always exist after config resolution
         arch = PIPELINE_REGISTRY.retrieve_architecture(
-            huggingface_repo=self.model_config.huggingface_model_repo
+            huggingface_repo=self.model_config.huggingface_model_repo,
+            use_module_v3=self.use_module_v3,
         )
 
         if arch is None:
@@ -1049,7 +1072,8 @@ class PipelineConfig(MAXConfig):
 
         # Get pipeline task
         arch = PIPELINE_REGISTRY.retrieve_architecture(
-            huggingface_repo=self.model_config.huggingface_model_repo
+            huggingface_repo=self.model_config.huggingface_model_repo,
+            use_module_v3=self.use_module_v3,
         )
         if arch is None:
             raise ValueError(

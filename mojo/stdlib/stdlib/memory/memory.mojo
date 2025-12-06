@@ -25,7 +25,9 @@ from math import iota
 from sys import _libc as libc
 from sys import (
     align_of,
+    codegen_unreachable,
     external_call,
+    env_get_string,
     is_compile_time,
     is_gpu,
     llvm_intrinsic,
@@ -110,8 +112,7 @@ fn _memcmp_impl[
     s1: UnsafePointer[mut=False, Scalar[dtype], **_],
     s2: UnsafePointer[mut=False, Scalar[dtype], **_],
     count: Int,
-) -> Int:
-    constrained[dtype.is_integral(), "the input dtype must be integral"]()
+) -> Int where dtype.is_integral():
     if is_compile_time():
         return _memcmp_impl_unconstrained(s1, s2, count)
     else:
@@ -174,13 +175,12 @@ fn _memcpy_impl(
         n: The number of bytes to copy.
     """
 
-    @parameter
-    fn copy[width: Int](offset: Int):
+    fn copy[width: Int](offset: Int) unified {mut}:
         dest_data.store(offset, src_data.load[width=width](offset))
 
     @parameter
     if is_gpu():
-        vectorize[copy, simd_bit_width()](n)
+        vectorize[simd_bit_width()](n, copy)
 
         return
 
@@ -236,7 +236,7 @@ fn _memcpy_impl(
     #    return
 
     # Copy in 32-byte chunks.
-    vectorize[copy, 32](n)
+    vectorize[32](n, copy)
 
 
 @doc_private
@@ -296,12 +296,11 @@ fn memcpy[
 fn _memset_impl(
     ptr: UnsafePointer[mut=True, Byte, **_], value: Byte, count: Int
 ):
-    @parameter
-    fn fill[width: Int](offset: Int):
+    fn fill[width: Int](offset: Int) unified {mut}:
         ptr.store(offset, SIMD[DType.uint8, width](value))
 
-    alias simd_width = simd_width_of[Byte]()
-    vectorize[fill, simd_width](count)
+    comptime simd_width = simd_width_of[Byte]()
+    vectorize[simd_width](count, fill)
 
 
 @always_inline
@@ -350,11 +349,10 @@ fn memset_zero[
     if count > 128:
         return memset_zero(ptr, count)
 
-    @parameter
-    fn fill[width: Int](offset: Int):
+    fn fill[width: Int](offset: Int) unified {mut}:
         ptr.store(offset, SIMD[dtype, width](0))
 
-    vectorize[fill, simd_width_of[dtype](), size=count]()
+    vectorize[simd_width_of[dtype]()](count, fill)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -421,7 +419,7 @@ fn stack_allocation[
     if is_gpu():
         # On NVGPU, SHARED and CONSTANT address spaces lower to global memory.
 
-        alias global_name = name.value() if name else "_global_alloc"
+        comptime global_name = name.value() if name else "_global_alloc"
 
         @parameter
         if address_space == AddressSpace.SHARED:
@@ -494,6 +492,15 @@ fn _malloc[
 ):
     @parameter
     if is_gpu():
+        comptime enable_gpu_malloc = env_get_string[
+            "ENABLE_GPU_MALLOC", "true"
+        ]()
+        # no runtime allocation on GPU
+        codegen_unreachable[
+            enable_gpu_malloc != "true",
+            "runtime allocation on GPU not allowed",
+        ]()
+
         comptime U = UnsafePointer[
             NoneType,
             MutOrigin.external,

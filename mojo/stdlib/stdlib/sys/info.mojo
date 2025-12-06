@@ -83,7 +83,7 @@ struct CompilationTarget[value: _TargetType = _current_target()]:
                 String(msg, " this operation.", note_text),
             ]()
 
-        return os.abort[result]()
+        os.abort()
 
     @always_inline("nodebug")
     @staticmethod
@@ -370,7 +370,7 @@ struct CompilationTarget[value: _TargetType = _current_target()]:
 
 
 fn platform_map[
-    T: Copyable & Movable, //,
+    T: Copyable, //,
     operation: Optional[String] = None,
     *,
     linux: Optional[T] = None,
@@ -392,7 +392,7 @@ fn platform_map[
     Example:
 
     ```mojo
-    alias EDEADLK = platform_alias["EDEADLK", linux=35, macos=11]()
+    comptime EDEADLK = platform_alias["EDEADLK", linux=35, macos=11]()
     ```
     """
 
@@ -702,10 +702,9 @@ fn _is_amd_mi355x() -> Bool:
 
 @always_inline("nodebug")
 fn _cdna_version() -> Int:
-    constrained[
-        _is_amd_mi300x() or _is_amd_mi355x(),
-        "querying the cdna version is only supported on AMD hardware",
-    ]()
+    __comptime_assert (
+        _is_amd_mi300x() or _is_amd_mi355x()
+    ), "querying the cdna version is only supported on AMD hardware"
 
     @parameter
     if _is_amd_mi300x():
@@ -1100,19 +1099,18 @@ fn _macos_version() raises -> Tuple[Int, Int, Int]:
         The version triple of macOS.
     """
 
-    constrained[
-        CompilationTarget.is_macos(),
-        "the operating system must be macOS",
-    ]()
+    __comptime_assert (
+        CompilationTarget.is_macos()
+    ), "the operating system must be macOS"
 
-    alias INITIAL_CAPACITY = 32
+    comptime INITIAL_CAPACITY = 32
 
     # Overallocate the string.
     var buf_len = Int(INITIAL_CAPACITY)
     var osver = String(unsafe_uninit_length=buf_len)
 
     var err = external_call["sysctlbyname", Int32](
-        "kern.osproductversion".unsafe_cstr_ptr(),
+        "kern.osproductversion".as_c_string_slice().unsafe_ptr(),
         osver.unsafe_ptr(),
         Pointer(to=buf_len),
         OpaquePointer(),
@@ -1122,7 +1120,7 @@ fn _macos_version() raises -> Tuple[Int, Int, Int]:
         raise "Unable to query macOS version"
 
     # Truncate the string down to the actual length.
-    osver = osver[0:buf_len]
+    osver.resize(buf_len)
 
     var major = 0
     var minor = 0
@@ -1130,11 +1128,11 @@ fn _macos_version() raises -> Tuple[Int, Int, Int]:
 
     if "." in osver:
         major = Int(osver[: osver.find(".")])
-        osver = osver[osver.find(".") + 1 :]
+        osver = String(osver[osver.find(".") + 1 :])
 
     if "." in osver:
         minor = Int(osver[: osver.find(".")])
-        osver = osver[osver.find(".") + 1 :]
+        osver = String(osver[osver.find(".") + 1 :])
 
     if "." in osver:
         patch = Int(osver[: osver.find(".")])

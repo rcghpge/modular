@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "mojo_filecheck_test", "mojo_test")
 
+package(default_visibility = ["//max:consumers"])
+
 _EXTRA_CONSTRAINTS = {
     "test_cudnn_conv.mojo": ["//:nvidia_gpu"],
     "test_conv_transposed_cudnn.mojo": ["//:nvidia_gpu"],
@@ -16,10 +18,6 @@ _EXTRA_CONSTRAINTS = {
         "//conditions:default": [],
     }),
     "test_score_mod_mha.mojo": ["//:nvidia_gpu"],  # FIXME: KERN-1377
-    "test_gather_nd.mojo": select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2366
     "test_fused_qk_rope.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -60,15 +58,7 @@ _EXTRA_CONSTRAINTS = {
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2366
-    "test_concat.mojo": select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2366
     "test_gather_nd_oob.mojo": select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2366
-    "test_scatter_set_constant.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2366
@@ -108,10 +98,6 @@ _EXTRA_CONSTRAINTS = {
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2366
-    "test_pool_gpu.mojo": select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2435
     "test_padding_gpu.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -124,6 +110,10 @@ _EXTRA_CONSTRAINTS = {
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2673
+    "test_concat.mojo": select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),  # FIXME: MOCO-2941
 }
 
 _FILECHECK_TESTS = [
@@ -142,11 +132,11 @@ _FILECHECK_TESTS = [
         tags = ["gpu"],
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:internal_utils",
-            "@mojo//:linalg",
-            "@mojo//:nn",
+            "//max:internal_utils",
+            "//max:linalg",
+            "//max:nn",
+            "//max:testdata",
             "@mojo//:stdlib",
-            "@mojo//:testdata",
         ],
     )
     for src in _FILECHECK_TESTS
@@ -168,11 +158,11 @@ _FILECHECK_TESTS = [
         tags = ["gpu"],
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:internal_utils",
-            "@mojo//:linalg",
-            "@mojo//:nn",
+            "//max:internal_utils",
+            "//max:linalg",
+            "//max:nn",
+            "//max:testdata",
             "@mojo//:stdlib",
-            "@mojo//:testdata",
         ],
     )
     for src in glob(

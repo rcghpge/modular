@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "mojo_filecheck_test")
 
+package(default_visibility = ["//max:consumers"])
+
 [
     mojo_filecheck_test(
         name = src + ".test",
@@ -56,19 +58,24 @@ mojo_filecheck_test(
     tags = ["gpu"],
     target_compatible_with = ["//:amd_gpu"],
     deps = [
-        "@mojo//:linalg",
+        "//max:linalg",
         "@mojo//:stdlib",
     ],
 )
 
-mojo_filecheck_test(
-    name = "test_ue8m0_conversion.mojo.test",
-    srcs = ["test_ue8m0_conversion.mojo"],
-    tags = ["gpu"],
-    target_compatible_with = [
-        "//:b200_gpu",
-    ],
-    deps = [
-        "@mojo//:stdlib",
-    ],
-)
+[
+    mojo_filecheck_test(
+        name = src + ".test",
+        srcs = [src],
+        tags = ["gpu"],
+        target_compatible_with = ["//:b200_gpu"],
+        deps = [
+            "//max:quantization",
+            "@mojo//:stdlib",
+        ],
+    )
+    for src in [
+        "test_ue8m0_conversion.mojo",
+        "test_e2m1_conversion.mojo",
+    ]
+]

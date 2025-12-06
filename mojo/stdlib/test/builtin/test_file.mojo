@@ -149,7 +149,7 @@ def test_file_read_bytes_sequential_small():
     # Read in chunks of 10 bytes
     with open(temp_file, "r") as f:
         var total_read = 0
-        for i in range(10):
+        for _ in range(10):
             var chunk = f.read_bytes(10)
             assert_equal(len(chunk), 10)
             total_read += len(chunk)
@@ -708,6 +708,42 @@ def test_file_multiple_close():
         f.close()
     except e:
         assert_true(False, "Second close should not raise: " + String(e))
+
+
+def test_file_invalid_mode():
+    """Test that invalid file mode strings raise proper error."""
+    var temp_file = Path(gettempdir().value()) / "test_file_invalid_mode"
+
+    # Test various invalid mode strings
+    with assert_raises(contains="invalid mode:"):
+        _ = open(temp_file, "x")
+
+    with assert_raises(contains="invalid mode:"):
+        _ = open(temp_file, "rb")
+
+    with assert_raises(contains="invalid mode:"):
+        _ = open(temp_file, "w+")
+
+    with assert_raises(contains="invalid mode:"):
+        _ = open(temp_file, "")
+
+
+def test_file_read_nonexistent():
+    """Test that opening a non-existent file in read mode raises proper error.
+    """
+    var nonexistent_file = (
+        Path(gettempdir().value()) / "test_file_does_not_exist_12345"
+    )
+
+    # Make sure the file doesn't exist
+    try:
+        remove(nonexistent_file)
+    except:
+        pass
+
+    # Should raise error when file doesn't exist
+    with assert_raises(contains="No such file or directory"):
+        _ = open(nonexistent_file, "r")
 
 
 def main():

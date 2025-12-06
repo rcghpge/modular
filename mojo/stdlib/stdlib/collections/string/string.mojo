@@ -21,8 +21,8 @@ Related types:
 
 - [`StringSlice`](/mojo/stdlib/collections/string/string_slice/). A non-owning
   view of string data, which can be either mutable or immutable.
-- [`StaticString`](/mojo/stdlib/collections/string/string_slice/#aliases). An
-  alias for an immutable constant `StringSlice`.
+- [`StaticString`](/mojo/stdlib/collections/string/string_slice/#comptime-values).
+  A `comptime` type alias for an immutable constant `StringSlice`.
 - [`StringLiteral`](/mojo/stdlib/builtin/string_literal/StringLiteral/). A
   string literal. String literals are compile-time values. For use at runtime,
   you usually want wrap a `StringLiteral` in a `String` (for a mutable string)
@@ -83,12 +83,13 @@ from collections.string.string_slice import (
     _to_string_list,
     _unsafe_strlen,
 )
+from builtin.builtin_slice import ContiguousSlice
 from hashlib.hasher import Hasher
 from io.write import STACK_BUFFER_BYTES, _TotalWritableBytes, _WriteBufferStack
 from os import PathLike, abort
 from os.atomic import Atomic, Consistency, fence
 from sys import size_of, bit_width_of
-from sys.ffi import c_char
+from sys.ffi import c_char, CStringSlice
 from sys.info import is_32bit
 
 from bit import count_leading_zeros
@@ -734,7 +735,7 @@ struct String(
         var normalized_idx = normalize_index["String"](idx, len(self))
         return StringSlice(ptr=self.unsafe_ptr() + normalized_idx, length=1)
 
-    fn __getitem__(self, span: Slice) -> String:
+    fn __getitem__(self, span: ContiguousSlice) -> StringSlice[origin_of(self)]:
         """Gets the sequence of characters at the specified positions.
 
         Args:
@@ -745,24 +746,13 @@ struct String(
         """
         var start: Int
         var end: Int
-        var step: Int
         # TODO(#933): implement this for unicode when we support llvm intrinsic evaluation at compile time
 
-        start, end, step = span.indices(self.byte_length())
-        var r = range(start, end, step)
-        if step == 1:
-            return String(
-                StringSlice(
-                    ptr=self.unsafe_ptr() + start,
-                    length=len(r),
-                )
-            )
-
-        var result = String(capacity=len(r))
-        var ptr = self.unsafe_ptr()
-        for i in r:
-            result.append_byte(ptr[i])
-        return result^
+        start, end = span.indices(self.byte_length())
+        return StringSlice(
+            ptr=self.unsafe_ptr() + start,
+            length=end - start,
+        )
 
     fn __eq__(self, rhs: String) -> Bool:
         """Compares two Strings if they have the same values.
@@ -1028,26 +1018,7 @@ struct String(
             Span(ptr=self.unsafe_ptr(), length=self.byte_length())
         )
 
-    fn join[*Ts: Writable](self, *elems: *Ts) -> String:
-        """Joins string elements using the current string as a delimiter.
-
-        Parameters:
-            Ts: The types of the elements.
-
-        Args:
-            elems: The input values.
-
-        Returns:
-            The joined string.
-        """
-        var sep = rebind[StaticString](  # FIXME(#4414): this should not be so
-            StringSlice(ptr=self.unsafe_ptr(), length=self.byte_length())
-        )
-        return String(elems, sep=sep)
-
-    fn join[
-        T: Copyable & Movable & Writable
-    ](self, elems: Span[T, *_]) -> String:
+    fn join[T: Copyable & Writable](self, elems: Span[T, *_]) -> String:
         """Joins string elements using the current string as a delimiter.
         Defaults to writing to the stack if total bytes of `elems` is less than
         `buffer_size`, otherwise will allocate once to the heap and write
@@ -1056,7 +1027,7 @@ struct String(
 
         Parameters:
             T: The type of the elements. Must implement the `Copyable`,
-                `Movable` and `Writable` traits.
+                and `Writable` traits.
 
         Args:
             elems: The input values.
@@ -1187,6 +1158,26 @@ struct String(
 
         return self.unsafe_ptr().unsafe_mut_cast[True]()
 
+    @always_inline
+    fn as_c_string_slice(
+        mut self,
+    ) -> CStringSlice[ImmutOrigin.cast_from[origin_of(self)]]:
+        """Return a `CStringSlice` to the underlying memory of the string.
+
+        Returns:
+            The `CStringSlice` of the string.
+        """
+        # Add a nul terminator, making the string mutable if not already
+        if not self._has_nul_terminator():
+            var ptr = self.unsafe_ptr_mut(capacity=len(self) + 1)
+            var len = self.byte_length()
+            ptr[len] = 0
+            self._capacity_or_data |= Self.FLAG_HAS_NUL_TERMINATOR
+
+        # Safety: we ensure the string is null-terminated above.
+        return CStringSlice(unsafe_from_ptr=self.unsafe_ptr().bitcast[c_char]())
+
+    @deprecated("Use `String.as_c_string_slice()` instead.")
     fn unsafe_cstr_ptr(
         mut self,
     ) -> UnsafePointer[c_char, ImmutOrigin.cast_from[origin_of(self)]]:
@@ -1203,7 +1194,6 @@ struct String(
             var len = self.byte_length()
             ptr[len] = 0
             self._capacity_or_data |= Self.FLAG_HAS_NUL_TERMINATOR
-            return self.unsafe_ptr().bitcast[c_char]()
 
         return self.unsafe_ptr().bitcast[c_char]()
 
@@ -1983,9 +1973,7 @@ fn chr(c: Int) -> String:
     var char_opt = Codepoint.from_u32(c)
     if not char_opt:
         # TODO: Raise ValueError instead.
-        return abort[String](
-            String("chr(", c, ") is not a valid Unicode codepoint")
-        )
+        abort(String("chr(", c, ") is not a valid Unicode codepoint"))
 
     # SAFETY: We just checked that `char` is present.
     return String(char_opt.unsafe_value())
@@ -2019,10 +2007,10 @@ fn _repr_ascii(c: UInt8) -> String:
     Returns:
         A string containing a representation of the given code point.
     """
-    alias ord_tab = ord("\t")
-    alias ord_new_line = ord("\n")
-    alias ord_carriage_return = ord("\r")
-    alias ord_back_slash = ord("\\")
+    comptime ord_tab = ord("\t")
+    comptime ord_new_line = ord("\n")
+    comptime ord_carriage_return = ord("\r")
+    comptime ord_back_slash = ord("\\")
 
     if c == ord_back_slash:
         return r"\\"
@@ -2051,7 +2039,7 @@ fn ascii(value: StringSlice) -> String:
     Returns:
         A string containing the ASCII representation of the object.
     """
-    alias ord_squote = ord("'")
+    comptime ord_squote = ord("'")
     var result = String()
     var use_dquote = False
     var data = value.as_bytes()
@@ -2356,7 +2344,7 @@ fn _calc_initial_buffer_size_int32(n0: Int) -> Int:
     # See https://commaok.xyz/post/lookup_tables/ and
     # https://lemire.me/blog/2021/06/03/computing-the-number-of-digits-of-an-integer-even-faster/
     # for a description.
-    alias lookup_table = VariadicList[Int](
+    comptime lookup_table = VariadicList[Int](
         4294967296,
         8589934582,
         8589934582,

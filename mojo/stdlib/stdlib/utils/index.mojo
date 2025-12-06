@@ -20,15 +20,12 @@ from utils import IndexList
 ```
 """
 
-from memory import (
-    LegacyOpaquePointer as OpaquePointer,
-    LegacyUnsafePointer as UnsafePointer,
-)
 from hashlib.hasher import Hasher
 from sys import bit_width_of
 
 from builtin.device_passable import DevicePassable
 from builtin.dtype import _int_type_of_width, _uint_type_of_width
+from memory import LegacyOpaquePointer
 
 from .static_tuple import StaticTuple
 
@@ -168,7 +165,6 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
     DevicePassable,
     Hashable,
     ImplicitlyCopyable,
-    Movable,
     Sized,
     Stringable,
     Writable,
@@ -180,10 +176,10 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         element_type: The underlying dtype of the integer element value.
     """
 
-    alias device_type = Self
+    comptime device_type = Self
     """Indicate the type being used on accelerator devices."""
 
-    alias _int_type = Scalar[Self.element_type]
+    comptime _int_type = Scalar[Self.element_type]
     """The underlying storage of the integer element value."""
 
     var data: StaticTuple[Self._int_type, Self.size]
@@ -202,10 +198,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Args:
             data: The StaticTuple to construct the IndexList from.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
         self.data = data
 
     @always_inline
@@ -216,10 +211,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Args:
             elems: The tuple to copy from.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
         var num_elements = len(elems)
 
         debug_assert(
@@ -242,10 +236,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Args:
             elems: The tuple to copy from.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
         var num_elements = len(elems)
 
         debug_assert(
@@ -268,10 +261,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Args:
             elems: The tuple to copy from.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
         var num_elements = len(elems)
 
         debug_assert(
@@ -296,10 +288,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
             __list_literal__: Specifies that this constructor can be used for
                list literals.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
 
         self = Self(values=elems)
 
@@ -311,10 +302,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Args:
             fill: The elem to splat into the tuple.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
         self.data = StaticTuple[_, Self.size](fill=Self._int_type(fill))
 
     @always_inline
@@ -324,10 +314,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Args:
             values: The list of values.
         """
-        constrained[
-            Self.element_type.is_integral(),
-            "Element type must be of integral type.",
-        ]()
+        __comptime_assert (
+            Self.element_type.is_integral()
+        ), "Element type must be of integral type."
         var num_elements = len(values)
 
         debug_assert(
@@ -743,7 +732,9 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         Returns:
             The list casted to the target type.
         """
-        constrained[dtype.is_integral(), "the target type must be integral"]()
+        __comptime_assert (
+            dtype.is_integral()
+        ), "the target type must be integral"
         result = {}
 
         @parameter
@@ -766,7 +757,7 @@ struct IndexList[size: Int, *, element_type: DType = DType.int64](
         for i in range(Self.size):
             hasher.update(self.data[i])
 
-    fn _to_device_type(self, target: OpaquePointer):
+    fn _to_device_type(self, target: LegacyOpaquePointer):
         """
         Convert the host type object to a device_type and store it at the
         target address.

@@ -12,7 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 """Defines a Variant type."""
 
-from memory import LegacyUnsafePointer as UnsafePointer
+from builtin.constrained import _constrained_conforms_to
+from builtin.rebind import downcast
 from os import abort
 from sys.intrinsics import _type_is_eq
 
@@ -21,7 +22,7 @@ from sys.intrinsics import _type_is_eq
 # ===----------------------------------------------------------------------=== #
 
 
-struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
+struct Variant[*Ts: Movable](ImplicitlyCopyable):
     """A union that can hold a runtime-variant value from a set of predefined
     types.
 
@@ -54,7 +55,7 @@ struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
     from utils import Variant
     import random
 
-    alias IntOrString = Variant[Int, String]
+    comptime IntOrString = Variant[Int, String]
 
     fn to_string(mut x: IntOrString) -> String:
         if x.isa[String]():
@@ -80,7 +81,7 @@ struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
     Example usage for error handling:
 
     ```mojo
-    alias Result = Variant[String, Error]
+    comptime Result = Variant[String, Error]
 
     fn process_data(data: String) -> Result:
         if len(data) == 0:
@@ -97,7 +98,7 @@ struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
     Example usage in a `List` to create a heterogeneous list:
 
     ```mojo
-    alias MixedType = Variant[Int, Float64, String, Bool]
+    comptime MixedType = Variant[Int, Float64, String, Bool]
 
     var mixed_list = List[MixedType]()
     mixed_list.append(MixedType(42))
@@ -118,7 +119,7 @@ struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
 
     Parameters:
         Ts: The possible types that this variant can hold. All types must
-            implement `Copyable` and `Movable`.
+            implement `Copyable`.
     """
 
     # Fields
@@ -169,9 +170,18 @@ struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
         @parameter
         for i in range(len(VariadicList(Self.Ts))):
             comptime T = Self.Ts[i]
+            _constrained_conforms_to[
+                conforms_to(T, Copyable),
+                Parent=Self,
+                Element=T,
+                ParentConformsTo="Copyable",
+            ]()
+
+            comptime TCopyable = downcast[Copyable, T]
+
             if self._get_discr() == i:
-                self._get_ptr[T]().init_pointee_move(
-                    other._get_ptr[T]()[].copy()
+                self._get_ptr[TCopyable]().init_pointee_copy(
+                    other._get_ptr[TCopyable]()[]
                 )
                 return
 
@@ -231,12 +241,13 @@ struct Variant[*Ts: Copyable & Movable](ImplicitlyCopyable, Movable):
     # ===-------------------------------------------------------------------===#
 
     @always_inline("nodebug")
-    fn _get_ptr[T: AnyType](self) -> UnsafePointer[T]:
+    fn _get_ptr[T: AnyType](ref [_]self) -> UnsafePointer[T, origin_of(self)]:
         comptime idx = Self._check[T]()
-        constrained[idx != Self._sentinel, "not a union element type"]()
+        __comptime_assert idx != Self._sentinel, "not a union element type"
         var ptr = UnsafePointer(to=self._impl).address
         var discr_ptr = __mlir_op.`pop.variant.bitcast`[
-            _type = UnsafePointer[T]._mlir_type, index = idx._mlir_value
+            _type = UnsafePointer[T, origin_of(self)]._mlir_type,
+            index = idx._mlir_value,
         ](ptr)
         return discr_ptr
 

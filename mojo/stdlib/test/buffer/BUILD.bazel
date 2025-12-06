@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "mojo_filecheck_test", "mojo_test")
 
+package(default_visibility = ["//visibility:private"])
+
 _FILECHECK_TESTS = [
     "test_dimlist.mojo",
     "test_naive_matmul.mojo",
@@ -20,7 +22,7 @@ _FILECHECK_TESTS = [
             "full",
         ],
         deps = [
-            "@mojo//:internal_utils",
+            "//max:internal_utils",
             "@mojo//:stdlib",
             "@mojo//:test_utils",
         ],
@@ -37,7 +39,7 @@ _FILECHECK_TESTS = [
             "full",
         ],
         deps = [
-            "@mojo//:internal_utils",
+            "//max:internal_utils",
             "@mojo//:stdlib",
             "@mojo//:test_utils",
         ],

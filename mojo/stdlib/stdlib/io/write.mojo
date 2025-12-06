@@ -45,7 +45,7 @@ trait Writer:
     from memory import Span
 
     @fieldwise_init
-    struct NewString(Writer, Writable, ImplicitlyCopyable, Movable):
+    struct NewString(Writer, Writable, ImplicitlyCopyable):
         var s: String
 
         # Writer requirement to write a Span of Bytes
@@ -64,7 +64,7 @@ trait Writer:
 
 
     @fieldwise_init
-    struct Point(Writable, ImplicitlyCopyable, Movable):
+    struct Point(Writable, ImplicitlyCopyable):
         var x: Int
         var y: Int
 
@@ -176,7 +176,7 @@ struct _WriteBufferHeap(Writable, Writer):
         self._pos = 0
 
     fn write_list[
-        T: Copyable & Movable & Writable, //
+        T: Copyable & Writable, //
     ](mut self, values: List[T, *_], *, sep: StaticString = StaticString()):
         var length = len(values)
         if length == 0:
@@ -194,7 +194,8 @@ struct _WriteBufferHeap(Writable, Writer):
                 "HEAP_BUFFER_BYTES exceeded, increase with: `mojo -D"
                 " HEAP_BUFFER_BYTES=4096`\n"
             ]()
-            abort()
+            # TODO(MSTDL-2072): This should be an abort, but it breaks ptxas.
+            return
         memcpy(
             dest=self._data + self._pos, src=bytes.unsafe_ptr(), count=len_bytes
         )
@@ -214,7 +215,9 @@ struct _WriteBufferHeap(Writable, Writer):
                 "HEAP_BUFFER_BYTES exceeded, increase with: `mojo -D"
                 " HEAP_BUFFER_BYTES=4096`\n"
             ]()
-            abort()
+            # TODO(MSTDL-2072): This should be an abort, but it breaks ptxas.
+            self._data[self._pos - 1] = 0
+            return
         self._data[self._pos] = 0
         self._pos += 1
 
@@ -244,7 +247,7 @@ struct _WriteBufferStack[
         self.writer = Pointer(to=writer)
 
     fn write_list[
-        T: Copyable & Movable & Writable, //
+        T: Copyable & Writable, //
     ](mut self, values: List[T, *_], *, sep: String = String()):
         var length = len(values)
         if length == 0:
@@ -291,7 +294,7 @@ struct _TotalWritableBytes(Writer):
         self.size = 0
 
     fn __init__[
-        T: Copyable & Movable & Writable, //,
+        T: Copyable & Writable, //,
         origin: ImmutOrigin = StaticConstantOrigin,
     ](
         out self,
@@ -344,8 +347,8 @@ fn _hex_digits_to_hex_chars(
     %# from testing import assert_equal
     %# from utils import StringSlice
     %# from io.write import _hex_digits_to_hex_chars
-    items = List[Byte](0, 0, 0, 0, 0, 0, 0, 0, 0)
-    alias S = StringSlice[origin_of(items)]
+    items: List[Byte] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+    comptime S = StringSlice[origin_of(items)]
     ptr = items.unsafe_ptr()
     _hex_digits_to_hex_chars(ptr, UInt32(ord("🔥")))
     assert_equal("0001f525", S(ptr=ptr, length=8))
@@ -357,7 +360,7 @@ fn _hex_digits_to_hex_chars(
     assert_equal("d6", S(ptr=ptr, length=2))
     ```
     """
-    alias size = size_of[decimal.dtype]()
+    comptime size = size_of[decimal.dtype]()
     var bytes = bitcast[DType.uint8, size](byte_swap(decimal))
     var nibbles = (bytes >> 4).interleave(bytes & 0xF)
     ptr.store(_hex_table._dynamic_shuffle(nibbles))
@@ -377,8 +380,8 @@ fn _write_hex[
     %# from testing import assert_equal
     %# from utils import StringSlice
     %# from io.write import _write_hex
-    items = List[Byte](0, 0, 0, 0, 0, 0, 0, 0, 0)
-    alias S = StringSlice[origin_of(items)]
+    items: List[Byte] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+    comptime S = StringSlice[origin_of(items)]
     ptr = items.unsafe_ptr()
     _write_hex[8](ptr, ord("🔥"))
     assert_equal(r"\\U0001f525", S(ptr=ptr, length=10))
@@ -391,12 +394,12 @@ fn _write_hex[
     ```
     """
 
-    constrained[amnt_hex_bytes in (2, 4, 8), "only 2 or 4 or 8 sequences"]()
+    __comptime_assert amnt_hex_bytes in (2, 4, 8), "only 2 or 4 or 8 sequences"
 
-    alias `\\` = Byte(ord("\\"))
-    alias `x` = Byte(ord("x"))
-    alias `u` = Byte(ord("u"))
-    alias `U` = Byte(ord("U"))
+    comptime `\\` = Byte(ord("\\"))
+    comptime `x` = Byte(ord("x"))
+    comptime `u` = Byte(ord("u"))
+    comptime `U` = Byte(ord("U"))
 
     p.init_pointee_move(`\\`)
 

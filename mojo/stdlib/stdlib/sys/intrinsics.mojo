@@ -20,7 +20,6 @@ from sys import PrefetchLocality
 """
 
 import math
-from memory import LegacyUnsafePointer as UnsafePointer
 from collections.string.string_slice import _get_kgen_string
 from sys import is_compile_time
 from sys.info import _is_sm_9x_or_newer, is_gpu
@@ -84,15 +83,6 @@ fn llvm_intrinsic[
 # ===-----------------------------------------------------------------------===#
 
 
-# NOTE: Converting from a scalar to a pointer is unsafe! The resulting pointer
-# is assumed not to alias any Mojo-derived pointer. DO NOT proliferate usage of
-# this function!
-fn _unsafe_aliasing_address_to_pointer[
-    T: AnyType
-](var addr: Int) -> UnsafePointer[T]:
-    return UnsafePointer(to=addr).bitcast[UnsafePointer[T]]()[]
-
-
 @always_inline("nodebug")
 fn gather[
     dtype: DType,
@@ -149,8 +139,8 @@ fn gather[
 
     @parameter
     if size == 1:
-        return _unsafe_aliasing_address_to_pointer[Scalar[dtype]](
-            Int(base[0])
+        return UnsafePointer[Scalar[dtype], MutOrigin.external](
+            unsafe_from_address=Int(base[0])
         ).load[invariant=invariant]() if mask else passthrough[0]
 
     @parameter
@@ -159,8 +149,8 @@ fn gather[
 
         @parameter
         for i in range(size):
-            result[i] = _unsafe_aliasing_address_to_pointer[Scalar[dtype]](
-                Int(base[i])
+            result[i] = UnsafePointer[Scalar[dtype], MutOrigin.external](
+                unsafe_from_address=Int(base[i])
             ).load[invariant=invariant]() if mask[i] else passthrough[i]
         return result
 
@@ -244,8 +234,8 @@ fn scatter[
     @parameter
     if size == 1:
         if mask:
-            var ptr = _unsafe_aliasing_address_to_pointer[Scalar[dtype]](
-                Int(base[0])
+            var ptr = UnsafePointer[Scalar[dtype], MutOrigin.external](
+                unsafe_from_address=Int(base[0])
             )
             ptr.store(value[0])
         return
@@ -276,13 +266,13 @@ struct PrefetchLocality:
 
     var value: Int32
     """The prefetch locality to use. It should be a value in [0, 3]."""
-    alias NONE = PrefetchLocality(0)
+    comptime NONE = PrefetchLocality(0)
     """No locality."""
-    alias LOW = PrefetchLocality(1)
+    comptime LOW = PrefetchLocality(1)
     """Low locality."""
-    alias MEDIUM = PrefetchLocality(2)
+    comptime MEDIUM = PrefetchLocality(2)
     """Medium locality."""
-    alias HIGH = PrefetchLocality(3)
+    comptime HIGH = PrefetchLocality(3)
     """Extremely local locality (keep in cache)."""
 
     @always_inline("nodebug")
@@ -302,9 +292,9 @@ struct PrefetchRW:
 
     var value: Int32
     """The read-write prefetch. It should be in [0, 1]."""
-    alias READ = PrefetchRW(0)
+    comptime READ = PrefetchRW(0)
     """Read prefetch."""
-    alias WRITE = PrefetchRW(1)
+    comptime WRITE = PrefetchRW(1)
     """Write prefetch."""
 
     @always_inline("nodebug")
@@ -317,6 +307,18 @@ struct PrefetchRW:
         """
         self.value = value
 
+    @always_inline
+    fn __eq__(self, other: Self) -> Bool:
+        """Checks if two prefetch read-write options are equal.
+
+        Args:
+            other: The option to compare with.
+
+        Returns:
+            True if the two prefetch read-write options are equal and False otherwise.
+        """
+        return self.value == other.value
+
 
 # LLVM prefetch cache type
 @register_passable("trivial")
@@ -325,9 +327,9 @@ struct PrefetchCache:
 
     var value: Int32
     """The cache prefetch. It should be in [0, 1]."""
-    alias INSTRUCTION = PrefetchCache(0)
+    comptime INSTRUCTION = PrefetchCache(0)
     """The instruction prefetching option."""
-    alias DATA = PrefetchCache(1)
+    comptime DATA = PrefetchCache(1)
     """The data prefetching option."""
 
     @always_inline("nodebug")
@@ -486,6 +488,10 @@ fn prefetch[
       addr: The data pointer to prefetch.
     """
 
+    __comptime_assert (
+        params.rw == PrefetchRW.READ or type_of(addr).mut == True
+    ), "prefetch pointer mutability must match the prefetch read-write option"
+
     @parameter
     if is_nvidia_gpu():
         inlined_assembly[
@@ -514,7 +520,7 @@ fn masked_load[
     size: Int,
     alignment: Int = 1,
 ](
-    addr: UnsafePointer[Scalar[dtype], mut=False, **_],
+    addr: UnsafePointer[mut=False, Scalar[dtype], **_],
     mask: SIMD[DType.bool, size],
     passthrough: SIMD[dtype, size],
 ) -> SIMD[dtype, size]:
@@ -537,7 +543,7 @@ fn masked_load[
     Returns:
       The loaded memory stored in a vector of type SIMD[dtype, size].
     """
-    debug_assert(addr, "masked_load requires a valid (non-null) pointer")
+    debug_assert(Bool(addr), "masked_load requires a valid (non-null) pointer")
 
     @parameter
     if size == 1:
@@ -562,7 +568,7 @@ fn masked_store[
     alignment: Int = 1,
 ](
     value: SIMD,
-    addr: UnsafePointer[Scalar[value.dtype], mut=True, **_],
+    addr: UnsafePointer[mut=True, Scalar[value.dtype], **_],
     mask: SIMD[DType.bool, size],
 ):
     """Stores a value at a memory location, skipping masked lanes.
@@ -578,7 +584,7 @@ fn masked_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    debug_assert(addr, "masked_store requires a valid (non-null) pointer")
+    debug_assert(Bool(addr), "masked_store requires a valid (non-null) pointer")
 
     @parameter
     if size == 1:
@@ -604,7 +610,7 @@ fn compressed_store[
     dtype: DType, size: Int
 ](
     value: SIMD[dtype, size],
-    addr: UnsafePointer[Scalar[dtype], mut=True, **_],
+    addr: UnsafePointer[mut=True, Scalar[dtype], **_],
     mask: SIMD[DType.bool, size],
 ):
     """Compresses the lanes of `value`, skipping `mask` lanes, and stores
@@ -620,7 +626,9 @@ fn compressed_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    debug_assert(addr, "compressed_store requires a valid (non-null) pointer")
+    debug_assert(
+        Bool(addr), "compressed_store requires a valid (non-null) pointer"
+    )
 
     @parameter
     if size == 1:
@@ -644,7 +652,7 @@ fn compressed_store[
 fn strided_load[
     dtype: DType, //, simd_width: Int, *, invariant: Bool = False
 ](
-    addr: UnsafePointer[Scalar[dtype], mut=False, **_],
+    addr: UnsafePointer[mut=False, Scalar[dtype], **_],
     stride: Int,
     mask: SIMD[DType.bool, simd_width] = SIMD[DType.bool, simd_width](
         fill=True
@@ -666,7 +674,7 @@ fn strided_load[
     Returns:
       A vector containing the loaded data.
     """
-    debug_assert(addr, "strided_load requires a valid (non-null) pointer")
+    debug_assert(Bool(addr), "strided_load requires a valid (non-null) pointer")
 
     @parameter
     if simd_width == 1:
@@ -690,7 +698,7 @@ fn strided_store[
     dtype: DType, //, simd_width: Int
 ](
     value: SIMD[dtype, simd_width],
-    addr: UnsafePointer[Scalar[dtype], mut=True, **_],
+    addr: UnsafePointer[mut=True, Scalar[dtype], **_],
     stride: Int,
     mask: SIMD[DType.bool, simd_width] = SIMD[DType.bool, simd_width](
         fill=True
@@ -709,7 +717,9 @@ fn strided_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    debug_assert(addr, "strided_store requires a valid (non-null) pointer")
+    debug_assert(
+        Bool(addr), "strided_store requires a valid (non-null) pointer"
+    )
 
     @parameter
     if simd_width == 1:
@@ -915,8 +925,10 @@ fn assume(val: Bool):
 
 
 @always_inline
-fn implicitarg_ptr() -> (
-    UnsafePointer[UInt8, address_space = AddressSpace.CONSTANT]
+fn implicitarg_ptr(
+    out result: UnsafePointer[
+        UInt8, MutOrigin.external, address_space = AddressSpace.CONSTANT
+    ]
 ):
     """
     Get a pointer to AMD's implicit arguments table.
@@ -924,10 +936,12 @@ fn implicitarg_ptr() -> (
     Returns:
         A pointer to LLVM's implicit arguments table.
     """
-    constrained[is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"]()
-    return llvm_intrinsic[
+    __comptime_assert (
+        is_amd_gpu()
+    ), "This intrinsic is only defined for AMD GPUs"
+    result = llvm_intrinsic[
         "llvm.amdgcn.implicitarg.ptr",
-        UnsafePointer[UInt8, address_space = AddressSpace.CONSTANT],
+        type_of(result),
     ]()
 
 
@@ -947,7 +961,9 @@ fn readfirstlane(value: Int32) -> Int32:
     Returns:
         The value in the lowest active lane of the input operand.
     """
-    constrained[is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"]()
+    __comptime_assert (
+        is_amd_gpu()
+    ), "This intrinsic is only defined for AMD GPUs"
     return llvm_intrinsic["llvm.amdgcn.readfirstlane.i32", Int32, Int32](value)
 
 
@@ -963,7 +979,9 @@ fn readfirstlane(value: UnsafePointer) -> type_of(value):
     Returns:
         The value in the lowest active lane of the input operand.
     """
-    constrained[is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"]()
+    __comptime_assert (
+        is_amd_gpu()
+    ), "This intrinsic is only defined for AMD GPUs"
     return llvm_intrinsic[
         "llvm.amdgcn.readfirstlane", type_of(value), type_of(value)
     ](value)
@@ -980,7 +998,9 @@ fn readfirstlane(value: Int) -> type_of(value):
     Returns:
         The value in the lowest active lane of the input operand.
     """
-    constrained[is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"]()
+    __comptime_assert (
+        is_amd_gpu()
+    ), "This intrinsic is only defined for AMD GPUs"
     return llvm_intrinsic[
         "llvm.amdgcn.readfirstlane", type_of(value), type_of(value)
     ](value)
@@ -1001,7 +1021,9 @@ fn sendmsg(opcode: Int32, msg: Int32):
         opcode: The operation to perform.
         msg: The message to send.
     """
-    constrained[is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"]()
+    __comptime_assert (
+        is_amd_gpu()
+    ), "This intrinsic is only defined for AMD GPUs"
     _ = llvm_intrinsic["llvm.amdgcn.s.sendmsg", NoneType, Int32, Int32](
         opcode, msg
     )
@@ -1028,9 +1050,10 @@ fn ballot[dtype: DType](value: Bool) -> Scalar[dtype]:
     Returns:
         A bitfield(Int32 or Int64) containing the result of its Bool argument in all active lanes.
     """
-    constrained[is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"]()
-    constrained[
-        dtype == DType.int32 or dtype == DType.int64,
-        "This intrinsic is only defined for i32 or i64",
-    ]()
+    __comptime_assert (
+        is_amd_gpu()
+    ), "This intrinsic is only defined for AMD GPUs"
+    __comptime_assert (
+        dtype == DType.int32 or dtype == DType.int64
+    ), "This intrinsic is only defined for i32 or i64"
     return llvm_intrinsic["llvm.amdgcn.ballot", Scalar[dtype]](value)

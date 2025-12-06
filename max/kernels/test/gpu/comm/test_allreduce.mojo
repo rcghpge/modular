@@ -24,6 +24,8 @@ from comm.allreduce import (
     _allreduce_naive_single,
     allreduce,
     elementwise_epilogue_type,
+    group_start,
+    group_end,
 )
 import comm.vendor.ccl as vendor_ccl
 from gpu.host import DeviceBuffer, DeviceContext, DeviceMulticastBuffer
@@ -34,7 +36,7 @@ from collections.optional import OptionalReg
 from utils import IndexList, StaticTuple
 
 # Shared test configurations
-alias test_lengths = (
+comptime test_lengths = (
     0,  # No elements
     8 * 1024,  # Small latency bound
     128 * 1024,  # Larger latency bound
@@ -44,8 +46,8 @@ alias test_lengths = (
 )
 
 # Test hyperparameters.
-alias test_dtypes = (DType.bfloat16, DType.float32)
-alias test_gpu_counts = (2, 4, 8)
+comptime test_dtypes = (DType.bfloat16, DType.float32)
+comptime test_gpu_counts = (2, 4, 8)
 
 
 fn _pretty_print_float(val: Float64) -> String:
@@ -58,9 +60,9 @@ fn _pretty_print_float(val: Float64) -> String:
 
 
 fn _human_memory(size: Int) -> String:
-    alias KB = 1024
-    alias MB = KB * KB
-    alias GB = MB * KB
+    comptime KB = 1024
+    comptime MB = KB * KB
+    comptime GB = MB * KB
 
     if size >= GB:
         return _pretty_print_float(Float64(size) / GB) + "GB"
@@ -88,9 +90,9 @@ fn allreduce_test[
     if use_multimem and length == 0:
         return
 
-    alias num_warmups = 5
-    alias num_iters = 100
-    alias num_buffers = 1 if use_multimem else ngpus
+    comptime num_warmups = 5
+    comptime num_iters = 100
+    comptime num_buffers = 1 if use_multimem else ngpus
 
     constrained[ngpus in (1, 2, 4, 8), "ngpus must be 1, 2, 4, or 8"]()
     constrained[rank == 1, "this test code currently assumes rank 1"]()
@@ -203,6 +205,7 @@ fn allreduce_test[
 
     # Warm up.
     for _ in range(num_warmups):
+        group_start()
 
         @parameter
         for i in range(ngpus):
@@ -214,6 +217,7 @@ fn allreduce_test[
                 use_multimem=use_multimem,
                 use_quickreduce=use_quickreduce,
             ](in_bufs, out_bufs[i], rank_sigs, list_of_ctx[i])
+        group_end()
 
     # Synchronize all devices.
     for i in range(ngpus):
@@ -228,6 +232,7 @@ fn allreduce_test[
     start_t_mojo = time.perf_counter_ns()
 
     for _ in range(num_iters):
+        group_start()
 
         @parameter
         for i in range(ngpus):
@@ -239,6 +244,7 @@ fn allreduce_test[
                 use_multimem=use_multimem,
                 use_quickreduce=use_quickreduce,
             ](in_bufs, out_bufs[i], rank_sigs, list_of_ctx[i])
+        group_end()
 
     for i in range(ngpus):
         list_of_ctx[i].synchronize()
@@ -269,13 +275,18 @@ fn allreduce_test[
 
             # Warm-up RCCL.
             for _ in range(num_warmups):
-                vendor_ccl.allreduce[dtype=dtype, rank=rank, ngpus=ngpus](
-                    rebind[
-                        InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus]
-                    ](in_bufs),
-                    out_bufs_vendor,
-                    list_of_ctx,
-                )
+                with vendor_ccl.group():
+
+                    @parameter
+                    for i in range(ngpus):
+                        vendor_ccl.allreduce[
+                            dtype=dtype, rank=rank, ngpus=ngpus
+                        ](
+                            in_bufs[i],
+                            out_bufs_vendor[i],
+                            i,
+                            list_of_ctx[i],
+                        )
 
             for i in range(ngpus):
                 list_of_ctx[i].synchronize()
@@ -283,13 +294,19 @@ fn allreduce_test[
             # Benchmark RCCL.
             start_t_rccl = time.perf_counter_ns()
             for _ in range(num_iters):
-                vendor_ccl.allreduce[dtype=dtype, rank=rank, ngpus=ngpus](
-                    rebind[
-                        InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus]
-                    ](in_bufs),
-                    out_bufs_vendor,
-                    list_of_ctx,
-                )
+                with vendor_ccl.group():
+
+                    @parameter
+                    for i in range(ngpus):
+                        vendor_ccl.allreduce[
+                            dtype=dtype, rank=rank, ngpus=ngpus
+                        ](
+                            in_bufs[i],
+                            out_bufs_vendor[i],
+                            i,
+                            list_of_ctx[i],
+                        )
+
             for i in range(ngpus):
                 list_of_ctx[i].synchronize()
             end_t_rccl = time.perf_counter_ns()
@@ -362,8 +379,8 @@ fn _get_test_str[
 def allreduce_naive_test() -> None:
     """Explicit smoke test for the allreduce naive path."""
     print("====allreduce-naive-smoke-DType.float32-2-8Ki elements")
-    alias ngpus = 2
-    alias length = 8 * 1024
+    comptime ngpus = 2
+    comptime length = 8 * 1024
 
     # Create contexts for two devices
     var ctxs = List[DeviceContext]()
@@ -462,9 +479,9 @@ fn run_allreduce_sweep[
         range(len(test_gpu_counts)),
         range(len(test_dtypes)),
         range(len(test_lengths)),
-        List(True, False),
+        List(True, False, __list_literal__=()),
     ):
-        alias num_gpus = test_gpu_counts[gpu_idx]
+        comptime num_gpus = test_gpu_counts[gpu_idx]
         if DeviceContext.number_of_devices() < num_gpus:
             break
 
@@ -473,8 +490,8 @@ fn run_allreduce_sweep[
         for i in range(num_gpus):
             ctx.append(DeviceContext(device_id=i))
 
-        alias dtype = test_dtypes[dtype_idx]
-        alias length = test_lengths[length_idx]
+        comptime dtype = test_dtypes[dtype_idx]
+        comptime length = test_lengths[length_idx]
 
         print(
             _get_test_str[

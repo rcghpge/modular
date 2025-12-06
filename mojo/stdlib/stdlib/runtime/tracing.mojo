@@ -30,8 +30,9 @@ from gpu.host._tracing import _start_range as _start_gpu_range
 from runtime.asyncrt import DeviceContextPtr
 
 from utils import IndexList, Variant
+from os import abort
 
-alias log = logger.Logger[logger.Level.INFO](fd=sys.stderr, prefix="[OP] ")
+comptime log = logger.Logger[logger.Level.INFO](fd=sys.stderr, prefix="[OP] ")
 
 
 fn get_safe_task_id(ctx: DeviceContextPtr) -> OptionalReg[Int]:
@@ -82,11 +83,11 @@ fn _build_info_asyncrt_max_profiling_level() -> OptionalReg[Int]:
 struct TraceCategory(Equatable, Identifiable, Intable):
     """An enum-like struct specifying the type of tracing to perform."""
 
-    alias OTHER = Self(0)
-    alias ASYNCRT = Self(1)
-    alias MEM = Self(2)
-    alias Kernel = Self(3)
-    alias MAX = Self(4)
+    comptime OTHER = Self(0)
+    comptime ASYNCRT = Self(1)
+    comptime MEM = Self(2)
+    comptime Kernel = Self(3)
+    comptime MAX = Self(4)
 
     var value: Int
     """The integer value representing the trace category. Used for bitwise operations
@@ -144,12 +145,12 @@ struct TraceCategory(Equatable, Identifiable, Intable):
 
 
 @register_passable("trivial")
-struct TraceLevel(Comparable, Identifiable, ImplicitlyCopyable, Movable):
+struct TraceLevel(Comparable, Identifiable, ImplicitlyCopyable):
     """An enum-like struct specifying the level of tracing to perform."""
 
-    alias ALWAYS = Self(0)
-    alias OP = Self(1)
-    alias THREAD = Self(2)
+    comptime ALWAYS = Self(0)
+    comptime OP = Self(1)
+    comptime THREAD = Self(2)
 
     var value: Int
     """The integer value representing the trace level.
@@ -232,13 +233,13 @@ fn is_profiling_enabled[type: TraceCategory, level: TraceLevel]() -> Bool:
     Returns:
         True if profiling is enabled for the specified type and level.
     """
-    alias kProfilingTypeWidthBits = 3
+    comptime kProfilingTypeWidthBits = 3
 
     @parameter
     if level == TraceLevel.ALWAYS:
         return True
 
-    alias max_profiling_level = _build_info_asyncrt_max_profiling_level()
+    comptime max_profiling_level = _build_info_asyncrt_max_profiling_level()
     if not max_profiling_level:
         return False
 
@@ -383,7 +384,7 @@ struct Trace[
     *,
     category: TraceCategory = TraceCategory.MAX,
     target: Optional[StaticString] = None,
-](ImplicitlyCopyable, Movable):
+](ImplicitlyCopyable):
     """An object representing a specific trace.
 
     This struct provides functionality for creating and managing trace events
@@ -667,13 +668,10 @@ struct Trace[
         ](self.event_id)
 
     @always_inline
-    fn __exit__(self) raises:
+    fn __exit__(self):
         """Exits the trace context.
 
         This finishes recording of the trace event.
-
-        Raises:
-            If the operation fails.
         """
 
         @parameter
@@ -683,7 +681,10 @@ struct Trace[
 
         @parameter
         if _is_gpu_profiler_enabled[Self.category, Self.level]():
-            _end_gpu_range(gpu_tracing.RangeID(self.event_id))
+            try:
+                _end_gpu_range(gpu_tracing.RangeID(self.event_id))
+            except:
+                abort("GPU tracing failure")
             return
 
         @parameter

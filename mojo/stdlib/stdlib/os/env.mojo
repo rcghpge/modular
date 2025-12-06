@@ -19,8 +19,6 @@ from os import setenv
 ```
 """
 
-
-from memory import LegacyUnsafePointer as UnsafePointer
 from sys import CompilationTarget, external_call
 from sys.ffi import c_int
 
@@ -42,8 +40,8 @@ fn setenv(var name: String, var value: String, overwrite: Bool = True) -> Bool:
       case, True is returned.
     """
     var status = external_call["setenv", Int32](
-        name.unsafe_cstr_ptr(),
-        value.unsafe_cstr_ptr(),
+        name.as_c_string_slice().unsafe_ptr(),
+        value.as_c_string_slice().unsafe_ptr(),
         Int32(1 if overwrite else 0),
     )
     return status == 0
@@ -58,7 +56,10 @@ fn unsetenv(var name: String) -> Bool:
     Returns:
         True if unsetting the variable succeeded. Otherwise, False is returned.
     """
-    return external_call["unsetenv", c_int](name.unsafe_cstr_ptr()) == 0
+    return (
+        external_call["unsetenv", c_int](name.as_c_string_slice().unsafe_ptr())
+        == 0
+    )
 
 
 fn getenv(var name: String, default: String = "") -> String:
@@ -76,9 +77,9 @@ fn getenv(var name: String, default: String = "") -> String:
     Returns:
       The value of the environment variable.
     """
-    var ptr = external_call["getenv", UnsafePointer[UInt8]](
-        name.unsafe_cstr_ptr()
-    )
+    var ptr = external_call[
+        "getenv", UnsafePointer[UInt8, ImmutOrigin.external]
+    ](name.as_c_string_slice().unsafe_ptr())
     if not ptr:
         return default
     return String(unsafe_from_utf8_ptr=ptr)

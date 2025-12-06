@@ -111,8 +111,8 @@ fn create_error_async_values_and_destruct_error(
     external_call["KGEN_CompilerRT_AsyncRT_CreateAsyncs_Error", NoneType](
         async_ptr,
         async_len,
-        err.unsafe_cstr_ptr(),
-        err.byte_length(),
+        err.data.as_string_slice().unsafe_ptr(),
+        err.data.byte_length(),
     )
 
 
@@ -644,7 +644,7 @@ fn mgp_buffer_concat[
     inputs: StaticTuple[NDBuffer[DType.int8, 1, MutAnyOrigin], *_],
     call_ctx: DeviceContextPtr,
 ) raises:
-    alias layout_1d = Layout.row_major(UNKNOWN_VALUE)
+    comptime layout_1d = Layout.row_major(UNKNOWN_VALUE)
     var output_lt = LayoutTensor[DType.int8, layout_1d](
         output.data,
         RuntimeLayout[layout_1d].row_major(IndexList[1](len(output))),
@@ -1116,7 +1116,7 @@ fn build_static_tensor_specs[
     address_space: AddressSpace,
     exclusive: Bool,
 ) -> StaticTensorSpec[dtype, rank]:
-    alias SpecType = StaticTensorSpec[dtype, rank]
+    comptime SpecType = StaticTensorSpec[dtype, rank]
 
     return SpecType(
         shape, strides, alignment, address_space, exclusive, None, None, None
@@ -1340,7 +1340,7 @@ fn test_my_int_to_index(x: MyInt) -> Int:
 
 
 @register_passable("trivial")
-struct MyIntReg(ImplicitlyCopyable, Movable):
+struct MyIntReg(ImplicitlyCopyable):
     var val: Int
 
     fn __init__(out self, val: Int):
@@ -1354,7 +1354,7 @@ fn test_my_int_reg_square(x: MyIntReg) -> MyIntReg:
 
 
 @register_passable
-struct MyIntReg2(ImplicitlyCopyable, Movable):
+struct MyIntReg2(ImplicitlyCopyable):
     var val: Int
 
     fn __init__(out self, val: Int):
@@ -1398,15 +1398,15 @@ fn test_my_int_reg2_to_index(x: MyIntReg2) -> Int:
 # AnyAsyncValueRef is a C++ struct. The runtime passes a reference to it.
 # Therefore, we alias it to OpaquePointer which will have the same bitwidth as
 # C++'s pointers.
-alias AnyAsyncValueRefPtr = OpaquePointer
+comptime AnyAsyncValueRefPtr = OpaquePointer
 
 # TensorBufferRef is a C++ struct. Primitives should always manipulate a
 # reference to it. Therefore, it is modeled here as an OpaquePointer.
-alias TensorBufferRefPtr = OpaquePointer
+comptime TensorBufferRefPtr = OpaquePointer
 
 # StateContext is a C++ struct. Primitives should always manipulate a reference
 # to it. Therefore, it is modeled here as an OpaquePointer.
-alias StateContextRef = OpaquePointer
+comptime StateContextRef = OpaquePointer
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1595,7 +1595,7 @@ fn mogg_tensor_init[
     """
     Helper for constructing a ManagedTensorSlice.
     """
-    alias static_spec = StaticTensorSpec[dtype, rank](
+    comptime static_spec = StaticTensorSpec[dtype, rank](
         static_shape,
         static_stride,
         alignment,
@@ -1626,8 +1626,8 @@ fn mogg_async_error(async_ptr: AnyAsyncValueRefPtr, err: Error):
     """Indicates to the C++ runtime that the kernel has failed."""
     external_call["MGP_RT_AsyncRT_CreateAsync_Error", NoneType](
         async_ptr,
-        err.unsafe_cstr_ptr(),
-        err.byte_length(),
+        err.data.as_string_slice().unsafe_ptr(),
+        err.data.byte_length(),
     )
 
 
@@ -1674,27 +1674,35 @@ fn tmp_reshape_contiguous_buffer[
 # ===-----------------------------------------------------------------------===#
 
 
-fn mgp_get_buffer_handle_from_tensor_buffer_ref(
-    buffer: TensorBufferRefPtr, memStorageHandle: OpaquePointer
-):
-    external_call["MGP_RT_GetMemBufferHandleFromTensorBufferRef", NoneType](
-        buffer, memStorageHandle
-    )
-
-
 @register_internal("tmp.mgp.buffer.get_cached")
 @no_inline
 fn tmp_mgp_buffer_get_cached(
     ctx: StateContextRef,
     buffer_slot: Int,
-) -> TensorBufferRefPtr:
+) -> Tuple[NDBuffer[DType.int8, 1, MutAnyOrigin], TensorBufferRefPtr]:
     """
-    Get a reference to the cached TensorBufferRef.
+    Get a reference to the cached tensor.
     """
-    return external_call["TMP_MGP_RT_GetCachedBuffer", TensorBufferRefPtr](
+    var buffer_size: UInt64 = 0
+    var buffer_data = OpaquePointer()
+
+    var buffer_ref = external_call[
+        "TMP_MGP_RT_GetCachedBuffer", TensorBufferRefPtr
+    ](
         buffer_slot,
         ctx,
+        UnsafePointer(to=buffer_size),
+        UnsafePointer(to=buffer_data),
     )
+
+    var buffer = NDBuffer[DType.int8, 1](
+        buffer_data.bitcast[Int8](), Index(buffer_size)
+    )
+    var res = Tuple[NDBuffer[DType.int8, 1, MutAnyOrigin], TensorBufferRefPtr](
+        buffer, buffer_ref
+    )
+
+    return res
 
 
 @register_internal("tmp.mgp.buffer.remove_cached")
@@ -1811,3 +1819,20 @@ fn get_buffer_mem_storage_handle(
     external_call["MGP_RT_GetBufferMemStorageHandle", NoneType](
         buffer, type, memStorageHandle
     )
+
+
+@register_internal("pop.select")
+@always_inline
+fn select[T: AnyTrivialRegType](cond: Bool, true_case: T, false_case: T) -> T:
+    if cond:
+        return true_case
+
+    return false_case
+
+
+@register_internal("pop.simd.select")
+@always_inline
+fn simd_select[
+    T: AnyTrivialRegType
+](cond: Bool, true_case: T, false_case: T) -> T:
+    return select(cond, true_case, false_case)

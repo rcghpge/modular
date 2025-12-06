@@ -91,9 +91,9 @@ struct _MatmulConfig:
 
 
 struct _Matmul[dtype: DType, simd_width: Int]:
-    alias _matmul_config = _MatmulConfig._get_config()
+    comptime _matmul_config = _MatmulConfig._get_config()
 
-    alias _input_fn_type = fn[simd_width: Int] (
+    comptime _input_fn_type = fn[simd_width: Int] (
         x: Int, y: Int
     ) capturing -> SIMD[Self.dtype, simd_width]
 
@@ -141,6 +141,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 bk_ptr += b_stride
 
         tile[loop_body, VariadicList[Int](Self.simd_width, 1)](0, K)
+        # TODO(MOCO-2074): Suppress false positive unused var warning.
+        _ = ak_ptr
+        _ = bk_ptr
 
     @staticmethod
     @always_inline
@@ -185,6 +188,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 bk_ptr += b_stride
 
         tile[loop_body, VariadicList[Int](2, 1)](0, K)
+        # TODO(MOCO-2074): Suppress false positive unused var warning.
+        _ = ak_ptr
+        _ = bk_ptr
 
     @no_inline
     @staticmethod
@@ -241,6 +247,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             cm_ptr += tile_m * c_stride
 
         tile[process_rows, Self._matmul_config.row_sizes](0, M)
+        # TODO(MOCO-2074): Suppress false positive unused var warning.
+        _ = am_ptr
+        _ = cm_ptr
 
     @no_inline
     @staticmethod
@@ -254,10 +263,10 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         # Use a conservative SIMD width for transposing. Using a wider native
         # SIMD width has not been observed to improve performance and causes
         # code size to unnecessarily increase.
-        alias transpose_width = 4
-        alias tile_sizes = VariadicList[Int](transpose_width, 1)
+        comptime transpose_width = 4
+        comptime tile_sizes = VariadicList[Int](transpose_width, 1)
 
-        alias layout = Layout.row_major(transpose_width, transpose_width)
+        comptime layout = Layout.row_major(transpose_width, transpose_width)
         var transpose_stack = InlineArray[Scalar[Self.dtype], layout.size()](
             uninitialized=True
         )
@@ -343,7 +352,6 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         c_ptr: UnsafePointer[Scalar[Self.dtype]],
     ):
         var K = static_k if static_k != UNKNOWN_VALUE else dynamic_k
-
         var cn_ptr = c_ptr
 
         @parameter
@@ -382,8 +390,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                     accum_reduce[nn] = accum[nn].reduce_add[target_width]()
                 return accum_reduce
 
-            alias unroll_factor = 2
-            alias unroll_simd_width = Self.simd_width * unroll_factor
+            comptime unroll_factor = 2
+            comptime unroll_simd_width = Self.simd_width * unroll_factor
 
             var unroll_loop_end = align_down(K, unroll_simd_width)
             var unroll_accum = InlineArray[
@@ -405,6 +413,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             cn_ptr += tile_n
 
         tile[process_cols, VariadicList[Int](4, 1)](0, N)
+        # TODO(MOCO-2074): Suppress false positive unused var warning.
+        _ = K
+        _ = cn_ptr
 
     @no_inline
     @staticmethod
@@ -435,6 +446,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             cn_ptr += _simd_width
 
         tile[process_cols, Self._matmul_config.gemv_sizes](0, N)
+        # TODO(MOCO-2074): Suppress false positive unused var warning.
+        _ = cn_ptr
 
     @no_inline
     @staticmethod
@@ -520,9 +533,9 @@ struct _FlashAttentionConfig[
         self.o_block_n = 128
 
         # Set a target size for the output block array.
-        alias output_target_size = 8192
+        comptime output_target_size = 8192
 
-        alias depth_static_dim = Self.output_static_shape[Self.rank - 1]
+        comptime depth_static_dim = Self.output_static_shape[Self.rank - 1]
 
         @parameter
         if depth_static_dim != UNKNOWN_VALUE:
@@ -570,11 +583,11 @@ struct _FlashAttention[
     *,
     simd_width: Int = simd_width_of[dtype](),
 ]:
-    alias _matmul = _Matmul[Self.dtype, Self.simd_width]
-    alias _config = _FlashAttentionConfig[
+    comptime _matmul = _Matmul[Self.dtype, Self.simd_width]
+    comptime _config = _FlashAttentionConfig[
         Self.dtype, Self.rank, Self.simd_width, Self.padded_output_shape
     ]()
-    alias _depth_static_dim = Self.padded_output_shape[Self.rank - 1]
+    comptime _depth_static_dim = Self.padded_output_shape[Self.rank - 1]
 
     @staticmethod
     fn _online_softmax[
@@ -600,7 +613,7 @@ struct _FlashAttention[
         if do_sink:
             sink_logit = sink_weight.value()
 
-        alias layout_1d = Layout.row_major(UNKNOWN_VALUE)
+        comptime layout_1d = Layout.row_major(UNKNOWN_VALUE)
         for m in range(count_m):
             var qk_row = LayoutTensor[Self.dtype, layout_1d](
                 qk_row_ptr,
@@ -675,13 +688,12 @@ struct _FlashAttention[
             max_vals[m] = max_val
             sum_vals[m] = sum_vals[m] * fixup_val + accum_val
 
-            @parameter
             @always_inline
-            fn do_correction[_simd_width: Int](idx: Int):
+            fn do_correction[_simd_width: Int](idx: Int) unified {mut}:
                 var val = o_row_ptr.load[width=_simd_width](idx)
                 o_row_ptr.store(idx, val * fixup_val)
 
-            vectorize[do_correction, Self.simd_width, unroll_factor=2](count_n)
+            vectorize[Self.simd_width, unroll_factor=2](count_n, do_correction)
 
             qk_row_ptr += Self._config.qk_block_n
             o_row_ptr += Self._config.o_block_n
@@ -738,7 +750,7 @@ struct _FlashAttention[
                 Self.dtype,
                 alignment = align_of[SIMD[Self.dtype, Self.simd_width]](),
             ]()
-            alias layout = Layout.row_major(Self._config.block_m)
+            comptime layout = Layout.row_major(Self._config.block_m)
             var max_vals_stack = InlineArray[
                 Scalar[Self.dtype], Self._config.block_m
             ](uninitialized=True)
@@ -913,14 +925,13 @@ struct _FlashAttention[
                 for m in range(count_m):
                     var reciprocal = 1 / sum_vals[m][0]
 
-                    @parameter
                     @always_inline
-                    fn do_final[_simd_width: Int](idx: Int):
+                    fn do_final[_simd_width: Int](idx: Int) unified {mut}:
                         var v = oz_ptr.load[width=_simd_width](idx)
                         o_ptr.store(idx, v * reciprocal)
 
-                    vectorize[do_final, Self.simd_width, unroll_factor=4](
-                        count_n
+                    vectorize[Self.simd_width, unroll_factor=4](
+                        count_n, do_final
                     )
 
                     o_ptr += q_seq_stride
@@ -1118,19 +1129,23 @@ fn flash_attention_split_kv[
     @parameter
     fn description_fn() -> String:
         return String(";").join(
-            trace_arg("q", q.runtime_layout.shape.value),
-            trace_arg("k", k_shape),
-            trace_arg("v", v_shape),
-            trace_arg("k_cache", k_cache_shape),
-            trace_arg("v_cache", v_cache_shape),
-            trace_arg("output", output.runtime_layout.shape.value),
+            Span(
+                [
+                    trace_arg("q", q.runtime_layout.shape.value),
+                    trace_arg("k", k_shape),
+                    trace_arg("v", v_shape),
+                    trace_arg("k_cache", k_cache_shape),
+                    trace_arg("v_cache", v_cache_shape),
+                    trace_arg("output", output.runtime_layout.shape.value),
+                ]
+            )
         )
 
     with Trace[TraceLevel.OP, target = StaticString("cpu")](
         "flash_attention_split_kv",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
     ):
-        alias kv_rank = rank + 1
+        comptime kv_rank = rank + 1
 
         var kv_cache_len = v_cache_shape[3]
 
@@ -1230,13 +1245,13 @@ fn _flash_attention_kv_cache[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin]
     ] = None,
 ):
-    alias kv_params = cache_t.kv_params
+    comptime kv_params = cache_t.kv_params
 
     var max_seq_len = q.dim[1]()
     var num_batches = q.dim[0]()
-    alias num_heads = Int(q.layout.shape[2])
-    alias head_size = cache_t.kv_params.head_size
-    alias output_shape = IndexList[4](
+    comptime num_heads = Int(q.layout.shape[2])
+    comptime head_size = cache_t.kv_params.head_size
+    comptime output_shape = IndexList[4](
         UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, Int(head_size)
     )
 
@@ -1296,9 +1311,9 @@ fn _flash_attention_kv_cache[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin]
     ] = None,
 ):
-    alias num_kv_heads = cache_t.kv_params.num_heads
-    alias depth_dim = cache_t.kv_params.head_size
-    alias cache_type = cache_t.dtype
+    comptime num_kv_heads = cache_t.kv_params.num_heads
+    comptime depth_dim = cache_t.kv_params.head_size
+    comptime cache_type = cache_t.dtype
 
     constrained[
         cache_type == dtype,
@@ -1492,12 +1507,12 @@ fn flash_attention_kv_cache[
         var out_idx = output._offset(flat_idx)
         return output.ptr + out_idx
 
-    alias mask_rank = 4
+    comptime mask_rank = 4
     var num_batches = q_input_row_offsets.dim[0]() - 1
     var max_seq_len = k.max_prompt_length()
-    alias num_heads = Int(q.layout.shape[q.rank - 2])
-    alias head_size = cache_t.kv_params.head_size
-    alias output_shape = IndexList[4](
+    comptime num_heads = Int(q.layout.shape[q.rank - 2])
+    comptime head_size = cache_t.kv_params.head_size
+    comptime output_shape = IndexList[4](
         UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, Int(head_size)
     )
 

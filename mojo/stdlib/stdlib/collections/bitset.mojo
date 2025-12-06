@@ -45,8 +45,8 @@ from .inline_array import InlineArray
 # Utilities
 # ===-----------------------------------------------------------------------===#
 
-alias _WORD_BITS = bit_width_of[DType.int64]()
-alias _WORD_BITS_LOG2 = log2_floor(_WORD_BITS)
+comptime _WORD_BITS = bit_width_of[DType.int64]()
+comptime _WORD_BITS_LOG2 = log2_floor(_WORD_BITS)
 
 
 @always_inline
@@ -89,7 +89,7 @@ fn _check_index_bounds[operation_name: StaticString](idx: Int, max_size: Int):
 
 
 struct BitSet[size: Int](
-    Boolable, Copyable, Defaultable, Movable, Sized, Stringable, Writable
+    Boolable, Copyable, Defaultable, Sized, Stringable, Writable
 ):
     """A grow-only set storing non-negative integers efficiently using bits.
 
@@ -108,7 +108,7 @@ struct BitSet[size: Int](
     lookup speed are critical.
     """
 
-    alias _words_size = max(1, ceildiv(Self.size, _WORD_BITS))
+    comptime _words_size = max(1, ceildiv(Self.size, _WORD_BITS))
     var _words: InlineArray[Int64, Self._words_size]  # Payload storage.
 
     # --------------------------------------------------------------------- #
@@ -125,11 +125,11 @@ struct BitSet[size: Int](
         Args:
             init: A SIMD vector of booleans to initialize the bitset with.
         """
-        constrained[
+        __comptime_assert (
             max(init.size, _WORD_BITS) // _WORD_BITS == Self._words_size
-        ]()
+        )
         self._words = type_of(self._words)(uninitialized=True)
-        alias step = min(init.size, _WORD_BITS)
+        comptime step = min(init.size, _WORD_BITS)
 
         @parameter
         for i in range(Self._words_size):
@@ -293,13 +293,14 @@ struct BitSet[size: Int](
             A new bitset containing the result of applying the function to each
             corresponding pair of words from the input bitsets.
         """
-        alias simd_width = simd_width_of[Int64]()
+        comptime simd_width = simd_width_of[Int64]()
         var res = Self()
 
         # Define a vectorized operation that processes multiple words at once
-        @parameter
         @always_inline
-        fn _intersect[simd_width: Int](offset: Int):
+        fn _intersect[
+            simd_width: Int
+        ](offset: Int) unified {mut res, read left, read right}:
             # Initialize SIMD vectors to hold multiple words from each bitset
             var left_vec = SIMD[DType.int64, simd_width]()
             var right_vec = SIMD[DType.int64, simd_width]()
@@ -324,7 +325,7 @@ struct BitSet[size: Int](
         if Self._words_size >= simd_width:
             # If we have enough words, use SIMD vectorization for better
             # performance
-            vectorize[_intersect, simd_width, size = Self._words_size]()
+            vectorize[simd_width](Self._words_size, _intersect)
         else:
             # For small bitsets, use a simple scalar implementation
             @parameter

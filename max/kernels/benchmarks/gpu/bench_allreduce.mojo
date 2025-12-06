@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 
 from collections import InlineArray
-from math import floor
-from sys import env_get_bool, env_get_dtype, env_get_int, size_of
+from math import floor, align_up
+from sys import env_get_bool, env_get_dtype, env_get_int, size_of, simd_width_of
 from utils.numerics import get_accum_type
 
 from benchmark import Bench, Bencher, BenchId, BenchMetric, ThroughputMeasure
@@ -21,10 +21,16 @@ from buffer import NDBuffer
 from buffer.dimlist import DimList
 from comm.allreduce import MAX_GPUS, Signal, allreduce, can_enable_p2p
 import comm.vendor.ccl as vendor_ccl
-from gpu.host import DeviceBuffer, DeviceContext, DeviceMulticastBuffer
+from gpu.host import (
+    DeviceBuffer,
+    DeviceContext,
+    DeviceMulticastBuffer,
+    get_gpu_target,
+)
 from internal_utils import InitializationType, arg_parse
 from memory import LegacyUnsafePointer as UnsafePointer
 from testing import assert_almost_equal, assert_true
+from algorithm import sync_parallelize
 
 from utils.index import IndexList, StaticTuple
 
@@ -55,9 +61,9 @@ fn _pretty_print_float(val: Float64) -> String:
 
 
 fn _human_memory(size: Int) -> String:
-    alias KB = 1024
-    alias MB = KB * KB
-    alias GB = MB * KB
+    comptime KB = 1024
+    comptime MB = KB * KB
+    comptime GB = MB * KB
 
     if size >= GB:
         return _pretty_print_float(Float64(size) / GB) + "GB"
@@ -88,6 +94,7 @@ fn bench_reduce[
     *,
     use_multimem: Bool,
     use_quickreduce: Bool,
+    cache_busting: Bool,
     use_vendor_ccl: Bool = False,
 ](
     mut m: Bench,
@@ -103,7 +110,7 @@ fn bench_reduce[
     var out_bufs_list = List[DeviceBuffer[dtype]](capacity=ngpus)
     var host_buffers = List[UnsafePointer[Scalar[dtype]]](capacity=ngpus)
 
-    alias num_buffers = 1 if use_multimem else ngpus
+    comptime num_buffers = 1 if use_multimem else ngpus
 
     # Create signal buffers for synchronization
     var signal_buffers = List[DeviceBuffer[DType.uint8]](capacity=ngpus)
@@ -112,6 +119,13 @@ fn bench_reduce[
     # Set up temp buffers for GPUs to reduce-scatter into / all-gather from.
     var temp_buffer_num_bytes = ngpus * num_bytes
     var length = num_bytes // size_of[dtype]()
+
+    alias simd_size = simd_width_of[dtype, target = get_gpu_target()]()
+    var stride = align_up(length, simd_size)
+    alias m512 = 512 * 1024 * 1024
+    var cache_elems = (
+        align_up(m512, stride * size_of[dtype]()) // size_of[dtype]()
+    )
 
     # Initialize buffers for each GPU
     @parameter
@@ -122,17 +136,18 @@ fn bench_reduce[
         )
 
         # Create and initialize host buffers
-        var host_buffer = UnsafePointer[Scalar[dtype]].alloc(length)
+        var host_buffer = UnsafePointer[Scalar[dtype]].alloc(cache_elems)
         host_buffers.append(host_buffer)
 
-        for j in range(length):
-            host_buffer[j] = _per_gpu_value[dtype](gpu_idx, j)
+        for i in range(cache_elems // stride):
+            for j in range(length):
+                host_buffer[i * stride + j] = _per_gpu_value[dtype](gpu_idx, j)
 
         @parameter
         if not use_multimem:
             # Create per-GPU input buffers on device and copy from host
             in_bufs_list.append(
-                list_of_ctx[gpu_idx].enqueue_create_buffer[dtype](length)
+                list_of_ctx[gpu_idx].enqueue_create_buffer[dtype](cache_elems)
             )
             list_of_ctx[gpu_idx].enqueue_copy(
                 in_bufs_list[gpu_idx], host_buffer
@@ -159,9 +174,12 @@ fn bench_reduce[
         fill={}
     )
 
+    var multi_ptr = UnsafePointer[Scalar[dtype]]()
+
+    @parameter
     if use_multimem:
-        var multicast_buf = DeviceMulticastBuffer[dtype](
-            list_of_ctx.copy(), length
+        multicast_buf = DeviceMulticastBuffer[dtype](
+            list_of_ctx.copy(), cache_elems
         )
 
         @parameter
@@ -174,6 +192,9 @@ fn bench_reduce[
             multicast_buf.multicast_buffer_for(list_of_ctx[0]).unsafe_ptr(),
             DimList(length),
         )
+        multi_ptr = multicast_buf.multicast_buffer_for(
+            list_of_ctx[0]
+        ).unsafe_ptr()
     else:
 
         @parameter
@@ -209,31 +230,60 @@ fn bench_reduce[
     # Monotonic iteration counter to color quickreduce flags across launches.
     var iter = 0
 
+    # Pre-initialize vendor CCL communicators from the main thread.
+    # ncclCommInitAll is not thread-safe, so we must initialize before
+    # spawning worker threads.
     @parameter
-    @always_inline
-    fn bench_iter(mut b: Bencher) raises:
+    if use_vendor_ccl:
+        if not vendor_ccl.is_allreduce_available():
+            raise "Vendor CCL not available; skipping vendor path."
+        vendor_ccl.init_comms(ngpus)
+
+    var results = InlineArray[Float64, ngpus](fill={})
+
+    @parameter
+    fn per_gpu(i: Int) raises:
         @parameter
         @always_inline
-        fn call_fn() raises:
+        fn bench_iter(mut b: Bencher) raises:
             @parameter
-            if use_vendor_ccl:
-                constrained[
-                    not use_multimem,
-                    "vendor CCL does not support multimem path",
-                ]()
-                if not vendor_ccl.is_allreduce_available():
-                    raise "Vendor CCL not available; skipping vendor path."
-                vendor_ccl.allreduce[dtype=dtype, rank=rank, ngpus=ngpus](
-                    rebind[
-                        InlineArray[NDBuffer[dtype, rank, MutAnyOrigin], ngpus]
-                    ](in_bufs),
-                    out_bufs,
-                    list_of_ctx,
-                )
-            else:
+            @always_inline
+            fn call_fn(ctx: DeviceContext, iteration: Int) raises:
+                # Offset the input buffer if cache_busting
+                var offset = 0
 
                 @parameter
-                for i in range(ngpus):
+                if cache_busting:
+                    offset = (iteration * stride) % cache_elems
+
+                @parameter
+                if not use_multimem:
+
+                    @parameter
+                    for i in range(ngpus):
+                        in_bufs[i] = NDBuffer[dtype, rank](
+                            in_bufs_list[i].unsafe_ptr() + offset,
+                            DimList(length),
+                        )
+                else:
+                    in_bufs[0] = NDBuffer[dtype, rank](
+                        multi_ptr + offset, DimList(length)
+                    )
+
+                # Run allreduce
+                @parameter
+                if use_vendor_ccl:
+                    constrained[
+                        not use_multimem,
+                        "vendor CCL does not support multimem path",
+                    ]()
+                    vendor_ccl.allreduce[dtype=dtype, rank=rank, ngpus=ngpus](
+                        in_bufs[i],
+                        out_bufs[i],
+                        i,
+                        list_of_ctx[i],
+                    )
+                else:
                     allreduce[
                         ngpus=ngpus,
                         use_multimem=use_multimem,
@@ -246,18 +296,45 @@ fn bench_reduce[
                         max_num_blocks,
                         iter,
                     )
-                iter += 1
 
-        b.iter_custom_multicontext[call_fn](list_of_ctx)
+            b.iter_custom[call_fn](list_of_ctx[i])
 
-    var vendor_tag = "-vendor_ccl" if use_vendor_ccl else ""
+        var b = Bench()
+        b.config.show_progress = False
+        b.bench_function[bench_iter](
+            BenchId(String("")),
+            [ThroughputMeasure(BenchMetric.bytes, num_bytes)],
+        )
+        results[i] = b.info_vec[0].result.mean(unit="ms")
+
+    sync_parallelize[per_gpu](ngpus)
+
+    var max_time = 0.0
+    for i in range(ngpus):
+        if results[i] > max_time:
+            max_time = results[i]
+
+    var gbps = num_bytes / (max_time * 1000 * 1000)
+    print("")
     var name = String(
-        _get_test_str[dtype, use_multimem](ngpus, num_bytes), vendor_tag
+        _get_test_str[dtype, use_multimem](ngpus, num_bytes),
+        "-vendor_ccl" if use_vendor_ccl else "",
     )
-    m.bench_function[bench_iter](
-        BenchId(name),
-        # add data movement to measures
-        [ThroughputMeasure(BenchMetric.bytes, num_bytes)],
+    # algbw and busbw are explain in the following link:
+    # https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#allreduce
+    var busbw = 2 * gbps * (ngpus - 1) / ngpus
+    print(
+        "|",
+        name,
+        "| slowest mean time",
+        max_time,
+        "ms |",
+        "algbw:",
+        gbps,
+        "GB/s |",
+        "busbw:",
+        busbw,
+        "GB/s |",
     )
 
     # Copy results back and verify
@@ -274,7 +351,7 @@ fn bench_reduce[
     @parameter
     for i in range(ngpus):
         for j in range(length):
-            alias accum_t = get_accum_type[dtype]()
+            comptime accum_t = get_accum_type[dtype]()
             var accum = Scalar[accum_t](0)
 
             @parameter
@@ -317,17 +394,18 @@ fn _get_test_str[
 def main():
     var num_bytes = arg_parse("num_bytes", 16 * 1024)
 
-    alias dtype = env_get_dtype["dtype", DType.bfloat16]()
-    alias num_gpus = env_get_int["num_gpus", 2]()
-    alias rank = env_get_int["rank", 1]()
+    comptime dtype = env_get_dtype["dtype", DType.bfloat16]()
+    comptime num_gpus = env_get_int["num_gpus", 2]()
+    comptime rank = env_get_int["rank", 1]()
     # Force passing `max_num_blocks` explicitly.
     var max_nb = env_get_int["TUNE_MAX_NUM_BLOCKS", -1]()
     var max_num_blocks: Optional[Int] = Optional[Int]()
     if max_nb > 0:
         max_num_blocks = Optional[Int](max_nb)
-    alias use_multimem = env_get_bool["multimem", False]()
-    alias use_quickreduce = env_get_bool["quickreduce", False]()
-    alias use_vendor_ccl = env_get_bool["use_vendor_ccl", False]()
+    comptime use_multimem = env_get_bool["multimem", False]()
+    comptime use_quickreduce = env_get_bool["quickreduce", False]()
+    comptime use_vendor_ccl = env_get_bool["use_vendor_ccl", False]()
+    comptime cache_busting = True
 
     var num_gpus_found = DeviceContext.number_of_devices()
     assert_true(
@@ -356,6 +434,7 @@ def main():
             dtype=dtype,
             rank=rank,
             ngpus=num_gpus,
+            cache_busting=cache_busting,
             use_vendor_ccl=use_vendor_ccl,
         ](m, ctx, num_bytes, max_num_blocks)
     else:
@@ -364,10 +443,9 @@ def main():
             rank=rank,
             ngpus=num_gpus,
             use_multimem=use_multimem,
+            cache_busting=cache_busting,
             use_vendor_ccl=use_vendor_ccl,
         ](m, ctx, num_bytes, max_num_blocks)
-
-    m.dump_report()
 
 
 # Convenience wrappers matching reviewer terminology.
@@ -377,6 +455,7 @@ fn bench_allreduce_pull[
     ngpus: Int,
     *,
     use_multimem: Bool = False,
+    cache_busting: Bool = True,
     use_vendor_ccl: Bool = False,
 ](
     mut m: Bench,
@@ -391,6 +470,7 @@ fn bench_allreduce_pull[
         ngpus=ngpus,
         use_multimem=use_multimem,
         use_quickreduce=False,
+        cache_busting=cache_busting,
         use_vendor_ccl=use_vendor_ccl,
     ](m, list_of_ctx, num_bytes, max_num_blocks)
 
@@ -400,6 +480,7 @@ fn bench_allreduce_push[
     rank: Int,
     ngpus: Int,
     *,
+    cache_busting: Bool = True,
     use_vendor_ccl: Bool = False,
 ](
     mut m: Bench,
@@ -414,5 +495,6 @@ fn bench_allreduce_push[
         ngpus=ngpus,
         use_multimem=False,
         use_quickreduce=True,
+        cache_busting=cache_busting,
         use_vendor_ccl=use_vendor_ccl,
     ](m, list_of_ctx, num_bytes, max_num_blocks)

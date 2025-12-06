@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "mojo_filecheck_test", "mojo_test")
 
+package(default_visibility = ["//max:consumers"])
+
 _FILECHECK_TESTS = [
     "test_activations.mojo",
     "test_arange.mojo",
@@ -51,8 +53,8 @@ _CONSTRAINTS = {
         srcs = [src],
         target_compatible_with = _CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:internal_utils",
-            "@mojo//:nn",
+            "//max:internal_utils",
+            "//max:nn",
             "@mojo//:stdlib",
             "@mojo//:test_utils",
         ],
@@ -66,10 +68,10 @@ _CONSTRAINTS = {
         srcs = [src],
         target_compatible_with = _CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:internal_utils",
-            "@mojo//:nn",
+            "//max:internal_utils",
+            "//max:nn",
+            "//max:testdata",
             "@mojo//:stdlib",
-            "@mojo//:testdata",
         ],
     )
     for src in glob(

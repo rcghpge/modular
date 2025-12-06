@@ -553,10 +553,6 @@ class GeneratorAttr(max._core.Attribute):
 
     @overload
     def __init__(
-        self, body: max._core.dialects.builtin.TypedAttr, type: GeneratorType
-    ) -> None: ...
-    @overload
-    def __init__(
         self,
         input_param_types: Sequence[max._core.Type],
         body: max._core.dialects.builtin.TypedAttr,
@@ -1166,23 +1162,18 @@ class SugarAttr(max._core.Attribute):
     fully expanded "canonical" version of the attribute.
     """
 
-    @overload
     def __init__(
         self,
         kind: SugarKind,
+        member_name: max._core.dialects.builtin.StringAttr,
         sugared: max._core.dialects.builtin.TypedAttr,
         expanded: max._core.dialects.builtin.TypedAttr,
-    ) -> None: ...
-    @overload
-    def __init__(
-        self,
-        kind: SugarKind,
-        sugared: max._core.dialects.builtin.TypedAttr,
-        expanded: max._core.dialects.builtin.TypedAttr,
-        canonical: max._core.dialects.builtin.TypedAttr,
+        canonical: max._core.dialects.builtin.TypedAttr = ...,
     ) -> None: ...
     @property
     def kind(self) -> SugarKind: ...
+    @property
+    def member_name(self) -> max._core.dialects.builtin.StringAttr: ...
     @property
     def sugared(self) -> max._core.dialects.builtin.TypedAttr: ...
     @property
@@ -1759,15 +1750,17 @@ class ArgConvention(enum.Enum):
 
     owned_in_mem = 3
 
-    mut = 4
+    deinit_mem = 4
 
-    ref = 5
+    mut = 5
 
-    mutref = 6
+    ref = 6
 
-    byref_result = 7
+    mutref = 7
 
-    byref_error = 8
+    byref_result = 8
+
+    byref_error = 9
 
 class ArgConventionAttr(max._core.Attribute):
     def __init__(self, arg0: Context, arg1: ArgConvention, /) -> None: ...
@@ -1819,6 +1812,8 @@ class FnEffects(enum.Enum):
     unified = 64
 
     register_passable = 128
+
+    extern = 256
 
 class InlineLevel(enum.Enum):
     automatic = 0
@@ -1935,7 +1930,9 @@ class POCAttr(max._core.Attribute):
 class SugarKind(enum.Enum):
     aibuiltin = 0
 
-    alias = 1
+    member_alias = 1
+
+    alias = 2
 
 class TailKind(enum.Enum):
     none = 0
@@ -3819,7 +3816,16 @@ class UnreachableOp(max._core.Operation):
     """
 
     def __init__(
-        self, builder: max._core.OpBuilder, location: Location
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        is_after_unreachable_call: max._core.dialects.builtin.BoolAttr,
+    ) -> None: ...
+    @property
+    def is_after_unreachable_call(self) -> bool: ...
+    @is_after_unreachable_call.setter
+    def is_after_unreachable_call(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
     ) -> None: ...
 
 class VariantCreateOp(max._core.Operation):
@@ -4196,6 +4202,17 @@ class GeneratorType(max._core.Type):
     def body(self) -> max._core.Type | None: ...
     @property
     def metadata(self) -> GeneratorMetadataAttrInterface: ...
+
+class NeverType(max._core.Type):
+    """
+    A `!kgen.never` type represents a type that cannot be
+    constructed. This is used to represent functions that never return or
+    generic thrown types that resolve to a concrete type of "not actually
+    thrown".
+    ```
+    """
+
+    def __init__(self) -> None: ...
 
 class NoneType(max._core.Type):
     """

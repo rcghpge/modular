@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "mojo_test")
 
+package(default_visibility = ["//visibility:private"])
+
 _TEST_DATA = [
     "asyncrt_test_utils.mojo",
 ]
@@ -52,9 +54,9 @@ _EXTRA_CONSTRAINTS = {
         tags = ["gpu"],
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:layout",
+            "//max:layout",
+            "//max:tensor",
             "@mojo//:stdlib",
-            "@mojo//:tensor",
         ],
     )
     for src in glob(
@@ -73,9 +75,9 @@ _EXTRA_CONSTRAINTS = {
         ],
         main = src,
         deps = [
-            "@mojo//:layout",
+            "//max:layout",
+            "//max:tensor",
             "@mojo//:stdlib",
-            "@mojo//:tensor",
         ],
     )
     for src in _CPU_TESTS

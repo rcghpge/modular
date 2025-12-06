@@ -20,10 +20,10 @@ from utils.index import IndexList
 # Padding handling method.
 @fieldwise_init
 @register_passable("trivial")
-struct PadHandling(ImplicitlyCopyable, Movable):
+struct PadHandling(ImplicitlyCopyable):
     var value: Int
-    alias EXCLUDE_PAD = PadHandling(0)  # Do not count padding.
-    alias INCLUDE_PAD = PadHandling(2)  # Count padding.
+    comptime EXCLUDE_PAD = PadHandling(0)  # Do not count padding.
+    comptime INCLUDE_PAD = PadHandling(2)  # Count padding.
 
     @always_inline("nodebug")
     fn __eq__(self, rhs: PadHandling) -> Bool:
@@ -37,13 +37,15 @@ struct PadHandling(ImplicitlyCopyable, Movable):
 # Data layout encoding.
 @fieldwise_init
 @register_passable("trivial")
-struct Image2DLayout(ImplicitlyCopyable, Movable):
+struct Image2DLayout(ImplicitlyCopyable):
     var value: Int
-    alias UNKNOWN = Image2DLayout(-1)  # statically unknown layout.
-    alias NHWC = Image2DLayout(0)  # channels last layout.
-    alias NCHW = Image2DLayout(1)  # channels first layout.
-    alias RSCF = Image2DLayout(2)  # TF filter layout for channels last input.
-    alias FRSCf = Image2DLayout(3)  # packed filter, adopted from oneDNN
+    comptime UNKNOWN = Image2DLayout(-1)  # statically unknown layout.
+    comptime NHWC = Image2DLayout(0)  # channels last layout.
+    comptime NCHW = Image2DLayout(1)  # channels first layout.
+    comptime RSCF = Image2DLayout(
+        2
+    )  # TF filter layout for channels last input.
+    comptime FRSCf = Image2DLayout(3)  # packed filter, adopted from oneDNN
 
     @always_inline("nodebug")
     fn __eq__(self, rhs: Image2DLayout) -> Bool:
@@ -289,7 +291,7 @@ struct ImageData[
 
 
 @register_passable("trivial")
-struct ImageShape(ImplicitlyCopyable, Movable):
+struct ImageShape(ImplicitlyCopyable):
     """A data-layout agnostic representation of tensor shapes used in conv2d."""
 
     var N: Int

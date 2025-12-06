@@ -20,7 +20,6 @@ from python import Python
 """
 
 from collections.dict import OwnedKwargsDict
-from memory import LegacyUnsafePointer as UnsafePointer
 from os import abort
 from sys.ffi import _Global
 
@@ -47,7 +46,9 @@ struct _PythonGlobal(Defaultable, Movable):
         self.cpython.destroy()
 
 
-fn _get_python_interface() raises -> Pointer[CPython, StaticConstantOrigin]:
+fn _get_python_interface() raises -> (
+    UnsafePointer[CPython, StaticConstantOrigin]
+):
     """Returns an immutable static pointer to the CPython global.
 
     The returned pointer is immutable to prevent invalid shared mutation of
@@ -60,13 +61,13 @@ fn _get_python_interface() raises -> Pointer[CPython, StaticConstantOrigin]:
         .as_immutable()
         .unsafe_origin_cast[StaticConstantOrigin]()
     )
-    return Pointer(to=cpython_instance[])
+    return cpython_instance
 
 
 struct Python(Defaultable, ImplicitlyCopyable):
     """Provides methods that help you use Python code in Mojo."""
 
-    var _impl: Pointer[CPython, StaticConstantOrigin]
+    var _impl: UnsafePointer[mut=False, CPython, StaticConstantOrigin]
     """The underlying implementation of Mojo's Python interface."""
 
     # ===-------------------------------------------------------------------===#
@@ -79,9 +80,6 @@ struct Python(Defaultable, ImplicitlyCopyable):
             self._impl = _get_python_interface()
         except e:
             abort[prefix="ERROR:"](String(e))
-            __mlir_op.`lit.ownership.mark_initialized`(
-                __get_mvalue_as_litref(self)
-            )
 
     fn __init__(out self, ref [StaticConstantOrigin]cpython: CPython):
         """Construct a `Python` instance from an existing reference
@@ -90,7 +88,9 @@ struct Python(Defaultable, ImplicitlyCopyable):
         Args:
             cpython: Reference to the `CPython` singleton.
         """
-        self._impl = Pointer(to=cpython)
+        self._impl = UnsafePointer[mut=False, CPython, MutAnyOrigin](
+            to=cpython
+        ).unsafe_origin_cast[StaticConstantOrigin]()
 
     @always_inline
     fn cpython(self) -> ref [StaticConstantOrigin] CPython:
@@ -291,7 +291,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
     @staticmethod
     fn _unsafe_add_functions(
         module: PythonObject,
-        functions: UnsafePointer[PyMethodDef],
+        functions: UnsafePointer[PyMethodDef, MutAnyOrigin],
     ) raises:
         """Adds functions to a Python module object.
 
@@ -341,7 +341,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
         ref cpy = Self().cpython()
         var errno = cpy.PyModule_AddObjectRef(
             module._obj_ptr,
-            name.unsafe_cstr_ptr(),
+            name.as_c_string_slice().unsafe_ptr(),
             value._obj_ptr,
         )
         if errno == -1:
@@ -354,7 +354,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
     @doc_private
     @staticmethod
     fn _dict[
-        V: ConvertibleToPython & Copyable & Movable = PythonObject
+        V: ConvertibleToPython & Copyable = PythonObject
     ](kwargs: OwnedKwargsDict[V]) raises -> PyObjectPtr:
         """Construct a Python dictionary from keyword arguments.
 
@@ -376,13 +376,13 @@ struct Python(Defaultable, ImplicitlyCopyable):
 
     @staticmethod
     fn dict[
-        V: ConvertibleToPython & Copyable & Movable = PythonObject
+        V: ConvertibleToPython & Copyable = PythonObject
     ](**kwargs: V) raises -> PythonObject:
         """Construct an Python dictionary from keyword arguments.
 
         Parameters:
             V: The type of the values in the dictionary. Must implement the
-                `ConvertibleToPython`, `Copyable`, and `Movable` traits.
+                `ConvertibleToPython`, and `Copyable` traits.
 
         Args:
             kwargs: The keyword arguments to construct the dictionary with.
@@ -398,16 +398,16 @@ struct Python(Defaultable, ImplicitlyCopyable):
 
     @staticmethod
     fn dict[
-        K: ConvertibleToPython & Copyable & Movable = PythonObject,
-        V: ConvertibleToPython & Copyable & Movable = PythonObject,
+        K: ConvertibleToPython & Copyable = PythonObject,
+        V: ConvertibleToPython & Copyable = PythonObject,
     ](tuples: Span[Tuple[K, V]]) raises -> PythonObject:
         """Construct an Python dictionary from a list of key-value tuples.
 
         Parameters:
             K: The type of the keys in the dictionary. Must implement the
-                `ConvertibleToPython`, `Copyable`, and `Movable` traits.
+                `ConvertibleToPython`, and `Copyable` traits.
             V: The type of the values in the dictionary. Must implement the
-                `ConvertibleToPython`, `Copyable`, and `Movable` traits.
+                `ConvertibleToPython`, and `Copyable` traits.
 
         Args:
             tuples: The list of key-value tuples to construct the dictionary
@@ -434,7 +434,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
 
     @staticmethod
     fn list[
-        T: ConvertibleToPython & Copyable & Movable
+        T: ConvertibleToPython & Copyable
     ](values: Span[T]) raises -> PythonObject:
         """Initialize the object from a list of values.
 
@@ -561,7 +561,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
         Returns:
             Mojo string representing the given Python object.
         """
-        ref cpy = Self().cpython()
+        ref cpy = self.cpython()
         return cpy.PyUnicode_AsUTF8AndSize(obj._obj_ptr)
 
     @staticmethod

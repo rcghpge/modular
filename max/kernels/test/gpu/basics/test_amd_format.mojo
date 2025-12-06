@@ -55,7 +55,9 @@ struct Buffer[capacity: Int](Defaultable, Writer):
             args[i].write_to(self)
 
 
-fn check_float[dtype: DType, //, expected: StaticString](f8: Scalar[dtype]):
+fn check_float[
+    dtype: DType, //, expected: StaticString
+](f8: Scalar[dtype]) where dtype.is_floating_point():
     var f8_str = Buffer[len(expected)]()
     _write_float(f8_str, f8)
     var res = memcmp(
@@ -104,13 +106,13 @@ def main():
     # TODO(KERN-1259): Add tests for fnuz types when they're working
     with DeviceContext() as ctx:
         print("== test_format_float8_e5m2")
-        alias kernel_0 = test_format_float8_e5m2
+        comptime kernel_0 = test_format_float8_e5m2
         ctx.enqueue_function_checked[kernel_0, kernel_0](
             grid_dim=1, block_dim=1
         )
 
         print("== test_format_float8_e4m3fn")
-        alias kernel_1 = test_format_float8_e4m3fn
+        comptime kernel_1 = test_format_float8_e4m3fn
         ctx.enqueue_function_checked[kernel_1, kernel_1](
             grid_dim=1, block_dim=1
         )

@@ -259,11 +259,7 @@ class GptOssModel(
             max_seq_len=cls.calculate_max_seq_len(
                 pipeline_config, huggingface_config=huggingface_config
             ),
-            num_layers=GptOssConfig.get_num_layers(
-                huggingface_config=huggingface_config
-            ),
             available_cache_memory=available_cache_memory,
-            devices=devices,
         )
 
     def load_model(self, session: InferenceSession) -> Model:
@@ -483,7 +479,7 @@ class GptOssModel(
 
     def prepare_initial_token_inputs(
         self,
-        context_batch: Sequence[TextContext],
+        replica_batches: Sequence[Sequence[TextContext]],
         kv_cache_inputs: KVCacheInputs | None = None,
         return_n_logits: int = 1,
     ) -> ModelInputs:
@@ -497,6 +493,10 @@ class GptOssModel(
         Returns:
             The prepared :obj:`ModelInputs` object for the initial execution step.
         """
+        if len(replica_batches) > 1:
+            raise ValueError("Model does not support DP>1")
+
+        context_batch = replica_batches[0]
         assert kv_cache_inputs is not None
         kv_cache_inputs = cast(KVCacheInputsSequence, kv_cache_inputs)
 
@@ -581,11 +581,7 @@ class GptOssModel(
             max_seq_len=self.calculate_max_seq_len(
                 self.pipeline_config, huggingface_config=self.huggingface_config
             ),
-            num_layers=GptOssConfig.get_num_layers(
-                huggingface_config=self.huggingface_config
-            ),
             devices=self.devices,
             available_cache_memory=available_cache_memory,
-            page_size=self.kv_cache_config.kv_cache_page_size,
             session=session,
         )

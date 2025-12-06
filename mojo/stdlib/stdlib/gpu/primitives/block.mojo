@@ -137,17 +137,15 @@ fn _block_reduce[
         If broadcast is True, each thread in the block will receive the reduced
         value. Otherwise, only the first thread will have the complete result.
     """
-    constrained[
-        block_size >= WARP_SIZE,
-        "Block size must be a greater than warp size",
-    ]()
-    constrained[
-        block_size % WARP_SIZE == 0,
-        "Block size must be a multiple of warp size",
-    ]()
+    __comptime_assert (
+        block_size >= WARP_SIZE
+    ), "Block size must be a greater than warp size"
+    __comptime_assert (
+        block_size % WARP_SIZE == 0
+    ), "Block size must be a multiple of warp size"
 
     # Allocate shared memory for inter-warp communication.
-    alias n_warps = block_size // WARP_SIZE
+    comptime n_warps = block_size // WARP_SIZE
 
     @parameter
     if n_warps == 1:
@@ -173,7 +171,7 @@ fn _block_reduce[
 
     # General case with bank conflict optimization
     # Add padding to avoid bank conflicts
-    alias padding = ceildiv(n_warps, WARP_SIZE) if n_warps > WARP_SIZE else 0
+    comptime padding = ceildiv(n_warps, WARP_SIZE) if n_warps > WARP_SIZE else 0
     return _block_reduce_with_padding[
         n_warps=n_warps,
         padding=padding,
@@ -318,14 +316,12 @@ fn broadcast[
         A SIMD value where all threads contain a copy of the input value from
         the source thread.
     """
-    constrained[
-        block_size >= WARP_SIZE,
-        "Block size must be greater than or equal to warp size",
-    ]()
-    constrained[
-        block_size % WARP_SIZE == 0,
-        "Block size must be a multiple of warp size",
-    ]()
+    __comptime_assert (
+        block_size >= WARP_SIZE
+    ), "Block size must be greater than or equal to warp size"
+    __comptime_assert (
+        block_size % WARP_SIZE == 0
+    ), "Block size must be a multiple of warp size"
 
     @parameter
     if block_size == WARP_SIZE:
@@ -377,14 +373,13 @@ fn prefix_sum[
         A Scalar value containing the result of the scan operation for each
         thread.
     """
-    constrained[
-        block_size % WARP_SIZE == 0,
-        "Block size must be a multiple of warp size",
-    ]()
+    __comptime_assert (
+        block_size % WARP_SIZE == 0
+    ), "Block size must be a multiple of warp size"
 
     # Allocate shared memory for inter-warp communication
     # We need one slot per warp to store warp-level scan results
-    alias n_warps = block_size // WARP_SIZE
+    comptime n_warps = block_size // WARP_SIZE
     var warp_mem = stack_allocation[
         align_up(n_warps, WARP_SIZE), dtype, address_space = AddressSpace.SHARED
     ]()

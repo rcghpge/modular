@@ -493,18 +493,18 @@ fn _networks(n: Int) -> List[List[Tuple[Int, Int]]]:
 fn _sort[
     origin: MutOrigin, dtype: DType, //, n: Int
 ](x: Span[Scalar[dtype], origin]):
-    alias network = _networks(n)
+    comptime network = _networks(n)
 
-    constrained[
-        len(network) > 0, String("a sorting of length ", n, " is not available")
-    ]()
+    __comptime_assert len(network) > 0, String(
+        "a sorting of length ", n, " is not available"
+    )
 
     @parameter
     for level in network:
 
         @parameter
         for r in range(len(level)):
-            alias ij = level[r]
-            alias i = ij[0]
-            alias j = ij[1]
+            comptime ij = level[r]
+            comptime i = ij[0]
+            comptime j = ij[1]
             x[i], x[j] = (x[i], x[j]) if x[i] <= x[j] else (x[j], x[i])

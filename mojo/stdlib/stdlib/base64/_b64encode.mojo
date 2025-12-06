@@ -37,7 +37,7 @@ comptime Bytes = SIMD[DType.uint8, _]
 fn _base64_simd_mask[
     simd_width: Int
 ](nb_value_to_load: Int) -> SIMD[DType.bool, simd_width]:
-    alias mask = iota[DType.uint8, simd_width]()
+    comptime mask = iota[DType.uint8, simd_width]()
     return mask.lt(UInt8(nb_value_to_load))
 
 
@@ -54,7 +54,13 @@ fn _base64_simd_mask[
 # |--- ascii(d) ---|--- ascii(c) ---|--- ascii(b) ---|--- ascii(a) ---|
 # |. . d₅d₄d₃d₂d₁d₀|. . c₅c₄c₃c₂c₁c₀|. . b₅b₄b₃b₂b₁b₀|. . a₅a₄a₃a₂a₁a₀|
 fn _6bit_to_byte[width: Int](input: Bytes[width]) -> Bytes[width]:
-    constrained[width in [4, 8, 16, 32, 64], "width must be between 4 and 64"]()
+    __comptime_assert width in [
+        4,
+        8,
+        16,
+        32,
+        64,
+    ], "width must be between 4 and 64"
 
     fn indices() -> IndexList[width]:
         var perm = [1, 0, 2, 1]
@@ -142,7 +148,7 @@ fn _get_table_number_of_bytes_to_store_from_number_of_bytes_to_load[
 fn _get_number_of_bytes_to_store_from_number_of_bytes_to_load[
     max_size: Int
 ](nb_of_elements_to_load: Int) -> Int:
-    alias table = _get_table_number_of_bytes_to_store_from_number_of_bytes_to_load[
+    comptime table = _get_table_number_of_bytes_to_store_from_number_of_bytes_to_load[
         max_size
     ]()
     return Int(table[nb_of_elements_to_load])
@@ -177,7 +183,7 @@ fn _get_table_number_of_bytes_to_store_from_number_of_bytes_to_load_without_equa
 fn _get_number_of_bytes_to_store_from_number_of_bytes_to_load_without_equal_sign[
     max_size: Int
 ](nb_of_elements_to_load: Int) -> Int:
-    alias table = _get_table_number_of_bytes_to_store_from_number_of_bytes_to_load_without_equal_sign[
+    comptime table = _get_table_number_of_bytes_to_store_from_number_of_bytes_to_load_without_equal_sign[
         max_size
     ]()
     return Int(table[nb_of_elements_to_load])
@@ -196,9 +202,9 @@ fn load_incomplete_simd[
 
 @no_inline
 fn _b64encode(input_bytes: Span[mut=False, Byte], mut result: String):
-    alias simd_width = sys.simd_byte_width()
-    alias input_simd_width = simd_width * 3 // 4
-    alias equal_vector = SIMD[DType.uint8, simd_width](ord("="))
+    comptime simd_width = sys.simd_byte_width()
+    comptime input_simd_width = simd_width * 3 // 4
+    comptime equal_vector = SIMD[DType.uint8, simd_width](ord("="))
 
     # 4 character bytes for each 3 bytes (or less) block
     result.resize(
@@ -267,7 +273,7 @@ fn _b64encode(input_bytes: Span[mut=False, Byte], mut result: String):
 
 
 fn _repeat_until[width: Int](v: SIMD) -> SIMD[v.dtype, width]:
-    constrained[width >= v.size, "width must be at least v.size"]()
+    __comptime_assert width >= v.size, "width must be at least v.size"
 
     @parameter
     if width == v.size:

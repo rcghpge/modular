@@ -25,7 +25,6 @@ Use the public API in `random.mojo` instead.
 """
 
 from math import sqrt, log, cos, pi
-from memory import LegacyUnsafePointer as UnsafePointer
 from os import abort
 from sys.ffi import _Global
 from utils.numerics import isnan, max_finite, FPUtils
@@ -33,7 +32,7 @@ from utils.numerics import isnan, max_finite, FPUtils
 from .philox import Random as PhiloxRandom
 
 
-struct _PhiloxWrapper(Copyable, Movable):
+struct _PhiloxWrapper(Copyable):
     """Wrapper around Philox RNG to provide a simpler interface.
 
     This struct wraps the Philox RNG and caches generated values to provide
@@ -51,7 +50,7 @@ struct _PhiloxWrapper(Copyable, Movable):
     var _rng: PhiloxRandom[10]
     """The underlying Philox random number generator."""
 
-    alias _cache_length = 4
+    comptime _cache_length = 4
 
     var _cache: SIMD[DType.uint32, Self._cache_length]
     """Cache of generated random values."""
@@ -103,13 +102,13 @@ struct _PhiloxWrapper(Copyable, Movable):
         """
         # Use 53 bits of randomness (mantissa precision of Float64)
         var value = self.next_uint64() >> 11
-        alias float64_mantissa_bits = FPUtils[
+        comptime float64_mantissa_bits = FPUtils[
             DType.float64
         ].mantissa_width() + 1  # 53 (52 mantissa bits + 1 for the sign bit)
         return Float64(value) * (1.0 / Float64(1 << float64_mantissa_bits))
 
 
-struct _RandomState(Copyable, Movable):
+struct _RandomState(Copyable):
     """Global random state manager.
 
     This struct manages a global _PhiloxWrapper instance for the random module.
@@ -259,19 +258,19 @@ fn _init_random_state() -> _RandomState:
     return _RandomState()
 
 
-fn _get_global_random_state() -> UnsafePointer[_RandomState]:
+fn _get_global_random_state(
+    out result: UnsafePointer[_RandomState, MutOrigin.external]
+):
     """Gets the global random state.
 
     Returns:
         A pointer to the global _RandomState instance.
     """
     try:
-        return _global_random_state.get_or_create_ptr()
+        result = _global_random_state.get_or_create_ptr()
     except:
-        return abort[UnsafePointer[_RandomState]](
-            "Failed to initialize global random state"
-        )
+        abort("Failed to initialize global random state")
 
 
 # Global random state (using _Global for proper global storage)
-alias _global_random_state = _Global["random_state", _init_random_state]
+comptime _global_random_state = _Global["random_state", _init_random_state]

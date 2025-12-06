@@ -66,7 +66,7 @@ from sys.intrinsics import _type_is_eq_parse_time
 from utils.numerics import max_finite
 from utils import IndexList
 
-alias INT_TUPLE_VALIDATION = False
+comptime INT_TUPLE_VALIDATION = False
 
 
 fn _get_index_type(address_space: AddressSpace) -> DType:
@@ -264,7 +264,7 @@ struct IntArray(ImplicitlyCopyable):
         )
 
 
-alias UNKNOWN_VALUE = -1
+comptime UNKNOWN_VALUE = -1
 """Special value indicating an unknown or unspecified dimension.
 
 This constant is used throughout the `IntTuple` system to represent dimensions
@@ -276,11 +276,11 @@ that are not known at compile time or have not been specified.
 struct _IntTupleIter[origin: ImmutOrigin](Iterable, Iterator):
     """Iterator for traversing elements of an IntTuple."""
 
-    alias IteratorType[
+    comptime IteratorType[
         iterable_mut: Bool, //, iterable_origin: Origin[iterable_mut]
     ]: Iterator = Self
 
-    alias Element = IntTuple
+    comptime Element = IntTuple
 
     var src: Pointer[IntTuple, Self.origin]
     """Pointer to the source IntTuple being iterated."""
@@ -321,7 +321,6 @@ struct IntTuple(
     ImplicitlyCopyable,
     Intable,
     Iterable,
-    Movable,
     Sized,
     Stringable,
     Writable,
@@ -336,7 +335,7 @@ struct IntTuple(
     and dimension handling in high-performance computing contexts.
     """
 
-    alias IteratorType[
+    comptime IteratorType[
         iterable_mut: Bool, //, iterable_origin: Origin[iterable_mut]
     ]: Iterator = _IntTupleIter[ImmutOrigin.cast_from[iterable_origin]]
 
@@ -345,7 +344,7 @@ struct IntTuple(
     Int values are represented with positive numbers.
     Sub-tuples are represented with a negative offset from the current position."""
 
-    alias MinimumValue = -0xFFFE
+    comptime MinimumValue = -0xFFFE
     """Minimum allowed value for integers in an `IntTuple`.
 
     This constant defines the lower bound for integer values that can be stored
@@ -1780,7 +1779,7 @@ fn tuple_max(t: IntTuple) -> Int:
     fn reducer(a: Int, b: IntTuple) -> Int:
         return max(a, Int(b) if is_int(b) else tuple_max(b))
 
-    alias int_min_val = 0
+    comptime int_min_val = 0
     return reduce[reducer](t, int_min_val)
 
 
@@ -2246,7 +2245,7 @@ fn prefix_product(a: IntTuple, init: Int) -> IntTuple:
     if len(a) == 0:
         return IntTuple()
     # Short-circuit for single integer
-    if is_int(a) == 1:
+    if is_int(a):
         return init
 
     var init_tuple = IntTuple(init)
@@ -2448,7 +2447,7 @@ fn idx2crd2(
 
             return apply_zip[idx2crd2](idx, shape, stride)
         else:  # tuple "int" "int"
-            return abort[IntTuple]("Illegal inputs")  # Error
+            abort("Illegal inputs")  # Error
     else:
         if is_tuple(shape):  # "int" tuple tuple
 
@@ -2763,7 +2762,7 @@ fn depth(src: IntTuple) -> Int:
     return res
 
 
-alias IntList = List[Int]
+comptime IntList = List[Int]
 """
 A type alias for a List of integers with ownership.
 

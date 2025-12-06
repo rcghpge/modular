@@ -1,5 +1,7 @@
 load("//bazel:api.bzl", "mojo_filecheck_test", "mojo_test")
 
+package(default_visibility = ["//max:consumers"])
+
 _EXTRA_COPTS = {
     "test_layout_tensor_copy.mojo": [
         "--debug-level",
@@ -20,6 +22,8 @@ _H100_TESTS = [
     "test_tensor_core_sm90.mojo",
     "test_tensormap_replace_insts.mojo",
     "test_tma_3d_async_copy.mojo",
+    "test_tma_4d_async_copy.mojo",
+    "test_tma_5d_async_copy.mojo",
     "test_tma_async.mojo",
     "test_tma_async_mc.mojo",
     "test_tma_mc_swizzle.mojo",
@@ -104,12 +108,12 @@ _FILECHECK_TESTS = [
         tags = ["gpu"],
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:internal_utils",
-            "@mojo//:kv_cache",
-            "@mojo//:layout",
-            "@mojo//:linalg",
-            "@mojo//:nn",
-            "@mojo//:quantization",
+            "//max:internal_utils",
+            "//max:kv_cache",
+            "//max:layout",
+            "//max:linalg",
+            "//max:nn",
+            "//max:quantization",
             "@mojo//:stdlib",
         ],
     )
@@ -137,11 +141,11 @@ _FILECHECK_TESTS = [
         tags = ["gpu"],
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
-            "@mojo//:internal_utils",
-            "@mojo//:kv_cache",
-            "@mojo//:linalg",
-            "@mojo//:nn",
-            "@mojo//:quantization",
+            "//max:internal_utils",
+            "//max:kv_cache",
+            "//max:linalg",
+            "//max:nn",
+            "//max:quantization",
             "@mojo//:stdlib",
         ],
     )

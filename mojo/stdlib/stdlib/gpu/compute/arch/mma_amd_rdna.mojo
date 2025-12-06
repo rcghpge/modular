@@ -20,7 +20,7 @@ Reference: https://gpuopen.com/learn/wmma_on_rdna3/
 
 from sys import llvm_intrinsic
 from sys.info import _is_amd_rdna3, _is_amd_rdna4
-from memory import LegacyUnsafePointer as UnsafePointer, bitcast
+from memory import bitcast
 from gpu import lane_id
 
 # Import helper functions from parent module
@@ -42,7 +42,7 @@ fn _load_matrix_a_amd_rdna[
     ldm: Int,
 ) -> SIMD[DType.float16, 16]:
     """RDNA-specific implementation: loads 16 FP16 elements per thread."""
-    constrained[m == 16 and n == 16 and k == 16]()
+    __comptime_assert m == 16 and n == 16 and k == 16
     var lane = lane_id()
     var thread_x = lane & 15
     var a = SIMD[DType.float16, 16]()
@@ -65,7 +65,7 @@ fn _load_matrix_a_amd_rdna[
     ldm: Int,
 ) -> SIMD[DType.bfloat16, 16]:
     """RDNA-specific implementation: loads 16 BF16 elements per thread."""
-    constrained[m == 16 and n == 16 and k == 16]()
+    __comptime_assert m == 16 and n == 16 and k == 16
     var lane = lane_id()
     var thread_x = lane & 15
     var a = SIMD[DType.bfloat16, 16]()
@@ -88,7 +88,7 @@ fn _load_matrix_b_amd_rdna[
     ldm: Int,
 ) -> SIMD[DType.float16, 16]:
     """RDNA-specific implementation: loads 16 FP16 elements per thread."""
-    constrained[m == 16 and n == 16 and k == 16]()
+    __comptime_assert m == 16 and n == 16 and k == 16
     var lane = lane_id()
     var thread_y = lane & 15
     var b = SIMD[DType.float16, 16]()
@@ -111,7 +111,7 @@ fn _load_matrix_b_amd_rdna[
     ldm: Int,
 ) -> SIMD[DType.bfloat16, 16]:
     """RDNA-specific implementation: loads 16 BF16 elements per thread."""
-    constrained[m == 16 and n == 16 and k == 16]()
+    __comptime_assert m == 16 and n == 16 and k == 16
     var lane = lane_id()
     var thread_y = lane & 15
     var b = SIMD[DType.bfloat16, 16]()
@@ -375,7 +375,7 @@ fn _mma_wmma_rdna(mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
 
             @parameter
             if _has_shape[(16, 16, 8, 8)](a.size, b.size, c.size, d.size):
-                alias type_name = "f16" if a.dtype is DType.float16 else "bf16"
+                comptime type_name = "f16" if a.dtype is DType.float16 else "bf16"
                 return "llvm.amdgcn.wmma.f32.16x16x16." + type_name
             else:
                 _unsupported_mma_op(d, a, b, c)
@@ -390,19 +390,19 @@ fn _mma_wmma_rdna(mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             @parameter
             if _is_amd_rdna4():
                 # E4M3 formats map to fp8, E5M2 formats map to bf8
-                alias a_is_e4m3 = a.dtype in [
+                comptime a_is_e4m3 = a.dtype in [
                     DType.float8_e4m3fn,
                     DType.float8_e4m3fnuz,
                 ]
-                alias a_is_e5m2 = a.dtype in [
+                comptime a_is_e5m2 = a.dtype in [
                     DType.float8_e5m2,
                     DType.float8_e5m2fnuz,
                 ]
-                alias b_is_e4m3 = b.dtype in [
+                comptime b_is_e4m3 = b.dtype in [
                     DType.float8_e4m3fn,
                     DType.float8_e4m3fnuz,
                 ]
-                alias b_is_e5m2 = b.dtype in [
+                comptime b_is_e5m2 = b.dtype in [
                     DType.float8_e5m2,
                     DType.float8_e5m2fnuz,
                 ]
@@ -484,21 +484,21 @@ fn _mma_wmma_rdna(mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
 
     @parameter
     if _is_amd_rdna3() and a.dtype.is_float8():
-        alias target_dtype = DType.bfloat16 if (
+        comptime target_dtype = DType.bfloat16 if (
             a.dtype is DType.float8_e5m2 or a.dtype is DType.float8_e5m2fnuz
         ) else DType.float16
-        alias intrinsic_suffix = "bf16" if (
+        comptime intrinsic_suffix = "bf16" if (
             a.dtype is DType.float8_e5m2 or a.dtype is DType.float8_e5m2fnuz
         ) else "f16"
 
         @parameter
         if a.size == 16 and b.size == 16:
             var result = c.cast[DType.float32]()
-            alias intrinsic_name = "llvm.amdgcn.wmma.f32.16x16x16." + intrinsic_suffix
+            comptime intrinsic_name = "llvm.amdgcn.wmma.f32.16x16x16." + intrinsic_suffix
 
             @parameter
             for i in range(4):
-                alias offset = i * 4
+                comptime offset = i * 4
                 var a_chunk = a.slice[4, offset=offset]()
                 var b_chunk = b.slice[4, offset=offset]()
                 var c_chunk = result.slice[4, offset=offset]()
@@ -524,7 +524,7 @@ fn _mma_wmma_rdna(mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
 
     @parameter
     if a.size == 16 and b.size == 16 and c.size == 8 and d.size == 8:
-        alias intrinsic_name = get_intrinsic_name()
+        comptime intrinsic_name = get_intrinsic_name()
 
         @parameter
         if a.dtype is DType.bfloat16:

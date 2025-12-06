@@ -34,13 +34,11 @@ fn PyInit_mojo_module() -> PythonObject:
         )
         return b.finalize()
     except e:
-        return abort[PythonObject](
-            String("failed to create Python module: ", e)
-        )
+        abort(String("failed to create Python module: ", e))
 
 
 @fieldwise_init
-struct PyArrayObject[dtype: DType](ImplicitlyCopyable, Movable):
+struct PyArrayObject[dtype: DType](ImplicitlyCopyable):
     """
     Container for a numpy array.
 
@@ -84,7 +82,7 @@ fn _mojo_block_hasher[
     var result_py_list = cpython.PyList_New(num_hashes)
 
     # Initial hash seed value
-    alias initial_hash = hash[HasherType=default_comp_time_hasher]("None")
+    comptime initial_hash = hash[HasherType=default_comp_time_hasher]("None")
 
     # Performing hashing
     var prev_hash = initial_hash
