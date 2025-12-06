@@ -4,25 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/BuiltinOps.h"
-
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
-#include "KGEN/KGENDialect/KGENOps.h"
-#include "Runtime/Tensor/Tensor.h"
-#include "Support/AssertStream.h"
-#include "mlir/Analysis/TopologicalSortUtils.h"
-#include "mlir/IR/IRMapping.h"
+
 using namespace M;
 
 namespace M::MOGG {
@@ -86,7 +72,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
   void runOnOperationImpl(MO::GraphOp graph, MLIRContext *ctx,
                           bool fuseReshape) {
     graph.walk([&](MOGG::ExpKernelOp op) {
-      // We never fusion other kernel into reshapes since reshape requires a
+      // We never fuse other kernel into reshapes since reshape requires a
       // contiguous buffer.
       if (isUnFusedReshapeKernel(op))
         return;
@@ -96,10 +82,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       if (!op.hasFusibleOperand(/*lookThroughView=*/true) && !op.isViewOp())
         return;
 
-      // Fuse broadcasts into this block.
-      int32_t index = op->getNumOperands() - 1;
-
       // Traverse from the back to simplify removing operands.
+      int32_t index = op->getNumOperands() - 1;
       while (index >= 0) {
         if (!canFuseOperand(index, op)) {
           index--;
@@ -112,15 +96,13 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
         // If we are fusing in reshapes, then we skip things that aren't
         // reshapes. This avoids cases like:
         //   non-reshape -> reshape -> non-reshape
-        //     non-reshape -> reshape+non-reshape (first iteration)
-        //       non-reshape+reshape+non-reshape  (second iteration)
+        //   non-reshape -> reshape+non-reshape (first iteration)
+        //   non-reshape+reshape+non-reshape  (second iteration)
         if (fuseReshape != isReshape) {
           index--;
           continue;
         }
 
-        // All legality checking should be performed above so we assume this
-        // will perform the fusion or produce a fatal failure.
         fuseInputAtIndex(op, index);
         index = op->getNumOperands() - 1;
       }
@@ -201,22 +183,17 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     // First fuse all kernels that are view ops.
     runOnOperationImpl(graph, ctx, /*fuseReshape=*/false);
 
+    // The fuse reshapes
     SmallVector<ExpKernelOp> reshapes;
     graph.walk([&](MOGG::ExpKernelOp op) {
-      // We never fusion other kernel into reshapes since reshape requires a
-      // contiguous buffer.
       if (isUnFusedReshapeKernel(op))
         reshapes.push_back(op);
     });
+    runOnOperationImpl(graph, ctx, /*fuseReshape=*/true);
 
-    // Do not attempt the next step if there are no reshape kernels (probably
-    // because they would not be lowered to the extensibility/kernel API).
-    if (!reshapes.empty()) {
-      // Then, fuse reshape.
-      runOnOperationImpl(graph, ctx, /*fuseReshape=*/true);
-
-      raiseBackReshapeKernels(ctx, reshapes);
-    }
+    // Finally, raise unfused reshapes back to a MO op to be eventually lowered
+    // as MGP primitives (a no-op, really).
+    raiseBackReshapeKernels(ctx, reshapes);
   }
 };
 
