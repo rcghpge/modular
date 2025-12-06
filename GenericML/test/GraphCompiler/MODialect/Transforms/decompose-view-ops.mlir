@@ -295,3 +295,15 @@ mo.graph @unflatten_with_div<D1>() -> (!mo.tensor<[1, div(D1, 2)], f32>) {
     %2 = mo.static.reshape(%1) : !mo.tensor<[div(D1, 2)], f32> -> !mo.tensor<[1, div(D1, 2)], f32>
     mo.output %2 : !mo.tensor<[1, div(D1, 2)], f32>
 }
+
+// CHECK-LABEL: @do_not_decompose_contig_slice
+// CHECK: mo.slice
+// CHECK-NOT: mo.slice_dim
+mo.graph @do_not_decompose_contig_slice(%input: !mo.tensor<[10, 2], si32>) -> (!mo.tensor<[2, 2], si32>) {
+	%start = mo.constant {value = #M.dense_array<8, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+	%stop = mo.constant {value = #M.dense_array<10, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+	%step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+	%res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[10, 2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 2], si32>
+  %mm = mo.matmul(%res, %res) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>)  -> !mo.tensor<[2, 2], si32>
+	mo.output %mm : !mo.tensor<[2, 2], si32>
+}

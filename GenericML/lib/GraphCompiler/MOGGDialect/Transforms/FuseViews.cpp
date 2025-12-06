@@ -39,7 +39,8 @@ GUARANTEES:
 - No view fuses into a reshape kernel.
  */
 
-bool isUnFusedReshapeKernel(Operation *op) {
+template <typename OpTy>
+bool isViewKernelOfType(Operation *op) {
   auto kernel = dyn_cast<MOGG::ExpKernelOp>(op);
   if (!kernel || !kernel.isViewOp())
     return false;
@@ -48,8 +49,50 @@ bool isUnFusedReshapeKernel(Operation *op) {
       llvm::to_vector(kernel.getExecBody().getOps<CallViewOp>());
 
   // This is a unfused reshape operations.
-  return callViews.size() == 1 && callViews.front().getKernelName() ==
-                                      MO::Static::ReshapeOp::getOperationName();
+  if (callViews.size() != 1)
+    return false;
+
+  if (callViews.front().getKernelName() != OpTy::getOperationName())
+    return false;
+
+  return true;
+}
+
+bool isContiguousSliceKernel(Operation *op) {
+  if (!isViewKernelOfType<MO::SliceOp>(op))
+    return false;
+
+  // We obviously don't have access to the original SliceOp which makes these
+  // accesses not robust to changes to the op's signature.
+  auto inputValue = op->getOperand(0);
+  auto inputType = cast<MO::TensorType>(inputValue.getType());
+  auto outputType = cast<MO::TensorType>(op->getResult(0).getType());
+  auto stepValue = op->getOperand(3);
+
+  // Give up if the step doesn't come from a constant
+  auto constStep = stepValue.getDefiningOp<MO::ConstantOp>();
+  if (!constStep)
+    return false;
+
+  auto maybeStepValue = MO::tryGetConstantBlob<int64_t>(
+      constStep.getValue(), constStep.getType().getDtype());
+  // Give up if we can't get the step values
+  if (!maybeStepValue)
+    return false;
+
+  // Give up if the step of the outermost dimension is not 1.
+  if (maybeStepValue.value()[0] != 1)
+    return false;
+
+  // Give up if it is slicing through multiple dimensions.
+  auto inputShape = inputType.getTypedShapeAttr().getValues();
+  auto outputShape = outputType.getTypedShapeAttr().getValues();
+  for (uint64_t i = 1; i < inputType.getRank(); ++i) {
+    if (inputShape[i] != outputShape[i])
+      return false;
+  }
+
+  return true;
 }
 
 void raiseBackReshapeKernels(MLIRContext *ctx,
@@ -74,12 +117,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     graph.walk([&](MOGG::ExpKernelOp op) {
       // We never fuse other kernel into reshapes since reshape requires a
       // contiguous buffer.
-      if (isUnFusedReshapeKernel(op))
-        return;
-
-      // We are fusing views, which won't be blocked if there is already other
-      // view fused into the kernel.
-      if (!op.hasFusibleOperand(/*lookThroughView=*/true) && !op.isViewOp())
+      if (isViewKernelOfType<MO::Static::ReshapeOp>(op))
         return;
 
       // Traverse from the back to simplify removing operands.
@@ -90,8 +128,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
           continue;
         }
 
-        bool isReshape =
-            isUnFusedReshapeKernel((op->getOperand(index).getDefiningOp()));
+        bool isReshape = isViewKernelOfType<MO::Static::ReshapeOp>(
+            (op->getOperand(index).getDefiningOp()));
         // if we are not fusing in reshapes, skip fusible reshape operand.
         // If we are fusing in reshapes, then we skip things that aren't
         // reshapes. This avoids cases like:
@@ -120,28 +158,38 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     if (edge->getBlock() != op->getBlock())
       return false;
 
-    if (auto expKernel = dyn_cast<MOGG::ExpKernelOp>(op)) {
-      if (auto alloc = expKernel.getAllocIndices(); alloc && !alloc.empty())
-        return false;
+    auto dstKernel = dyn_cast<MOGG::ExpKernelOp>(op);
+    if (!dstKernel)
+      return false;
 
-      auto otherKernel = dyn_cast<MOGG::ExpKernelOp>(edge);
-      if (!otherKernel)
-        return false;
+    if (auto alloc = dstKernel.getAllocIndices(); alloc && !alloc.empty())
+      return false;
 
-      // Only fuse view operations (when will a view kernel returns more than
-      // one result, probably dead code, or should we instead verify it during
-      // IR construction?)
-      if (!otherKernel.isViewOp() || otherKernel.getNumResults() != 1)
-        return false;
+    auto srcKernel = dyn_cast<MOGG::ExpKernelOp>(edge);
+    if (!srcKernel)
+      return false;
 
-      // if the kernel is not a view kernel nor has a view fusible input at the
-      // given position.
-      if (!expKernel.isViewOp() && !expKernel.isOperandFusible(index, true))
-        return false;
+    // Only fuse view operations (when will a view kernel returns more than
+    // one result, probably dead code, or should we instead verify it during
+    // IR construction?)
+    if (!srcKernel.isViewOp() || srcKernel.getNumResults() != 1)
+      return false;
 
+    // If the kernel in which we fuse is a view, always fuse.
+    if (dstKernel.isViewOp())
       return true;
-    }
 
+    // If the kernel in which we fuse opted into input fusion, always fuse.
+    if (dstKernel.isOperandFusible(index, true))
+      return true;
+
+    // If the kernel did not opt into input fusion but the view being fused is a
+    // contiguous slice, always fuse.
+    if (isContiguousSliceKernel(srcKernel))
+      return true;
+
+    // The kernel opted out of fusion and the view being fused would have
+    // non-contiguous strides. Do not fuse.
     return false;
   }
 
@@ -186,7 +234,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     // The fuse reshapes
     SmallVector<ExpKernelOp> reshapes;
     graph.walk([&](MOGG::ExpKernelOp op) {
-      if (isUnFusedReshapeKernel(op))
+      if (isViewKernelOfType<MO::Static::ReshapeOp>(op))
         reshapes.push_back(op);
     });
     runOnOperationImpl(graph, ctx, /*fuseReshape=*/true);

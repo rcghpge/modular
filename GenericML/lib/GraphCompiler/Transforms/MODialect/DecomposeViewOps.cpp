@@ -29,7 +29,44 @@ using namespace M::MO;
 
 namespace {
 
+bool isContiguousSlice(SliceOp slice) {
+  auto inputValue = slice.getInput();
+  auto inputType = inputValue.getType();
+  auto outputType = slice.getType();
+
+  // Give up if the step doesn't come from a constant
+  auto constStep = slice.getStep().getDefiningOp<ConstantOp>();
+  if (!constStep)
+    return false;
+
+  auto maybeStepValue = tryGetConstantBlob<int64_t>(
+      constStep.getValue(), constStep.getType().getDtype());
+  // Give up if we can't get the step values
+  if (!maybeStepValue)
+    return false;
+
+  // Give up if the step of the outermost dimension is not 1.
+  if (maybeStepValue.value()[0] != 1)
+    return false;
+
+  // Give up if it is slicing through multiple dimensions.
+  auto inputShape = inputType.getTypedShapeAttr().getValues();
+  auto outputShape = outputType.getTypedShapeAttr().getValues();
+  for (uint64_t i = 1; i < inputType.getRank(); ++i) {
+    if (inputShape[i] != outputShape[i])
+      return false;
+  }
+
+  return true;
+}
+
 static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
+  // Do not lower contiguous slices because we want them to fuse into other
+  // kernels as views regardless of input fusion opt in (they are always fused
+  // if contiguous).
+  if (isContiguousSlice(slice))
+    return;
+
   TensorType inputType = slice.getInput().getType();
   if (!inputType.hasRank())
     return;
@@ -84,19 +121,12 @@ static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
 
     shape[i] = slice.getType().getDim(i);
 
-    auto tryCreateSliceDimOuter = [&]() {
-      // TODO(GEX-2138): Re-enable slice dim outer
-      return false;
-    };
+    // Create the new slice along just one dimension.
+    SliceDimOp newSlice = SliceDimOp::create(
+        builder, slice.getLoc(), slice.getType().cloneWith(shape), lastVal,
+        axis, start.getResult(), stop.getResult(), step.getResult());
 
-    if (!tryCreateSliceDimOuter()) {
-      // Create the new slice along just one dimension.
-      SliceDimOp newSlice = SliceDimOp::create(
-          builder, slice.getLoc(), slice.getType().cloneWith(shape), lastVal,
-          axis, start.getResult(), stop.getResult(), step.getResult());
-
-      lastVal = newSlice.getResult();
-    }
+    lastVal = newSlice.getResult();
   }
 
   slice.replaceAllUsesWith(lastVal);

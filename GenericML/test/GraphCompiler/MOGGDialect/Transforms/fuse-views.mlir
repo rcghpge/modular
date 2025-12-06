@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-elementwise --canonicalize --cse --fuse-views --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --simplify-kernel-operands --fuse-elementwise --canonicalize --cse --fuse-views --canonicalize --cse %s | FileCheck %s
 
 // Expect a kernel with 3 bcasts, 2 for index, 1 for updates
 // CHECK-LABEL: mo.graph @advanced_indexing_setitem
@@ -30,4 +30,17 @@ mo.graph @advanced_indexing_setitem() -> !mo.tensor<[2, 3, 4, 5], si32> {
   ) -> !mo.tensor<[2, 3, 4, 5], si32>
 
   mo.output %out: !mo.tensor<[2, 3, 4, 5], si32>
+}
+
+// CHECK-LABEL: @forced_view_fusion
+// CHECK: mogg.experimental.kernel
+// CHECK: summary = "mo.slice:{{[0-9]+}}+mo.matmul:{{[0-9]+}}"
+// CHECK-NOT: mogg.experimental.kernel
+mo.graph @forced_view_fusion(%input: !mo.tensor<[10, 2], si32>) -> (!mo.tensor<[2, 2], si32>) {
+	%start = mo.constant {value = #M.dense_array<8, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+	%stop = mo.constant {value = #M.dense_array<10, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+	%step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+	%res = mo.slice(%input, %start, %stop, %step) : (!mo.tensor<[10, 2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 2], si32>
+  %mm = mo.matmul(%res, %res) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>)  -> !mo.tensor<[2, 2], si32>
+	mo.output %mm : !mo.tensor<[2, 2], si32>
 }
