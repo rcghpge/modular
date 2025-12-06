@@ -57,12 +57,12 @@ jobs:
       - name: Push changes
         if: ${{ steps.detect.outputs.behind != '0' }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           PAT_WORKFLOW: ${{ secrets.PAT_WORKFLOW }}
         run: |
           set -euo pipefail
     
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           if git push origin HEAD:main; then
             exit 0
           fi
