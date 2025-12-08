@@ -786,11 +786,15 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
       HardcodedMojoSymbols::struct_StaticTuple)[{
       HardcodedMojoSymbols::struct_DType,
       MojoValue(int64_t(allDtypeMojoParams.size()))}]({}, allDtypeMojoParams);
-  MojoValue targetMojoParam =
-      MojoValue(MO::getDeviceOrDefaultAny(*this).getLabel()).quote();
-  MojoValue widthMojoParam =
-      MojoValue(HardcodedMojoSymbols::func_get_simd_width_for_dtypes)(
-          {paramsDtypesTuple, targetMojoParam});
+  // Get the target device from the kernel stub that contains this operation.
+  // This ensures we use the correct device (gpu/cpu) for simd_width
+  // calculation.
+  auto kernelStubOp = this->getOperation()->getParentOfType<KernelStubOp>();
+  MojoValue targetDeviceLabel =
+      MojoValue(kernelStubOp
+                    ? MO::getDeviceOrDefaultAny(kernelStubOp).getLabel()
+                    : MO::getDeviceOrDefaultAny(*this).getLabel())
+          .quote();
 
   static const StringLiteral foreachBodyLambdaParamName = "func";
   static const StringLiteral foreachSimdWidthParamName = "simd_width";
@@ -798,8 +802,10 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
     if (paramName == foreachBodyLambdaParamName)
       return bodyLambdaParam;
     if (paramName == foreachSimdWidthParamName)
-      return widthMojoParam;
-    return state.inferDefaultKernelParamValue(*this, paramName);
+      return MojoValue(HardcodedMojoSymbols::func_get_simd_width_for_dtypes)(
+          {paramsDtypesTuple, targetDeviceLabel});
+    auto inferredParam = state.inferDefaultKernelParamValue(*this, paramName);
+    return inferredParam;
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
