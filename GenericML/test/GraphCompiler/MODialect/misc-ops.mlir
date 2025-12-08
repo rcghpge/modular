@@ -703,36 +703,6 @@ mo.graph @slice_dim(%input: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[8, 10], f3
 }
 
 //===----------------------------------------------------------------------===//
-// SliceDimOuterOp
-//===----------------------------------------------------------------------===//
-
-// CHECK-LABEL: mo.graph @slice_dim_outer
-// CHECK-NEXT: %[[ONE:.*]] = mo.constant
-// CHECK-NEXT: %[[NEG_ONE:.*]] = mo.constant
-// CHECK-NEXT: %[[RES:.*]] = mo.slice_dim_outer(%{{.*}}, %[[ONE]], %[[NEG_ONE]])
-// CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[8, 10], f32>
-
-mo.graph @slice_dim_outer(%input: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[8, 10], f32> {
-  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %res = mo.slice_dim_outer(%input, %one, %neg_one) : (
-    !mo.tensor<[10, 10], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si32>
-  ) -> !mo.tensor<[8, 10], f32>
-  mo.output %res : !mo.tensor<[8, 10], f32>
-}
-
-
-mo.graph @slice_dim_outer_32(%input: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[8, 10], f32> {
-  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %res = mo.slice_dim_outer(%input, %one, %neg_one) : (
-    !mo.tensor<[10, 10], f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>
-  ) -> !mo.tensor<[8, 10], f32>
-  mo.output %res : !mo.tensor<[8, 10], f32>
-}
-
-
-//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 

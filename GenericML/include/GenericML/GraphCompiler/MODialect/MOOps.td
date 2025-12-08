@@ -1674,41 +1674,6 @@ def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
   let hasFolder = 1;
 }
 
-def MO_SliceDimOuterOp : MO_TensorOp<"slice_dim_outer", [
-  MO_ViewLike,
-  MO_PreservedDuringKernelLowering,
-  MO_DefaultParameterization,
-  MO_SingleDeviceWithHostOperands<["start", "stop"]>,
-]> {
-  let summary = "Slice outer dim operation";
-  let description = [{
-    A subset of the SliceDim operation, limited to cases where the operation can
-    be represented by a simple memory offset, where the sliced dimension is the outermost dimension and the step is 1.
-
-    Example:
-    ```mlir
-      %input: !mo.tensor<[?, ?, ?], f32>
-      %start: !mo.tensor<[1], si64> // [1]
-      %stop: !mo.tensor<[1], si32>  // [-3]
-      // equivalent to this in numpy: `input[1:-3, :, :]`
-      %res = mo.slice_dim_outer(%input, %start, %stop) : (
-        !mo.tensor<[10, 10, 10], f32>,
-        !mo.tensor<[1], si64>,
-        !mo.tensor<[1], si64>,
-      ) -> !mo.tensor<[?, ?, ?], f32>
-    ```
-  }];
-  let arguments = (ins MO_Tensor:$input,
-                       MO_RankedScalarIndexTensor:$start,
-                       MO_RankedScalarIndexTensor:$stop);
-  let results = (outs MO_Tensor:$result);
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-    functional-type(operands, results)
-  }];
-}
-
-
 def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub", [
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {

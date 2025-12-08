@@ -189,9 +189,6 @@ public:
   /// Lowers mo.transfer op.
   LogicalResult lowerTransfer(MO::TransferOp transferOp);
 
-  // Lowers mo.slice_dim_outer op.
-  LogicalResult lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp);
-
   /// Lowers mo.if op.
   LogicalResult lowerIf(MO::IfOp ifOp);
 
@@ -1272,91 +1269,6 @@ MOGraphLowering::lowerBufferTransfer(MO::BufferTransferOp transferOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerSliceDimOuter(MO::SliceDimOuterOp sliceOp) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, sliceOp);
-
-  FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
-      opLoweringState.createTensorSpec(sliceOp.getType());
-  if (failed(tensorSpecOr))
-    return failure();
-
-  IndexLowering indexLowering{opLoweringState};
-
-  Value inChain =
-      opLoweringState.getGuardChain(loweringState.getExecuteChain());
-
-  // Slice input
-  MGP::BufferizedTensor bufferizedInput =
-      opLoweringState.getBufferizedInput(sliceOp.getInput());
-
-  // Start of slice in outer dimension
-  MGP::BufferizedTensor startBuffer =
-      opLoweringState.getBufferizedInput(sliceOp.getStart());
-
-  // Stop of slice in outer dimension
-  MGP::BufferizedTensor stopBuffer =
-      opLoweringState.getBufferizedInput(sliceOp.getStop());
-
-  // Get index values for start and stop
-  Value start =
-      opLoweringState.create<MGP::BufferToIndexOp>(inChain, startBuffer.buffer);
-  Value stop =
-      opLoweringState.create<MGP::BufferToIndexOp>(inChain, stopBuffer.buffer);
-
-  auto tensorType = sliceOp.getInput().getType();
-  auto dataType = tensorType.getDtype();
-  Value elemSize = indexLowering.constant(dataType.getSizeInBytes());
-
-  // Get size of the outermost dimension
-  Value outermostDim = opLoweringState.create<MGP::TensorSpecGetDimOp>(
-      bufferizedInput.tensorSpec, 0);
-
-  // Calculate outerStride by multiplying inner dimensions
-  Value outerStride = indexLowering.constant(1);
-  for (size_t i = 1; i < tensorType.getRank(); ++i) {
-    Value dimVal = opLoweringState.create<MGP::TensorSpecGetDimOp>(
-        bufferizedInput.tensorSpec, i);
-    outerStride = indexLowering.mul(outerStride, dimVal);
-  }
-
-  // If start or stop are negative, add outermostDim to make them positive
-  // start = start < 0 ? (start + outermostDim) : start
-  // stop = stop < 0 ? (stop + outermostDim) : stop
-  auto startAdded = indexLowering.add(start, outermostDim);
-  auto stopAdded = indexLowering.add(stop, outermostDim);
-  start = indexLowering.ifPositive(start, start, startAdded);
-  stop = indexLowering.ifPositive(stop, stop, stopAdded);
-
-  // Clamp start/stop indices to dimension size
-  // start = min(start, outermostDim)
-  // stop = min(stop, outermostDim)
-  start = opLoweringState.create<mlir::index::MinSOp>(start, outermostDim);
-  stop = opLoweringState.create<mlir::index::MinSOp>(stop, outermostDim);
-
-  // Multiply start/stop by stride
-  // start *= outerStride
-  // stop *= outerStride
-  start = indexLowering.mul(start, outerStride);
-  stop = indexLowering.mul(stop, outerStride);
-
-  // MGP buffer slice takes in a size, not a stop, so calculate the size
-  // size = stop - start = stop + (-1 * start)
-  Value negStart = indexLowering.mul(start, indexLowering.constant(-1));
-  Value size = indexLowering.add(stop, negStart);
-
-  // Multiply to get offset and size in bytes
-  Value offsetBytes = indexLowering.mul(start, elemSize);
-  Value sizeBytes = indexLowering.mul(size, elemSize);
-
-  // Create MGP buffer slice
-  auto sliced = opLoweringState.bufferSlice(bufferizedInput.buffer, offsetBytes,
-                                            sizeBytes, tensorType);
-
-  opLoweringState.createOutputTensor(sliceOp.getResult(), inChain, sliced,
-                                     *tensorSpecOr);
-  return success();
-}
-
 LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
   ASSERT_STREAM(MO::isOnHost(listAppendOp),
                 << "mo.list.append is for host only");
@@ -2096,12 +2008,6 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
       if (failed(lowerTransfer(transferOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto sliceDimOuterOp = dyn_cast<MO::SliceDimOuterOp>(op)) {
-      if (failed(lowerSliceDimOuter(sliceDimOuterOp)))
         return failure();
       continue;
     }
