@@ -56,10 +56,6 @@ modular_cc_library(
 
 py_repl(
     name = "python",
-    data = [
-        ":max",
-        "//GenericML:MGPRT",
-    ],
     deps = [
         "//max/python/max",
         requirement("hypothesis"),
@@ -90,22 +86,9 @@ modular_shared_library(
     deps = [
         ":MOFDriver",
         "//AsyncRT:NIXL",
-        "//GenericML:CommonDriver",
-        "//GenericML:CompileDriver",
-        "//GenericML:DeviceDriver",
-        "//GenericML:ExecutionDriver",
         "//GenericML:FrameworkFrontend",
-        "//GenericML:GraphCompiler",
-        "//GenericML:MEFModel",
-        "//GenericML:MOTransforms",
-        "//GenericML:RMOTransforms",
         "//GenericML:SafeTensor",
-        "//Init",
         "//Kernels:WeightsRegistry",
-        "//Support:Base",
-        "//Support:Context",
-        "//Support:CrashReporting",
-        "//Support:Diagnostics",
         "//Support:Globals",
         "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
     ],
