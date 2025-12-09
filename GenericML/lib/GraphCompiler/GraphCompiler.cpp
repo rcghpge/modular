@@ -114,6 +114,7 @@ void M::MO::registerPasses() {
   MGP::registerOutlineKernelsPass();
   MGP::registerEmitMojo();
   MGP::registerDumpMojo();
+  MGP::registerLoadMojo();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();

@@ -208,7 +208,7 @@ def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
     Dump to stderr the previously emitted Mojo as text.
   }];
 
-    let dependentDialects = ["MEF::MEFDialect",
+  let dependentDialects = ["MEF::MEFDialect",
                           "MGP::MGPDialect",
                           "GRT::GRTDialect",
                           "MOGG::MOGGDialect",
@@ -221,6 +221,40 @@ def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
                           "mlir::ROCDL::ROCDLDialect",
                           "mlir::index::IndexDialect",
     ];
+}
+
+def LoadMojo: Pass<"load-mojo", "ModuleOp"> {
+  let summary = "Load Mojo text";
+  let description = [{
+    Load the provided Mojo text and replace the existing module. This can be
+    achieved by dumping Mojo, modifying it and then running this pass. Then, the
+    -jit-pipeline can be run to compile all the way to the end.
+
+    Example:
+    EMIT_MOJO=1 mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=emit-mojo &> program.mgp.mlir
+    EMIT_MOJO=1 mo-opt program.mgp.mlir -dump-mojo -o /dev/null &> program.mojo
+    # Modify Mojo here
+    EMIT_MOJO=1 mo-opt program.mgp.mlir -load-mojo=path=program.mojo -jit-pipeline
+  }];
+
+  let options = [
+    Option<"path", "path", "std::string", "\"\"",
+      "The label for resulting MGP graph. Default is mof.">
+  ];
+
+  let dependentDialects = ["MEF::MEFDialect",
+                          "MGP::MGPDialect",
+                          "GRT::GRTDialect",
+                          "MOGG::MOGGDialect",
+                          "M::KGEN::KGENDialect",
+                          "M::KGEN::LIT::LITDialect",
+                          "M::KGEN::POP::POPDialect",
+                          "M::HLCF::HLCFDialect",
+                          "M::DebugInfo::DebugInfoDialect",
+                          "mlir::NVVM::NVVMDialect",
+                          "mlir::ROCDL::ROCDLDialect",
+                          "mlir::index::IndexDialect",
+  ];
 }
 
 // NOT safe to run in //. This has to run on the ModuleOp because of how we name
