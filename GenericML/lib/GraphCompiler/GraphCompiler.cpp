@@ -60,6 +60,30 @@ void M::MO::registerShapeInferencePipeline() {
       buildShapeInferencePipeline);
 }
 
+void buildJITCompilationPipeline(
+    mlir::OpPassManager &pm, const MoToMgpOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr) {
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+
+  MOGG::JitCompileKernelsOptions jitOpts;
+  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  jitOpts.saveTempPrefix = opts.saveTempPrefix;
+  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
+  jitOpts.kernelLibraryPaths = kernelLibraryPaths;
+  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
+  jitOpts.debugKGENStubs = opts.debugKGENStubs;
+
+  pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
+  pm.addPass(MGP::createLowerMOGGRegionCompiles());
+  pm.addPass(MGP::createInlineMGPCallsPass());
+  pm.addPass(MGP::createFixupOverhangsPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(MGP::createSimplifyChainsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+}
+
 void M::MO::registerMoToMgpPipeline() {
   mlir::PassPipelineRegistration<MoToMgpOptions>(
       "mo-to-mgp", "Lower MO to MGP.",
@@ -68,9 +92,18 @@ void M::MO::registerMoToMgpPipeline() {
       });
 }
 
+void M::MO::registerJITCompilationPipeline() {
+  mlir::PassPipelineRegistration<MoToMgpOptions>(
+      "jit-pipeline", "JIT pass pipeline.",
+      [](mlir::OpPassManager &pm, const MoToMgpOptions &opts) {
+        buildJITCompilationPipeline(pm, opts);
+      });
+}
+
 void M::MO::registerPasses() {
   MO::registerShapeInferencePipeline();
   MO::registerMoToMgpPipeline();
+  MO::registerJITCompilationPipeline();
   MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
   MGP::registerCoalesceAsyncRefsPass();
@@ -357,23 +390,7 @@ void M::MO::buildMoToMgpPipeline(
   if (opts.dumpMojoText)
     pm.addPass(MGP::createDumpMojo());
 
-  // If we are jitting then we need to compile the jit kernels as well.
-  MOGG::JitCompileKernelsOptions jitOpts;
-  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  jitOpts.saveTempPrefix = opts.saveTempPrefix;
-  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-  jitOpts.kernelLibraryPaths = kernelLibraryPaths;
-  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
-  jitOpts.debugKGENStubs = opts.debugKGENStubs;
-
-  pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
-  pm.addPass(MGP::createLowerMOGGRegionCompiles());
-  pm.addPass(MGP::createInlineMGPCallsPass());
-  pm.addPass(MGP::createFixupOverhangsPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(MGP::createSimplifyChainsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
+  buildJITCompilationPipeline(pm, opts, libraryAnalysis);
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {

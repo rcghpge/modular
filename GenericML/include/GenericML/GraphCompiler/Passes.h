@@ -220,6 +220,7 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
 /// The passes will use the current runtime, which must be established by the
 /// tool.
 void registerMoToMgpPipeline();
+void registerJITCompilationPipeline();
 
 /// Creates the canonical MO-to-MGP pipeline for the given options.
 void buildMoToMgpPipeline(
