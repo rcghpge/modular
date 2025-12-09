@@ -659,11 +659,11 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
                   errDriver.getError());
     }
     const HIPDriver &driver = *errDriver;
-    char name[256];
+    char hipName[256];
     int alignment;
 
     hipDevice_t hipDevice = static_cast<hipDevice_t>(id);
-    HIP_CHECK_ERR(driver.hipDeviceGetName(name, sizeof(name), hipDevice));
+    HIP_CHECK_ERR(driver.hipDeviceGetName(hipName, sizeof(hipName), hipDevice));
     HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
         &alignment, hipDeviceAttribute_t::hipDeviceAttributeTextureAlignment,
         hipDevice));
@@ -676,6 +676,12 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
     if (errArch)
       RAISE_ERROR(llvm::Twine("HIP architecture query failed: ") +
                   errArch.getError());
+
+    // HIP often returns an empty string for the device name, in these cases
+    // AMD uses the architecture as the device name.
+    std::string name(hipName);
+    if (name.empty())
+      name = "AMD: " + *errArch;
 
     device = new HIPDevice(driver, id, hipDevice, name, *errArch, memInfo,
                            alignment, deviceMemoryLimit);
