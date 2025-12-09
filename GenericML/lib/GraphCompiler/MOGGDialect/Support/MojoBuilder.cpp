@@ -181,9 +181,9 @@ MojoValue MojoBuilder::varDecl(const MojoValue &type) {
 
   return name;
 }
-MojoValue MojoBuilder::alias(const MojoValue &value) {
+MojoValue MojoBuilder::comptime(const MojoValue &value) {
   auto name = newVar("param");
-  statement("alias ", name, " = ", value);
+  statement("comptime ", name, " = ", value);
 
   return name;
 }

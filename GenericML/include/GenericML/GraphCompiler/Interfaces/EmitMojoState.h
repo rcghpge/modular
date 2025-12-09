@@ -88,26 +88,27 @@ constexpr StringLiteral func_mogg_async_pack_borrow_v2 =
 constexpr StringLiteral func_get_buffer_mem_storage_handle =
     "MOGGPrimitives.get_buffer_mem_storage_handle";
 
-constexpr StringLiteral alias_OpaquePointer = "memory.LegacyOpaquePointer";
-constexpr StringLiteral alias_InputTensor = "managed_tensor_slice.InputTensor";
-constexpr StringLiteral alias_OutputTensor =
+constexpr StringLiteral comptime_OpaquePointer = "memory.LegacyOpaquePointer";
+constexpr StringLiteral comptime_InputTensor =
+    "managed_tensor_slice.InputTensor";
+constexpr StringLiteral comptime_OutputTensor =
     "managed_tensor_slice.OutputTensor";
-constexpr StringLiteral alias_FusedOutputTensor =
+constexpr StringLiteral comptime_FusedOutputTensor =
     "managed_tensor_slice._FusedOutputTensor";
-constexpr StringLiteral alias_FusedComputeOutputTensor =
+constexpr StringLiteral comptime_FusedComputeOutputTensor =
     "managed_tensor_slice._FusedComputeOutputTensor";
-constexpr StringLiteral alias_FusedInputTensor =
+constexpr StringLiteral comptime_FusedInputTensor =
     "managed_tensor_slice._FusedInputTensor";
-constexpr StringLiteral alias_MutableInputTensor =
+constexpr StringLiteral comptime_MutableInputTensor =
     "managed_tensor_slice._MutableInputTensor";
-constexpr StringLiteral alias_UInt8 = "UInt8";
-constexpr StringLiteral alias_MutAnyOrigin = "MutAnyOrigin";
+constexpr StringLiteral comptime_UInt8 = "UInt8";
+constexpr StringLiteral comptime_MutAnyOrigin = "MutAnyOrigin";
 
 // The following could be built by combining multiple symbols but this is more
 // convenient. Note that NDBuffer will disappear and the GC will instead use a
 // custom type for managing these int8 buffers (probably just some simple
 // vector/string type).
-constexpr StringLiteral alias_NDBuffer_In_MGP =
+constexpr StringLiteral comptime_NDBuffer_In_MGP =
     "NDBuffer[DType.int8, 1, MutAnyOrigin]";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
@@ -219,7 +220,7 @@ public:
   /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
     if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
-      return HardcodedMojoSymbols::alias_OpaquePointer;
+      return HardcodedMojoSymbols::comptime_OpaquePointer;
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_DeviceContextPtr;
     } else if (auto integerTy = dyn_cast<IntegerType>(mlirType)) {
@@ -266,12 +267,12 @@ public:
       else if (ioKind.getValue() == MO::IOKind::Input) {
         BoolAttr isMutable = tensorType.getIsMutableAttr();
         if (isMutable && isMutable.getValue()) {
-          return HardcodedMojoSymbols::alias_MutableInputTensor;
+          return HardcodedMojoSymbols::comptime_MutableInputTensor;
         } else {
-          return HardcodedMojoSymbols::alias_InputTensor;
+          return HardcodedMojoSymbols::comptime_InputTensor;
         }
       } else if (ioKind.getValue() == MO::IOKind::Output)
-        return HardcodedMojoSymbols::alias_OutputTensor;
+        return HardcodedMojoSymbols::comptime_OutputTensor;
       else {
         ASSERT_STREAM(false, << "Unsupported ioKind " << ioKind);
         return HardcodedMojoSymbols::struct_ManagedTensorSlice;

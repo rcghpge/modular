@@ -1100,7 +1100,7 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
     static const MOGG::MojoValue vUnsafePointer =
         MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
     static const MOGG::MojoValue vOpaquePointer =
-        MOGG::HardcodedMojoSymbols::alias_OpaquePointer;
+        MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
     state.builder.fn(
         getSymNameAttr().strref(), {},
         {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
@@ -3957,9 +3957,9 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   auto shapeParam =
-      state.builder.alias(state.getStaticShapeAsMojoValue(tensorTy));
+      state.builder.comptime(state.getStaticShapeAsMojoValue(tensorTy));
   auto stridesParam =
-      state.builder.alias(state.getStaticStridesAsMojoValue(tensorTy));
+      state.builder.comptime(state.getStaticStridesAsMojoValue(tensorTy));
   MojoValue alignmentParam(static_cast<uint64_t>(AsyncRT::getPreferredAlignment(
       MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
   auto shapeVar = state.builder.var(state.getShapeAsIndexListMojoValue(
@@ -4173,8 +4173,8 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
   MojoValue typeVar = isa<MGP::DeviceBufferType>(getValue().getType())
                           ? (size_t)MGPRT_BorroweeType::kBuffer
                           : (size_t)MGPRT_BorroweeType::kTensor;
-  auto opaquePtr =
-      state.builder.var(MojoValue{HardcodedMojoSymbols::alias_OpaquePointer}());
+  auto opaquePtr = state.builder.var(
+      MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}());
   auto opaquePtrPtr = state.builder.var(
       MojoValue{HardcodedMojoSymbols::struct_UnsafePointer}(
           {}, MojoValue("to").equal(opaquePtr))
@@ -4209,7 +4209,7 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     constexpr StringLiteral staticOutShapeParamName = "output_static_shape";
     if (paramName == staticOutShapeParamName) {
-      return state.builder.alias(
+      return state.builder.comptime(
           state.getStaticShapeAsMojoValue(getResult().getType()));
     }
     return state.inferDefaultKernelParamValue(*this, paramName);
@@ -4372,7 +4372,7 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
       getResult(),
       state.builder.var(MojoValue(MOGG::HardcodedMojoSymbols::struct_NDBuffer)(
           {MojoValue(HardcodedMojoSymbols::struct_DType).get("uint8"), 1,
-           HardcodedMojoSymbols::alias_MutAnyOrigin})));
+           HardcodedMojoSymbols::comptime_MutAnyOrigin})));
   return success();
 }
 
@@ -4393,9 +4393,9 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
         HardcodedMojoSymbols::
             func_rebuild_static_tensor_specs_with_input_lambda)(
         {}, ArrayRef<MojoValue>({tensorValue.get("static_spec"), lambdaParam}));
-    MojoValue fusedTensor = tensorValue.rebind(MojoValue(
-        HardcodedMojoSymbols::alias_FusedInputTensor)[MojoValue("static_spec")
-                                                          .equal(newSpec)]);
+    MojoValue fusedTensor = tensorValue.rebind(
+        MojoValue(HardcodedMojoSymbols::comptime_FusedInputTensor)
+            [MojoValue("static_spec").equal(newSpec)]);
 
     state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
   } else {
@@ -4407,8 +4407,8 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
       return emitError(outputLambdaTypeOr.getError());
     auto tensorTypeName =
         *outputLambdaTypeOr == KernelOutputFusionLambdaType::Output
-            ? HardcodedMojoSymbols::alias_FusedOutputTensor
-            : HardcodedMojoSymbols::alias_FusedComputeOutputTensor;
+            ? HardcodedMojoSymbols::comptime_FusedOutputTensor
+            : HardcodedMojoSymbols::comptime_FusedComputeOutputTensor;
     auto rebuildSpecFuncName =
         *outputLambdaTypeOr == KernelOutputFusionLambdaType::Compute
             ? HardcodedMojoSymbols::
@@ -4496,7 +4496,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   MojoValue inputTupVar = state.builder.var(inputTupleValue);
 
   // Create the static specs tuple
-  // alias inputSpecs = StaticTuple[size=N](
+  // comptime inputSpecs = StaticTuple[size=N](
   //     var1.static_spec, var2.static_spec, ..., varN.static_spec
   // )
   SmallVector<MojoValue> staticSpecs;
@@ -4506,7 +4506,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   MojoValue staticSpecsConstructor = MojoValue("StaticTuple")[{
       MojoValue("size").equal(std::to_string(staticSpecs.size()))}];
   MojoValue staticSpecsValue = staticSpecsConstructor({}, staticSpecs);
-  MojoValue inputSpecsAlias = state.builder.alias(staticSpecsValue);
+  MojoValue inputSpecsComptime = state.builder.comptime(staticSpecsValue);
 
   // Create the VariadicTensors
   // var varInput = VariadicTensors[
@@ -4516,7 +4516,7 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   // same
   MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
       MojoValue("io_spec").equal(inputValues[0].get("io_spec")),
-      MojoValue("static_specs").equal(inputSpecsAlias)}];
+      MojoValue("static_specs").equal(inputSpecsComptime)}];
   MojoValue variadicTensorsValue =
       variadicTensorsConstructor({}, {inputTupVar});
 
@@ -4729,8 +4729,8 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 LogicalResult
 AsyncPlaceholderAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
-  MojoValue result =
-      state.builder.var(MojoValue{HardcodedMojoSymbols::alias_OpaquePointer}());
+  MojoValue result = state.builder.var(
+      MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}());
   state.setMojoValueFor(getResult(), result);
   return success();
 }

@@ -375,9 +375,10 @@ LogicalResult BufferConcatOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue output = state.getMojoValueFor(getOutBuffer());
   MojoValue ctx = state.getMojoValueFor(getCtx());
 
-  MojoValue inputBuffers = state.builder.var(MojoValue(
-      HardcodedMojoSymbols::struct_StaticTuple)[{
-      HardcodedMojoSymbols::alias_NDBuffer_In_MGP, getInBuffers().size()}]());
+  MojoValue inputBuffers =
+      state.builder.var(MojoValue(HardcodedMojoSymbols::struct_StaticTuple)[{
+          HardcodedMojoSymbols::comptime_NDBuffer_In_MGP,
+          getInBuffers().size()}]());
   for (auto &&[i, buffer] : llvm::enumerate(getInBuffers()))
     state.builder.assign(inputBuffers[i], state.getMojoValueFor(buffer));
 

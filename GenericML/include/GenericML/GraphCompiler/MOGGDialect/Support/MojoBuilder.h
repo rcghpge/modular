@@ -209,9 +209,9 @@ public:
   /// is the name of the variable.
   [[nodiscard]] MojoValue varDecl(const MojoValue &type);
 
-  /// Creates an alias and assigns the provided value to it. The returned value
-  /// is the name of the parameter.
-  [[nodiscard]] MojoValue alias(const MojoValue &value);
+  /// Creates an comptime and assigns the provided value to it. The returned
+  /// value is the name of the parameter.
+  [[nodiscard]] MojoValue comptime(const MojoValue &value);
 
   /// Calls a function. This is different from MojoValue::operator() in that it
   /// does not return anything and it actually writes something in the

@@ -7,7 +7,7 @@
 // CHECK: var {{.*}} = DynamicTensor[dtype = {{.*}}.dtype, rank = {{.*}}.rank]({{.*}}._ptr, {{.*}}.shape())
 // CHECK: var {{.*}} = DynamicTensor[dtype = {{.*}}.dtype, rank = {{.*}}.rank]({{.*}}._ptr, {{.*}}.shape())
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}, {{.*}}, {{.*}})
-// CHECK: alias {{.*}} = StaticTuple[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec)
+// CHECK: comptime {{.*}} = StaticTuple[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec)
 // CHECK: var {{.*}} = VariadicTensors[io_spec = {{.*}}.io_spec, static_specs = {{.*}}]({{.*}})
 // CHECK: MOGGKernelAPI.Concat.execute[target = "cpu"]({{.*}}, {{.*}}, {{.*}}, {{.*}})
 
