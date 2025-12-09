@@ -13,6 +13,7 @@
 
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
+#include "Support/Profiling/Tracy.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <sstream>
@@ -266,6 +267,7 @@ public:
 #define CUDA_FUNC(name, ret, ...)                                              \
   ret name(EXPAND_PARAMS(__VA_ARGS__)) const {                                 \
     CUDA_DRIVER_CALL_LOG();                                                    \
+    TRACY_ZONE_SCOPED_NC(#name, TRACY_COLOR_GREEN);                            \
     return name##_(EXPAND_ARGS(__VA_ARGS__));                                  \
   }
 #include "CUDADriver.inc"

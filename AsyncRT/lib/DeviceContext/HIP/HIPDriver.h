@@ -13,6 +13,7 @@
 
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
+#include "Support/Profiling/Tracy.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -588,6 +589,7 @@ public:
 
 #define HIP_FUNC(name, ret, ...)                                               \
   ret name(EXPAND_PARAMS(__VA_ARGS__)) const {                                 \
+    TRACY_ZONE_SCOPED_NC(#name, TRACY_COLOR_RED);                              \
     return name##_(EXPAND_ARGS(__VA_ARGS__));                                  \
   }
 #include "HIPDriver.inc"
