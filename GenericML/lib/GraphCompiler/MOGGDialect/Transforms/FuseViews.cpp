@@ -237,7 +237,9 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
       if (isViewKernelOfType<MO::Static::ReshapeOp>(op))
         reshapes.push_back(op);
     });
-    runOnOperationImpl(graph, ctx, /*fuseReshape=*/true);
+
+    if (!reshapes.empty())
+      runOnOperationImpl(graph, ctx, /*fuseReshape=*/true);
 
     // Finally, raise unfused reshapes back to a MO op to be eventually lowered
     // as MGP primitives (a no-op, really).
