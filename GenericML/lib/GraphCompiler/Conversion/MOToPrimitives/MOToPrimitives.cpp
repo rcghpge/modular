@@ -15,6 +15,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
 #include "GraphRT/MEFDialect/MEFOps.h"
@@ -502,8 +503,26 @@ LogicalResult MOGraphLowering::lowerOutput(MO::OutputOp output) {
   SmallVector<Value> operands;
   operands.push_back(loweringState.getCurrentExecuteChain());
 
-  for (Value operand : output.getOperands())
-    operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
+  for (Value operand : output.getOperands()) {
+    Value loweredValue = loweringState.lookupExecuteLoweredValue(operand);
+
+    // In emit-mojo path, mo.opaque types need to be converted to mgp.opaque
+    // for graph outputs. The model's result types expect mgp.opaque.
+    // ToMGPFromOpaqueOp is essentially a no-op/rebind that converts the type.
+    // This op should be folded away when the input type gets converted to
+    // mgp.opaque later in the pipeline (e.g., after OutlineKernels).
+    if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(loweredValue.getType())) {
+      // Preserve type parameters when converting mo.opaque to mgp.opaque.
+      Type mgpOpaqueType =
+          MGP::OpaqueType::get(output->getContext(), moOpaqueType.getSymbol(),
+                               moOpaqueType.getOptionalParameters());
+      loweredValue = MOGG::ToMGPFromOpaqueOp::create(
+          loweringState.getExecuteOpBuilder(), operand.getLoc(),
+          TypeRange{mgpOpaqueType}, loweredValue);
+    }
+
+    operands.push_back(loweredValue);
+  }
 
   // Finally, we can create the mef.output op.
   MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), output.getLoc(),

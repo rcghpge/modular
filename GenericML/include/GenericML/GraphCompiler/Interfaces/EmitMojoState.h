@@ -159,6 +159,10 @@ struct EmitMojoState {
   /// should be fixed by the new closures work.
   SmallVector<MojoValue> keepAliveValues;
 
+  /// Custom kernel library package names (e.g., "MOGGKernelAPITest").
+  /// These are used to resolve opaque type names to fully qualified names.
+  SmallVector<std::string> customKernelPackages;
+
   /// Keep track of the mojo arguments / parameters for the current function
   /// being lowered.
   FunctionBody currentFunctionBody;
@@ -218,6 +222,8 @@ public:
   LogicalResult lowerOpToMojo(Operation *op);
 
   /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
+  /// For parameterized opaque types, this returns LegacyOpaquePointer.
+  /// Use mlirOpaqueTypeToMojoType for the full parameterized type string.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
     if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
       return HardcodedMojoSymbols::comptime_OpaquePointer;
@@ -247,11 +253,27 @@ public:
       MOGG::MojoValue rankParam = MOGG::MojoValue(shapeResultType.getRank());
       return MOGG::MojoValue(
           MOGG::HardcodedMojoSymbols::struct_IndexList)[rankParam];
+    } else if (isa<MGP::OpaqueType, MO::OpaqueType>(mlirType)) {
+      // Opaque types are represented as OpaquePointer in Mojo
+      return HardcodedMojoSymbols::comptime_OpaquePointer;
     } else {
       ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
       llvm_unreachable("Unsupported mlir type");
     }
   }
+
+  /// Convert an MO::OpaqueType to its fully qualified Mojo type name.
+  /// Returns just the qualified name without parameters.
+  /// Example: !mo.opaque<"SIMDPair", ...> becomes "PackageName.SIMDPair"
+  /// Use getOpaqueTypeParameters() to get the parameters as MojoValues,
+  /// then apply them using MojoValue::operator[].
+  MojoValue mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) const;
+
+  /// Extract parameters from an MO::OpaqueType as MojoValues.
+  /// Returns empty vector if no parameters.
+  /// Example: !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> returns [4, 8]
+  static SmallVector<MojoValue>
+  getOpaqueTypeParameters(MO::OpaqueType opaqueType);
 
   static MojoValue mlirDTypeToMojoType(DType dtype) {
     KGEN::KGENDType kgenDtype(dtype);

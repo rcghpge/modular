@@ -826,7 +826,7 @@ FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
   SmallVector<Value> results;
   for (auto [idx, res] : llvm::enumerate(opBeingLowered->getResults())) {
     if (!inplaceAllocIndicesSet.contains(idx) &&
-        !isa<MO::ChainType>(res.getType()))
+        !isa<MO::ChainType, MO::OpaqueType>(res.getType()))
       results.push_back(opBeingLowered->getResult(idx));
   }
 
@@ -845,10 +845,10 @@ void MOOpLoweringState::createOutputs(
     DenseSet<int> inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
     int index = 0;
     for (const auto &[idx, res] : llvm::enumerate(kernel.getResults())) {
-      // ignore chain types as there are currently special carveouts in all
-      // instances of KernelOp lowerings
+      // ignore chain and opaque types as there are currently special carveouts
+      // in all instances of KernelOp lowerings
       if (!inplaceAllocIndicesSet.contains(idx) &&
-          !isa<MO::ChainType>(res.getType())) {
+          !isa<MO::ChainType, MO::OpaqueType>(res.getType())) {
         auto outputStorage = loweredOutputsStorage[index];
         createOutputTensor(res, inChain, outputStorage.buffer,
                            outputStorage.tensorSpec);
@@ -920,7 +920,9 @@ MOOpLoweringState::createOutputTensorSpecs() {
     if (inplaceAllocIndicesSet.contains(idx))
       continue;
 
-    if (isa<MO::ChainType>(type))
+    // Skip non-tensor types like chains and opaques - they are handled
+    // separately by the kernel lowering logic.
+    if (isa<MO::ChainType, MO::OpaqueType>(type))
       continue;
 
     auto moTensorType = dyn_cast<MO::TensorType>(type);

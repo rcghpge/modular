@@ -18,6 +18,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "KGEN/Compiler/KGENCompiler.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
@@ -725,6 +726,112 @@ ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
   return success();
 }
 
+// TODO(GEX-2899): Consider moving this opaque type collection logic to the
+// MOGG PreElab pass (mogg-annotate-kernels). The PreElab pass already walks
+// kernel functions and annotates them with metadata, so it might be more
+// appropriate to collect and validate opaque types there rather than during
+// MojoLibraryAnalysis init. This would keep all kernel-related preprocessing
+// in one place.
+
+/// Recursively collect all struct type symbols from a type.
+/// This handles nested types like pointers, tuples, etc.
+static void collectStructTypesFromType(Type type,
+                                       llvm::DenseSet<SymbolRefAttr> &symbols) {
+  if (auto structType = dyn_cast<KGEN::LIT::StructType>(type)) {
+    symbols.insert(structType.getSymbol());
+    // Also recurse into parameter values in case they contain struct types.
+    for (auto paramValue : structType.getParamValues()) {
+      if (auto typeAttr = dyn_cast<TypeAttr>(paramValue))
+        collectStructTypesFromType(typeAttr.getValue(), symbols);
+    }
+  } else if (auto refType = dyn_cast<KGEN::LIT::RefType>(type)) {
+    collectStructTypesFromType(refType.getElementType(), symbols);
+  } else if (auto ptrType = dyn_cast<KGEN::PointerType>(type)) {
+    collectStructTypesFromType(ptrType.getElementType(), symbols);
+  } else if (auto tupleType = dyn_cast<TupleType>(type)) {
+    for (auto elementType : tupleType.getTypes())
+      collectStructTypesFromType(elementType, symbols);
+  }
+  // Add more type unwrapping as needed for other container types.
+}
+
+/// Collect all struct type symbols that appear in kernel function arguments.
+static void
+collectKernelArgStructTypes(ModuleOp module,
+                            llvm::DenseSet<SymbolRefAttr> &symbols) {
+  module->walk([&](KGEN::LIT::FnOp funcOp) {
+    // Only consider kernel functions (those with mogg.* labels).
+    if (!KGEN::MOGGPreElab::isExtensibilityFunc(funcOp))
+      return;
+
+    // Collect struct types from all argument types.
+    FunctionType funcType = funcOp.getFunctionType();
+    for (Type argType : funcType.getInputs())
+      collectStructTypesFromType(argType, symbols);
+
+    // Also collect from result types.
+    for (Type resultType : funcType.getResults())
+      collectStructTypesFromType(resultType, symbols);
+  });
+}
+
+/// Register opaque type names from struct declarations in a module.
+/// Only registers structs that are actually used in kernel function arguments.
+/// This builds a mapping from simple type names (e.g., "SIMDPair") to their
+/// fully qualified Mojo names (e.g., "MOGGKernelAPITest.SIMDPair").
+ErrorOrSuccess
+MojoLibraryAnalysis::registerOpaqueTypesFromModule(ModuleOp module) {
+  // First, collect all struct types used in kernel function arguments.
+  llvm::DenseSet<SymbolRefAttr> kernelArgStructSymbols;
+  collectKernelArgStructTypes(module, kernelArgStructSymbols);
+
+  std::optional<Error> conflictError;
+
+  module->walk([&](KGEN::LIT::StructDeclOp structOp) {
+    // Get the fully qualified symbol reference.
+    SymbolRefAttr symbolRef = KGEN::LIT::getFullyResolvedSymbolRef(structOp);
+
+    // Only register structs that are used in kernel function arguments.
+    if (!kernelArgStructSymbols.contains(symbolRef))
+      return WalkResult::advance();
+
+    // Convert symbol ref to Mojo-style dot-separated name.
+    // Symbol refs use :: as separator, Mojo uses dots.
+    std::string fullyQualifiedName;
+    llvm::raw_string_ostream os(fullyQualifiedName);
+    os << symbolRef.getRootReference().getValue();
+    for (auto nested : symbolRef.getNestedReferences())
+      os << "." << nested.getValue();
+
+    // The simple name is the struct's own name (last component).
+    StringRef simpleName = structOp.getSymName();
+
+    auto it = opaqueTypeNameToFullyQualified.find(simpleName);
+    if (it == opaqueTypeNameToFullyQualified.end()) {
+      // No conflict - register the type.
+      opaqueTypeNameToFullyQualified.try_emplace(simpleName,
+                                                 std::move(fullyQualifiedName));
+      return WalkResult::advance();
+    }
+
+    // Same fully qualified name means same type - not a conflict.
+    if (it->second == fullyQualifiedName)
+      return WalkResult::advance();
+
+    // Conflict detected - multiple packages define different types with the
+    // same simple name. Users must use fully qualified names to disambiguate.
+    conflictError =
+        Error("Opaque type '" + simpleName.str() + "' ('" + fullyQualifiedName +
+              "') conflicts with existing type '" + it->second +
+              "'. Use fully qualified type names to disambiguate.");
+    return WalkResult::interrupt();
+  });
+
+  if (conflictError)
+    return std::move(*conflictError);
+  return success();
+}
+
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
   auto loadedModulesOr = loadAllMLIRKernels(kernelLibraryPaths);
@@ -790,6 +897,16 @@ MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
 
     if (maybeError.isError())
       return maybeError.takeError();
+
+    // Register all struct types for opaque type name resolution.
+    // MOGGKernelAPI is registered first, then other packages.
+    // Conflicts emit a warning and keep the first registered type.
+    if (auto err = registerOpaqueTypesFromModule(*moggKernelAPILITPackage))
+      return err.takeError();
+    for (auto &package : litPackages) {
+      if (auto err = registerOpaqueTypesFromModule(*package))
+        return err.takeError();
+    }
   }
 
   return success();
@@ -864,6 +981,14 @@ KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoElementwiseFunctionFor(
     StringRef name) const {
   return getRegisteredLITMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
+}
+
+std::optional<StringRef> MojoLibraryAnalysis::getFullyQualifiedOpaqueTypeName(
+    StringRef simpleTypeName) const {
+  auto it = opaqueTypeNameToFullyQualified.find(simpleTypeName);
+  if (it == opaqueTypeNameToFullyQualified.end())
+    return std::nullopt;
+  return StringRef(it->second);
 }
 
 //===----------------------------------------------------------------------===//

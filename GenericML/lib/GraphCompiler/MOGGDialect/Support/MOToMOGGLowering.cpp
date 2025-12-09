@@ -16,11 +16,133 @@
 
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"
 
 #include "llvm/ADT/STLExtras.h"
 
 namespace M::MOGG {
+
+/// Infer kernel parameters from opaque type parameters.
+///
+/// For emit-mojo path, we need to resolve kernel parameters (P0, P1, etc.)
+/// from the opaque type parameters (S0, S1, etc.) on operands and results.
+/// The kernel function has annotations that map these:
+///   mogg.value_params: [{S0 = #kgen.param.decl.ref<P0>, ...}, ...]
+///   mogg.value_result_params: [{S0 = #kgen.param.decl.ref<P0>, ...}]
+///
+/// This function matches the opaque type's concrete values to the kernel's
+/// parameter declarations.
+static void
+inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
+                      Operation *moOp, KGEN::LIT::FnOp function) {
+  if (!function)
+    return;
+
+  // Get the kernel annotations for input and result parameters.
+  auto inputParamsAttr = function->getAttrOfType<ArrayAttr>(
+      KGEN::MOGGPreElab::kKernelValueParameterAttrName);
+  auto resultParamsAttr = function->getAttrOfType<ArrayAttr>(
+      KGEN::MOGGPreElab::kKernelResultParameterAttrName);
+
+  // Build a set of explicitly declared parameter names.
+  // Parameters with a backtick in their name are internal/inferred parameters
+  // (e.g., "S1`2x1" from a placeholder "_" in the signature). We only want
+  // the explicitly declared parameters (e.g., "P0" from "[P0: Int]").
+  llvm::DenseSet<StringRef> declaredParams;
+  for (auto param : function.getInputParams()) {
+    StringRef paramName = param.getName();
+    // Skip mangled parameter names (contain backtick) - these are inferred
+    // parameters from type parameters, not explicitly declared.
+    if (paramName.contains('`'))
+      continue;
+    declaredParams.insert(paramName);
+  }
+
+  // Helper to match parameters from an opaque type against kernel annotations.
+  auto inferFromOpaque = [&](DictionaryAttr kernelParamDict,
+                             MO::OpaqueType opaqueType) {
+    if (!kernelParamDict || !opaqueType)
+      return;
+
+    DictionaryAttr opaqueParams = opaqueType.getParameters();
+    if (!opaqueParams)
+      return;
+
+    for (NamedAttribute kernelParam : kernelParamDict) {
+      // Check if this is a parameter declaration reference (e.g.,
+      // #kgen.param.decl.ref<P0>)
+      auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(kernelParam.getValue());
+      if (!declRef)
+        continue;
+
+      // Only include parameters that are explicitly declared in the kernel's
+      // parameter list. This filters out inferred/anonymous parameters like
+      // "_" which have internal mangled names (contain backticks).
+      StringRef paramName = declRef.getName();
+      if (!declaredParams.contains(paramName))
+        continue;
+
+      // Look up the corresponding value in the opaque type's parameters.
+      // The key is the same (e.g., "S0" matches "S0" in the opaque type).
+      auto opaqueValue = opaqueParams.getNamed(kernelParam.getName());
+      if (!opaqueValue)
+        continue;
+
+      auto typedValue = dyn_cast<TypedAttr>(opaqueValue->getValue());
+      if (!typedValue)
+        continue;
+
+      // Add the resolved parameter: kernel param name (P0) -> concrete value.
+      // declRef.getName() returns a StringAttr which is the parameter name.
+      forwardedParameters.push_back(
+          NamedAttribute(declRef.getName(), typedValue));
+    }
+  };
+
+  // Infer parameters from operands.
+  // Note: The kernel function's argument list has DPS outputs first, then
+  // inputs. But the MO operation's operands only include the inputs, not
+  // the DPS outputs. So we need to offset by the number of DPS outputs.
+  if (inputParamsAttr) {
+    // Get the number of DPS outputs to offset our index.
+    unsigned numDpsOutputs = 0;
+    if (auto dpsAttr = function->getAttrOfType<IntegerAttr>(
+            KGEN::MOGGPreElab::kMOGGNumDPSOutputs))
+      numDpsOutputs = dpsAttr.getInt();
+
+    for (auto [idx, operand] : llvm::enumerate(moOp->getOperands())) {
+      // The kernel argument index is offset by the number of DPS outputs.
+      unsigned kernelArgIdx = idx + numDpsOutputs;
+      if (kernelArgIdx >= inputParamsAttr.size())
+        break;
+
+      auto opaqueType = dyn_cast<MO::OpaqueType>(operand.getType());
+      if (!opaqueType)
+        continue;
+
+      auto kernelParamDict =
+          dyn_cast<DictionaryAttr>(inputParamsAttr[kernelArgIdx]);
+      inferFromOpaque(kernelParamDict, opaqueType);
+    }
+  }
+
+  // Infer parameters from results.
+  if (!resultParamsAttr)
+    return;
+
+  for (auto [idx, result] : llvm::enumerate(moOp->getResults())) {
+    if (idx >= resultParamsAttr.size())
+      break;
+
+    auto opaqueType = dyn_cast<MO::OpaqueType>(result.getType());
+    if (!opaqueType)
+      continue;
+
+    auto kernelParamDict = dyn_cast<DictionaryAttr>(resultParamsAttr[idx]);
+    inferFromOpaque(kernelParamDict, opaqueType);
+  }
+}
 
 MOGGExpKernelBuilder::MOGGExpKernelBuilder(
     Operation *op, OpBuilder &insertPoint, bool forceSync,
@@ -384,6 +506,17 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
         return validated.takeError();
       else
         forwardedParameters.push_back(validated.takeValue());
+    }
+
+    // For emit-mojo path: infer kernel parameters from opaque types in
+    // operands and results. This resolves parameters like P0, P1 from the
+    // opaque type's parameter dictionary (S0=4, S1=8 -> P0=4, P1=8).
+    if (useExperimentalMojoPath()) {
+      // Get the LIT kernel function to access its parameter annotations.
+      KGEN::LIT::FnOp litFunction =
+          mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
+              custom.getSymbol());
+      inferOpaqueParameters(forwardedParameters, moOp, litFunction);
     }
 
     return DictionaryAttr::get(moOp->getContext(), forwardedParameters);

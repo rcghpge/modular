@@ -394,6 +394,17 @@ def MO_Opaque : MO_Type<"Opaque", "opaque"> {
 
   let assemblyFormat = "`<` $symbol (`,` $parameters^)? `>`";
   let skipDefaultBuilders = true;
+
+  let extraClassDeclaration = [{
+    /// Returns the parameters as an optional, suitable for use when converting
+    /// to MGP::OpaqueType. Returns std::nullopt if the parameters dict is empty.
+    std::optional<DictionaryAttr> getOptionalParameters() const {
+      DictionaryAttr params = getParameters();
+      if (params && !params.empty())
+        return params;
+      return std::nullopt;
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//

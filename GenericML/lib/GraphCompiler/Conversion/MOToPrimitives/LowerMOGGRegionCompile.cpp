@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GenericML/MGPTransforms/Utils.h"
 #include "GraphRT/GRTDialect/GRTOps.h"
@@ -58,7 +59,15 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   for (auto [resTy, res] :
        llvm::zip(oldKernel.getResultTypes(), oldKernel.getResults())) {
     outputs.push_back(res);
-    resultTypes.push_back(resTy);
+    // In emit-mojo path, convert mo.opaque result types to mgp.opaque for
+    // the model's external interface. Preserve type parameters.
+    auto moOpaqueType = dyn_cast<MO::OpaqueType>(resTy);
+    if (!moOpaqueType) {
+      resultTypes.push_back(resTy);
+      continue;
+    }
+    resultTypes.push_back(MGP::OpaqueType::get(
+        ctx, moOpaqueType.getSymbol(), moOpaqueType.getOptionalParameters()));
   }
 
   auto device = oldKernel.getExecutionDevice();
@@ -204,6 +213,16 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
                                lastDeviceRuntimeOp.getSlot(), moduleIndex,
                                kernelIndex, kernel);
     });
+
+    // In emit-mojo path, ToMGPFromOpaqueOp is used to convert mo.opaque to
+    // mgp.opaque for graph outputs. At this point, the Mojo code has already
+    // been emitted and handles the value correctly. Remove the op by replacing
+    // with its input since the runtime doesn't need this type conversion.
+    for (auto toMgpOp : llvm::make_early_inc_range(
+             execute.getOps<MOGG::ToMGPFromOpaqueOp>())) {
+      toMgpOp.getDataPointer().replaceAllUsesWith(toMgpOp.getInput());
+      toMgpOp.erase();
+    }
     // The introduction of generic execute may introduce unbound free-values.
     // Use fixupIsolatedFromAbove to rebind these.
     (void)fixupIsolatedFromAbove(builder, model);

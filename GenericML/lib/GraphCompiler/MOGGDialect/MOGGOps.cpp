@@ -1020,9 +1020,18 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   MojoValue executeFunc("execute");
   MojoValue structType = prefixSymbolName[maybeParams->structParameters];
   MojoValue fullExecuteFunc = structType.get(executeFunc);
-  state.builder.call(fullExecuteFunc, maybeParams->functionParameters,
-                     kernelOperands);
-  state.genAllKeepAliveStatements();
+
+  // If the kernel has a return type, capture and return the value.
+  if (Type returnType = getKernelReturnOutput()) {
+    MojoValue result = state.builder.var(
+        fullExecuteFunc(maybeParams->functionParameters, kernelOperands));
+    state.genAllKeepAliveStatements();
+    state.builder.returnsValue(result);
+  } else {
+    state.builder.call(fullExecuteFunc, maybeParams->functionParameters,
+                       kernelOperands);
+    state.genAllKeepAliveStatements();
+  }
 
   return success();
 }
@@ -1060,16 +1069,29 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
   // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
   // GenericCompiledRegionOp which has that implicit void** ABI.
   if (getAbi() == ABIKind::MOGG) {
+    // Helper to convert type to Mojo, using proper opaque type representation
+    // for parameterized opaque types.
+    auto typeToMojo = [&](Type type) -> MojoValue {
+      if (auto opaqueType = dyn_cast<MO::OpaqueType>(type)) {
+        MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
+        auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
+        if (!params.empty())
+          return baseTy[params];
+        return baseTy;
+      }
+      return state.mlirTypeToMojoType(type);
+    };
+
     SmallVector<MOGG::NamedMojoDef> inputTypes;
     for (auto arg : getBody().getArguments())
       inputTypes.push_back(
-          MOGG::NamedMojoDef("arg", state.mlirTypeToMojoType(arg.getType())));
+          MOGG::NamedMojoDef("arg", typeToMojo(arg.getType())));
 
     // Determine the Mojo return type from the stub's return type
     std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
     FunctionType functionType = getFunctionType();
     if (functionType.getNumResults())
-      mojoReturnType = state.mlirTypeToMojoType(functionType.getResult(0));
+      mojoReturnType = typeToMojo(functionType.getResult(0));
 
     bool errOccurred = false;
     state.builder.fn(
@@ -1391,10 +1413,10 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   // mogg.generic.compiled.region op since it is not in DPS form. The current
   // contract is that if a kernel op returns an opaque type, it must have been
   // allocated internally. Tensors can't be returned in a non-DPS form.
+  // We use MO::OpaqueType here to match what the stub returns.
   DeviceRefAttr device = MO::getDeviceOrDefaultAny(*this);
   if (!resultTypes.empty()) {
-    newKernelResTypes.push_back(MGP::OpaqueType::get(
-        ctx, resultTypes.front().getSymbol(), std::nullopt));
+    newKernelResTypes.push_back(resultTypes.front());
   }
 
   // 8. The original kernel may be setting some parameters (shape functions do
@@ -1506,20 +1528,36 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   const uint64_t numOutputOperands = loweredOutputsStorage.size();
   const uint64_t numScratchOperands = scratchOutputsStorage.size();
 
-  // Helper to calculate region argument index based on tensor argument position
-  auto getRegionArgIndex = [&](uint64_t tensorIdx) -> uint64_t {
-    // Region args: [chain, inputs..., outputs..., scratch...]
+  // Helper to calculate region argument index based on stub argument position.
+  // Region args: [chain, inputs..., outputs..., scratch...]
+  // Stub args: [inputs..., outputs..., scratch...] (same order, no chain)
+  auto getRegionArgIndex = [&](uint64_t stubArgIdx) -> uint64_t {
     // Add 1 for the chain argument at position 0
-    return 1 + tensorIdx;
+    return 1 + stubArgIdx;
   };
 
+  // Track the count of tensor-only arguments seen (for input/output boundary)
   uint64_t tensorArgIdx = 0;
+  // Track overall stub argument index for region argument mapping
+  uint64_t stubArgIdx = 0;
   for (auto stubArgument : kernelStub.getBody().front().getArguments()) {
     auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType());
     if (!asTensor) {
-      // Non-tensor arguments need placeholders that will be replaced later by
-      // lowerDeviceContextPlaceholder. Use chain as placeholder.
-      stubCallOperands.emplace_back(regionBody.getArguments()[0]);
+      // Non-tensor arguments: opaque types are passed directly from region,
+      // device contexts use chain placeholder (handled later by
+      // lowerDeviceContextPlaceholder).
+      if (isa<MO::OpaqueType>(stubArgument.getType())) {
+        uint64_t regionArgIndex = getRegionArgIndex(stubArgIdx);
+        if (regionArgIndex >= regionBody.getArguments().size()) {
+          return emitError("Region argument index out of bounds for opaque");
+        }
+        stubCallOperands.emplace_back(
+            regionBody.getArguments()[regionArgIndex]);
+      } else {
+        // Device context or other types - use chain placeholder
+        stubCallOperands.emplace_back(regionBody.getArguments()[0]);
+      }
+      ++stubArgIdx;
       continue;
     }
 
@@ -1529,7 +1567,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       return emitError(dynamicDimensionsOr.getError());
 
     // Determine if this is an output: either in output/scratch range or
-    // explicitly marked
+    // explicitly marked. Use tensorArgIdx for this comparison since
+    // numInputOperands/numOutputOperands count tensor-only operands.
     bool isOutput = (tensorArgIdx >= numInputOperands) ||
                     outputArguments.contains(stubArgument);
     MO::IOKind io = isOutput ? MO::IOKind::Output : MO::IOKind::Input;
@@ -1553,8 +1592,8 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           "Stub argument index exceeds expected tensor argument count");
     }
 
-    // Get corresponding region argument
-    uint64_t regionArgIndex = getRegionArgIndex(tensorArgIdx);
+    // Get corresponding region argument using stubArgIdx (accounts for opaques)
+    uint64_t regionArgIndex = getRegionArgIndex(stubArgIdx);
     if (regionArgIndex >= regionBody.getArguments().size()) {
       return emitError("Region argument index out of bounds");
     }
@@ -1567,6 +1606,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     stubCallOperands.emplace_back(tensorInitOp);
 
     ++tensorArgIdx;
+    ++stubArgIdx;
   }
 
   // This function will update the KernelStub operands and mapping to take
@@ -3740,6 +3780,26 @@ LogicalResult ToTensorFromMGPOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ToMGPFromOpaqueOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ToMGPFromOpaqueOp::emitMojo(EmitMojoState &state) {
+  // This operation is a no-op type conversion from mo.opaque to mgp.opaque.
+  // In emit-mojo path, both types represent the same underlying value, so we
+  // just pass through the Mojo value from the input to the output.
+  state.setMojoValueFor(getDataPointer(), state.getMojoValueFor(getInput()));
+  return success();
+}
+
+OpFoldResult ToMGPFromOpaqueOp::fold(FoldAdaptor adaptor) {
+  // Fold away when input and output types are the same.
+  // This can happen if the input's type was converted upstream.
+  if (getInput().getType() == getDataPointer().getType())
+    return getInput();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // AlignmentPlaceholderOp
 //===----------------------------------------------------------------------===//
 
@@ -3899,7 +3959,25 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
                                         state.getMojoValueFor(input));
   }
 
-  state.setMojoValueFor(getResult(), state.builder.var(unpackedValue));
+  MojoValue finalValue = state.builder.var(unpackedValue);
+
+  // For opaque types, we need to bitcast and dereference from
+  // LegacyOpaquePointer to the actual parameterized type.
+  // Store the pointer in a variable, then dereference at use site.
+  // This generates: var_XX = value.bitcast[Type]()
+  //                 ... later: var_XX[]
+  if (auto opaqueType = dyn_cast<MO::OpaqueType>(getType())) {
+    MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
+    auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
+    MojoValue opaqueTypeStr = params.empty() ? baseTy : baseTy[params];
+    MojoValue bitcastCall = finalValue.get("bitcast")({opaqueTypeStr}, {});
+    // Store the pointer in a variable
+    MojoValue ptrVar = state.builder.var(bitcastCall);
+    // The value to use is the dereference expression: var_XX[]
+    finalValue = ptrVar[""];
+  }
+
+  state.setMojoValueFor(getResult(), finalValue);
   return success();
 }
 

@@ -1156,7 +1156,10 @@ def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
   }];
 }
 
-def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [Pure]> {
+def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>
+]> {
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$dataPointer);
   let summary = "Get the opaque pointer from the kgen value";
@@ -1165,12 +1168,18 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [Pure]> {
     Get the opaque pointer from the kgen opaque tensor.
     At the implementation level, it's just a bitcast / rebind / no-op.
     But it helps preserving the correct types in the IR during lowering.
+
+    In emit-mojo path, this op is a no-op that converts mo.opaque to mgp.opaque
+    for graph outputs. The emitMojo implementation just passes through the value.
+    The op is folded away if input and output types become the same.
   }];
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:`
         functional-type(operands, results)
   }];
+
+  let hasFolder = 1;
 }
 
 def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,

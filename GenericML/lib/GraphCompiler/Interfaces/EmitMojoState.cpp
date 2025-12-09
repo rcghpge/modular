@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/POPDialect/POPOps.h"
 
@@ -547,8 +548,6 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
           SmallVector<MojoValue> &inferredParams) -> ErrorOrSuccess {
     for (auto param : params) {
       StringRef paramName = param.getName().getValue();
-      if (inferByInputs.contains(paramName))
-        continue;
 
       // TODO(GEX-2623): IOSpec / origin parameters are currently removed from
       // the parameters list because in KGEN-land empty-strust params are
@@ -562,7 +561,18 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
           isIOSpecType(param.getType()))
         continue;
 
+      // For parameters that can be inferred from inputs (e.g., from tensor
+      // types), we still try to get explicit values first. This is important
+      // for opaque types where Mojo can't infer the parameter from type
+      // arguments like SIMDPair[P0, _]. If we have an explicit value in
+      // kernel_param, use it.
       ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
+
+      // If this parameter can be inferred from inputs AND we don't have an
+      // explicit value, skip it and let Mojo infer.
+      if (inferByInputs.contains(paramName) && maybeVal.isError())
+        continue;
+
       if (maybeVal.isError()) {
         if (defaultAttrs && defaultAttrs.contains(paramName)) {
           // If there is already a default value we can skip it.
@@ -766,6 +776,51 @@ void EmitMojoState::addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
                          alignmentParam,
                      });
       });
+}
+
+MojoValue
+EmitMojoState::mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) const {
+  StringRef symbol = opaqueType.getSymbol().getValue();
+
+  // Look up the fully qualified type name from the library analysis.
+  // This mapping was built by walking all struct declarations in the loaded
+  // kernel library modules (MOGGKernelAPI and custom kernel libraries).
+  if (auto fullyQualifiedName =
+          analysis.getFullyQualifiedOpaqueTypeName(symbol)) {
+    return MojoValue(fullyQualifiedName->str());
+  }
+
+  // If not found, the type is not defined in any loaded kernel library.
+  // This is likely a configuration error - the kernel library defining
+  // this type should be included via kernel-library-paths.
+  ASSERT_STREAM(false, "Opaque type '" << symbol
+                                       << "' not found in any loaded kernel "
+                                          "library. Ensure the library "
+                                          "defining this type is included.");
+  return MojoValue(symbol.str());
+}
+
+SmallVector<MojoValue>
+EmitMojoState::getOpaqueTypeParameters(MO::OpaqueType opaqueType) {
+  SmallVector<MojoValue> params;
+  DictionaryAttr paramDict = opaqueType.getParameters();
+  if (!paramDict || paramDict.empty())
+    return params;
+
+  for (NamedAttribute param : paramDict) {
+    // Emit named parameters like SIMDPair[S0=4, S1=8].
+    StringRef name = param.getName().getValue();
+    std::string valueStr;
+    if (auto intAttr = dyn_cast<IntegerAttr>(param.getValue())) {
+      valueStr = std::to_string(intAttr.getInt());
+    } else {
+      // Fallback: use the attribute's string representation.
+      llvm::raw_string_ostream ss(valueStr);
+      param.getValue().print(ss);
+    }
+    params.push_back(MojoValue(name.str() + "=" + valueStr));
+  }
+  return params;
 }
 
 } // namespace M::MOGG

@@ -190,6 +190,13 @@ public:
   /// Verify the parameters attached to the MO custom operation.
   ErrorOrSuccess validateCustomOpParameters(MO::CustomOp customOp) const;
 
+  /// Look up the fully qualified Mojo name for an opaque type.
+  /// Given a simple type name like "SIMDPair", returns the fully qualified
+  /// name like "MOGGKernelAPITest.SIMDPair". Returns an empty optional if
+  /// the type is not found.
+  std::optional<StringRef>
+  getFullyQualifiedOpaqueTypeName(StringRef simpleTypeName) const;
+
   static ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>
   fromPaths(MLIRContext *ctx, ArrayRef<std::string> paths);
 
@@ -212,6 +219,10 @@ private:
   ErrorOrSuccess
   updateRegisteredKernelsMap(KGEN::LIT::FnOp func,
                              bool isGeneratorFromStandardLibrary);
+
+  /// Register opaque type names from all struct declarations in a module.
+  /// Warns on conflicts and keeps the first registered type.
+  ErrorOrSuccess registerOpaqueTypesFromModule(ModuleOp module);
 
   /// Load and process kernels from an MLIR buffer.
   ErrorOr<OwningOpRef<ModuleOp>>
@@ -266,6 +277,11 @@ private:
 
   /// The symbol table for resolving names in `module`.
   std::optional<SymbolTable> rawMojoKernelTable;
+
+  /// Maps simple opaque type names (e.g., "SIMDPair") to their fully qualified
+  /// Mojo names (e.g., "MOGGKernelAPITest.SIMDPair"). This is populated during
+  /// kernel registration by examining the mogg.result_type_name attributes.
+  llvm::StringMap<std::string> opaqueTypeNameToFullyQualified;
 
   mlir::ParserConfig config;
 };
