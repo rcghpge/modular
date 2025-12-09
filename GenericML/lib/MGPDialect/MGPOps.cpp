@@ -1083,15 +1083,12 @@ bool TensorExtractBufferOp::extendsLifetime(size_t operandIndex,
 // CallOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CallOp::verify() {
-  auto module = (*this)->getParentOfType<ModuleOp>();
-
-  if (!module)
-    return emitOpError("must be nested inside a ModuleOp.");
-
-  auto targetModel = module.lookupSymbol<ModelOp>(getModelAttr());
+LogicalResult
+CallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
+  auto targetModel =
+      symbolTable.lookupNearestSymbolFrom<ModelOp>(*this, getCalleeAttr());
   if (!targetModel)
-    return emitOpError() << "failed to find symbol " << getModelAttr();
+    return emitOpError() << "failed to find symbol " << getCalleeAttr();
 
   // Verify operand types match the execute block argument types.
   Block *executeBlock = targetModel.getExecuteBlock();
@@ -1104,7 +1101,7 @@ LogicalResult CallOp::verify() {
     return emitOpError() << "operand types " << actualArgTypes
                          << " do not match expected argument types "
                          << executeBlock->getArgumentTypes() << " of "
-                         << getModelAttr() << "'s execute block.";
+                         << getCalleeAttr() << "'s execute block.";
   }
 
   for (auto [expectedArg, actualArgType] :
@@ -1113,14 +1110,14 @@ LogicalResult CallOp::verify() {
       return emitOpError() << "operand types " << actualArgTypes
                            << " do not match expected argument types "
                            << executeBlock->getArgumentTypes() << " of "
-                           << getModelAttr() << "'s execute block.";
+                           << getCalleeAttr() << "'s execute block.";
     }
   }
 
   // Verify result types match the execute block result types.
   auto outputOp = dyn_cast<MEF::OutputOp>(executeBlock->getTerminator());
   if (!outputOp) {
-    return emitOpError() << "execute block of " << getModelAttr()
+    return emitOpError() << "execute block of " << getCalleeAttr()
                          << " does not end with an mef.output op.";
   }
 
@@ -1129,7 +1126,7 @@ LogicalResult CallOp::verify() {
   if (actualResultTypes != expectedResultTypes) {
     return emitOpError() << "result types " << actualResultTypes
                          << " do not match expected result types "
-                         << expectedResultTypes << " of " << getModelAttr()
+                         << expectedResultTypes << " of " << getCalleeAttr()
                          << "'s execute block.";
   }
 

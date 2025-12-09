@@ -553,17 +553,21 @@ mgp.model @call_target_model subgraph : tf devices [#M.device_ref<"cpu", 0>] ini
   mef.output %ch, %in_tensor : !mef.chain, !mgp.tensor<10xf32>
 }
 
-func.func @call_symbol_not_found(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) {
-  // expected-error@+1 {{'mgp.call' op failed to find symbol @non_existent_model}}
-  %ch_res, %res = mgp.call @non_existent_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<10xf32>)
-  mef.output %ch_res, %res : !mef.chain, !mgp.tensor<10xf32>
-}
-
 func.func @call_operand_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<20xf64>) {
                                                                                                                                                                    // ^^^^^^^^^^^^^^^^^^^ Type mismatch
   // expected-error@+1 {{'mgp.call' op operand types '!mef.chain', '!mgp.context', '!mgp.opaque<"weights_registry">', '!mgp.device_context<<"cpu", 0>>', '!mgp.tensor<20xf64>' do not match expected argument types '!mef.chain', '!mgp.context', '!mgp.opaque<"weights_registry">', '!mgp.device_context<<"cpu", 0>>', '!mgp.tensor<10xf32>', 'index' of @call_target_model's execute block.}}
   %ch_res, %res = mgp.call @call_target_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<20xf64>) -> (!mef.chain, !mgp.tensor<10xf32>)
   mef.output %ch_res, %res : !mef.chain, !mgp.tensor<10xf32>
+}
+
+// -----
+
+mgp.model @call_target_model subgraph : tf devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %in_tensor: !mgp.tensor<10xf32>, %idx: index) -> (!mef.chain, !mgp.tensor<10xf32>) {
+  mef.output %ch, %in_tensor : !mef.chain, !mgp.tensor<10xf32>
 }
 
 func.func @call_result_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) {
@@ -572,6 +576,15 @@ func.func @call_result_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weigh
                                                                                                                                                                                                                   // ^^^^^^^^^^^^^^^^^^^ Type mismatch
   mef.output %ch_res, %res : !mef.chain, !mgp.tensor<5xsi32>
 }
+
+// -----
+
+func.func @call_symbol_not_found(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) {
+  // expected-error@+1 {{'mgp.call' op failed to find symbol @non_existent_model}}
+  %ch_res, %res = mgp.call @non_existent_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<10xf32>)
+  mef.output %ch_res, %res : !mef.chain, !mgp.tensor<10xf32>
+}
+
 
 // -----
 

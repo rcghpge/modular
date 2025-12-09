@@ -29,6 +29,7 @@ include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -1029,7 +1030,10 @@ def DebugPrintOp : MGP_Op<"debug.print", [
 // CallOp
 //===----------------------------------------------------------------------===//
 
-def MGP_CallOp : MGP_Op<"call"> {
+def MGP_CallOp : MGP_Op<"call", [
+  CallOpInterface,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+]> {
   let summary = "Call a subgraph.";
   let description = [{
     Placeholder for the execute block of another graph, which will be inlined by
@@ -1061,21 +1065,47 @@ def MGP_CallOp : MGP_Op<"call"> {
     }
     ```
   }];
-  let arguments = (ins FlatSymbolRefAttr:$model,
-                       DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
-                       Variadic<AnyType>:$operands,
-                       DefaultValuedAttr<BoolAttr, "false">:$isGlobalizedIndex);
+  let arguments = (ins
+    FlatSymbolRefAttr:$callee,
+    DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
+    Variadic<AnyType>:$operands,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$isGlobalizedIndex,
+
+    // Needed to satisfy CallOpInterface
+    DefaultValuedOptionalAttr<DictArrayAttr, "{}">:$arg_attrs,
+    DefaultValuedOptionalAttr<DictArrayAttr, "{}">:$res_attrs
+  );
   let results = (outs Variadic<AnyType>:$results);
 
-  let hasVerifier = 1;
-
   let assemblyFormat = [{
-    $model `(` $operands `)` attr-dict `:` functional-type($operands, results)
+    $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
   }];
 
   let extraClassDeclaration = [{
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return getOperands();
+    }
+
+    MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+
+    operand_iterator arg_operand_begin() { return operand_begin(); }
+    operand_iterator arg_operand_end() { return operand_end(); }
+
     FlatSymbolRefAttr getCalleeSymbol() {
-      return cast<FlatSymbolRefAttr>(getModelAttr());
+      return cast<FlatSymbolRefAttr>(getCalleeAttr());
+    }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getCalleeAttr();
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(CallInterfaceCallable callee) {
+      this->setCalleeAttr(cast<FlatSymbolRefAttr>(cast<SymbolRefAttr>(callee)));
     }
   }];
 }

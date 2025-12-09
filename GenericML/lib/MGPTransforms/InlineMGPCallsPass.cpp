@@ -104,7 +104,7 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
   // Find the target subgraph model
   if (!subgraph)
     return callOp.emitError()
-           << "failed to find symbol @" << callOp.getModelAttrName();
+           << "failed to find symbol " << callOp.getCalleeAttr();
 
   // Get the prefix from the call operation
   StringRef callPrefix = callOp.getPrefix();
