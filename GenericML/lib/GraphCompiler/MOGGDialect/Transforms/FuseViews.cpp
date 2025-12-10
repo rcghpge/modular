@@ -62,12 +62,17 @@ bool isContiguousSliceKernel(Operation *op) {
   if (!isViewKernelOfType<MO::SliceOp>(op))
     return false;
 
+  auto kernel = cast<ExpKernelOp>(op);
+  auto callViewOp = *kernel.getExecBody().getOps<CallViewOp>().begin();
+
   // We obviously don't have access to the original SliceOp which makes these
   // accesses not robust to changes to the op's signature.
-  auto inputValue = op->getOperand(0);
+  auto inputValue = callViewOp->getOperand(0);
   auto inputType = cast<MO::TensorType>(inputValue.getType());
-  auto outputType = cast<MO::TensorType>(op->getResult(0).getType());
-  auto stepValue = op->getOperand(3);
+  auto outputType = cast<MO::TensorType>(callViewOp->getResult(0).getType());
+  // Assuming constant fusion is run *after* view fusion.
+  auto stepValue = kernel.getOperand(
+      cast<BlockArgument>(callViewOp->getOperand(3)).getArgNumber());
 
   // Give up if the step doesn't come from a constant
   auto constStep = stepValue.getDefiningOp<MO::ConstantOp>();
