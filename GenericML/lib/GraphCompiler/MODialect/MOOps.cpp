@@ -822,11 +822,48 @@ LogicalResult OutputOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult YieldOp::verify() {
+  Operation *parentOp = getOperation()->getParentOp();
+  if (auto ifOp = dyn_cast<IfOp>(parentOp)) {
+    ArrayRef<KGEN::ParamDeclAttr> decls = ifOp.getOutputParamDecls();
+    ArrayRef<TypedAttr> defs = this->getParameters();
+    if (decls.size() != defs.size()) {
+      return emitOpError(
+                 "[YieldOp::walkDefinitions] yield parameter bindings (")
+             << defs.size() << ") and if output parameters (" << decls.size()
+             << ") must have the same size";
+    }
+  }
+  return success();
+}
+
+void YieldOp::walkDefinitions(
+    function_ref<void(KGEN::ParamDeclAttr, const KGEN::ParamDefValue &)>
+        walkDef) {
+
+  Operation *parentOp = getOperation()->getParentOp();
+
+  if (auto ifOp = dyn_cast<IfOp>(parentOp)) {
+    ArrayRef<KGEN::ParamDeclAttr> decls = ifOp.getOutputParamDecls();
+    ArrayRef<TypedAttr> defs = this->getParameters();
+    for (auto [decl, def] : llvm::zip(decls, defs))
+      walkDef(decl, def);
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
 
 ArrayRef<ParamDeclAttr> IfOp::getInputParams() { return {}; }
-SmallVector<ParamDeclAttr> IfOp::getAllParams() { return {}; }
+SmallVector<ParamDeclAttr> IfOp::getAllParams() {
+  SmallVector<ParamDeclAttr> params;
+  params.append(getOutputParamDecls().begin(), getOutputParamDecls().end());
+  return params;
+}
 
 Block *IfOp::getThenBlock() { return &getThenRegion().front(); }
 

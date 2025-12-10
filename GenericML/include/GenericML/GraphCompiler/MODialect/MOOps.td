@@ -373,6 +373,7 @@ def MO_OutputOp : MO_ControlOp<"output", [
 
 def IfOp : MO_ControlOp<"if", [
   DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions"]>,
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   HasOnlyGraphRegion,
   NoRegionArguments,
   RecursiveMemoryEffects,
@@ -406,7 +407,10 @@ def IfOp : MO_ControlOp<"if", [
     ```
   }];
 
-  let arguments = (ins AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond);
+  let arguments = (ins
+      AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond,
+      MO_ParamDecls:$outputParamDecls
+  );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$thenRegion,
                         SizedRegion<1>:$elseRegion);
@@ -422,6 +426,7 @@ def IfOp : MO_ControlOp<"if", [
   }];
 
   let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
     `(` $cond `:` qualified(type($cond)) `)` (`->` type($results)^)?
     $thenRegion `else` $elseRegion attr-dict
   }];
@@ -522,8 +527,10 @@ def MO_YieldOp : MO_ControlOp<"yield", [
   Terminator,
   ReturnLike,
   Pure,
-  ParentOneOf<["IfOp", "WhileOp"]>
-]> {
+  ParentOneOf<["IfOp", "WhileOp"]>,
+  DeclareOpInterfaceMethods<ParamOpInterface>
+]>, NoParamDecls {
+  let hasVerifier = 1;
   let summary = "`yield` operation";
   let description = [{
     This op specifies the output values for control flow blocks. The op
@@ -540,10 +547,14 @@ def MO_YieldOp : MO_ControlOp<"yield", [
     ```
   }];
 
-  let arguments = (ins Variadic<MO_AnyNonBufferType>:$operands);
+  let arguments = (ins
+    Variadic<MO_AnyNonBufferType>:$operands,
+    DefaultValuedAttr<
+      KGEN_ParameterExprArrayAttr, "ArrayRef<TypedAttr>({})">:$parameters
+);
 
   let assemblyFormat = [{
-    `` attr-dict ($operands^ `:` type($operands))?
+    `` custom<OutputValues>($parameters) attr-dict ($operands^ `:` type($operands))?
   }];
 
   let builders = [OpBuilder<(ins), [{ build($_builder, $_state, {}); }]>];

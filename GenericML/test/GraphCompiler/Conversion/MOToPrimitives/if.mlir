@@ -116,3 +116,34 @@ mo.graph @implicit_chaining(%init: !mo.chain, %cond: !mo.tensor<[], bool>, %arg0
 
   mo.output %kernel_out : !mo.tensor<[10, 10], bf16>
 }
+
+// CHECK-LABEL: mgp.model @if_output_params
+// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WEIGHTS:.*]]: !mgp.opaque<"weights_registry">, %[[CPU:.*]]: !mgp.device_context<<"cpu", 0>>, %[[COND_TENSOR:.*]]: !mgp.tensor<bool>)
+// CHECK:   %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN]]
+// CHECK:   %[[IF_OUT:.*]]:3 = grt.if %[[BOOL]] (%[[CHAIN]]: !mef.chain) -> (!mef.chain, si64, si64) {
+// CHECK:     %[[P1:.*]] = kgen.param.constant: si64 = <10>
+// CHECK:     %[[P2:.*]] = kgen.param.constant: si64 = <20>
+// CHECK:     mef.output %{{.*}}, %[[P1]], %[[P2]] : !mef.chain, si64, si64
+// CHECK:   } else {
+// CHECK:     %[[P3:.*]] = kgen.param.constant: si64 = <30>
+// CHECK:     %[[P4:.*]] = kgen.param.constant: si64 = <40>
+// CHECK:     mef.output %{{.*}}, %[[P3]], %[[P4]] : !mef.chain, si64, si64
+// CHECK:   }
+// CHECK:   %[[M:.*]] = index.casts %[[IF_OUT]]#1 : si64 to index
+// CHECK:   %[[N:.*]] = index.casts %[[IF_OUT]]#2 : si64 to index
+// CHECK:   %[[SPEC:.*]] = mgp.tensor_spec.create %[[M]], %[[N]] : !mgp.tensor_spec<?x?xf32>
+// CHECK:   %[[TENSOR:.*]] = mgp.tensor.create %[[CHAIN]], %{{.*}}, %[[SPEC]] : !mgp.tensor<?x?xf32>
+// CHECK:   mef.output %[[IF_OUT]]#0, %[[TENSOR]] : !mef.chain, !mgp.tensor<?x?xf32>
+mo.graph @if_output_params(%cond: !mo.tensor<[], bool>) -> !mo.tensor<[M, N], f32> {
+  mo.if<() -> M, N>(%cond : !mo.tensor<[], bool>) {
+    kgen.param.declare L: si64 = <10>
+    kgen.param.declare K: si64 = <20>
+    mo.yield<L, K>
+  } else {
+    kgen.param.declare A: si64 = <30>
+    kgen.param.declare B: si64 = <40>
+    mo.yield<A, B>
+  }
+  %result = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[M, N], f32>
+  mo.output %result : !mo.tensor<[M, N], f32>
+}

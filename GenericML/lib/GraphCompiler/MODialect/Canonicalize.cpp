@@ -17,6 +17,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
 #include "GenericML/Support/Dims.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/Compiler/MLIRDType.h"
 #include "Support/Compiler/VerifyUtils.h"
@@ -876,10 +877,23 @@ struct ConstantFoldIf : public OpRewritePattern<IfOp> {
     if (!condValue)
       return rewriter.notifyMatchFailure(op, "non-constant condition");
 
-    if (*condValue)
-      replaceOpWithRegion(rewriter, op, op.getThenRegion());
-    else
-      replaceOpWithRegion(rewriter, op, op.getElseRegion());
+    Region &region = *condValue ? op.getThenRegion() : op.getElseRegion();
+    auto yieldOp = cast<YieldOp>(region.front().getTerminator());
+
+    // Capture output params and yield params before inlining.
+    Location loc = op.getLoc();
+    SmallVector<KGEN::ParamDeclAttr> outputParams(op.getOutputParamDecls());
+    SmallVector<TypedAttr> yieldParams(yieldOp.getParameters());
+
+    replaceOpWithRegion(rewriter, op, region);
+
+    // Create alias declarations for output params: M = <A>, N = <B>.
+    // This allows code outside the IfOp that references M, N to resolve
+    // to the inlined parameters A, B.
+    for (auto [outputParam, yieldParam] :
+         llvm::zip_equal(outputParams, yieldParams)) {
+      KGEN::ParamDeclareOp::create(rewriter, loc, outputParam, yieldParam);
+    }
 
     return success();
   }

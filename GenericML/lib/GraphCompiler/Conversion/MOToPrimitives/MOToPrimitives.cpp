@@ -541,6 +541,14 @@ LogicalResult MOGraphLowering::lowerYield(MO::YieldOp yield) {
   for (Value operand : yield.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
+  for (TypedAttr param : yield.getParameters()) {
+    auto valueOr = loweringState.lowerExpression(yield->getParentRegion(),
+                                                 yield.getLoc(), param);
+    if (valueOr.isError())
+      return yield->emitOpError(valueOr.getError());
+    operands.push_back(*valueOr);
+  }
+
   // Finally, we can create the mef.output op.
   MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), yield.getLoc(),
                         operands);
@@ -1579,12 +1587,29 @@ LogicalResult MOGraphLowering::lowerIf(MO::IfOp ifOp) {
   SmallVector<Type> resultTypes;
   // Always return the current 'execute' chain
   resultTypes.emplace_back(currentChain.getType());
+
   for (Type type : ifOp.getResultTypes())
     resultTypes.emplace_back(
         loweringState.getTypeConverter().convertType(type));
 
+  for (ParamDeclAttr decl : ifOp.getOutputParamDecls()) {
+    Type declType = decl.getType();
+    Type converted = loweringState.getTypeConverter().convertType(declType);
+    resultTypes.emplace_back(converted ? converted : declType);
+  }
+
   // Create grt.if op
   auto outputIf = opLoweringState.create<GRT::IfOp>(resultTypes, operands);
+
+  // Lower optional output parameters
+  size_t paramStartIdx = 1 + ifOp.getNumResults(); // After chain + tensors
+  for (auto [decl, result] :
+       llvm::zip(ifOp.getOutputParamDecls(),
+                 outputIf.getResults().drop_front(paramStartIdx))) {
+    if (auto err =
+            loweringState.lowerParamDecl(ifOp->getParentRegion(), decl, result))
+      return ifOp->emitOpError(err.getError());
+  }
 
   auto enterLowerBlock = [&](Region &inputRegion,
                              Region &outputRegion) -> LogicalResult {
