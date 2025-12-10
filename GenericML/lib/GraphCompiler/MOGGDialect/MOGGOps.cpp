@@ -1427,14 +1427,13 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto newKernel = MOGG::GenericCompiledRegionOp::create(
       builder, getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      getSummaryAttr(),        // summary
-      getIsAsyncAttr(),        // isAsync
-      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
-      BoolAttr::get(ctx, getAllocIndices().empty() &&
-                             !getIsAsync()), // canFuseIntoOther
-      BoolAttr::get(ctx, true),              // canBeFusedInto
-      BoolAttr::get(ctx, false),             // canDuplicate
-      BoolAttr::get(ctx, true)               // emitsMojo
+      getSummaryAttr(),          // summary
+      getIsAsyncAttr(),          // isAsync
+      ArrayAttr::get(ctx, {}),   // KernelOp has no constant resources
+      BoolAttr::get(ctx, false), // canFuseIntoOther
+      BoolAttr::get(ctx, true),  // canBeFusedInto
+      BoolAttr::get(ctx, false), // canDuplicate
+      BoolAttr::get(ctx, true)   // emitsMojo
   );
   newKernel.setDeviceRef(device);
   kernelStub.setDeviceRef(device);
@@ -2566,24 +2565,16 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     outParamNameToIdx[name] = i;
   }
 
-  // TODO: Fusing kernels with inplace allocations is not supported
-  // (intermediates allocations unsupported / leaking).
-  bool hasInternalAllocs =
-      !(getAllocIndices().has_value() && !getAllocIndices()->empty());
-
-  // Allow all kernels to be fused into other kernels.
-  bool canFuseIntoOther = !hasInternalAllocs;
-
   // Later update the isAsync instead of hard-coding
   auto newKernel = MOGG::GenericCompiledRegionOp::create(
       builder, getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
-      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
-      BoolAttr::get(ctx, canFuseIntoOther), // canFuseIntoOther
-      BoolAttr::get(ctx, true),             // canBeFusedInto
-      BoolAttr::get(ctx, false)             // canDuplicate
+      ArrayAttr::get(ctx, {}),   // KernelOp has no constant resources
+      BoolAttr::get(ctx, false), // canFuseIntoOther
+      BoolAttr::get(ctx, true),  // canBeFusedInto
+      BoolAttr::get(ctx, false)  // canDuplicate
   );
   newKernel.setDeviceRef(device);
 
