@@ -15,8 +15,8 @@ modular_cc_binary(
         "//GenericML:ExecutionDriver",
         "//GenericML:MOFOptions",
         "//Init",
-        "//SDK:max",
         "//Support:Context",
         "//Support:Globals",
+        "//max/internal:max",
     ],
 )

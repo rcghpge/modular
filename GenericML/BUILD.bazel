@@ -49,10 +49,10 @@ modular_cc_library(
         "//GenericML:CompileDriver",
         "//GenericML:ExecutionDriver",
         "//GraphRT:MEFExecutor",
-        "//SDK:MOFDriver",
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Context",
+        "//max/internal:MOFDriver",
     ],
 )
 
@@ -1388,7 +1388,7 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/DeviceDriver/*.h"]),
     tags = ["no-clang-tidy-headers"],
     visibility = [
-        "//SDK:__pkg__",
+        "//max:__pkg__",
         "//visibility:private",
     ],
     deps = [

@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library", "pkg_files", "py_repl", "requirement")
+load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 
 # gazelle:default_visibility //SDK:consumers
 
@@ -7,89 +7,25 @@ package(default_visibility = ["//SDK:consumers"])
 package_group(
     name = "consumers",
     packages = [
-        "//",  # root BUILD.bazel file
         "//GenericML/...",
+        "//Kernels/...",
         "//SDK/...",
         "//docs/...",
         "//max/...",
-        "//open-source/max/max/...",
         "//utils/...",
     ],
 )
 
-modular_cc_library(
-    name = "CAPI.headers",  # NOTE: Target only exists to run clang-tidy as C files
-    testonly = True,
-    srcs = glob(["include/SDK/API/max/c/*.h"]),
-    includes = ["include/SDK/API"],
-    tags = ["clang-tidy-is-c-tu"],
-    visibility = ["//visibility:private"],
-)
-
-pkg_files(
-    name = "API.c.headers",
-    srcs = glob(["include/SDK/API/max/c/*.h"]),
-)
-
-filegroup(
-    name = "doxygen-sources",
-    srcs = glob([
-        "include/SDK/API/max/**",
-    ]),
-    visibility = ["//SDK/include/SDK/API/max/c/docs:__pkg__"],
-)
-
-modular_cc_library(
-    name = "MOFDriver",
-    srcs = glob(["lib/MOF/Driver/**/*.cpp"]),
-    hdrs = [
-        "include/SDK/MOF/InitAllDialects.h",
-    ] + glob([
-        "include/SDK/MOF/Driver/**/*.h",
-    ]),
-    deps = [
-        "//GenericML:GraphCompiler",
-        "//Support:Base",
-        "//Support:Buffer",
-    ],
-)
-
-py_repl(
+# TODO: Remove, currently just for convenience
+alias(
     name = "python",
-    deps = [
-        "//max/python/max",
-        requirement("hypothesis"),
-        requirement("notebook"),
-        requirement("nvitop"),
-        requirement("rich"),
-        requirement("pytest"),
-    ],
+    actual = "//max:repl",
+    tags = [TOP_LEVEL_TAG],
 )
 
+# TODO: Remove, currently just for convenience
 alias(
     name = "pipelines",
-    actual = "//max/python/max/entrypoints:pipelines",
-    tags = ["maybe-unused"],
-)
-
-modular_shared_library(
-    name = "max",
-    srcs = glob([
-        "lib/API/c/**/*.cpp",
-        "lib/MOF/API/**/*.cpp",
-    ]),
-    hdrs = glob([
-        "include/SDK/API/**/*.h",
-        "include/SDK/MOF/API/**/*.h",
-    ]),
-    includes = ["include/SDK/API"],
-    deps = [
-        ":MOFDriver",
-        "//AsyncRT:NIXL",
-        "//GenericML:FrameworkFrontend",
-        "//GenericML:SafeTensor",
-        "//Kernels:WeightsRegistry",
-        "//Support:Globals",
-        "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
-    ],
+    actual = "//max",
+    tags = [TOP_LEVEL_TAG],
 )
