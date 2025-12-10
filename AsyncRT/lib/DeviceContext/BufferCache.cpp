@@ -1120,46 +1120,49 @@ void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
 BufferCache *BufferCache::onDevice(const Device &device,
                                    Device::MemInfo memInfo, size_t alignment,
                                    int64_t memoryLimit) {
-  if (memInfo.free == 0 || memoryLimit == 0) {
-    // Do not use buffer cache if buffer cache has been disabled by the calling
-    // code (empty memInfo).
-    // This is for example the case for CPU Device: We are relying on malloc
-    // optimizations instead.
+  // Do not use buffer cache if buffer cache has been disabled by the calling
+  // code (empty memInfo).
+  // This is for example the case for CPU Device: We are relying on malloc
+  // optimizations instead.
+  if (memInfo.free == 0 || memoryLimit == 0)
     return new BufferCache(device, 0, 0, alignment, false);
+
+  // Get cache size from the config
+  bool isDefaultCacheSize = false;
+  size_t maxCacheSize = static_cast<size_t>(
+      DeviceContext::configAsInt("buffer_cache_size", 0, &isDefaultCacheSize));
+
+  // Disable the buffer cache if the requested cache size is 0
+  if (maxCacheSize == 0 && !isDefaultCacheSize)
+    return new BufferCache(device, 0, 0, alignment, false);
+
+  // If there's no size in the config or if the requested size is larger than
+  // the free memory, use a percentage of the available memory
+  if (isDefaultCacheSize || maxCacheSize > memInfo.free) {
+    // By default use 90% of the available memory
+    int64_t percentMemoryLimit =
+        DeviceContext::configAsInt("buffer_cache_size_percent", 90);
+
+    if (maxCacheSize > memInfo.free)
+      llvm::errs()
+          << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
+          << humanMemorySize(maxCacheSize)
+          << ") does not fit into available free memory ("
+          << humanMemorySize(memInfo.free) << "), using " << percentMemoryLimit
+          << "% of all free memory instead.\n";
+
+    maxCacheSize = (memInfo.free * percentMemoryLimit) / 100;
   }
 
-  bool shouldUseDefaultInstead = false; // no explicit memory limit
-  if (memoryLimit != 0) {
-    memoryLimit = DeviceContext::configAsInt("buffer_cache_size", 0,
-                                             &shouldUseDefaultInstead);
-  }
-
-  if (shouldUseDefaultInstead) {
-    // Neither explicit memory limit nor buffer_cache_size env var set
-    shouldUseDefaultInstead = false; // repurposing
-    int64_t percentMemoryLimit = DeviceContext::configAsInt(
-        "buffer_cache_size_percent", 0, &shouldUseDefaultInstead);
-    if (shouldUseDefaultInstead)
-      percentMemoryLimit = 90; // default percent of all free mem
-    memoryLimit = (memInfo.free * percentMemoryLimit) / 100;
-  }
-  size_t maxCacheSize = llvm::alignToPowerOf2(memoryLimit, 256 * KB);
-
-  if (maxCacheSize > memInfo.free) {
-    llvm::errs()
-        << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
-        << humanMemorySize(maxCacheSize)
-        << ") does not fit into available free memory ("
-        << humanMemorySize(memInfo.free) << ").\n";
-  }
+  // Ensure the cache size is aligned
+  maxCacheSize = llvm::alignToPowerOf2(maxCacheSize, 256 * KB);
 
   // Get chunk size as percentage of max cache size. Limit to between 0 and 100.
   size_t chunkSizePercent =
       std::max(static_cast<size_t>(0),
                std::min(static_cast<size_t>(100),
                         static_cast<size_t>(DeviceContext::configAsInt(
-                            "buffer_cache_chunk_percent", 2,
-                            &shouldUseDefaultInstead))));
+                            "buffer_cache_chunk_percent", 2))));
 
   size_t chunkSize = std::min(
       maxCacheSize,
