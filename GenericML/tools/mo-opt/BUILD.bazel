@@ -8,6 +8,10 @@ package(default_visibility = [
 modular_cc_binary(
     name = "mo-opt",
     srcs = glob(["*.cpp"]),
+    data = select({
+        "//:emit_mojo_enabled": ["//max:MOGGKernelAPI"],
+        "//conditions:default": [],
+    }),
     deps = [
         "//GenericML:GraphCompiler",
         "//Init",
