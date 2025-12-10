@@ -78,6 +78,12 @@ ShapeAttr ParamExprBuilder::getShapeAttr(ArrayRef<TypedAttr> dimAttrs) {
 
 void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   TypedAttr condAttr = condVar.getAttr();
+
+  // Don't bother emitting trivially true assertions.
+  if (auto boolVal = dyn_cast<BoolAttr>(condAttr);
+      boolVal && boolVal.getValue())
+    return;
+
   MLIRContext *ctx = condAttr.getContext();
   Type chainType = MO::ChainType::get(ctx);
 
