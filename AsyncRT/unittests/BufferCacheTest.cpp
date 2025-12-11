@@ -102,6 +102,38 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     EXPECT_EQ(cache->allocationAlignment(), 128);
   }
 
+  // Test requesting specific size
+  {
+    Device::MemInfo memInfo;
+    memInfo.free = 1024 * 1024;
+    memInfo.total = 2 * 1024 * 1024;
+
+    CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+    std::unique_ptr<BufferCache> cache(
+        BufferCache::onDevice(*device, memInfo, 128, memInfo.total / 2));
+
+    EXPECT_TRUE(cache != nullptr);
+    EXPECT_FALSE(cache->isHost());
+    EXPECT_EQ(cache->allocationAlignment(), 128);
+    EXPECT_EQ(cache->getMemoryInfo().total, memInfo.total / 2);
+  }
+
+  // Test requesting 0 (disabled cache)
+  {
+    Device::MemInfo memInfo;
+    memInfo.free = 1024 * 1024;
+    memInfo.total = 2 * 1024 * 1024;
+
+    CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+    std::unique_ptr<BufferCache> cache(
+        BufferCache::onDevice(*device, memInfo, 128, 0));
+
+    EXPECT_TRUE(cache != nullptr);
+    EXPECT_FALSE(cache->isHost());
+    EXPECT_EQ(cache->allocationAlignment(), 128);
+    EXPECT_EQ(cache->getMemoryInfo().total, 0);
+  }
+
   // Test with zero memory (disabled cache)
   {
     Device::MemInfo memInfo;
@@ -115,6 +147,7 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     EXPECT_TRUE(cache != nullptr);
     EXPECT_FALSE(cache->isHost());
     EXPECT_EQ(cache->allocationAlignment(), 64);
+    EXPECT_EQ(cache->getMemoryInfo().total, 0);
   }
 }
 

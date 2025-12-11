@@ -1127,16 +1127,20 @@ BufferCache *BufferCache::onDevice(const Device &device,
   if (memInfo.free == 0 || memoryLimit == 0)
     return new BufferCache(device, 0, 0, alignment, false);
 
-  // Get cache size from the config
+  // Determine cache size
   bool isDefaultCacheSize = false;
-  size_t maxCacheSize = static_cast<size_t>(
-      DeviceContext::configAsInt("buffer_cache_size", 0, &isDefaultCacheSize));
+  size_t maxCacheSize;
+  if (memoryLimit > 0) // Try to use parameter value first
+    maxCacheSize = static_cast<size_t>(memoryLimit);
+  else // Otherwise look in the config
+    maxCacheSize = static_cast<size_t>(DeviceContext::configAsInt(
+        "buffer_cache_size", 0, &isDefaultCacheSize));
 
   // Disable the buffer cache if the requested cache size is 0
   if (maxCacheSize == 0 && !isDefaultCacheSize)
     return new BufferCache(device, 0, 0, alignment, false);
 
-  // If there's no size in the config or if the requested size is larger than
+  // If there's no provided size or if the provided size is larger than
   // the free memory, use a percentage of the available memory
   if (isDefaultCacheSize || maxCacheSize > memInfo.free) {
     // By default use 90% of the available memory
