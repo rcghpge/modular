@@ -140,6 +140,36 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
   return lambdaParam;
 }
 
+MojoValue MojoBuilder::lambdaWithCopyCapture(
+    StringLiteral lambdaName, ArrayRef<MojoValue> copyCaptures,
+    ArrayRef<NamedMojoDef> parameters, ArrayRef<NamedMojoDef> arguments,
+    std::optional<MojoValue> returnType, bool isInline, bool isParameter,
+    std::function<void(const FunctionBody &)> &&lambdaBody) {
+  MojoValue lambdaParam = newVar(lambdaName);
+  FunctionBody body;
+
+  // Add @__copy_capture decorator if there are captures
+  if (!copyCaptures.empty()) {
+    std::string captureList;
+    for (size_t i = 0; i < copyCaptures.size(); ++i) {
+      if (i > 0)
+        captureList += ", ";
+      captureList += copyCaptures[i].text;
+    }
+    statement("@__copy_capture(", captureList, ")");
+  }
+  if (isParameter)
+    statement("@parameter");
+  if (isInline)
+    statement("@always_inline");
+  statement("fn ", lambdaParam,
+            funcDefBase(parameters, arguments, returnType, false, body));
+
+  MojoBuilderScopeGuard guard(this);
+  lambdaBody(body);
+  return lambdaParam;
+}
+
 MojoBuilder &MojoBuilder::try_(std::function<void()> &&tryBlock) {
   statement("try:");
   MojoBuilderScopeGuard guard(this);

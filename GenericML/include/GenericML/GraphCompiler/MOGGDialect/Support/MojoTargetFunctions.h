@@ -49,6 +49,10 @@ constexpr llvm::StringLiteral DPSManagedTensorSliceStoreSIMD =
     "simd_store_into_managed_tensor_slice";
 constexpr llvm::StringLiteral DPSManagedTensorSliceLoadSIMD =
     "simd_load_from_managed_tensor_slice";
+// GPU-safe version that takes raw pointer and strides instead of
+// ManagedTensorSlice. Used to avoid closure capture issues on GPU.
+constexpr llvm::StringLiteral DPSTensorPointerLoadSIMD =
+    "simd_load_from_tensor_pointer";
 
 // Returns a tensor pointing to the same data but with a new shape.
 constexpr llvm::StringLiteral DPSManagedTensorSliceReshape =

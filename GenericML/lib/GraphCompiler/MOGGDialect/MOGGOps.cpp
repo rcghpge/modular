@@ -604,14 +604,45 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
 
   Block *lambdaBody = getBody();
 
+  // Check if we're on a GPU target. For GPU kernels, we need to use the
+  // GPU-safe load function that takes raw pointers instead of
+  // ManagedTensorSlice. This is because ManagedTensorSlice captures in GPU
+  // kernel closures don't work correctly - the pointer values become garbage on
+  // the device.
+  auto kernelStubOp = this->getOperation()->getParentOfType<KernelStubOp>();
+  bool isGpuKernel =
+      kernelStubOp &&
+      MO::getDeviceOrDefaultAny(kernelStubOp).getLabel() == "gpu";
+
   // Prepare the inputs
   SmallVector<MojoValue> fusedInputs;
-  for (MojoValue input : state.getMojoValuesFor(getFusibleTensors())) {
+  // For GPU kernels, we extract ptr and strides before the lambda to avoid
+  // capturing ManagedTensorSlice objects which don't work correctly on GPU.
+  SmallVector<MojoValue> inputPtrs;
+  SmallVector<MojoValue> inputStrides;
+  // Store tensor types for GPU kernel parameter passing
+  SmallVector<MO::TensorType> inputTensorTypes;
+
+  auto fusibleTensors = getFusibleTensors();
+  for (auto [idx, input] :
+       llvm::enumerate(state.getMojoValuesFor(fusibleTensors))) {
     fusedInputs.push_back(input);
 
     // The Compiler doesn't know the body lambda is using the tensor, and can't
     // keep it alive.
     state.markAsKeepAlive(input);
+
+    if (isGpuKernel) {
+      // Extract raw pointer and strides before the lambda.
+      // These are trivial types that can be safely captured by GPU kernels.
+      MojoValue ptr = state.builder.var(input.get("unsafe_ptr")());
+      MojoValue strides = state.builder.var(input.get("strides")());
+      inputPtrs.push_back(ptr);
+      inputStrides.push_back(strides);
+      // Store tensor type for dtype/rank parameters
+      inputTensorTypes.push_back(
+          MO::castFromTensorLike(fusibleTensors[idx].getType()));
+    }
   }
 
   std::optional<MojoValue> returnType = std::nullopt;
@@ -642,78 +673,127 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
                                    state.builder.newVar(widthParamName))));
   }
 
+  // Build the list of variables to copy-capture for GPU kernels.
+  // This is needed because @__copy_capture must explicitly list all variables
+  // that will be used inside GPU kernels through nested closures.
+  SmallVector<MojoValue> copyCaptures;
+  if (isGpuKernel) {
+    copyCaptures.append(inputPtrs.begin(), inputPtrs.end());
+    copyCaptures.append(inputStrides.begin(), inputStrides.end());
+    for (auto &&loadOp : lambdaBody->getOps<MOGG::LoadTensorOp>())
+      copyCaptures.push_back(state.getMojoValueFor(loadOp.getTensor()));
+  }
+
   // The body lambda has with / alignment parameters and indices arguments.
-  MojoValue lambdaParam = state.builder.lambda(
-      lambdaName,
-      {NamedMojoDef(widthParamName, HardcodedMojoSymbols::struct_Int),
-       NamedMojoDef("alignment", HardcodedMojoSymbols::struct_Int)},
-      lambdaArguments, returnType,
-      /*isInline=*/true,
-      /*isParameter=*/true, [&](const MOGG::FunctionBody &functionBody) {
-        state.currentFunctionBody = functionBody;
-        const MojoValue &widthParam = functionBody.parameters[0];
-        const MojoValue &alignmentParam = functionBody.parameters[1];
-        const MojoValue &indicesInput = functionBody.arguments[0];
-        state.addDebugPrintLambdaParam(getBindKind(), widthParam,
-                                       alignmentParam, indicesInput);
+  // For GPU kernels, use lambdaWithCopyCapture to explicitly copy-capture
+  // the ptr/strides variables so they're available inside the GPU kernel.
+  auto lambdaBodyFunc = [&](const MOGG::FunctionBody &functionBody) {
+    state.currentFunctionBody = functionBody;
+    const MojoValue &widthParam = functionBody.parameters[0];
+    const MojoValue &alignmentParam = functionBody.parameters[1];
+    const MojoValue &indicesInput = functionBody.arguments[0];
+    state.addDebugPrintLambdaParam(getBindKind(), widthParam, alignmentParam,
+                                   indicesInput);
 
-        // Do all load for each inputs.
-        unsigned inputIdx = 0;
-        for (unsigned i = 0; i < fusedInputs.size(); ++i) {
-          Value blockArg = lambdaBody->getArgument(i);
-          if (i == 0 && isOutputLambda) {
-            // For the output lambda, just map the argument to the last operand.
-            state.setMojoValueFor(blockArg, functionBody.arguments.back());
-          } else {
-            // Do a load from the input tensor
-            const auto &mojoInput = fusedInputs[i];
-            state.addDebugPrintTensorSpecs(mojoInput, indicesInput,
-                                           /*isInput=*/true, inputIdx++);
-            MOGG::MojoValue loadedSimd = MojoValue(
-                HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
-                {MojoValue("simd_width").equal(widthParam),
-                 MojoValue("element_alignment").equal(alignmentParam)},
-                {mojoInput, indicesInput});
-            // Map the argument
-            state.setMojoValueFor(blockArg, state.builder.var(loadedSimd));
-          }
-        }
-
-        // The last argument is the indices
-        state.setMojoValueFor(lambdaBody->getArguments().back(), indicesInput);
-
-        // Lower block
-        errOccurred |=
-            llvm::any_of(lambdaBody->getOperations(), [&](mlir::Operation &op) {
-              return state.lowerOpToMojo(&op).failed();
-            });
-
-        if (errOccurred)
-          return;
-
-        auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
-        const MojoValue &resultValue =
-            state.getMojoValueFor(outputOp.getOperand(0));
-        // The lambda might also compute and return the indices.
-        const MojoValue &resultIndices =
-            outputOp->getNumOperands() > 1
-                ? state.getMojoValueFor(outputOp.getOperand(1))
-                : indicesInput;
-
-        if (generateStoreForOutput) {
-          // Store the output value.
-          state.addDebugPrintTensorSpecs(fusedInputs.front(), resultIndices,
-                                         /*isInput=*/false, /*operandIndex=*/0);
-          state.builder.call(
-              HardcodedMojoSymbols::func_simd_store_into_managed_tensor_slice,
-              ArrayRef<MojoValue>{
-                  MojoValue("element_alignment").equal(alignmentParam)},
-              {fusedInputs.front(), resultIndices, resultValue});
+    // Do all load for each inputs.
+    unsigned inputIdx = 0;
+    for (unsigned i = 0; i < fusedInputs.size(); ++i) {
+      Value blockArg = lambdaBody->getArgument(i);
+      if (i == 0 && isOutputLambda) {
+        // For the output lambda, just map the argument to the last operand.
+        state.setMojoValueFor(blockArg, functionBody.arguments.back());
+      } else {
+        // Do a load from the input tensor
+        const auto &mojoInput = fusedInputs[i];
+        state.addDebugPrintTensorSpecs(mojoInput, indicesInput,
+                                       /*isInput=*/true, inputIdx++);
+        MOGG::MojoValue loadedSimd;
+        if (isGpuKernel) {
+          // Use GPU-safe load that takes raw pointer and strides.
+          // This avoids capturing ManagedTensorSlice which doesn't work
+          // correctly in GPU kernel closures.
+          MO::TensorType tensorTy = inputTensorTypes[i];
+          loadedSimd = MojoValue(
+              HardcodedMojoSymbols::func_simd_load_from_tensor_pointer)(
+              {MojoValue("dtype").equal(
+                   state.mlirDTypeToMojoType(tensorTy.getDtype())),
+               MojoValue("rank").equal(
+                   MojoValue(static_cast<int64_t>(tensorTy.getRank()))),
+               MojoValue("simd_width").equal(widthParam),
+               MojoValue("element_alignment").equal(alignmentParam)},
+              {inputPtrs[i], inputStrides[i], indicesInput});
         } else {
-          // Add the return statement.
-          state.builder.returnsValue(resultValue);
+          loadedSimd = MojoValue(
+              HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
+              {MojoValue("simd_width").equal(widthParam),
+               MojoValue("element_alignment").equal(alignmentParam)},
+              {mojoInput, indicesInput});
         }
-      });
+        // Map the argument
+        state.setMojoValueFor(blockArg, state.builder.var(loadedSimd));
+      }
+    }
+
+    // The last argument is the indices
+    state.setMojoValueFor(lambdaBody->getArguments().back(), indicesInput);
+
+    // Lower block
+    errOccurred |=
+        llvm::any_of(lambdaBody->getOperations(), [&](mlir::Operation &op) {
+          return state.lowerOpToMojo(&op).failed();
+        });
+
+    if (errOccurred)
+      return;
+
+    auto outputOp = cast<MOGG::OutputOp>(lambdaBody->getTerminator());
+    const MojoValue &resultValue =
+        state.getMojoValueFor(outputOp.getOperand(0));
+    // The lambda might also compute and return the indices.
+    const MojoValue &resultIndices =
+        outputOp->getNumOperands() > 1
+            ? state.getMojoValueFor(outputOp.getOperand(1))
+            : indicesInput;
+
+    if (generateStoreForOutput) {
+      // Store the output value.
+      state.addDebugPrintTensorSpecs(fusedInputs.front(), resultIndices,
+                                     /*isInput=*/false, /*operandIndex=*/0);
+      if (isGpuKernel) {
+        state.builder.call(
+            HardcodedMojoSymbols::func_simd_store_into_tensor_pointer,
+            {MojoValue("element_alignment").equal(alignmentParam)},
+            {inputPtrs[0], inputStrides[0], resultIndices, resultValue});
+      } else {
+        state.builder.call(
+            HardcodedMojoSymbols::func_simd_store_into_managed_tensor_slice,
+            ArrayRef<MojoValue>{
+                MojoValue("element_alignment").equal(alignmentParam)},
+            {fusedInputs.front(), resultIndices, resultValue});
+      }
+    } else {
+      // Add the return statement.
+      state.builder.returnsValue(resultValue);
+    }
+  };
+
+  SmallVector<NamedMojoDef> lambdaParams = {
+      NamedMojoDef(widthParamName, HardcodedMojoSymbols::struct_Int),
+      NamedMojoDef("alignment", HardcodedMojoSymbols::struct_Int)};
+
+  MojoValue lambdaParam;
+  if (isGpuKernel) {
+    // Use lambdaWithCopyCapture to explicitly copy-capture ptr/strides
+    // variables for GPU kernels.
+    lambdaParam = state.builder.lambdaWithCopyCapture(
+        lambdaName, copyCaptures, lambdaParams, lambdaArguments, returnType,
+        /*isInline=*/true, /*isParameter=*/true, std::move(lambdaBodyFunc));
+  } else {
+    lambdaParam =
+        state.builder.lambda(lambdaName, lambdaParams, lambdaArguments,
+                             returnType, /*isInline=*/true,
+                             /*isParameter=*/true, std::move(lambdaBodyFunc));
+  }
 
   if (errOccurred)
     return failure();
@@ -786,6 +866,7 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
       HardcodedMojoSymbols::struct_StaticTuple)[{
       HardcodedMojoSymbols::struct_DType,
       MojoValue(int64_t(allDtypeMojoParams.size()))}]({}, allDtypeMojoParams);
+
   // Get the target device from the kernel stub that contains this operation.
   // This ensures we use the correct device (gpu/cpu) for simd_width
   // calculation.

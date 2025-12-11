@@ -59,6 +59,8 @@ constexpr StringLiteral func_to_managed_tensor_slice =
 constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
 constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
     "managed_tensor_slice.simd_load_from_managed_tensor_slice";
+constexpr StringLiteral func_simd_load_from_tensor_pointer =
+    "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr StringLiteral func_rebuild_static_tensor_specs_with_output_lambda =
     "managed_tensor_slice.rebuild_static_tensor_specs_with_output_lambda";
 constexpr StringLiteral
@@ -67,6 +69,8 @@ constexpr StringLiteral
         "lambda";
 constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
     "managed_tensor_slice.simd_store_into_managed_tensor_slice";
+constexpr StringLiteral func_simd_store_into_tensor_pointer =
+    "managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
     "managed_tensor_slice.rebuild_static_tensor_specs_with_input_lambda";
 constexpr StringLiteral func_reshape_contiguous_buffer =
