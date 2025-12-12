@@ -7,6 +7,7 @@
 #ifndef ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
 #define ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
 
+#include "Support/PlatformUtils.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <string>
