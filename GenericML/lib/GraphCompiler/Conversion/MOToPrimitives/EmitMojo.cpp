@@ -56,7 +56,7 @@ struct EmitMojo
     // IR is in an invalid state and we do not want the verifiers to catch that
     // as we run SymbolDCE.
     pm.enableVerifier(false);
-    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addNestedPass<MOGG::KernelStubOp>(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createSymbolDCEPass());
 
     auto moduleOp = getOperation();
