@@ -75,6 +75,9 @@ build --flag_alias=mojocopt=@rules_mojo//:mojo_copt
 build --dynamic_mode=off
 build --features=-supports_dynamic_linker
 
+# Make sure user installed python modules don't make it in to the build
+common --repo_env=PYTHONNOUSERSITE=affirmative
+
 # Make sure repository rules don't use host tools
 common --repo_env=CC=false
 common --repo_env=CXX=false
@@ -195,6 +198,7 @@ build:macos --build_metadata=TAG_HOST_OS=macos
 build:macos --build_metadata=TAG_TARGET_OS=macos
 
 # Separate CI config that doesn't affect build output for verifying we share caches
+build:ci-no-config --curses=no
 build:ci-no-config --build_metadata=ROLE=CI
 build:ci-no-config --config=cache
 build:ci-no-config --disk_cache=
