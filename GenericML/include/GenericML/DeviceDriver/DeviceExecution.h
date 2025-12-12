@@ -15,9 +15,6 @@
 
 namespace M::Driver {
 
-/// Element type of a speclist; std::nullopt represents non-tensor inputs.
-using SpecType = std::optional<const M::TensorSpec *>;
-
 // Construct a DeviceMemory block to hold the provided tensor.
 MODULAR_VISIBILITY_EXPORT
 ErrorOr<Driver::DeviceMemory *>
