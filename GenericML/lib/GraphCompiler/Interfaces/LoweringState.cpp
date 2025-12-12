@@ -690,11 +690,16 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
   }
 
   builder.setInsertionPoint(terminator);
+  // Track chain operands to create AsyncReadyOp AFTER all other pack ops.
+  // This ensures downstream consumers don't start before all outputs are ready.
+  SmallVector<std::pair<size_t, Value>> deferredChainOps;
+
   for (auto &&[i, value] : llvm::enumerate(terminator->getOperands())) {
     Value newValue;
     if (isa<MEF::ChainType>(value.getType())) {
       if (shouldPack[i])
-        newValue = MOGG::AsyncReadyOp::create(builder, loc);
+        deferredChainOps.emplace_back(i, value);
+      continue;
     } else if (shouldPack.test(i)) {
       SmallVector<Value, 2> packOperands{value};
       if (isa<MGP::DeviceBufferType>(value.getType())) {
@@ -750,6 +755,19 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
           !isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
         MOGG::ChainSinkOp::create(builder, loc, value);
     }
+  }
+
+  // Create AsyncReadyOp for chain outputs AFTER all other pack ops.
+  // This ensures downstream consumers don't start until all outputs are packed.
+  for (auto &&[i, value] : deferredChainOps) {
+    Value newValue = MOGG::AsyncReadyOp::create(builder, loc);
+    value.replaceUsesWithIf(
+        newValue, [&](OpOperand &use) { return use.getOwner() == terminator; });
+
+    // If the value being replaced is a chain, be sure to drop it in a
+    // ChainSinkOp to avoid it being DCE-ed if it's the only output.
+    if (!isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
+      MOGG::ChainSinkOp::create(builder, loc, value);
   }
 
   // Then, unpack all inputs that should be unpacked.
