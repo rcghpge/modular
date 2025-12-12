@@ -2437,24 +2437,31 @@ struct KernelStubOpEquivalenceInfo
         rhs == getTombstoneKey() || rhs == getEmptyKey())
       return false;
 
-    DictionaryAttr lhsDictAttr = lhs.op->getAttrDictionary();
-    DictionaryAttr rhsDictAttr = rhs.op->getAttrDictionary();
+    auto lhsProperties = lhs.op.getProperties();
+    auto rhsProperties = rhs.op.getProperties();
+
+    // Check if properties are equivalent modulo sym_name and summary
+    // attributes.
+    lhsProperties.sym_name = rhsProperties.sym_name = {};
+    lhsProperties.summary = rhsProperties.summary = {};
+
+    if (lhsProperties != rhsProperties)
+      return false;
+
+    DictionaryAttr lhsDictAttr = lhs.op->getRawDictionaryAttrs();
+    DictionaryAttr rhsDictAttr = rhs.op->getRawDictionaryAttrs();
     if (lhsDictAttr.size() != rhsDictAttr.size())
       return false;
 
-    StringAttr symNameAttrName = lhs.op.getSymNameAttrName();
-    StringAttr summaryAttrName = lhs.op.getSummaryAttrName();
+    // Check if discardable attributes are equivalent.
     for (auto [lhsAttr, rhsAttr] : llvm::zip_equal(lhsDictAttr, rhsDictAttr)) {
-      if (lhsAttr == rhsAttr)
+      if (lhsAttr.getName() != rhsAttr.getName())
+        return false;
+
+      if (lhsAttr.getValue() == rhsAttr.getValue())
         continue;
 
       auto attrName = lhsAttr.getName();
-      if (attrName == symNameAttrName)
-        continue;
-
-      if (attrName == summaryAttrName)
-        continue;
-
       if (attrName != MO::kOperationDeviceRefAttrName)
         return false;
 
@@ -2473,13 +2480,15 @@ struct KernelStubOpEquivalenceInfo
 static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
   llvm::hash_code hash = {};
   MOGG::KernelStubOp stubOp = const_cast<MOGG::KernelStubOp &>(cStubOp);
-  StringAttr symNameAttrName = stubOp.getSymNameAttrName();
-  StringAttr summaryAttrName = stubOp.getSummaryAttrName();
-  for (NamedAttribute namedAttr : cStubOp->getAttrs()) {
+
+  auto properties = stubOp.getProperties();
+  properties.sym_name = {};
+  properties.summary = {};
+
+  stubOp->getName().hashOpProperties(mlir::OpaqueProperties(&properties));
+
+  for (NamedAttribute namedAttr : cStubOp->getDiscardableAttrDictionary()) {
     StringAttr attrName = namedAttr.getName();
-    // Ignoring the symbol name and summary because it contains loc info.
-    if (attrName == symNameAttrName || attrName == summaryAttrName)
-      continue;
 
     // Do not hash the device ID, just the label.
     if (attrName == MO::kOperationDeviceRefAttrName) {
@@ -2525,7 +2534,7 @@ struct CallGraph : public KGEN::SCCGraph<CallGraph, CallGraphNode,
   // other kernel (top-level). This is necessary because the CallGraph will only
   // replace the ones that get called. At the very end in runOnOperation, we do
   // the replacement for the top-level kernels using this mapping.
-  llvm::StringMap<StringRef> topLevelReplacements;
+  llvm::DenseMap<StringAttr, StringAttr> topLevelReplacements;
 
   // The mutex to protect uniqueFuncSet accesses.
   std::mutex setAccessMutex;
@@ -2559,8 +2568,8 @@ void CallGraph::doRewrite(CallGraphNode *node) {
         uniqueFuncSet.insert(KernelStubHashEntry{node->func, node->hash})
             .first->op;
     if (replacementCallee != node->func)
-      topLevelReplacements[node->func.getSymName()] =
-          replacementCallee.getSymName();
+      topLevelReplacements[node->func.getSymNameAttr()] =
+          replacementCallee.getSymNameAttr();
   }
 }
 
@@ -2575,9 +2584,10 @@ void MGP::mergeIdenticalKernelStubs(ModuleOp module) {
   // stubs, we have to do the attribute replacement here.
   for (auto modelOp : module.getOps<MGP::ModelOp>()) {
     modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
-      auto it = cg.topLevelReplacements.find(callOp.getCalleeSymbol());
+      auto it =
+          cg.topLevelReplacements.find(callOp.getCalleeSymbolAttr().getAttr());
       if (it != cg.topLevelReplacements.end())
-        callOp.setCalleeSymbol(it->getValue());
+        callOp.setCalleeSymbolAttr(mlir::FlatSymbolRefAttr::get(it->second));
     });
   }
 }
