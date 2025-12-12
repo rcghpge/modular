@@ -184,7 +184,7 @@ inline std::string formatTarget(const DeviceSpec &deviceSpec) {
 /// the DeviceContext in this case. This will be an error in the future once we
 /// can create the DeviceContext from cpp (if it has not been supplied by the
 /// mojo impl of the MAX driver).
-MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AnyAsyncValueRef>>
+MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
 mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                        const Driver::DeviceMap &deviceMap, Runtime &runtime);
 

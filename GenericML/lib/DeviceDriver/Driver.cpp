@@ -6,6 +6,7 @@
 
 #include "GenericML/DeviceDriver/Driver.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
+#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "GenericML/DeviceDriver/Utils.h"
 #include "Support/AssertStream.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
@@ -193,7 +194,7 @@ MODULAR_DRIVER_EXPORT DeviceMemory *Device::createDeviceMemory(
   return deviceMemory;
 }
 
-MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AnyAsyncValueRef>>
+MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
 M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
                                   const Driver::DeviceMap &deviceMap,
                                   Runtime &runtime) {
@@ -208,7 +209,7 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
     }
   }
 
-  llvm::SmallVector<AnyAsyncValueRef> deviceContexts;
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> deviceContexts;
   for (const auto &devRef : deviceRefs) {
     // CPU device not explicitly set so deviceMap["cpu"] may be null
     if (devRef.label == kCPULabel) {
