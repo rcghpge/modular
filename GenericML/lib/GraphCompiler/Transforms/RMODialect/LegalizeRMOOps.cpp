@@ -26,6 +26,9 @@ namespace M::RMO {
 
 namespace {
 
+/// A cache of for assertion operations.
+using AssertCache = llvm::DenseSet<std::tuple<TypedAttr, StringRef, Block *>>;
+
 TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
                                  ShapeAttr shape, DeviceRefAttr device) {
   auto rank = static_cast<int64_t>(shape.getRank());
@@ -90,6 +93,8 @@ _rebindToShape(MO::GraphOp graphOp, TensorValue input, TensorType newTy,
 TensorValue rebindToShape(MO::GraphOp graphOp, OpOperand &input,
                           TensorType newTy, mlir::RewriterBase &rewriter,
                           ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
+  if (input.get().getType() == newTy)
+    return cast<TensorValue>(input.get());
 
   TensorValue val;
   bool verifierSuccess;
@@ -114,6 +119,9 @@ TensorValue rebindToShape(MO::GraphOp graphOp, OpOperand &input,
 TensorValue rebindToShape(MO::GraphOp graphOp, OpResult input, TensorType newTy,
                           mlir::RewriterBase &rewriter,
                           ArrayRef<ParamDeclAttr> newOutputParamDecl = {}) {
+  if (input.getType() == newTy)
+    return cast<TensorValue>(input);
+
   TensorValue val;
   bool verifierSuccess;
   std::tie(val, verifierSuccess) = _rebindToShape(
@@ -1074,7 +1082,21 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
 };
 
 struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
-  using OpRewritePattern::OpRewritePattern;
+  LowerSlice(MLIRContext *ctx, AssertCache &cache)
+      : OpRewritePattern<RMO::SliceOp>(ctx), assertCache(cache) {}
+
+  AssertCache &assertCache;
+
+  void createAssert(ParamExprBuilder &builder, RMO::SliceOp op,
+                    const Var &condAttr, StringRef msg) const {
+    auto block = op->getBlock();
+    auto attr = condAttr.getAttr();
+
+    if (!assertCache.insert({attr, msg, block}).second)
+      return;
+
+    builder.createAssert(condAttr, msg);
+  }
 
   LogicalResult matchAndRewrite(RMO::SliceOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1126,19 +1148,19 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
       Var stop = b.createVar(stopsAttr[axis]);
       auto maybeStartConst = tryGetConstantInt(startsAttr[axis]);
       if (!maybeStartConst)
-        b.createAssert(start >= 0,
-                       "[rmo.slice] requires positive start when symbolic");
+        createAssert(b, op, start >= 0,
+                     "[rmo.slice] requires positive start when symbolic");
       auto maybeStopConst = tryGetConstantInt(stopsAttr[axis]);
       if (!maybeStopConst)
-        b.createAssert(stop >= 0,
-                       "[rmo.slice] requires positive stop when symbolic");
+        createAssert(b, op, stop >= 0,
+                     "[rmo.slice] requires positive stop when symbolic");
 
       // Restrict start/stop to within [-dim, dim).
       Var dim = b.createVar(inputShape[axis]);
-      b.createAssert(start >= -dim && start < dim,
-                     "[rmo.slice] requires start in [-dim, dim)");
-      b.createAssert(stop >= -dim && stop < dim,
-                     "[rmo.slice] requires stop in [-dim, dim)");
+      createAssert(b, op, start >= -dim && start < dim,
+                   "[rmo.slice] requires start in [-dim, dim)");
+      createAssert(b, op, stop >= -dim && stop < dim,
+                   "[rmo.slice] requires stop in [-dim, dim)");
     }
 
     // Create the mo.slice op.
@@ -1208,7 +1230,10 @@ struct LegalizeRMOOps
         LowerCompositeBinaryComparisonOp<RMO::XorOp, RMO::MOXorOp>,
         LowerBroadcastLike, LowerConv, LowerConvTranspose, LowerAvgPool,
         LowerMaxPool, LowerConcat, LowerReshape, LowerMatmul, LowerBroadcastTo,
-        LowerSelect, LowerTopK, LowerSlice, LowerShapeToTensor>(context);
+        LowerSelect, LowerTopK, LowerShapeToTensor>(context);
+
+    AssertCache assertCache;
+    blockPatterns.add<LowerSlice>(context, assertCache);
 
     if (failed(applyPatternsGreedily(getOperation(), std::move(blockPatterns))))
       return signalPassFailure();
