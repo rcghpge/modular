@@ -1,3 +1,0 @@
-# gazelle:default_visibility //SDK/unittests:__subpackages__
-
-package(default_visibility = ["//SDK/unittests:__subpackages__"])
