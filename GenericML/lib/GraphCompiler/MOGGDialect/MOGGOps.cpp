@@ -11,6 +11,7 @@
 #include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
+#include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
@@ -1508,13 +1509,14 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   auto newKernel = MOGG::GenericCompiledRegionOp::create(
       builder, getLoc(), TypeRange{newKernelResTypes}, operands,
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      getSummaryAttr(),          // summary
-      getIsAsyncAttr(),          // isAsync
-      ArrayAttr::get(ctx, {}),   // KernelOp has no constant resources
-      BoolAttr::get(ctx, false), // canFuseIntoOther
-      BoolAttr::get(ctx, true),  // canBeFusedInto
-      BoolAttr::get(ctx, false), // canDuplicate
-      BoolAttr::get(ctx, true)   // emitsMojo
+      getSummaryAttr(),        // summary
+      getIsAsyncAttr(),        // isAsync
+      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
+      // Sequence fuse GPU launching to reduce primitive launch overhead.
+      BoolAttr::get(ctx, !MO::isOnHost(*this)), // canFuseIntoOther
+      BoolAttr::get(ctx, true),                 // canBeFusedInto
+      BoolAttr::get(ctx, false),                // canDuplicate
+      BoolAttr::get(ctx, true)                  // emitsMojo
   );
   newKernel.setDeviceRef(device);
   kernelStub.setDeviceRef(device);
@@ -2652,10 +2654,11 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
       getSummaryAttr(),                                 // summary
       BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
-      ArrayAttr::get(ctx, {}),   // KernelOp has no constant resources
-      BoolAttr::get(ctx, false), // canFuseIntoOther
-      BoolAttr::get(ctx, true),  // canBeFusedInto
-      BoolAttr::get(ctx, false)  // canDuplicate
+      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
+      // Sequence fuse GPU launching to reduce primitive launch overhead.
+      BoolAttr::get(ctx, !MO::isOnHost(*this)), // canFuseIntoOther
+      BoolAttr::get(ctx, true),                 // canBeFusedInto
+      BoolAttr::get(ctx, false)                 // canDuplicate
   );
   newKernel.setDeviceRef(device);
 

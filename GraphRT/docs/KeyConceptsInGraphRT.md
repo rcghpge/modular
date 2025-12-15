@@ -1,7 +1,7 @@
 # Key Concepts in GraphRT
 
 The main idea of GraphRT is an "executor" which efficiently executes a
-user-defined programs expressed as a dataflow graph.  Like MLIR, the framework
+user-defined program expressed as a dataflow graph.  Like MLIR, the framework
 is domain-independent - the focus is making it easy to define and extend
 domain-specific abstractions and provide the infrastructure for working in this
 domain.
