@@ -47,8 +47,8 @@ struct AddTryExceptBlocks
   /// insertion point.
   void insertAsyncDelOps(OpBuilder &builder, Location loc,
                          ArrayRef<BlockArgument> args) {
-    for (auto arg : args)
-      MOGG::AsyncDelOp::create(builder, loc, arg);
+    if (!args.empty())
+      MOGG::AsyncDelOp::create(builder, loc, args);
   }
 
   void runOnOperation() override {

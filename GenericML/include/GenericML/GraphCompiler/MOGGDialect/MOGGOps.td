@@ -1782,8 +1782,8 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
 def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
-  let arguments = (ins AnyType:$input);
-  let summary = "Decrements the async reference of the underlying object";
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let summary = "Decrements the async reference of the underlying objects";
   let description = [{
     This is the 1:1 mirror of mogg.async.unpack. It must be deref an async value
     after its last use.

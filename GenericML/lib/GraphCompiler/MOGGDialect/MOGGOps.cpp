@@ -1180,6 +1180,7 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
         getSymNameAttr().str(), {}, inputTypes,
         /*returnType=*/mojoReturnType, /*exported=*/false,
         /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
+          state.currentFunctionBody = functionBody;
           for (auto &&[mlirArg, mojoArg] :
                llvm::zip(getBody().getArguments(), functionBody.arguments)) {
             state.setMojoValueFor(mlirArg, mojoArg);
@@ -1210,6 +1211,7 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
         {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
          MOGG::NamedMojoDef("arg", vOpaquePointer)},
         std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
+          state.currentFunctionBody = functionBody;
           state.builder.comment(
               "This is the entry point of the kernel. The first argument is a "
               "pointer to a list of inputs and outputs. The second is a "
@@ -4092,7 +4094,11 @@ LogicalResult AsyncPackOp::verify() {
 LogicalResult AsyncDelOp::emitMojo(EmitMojoState &state) {
   auto moggAsyncDelFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.builder.call(moggAsyncDelFunc, {}, state.getMojoValueFor(getInput()));
+  /// TODO: Add assertion that this operations resides in a stub with ABI ==
+  /// MGP.
+  state.builder.call(
+      moggAsyncDelFunc, {},
+      {state.currentFunctionBody.arguments.front(), getInputs().size()});
   return success();
 }
 
