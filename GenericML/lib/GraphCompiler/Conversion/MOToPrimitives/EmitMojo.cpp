@@ -10,6 +10,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
+#include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -56,6 +57,10 @@ struct EmitMojo
     // IR is in an invalid state and we do not want the verifiers to catch that
     // as we run SymbolDCE.
     pm.enableVerifier(false);
+    // TODO: FixupOverhangsPass doesn't work well if ran before this pass
+    // without EmitMojo enabled. Once the transition to EmitMojo is complete, we
+    // should maybe move some of these passes to GraphCompiler.cpp
+    pm.addPass(MGP::createFixupOverhangsPass());
     pm.addNestedPass<MOGG::KernelStubOp>(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createSymbolDCEPass());
 
