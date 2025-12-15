@@ -79,7 +79,6 @@ struct EmitMojo
     }
 
     OpBuilder builder(ctx);
-    SymbolTable symTable(moduleOp);
     MOGG::EmitMojoState state(*analysisOr.takeValue(), enableOpTraceComments,
                               enableComputeLambdas,
                               moggDebugDumpFusedTensorSpecs);

@@ -1,14 +1,9 @@
-// RUN: mo-opt -verify-diagnostics %s
+// RUN: mo-opt -split-input-file -verify-diagnostics %s
 
 !tt = !mo.tensor<[10, 10], f32>
 
 mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
   attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""} {
-  mogg.output
-}
-
-mogg.kernel.stub @stub_1()
-  attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""} {
   mogg.output
 }
 
@@ -23,6 +18,11 @@ mo.graph @too_few_args() -> () {
 
 // -----
 
+mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
+  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""} {
+  mogg.output
+}
+
 mo.graph @too_many_args() -> () {
   mogg.experimental.kernel () -> () {
     %0:2 = mogg.output_placeholders : !mo.tensor<[], f32>, !mo.tensor<[], f32>
@@ -34,6 +34,11 @@ mo.graph @too_many_args() -> () {
 }
 
 // -----
+
+mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
+  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""} {
+  mogg.output
+}
 
 mo.graph @mismatching_args() -> () {
   mogg.experimental.kernel () -> () {
@@ -57,6 +62,11 @@ mo.graph @does_not_exist() -> () {
 }
 
 // -----
+
+mogg.kernel.stub @stub_1()
+  attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""} {
+  mogg.output
+}
 
 mo.graph @wrong_abi(%0 : !mo.tensor<[], f32>) -> () {
   mogg.experimental.kernel () -> () {

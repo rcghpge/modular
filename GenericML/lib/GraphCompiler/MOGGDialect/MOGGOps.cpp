@@ -4137,14 +4137,15 @@ KernelStubOp CallStubOp::getCallee() {
   return dyn_cast_or_null<KernelStubOp>(symTable.lookup(getName()));
 }
 
-LogicalResult CallStubOp::verify() {
-  auto calleeFunc = getCallee();
+LogicalResult CallStubOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  auto calleeFunc = symbolTable.lookupNearestSymbolFrom<KernelStubOp>(
+      *this, getCalleeSymbol());
   if (!calleeFunc) {
     return emitError(
         llvm::formatv("There is no kernel stub named '{}'", getName()));
   }
 
-  auto calleeArgumentTypes = calleeFunc.getBodyBlock().getArgumentTypes();
+  auto calleeArgumentTypes = calleeFunc.getArgumentTypes();
   auto callerOperandTypes = getOperandTypes();
 
   if (calleeArgumentTypes.size() != callerOperandTypes.size()) {
