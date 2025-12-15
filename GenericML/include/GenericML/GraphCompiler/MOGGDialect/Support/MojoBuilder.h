@@ -11,10 +11,12 @@
 #ifndef GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 #define GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 
-#include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
 #include "Support/AssertStream.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/Support/FormatVariadic.h"
+
+#include <stack>
 
 namespace M::MOGG {
 
@@ -170,12 +172,17 @@ struct NamedMojoDef {
       : NamedMojoDef(UniqueMojoIdentifier(name), type, defaultValue) {}
 };
 
+using MojoValueCache = std::stack<llvm::StringMap<MojoValue>>;
+
 /// This is the equivalent of mlir::OpBuilder but for MojoValue instead of
 /// mlir::Operation and mlir::Value.
 class MojoBuilder {
 public:
   MojoBuilder() : ss(sourceStr), variableCounter(0) {}
-  ~MojoBuilder() = default;
+  ~MojoBuilder() {
+    ASSERT_STREAM(comptimeCache.empty(),
+                  << "Expected cahces of MojoValue to be empty");
+  }
 
   /// Creates a function with the specified parameter and argument types, with
   /// optional raises. The returned object is a RAII guard that will recover the
@@ -210,15 +217,18 @@ public:
   void else_(std::function<void()> &&elseBlock);
 
   /// Creates a variable and assigns the provided value to it. The returned
-  /// value is the name of the variable.
-  [[nodiscard]] MojoValue var(const MojoValue &value);
+  /// value is the name of the variable. When cache is enabled, the builder will
+  /// re-use a past variable if the values are the same (like CSE). Set it to
+  /// false if the value has a side effect.
+  [[nodiscard]] MojoValue var(const MojoValue &value, bool cache = true);
 
   /// Creates a variable declaration with a type annotation. The returned value
   /// is the name of the variable.
   [[nodiscard]] MojoValue varDecl(const MojoValue &type);
 
   /// Creates an comptime and assigns the provided value to it. The returned
-  /// value is the name of the parameter.
+  /// value is the name of the parameter. There is no cache option here because
+  /// it is always on by default (can't have side effects in comptime).
   [[nodiscard]] MojoValue comptime(const MojoValue &value);
 
   /// Calls a function. This is different from MojoValue::operator() in that it
@@ -285,6 +295,16 @@ public:
     return resolveIdentifier(name).str();
   }
 
+  void pushCache() {
+    // foo
+    varCache.push({});
+    comptimeCache.push({});
+  }
+  void popCache() {
+    varCache.pop();
+    comptimeCache.pop();
+  }
+
 private:
   void indent() { ss << indentation; }
   template <typename... Ts>
@@ -307,6 +327,15 @@ private:
   llvm::raw_string_ostream ss;
   std::string indentation;
   uint32_t variableCounter;
+
+  // The MojoValue cache is effectively doing partial CSE for Mojo text. Certain
+  // EmitsMojoInterface operations will generate many variables which are not
+  // represented in the IR. This duplicates a ton of Mojo text. This cache
+  // catches those duplications and re-uses them when it can. We treat each
+  // scope (if, functions, lambdas) as a new variable scope which is why this is
+  // a std::stack. It is pushed on entry and poped on exit.
+  MojoValueCache varCache;
+  MojoValueCache comptimeCache;
 };
 
 } // namespace M::MOGG

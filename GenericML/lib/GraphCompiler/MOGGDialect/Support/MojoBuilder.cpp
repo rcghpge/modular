@@ -46,12 +46,14 @@ class MojoBuilderScopeGuard {
 public:
   MojoBuilderScopeGuard(MojoBuilder *e) : emitter(e) {
     emitter->increaseIndentation();
+    emitter->pushCache();
   }
   MojoBuilderScopeGuard() = delete;
   MojoBuilderScopeGuard(const MojoBuilderScopeGuard &other) = delete;
   ~MojoBuilderScopeGuard() {
     emitter->decreaseIndentation();
     emitter->newline();
+    emitter->popCache();
   }
   MojoBuilder *emitter;
 };
@@ -199,9 +201,19 @@ void MojoBuilder::else_(std::function<void()> &&elseBlock) {
   elseBlock();
 }
 
-MojoValue MojoBuilder::var(const MojoValue &value) {
+MojoValue MojoBuilder::var(const MojoValue &value, bool cache) {
+  std::pair<llvm::StringMapIterBase<M::MOGG::MojoValue, false>, bool> it;
+  if (cache) {
+    it = varCache.top().insert({value.text, ""});
+    if (!it.second)
+      return it.first->second;
+  }
+
   auto name = newVar("var");
   statement("var ", name, " = ", value);
+
+  if (cache)
+    it.first->second = name;
 
   return name;
 }
@@ -212,8 +224,14 @@ MojoValue MojoBuilder::varDecl(const MojoValue &type) {
   return name;
 }
 MojoValue MojoBuilder::comptime(const MojoValue &value) {
+  auto it = comptimeCache.top().insert({value.text, ""});
+  if (!it.second)
+    return it.first->second;
+
   auto name = newVar("param");
   statement("comptime ", name, " = ", value);
+
+  it.first->second = name;
 
   return name;
 }
