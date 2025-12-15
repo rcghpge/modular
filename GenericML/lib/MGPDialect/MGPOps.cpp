@@ -253,6 +253,22 @@ static void printSrcDstBufferTypesToDevices(OpAsmPrinter &p, Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
+// ResourceConstantOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ResourceConstantOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::LIT::FnOp func = state.analysis.getRegisteredLITMojoKernelFor(
+      BufferConstantOp::getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(func);
+  auto &[ptr, bytecount] =
+      state.mojoConstantResources[getResourceSlot().getZExtValue()];
+  MOGG::MojoValue result = state.builder.var(function({}, {ptr, bytecount}));
+  state.setMojoValueFor(getOutBuffer(), result);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 

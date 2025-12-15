@@ -111,6 +111,7 @@ void M::MO::registerPasses() {
   MGP::registerLowerAsyncRefs();
   MGP::registerMergeIdenticalKernelStubs();
   MGP::registerAddTryExceptBlocksPass();
+  MGP::registerLookupConstantResources();
   MGP::registerOutlineKernelsPass();
   MGP::registerEmitMojo();
   MGP::registerDumpMojo();
@@ -379,6 +380,7 @@ void M::MO::buildMoToMgpPipeline(
 
   pm.addPass(MGP::createOutlineKernels());
   pm.addPass(MGP::createAddTryExceptBlocks());
+  pm.addPass(MGP::createLookupConstantResources());
 
   MGP::EmitMojoOptions emitMojoOptions;
   emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;

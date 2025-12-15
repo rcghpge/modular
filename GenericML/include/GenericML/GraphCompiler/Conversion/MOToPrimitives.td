@@ -328,5 +328,17 @@ def MergeIdenticalKernelStubs: Pass<"merge-identical-kernel-stubs", "ModuleOp"> 
   ];
 }
 
+def LookupConstantResources: Pass<"lookup-constant-resources", "MOGG::KernelStubOp"> {
+  let summary = "Replace mgp.buffer.constant with mgp.resource.constant";
+  let description = [{
+    Retrieves a pointer to the corresponding constant resources attached to the
+    parent `mogg.kernel.stub` operation. This makes compilation faster because
+    the value of the constant can be different but identical kernels will still
+    merge if the index is the same.
+  }];
+
+  let dependentDialects = ["MGP::MGPDialect"];
+}
+
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD

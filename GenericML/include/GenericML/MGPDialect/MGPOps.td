@@ -41,6 +41,26 @@ class MGP_Op<string mnemonic, list<Trait> traits = []> :
 // BufferConstantOp
 //===----------------------------------------------------------------------===//
 
+def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let arguments = (ins IndexAttr:$resourceSlot);
+  let results = (outs MGP_DeviceBufferType:$outBuffer);
+
+  let summary = "Retrieves a pointer to the corresponding constant resources";
+  let description = [{
+    Retrieves a pointer to the corresponding constant resources attached to the
+    parent `mogg.kernel.stub` operation. This makes compilation faster because
+    the value of the constant can be different but identical kernels will still
+    merge if the index is the same.
+  }];
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def BufferConstantOp : MGP_Op<"buffer.constant", [
     InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<MGP_SelectiveLowerAttrOpInterface, [
