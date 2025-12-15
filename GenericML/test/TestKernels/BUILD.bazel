@@ -11,7 +11,7 @@ mojo_kgen_lib(
     deps = [
         "//max:compiler_internal",
         "//max:tensor",
-        "@mojo//:stdlib",
+        "@mojo//:std",
     ],
 )
 
@@ -23,6 +23,6 @@ mojo_library(
     deps = [
         "//max:compiler_internal",
         "//max:tensor",
-        "@mojo//:stdlib",
+        "@mojo//:std",
     ],
 )
