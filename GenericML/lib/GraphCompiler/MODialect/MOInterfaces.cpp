@@ -19,10 +19,10 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/LogicalResult.h"
 #include "Support/MDialect/MDialect.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <mlir/IR/OpImplementation.h>
 
 using namespace M;
 using namespace MO;

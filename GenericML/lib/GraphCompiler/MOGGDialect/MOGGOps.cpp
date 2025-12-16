@@ -29,12 +29,12 @@
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include <future>
-#include <mlir/Support/LLVM.h>
 
 using namespace M;
 using namespace MOGG;
