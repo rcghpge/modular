@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/Tensor/Tensor.h"
-#include "Runtime/Tensor/TensorBufferRef.h"
+#include "MLRT/Core/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace M;

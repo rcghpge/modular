@@ -13,7 +13,7 @@
 #define GENERICML_SUPPORT_RESULTINFO_H
 
 #include "GenericML/Support/Value.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/ML/TensorSpec.h"
 #include <map>
 

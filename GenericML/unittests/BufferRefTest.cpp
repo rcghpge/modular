@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/Tensor/TensorBufferRef.h"
+#include "MLRT/Core/Tensor/TensorBufferRef.h"
 
 #include "AsyncRT/Runtime/Allocator.h"
 #include "AsyncRT/Runtime/Runtime.h"

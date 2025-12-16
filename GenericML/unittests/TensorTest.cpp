@@ -6,7 +6,7 @@
 // Some token unit tests for generic Tensor.
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "AsyncRT/Runtime/Allocator.h"
 #include "AsyncRT/Runtime/Runtime.h"
 #include "AsyncRT/Runtime/WorkQueue.h"

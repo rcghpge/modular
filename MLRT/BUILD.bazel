@@ -1,11 +1,11 @@
 load("//bazel:api.bzl", "modular_cc_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
-# gazelle:default_visibility //Runtime:consumers
+# gazelle:default_visibility //MLRT:consumers
 # gazelle:default_features layering_check,parse_headers
 
 package(
-    default_visibility = ["//Runtime:consumers"],
+    default_visibility = ["//MLRT:consumers"],
     features = [
         "layering_check",
         "parse_headers",
@@ -21,9 +21,9 @@ package_group(
 )
 
 modular_cc_library(
-    name = "Runtime",
-    srcs = ["lib/MojoValue.cpp"],
-    hdrs = ["include/Runtime/MojoValue.h"],
+    name = "Core",
+    srcs = glob(["lib/Core/*.cpp"]),
+    hdrs = glob(["include/MLRT/Core/*.h"]),
     deps = [
         "//AsyncRT:Runtime",
         "//Support:Base",
@@ -31,12 +31,12 @@ modular_cc_library(
 )
 
 modular_cc_library(
-    name = "IO",
+    name = "Core/IO",
     srcs = glob([
-        "lib/IO/*.cpp",
+        "lib/Core/IO/*.cpp",
     ]),
     hdrs = glob([
-        "include/Runtime/IO/*.h",
+        "include/MLRT/Core/IO/*.h",
     ]),
     tags = [ALLOW_UNUSED_TAG],  # TODO: Remove once this library is used
     deps = [
@@ -52,9 +52,9 @@ modular_cc_library(
 )
 
 modular_cc_library(
-    name = "Tensor",
-    srcs = glob(["lib/Tensor/*.cpp"]),
-    hdrs = glob(["include/Runtime/Tensor/*.h"]),
+    name = "Core/Tensor",
+    srcs = glob(["lib/Core/Tensor/*.cpp"]),
+    hdrs = glob(["include/MLRT/Core/Tensor/*.h"]),
     deps = [
         "//AsyncRT:Runtime",
         "//Support:ADT",

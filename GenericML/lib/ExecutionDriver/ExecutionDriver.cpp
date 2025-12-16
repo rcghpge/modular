@@ -11,7 +11,7 @@
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/Model.h"
 #include "GenericML/Support/ResultInfo.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "Support/Error.h"
 #include "Support/ML/SizeUtils.h"

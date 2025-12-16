@@ -17,7 +17,7 @@
 #include "GenericML/Support/List.h"
 #include "GenericML/Support/ResultInfo.h"
 #include "GenericML/Support/Value.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/LLVMYAMLForwardDecls.h"

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/MojoValue.h"
+#include "MLRT/Core/MojoValue.h"
 
 #include "AsyncRT/Runtime/Runtime.h"
 #include <algorithm>

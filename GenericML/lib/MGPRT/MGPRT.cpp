@@ -16,9 +16,9 @@
 #include "AsyncRT/Runtime/Runtime.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "GenericML/Support/List.h"
-#include "Runtime/MojoValue.h"
-#include "Runtime/Tensor/StateContext.h"
-#include "Runtime/Tensor/TensorBufferRef.h"
+#include "MLRT/Core/MojoValue.h"
+#include "MLRT/Core/Tensor/StateContext.h"
+#include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/SymbolExport.h"
 
 using namespace M;

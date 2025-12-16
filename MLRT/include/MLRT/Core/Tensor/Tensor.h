@@ -8,7 +8,7 @@
 #define ARRAY_SUPPORT_TENSOR_H
 
 #include "AsyncRT/Runtime/CompactRuntimePtr.h"
-#include "Runtime/Tensor/TensorBufferRef.h"
+#include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/TensorBase.h"
 #include "Support/ML/TensorSpec.h"

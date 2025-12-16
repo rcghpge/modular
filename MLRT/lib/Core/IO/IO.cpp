@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/IO/IO.h"
+#include "MLRT/Core/IO/IO.h"
 
 using namespace M;
 using namespace M::IO;

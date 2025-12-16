@@ -1181,8 +1181,8 @@ modular_cc_library(
         "//KGEN:ExecutionEngine",
         "//KGEN:ObjectCompiler",
         "//Kernels:WeightsRegistry",
-        "//Runtime",
-        "//Runtime:Tensor",
+        "//MLRT:Core",
+        "//MLRT:Core/Tensor",
         "//Support:Base",
         "//Support:Context",
         "//Support:ML",
@@ -1418,7 +1418,7 @@ modular_shared_library(
     hdrs = glob(["include/GenericML/MGPRT/*.h"]),
     deps = [
         ":Support",
-        "//Runtime:Tensor",
+        "//MLRT:Core/Tensor",
         "//Support:Base",
     ],
 )

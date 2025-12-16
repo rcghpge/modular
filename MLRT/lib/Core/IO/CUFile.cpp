@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Runtime/IO/CUFile.h"
+#include "MLRT/Core/IO/CUFile.h"
 
 #include "llvm/ADT/Twine.h"
 #include <errno.h>  // For errno

@@ -17,7 +17,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/AssertStream.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/IRMapping.h"

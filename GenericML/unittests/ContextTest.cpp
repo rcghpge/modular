@@ -6,7 +6,7 @@
 
 #include "AsyncRT/Runtime/Allocator.h"
 #include "AsyncRT/Runtime/Runtime.h"
-#include "Runtime/Tensor/StateContext.h"
+#include "MLRT/Core/Tensor/StateContext.h"
 #include "Support/TypeID.h"
 
 #include "gtest/gtest.h"

@@ -14,7 +14,7 @@
 #include "GenericML/Support/Dict.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/List.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "llvm/Support/YAMLTraits.h"
 
 #include "gtest/gtest.h"

@@ -7,7 +7,7 @@
 #include "GenericML/Support/Value.h"
 #include "GenericML/Support/Dict.h"
 #include "GenericML/Support/List.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/LLVMForwardDecls.h"
 #include <sstream>
 

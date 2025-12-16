@@ -10,7 +10,7 @@
 #include "AsyncRT/Runtime/RuntimeCLOptions.h"
 #include "GenericML/CommonDriver/DriverInputFormat.h"
 #include "GenericML/ExecutionDriver/ExecutionDriver.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/CommonCLOptions.h"
 #include "Support/ML/TensorSpec.h"
 #include "llvm/Support/NativeFormatting.h"

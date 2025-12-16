@@ -8,7 +8,7 @@
 #define GENERICML_DEVICEDRIVER_DEVICEEXECUTION
 
 #include "GenericML/DeviceDriver/Driver.h"
-#include "Runtime/Tensor/Tensor.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "Support/Context.h"
 #include "Support/ML/TensorSpec.h"
 #include "Support/SymbolExport.h"
