@@ -803,6 +803,8 @@ MojoLibraryAnalysis::registerOpaqueTypesFromModule(ModuleOp module) {
     for (auto nested : symbolRef.getNestedReferences())
       os << "." << nested.getValue();
 
+    stripInitModulePrefix(fullyQualifiedName);
+
     // The simple name is the struct's own name (last component).
     StringRef simpleName = structOp.getSymName();
 

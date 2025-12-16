@@ -381,6 +381,8 @@ public:
     uint64_t indexOfLastDot = fullName.find_last_of(".");
     fullName.resize(indexOfLastDot);
 
+    stripInitModulePrefix(fullName);
+
     return fullName;
   }
 

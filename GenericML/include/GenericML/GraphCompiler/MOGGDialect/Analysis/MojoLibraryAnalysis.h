@@ -28,6 +28,15 @@
 
 namespace M::MOGG {
 
+/// Strip the "__init__." prefix from a Mojo symbol name if present.
+/// Symbols defined in __init__.mojo files should be referenced by their
+/// simple name only (e.g., "MyStruct" not "__init__.MyStruct").
+inline void stripInitModulePrefix(std::string &name) {
+  constexpr StringLiteral initPrefix = "__init__.";
+  if (StringRef(name).starts_with(initPrefix))
+    name.erase(0, initPrefix.size());
+}
+
 /// This analysis lazily loads the standard and extra Mojo libraries and exposes
 /// an interface to inquire about their content.
 class MODULAR_CXX_EXPORT MojoLibraryAnalysis {
