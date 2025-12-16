@@ -487,6 +487,40 @@ void LowerPrimitivesPass::runOnOperation() {
       MOGraphLoweringState::lowerMOGGABI(*newKernel, operandsToUnpack,
                                          resultsToPack);
 
+      // If the op to lower is an index constant op, we should replace it with a
+      // mgp.buffer.constant and a resource attribute. This improves compilation
+      // time because we won't be hashing kernels based on the value of the
+      // constant.
+      if (isa<mlir::index::ConstantOp>(op)) {
+        auto loweredIndexOp = *newKernel->getBodyBlock()
+                                   .getOps<mlir::index::ConstantOp>()
+                                   .begin();
+        OpBuilder builder(loweredIndexOp);
+        auto loc = loweredIndexOp.getLoc();
+        uint64_t alignment =
+            static_cast<uint64_t>(minimumCpuAlignment.getValue());
+
+        int64_t indexValue = loweredIndexOp.getValue().getSExtValue();
+        auto blob =
+            mlir::HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
+                {&indexValue, 1});
+        auto elementsAttr =
+            AlignedBytesAttr::get(ctx, blob.getDataAs<uint8_t>(), alignment);
+
+        auto bufferConstantOp =
+            MGP::BufferConstantOp::create(builder, loc, elementsAttr);
+        auto dummyChain = MOGG::ChainDummyOp::create(builder, loc);
+        auto newIndexOp = MGP::BufferToIndexOp::create(
+            builder, loc, {dummyChain, bufferConstantOp.getResult()});
+        loweredIndexOp->replaceAllUsesWith(newIndexOp);
+        loweredIndexOp.erase();
+        auto currentResources = newKernel->getConstantResources();
+        SmallVector<Attribute> newResources(currentResources.begin(),
+                                            currentResources.end());
+        newResources.push_back(elementsAttr);
+        newKernel->setConstantResourcesAttr(ArrayAttr::get(ctx, newResources));
+      }
+
       op->replaceAllUsesWith(*newKernel);
       op->erase();
 

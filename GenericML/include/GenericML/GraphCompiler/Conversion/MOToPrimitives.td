@@ -58,6 +58,9 @@ def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
+    Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
+      /*default=*/"kPreferredMemoryAlignment",
+     "Minimum alignment for all CPU buffers (both constants and allocated)">
   ];
 
   let dependentDialects = ["MEF::MEFDialect",
