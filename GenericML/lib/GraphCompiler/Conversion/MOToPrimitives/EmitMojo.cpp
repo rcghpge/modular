@@ -34,12 +34,31 @@ struct EmitMojo
     : public MOGG::MojoLibraryAnalysisPass<impl::EmitMojoBase<EmitMojo>> {
   using Base::Base;
 
-  void stripDeviceAttributes() {
+  /// TODO: If this is slow, parallelize over KernelStubOp (will need to take
+  /// the first dummyDimAttr from any kernel and then run in //).
+  void stripDeviceIdsAndDynamicShapes(MLIRContext *ctx) {
+    TypedAttr dummyDimAttr = nullptr;
     for (auto &&kernelStub : getOperation().getOps<MOGG::KernelStubOp>()) {
       mlir::AttrTypeReplacer walker;
       walker.addReplacement([&](M::DeviceRefAttr deviceRef) {
         return M::DeviceRefAttr::get(kernelStub->getContext(),
                                      deviceRef.getLabel(), 0);
+      });
+      walker.addReplacement([&](MOSH::ShapeAttr shapeAttr) {
+        if (shapeAttr.isStatic())
+          return shapeAttr;
+
+        SmallVector<TypedAttr> newShape;
+        for (auto &&dimAttr : shapeAttr.getValues()) {
+          if (isa<IntegerAttr>(dimAttr)) {
+            newShape.push_back(dimAttr);
+          } else {
+            if (!dummyDimAttr)
+              dummyDimAttr = dimAttr;
+            newShape.push_back(dummyDimAttr);
+          }
+        }
+        return MOSH::ShapeAttr::get(ctx, newShape, shapeAttr.getType());
       });
 
       walker.recursivelyReplaceElementsIn(kernelStub, true, true, true);
@@ -65,7 +84,10 @@ struct EmitMojo
     pm.addPass(mlir::createSymbolDCEPass());
 
     auto moduleOp = getOperation();
-    stripDeviceAttributes();
+    // Strip device IDs (not the labels like cpu or gpu, just the numbers) and
+    // dynamic shape parameters because those mean nothing when emitting Mojo
+    // and thus they should not be an obstacle to deduplication.
+    stripDeviceIdsAndDynamicShapes(ctx);
     mergeIdenticalKernelStubs(moduleOp);
     if (pm.run(moduleOp).failed())
       return signalPassFailure();
