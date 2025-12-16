@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SUPPORT_BUFFER_CUFILE_H
-#define SUPPORT_BUFFER_CUFILE_H
+#ifndef MLRT_CORE_IO_CUFILE_H
+#define MLRT_CORE_IO_CUFILE_H
 
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
@@ -52,4 +52,4 @@ private:
 };
 }; // namespace M::IO
 
-#endif // SUPPORT_CUFILE_H
+#endif // MLRT_CORE_IO_CUFILE_H

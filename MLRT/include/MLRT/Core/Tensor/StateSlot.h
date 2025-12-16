@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARRAY_SUPPORT_STATESLOT_H
-#define ARRAY_SUPPORT_STATESLOT_H
+#ifndef MLRT_CORE_TENSOR_STATESLOT_H
+#define MLRT_CORE_TENSOR_STATESLOT_H
 
 #include "AsyncRT/ForwardDecls.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
@@ -150,4 +150,4 @@ private:
 
 } // namespace M
 
-#endif // ARRAY_SUPPORT_STATESLOT_H
+#endif // MLRT_CORE_TENSOR_STATESLOT_H

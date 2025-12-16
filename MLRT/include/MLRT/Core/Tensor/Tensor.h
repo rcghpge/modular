@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARRAY_SUPPORT_TENSOR_H
-#define ARRAY_SUPPORT_TENSOR_H
+#ifndef MLRT_CORE_TENSOR_TENSOR_H
+#define MLRT_CORE_TENSOR_TENSOR_H
 
 #include "AsyncRT/Runtime/CompactRuntimePtr.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
@@ -107,4 +107,4 @@ inline raw_ostream &operator<<(raw_ostream &os, const Tensor &value) {
 
 } // namespace M
 
-#endif // ARRAY_SUPPORT_TENSOR_H
+#endif // MLRT_CORE_TENSOR_TENSOR_H

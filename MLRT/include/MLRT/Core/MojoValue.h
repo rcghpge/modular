@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RUNTIME_MOJOVALUE_H
-#define RUNTIME_MOJOVALUE_H
+#ifndef MLRT_CORE_MOJOVALUE_H
+#define MLRT_CORE_MOJOVALUE_H
 
 #include <cstddef>
 #include <cstdint>
@@ -103,4 +103,4 @@ private:
 
 } // namespace M
 
-#endif // RUNTIME_MOJOVALUE_H
+#endif // MLRT_CORE_MOJOVALUE_H

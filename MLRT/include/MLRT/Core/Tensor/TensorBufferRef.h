@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARRAY_SUPPORT_BUFFERREF_H
-#define ARRAY_SUPPORT_BUFFERREF_H
+#ifndef MLRT_CORE_TENSOR_TENSORBUFFERREF_H
+#define MLRT_CORE_TENSOR_TENSORBUFFERREF_H
 
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "AsyncRT/Runtime/CompactRuntimePtr.h"
@@ -177,4 +177,4 @@ inline void swap(M::TensorBufferRef &lhs, M::TensorBufferRef &rhs) {
 
 } // namespace std
 
-#endif // ARRAY_SUPPORT_BUFFERREF_H
+#endif // MLRT_CORE_TENSOR_TENSORBUFFERREF_H

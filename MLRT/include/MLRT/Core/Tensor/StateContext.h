@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ARRAY_SUPPORT_STATECONTEXT_H
-#define ARRAY_SUPPORT_STATECONTEXT_H
+#ifndef MLRT_CORE_TENSOR_STATECONTEXT_H
+#define MLRT_CORE_TENSOR_STATECONTEXT_H
 
 #include "MLRT/Core/Tensor/StateSlot.h"
 
@@ -111,4 +111,4 @@ private:
 
 } // namespace M
 
-#endif // ARRAY_SUPPORT_STATECONTEXT_H
+#endif // MLRT_CORE_TENSOR_STATECONTEXT_H

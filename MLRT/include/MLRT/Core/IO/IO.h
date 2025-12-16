@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef RUNTIME_IO_H
-#define RUNTIME_IO_H
+#ifndef MLRT_CORE_IO_IO_H
+#define MLRT_CORE_IO_IO_H
 
 #include "Support/ErrorOr.h"
 #include <fcntl.h>
@@ -46,4 +46,4 @@ private:
 };
 }; // namespace M::IO
 
-#endif // RUNTIME_IO_H
+#endif // MLRT_CORE_IO_IO_H
