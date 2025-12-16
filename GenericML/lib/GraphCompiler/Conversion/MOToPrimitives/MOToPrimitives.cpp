@@ -144,7 +144,9 @@ public:
   ///    Instead we assume alignment is enforced on serialization to MEF.
   ///    This helps us avoid gratuitous memory copies.
   ///  - No data is copied.
-  ErrorOr<ElementsAttr> lowerElementsAttr(ElementsAttr elementsAttr);
+  ErrorOr<ElementsAttr> lowerElementsAttr(ElementsAttr elementsAttr) {
+    return loweringState.lowerElementsAttr(elementsAttr);
+  }
 
   /// Lower a parameter declaration op.
   LogicalResult lowerParamDeclare(Region *parentRegion,
@@ -571,64 +573,6 @@ MOGraphLowering::lowerWhileCondition(MO::WhileConditionOp condition) {
   MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), condition.getLoc(),
                         operands);
   return success();
-}
-
-/// Minimum byte size for a dense_resource.
-static constexpr size_t kLargeDataThreshold = 512;
-
-ErrorOr<ElementsAttr>
-MOGraphLowering::lowerElementsAttr(ElementsAttr elementsAttr) {
-  MLIRContext *ctx = loweringState.getExecuteOpBuilder().getContext();
-
-  // All attributes must have a minimum alignment of this value.
-  uint64_t alignment =
-      static_cast<uint64_t>(loweringState.getMinimumCpuAlignment());
-
-  auto hasAlignedAttr = dyn_cast<HasAlignedBytesInterface>(elementsAttr);
-  if (hasAlignedAttr == nullptr)
-    return Error("unsupported constant attribute type");
-  auto origType = hasAlignedAttr.getAlignedBytesType();
-
-  // Increase alignment to respect what the attribute requests.
-  alignment = std::max(alignment, origType.getAlign());
-
-  // Incorporate the alignment and size into an AlignedBytesType.
-  auto finalType = AlignedBytesType::get(ctx, origType.getSize(), alignment);
-
-  if (auto arrayAttr = dyn_cast<ArrayElementsAttr>(elementsAttr)) {
-    // In the following we'll reuse the underlying array elements data as is,
-    // ignoring its current alignment. The desired MEF alignment is instead
-    // conveyed via the aligned_bytes type.
-    if (arrayAttr.getRawData().size() < kLargeDataThreshold) {
-      // Small attributes can remain inline.
-      return AlignedBytesAttr::get(ctx, arrayAttr.getRawData(), alignment);
-    } else {
-      // Push large attributes to dense_resources.
-      std::string name =
-          "const_" + std::to_string(loweringState.getExecuteNextConstId());
-      ArrayRef<char> data(
-          reinterpret_cast<const char *>(arrayAttr.getRawData().data()),
-          arrayAttr.getRawData().size());
-      return DenseResourceElementsAttr::get(
-          finalType,
-          DenseResourceElementsHandle::getManagerInterface(ctx).insert(
-              name, mlir::UnmanagedAsmResourceBlob::allocateWithAlign(
-                        data, alignment)));
-    }
-  }
-
-  if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
-    // We'll not try to allocate a new blob. Instead we'll reuse the original
-    // blob and rely on the type annotation to capture our desired alignment.
-    return DenseResourceElementsAttr::get(finalType,
-                                          resourceAttr.getRawHandle());
-  }
-
-  if (auto alignedAttr = dyn_cast<AlignedBytesAttr>(elementsAttr))
-    return AlignedBytesAttr::get(ctx, alignedAttr.getData(), alignment);
-
-  llvm_unreachable(
-      "missing case for implementation of HasAlignedBytesInterface");
 }
 
 LogicalResult MOGraphLowering::lowerParamDeclare(Region *parentRegion,

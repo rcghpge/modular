@@ -1160,6 +1160,9 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
         if (!params.empty())
           return baseTy[params];
         return baseTy;
+      } else if (auto mgpBufferType = dyn_cast<MGP::DeviceBufferType>(type)) {
+        // mgp.buffer should always be treated as NDBuffer of uint8_t.
+        return HardcodedMojoSymbols::comptime_NDBuffer_In_MGP;
       }
       return state.mlirTypeToMojoType(type);
     };
@@ -1895,11 +1898,24 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
           return isa<MOGG::CallViewOp>(use);
         });
 
+    builder.setInsertionPoint(callStubOp);
+    auto currentResources = newKernel.getConstantResources();
+    SmallVector<Attribute> newResources(currentResources.begin(),
+                                        currentResources.end());
+    newResources.push_back(
+        *loweringState.lowerElementsAttr(constantOp.getValue()));
+    newKernel.setConstantResourcesAttr(ArrayAttr::get(ctx, newResources));
+    Value bufferConstant = MGP::BufferConstantOp::create(
+        builder, constantOp->getLoc(), cast<ElementsAttr>(newResources.back()));
+    callStubOp->insertOperands(callStubOp->getNumOperands(), bufferConstant);
+    auto bufferValue = kernelStub.getBodyBlock().addArgument(
+        bufferConstant.getType(), bufferConstant.getLoc());
+    auto newFunctionType =
+        FunctionType::get(ctx, kernelStub.getBodyBlock().getArgumentTypes(),
+                          kernelStub.getFunctionType().getResults());
+    kernelStub.setFunctionType(newFunctionType);
+
     builder.setInsertionPoint(constantOp);
-    Value bufferValue =
-        MOGG::InlineConstantBufferOp::create(
-            builder, constantOp->getLoc(), mgpBufferType, constantOp.getValue())
-            .getResult();
     SmallVector<Value> dynamicDimensions;
     MO::TensorType tensorType =
         MO::castFromTensorLike(constantOp.getResult().getType());

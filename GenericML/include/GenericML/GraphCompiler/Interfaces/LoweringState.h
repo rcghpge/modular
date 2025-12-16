@@ -100,6 +100,8 @@ public:
     });
   }
 
+  ErrorOr<ElementsAttr> lowerElementsAttr(ElementsAttr elementsAttr);
+
   /// Common state used by both the init and execute phases.
   struct CommonState {
     explicit CommonState(llvm::StringRef compiledFrameworkLabel,
@@ -466,6 +468,7 @@ private:
                                           OpBuilder &builder, Location loc,
                                           Region *parentRegion, TypedAttr dim);
 
+private:
   //===-----------------------------------------------------------------===//
   // Lowering state
   //===-----------------------------------------------------------------===//

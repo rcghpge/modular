@@ -31,26 +31,34 @@ struct LookupConstantResources
     auto kernelStubOp = getOperation();
     auto constantResources = kernelStubOp.getConstantResources();
     auto ctx = kernelStubOp->getContext();
-    kernelStubOp->walk([&](BufferConstantOp bufferConstantOp) {
-      auto elementsAttr = bufferConstantOp.getAValue();
-      auto it = llvm::find(constantResources, elementsAttr);
-      if (it == constantResources.end()) {
-        bufferConstantOp->emitError(
-            "The constant resource can't be found in the kernel");
-        signalPassFailure();
-        return mlir::WalkResult::interrupt();
-      }
-      uint64_t resourceIndex = std::distance(constantResources.begin(), it);
+    bool wasInterrupted =
+        kernelStubOp
+            ->walk([&](BufferConstantOp bufferConstantOp) {
+              auto elementsAttr = bufferConstantOp.getAValue();
+              auto it = llvm::find(constantResources, elementsAttr);
+              if (it == constantResources.end()) {
+                bufferConstantOp->emitError(
+                    "The constant resource can't be found in the kernel");
+                signalPassFailure();
+                return mlir::WalkResult::interrupt();
+              }
+              uint64_t resourceIndex =
+                  std::distance(constantResources.begin(), it);
 
-      OpBuilder builder(bufferConstantOp);
-      auto newConstantResource = ResourceConstantOp::create(
-          builder, bufferConstantOp->getLoc(), bufferConstantOp.getType(),
-          IntegerAttr::get(IndexType::get(ctx), resourceIndex));
-      bufferConstantOp->replaceAllUsesWith(newConstantResource);
-      bufferConstantOp->erase();
+              OpBuilder builder(bufferConstantOp);
+              auto newConstantResource = ResourceConstantOp::create(
+                  builder, bufferConstantOp->getLoc(),
+                  bufferConstantOp.getType(),
+                  IntegerAttr::get(IndexType::get(ctx), resourceIndex));
+              bufferConstantOp->replaceAllUsesWith(newConstantResource);
+              bufferConstantOp->erase();
 
-      return mlir::WalkResult::advance();
-    });
+              return mlir::WalkResult::advance();
+            })
+            .wasInterrupted();
+
+    if (wasInterrupted)
+      return;
 
     // Reset the constant resource attribute because it is no longer needed.
     // Note that we need to maintain an array of the right size because this is
