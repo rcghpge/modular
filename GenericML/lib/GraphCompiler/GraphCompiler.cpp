@@ -380,7 +380,6 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(MGP::createCoalesceAsyncRefs());
 
   pm.addPass(MGP::createOutlineKernels());
-  pm.addPass(MGP::createAddTryExceptBlocks());
   pm.addPass(MGP::createLookupConstantResources());
 
   MGP::EmitMojoOptions emitMojoOptions;
