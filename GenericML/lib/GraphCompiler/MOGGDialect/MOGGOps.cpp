@@ -1108,6 +1108,9 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
     MojoValue result = state.builder.var(
         fullExecuteFunc(maybeParams->functionParameters, kernelOperands));
     state.genAllKeepAliveStatements();
+    // Use transfer for opaque types to handle move-only types correctly.
+    if (isa<MO::OpaqueType>(returnType))
+      result = result.transfer();
     state.builder.returnsValue(result);
   } else {
     state.builder.call(fullExecuteFunc, maybeParams->functionParameters,
@@ -4080,8 +4083,13 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
   MojoValue moggAsyncPackFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   SmallVector<MojoValue> operands;
-  for (Value operand : getOperands()) {
-    operands.push_back(state.getMojoValueFor(operand));
+  for (auto [idx, operand] : llvm::enumerate(getOperands())) {
+    MojoValue mojoVal = state.getMojoValueFor(operand);
+    // The first operand (input) is consumed, so use transfer for opaque types
+    // to handle move-only types correctly.
+    if (idx == 0 && isa<MO::OpaqueType>(operand.getType()))
+      mojoVal = mojoVal.transfer();
+    operands.push_back(mojoVal);
   }
   operands.push_back(state.mojoReturnValues[*resultIndexOr]);
   state.builder.call(moggAsyncPackFunc, {},

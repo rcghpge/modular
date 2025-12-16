@@ -119,6 +119,10 @@ public:
     return llvm::formatv("{} < {}", text, other.text).str();
   }
 
+  /// Returns the transfer of this value (using the postfix `^` operator).
+  /// Used to transfer ownership of move-only types.
+  MojoValue transfer() const { return llvm::formatv("{}^", text).str(); }
+
   std::string text;
 };
 
