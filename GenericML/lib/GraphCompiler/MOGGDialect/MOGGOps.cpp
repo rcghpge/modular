@@ -719,7 +719,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
               {MojoValue("dtype").equal(
                    state.mlirDTypeToMojoType(tensorTy.getDtype())),
                MojoValue("rank").equal(
-                   MojoValue(static_cast<int64_t>(tensorTy.getRank()))),
+                   MojoValue(static_cast<int64_t>(tensorTy.getRankNonZero()))),
                MojoValue("simd_width").equal(widthParam),
                MojoValue("element_alignment").equal(alignmentParam)},
               {inputPtrs[i], inputStrides[i], indicesInput});
