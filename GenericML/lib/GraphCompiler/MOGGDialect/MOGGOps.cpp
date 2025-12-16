@@ -1136,15 +1136,8 @@ LogicalResult KernelStubOp::verify() {
 }
 
 bool KernelStubOp::isThrows() {
-  bool raises = false;
-  walk([&](MOGG::EmitsMojoInterface emitMojoOp) {
-    if (emitMojoOp == *this)
-      return;
-
-    raises |= emitMojoOp.isThrows();
-  });
-
-  return raises;
+  return llvm::any_of(getBodyBlock().getOps<MOGG::EmitsMojoInterface>(),
+                      [](auto emitMojoOp) { return emitMojoOp.isThrows(); });
 }
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
