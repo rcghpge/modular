@@ -668,14 +668,17 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     else if (auto boolAttr = dyn_cast<BoolAttr>(customParam))
       return boolAttr.getValue();
     else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
-      return intAttr.getInt();
+      // Use getValue().getSExtValue() instead of getInt() because getInt()
+      // asserts that the type must be signless or index, but we may have
+      // signed integer types (like si32).
+      return intAttr.getValue().getSExtValue();
     else if (auto dtypeAttr = dyn_cast<KGEN::DTypeConstantAttr>(customParam))
       return EmitMojoState::mlirDTypeToMojoType(dtypeAttr.getDType());
     else if (auto arrAttr = dyn_cast<ArrayAttr>(customParam);
              arrAttr && !arrAttr.empty() && isa<IntegerAttr>(arrAttr[0])) {
       SmallVector<int64_t> values;
       for (auto val : arrAttr)
-        values.push_back(cast<IntegerAttr>(val).getInt());
+        values.push_back(cast<IntegerAttr>(val).getValue().getSExtValue());
       return EmitMojoState::getAsDimListMojoValue(values);
     } else
       return Error("Unsupported custom param MLIR type");
@@ -812,7 +815,10 @@ EmitMojoState::getOpaqueTypeParameters(MO::OpaqueType opaqueType) {
     StringRef name = param.getName().getValue();
     std::string valueStr;
     if (auto intAttr = dyn_cast<IntegerAttr>(param.getValue())) {
-      valueStr = std::to_string(intAttr.getInt());
+      // Use getValue().getSExtValue() instead of getInt() because getInt()
+      // asserts that the type must be signless or index, but we may have
+      // signed integer types (like si32).
+      valueStr = std::to_string(intAttr.getValue().getSExtValue());
     } else {
       // Fallback: use the attribute's string representation.
       llvm::raw_string_ostream ss(valueStr);
