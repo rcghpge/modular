@@ -7,8 +7,8 @@
 #include "./RelationDataflowAnalysis.h"
 
 #include "GenericML/MGPTransforms/Utils.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MEFDialect/MEFOps.h"
+#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 

@@ -22,9 +22,9 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
-#include "GraphRT/GRTDialect/GRTDialect.h"
-#include "GraphRT/MLIRToMEF.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
+#include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
+#include "MLRT/GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -39,8 +39,8 @@
 #include "Support/Compiler/PassTimingUtils.h"
 
 #include "GenericML/MGPDialect/MGPDialect.h"
-#include "GraphRT/GRTDialect/GRTDialect.h"
-#include "GraphRT/MEFDialect/MEFDialect.h"
+#include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
+#include "MLRT/GraphRT/MEFDialect/MEFDialect.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/Support/Timing.h"
 

@@ -7,7 +7,7 @@
 #include "GenericML/CommonDriver/Utils.h"
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "GraphRT/MEFExecutor/MEFFile.h"
+#include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/ADT/GenericUniquePtrSet.h"
 #include "Support/Buffer.h"
 #include "Support/CommonCLOptions.h"

@@ -6,7 +6,7 @@
 
 #include "GenericML/MGPDialect/MGPBufferLifetimeAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphRT/GRTDialect/GRTControlFlowInterface.h"
+#include "MLRT/GraphRT/GRTDialect/GRTControlFlowInterface.h"
 #include "Support/Compiler/Threading.h"
 
 #include "llvm/ADT/SparseBitVector.h"

@@ -6,9 +6,9 @@
 
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "GraphRT/MEFDialect/MEFDialect.h"
 #include "Init/Init.h"
 #include "KGEN/Support/CompilerProfiling.h"
+#include "MLRT/GraphRT/MEFDialect/MEFDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"

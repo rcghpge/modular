@@ -34,7 +34,7 @@ include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "GraphRT/MEFDialect/MEFTypes.td"
+include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 
 
 // Base class for ops in this dialect.

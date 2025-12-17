@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/CompilerSupport/Context.h"
-#include "GraphRT/InitAllDialects.h"
 #include "Init/Init.h"
+#include "MLRT/GraphRT/InitAllDialects.h"
 #include "Support/Context.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"

@@ -7,10 +7,10 @@
 #include "AsyncDataflowDependencies.h"
 
 #include "GenericML/MGPTransforms/Utils.h"
-#include "GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
-#include "GraphRT/GRTDialect/GRTMayAliasInterface.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
-#include "GraphRT/MEFDialect/MEFOps.h"
+#include "MLRT/GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"
+#include "MLRT/GraphRT/GRTDialect/GRTMayAliasInterface.h"
+#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/STLExtras.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 

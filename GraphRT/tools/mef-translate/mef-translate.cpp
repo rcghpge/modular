@@ -9,9 +9,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphRT/GRTDialect/GRTDialect.h"
-#include "GraphRT/MEFToMLIR.h"
-#include "GraphRT/MLIRToMEF.h"
+#include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
+#include "MLRT/GraphRT/MEFToMLIR.h"
+#include "MLRT/GraphRT/MLIRToMEF.h"
 #include "mlir/Dialect/Quant/IR/Quant.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Support/LogicalResult.h"

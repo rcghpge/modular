@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
 # gazelle:default_visibility //MLRT:consumers
@@ -16,9 +16,23 @@ package_group(
     name = "consumers",
     packages = [
         "//GenericML/...",
+        "//GraphRT/...",  # Temporarily added during move
         "//KGEN/...",
+        "//MLRT/...",
+        "//docs/...",
     ],
 )
+
+pkg_files(
+    name = "docs",
+    srcs = [
+        ":GRTDialect.doc",
+        ":MEFDialect.doc",
+    ],
+    prefix = "MLRT/GraphRT/docs",
+)
+
+# Core targets
 
 modular_cc_library(
     name = "Core",
@@ -63,5 +77,368 @@ modular_cc_library(
         "//Support:Profiling",
         "//Support:TypeID",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+# GraphRT targets
+
+td_library(
+    name = "GraphRT/MEFTdFiles",
+    srcs = glob(["include/MLRT/GraphRT/MEFDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "GraphRT/MEFDialectIncGen",
+    dialect = "mef",
+    td_file = "include/MLRT/GraphRT/MEFDialect/MEF.td",
+    deps = [":GraphRT/MEFTdFiles"],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/MEFNonStrictInterface",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/MLRT/GraphRT/MEFDialect/MEFNonStrictInterface.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/MLRT/GraphRT/MEFDialect/MEFNonStrictInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/MEFDialect/MEFNonStrictInterface.td",
+    deps = [
+        ":GraphRT/MEFTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/MEFChainIndicatesFinishedInterface",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/MLRT/GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/MLRT/GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.td",
+    deps = [
+        ":GraphRT/MEFTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/MEFTypeInterfaces",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-type-interface-decls",
+            ],
+            "include/MLRT/GraphRT/MEFDialect/MEFTypeInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-type-interface-defs",
+            ],
+            "include/MLRT/GraphRT/MEFDialect/MEFTypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/MEFDialect/MEFTypeInterfaces.td",
+    deps = [
+        ":GraphRT/MEFTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/MEFDialect",
+    srcs = glob(["lib/GraphRT/MEFDialect/*.cpp"]),
+    hdrs = glob(["include/MLRT/GraphRT/MEFDialect/*.h"]),
+    deps = [
+        ":GraphRT/MEFChainIndicatesFinishedInterface",
+        ":GraphRT/MEFDialectIncGen",
+        ":GraphRT/MEFNonStrictInterface",
+        ":GraphRT/MEFTypeInterfaces",
+        "//Support:Base",
+        "//Support:Compiler",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FunctionInterfaces",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+td_library(
+    name = "GraphRT/GRTTdFiles",
+    srcs = glob(["include/MLRT/GraphRT/GRTDialect/*.td"]),
+    includes = ["includes"],
+    deps = [
+        ":GraphRT/MEFTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "GraphRT/GRTDialectIncGen",
+    dialect = "grt",
+    td_file = "include/MLRT/GraphRT/GRTDialect/GRT.td",
+    deps = [":GraphRT/GRTTdFiles"],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/GRTChainInterface",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTChainInterface.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTChainInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/GRTDialect/GRTChainInterface.td",
+    deps = [
+        ":GraphRT/GRTTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/GRTControlFlowInterface",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTControlFlowInterface.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTControlFlowInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/GRTDialect/GRTControlFlowInterface.td",
+    deps = [
+        ":GraphRT/GRTTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/GRTExtendsLifetimeInterface",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTExtendsLifetimeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/GRTDialect/GRTExtendsLifetimeInterface.td",
+    deps = [
+        ":GraphRT/GRTTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphRT/GRTMayAliasInterface",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTMayAliasInterface.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/MLRT/GraphRT/GRTDialect/GRTMayAliasInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/MLRT/GraphRT/GRTDialect/GRTMayAliasInterface.td",
+    deps = [
+        ":GraphRT/GRTTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/GRTDialect",
+    srcs = glob(["lib/GraphRT/GRTDialect/*.cpp"]),
+    hdrs = glob(["include/MLRT/GraphRT/GRTDialect/*.h"]),
+    deps = [
+        ":GraphRT/GRTChainInterface",
+        ":GraphRT/GRTControlFlowInterface",
+        ":GraphRT/GRTDialectIncGen",
+        ":GraphRT/GRTExtendsLifetimeInterface",
+        ":GraphRT/GRTMayAliasInterface",
+        ":GraphRT/MEFDialect",
+        "//Support:Base",
+        "//Support:Compiler",
+        "//Support:MDialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FunctionInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:SideEffectInterfaces",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/MEFToMLIR",
+    srcs = glob(["lib/GraphRT/MEFToMLIR/*.cpp"]),
+    hdrs = ["include/MLRT/GraphRT/MEFToMLIR.h"],
+    deps = [
+        ":GraphRT/MEF",
+        ":GraphRT/MEFDialect",
+        "//Support:ADT",
+        "//Support:Base",
+        "//Support:Compiler",
+        "//Support:MDialect",
+        "//Support:ML",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/MLIRToMEF",
+    srcs = glob(["lib/GraphRT/MLIRToMEF/*.cpp"]),
+    hdrs = ["include/MLRT/GraphRT/MLIRToMEF.h"],
+    deps = [
+        ":GraphRT/MEF",
+        ":GraphRT/MEFDialect",
+        "//Support:ADT",
+        "//Support:Base",
+        "//Support:MDialect",
+        "//Support:ML",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/GRTRuntime",
+    srcs = glob(["lib/GraphRT/GRTRuntime/*.cpp"]),
+    hdrs = ["include/MLRT/GraphRT/GRTTestcase.h"],
+    deps = [
+        ":GraphRT/MEFExecutor",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:Support",
+        "//Support:Base",
+        "//Support:MicroBenchmark",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/MEF",
+    srcs = glob(["lib/GraphRT/MEF/*.cpp"]),
+    hdrs = glob(["include/MLRT/GraphRT/MEF/*.h"]),
+    deps = [
+        "//Support:Base",
+        "//Support:ML",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/MEFExecutor",
+    srcs = glob(["lib/GraphRT/MEFExecutor/*.cpp"]),
+    hdrs = glob(["include/MLRT/GraphRT/MEFExecutor/*.h"]),
+    textual_hdrs = glob(["lib/GraphRT/MEFExecutor/*.h"]),
+    deps = [
+        ":GraphRT/MEF",
+        "//AsyncRT:Runtime",
+        "//AsyncRT:Support",
+        "//Support:ADT",
+        "//Support:Base",
+        "//Support:ML",
+        "//Support:Profiling",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/Primitives",
+    srcs = glob(["lib/GraphRT/Primitives/*.cpp"]),
+    hdrs = ["include/MLRT/GraphRT/Primitives.h"],
+    deps = [
+        ":GraphRT/MEFExecutor",
+        "//AsyncRT:Runtime",
+        "//Support:ML",
+        "//Support:MicroBenchmark",
+        "//Support:Threading",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphRT/AllDialects",
+    hdrs = ["include/MLRT/GraphRT/InitAllDialects.h"],
+    deps = [
+        ":GraphRT/GRTDialect",
+        ":GraphRT/MEFDialect",
+        "//Support:Base",
     ],
 )

@@ -16,7 +16,7 @@
 include "GenericML/MGPDialect/MGPDialect.td"
 include "GenericML/MGPDialect/MGPTypes.td"
 include "GenericML/MGPDialect/MGPTypeInterfaces.td"
-include "GraphRT/MEFDialect/MEFTypeInterfaces.td"
+include "MLRT/GraphRT/MEFDialect/MEFTypeInterfaces.td"
 include "Support/MDialect/MAttrs.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"

@@ -14,7 +14,7 @@
 
 // We only use hasMEFMagicNumber, which is inlined in the header, so we don't
 // have to link the MEF library.
-#include "GraphRT/MEF/MEFEncoding.h"
+#include "MLRT/GraphRT/MEF/MEFEncoding.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 
 using namespace M;

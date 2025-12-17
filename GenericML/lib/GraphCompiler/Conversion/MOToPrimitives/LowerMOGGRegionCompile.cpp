@@ -17,7 +17,7 @@
 #include "GenericML/MGPDialect/MGPTypes.h"
 #include "GenericML/MGPTransforms/FixupIsolatedFromAbove.h"
 #include "GenericML/MGPTransforms/Utils.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
+#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/DeviceSpecs.h"
 
 using namespace M;

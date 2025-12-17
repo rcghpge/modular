@@ -8,9 +8,9 @@ modular_cc_binary(
     deps = [
         "//AsyncRT:CompilerSupport",
         "//AsyncRT:RuntimeGlobals",
-        "//GraphRT:GRTDialect",
-        "//GraphRT:MEFToMLIR",
-        "//GraphRT:MLIRToMEF",
+        "//MLRT:GraphRT/GRTDialect",
+        "//MLRT:GraphRT/MEFToMLIR",
+        "//MLRT:GraphRT/MLIRToMEF",
         "//Support:Globals",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",

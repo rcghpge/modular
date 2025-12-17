@@ -12,7 +12,7 @@
 #ifndef GENERICML_SUPPORT_MEFTYPEUTILS_H
 #define GENERICML_SUPPORT_MEFTYPEUTILS_H
 
-#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/LLVMForwardDecls.h"
 
 namespace M {

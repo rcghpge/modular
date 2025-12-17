@@ -8,7 +8,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 
-#include "GraphRT/GRTDialect/GRTOps.h"
+#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 
 using namespace M;
 

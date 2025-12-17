@@ -11,7 +11,7 @@
 
 #include "GenericML/Support/MEFTypeUtils.h"
 #include "GenericML/Support/QuantSpec.h"
-#include "GraphRT/MEF/MEFTypes.h"
+#include "MLRT/GraphRT/MEF/MEFTypes.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/CommonAttributes.h"
 

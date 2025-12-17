@@ -15,7 +15,7 @@
 #include "GenericML/MGPDialect/MGPOpInterfaces.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPTypes.h"
-#include "GraphRT/GRTDialect/GRTChainInterface.h"
+#include "MLRT/GraphRT/GRTDialect/GRTChainInterface.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
 

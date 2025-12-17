@@ -9,7 +9,7 @@
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "Config/Version.h"
 #include "GenericML/GraphCompiler/Version.h"
-#include "GraphRT/MLIRToMEF.h"
+#include "MLRT/GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"
 #include "Support/Configuration.h"
 #include "Support/ML/SizeUtils.h"

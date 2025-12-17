@@ -11,7 +11,7 @@
 #ifndef GENERICML_MGPDIALECT_MGPTYPES_H
 #define GENERICML_MGPDIALECT_MGPTYPES_H
 
-#include "GraphRT/MEFDialect/MEFTypes.h"
+#include "MLRT/GraphRT/MEFDialect/MEFTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"

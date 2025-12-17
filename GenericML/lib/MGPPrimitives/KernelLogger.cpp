@@ -6,7 +6,7 @@
 
 #include "GenericML/MGPPrimitives/KernelLogger.h"
 #include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Format.h"

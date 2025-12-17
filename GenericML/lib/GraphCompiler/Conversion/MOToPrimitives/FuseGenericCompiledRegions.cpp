@@ -14,7 +14,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
+#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/SetVector.h"
 

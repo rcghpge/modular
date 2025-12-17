@@ -8,7 +8,7 @@
 #define GENERICML_MGPDIALECT_MGPOPINTERFACES_H
 
 #include "GenericML/MGPDialect/MGPTypes.h"
-#include "GraphRT/MEFDialect/MEFOps.h"
+#include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"

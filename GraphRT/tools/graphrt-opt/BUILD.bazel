@@ -8,8 +8,8 @@ modular_cc_binary(
     deps = [
         "//AsyncRT:CompilerSupport",
         "//AsyncRT:RuntimeGlobals",
-        "//GraphRT:AllDialects",
         "//Init",
+        "//MLRT:GraphRT/AllDialects",
         "//Support:Context",
         "//Support:Globals",
         "@llvm-project//mlir:MlirOptLib",

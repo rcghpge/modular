@@ -48,7 +48,7 @@ modular_cc_library(
         "//GenericML:CommonDriver",
         "//GenericML:CompileDriver",
         "//GenericML:ExecutionDriver",
-        "//GraphRT:MEFExecutor",
+        "//MLRT:GraphRT/MEFExecutor",
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Context",
@@ -84,8 +84,8 @@ modular_cc_library(
         ":Support",
         "//AsyncRT:DeviceContext",
         "//AsyncRT:RuntimeGlobals",
-        "//GraphRT:MLIRToMEF",
         "//KGEN:CompilerRT",
+        "//MLRT:GraphRT/MLIRToMEF",
         "//Support:Base",
         "//Support:BinaryID",
         "//Support:Diagnostics",
@@ -114,7 +114,7 @@ modular_cc_library(
     deps = [
         ":CommonDriver",
         ":Support",
-        "//GraphRT:MLIRToMEF",
+        "//MLRT:GraphRT/MLIRToMEF",
         "//Support:Base",
         "//Support:Context",
     ],
@@ -493,7 +493,7 @@ modular_cc_library(
         ":MODialectTypeInterfacesIncGen",
         ":MOSHDialect",
         ":Support",
-        "//GraphRT:GRTDialect",
+        "//MLRT:GraphRT/GRTDialect",
     ],
 )
 
@@ -588,7 +588,7 @@ gentbl_mlir_dialect(
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
         ":RMODialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -613,7 +613,7 @@ gentbl_filegroup(
         ":MODialectTdFiles",
         ":MOSHDialectTdFiles",
         ":RMODialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -635,7 +635,7 @@ gentbl_cc_library(
     deps = [
         ":MODialectTdFiles",
         ":RMODialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -647,7 +647,7 @@ modular_cc_library(
         ":MODialect",
         ":RMODialectIncGen",
         ":RMODialectInterfacesIncGen",
-        "//GraphRT:GRTDialect",
+        "//MLRT:GraphRT/GRTDialect",
     ],
 )
 
@@ -714,7 +714,7 @@ gentbl_mlir_dialect(
         ":MODialectTdFiles",
         ":MOGGDialectTdFiles",
         ":MOSHDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -735,7 +735,7 @@ gentbl_cc_library(
     td_file = "include/GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td",
     deps = [
         ":MOGGDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -817,10 +817,10 @@ modular_cc_library(
         ":MOSHDialect",
         ":Support",
         "//AsyncRT:DeviceContext",
-        "//GraphRT:GRTDialect",
         "//KGEN:MojoParser",
         "//KGEN:ObjectCompiler",
         "//Kernels/mojo/Mogg:MOGGLoader",
+        "//MLRT:GraphRT/GRTDialect",
         "//Support:Context",
         "//Support:HashUtils",
     ],
@@ -869,7 +869,7 @@ gentbl_filegroup(
     td_file = "include/GenericML/MGPDialect/MGP.td",
     deps = [
         ":MGPDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -918,7 +918,7 @@ gentbl_cc_library(
     deps = [
         ":GraphCompilerInterfacesTdFiles",
         ":MGPDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
     ],
 )
 
@@ -945,8 +945,8 @@ gentbl_cc_library(
     td_file = "include/GenericML/MGPDialect/MGP.td",
     deps = [
         ":MGPDialectTdFiles",
-        "//GraphRT:GRTTdFiles",
-        "//GraphRT:MEFTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+        "//MLRT:GraphRT/MEFTdFiles",
     ],
 )
 
@@ -966,7 +966,7 @@ gentbl_cc_library(
     td_file = "include/GenericML/MGPDialect/MGPTypes.td",
     deps = [
         ":MGPDialectTdFiles",
-        "//GraphRT:MEFTdFiles",
+        "//MLRT:GraphRT/MEFTdFiles",
     ],
 )
 
@@ -1072,7 +1072,7 @@ modular_cc_library(
         ":MGPDialectTypesIncGen",
         ":MOSHDialect",
         ":Support",
-        "//GraphRT:GRTDialect",
+        "//MLRT:GraphRT/GRTDialect",
     ],
 )
 
@@ -1095,8 +1095,8 @@ gentbl_modular_passes(
     deps = [
         ":MGPDialectTdFiles",
         ":MGPTransformsTdFiles",
-        "//GraphRT:GRTTdFiles",
-        "//GraphRT:MEFTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+        "//MLRT:GraphRT/MEFTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
@@ -1118,7 +1118,7 @@ modular_cc_library(
         ":RMODialect",
         ":Support",
         "//AsyncRT:DeviceContext",
-        "//GraphRT:MEFDialect",
+        "//MLRT:GraphRT/MEFDialect",
         "//Support:HashUtils",
         "@llvm-project//llvm:Support",
     ],
@@ -1174,7 +1174,6 @@ modular_cc_library(
     deps = [
         ":DeviceDriver.headers",
         "//AsyncRT:RuntimeGlobals",
-        "//GraphRT:Primitives",
         "//KGEN:Compiler",
         "//KGEN:CompilerRT",
         "//KGEN:ExecutionEngine",
@@ -1182,6 +1181,7 @@ modular_cc_library(
         "//Kernels:WeightsRegistry",
         "//MLRT:Core",
         "//MLRT:Core/Tensor",
+        "//MLRT:GraphRT/Primitives",
         "//Support:Base",
         "//Support:Context",
         "//Support:ML",

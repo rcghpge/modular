@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/QuantSpec.h"
-#include "GraphRT/MEF/MEFTypes.h"
+#include "MLRT/GraphRT/MEF/MEFTypes.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringSwitch.h"

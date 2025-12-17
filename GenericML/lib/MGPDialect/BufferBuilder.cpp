@@ -7,8 +7,8 @@
 #include "GenericML/MGPDialect/BufferBuilder.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPDialect/MGPUtils.h"
-#include "GraphRT/GRTDialect/GRTOps.h"
 #include "KGEN/KGENDialect/KGENTypes.h"
+#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 
