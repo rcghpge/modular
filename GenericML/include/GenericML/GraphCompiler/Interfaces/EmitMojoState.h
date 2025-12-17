@@ -316,13 +316,13 @@ public:
 
   /// Given an array of dimensions, represent it in Mojo using `DimList`.
   static MojoValue getAsDimListMojoValue(ArrayRef<int64_t> dims) {
-    if (llvm::all_of(dims, [](int64_t dim) {
+    if (!dims.empty() && llvm::all_of(dims, [](int64_t dim) {
           return dim == mlir::ShapedType::kDynamic;
         })) {
 
       return MojoValue(HardcodedMojoSymbols::struct_DimList)
           .get(HardcodedMojoSymbols::func_DimList_create_unknown)(
-              {std::to_string(std::max<int64_t>(1, dims.size()))});
+              {std::to_string(dims.size())});
     }
 
     SmallVector<MojoValue> dimsAsMojoValues;
@@ -334,6 +334,9 @@ public:
         dimsAsMojoValues.push_back(std::to_string(dim));
       }
     }
+    // Always convert rank-0 tensors to [1]
+    if (dimsAsMojoValues.empty())
+      dimsAsMojoValues.push_back(1);
 
     return MojoValue(HardcodedMojoSymbols::struct_DimList)({},
                                                            dimsAsMojoValues);
