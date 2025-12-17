@@ -620,7 +620,9 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
   // For GPU kernels, we extract ptr and strides before the lambda to avoid
   // capturing ManagedTensorSlice objects which don't work correctly on GPU.
   SmallVector<MojoValue> inputPtrs;
+  SmallVector<MojoValue> inputShapes;
   SmallVector<MojoValue> inputStrides;
+  SmallVector<MojoValue> inputStaticSpecs;
   // Store tensor types for GPU kernel parameter passing
   SmallVector<MO::TensorType> inputTensorTypes;
 
@@ -637,9 +639,12 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
       // Extract raw pointer and strides before the lambda.
       // These are trivial types that can be safely captured by GPU kernels.
       MojoValue ptr = state.builder.var(input.get("unsafe_ptr")());
+      MojoValue shape = state.builder.var(input.get("shape")());
       MojoValue strides = state.builder.var(input.get("strides")());
       inputPtrs.push_back(ptr);
+      inputShapes.push_back(shape);
       inputStrides.push_back(strides);
+      inputStaticSpecs.push_back(input.get("static_spec"));
       // Store tensor type for dtype/rank parameters
       inputTensorTypes.push_back(
           MO::castFromTensorLike(fusibleTensors[idx].getType()));
@@ -680,6 +685,7 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> copyCaptures;
   if (isGpuKernel) {
     copyCaptures.append(inputPtrs.begin(), inputPtrs.end());
+    copyCaptures.append(inputShapes.begin(), inputShapes.end());
     copyCaptures.append(inputStrides.begin(), inputStrides.end());
     for (auto &&loadOp : lambdaBody->getOps<MOGG::LoadTensorOp>())
       copyCaptures.push_back(state.getMojoValueFor(loadOp.getTensor()));
@@ -720,9 +726,10 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
                    state.mlirDTypeToMojoType(tensorTy.getDtype())),
                MojoValue("rank").equal(
                    MojoValue(static_cast<int64_t>(tensorTy.getRankNonZero()))),
+               MojoValue("static_spec").equal(inputStaticSpecs[i]),
                MojoValue("simd_width").equal(widthParam),
                MojoValue("element_alignment").equal(alignmentParam)},
-              {inputPtrs[i], inputStrides[i], indicesInput});
+              {inputPtrs[i], inputShapes[i], inputStrides[i], indicesInput});
         } else {
           loadedSimd = MojoValue(
               HardcodedMojoSymbols::func_simd_load_from_managed_tensor_slice)(
@@ -763,8 +770,10 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
       if (isGpuKernel) {
         state.builder.call(
             HardcodedMojoSymbols::func_simd_store_into_tensor_pointer,
-            {MojoValue("element_alignment").equal(alignmentParam)},
-            {inputPtrs[0], inputStrides[0], resultIndices, resultValue});
+            {MojoValue("static_spec").equal(inputStaticSpecs[0]),
+             MojoValue("element_alignment").equal(alignmentParam)},
+            {inputPtrs[0], inputShapes[0], inputStrides[0], resultIndices,
+             resultValue});
       } else {
         state.builder.call(
             HardcodedMojoSymbols::func_simd_store_into_managed_tensor_slice,
