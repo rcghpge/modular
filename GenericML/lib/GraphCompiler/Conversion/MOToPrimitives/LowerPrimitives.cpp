@@ -243,7 +243,7 @@ buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
 
         // Skip chains.
         if (isa<MEF::ChainType>(op->getOperandTypes()[operandIdx])) {
-          numChains++;
+          ++numChains;
           continue;
         }
 

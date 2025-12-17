@@ -543,7 +543,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceMulticastBuffer_allocate(
     const DeviceMulticastBuffer **result, size_t ctxsLen,
     const DeviceContext **ctxs, size_t len, size_t elemSize) {
   std::vector<DeviceContextRef> contexts;
-  for (size_t i = 0; i < ctxsLen; i++) {
+  for (size_t i = 0; i < ctxsLen; ++i) {
     contexts.push_back(DeviceContextRef::copy(ctxs[i]));
   }
   return checkRef(result,

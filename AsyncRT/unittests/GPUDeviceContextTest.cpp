@@ -249,7 +249,7 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
   const int copyLengths[] = {0, 256, 1024 * 1024};
   const int numCopyLengths = 3;
 
-  for (int i = 0; i < numCopyLengths; i++) {
+  for (int i = 0; i < numCopyLengths; ++i) {
     int allocLen = copyLengths[i];
 
     ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf, ctx->enqueueCreateBuffer(0));
@@ -268,7 +268,7 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
     // Initialize with known good and bad values.
     initWithData(aBuf->ptr(), allocLen, checkData, sizeof(checkData));
 
-    for (int i = 0; i < allocLen; i++) {
+    for (int i = 0; i < allocLen; ++i) {
       dPtr[i] = -static_cast<char>((7 + i) & 127);
     }
 
@@ -300,7 +300,7 @@ TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
   ASSIGN_NO_ERR(DeviceBufferRef, cBuf, ctx->enqueueCreateBuffer(allocLen));
 
   // Initialize with known good and bad values.
-  for (int i = 0; i < allocLen; i++) {
+  for (int i = 0; i < allocLen; ++i) {
     aPtr[i] = static_cast<char>(i & 127);
   }
 
@@ -347,12 +347,12 @@ TEST_F(GPUDeviceContextTest, SubBuffer) {
   EXPECT_NE(ePtr, nullptr);
 
   // Initialize with known good and bad values.
-  for (int i = 0; i < allocLen; i++) {
+  for (int i = 0; i < allocLen; ++i) {
     aPtr[i] = static_cast<char>(i & 127);
     dPtr[i] = -static_cast<char>((7 + i) & 127);
   }
 
-  for (int i = 0; i < subAllocLen; i++) {
+  for (int i = 0; i < subAllocLen; ++i) {
     ePtr[i] = static_cast<float>(i) * (((i & 1) == 0) ? -1.0 : 1.0);
   }
 
@@ -366,13 +366,13 @@ TEST_F(GPUDeviceContextTest, SubBuffer) {
   EXPECT_NO_ERR(ctx->synchronize());
   uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
   uint32_t expectedVals[] = {0x80000000, 0x3f800000, 0xc0000000};
-  for (int i = 0; i < (subAllocLen); i++) {
+  for (int i = 0; i < (subAllocLen); ++i) {
     uint32_t val = dIntPtr[i];
     std::cerr << "SubBuffer: d[" << i << "] = 0x" << std::hex << val << std::dec
               << "\n";
     EXPECT_EQ(val, expectedVals[i]);
   }
-  for (int i = subAllocLen * 4; i < allocLen; i++) {
+  for (int i = subAllocLen * 4; i < allocLen; ++i) {
     int val = dPtr[i];
     if (i < 20) {
       std::cerr << "Original: d[" << std::dec << i << "] = 0x" << std::hex
@@ -416,7 +416,7 @@ TEST_F(GPUDeviceContextTest, OverlappingCopies) {
   EXPECT_NO_ERR(aBuf->copyTo(*refBuf));
   EXPECT_NO_ERR(ctx->synchronize());
   char *refPtr = reinterpret_cast<char *>(refBuf->ptr());
-  for (int i = 0; i < allocLen; i++) {
+  for (int i = 0; i < allocLen; ++i) {
     EXPECT_EQ(refPtr[i], 12) << "failure at index: " << i << "\n";
   }
 }
@@ -434,7 +434,7 @@ TEST_F(GPUDeviceContextTest, RecycleBuffers) {
   // When run with MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY=true this will move
   // all free buffers from allocCtx to freeCtx unless we regularly flush
   // buffers from freeCtx to the parent.
-  for (int i = 0; i < 1000; i++) {
+  for (int i = 0; i < 1000; ++i) {
     size_t allocSize = sizes[i & 7];
     ASSIGN_NO_ERR(DeviceBufferRef, buf,
                   allocCtx->enqueueCreateBuffer(allocSize));
@@ -455,7 +455,7 @@ TEST_F(GPUDeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint8_t *ptr = static_cast<uint8_t *>(hostBuf->ptr());
-    for (int i = 0; i < allocLen; i++) {
+    for (int i = 0; i < allocLen; ++i) {
       EXPECT_EQ(ptr[i], 123);
     }
   }
@@ -465,7 +465,7 @@ TEST_F(GPUDeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint16_t *ptr = static_cast<uint16_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 2); i++) {
+    for (int i = 0; i < (allocLen / 2); ++i) {
       EXPECT_EQ(ptr[i], 12345);
     }
   }
@@ -475,7 +475,7 @@ TEST_F(GPUDeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint32_t *ptr = static_cast<uint32_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 4); i++) {
+    for (int i = 0; i < (allocLen / 4); ++i) {
       EXPECT_EQ(ptr[i], 1234567890);
     }
   }
@@ -485,7 +485,7 @@ TEST_F(GPUDeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint64_t *ptr = static_cast<uint64_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 8); i++) {
+    for (int i = 0; i < (allocLen / 8); ++i) {
       EXPECT_EQ(ptr[i], 0x0101010101010101ul);
     }
   }
@@ -495,7 +495,7 @@ TEST_F(GPUDeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint64_t *ptr = static_cast<uint64_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 8); i++) {
+    for (int i = 0; i < (allocLen / 8); ++i) {
       EXPECT_EQ(ptr[i], 1234567890123456789);
     }
   }
@@ -511,7 +511,7 @@ TEST_F(GPUDeviceContextTest, Timers) {
     ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->createHostBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(256));
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 20; ++i) {
       EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
     }
     EXPECT_NO_ERR(ctx->synchronize());
@@ -532,7 +532,7 @@ TEST_F(GPUDeviceContextTest, MultiContextCopies) {
   // Allocate a vector filled with all available devices prefixed with CPU and
   // GPU[0].
   std::vector<DeviceContextRef> contexts;
-  for (int i = 0; i < numDevices + 2; i++) {
+  for (int i = 0; i < numDevices + 2; ++i) {
     if (i == 0) {
       ASSIGN_NO_ERR(DeviceContextRef, ctx,
                     DeviceContext::create(Device::cpuAPI, 0));
@@ -548,9 +548,9 @@ TEST_F(GPUDeviceContextTest, MultiContextCopies) {
     }
   }
 
-  for (int srcDeviceId = 0; srcDeviceId < numDevices + 2; srcDeviceId++) {
+  for (int srcDeviceId = 0; srcDeviceId < numDevices + 2; ++srcDeviceId) {
     const DeviceContext *srcCtx = contexts[srcDeviceId].getPointer();
-    for (int dstDeviceId = 0; dstDeviceId < numDevices + 2; dstDeviceId++) {
+    for (int dstDeviceId = 0; dstDeviceId < numDevices + 2; ++dstDeviceId) {
       const DeviceContext *dstCtx = contexts[dstDeviceId].getPointer();
 
       std::cerr << "Copying from contexts[" << srcDeviceId << "] to contexts["
@@ -559,7 +559,7 @@ TEST_F(GPUDeviceContextTest, MultiContextCopies) {
       const int allocLen = 256;
       char *checkData = new char[allocLen];
       // Initialize checkData with a pattern specific for this run.
-      for (int i = 0; i < allocLen; i++) {
+      for (int i = 0; i < allocLen; ++i) {
         checkData[i] = (srcDeviceId * 8) + dstDeviceId + i;
       }
 
@@ -576,7 +576,7 @@ TEST_F(GPUDeviceContextTest, MultiContextCopies) {
       char *dstPtr = static_cast<char *>(malloc(allocLen));
       EXPECT_NE(dstPtr, nullptr);
       // Initialize with known bad values.
-      for (int i = 0; i < allocLen; i++) {
+      for (int i = 0; i < allocLen; ++i) {
         // Use a different factor for i than the checkData, so that we can't
         // ever overlap.
         dstPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
@@ -612,7 +612,7 @@ TEST_F(GPUDeviceContextTest, CrossContextEvent) {
   const int allocLen = 12 * 1024 * 1024;
   char *checkData = new char[allocLen];
   // Initialize checkData with a pattern specific for this run.
-  for (int i = 0; i < allocLen; i++) {
+  for (int i = 0; i < allocLen; ++i) {
     checkData[i] = i;
   }
 

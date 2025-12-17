@@ -1116,7 +1116,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
     } else {
       size_t len = byteSize >> 3;
       // For each 64-bit element, set the low and high 32-bit parts separately
-      for (size_t i = 0; i < len; i++) {
+      for (size_t i = 0; i < len; ++i) {
         void *loPtr =
             reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) + i * 8);
         void *hiPtr = reinterpret_cast<void *>(

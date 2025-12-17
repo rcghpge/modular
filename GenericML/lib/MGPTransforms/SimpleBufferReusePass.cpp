@@ -204,7 +204,7 @@ public:
               newUses.append(currentUses.begin(), currentUses.end());
               validAllocs[j].second = std::move(newUses);
 
-              reuseCount++;
+              ++reuseCount;
               break; // Move to next alloc after successful reuse
             }
           }

@@ -378,7 +378,7 @@ nixlUcxContext::nixlUcxContext(std::vector<std::string_view> devs,
     /* TODO: check if this is the best way */
     std::string device = "";
     unsigned int i;
-    for (i = 0; i < devs.size() - 1; i++)
+    for (i = 0; i < devs.size() - 1; ++i)
       device = (Twine(device) + devs[i] + ":1,").str();
     device = (Twine(device) + devs[i] + ":1").str();
     config.modifyAlways("NET_DEVICES", device);

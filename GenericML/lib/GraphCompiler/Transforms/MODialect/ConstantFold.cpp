@@ -423,7 +423,7 @@ executeModel(MLIRContext *ctx, const Model *model,
   for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
     for (auto op : subgraph.outputs) {
       SmallVector<RuntimeOutput> opTensors;
-      for (size_t i = 0; i < op->getNumResults(); i++) {
+      for (size_t i = 0; i < op->getNumResults(); ++i) {
         AnyAsyncValueRef &tensorRef = resultCopy[outIdx];
         if (tensorRef.isError())
           return AsyncRT::EncodedDiagnostic(tensorRef.takeDiagnostic());
@@ -433,7 +433,7 @@ executeModel(MLIRContext *ctx, const Model *model,
                       << "We already awaited, tensor should be ready");
         opTensors.push_back(
             extractRuntimeOutput(tensorRef, ctx, cachedConstants));
-        outIdx++;
+        ++outIdx;
       }
       opToTensors[op] = opTensors;
     }
@@ -452,7 +452,7 @@ executeModel(MLIRContext *ctx, const Model *model,
                     << "Subgraph shape output should be a tensor");
       Tensor &t = tensor.get<Tensor>();
       params[paramName] = t.getBuffer<const int64_t>()[0];
-      outIdx++;
+      ++outIdx;
     }
   }
   return ModelResult{opToTensors, params};
@@ -499,7 +499,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   // recursion within a graphop.
   size_t iter = 0;
   size_t boundForMaximumIterations = 1000000;
-  for (; iter < boundForMaximumIterations; iter++) {
+  for (; iter < boundForMaximumIterations; ++iter) {
     if (workQueue.empty())
       break;
 
@@ -636,7 +636,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
       auto dense = dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr());
       if (dense) {
         inputConstants[constant] = graphop.getBody().getArgument(idx);
-        idx++;
+        ++idx;
       }
     }
   }
@@ -813,7 +813,7 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
   }
   // Remove internal ops (DCE). Ops are removed in reverse topological ordering
   // so we don't erase a dependency of another op.
-  for (auto op = internalOps.rbegin(); op < internalOps.rend(); op++)
+  for (auto op = internalOps.rbegin(); op < internalOps.rend(); ++op)
     (*op)->erase();
 
   // Add parameters that were defined in the subgraph.
@@ -933,7 +933,7 @@ void ConstantFoldPass::runOnOperation() {
       return std::move(readyChain)
           .setToError({Error(errorMessage), std::move(encodedLocation)});
     };
-    for (int i = 0; i < iterations.getValue(); i++) {
+    for (int i = 0; i < iterations.getValue(); ++i) {
       OpBuilder builder(ctx);
       builder.setInsertionPointToStart(getOperation().getBody());
       // We have to create the copy of each subgraph somewhere under the

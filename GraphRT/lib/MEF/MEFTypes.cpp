@@ -219,9 +219,9 @@ static size_t decodeQuantizedPerAxisType(
   // Decode the scales, then the zero points, and push them into their vectors.
   // Note that these two loops cannot be merged, because dataPtr is incremented
   // every time we decode an element.
-  for (size_t j = 0; j < numParams; j++)
+  for (size_t j = 0; j < numParams; ++j)
     scales.push_back(MEF::parseFloat(dataPtr));
-  for (size_t j = 0; j < numParams; j++)
+  for (size_t j = 0; j < numParams; ++j)
     zeroPoints.push_back(MEF::parseSignedVBR(dataPtr));
 
   return dataPtr - pointer;

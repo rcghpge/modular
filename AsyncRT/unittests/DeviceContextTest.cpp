@@ -32,7 +32,7 @@ public:
     originalValue = nullptr;
 
     // Attempt to save the existing variable if it exists.
-    for (char **it = environ; *it != nullptr; it++) {
+    for (char **it = environ; *it != nullptr; ++it) {
       auto str = llvm::StringRef(*it);
       auto [prefix, _] = str.split('=');
 
@@ -140,7 +140,7 @@ TEST(DeviceContextTest, DeviceBuffers) {
   EXPECT_EQ(emptyBuf->ptr(), nullptr);
   EXPECT_EQ(emptyBuf->byteSize(), 0);
 
-  for (int i = 0; i < numCopyLengths; i++) {
+  for (int i = 0; i < numCopyLengths; ++i) {
     int allocLen = copyLengths[i];
 
     std::cerr << "DeviceContext copies(len: " << allocLen << ")\n";
@@ -155,7 +155,7 @@ TEST(DeviceContextTest, DeviceBuffers) {
     // Initialize with known good and bad values.
     initWithData(aBuf->ptr(), allocLen, checkData, sizeof(checkData));
 
-    for (int i = 0; i < allocLen; i++) {
+    for (int i = 0; i < allocLen; ++i) {
       dPtr[i] = -static_cast<char>((7 + i) & 127);
     }
 
@@ -179,7 +179,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
   const int copyLengths[] = {256, 1024 * 1024};
   const int numCopyLengths = 2;
 
-  for (int i = 0; i < numCopyLengths; i++) {
+  for (int i = 0; i < numCopyLengths; ++i) {
     int allocLen = copyLengths[i];
 
     std::cerr << "DeviceContext failing copies(len: " << allocLen << ")\n";
@@ -193,7 +193,7 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
     ASSIGN_NO_ERR(DeviceBufferRef, cBuf, ctx->enqueueCreateBuffer(allocLen));
 
     // Initialize with known good and bad values.
-    for (int i = 0; i < allocLen; i++) {
+    for (int i = 0; i < allocLen; ++i) {
       aPtr[i] = static_cast<char>(i & 127);
     }
 
@@ -233,12 +233,12 @@ TEST(DeviceContextTest, SubBuffer) {
   EXPECT_NE(ePtr, nullptr);
 
   // Initialize with known good and bad values.
-  for (int i = 0; i < allocLen; i++) {
+  for (int i = 0; i < allocLen; ++i) {
     aPtr[i] = static_cast<char>(i & 127);
     dPtr[i] = -static_cast<char>((7 + i) & 127);
   }
 
-  for (int i = 0; i < subAllocLen; i++) {
+  for (int i = 0; i < subAllocLen; ++i) {
     ePtr[i] = static_cast<float>(i) * (((i & 1) == 0) ? -1.0 : 1.0);
   }
 
@@ -253,13 +253,13 @@ TEST(DeviceContextTest, SubBuffer) {
 
   uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
   uint32_t expectedVals[] = {0x80000000, 0x3f800000, 0xc0000000};
-  for (int i = 0; i < (subAllocLen); i++) {
+  for (int i = 0; i < (subAllocLen); ++i) {
     uint32_t val = dIntPtr[i];
     std::cerr << "SubBuffer: d[" << std::dec << i << "] = 0x" << std::hex << val
               << "\n";
     EXPECT_EQ(val, expectedVals[i]);
   }
-  for (int i = subAllocLen * 4; i < allocLen; i++) {
+  for (int i = subAllocLen * 4; i < allocLen; ++i) {
     int val = dPtr[i];
     if (i < 20) {
       std::cerr << "Original: d[" << std::dec << i << "] = 0x" << std::hex
@@ -285,7 +285,7 @@ TEST(DeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint8_t *ptr = static_cast<uint8_t *>(hostBuf->ptr());
-    for (int i = 0; i < allocLen; i++) {
+    for (int i = 0; i < allocLen; ++i) {
       EXPECT_EQ(ptr[i], 123);
     }
   }
@@ -295,7 +295,7 @@ TEST(DeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint16_t *ptr = static_cast<uint16_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 2); i++) {
+    for (int i = 0; i < (allocLen / 2); ++i) {
       EXPECT_EQ(ptr[i], 12345);
     }
   }
@@ -305,7 +305,7 @@ TEST(DeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint32_t *ptr = static_cast<uint32_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 4); i++) {
+    for (int i = 0; i < (allocLen / 4); ++i) {
       EXPECT_EQ(ptr[i], 1234567890);
     }
   }
@@ -315,7 +315,7 @@ TEST(DeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint64_t *ptr = static_cast<uint64_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 8); i++) {
+    for (int i = 0; i < (allocLen / 8); ++i) {
       EXPECT_EQ(ptr[i], 0x0101010101010101ul);
     }
   }
@@ -325,7 +325,7 @@ TEST(DeviceContextTest, SetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
   {
     uint64_t *ptr = static_cast<uint64_t *>(hostBuf->ptr());
-    for (int i = 0; i < (allocLen / 8); i++) {
+    for (int i = 0; i < (allocLen / 8); ++i) {
       EXPECT_EQ(ptr[i], 1234567890123456789);
     }
   }
@@ -428,7 +428,7 @@ TEST(DeviceContextTest, Timers) {
     ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->createHostBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(256));
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 20; ++i) {
       EXPECT_NO_ERR(aBuf->copyTo(*bBuf));
     }
     EXPECT_NO_ERR(ctx->synchronize());

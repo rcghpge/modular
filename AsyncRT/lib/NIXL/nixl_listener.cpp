@@ -257,7 +257,7 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
     while (socket_iter != remoteSockets.end()) {
       std::string commands;
       if (!recvCommMessage(socket_iter->second, commands)) {
-        socket_iter++;
+        ++socket_iter;
         continue;
       }
 
@@ -302,7 +302,7 @@ void nixlAgentData::commWorker(nixlAgent *myAgent) {
         }
       }
 
-      socket_iter++;
+      ++socket_iter;
     }
 
     nixlTime::us_t start = nixlTime::getUs();

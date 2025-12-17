@@ -924,7 +924,7 @@ void MOOpLoweringState::createOutputs(
         auto outputStorage = loweredOutputsStorage[index];
         createOutputTensor(res, inChain, outputStorage.buffer,
                            outputStorage.tensorSpec);
-        index++;
+        ++index;
       }
     }
   } else {

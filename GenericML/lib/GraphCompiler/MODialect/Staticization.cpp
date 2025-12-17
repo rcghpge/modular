@@ -154,7 +154,7 @@ static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
   // Build up output shape
   SmallVector<TypedAttr> outVals;
   size_t inputNumElems = inputShapeAttrs.front().getSize();
-  for (size_t i = 0; i < inputNumElems; i++) {
+  for (size_t i = 0; i < inputNumElems; ++i) {
     SmallVector<TypedAttr> ithIndexScalarInputs;
     for (ShapeAttr inputShapeAttr : inputShapeAttrs)
       ithIndexScalarInputs.push_back(inputShapeAttr[i]);
@@ -183,7 +183,7 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     // Build up output value.
     SmallVector<TypedAttr> resDims;
     size_t rankDiff = lhsShapeAttr.getRank() - rhsShapeAttr.getRank();
-    for (size_t axis = 0; axis < lhsShapeAttr.getRank(); axis++) {
+    for (size_t axis = 0; axis < lhsShapeAttr.getRank(); ++axis) {
       if (axis < rankDiff) {
         // Extra leading dimensions get broadcasted trivially.
         resDims.push_back(lhsShapeAttr[axis]);
@@ -435,7 +435,7 @@ ErrorOr<TypedAttr> RangeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   // Collect output elements and return an attribute.
   SmallVector<TypedAttr> outElems;
   int64_t elem = start;
-  for (int64_t i = 0; i < numOutElems; i++) {
+  for (int64_t i = 0; i < numOutElems; ++i) {
     outElems.push_back(b.createVar(elem).getAttr());
     elem += step;
   }
@@ -618,7 +618,7 @@ ErrorOr<TypedAttr> UnsqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   // Compute the unsqueezed symbolic shape.
   SmallVector<TypedAttr> unsqueezedDims;
   TypedAttr intOneAttr = b.createVar(1).getAttr();
-  for (int64_t idx = 0, nextDimAttrIdx = 0; idx < outputShapeLen; idx++) {
+  for (int64_t idx = 0, nextDimAttrIdx = 0; idx < outputShapeLen; ++idx) {
     if (unsqueezeAxesSet.contains(idx))
       unsqueezedDims.push_back(intOneAttr);
     else

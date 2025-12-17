@@ -83,7 +83,7 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
   node->contextCreateOp = node->func.getInitContext();
   if (!node->contextCreateOp) {
     node->func.emitError("unable to find context");
-    numErrors++;
+    ++numErrors;
   } else {
     node->slotsUsed = node->contextCreateOp.getNumSlots();
   }
@@ -102,7 +102,7 @@ void MGPCallGraph::doRewrite(const MGPCallGraphNode *node) {
   for (EdgeT edge : node->callsites) {
     if (failed(node->createSubgraphOffset(edge, modelSlotsUsage))) {
       edge.call->emitError("unable to inline model call operation");
-      numErrors++;
+      ++numErrors;
       return;
     }
   }

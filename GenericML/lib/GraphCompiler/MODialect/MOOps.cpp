@@ -1568,7 +1568,7 @@ verifyWithRankedInput(Op *op, int64_t axis, int64_t resDim, TensorType inputTy,
   auto inDim = inputTy.getTypedShapeAttr().getIntDim(axis);
   if (mlir::ShapedType::isDynamic(resDim) ||
       mlir::ShapedType::isDynamic(inDim)) {
-    dynamicOutDims++;
+    ++dynamicOutDims;
     return success();
   }
   if (inDim != resDim) {
@@ -1577,7 +1577,7 @@ verifyWithRankedInput(Op *op, int64_t axis, int64_t resDim, TensorType inputTy,
           "mo.arg_max: output dimensions must match input "
           "dimensions, except at the reduction axis where the "
           "output dimension must be 1");
-    reducedDims++;
+    ++reducedDims;
   }
   return success();
 }
@@ -1586,11 +1586,11 @@ static void verifyWithUnrankedInput(int64_t axis, int64_t resDim,
                                     size_t &dynamicOutDims,
                                     size_t &reducedDims) {
   if (mlir::ShapedType::isDynamic(resDim)) {
-    dynamicOutDims++;
+    ++dynamicOutDims;
     return;
   }
   if (resDim == 1)
-    reducedDims++;
+    ++reducedDims;
 }
 
 template <typename Op>
@@ -1618,7 +1618,7 @@ static LogicalResult argVerify(Op *op) {
     size_t reducedDims = 0;
     size_t dynamicOutDims = 0;
 
-    for (int64_t axis = 0, rank = resTy.getRank(); axis < rank; axis++) {
+    for (int64_t axis = 0, rank = resTy.getRank(); axis < rank; ++axis) {
       int64_t resDim = resTy.getTypedShapeAttr().getIntDim(axis);
 
       if (optAxis.has_value() && (axis == optAxis.value()) && (resDim != 1) &&
@@ -2089,7 +2089,7 @@ LogicalResult AddSingletonDimOp::verify() {
 
   // Check surrounding dims around axis are the same
   int64_t axis = getAxis().getLimitedValue();
-  for (int64_t i = 0; i < resultRank; i++) {
+  for (int64_t i = 0; i < resultRank; ++i) {
     if (i < axis) {
       if (resultTy.getDim(i) != inputTy.getDim(i))
         return emitOpError("Input and output dims do not match around axis.");
@@ -2127,7 +2127,7 @@ LogicalResult SplitDimOp::verify() {
 
   // Check surrounding dims around axis are the same
   int64_t axis = getAxis().getLimitedValue();
-  for (int64_t i = 0; i < resultRank; i++) {
+  for (int64_t i = 0; i < resultRank; ++i) {
     if (i < axis) {
       if (resultTy.getDim(i) != inputTy.getDim(i))
         return emitOpError("Input and output dims do not match around axis.");
@@ -2175,7 +2175,7 @@ LogicalResult MergeDimOp::verify() {
 
   // Check surrounding dims around axis are the same
   int64_t axis = getAxis().getLimitedValue();
-  for (int64_t i = 0; i < resultRank; i++) {
+  for (int64_t i = 0; i < resultRank; ++i) {
     if (i < axis) {
       if (resultTy.getDim(i) != inputTy.getDim(i))
         return emitOpError("Input and output dims do not match around axis.");
@@ -2212,7 +2212,7 @@ LogicalResult UnsqueezeShapeOp::verify() {
   if (maybeIndices) {
     SmallVector<int64_t> &indices = maybeIndices.value();
     llvm::sort(indices);
-    for (size_t i = 0; i < indices.size() - 1; i++) {
+    for (size_t i = 0; i < indices.size() - 1; ++i) {
       if (indices[i] == indices[i + 1])
         return emitOpError("Padding indices pad the same dimension twice");
     }
@@ -2524,7 +2524,7 @@ static bool isSubtype(TensorType ty1, TensorType ty2) {
     const auto &ty1Name = entry.getName();
     const auto &ty1Value = entry.getValue();
     if (ty2Metadata.contains(ty1Name))
-      numMatches++;
+      ++numMatches;
 
     if (ty2Metadata.get(ty1Name) != ty1Value)
       return false;

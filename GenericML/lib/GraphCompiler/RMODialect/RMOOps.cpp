@@ -85,7 +85,7 @@ static ErrorOr<M::DeviceRefAttr>
 inferDeviceAsFirstOperandRestHost(TypeRange tys) {
   std::optional<M::DeviceRefAttr> device = getDeviceIfAvailable(*tys.begin());
 
-  for (auto it = tys.begin() + 1; it != tys.end(); it++) {
+  for (auto it = tys.begin() + 1; it != tys.end(); ++it) {
     std::optional<M::DeviceRefAttr> newDevice = getDeviceIfAvailable(*it);
     if (!newDevice.has_value())
       continue;

@@ -121,7 +121,7 @@ private:
 BufferCache::DescMap::DescMap(int mapSizeLog2)
     : bucketCount_(1 << mapSizeLog2), bucketMask_(bucketCount_ - 1),
       buckets_(new Desc *[bucketCount_]) {
-  for (size_t i = 0; i < bucketCount_; i++) {
+  for (size_t i = 0; i < bucketCount_; ++i) {
     buckets_[i] = nullptr;
   }
 }
@@ -367,7 +367,7 @@ BufferCacheFreeList::BufferCacheFreeList(const DeviceContext *context,
   // DeviceContext.
   assert(((ctx_ == nullptr) && (parent_ == nullptr)) ||
          ((ctx_ != nullptr) && (parent_ != nullptr)));
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
+  for (int i = 0; i < kNumFreeBufferLists; ++i) {
     freeBuffers_[i] = nullptr;
   }
 }
@@ -379,7 +379,7 @@ void BufferCacheFreeList::flushToParent() {
   if (bufferCache_.doLog_) {
     bufferCache_.logErr("Flush all to parent from " + TWINE_PTR(this));
   }
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
+  for (int i = 0; i < kNumFreeBufferLists; ++i) {
     flushFreeBuffersToParent(i);
   }
 }
@@ -427,7 +427,7 @@ void BufferCacheFreeList::flushFreeBuffersToParent(int id) {
 }
 
 bool BufferCacheFreeList::empty() {
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
+  for (int i = 0; i < kNumFreeBufferLists; ++i) {
     if (freeBuffers_[i] != nullptr)
       return false;
   }
@@ -490,7 +490,7 @@ void BufferCacheFreeList::removeFromFreeList(BufferCache::Desc *desc) {
     // desc is at the head of a freeBuffers_ list. Identify which list and
     // unhook.
     int i = 0;
-    for (; i < kNumFreeBufferLists; i++) {
+    for (; i < kNumFreeBufferLists; ++i) {
       if (freeBuffers_[i] == desc) {
         freeBuffers_[i] = desc->nextFree_;
         if (freeBuffers_[i] != nullptr) {
@@ -522,7 +522,7 @@ void BufferCacheFreeList::selfCheck() const {
   }
 
   // Make sure all lists are checked.
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
+  for (int i = 0; i < kNumFreeBufferLists; ++i) {
     // Check free markers, no cycle, increasing sizes.
     BufferCache::Desc *curDesc = freeBuffers_[i];
     BufferCache::Desc *aheadDesc = curDesc;
@@ -561,7 +561,7 @@ void BufferCacheFreeList::selfCheck() const {
 }
 
 bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
+  for (int i = 0; i < kNumFreeBufferLists; ++i) {
     BufferCache::Desc *curDesc = freeBuffers_[i];
     while (curDesc != nullptr) {
       if (curDesc == desc)
@@ -704,7 +704,7 @@ bool BufferCache::allocateChunk() {
   chunk->next_ = chunks_;
   chunks_ = chunk;
   cacheSize_ += allocSize;
-  chunkCount_++;
+  ++chunkCount_;
   if (doLog_) {
     logErr("allocate_chunk(" + TWINE_PTR(ptr) + " ; " + TWINE(allocSize) + ")",
            0, 0);
@@ -838,7 +838,7 @@ void BufferCache::clear() {
     chunk = nextChunk;
   }
   chunks_ = nullptr;
-  for (int i = 0; i < BufferCacheFreeList::kNumFreeBufferLists; i++) {
+  for (int i = 0; i < BufferCacheFreeList::kNumFreeBufferLists; ++i) {
     assert(freeList_->freeBuffers_[i] == nullptr);
   }
 
@@ -916,7 +916,7 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
         // Print more debugging information about the largest available blocks.
         BufferCacheFreeList *cur = this;
         while (cur != nullptr) {
-          for (int i = 0; i < kNumFreeBufferLists; i++) {
+          for (int i = 0; i < kNumFreeBufferLists; ++i) {
             if (cur->freeBuffers_[i] != nullptr) {
               bufferCache_.logErr(
                   "max block on " + TWINE_PTR(cur) + " id: " + TWINE(i) +
@@ -984,13 +984,13 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   int iterations = 0;
   // Try allocating from all free buffer lists in this BufferCacheFreeList,
   // starting with the primary free buffer list.
-  for (int i = 0; i < kNumFreeBufferLists; i++) {
+  for (int i = 0; i < kNumFreeBufferLists; ++i) {
     int freeListIdToUse = (primaryFreeBuffers_ + i) % kNumFreeBufferLists;
     // Find a fit in the free list.
     BufferCache::Desc *desc = freeBuffers_[freeListIdToUse];
     while ((desc != nullptr) && (desc->size_ < size)) {
       desc = desc->nextFree_;
-      iterations++;
+      ++iterations;
     }
     if (desc != nullptr) {
       assert(desc->isFree());

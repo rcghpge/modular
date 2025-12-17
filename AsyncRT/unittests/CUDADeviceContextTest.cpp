@@ -144,7 +144,7 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
     float *in1Host = reinterpret_cast<float *>(malloc(length * elemSize));
     float *outHost = reinterpret_cast<float *>(malloc(length * elemSize));
 
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; ++i) {
       in0Host[i] = static_cast<float>(i);
       in1Host[i] = 2.0;
       outHost[i] =
@@ -186,7 +186,7 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
 
     EXPECT_NO_ERR(ctx->synchronize());
 
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; ++i) {
       EXPECT_EQ(outHost[i], static_cast<float>(i) + 2.0);
     }
 
@@ -284,7 +284,7 @@ $L__BB0_2:
                 DeviceContext::create(Device::cudaAPI, 0));
   ASSERT_TRUE(srcCtx);
 
-  for (int curDeviceId = -1; curDeviceId < numDevices; curDeviceId++) {
+  for (int curDeviceId = -1; curDeviceId < numDevices; ++curDeviceId) {
     DeviceContextRef dstCtx;
     if (curDeviceId < 0) {
       std::cerr << "Copying within the same device context.\n";
@@ -313,7 +313,7 @@ $L__BB0_2:
 
     char *checkData = new char[allocLen];
     // Initialize checkData with a pattern specific for this run.
-    for (size_t i = 0; i < allocLen; i++) {
+    for (size_t i = 0; i < allocLen; ++i) {
       checkData[i] = curDeviceId + i;
     }
 
@@ -329,7 +329,7 @@ $L__BB0_2:
     char *dstPtr = static_cast<char *>(malloc(allocLen));
     EXPECT_NE(dstPtr, nullptr);
     // Initialize with known bad values.
-    for (size_t i = 0; i < allocLen; i++) {
+    for (size_t i = 0; i < allocLen; ++i) {
       // Use a different factor for i than the checkData, so that we can't ever
       // overlap.
       dstPtr[i] = -static_cast<char>((7 + 2 * i) & 127);
@@ -560,7 +560,7 @@ $L__BB0_2:
   ASSERT_GT(numDevices, 0);
 
   std::vector<DeviceContextRef> contexts;
-  for (int i = 0; i < numDevices; i++) {
+  for (int i = 0; i < numDevices; ++i) {
     ErrorOr<DeviceContextRef> errCtx =
         DeviceContext::create(Device::cudaAPI, i);
     ASSERT_FALSE(errCtx) << errCtx.getError() << "\n";
@@ -614,12 +614,12 @@ $L__BB0_2:
                 DeviceMulticastBuffer::allocate(contexts, allocLen));
   {
     std::cerr << "Using unicast buffers on each device.\n";
-    for (int i = 0; i < numDevices; i++) {
+    for (int i = 0; i < numDevices; ++i) {
       const DeviceContext &ctx = *contexts[i];
       ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx.createHostBuffer(allocLen));
       float *hostPtr = static_cast<float *>(hostBuf->ptr());
       EXPECT_NE(hostPtr, nullptr);
-      for (size_t j = 0; j < numElems; j++) {
+      for (size_t j = 0; j < numElems; ++j) {
         hostPtr[j] = j + (3.0 * (ctx.device().id() + 1));
       }
       ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx.createBuffer(allocLen));
@@ -648,7 +648,7 @@ $L__BB0_2:
       EXPECT_NO_ERR(mapBuf->copyTo(*hostBuf));
 
       EXPECT_NO_ERR(ctx.synchronize());
-      for (size_t j = 0; j < numElems; j++) {
+      for (size_t j = 0; j < numElems; ++j) {
         if (j < 5) {
           std::cerr << "unicast buf[" << j << "/device(" << ctx.device().id()
                     << ")]: " << hostPtr[j] << "\n";
@@ -680,7 +680,7 @@ $L__BB0_2:
     bzero(hostPtr, allocLen); // Reset the memory used to validate.
     EXPECT_NO_ERR(devBuf->copyTo(*hostBuf));
     EXPECT_NO_ERR(ctx0.synchronize());
-    for (size_t j = 0; j < numElems; j++) {
+    for (size_t j = 0; j < numElems; ++j) {
       if (j < 5) {
         std::cerr << "buf[" << j << "]: " << hostPtr[j] << "\n";
       }
@@ -692,7 +692,7 @@ $L__BB0_2:
 
   {
     std::cerr << "Using multicast to splat across all devices.\n";
-    for (size_t j = 0; j < numElems; j++) {
+    for (size_t j = 0; j < numElems; ++j) {
       hostPtr[j] = j + (5.0 * j);
     }
     EXPECT_NO_ERR(hostBuf->copyTo(*devBuf));
@@ -708,13 +708,13 @@ $L__BB0_2:
         /*attrs=*/nullptr, /*numAttrs=*/0, splatArgs, splatArgSizes));
 
     EXPECT_NO_ERR(ctx0.synchronize());
-    for (int i = 0; i < numDevices; i++) {
+    for (int i = 0; i < numDevices; ++i) {
       const DeviceContext &ctx = *contexts[i];
       bzero(hostPtr, allocLen); // Reset the memory used to validate.
       ASSIGN_NO_ERR(DeviceBufferRef, uniBuf, multiBuf->unicastBufferFor(ctx));
       EXPECT_NO_ERR(uniBuf->copyTo(*hostBuf));
       EXPECT_NO_ERR(ctx.synchronize());
-      for (size_t j = 0; j < numElems; j++) {
+      for (size_t j = 0; j < numElems; ++j) {
         if (j < 5) {
           std::cerr << "unicast buf[" << j << "/device(" << ctx.device().id()
                     << ")]: " << hostPtr[j] << "\n";

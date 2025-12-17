@@ -45,7 +45,7 @@ class ExplicitBufferLifetimesPass
         auto allocOp = dyn_cast<MGP::BufferAllocOp>(op);
         if (!allocOp)
           continue;
-        numAllocs++;
+        ++numAllocs;
 
         auto allocUses = getAllocUses(allocOp);
         if (allocUses.isError())
@@ -88,7 +88,7 @@ class ExplicitBufferLifetimesPass
                                                     allocOp.getOutBuffer());
 
         chainOutput.replaceAllUsesExcept(bufferFree, bufferFree);
-        numFreesAdded++;
+        ++numFreesAdded;
       }
     });
 

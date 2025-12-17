@@ -263,7 +263,7 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
       node->func->emitError() << "Model involved in the call graph cycle.";
     });
 
-    numErrors++;
+    ++numErrors;
   }
 
   // Capture the context create operation and the number of context slots used
@@ -272,7 +272,7 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
     node->contextCreateOp = node->func.getInitContext();
     if (!node->contextCreateOp) {
       node->func.emitError("unable to find context");
-      numErrors++;
+      ++numErrors;
     } else {
       node->slotsUsed = node->contextCreateOp.getNumSlots();
     }
@@ -292,7 +292,7 @@ void MGPCallGraph::doRewrite(const MGPCallGraphNode *node) {
   for (EdgeT edge : node->callsites) {
     if (failed(node->inlineSubgraph(edge, modelSlotsUsage))) {
       edge.call->emitError("unable to inline model call operation");
-      numErrors++;
+      ++numErrors;
       return;
     }
 

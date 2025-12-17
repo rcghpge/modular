@@ -38,7 +38,7 @@ public:
 
     // Attempt to save the existing variable if it exists.
     char **environ = listOfEnvironmentVariables();
-    for (char **it = environ; *it != nullptr; it++) {
+    for (char **it = environ; *it != nullptr; ++it) {
       auto str = llvm::StringRef(*it);
       auto [prefix, _] = str.split('=');
 

@@ -519,7 +519,7 @@ nixl_status_t nixlAgent::makeConnection(const std::string &remote_agent,
                         << "' with status " << ret;
         break;
       }
-      count++;
+      ++count;
     }
   }
 
@@ -593,7 +593,7 @@ nixl_status_t nixlAgent::prepXferDlist(
     else
       ret = agentSection->populate(descs, backend, *(handle->descs[backend]));
     if (ret == nixl_status_t::NIXL_SUCCESS) {
-      count++;
+      ++count;
     } else {
       delete handle->descs[backend];
       handle->descs.erase(backend);
@@ -753,7 +753,7 @@ nixl_status_t nixlAgent::makeXferReq(
           local_desc1.len += local_desc2->len;
           remote_desc1.len += remote_desc2->len;
 
-          i++;
+          ++i;
           if (i == (desc_count - 1))
             break;
 
@@ -764,8 +764,8 @@ nixl_status_t nixlAgent::makeXferReq(
 
       (*handle->initiatorDescs)[j] = local_desc1;
       (*handle->targetDescs)[j] = remote_desc1;
-      j++;
-      i++;
+      ++j;
+      ++i;
     }
     NIXL_DEBUG << "reqH descList size down to " << j;
     handle->initiatorDescs->resize(j);
@@ -1193,7 +1193,7 @@ nixlAgent::getLocalPartialMD(const nixl_reg_dlist_t &descs, nixl_blob_t &str,
                         : 0;
   sd.addBuf("Conns", &conn_cnt, sizeof(conn_cnt));
 
-  for (size_t i = 0; i < conn_cnt; i++) {
+  for (size_t i = 0; i < conn_cnt; ++i) {
     sd.addStr("t", found_iters[i]->first);
     sd.addStr("c", found_iters[i]->second);
   }
@@ -1267,7 +1267,7 @@ nixl_status_t nixlAgent::loadRemoteMD(const blob_ref remote_metadata,
           data->remoteBackends[remote_agent].count(nixl_backend) != 0) {
         if (data->remoteBackends[remote_agent][nixl_backend] != conn_info)
           return nixl_status_t::NIXL_ERR_NOT_ALLOWED;
-        count++;
+        ++count;
         continue;
       }
 
@@ -1279,7 +1279,7 @@ nixl_status_t nixlAgent::loadRemoteMD(const blob_ref remote_metadata,
                           << nixl_backend << "' with status " << ret;
           return ret; // Error in load
         }
-        count++;
+        ++count;
         data->remoteBackends[remote_agent].emplace(nixl_backend, conn_info);
       } else {
         // If there was an issue and we return error while some connections

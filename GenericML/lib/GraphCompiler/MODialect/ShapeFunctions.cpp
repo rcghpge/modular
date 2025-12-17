@@ -268,7 +268,7 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
 
   SmallVector<TypedAttr> resDims;
   // Check batch dimensions are equal and collect them into `resDims`.
-  for (size_t batchDim = 0; batchDim < inputRank - 2; batchDim++) {
+  for (size_t batchDim = 0; batchDim < inputRank - 2; ++batchDim) {
     Var lhsDim = b.createVar(lhsShape[batchDim]);
     Var rhsDim = b.createVar(rhsShape[batchDim]);
     b.createAssert(lhsDim == rhsDim,
@@ -335,7 +335,7 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
   // `resDims`.
   size_t lhsRankOffset = fullRank - lhsRank;
   size_t rhsRankOffset = fullRank - rhsRank;
-  for (size_t batchDim = 0; batchDim < fullRank - 2; batchDim++) {
+  for (size_t batchDim = 0; batchDim < fullRank - 2; ++batchDim) {
     if (lhsFullShape[batchDim] == intDim1) {
       // lhs broadcastable, pick rhs dim as output.
       resDims.push_back(rhsFullShape[batchDim]);
@@ -480,7 +480,7 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
 
   // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> outDims;
-  for (size_t axis = 0; axis < inputShape.getRank(); axis++) {
+  for (size_t axis = 0; axis < inputShape.getRank(); ++axis) {
     // Get start/stop/step for this axis.
     Var inputDim = b.createVar(inputShape[axis]);
     int64_t step = steps[axis];
@@ -787,7 +787,7 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
-  for (size_t axis = 0; axis < inputRank - 2; axis++) {
+  for (size_t axis = 0; axis < inputRank - 2; ++axis) {
     Var inputSpatialDim = b.createVar(inputShape[isNCHW ? axis + 2 : axis + 1]);
     Var filterSpatialDim = isFCRS ? b.createVar(filterShape[axis + 2])
                                   : b.createVar(filterShape[axis]);
@@ -892,7 +892,7 @@ ShapeMaterializeResult materializeConvTransposeShape(
   };
 
   // Compute and collect output spatial dimensions;
-  for (size_t axis = 0; axis < inputRank - 2; axis++) {
+  for (size_t axis = 0; axis < inputRank - 2; ++axis) {
     Var inputSpatialDim = b.createVar(inputShape[isNCHW ? axis + 2 : axis + 1]);
     Var filterSpatialDim = b.createVar(filterShape[isCFRS ? axis + 2 : axis]);
     Var dilation = b.createVar(dilations[axis]);
@@ -941,7 +941,7 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
 
   // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
-  for (size_t axis = 0; axis < inputRank; axis++) {
+  for (size_t axis = 0; axis < inputRank; ++axis) {
     Var inputDim = b.createVar(inputShape[axis]);
     Var prePadding = b.createVar(paddings[2 * axis]);
     Var postPadding = b.createVar(paddings[2 * axis + 1]);
@@ -1004,7 +1004,7 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
-  for (size_t axis = 0; axis < inputRank - 2; axis++) {
+  for (size_t axis = 0; axis < inputRank - 2; ++axis) {
     Var inputSpatialDim = b.createVar(inputShape[axis + 1]);
     Var filterSpatialDim = b.createVar(filter[axis]);
     Var dilation = b.createVar(dilations[axis]);
@@ -1056,12 +1056,12 @@ ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
   //   output_shape := input_shape[:axis] + indices_shape + input_shape[axis+1:]
   SmallVector<TypedAttr> resDims;
   // input_shape[:axis]
-  for (int64_t idx = 0; idx < axis; idx++)
+  for (int64_t idx = 0; idx < axis; ++idx)
     resDims.push_back(inputShape[idx]);
   // indices_shape
   llvm::append_range(resDims, indicesShape.getValues());
   // input_shape[axis+1:]
-  for (size_t idx = axis + 1; idx < inputRank; idx++)
+  for (size_t idx = axis + 1; idx < inputRank; ++idx)
     resDims.push_back(inputShape[idx]);
 
   // Create and return output shape.
@@ -1115,13 +1115,13 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
   SmallVector<TypedAttr> resDims;
 
   // input_shape[:batch_dims]
-  for (int64_t idx = 0; idx < batchDims; idx++)
+  for (int64_t idx = 0; idx < batchDims; ++idx)
     resDims.push_back(inputShape[idx]);
   // indices_shape[batch_dims:-1]
   llvm::append_range(resDims,
                      indicesShape.getValues().slice(batchDims).drop_back());
   // input_shape[batch_dims + indices_shape[-1]:]
-  for (size_t idx = batchDims + idxSize; idx < inputRank; idx++)
+  for (size_t idx = batchDims + idxSize; idx < inputRank; ++idx)
     resDims.push_back(inputShape[idx]);
 
   // Create and return output shape.
@@ -1227,7 +1227,7 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
   // Check dimensions of input shapes.
-  for (size_t i = 0; i < inputRank; i++) {
+  for (size_t i = 0; i < inputRank; ++i) {
     Var inputDim = b.createVar(inputShape[i]);
     Var updatesDim = b.createVar(updatesShape[i]);
     Var indicesDim = b.createVar(indicesShape[i]);
@@ -1284,14 +1284,14 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
   }
 
   // Check dimensions of input shapes.
-  for (int64_t i = 0; i < indicesRank - 1; i++) {
+  for (int64_t i = 0; i < indicesRank - 1; ++i) {
     Var indicesDim = b.createVar(indicesShape[i]);
     Var updatesDim = b.createVar(updatesShape[i]);
     b.createAssert(
         indicesDim == updatesDim,
         "[scatter_nd] batch dimensions of indices and updates don't match");
   }
-  for (int64_t i = 0; i < inputRank - numSlicedDims; i++) {
+  for (int64_t i = 0; i < inputRank - numSlicedDims; ++i) {
     Var inputDim = b.createVar(inputShape[i + numSlicedDims]);
     Var updatesDim = b.createVar(updatesShape[i + indicesRank - 1]);
     b.createAssert(
@@ -1500,7 +1500,7 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
 
   // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> outDims;
-  for (size_t axis = 0; axis < inputRank; axis++) {
+  for (size_t axis = 0; axis < inputRank; ++axis) {
     Var inDim = b.createVar(inputShape[axis]);
     Var start = b.createVar(starts[axis]);
     Var stop = b.createVar(stops[axis]);
@@ -1575,7 +1575,7 @@ ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
 
   // Create output shape.
   SmallVector<ShapeAttr> outShapes;
-  for (size_t i = 0; i < splitSizes.getRank(); i++) {
+  for (size_t i = 0; i < splitSizes.getRank(); ++i) {
     SmallVector<TypedAttr> outDims(inputShape.getValues());
     outDims[axis] = splitSizes[i];
     ShapeAttr outputShape = b.getShapeAttr(outDims);
@@ -1639,7 +1639,7 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
 
   // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
-  for (size_t axis = 0; axis < inputRank; axis++) {
+  for (size_t axis = 0; axis < inputRank; ++axis) {
     Var inputDim = b.createVar(inputShape[axis]);
     Var repeat = b.createVar(repeats[axis]);
     Var outputDim = inputDim * repeat;
@@ -1683,7 +1683,7 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
 
   // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
-  for (size_t axis = 0; axis < inputRank; axis++) {
+  for (size_t axis = 0; axis < inputRank; ++axis) {
     // Retrieve and validate the constant permutation index.
     int64_t perm = permInts[axis];
     if (perm < 0 || inputRank <= static_cast<size_t>(perm)) {

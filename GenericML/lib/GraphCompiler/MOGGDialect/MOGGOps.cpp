@@ -1504,7 +1504,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   // 8. The original kernel may be setting some parameters (shape functions do
   // just that). These will returned from the mogg.generic.compiled.region.
-  for (size_t i = 0; i < getOutputParamDecls().size(); i++)
+  for (size_t i = 0; i < getOutputParamDecls().size(); ++i)
     newKernelResTypes.push_back(getOutputParamDecls()[i].getType());
 
   auto newKernel = MOGG::GenericCompiledRegionOp::create(
@@ -2063,7 +2063,7 @@ void ExpKernelOp::insertInputsAt(unsigned idx, ValueRange vals) {
 void ExpKernelOp::eraseInputsAt(unsigned idx, size_t len) {
   getInputsMutable().erase(idx, len);
 
-  for (unsigned i = 0; i < len; i++)
+  for (unsigned i = 0; i < len; ++i)
     getExecBody().eraseArgument(idx);
 }
 
@@ -2567,7 +2567,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 
   DenseSet<int> returnAllocIndicesSet;
 
-  for (unsigned int i = 0; i < getNumResults(); i++) {
+  for (unsigned int i = 0; i < getNumResults(); ++i) {
     if (!oldOutputs || i >= oldOutputs->getNumResults())
       returnAllocIndicesSet.insert(i);
     if (!inplaceAllocIndicesSet.contains(i)) {
@@ -2656,7 +2656,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   newKernelResTypes.insert(newKernelResTypes.end(),
                            inPlaceMGPOutputsTypes.begin(),
                            inPlaceMGPOutputsTypes.end());
-  for (size_t i = 0; i < outParamNum; i++) {
+  for (size_t i = 0; i < outParamNum; ++i) {
     newKernelResTypes.push_back(getOutputParamDecls()[i].getType());
     StringRef name = getOutputParamDecls()[i].getName();
     outParamNameToIdx[name] = i;
@@ -3198,7 +3198,7 @@ void KernelOp::disableInputFusionOnInput(size_t index) {
         lambdaNames.push_back(attr);
       }
 
-      i++;
+      ++i;
     }
 
     // Update the attribute.
@@ -3236,7 +3236,7 @@ void KernelOp::removeOperandAtIndex(size_t index) {
     for (StringAttr name : inputInterfaces->getAsRange<StringAttr>()) {
       if (i != index)
         lambdaNames.push_back(name);
-      i++;
+      ++i;
     }
     setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
   }

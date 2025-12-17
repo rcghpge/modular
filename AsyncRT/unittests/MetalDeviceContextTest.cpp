@@ -191,7 +191,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   float *in1Host = new float[length];
   float *outHost = new float[length];
 
-  for (size_t i = 0; i < length; i++) {
+  for (size_t i = 0; i < length; ++i) {
     in0Host[i] = static_cast<float>(i);
     in1Host[i] = 2.0f;
     outHost[i] = 0.0f;
@@ -224,7 +224,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   EXPECT_NO_ERR(ctx_->synchronize());
 
   // Verify results
-  for (size_t i = 0; i < std::min(size_t(5), length); i++) {
+  for (size_t i = 0; i < std::min(size_t(5), length); ++i) {
     float expected = static_cast<float>(i) + 2.0f;
     EXPECT_FLOAT_EQ(outHost[i], expected)
         << "Mismatch at index " << i << ": expected " << expected << ", got "
@@ -297,7 +297,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
     std::vector<float> in1Host(length);
     std::vector<float> outHost(length);
 
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; ++i) {
       in0Host[i] = static_cast<float>(i);
       in1Host[i] = 2.0f;
       outHost[i] = 0.0f;
@@ -333,7 +333,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
 
     // Verify results for a sample of elements
     // check all elements
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; ++i) {
       float expected = static_cast<float>(i) + 2.0f;
       EXPECT_FLOAT_EQ(outHost[i], expected)
           << "Mismatch at index " << i << " for size " << length
@@ -391,7 +391,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
 
     double totalExecutionTime = 0.0;
 
-    for (int run = 0; run < numRuns; run++) {
+    for (int run = 0; run < numRuns; ++run) {
       // Create device buffers
       ErrorOr<DeviceBufferRef> in0DeviceOr =
           ctx_->createBuffer(length * elemSize);
@@ -416,7 +416,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       std::vector<float> in1Host(length);
       std::vector<float> outHost(length);
 
-      for (size_t i = 0; i < length; i++) {
+      for (size_t i = 0; i < length; ++i) {
         in0Host[i] = static_cast<float>(i);
         in1Host[i] = 2.0f;
         outHost[i] = 0.0f;
@@ -459,7 +459,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       // Verify correctness for first run
       if (run == 0) {
         // check all elements
-        for (size_t i = 0; i < length; i++) {
+        for (size_t i = 0; i < length; ++i) {
           float expected = static_cast<float>(i) + 2.0f;
           EXPECT_FLOAT_EQ(outHost[i], expected)
               << "Mismatch at index " << i << " for size " << length;
@@ -540,7 +540,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
     std::vector<float> cpuResult(length);
     std::vector<float> gpuResult(length);
 
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; ++i) {
       in0Host[i] = static_cast<float>(i);
       in1Host[i] = 2.0f;
       cpuResult[i] = 0.0f;
@@ -549,12 +549,12 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
 
     // === CPU BENCHMARK ===
     double totalCpuTime = 0.0;
-    for (int run = 0; run < numRuns; run++) {
+    for (int run = 0; run < numRuns; ++run) {
       std::chrono::high_resolution_clock::time_point startTime =
           std::chrono::high_resolution_clock::now();
 
       // Simple CPU vector addition
-      for (size_t i = 0; i < length; i++) {
+      for (size_t i = 0; i < length; ++i) {
         cpuResult[i] = in0Host[i] + in1Host[i];
       }
 
@@ -569,7 +569,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
 
     // === GPU BENCHMARK ===
     double totalGpuTime = 0.0;
-    for (int run = 0; run < numRuns; run++) {
+    for (int run = 0; run < numRuns; ++run) {
       // Create device buffers
       ErrorOr<DeviceBufferRef> in0DeviceOr =
           ctx_->createBuffer(length * elemSize);
@@ -636,7 +636,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
     // === CORRECTNESS VERIFICATION ===
     // Verify both CPU and GPU produce the same results
     // check all elements
-    for (size_t i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; ++i) {
       float expected = static_cast<float>(i) + 2.0f;
       EXPECT_FLOAT_EQ(cpuResult[i], expected)
           << "CPU mismatch at index " << i << " for size " << length;

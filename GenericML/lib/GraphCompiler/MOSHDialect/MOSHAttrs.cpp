@@ -390,7 +390,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
   // we will initially add in reverse sorted order since it's easier
   // as bcasting rules follow from the innermost dimensions
   SmallVector<int64_t> answer;
-  for (size_t iter = 0; iter < beforeDims.size(); iter++) {
+  for (size_t iter = 0; iter < beforeDims.size(); ++iter) {
     int beforeI = beforeDims.size() - iter - 1;
     int bcastedI = bcastedDims.size() - iter - 1;
 
@@ -416,7 +416,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
 
   // add all the newly introduced dims too
   size_t extraDims = bcastedDims.size() - beforeDims.size();
-  for (size_t iter = 0; iter < extraDims; iter++) {
+  for (size_t iter = 0; iter < extraDims; ++iter) {
     // remember to return in reverse order
     answer.push_back(extraDims - 1 - iter);
   }

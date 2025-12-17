@@ -156,7 +156,7 @@ public:
                    "allow this behaviour.");
     }
     auto dataStart = data->getBufferStart();
-    for (size_t i = 0, n = data->getBufferSize() / stride; i < n; i++) {
+    for (size_t i = 0, n = data->getBufferSize() / stride; i < n; ++i) {
       auto tensor =
           Tensor::createOwned({spec, spec.getEltType()}, runtime, alignment);
       auto tensorBuf = static_cast<char *>(tensor.getMutableBuffer());
@@ -257,7 +257,7 @@ M::createTensorGenerators(InputGenerationKind inputGenKind,
   }
 
   SmallVector<ITensorGeneratorPtr, 3> inputTensorGenerators;
-  for (size_t i = 0; i < numInputs; i++) {
+  for (size_t i = 0; i < numInputs; ++i) {
     const auto &modelSpec = inputShapeSpecs[i];
     auto generatorOrError =
         createTensorGenerator(i, inputGenKind, inputDataSpecs, modelSpec,

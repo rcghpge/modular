@@ -193,18 +193,18 @@ TEST_F(BufferCacheTest, MultipleAllocations) {
   std::vector<void *> ptrs;
 
   // Allocate multiple blocks
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(64, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Verify all pointers are different and aligned
-  for (size_t i = 0; i < ptrs.size(); i++) {
+  for (size_t i = 0; i < ptrs.size(); ++i) {
     uintptr_t addr = reinterpret_cast<uintptr_t>(ptrs[i]);
     EXPECT_EQ(addr % allocAlignment, 0);
 
-    for (size_t j = i + 1; j < ptrs.size(); j++) {
+    for (size_t j = i + 1; j < ptrs.size(); ++j) {
       EXPECT_NE(ptrs[i], ptrs[j]);
     }
   }
@@ -306,7 +306,7 @@ TEST_F(BufferCacheTest, FreeListMerging) {
 
   // Allocate several consecutive blocks
   std::vector<void *> ptrs;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocAlignment, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
@@ -351,7 +351,7 @@ TEST_F(BufferCacheTest, BlockSplittingAndReuse) {
   // Allocate smaller blocks that should split the large block
   std::vector<void *> small_ptrs;
   size_t smallSize = allocAlignment;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(smallSize, mode));
     EXPECT_NE(ptr, nullptr);
     small_ptrs.push_back(ptr);
@@ -426,7 +426,7 @@ TEST_F(BufferCacheTest, FragmentationHandling) {
   std::vector<void *> ptrs;
 
   // Allocate 10 blocks
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocAlignment, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
@@ -439,7 +439,7 @@ TEST_F(BufferCacheTest, FragmentationHandling) {
 
   // Try to allocate blocks that fit in the gaps
   std::vector<void *> gap_ptrs;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocAlignment / 2, mode));
     EXPECT_NE(ptr, nullptr);
     gap_ptrs.push_back(ptr);
@@ -503,7 +503,7 @@ TEST_F(BufferCacheTest, ChunkAllocationBehavior) {
   std::vector<void *> ptrs;
 
   // Allocate many blocks to potentially trigger multiple chunk allocations
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < 50; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
@@ -600,12 +600,12 @@ TEST_F(BufferCacheTest, MemoryPattern) {
 
   // Write a pattern to the allocated memory
   uint8_t *bytes = static_cast<uint8_t *>(ptr);
-  for (int i = 0; i < 1024; i++) {
+  for (int i = 0; i < 1024; ++i) {
     bytes[i] = static_cast<uint8_t>(i & 0xFF);
   }
 
   // Read back and verify pattern
-  for (int i = 0; i < 1024; i++) {
+  for (int i = 0; i < 1024; ++i) {
     EXPECT_EQ(bytes[i], static_cast<uint8_t>(i & 0xFF));
   }
 
@@ -619,11 +619,11 @@ TEST_F(BufferCacheTest, StressTestAllocation) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Stress test with rapid allocation/deallocation cycles
-  for (int cycle = 0; cycle < 10; cycle++) {
+  for (int cycle = 0; cycle < 10; ++cycle) {
     std::vector<void *> ptrs;
 
     // Allocate many blocks
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 20; ++i) {
       size_t size = 64 + (i * 32); // Varying sizes
       ASSIGN_NO_ERR(void *, ptr, freeList.allocate(size, mode));
       EXPECT_NE(ptr, nullptr);
@@ -703,7 +703,7 @@ TEST_F(BufferCacheTest, SelfCheckValidation) {
   std::vector<void *> ptrs;
 
   // Perform operations that should trigger self-check validations
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(128 + i * 64, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
@@ -766,7 +766,7 @@ TEST_F(BufferCacheTest, MemoryLeakDetection) {
     std::vector<void *> ptrs;
 
     // Allocate multiple blocks
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 20; ++i) {
       ASSIGN_NO_ERR(void *, ptr, freeList.allocate(256 + i * 32, mode));
       EXPECT_NE(ptr, nullptr);
       ptrs.push_back(ptr);
@@ -794,7 +794,7 @@ TEST_F(BufferCacheTest, DescriptorManagement) {
   std::vector<void *> cycle2_ptrs;
 
   // First allocation cycle
-  for (int i = 0; i < 15; i++) {
+  for (int i = 0; i < 15; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(128, mode));
     EXPECT_NE(ptr, nullptr);
     cycle1_ptrs.push_back(ptr);
@@ -806,7 +806,7 @@ TEST_F(BufferCacheTest, DescriptorManagement) {
   }
 
   // Second allocation cycle - should reuse descriptors
-  for (int i = 0; i < 15; i++) {
+  for (int i = 0; i < 15; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(256, mode));
     EXPECT_NE(ptr, nullptr);
     cycle2_ptrs.push_back(ptr);
@@ -835,7 +835,7 @@ TEST_F(BufferCacheTest, MaxSizeHandling) {
   std::vector<void *> ptrs;
 
   // Try to allocate many blocks to approach cache limits
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < 100; ++i) {
     auto result = freeList.allocate(1024, mode);
     if (result.isError()) {
       // Expected to eventually hit limits or fallback to device allocation
@@ -859,7 +859,7 @@ TEST_F(BufferCacheTest, FreeListHierarchy) {
   std::vector<DeviceBufferRef> buffers;
 
   // Allocate through DeviceContext to exercise hierarchical free lists
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; ++i) {
     ASSIGN_NO_ERR(DeviceBufferRef, buffer,
                   ctx->enqueueCreateBuffer(512 + i * 64));
     EXPECT_NE(buffer->ptr(), nullptr);
@@ -878,7 +878,7 @@ TEST_F(BufferCacheTest, MemoryPressure) {
   std::vector<void *> large_ptrs;
 
   // Allocate increasingly large blocks to simulate memory pressure
-  for (int i = 1; i <= 10; i++) {
+  for (int i = 1; i <= 10; ++i) {
     size_t size = i * 8 * 1024; // 8KB, 16KB, 24KB, etc.
     auto result = freeList.allocate(size, mode);
 
@@ -911,7 +911,7 @@ TEST_F(BufferCacheTest, DeviceContextIntegration) {
   // Test buffer creation through DeviceContext
   std::vector<DeviceBufferRef> buffers;
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; ++i) {
     size_t size = 1024 + i * 512;
     ASSIGN_NO_ERR(DeviceBufferRef, buffer, ctx->enqueueCreateBuffer(size));
 
@@ -971,7 +971,7 @@ TEST_F(BufferCacheTest, MemoryTransfers) {
 
   // Initialize host buffer with test pattern
   uint8_t *hostPtr = static_cast<uint8_t *>(hostBuffer->ptr());
-  for (int i = 0; i < 2048; i++) {
+  for (int i = 0; i < 2048; ++i) {
     hostPtr[i] = static_cast<uint8_t>(i & 0xFF);
   }
 
@@ -987,7 +987,7 @@ TEST_F(BufferCacheTest, MemoryTransfers) {
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Verify the transferred data
-  for (int i = 0; i < 2048; i++) {
+  for (int i = 0; i < 2048; ++i) {
     EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
   }
 }
@@ -1001,7 +1001,7 @@ TEST_F(BufferCacheTest, MultipleContexts) {
   std::vector<DeviceBufferRef> ctx1_buffers;
   std::vector<DeviceBufferRef> ctx2_buffers;
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; ++i) {
     ASSIGN_NO_ERR(DeviceBufferRef, buffer1, ctx1->enqueueCreateBuffer(1024));
     ASSIGN_NO_ERR(DeviceBufferRef, buffer2, ctx2->enqueueCreateBuffer(1024));
 
@@ -1014,7 +1014,7 @@ TEST_F(BufferCacheTest, MultipleContexts) {
 
   // Verify resource isolation - buffers from different contexts should be
   // independent
-  for (size_t i = 0; i < ctx1_buffers.size(); i++) {
+  for (size_t i = 0; i < ctx1_buffers.size(); ++i) {
     EXPECT_NE(ctx1_buffers[i]->ptr(), ctx2_buffers[i]->ptr());
   }
 
@@ -1038,15 +1038,15 @@ TEST_F(BufferCacheTest, ConcurrentAllocations) {
   std::atomic<int> successCount{0};
 
   // Launch multiple threads doing concurrent allocations
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&, t]() {
-      for (int i = 0; i < allocationsPerThread; i++) {
+      for (int i = 0; i < allocationsPerThread; ++i) {
         auto result = freeList.allocate(256 + i * 64, mode);
         if (!result.isError()) {
           void *ptr = result.takeValue();
           if (ptr != nullptr) {
             threadPtrs[t].push_back(ptr);
-            successCount++;
+            ++successCount;
           }
         }
       }
@@ -1062,7 +1062,7 @@ TEST_F(BufferCacheTest, ConcurrentAllocations) {
   EXPECT_GT(successCount.load(), 0);
 
   // Free all allocated blocks
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     for (void *ptr : threadPtrs[t]) {
       EXPECT_NO_ERR(freeList.free(ptr));
     }
@@ -1078,7 +1078,7 @@ TEST_F(BufferCacheTest, ConcurrentFrees) {
 
   // First, allocate blocks sequentially
   std::vector<void *> ptrs;
-  for (int i = 0; i < numBlocks; i++) {
+  for (int i = 0; i < numBlocks; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(512, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
@@ -1089,12 +1089,12 @@ TEST_F(BufferCacheTest, ConcurrentFrees) {
   std::vector<std::thread> threads;
   std::atomic<int> freeCount{0};
 
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&, t]() {
       for (int i = t; i < numBlocks; i += numThreads) {
         auto result = freeList.free(ptrs[i]);
         if (!result.isError()) {
-          freeCount++;
+          ++freeCount;
         }
       }
     });
@@ -1122,11 +1122,11 @@ TEST_F(BufferCacheTest, MixedConcurrentOperations) {
   std::vector<void *> sharedPtrs;
 
   // Launch threads doing mixed alloc/free operations
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&]() {
       std::vector<void *> localPtrs;
 
-      for (int i = 0; i < operationsPerThread; i++) {
+      for (int i = 0; i < operationsPerThread; ++i) {
         if (i % 3 == 0 && !localPtrs.empty()) {
           // Free a local pointer
           void *ptr = localPtrs.back();
@@ -1197,7 +1197,7 @@ TEST_F(BufferCacheTest, AllocationSpeed) {
   auto startCached = std::chrono::high_resolution_clock::now();
   std::vector<void *> cachedPtrs;
 
-  for (int i = 0; i < numAllocations; i++) {
+  for (int i = 0; i < numAllocations; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocSize, mode));
     cachedPtrs.push_back(ptr);
   }
@@ -1215,7 +1215,7 @@ TEST_F(BufferCacheTest, AllocationSpeed) {
   auto startDirect = std::chrono::high_resolution_clock::now();
   std::vector<DeviceBufferRef> directBuffers;
 
-  for (int i = 0; i < numAllocations; i++) {
+  for (int i = 0; i < numAllocations; ++i) {
     ASSIGN_NO_ERR(DeviceBufferRef, buffer, ctx->enqueueCreateBuffer(allocSize));
     directBuffers.push_back(buffer);
   }
@@ -1316,7 +1316,7 @@ TEST_F(BufferCacheTest, CacheEfficiency) {
   std::mt19937 rng(12345);
 
   // Simulate realistic allocation/free patterns
-  for (int i = 0; i < totalOperations; i++) {
+  for (int i = 0; i < totalOperations; ++i) {
     bool shouldAllocate =
         activePtrs.size() < 20 || (rng() % 100) < 60; // 60% chance to allocate
 
@@ -1331,9 +1331,9 @@ TEST_F(BufferCacheTest, CacheEfficiency) {
 
         // Heuristic: smaller allocations more likely to be cache hits
         if (size <= 512) {
-          cacheHits++;
+          ++cacheHits;
         } else {
-          cacheMisses++;
+          ++cacheMisses;
         }
       }
     } else if (!activePtrs.empty()) {
@@ -1407,11 +1407,11 @@ TEST_F(BufferCacheTest, ScalingBehavior) {
     int successfulOps = 0;
 
     // Perform allocation operations until we hit limits
-    for (int i = 0; i < config.expectedOperations * 2; i++) {
+    for (int i = 0; i < config.expectedOperations * 2; ++i) {
       auto result = freeList.allocate(512 + (i % 4) * 256, mode);
       if (!result.isError()) {
         ptrs.push_back(result.takeValue());
-        successfulOps++;
+        ++successfulOps;
       } else {
         // Hit memory limits, stop allocating
         break;
@@ -1468,7 +1468,7 @@ TEST_F(BufferCacheTest, HostBufferCacheBasicOperations) {
   }
 
   // All host buffers should remain accessible
-  for (size_t i = 0; i < hostBuffers.size(); i++) {
+  for (size_t i = 0; i < hostBuffers.size(); ++i) {
     uint8_t *bytes = static_cast<uint8_t *>(hostBuffers[i]->ptr());
     EXPECT_EQ(bytes[0], 0xAB);
     EXPECT_EQ(bytes[sizes[i] - 1], 0xCD);
@@ -1482,14 +1482,14 @@ TEST_F(BufferCacheTest, HostBufferCacheAllocationPatterns) {
   std::vector<DeviceBufferRef> hostBuffers;
 
   // Allocate different sizes
-  for (int i = 1; i <= 8; i++) {
+  for (int i = 1; i <= 8; ++i) {
     size_t size = i * 512; // 512, 1024, 1536, ..., 4096
     ASSIGN_NO_ERR(DeviceBufferRef, hostBuffer, ctx->createHostBuffer(size));
     EXPECT_NE(hostBuffer->ptr(), nullptr);
 
     // Fill with pattern to verify accessibility
     uint8_t *bytes = static_cast<uint8_t *>(hostBuffer->ptr());
-    for (size_t j = 0; j < size; j++) {
+    for (size_t j = 0; j < size; ++j) {
       bytes[j] = static_cast<uint8_t>((i + j) & 0xFF);
     }
 
@@ -1497,11 +1497,11 @@ TEST_F(BufferCacheTest, HostBufferCacheAllocationPatterns) {
   }
 
   // Verify all patterns are intact (tests memory isolation)
-  for (size_t i = 0; i < hostBuffers.size(); i++) {
+  for (size_t i = 0; i < hostBuffers.size(); ++i) {
     uint8_t *bytes = static_cast<uint8_t *>(hostBuffers[i]->ptr());
     size_t size = hostBuffers[i]->byteSize();
 
-    for (size_t j = 0; j < std::min(size, size_t(64)); j++) {
+    for (size_t j = 0; j < std::min(size, size_t(64)); ++j) {
       EXPECT_EQ(bytes[j], static_cast<uint8_t>((i + 1 + j) & 0xFF));
     }
   }
@@ -1557,9 +1557,9 @@ TEST_F(BufferCacheTest, HostBufferCacheThreadSafety) {
   std::atomic<int> successCount{0};
 
   // Launch threads creating host buffers concurrently
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&, t]() {
-      for (int i = 0; i < buffersPerThread; i++) {
+      for (int i = 0; i < buffersPerThread; ++i) {
         auto result = ctx->createHostBuffer(256 + i * 128);
         if (!result.isError()) {
           DeviceBufferRef buffer = result.takeValue();
@@ -1569,7 +1569,7 @@ TEST_F(BufferCacheTest, HostBufferCacheThreadSafety) {
             bytes[0] = static_cast<uint8_t>(t);
 
             threadBuffers[t].push_back(buffer);
-            successCount++;
+            ++successCount;
           }
         }
       }
@@ -1585,7 +1585,7 @@ TEST_F(BufferCacheTest, HostBufferCacheThreadSafety) {
   EXPECT_GT(successCount.load(), 0);
 
   // Verify memory contents show proper isolation
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     for (const auto &buffer : threadBuffers[t]) {
       uint8_t *bytes = static_cast<uint8_t *>(buffer->ptr());
       EXPECT_EQ(bytes[0], static_cast<uint8_t>(t));
@@ -1618,7 +1618,7 @@ TEST_F(BufferCacheTest, HostBufferCacheConfiguration) {
 
     // Test multiple allocations with this configuration
     std::vector<DeviceBufferRef> buffers;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; ++i) {
       ASSIGN_NO_ERR(DeviceBufferRef, buffer,
                     ctx->createHostBuffer(1024 * (i + 1)));
       EXPECT_NE(buffer->ptr(), nullptr);
@@ -1656,18 +1656,18 @@ TEST_F(BufferCacheTest, HostBufferCacheStressTesting) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Stress test with rapid allocation/deallocation cycles
-  for (int cycle = 0; cycle < 3; cycle++) {
+  for (int cycle = 0; cycle < 3; ++cycle) {
     std::vector<DeviceBufferRef> buffers;
 
     // Allocate many host buffers
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 12; ++i) {
       size_t size = 256 + (i * 128); // Varying sizes
       ASSIGN_NO_ERR(DeviceBufferRef, buffer, ctx->createHostBuffer(size));
       EXPECT_NE(buffer->ptr(), nullptr);
 
       // Write pattern to verify memory accessibility
       uint8_t *bytes = static_cast<uint8_t *>(buffer->ptr());
-      for (size_t j = 0; j < std::min(size, size_t(32)); j++) {
+      for (size_t j = 0; j < std::min(size, size_t(32)); ++j) {
         bytes[j] = static_cast<uint8_t>((cycle + j) & 0xFF);
       }
 
@@ -1675,10 +1675,10 @@ TEST_F(BufferCacheTest, HostBufferCacheStressTesting) {
     }
 
     // Verify patterns are intact before buffers go out of scope
-    for (size_t i = 0; i < buffers.size(); i++) {
+    for (size_t i = 0; i < buffers.size(); ++i) {
       uint8_t *bytes = static_cast<uint8_t *>(buffers[i]->ptr());
       // Verify at least the first few bytes to confirm accessibility
-      for (int j = 0; j < 4; j++) {
+      for (int j = 0; j < 4; ++j) {
         EXPECT_EQ(bytes[j], static_cast<uint8_t>((cycle + j) & 0xFF));
       }
     }
@@ -1700,12 +1700,12 @@ TEST_F(BufferCacheTest, HostBufferCacheIntegrationWithDeviceContext) {
   uint8_t *hostPtr = static_cast<uint8_t *>(hostBuffer->ptr());
 
   // Write test pattern
-  for (int i = 0; i < 4096; i++) {
+  for (int i = 0; i < 4096; ++i) {
     hostPtr[i] = static_cast<uint8_t>(i & 0xFF);
   }
 
   // Read back and verify
-  for (int i = 0; i < 4096; i++) {
+  for (int i = 0; i < 4096; ++i) {
     EXPECT_EQ(hostPtr[i], static_cast<uint8_t>(i & 0xFF));
   }
 
@@ -1719,7 +1719,7 @@ TEST_F(BufferCacheTest, HostBufferCacheIntegrationWithDeviceContext) {
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Verify the data made the round trip correctly
-  for (int i = 0; i < 4096; i++) {
+  for (int i = 0; i < 4096; ++i) {
     EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
   }
 }
@@ -1752,7 +1752,7 @@ TEST_F(BufferCacheTest, GetMemoryInfoAccuracy) {
   std::vector<void *> ptrs;
 
   // Allocate some blocks
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);

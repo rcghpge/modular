@@ -286,7 +286,7 @@ struct ConvertBatchMatmulToMatmulPattern
 
       SmallVector<int64_t> &transposePerm = maybeInts.value();
       int64_t permSize = static_cast<int64_t>(transposePerm.size());
-      for (int64_t i = 0; i < permSize; i++) {
+      for (int64_t i = 0; i < permSize; ++i) {
         if (i < permSize - 2 && transposePerm[i] != i)
           return rewriter.notifyMatchFailure(
               transposeOp, "Transpose affects more than matmul dims.");
@@ -405,7 +405,7 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
     // Verifier ensures rank >= 3, so requiredOneDims >= 1
     auto requiredOneDims = rank - 2;
 
-    for (size_t i = 0, e = (requiredOneDims); i < e; i++)
+    for (size_t i = 0, e = (requiredOneDims); i < e; ++i)
       if ((aType.getIntDim(i) != 1) || (bType.getIntDim(i) != 1))
         return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -414,7 +414,7 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
     SmallVector<TypedAttr> aShapeDims;
     SmallVector<TypedAttr> bShapeDims;
     SmallVector<TypedAttr> resShapeDims;
-    for (auto i = requiredOneDims; i < rank; i++) {
+    for (auto i = requiredOneDims; i < rank; ++i) {
       aShapeDims.push_back(aType.getDim(i));
       bShapeDims.push_back(bType.getDim(i));
       resShapeDims.push_back(resTy.getDim(i));
@@ -790,7 +790,7 @@ struct GathersToSplitPattern
 
     // Construct split
     SmallVector<Type> resultTypes;
-    for (int64_t idx = 0; idx < inputAxis0Dim; idx++)
+    for (int64_t idx = 0; idx < inputAxis0Dim; ++idx)
       resultTypes.push_back(idxToGather[idx].getType());
 
     // Insert gather and new constants before dominant gather op; the former is
@@ -1433,7 +1433,7 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
           "Original shape of broadcasted operand does not have smallest rank.");
 
     // Check trailing dims of `input`, `reshape` and `broadcast` match
-    for (size_t i = 0; i < smallestRank; i++) {
+    for (size_t i = 0; i < smallestRank; ++i) {
       TypedAttr reshapedTensorDim =
           reshapedTensorTy.getDim(reshapedTensorTy.getRank() - i - 1);
       TypedAttr broadcastTensorDim =
@@ -1987,7 +1987,7 @@ struct SinkSqueezeLikeReshapeThroughTranspose
           op, "Transpose permutation is not produced by a constant op");
 
     SmallVector<int64_t> permVec(maybePermVec.value());
-    for (int64_t i = 0, size = permVec.size(); i < size; i++) {
+    for (int64_t i = 0, size = permVec.size(); i < size; ++i) {
       if (permVec[i] >= squeezeIdx)
         permVec[i] = permVec[i] + 1;
     }
@@ -2054,7 +2054,7 @@ struct RemoveExtraneousPaddingReshapeWithBroadcast
 
     // Check all dimensions are the same same for the reshape except for the
     // padded ones.
-    for (int64_t dimOutput = 0; dimOutput < outputRank; dimOutput++) {
+    for (int64_t dimOutput = 0; dimOutput < outputRank; ++dimOutput) {
       // If negative, means not part of original dimensions
       int64_t dimInput = dimOutput - outputRank + inputRank;
 
@@ -2541,7 +2541,7 @@ struct SplitToSlicePattern
           start.push_back(startVal);
           stop.push_back(startVal + splitSizes[splitIndex]);
           startVal += splitSizes[splitIndex];
-          splitIndex++;
+          ++splitIndex;
         } else {
           start.push_back(0);
           stop.push_back(std::numeric_limits<int64_t>::max());
@@ -3390,7 +3390,7 @@ struct SinkBroadcastsThroughReduction
       }
       if (bcastedDimIndex > reductionAxis)
         break;
-      numBeforeAxis++;
+      ++numBeforeAxis;
     }
 
     // Now we know we are reducing along a non-broadcasted axis, we can elide
@@ -3463,7 +3463,7 @@ struct SinkBroadcastsThroughElemwise
 
     // Set the operands to inputs broadcast to the common shape
     rewriter.setInsertionPoint(clonedOp);
-    for (size_t i = 0; i < op->getNumOperands(); i++) {
+    for (size_t i = 0; i < op->getNumOperands(); ++i) {
       auto oldBcastOp =
           op->getOperand(i).template getDefiningOp<Static::BroadcastToOp>();
       TensorType targetType = oldBcastOp.getType().cloneWith(commonBcastShape);

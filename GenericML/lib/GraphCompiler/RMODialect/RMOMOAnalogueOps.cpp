@@ -65,7 +65,7 @@ getRankedParamTensorType(int64_t rank, DType dtype, MO::GraphOp graphOp,
                          SmallVectorImpl<KGEN::ParamDeclAttr> &newParamDecls,
                          DeviceRefAttr deviceRef) {
   SmallVector<TypedAttr> newShape;
-  for (int64_t i = 0; i < rank; i++)
+  for (int64_t i = 0; i < rank; ++i)
     newShape.push_back(createDynamicDimensionType(graphOp, newParamDecls));
   TensorType outputTy =
       TensorType::get(graphOp->getContext(), newShape, dtype, deviceRef);
@@ -127,7 +127,7 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
     // Otherwise both are parameters, just favor the first
     return ty1.getDim(index);
   };
-  for (size_t i = 0, e = ty1.getRank(); i < e; i++)
+  for (size_t i = 0, e = ty1.getRank(); i < e; ++i)
     newDims.push_back(refineDim(i));
 
   return TensorType::get(ty1.getContext(), newDims, dtype,
@@ -147,7 +147,7 @@ SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
   SmallVector<Value> valuesNoUnknowns = inputValues;
 
   // Replace values with those rebound expressions
-  for (int64_t i = 0, boundI = inputValues.size(); i < boundI; i++) {
+  for (int64_t i = 0, boundI = inputValues.size(); i < boundI; ++i) {
     auto curTensor = dyn_cast<TensorValue>(inputValues[i]);
 
     // not a tensor, no need to modify as no `?`
@@ -167,7 +167,7 @@ SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
                                                    curTensor, newParamDecls);
     } else {
       SmallVector<TypedAttr> dims(curTensor.getType().getDims());
-      for (int64_t j = 0, boundJ = dims.size(); j < boundJ; j++) {
+      for (int64_t j = 0, boundJ = dims.size(); j < boundJ; ++j) {
         TypedAttr curDim = dims[j];
         if (TensorType::isUnknownDimParam(curDim)) {
           curDim = createDynamicDimensionType(graphOp, newParamDecls);

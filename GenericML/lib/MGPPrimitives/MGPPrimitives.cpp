@@ -530,7 +530,7 @@ static void mgp_buffer_plan(
       // alignment and emplace the output
       results[i].copy().emplace<size_t>(bestBlock->offset);
 
-      numReused++;
+      ++numReused;
 
       // Update lifetime of memory block
       bestBlock->minPre = std::min(bestBlock->minPre, minPre[i]);

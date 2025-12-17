@@ -1519,7 +1519,7 @@ public:
       return masks[0];
 
     TensorValue mask = masks[0];
-    for (size_t i = 1; i < masks.size(); i++) {
+    for (size_t i = 1; i < masks.size(); ++i) {
       // statically cast incoming mask to the current shape
       // note this is always assumed to be safe because of `allowUnsafeBCast`
       TensorValue otherMask = masks[i];

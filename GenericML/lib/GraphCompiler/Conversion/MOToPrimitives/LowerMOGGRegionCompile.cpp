@@ -160,7 +160,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       moduleLoadChains.push_back(loadArchive.getResult());
       inChain.replaceAllUsesExcept(loadArchive.getResult(), loadArchive);
       loadKernels.erase();
-      deviceModuleIndex++;
+      ++deviceModuleIndex;
     }
 
     // Remove the placeholder chain.

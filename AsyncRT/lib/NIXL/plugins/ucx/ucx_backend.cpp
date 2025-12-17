@@ -424,7 +424,7 @@ protected:
     bool timeout = true;
     bool pthr_stop = false;
     while (!pthr_stop) {
-      for (size_t i = 0; i < pollFds_.size() - 1; i++) {
+      for (size_t i = 0; i < pollFds_.size() - 1; ++i) {
         if (!(pollFds_[i].revents & POLLIN) && !timeout)
           continue;
         pollFds_[i].revents = 0;
@@ -545,7 +545,7 @@ nixlUcxEngine::nixlUcxEngine(const nixlBackendInitParams &init_params)
       devs, sizeof(nixlUcxIntReq), _internalRequestInit, _internalRequestFini,
       init_params.enableProgTh, numWorkers, init_params.syncMode);
 
-  for (size_t i = 0; i < numWorkers; i++) {
+  for (size_t i = 0; i < numWorkers; ++i) {
     auto workerOrError = nixlUcxWorker::create(*uc, errHandlingMode);
     if (workerOrError.isError()) {
       NIXL_ERROR << "Failed to create UCX worker " << i << ": "
@@ -679,7 +679,7 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
   bool error = false;
   nixl_status_t ret = nixl_status_t::NIXL_SUCCESS;
   std::vector<nixlUcxReq> reqs;
-  for (size_t i = 0; i < uws.size(); i++) {
+  for (size_t i = 0; i < uws.size(); ++i) {
     reqs.emplace_back();
     ret = search->second->getEp(i).sendAm(
         to_underlying(UcxCallbackOp::CONN_CHECK), nullptr, 0,
@@ -693,7 +693,7 @@ nixl_status_t nixlUcxEngine::connect(const std::string &remote_agent) {
 
   // wait for AM to send
   ret = nixl_status_t::NIXL_IN_PROG;
-  for (size_t i = 0; i < reqs.size(); i++)
+  for (size_t i = 0; i < reqs.size(); ++i)
     while (ret == nixl_status_t::NIXL_IN_PROG)
       ret = getWorker(i)->test(reqs[i]);
 
@@ -714,7 +714,7 @@ nixl_status_t nixlUcxEngine::disconnect(const std::string &remote_agent) {
     }
 
     nixl_status_t ret = nixl_status_t::NIXL_SUCCESS;
-    for (size_t i = 0; i < uws.size(); i++) {
+    for (size_t i = 0; i < uws.size(); ++i) {
       if (search->second->getEp(i).checkTxState() ==
           nixl_status_t::NIXL_SUCCESS) {
         nixlUcxReq req;
@@ -855,7 +855,7 @@ nixl_status_t nixlUcxEngine::internalMDHelper(const blob_ref blob,
   std::string blobStr(static_cast<const char *>(blob.data), blob.size);
   nixlSerDes::_stringToBytes(addr.data(), blobStr, size);
 
-  for (size_t wid = 0; wid < uws.size(); wid++) {
+  for (size_t wid = 0; wid < uws.size(); ++wid) {
     nixl_status_t status = md->addRkey(md->conn->getEp(wid), addr.data());
     if (status != nixl_status_t::NIXL_SUCCESS) {
       return nixl_status_t::NIXL_ERR_BACKEND;
@@ -974,7 +974,7 @@ nixl_status_t nixlUcxEngine::postXfer(const nixl_xfer_op_t &operation,
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
   }
 
-  for (i = 0; i < lcnt; i++) {
+  for (i = 0; i < lcnt; ++i) {
     void *laddr = (void *)local[i].addr;
     size_t lsize = local[i].len;
     void *raddr = (void *)remote[i].addr;
@@ -1289,7 +1289,7 @@ nixlUcxThreadEngine::nixlUcxThreadEngine(
   }
   thread_ = threadOrError.takeValue();
 
-  for (size_t i = 0; i < num_workers; i++) {
+  for (size_t i = 0; i < num_workers; ++i) {
     if (thread_->addWorker(getWorkers()[i].get(), i).failed()) {
       NIXL_ERROR << "Failed to add worker " << i << " to progress thread";
       initErr = true;

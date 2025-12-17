@@ -891,7 +891,7 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
   std::vector<std::vector<char>> dramBuffers1(numThreads);
   std::vector<std::vector<char>> dramBuffers2(numThreads);
 
-  for (int i = 0; i < numThreads; i++) {
+  for (int i = 0; i < numThreads; ++i) {
     dramBuffers1[i].resize(bufferSize);
     dramBuffers2[i].resize(bufferSize);
 
@@ -913,7 +913,7 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
   std::vector<std::thread> threads;
   std::atomic<int> successCount{0};
 
-  for (int i = 0; i < numThreads; i++) {
+  for (int i = 0; i < numThreads; ++i) {
     threads.emplace_back([&, i]() {
       // Prepare transfer descriptors for this thread
       nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
@@ -954,7 +954,7 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
             // Verify the transfer
             if (std::memcmp(dramBuffers1[i].data(), dramBuffers2[i].data(),
                             transferSize) == 0) {
-              successCount++;
+              ++successCount;
             }
           }
 
@@ -975,7 +975,7 @@ TEST_F(NixlUcxIntegrationTest, MultiWorkerDramTransfer) {
       << "Success count: " << successCount << "/" << numThreads;
 
   // Additionally verify all destination buffers have correct data
-  for (int i = 0; i < numThreads; i++) {
+  for (int i = 0; i < numThreads; ++i) {
     ASSERT_EQ(std::memcmp(dramBuffers1[i].data(), dramBuffers2[i].data(),
                           transferSize),
               0)
@@ -1113,7 +1113,7 @@ TEST_F(NixlUcxIntegrationTest, SelfNotification) {
   const int numNotifications = 10;
   std::vector<std::string> sentMessages;
 
-  for (int i = 0; i < numNotifications; i++) {
+  for (int i = 0; i < numNotifications; ++i) {
     std::string msg = "self_notification_" + std::to_string(i);
     sentMessages.push_back(msg);
     ASSERT_SUCCESS(nixl1.agent->genNotif(nixl1.agentName, msg));
@@ -1227,7 +1227,7 @@ TEST_F(NixlUcxIntegrationTest, ListenerCommSize) {
   const size_t numBuffers = 1000;
   std::vector<std::vector<char>> buffers(numBuffers);
 
-  for (size_t i = 0; i < numBuffers; i++) {
+  for (size_t i = 0; i < numBuffers; ++i) {
     buffers[i].resize(bufferSize);
     std::fill(buffers[i].begin(), buffers[i].end(),
               static_cast<char>('A' + (i % 26)));
@@ -1317,14 +1317,14 @@ TEST_F(NixlUcxIntegrationTest, ConcurrentNotifications) {
   std::vector<std::thread> threads;
   std::atomic<int> successCount{0};
 
-  for (int threadId = 0; threadId < numThreads; threadId++) {
+  for (int threadId = 0; threadId < numThreads; ++threadId) {
     threads.emplace_back([&, threadId]() {
-      for (int i = 0; i < notifsPerThread; i++) {
+      for (int i = 0; i < notifsPerThread; ++i) {
         std::string msg =
             "thread" + std::to_string(threadId) + "_notif" + std::to_string(i);
         auto status = nixl1.agent->genNotif(nixl2.agentName, msg);
         if (status == nixl_status_t::NIXL_SUCCESS)
-          successCount++;
+          ++successCount;
       }
     });
   }
@@ -1418,7 +1418,7 @@ TEST_F(NixlUcxIntegrationTest, GetLocalPartialAndLoadRemote) {
   const size_t numBuffers = 5;
   std::vector<std::vector<char>> buffers1(numBuffers);
 
-  for (size_t i = 0; i < numBuffers; i++) {
+  for (size_t i = 0; i < numBuffers; ++i) {
     buffers1[i].resize(bufferSize);
     std::fill(buffers1[i].begin(), buffers1[i].end(), 'A' + i);
     nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
@@ -1449,7 +1449,7 @@ TEST_F(NixlUcxIntegrationTest, GetLocalPartialAndLoadRemote) {
 
   // Step 2: Get partial metadata for first 3 buffers only
   nixl_reg_dlist_t partialDescs(nixl_mem_t::DRAM_SEG);
-  for (size_t i = 0; i < 3; i++) {
+  for (size_t i = 0; i < 3; ++i) {
     partialDescs.addDesc(blobDescfromVector(buffers1[i], 0));
   }
 
@@ -1460,7 +1460,7 @@ TEST_F(NixlUcxIntegrationTest, GetLocalPartialAndLoadRemote) {
 
   // Verify only the first 3 buffers are available
   nixl_xfer_dlist_t checkDescs(nixl_mem_t::DRAM_SEG);
-  for (size_t i = 0; i < 3; i++) {
+  for (size_t i = 0; i < 3; ++i) {
     auto buf = llvm::ArrayRef{buffers1[i].data(), bufferSize};
     checkDescs.addDesc(basicDescfromArrayRef(buf, 0));
     ASSERT_SUCCESS(nixl2.agent->checkRemoteMD(nixl1.agentName, checkDescs));
@@ -1468,7 +1468,7 @@ TEST_F(NixlUcxIntegrationTest, GetLocalPartialAndLoadRemote) {
   }
 
   // Verify buffers 4 and 5 are NOT available
-  for (size_t i = 3; i < numBuffers; i++) {
+  for (size_t i = 3; i < numBuffers; ++i) {
     nixl_xfer_dlist_t missingDescs(nixl_mem_t::DRAM_SEG);
     auto buf = llvm::ArrayRef{buffers1[i].data(), bufferSize};
     missingDescs.addDesc(basicDescfromArrayRef(buf, 0));

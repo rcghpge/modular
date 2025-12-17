@@ -296,13 +296,13 @@ broadcastToCompatibleShape(SmallVector<MO::TensorValue> &values,
       rewriter, op->getLoc(), ValueRange{values[0]}, graphOp);
 
   SmallVector<MO::TensorValue> answer(values.size());
-  for (size_t i = 1; i < values.size(); i++) {
+  for (size_t i = 1; i < values.size(); ++i) {
     MO::TensorValue curShape = RMO::MOShapeOfOp::create(
         rewriter, op->getLoc(), ValueRange{values[i]}, graphOp);
     commonShape = RMO::MOBroadcastShapeOp::create(
         rewriter, op->getLoc(), ValueRange{commonShape, curShape}, graphOp);
   }
-  for (size_t i = 0; i < values.size(); i++) {
+  for (size_t i = 0; i < values.size(); ++i) {
     MO::TensorValue cur = values[i];
     cur = RMO::MOBroadcastToOp::create(rewriter, op->getLoc(),
                                        ValueRange{cur, commonShape}, graphOp);

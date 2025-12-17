@@ -137,7 +137,7 @@ void handleElemwiseOp(ElemwiseInterfaceT elemwise, OpBuilder &builder,
   auto numReshapes = 0;
   for (auto op : subgraph)
     if (isa<MO::Static::ReshapeOp>(op))
-      numReshapes++;
+      ++numReshapes;
 
   // if there are no reshapes in the subgraph, flattening the elementwise ops
   // is unnecessary and will not unblock additional elementwise fusions

@@ -143,7 +143,7 @@ MGP_RT_ListPopulate(AsyncRTWrapper<GML::List> asyncList, void **dataPtr,
       // Promote scalar tensors to 1D.
       if (shape.getRank() == 0)
         shapePtr[tensorId] = 1;
-      tensorId++;
+      ++tensorId;
     }
   }
 }
@@ -563,7 +563,7 @@ MGP_RT_GetContextAndSizeFromAsync(size_t *size,
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_DestructAsyncRefs(size_t size, void **storageRefPtr, bool directRef) {
-  for (size_t i = 0; i < size; i++) {
+  for (size_t i = 0; i < size; ++i) {
     AnyAsyncValueRef *refAddr =
         directRef ? reinterpret_cast<AnyAsyncValueRef *>(&storageRefPtr[i])
                   : reinterpret_cast<AnyAsyncValueRef *>(storageRefPtr[i]);

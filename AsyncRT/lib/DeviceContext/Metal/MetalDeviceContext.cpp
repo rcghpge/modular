@@ -716,7 +716,7 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     // Check if it's NOT MSL text (which would start with valid ASCII/UTF-8)
     // Look for non-printable characters in the first few bytes
     isBinary = false;
-    for (size_t i = 0; i < std::min(size_t(8), code.size()); i++) {
+    for (size_t i = 0; i < std::min(size_t(8), code.size()); ++i) {
       unsigned char c = static_cast<unsigned char>(code[i]);
       if (c < 32 && c != '\n' && c != '\r' && c != '\t') {
         isBinary = true;

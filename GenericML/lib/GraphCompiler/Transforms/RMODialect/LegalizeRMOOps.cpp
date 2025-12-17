@@ -47,7 +47,7 @@ bool isCompatibleShape(TensorType a, TensorType b) {
       return false;
 
     // Cannot rebind two different integer dims
-    for (size_t i = 0; i < a.getRank(); i++) {
+    for (size_t i = 0; i < a.getRank(); ++i) {
       if (a.isIntegerDim(i) && b.isIntegerDim(i) &&
           a.getIntDim(i) != b.getIntDim(i))
         return false;
@@ -183,7 +183,7 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
 
   // Rebind inputs to what the MO op would expect
   SmallVector<Value> newOperands;
-  for (size_t i = 0; i < numOperands; i++) {
+  for (size_t i = 0; i < numOperands; ++i) {
     Value val = op->getOperand(i);
     Type targetType = moOperandTypes[i];
     TensorValue tensorVal = dyn_cast<TensorValue>(val);
@@ -212,7 +212,7 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   newOp.setOutputParamDecls(moOutputParamDeclsFlattened);
 
   // Rebind the output of the MO op to what the original op had and replace
-  for (size_t i = 0; i < numResults; i++) {
+  for (size_t i = 0; i < numResults; ++i) {
     Value newValue = newOp->getResult(i);
     Value oldValue = op->getResult(i);
     TensorType targetType = cast<TensorType>(op->getResultTypes()[i]);
@@ -400,7 +400,7 @@ struct LegalizeMutableStoreSliceOp
 
     moOperands.push_back(op.getInBuffer());
 
-    for (size_t i = 1; i < moOperandTypes.size() - 1; i++) {
+    for (size_t i = 1; i < moOperandTypes.size() - 1; ++i) {
       SmallVector<KGEN::ParamDeclAttr> &curInputDecls = moInputParamDecls[i];
 
       auto rebound = rebindToShape(graphOp, op->getOpOperand(i),
@@ -1137,7 +1137,7 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
     MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
     SmallVector<ParamBinding> paramBindings;
     ParamExprBuilder b(graphOp, loc, &paramBindings);
-    for (size_t axis = 0; axis < input.getType().getRank(); axis++) {
+    for (size_t axis = 0; axis < input.getType().getRank(); ++axis) {
       // NOTE: checking for:
       // - step != 0
       // - step > 0 => start <= stop

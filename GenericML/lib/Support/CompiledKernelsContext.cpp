@@ -169,7 +169,7 @@ ErrorOrSuccess CompiledKernelsContext::load(ArrayRef<uint8_t> binary,
     if (symOr.isError())
       return symOr.takeError();
     addKernel(kernelName, kernelIndex, symOr.takeValue().getFunctionPointer());
-    kernelIndex++;
+    ++kernelIndex;
   }
 
   return success();

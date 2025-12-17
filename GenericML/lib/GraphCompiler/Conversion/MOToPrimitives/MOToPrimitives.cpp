@@ -1840,7 +1840,7 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
 
     // Schedule all operations at current level
     for (Operation *op : currentLevel) {
-      sortedOps++;
+      ++sortedOps;
       op->moveBefore(block, nextScheduledOp);
 
       if (op == &*nextScheduledOp) {
@@ -2307,7 +2307,7 @@ void MOToPrimitivesPass::runOnOperation() {
       return signalPassFailure();
     }
 
-    lastProcessed++;
+    ++lastProcessed;
 
     MO::GraphOp graph = worklist.back();
     worklist.pop_back();

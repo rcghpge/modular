@@ -518,7 +518,7 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
     }
 
     // Each split operand must be in the same order as they appear here.
-    operandIndex++;
+    ++operandIndex;
   }
 
   // If we are a concat followed by split we can fold and use the split input
@@ -548,7 +548,7 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
 
     // Append the values to the output tensor. We can do this since it is
     // rank 1.
-    for (size_t idx = 0, e = maybeValue->size(); idx < e; idx++)
+    for (size_t idx = 0, e = maybeValue->size(); idx < e; ++idx)
       concatTensor.push_back(APInt(64, (*maybeValue)[idx], true));
   }
 
@@ -777,7 +777,7 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   ArrayRef<int64_t> indices = *maybeInd;
 
   SmallVector<APInt> gatheredValues(indices.size());
-  for (size_t idx = 0, e = indices.size(); idx < e; idx++) {
+  for (size_t idx = 0, e = indices.size(); idx < e; ++idx) {
     int64_t index = indices[idx];
     if (index < 0 || static_cast<size_t>(index) > data.size())
       return {};
@@ -1494,7 +1494,7 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
     int64_t value = condArr[0];
 
     // Check the values are all the same otherwise exit.
-    for (size_t idx = 1, e = condAttr.size(); idx < e; idx++) {
+    for (size_t idx = 1, e = condAttr.size(); idx < e; ++idx) {
       if (value != condArr[idx])
         return {};
     }
@@ -1516,7 +1516,7 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   ArrayRef<int64_t> xArr = *maybeX;
   ArrayRef<int64_t> yArr = *maybeY;
   SmallVector<APInt> res(condAttr.size());
-  for (size_t idx = 0, e = condAttr.size(); idx < e; idx++) {
+  for (size_t idx = 0, e = condAttr.size(); idx < e; ++idx) {
     int64_t resVal = condArr[idx] ? xArr[idx] : yArr[idx];
     res[idx] = APInt(64, resVal, /*isSigned=*/true);
   }
@@ -2165,7 +2165,7 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
     //      initial value from `beforeBlockInitValMap` by querying for key `i`.
     //   2. Else we fetch j-th new before block argument as the replacement
     //      value of i-th before block argument.
-    for (unsigned i = 0, j = 0, n = condBlock.getNumArguments(); i < n; i++) {
+    for (unsigned i = 0, j = 0, n = condBlock.getNumArguments(); i < n; ++i) {
       // If the index 'i' argument was a loop invariant we fetch it's initial
       // value from `beforeBlockInitValMap`.
       if (blockInitValMap[i] != nullptr) {
@@ -2176,7 +2176,7 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
         newCondBlockArgs[i] = newCondBlock.getArgument(j);
         newBodyBlockArgs[i] = newBodyBlock.getArgument(j);
         newResults[i] = newWhile.getResult(j);
-        j++;
+        ++j;
       }
     }
 
@@ -2222,7 +2222,7 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
     }
   }
   bool isSorted = true;
-  for (size_t i = 0; i < indices.size() - 1 && isSorted; i++)
+  for (size_t i = 0; i < indices.size() - 1 && isSorted; ++i)
     isSorted = indices[i] <= indices[i + 1];
   if (!isSorted) {
     llvm::sort(indices);

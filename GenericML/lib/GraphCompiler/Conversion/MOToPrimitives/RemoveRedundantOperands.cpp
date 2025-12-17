@@ -252,7 +252,7 @@ struct RemoveRedundantOperands
           }
         } else {
           result.replaceAllUsesWith(newKernel.getResult(curIdx));
-          curIdx++;
+          ++curIdx;
         }
       }
       assert(curIdx == newKernel->getNumResults());

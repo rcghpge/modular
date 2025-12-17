@@ -164,18 +164,18 @@ TEST_F(GPUBufferCacheTest, MultipleAllocations) {
   std::vector<void *> ptrs;
 
   // Allocate multiple blocks
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 10; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(64, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Verify all pointers are different and aligned
-  for (size_t i = 0; i < ptrs.size(); i++) {
+  for (size_t i = 0; i < ptrs.size(); ++i) {
     uintptr_t addr = reinterpret_cast<uintptr_t>(ptrs[i]);
     EXPECT_EQ(addr % allocAlignment, 0);
 
-    for (size_t j = i + 1; j < ptrs.size(); j++) {
+    for (size_t j = i + 1; j < ptrs.size(); ++j) {
       EXPECT_NE(ptrs[i], ptrs[j]);
     }
   }
@@ -319,7 +319,7 @@ TEST_F(GPUBufferCacheTest, DeviceContextIntegration) {
   // Test buffer creation through DeviceContext
   std::vector<DeviceBufferRef> buffers;
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; ++i) {
     size_t size = 1024 + i * 512;
     ASSIGN_NO_ERR(DeviceBufferRef, buffer, ctx->enqueueCreateBuffer(size));
 
@@ -383,7 +383,7 @@ TEST_F(GPUBufferCacheTest, MemoryTransfers) {
 
   // Initialize host buffer with test pattern
   uint8_t *hostPtr = static_cast<uint8_t *>(hostBuffer->ptr());
-  for (int i = 0; i < 2048; i++) {
+  for (int i = 0; i < 2048; ++i) {
     hostPtr[i] = static_cast<uint8_t>(i & 0xFF);
   }
 
@@ -399,7 +399,7 @@ TEST_F(GPUBufferCacheTest, MemoryTransfers) {
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Verify the transferred data
-  for (int i = 0; i < 2048; i++) {
+  for (int i = 0; i < 2048; ++i) {
     EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
   }
 }
@@ -418,15 +418,15 @@ TEST_F(GPUBufferCacheTest, ConcurrentAllocations) {
   std::atomic<int> successCount{0};
 
   // Launch multiple threads doing concurrent allocations
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&, t]() {
-      for (int i = 0; i < allocationsPerThread; i++) {
+      for (int i = 0; i < allocationsPerThread; ++i) {
         auto result = freeList.allocate(256 + i * 64, mode);
         if (!result.isError()) {
           void *ptr = result.takeValue();
           if (ptr != nullptr) {
             threadPtrs[t].push_back(ptr);
-            successCount++;
+            ++successCount;
           }
         }
       }
@@ -442,7 +442,7 @@ TEST_F(GPUBufferCacheTest, ConcurrentAllocations) {
   EXPECT_GT(successCount.load(), 0);
 
   // Free all allocated blocks
-  for (int t = 0; t < numThreads; t++) {
+  for (int t = 0; t < numThreads; ++t) {
     for (void *ptr : threadPtrs[t]) {
       EXPECT_NO_ERR(freeList.free(ptr));
     }
@@ -463,7 +463,7 @@ TEST_F(GPUBufferCacheTest, GetMemoryInfoAccuracy) {
   std::vector<void *> ptrs;
 
   // Allocate some blocks
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
     EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
