@@ -713,7 +713,6 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
   if (mtlDevice == nullptr)
     RAISE_ERROR_MESSAGE("Failed to get Metal device");
 
-  NS::Error *error = nullptr;
   MTL::Library *library = nullptr;
 
   // Detect if input is binary or MSL source code
@@ -737,7 +736,13 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
         NS::String::string(code.data(), NS::UTF8StringEncoding);
     MTL::CompileOptions *options = MTL::CompileOptions::alloc()->init();
 
+    NS::Error *error = nullptr;
     library = mtlDevice->newLibrary(sourceString, options, &error);
+    if (error) {
+      RAISE_ERROR_MESSAGE(
+          Twine("Failed to create Metal library (compiling MSL to AIR): ") +
+          error->localizedDescription()->cString(NS::UTF8StringEncoding));
+    }
 
     sourceString->release();
     options->release();
@@ -746,18 +751,16 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     dispatch_data_t binaryData = dispatch_data_create(
         code.data(), code.size(), nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
 
+    NS::Error *error = nullptr;
     library = mtlDevice->newLibrary(binaryData, &error);
+    if (error) {
+      RAISE_ERROR_MESSAGE(
+          Twine("Failed to create Metal library (loading binary/metallib): ") +
+          error->localizedDescription()->cString(NS::UTF8StringEncoding));
+    }
 
     // Release the dispatch data
     dispatch_release(binaryData);
-  }
-
-  if (error) {
-    NS::String *errorDesc = error->localizedDescription();
-    std::string errorMsg = errorDesc->cString(NS::UTF8StringEncoding);
-    errorDesc->release();
-    error->release();
-    RAISE_ERROR_MESSAGE("Failed to create Metal library: " + errorMsg);
   }
 
   // Get the function from the library
@@ -793,6 +796,7 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
 
   // Create pipeline with reflection to get argument count
   MTL::ComputePipelineReflection *reflection = nullptr;
+  NS::Error *error = nullptr;
   MTL::ComputePipelineState *pipelineState = mtlDevice->newComputePipelineState(
       pipelineDesc, MTL::PipelineOptionArgumentInfo, &reflection, &error);
 
@@ -801,11 +805,10 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
   library->release();
 
   if (error) {
-    NS::String *errorDesc = error->localizedDescription();
-    std::string errorMsg = errorDesc->cString(NS::UTF8StringEncoding);
-    errorDesc->release();
-    error->release();
-    RAISE_ERROR_MESSAGE("Failed to create compute pipeline state: " + errorMsg);
+    RAISE_ERROR_MESSAGE(
+        Twine("Failed to create compute pipeline state (GPU machine code "
+              "generation): ") +
+        error->localizedDescription()->cString(NS::UTF8StringEncoding));
   }
 
   if (pipelineState == nullptr)
