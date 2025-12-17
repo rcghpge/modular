@@ -112,6 +112,7 @@ void M::MO::registerPasses() {
   MGP::registerMergeIdenticalKernelStubs();
   MGP::registerAddTryExceptBlocksPass();
   MGP::registerLookupConstantResources();
+  MGP::registerRaiseBackIndexConstant();
   MGP::registerOutlineKernelsPass();
   MGP::registerEmitMojo();
   MGP::registerDumpMojo();

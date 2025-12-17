@@ -343,5 +343,16 @@ def LookupConstantResources: Pass<"lookup-constant-resources", "MOGG::KernelStub
   let dependentDialects = ["MGP::MGPDialect"];
 }
 
+def RaiseBackIndexConstant: Pass<"raise-back-index-constant", "ModuleOp"> {
+  let summary = "Recover index constants if not part of kernel deduplication";
+  let description = [{
+    If the lowering of index.constant (mgp.buffer.constant + mgp.buffer._to_index)
+    did not help deduplication of kernel stubs, raise those operations back to
+    an index.constant if there is only one call to the kernel stub.
+  }];
+
+  let dependentDialects = ["MGP::MGPDialect"];
+}
+
 
 #endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
