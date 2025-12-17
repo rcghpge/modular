@@ -60,6 +60,9 @@ static ErrorOr<int> getComputeCapability(StringRef name) {
   if (name.empty())
     return 3;
 
+  if (name.contains_insensitive("M5"))
+    return 5;
+
   if (name.contains_insensitive("M4"))
     return 4;
 
