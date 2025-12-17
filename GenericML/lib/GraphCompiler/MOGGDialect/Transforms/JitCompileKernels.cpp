@@ -27,6 +27,7 @@
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/KGENUtils.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
@@ -143,6 +144,11 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     }
 
     setTargetInfo(*parsedMojoModule, *targetInfoAttr);
+
+    // Set the mojo defines (e.g., LOGGING_LEVEL) on the parsed Mojo module
+    // so they're available during elaboration.
+    auto *compileCtx = loadContext(ctx)->get<KGEN::CompilationContext>();
+    KGEN::extendWithModularEnvAttr(*parsedMojoModule, compileCtx);
 
     // LITToKGEN
     opts.saveTempsPrefix = saveTempPrefix.getValue();
