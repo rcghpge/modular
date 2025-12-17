@@ -1032,7 +1032,7 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
   // Extract rank
   ASSERT_STREAM(tensorType.hasRank(),
                 "Mutable input tensor must have statically known rank");
-  MojoValue rank(static_cast<int64_t>(tensorType.getRank()));
+  MojoValue rank(static_cast<int64_t>(tensorType.getRankNonZero()));
 
   // Get static_spec fields
   MojoValue staticSpec = inputValue.get("static_spec");
