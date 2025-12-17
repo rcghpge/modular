@@ -39,7 +39,7 @@ mgp.model @dynamic_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights
   %const_64 = index.constant 64
   %15 = mgp.buffer.alloc %ch0, %const_64, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
-  %17 = mgp.buffer.concat(%16, %15, %4, %10, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain  
+  %17 = mgp.buffer.concat(%16, %15, %4, %10, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain
   %18 = mgp.tensor.create %17, %15, %14 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
@@ -69,7 +69,7 @@ mgp.model @concat_with_shared_input_buffer : mof devices [#M.device_ref<"cpu", 0
   %14 = mgp.buffer.alloc %ch0, %size_64, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
   %16 = grt.chain.create(%6: !mef.chain, %12: !mef.chain)
-  %17 = mgp.buffer.concat(%16, %14, %4, %10, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain  
+  %17 = mgp.buffer.concat(%16, %14, %4, %10, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain
   %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
 }
@@ -124,7 +124,49 @@ mgp.model @dont_trigger_since_duplicate_buffers : mof devices [#M.device_ref<"cp
   %size_64 = index.constant 64
   %14 = mgp.buffer.alloc %ch0, %size_64, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %15 = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
-  %17 = mgp.buffer.concat(%6, %14, %4, %4, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain 
+  %17 = mgp.buffer.concat(%6, %14, %4, %4, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain
   %18 = mgp.tensor.create %17, %14, %15 : !mgp.tensor<16xf32>
   mef.output %ch0, %18 : !mef.chain, !mgp.tensor<16xf32>
+}
+
+// CHECK-LABEL: mgp.model @dynamic_same_size
+// CHECK: } execute ({{.*}})
+// CHECK-DAG: %[[IDX2:.*]] = index.constant 2
+// CHECK-DAG: %[[SIZE:.*]] = "dynamic_size"()
+// CHECK-DAG: %[[OFFSET:.*]] = index.mul %[[SIZE]], %[[IDX2]]
+// CHECK-DAG: %{{.*}} = mgp.buffer.slice %{{.*}}, %[[OFFSET]], %{{.*}}
+// CHECK: mef.output
+
+mgp.model @dynamic_same_size : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.tensor<16xf32>) {
+  // Dynamic sizes for the allocations
+  %alloc_size = "dynamic_size"() : () -> (index)
+
+  // Allocations to concat
+  %alloc_0 = mgp.buffer.alloc %ch0, %alloc_size, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+  %alloc_1 = mgp.buffer.alloc %ch0, %alloc_size, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+  %alloc_2 = mgp.buffer.alloc %ch0, %alloc_size, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+
+  // Need a use to keep the generated slice ops around
+  %eff0 = "populate"(%alloc_0) : (!mgp.buffer) -> (!mef.chain)
+  %eff1 = "populate"(%alloc_1) : (!mgp.buffer) -> (!mef.chain)
+  %eff2 = "populate"(%alloc_2) : (!mgp.buffer) -> (!mef.chain)
+
+  %merged = grt.chain.create(%ch0, %eff0, %eff1, %eff2)
+
+  %spec = mgp.tensor_spec.create : !mgp.tensor_spec<16xf32>
+  %const_64 = index.constant 64
+
+  // Allocation for the concat result
+  %total_size = "total_size"() : () -> (index)
+  %out_buf = mgp.buffer.alloc %merged, %total_size, %cpu : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
+
+  %ch1 = mgp.buffer.concat(%merged, %out_buf, %alloc_0, %alloc_1, %alloc_2, %cpu) : (!mef.chain, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.buffer, !mgp.device_context<<"cpu", 0>>) -> !mef.chain
+
+  %tensor = mgp.tensor.create %ch1, %out_buf, %spec : !mgp.tensor<16xf32>
+  mef.output %ch1, %tensor : !mef.chain, !mgp.tensor<16xf32>
 }

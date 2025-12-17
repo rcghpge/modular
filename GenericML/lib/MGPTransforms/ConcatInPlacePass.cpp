@@ -41,6 +41,46 @@ class ConcatInPlacePass
     : public impl::ConcatInPlacePassBase<ConcatInPlacePass> {
   using ConcatInPlacePassBase::ConcatInPlacePassBase;
 
+  static SmallVector<Value>
+  computeOffsets(OpBuilder &builder, Location loc,
+                 ArrayRef<TypedValue<IndexType>> sliceSizes) {
+    SmallVector<Value> result;
+    result.reserve(sliceSizes.size());
+
+    if (sliceSizes.empty())
+      return result;
+
+    // If all inputs are the same size, we can emit a sequence of independent
+    // multiplication operations to compute the offset, rather than a chained
+    // sequence of additions.
+    if (llvm::all_equal(sliceSizes)) {
+      Value sliceSize = sliceSizes.front();
+
+      for (auto index : llvm::seq(sliceSizes.size())) {
+        // Insert the slices just after the producing op for readability
+        auto indexCst = mlir::index::ConstantOp::create(
+            builder, loc, static_cast<int64_t>(index));
+
+        Value offset =
+            builder.createOrFold<mlir::index::MulOp>(loc, indexCst, sliceSize);
+        result.push_back(offset);
+      }
+
+    } else {
+      Value offset = mlir::index::ConstantOp::create(builder, loc, 0);
+      result.push_back(offset);
+
+      // For each concat input buffer...
+      for (Value sliceSize : sliceSizes.drop_back()) {
+        offset =
+            builder.createOrFold<mlir::index::AddOp>(loc, offset, sliceSize);
+        result.push_back(offset);
+      }
+    }
+
+    return result;
+  }
+
   void runOnOperation() override {
     ModelOp modelOp = getOperation();
     BufferBuilderContext builderContext =
@@ -67,6 +107,7 @@ class ConcatInPlacePass
       DenseSet<Value> concatBuffers;
       for (Value inBuffer : concatOp.getInBuffers())
         concatBuffers.insert(inBuffer);
+
       if (concatBuffers.size() != concatOp.getInBuffers().size())
         // The concat input buffers are not distinct.
         return;
@@ -78,39 +119,30 @@ class ConcatInPlacePass
 
       auto loc = concatOp.getLoc();
 
-      // Collects the runtime size arguments for the split.
-      SmallVector<Value> runtimeSizes;
-
       BufferBuilder *bufferBuilder =
           builderContext.getBufferBuilder(concatBuffer.getType().getDevice());
       OpBuilder &builder = execState.builder;
 
+      // Get sizes of each buffer.
+      auto sliceSizes =
+          llvm::map_to_vector(concatOp.getInBuffers(), [&](Value inBuffer) {
+            auto alloc = inBuffer.getDefiningOp<MGP::BufferAllocOp>();
+            ASSERT_STREAM(alloc, << "unexpected buffer allocation op "
+                                 << *inBuffer.getDefiningOp());
+            return alloc.getRuntimeSize();
+          });
+
+      // Compute the per-buffer offsets for each input buffer.
+      auto offsets = computeOffsets(builder, loc, sliceSizes);
+
       SmallVector<Value> outBuffers;
-      Value offset =
-          mlir::index::ConstantOp::create(builder, loc, 0).getResult();
-      Value sliceSize = nullptr;
-
-      // For each concat input buffer...
-      for (Value inBuffer : concatOp.getInBuffers()) {
-        // Insert the slices just after the producing op for readability
-        if (auto op = inBuffer.getDefiningOp())
+      for (auto [inBuffer, sliceSize, offset] :
+           llvm::zip_equal(concatOp.getInBuffers(), sliceSizes, offsets)) {
+        if (Operation *op = inBuffer.getDefiningOp())
           execState.builder.setInsertionPoint(op);
-
-        if (sliceSize)
-          offset = mlir::index::AddOp::create(builder, loc, offset, sliceSize);
-
-        // We'll need to pass a size argument as an operand to the slice.
-        if (auto allocOp =
-                dyn_cast<MGP::BufferAllocOp>(inBuffer.getDefiningOp())) {
-          sliceSize = allocOp.getRuntimeSize();
-        } else {
-          ASSERT_STREAM(false, << "unexpected buffer allocation op "
-                               << *inBuffer.getDefiningOp());
-        }
 
         Value outSlice = bufferBuilder->bufferSlice(builder, loc, concatBuffer,
                                                     offset, sliceSize);
-
         outBuffers.push_back(outSlice);
       }
 
