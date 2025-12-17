@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MLIR_TO_MEF_H
-#define GRAPHRT_MLIR_TO_MEF_H
+#ifndef MLRT_GRAPHRT_MLIRTOMEF_H
+#define MLRT_GRAPHRT_MLIRTOMEF_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
 
@@ -36,4 +36,4 @@ void registerMLIRToMEFTranslation(DialectRegistry &otherDialects);
 
 } // namespace M
 
-#endif // GRAPHRT_MLIR_TO_MEF_H
+#endif // MLRT_GRAPHRT_MLIRTOMEF_H

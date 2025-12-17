@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTDIALECT_H
-#define GRAPHRT_GRTDIALECT_GRTDIALECT_H
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTDIALECT_H
+#define MLRT_GRAPHRT_GRTDIALECT_GRTDIALECT_H
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
@@ -17,4 +17,4 @@
 // Pull in the dialect definition.
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h.inc"
 
-#endif // GRAPHRT_GRTDIALECT_GRTDIALECT_H
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTDIALECT_H

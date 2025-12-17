@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFEXECUTOR_INVOKABLE_H
-#define GRAPHRT_MEFEXECUTOR_INVOKABLE_H
+#ifndef MLRT_GRAPHRT_MEFEXECUTOR_MEFINVOKABLE_H
+#define MLRT_GRAPHRT_MEFEXECUTOR_MEFINVOKABLE_H
 
 #include "AsyncRT/ForwardDecls.h"
 #include "Support/ErrorOr.h"
@@ -153,4 +153,4 @@ private:
 
 } // namespace M
 
-#endif // GRAPHRT_MEFEXECUTOR_INVOKABLE_H
+#endif // MLRT_GRAPHRT_MEFEXECUTOR_MEFINVOKABLE_H

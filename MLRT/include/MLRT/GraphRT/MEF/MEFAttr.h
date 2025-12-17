@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEF_MEFATTR_H
-#define GRAPHRT_MEF_MEFATTR_H
+#ifndef MLRT_GRAPHRT_MEF_MEFATTR_H
+#define MLRT_GRAPHRT_MEF_MEFATTR_H
 
 #include "MLRT/GraphRT/MEF/MEFEncoding.h"
 #include "MLRT/GraphRT/MEF/MEFTypes.h"
@@ -655,4 +655,4 @@ using MEFDictionaryAttr = MEFAttr<Detail::Dictionary>;
 
 } // namespace M
 
-#endif // GRAPHRT_MEF_MEFATTR_H
+#endif // MLRT_GRAPHRT_MEF_MEFATTR_H

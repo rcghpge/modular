@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTOPSBASE_TD
-#define GRAPHRT_GRTDIALECT_GRTOPSBASE_TD
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTOPSBASE_TD
+#define MLRT_GRAPHRT_GRTDIALECT_GRTOPSBASE_TD
 
 include "MLRT/GraphRT/GRTDialect/GRTDialect.td"
 include "mlir/IR/OpBase.td"
@@ -18,4 +18,4 @@ include "mlir/IR/OpBase.td"
 class GRTOp<string mnemonic, list<Trait> traits = []> :
     Op<GRTDialect, mnemonic, traits>;
 
-#endif // GRAPHRT_GRTDIALECT_GRTOPSBASE_TD
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTOPSBASE_TD

@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFOPS_H
-#define GRAPHRT_MEFDIALECT_MEFOPS_H
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFOPS_H
+#define MLRT_GRAPHRT_MEFDIALECT_MEFOPS_H
 
 #include "MLRT/GraphRT/MEFDialect/MEFTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -30,4 +30,4 @@ class ModuleOp;
 #define GET_OP_CLASSES
 #include "MLRT/GraphRT/MEFDialect/MEF.h.inc"
 
-#endif // GRAPHRT_MEFDIALECT_MEFOPS_H
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEFOPS_H

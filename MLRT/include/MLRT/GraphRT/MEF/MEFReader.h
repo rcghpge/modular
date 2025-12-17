@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEF_MEFREADER_H
-#define GRAPHRT_MEF_MEFREADER_H
+#ifndef MLRT_GRAPHRT_MEF_MEFREADER_H
+#define MLRT_GRAPHRT_MEF_MEFREADER_H
 
 #include "MLRT/GraphRT/MEF/MEFEncoding.h"
 #include "Support/Error.h"
@@ -252,4 +252,4 @@ private:
 
 } // namespace M
 
-#endif // GRAPHRT_MEF_MEFREADER_H
+#endif // MLRT_GRAPHRT_MEF_MEFREADER_H

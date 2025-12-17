@@ -8,11 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRT_TD
-#define GRT_TD
+#ifndef MLRT_GRAPHRT_GRT_TD
+#define MLRT_GRAPHRT_GRT_TD
 
 include "MLRT/GraphRT/GRTDialect/GRTIntegerOps.td"
 include "MLRT/GraphRT/GRTDialect/GRTControlFlowOps.td"
 include "MLRT/GraphRT/GRTDialect/GRTTestOps.td"
 
-#endif // GRT_TD
+#endif // MLRT_GRAPHRT_GRT_TD

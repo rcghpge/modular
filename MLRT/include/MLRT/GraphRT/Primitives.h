@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_PRIMITIVES_H
-#define GRAPHRT_PRIMITIVES_H
+#ifndef MLRT_GRAPHRT_PRIMITIVES_H
+#define MLRT_GRAPHRT_PRIMITIVES_H
 
 namespace M {
 class PrimitiveRegistry;
@@ -34,4 +34,4 @@ inline void registerAllGraphRTPrimitives(PrimitiveRegistry &registry) {
 
 } // namespace M
 
-#endif // GRAPHRT_PRIMITIVES_H
+#endif // MLRT_GRAPHRT_PRIMITIVES_H

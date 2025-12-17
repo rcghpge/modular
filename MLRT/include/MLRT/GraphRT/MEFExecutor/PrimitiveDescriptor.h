@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H
-#define GRAPHRT_MEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H
+#ifndef MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEDESCRIPTOR_H
+#define MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEDESCRIPTOR_H
 
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/AnyAsyncValueRef.h"
@@ -300,4 +300,4 @@ public:
 
 } // namespace M
 
-#endif // GRAPHRT_MEFEXECUTOR_PRIMITIVE_DESCRIPTOR_H
+#endif // MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEDESCRIPTOR_H

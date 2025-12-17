@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEF_TO_MLIR_H
-#define GRAPHRT_MEF_TO_MLIR_H
+#ifndef MLRT_GRAPHRT_MEFTOMLIR_H
+#define MLRT_GRAPHRT_MEFTOMLIR_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
 
@@ -25,4 +25,4 @@ void registerMEFToMLIRTranslation();
 
 } // namespace M
 
-#endif // GRAPHRT_MEF_TO_MLIR_H
+#endif // MLRT_GRAPHRT_MEFTOMLIR_H

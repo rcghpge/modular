@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFDIALECT_TD
-#define GRAPHRT_MEFDIALECT_MEFDIALECT_TD
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFDIALECT_TD
+#define MLRT_GRAPHRT_MEFDIALECT_MEFDIALECT_TD
 
 include "mlir/IR/DialectBase.td"
 
@@ -27,4 +27,4 @@ def MEFDialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
-#endif // GRAPHRT_MEFDIALECT_MEFDIALECT_TD
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEFDIALECT_TD

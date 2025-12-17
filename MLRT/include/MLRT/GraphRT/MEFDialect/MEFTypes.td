@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFTYPES_TD
-#define GRAPHRT_MEFDIALECT_MEFTYPES_TD
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFTYPES_TD
+#define MLRT_GRAPHRT_MEFDIALECT_MEFTYPES_TD
 
 include "MLRT/GraphRT/MEFDialect/MEFDialect.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypeInterfaces.td"
@@ -46,4 +46,4 @@ def UnknownType : MEFType<"Unknown"> {
   }];
 }
 
-#endif // GRAPHRT_MEFDIALECT_MEFTYPES_TD
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEFTYPES_TD

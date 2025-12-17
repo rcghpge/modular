@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFEXECUTOR_MEFFILE_H
-#define GRAPHRT_MEFEXECUTOR_MEFFILE_H
+#ifndef MLRT_GRAPHRT_MEFEXECUTOR_MEFFILE_H
+#define MLRT_GRAPHRT_MEFEXECUTOR_MEFFILE_H
 
 #include "AsyncRT/ForwardDecls.h"
 #include "Support/ErrorOr.h"
@@ -79,4 +79,4 @@ bool isMEFFile(llvm::StringRef contents);
 
 } // namespace M
 
-#endif // GRAPHRT_MEFEXECUTOR_MEFFILE_H
+#endif // MLRT_GRAPHRT_MEFEXECUTOR_MEFFILE_H

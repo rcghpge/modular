@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_INITALLDIALECTS_H
-#define GRAPHRT_INITALLDIALECTS_H
+#ifndef MLRT_GRAPHRT_INITALLDIALECTS_H
+#define MLRT_GRAPHRT_INITALLDIALECTS_H
 
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MEFDialect/MEFDialect.h"
@@ -23,4 +23,4 @@ inline void registerAllGraphRTDialects(DialectRegistry &registry) {
 
 } // namespace M
 
-#endif // GRAPHRT_INITALLDIALECTS_H
+#endif // MLRT_GRAPHRT_INITALLDIALECTS_H

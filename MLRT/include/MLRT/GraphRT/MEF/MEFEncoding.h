@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEF_MEFENCODING_H
-#define GRAPHRT_MEF_MEFENCODING_H
+#ifndef MLRT_GRAPHRT_MEF_MEFENCODING_H
+#define MLRT_GRAPHRT_MEF_MEFENCODING_H
 
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/DType.h"
@@ -224,4 +224,4 @@ struct AttrKindForCXXType<TypeKind> {
 } // namespace MEF
 } // namespace M
 
-#endif // GRAPHRT_MEF_MEFENCODING_H
+#endif // MLRT_GRAPHRT_MEF_MEFENCODING_H

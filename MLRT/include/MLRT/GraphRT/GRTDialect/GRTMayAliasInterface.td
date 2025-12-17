@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_TD
-#define GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_TD
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_TD
+#define MLRT_GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_TD
 
 include "mlir/IR/OpBase.td"
 
@@ -37,4 +37,4 @@ def GRTMayAliasInterface : OpInterface<"GRTMayAliasInterface"> {
   ];
 }
 
-#endif // GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_TD
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_TD

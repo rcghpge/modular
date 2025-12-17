@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MEFFILEIMPL_H
-#define MEFFILEIMPL_H
+#ifndef MLRT_GRAPHRT_MEFEXECUTOR_MEFFILEIMPL_H
+#define MLRT_GRAPHRT_MEFEXECUTOR_MEFFILEIMPL_H
 
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
@@ -109,4 +109,4 @@ public:
 
 } // namespace M
 
-#endif // MEFFILEIMPL_H
+#endif // MLRT_GRAPHRT_MEFEXECUTOR_MEFFILEIMPL_H

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFTYPES_H
-#define GRAPHRT_MEFDIALECT_MEFTYPES_H
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFTYPES_H
+#define MLRT_GRAPHRT_MEFDIALECT_MEFTYPES_H
 
 #include "MLRT/GraphRT/MEFDialect/MEFDialect.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -20,4 +20,4 @@
 #define GET_TYPEDEF_CLASSES
 #include "MLRT/GraphRT/MEFDialect/MEFTypes.h.inc"
 
-#endif // GRAPHRT_MEFDIALECT_MEFTYPES_H
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEFTYPES_H

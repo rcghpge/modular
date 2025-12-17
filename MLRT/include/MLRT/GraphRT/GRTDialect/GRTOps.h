@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
-#define GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTOPS_H
+#define MLRT_GRAPHRT_GRTDIALECT_GRTOPS_H
 
 #include "MLRT/GraphRT/GRTDialect/GRTChainInterface.h"
 #include "MLRT/GraphRT/GRTDialect/GRTControlFlowInterface.h"
@@ -23,4 +23,4 @@
 #define GET_OP_CLASSES
 #include "MLRT/GraphRT/GRTDialect/GRT.h.inc"
 
-#endif // GRAPHRT_GRAPHRTDIALECT_GRTOPS_H
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTOPS_H

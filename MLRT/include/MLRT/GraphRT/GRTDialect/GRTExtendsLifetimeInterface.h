@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTEXTENDSLIFETIMEINTERFACE_H
-#define GRAPHRT_GRTDIALECT_GRTEXTENDSLIFETIMEINTERFACE_H
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTEXTENDSLIFETIMEINTERFACE_H
+#define MLRT_GRAPHRT_GRTDIALECT_GRTEXTENDSLIFETIMEINTERFACE_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -14,4 +14,4 @@
 
 #include "MLRT/GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h.inc"
 
-#endif // GRAPHRT_GRTDIALECT_GRTEXTENDSLIFETIMEINTERFACE_H
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTEXTENDSLIFETIMEINTERFACE_H

@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTCHAININTERFACE_TD
-#define GRAPHRT_GRTDIALECT_GRTCHAININTERFACE_TD
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTCHAININTERFACE_TD
+#define MLRT_GRAPHRT_GRTDIALECT_GRTCHAININTERFACE_TD
 
 include "mlir/IR/OpBase.td"
 
@@ -45,4 +45,4 @@ def GRT_GatedOnChainOpInterface : OpInterface<"GRTGatedOnChainOpInterface"> {
   ];
 }
 
-#endif // GRAPHRT_GRTDIALECT_GRTCHAININTERFACE_TD
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTCHAININTERFACE_TD

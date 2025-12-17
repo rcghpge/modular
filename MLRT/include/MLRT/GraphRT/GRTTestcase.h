@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_TOOLS_MEFEXECUTOR_GRTTESTCASE_H
-#define GRAPHRT_TOOLS_MEFEXECUTOR_GRTTESTCASE_H
+#ifndef MLRT_GRAPHRT_GRTTESTCASE_H
+#define MLRT_GRAPHRT_GRTTESTCASE_H
 
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
@@ -40,4 +40,4 @@ private:
 };
 } // namespace M
 
-#endif // GRAPHRT_TOOLS_MEFEXECUTOR_GRTTESTCASE_H
+#endif // MLRT_GRAPHRT_GRTTESTCASE_H

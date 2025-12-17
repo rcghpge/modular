@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_H
-#define GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_H
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_H
+#define MLRT_GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/DialectInterface.h"
@@ -14,4 +14,4 @@
 
 #include "MLRT/GraphRT/GRTDialect/GRTMayAliasInterface.h.inc"
 
-#endif // GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_H
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTMAYALIASINTERFACE_H

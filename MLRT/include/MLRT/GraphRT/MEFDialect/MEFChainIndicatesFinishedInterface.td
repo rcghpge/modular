@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFCHAININDICATESFINISHED_TD
-#define GRAPHRT_MEFDIALECT_MEFCHAININDICATESFINISHED_TD
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFCHAININDICATESFINISHED_TD
+#define MLRT_GRAPHRT_MEFDIALECT_MEFCHAININDICATESFINISHED_TD
 
 include "mlir/IR/OpBase.td"
 
@@ -31,4 +31,4 @@ def ChainIndicatesFinishedInterface : OpInterface<"ChainIndicatesFinishedInterfa
   }];
 }
 
-#endif // GRAPHRT_MEFDIALECT_MEFCHAININDICATESFINISHED_TD
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEFCHAININDICATESFINISHED_TD

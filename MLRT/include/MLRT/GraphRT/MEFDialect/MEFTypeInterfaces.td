@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD
-#define GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD
+#define MLRT_GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD
 
 include "mlir/IR/OpBase.td"
 
@@ -30,4 +30,4 @@ def MEF_AnyTypeInterface : TypeInterface<"MEFAnyTypeInterface"> {
   let cppNamespace = "::M::MEF";
 }
 
-#endif  // GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD
+#endif  // MLRT_GRAPHRT_MEFDIALECT_MEFTYPEINTERFACES_TD

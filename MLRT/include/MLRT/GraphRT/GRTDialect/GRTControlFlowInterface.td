@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_TD
-#define GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_TD
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_TD
+#define MLRT_GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_TD
 
 include "mlir/IR/OpBase.td"
 
@@ -86,4 +86,4 @@ def GRTControlFlowInterface : OpInterface<"GRTControlFlowInterface"> {
   }];
 }
 
-#endif // GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_TD
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_TD

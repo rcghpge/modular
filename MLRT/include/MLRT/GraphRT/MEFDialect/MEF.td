@@ -8,12 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MEF_TD
-#define MEF_TD
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEF_TD
+#define MLRT_GRAPHRT_MEFDIALECT_MEF_TD
 
 include "MLRT/GraphRT/MEFDialect/MEFNonStrictInterface.td"
 include "MLRT/GraphRT/MEFDialect/MEFChainIndicatesFinishedInterface.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 include "MLRT/GraphRT/MEFDialect/MEFOps.td"
 
-#endif // MEF_TD
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEF_TD

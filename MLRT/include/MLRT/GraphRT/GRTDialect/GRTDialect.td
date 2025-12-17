@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTDIALECT_TD
-#define GRAPHRT_GRTDIALECT_GRTDIALECT_TD
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTDIALECT_TD
+#define MLRT_GRAPHRT_GRTDIALECT_GRTDIALECT_TD
 
 include "mlir/IR/DialectBase.td"
 
@@ -29,4 +29,4 @@ def GRTDialect : Dialect {
   let dependentDialects = ["::M::MEF::MEFDialect"];
 }
 
-#endif // GRAPHRT_GRTDIALECT_GRTDIALECT_TD
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTDIALECT_TD

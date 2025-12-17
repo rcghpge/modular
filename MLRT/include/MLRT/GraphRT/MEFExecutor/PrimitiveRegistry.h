@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
-#define GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
+#ifndef MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H
+#define MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H
 
 #include "AsyncRT/Runtime/Runtime.h"
 #include "MLRT/GraphRT/MEF/MEFAttr.h"
@@ -957,4 +957,4 @@ struct CastInfo<::M::MEFAttr<To>, const ::M::MEFDynamicAttr *>
 
 } // namespace llvm
 
-#endif // GRAPHRT_MEFEXECUTOR_PRIMITIVE_REGISTRY_H
+#endif // MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEREGISTRY_H

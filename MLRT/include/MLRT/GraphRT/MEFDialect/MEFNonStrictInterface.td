@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_MEFDIALECT_MEFNONSTRICTINTERFACE_TD
-#define GRAPHRT_MEFDIALECT_MEFNONSTRICTINTERFACE_TD
+#ifndef MLRT_GRAPHRT_MEFDIALECT_MEFNONSTRICTINTERFACE_TD
+#define MLRT_GRAPHRT_MEFDIALECT_MEFNONSTRICTINTERFACE_TD
 
 include "mlir/IR/OpBase.td"
 
@@ -29,4 +29,4 @@ def NonStrictInterface : OpInterface<"NonStrictInterface"> {
   }];
 }
 
-#endif // GRAPHRT_MEFDIALECT_MEFNONSTRICTINTERFACE_TD
+#endif // MLRT_GRAPHRT_MEFDIALECT_MEFNONSTRICTINTERFACE_TD

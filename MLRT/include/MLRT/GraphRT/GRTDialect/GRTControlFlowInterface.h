@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
-#define GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
+#ifndef MLRT_GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
+#define MLRT_GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
 
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LogicalResult.h"
@@ -25,4 +25,4 @@ LogicalResult verifyControlFlowInterfaceOp(Operation *op);
 
 #include "MLRT/GraphRT/GRTDialect/GRTControlFlowInterface.h.inc"
 
-#endif // GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
+#endif // MLRT_GRAPHRT_GRTDIALECT_GRTCONTROLFLOWINTERFACE_H
