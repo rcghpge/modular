@@ -26,3 +26,14 @@ mojo_library(
         "@mojo//:std",
     ],
 )
+
+# Alias that switches between .mlirbc and .mojopkg based on emit-mojo config.
+# Use this for tests that need to work in both modes.
+alias(
+    name = "MOGGKernelAPITestLibOrPkg",
+    testonly = True,
+    actual = select({
+        "//open-source/max:emit_mojo_enabled": ":MOGGKernelAPITest",
+        "//conditions:default": ":MOGGKernelAPITestLib",
+    }),
+)
