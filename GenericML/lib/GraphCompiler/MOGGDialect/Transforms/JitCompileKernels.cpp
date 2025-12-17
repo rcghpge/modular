@@ -26,8 +26,10 @@
 #include "Cache/CacheTelemetryContext.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENUtils.h"
+#include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
@@ -150,6 +152,28 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     auto *compileCtx = loadContext(ctx)->get<KGEN::CompilationContext>();
     KGEN::extendWithModularEnvAttr(*parsedMojoModule, compileCtx);
 
+    // Extract external LLVM bitcode modules from imported packages and set them
+    // on the module. This is needed for packages that were built with
+    // --bitcode-libs (e.g., the shmem package which links NVSHMEM device
+    // bitcode).
+    SmallVector<KGEN::LLVMBitcodeLibAttr> bitcodeLibAttrs;
+    parsedMojoModule->walk([&](KGEN::LIT::PackageOp packageOp) {
+      if (auto bitcodeModules = packageOp.getExternLLVMBitcodeModulesAttr()) {
+        for (auto bitcodeAttr : bitcodeModules) {
+          KGEN::LLVMBitcodeLibAttr libAttr =
+              KGEN::LLVMBitcodeLibAttr::get(false, bitcodeAttr);
+          bitcodeLibAttrs.push_back(libAttr);
+        }
+      }
+    });
+    if (!bitcodeLibAttrs.empty()) {
+      KGEN::LLVMBitcodeLibArrayAttr arrayAttr =
+          KGEN::LLVMBitcodeLibArrayAttr::get(ctx, bitcodeLibAttrs);
+      (*parsedMojoModule)
+          ->setAttr(KGEN::LLVMBitcodeLibArrayAttr::getBitcodeLibsAttrName(),
+                    arrayAttr);
+    }
+
     // LITToKGEN
     opts.saveTempsPrefix = saveTempPrefix.getValue();
     opts.runMOGGPreElab = false;
@@ -182,6 +206,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       return module->emitError("The graph compiler could not create an "
                                "object compiler for KGEN to LLVM lowering");
     }
+
     std::string outKeyHash;
     ErrorOr<BufferRef> bufferOr = objectCompiler.get()->emitArchive(
         std::move(parsedMojoModule), /*emitAssembly=*/false, &outKeyHash);
