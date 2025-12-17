@@ -237,6 +237,16 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   delete[] outHost;
 }
 
+TEST_F(MetalDeviceContextTestBase, DriverVersion) {
+  ASSERT_TRUE(device_);
+  auto driverVersion = device_->getDriverVersion();
+  ASSERT_FALSE(driverVersion.isError());
+  std::cout << "Metal Driver Version: " << driverVersion->toString() << "\n";
+  ASSERT_GT(driverVersion->major(), 0);
+  ASSERT_GE(driverVersion->minor(), 0);
+  ASSERT_GE(driverVersion->patch(), 0);
+}
+
 TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
   ASSERT_TRUE(ctx_);
 

@@ -24,6 +24,7 @@
 #include <cstring>
 #include <string>
 #include <sys/resource.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #define RAISE_ERROR()                                                          \
@@ -82,7 +83,12 @@ MetalDevice::MetalDevice(int id, MTL::Device *device, std::string name,
                          Device::MemInfo memInfo, size_t allocAlignment,
                          int64_t deviceMemoryLimit)
     : Device(api, name, id, memInfo, allocAlignment, deviceMemoryLimit),
-      device_(device), memInfo_(memInfo), driverVersion_("0.0.0") {}
+      device_(device), memInfo_(memInfo), driverVersion_([]() -> std::string {
+        // Metal drivers ship with macOS, Darwin release is the driver version
+        struct utsname systemInfo;
+        uname(&systemInfo);
+        return systemInfo.release;
+      }()) {}
 
 MetalDevice::~MetalDevice() {
   if (device_) {
