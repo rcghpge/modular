@@ -117,9 +117,9 @@ over entirely by the reader) and an optional alignment for the contents of the
 section.
 
 Section IDs and other fundamental constants are defined in
-[`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h), and utilities for
+[`MEFEncoding.h`](../../include/MLRT/GraphRT/MEF/MEFEncoding.h), and utilities for
 decoding the basic file structures like VBR integers are defined in
-[`MEFReader.h`](../include/GraphRT/MEF/MEFReader.h).
+[`MEFReader.h`](../../include/MLRT/GraphRT/MEF/MEFReader.h).
 
 The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and
 `SECTION_ALIGNMENT_FLAG`. The `SECTION_LENGTH` contains one bit shifted value
@@ -204,7 +204,7 @@ The encoding of an attribute has three pieces:
    array or string is.
 2) All attributes have a one-byte encoding of the "kind" of attribute it is,
    which is described by the `AttributeKind` enum in
-   [`MEFEncoding.h`](../include/GraphRT/MEF/MEFEncoding.h).
+   [`MEFEncoding.h`](../../include/MLRT/GraphRT/MEF/MEFEncoding.h).
 3) The value of the attribute is stored in little-endian byte order.
 
 Note that emission of the attribute is always done so that the attribute value

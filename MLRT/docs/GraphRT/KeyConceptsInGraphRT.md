@@ -52,10 +52,11 @@ invokables and returning from regions (`mef.invokable` and `mef.output`)
 respectively, it does not otherwise hard code any other operations that do
 actual computation.
 
-This example is using the ["grt" dialect](../include/GraphRT/GRTDialect/), which
-is just one of many MLIR dialects that provide GraphRT primitives.  In the case
-of the `grt` dialect, this includes simple integer and control flow operations
-like `grt.if` and `grt.invoke`.
+This example is using the
+["grt" dialect](../../include/MLRT/GraphRT/GRTDialect/), which is just one of
+many MLIR dialects that provide GraphRT primitives.  In the case of the `grt`
+dialect, this includes simple integer and control flow operations like `grt.if`
+and `grt.invoke`.
 
 GraphRT benefits from MLIR's ability to compose and intermix dialects together.
 In this case, it allows primitives from "grt" to intermix with the runtime APIs
@@ -113,7 +114,7 @@ safe "trusted compute" execution format like Java bytecode tried to be.
 
 To efficiently execute a kernel graph, the runtime does not directly process the
 program’s MLIR representation. Instead the
-[MLIRToMEF](../include/GraphRT/MLIRToMEF.h) library converts the program
+[MLIRToMEF](../../include/MLRT/GraphRT/MLIRToMEF.h) library converts the program
 to an in-memory format called Modular Executor Format, or **MEF**.  The MEF
 format is isomorphic to the MLIR representation, but is `mmap`-able, more
 cache-friendly, and requires many fewer dependencies for execution compared to

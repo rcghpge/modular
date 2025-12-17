@@ -9,6 +9,7 @@ the Modular stack.
 MLRT contains the following libraries:
 
 - Core - Core C++ runtime utilities
+- GraphRT - Graph runtime infrastructure
 
 ## Core
 
@@ -36,6 +37,15 @@ Provides a C++ wrapper for runtime Mojo objects, enabling safe transfer of Mojo
 values between the C++ and Mojo worlds. MojoValue manages ownership and lifetime
 of Mojo objects in C++ code, automatically invoking the appropriate Mojo
 destructor when the value is destroyed.
+
+## [GraphRT](./GraphRT/README.md)
+
+Namespace: `M::`. Depends on AsyncRT and MLIR (but not on Kernels or KGEN)
+
+GraphRT is a low-level execution layer for precompiled dataflow graphs.
+"Primitives" are registered as C/C++ functions and looked up by name, allowing
+the bottom level of the runtime stack to drive arbitrary CPU computation and
+interface with existing foreign runtimes.
 
 ## WIP Status
 

@@ -14,7 +14,7 @@ with pointers to examples in the source base.
 As mentioned above, primitives are implemented as C++ functions, and these
 functions take a `PrimitiveFrame` as their operand.  They are registered
 with the [`PrimitiveRegistry`
-class](../include/GraphRT/MEFExecutor/PrimitiveRegistry.h) which looks like
+class](../../include/MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h) which looks like
 this:
 
 ```c++
@@ -49,8 +49,8 @@ syntax for the primitive has a directly corresponding runtime behavior:
    "invokable" references that may be invoked in the executor.
 
 The [`RunnablePrimitiveDescriptor
-class`](../include/GraphRT/MEFExecutor/PrimitiveDescriptor.h) is the C++ class
-the MEF executor uses to wrap up all the runtime representation needed to
+class`](../../include/MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h) is the C++
+class the MEF executor uses to wrap up all the runtime representation needed to
 invoke and get the results from a primitive. While fundamentally all primitive
 implementations poke the `RunnablePrimitiveDescriptor` class to get their work
 done, it is a very low-level and not-very-type-safe approach.

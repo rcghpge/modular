@@ -16,7 +16,6 @@ package_group(
     name = "consumers",
     packages = [
         "//GenericML/...",
-        "//GraphRT/...",  # Temporarily added during move
         "//KGEN/...",
         "//MLRT/...",
         "//docs/...",
