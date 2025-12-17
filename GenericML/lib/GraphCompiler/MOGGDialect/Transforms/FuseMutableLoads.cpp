@@ -504,6 +504,15 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
         fuseLoadBuffer(builder, loadOp, kernelOp,
                        /*kernelHasLoadsOutputChain=*/true);
       } else if (!kernelHasInOutChains(kernelOp)) {
+        // Skip load fusion for kernels without output placeholders (view
+        // operations like slice). These need tensor semantics and can't work
+        // with buffer types directly.
+        if (!kernelOp.getOutputPlaceholder()) {
+          LLVM_DEBUG(loadOp.emitRemark()
+                     << "Skipping mutable load fusion for kernel without "
+                        "output placeholder (view operation).");
+          continue;
+        }
         // Transform logic is a bit more involved if load fusion hasn't already
         // happened as we need to have the kernel both produce and consume a
         // chain now.
