@@ -9,8 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
-#include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -20,6 +18,8 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/TransformUtils/SCCUtils.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"

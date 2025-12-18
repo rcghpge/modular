@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -19,6 +18,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 

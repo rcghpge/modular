@@ -6,10 +6,10 @@
 
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 
-#include "AsyncRT/Runtime/Allocator.h"
-#include "AsyncRT/Runtime/Runtime.h"
-#include "AsyncRT/Support/Location.h"
-#include "AsyncRT/Support/UnknownLocationDecoder.h"
+#include "MLRT/AsyncRT/Runtime/Allocator.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Support/Location.h"
+#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 
 #include "gtest/gtest.h"
 

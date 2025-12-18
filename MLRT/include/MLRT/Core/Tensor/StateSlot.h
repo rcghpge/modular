@@ -7,7 +7,7 @@
 #ifndef MLRT_CORE_TENSOR_STATESLOT_H
 #define MLRT_CORE_TENSOR_STATESLOT_H
 
-#include "AsyncRT/ForwardDecls.h"
+#include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/ADT/GenericRCRef.h"
 #include "Support/ErrorOr.h"

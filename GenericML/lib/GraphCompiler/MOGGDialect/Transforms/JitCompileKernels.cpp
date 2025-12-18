@@ -21,8 +21,6 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
 
-#include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Runtime.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "KGEN/Compiler/KGENCompiler.h"
 #include "KGEN/Compiler/ObjectCompiler.h"
@@ -33,6 +31,8 @@
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/Support/CompilerProfiling.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/Telemetry/Telemetry.h"
 

@@ -4,15 +4,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 
 #include "./AsyncDataflowDependencies.h"
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "GenericML/MGPTransforms/Utils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTChainInterface.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "MLRT/GraphRT/MEFDialect/MEFTypes.h"

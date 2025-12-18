@@ -12,7 +12,6 @@
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/SourceMgr.h"
 
-#include "AsyncRT/CompilerSupport/Context.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
@@ -26,6 +25,7 @@
 #include "KGEN/MojoParser/SharedState.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "Support/AssertStream.h"
 #include "Support/Context.h"
 #include "Support/Filesystem/Paths.h"

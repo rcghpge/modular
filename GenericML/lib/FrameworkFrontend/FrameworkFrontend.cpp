@@ -5,9 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/FrameworkFrontend.h"
-#include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Runtime.h"
-#include "AsyncRT/Runtime/Utils.h"
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"
 #include "Config/Version.h"
@@ -29,6 +26,9 @@
 #include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"

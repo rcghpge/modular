@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/Conversion/MOGGToKGEN.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
@@ -23,6 +22,7 @@
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "KGEN/ToolCommon/KGENPasses.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MLIRToMEF.h"
 #include "Support/ADT/ConcatenationTree.h"

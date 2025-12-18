@@ -8,8 +8,14 @@ the Modular stack.
 
 MLRT contains the following libraries:
 
+- AsyncRT - Parallel C++ runtime with threadpools
 - Core - Core C++ runtime utilities
 - GraphRT - Graph runtime infrastructure
+
+## [AsyncRT](./AsyncRT/README.md)
+
+AsyncRT contains low level support for domain independent parallel CPU
+computation, including a thread pool implementation.
 
 ## Core
 

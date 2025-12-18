@@ -5,10 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MGPPrimitives/KernelLogger.h"
-#include "AsyncRT/DeviceContext/DeviceContext.h"
-#include "AsyncRT/Runtime/AsyncValueRef.h"
-#include "AsyncRT/Runtime/Runtime.h"
-#include "AsyncRT/Support/UnknownLocationDecoder.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 #include "Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "gmock/gmock.h"

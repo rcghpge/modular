@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
@@ -25,6 +24,7 @@
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"

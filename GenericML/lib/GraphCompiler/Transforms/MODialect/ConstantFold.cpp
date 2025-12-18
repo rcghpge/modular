@@ -5,10 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "ConstantFold.h"
-#include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/CompilerSupport/MLIRLocationDecoder.h"
-#include "AsyncRT/Runtime/Algorithms.h"
-#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
@@ -23,6 +19,10 @@
 #include "GenericML/Support/Model.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
+#include "MLRT/AsyncRT/CompilerSupport/MLIRLocationDecoder.h"
+#include "MLRT/AsyncRT/Runtime/Algorithms.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/Buffer.h"

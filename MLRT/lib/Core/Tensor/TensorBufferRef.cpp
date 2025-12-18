@@ -6,8 +6,8 @@
 
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 
-#include "AsyncRT/Runtime/AsyncValue.h"
-#include "AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "llvm/Support/Format.h"
 
 using namespace M;

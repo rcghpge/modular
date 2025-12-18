@@ -7,7 +7,7 @@
 #ifndef MLRT_CORE_TENSOR_TENSOR_H
 #define MLRT_CORE_TENSOR_TENSOR_H
 
-#include "AsyncRT/Runtime/CompactRuntimePtr.h"
+#include "MLRT/AsyncRT/Runtime/CompactRuntimePtr.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/TensorBase.h"

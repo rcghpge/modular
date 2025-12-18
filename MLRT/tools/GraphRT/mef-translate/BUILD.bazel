@@ -12,8 +12,8 @@ modular_cc_binary(
     name = "mef-translate",
     srcs = glob(["*.cpp"]),
     deps = [
-        "//AsyncRT:CompilerSupport",
-        "//AsyncRT:RuntimeGlobals",
+        "//MLRT:AsyncRT/CompilerSupport",
+        "//MLRT:AsyncRT/RuntimeGlobals",
         "//MLRT:GraphRT/GRTDialect",
         "//MLRT:GraphRT/MEFToMLIR",
         "//MLRT:GraphRT/MLIRToMEF",

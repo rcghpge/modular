@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/DeviceContext/DeviceContext.h"
 #include "GenericML/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
@@ -13,6 +12,7 @@
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
+#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"

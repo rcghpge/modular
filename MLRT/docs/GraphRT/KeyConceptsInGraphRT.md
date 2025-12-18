@@ -11,7 +11,7 @@ GraphRT.
 
 ## Non-blocking, asynchronous, and lock-free
 
-As with [the AsyncRT library](../../AsyncRT/docs/README.md), GraphRT is
+As with [the AsyncRT library](../AsyncRT/README.md), GraphRT is
 designed to be completely non-blocking, and built on the principle of executing
 asynchronous operations across an efficient thread pool (which aims to have a
 1:1 mapping to hardware threads in the steady state).  The implementation of
@@ -213,7 +213,7 @@ can run in any order (or, indeed, in parallel) but the prints have a data
 dependence between them, so the first runs before the second one.
 
 If you look at the [definition of the
-`M::AsyncRT::Chain`](../../AsyncRT/include/AsyncRT/Support/Chain.h) struct,
+`M::AsyncRT::Chain`](../../include/MLRT/AsyncRT/Support/Chain.h) struct,
 you'll see that it is empty. What is happening here though is that the
 `AsyncValue` containing the chain is only marked as "ready" when the side
 effect for the print is completed. This composes naturally with GraphRT's

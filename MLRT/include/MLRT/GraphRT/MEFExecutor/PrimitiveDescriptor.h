@@ -7,9 +7,9 @@
 #ifndef MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEDESCRIPTOR_H
 #define MLRT_GRAPHRT_MEFEXECUTOR_PRIMITIVEDESCRIPTOR_H
 
-#include "AsyncRT/ForwardDecls.h"
-#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "AsyncRT/Runtime/AsyncValue.h"
+#include "MLRT/AsyncRT/ForwardDecls.h"
+#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"

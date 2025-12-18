@@ -6,8 +6,8 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 
-#include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 
 #include "Cache/CacheTelemetryContext.h"
 #include "Cache/CachedTransform.h"

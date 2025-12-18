@@ -7,8 +7,8 @@
 #ifndef MLRT_CORE_TENSOR_TENSORBUFFERREF_H
 #define MLRT_CORE_TENSOR_TENSORBUFFERREF_H
 
-#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "AsyncRT/Runtime/CompactRuntimePtr.h"
+#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/CompactRuntimePtr.h"
 #include "Support/Profiling/TimeProfiler.h"
 
 #include "llvm/Support/Alignment.h"

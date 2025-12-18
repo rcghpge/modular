@@ -4,8 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncRT/CompilerSupport/Context.h"
-#include "AsyncRT/Runtime/Utils.h"
 #include "Config/Version.h"
 #include "GenericML/CommonDriver/DriverInputFormat.h"
 #include "GenericML/CommonDriver/Utils.h"
@@ -15,6 +13,8 @@
 #include "GenericML/MEFModel/MEFModel.h"
 #include "GenericML/MOFOptions.h"
 #include "Init/Init.h"
+#include "MLRT/AsyncRT/CompilerSupport/Context.h"
+#include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/AssertStream.h"
 #include "Support/ML/SizeUtils.h"

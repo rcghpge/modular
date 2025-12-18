@@ -9,11 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/Value.h"
-#include "AsyncRT/Runtime/AnyAsyncValueRef.h"
-#include "AsyncRT/Runtime/Runtime.h"
 #include "GenericML/Support/Dict.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/List.h"
+#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "llvm/Support/YAMLTraits.h"
 
