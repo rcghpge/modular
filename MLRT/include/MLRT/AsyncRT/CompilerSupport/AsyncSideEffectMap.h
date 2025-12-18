@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
-#define ASYNCRT_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
+#ifndef MLRT_ASYNCRT_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
+#define MLRT_ASYNCRT_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
 
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "Support/LLVMCompilerForwardDecls.h"
@@ -81,4 +81,4 @@ private:
 };
 } // namespace M::AsyncRT
 
-#endif // ASYNCRT_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H
+#endif // MLRT_ASYNCRT_COMPILERSUPPORT_ASYNCSIDEEFFECTMAP_H

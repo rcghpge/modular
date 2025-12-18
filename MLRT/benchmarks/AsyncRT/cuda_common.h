@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_BENCHMARKS_CUDA_COMMON_H
-#define ASYNCRT_BENCHMARKS_CUDA_COMMON_H
+#ifndef MLRT_BENCHMARKS_ASYNCRT_CUDA_COMMON_H
+#define MLRT_BENCHMARKS_ASYNCRT_CUDA_COMMON_H
 
 #include <dlfcn.h>
 
@@ -181,4 +181,4 @@ static bool loadCUDAFunctions() {
 
 } // namespace CudaCommon
 
-#endif // UTILS_BENCHMARKING_CPPBENCHMARKS_CUDA_COMMON_H
+#endif // MLRT_BENCHMARKS_ASYNCRT_CUDA_COMMON_H

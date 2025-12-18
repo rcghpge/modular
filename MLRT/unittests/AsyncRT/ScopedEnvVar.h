@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
-#define ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
+#ifndef MLRT_ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
+#define MLRT_ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
 
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/StringRef.h"
@@ -76,4 +76,4 @@ private:
 
 } // namespace
 
-#endif // ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
+#endif // MLRT_ASYNCRT_UNITTESTS_SCOPED_ENV_VAR_H
