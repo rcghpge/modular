@@ -203,7 +203,7 @@ MGP_RT_TensorBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
 
   TensorBufferRef buf =
-      mem ? ::M::TensorBufferRef::create(data, byteCount, mem->releaseRCRef())
+      mem ? ::M::TensorBufferRef::create(data, byteCount, std::move(*mem))
           : ::TensorBufferRef::createWithNonTrackedMemory(data, byteCount);
 
   // Pack buffer and spec into tensor.
@@ -223,7 +223,7 @@ MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
                       size_t size, AnyAsyncValueRef *mem) {
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
   TensorBufferRef buf =
-      mem ? ::M::TensorBufferRef::create(data, size, mem->releaseRCRef())
+      mem ? ::M::TensorBufferRef::create(data, size, std::move(*mem))
           : ::TensorBufferRef::createWithNonTrackedMemory(data, size);
   if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
     borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
