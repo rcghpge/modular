@@ -1750,6 +1750,15 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(stubOp)) {
       passDynDimensionToKernelStub(getDimOp.getLoc(), getDimOp.getDimension());
     }
+
+    // Handle dynamic dimensions from result types of all operations.
+    // This is needed for operations like mogg.experimental.kernel that have
+    // tensor result types with dynamic dimensions.
+    for (Type resultType : stubOp->getResultTypes()) {
+      if (auto tensorType = MO::dynCastFromTensorLike(resultType)) {
+        passTensorDynDimensionsToKernelStub(stubOp->getLoc(), tensorType);
+      }
+    }
   });
 
   assert(stubCallOperands.size() ==
