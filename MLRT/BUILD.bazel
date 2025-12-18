@@ -539,6 +539,17 @@ modular_shared_library(
     ],
 )
 
+modular_cc_library(
+    name = "AsyncRT/cppzmq",
+    hdrs = glob(["include/MLRT/AsyncRT/ZeroMQ/*.hpp"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//Support:Base",
+        "@libzmq",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 # GraphRT targets
 
 td_library(
