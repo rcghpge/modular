@@ -1130,6 +1130,30 @@ def MGP_CallOp : MGP_Op<"call", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// StringCreateOp
+//===----------------------------------------------------------------------===//
+
+def StringCreateOp : MGP_Op<"string.create", [Pure]> {
+  let summary = "Creates a Mojo String from a string attribute.";
+  let description = [{
+    Creates a Mojo String from a compile-time string attribute.
+    The returned value is an opaque pointer to a Mojo `String`,
+    created from a Mojo `UnsafePointer[String]`.
+
+    Example:
+    ```mlir
+    %str = mgp.string.create "abcd" : !mgp.opaque<"mojo_string">
+    ```
+  }];
+
+  let arguments = (ins StrAttr:$value);
+  let results = (outs MGP_OpaqueType:$result);
+  let assemblyFormat = [{
+    $value attr-dict `:` qualified(type($result))
+  }];
+}
+
 include "GenericML/MGPDialect/MGPDeviceOps.td"
 
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD

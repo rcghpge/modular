@@ -1144,6 +1144,7 @@ modular_cc_library(
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
         "//Kernels:Tracing",
+        "//Kernels:mojo_string_c_api",
     ],
 )
 
@@ -1160,6 +1161,7 @@ modular_cc_library(
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
         "//Kernels:Tracing",
+        "//Kernels:mojo_string_c_api",
     ],
 )
 

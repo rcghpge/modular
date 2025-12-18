@@ -15,6 +15,7 @@
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorSpec.h"
+#include "mojo_string_c_api.h"
 #include "weights_registry_c_api.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/TargetSelect.h"
@@ -165,6 +166,25 @@ static void mgp_buffer_constant_external_cpu(
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.string.create
+//===----------------------------------------------------------------------===//
+
+static void mgp_string_create(Result<MojoValue> outString,
+                              MEFAttr<StringRef> value) {
+  StringRef strValue = value.get();
+
+  // Create a Mojo String via the C API
+  void *mojoStringPtr =
+      create_mojo_string(const_cast<char *>(strValue.data()),
+                         static_cast<ssize_t>(strValue.size()));
+
+  // Create MojoValue that owns the Mojo UnsafePointer[String]
+  std::move(outString).emplace(MojoValue(
+      mojoStringPtr,
+      reinterpret_cast<MojoValue::DestructorFn>(destroy_mojo_string)));
+}
+
+//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
@@ -174,4 +194,5 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
                 mgp_buffer_constant_external_cpu);
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.external.gpu",
                 mgp_buffer_constant_external_cpu);
+  ADD_PRIMITIVE(registry, "mgp.string.create", mgp_string_create);
 }
