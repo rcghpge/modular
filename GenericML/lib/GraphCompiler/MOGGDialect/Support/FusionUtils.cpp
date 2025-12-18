@@ -593,9 +593,12 @@ getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
   if (!fusedTensor.hasOneUse())
     return Error("TensorFusedOp should have a unique user");
   auto executeOp = dyn_cast<CallExecuteOp>(*fusedTensor.getUsers().begin());
-  if (!executeOp)
-    return Error("TensorFusedOp user must be a kernel call "
-                 "(CallExecuteOp)");
+  if (!executeOp) {
+    // If the user is not a CallExecuteOp (e.g., after epilogue fusion with
+    // distributed operations where the user is a BindLambdaOp), default to
+    // Output fusion type which uses a store.
+    return KernelOutputFusionLambdaType::Output;
+  }
 
   // Find the corresponding output index.
   std::optional<unsigned> outputIdx = std::nullopt;

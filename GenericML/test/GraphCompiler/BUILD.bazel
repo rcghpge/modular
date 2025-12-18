@@ -2,9 +2,17 @@ load("//bazel:api.bzl", "lit_tests")
 
 package(default_visibility = ["//visibility:private"])
 
+# Tests that require a GPU
+_GPU_ONLY_TESTS = [
+    "Conversion/MOToMOGG/emit-mojo-distributed-epilogue-fusion.mlir",
+]
+
 lit_tests(
     name = "test",
-    srcs = glob(["**/*.mlir"]),
+    srcs = glob(
+        ["**/*.mlir"],
+        exclude = _GPU_ONLY_TESTS,
+    ),
     custom_substitutions = {
         "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITestLibOrPkg)",
         "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
@@ -17,6 +25,32 @@ lit_tests(
         "//max:MOGGKernelAPI",
         "//max:MOGGPrimitives",
     ],
+    target_compatible_with = select({
+        "//:tsan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tools = [
+        "//GenericML/tools/mo-opt",
+    ],
+)
+
+lit_tests(
+    name = "test-gpu",
+    srcs = _GPU_ONLY_TESTS,
+    custom_substitutions = {
+        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITestLibOrPkg)",
+        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
+    },
+    data = [
+        "//GenericML/test/TestKernels:MOGGKernelAPITest",
+        "//GenericML/test/TestKernels:MOGGKernelAPITestLibOrPkg",
+    ],
+    gpu_constraints = ["//:has_gpu"],
+    mojo_deps = [
+        "//max:MOGGKernelAPI",
+        "//max:MOGGPrimitives",
+    ],
+    tags = ["gpu"],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
         "//conditions:default": [],
