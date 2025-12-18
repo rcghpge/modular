@@ -1154,6 +1154,33 @@ def StringCreateOp : MGP_Op<"string.create", [Pure]> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// StringConcatOp
+//===----------------------------------------------------------------------===//
+
+def StringConcatOp : MGP_Op<"string.concat", [Pure]> {
+  let summary = "Concatenates two Mojo Strings.";
+  let description = [{
+    Concatenates two Mojo Strings and returns a new Mojo String containing
+    the result. Both inputs must be opaque pointers to Mojo `String` values
+    (as created by `mgp.string.create`).
+
+    Example:
+    ```mlir
+    %prefix = mgp.string.create "hello " : !mgp.opaque<"mojo_string">
+    %end = mgp.string.create "world" : !mgp.opaque<"mojo_string">
+    %result = mgp.string.concat %prefix, %end : (!mgp.opaque<"mojo_string">, !mgp.opaque<"mojo_string">) -> !mgp.opaque<"mojo_string">
+    // %result contains "hello world"
+    ```
+  }];
+
+  let arguments = (ins MGP_OpaqueType:$prefix, MGP_OpaqueType:$end);
+  let results = (outs MGP_OpaqueType:$result);
+  let assemblyFormat = [{
+    $prefix `,` $end attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 include "GenericML/MGPDialect/MGPDeviceOps.td"
 
 #endif  // GENERICML_MGPDIALECT_MGPOPS_TD

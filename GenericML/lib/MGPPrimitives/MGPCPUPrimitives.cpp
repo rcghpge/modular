@@ -185,6 +185,22 @@ static void mgp_string_create(Result<MojoValue> outString,
 }
 
 //===----------------------------------------------------------------------===//
+// mgp.string.concat
+//===----------------------------------------------------------------------===//
+
+static void mgp_string_concat(AsyncValueRef<MojoValue> prefix,
+                              AsyncValueRef<MojoValue> end,
+                              Result<MojoValue> outString) {
+  // Concatenate the two Mojo Strings via the C API
+  void *mojoStringPtr = concat_mojo_strings(prefix->getData(), end->getData());
+
+  // Create MojoValue that owns the new Mojo UnsafePointer[String]
+  std::move(outString).emplace(MojoValue(
+      mojoStringPtr,
+      reinterpret_cast<MojoValue::DestructorFn>(destroy_mojo_string)));
+}
+
+//===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
 
@@ -195,4 +211,5 @@ void M::registerMGPCPUPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.constant.external.gpu",
                 mgp_buffer_constant_external_cpu);
   ADD_PRIMITIVE(registry, "mgp.string.create", mgp_string_create);
+  ADD_PRIMITIVE(registry, "mgp.string.concat", mgp_string_concat);
 }
