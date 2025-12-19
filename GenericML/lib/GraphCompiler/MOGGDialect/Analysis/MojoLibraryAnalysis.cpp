@@ -31,6 +31,8 @@
 #include "Support/Filesystem/Paths.h"
 #include "Support/HashUtils.h"
 
+#include <type_traits>
+
 using namespace M;
 using namespace MOGG;
 
@@ -997,24 +999,113 @@ std::optional<StringRef> MojoLibraryAnalysis::getFullyQualifiedOpaqueTypeName(
 // MO op to mojo kernel verification
 //===----------------------------------------------------------------------===//
 
+/// Check if the given type matches the StaticString lowered pattern:
+/// `!kgen.struct<(pointer<none>, index)>`
+static bool isStaticStringLoweredPattern(Type ty) {
+  auto structTy = dyn_cast<KGEN::StructType>(ty);
+  if (!structTy)
+    return false;
+
+  auto elementTypes = structTy.getElementTypes();
+  if (elementTypes.size() != 2)
+    return false;
+
+  // First element should be pointer<none> (KGEN::NoneType, not MLIR NoneType)
+  auto ptrTy = dyn_cast<KGEN::PointerType>(elementTypes[0]);
+  if (!ptrTy || !isa<KGEN::NoneType>(ptrTy.getElementType()))
+    return false;
+
+  // Second element should be index
+  return isa<IndexType>(elementTypes[1]);
+}
+
+/// Look through ref types and sugar to get underlying struct type if present.
+/// This mirrors the getAsStructType helper in AnnotateKernels.cpp.
+static KGEN::LIT::StructType getAsStructType(Type t) {
+  // First try to unwrap LIT::RefType (for pass-by-reference parameters)
+  if (auto asLitRef = KGEN::sugarDynCast<KGEN::LIT::RefType>(t))
+    return KGEN::sugarDynCast<KGEN::LIT::StructType>(asLitRef.getElementType());
+  return KGEN::sugarDynCast<KGEN::LIT::StructType>(t);
+}
+
+/// Check if the given LIT::StructType represents StaticString
+/// (i.e., StringSlice[StaticConstantOrigin]) rather than a generic
+/// StringSlice[O] where O is a parameter reference.
+///
+/// StaticString has a concrete origin value (StaticConstantOrigin), while
+/// generic StringSlice[O] has a parameter reference (ParamDeclRefAttr) as its
+/// origin.
+static bool isLITStaticStringType(Type ty) {
+  KGEN::LIT::StructType structTy = getAsStructType(ty);
+  if (!structTy)
+    return false;
+
+  // Check if the symbol is std::StringSlice
+  auto symbol = structTy.getSymbol();
+  std::string symbolName = llvm::Twine(symbol.getRootReference().strref())
+                               .concat("::")
+                               .concat(symbol.getLeafReference().strref())
+                               .str();
+  if (symbolName != "std::StringSlice")
+    return false;
+
+  // Check if the origin parameter is a concrete value (not a parameter
+  // reference)
+  auto paramValues = structTy.getParamValues();
+  if (paramValues.empty())
+    return false;
+
+  // The first parameter should be the origin
+  TypedAttr originAttr = paramValues[0];
+
+  // If the origin is a parameter reference (ParamDeclRefAttr), this is a
+  // generic StringSlice[O], not StaticString. Return false.
+  if (KGEN::sugarIsa<KGEN::ParamDeclRefAttr>(originAttr))
+    return false;
+
+  // If we get here, the origin is a concrete value (likely
+  // StaticConstantOrigin). This is StaticString.
+  return true;
+}
+
 using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
 
-ErrorOrSuccess
-MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
-  // TODO: Reimplement the validation for LIT.
-  if (useExperimentalMojoPath())
-    return success();
-
+template <class FuncT>
+static ErrorOrSuccess
+validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
+                               MO::CustomOp customOp) {
   // Find the kernel from the library.
-  auto maybeAdaptor = getMojoKernelAdaptor<KGEN::GeneratorOp>(*this, customOp);
+  auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(libraryAnalysis, customOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
   auto adaptor = maybeAdaptor.takeValue();
   auto mojoCode = adaptor.executeFunction->mojoCode;
 
-  auto parameterTypeNames = mojoCode->getAttrOfType<ArrayAttr>(
-      KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
+  // For LIT::FnOp, parameters can be on both the parent StructDeclOp AND on the
+  // function itself. For GeneratorOp, the parameters are on the generator.
+  // NOTE: AnnotateKernels.cpp sets MOGG_INPUT_PARAM_TYPES with struct params
+  // first, then function params.
+  SmallVector<KGEN::ParamDeclAttr> inputParamsVec;
+  ArrayAttr parameterTypeNames;
+
+  if constexpr (std::is_same_v<FuncT, KGEN::LIT::FnOp>) {
+    // For LIT, get both the parent struct's parameters and the function's
+    // parameters. Struct params come first, then function params.
+    if (auto structDeclOp =
+            mojoCode->template getParentOfType<KGEN::LIT::StructDeclOp>()) {
+      llvm::append_range(inputParamsVec, structDeclOp.getInputParams());
+    }
+    llvm::append_range(inputParamsVec, mojoCode.getInputParams());
+    parameterTypeNames = mojoCode->template getAttrOfType<ArrayAttr>(
+        KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
+  } else {
+    // For GeneratorOp, get the function's parameters.
+    llvm::append_range(inputParamsVec, mojoCode.getInputParams());
+    parameterTypeNames = mojoCode->template getAttrOfType<ArrayAttr>(
+        KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
+  }
+  ArrayRef<KGEN::ParamDeclAttr> inputParams = inputParamsVec;
 
   struct MojoParameterAdaptor {
     KGEN::ParamDeclAttr attr;
@@ -1022,9 +1113,17 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
   };
   llvm::DenseMap<StringAttr, MojoParameterAdaptor> paramDecls;
 
-  for (auto [param, value] :
-       llvm::zip(mojoCode.getInputParams(), parameterTypeNames))
-    paramDecls[param.getName()] = {param, dyn_cast<StringAttr>(value)};
+  if (parameterTypeNames) {
+    // Use llvm::zip to handle potential size mismatch gracefully - zip stops
+    // at the shorter of the two ranges, matching original behavior.
+    for (auto [param, value] : llvm::zip(inputParams, parameterTypeNames))
+      paramDecls[param.getName()] = {param, dyn_cast<StringAttr>(value)};
+  } else {
+    // If parameterTypeNames is not available, populate paramDecls with the
+    // parameter declarations (without type names).
+    for (auto param : inputParams)
+      paramDecls[param.getName()] = {param, nullptr};
+  }
 
   for (const NamedAttribute &namedAttr : customOp.getParameters()) {
     auto it = paramDecls.find(namedAttr.getName());
@@ -1058,12 +1157,38 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (isa<KGEN::StringType>(kgenParamTy)) {
-      [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
-      ASSERT_STREAM(asString != nullptr,
-                    "failed to convert custom op attribute "
-                        << mlirParamAttr
-                        << " to expected mojo kernel param type " << kgenParamTy
-                        << ": expected string type");
+      // KGEN::StringType can be used for StaticString, StringSlice, and String.
+      // Only StaticString should accept string parameters in custom ops.
+      // We must verify this is explicitly StaticString (typeName ==
+      // "std::StringSlice"). If typeName is not available, we preserve the
+      // original behavior of accepting any StringAttr for KGEN::StringType.
+      if (typeName &&
+          typeName ==
+              KGEN::MOGGPreElab::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+        // This is StaticString, accept StringAttr.
+        [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        ASSERT_STREAM(asString != nullptr,
+                      "failed to convert custom op attribute "
+                          << mlirParamAttr
+                          << " to expected mojo kernel param type "
+                          << kgenParamTy << ": expected string type");
+      } else if (typeName) {
+        // typeName is set but not StaticString - this is StringSlice or String.
+        return Error(llvm::formatv(
+            "in custom op '{}' attribute '{}' uses a string-like type that is "
+            "not supported. Use type StaticString instead to define a string "
+            "parameter for a custom op.",
+            customOp.getSymbol(), customParamDecl.getName()));
+      } else {
+        // typeName is null (non-emit-mojo path fallback) - preserve original
+        // behavior of accepting any StringAttr for KGEN::StringType.
+        [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        ASSERT_STREAM(asString != nullptr,
+                      "failed to convert custom op attribute "
+                          << mlirParamAttr
+                          << " to expected mojo kernel param type "
+                          << kgenParamTy << ": expected string type");
+      }
     } else if (isa<KGEN::DTypeType>(kgenParamTy)) {
       auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
       if (asType == nullptr) {
@@ -1073,13 +1198,75 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (typeName &&
-               typeName ==
-                   KGEN::MOGGPreElab::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
-      [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+               typeName == KGEN::MOGGPreElab::MOJO_DTYPE_TYPE_NAME) {
+      // In emit-mojo path, litTypeToSourceName returns "std::DType" for DType
+      // parameters. Accept TypeAttr.
+      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
+      if (asType == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a DType",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               typeName == KGEN::MOGGPreElab::MOJO_STATIC_STRING_TYPE_NAME) {
+      // In emit-mojo path, litTypeToSourceName returns "std::StaticString" for
+      // StaticString. Accept StringAttr.
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
       if (asString == nullptr) {
         return Error(llvm::formatv(
             "failed to convert custom op '{}' attribute '{}' with value '{}' "
             "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               typeName ==
+                   KGEN::MOGGPreElab::MOJO_INTERNAL_STATIC_STRING_TYPE_NAME) {
+      // typeName == "std::StringSlice" can be either StaticString or generic
+      // StringSlice in emit-mojo path, since both produce the same typeName.
+      // We need to check the actual type to distinguish them.
+      // In non-emit-mojo path, we can also check isStaticStringLoweredPattern.
+      bool isStaticString = isLITStaticStringType(kgenParamTy) ||
+                            isStaticStringLoweredPattern(kgenParamTy);
+      if (isStaticString) {
+        // This is StaticString, accept StringAttr.
+        auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        if (asString == nullptr) {
+          return Error(llvm::formatv(
+              "failed to convert custom op '{}' attribute '{}' with value '{}' "
+              "to the proper Mojo parameter type: expected string type",
+              customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+        }
+      } else {
+        // This is StringSlice (not StaticString), reject string literals.
+        return Error(llvm::formatv(
+            "in custom op '{}' attribute '{}' uses type StringSlice. Use type "
+            "StaticString instead to define a string parameter for a custom "
+            "op.",
+            customOp.getSymbol(), customParamDecl.getName()));
+      }
+    } else if (typeName &&
+               (typeName ==
+                    KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_INT_TYPE_NAME ||
+                typeName ==
+                    KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_UINT_TYPE_NAME)) {
+      // Mojo's Int/UInt types should accept integer attributes.
+      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
+      if (asInt == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               typeName ==
+                   KGEN::MOGGPreElab::MOJO_INTERNAL_DPS_BOOL_TYPE_NAME) {
+      // Mojo's Bool type should accept boolean attributes.
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a boolean type",
             customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
       }
     } else if (typeName &&
@@ -1094,6 +1281,18 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
           "in custom op '{}' attribute '{}' uses type {}. Use type "
           "StaticString instead to define a string parameter for a custom op.",
           customOp.getSymbol(), customParamDecl.getName(), userTypeName));
+    } else if (!typeName && isStaticStringLoweredPattern(kgenParamTy)) {
+      // When typeName is not available (litTypeToSourceName returns UnitAttr
+      // for non-struct types like StaticString), check if the type matches the
+      // StaticString lowered pattern: !kgen.struct<(pointer<none>, index)>
+      // Accept StringAttr, reject other attribute types.
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      if (asString == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
     } else {
       return Error(llvm::formatv(
           "failed to convert custom op '{}' attribute '{}' with value '{}' to "
@@ -1105,6 +1304,14 @@ MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
   }
 
   return success();
+}
+
+ErrorOrSuccess
+MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
+  if (useExperimentalMojoPath())
+    return validateCustomOpParametersImpl<KGEN::LIT::FnOp>(*this, customOp);
+  else
+    return validateCustomOpParametersImpl<KGEN::GeneratorOp>(*this, customOp);
 }
 
 template <class FuncT>
