@@ -867,7 +867,8 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canBeFusedInto,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$emitsMojo
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$emitsMojo,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$isStructuredKernel
   );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);

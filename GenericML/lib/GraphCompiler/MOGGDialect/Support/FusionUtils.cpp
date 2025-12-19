@@ -322,6 +322,9 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
   const bool canDuplicate = llvm::all_of(toFuse, [&](auto region) {
     return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
   });
+  const bool isStructuredKernel = llvm::any_of(toFuse, [&](auto region) {
+    return cast<MOGG::GenericCompiledRegionOp>(region).getIsStructuredKernel();
+  });
   DeviceRefAttr device =
       cast<MOGG::GenericCompiledRegionOp>(toFuse.front()).getExecutionDevice();
   // For now we set the device to be a cuda device if one exists.
@@ -350,7 +353,8 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
       MOGG::getSummaryString(toFuse, MOGG::FusionType::SOFT),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
-      canFuseIntoOther, canBeFusedInto, canDuplicate);
+      canFuseIntoOther, canBeFusedInto, canDuplicate, false,
+      isStructuredKernel);
   fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());

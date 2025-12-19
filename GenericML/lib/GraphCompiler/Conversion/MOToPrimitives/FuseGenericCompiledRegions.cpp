@@ -119,6 +119,9 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
   const bool canDuplicate = llvm::all_of(toFuse, [&](auto region) {
     return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
   });
+  const bool isStructuredKernel = llvm::any_of(toFuse, [&](auto region) {
+    return cast<MOGG::GenericCompiledRegionOp>(region).getIsStructuredKernel();
+  });
   DeviceRefAttr device =
       cast<MOGG::GenericCompiledRegionOp>(toFuse.front()).getExecutionDevice();
   // For now we set the device to be a cuda device if one exists.
@@ -147,7 +150,7 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
       MOGG::getSummaryString(toFuse, MOGG::FusionType::SOFT),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
-      canFuseIntoOther, canBeFusedInto, canDuplicate, true);
+      canFuseIntoOther, canBeFusedInto, canDuplicate, true, isStructuredKernel);
   fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
@@ -209,20 +212,38 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
   }
 }
 
+/// TODO(GEX-2986): Remove this function.
+static SmallVector<SmallVector<Operation *>>
+splitIfTooLarge(ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
+  SmallVector<SmallVector<Operation *>> fusionSets;
+  static constexpr uint64_t kMaxKernelsInFusionSet = 16;
+  uint64_t setSize = kMaxKernelsInFusionSet;
+  for (auto &&op : compiledRegionOpsToFuseTogether) {
+    if (setSize == kMaxKernelsInFusionSet) {
+      fusionSets.emplace_back();
+      setSize = 0;
+    }
+
+    fusionSets.back().push_back(op);
+    setSize += cast<MOGG::GenericCompiledRegionOp>(op).getIsStructuredKernel();
+  }
+
+  return fusionSets;
+}
+
 // This function will sequence fuse a set of MOGG::GenericCompiledRegionOp. It
 // expects the input vector to be topologically sorted.
 template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
-  if (cast<MOGG::GenericCompiledRegionOp>(
-          compiledRegionOpsToFuseTogether.front())
-          .getEmitsMojo()) {
-    fuseAndReplaceCompiledRegions(allowDuplication,
-                                  compiledRegionOpsToFuseTogether);
-  } else {
-    MOGG::fuseAndReplaceCompiledRegions(allowDuplication,
-                                        /*genReleaseOpaque=*/true,
-                                        compiledRegionOpsToFuseTogether);
+  auto fusionSets = splitIfTooLarge(compiledRegionOpsToFuseTogether);
+  for (auto &&fusionSet : fusionSets) {
+    if (cast<MOGG::GenericCompiledRegionOp>(fusionSet.front()).getEmitsMojo()) {
+      fuseAndReplaceCompiledRegions(allowDuplication, fusionSet);
+    } else {
+      MOGG::fuseAndReplaceCompiledRegions(allowDuplication,
+                                          /*genReleaseOpaque=*/true, fusionSet);
+    }
   }
 }
 
