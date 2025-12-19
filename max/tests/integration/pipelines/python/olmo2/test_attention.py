@@ -12,24 +12,18 @@
 # ===----------------------------------------------------------------------=== #
 
 
-from collections.abc import Sequence
-
 import numpy as np
 import pytest
 import torch
 from max.driver import Accelerator, Device, Tensor
 from max.dtype import DType
 from max.engine import InferenceSession
-from max.graph import DeviceRef, Graph, TensorType, TensorValue, ops
+from max.graph import DeviceRef, Graph, TensorType, ops
 from max.kv_cache import PagedKVCacheManager
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
+from max.nn.kv_cache import KVCacheParams, PagedCacheValues
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
-from max.pipelines import KVCacheConfig
 from max.pipelines.architectures.olmo2.layers.attention import (
     Olmo2Attention as MaxOlmo2Attention,
-)
-from max.pipelines.architectures.olmo2.model_config import (
-    Olmo2Config as MaxOlmo2Config,
 )
 from test_common.context_utils import create_text_context
 from torch.utils.dlpack import from_dlpack
@@ -101,25 +95,6 @@ def generate_torch_outputs(
     return layer(input_tensor, position_embeddings, attention_mask)[0]
 
 
-def unflatten_kv_inputs(
-    kv_manager: PagedKVCacheManager,
-    kv_params: KVCacheParams,
-    kv_inputs_flat: Sequence[TensorValue],
-) -> list[tuple[TensorValue, ...]]:
-    n_devices = kv_params.n_devices
-    fetch_types = kv_manager.get_symbolic_inputs()[0]
-    len_of_kv_tuple_per_dev = len(list(fetch_types))
-    kv_caches_per_dev = [
-        tuple(
-            kv_inputs_flat[
-                i * len_of_kv_tuple_per_dev : (i + 1) * len_of_kv_tuple_per_dev
-            ]
-        )
-        for i in range(n_devices)
-    ]
-    return kv_caches_per_dev
-
-
 def generate_max_outputs(
     text_config: Olmo2Config,
     input_tensor: torch.Tensor,
@@ -141,12 +116,12 @@ def generate_max_outputs(
     for weight_name, value in attention_weights.items():
         state_dict[weight_name] = value.to(dtype.to_torch()).cpu()
 
-    kv_cache_config = KVCacheConfig(cache_strategy=KVCacheStrategy.PAGED)
-    kv_params = MaxOlmo2Config.get_kv_params(
-        text_config,
-        n_devices=1,
-        kv_cache_config=kv_cache_config,
-        cache_dtype=dtype,
+    kv_params = KVCacheParams(
+        dtype=dtype,
+        n_kv_heads=text_config.num_key_value_heads,
+        head_dim=text_config.head_dim,
+        num_layers=text_config.num_hidden_layers,
+        devices=[device_ref],
     )
 
     session = InferenceSession(devices=[Accelerator(0)])
@@ -177,7 +152,6 @@ def generate_max_outputs(
     # Set up blank KV cache.
     kv_manager = PagedKVCacheManager(
         params=kv_params,
-        devices=[device],
         total_num_pages=1,
         session=session,
     )
@@ -198,7 +172,7 @@ def generate_max_outputs(
         ["total_seq_len"],
         device=device_ref,
     )
-    kv_cache_args = kv_manager.get_symbolic_inputs()
+    kv_cache_args = kv_params.get_symbolic_inputs()
     flattened_kv_types = [
         kv_type for sublist in kv_cache_args for kv_type in sublist
     ]

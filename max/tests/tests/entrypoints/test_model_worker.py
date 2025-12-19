@@ -29,7 +29,9 @@ from max.interfaces import (
     TextGenerationInputs,
     TextGenerationOutput,
 )
+from max.pipelines.core import TextContext
 from max.pipelines.lib import (
+    PIPELINE_REGISTRY,
     MAXModelConfig,
     PipelineConfig,
 )
@@ -57,6 +59,30 @@ def mock_pipeline_config() -> PipelineConfig:
     return MockPipelineConfig()
 
 
+@pytest.fixture(autouse=True)
+def patch_pipeline_registry_context_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patch PIPELINE_REGISTRY.retrieve_context_type to always return TextContext.
+
+    The tests in this module use simple mock pipeline configs that do not
+    correspond to a registered architecture. The default implementation of
+    `retrieve_context_type` would raise in this case, but for these tests we
+    only care that a valid context type is provided, not which one.
+    """
+
+    def _mock_retrieve_context_type(
+        pipeline_config: PipelineConfig,
+    ) -> type[TextContext]:
+        return TextContext
+
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "retrieve_context_type",
+        _mock_retrieve_context_type,
+    )
+
+
 @dataclass(frozen=True)
 class MockContext(Mock):
     """Mock context that implements BaseContext protocol."""
@@ -77,17 +103,18 @@ async def test_model_worker_propagates_exception(
     """Tests raising in the model worker context manager."""
     settings = Settings()
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError, match="kaboom"):
         async with start_model_worker(
             EchoTokenGenerator,
             mock_pipeline_config,
             settings=settings,
             metric_client=NoopClient(),
             scheduler_zmq_configs=SchedulerZmqConfigs(
-                PipelineTask.TEXT_GENERATION
+                PipelineTask.TEXT_GENERATION,
+                context_type=TextContext,
             ),
         ):
-            raise AssertionError
+            raise ValueError("kaboom")
 
 
 class MockInvalidTokenGenerator(
@@ -116,13 +143,16 @@ async def test_model_worker_propagates_construction_exception(
 
     # The MockTokenGenerator crashes the remote subprocess
     # then ProcessMonitor checks throw TimeoutError here
-    with pytest.raises(TimeoutError, match="Worker died"):
+    with pytest.raises(
+        ValueError, match=MockInvalidTokenGenerator.ERROR_MESSAGE
+    ):
         async with start_model_worker(
             MockInvalidTokenGenerator,
             mock_pipeline_config,
             settings=settings,
             scheduler_zmq_configs=SchedulerZmqConfigs(
-                PipelineTask.TEXT_GENERATION
+                PipelineTask.TEXT_GENERATION,
+                context_type=TextContext,
             ),
             metric_client=NoopClient(),
         ):
@@ -151,14 +181,16 @@ async def test_model_worker_start_timeout(
     """Tests raising in the model worker task."""
     settings = Settings(MAX_SERVE_MW_TIMEOUT=0.1)
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(
+        TimeoutError, match="Model Worker failed to become ready"
+    ):
         async with start_model_worker(
             MockSlowTokenGenerator,
             mock_pipeline_config,
             settings=settings,
             metric_client=NoopClient(),
             scheduler_zmq_configs=SchedulerZmqConfigs(
-                PipelineTask.TEXT_GENERATION
+                PipelineTask.TEXT_GENERATION, context_type=TextContext
             ),
         ):
             pass
@@ -197,9 +229,9 @@ async def test_lifespan_propagates_worker_exception(
 
     # The MockTokenGenerator crashes the remote subprocess
     # then ProcessMonitor checks throw TimeoutError here
-    with pytest.raises(TimeoutError, match="Worker died"):
+    with pytest.raises(ValueError, match="CRASH TEST DUMMY"):
         async with api_server.lifespan(
-            FastAPI(title="Crash Test Dummy"),
+            FastAPI(),
             settings,
             serving_settings,
         ):

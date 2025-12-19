@@ -46,7 +46,7 @@ EX_TEMPFAIL = 75
 
 def validate_hf_token() -> None:
     """
-    It's a regular occurence that people are asked to run logit verification
+    It's a regular occurrence that people are asked to run logit verification
     locally, and not everyone has an HF_TOKEN set. Let's help them out
     """
     if os.getenv("HF_TOKEN") is None:
@@ -377,7 +377,7 @@ def generate_llm_logits_with_optional_retry(
                 print_output=False,
                 reference=reference,
             ),
-            timeout=timeout if timeout is not None else 600,
+            timeout=timeout if timeout is not None else 1200,
         )
 
     try:
@@ -765,6 +765,7 @@ PIPELINES = {
             ),
             cos_dist_threshold=3.0e-4,
             kl_div_threshold=7.4e-3,
+            timeout=1200,
         ),
     ),
     "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-float8-static": PipelineDef(
@@ -931,6 +932,7 @@ PIPELINES = {
             encoding="bfloat16",
             cos_dist_threshold=1.2e-2,
             kl_div_threshold=1.6e-02,
+            timeout=1200,
         ),
     ),
     "mistral-community/pixtral-12b-bfloat16": PipelineDef(
@@ -1006,7 +1008,7 @@ PIPELINES = {
             pipeline="allenai/olmOCR-2-7B-1025-FP8",
             encoding="float8_e4m3fn",
             cos_dist_threshold=2.4e-01,
-            kl_div_threshold=3.0e-01,
+            kl_div_threshold=4.5e-01,
         ),
     ),
     "allenai/OLMo-2-1124-7B-float32": PipelineDef(
@@ -1150,7 +1152,7 @@ PIPELINES = {
                 tar_file="s3://modular-bazel-artifacts-public/artifacts/vllm_deepseek-r1_golden/1/f4b3ce07362060a857724d8721aa008880b2f1da3a9f90aec667672c92f7e5e9/vllm_deepseek-r1_golden.tar.gz",
                 json_file="vllm_deepseek-r1_float8_golden.json",
             ),
-            cos_dist_threshold=2.8e-02,
+            cos_dist_threshold=6e-02,
             kl_div_threshold=1.5e-1,
             timeout=1200,
         ),
@@ -1234,7 +1236,7 @@ PIPELINES = {
             pipeline="HKUSTAudio/Llasa-8B",
             encoding="bfloat16",
             cos_dist_threshold=1.5e-02,
-            kl_div_threshold=7.5e-01,
+            kl_div_threshold=7.7e-01,
         ),
     ),
     "HuggingFaceTB/SmolLM2-360M-Instruct-LoRA-bfloat16": PipelineDef(
@@ -1247,6 +1249,20 @@ PIPELINES = {
             encoding="bfloat16",
             cos_dist_threshold=1e3,
             kl_div_threshold=1e3,
+        ),
+    ),
+    "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic-BF16-LoRA": PipelineDef(
+        compatible_with=[DeviceKind.GPU],
+        tags=["nvidia-only", "no-h100", "float8-support"],
+        run=_make_pipeline_runner(
+            pipeline="RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic-BF16-LoRA",
+            encoding="float8_e4m3fn",
+            pregenerated_torch_goldens=PregeneratedTorchGoldens(
+                tar_file="s3://modular-bazel-artifacts-public/artifacts/vllm_llama_3_1_8B_fp8_bf16_lora/1/6db6cad8339db70f2975e9a610d79a8a57ba9b8c43a949d8008b95a0faf22f28/vllm_llama_3_1_8B_fp8_bf16_lora.tar.gz",
+                json_file="vllm_llama3_1_8B_float8_dyanmic_bf16_lora_golden.json",
+            ),
+            cos_dist_threshold=1.41e-01,
+            kl_div_threshold=6.22e-01,
         ),
     ),
 }

@@ -13,44 +13,38 @@
 
 from __future__ import annotations
 
-import functools
 import os
 import sys
-import traceback
+import tempfile
 
 # Standard library
-from collections.abc import Callable, Generator
-from contextlib import contextmanager, nullcontext
+from datetime import datetime
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 # 3rd-party
 import click
-import huggingface_hub
-import requests
 import torch
 from create_pipelines import PIPELINE_ORACLES, GenericOracle
-from max import driver, pipelines
-from max.engine import InferenceSession
-from max.engine.api import PrintStyle
+from max import driver
 from max.entrypoints.cli import DevicesOptionType
 from max.entrypoints.cli.entrypoint import configure_cli_logging
-from max.interfaces import PipelineTask
-from max.nn.hooks import PrintHook
-from max.nn.layer import Module
-from max.pipelines.lib.hf_utils import HuggingFaceRepo
+from run_models import (
+    Flake,
+    _detect_hf_flakes,
+    get_max_default_encoding,
+    get_torch_device,
+    maybe_log_hf_downloads,
+    run_max_model,
+    run_torch_model,
+)
 
 # Tests
 from test_common import (
-    evaluate,
-    evaluate_embeddings,
     numpy_encoder,
-    torch_print_hook,
-    torch_utils,
 )
 from test_common.evaluate import NUM_STEPS, ModelOutput
 from test_common.github_utils import github_log_group
-from typing_extensions import ParamSpec
 
 # This is far from a universal standard, but this is the closest to a standard
 # that I could find: BSD-derived programs sometimes use exit codes from
@@ -60,177 +54,12 @@ from typing_extensions import ParamSpec
 EX_TEMPFAIL = 75
 
 
-@contextmanager
-def maybe_log_hf_downloads(enable_logging: bool):  # noqa: ANN201
-    """Context manager that conditionally logs HuggingFace file downloads."""
-    if not enable_logging:
-        yield
-        return
-
-    original_hf_hub_download = huggingface_hub.hf_hub_download
-
-    def logged_hf_hub_download(*args, **kwargs):  # noqa: ANN202
-        repo_id = kwargs.get("repo_id") or (
-            args[0] if len(args) > 0 else "unknown"
-        )
-        filename = kwargs.get("filename") or (
-            args[1] if len(args) > 1 else "unknown"
-        )
-        print(f"Accessing {filename} from {repo_id}")
-        result = original_hf_hub_download(*args, **kwargs)
-        print(f"-> Located at: {result}\n")
-        return result
-
-    huggingface_hub.hf_hub_download = logged_hf_hub_download
-    try:
-        yield
-    finally:
-        huggingface_hub.hf_hub_download = original_hf_hub_download
-
-
-class Flake(Exception):
-    """A failure has occurred that appears to be of a temporary nature.
-
-    It is likely that retrying the operation would succeed.
-    """
-
-
-_ParamsT = ParamSpec("_ParamsT")
-_ReturnT = TypeVar("_ReturnT")
-
-
-def _detect_hf_flakes(
-    inner: Callable[_ParamsT, _ReturnT],
-) -> Callable[_ParamsT, _ReturnT]:
-    """Decorator to exit with a distinct status on Hugging Face flake."""
-
-    def is_client_error(exc: requests.RequestException) -> bool:
-        if not isinstance(exc, requests.HTTPError):
-            return False
-        if exc.response is None:
-            return False
-        # 4xx status codes indicate client error.
-        return 400 <= exc.response.status_code < 500
-
-    def get_all_exceptions_in_chain(
-        exc: Exception,
-    ) -> list[Exception]:
-        """Gets all exceptions in the exception chain."""
-        to_visit = [exc]
-        visited = set()
-        all_exceptions = []
-
-        while to_visit:
-            current_exc = to_visit.pop(0)
-
-            if id(current_exc) in visited:
-                continue
-            visited.add(id(current_exc))
-
-            all_exceptions.append(current_exc)
-
-            cause = current_exc.__cause__
-            if cause is not None and isinstance(cause, Exception):
-                to_visit.append(cause)
-
-            context = current_exc.__context__
-            if context is not None and isinstance(context, Exception):
-                to_visit.append(context)
-
-        return all_exceptions
-
-    @functools.wraps(inner)
-    def wrapper(*args, **kwargs):  # noqa: ANN202
-        try:
-            return inner(*args, **kwargs)
-        except Exception as exc:
-            request_exceptions = [
-                e
-                for e in get_all_exceptions_in_chain(exc)
-                if isinstance(e, requests.RequestException)
-            ]
-            for req_exc in request_exceptions:
-                if (
-                    req_exc.request is not None
-                    and req_exc.request.url is not None
-                    and "huggingface.co" in req_exc.request.url
-                    and not is_client_error(req_exc)
-                ):
-                    # This is probably a Hugging Face flake.
-                    print(
-                        "Seems like a Hugging Face flake has occurred:",
-                        file=sys.stderr,
-                    )
-                    traceback.print_exc()
-                    print(
-                        "-- End of Hugging Face flake traceback --",
-                        file=sys.stderr,
-                    )
-                    raise Flake("Hugging Face API flake detected") from exc
-            raise
-
-    return wrapper
-
-
-@contextmanager
-def add_max_hooks(
-    output_directory: Path | None = None,
-) -> Generator[None, None, None]:
-    """Context manager that adds tensor printing hooks by patching the model class."""
-
-    # Save original InferenceSession initializer.
-    original_inference_init = InferenceSession.__init__
-    hook = PrintHook()
-    original_inference_init = InferenceSession.__init__
-
-    def get_wrapped_load_state_dict(
-        original_load_state_dict: Callable[..., Any],
-    ) -> Callable[..., Any]:
-        def wrapped_load_state_dict(
-            self: Any, *args: Any, **kwargs: Any
-        ) -> Any:
-            result = original_load_state_dict(self, *args, **kwargs)
-            hook.name_layers(self)
-            return result
-
-        return wrapped_load_state_dict
-
-    # If an output directory is provided, patch InferenceSession to enable debug prints.
-    if output_directory is not None:
-
-        def _patched_inference_init(
-            session_self: InferenceSession, *args: Any, **kwargs: Any
-        ) -> None:
-            original_inference_init(session_self, *args, **kwargs)
-            # Enable debug printing to file-style output when an output directory is specified.
-            # If additional parameters (like output path) are supported, they can be added here.
-            session_self.set_debug_print_options(
-                style=PrintStyle.BINARY_MAX_CHECKPOINT,
-                output_directory=output_directory,
-            )
-
-        InferenceSession.__init__ = _patched_inference_init  # type: ignore[assignment]
-
-    original_load_state_dict = Module.load_state_dict
-    Module.load_state_dict = get_wrapped_load_state_dict(  # type: ignore[method-assign]
-        original_load_state_dict
-    )
-
-    try:
-        yield
-    finally:
-        hook.remove()
-        Module.load_state_dict = original_load_state_dict  # type: ignore[method-assign]
-        # Restore original InferenceSession initializer if we patched it.
-        InferenceSession.__init__ = original_inference_init  # type: ignore[method-assign]
-
-
 @click.command()
 @click.option(
     "--framework",
     "framework_name",
     type=click.Choice(["max", "torch"]),
-    required=True,
+    default="max",
     help="Framework to run pipeline with",
 )
 @click.option(
@@ -258,9 +87,9 @@ def add_max_hooks(
     "-o",
     "--output",
     "output_path",
-    type=click.Path(path_type=Path),
-    required=True,
-    help="Path to output resulting goldens JSON to",
+    type=str,
+    default=None,
+    help="Path to output resulting goldens JSON. If omitted, will output to tmp/<timestamp>_<pipeline_name>_<framework_name>.json",
 )
 @click.option(
     "-r",
@@ -276,22 +105,6 @@ def add_max_hooks(
     type=bool,
     default=False,
     help="Dump goldens in non-JSON format to stdout",
-)
-@click.option(
-    "--print-intermediates",
-    "print_intermediates",
-    is_flag=True,
-    default=False,
-    help="Outputs intermediate tensors from both frameworks to the console.",
-)
-@click.option(
-    "--intermediates-dir",
-    "intermediates_dir",
-    type=click.Path(
-        path_type=Path, dir_okay=True, file_okay=False, writable=True
-    ),
-    default=None,
-    help="Directory to write intermediate tensors. If omitted, no files are written.",
 )
 @click.option(
     "--max-batch-size",
@@ -319,21 +132,14 @@ def main(
     framework_name: str,
     pipeline_name: str,
     encoding_name: str | None,
-    output_path: Path,
+    output_path: str | None,
     reference_path: Path | None,
     print_output: bool,
     max_batch_size: int | None,
     log_hf_downloads: bool,
-    print_intermediates: bool,
-    intermediates_dir: Path | None,
     mini: bool,
 ) -> None:
-    """Click command entry point that delegates to the implementation function.
-
-    This wrapper exists because Click command functions aren't easily picklable,
-    which causes issues when called from multiprocessing.
-    """
-    if pipeline_name == "gemma3-27b":
+    if "gemma3" in pipeline_name:
         # Running into dynamo error:
         # https://huggingface.co/google/gemma-3-4b-it/discussions/51
         torch._dynamo.config.disable = True
@@ -345,19 +151,32 @@ def main(
     else:
         reference_logits = None
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    pipeline_name_no_slash = pipeline_name.replace("/", "-")
+    default_output_path = Path(
+        f"{timestamp}_{pipeline_name_no_slash}_{framework_name}.json"
+    )
+    if output_path is None:
+        final_output_path = Path(tempfile.gettempdir()) / default_output_path
+    elif output_path.endswith(".json"):
+        final_output_path = Path(output_path)
+    elif Path(output_path).is_dir():
+        final_output_path = Path(output_path) / default_output_path
+    else:
+        raise ValueError(
+            f"Invalid output path: {output_path}. Please provide a valid file path ending with .json or a directory."
+        )
     try:
         generate_llm_logits(
             device_specs=DevicesOptionType.device_specs(device_type),
             framework_name=framework_name,
             pipeline_name=pipeline_name,
             encoding_name=encoding_name,
-            output_path=output_path,
+            output_path=final_output_path,
             reference=reference_logits,
             print_output=print_output,
             max_batch_size=max_batch_size,
             log_hf_downloads=log_hf_downloads,
-            print_intermediates=print_intermediates,
-            intermediates_dir=intermediates_dir,
             mini=mini,
         )
     except Flake:
@@ -375,8 +194,6 @@ def generate_llm_logits(
     max_batch_size: int | None = None,
     reference: list[ModelOutput] | None = None,
     log_hf_downloads: bool = False,
-    print_intermediates: bool = False,
-    intermediates_dir: Path | None = None,
     mini: bool = False,
 ) -> None:
     """Output logits to a file for a model based on a fixed set of prompts.
@@ -417,113 +234,33 @@ def generate_llm_logits(
     with github_log_group(title):
         if framework_name == "max":
             if encoding_name is None:
-                # Get trust_remote_code from pipeline_oracle if available
-                trust_remote_code = getattr(
-                    pipeline_oracle, "config_params", {}
-                ).get("trust_remote_code", False)
-                hf_repo = HuggingFaceRepo(
-                    pipeline_name, trust_remote_code=trust_remote_code
+                max_encoding_name = get_max_default_encoding(
+                    pipeline_oracle, pipeline_name, device_specs
                 )
-                arch = pipelines.PIPELINE_REGISTRY.retrieve_architecture(
-                    hf_repo
-                )
-                if arch is None:
-                    raise ValueError(
-                        "Model architecture not yet supported by MAX."
-                    )
+            else:
+                max_encoding_name = encoding_name
 
-                # Prefer encoding from device_encoding_map if available
-                device_encoding_map = getattr(
-                    pipeline_oracle, "device_encoding_map", None
-                )
-                if device_encoding_map:
-                    # Determine device type from device_specs
-                    device_type = (
-                        device_specs[0].device_type
-                        if device_specs
-                        else "default"
-                    )
-                    # Normalize "default" to "gpu" (default typically means GPU when available)
-                    if device_type == "default":
-                        device_type = "gpu"
-
-                    # Get encodings for this device type
-                    encodings = device_encoding_map.get(device_type)
-                    if encodings and len(encodings) > 0:
-                        encoding_name = encodings[0]
-                    else:
-                        # Fall back to architecture default
-                        encoding_name = arch.default_encoding.name
-                else:
-                    # Fall back to architecture default if no device_encoding_map
-                    encoding_name = arch.default_encoding.name
-
-            hooks_ctx = (
-                add_max_hooks(output_directory=intermediates_dir)
-                if (print_intermediates or intermediates_dir is not None)
-                else nullcontext()
-            )
-            with hooks_ctx, maybe_log_hf_downloads(log_hf_downloads):
+            with maybe_log_hf_downloads(log_hf_downloads):
                 max_pipeline_and_tokenizer = (
                     pipeline_oracle.create_max_pipeline(
-                        encoding=encoding_name,
+                        encoding=max_encoding_name,
                         device_specs=device_specs,
                     )
                 )
 
             print(f"Running {pipeline_name} model on MAX")
-            if pipeline_oracle.task == PipelineTask.TEXT_GENERATION:
-                assert isinstance(
-                    max_pipeline_and_tokenizer.pipeline,
-                    pipelines.TextGenerationPipeline,
-                )
-                results = evaluate.run_model(
-                    max_pipeline_and_tokenizer.pipeline,
-                    max_pipeline_and_tokenizer.tokenizer,
-                    requests=inputs,
-                    num_steps=num_steps,
-                    print_outputs=True,
-                    batch_size=evaluation_batch_size,
-                    reference=reference,
-                )
-            elif pipeline_oracle.task == PipelineTask.EMBEDDINGS_GENERATION:
-                assert isinstance(
-                    max_pipeline_and_tokenizer.pipeline,
-                    pipelines.EmbeddingsPipeline,
-                )
-                if not isinstance(evaluation_batch_size, int):
-                    raise ValueError(
-                        "Data parallel mode not supported for embeddings generation."
-                    )
-                results = evaluate_embeddings.encode(
-                    max_pipeline_and_tokenizer.pipeline,
-                    max_pipeline_and_tokenizer.tokenizer,
-                    prompts=(inp.prompt for inp in inputs),
-                    batch_size=evaluation_batch_size,
-                )
-            else:
-                raise ValueError(
-                    f"Evaluating task {pipeline_oracle.task} is not supported."
-                )
+            results = run_max_model(
+                task=pipeline_oracle.task,
+                max_pipeline_and_tokenizer=max_pipeline_and_tokenizer,
+                inputs=inputs,
+                num_steps=num_steps,
+                evaluation_batch_size=evaluation_batch_size,
+                reference=reference,
+            )
         elif framework_name == "torch":
-            print(f"Running {pipeline_name} model on Torch")
-            torch_device: torch.device
-            if device_specs[0].device_type == "cpu":
-                torch_device = torch.device("cpu")
-            elif device_specs[0].device_type == "gpu":
-                torch_device = torch.device("cuda:0")
-            elif device_specs[0].device_type == "default":
-                torch_device = (
-                    torch.device("cuda:0")
-                    if torch.cuda.is_available()
-                    else torch.device("cpu")
-                )
-
+            torch_device = get_torch_device(device_specs)
             # For multi-gpu, use auto to handle mapping automatically.
-            if len(device_specs) > 1:
-                device = "auto"
-            else:
-                device = torch_device
+            device: Any = "auto" if len(device_specs) > 1 else torch_device
 
             with maybe_log_hf_downloads(log_hf_downloads):
                 torch_pipeline_and_tokenizer = (
@@ -532,32 +269,15 @@ def generate_llm_logits(
                         device=device,
                     )
                 )
-            if print_intermediates or intermediates_dir:
-                export_path = (
-                    str(intermediates_dir)
-                    if intermediates_dir is not None
-                    else None
-                )
-                hook = torch_print_hook.TorchPrintHook(export_path=export_path)
-                hook.name_layers(torch_pipeline_and_tokenizer.model)
 
-            if pipeline_oracle.task == PipelineTask.TEXT_GENERATION:
-                results = pipeline_oracle.run_torch_text_generation(
-                    torch_pipeline_and_tokenizer=torch_pipeline_and_tokenizer,
-                    device=torch_device,
-                    num_steps=num_steps,
-                )
-            elif pipeline_oracle.task == PipelineTask.EMBEDDINGS_GENERATION:
-                results = torch_utils.run_embeddings_generation(
-                    model=torch_pipeline_and_tokenizer.model,
-                    data_processor=torch_pipeline_and_tokenizer.data_processor,
-                    device=torch_device,
-                    prompts=(inp.prompt for inp in inputs),
-                )
-            else:
-                raise ValueError(
-                    f"Evaluating task {pipeline_oracle.task} is not supported."
-                )
+            print(f"Running {pipeline_name} model on Torch")
+            results = run_torch_model(
+                pipeline_oracle=pipeline_oracle,
+                torch_pipeline_and_tokenizer=torch_pipeline_and_tokenizer,
+                device=torch_device,
+                inputs=inputs,
+                num_steps=num_steps,
+            )
         else:
             raise NotImplementedError(
                 f"Framework {framework_name!r} not implemented"
@@ -570,8 +290,12 @@ def generate_llm_logits(
         print(f"Device specs: {device_specs}")
         print("Results:")
         print(results)
+
+    # Ensure parent directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write(numpy_encoder.NumpyEncoder().encode(results))
+        print(f"Results written to {output_path}")
 
 
 if __name__ == "__main__":

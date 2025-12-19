@@ -1,12 +1,13 @@
 """Aliases for mojo packages."""
 
 _PACKAGES = {
-    "stdlib": "mojo/stdlib/stdlib",
+    "std": "mojo/stdlib/std",
     "python": "mojo/python/mojo",
     "test_utils": "mojo/stdlib/test/test_utils",
 }
 
 _MAX_PACKAGES = {
+    "buffer": "kernels/src/buffer",
     "kv_cache": "kernels/src/kv_cache",
     "layout": "kernels/src/layout",
     "linalg": "kernels/src/linalg",

@@ -15,7 +15,7 @@ from memory import (
     LegacyOpaquePointer as OpaquePointer,
     LegacyUnsafePointer as UnsafePointer,
 )
-from sys import has_amd_gpu_accelerator, size_of
+from sys import has_amd_gpu_accelerator
 from pathlib import Path
 from sys.ffi import _get_global_or_null, external_call
 from sys.ffi import _find_dylib
@@ -23,11 +23,11 @@ from sys.ffi import _get_dylib_function as _ffi_get_dylib_function
 from sys.ffi import OwnedDLHandle, _Global
 from collections.optional import OptionalReg
 from buffer import NDBuffer
-from buffer.dimlist import DimList
 from gpu.host import DeviceContext, DeviceBuffer
 from gpu.host._amdgpu_hip import HIP
 from gpu.host._nvidia_cuda import CUDA
-from comm.allreduce import MAX_GPUS, elementwise_epilogue_type
+from comm import MAX_GPUS
+from comm.allreduce import elementwise_epilogue_type
 from gpu.grid_controls import PDLLevel
 
 comptime ncclComm_t = OpaquePointer
@@ -274,7 +274,7 @@ fn allreduce[
         NDBuffer[dtype, rank, MutAnyOrigin], 1 if use_multimem else ngpus
     ],
     output_buffer: NDBuffer[dtype, rank, MutAnyOrigin],
-    rank_sigs: InlineArray[UnsafePointer[comm.allreduce.Signal], MAX_GPUS],
+    rank_sigs: InlineArray[UnsafePointer[comm.Signal], MAX_GPUS],
     ctx: DeviceContext,
     _max_num_blocks: Optional[Int] = None,
     iteration: Int = 0,
@@ -284,18 +284,15 @@ fn allreduce[
     Currently requires prior single-threaded call to init_comms, as thread-safe
     version not yet implemented.
     """
-    constrained[
-        not output_lambda,
-        "vendor_ccl allreduce does not support output epilogue lambdas yet",
-    ]()
-    constrained[
-        not use_multimem,
-        "vendor_ccl allreduce does not support multimem path",
-    ]()
-    constrained[
-        not use_quickreduce,
-        "vendor_ccl allreduce does not support quickreduce path",
-    ]()
+    __comptime_assert (
+        not output_lambda
+    ), "vendor_ccl allreduce does not support output epilogue lambdas yet"
+    __comptime_assert (
+        not use_multimem
+    ), "vendor_ccl allreduce does not support multimem path"
+    __comptime_assert (
+        not use_quickreduce
+    ), "vendor_ccl allreduce does not support quickreduce path"
     # Determine this device's rank from its context id.
     var device_rank = Int(ctx.id())
     var count = input_buffers[0].num_elements()

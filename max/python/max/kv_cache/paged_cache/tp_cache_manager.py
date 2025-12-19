@@ -17,18 +17,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 import numpy as np
 from max.driver import Device, Tensor
-from max.dtype import DType
 from max.engine import InferenceSession
-from max.graph import BufferType, DeviceRef, TensorType
 from max.interfaces import RequestID, TextGenerationContext
-from max.nn.kv_cache.cache_params import KVCacheParams
-from max.nn.kv_cache.manager import RaggedKVCacheInputs
+from max.nn.kv_cache import KVCacheParams, RaggedKVCacheInputs
 from max.nn.kv_cache.metrics import KVCacheMetrics
-from max.nn.kv_cache.nested_iterable import NestedIterableDataclass
 from max.nn.kv_cache.utils import build_max_lengths_tensor
 from max.profiler import traced
 from max.serve.kvcache_agent.kvcache_agent_service_v1_pb2 import (  # type: ignore
@@ -40,14 +35,6 @@ from .block_copy_engine import BlockCopyEngine
 from .block_manager import BlockManager
 
 logger = logging.getLogger("max.pipelines")
-
-
-@dataclass
-class PagedCacheInputSymbols(NestedIterableDataclass):
-    kv_blocks: BufferType
-    cache_lengths: TensorType
-    lookup_table: TensorType
-    max_lengths: TensorType
 
 
 class _TPPagedKVCacheManager:
@@ -117,7 +104,7 @@ class _TPPagedKVCacheManager:
         # Validate devices aligns with the n_devices in params
         if len(devices) != params.n_devices:
             raise ValueError(
-                "n_devices provided in KVCacheParams, does not match number of devices initialized in the _TPPagedKVCacheManager"
+                "Number of devices provided in KVCacheParams does not match the number of devices initialized in the _TPPagedKVCacheManager"
             )
 
         if params.data_parallel_degree > 1:
@@ -147,8 +134,10 @@ class _TPPagedKVCacheManager:
         # Initialize the block buffers for each device.
         self.device_tensors = []
         for device in self.devices:
+            # Zero-initializing GPU device tensors does not introduce significant latency.
+            # Memory is initialized because OOB TMA reads of uninitialized memory on GPU can result in NaNs in downstream kernels.
             self.device_tensors.append(
-                Tensor(
+                Tensor.zeros(
                     shape=[total_num_pages, *params.shape_per_block],
                     dtype=self.params.dtype,
                     device=device,
@@ -164,6 +153,7 @@ class _TPPagedKVCacheManager:
                     raise ValueError(
                         "Host device detected. Paging to host is not supported when executing on CPU."
                     )
+                # Initializing the CPU host tensors introduces significant latency, and it's not expected that this memory will be accessed via TMA operations.
                 self.host_tensors.append(
                     Tensor(
                         shape=[total_num_host_pages, *params.shape_per_block],
@@ -338,66 +328,6 @@ class _TPPagedKVCacheManager:
             )
 
         return ret_list
-
-    def get_symbolic_inputs(
-        self,
-        devices: Sequence[Device] | None = None,
-        num_layers: int | None = None,
-    ) -> Sequence[NestedIterableDataclass]:
-        return self._input_symbols(devices, num_layers, dynamic_dim_prefix="")
-
-    def _input_symbols(
-        self,
-        devices: Sequence[Device] | None = None,
-        num_layers: int | None = None,
-        dynamic_dim_prefix: str = "",
-    ) -> Sequence[PagedCacheInputSymbols]:
-        """Returns the input symbols for the paged KV cache.
-
-        Args:
-            devices: The devices to use for the input symbols.
-            num_layers: The number of layers to use for the input symbols.
-            dynamic_dim_prefix: The prefix to use for the dynamic dimensions.
-                This is used to differentiate between the different inputs
-                between replicas.
-        """
-        if devices is None:
-            devices = self.devices
-
-        if num_layers is None:
-            num_layers = self.params.num_layers
-
-        return [
-            PagedCacheInputSymbols(
-                kv_blocks=BufferType(
-                    self.params.dtype,
-                    shape=[
-                        "total_num_pages",
-                        *self.params.shape_per_block,
-                    ],
-                    device=DeviceRef(device.label, device.id),
-                ),
-                cache_lengths=TensorType(
-                    DType.uint32,
-                    shape=[dynamic_dim_prefix + "batch_size"],
-                    device=DeviceRef(device.label, device.id),
-                ),
-                lookup_table=TensorType(
-                    DType.uint32,
-                    shape=[
-                        dynamic_dim_prefix + "batch_size",
-                        dynamic_dim_prefix + "max_num_pages",
-                    ],
-                    device=DeviceRef(device.label, device.id),
-                ),
-                max_lengths=TensorType(
-                    DType.uint32,
-                    shape=[dynamic_dim_prefix + "steps_remaining", 2],
-                    device=DeviceRef.CPU(),
-                ),
-            )
-            for device in devices
-        ]
 
     def release(self, request_id: RequestID) -> None:
         """Release the sequence associated with :obj:`request_id`, marking this sequence as complete.

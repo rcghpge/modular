@@ -42,7 +42,7 @@ class Gemma3VisionConfig:
 
     hidden_act: str
     """The non-linear activation function (function or string) in the encoder and pooler.
-    `"gelu"`, `"gelu_tanh"`, `"relu"`, `"sigmoid"`, `"silu"`, and `"tanh"` 
+    `"gelu"`, `"gelu_tanh"`, `"relu"`, `"sigmoid"`, `"silu"`, and `"tanh"`
     are supported."""
 
     hidden_size: int
@@ -175,7 +175,8 @@ class Gemma3ForConditionalGenerationConfig(
     @staticmethod
     def get_kv_params(
         huggingface_config: AutoConfig,
-        n_devices: int,
+        pipeline_config: PipelineConfig,
+        devices: list[DeviceRef],
         kv_cache_config: KVCacheConfig,
         cache_dtype: DType,
     ) -> KVCacheParams:
@@ -191,7 +192,8 @@ class Gemma3ForConditionalGenerationConfig(
             enable_prefix_caching=kv_cache_config.enable_prefix_caching,
             enable_kvcache_swapping_to_host=kv_cache_config.enable_kvcache_swapping_to_host,
             host_kvcache_swap_space_gb=kv_cache_config.host_kvcache_swap_space_gb,
-            n_devices=n_devices,
+            devices=devices,
+            data_parallel_degree=pipeline_config.model_config.data_parallel_degree,
         )
 
     @staticmethod
@@ -240,7 +242,7 @@ class Gemma3ForConditionalGenerationConfig(
         )
 
         # Parse the float8 config from compressed-tensors
-        layer_name_prefix = "language_model.model"
+        layer_name_prefix = "language_model.model."
         float8_config = parse_float8_config(
             huggingface_config,
             state_dict,
@@ -269,11 +271,13 @@ class Gemma3ForConditionalGenerationConfig(
             return_logits=return_logits,
             norm_method=norm_method,
             attention_bias=attention_bias,
+            float8_config=float8_config,
         )
 
         kv_params = Gemma3ForConditionalGenerationConfig.get_kv_params(
             huggingface_config=huggingface_config,
-            n_devices=n_devices,
+            pipeline_config=pipeline_config,
+            devices=device_refs,
             kv_cache_config=kv_cache_config,
             cache_dtype=cache_dtype,
         )

@@ -13,7 +13,9 @@
 """Test max.driver Tensors."""
 
 import math
+import sys
 import tempfile
+from collections.abc import Generator
 from itertools import product
 from pathlib import Path
 
@@ -262,6 +264,16 @@ def test_is_host() -> None:
     assert Tensor(DType.int32, (1, 1), device=CPU()).is_host
 
 
+def test_host_to_self() -> None:
+    cpu = CPU()
+    t = Tensor(DType.int32, (1, 1), device=cpu)
+    t2 = t.to(cpu)
+    assert t2 is t
+    t3s = t.to([cpu])
+    assert len(t3s) == 1
+    assert t3s[0] is t
+
+
 def test_host_host_copy() -> None:
     # We should be able to freely copy tensors between host and host.
     host_tensor = Tensor.from_numpy(np.array([1, 2, 3], dtype=np.int32))
@@ -343,18 +355,28 @@ def test_from_dlpack_short_circuit() -> None:
     assert tensor.shape == copy_tensor.shape
 
 
-def test_from_dlpack_copy() -> None:
-    tensor = Tensor(DType.int8, (4,))
+def test_from_dlpack_double_transfer() -> None:
+    tensor1 = Tensor(DType.int8, (4,))
     for i in range(4):
-        tensor[i] = i
+        tensor1[i] = i
 
-    arr = np.from_dlpack(tensor)
-    tensor_copy = Tensor.from_dlpack(arr)  # Should be implicitly copied.
-    tensor_copy[0] = np.int8(7)
-    assert arr[0] != np.int8(7)
+    arr = np.from_dlpack(tensor1)  # Transfer ownership
+    tensor2 = Tensor.from_dlpack(arr)  # Transfer ownership back
+    tensor2[0] = np.int8(7)
+    assert arr[0] == np.int8(7)
 
-    with pytest.raises(BufferError):
-        Tensor.from_dlpack(arr, copy=False)
+    tensor3 = Tensor.from_dlpack(arr)  # No transfer, but still able to view
+    # TODO: Why does this not work if we omit .item() ?
+    assert tensor3[0].item() == np.int8(7)
+
+
+def test_to_numpy_writable() -> None:
+    # Ensure that to_numpy returns a writable array.
+    # This is similar to test_from_dlpack_double_transfer above
+    # but explicitly tests that the numpy array is writable.
+    tensor = Tensor(shape=(20, 10), dtype=DType.int32)
+    np_array = tensor.to_numpy()
+    np_array[0, 0] = 100
 
 
 def test_dlpack_device() -> None:
@@ -475,13 +497,14 @@ def test_scalar() -> None:
 # NOTE: This is kept at function scope intentionally to avoid issues if tests
 # mutate the stored data.
 @pytest.fixture(scope="function")
-def memmap_example_file():  # noqa: ANN201
+def memmap_example_file() -> Generator[Path, None, None]:
     with tempfile.NamedTemporaryFile(mode="w+b") as f:
         f.write(b"\x00\x01\x02\x03\x04\x05\x06\x07")
         f.flush()
         yield Path(f.name)
 
 
+@pytest.mark.xfail(sys.platform == "darwin", reason="GEX-2968")
 def test_memmap(memmap_example_file: Path) -> None:
     tensor = Tensor.mmap(memmap_example_file, dtype=DType.int8, shape=(2, 4))
     assert tensor.shape == (2, 4)

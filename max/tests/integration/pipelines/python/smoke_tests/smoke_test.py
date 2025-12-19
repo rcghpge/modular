@@ -10,6 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+from __future__ import annotations
+
 """
 This script is used for the CI "Max Serve Smoke Test" workflow.
 It does two things:
@@ -211,7 +213,7 @@ def write_github_output(key: str, value: str) -> None:
             f.write(f"{key}={value}\n")
 
 
-def gracefully_stop_process(process: Popen) -> None:  # type: ignore
+def gracefully_stop_process(process: Popen[bytes]) -> None:
     process.send_signal(signal.SIGINT)  # Sends ctrl-c (usually works)
     try:
         process.wait(5)
@@ -220,6 +222,8 @@ def gracefully_stop_process(process: Popen) -> None:  # type: ignore
         try:
             os.killpg(os.getpgid(process.pid), signal.SIGTERM)
             process.wait(5)
+        except ProcessLookupError:
+            pass  # process already dead
         except TimeoutExpired:
             logger.warning("Process did not terminate gracefully, forcing kill")
             os.killpg(os.getpgid(process.pid), signal.SIGKILL)
@@ -239,7 +243,7 @@ class EvalSummary:
 
 
 def build_eval_summary(
-    results: Sequence[Mapping],  # type: ignore
+    results: Sequence[Mapping[str, Any]],
     startup_time_seconds: float,
 ) -> list[EvalSummary]:
     """
@@ -300,8 +304,12 @@ def print_samples(samples: LmEvalSamples, print_cot: bool) -> None:
         logger.info(f"{status} {extracted}")
 
 
-def start_server(cmd: list[str]) -> tuple[Popen, float]:  # type: ignore
+def start_server(
+    cmd: list[str], extra_env: dict[str, str]
+) -> tuple[Popen[bytes], float]:
     env = os.environ.copy()
+    env.update(extra_env)
+
     if not _inside_bazel():
         # SGLang depends on ninja which is in the serve environment
         env["PYTHONSAFEPATH"] = "1"  # Avoids root dir `max` shadowing
@@ -403,8 +411,9 @@ def smoke_test(
     if print_cot and not print_responses:
         raise ValueError("--print-cot must be used with --print-responses")
 
-    if output_path and _inside_bazel() and not output_path.is_absolute():
-        output_path = Path(os.getenv("BUILD_WORKSPACE_DIRECTORY")) / output_path  # type: ignore
+    build_workspace = os.getenv("BUILD_WORKSPACE_DIRECTORY")
+    if output_path and build_workspace and not output_path.is_absolute():
+        output_path = Path(build_workspace) / output_path
 
     model = hf_model_path.lower().strip()
     cmd = get_server_cmd(framework, model)
@@ -419,6 +428,7 @@ def smoke_test(
             "idefics",
             "pixtral",
             "olmocr",
+            "tbmod/gemma-3-4b-it",
         )
     )
     tasks = ["gsm8k_cot_llama"]
@@ -428,9 +438,12 @@ def smoke_test(
     logger.info(f"Starting server with command:\n {' '.join(cmd)}")
     results = []
     all_samples = []
-    try:
-        server_process, startup_time = start_server(cmd)
+    extra_env = {}
+    if model == "tbmod/gemma-3-4b-it":
+        extra_env = {"MODULAR_MAX_ENABLE_GEMMA3_VISION": "1"}
 
+    server_process, startup_time = start_server(cmd, extra_env)
+    try:
         logger.info(f"Server started in {startup_time:.2f} seconds")
         write_github_output("startup_time", f"{startup_time:.2f}")
 

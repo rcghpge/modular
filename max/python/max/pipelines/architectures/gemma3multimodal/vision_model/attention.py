@@ -14,8 +14,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from max.dtype import DType
 from max.graph import DeviceRef, ShardingStrategy, TensorValue, ops
 from max.nn import Linear
+from max.nn.attention.mask_config import MHAMaskVariant
+from max.nn.kernels import flash_attention_gpu
 from max.nn.layer import Module
 
 from ..model_config import Gemma3ForConditionalGenerationConfig
@@ -34,6 +37,8 @@ class Gemma3VisionAttention(Module):
         super().__init__()
         self.config = config
         vision_config = config.vision_config
+        vision_dtype = DType.bfloat16
+
         self.layer_idx = layer_idx
         self.device = device if device is not None else config.devices[0]
         self.head_dim = (
@@ -46,28 +51,28 @@ class Gemma3VisionAttention(Module):
             vision_config.hidden_size,
             self.num_heads * self.head_dim,
             has_bias=vision_config.attention_bias,
-            dtype=config.dtype,
+            dtype=vision_dtype,
             device=self.device,
         )
         self.k_proj = Linear(
             vision_config.hidden_size,
             self.num_heads * self.head_dim,
             has_bias=vision_config.attention_bias,
-            dtype=config.dtype,
+            dtype=vision_dtype,
             device=self.device,
         )
         self.v_proj = Linear(
             vision_config.hidden_size,
             self.num_heads * self.head_dim,
             has_bias=vision_config.attention_bias,
-            dtype=config.dtype,
+            dtype=vision_dtype,
             device=self.device,
         )
         self.out_proj = Linear(
             self.num_heads * self.head_dim,
             vision_config.hidden_size,
             has_bias=vision_config.attention_bias,
-            dtype=config.dtype,
+            dtype=vision_dtype,
             device=self.device,
         )
 
@@ -91,20 +96,15 @@ class Gemma3VisionAttention(Module):
             xv, [batch_size, n_patches, self.num_heads, self.head_dim]
         )
 
-        # Transpose to [batch, n_heads, n_patches, head_dim]
-        xq = xq.transpose(1, 2)
-        xk = xk.transpose(1, 2)
-        xv = xv.transpose(1, 2)
+        output = flash_attention_gpu(
+            xq,
+            xk,
+            xv,
+            mask_variant=MHAMaskVariant.NULL_MASK,
+            scale=self.scaling,
+        )
 
-        # Scaled dot-product attention
-        scores = (xq @ ops.transpose(xk, 2, 3)) * self.scaling
-        scores = ops.softmax(scores)
-
-        # Apply attention to values - [batch, n_heads, n_patches, head_dim]
-        output = scores @ xv
-
-        # Transpose back and reshape
-        output = output.transpose(1, 2).reshape([batch_size, n_patches, -1])
+        output = output.reshape([batch_size, n_patches, -1])
 
         return self.out_proj(output)
 

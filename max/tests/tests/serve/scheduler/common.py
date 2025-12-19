@@ -20,6 +20,7 @@ import numpy as np
 from max.driver import CPU, Device
 from max.dtype import DType
 from max.engine import InferenceSession
+from max.graph import DeviceRef
 from max.interfaces import (
     BatchType,
     GenerationStatus,
@@ -49,7 +50,7 @@ def create_text_context(
     shared_prefix: np.ndarray | None = None,
 ) -> TextContext:
     if shared_prefix is None:
-        tokens = np.ones(prompt_len, dtype=np.int32)
+        tokens = np.ones(prompt_len, dtype=np.int64)
     else:
         rem_tokens = prompt_len - len(shared_prefix)
         assert rem_tokens >= 0
@@ -85,7 +86,7 @@ def create_paged_manager(
         enable_kvcache_swapping_to_host=enable_kvcache_swapping_to_host,
         host_kvcache_swap_space_gb=999,
         data_parallel_degree=dp,
-        n_devices=dp,
+        devices=[DeviceRef.from_device(device) for i in range(dp)],
     )
 
     session = InferenceSession(devices=[device])
@@ -97,7 +98,6 @@ def create_paged_manager(
         params=kv_params,
         total_num_pages=num_blocks,
         total_num_host_pages=num_host_pages,
-        devices=[device] * dp,
         session=session,
         enable_runtime_checks=True,
     )

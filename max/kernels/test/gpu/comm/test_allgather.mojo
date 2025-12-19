@@ -17,8 +17,8 @@ from sys import size_of, has_amd_gpu_accelerator
 from buffer import NDBuffer
 from buffer.dimlist import DimList
 from comm.allgather import allgather
+from comm import MAX_GPUS, Signal
 import comm.vendor.ccl as vendor_ccl
-from comm.allreduce import MAX_GPUS, Signal
 from gpu.host import DeviceBuffer, DeviceContext
 from memory import LegacyUnsafePointer as UnsafePointer
 from testing import assert_equal, assert_true
@@ -226,7 +226,7 @@ fn _verify_results[
                         "expected:",
                         expected,
                     )
-                    raise e
+                    raise e^
 
             host_output.free()
 

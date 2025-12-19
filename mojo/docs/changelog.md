@@ -165,6 +165,25 @@ what we publish.
 - The compiler will now warn on the use of `alias` keyword and suggest
 `comptime` instead.
 
+- The Mojo language basic trait hierarchy has changed to expand first-class
+  support for linear types (aka. non-implicitly-destructible types).
+
+  The `AnyType` trait no longer requires that a type provide a `__del__()`
+  method that may be called by the compiler implicitly whenver an owned value
+  is unused. Instead, the `ImplicitlyDestructible` trait should be used in
+  generic code to require that a type is implicitly destructible.
+
+  Linear types enable Mojo programs to encode powerful invariants in the type
+  system, by modeling a type in such a way that a user is required to take an
+  action "in the future", rather than simply implicitly dropping an instance
+  "on the floor".
+
+  Code using `T: AnyType` can change to use `T: ImplicitlyDestructible` to
+  preserve its pre-existing behavior following this change.
+
+  Relatedly, the `UnknownDestructibility` trait is now no longer required, as it
+  is equivalent to the new `AnyType` behavior.
+
 ### Library changes
 
 - The `Copyable` trait now refines the `Movable` trait.  This means that structs
@@ -185,6 +204,9 @@ what we publish.
 
 - `List` slicing without a stride now returns a `Span`, instead of a `List` and
   no longer allocates memory.
+
+- `Dict` now raises a custom `DictKeyError` type on failure, making lookup
+  failures more efficient to handle.
 
 - Remove `List` variadic initializer.
 
@@ -266,6 +288,20 @@ what we publish.
   `UnsafePointer` to an argument expecting a `Bool` would silently compile
   successfully.
 
+- Basic support for linear types in the standard library is now available.
+  Linear types, also known as non-implicitly-destructible types, are types that
+  do not define a `__del__()` method that the compiler can call automatically
+  to destroy an instance. Instead, a linear type must provide a named
+  method taking `deinit self` that the programmer will be required to call
+  explicitly whenever an owned instance is no longer used.
+
+  The `UnknownDestructibility` trait can be used in parameters to denote
+  generic code that supports object instances that cannot be implicitly
+  destroyed.
+
+  - `UnsafePointer` and `Pointer` can point to linear types
+  - `Variant` and `VariadicPack` can now contain linear types
+
 - Using a new 'unconditional conformances' technique leveraging `conforms_to()`
   and `trait_downcast()` to perform "late" element type conformance checking,
   some standard library types are now able to conform to traits that they could
@@ -273,10 +309,13 @@ what we publish.
 
   - `List` now conforms to `Equatable`, `Writable`, `Stringable`,
     and `Representable`.
+  - `Dict` now conforms to `Writable`, `Stringable`, and `Representable`.
 
   - The following types no longer require their elements to be `Copyable`.
+    - `Iterator`
     - `Tuple`
     - `Variant`
+    - `Optional`
 
 - Basic file I/O operations in the `io` module are now implemented natively in
   Mojo using direct `libc` system calls (`open`, `close`, `read`, `write`,
@@ -299,6 +338,14 @@ what we publish.
   size twice in many cases, reducing boilerplate and preventing mismatched values.
   On AMD GPUs or for allocations ≤ 48KB, explicit `func_attribute` values
   should be provided when needed.
+
+- `StringLiteral.format` will now emit a compile-time constraint error if the
+  format string is invalid (instead of a runtime error).
+
+  ```mojo
+  "Hello, {!invalid}".format("world")
+  # note: constraint failed: Conversion flag "invalid" not recognized.
+  ```
 
 ### Tooling changes
 
@@ -388,6 +435,8 @@ or removed in future releases.
   overloading not working when used with `ref`.
 - [Issue #5137](https://github.com/modular/modular/issues/5137): Tail call
   optimization doesn't happen for tail recursive functions with raises.
+- [Issue #5138](https://github.com/modular/modular/issues/5138): Tail call
+  optimization doesn't happen for functions with local stack temporaries.
 - [Issue #5361](https://github.com/modular/modular/issues/5361): mojo doc
   crashes on alias of parametrized function with origin.
 - [Issue #5618](https://github.com/modular/modular/issues/5618): Compiler crash

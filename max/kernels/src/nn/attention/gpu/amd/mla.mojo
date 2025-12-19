@@ -92,16 +92,17 @@ struct MLAAttentionConfig[token_gen: Bool, config: MHAConfig](AttentionConfig):
 __extension Attention:
     @always_inline
     fn mla_prefill[
-        k_rope_t: MHAOperand, //,
+        k_rope_t: MHAOperand,
+        //,
         # cache_num_heads: Int,
         # cache_depth: Int,
     ](mut self, k_rope: k_rope_t):
         comptime cache_num_heads = 1
         comptime cache_depth = 576
-        constrained[Self.BN == Self.depth, "BN must be equal to depth"]()
+        __comptime_assert Self.BN == Self.depth, "BN must be equal to depth"
         comptime simd_width = simd_width_of[Self.q_type]()
 
-        constrained[Self.BK == 32, "BK must be 32"]()
+        __comptime_assert Self.BK == 32, "BK must be 32"
 
         @always_inline
         @parameter
@@ -229,6 +230,8 @@ __extension Attention:
                 prefetched_b_tile=True,
             ](k_rope_buffer)
 
+            self.scale_p_reg()
+
             self.mask_apply(
                 kv_tile_start_row,
                 kv_tile_num_rows,
@@ -245,7 +248,9 @@ __extension Attention:
             var end = min(i + Self.BN, self.num_keys)
             loop_over_kvcache[Int(Self.BN)](i, end, end != self.num_keys)
 
-        self.out_reg_buffer.apply_softmax_denominator(self.rowsum)
+        self.out_reg_buffer.apply_softmax_denominator(
+            self.softmax.rowsum_tensor
+        )
 
         self.store_output()
 

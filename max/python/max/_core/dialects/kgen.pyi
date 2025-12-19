@@ -54,6 +54,7 @@ class FnMetadataAttrInterface(Protocol):
     def get_with_bound_pos_args(
         self, arg: int, /
     ) -> FnMetadataAttrInterface: ...
+    def equals(self, arg: FnMetadataAttrInterface, /) -> bool: ...
 
 class GeneratorMetadataAttrInterface(Protocol):
     """
@@ -1933,6 +1934,8 @@ class TailKind(enum.Enum):
 
     notail = 2
 
+    tail = 3
+
 class CallIndirectOp(max._core.Operation):
     """
     The `kgen.call_indirect` operation takes an SSA value of `!kgen.generator`
@@ -1990,6 +1993,7 @@ class CallParamOp(max._core.Operation):
         results: Sequence[max._core.Type],
         callee: max._core.dialects.builtin.TypedAttr,
         operands: Sequence[max._core.Value[max._core.Type]],
+        tail_kind: TailKindAttr,
     ) -> None: ...
     @property
     def callee(self) -> max._core.dialects.builtin.TypedAttr: ...
@@ -1997,6 +2001,10 @@ class CallParamOp(max._core.Operation):
     def callee(self, arg: max._core.dialects.builtin.TypedAttr, /) -> None: ...
     @property
     def operands(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def tail_kind(self) -> TailKind: ...
+    @tail_kind.setter
+    def tail_kind(self, arg: TailKindAttr, /) -> None: ...
 
 class CaptureListCopyOp(max._core.Operation):
     """
@@ -3974,7 +3982,7 @@ class PackageLinkOp(max._core.Operation):
 
     ```mlir
     kgen.package.link @foo
-      dependencies([@stdlib])
+      dependencies([@std])
       post_parse(dense_resource<...> : tensor<...xi8>)
     ```
     """

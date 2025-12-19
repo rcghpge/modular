@@ -27,7 +27,9 @@ from benchmark import (
 )
 from buffer import NDBuffer
 from buffer.dimlist import DimList
-from comm.allreduce import MAX_GPUS, Signal, allreduce, can_enable_p2p
+from comm.sync import can_enable_p2p
+from comm.allreduce import allreduce
+from comm import MAX_GPUS, Signal
 import comm.vendor.ccl as vendor_ccl
 from gpu.host import (
     DeviceBuffer,
@@ -111,8 +113,8 @@ fn bench_reduce[
     num_bytes: Int,
     max_num_blocks: Optional[Int],
 ) raises:
-    constrained[ngpus in (1, 2, 4, 8), "ngpus must be 1, 2, 4, or 8"]()
-    constrained[rank == 1, "this test code currently assumes rank 1"]()
+    __comptime_assert ngpus in (1, 2, 4, 8), "ngpus must be 1, 2, 4, or 8"
+    __comptime_assert rank == 1, "this test code currently assumes rank 1"
 
     var name = String(
         _get_test_str[dtype, use_multimem, use_vendor_ccl](ngpus, num_bytes)
@@ -379,7 +381,7 @@ fn bench_reduce[
                 print("Verification failed at GPU", i, "index", j)
                 print("Value:", host_buffers[i][j])
                 print("Expected:", expected_sum)
-                raise e
+                raise e^
 
     # Cleanup
     for i in range(ngpus):
@@ -415,8 +417,8 @@ def main():
     var max_num_blocks: Optional[Int] = Optional[Int]()
     if max_nb > 0:
         max_num_blocks = Optional[Int](max_nb)
-    comptime use_multimem = env_get_bool["multimem", False]()
-    comptime use_quickreduce = env_get_bool["quickreduce", False]()
+    comptime use_multimem = env_get_bool["use_multimem", False]()
+    comptime use_quickreduce = env_get_bool["use_quickreduce", False]()
     comptime use_vendor_ccl = env_get_bool["use_vendor_ccl", False]()
     comptime cache_busting = True
 

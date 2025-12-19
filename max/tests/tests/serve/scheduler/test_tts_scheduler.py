@@ -22,6 +22,7 @@ import pytest
 from max.driver import CPU
 from max.dtype import DType
 from max.engine import InferenceSession
+from max.graph import DeviceRef
 from max.interfaces import (
     AudioGenerationInputs,
     AudioGenerationOutput,
@@ -54,7 +55,7 @@ def create_text_context(
     shared_prefix: np.ndarray | None = None,
 ) -> TTSContext:
     if shared_prefix is None:
-        tokens = np.ones(prompt_len, dtype=np.int32)
+        tokens = np.ones(prompt_len, dtype=np.int64)
     else:
         rem_tokens = prompt_len - len(shared_prefix)
         assert rem_tokens >= 0
@@ -88,6 +89,8 @@ def create_paged_manager(
         enable_prefix_caching=enable_prefix_caching,
         enable_kvcache_swapping_to_host=enable_kvcache_swapping_to_host,
         host_kvcache_swap_space_gb=999,
+        devices=[DeviceRef.CPU()],
+        data_parallel_degree=1,
     )
 
     session = InferenceSession(devices=[CPU()])
@@ -98,7 +101,6 @@ def create_paged_manager(
         params=kv_params,
         total_num_pages=num_blocks,
         total_num_host_pages=num_host_pages,
-        devices=[CPU()],
         session=session,
         enable_runtime_checks=True,
     )

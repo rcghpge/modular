@@ -34,12 +34,6 @@ from max.graph.weights import (
     Weights,
     WeightsAdapter,
 )
-from max.kv_cache import (
-    NullKVCacheManager,
-    PagedKVCacheManager,
-    estimate_kv_cache_size,
-    load_kv_manager,
-)
 from max.nn import Module, ReturnLogits, Signals
 from max.nn.kv_cache import KVCacheInputs, KVCacheParams, PagedCacheValues
 from max.nn.parallel import ParallelArrayOps
@@ -195,13 +189,18 @@ class Qwen2_5VLModel(
     def get_kv_params(
         cls,
         huggingface_config: AutoConfig,
-        n_devices: int,
+        pipeline_config: PipelineConfig,
+        devices: list[DeviceRef],
         kv_cache_config: KVCacheConfig,
         cache_dtype: DType,
     ) -> KVCacheParams:
         """Gets the parameters required to configure the KV cache for Qwen2.5VL."""
         return Qwen2_5VLConfig.get_kv_params(
-            huggingface_config, n_devices, kv_cache_config, cache_dtype
+            huggingface_config,
+            pipeline_config,
+            devices,
+            kv_cache_config,
+            cache_dtype,
         )
 
     @classmethod
@@ -209,36 +208,11 @@ class Qwen2_5VLModel(
         """Gets the number of hidden layers from the HuggingFace configuration."""
         return Qwen2_5VLConfig.get_num_layers(huggingface_config)
 
-    @classmethod
-    def estimate_kv_cache_size(
-        cls,
-        pipeline_config: PipelineConfig,
-        available_cache_memory: int,
-        devices: list[Device],
-        huggingface_config: AutoConfig,
-        kv_cache_config: KVCacheConfig,
-        cache_dtype: DType,
-    ) -> int:
-        """Estimates the size of the KV cache required for the Qwen2.5VL model in bytes."""
-        return estimate_kv_cache_size(
-            params=Qwen2_5VLConfig.get_kv_params(
-                huggingface_config=huggingface_config,
-                n_devices=len(devices),
-                kv_cache_config=kv_cache_config,
-                cache_dtype=cache_dtype,
-            ),
-            max_batch_size=pipeline_config.max_batch_size,
-            max_seq_len=cls.calculate_max_seq_len(
-                pipeline_config, huggingface_config=huggingface_config
-            ),
-            available_cache_memory=available_cache_memory,
-        )
-
     def _unflatten_kv_inputs(
         self, kv_inputs_flat: Sequence[Value[Any]]
     ) -> list[PagedCacheValues]:
         """Unflatten KV cache inputs from flat list to per-device structure."""
-        fetch_types = self.kv_manager.get_symbolic_inputs()[0]
+        fetch_types = self.kv_params.get_symbolic_inputs()[0]
         len_of_kv_tuple_per_dev = len(list(fetch_types))
         n_devices = len(self.devices)
 
@@ -565,7 +539,7 @@ class Qwen2_5VLModel(
             device=device_ref,
         )
 
-        kv_inputs = self.kv_manager.get_symbolic_inputs()
+        kv_inputs = self.kv_params.get_symbolic_inputs()
         flattened_kv_types = [
             kv_type for sublist in kv_inputs for kv_type in sublist
         ]
@@ -1112,12 +1086,13 @@ class Qwen2_5VLModel(
                 vision_data.concatenated_pixel_values
                 for vision_data in vision_datas
             ]
-            concatenated = self._parallel_ops.concatenate(pixel_values_list)
-            pixel_values_tensor = Tensor.from_numpy(concatenated)
+            pixel_values_tensor = self._parallel_ops.concatenate(
+                pixel_values_list
+            )
 
             # If uint16, interpret as bfloat16 to work around lack of Numpy
             # bfloat16 support.
-            if concatenated.dtype == np.uint16:
+            if pixel_values_tensor.dtype == DType.uint16:
                 pixel_values_tensor = pixel_values_tensor.view(
                     DType.bfloat16, pixel_values_tensor.shape
                 )
@@ -1144,13 +1119,13 @@ class Qwen2_5VLModel(
 
         with Tracer("preparing_vision_position_ids"):
             vision_position_ids_list = [
-                vision_data.vision_position_ids for vision_data in vision_datas
+                vision_data.vision_position_ids.astype(np.int64)
+                for vision_data in vision_datas
             ]
-            vision_position_ids_tensor = Tensor.from_numpy(
-                self._parallel_ops.concatenate(vision_position_ids_list).astype(
-                    np.int64
-                )
+            vision_position_ids_tensor = self._parallel_ops.concatenate(
+                vision_position_ids_list
             )
+
             vision_position_ids = vision_position_ids_tensor.to(self.devices)
 
         with Tracer("preparing_max_grid_size"):
@@ -1290,26 +1265,6 @@ class Qwen2_5VLModel(
             max_seqlen=None,
             max_window_seqlen=None,
             max_grid_size=None,
-        )
-
-    def load_kv_manager(
-        self, session: InferenceSession, available_cache_memory: int | None
-    ) -> PagedKVCacheManager | NullKVCacheManager:
-        """Loads and initializes the PagedKVCacheManager for the Qwen2.5VL model."""
-        return load_kv_manager(
-            params=Qwen2_5VLConfig.get_kv_params(
-                huggingface_config=self.huggingface_config,
-                n_devices=len(self.devices),
-                kv_cache_config=self.kv_cache_config,
-                cache_dtype=self.encoding.cache_dtype,
-            ),
-            max_batch_size=self.pipeline_config.max_batch_size,
-            max_seq_len=self.calculate_max_seq_len(
-                self.pipeline_config, huggingface_config=self.huggingface_config
-            ),
-            devices=self.devices,
-            available_cache_memory=available_cache_memory,
-            session=session,
         )
 
     @classmethod

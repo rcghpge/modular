@@ -19,10 +19,10 @@ import math
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import llguidance
-import msgspec
 import numpy as np
 import numpy.typing as npt
 from max.interfaces import (
@@ -33,13 +33,15 @@ from max.interfaces import (
     SamplingParams,
     TextGenerationContext,
     TextGenerationOutput,
+    TokenSlice,
     VLMTextGenerationContext,
 )
 
 CHUNK_SIZE = 128
 
 
-class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
+@dataclass(kw_only=True)
+class TextContext:
     """A base class for model context, specifically for Text model variants.
 
     This class manages the state and processing of text generation, including token management,
@@ -72,35 +74,33 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
     """
 
     max_length: int
-    tokens: npt.NDArray[np.integer[Any]]
-    request_id: RequestID = msgspec.field(default_factory=RequestID)
-    eos_token_ids: set[int] = msgspec.field(default_factory=set)
-    eos_sequences: list[list[int]] = msgspec.field(default_factory=list)
-    log_probabilities: int = msgspec.field(default=0)
-    log_probabilities_echo: bool = msgspec.field(default=False)
-    ignore_eos: bool = msgspec.field(default=False)
-    json_schema: str | None = msgspec.field(default=None)
-    sampling_params: SamplingParams = msgspec.field(
-        default_factory=SamplingParams
-    )
-    model_name: str = msgspec.field(default="")
-    _matcher: Any | None = msgspec.field(default=None)
-    status: GenerationStatus = msgspec.field(default=GenerationStatus.ACTIVE)
-    _size: int = msgspec.field(default=-1)
-    _start_idx: int = msgspec.field(default=0)
-    _active_idx: int = msgspec.field(default=-1)
-    _end_idx: int = msgspec.field(default=-1)
-    _completion_start_idx: int = msgspec.field(default=-1)
-    _completion_end_idx: int = msgspec.field(default=-1)
-    _prompt_len: int = msgspec.field(default=-1)
-    _log_probabilities_data: dict[int, LogProbabilities] = msgspec.field(
+    tokens: TokenSlice
+    request_id: RequestID = field(default_factory=RequestID)
+    eos_token_ids: set[int] = field(default_factory=set)
+    eos_sequences: list[list[int]] = field(default_factory=list)
+    log_probabilities: int = field(default=0)
+    log_probabilities_echo: bool = field(default=False)
+    ignore_eos: bool = field(default=False)
+    json_schema: str | None = field(default=None)
+    sampling_params: SamplingParams = field(default_factory=SamplingParams)
+    model_name: str = field(default="")
+    _matcher: Any | None = field(default=None)
+    status: GenerationStatus = field(default=GenerationStatus.ACTIVE)
+    _size: int = field(default=-1)
+    _start_idx: int = field(default=0)
+    _active_idx: int = field(default=-1)
+    _end_idx: int = field(default=-1)
+    _completion_start_idx: int = field(default=-1)
+    _completion_end_idx: int = field(default=-1)
+    _prompt_len: int = field(default=-1)
+    _log_probabilities_data: dict[int, LogProbabilities] = field(
         default_factory=dict
     )
 
-    _is_initial_prompt: bool = msgspec.field(default=True)
-    _draft_offset: int = msgspec.field(default=0)
+    _is_initial_prompt: bool = field(default=True)
+    _draft_offset: int = field(default=0)
 
-    target_endpoint: str | None = msgspec.field(default=None)
+    target_endpoint: str | None = field(default=None)
 
     def __post_init__(self) -> None:
         """Initialize context state after deserialization.
@@ -173,7 +173,7 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
             self.tokens = np.resize(self.tokens, self._size)
 
     @property
-    def all_tokens(self) -> npt.NDArray[np.integer[Any]]:
+    def all_tokens(self) -> TokenSlice:
         return self.tokens[: self.end_idx]
 
     @property
@@ -383,7 +383,7 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         self._end_idx = new_end_idx
 
     @property
-    def next_tokens(self) -> npt.NDArray[np.integer[Any]]:
+    def next_tokens(self) -> TokenSlice:
         """Returns the tokens between start_idx and active_idx.
 
         Returns:
@@ -392,7 +392,7 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         return self.tokens[self.start_idx : self._active_idx]
 
     @property
-    def prompt_tokens(self) -> npt.NDArray[np.integer[Any]]:
+    def prompt_tokens(self) -> TokenSlice:
         """Returns the original prompt tokens.
 
         Returns:
@@ -401,7 +401,7 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         return self.tokens[: self._prompt_len]
 
     @property
-    def generated_tokens(self) -> npt.NDArray[np.integer[Any]]:
+    def generated_tokens(self) -> TokenSlice:
         """Returns all tokens that have been generated after the prompt.
 
         Returns:
@@ -565,9 +565,8 @@ class TextContext(msgspec.Struct, tag=True, kw_only=True, omit_defaults=True):
         )
 
 
-class TextAndVisionContext(
-    TextContext, tag=True, kw_only=True, omit_defaults=True
-):
+@dataclass(kw_only=True)
+class TextAndVisionContext(TextContext):
     """A base class for model context, specifically for Vision model variants.
 
     For example::
@@ -606,12 +605,10 @@ class TextAndVisionContext(
     """The value of the <vision_token_id> special token. The reason this is a list
     is primarily due to Pixtral which also has a image_break_token_id."""
 
-    images: list[ImageMetadata] = msgspec.field(default_factory=list)
+    images: list[ImageMetadata] = field(default_factory=list)
     """Metadata about each image in the prompt. """
 
-    extra_model_args: dict[str, npt.NDArray[Any]] = msgspec.field(
-        default_factory=dict
-    )
+    extra_model_args: dict[str, npt.NDArray[Any]] = field(default_factory=dict)
     """Extra model arguments for the vision model. These are model specific arguments."""
 
     def __post_init__(self) -> None:
@@ -747,6 +744,7 @@ class TextAndVisionContext(
 SPEECH_TOKEN_audio_chunk_size = 128
 
 
+@dataclass(kw_only=True)
 class TTSContext(TextContext):
     """A context for Text-to-Speech (TTS) model inference.
 
@@ -764,37 +762,33 @@ class TTSContext(TextContext):
         _block_counter: Counter tracking number of speech token blocks generated
     """
 
-    audio_prompt_tokens: npt.NDArray[np.integer[Any]] = msgspec.field(
+    audio_prompt_tokens: npt.NDArray[np.integer[Any]] = field(
         default_factory=lambda: np.array([], dtype=np.int32)
     )
 
-    buffer_speech_tokens: npt.NDArray[np.integer[Any]] | None = msgspec.field(
+    buffer_speech_tokens: npt.NDArray[np.integer[Any]] | None = field(
         default=None
     )
 
     # For silence detection.
-    audio_buffer: npt.NDArray[np.floating[Any]] | None = msgspec.field(
-        default=None
-    )
-    prev_samples_beyond_offset: int = msgspec.field(default=0)
+    audio_buffer: npt.NDArray[np.floating[Any]] | None = field(default=None)
+    prev_samples_beyond_offset: int = field(default=0)
 
-    streaming: bool = msgspec.field(default=False)
+    streaming: bool = field(default=False)
 
     # Fields for tracking the state of speech token or audio generation.
-    _speech_token_size: int = msgspec.field(
-        default=SPEECH_TOKEN_audio_chunk_size
-    )
-    _speech_token_end_idx: int = msgspec.field(default=0)
-    _speech_tokens: npt.NDArray[np.integer[Any]] = msgspec.field(
+    _speech_token_size: int = field(default=SPEECH_TOKEN_audio_chunk_size)
+    _speech_token_end_idx: int = field(default=0)
+    _speech_tokens: npt.NDArray[np.integer[Any]] = field(
         default_factory=lambda: np.zeros(
             SPEECH_TOKEN_audio_chunk_size, dtype=np.int32
         )
     )
-    decoded_index: int = msgspec.field(default=0)
-    _block_counter: int = msgspec.field(default=0)
-    _arrival_time: float = msgspec.field(default_factory=lambda: time.time())
+    decoded_index: int = field(default=0)
+    _block_counter: int = field(default=0)
+    _arrival_time: float = field(default_factory=lambda: time.time())
 
-    audio_generation_status: GenerationStatus = msgspec.field(
+    audio_generation_status: GenerationStatus = field(
         default=GenerationStatus.ACTIVE
     )
 

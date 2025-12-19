@@ -14,14 +14,11 @@
 # DeepGEMM grouped matmul benchmark (contiguous layout).
 # Mimics bench.py scaffolding; uses naive float64 reference for correctness.
 #
-# Run via Bazel: ./bazelw run //max/kernels/benchmarks/misc/comparison:bench_grouped_gemm
+# Run via kbench: kbench bench_grouped_gemm.yaml
 # Usage example:
 #   python $MODULAR_PATH/max/kernels/benchmarks/misc/comparison/setup_bench_env.py
 #   source $MODULAR_PATH/.venv/bin/activate
-#   # Uniform M per group (results in num_groups = 2, M = [64, 64]).
-#   br //max/kernels/benchmarks/misc/comparison:bench_grouped_gemm -- --layout contiguous --shapes 2,64,512,512 --num-tests 5
-#   # Varied M per group (results in num_groups = 2, M = [31, 97]).
-#   br //max/kernels/benchmarks/misc/comparison:bench_grouped_gemm -- --layout contiguous --shapes 2,[31;97],512,512 --num-tests 5
+#   kbench bench_grouped_gemm.yaml
 # ===----------------------------------------------------------------------=== #
 
 import argparse
@@ -29,6 +26,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TypeAlias
 
 import torch
@@ -39,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # DeepGEMM
 import deep_gemm
 from bench import bench_kineto_with_cupti_warmup
+from bencher_utils import Bench, ThroughputMeasure
 from deep_gemm.testing import get_arch_major
 from deep_gemm.utils import (
     get_mk_alignment_for_contiguous_layout,
@@ -67,40 +66,22 @@ class ShapeCfg:
     k: int
 
 
-def _parse_m_list(m_field: str) -> list[int]:
-    """Parse m field: either scalar or bracketed list like [4;500]."""
+def parse_m_arg(m_arg: str, num_groups: int) -> list[int]:
+    """Parse M argument: single int or comma-separated m1,m2,m3."""
+    m_str = m_arg.strip()
+    if "," in m_str:
+        m_list = [int(x.strip()) for x in m_str.split(",")]
+    else:
+        m_list = [int(m_str)] * num_groups
 
-    m_field = m_field.strip()
-    if m_field.startswith("[") and m_field.endswith("]"):
-        body = m_field[1:-1].strip()
-        if not body:
-            raise ValueError("Empty m_per_group list")
-        return [int(x.strip()) for x in body.split(";")]
-    return [int(m_field)]
-
-
-def parse_shape(shape_str: str) -> ShapeCfg:
-    """Parse a single CLI shape string into a config.
-
-    Format: num_groups,m_per_group,n,k where m_per_group can be scalar or
-    bracketed list, e.g. 2,[4;500],512,512.
-    """
-
-    parts = shape_str.split(",")
-    if len(parts) != 4:
-        raise ValueError(f"Shape must be 'num_groups,m,n,k', got {shape_str}")
-    num_groups = int(parts[0])
-    m_list = _parse_m_list(parts[1])
-    n = int(parts[2])
-    k = int(parts[3])
-    if len(m_list) not in (1, num_groups):
+    if len(m_list) != num_groups and len(m_list) != 1:
         raise ValueError(
-            "m_per_group list length must be 1 or num_groups; "
-            f"got {len(m_list)} vs num_groups={num_groups}"
+            f"M list length ({len(m_list)}) must equal num_groups "
+            f"({num_groups}) or be 1"
         )
     if len(m_list) == 1:
-        m_list = [m_list[0]] * num_groups
-    return ShapeCfg(num_groups=num_groups, m_per_group=m_list, n=n, k=k)
+        m_list = m_list * num_groups
+    return m_list
 
 
 def align_up(x: int, align: int) -> int:
@@ -178,7 +159,7 @@ def contiguous_reference(
     return out
 
 
-def run_case(cfg: ShapeCfg, args: argparse.Namespace) -> tuple[float, float]:
+def run_case(cfg: ShapeCfg, args: argparse.Namespace) -> tuple[float, int]:
     if args.layout == "masked":
         raise NotImplementedError("masked layout is not supported")
 
@@ -223,8 +204,8 @@ def run_case(cfg: ShapeCfg, args: argparse.Namespace) -> tuple[float, float]:
     )
     assert isinstance(time_s, float), "Expected single kernel timing"
 
-    tflops = 2 * m_effective * cfg.n * cfg.k / time_s / 1e12
-    return time_s, tflops
+    total_flops = 2 * m_effective * cfg.n * cfg.k
+    return time_s, total_flops
 
 
 def main() -> None:
@@ -236,26 +217,53 @@ def main() -> None:
     )
     parser.add_argument("--dtype", choices=["fp8", "bf16"], default="fp8")
     parser.add_argument(
-        "--shape",
-        default="2,128,512,512",
-        help="Single shape as num_groups,m_per_group,n,k",
+        "--num-groups", type=int, required=True, help="Number of groups"
     )
+    parser.add_argument(
+        "--M",
+        type=str,
+        required=True,
+        help="M per group: single int or comma-separated (m1,m2,m3...)",
+    )
+    parser.add_argument("--N", type=int, required=True, help="N dimension")
+    parser.add_argument("--K", type=int, required=True, help="K dimension")
     parser.add_argument("--num-tests", type=int, default=10)
     parser.add_argument(
         "--check", action="store_true", help="Run float64 reference check"
     )
     parser.add_argument("--seed", type=int, default=0)
-    args = parser.parse_args()
+    parser.add_argument("-o", "--output", type=str, default="output.csv")
+    args, _ = parser.parse_known_args()
 
     torch.manual_seed(args.seed)
 
-    cfg = parse_shape(args.shape)
-    time_s, tflops = run_case(cfg, args)
-
-    print("dtype,layout,num_groups,m_per_group,n,k,time_s,TFLOP/s")
-    print(
-        f"{args.dtype},{args.layout},{cfg.num_groups},{cfg.m_per_group},{cfg.n},{cfg.k},{time_s:.6f},{tflops:.3f}"
+    cfg = ShapeCfg(
+        num_groups=args.num_groups,
+        m_per_group=parse_m_arg(args.M, args.num_groups),
+        n=args.N,
+        k=args.K,
     )
+
+    result = run_case(cfg, args)
+    met_s, total_flops = result if result else [0, 0]
+
+    flops = ThroughputMeasure(Bench.bytes, total_flops)
+
+    name = (
+        f"Grouped_GEMM/dtype={args.dtype}/layout={args.layout}/"
+        f"num_groups={cfg.num_groups}/m_per_group={cfg.m_per_group}/"
+        f"n={cfg.n}/k={cfg.k}/"
+        # f"engine={engine}/"
+    )
+
+    b = Bench(
+        name,
+        iters=1,
+        met=met_s,
+        metric_list=[flops],
+    )
+
+    b.dump_report(output_path=Path(args.output))
 
 
 if __name__ == "__main__":
