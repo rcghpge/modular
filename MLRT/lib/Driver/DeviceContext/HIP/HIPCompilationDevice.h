@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H
-#define ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H
 
 #include "MLRT/Driver/DeviceContext/CompilationDevice.h"
 #include "Support/Buffer.h"
@@ -64,4 +64,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H

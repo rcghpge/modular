@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_UTILS_COMMON_NIXL_TIME_H
-#define ASYNCRT_NIXL_UTILS_COMMON_NIXL_TIME_H
+#ifndef MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_TIME_H
+#define MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_TIME_H
 
 #include <chrono>
 
@@ -43,4 +43,4 @@ static inline sec_t getSec() {
 
 } // namespace M::AsyncRT::NIXL::nixlTime
 
-#endif // ASYNCRT_NIXL_UTILS_COMMON_NIXL_TIME_H
+#endif // MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_TIME_H

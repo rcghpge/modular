@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_PLUGINS_UCX_UCX_BACKEND_H
-#define ASYNCRT_NIXL_PLUGINS_UCX_UCX_BACKEND_H
+#ifndef MLRT_DRIVER_NIXL_PLUGINS_UCX_UCX_BACKEND_H
+#define MLRT_DRIVER_NIXL_PLUGINS_UCX_UCX_BACKEND_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/NIXL/backend/backend_engine.h"
@@ -304,4 +304,4 @@ nixlBackendPlugin *createStaticUcxPlugin();
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_PLUGINS_UCX_UCX_BACKEND_H
+#endif // MLRT_DRIVER_NIXL_PLUGINS_UCX_UCX_BACKEND_H

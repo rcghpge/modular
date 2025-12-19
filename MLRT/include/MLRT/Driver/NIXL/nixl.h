@@ -12,8 +12,8 @@
  * @file nixl.h (NVIDIA Inference Xfer Library)
  * @brief These are NIXL Core APIs for applications
  */
-#ifndef ASYNCRT_NIXL_NIXL_H
-#define ASYNCRT_NIXL_NIXL_H
+#ifndef MLRT_DRIVER_NIXL_NIXL_H
+#define MLRT_DRIVER_NIXL_NIXL_H
 
 #include "MLRT/Driver/NIXL/backend/backend_engine.h"
 #include "MLRT/Driver/NIXL/nixl_descriptors.h"
@@ -513,4 +513,4 @@ public:
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_NIXL_H
+#endif // MLRT_DRIVER_NIXL_NIXL_H

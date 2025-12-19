@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_NIXL_DESCRIPTORS_H
-#define ASYNCRT_NIXL_NIXL_DESCRIPTORS_H
+#ifndef MLRT_DRIVER_NIXL_NIXL_DESCRIPTORS_H
+#define MLRT_DRIVER_NIXL_NIXL_DESCRIPTORS_H
 
 #include "Support/LLVMForwardDecls.h"
 #include "Support/SymbolExport.h"
@@ -334,4 +334,4 @@ using nixl_reg_dlist_t = nixlDescList<nixlBlobDesc>;
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_NIXL_DESCRIPTORS_H
+#endif // MLRT_DRIVER_NIXL_NIXL_DESCRIPTORS_H

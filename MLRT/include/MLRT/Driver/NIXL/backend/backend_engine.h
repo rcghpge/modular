@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_BACKEND_BACKEND_ENGINE_H
-#define ASYNCRT_NIXL_BACKEND_BACKEND_ENGINE_H
+#ifndef MLRT_DRIVER_NIXL_BACKEND_BACKEND_ENGINE_H
+#define MLRT_DRIVER_NIXL_BACKEND_BACKEND_ENGINE_H
 
 #include "MLRT/Driver/NIXL/backend/backend_aux.h"
 #include "MLRT/Driver/NIXL/nixl_types.h"
@@ -211,4 +211,4 @@ public:
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_BACKEND_BACKEND_ENGINE_H
+#endif // MLRT_DRIVER_NIXL_BACKEND_BACKEND_ENGINE_H

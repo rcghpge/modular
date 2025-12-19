@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_PLUGIN_MANAGER_H
-#define ASYNCRT_NIXL_PLUGIN_MANAGER_H
+#ifndef MLRT_DRIVER_NIXL_PLUGIN_MANAGER_H
+#define MLRT_DRIVER_NIXL_PLUGIN_MANAGER_H
 
 #include "backend/backend_plugin.h"
 #include <filesystem>
@@ -100,4 +100,4 @@ public:
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_PLUGIN_MANAGER_H
+#endif // MLRT_DRIVER_NIXL_PLUGIN_MANAGER_H

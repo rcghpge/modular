@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_NIXL_UTILS_UCX_CONFIG_H
-#define ASYNCRT_NIXL_UTILS_UCX_CONFIG_H
+#ifndef MLRT_DRIVER_NIXL_UTILS_UCX_CONFIG_H
+#define MLRT_DRIVER_NIXL_UTILS_UCX_CONFIG_H
 
 #include "Support/ErrorOr.h"
 #include <memory>
@@ -52,4 +52,4 @@ private:
 
 } // namespace M::AsyncRT::NIXL::UCX
 
-#endif // ASYNCRT_NIXL_UTILS_UCX_CONFIG_H
+#endif // MLRT_DRIVER_NIXL_UTILS_UCX_CONFIG_H

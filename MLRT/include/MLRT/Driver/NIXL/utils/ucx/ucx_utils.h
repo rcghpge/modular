@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_UTILS_UCX_UCX_UTILS_H
-#define ASYNCRT_NIXL_UTILS_UCX_UCX_UTILS_H
+#ifndef MLRT_DRIVER_NIXL_UTILS_UCX_UCX_UTILS_H
+#define MLRT_DRIVER_NIXL_UTILS_UCX_UCX_UTILS_H
 
 extern "C" {
 #include "ucp/api/ucp.h"
@@ -218,4 +218,4 @@ ucx_err_mode_from_string(std::string_view s);
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_UTILS_UCX_UCX_UTILS_H
+#endif // MLRT_DRIVER_NIXL_UTILS_UCX_UCX_UTILS_H

@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLRT_ASYNCRT_LIB_DEVICECONTEXT_BUFFERCACHE_H
-#define MLRT_ASYNCRT_LIB_DEVICECONTEXT_BUFFERCACHE_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_BUFFERCACHE_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_BUFFERCACHE_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "llvm/Support/MathExtras.h"
@@ -204,4 +204,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // MLRT_ASYNCRT_LIB_DEVICECONTEXT_BUFFERCACHE_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_BUFFERCACHE_H

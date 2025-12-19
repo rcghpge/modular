@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_DEVICECONTEXT_COMPILATIONDEVICE_H
-#define ASYNCRT_DEVICECONTEXT_COMPILATIONDEVICE_H
+#ifndef MLRT_DRIVER_DEVICECONTEXT_COMPILATIONDEVICE_H
+#define MLRT_DRIVER_DEVICECONTEXT_COMPILATIONDEVICE_H
 
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
@@ -96,4 +96,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // ASYNCRT_DEVICECONTEXT_COMPILATIONDEVICE_H
+#endif // MLRT_DRIVER_DEVICECONTEXT_COMPILATIONDEVICE_H

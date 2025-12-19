@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_NIXL_TYPES_H
-#define ASYNCRT_NIXL_NIXL_TYPES_H
+#ifndef MLRT_DRIVER_NIXL_NIXL_TYPES_H
+#define MLRT_DRIVER_NIXL_NIXL_TYPES_H
 
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/STLExtras.h"
@@ -221,4 +221,4 @@ constexpr std::string_view NIXL_INIT_AGENT = "";
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_NIXL_TYPES_H
+#endif // MLRT_DRIVER_NIXL_NIXL_TYPES_H

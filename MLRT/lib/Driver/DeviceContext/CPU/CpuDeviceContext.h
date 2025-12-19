@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_LIB_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
-#define ASYNCRT_LIB_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
@@ -185,4 +185,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // ASYNCRT_LIB_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H

@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_UTILS_COMMON_NIXL_LOG_H
-#define ASYNCRT_NIXL_UTILS_COMMON_NIXL_LOG_H
+#ifndef MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_LOG_H
+#define MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_LOG_H
 
 #include "llvm/Support/raw_ostream.h"
 #include <cstring>
@@ -138,4 +138,4 @@ private:
   M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
       << _LOG_HEADER << ": " << nixl_strerror(errno)
 
-#endif // ASYNCRT_NIXL_UTILS_COMMON_NIXL_LOG_H
+#endif // MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_LOG_H

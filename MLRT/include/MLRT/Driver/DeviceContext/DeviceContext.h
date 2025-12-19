@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
-#define ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
+#ifndef MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
+#define MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
@@ -701,4 +701,4 @@ struct DenseMapInfo<M::AsyncRT::Device::FunctionCacheKey> {
 };
 } // namespace llvm
 
-#endif // ASYNCRT_DEVICECONTEXT_DEVICECONTEXT_H
+#endif // MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H

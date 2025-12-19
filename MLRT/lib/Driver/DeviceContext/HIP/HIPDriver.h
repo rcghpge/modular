@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPDRIVER_H
-#define ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPDRIVER_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPDRIVER_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPDRIVER_H
 
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
@@ -678,4 +678,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // ASYNCRT_LIB_DEVICECONTEXT_HIP_HIPDRIVER_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPDRIVER_H

@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_UTILS_SERDES_SERDES_H
-#define ASYNCRT_NIXL_UTILS_SERDES_SERDES_H
+#ifndef MLRT_DRIVER_NIXL_UTILS_SERDES_SERDES_H
+#define MLRT_DRIVER_NIXL_UTILS_SERDES_SERDES_H
 
 #include "Support/SymbolExport.h"
 #include <cstdint>
@@ -59,4 +59,4 @@ public:
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_UTILS_SERDES_SERDES_H
+#endif // MLRT_DRIVER_NIXL_UTILS_SERDES_SERDES_H

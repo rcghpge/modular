@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLRT_ASYNCRT_DEVICECONTEXT_BINARYID_H
-#define MLRT_ASYNCRT_DEVICECONTEXT_BINARYID_H
+#ifndef MLRT_DRIVER_DEVICECONTEXT_BINARYID_H
+#define MLRT_DRIVER_DEVICECONTEXT_BINARYID_H
 
 #include "Support/SymbolExport.h"
 #include <string>
@@ -16,4 +16,4 @@ MODULAR_CXX_EXPORT std::string getMojoBindingsBinaryID();
 
 }
 
-#endif // MLRT_ASYNCRT_DEVICECONTEXT_BINARYID_H
+#endif // MLRT_DRIVER_DEVICECONTEXT_BINARYID_H

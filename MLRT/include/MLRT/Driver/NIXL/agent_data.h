@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_AGENT_DATA_H
-#define ASYNCRT_NIXL_AGENT_DATA_H
+#ifndef MLRT_DRIVER_NIXL_AGENT_DATA_H
+#define MLRT_DRIVER_NIXL_AGENT_DATA_H
 
 #include "MLRT/Driver/NIXL/mem_section.h"
 #include "MLRT/Driver/NIXL/sync.h"
@@ -111,4 +111,4 @@ public:
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_AGENT_DATA_H
+#endif // MLRT_DRIVER_NIXL_AGENT_DATA_H

@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_LIB_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H
-#define ASYNCRT_LIB_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
@@ -259,4 +259,4 @@ using MetalDeviceContextRef = RCRef<const MetalDeviceContext>;
 } // namespace M::AsyncRT
 
 #endif // MODULAR_MACOS
-#endif // ASYNCRT_LIB_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H

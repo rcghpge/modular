@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADRIVER_H
-#define ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADRIVER_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADRIVER_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADRIVER_H
 
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
@@ -304,4 +304,4 @@ private:
 
 } // namespace M::AsyncRT
 
-#endif // ASYNCRT_LIB_DEVICECONTEXT_CUDA_CUDADRIVER_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADRIVER_H

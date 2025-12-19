@@ -8,8 +8,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ASYNCRT_NIXL_UTILS_COMMON_OPERATORS_H
-#define ASYNCRT_NIXL_UTILS_COMMON_OPERATORS_H
+#ifndef MLRT_DRIVER_NIXL_UTILS_COMMON_OPERATORS_H
+#define MLRT_DRIVER_NIXL_UTILS_COMMON_OPERATORS_H
 
 #include "MLRT/Driver/NIXL/nixl_types.h"
 #include "llvm/Support/raw_ostream.h"
@@ -33,4 +33,4 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 
 } // namespace M::AsyncRT::NIXL
 
-#endif // ASYNCRT_NIXL_UTILS_COMMON_OPERATORS_H
+#endif // MLRT_DRIVER_NIXL_UTILS_COMMON_OPERATORS_H
