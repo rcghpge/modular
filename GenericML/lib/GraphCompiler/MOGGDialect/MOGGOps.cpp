@@ -4380,7 +4380,7 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
 
   state.builder.call(getBufferMemStorageHandleFn, {},
                      {inputVar, typeVar, opaquePtrPtr});
-  state.setMojoValueFor(getResult(), opaquePtrPtr);
+  state.setMojoValueFor(getResult(), opaquePtr);
   return success();
 }
 

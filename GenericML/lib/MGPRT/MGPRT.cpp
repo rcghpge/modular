@@ -203,7 +203,7 @@ MGP_RT_TensorBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
 
   TensorBufferRef buf =
-      mem ? ::M::TensorBufferRef::create(data, byteCount, std::move(*mem))
+      mem ? ::M::TensorBufferRef::create(data, byteCount, mem->copy())
           : ::TensorBufferRef::createWithNonTrackedMemory(data, byteCount);
 
   // Pack buffer and spec into tensor.
@@ -223,7 +223,7 @@ MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
                       size_t size, AnyAsyncValueRef *mem) {
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
   TensorBufferRef buf =
-      mem ? ::M::TensorBufferRef::create(data, size, std::move(*mem))
+      mem ? ::M::TensorBufferRef::create(data, size, mem->copy())
           : ::TensorBufferRef::createWithNonTrackedMemory(data, size);
   if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
     borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
@@ -627,14 +627,15 @@ MGP_RT_AsyncRT_CreateAsync_Error(AsyncRTWrapper<AnyAsyncValueRef> async,
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_GetBufferMemStorageHandle(AsyncRTWrapper<AnyAsyncValueRef> buffer,
                                  size_t type,
-                                 AnyAsyncValueRef *memStorageHandle) {
+                                 AnyAsyncValueRef **memStorageHandle) {
   AnyAsyncValueRef &unwrappedBuffer = unwrap(buffer);
-  if (type == kBuffer)
-    new (memStorageHandle) AnyAsyncValueRef(
-        unwrappedBuffer.get<TensorBufferRef>().getMemStorageHandle());
-  else if (type == kTensor)
-    new (memStorageHandle) AnyAsyncValueRef(
-        unwrappedBuffer.get<Tensor>().getBufferRef().getMemStorageHandle());
-  else
+  if (type == kBuffer) {
+    *memStorageHandle =
+        unwrappedBuffer.get<TensorBufferRef>().getMemStorageHandleRef();
+  } else if (type == kTensor) {
+    *memStorageHandle =
+        unwrappedBuffer.get<Tensor>().getBufferRef().getMemStorageHandleRef();
+  } else {
     llvm_unreachable("Unexpected buffer type");
+  }
 }
