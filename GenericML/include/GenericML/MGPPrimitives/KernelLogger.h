@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include <cstdint>

@@ -12,7 +12,7 @@
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
 #include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"

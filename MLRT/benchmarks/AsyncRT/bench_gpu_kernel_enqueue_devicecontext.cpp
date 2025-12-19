@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
 #include "Support/MicroBenchmark.h"
 

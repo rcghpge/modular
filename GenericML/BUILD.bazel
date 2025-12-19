@@ -83,8 +83,8 @@ modular_cc_library(
         ":RMOTransforms",
         ":Support",
         "//KGEN:CompilerRT",
-        "//MLRT:AsyncRT/DeviceContext",
         "//MLRT:AsyncRT/RuntimeGlobals",
+        "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/MLIRToMEF",
         "//Support:Base",
         "//Support:BinaryID",
@@ -238,7 +238,7 @@ modular_cc_library(
         ":MGPDialect.headers",
         ":MODialect",
         ":MOGGDialect.headers",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -819,7 +819,7 @@ modular_cc_library(
         "//KGEN:MojoParser",
         "//KGEN:ObjectCompiler",
         "//Kernels/mojo/Mogg:MOGGLoader",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/GRTDialect",
         "//Support:Context",
         "//Support:HashUtils",
@@ -836,7 +836,7 @@ modular_cc_library(
     }),
     deps = [
         ":MOGGDialect",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
     ],
 )
 
@@ -1117,7 +1117,7 @@ modular_cc_library(
         ":MOGGDialect",
         ":RMODialect",
         ":Support",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/MEFDialect",
         "//Support:HashUtils",
         "@llvm-project//llvm:Support",
@@ -1285,7 +1285,7 @@ modular_cc_library(
         ":MOGGTransforms",
         ":MOToPrimitivesIncGen",
         "//KGEN:ToolCommon",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
     ],
 )
 
@@ -1396,7 +1396,7 @@ modular_cc_library(
         ":CommonDriver",
         ":Support",
         "//Init",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
         "//Support:Context",
     ],
 )
@@ -1420,7 +1420,7 @@ modular_cc_library(
     hdrs = ["include/GenericML/Support/SafeTensor/SafeTensor.h"],
     deps = [
         ":DeviceDriver",
-        "//MLRT:AsyncRT/DeviceContext",
+        "//MLRT:Driver/DeviceContext",
         "//Support:Base",
         "//Support:ML",
     ],

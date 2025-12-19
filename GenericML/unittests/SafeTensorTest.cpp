@@ -6,7 +6,7 @@
 
 #include "GenericML/Support/SafeTensor/SafeTensor.h"
 #include "GenericML/DeviceDriver/Driver.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
 #include "gtest/gtest.h"
 

@@ -11,6 +11,7 @@ MLRT contains the following libraries:
 - AsyncRT - Parallel C++ runtime with threadpools
 - Core - Core C++ runtime utilities
 - GraphRT - Graph runtime infrastructure
+- Driver - Cross-vendor kernel execution runtime
 
 ## [AsyncRT](./AsyncRT/README.md)
 
@@ -52,6 +53,12 @@ GraphRT is a low-level execution layer for precompiled dataflow graphs.
 "Primitives" are registered as C/C++ functions and looked up by name, allowing
 the bottom level of the runtime stack to drive arbitrary CPU computation and
 interface with existing foreign runtimes.
+
+## [Driver](./Driver/README.md)
+
+Driver is a low-level cross-vendor runtime which allows device discovery,
+memory management and kernel execution on the CPU and various different
+accelerators and GPUs, and NIXL; a cross-vendor multi-node communication layer.
 
 ## WIP Status
 

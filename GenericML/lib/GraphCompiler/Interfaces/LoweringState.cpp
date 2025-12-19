@@ -12,7 +12,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPDialect.h"
 #include "KGEN/POPDialect/POPOps.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/Compiler/MLIRDType.h"

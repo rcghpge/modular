@@ -19,7 +19,7 @@
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/TransformUtils/SCCUtils.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"

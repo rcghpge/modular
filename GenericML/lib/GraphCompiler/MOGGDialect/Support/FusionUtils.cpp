@@ -18,7 +18,7 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
 

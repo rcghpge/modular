@@ -106,89 +106,6 @@ modular_cc_library(
     ],
 )
 
-# Library target exporting the different AsyncRT bindings for Mojo.
-modular_shared_library(
-    name = "AsyncRT/DeviceContext",
-    srcs = [
-        "lib/AsyncRT/DeviceContext/MojoBindings.cpp",
-    ],
-    hdrs = [
-        "include/MLRT/AsyncRT/DeviceContext/BinaryID.h",
-        "include/MLRT/AsyncRT/DeviceContext/CompilationDevice.h",
-        "include/MLRT/AsyncRT/DeviceContext/DeviceContext.h",
-    ],
-    output_name = "AsyncRTMojoBindings",
-    deps = [
-        ":AsyncRT/DeviceContextImpl",
-        "//Support:Base",
-        "//Support:BinaryID",
-        "//Support:Buffer",
-        "//Support:Configuration",
-        "//Support:SymbolExport",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
-    name = "AsyncRT/DeviceContextImpl",
-    srcs = [
-        "lib/AsyncRT/DeviceContext/BufferCache.cpp",
-        "lib/AsyncRT/DeviceContext/CPU/CpuDeviceContext.cpp",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDACompilationDevice.cpp",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDACompilationDriver.cpp",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDADeviceContext.cpp",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDADriver.cpp",
-        "lib/AsyncRT/DeviceContext/CUDA/NVML.cpp",
-        "lib/AsyncRT/DeviceContext/CompilationDevice.cpp",
-        "lib/AsyncRT/DeviceContext/DeviceContext.cpp",
-        "lib/AsyncRT/DeviceContext/HIP/HIPCompilationDevice.cpp",
-        "lib/AsyncRT/DeviceContext/HIP/HIPDeviceContext.cpp",
-        "lib/AsyncRT/DeviceContext/HIP/HIPDriver.cpp",
-        "lib/AsyncRT/DeviceContext/Metal/MetalDeviceContext.cpp",
-        "lib/AsyncRT/DeviceContext/Metal/MetalDriver.cpp",
-        "lib/AsyncRT/DeviceContext/Virtual/VirtualDeviceContext.cpp",
-    ],
-    hdrs = [
-        "include/MLRT/AsyncRT/DeviceContext/CompilationDevice.h",
-        "include/MLRT/AsyncRT/DeviceContext/DeviceContext.h",
-        "lib/AsyncRT/DeviceContext/BufferCache.h",
-        "lib/AsyncRT/DeviceContext/CPU/CpuDeviceContext.h",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDACompilationDevice.h",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDACompilationDriver.h",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDADeviceContext.h",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDADriver.h",
-        "lib/AsyncRT/DeviceContext/CUDA/CUDADriver.inc",
-        "lib/AsyncRT/DeviceContext/CUDA/NVML.h",
-        "lib/AsyncRT/DeviceContext/HIP/HIPCompilationDevice.h",
-        "lib/AsyncRT/DeviceContext/HIP/HIPDeviceContext.h",
-        "lib/AsyncRT/DeviceContext/HIP/HIPDriver.h",
-        "lib/AsyncRT/DeviceContext/HIP/HIPDriver.inc",
-        "lib/AsyncRT/DeviceContext/Metal/MetalDeviceContext.h",
-        "lib/AsyncRT/DeviceContext/Metal/MetalDriver.hpp",
-        "lib/AsyncRT/DeviceContext/Virtual/VirtualDeviceContext.h",
-    ],
-    local_defines = select({
-        "@platforms//os:linux": ["MODULAR_LINUX"],
-        "//conditions:default": [],
-    }),
-    visibility = ["//MLRT:__subpackages__"],
-    deps = [
-        ":AsyncRT/RuntimeGlobals",
-        "//Support:Base",
-        "//Support:Buffer",
-        "//Support:Configuration",
-        "//Support:ML",
-        "//Support:Profiling",
-        "//Support:SymbolExport",
-        "@llvm-project//llvm:Support",
-    ] + select({
-        "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
-        "@platforms//os:macos": ["@metal-cpp//:metal-cpp"],
-        "//conditions:default": [],
-    }),
-    alwayslink = True,
-)
-
 modular_cc_library(
     name = "AsyncRT/Runtime",
     srcs = glob(["lib/AsyncRT/Runtime/*.cpp"]),
@@ -247,295 +164,6 @@ modular_cc_library(
         "//Support:MArchTargetMinimal",
         "//Support:Threading",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
-    name = "AsyncRT/NIXL",
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/**/*.h",
-        ],
-        exclude = [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    data = select({
-        "//:linux_x86_64": [
-            ":AsyncRT/plugin_ucx_cpu",
-            ":AsyncRT/plugin_ucx_cuda",
-            ":AsyncRT/plugin_ucx_cuda_verbs",
-            ":AsyncRT/plugin_ucx_rocm",
-            ":AsyncRT/plugin_ucx_rocm_verbs",
-        ],
-        "//conditions:default": [],
-    }),
-    include_prefix = "",
-    strip_include_prefix = "include",
-    tags = ["no-clang-tidy"],  # Copied code doesn't conform to our style
-    deps = [
-        ":AsyncRT/DeviceContext",
-        ":AsyncRT/NIXLLibOnly",
-        "//Support:Base",
-        "//Support:SymbolExport",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
-    name = "AsyncRT/NIXLLibOnly",
-    srcs = glob(
-        [
-            "lib/AsyncRT/NIXL/**/*.cpp",
-        ],
-        exclude = [
-            "lib/AsyncRT/NIXL/plugins/ucx/**",
-            "lib/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/**/*.h",
-        ],
-        exclude = [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    include_prefix = "",
-    strip_include_prefix = "include",
-    tags = ["no-clang-tidy"],  # Copied code doesn't conform to our style
-    visibility = ["//visibility:private"],
-    deps = [
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//Support:SymbolExport",
-        "//Support:Threading",
-        "@llvm-project//llvm:Support",
-    ],
-    # This is needed for `utils/sync-stubfiles.py` to work
-    alwayslink = True,
-)
-
-modular_shared_library(
-    # NOTE: currently the target name is coupled to NIXL's plugin discovery
-    # logic, which looks for `libplugin_*.so`.
-    name = "AsyncRT/plugin_ucx_cpu",
-    srcs = glob([
-        "lib/AsyncRT/NIXL/plugins/ucx/**",
-        "lib/AsyncRT/NIXL/utils/ucx/**",
-    ]),
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    tags = [
-        "no-clang-tidy",  # Copied code doesn't conform to our style
-    ],
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":AsyncRT/DeviceContextImpl",
-        ":AsyncRT/NIXLLibOnly",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//bazel/third-party:NVPTX",
-        "@llvm-project//llvm:Support",
-        "@ucx_prebuilt//:ucx_cpu",
-    ],
-)
-
-modular_shared_library(
-    # NOTE: currently the target name is coupled to NIXL's plugin discovery
-    # logic, which looks for `libplugin_*.so`.
-    name = "AsyncRT/plugin_ucx_cuda",
-    srcs = glob([
-        "lib/AsyncRT/NIXL/plugins/ucx/**",
-        "lib/AsyncRT/NIXL/utils/ucx/**",
-    ]),
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    linkopts = select({
-        # This allows us to ignore missing libcuda.so.1, libnvidia-ml.so.1 etc.
-        # symbols at link time. But now it requires that they are available at
-        # runtime when this plugin is loaded. This shared lib does not automatically
-        # load them if they are missing. They should be loaded in advance to loading
-        # this plugin.
-        "@platforms//os:linux": [
-            "-Wl,-z,undefs",
-            "-Wl,-rpath,$ORIGIN/../../lib",
-        ],
-        "@platforms//os:macos": [
-            "-Wl,-undefined,dynamic_lookup",
-            "-Wl,-rpath,@loader_path/../../lib",
-        ],
-    }),
-    local_defines = ["PLUGIN_UCX_CUDA"],
-    tags = [
-        "no-clang-tidy",  # Copied code doesn't conform to our style
-    ],
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":AsyncRT/DeviceContextImpl",
-        ":AsyncRT/NIXLLibOnly",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//bazel/third-party:NVPTX",
-        "@llvm-project//llvm:Support",
-        "@ucx_prebuilt//:ucx_cuda",
-    ],
-)
-
-modular_shared_library(
-    name = "AsyncRT/plugin_ucx_cuda_verbs",
-    srcs = glob([
-        "lib/AsyncRT/NIXL/plugins/ucx/**",
-        "lib/AsyncRT/NIXL/utils/ucx/**",
-    ]),
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    # Like plugin_ucx_cuda above but with additional Infiniband support.
-    # We link libibverb.so directly instead of relying on user to dlopen it at
-    # runtime. This is due to a weird bug where `ibv_get_device_list` would return
-    # invalid contents if we do it the other way, even though it should functionally
-    # be the same. Note that we have added libibverbs.so to sysroot so that the
-    # CI machine have this dep at build time.
-    linkopts = select({
-        "@platforms//os:linux": [
-            "-l:libibverbs.so.1",
-            "-Wl,-z,undefs",
-            "-Wl,-rpath,$ORIGIN/../../lib",
-        ],
-        "@platforms//os:macos": [
-            "-Wl,-undefined,dynamic_lookup",
-            "-Wl,-rpath,@loader_path/../../lib",
-        ],
-    }),
-    local_defines = ["PLUGIN_UCX_CUDA"],
-    tags = [
-        "no-clang-tidy",  # Copied code doesn't conform to our style
-    ],
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":AsyncRT/DeviceContextImpl",
-        ":AsyncRT/NIXLLibOnly",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//bazel/third-party:NVPTX",
-        "@llvm-project//llvm:Support",
-        "@ucx_prebuilt//:ucx_cuda_verbs",
-    ],
-)
-
-modular_shared_library(
-    # NOTE: currently the target name is coupled to NIXL's plugin discovery
-    # logic, which looks for `libplugin_*.so`.
-    name = "AsyncRT/plugin_ucx_rocm",
-    srcs = glob([
-        "lib/AsyncRT/NIXL/plugins/ucx/**",
-        "lib/AsyncRT/NIXL/utils/ucx/**",
-    ]),
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    linkopts = select({
-        # Tolerate undefined symbols at build time:
-        # This allows us to ignore missing libamdhip64.so.1 etc.
-        # symbols at link time. But now it requires that they are available at
-        # runtime when this plugin is loaded. This shared lib does not
-        # automatically load them if they are missing. They should be loaded in
-        # advance to loading this plugin.
-        "@platforms//os:linux": [
-            "-Wl,-z,undefs",
-        ],
-        "@platforms//os:macos": [
-            "-Wl,-undefined,dynamic_lookup",
-        ],
-    }),
-    local_defines = ["PLUGIN_UCX_ROCM"],
-    tags = [
-        "no-clang-tidy",  # Copied code doesn't conform to our style
-    ],
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":AsyncRT/DeviceContextImpl",
-        ":AsyncRT/NIXLLibOnly",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "@llvm-project//llvm:Support",
-        "@ucx_prebuilt//:ucx_rocm",
-    ],
-)
-
-modular_shared_library(
-    name = "AsyncRT/plugin_ucx_rocm_verbs",
-    srcs = glob([
-        "lib/AsyncRT/NIXL/plugins/ucx/**",
-        "lib/AsyncRT/NIXL/utils/ucx/**",
-    ]),
-    hdrs = glob(
-        [
-            "include/MLRT/AsyncRT/NIXL/plugins/ucx/**",
-            "include/MLRT/AsyncRT/NIXL/utils/ucx/**",
-        ],
-    ),
-    # Like plugin_ucx_rocm above but with additional Infiniband support.
-    # We link libibverb.so directly instead of relying on user to dlopen it at
-    # runtime. This is due to a weird bug where `ibv_get_device_list` would return
-    # invalid contents if we do it the other way, even though it should functionally
-    # be the same. Note that we have added libibverbs.so to sysroot so that the
-    # CI machine have this dep at build time.
-    linkopts = select({
-        "@platforms//os:linux": [
-            "-l:libibverbs.so.1",
-            "-Wl,-z,undefs",
-        ],
-        "@platforms//os:macos": [
-            "-Wl,-undefined,dynamic_lookup",
-        ],
-    }),
-    local_defines = ["PLUGIN_UCX_ROCM"],
-    tags = [
-        "no-clang-tidy",  # Copied code doesn't conform to our style
-    ],
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":AsyncRT/DeviceContext",
-        ":AsyncRT/DeviceContextImpl",
-        ":AsyncRT/NIXLLibOnly",
-        ":AsyncRT/Support",
-        "//Support:Base",
-        "//bazel/third-party:NVPTX",
-        "@llvm-project//llvm:Support",
-        "@ucx_prebuilt//:ucx_rocm_verbs",
     ],
 )
 
@@ -910,5 +538,379 @@ modular_cc_library(
         ":GraphRT/GRTDialect",
         ":GraphRT/MEFDialect",
         "//Support:Base",
+    ],
+)
+
+# Driver targets
+
+# Library target exporting the different vendor platforms
+modular_shared_library(
+    name = "Driver/DeviceContext",
+    srcs = [
+        "lib/Driver/DeviceContext/MojoBindings.cpp",
+    ],
+    hdrs = [
+        "include/MLRT/Driver/DeviceContext/BinaryID.h",
+        "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceContext.h",
+    ],
+    output_name = "AsyncRTMojoBindings",
+    deps = [
+        ":Driver/DeviceContextImpl",
+        "//Support:Base",
+        "//Support:BinaryID",
+        "//Support:Buffer",
+        "//Support:Configuration",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "Driver/DeviceContextImpl",
+    srcs = [
+        "lib/Driver/DeviceContext/BufferCache.cpp",
+        "lib/Driver/DeviceContext/CPU/CpuDeviceContext.cpp",
+        "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.cpp",
+        "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.cpp",
+        "lib/Driver/DeviceContext/CUDA/CUDADeviceContext.cpp",
+        "lib/Driver/DeviceContext/CUDA/CUDADriver.cpp",
+        "lib/Driver/DeviceContext/CUDA/NVML.cpp",
+        "lib/Driver/DeviceContext/CompilationDevice.cpp",
+        "lib/Driver/DeviceContext/DeviceContext.cpp",
+        "lib/Driver/DeviceContext/HIP/HIPCompilationDevice.cpp",
+        "lib/Driver/DeviceContext/HIP/HIPDeviceContext.cpp",
+        "lib/Driver/DeviceContext/HIP/HIPDriver.cpp",
+        "lib/Driver/DeviceContext/Metal/MetalDeviceContext.cpp",
+        "lib/Driver/DeviceContext/Metal/MetalDriver.cpp",
+        "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.cpp",
+    ],
+    hdrs = [
+        "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceContext.h",
+        "lib/Driver/DeviceContext/BufferCache.h",
+        "lib/Driver/DeviceContext/CPU/CpuDeviceContext.h",
+        "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h",
+        "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.h",
+        "lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h",
+        "lib/Driver/DeviceContext/CUDA/CUDADriver.h",
+        "lib/Driver/DeviceContext/CUDA/CUDADriver.inc",
+        "lib/Driver/DeviceContext/CUDA/NVML.h",
+        "lib/Driver/DeviceContext/HIP/HIPCompilationDevice.h",
+        "lib/Driver/DeviceContext/HIP/HIPDeviceContext.h",
+        "lib/Driver/DeviceContext/HIP/HIPDriver.h",
+        "lib/Driver/DeviceContext/HIP/HIPDriver.inc",
+        "lib/Driver/DeviceContext/Metal/MetalDeviceContext.h",
+        "lib/Driver/DeviceContext/Metal/MetalDriver.hpp",
+        "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.h",
+    ],
+    local_defines = select({
+        "@platforms//os:linux": ["MODULAR_LINUX"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//MLRT:__subpackages__"],
+    deps = [
+        ":AsyncRT/RuntimeGlobals",
+        "//Support:Base",
+        "//Support:Buffer",
+        "//Support:Configuration",
+        "//Support:ML",
+        "//Support:Profiling",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ] + select({
+        "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
+        "@platforms//os:macos": ["@metal-cpp//:metal-cpp"],
+        "//conditions:default": [],
+    }),
+    alwayslink = True,
+)
+
+modular_cc_library(
+    name = "Driver/NIXL",
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/**/*.h",
+        ],
+        exclude = [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    data = select({
+        "//:linux_x86_64": [
+            ":Driver/plugin_ucx_cpu",
+            ":Driver/plugin_ucx_cuda",
+            ":Driver/plugin_ucx_cuda_verbs",
+            ":Driver/plugin_ucx_rocm",
+            ":Driver/plugin_ucx_rocm_verbs",
+        ],
+        "//conditions:default": [],
+    }),
+    include_prefix = "",
+    strip_include_prefix = "include",
+    tags = ["no-clang-tidy"],  # Copied code doesn't conform to our style
+    deps = [
+        ":Driver/DeviceContext",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "Driver/NIXLLibOnly",
+    srcs = glob(
+        [
+            "lib/Driver/NIXL/**/*.cpp",
+        ],
+        exclude = [
+            "lib/Driver/NIXL/plugins/ucx/**",
+            "lib/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/**/*.h",
+        ],
+        exclude = [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    include_prefix = "",
+    strip_include_prefix = "include",
+    tags = ["no-clang-tidy"],  # Copied code doesn't conform to our style
+    visibility = ["//visibility:private"],
+    deps = [
+        ":AsyncRT/Support",
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "//Support:Threading",
+        "@llvm-project//llvm:Support",
+    ],
+    # This is needed for `utils/sync-stubfiles.py` to work
+    alwayslink = True,
+)
+
+modular_shared_library(
+    # NOTE: currently the target name is coupled to NIXL's plugin discovery
+    # logic, which looks for `libplugin_*.so`.
+    name = "Driver/plugin_ucx_cpu",
+    srcs = glob([
+        "lib/Driver/NIXL/plugins/ucx/**",
+        "lib/Driver/NIXL/utils/ucx/**",
+    ]),
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    tags = [
+        "no-clang-tidy",  # Copied code doesn't conform to our style
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/DeviceContextImpl",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "//bazel/third-party:NVPTX",
+        "@llvm-project//llvm:Support",
+        "@ucx_prebuilt//:ucx_cpu",
+    ],
+)
+
+modular_shared_library(
+    # NOTE: currently the target name is coupled to NIXL's plugin discovery
+    # logic, which looks for `libplugin_*.so`.
+    name = "Driver/plugin_ucx_cuda",
+    srcs = glob([
+        "lib/Driver/NIXL/plugins/ucx/**",
+        "lib/Driver/NIXL/utils/ucx/**",
+    ]),
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    linkopts = select({
+        # This allows us to ignore missing libcuda.so.1, libnvidia-ml.so.1 etc.
+        # symbols at link time. But now it requires that they are available at
+        # runtime when this plugin is loaded. This shared lib does not automatically
+        # load them if they are missing. They should be loaded in advance to loading
+        # this plugin.
+        "@platforms//os:linux": [
+            "-Wl,-z,undefs",
+            "-Wl,-rpath,$ORIGIN/../../lib",
+        ],
+        "@platforms//os:macos": [
+            "-Wl,-undefined,dynamic_lookup",
+            "-Wl,-rpath,@loader_path/../../lib",
+        ],
+    }),
+    local_defines = ["PLUGIN_UCX_CUDA"],
+    tags = [
+        "no-clang-tidy",  # Copied code doesn't conform to our style
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/DeviceContextImpl",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "//bazel/third-party:NVPTX",
+        "@llvm-project//llvm:Support",
+        "@ucx_prebuilt//:ucx_cuda",
+    ],
+)
+
+modular_shared_library(
+    name = "Driver/plugin_ucx_cuda_verbs",
+    srcs = glob([
+        "lib/Driver/NIXL/plugins/ucx/**",
+        "lib/Driver/NIXL/utils/ucx/**",
+    ]),
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    # Like plugin_ucx_cuda above but with additional Infiniband support.
+    # We link libibverb.so directly instead of relying on user to dlopen it at
+    # runtime. This is due to a weird bug where `ibv_get_device_list` would return
+    # invalid contents if we do it the other way, even though it should functionally
+    # be the same. Note that we have added libibverbs.so to sysroot so that the
+    # CI machine have this dep at build time.
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-l:libibverbs.so.1",
+            "-Wl,-z,undefs",
+            "-Wl,-rpath,$ORIGIN/../../lib",
+        ],
+        "@platforms//os:macos": [
+            "-Wl,-undefined,dynamic_lookup",
+            "-Wl,-rpath,@loader_path/../../lib",
+        ],
+    }),
+    local_defines = ["PLUGIN_UCX_CUDA"],
+    tags = [
+        "no-clang-tidy",  # Copied code doesn't conform to our style
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/DeviceContextImpl",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "//bazel/third-party:NVPTX",
+        "@llvm-project//llvm:Support",
+        "@ucx_prebuilt//:ucx_cuda_verbs",
+    ],
+)
+
+modular_shared_library(
+    # NOTE: currently the target name is coupled to NIXL's plugin discovery
+    # logic, which looks for `libplugin_*.so`.
+    name = "Driver/plugin_ucx_rocm",
+    srcs = glob([
+        "lib/Driver/NIXL/plugins/ucx/**",
+        "lib/Driver/NIXL/utils/ucx/**",
+    ]),
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    linkopts = select({
+        # Tolerate undefined symbols at build time:
+        # This allows us to ignore missing libamdhip64.so.1 etc.
+        # symbols at link time. But now it requires that they are available at
+        # runtime when this plugin is loaded. This shared lib does not
+        # automatically load them if they are missing. They should be loaded in
+        # advance to loading this plugin.
+        "@platforms//os:linux": [
+            "-Wl,-z,undefs",
+        ],
+        "@platforms//os:macos": [
+            "-Wl,-undefined,dynamic_lookup",
+        ],
+    }),
+    local_defines = ["PLUGIN_UCX_ROCM"],
+    tags = [
+        "no-clang-tidy",  # Copied code doesn't conform to our style
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/DeviceContextImpl",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+        "@ucx_prebuilt//:ucx_rocm",
+    ],
+)
+
+modular_shared_library(
+    name = "Driver/plugin_ucx_rocm_verbs",
+    srcs = glob([
+        "lib/Driver/NIXL/plugins/ucx/**",
+        "lib/Driver/NIXL/utils/ucx/**",
+    ]),
+    hdrs = glob(
+        [
+            "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/ucx/**",
+        ],
+    ),
+    # Like plugin_ucx_rocm above but with additional Infiniband support.
+    # We link libibverb.so directly instead of relying on user to dlopen it at
+    # runtime. This is due to a weird bug where `ibv_get_device_list` would return
+    # invalid contents if we do it the other way, even though it should functionally
+    # be the same. Note that we have added libibverbs.so to sysroot so that the
+    # CI machine have this dep at build time.
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-l:libibverbs.so.1",
+            "-Wl,-z,undefs",
+        ],
+        "@platforms//os:macos": [
+            "-Wl,-undefined,dynamic_lookup",
+        ],
+    }),
+    local_defines = ["PLUGIN_UCX_ROCM"],
+    tags = [
+        "no-clang-tidy",  # Copied code doesn't conform to our style
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/DeviceContext",
+        ":Driver/DeviceContextImpl",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "//bazel/third-party:NVPTX",
+        "@llvm-project//llvm:Support",
+        "@ucx_prebuilt//:ucx_rocm_verbs",
     ],
 )

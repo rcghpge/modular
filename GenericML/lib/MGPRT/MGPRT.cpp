@@ -10,7 +10,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/Support/List.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
 #include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
@@ -19,6 +18,7 @@
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/SymbolExport.h"
 
 using namespace M;

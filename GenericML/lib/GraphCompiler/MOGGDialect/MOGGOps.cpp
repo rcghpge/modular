@@ -24,7 +24,7 @@
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/POPDialect/POPOps.h"
 #include "KGEN/POPDialect/POPTypes.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"

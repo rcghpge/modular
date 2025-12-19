@@ -9,8 +9,8 @@
 #include "GenericML/MGPRT/BinaryID.h"
 #include "KGEN/CompilerRT/BinaryID.h"
 #include "Kernels/mojo/Mogg/MOGGLoader.h"
-#include "MLRT/AsyncRT/DeviceContext/BinaryID.h"
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
+#include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "Support/BinaryID.h"
 
 #include "llvm/ADT/StringExtras.h"

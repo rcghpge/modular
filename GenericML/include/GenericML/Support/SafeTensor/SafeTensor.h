@@ -12,7 +12,7 @@
 #define RUNTIME_SAFETENSOR_H
 
 #include "GenericML/DeviceDriver/Driver.h"
-#include "MLRT/AsyncRT/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/ML/DType.h"
