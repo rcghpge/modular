@@ -11,9 +11,13 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
+#include "Support/CommonCLOptions.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+
+#include <filesystem>
 
 using namespace M;
 
@@ -112,6 +116,15 @@ struct EmitMojo
 
     // Store the emitted text into a resource.
     auto mojoText = state.builder.str();
+
+#ifndef MODULAR_PRODUCTION
+    // Save the emitted Mojo code to a file if max.temps_dir is set.
+    if (auto outFile = openIntermediateTextFile("emitted", ".mojo")) {
+      outFile->os() << mojoText;
+      outFile->keep();
+    }
+#endif
+
     auto attrType =
         ArrayType::get((int64_t)mojoText.size(),
                        IntegerType::get(ctx, 8, IntegerType::Unsigned));

@@ -1277,6 +1277,7 @@ modular_cc_library(
     name = "MOToPrimitives",
     srcs = glob(["lib/GraphCompiler/Conversion/MOToPrimitives/*.cpp"]),
     deps = [
+        ":CommonDriver",
         ":GraphCompilerDeviceBuggerizationRegistry",
         ":MGPTransforms",
         ":MOAnalysis",
@@ -1286,6 +1287,7 @@ modular_cc_library(
         ":MOToPrimitivesIncGen",
         "//KGEN:ToolCommon",
         "//MLRT:Driver/DeviceContext",
+        "//Support:CommonCLOptions",
     ],
 )
 
