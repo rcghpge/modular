@@ -100,4 +100,26 @@ def MOGG_Error : MOGG_Type<"Error", "error"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Scalar predicates
+//===----------------------------------------------------------------------===//
+
+def MOGG_TensorScalarOfAnyRankPred : And<[
+  CPred<"llvm::isa<MO::TensorType>($_self)">,
+  CPred<"cast<MO::TensorType>($_self).getNumElements().value_or(0) == 1">,
+]>;
+
+def MOGG_BufferScalarOfAnyRankPred : And<[
+  CPred<"llvm::isa<MO::BufferType>($_self)">,
+  CPred<"cast<MO::BufferType>($_self).toTensorType().getNumElements().value_or(0) == 1">,
+]>;
+
+def MOGG_ScalarOfAnyRankPred : Or<[MOGG_TensorScalarOfAnyRankPred, MOGG_BufferScalarOfAnyRankPred]>;
+
+def MOGG_ScalarOfAnyRank : ConfinedType<
+  AnyTypeOf<[MO_Tensor, MO_Buffer]>,
+  [MOGG_ScalarOfAnyRankPred],
+  "Has exactly 1 element"
+>;
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD

@@ -2422,7 +2422,14 @@ OutputOp ExpKernelOp::getOutputOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsScalarOp::verify() {
-  if (getInput().getType().getElementType() != getResult().getType().getDType())
+  MO::TensorType type;
+  if (auto tensorType = dyn_cast<MO::TensorType>(getInput().getType()))
+    type = tensorType;
+  else if (auto bufferType = dyn_cast<MO::BufferType>(getInput().getType()))
+    type = bufferType.toTensorType();
+  else
+    emitError("Expected tensor or buffer input");
+  if (type.getElementType() != getResult().getType().getDType())
     return emitError("Expected input and result to have the same data type");
 
   return success();

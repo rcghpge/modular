@@ -330,7 +330,7 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
     it to a scalar because the kernel using it expects it as a scalar in Mojo.
   }];
 
-  let arguments = (ins MO_ScalarOfAnyRank:$input);
+  let arguments = (ins MOGG_ScalarOfAnyRank:$input);
   let results = (outs MO_Scalar:$result);
   let hasVerifier = 1;
 }
