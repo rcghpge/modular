@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
 
 # gazelle:default_visibility //MLRT:consumers
@@ -122,6 +122,7 @@ modular_cc_library(
         ":worker_stats_setting": ["ASYNCRT_WORKER_STATS=1"],
         "//conditions:default": [],
     }),
+    visibility = ["//MLRT:consumers"],
     deps = [
         ":AsyncRT/Support",
         "//Support:ADT",
@@ -146,6 +147,7 @@ modular_shared_library(
         "include/MLRT/AsyncRT/Runtime/CompactRuntimePtr.h",
     ],
     output_name = "AsyncRTRuntimeGlobals",
+    visibility = ["//MLRT:consumers"],
     deps = [
         "//Support:BinaryID",
         "//Support:SymbolExport",
@@ -158,6 +160,7 @@ modular_cc_library(
     name = "AsyncRT/Support",
     srcs = glob(["lib/AsyncRT/Support/*.cpp"]),
     hdrs = glob(["include/MLRT/AsyncRT/Support/*.h"]),
+    visibility = ["//MLRT:consumers"],
     deps = [
         "//Support:Base",
         "//Support:MArchTarget",
@@ -175,6 +178,14 @@ modular_cc_library(
         "//Support:Base",
         "@libzmq",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_nanobind_library(
+    name = "AsyncRT/Nanobind",
+    hdrs = glob(["include/MLRT/AsyncRT/Nanobind/*.h"]),
+    deps = [
+        ":AsyncRT/Runtime",
     ],
 )
 
