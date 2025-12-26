@@ -95,9 +95,6 @@ struct Device : M::ReferenceCounted<Device> {
   /// Allocates `bytes` bytes on the device.
   ErrorOr<void *> allocateData(size_t bytes);
 
-  /// Frees ptr created with `allocateData`.
-  ErrorOrSuccess freeData(void *ptr);
-
   const DeviceSpec &getDeviceSpec() const { return deviceSpecification; }
 
   /// Allocates `bytes` bytes of memory on the device
@@ -200,19 +197,10 @@ M_createAcceleratorDevice(ssize_t gpuID, int64_t deviceMemoryLimit,
 MODULAR_DRIVER_EXPORT M::Driver::Device *
 M_createCPUDevice(ssize_t numaId, M::Driver::Status *status);
 
-MODULAR_DRIVER_EXPORT M::Driver::Device *
-M_copyDevice(M::Driver::Device *devPtr);
-
-MODULAR_DRIVER_EXPORT void M_freeDeviceData(M::Driver::Device *ptr, void *data,
-                                            M::Driver::Status *status);
-
 MODULAR_DRIVER_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
 
 MODULAR_DRIVER_EXPORT const char *
 M_getDeviceDesc(const M::Driver::Device *devPtr);
-
-// Returns number of accelerators available.
-MODULAR_DRIVER_EXPORT int M_getAcceleratorCount();
 
 namespace M::Driver {
 
