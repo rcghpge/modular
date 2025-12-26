@@ -10,11 +10,6 @@ package(default_visibility = [
     modular_py_test(
         name = src.split("/")[-1].split(".")[0],
         srcs = [src],
-        # FIXME: SDLC-2743
-        external_noop = src in [
-            "test_notification_latency.py",
-            "test_send_recv.py",
-        ],
         imports = ["."],
         # UCX currently only supports x86_64 linux machines
         target_compatible_with = [
@@ -46,7 +41,10 @@ package(default_visibility = [
             "//:has_gpu",
             "//:has_multi_gpu",
             "//:nvidia_gpu",
-        ] + select({
+        ] + (
+            # FIXME: SERVOPT-867 - test times out in CI
+            ["@platforms//:incompatible"] if src == "test_send_recv_concurrent_gpu.py" else []
+        ) + select({
             "//:a10_gpu": ["@platforms//:incompatible"] if src in [
                 "test_send_recv_multi_process_gpu.py",
                 "test_send_recv_multi_tensor_multi_process_gpu.py",

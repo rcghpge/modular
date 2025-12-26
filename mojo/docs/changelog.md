@@ -142,6 +142,23 @@ what we publish.
   generic functions instantiated with `Never` as their error type) compile into
   the same ABI as functions that don't `raise`.
 
+- Mojo now allows the use of a `comptime(x)` expression to force a subexpression
+  to be evaluated at compile time.  This can help make working with certain
+  types more elegant when you can't (or don't want to) materialize them into a
+  runtime value.  For example, if you just want the size from a compile time
+  layout:
+
+  ```mojo
+  fn takes_layout[a: Layout]():
+    # materializes entire layout value just to get the size out of it
+    print(a.size())
+    # Could already work around this with a comptime declaration, verbosely.
+    comptime a_size = a.size()
+    print(a_size)
+    # Can now tell Mojo to evaluate the expression at comptime.
+    print(comptime(a.size()))
+  ```
+
 - The `deinit` argument convention can now be applied to any argument of a
   struct method, but the argument type still must be of the enclosing struct
   type.
@@ -149,6 +166,19 @@ what we publish.
 - Context managers (used in `with` statements) can now define consuming exit
   methods, i.e. `fn __exit__(var self)` which can be useful for linear context
   managers. This also works with `deinit`.
+
+- Mojo now allows functions that return references to convert to functions that
+  return values if the type is implicitly copyable or implicitly convertible to
+  the destination type:
+
+  ```mojo
+  fn fn_returns_ref(x: SomeType) -> ref [x.field] Int: ...
+  fn examples():
+      # OK, Int result from fn_returns_ref can be implicitly copied.
+      var f1 : fn (x: SomeType) -> Int = fn_returns_ref
+      # OK, Int result from fn_returns_ref implicitly converts to Float64.
+      var f2 : fn (x: SomeType) -> Float64 = fn_returns_ref
+  ```
 
 ### Language changes
 
@@ -168,10 +198,10 @@ what we publish.
 - The Mojo language basic trait hierarchy has changed to expand first-class
   support for linear types (aka. non-implicitly-destructible types).
 
-  The `AnyType` trait no longer requires that a type provide a `__del__()`
-  method that may be called by the compiler implicitly whenver an owned value
-  is unused. Instead, the `ImplicitlyDestructible` trait should be used in
-  generic code to require that a type is implicitly destructible.
+  The `AnyType` and `Movable` traits no longer requires that a type provide a
+  `__del__()` method that may be called by the compiler implicitly whenever an
+  owned value is unused. Instead, the `ImplicitlyDestructible` trait should be
+  used in generic code to require that a type is implicitly destructible.
 
   Linear types enable Mojo programs to encode powerful invariants in the type
   system, by modeling a type in such a way that a user is required to take an
@@ -184,7 +214,28 @@ what we publish.
   Relatedly, the `UnknownDestructibility` trait is now no longer required, as it
   is equivalent to the new `AnyType` behavior.
 
+- The `__next_ref__` method in for-each loops has been removed.  Now you can
+  implement the `__next__` method of your iterator to return either a value or a
+  reference.  When directly using the collection, Mojo will use the
+  ref-returning variant, but will allow it to conform to `Iterator` for use with
+  generic algorithms (which use a copied value).
+
+- The `origin_of(x)` operator now returns a value of type `Origin` instead of an
+  internal MLIR type, and aliases like `ImmutOrigin` are now `Origin` type as
+  well.
+
+- The `Origin.cast_from[x]` syntax has been replaced with a safe implicit
+  conversion from any origin to an immutable origin (`ImmutOrigin(x)`) and an
+  explicit unsafe conversion (`SomeOrigin(unsafe_cast=x)`).
+
 ### Library changes
+
+- The `Iterator` trait and and for-each loop have removed the `__has_next__`
+  method and now using a `__next__` method that `raises StopIteration`. This
+  follows Python precedent better, is more convenient to implement, and can be a
+  minor performance win in some cases.
+
+- `Variadic` now has `zip_types`, `zip_values`, and `slice_types`.
 
 - The `Copyable` trait now refines the `Movable` trait.  This means that structs
   and generic algorithms that already require `Copyable` don't need to also
@@ -206,7 +257,17 @@ what we publish.
   no longer allocates memory.
 
 - `Dict` now raises a custom `DictKeyError` type on failure, making lookup
-  failures more efficient to handle.
+  failures more efficient to handle. The error message now includes the missing
+  key when the key type implements `Writable`:
+
+  ```mojo
+  var d = Dict[String, Int]()
+  var key = "missing_key"
+  try:
+      _ = d[key]
+  except e:
+      print(e)  # Prints: DictKeyError(key=missing_key)
+  ```
 
 - Remove `List` variadic initializer.
 
@@ -295,12 +356,18 @@ what we publish.
   method taking `deinit self` that the programmer will be required to call
   explicitly whenever an owned instance is no longer used.
 
-  The `UnknownDestructibility` trait can be used in parameters to denote
+  The updated `AnyType` trait can be used in parameters to denote
   generic code that supports object instances that cannot be implicitly
   destroyed.
 
-  - `UnsafePointer` and `Pointer` can point to linear types
+  - `UnsafePointer`, `Pointer`, and `OwnedPointer` can point to linear types
+    - Added `UnsafePointer.destroy_pointee_with()`, for destroying linear types
+      in-place using a destructor function pointer.
   - `Variant` and `VariadicPack` can now contain linear types
+    - `Variant.take` now takes `deinit self` instead of `mut self`.
+    - Added `Variant.destroy_with` for destroying a linear type in-place with an
+      explicit destructor function.
+  - `UnsafeMaybeUninitialized` can now contain linear types
 
 - Using a new 'unconditional conformances' technique leveraging `conforms_to()`
   and `trait_downcast()` to perform "late" element type conformance checking,
@@ -310,6 +377,7 @@ what we publish.
   - `List` now conforms to `Equatable`, `Writable`, `Stringable`,
     and `Representable`.
   - `Dict` now conforms to `Writable`, `Stringable`, and `Representable`.
+  - `Iterator` no longer requires its type to be `Copyable`.
 
   - The following types no longer require their elements to be `Copyable`.
     - `Iterator`
@@ -347,6 +415,11 @@ what we publish.
   # note: constraint failed: Conversion flag "invalid" not recognized.
   ```
 
+- `Counter` now conforms to `Writable`, `Stringable`, and `Representable`.
+
+- The `iter.peekable` function has been added. This allows users to peek at
+  the next element of an iterator without advancing it.
+
 ### Tooling changes
 
 - The Mojo compiler now "diffs" very long types in error messages to explain
@@ -379,6 +452,10 @@ what we publish.
   that public aliases have properly formatted docstrings (summary ends with
   period, starts with capital letter). Parametric aliases are also checked for
   proper `Parameters:` sections.
+- The Mojo LSP server now debounces document updates to reduce CPU usage during
+  rapid typing. Previously, every keystroke triggered a full document parse;
+  now updates are coalesced with a 150ms delay, reducing parse frequency by
+  10-50x during active editing.
 
 ### Experimental changes
 
@@ -425,12 +502,18 @@ or removed in future releases.
 
 ### ❌ Removed
 
+- The DeviceContext `enqueue_function` and `compile_function` have been removed.
+  Please migrate the code to use `enqueue_function_checked` and
+  `compile_function_checked`.
+
 ### 🛠️ Fixed
 
 - [Issue #1850](https://github.com/modular/modular/issues/1850): Mojo assumes
   string literal at start of a function is a doc comment
 - [Issue #4501](https://github.com/modular/modular/issues/4501): Incorrect
   parsing of incomplete assignment
+- [Issue #4765](https://github.com/modular/modular/issues/4765): Parser
+  accepts pointless var ref a = n binding form
 - [Issue #5578](https://github.com/modular/modular/issues/5578): ownership
   overloading not working when used with `ref`.
 - [Issue #5137](https://github.com/modular/modular/issues/5137): Tail call

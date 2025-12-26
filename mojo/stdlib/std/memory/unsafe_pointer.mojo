@@ -123,7 +123,7 @@ Parameters:
 comptime OpaquePointer[
     mut: Bool,
     //,
-    origin: Origin[mut],
+    origin: Origin[mut=mut],
     *,
     address_space: AddressSpace = AddressSpace.GENERIC,
 ] = UnsafePointer[NoneType, origin, address_space=address_space]
@@ -165,7 +165,7 @@ struct UnsafePointer[
     mut: Bool,
     //,
     type: AnyType,
-    origin: Origin[mut],
+    origin: Origin[mut=mut],
     *,
     address_space: AddressSpace = AddressSpace.GENERIC,
 ](
@@ -300,7 +300,7 @@ struct UnsafePointer[
     """The underlying pointer type."""
 
     comptime _with_origin[
-        with_mut: Bool, //, with_origin: Origin[with_mut]
+        with_mut: Bool, //, with_origin: Origin[mut=with_mut]
     ] = UnsafePointer[
         mut=with_mut,
         Self.type,
@@ -373,7 +373,7 @@ struct UnsafePointer[
         other: UnsafePointer[mut=True, **_],
         out self: UnsafePointer[
             other.type,
-            ImmutOrigin.cast_from[other.origin],
+            ImmutOrigin(other.origin),
             address_space = other.address_space,
         ],
     ):
@@ -428,7 +428,7 @@ struct UnsafePointer[
     @implicit
     fn __init__(
         other: UnsafePointer[mut=False, Self.type, **_]
-    ) -> UnsafePointer[other.type, MutOrigin.cast_from[MutAnyOrigin], **_]:
+    ) -> UnsafePointer[other.type, MutAnyOrigin, **_]:
         constrained[
             False, "Invalid UnsafePointer conversion from immutable to mutable"
         ]()
@@ -496,7 +496,7 @@ struct UnsafePointer[
         out self: UnsafePointer[
             mut = Self.mut,
             Self.type,
-            Origin[Self.mut].cast_from[MutAnyOrigin],
+            Origin[mut = Self.mut](unsafe_cast=MutAnyOrigin),
             address_space = Self.address_space,
         ],
     ):
@@ -528,7 +528,7 @@ struct UnsafePointer[
         ],
         out self: UnsafePointer[
             T,
-            Origin[Self.mut].external,
+            Origin[mut = Self.mut].external,
             address_space = Self.address_space,
         ],
     ):
@@ -1437,7 +1437,7 @@ struct UnsafePointer[
 
     @always_inline("builtin")
     fn bitcast[
-        T: UnknownDestructibility
+        T: AnyType
     ](self) -> UnsafePointer[
         T,
         Self.origin,
@@ -1455,7 +1455,7 @@ struct UnsafePointer[
         return self._as_legacy().bitcast[T]()
 
     comptime _OriginCastType[
-        target_mut: Bool, target_origin: Origin[target_mut]
+        target_mut: Bool, target_origin: Origin[mut=target_mut]
     ] = UnsafePointer[
         Self.type,
         target_origin,
@@ -1466,7 +1466,7 @@ struct UnsafePointer[
     fn mut_cast[
         target_mut: Bool
     ](self) -> Self._OriginCastType[
-        target_mut, Origin[target_mut].cast_from[Self.origin]
+        target_mut, Origin[mut=target_mut](unsafe_cast=Self.origin)
     ]:
         """Changes the mutability of a pointer.
 
@@ -1487,7 +1487,7 @@ struct UnsafePointer[
     fn unsafe_mut_cast[
         target_mut: Bool
     ](self) -> Self._OriginCastType[
-        target_mut, Origin[target_mut].cast_from[Self.origin]
+        target_mut, Origin[mut=target_mut](unsafe_cast=Self.origin)
     ]:
         """Changes the mutability of a pointer.
 
@@ -1514,7 +1514,7 @@ struct UnsafePointer[
 
     @always_inline("builtin")
     fn unsafe_origin_cast[
-        target_origin: Origin[Self.mut]
+        target_origin: Origin[mut = Self.mut]
     ](self) -> Self._OriginCastType[Self.mut, target_origin]:
         """Changes the origin of a pointer.
 
@@ -1539,7 +1539,7 @@ struct UnsafePointer[
     @always_inline("builtin")
     fn as_immutable(
         self,
-    ) -> Self._OriginCastType[False, ImmutOrigin.cast_from[Self.origin]]:
+    ) -> Self._OriginCastType[False, ImmutOrigin(Self.origin)]:
         """Changes the mutability of a pointer to immutable.
 
         Unlike `unsafe_mut_cast`, this function is always safe to use as casting
@@ -1641,6 +1641,26 @@ struct UnsafePointer[
 
         """
         _ = __get_address_as_owned_value(self.address)
+
+    # TODO(MOCO-2367): Use a `unified` closure parameter here instead.
+    @always_inline
+    fn destroy_pointee_with(
+        self: UnsafePointer[
+            Self.type,
+            address_space = AddressSpace.GENERIC,
+        ],
+        destroy_func: fn (var Self.type),
+    ) where type_of(self).mut:
+        """Destroy the pointed-to value using a user-provided destructor function.
+
+        This can be used to destroy non-`ImplicitlyDestructible` values in-place
+        without moving.
+
+        Args:
+            destroy_func: A function that takes ownership of the pointee value
+                for the purpose of deinitializing it.
+        """
+        destroy_func(__get_address_as_owned_value(self.address))
 
     @always_inline
     fn take_pointee[

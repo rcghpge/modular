@@ -9,6 +9,10 @@ package(default_visibility = [
 modular_py_test(
     name = "tests",
     srcs = glob(["**/*.py"]),
+    args = [
+        "-n",
+        "auto",
+    ],
     data = ["//max/tests/tests/torch/custom_ops"],
     env = {
         "MODULAR_PYTORCH_CUSTOM_OPS": "$(rootpath //max/tests/tests/torch/custom_ops)",
@@ -21,7 +25,10 @@ modular_py_test(
         "//max:tensor",
         "@mojo//:std",
     ],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "resources:memory:35000",  # 35 GB
+    ],
     target_compatible_with = select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -33,6 +40,7 @@ modular_py_test(
         "//max/python/max/torch",
         requirement("hypothesis"),
         requirement("numpy"),
+        requirement("pytest-xdist"),
         requirement("torch"),
     ],
 )

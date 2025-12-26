@@ -52,7 +52,7 @@ struct _NoneType(ImplicitlyCopyable):
 # ===-----------------------------------------------------------------------===#
 
 
-struct Optional[T: Movable](
+struct Optional[T: Movable & ImplicitlyDestructible](
     Boolable,
     Defaultable,
     ImplicitlyCopyable,
@@ -92,7 +92,7 @@ struct Optional[T: Movable](
 
     # Iterator aliases
     comptime IteratorType[
-        iterable_mut: Bool, //, iterable_origin: Origin[iterable_mut]
+        iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
     ]: Iterator = Self
     """The iterator type for this optional.
 
@@ -262,21 +262,17 @@ struct Optional[T: Movable](
         return self.copy()
 
     @always_inline
-    fn __has_next__(self) -> Bool:
-        """Return true if the Optional has a value.
-
-        Returns:
-            True if the Optional contains a value, False otherwise.
-        """
-        return self.__bool__()
-
-    @always_inline
-    fn __next__(mut self) -> Self.Element:
+    fn __next__(mut self) raises StopIteration -> Self.Element:
         """Return the contained value of the Optional.
 
         Returns:
             The value contained in the Optional.
+
+        Raises:
+            `StopIteration` if the iterator has been exhausted.
         """
+        if not self.__bool__():
+            raise StopIteration()
         return self.take()
 
     @always_inline
@@ -289,6 +285,7 @@ struct Optional[T: Movable](
         var len = 1 if self else 0
         return (len, {len})
 
+    @always_inline
     fn __bool__(self) -> Bool:
         """Return true if the Optional has a value.
 
@@ -297,6 +294,7 @@ struct Optional[T: Movable](
         """
         return not self._value.isa[_NoneType]()
 
+    @always_inline
     fn __invert__(self) -> Bool:
         """Return False if the `Optional` has a value.
 
@@ -469,7 +467,7 @@ struct Optional[T: Movable](
 
     fn copied[
         mut: Bool,
-        origin: Origin[mut],
+        origin: Origin[mut=mut],
         //,
         _T: Copyable,
     ](self: Optional[Pointer[_T, origin]]) -> Optional[_T]:
