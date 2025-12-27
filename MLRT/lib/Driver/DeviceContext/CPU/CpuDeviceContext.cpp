@@ -12,7 +12,7 @@
 
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/lib/Driver/DeviceContext/BufferCache.h"
+#include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
@@ -54,7 +54,7 @@ CpuDevice::CpuDevice(Device::MemInfo memInfo, int64_t deviceMemoryLimit)
     : Device(api, "cpu", 0, memInfo, M::kPreferredMemoryAlignment,
              deviceMemoryLimit) {}
 
-CpuDevice::~CpuDevice() { bufferCache().clear(); }
+CpuDevice::~CpuDevice() { memoryManager().clear(); }
 
 ErrorOr<int> CpuDevice::getApiVersion() const { return 0; }
 

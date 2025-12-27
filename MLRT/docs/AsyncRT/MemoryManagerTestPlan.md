@@ -1,17 +1,17 @@
-# Buffer Cache Unit Test Plan
+# Memory Manager Unit Test Plan
 
 ## Overview
 
-This document outlines a comprehensive testing plan for the AsyncRT BufferCache
-system. The buffer cache is a sophisticated memory management component that
+This document outlines a comprehensive testing plan for the AsyncRT MemoryManager
+system. The memory manager is a sophisticated memory management component that
 requires thorough testing to ensure correctness, performance, and reliability.
 
 ## Current State
 
-The buffer cache implementation consists of three main components:
+The memory manager implementation consists of three main components:
 
-- **BufferCache**: Main cache managing chunks and descriptors
-- **BufferCacheFreeList**: Hierarchical free list for allocation/deallocation
+- **MemoryManager**: Main cache managing chunks and descriptors
+- **MemoryManagerFreeList**: Hierarchical free list for allocation/deallocation
 - **Supporting classes**: Chunk, Desc, DescMap for internal management
 
 Existing test coverage is limited to a single test in
@@ -22,11 +22,11 @@ device context functionality.
 
 ### Core Classes
 
-- `BufferCache`: Memory pool manager with configurable chunk and cache sizes
-- `BufferCacheFreeList`: Hierarchical free list with parent-child relationships
-- `BufferCache::Chunk`: Individual memory chunks allocated from device
-- `BufferCache::Desc`: Descriptors tracking memory regions
-- `BufferCache::DescMap`: Hash map for fast pointer-to-descriptor lookup
+- `MemoryManager`: Memory pool manager with configurable chunk and cache sizes
+- `MemoryManagerFreeList`: Hierarchical free list with parent-child relationships
+- `MemoryManager::Chunk`: Individual memory chunks allocated from device
+- `MemoryManager::Desc`: Descriptors tracking memory regions
+- `MemoryManager::DescMap`: Hash map for fast pointer-to-descriptor lookup
 
 ### Critical Functionality
 
@@ -41,7 +41,7 @@ device context functionality.
 
 ### 1. Basic Functionality Tests
 
-#### `BufferCacheCreation`
+#### `MemoryManagerCreation`
 
 - Test factory methods (`onDevice`, `onHost`) with various configurations
 - Verify proper initialization of cache parameters
@@ -319,7 +319,7 @@ device context functionality.
 
 ### Test File Organization
 
-- Create `BufferCacheTest.cpp` as dedicated test file
+- Create `MemoryManagerTest.cpp` as dedicated test file
 - Use Google Test framework for consistency
 - Organize tests into logical test fixtures
 - Implement helper classes for common operations
@@ -349,7 +349,7 @@ device context functionality.
 
 ### Coverage Goals
 
-- 100% line coverage of BufferCache implementation
+- 100% line coverage of MemoryManager implementation
 - 95%+ branch coverage including error paths
 - All public API methods tested
 - All configuration combinations validated
@@ -403,5 +403,5 @@ device context functionality.
 ---
 
 This comprehensive test plan will significantly improve the reliability and
-maintainability of the AsyncRT buffer cache system by providing thorough,
+maintainability of the AsyncRT memory manager system by providing thorough,
 focused testing of its critical functionality.

@@ -388,7 +388,7 @@ TEST_F(GPUDeviceContextTest, OverlappingCopies) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
   int allocLen =
-      127 * 1024 * 1024; // 127MB to fit into host buffer cache chunks.
+      127 * 1024 * 1024; // 127MB to fit into host memory manager chunks.
   ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->enqueueCreateBuffer(allocLen));
   ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(allocLen));
   ASSIGN_NO_ERR(DeviceBufferRef, refBuf, ctx->createHostBuffer(allocLen));
@@ -400,7 +400,7 @@ TEST_F(GPUDeviceContextTest, OverlappingCopies) {
     memset(aHostPtr, 12, allocLen);
     EXPECT_NO_ERR(hostBuf->copyTo(*aBuf));
     // hostBuf is released here, but should not be reallocated from the host
-    // buffer cache until the copy above has finished.
+    // memory manager until the copy above has finished.
   }
 
   // Allocate another host buffer of the same size and overwrite the last byte.
@@ -431,8 +431,8 @@ TEST_F(GPUDeviceContextTest, RecycleBuffers) {
   constexpr size_t mb = 1024 * kb;
   constexpr size_t sizes[8] = {3 * kb,  2 * kb,   1 * mb,  511 * kb,
                                32 * kb, 128 * mb, 32 * mb, 78 * mb};
-  // When run with MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY=true this will move
-  // all free buffers from allocCtx to freeCtx unless we regularly flush
+  // When run with MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY=true this will
+  // move all free buffers from allocCtx to freeCtx unless we regularly flush
   // buffers from freeCtx to the parent.
   for (int i = 0; i < 1000; ++i) {
     size_t allocSize = sizes[i & 7];

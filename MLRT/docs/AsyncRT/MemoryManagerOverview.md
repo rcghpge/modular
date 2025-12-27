@@ -1,6 +1,6 @@
-# Buffer Cache Overview
+# Memory Manager Overview
 
-The buffer cache is a memory manager for host or device allocated memory. It
+The memory manager manages host or device allocated memory. It
 grabs chunks of memory from underlying allocators (e.g. CUDA/HIP drivers) and
 hands them out to clients as necessary. Host allocated memory here means memory
 allocated on the host via the CUDA or HIP drivers. This is often called pinned
@@ -16,7 +16,7 @@ GPU memory allocation through CUDA/HIP APIs (cudaMalloc/hipMalloc) is expensive:
 - **Synchronization overhead**: Between host and device operations
 - **Stream ordering**: Need to respect CUDA/HIP stream dependencies
 
-The BufferCache solves these problems by:
+The MemoryManager solves these problems by:
 
 - **Pre-allocating large chunks**: Reduces expensive CUDA/HIP syscalls
 - **Implementing coalescing**: Automatically merges adjacent free blocks to
@@ -55,17 +55,17 @@ The BufferCache solves these problems by:
 
 ## Architecture Overview
 
-![BufferCacheOverview.png](BufferCacheOverview.png)
+![MemoryManagerOverview.png](MemoryManagerOverview.png)
 
 The source of the above image is available
 [here](https://excalidraw.com/#json=fvkxYZNkbOnKZGoYDFvvs,7FnGbaodiDehk0RVWHDlRQ).
 
 ### Memory Layout
 
-The buffer cache operates on a two-level hierarchy:
+The memory manager operates on a two-level hierarchy:
 
-1. **BufferCache**: Owns large memory chunks allocated from CUDA/HIP
-2. **BufferCacheFreeList**: Manages free blocks within chunks, with hierarchy:
+1. **MemoryManager**: Owns large memory chunks allocated from CUDA/HIP
+2. **MemoryManagerFreeList**: Manages free blocks within chunks, with hierarchy:
    - **Parent/Shared**: Global free list accessible to all DeviceContexts
    - **DeviceContext-local**: Stream-specific free lists for better cache
      locality
@@ -76,8 +76,8 @@ In the diagram above, we have allocated two chunks of memory with a set of
 memory blocks each. A chunk starts with a single large memory block which is
 subdivided into multiple blocks as needed to satisfy allocation requests.
 
-There are 5 blocks on the shared BufferCache free list (aka parent) and 1 block
-on the BufferCache free list associated with the stream in the single (in this
+There are 5 blocks on the shared MemoryManager free list (aka parent) and 1 block
+on the MemoryManager free list associated with the stream in the single (in this
 example!) DeviceContext.
 
 ### Key Components
@@ -90,14 +90,14 @@ example!) DeviceContext.
 
 ## Usage Scenarios
 
-The following scenarios demonstrate how the buffer cache handles different
+The following scenarios demonstrate how the memory manager handles different
 allocation and deallocation patterns:
 
 ### Scenario 1
 
 The DeviceContext releases the memory block `K`. Since all allocations and frees
 are streaming we cannot put this block into the shared/parent free list, but
-instead it has to be sequestered with blocks used by the DeviceContext’s stream:
+instead it has to be sequestered with blocks used by the DeviceContext's stream:
 
 - Check whether the next and previous blocks in the chunk (`K→next` and
   `K→prev`) are free and if they have the same owner.
@@ -106,7 +106,7 @@ instead it has to be sequestered with blocks used by the DeviceContext’s strea
 
 ### Scenario 2
 
-We want to allocate a new 3MB block on the DeviceContext’s stream:
+We want to allocate a new 3MB block on the DeviceContext's stream:
 
 - Check if the free list associated with the DeviceContext contains a block
   greater or equal to 3MB.
@@ -117,7 +117,7 @@ We want to allocate a new 3MB block on the DeviceContext’s stream:
   adding the remainder to the shared free list.
 
 Note: We can only allocate a new chunk if we have not exhausted the maximum
-configured size of the buffer cache.
+configured size of the memory manager.
 
 ### Scenario 3
 
@@ -125,21 +125,21 @@ The block E is freed on a different DeviceContext (not pictured) and added to
 the associated free list. At some point in time later, this DeviceContext is
 released:
 
-- All free blocks on this DeviceContext’s free list are flushed to the parent
+- All free blocks on this DeviceContext's free list are flushed to the parent
   free list, which will merge blocks D, E and F into a single 4.5MB block.
 
 ### Scenario 4
 
 We want to allocate a 1.5MB block on the pictured DeviceContext:
 
-- Block J is removed from the DeviceContext’s free list.
-- The DeviceContext’s free list is now empty.
+- Block J is removed from the DeviceContext's free list.
+- The DeviceContext's free list is now empty.
 
 ### Scenario 5
 
 We want to allocate a 1.8MB block on the pictured DeviceContext:
 
-- The DeviceContext’s free list cannot satisfy this request.
+- The DeviceContext's free list cannot satisfy this request.
 - Find a large enough block on the parent free list identifies block F as
   sufficiently large.
 - Remove F from the free list.
@@ -152,48 +152,49 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
 
 #### Device Memory Configuration
 
-- **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE`**: Maximum cache size in KB
-  (default: uses percentage)
-- **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE_PERCENT`**: Percentage of GPU
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE`**: Maximum memory manager size
+  in KB (default: uses percentage)
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT`**: Percentage of GPU
   memory to use, after the driver has taken its memory (default: 90%)
-- **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT`**: Chunk size as
-  percentage of max cache size (default: 2%)
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT`**: Chunk size as
+  percentage of max memory manager size (default: 2%)
 
 #### Host Memory Configuration
 
-- **`MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_SIZE`**: Host cache size in KB
-- **`MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_CHUNK_PERCENT`**: Host chunk
+- **`MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_SIZE`**: Host memory manager
+  size in KB
+- **`MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_CHUNK_PERCENT`**: Host chunk
   percentage
 
 #### Debugging and Testing
 
-- **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG`**: Enable verbose logging
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG`**: Enable verbose logging
   (default: false)
-- **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK`**: Enable internal
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK`**: Enable internal
   consistency checks (default: false)
-- **`MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY`**: Fail if cache cannot satisfy
-  allocation (testing mode)
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: Fail if memory manager
+  cannot satisfy allocation (testing mode)
 
 ### Configuration Examples
 
 ```bash
 # Use 75% of GPU memory with 10% chunk size
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE_PERCENT=75
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT=10
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT=75
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT=10
 
-# Fixed cache size of 1GB
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE=1048576  # KB
+# Fixed memory manager size of 1GB
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE=1048576  # KB
 
 # Enable debugging
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG=true
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK=true
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG=true
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK=true
 ```
 
 ## Thread Safety and Performance
 
 ### Thread Safety
 
-- All operations are protected by internal mutexes (`bufferCache_.mu_`)
+- All operations are protected by internal mutexes (`memoryManager_.mu_`)
 - Multiple threads can safely allocate/free concurrently
 - Hierarchical free lists provide some thread-local optimization
 - Descriptor management is thread-safe with atomic operations where needed
@@ -222,7 +223,7 @@ export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK=true
 
 ```cpp
 // Get free list from device context
-BufferCacheFreeList* freeList = deviceContext->freeList();
+MemoryManagerFreeList* freeList = deviceContext->freeList();
 
 // Allocate buffer
 ErrorOr<void*> ptrResult = freeList->allocate(1024, Device::AllocMode::SYNC);
@@ -274,7 +275,7 @@ if (!hostBuffer.isError()) {
 ### Common Issues
 
 1. **Out of Memory Errors**
-   - Check `buffer_cache_size_percent` setting
+   - Check `memory_manager_size_percent` setting
    - Monitor GPU memory usage with `nvidia-smi` / `rocm-smi`
    - Verify application isn't leaking buffers (missing `free()` calls)
 
@@ -292,13 +293,13 @@ if (!hostBuffer.isError()) {
 
 ```bash
 # Enable verbose logging
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG=true
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG=true
 
 # Enable self-checks (debug builds only)
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK=true
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK=true
 
-# Force cache-only mode (testing fragmentation)
-export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY=true
+# Force memory-manager-only mode (testing fragmentation)
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY=true
 ```
 
 ### Log Output Format
@@ -306,7 +307,7 @@ export MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY=true
 When logging is enabled, you'll see output like:
 
 ```bash
-##(CUDA[0]:0x12345)##: buffer_cache(chunk_size: 268435456 ; max_cache_size: 1073741824 ; free_list: 0x67890)
+##(CUDA[0]:0x12345)##: memory_manager(chunk_size: 268435456 ; max_cache_size: 1073741824 ; free_list: 0x67890)
 ##(CUDA[0]:0x12345)##: allocate_chunk(0x7f8b4c000000 ; 268435456)
 ##(CUDA[0]:0x12345)##: allocate on 0x67890 from free buffer at id: 0 (0x7f8b4c001000 ; 1024), 3, -1024
 ##(CUDA[0]:0x12345)##: free on 0x67890 (0x7f8b4c001000 ; 1024), 0, 1024
@@ -315,7 +316,7 @@ When logging is enabled, you'll see output like:
 
 Key log entries:
 
-- **buffer_cache**: Initial configuration
+- **memory_manager**: Initial configuration
 - **allocate_chunk**: New chunk allocated from CUDA/HIP
 - **allocate on**: Cache hit (fast path)
 - **free on**: Block returned to cache
@@ -323,7 +324,7 @@ Key log entries:
 
 ### Memory Leak Detection
 
-The buffer cache includes built-in leak detection:
+The memory manager includes built-in leak detection:
 
 - Descriptors track allocation state
 - Self-check mode validates free list consistency

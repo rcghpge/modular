@@ -285,7 +285,7 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
   buf->retain();
 
   // For both host and device allocations, return the contents pointer
-  // The buffer cache will manage the memory layout
+  // The memory manager will manage the memory layout
   void *contents = buf->contents();
   if (contents == nullptr) {
     buf->release();
@@ -378,8 +378,8 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
     std::string name = device->name()->cString(NS::UTF8StringEncoding);
 
     Device::MemInfo memInfo;
-    bool useBufferCache = false;
-    if (useBufferCache) {
+    bool useMemoryManager = false;
+    if (useMemoryManager) {
       ErrorOr<Device::MemInfo> memInfoOrError = getMemInfo();
       if (memInfoOrError.isError())
         RAISE_ERROR_MESSAGE("Failed to get memory info from system.");

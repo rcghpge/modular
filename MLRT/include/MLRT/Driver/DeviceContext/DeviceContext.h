@@ -29,8 +29,8 @@
 
 namespace M::AsyncRT {
 
-class BufferCache;
-class BufferCacheFreeList;
+class MemoryManager;
+class MemoryManagerFreeList;
 class CompilationDevice;
 class Device;
 class DeviceBuffer;
@@ -162,11 +162,11 @@ public:
 
   virtual int deviceCount() const = 0;
 
-  BufferCache &bufferCache() const;
-  BufferCache &hostBufferCache() const;
+  MemoryManager &memoryManager() const;
+  MemoryManager &hostMemoryManager() const;
 
   // Low-level uncached synchronous allocation of memory to support the
-  // BufferCache.
+  // MemoryManager.
   // REQUIRES: byteSize > 0
   virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
                                     bool isHost) const = 0;
@@ -234,8 +234,8 @@ private:
   int id_;
   API api_;
 
-  std::unique_ptr<BufferCache> bufferCache_;
-  std::unique_ptr<BufferCache> hostBufferCache_;
+  std::unique_ptr<MemoryManager> memoryManager_;
+  std::unique_ptr<MemoryManager> hostMemoryManager_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;
@@ -511,8 +511,8 @@ public:
   // Set this device context as the current driver context
   ErrorOrSuccess setAsCurrent() const;
 
-  BufferCacheFreeList &freeList() const;
-  BufferCacheFreeList &hostFreeList() const;
+  MemoryManagerFreeList &freeList() const;
+  MemoryManagerFreeList &hostFreeList() const;
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
@@ -569,7 +569,7 @@ protected:
   void setPendingError(Error err) const;
 
 private:
-  friend class BufferCacheFreeList;
+  friend class MemoryManagerFreeList;
   friend class DeviceBuffer;
   friend class DeviceContextScope;
   // Following line is equivalent to:
@@ -580,8 +580,8 @@ private:
 
   DeviceRef device_;
 
-  std::unique_ptr<BufferCacheFreeList> freeList_;
-  std::unique_ptr<BufferCacheFreeList> hostFreeList_;
+  std::unique_ptr<MemoryManagerFreeList> freeList_;
+  std::unique_ptr<MemoryManagerFreeList> hostFreeList_;
 
   mutable std::atomic<int> syncMode_ = {0};
 

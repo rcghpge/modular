@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the portable buffer cache used by device contexts.
+// This file declares the portable memory manager used by device contexts.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_BUFFERCACHE_H
-#define MLRT_LIB_DRIVER_DEVICECONTEXT_BUFFERCACHE_H
+#ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_MEMORYMANAGER_H
+#define MLRT_LIB_DRIVER_DEVICECONTEXT_MEMORYMANAGER_H
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "llvm/Support/MathExtras.h"
@@ -23,9 +23,9 @@ class raw_fd_ostream;
 
 namespace M::AsyncRT {
 
-class BufferCacheFreeList;
+class MemoryManagerFreeList;
 
-class BufferCache {
+class MemoryManager {
 public:
   class Chunk;
   class Desc;
@@ -46,7 +46,7 @@ public:
     Desc **buckets_;
   };
 
-  ~BufferCache();
+  ~MemoryManager();
 
   size_t allocationAlignment() const;
 
@@ -54,31 +54,31 @@ public:
 
   void clear();
 
-  BufferCacheFreeList *freeList() const;
+  MemoryManagerFreeList *freeList() const;
 
-  // Get memory information about the buffer cache
+  // Get memory information about the memory manager
   Device::MemInfo getMemoryInfo() const;
 
-  // Check if the buffer cache is enabled (has non-zero capacity)
+  // Check if the memory manager is enabled (has non-zero capacity)
   bool isEnabled() const;
 
-  // Factory methods configure the buffer cache based on defaults or the
+  // Factory methods configure the memory manager based on defaults or the
   // environment.
   // `memInfo` contains the total and free memory of the device.
-  // Setting memInfo.free to 0 will disable the buffer cache.
-  // `memoryLimit` (bytes) is the maximum memory limit for the buffer cache.
-  // If -1, then the buffer cache will use the default memory limit.
-  // Note that BUFFER_CACHE_SIZE_LIMIT environment variable overrides this.
-  static BufferCache *onDevice(const Device &device, Device::MemInfo memInfo,
-                               size_t alignment, int64_t memoryLimit = -1);
-  static BufferCache *onHost(const Device &device, size_t alignment);
+  // Setting memInfo.free to 0 will disable the memory manager.
+  // `memoryLimit` (bytes) is the maximum memory limit for the memory manager.
+  // If -1, then the memory manager will use the default memory limit.
+  // Note that MEMORY_MANAGER_SIZE_LIMIT environment variable overrides this.
+  static MemoryManager *onDevice(const Device &device, Device::MemInfo memInfo,
+                                 size_t alignment, int64_t memoryLimit = -1);
+  static MemoryManager *onHost(const Device &device, size_t alignment);
 
 private:
   friend class Chunk;
-  friend class BufferCacheFreeList;
+  friend class MemoryManagerFreeList;
 
-  BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
-              size_t alignment, bool isHost);
+  MemoryManager(const Device &device, size_t maxSize, size_t chunkSize,
+                size_t alignment, bool isHost);
 
   const Device &device() const;
 
@@ -95,11 +95,11 @@ private:
   // grow to the maximum cache size based on the heuristics used during
   // allocation.
   static bool shouldUseMaxSize();
-  // Change this process' state to use the full buffer cache for future chunk
+  // Change this process' state to use the full memory manager for future chunk
   // allocations.
   static void enableUseMaxSize();
   // Use a std::atomic to keep track of the state whether or not we use the full
-  // buffer cache for future chunk allocations. Since this is a boolean value
+  // memory manager for future chunk allocations. Since this is a boolean value
   // that can only change from 0 (false) to non-zero (true) using a mutex is not
   // necessary.
   static std::atomic<int32_t> useMaxSize_;
@@ -111,7 +111,7 @@ private:
 
   const Device &device_;
 
-  // This buffer cache is managing "pinned" host memory.
+  // This memory manager is managing "pinned" host memory.
   const bool isHost_;
 
   const size_t maxCacheSize_;
@@ -126,13 +126,13 @@ private:
   Chunk *chunks_ = nullptr;
 
   // List of unallocated memory regions.
-  std::unique_ptr<BufferCacheFreeList> freeList_;
+  std::unique_ptr<MemoryManagerFreeList> freeList_;
 
   // Free list of descriptors to avoid malloc under lock.
   Desc *unusedDescs_ = nullptr;
 
-  // Map of allocated ptr->Desc*: Since the memory handled by the BufferCache is
-  // not accessible by the CPU we cannot store meta-data colocated with the
+  // Map of allocated ptr->Desc*: Since the memory handled by the MemoryManager
+  // is not accessible by the CPU we cannot store meta-data colocated with the
   // managed memory.
   DescMap allocatedMap_;
 
@@ -150,17 +150,18 @@ private:
   mutable std::string deviceDescription_;
 };
 
-class BufferCacheFreeList {
+class MemoryManagerFreeList {
 public:
-  BufferCacheFreeList(const DeviceContext *context, BufferCache &bufferCache,
-                      BufferCacheFreeList *parent);
-  ~BufferCacheFreeList();
+  MemoryManagerFreeList(const DeviceContext *context,
+                        MemoryManager &memoryManager,
+                        MemoryManagerFreeList *parent);
+  ~MemoryManagerFreeList();
 
   // Release blocks owned by this free list to the parent if available.
   void flushToParent();
 
-  // Allocate and free memory by using the `BufferCache`. If the allocation
-  // cannot be serviced by the `BufferCache` due to allocation size or cache
+  // Allocate and free memory by using the `MemoryManager`. If the allocation
+  // cannot be serviced by the `MemoryManager` due to allocation size or cache
   // capacity, then the allocation request gets transparently forwarded to the
   // associated `DeviceContext`.
   ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
@@ -169,39 +170,39 @@ public:
   bool empty();
 
 private:
-  friend class BufferCache;
-  friend class BufferCache::Chunk;
+  friend class MemoryManager;
+  friend class MemoryManager::Chunk;
 
   // Define the number of "double-buffered freelists" used to implement the
-  // BufferCacheFreeList. The oldest list will be flushed to the parent once the
-  // pending event handler fires.
+  // MemoryManagerFreeList. The oldest list will be flushed to the parent once
+  // the pending event handler fires.
   static constexpr int kNumFreeBufferLists = 2;
   static_assert(llvm::isPowerOf2_64(kNumFreeBufferLists),
                 "Must be a non-zero power of two.");
 
   void selfCheck() const;
-  bool contains(BufferCache::Desc *desc) const;
+  bool contains(MemoryManager::Desc *desc) const;
 
   const DeviceContext *context() const;
 
-  BufferCache::Desc *allocateDesc(size_t size);
-  void freeDesc(BufferCache::Desc *desc);
+  MemoryManager::Desc *allocateDesc(size_t size);
+  void freeDesc(MemoryManager::Desc *desc);
 
-  void addToFreeList(BufferCache::Desc *desc);
-  void removeFromFreeList(BufferCache::Desc *desc);
+  void addToFreeList(MemoryManager::Desc *desc);
+  void removeFromFreeList(MemoryManager::Desc *desc);
 
   void flushFreeBuffersToParent(int id);
 
   const DeviceContext *ctx_;
 
-  BufferCache &bufferCache_;
-  BufferCacheFreeList *parent_;
+  MemoryManager &memoryManager_;
+  MemoryManagerFreeList *parent_;
 
-  BufferCache::Desc *freeBuffers_[kNumFreeBufferLists];
+  MemoryManager::Desc *freeBuffers_[kNumFreeBufferLists];
   int primaryFreeBuffers_ = 0;
   bool handlerPending_ = false;
 };
 
 } // namespace M::AsyncRT
 
-#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_BUFFERCACHE_H
+#endif // MLRT_LIB_DRIVER_DEVICECONTEXT_MEMORYMANAGER_H

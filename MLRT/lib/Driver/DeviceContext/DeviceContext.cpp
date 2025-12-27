@@ -10,12 +10,12 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
-#include "BufferCache.h"
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDACompilationDevice.h"
 #include "CUDA/CUDADeviceContext.h"
 #include "HIP/HIPCompilationDevice.h"
 #include "HIP/HIPDeviceContext.h"
+#include "MemoryManager.h"
 #include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
@@ -207,9 +207,9 @@ MODULAR_CXX_EXPORT size_t getPreferredAlignment(std::string label) {
 Device::Device(API api, std::string name, int id, MemInfo memInfo,
                size_t allocAlignment, int64_t deviceMemoryLimit)
     : name_(std::move(name)), id_(id), api_(api),
-      bufferCache_(BufferCache::onDevice(*this, memInfo, allocAlignment,
-                                         deviceMemoryLimit)),
-      hostBufferCache_(BufferCache::onHost(*this, allocAlignment)) {}
+      memoryManager_(MemoryManager::onDevice(*this, memInfo, allocAlignment,
+                                             deviceMemoryLimit)),
+      hostMemoryManager_(MemoryManager::onHost(*this, allocAlignment)) {}
 
 Device::~Device() {
   // Destroy the function map before destroying the context.
@@ -242,7 +242,7 @@ MODULAR_CXX_EXPORT Device::API Device::api() const { return api_; }
 ErrorOr<bool> Device::supportsMulticast() const { return false; }
 
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
-  return bufferCache_->allocationAlignment();
+  return memoryManager_->allocationAlignment();
 }
 
 MODULAR_CXX_EXPORT size_t Device::preferredAlignment(StringRef api) {
@@ -639,10 +639,11 @@ static std::mutex &getGlobalMutex() {
 
 DeviceContext::DeviceContext(const Device &device)
     : device_(DeviceRef::copy(&device)),
-      freeList_(std::make_unique<BufferCacheFreeList>(
-          this, device.bufferCache(), device.bufferCache().freeList())),
-      hostFreeList_(std::make_unique<BufferCacheFreeList>(
-          this, device.hostBufferCache(), device.hostBufferCache().freeList())),
+      freeList_(std::make_unique<MemoryManagerFreeList>(
+          this, device.memoryManager(), device.memoryManager().freeList())),
+      hostFreeList_(std::make_unique<MemoryManagerFreeList>(
+          this, device.hostMemoryManager(),
+          device.hostMemoryManager().freeList())),
       syncMode_(0) {
   if (configAsBool("sync-mode", false)) {
     incSyncMode();
@@ -663,8 +664,8 @@ ErrorOrSuccess DeviceContext::setAsCurrent() const {
 
 MODULAR_CXX_EXPORT ErrorOr<Device::MemInfo>
 DeviceContext::getMemoryInfo() const {
-  // If we are using the buffer cache, get memory information from it.
-  BufferCache &cache = device().bufferCache();
+  // If we are using the memory manager, get memory information from it.
+  MemoryManager &cache = device().memoryManager();
   if (cache.isEnabled()) {
     return cache.getMemoryInfo();
   }
@@ -826,7 +827,7 @@ ErrorOr<DeviceBufferRef>
 DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
   assert(byteSize != 0);
   void *ptr = nullptr;
-  // Allocate from the correct buffer cache.
+  // Allocate from the correct memory manager.
   ErrorOr<void *> errPtr =
       ((mode == Device::AllocMode::HOST) ? hostFreeList() : freeList())
           .allocate(byteSize, mode);
@@ -945,8 +946,8 @@ DeviceContext::operator!=(const DeviceContext &other) const {
   return !(*this == other);
 }
 
-BufferCacheFreeList &DeviceContext::freeList() const { return *freeList_; }
-BufferCacheFreeList &DeviceContext::hostFreeList() const {
+MemoryManagerFreeList &DeviceContext::freeList() const { return *freeList_; }
+MemoryManagerFreeList &DeviceContext::hostFreeList() const {
   return *hostFreeList_;
 }
 
@@ -990,14 +991,14 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
   return 0;
 }
 
-BufferCache &Device::bufferCache() const {
-  assert(bufferCache_ != nullptr);
-  return *bufferCache_;
+MemoryManager &Device::memoryManager() const {
+  assert(memoryManager_ != nullptr);
+  return *memoryManager_;
 }
 
-BufferCache &Device::hostBufferCache() const {
-  assert(hostBufferCache_ != nullptr);
-  return *hostBufferCache_;
+MemoryManager &Device::hostMemoryManager() const {
+  assert(hostMemoryManager_ != nullptr);
+  return *hostMemoryManager_;
 }
 
 bool DeviceContext::syncMode() const {

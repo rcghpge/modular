@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/lib/Driver/DeviceContext/BufferCache.h"
+#include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "MLRT/lib/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
@@ -28,9 +28,9 @@ extern char **environ;
 
 namespace {
 
-class BufferCacheTest : public ::testing::Test {
+class MemoryManagerTest : public ::testing::Test {
 protected:
-  // Helper to create a CPU device with buffer cache for testing - match
+  // Helper to create a CPU device with memory manager for testing - match
   // existing test
   CpuDeviceRef createTestDevice() {
     constexpr size_t chunkSize = 1024;
@@ -43,13 +43,13 @@ protected:
     return CpuDeviceRef::create(memInfo);
   }
 
-  // Helper to create DeviceContext for buffer cache testing
+  // Helper to create DeviceContext for memory manager testing
   ErrorOr<DeviceContextRef> createTestDeviceContext() {
     return DeviceContext::create(Device::cpuAPI);
   }
 
-  // Helper to create a host buffer cache for testing
-  std::unique_ptr<BufferCache> createTestHostCache() {
+  // Helper to create a host memory manager for testing
+  std::unique_ptr<MemoryManager> createTestHostCache() {
     constexpr size_t chunkSize = 1024;
     constexpr size_t maxCacheSize = 4 * chunkSize;
 
@@ -58,17 +58,17 @@ protected:
     memInfo.total = 256 * maxCacheSize; // Needs to be larger than 256 * KB
 
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
-    return std::unique_ptr<BufferCache>(BufferCache::onHost(*device, 64));
+    return std::unique_ptr<MemoryManager>(MemoryManager::onHost(*device, 64));
   }
 };
 
-TEST_F(BufferCacheTest, BufferCacheCreation) {
+TEST_F(MemoryManagerTest, MemoryManagerCreation) {
   // Test creation through CPU device
   {
     CpuDeviceRef device = createTestDevice();
-    BufferCache &cache = device->bufferCache();
+    MemoryManager &cache = device->memoryManager();
 
-    // CPU device with memInfo creates device buffer cache, not host cache
+    // CPU device with memInfo creates device memory manager, not host cache
     EXPECT_FALSE(cache.isHost());
     EXPECT_EQ(cache.allocationAlignment(), 64); // Default alignment
   }
@@ -80,7 +80,7 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     memInfo.total = 2 * 1024 * 1024;
 
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
-    std::unique_ptr<BufferCache> cache(BufferCache::onHost(*device, 64));
+    std::unique_ptr<MemoryManager> cache(MemoryManager::onHost(*device, 64));
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_TRUE(cache->isHost());
@@ -94,8 +94,8 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     memInfo.total = 2 * 1024 * 1024;
 
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
-    std::unique_ptr<BufferCache> cache(
-        BufferCache::onDevice(*device, memInfo, 128));
+    std::unique_ptr<MemoryManager> cache(
+        MemoryManager::onDevice(*device, memInfo, 128));
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_FALSE(cache->isHost());
@@ -109,8 +109,8 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     memInfo.total = 2 * 1024 * 1024;
 
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
-    std::unique_ptr<BufferCache> cache(
-        BufferCache::onDevice(*device, memInfo, 128, memInfo.total / 2));
+    std::unique_ptr<MemoryManager> cache(
+        MemoryManager::onDevice(*device, memInfo, 128, memInfo.total / 2));
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_FALSE(cache->isHost());
@@ -125,8 +125,8 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     memInfo.total = 2 * 1024 * 1024;
 
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
-    std::unique_ptr<BufferCache> cache(
-        BufferCache::onDevice(*device, memInfo, 128, 0));
+    std::unique_ptr<MemoryManager> cache(
+        MemoryManager::onDevice(*device, memInfo, 128, 0));
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_FALSE(cache->isHost());
@@ -141,8 +141,8 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
     memInfo.total = 0;
 
     CpuDeviceRef device = CpuDeviceRef::create(memInfo);
-    std::unique_ptr<BufferCache> cache(
-        BufferCache::onDevice(*device, memInfo, 64));
+    std::unique_ptr<MemoryManager> cache(
+        MemoryManager::onDevice(*device, memInfo, 64));
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_FALSE(cache->isHost());
@@ -151,20 +151,20 @@ TEST_F(BufferCacheTest, BufferCacheCreation) {
   }
 }
 
-TEST_F(BufferCacheTest, AlignmentHandling) {
-  // Test device buffer cache alignment
+TEST_F(MemoryManagerTest, AlignmentHandling) {
+  // Test device memory manager alignment
   {
     CpuDeviceRef device = createTestDevice();
-    BufferCache &cache = device->bufferCache();
+    MemoryManager &cache = device->memoryManager();
 
     // CPU device should have 64-byte alignment by default
     EXPECT_EQ(cache.allocationAlignment(), 64);
   }
 }
 
-TEST_F(BufferCacheTest, BasicAllocationAndFree) {
+TEST_F(MemoryManagerTest, BasicAllocationAndFree) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -184,9 +184,9 @@ TEST_F(BufferCacheTest, BasicAllocationAndFree) {
   EXPECT_NO_ERR(freeList.free(nullptr));
 }
 
-TEST_F(BufferCacheTest, MultipleAllocations) {
+TEST_F(MemoryManagerTest, MultipleAllocations) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -215,9 +215,9 @@ TEST_F(BufferCacheTest, MultipleAllocations) {
   }
 }
 
-TEST_F(BufferCacheTest, AllocationSizes) {
+TEST_F(MemoryManagerTest, AllocationSizes) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -242,9 +242,9 @@ TEST_F(BufferCacheTest, AllocationSizes) {
   }
 }
 
-TEST_F(BufferCacheTest, FreeListEmpty) {
+TEST_F(MemoryManagerTest, FreeListEmpty) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   // Initially, the free list should be empty (no chunks allocated yet)
   EXPECT_TRUE(freeList.empty());
@@ -262,9 +262,9 @@ TEST_F(BufferCacheTest, FreeListEmpty) {
 
 // Free List Management Tests
 
-TEST_F(BufferCacheTest, FreeListSorting) {
+TEST_F(MemoryManagerTest, FreeListSorting) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   std::vector<void *> ptrs;
@@ -297,9 +297,9 @@ TEST_F(BufferCacheTest, FreeListSorting) {
   EXPECT_NO_ERR(freeList.free(small_ptr));
 }
 
-TEST_F(BufferCacheTest, FreeListMerging) {
+TEST_F(MemoryManagerTest, FreeListMerging) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -333,9 +333,9 @@ TEST_F(BufferCacheTest, FreeListMerging) {
   EXPECT_NO_ERR(freeList.free(large_ptr));
 }
 
-TEST_F(BufferCacheTest, BlockSplittingAndReuse) {
+TEST_F(MemoryManagerTest, BlockSplittingAndReuse) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -374,9 +374,9 @@ TEST_F(BufferCacheTest, BlockSplittingAndReuse) {
   EXPECT_NO_ERR(freeList.free(new_large_ptr));
 }
 
-TEST_F(BufferCacheTest, MemoryReuse) {
+TEST_F(MemoryManagerTest, MemoryReuse) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -415,9 +415,9 @@ TEST_F(BufferCacheTest, MemoryReuse) {
   }
 }
 
-TEST_F(BufferCacheTest, FragmentationHandling) {
+TEST_F(MemoryManagerTest, FragmentationHandling) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -457,16 +457,16 @@ TEST_F(BufferCacheTest, FragmentationHandling) {
 
 // Configuration & Heuristics Tests
 
-TEST_F(BufferCacheTest, ConfigurationVariations) {
+TEST_F(MemoryManagerTest, ConfigurationVariations) {
   // Test different cache size configurations
   {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "50");
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "50");
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "50");
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "50");
 
     CpuDeviceRef device = createTestDevice();
-    BufferCache &cache = device->bufferCache();
-    BufferCacheFreeList &freeList = *cache.freeList();
+    MemoryManager &cache = device->memoryManager();
+    MemoryManagerFreeList &freeList = *cache.freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -478,13 +478,13 @@ TEST_F(BufferCacheTest, ConfigurationVariations) {
 
   // Test small chunk percentage
   {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25");
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "25");
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "10");
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "10");
 
     CpuDeviceRef device = createTestDevice();
-    BufferCache &cache = device->bufferCache();
-    BufferCacheFreeList &freeList = *cache.freeList();
+    MemoryManager &cache = device->memoryManager();
+    MemoryManagerFreeList &freeList = *cache.freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -495,9 +495,9 @@ TEST_F(BufferCacheTest, ConfigurationVariations) {
   }
 }
 
-TEST_F(BufferCacheTest, ChunkAllocationBehavior) {
+TEST_F(MemoryManagerTest, ChunkAllocationBehavior) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   std::vector<void *> ptrs;
@@ -522,9 +522,9 @@ TEST_F(BufferCacheTest, ChunkAllocationBehavior) {
   }
 }
 
-TEST_F(BufferCacheTest, LargeAllocationHandling) {
+TEST_F(MemoryManagerTest, LargeAllocationHandling) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -547,9 +547,9 @@ TEST_F(BufferCacheTest, LargeAllocationHandling) {
   EXPECT_NO_ERR(freeList.free(small_ptr));
 }
 
-TEST_F(BufferCacheTest, AllocationModeHandling) {
+TEST_F(MemoryManagerTest, AllocationModeHandling) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   // Test different allocation modes
   std::vector<Device::AllocMode> modes = {Device::AllocMode::SYNC,
@@ -564,9 +564,9 @@ TEST_F(BufferCacheTest, AllocationModeHandling) {
 
 // Error Handling & Edge Cases Tests
 
-TEST_F(BufferCacheTest, BoundaryConditions) {
+TEST_F(MemoryManagerTest, BoundaryConditions) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -588,9 +588,9 @@ TEST_F(BufferCacheTest, BoundaryConditions) {
   EXPECT_NO_ERR(freeList.free(large_ptr));
 }
 
-TEST_F(BufferCacheTest, MemoryPattern) {
+TEST_F(MemoryManagerTest, MemoryPattern) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -612,9 +612,9 @@ TEST_F(BufferCacheTest, MemoryPattern) {
   EXPECT_NO_ERR(freeList.free(ptr));
 }
 
-TEST_F(BufferCacheTest, StressTestAllocation) {
+TEST_F(MemoryManagerTest, StressTestAllocation) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -640,9 +640,9 @@ TEST_F(BufferCacheTest, StressTestAllocation) {
   }
 }
 
-TEST_F(BufferCacheTest, InvalidOperations) {
+TEST_F(MemoryManagerTest, InvalidOperations) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   // Test free with nullptr (should succeed)
   EXPECT_NO_ERR(freeList.free(nullptr));
@@ -658,16 +658,16 @@ TEST_F(BufferCacheTest, InvalidOperations) {
   // as it may legitimately crash or have unpredictable behavior
 }
 
-TEST_F(BufferCacheTest, ConfigurationLimits) {
+TEST_F(MemoryManagerTest, ConfigurationLimits) {
   // Test with extreme configuration values
   {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "0");
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "0");
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "0");
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "0");
 
     // Should still create a valid device even with zero configuration
     CpuDeviceRef device = createTestDevice();
-    BufferCache &cache = device->bufferCache();
+    MemoryManager &cache = device->memoryManager();
 
     // Cache should be functional even with minimal configuration
     EXPECT_EQ(cache.allocationAlignment(), 64);
@@ -675,13 +675,13 @@ TEST_F(BufferCacheTest, ConfigurationLimits) {
 
   // Test with very high percentage
   {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25");
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "25");
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "100");
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "100");
 
     CpuDeviceRef device = createTestDevice();
-    BufferCache &cache = device->bufferCache();
-    BufferCacheFreeList &freeList = *cache.freeList();
+    MemoryManager &cache = device->memoryManager();
+    MemoryManagerFreeList &freeList = *cache.freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -694,10 +694,10 @@ TEST_F(BufferCacheTest, ConfigurationLimits) {
 
 // Debugging & Validation Tests
 
-TEST_F(BufferCacheTest, SelfCheckValidation) {
+TEST_F(MemoryManagerTest, SelfCheckValidation) {
   // Test with self-check enabled (already enabled in test setup)
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   std::vector<void *> ptrs;
@@ -722,11 +722,11 @@ TEST_F(BufferCacheTest, SelfCheckValidation) {
   SUCCEED();
 }
 
-TEST_F(BufferCacheTest, LoggingOutput) {
+TEST_F(MemoryManagerTest, LoggingOutput) {
   // Test with logging disabled (set in test setup)
   {
     CpuDeviceRef device = createTestDevice();
-    BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+    MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -738,11 +738,11 @@ TEST_F(BufferCacheTest, LoggingOutput) {
 
   // Test with logging enabled
   {
-    ScopedEnvVar enableLogging("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG",
+    ScopedEnvVar enableLogging("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG",
                                "True");
 
     CpuDeviceRef device = createTestDevice();
-    BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+    MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -756,11 +756,11 @@ TEST_F(BufferCacheTest, LoggingOutput) {
   }
 }
 
-TEST_F(BufferCacheTest, MemoryLeakDetection) {
+TEST_F(MemoryManagerTest, MemoryLeakDetection) {
   // Test proper cleanup on scope exit
   {
     CpuDeviceRef device = createTestDevice();
-    BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+    MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
     std::vector<void *> ptrs;
@@ -783,9 +783,9 @@ TEST_F(BufferCacheTest, MemoryLeakDetection) {
   SUCCEED();
 }
 
-TEST_F(BufferCacheTest, DescriptorManagement) {
+TEST_F(MemoryManagerTest, DescriptorManagement) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -818,18 +818,18 @@ TEST_F(BufferCacheTest, DescriptorManagement) {
   }
 }
 
-TEST_F(BufferCacheTest, MaxSizeHandling) {
+TEST_F(MemoryManagerTest, MaxSizeHandling) {
   // Create device with smaller memory limits to test max size enforcement
   Device::MemInfo smallMemInfo;
   smallMemInfo.free = 64 * 1024;   // 64KB
   smallMemInfo.total = 128 * 1024; // 128KB
 
-  ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "90");
-  ScopedEnvVar chunkPercent("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT",
-                            "25");
+  ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "90");
+  ScopedEnvVar chunkPercent(
+      "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "25");
 
   CpuDeviceRef device = CpuDeviceRef::create(smallMemInfo);
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   std::vector<void *> ptrs;
@@ -852,7 +852,7 @@ TEST_F(BufferCacheTest, MaxSizeHandling) {
   }
 }
 
-TEST_F(BufferCacheTest, FreeListHierarchy) {
+TEST_F(MemoryManagerTest, FreeListHierarchy) {
   // Test hierarchical free list behavior through DeviceContext integration
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
@@ -870,9 +870,9 @@ TEST_F(BufferCacheTest, FreeListHierarchy) {
   // This exercises the hierarchical flush behavior
 }
 
-TEST_F(BufferCacheTest, MemoryPressure) {
+TEST_F(MemoryManagerTest, MemoryPressure) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   std::vector<void *> large_ptrs;
@@ -905,7 +905,7 @@ TEST_F(BufferCacheTest, MemoryPressure) {
 
 // Integration Tests
 
-TEST_F(BufferCacheTest, DeviceContextIntegration) {
+TEST_F(MemoryManagerTest, DeviceContextIntegration) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Test buffer creation through DeviceContext
@@ -933,7 +933,7 @@ TEST_F(BufferCacheTest, DeviceContextIntegration) {
   }
 }
 
-TEST_F(BufferCacheTest, BufferLifecycle) {
+TEST_F(MemoryManagerTest, BufferLifecycle) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Test end-to-end buffer lifecycle
@@ -961,7 +961,7 @@ TEST_F(BufferCacheTest, BufferLifecycle) {
   EXPECT_EQ(subAddr, mainAddr + 1024);
 }
 
-TEST_F(BufferCacheTest, MemoryTransfers) {
+TEST_F(MemoryManagerTest, MemoryTransfers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Create source and destination buffers
@@ -992,7 +992,7 @@ TEST_F(BufferCacheTest, MemoryTransfers) {
   }
 }
 
-TEST_F(BufferCacheTest, MultipleContexts) {
+TEST_F(MemoryManagerTest, MultipleContexts) {
   // Create multiple device contexts
   ASSIGN_NO_ERR(DeviceContextRef, ctx1, createTestDeviceContext());
   ASSIGN_NO_ERR(DeviceContextRef, ctx2, createTestDeviceContext());
@@ -1025,9 +1025,9 @@ TEST_F(BufferCacheTest, MultipleContexts) {
 
 // Thread Safety & Concurrency Tests
 
-TEST_F(BufferCacheTest, ConcurrentAllocations) {
+TEST_F(MemoryManagerTest, ConcurrentAllocations) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int numThreads = 4;
@@ -1069,9 +1069,9 @@ TEST_F(BufferCacheTest, ConcurrentAllocations) {
   }
 }
 
-TEST_F(BufferCacheTest, ConcurrentFrees) {
+TEST_F(MemoryManagerTest, ConcurrentFrees) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int numBlocks = 20;
@@ -1109,9 +1109,9 @@ TEST_F(BufferCacheTest, ConcurrentFrees) {
   EXPECT_EQ(freeCount.load(), numBlocks);
 }
 
-TEST_F(BufferCacheTest, MixedConcurrentOperations) {
+TEST_F(MemoryManagerTest, MixedConcurrentOperations) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int numThreads = 4;
@@ -1182,10 +1182,10 @@ TEST_F(BufferCacheTest, MixedConcurrentOperations) {
 
 // Performance & Metrics Tests
 
-TEST_F(BufferCacheTest, AllocationSpeed) {
+TEST_F(MemoryManagerTest, AllocationSpeed) {
   // Test allocation performance compared to direct device allocation
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
@@ -1241,9 +1241,9 @@ TEST_F(BufferCacheTest, AllocationSpeed) {
   SUCCEED();
 }
 
-TEST_F(BufferCacheTest, FragmentationMeasurement) {
+TEST_F(MemoryManagerTest, FragmentationMeasurement) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -1303,9 +1303,9 @@ TEST_F(BufferCacheTest, FragmentationMeasurement) {
   SUCCEED();
 }
 
-TEST_F(BufferCacheTest, CacheEfficiency) {
+TEST_F(MemoryManagerTest, CacheEfficiency) {
   CpuDeviceRef device = createTestDevice();
-  BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+  MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int totalOperations = 200;
@@ -1375,7 +1375,7 @@ TEST_F(BufferCacheTest, CacheEfficiency) {
   SUCCEED();
 }
 
-TEST_F(BufferCacheTest, ScalingBehavior) {
+TEST_F(MemoryManagerTest, ScalingBehavior) {
   // Test performance scaling with different cache configurations
   struct ScalingTest {
     std::string cacheSize;
@@ -1390,14 +1390,14 @@ TEST_F(BufferCacheTest, ScalingBehavior) {
   };
 
   for (const auto &config : configs) {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE",
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE",
                            config.cacheSize);
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT",
         config.chunkPercent);
 
     CpuDeviceRef device = createTestDevice();
-    BufferCacheFreeList &freeList = *device->bufferCache().freeList();
+    MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -1443,9 +1443,9 @@ TEST_F(BufferCacheTest, ScalingBehavior) {
   SUCCEED();
 }
 
-// Host Buffer Cache Tests (Integration-focused)
+// Host Memory Manager Tests (Integration-focused)
 
-TEST_F(BufferCacheTest, HostBufferCacheBasicOperations) {
+TEST_F(MemoryManagerTest, HostMemoryManagerBasicOperations) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Test multiple host buffer allocations
@@ -1475,7 +1475,7 @@ TEST_F(BufferCacheTest, HostBufferCacheBasicOperations) {
   }
 }
 
-TEST_F(BufferCacheTest, HostBufferCacheAllocationPatterns) {
+TEST_F(MemoryManagerTest, HostMemoryManagerAllocationPatterns) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Test allocation patterns with host buffers
@@ -1507,7 +1507,7 @@ TEST_F(BufferCacheTest, HostBufferCacheAllocationPatterns) {
   }
 }
 
-TEST_F(BufferCacheTest, HostVsDeviceCacheComparison) {
+TEST_F(MemoryManagerTest, HostVsDeviceCacheComparison) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   const size_t testSize = 2048;
@@ -1546,7 +1546,7 @@ TEST_F(BufferCacheTest, HostVsDeviceCacheComparison) {
   EXPECT_EQ(devicePtr[0], 0x33);
 }
 
-TEST_F(BufferCacheTest, HostBufferCacheThreadSafety) {
+TEST_F(MemoryManagerTest, HostMemoryManagerThreadSafety) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   const int numThreads = 4;
@@ -1593,14 +1593,16 @@ TEST_F(BufferCacheTest, HostBufferCacheThreadSafety) {
   }
 }
 
-TEST_F(BufferCacheTest, HostBufferCacheConfiguration) {
+TEST_F(MemoryManagerTest, HostMemoryManagerConfiguration) {
   // Test host buffer creation with different host-specific cache configurations
   {
-    // Set host-specific buffer cache configuration
-    ScopedEnvVar hostCacheSize("MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_SIZE",
-                               "1048576"); // 1MB
+    // Set host-specific memory manager configuration
+    ScopedEnvVar hostCacheSize(
+        "MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_SIZE",
+        "1048576"); // 1MB
     ScopedEnvVar hostChunkPercent(
-        "MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_CHUNK_PERCENT", "10"); // 10%
+        "MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_CHUNK_PERCENT",
+        "10"); // 10%
 
     ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
@@ -1628,10 +1630,12 @@ TEST_F(BufferCacheTest, HostBufferCacheConfiguration) {
 
   // Test with different host cache configuration
   {
-    ScopedEnvVar hostCacheSize("MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_SIZE",
-                               "2097152"); // 2MB
+    ScopedEnvVar hostCacheSize(
+        "MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_SIZE",
+        "2097152"); // 2MB
     ScopedEnvVar hostChunkPercent(
-        "MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_CHUNK_PERCENT", "25"); // 25%
+        "MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_CHUNK_PERCENT",
+        "25"); // 25%
 
     ASSIGN_NO_ERR(DeviceContextRef, ctx2, createTestDeviceContext());
 
@@ -1652,7 +1656,7 @@ TEST_F(BufferCacheTest, HostBufferCacheConfiguration) {
   }
 }
 
-TEST_F(BufferCacheTest, HostBufferCacheStressTesting) {
+TEST_F(MemoryManagerTest, HostMemoryManagerStressTesting) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Stress test with rapid allocation/deallocation cycles
@@ -1687,7 +1691,7 @@ TEST_F(BufferCacheTest, HostBufferCacheStressTesting) {
   }
 }
 
-TEST_F(BufferCacheTest, HostBufferCacheIntegrationWithDeviceContext) {
+TEST_F(MemoryManagerTest, HostMemoryManagerIntegrationWithDeviceContext) {
   // Test that host buffers created through DeviceContext work properly
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
@@ -1724,13 +1728,13 @@ TEST_F(BufferCacheTest, HostBufferCacheIntegrationWithDeviceContext) {
   }
 }
 
-// BufferCache Memory Info Tests
+// MemoryManager Memory Info Tests
 
-TEST_F(BufferCacheTest, GetMemoryInfoDisabledDefaults) {
-  ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "0");
+TEST_F(MemoryManagerTest, GetMemoryInfoDisabledDefaults) {
+  ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "0");
 
   CpuDeviceRef device = createTestDevice();
-  BufferCache &cache = device->bufferCache();
+  MemoryManager &cache = device->memoryManager();
 
   Device::MemInfo memInfo = cache.getMemoryInfo();
 
@@ -1738,10 +1742,10 @@ TEST_F(BufferCacheTest, GetMemoryInfoDisabledDefaults) {
   EXPECT_EQ(memInfo.free, 0);
 }
 
-TEST_F(BufferCacheTest, GetMemoryInfoAccuracy) {
+TEST_F(MemoryManagerTest, GetMemoryInfoAccuracy) {
   CpuDeviceRef device = createTestDevice();
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   // Get initial memory info
   Device::MemInfo initialInfo = cache.getMemoryInfo();

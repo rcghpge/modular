@@ -580,7 +580,6 @@ modular_shared_library(
 modular_cc_library(
     name = "Driver/DeviceContextImpl",
     srcs = [
-        "lib/Driver/DeviceContext/BufferCache.cpp",
         "lib/Driver/DeviceContext/CPU/CpuDeviceContext.cpp",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.cpp",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.cpp",
@@ -592,6 +591,7 @@ modular_cc_library(
         "lib/Driver/DeviceContext/HIP/HIPCompilationDevice.cpp",
         "lib/Driver/DeviceContext/HIP/HIPDeviceContext.cpp",
         "lib/Driver/DeviceContext/HIP/HIPDriver.cpp",
+        "lib/Driver/DeviceContext/MemoryManager.cpp",
         "lib/Driver/DeviceContext/Metal/MetalDeviceContext.cpp",
         "lib/Driver/DeviceContext/Metal/MetalDriver.cpp",
         "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.cpp",
@@ -599,7 +599,6 @@ modular_cc_library(
     hdrs = [
         "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
-        "lib/Driver/DeviceContext/BufferCache.h",
         "lib/Driver/DeviceContext/CPU/CpuDeviceContext.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.h",
@@ -611,6 +610,7 @@ modular_cc_library(
         "lib/Driver/DeviceContext/HIP/HIPDeviceContext.h",
         "lib/Driver/DeviceContext/HIP/HIPDriver.h",
         "lib/Driver/DeviceContext/HIP/HIPDriver.inc",
+        "lib/Driver/DeviceContext/MemoryManager.h",
         "lib/Driver/DeviceContext/Metal/MetalDeviceContext.h",
         "lib/Driver/DeviceContext/Metal/MetalDriver.hpp",
         "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.h",

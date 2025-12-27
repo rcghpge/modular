@@ -12,7 +12,7 @@
 
 #include "HIPDriver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/lib/Driver/DeviceContext/BufferCache.h"
+#include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/ErrorOr.h"
 #include "Support/Profiling/Tracy.h"
 #include "llvm/ADT/Twine.h"
@@ -244,7 +244,7 @@ HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
 HIPDevice::~HIPDevice() {
   // Destroy the function map before destroying other device structures.
   clearFunctionCache();
-  bufferCache().clear();
+  memoryManager().clear();
 }
 
 const HIPDriver &HIPDevice::hipDriver() const { return driver_; }

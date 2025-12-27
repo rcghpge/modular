@@ -23,16 +23,16 @@ modular_cc_library(
 )
 
 modular_cc_test(
-    name = "GPUBufferCacheTest",
+    name = "GPUMemoryManagerTest",
     size = "small",
     srcs = [
-        "GPUBufferCacheTest.cpp",
+        "GPUMemoryManagerTest.cpp",
         "ScopedEnvVar.h",
     ],
     env = {
-        # Set up consistent buffer cache environment for testing
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK": "True",
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG": "False",
+        # Set up consistent memory manager environment for testing
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
     },
     gpu_constraints = select({
         "//:apple_gpu": ["@platforms//:incompatible"],
@@ -75,17 +75,17 @@ modular_cc_test(
     name = "GPUDeviceContextTest",
     size = "small",
     srcs = ["GPUDeviceContextTest.cpp"],
-    # Setup environment ensuring that the buffer cache is properly configured
+    # Setup environment ensuring that the memory manager is properly configured
     # for the tests being run.
     env = {
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE": "1073741824",
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT": "100",
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_ONLY": "true",
-        # Log buffer cache operations for debugging.
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG": "true",
-        # These tests exercise the host buffer cache, so give them 8GB
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "1073741824",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "100",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "true",
+        # Log memory manager operations for debugging.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "true",
+        # These tests exercise the host memory manager, so give them 8GB
         # to use for the tests.
-        "MODULAR_DEVICE_CONTEXT_HOST_BUFFER_CACHE_SIZE": "8589934592",
+        "MODULAR_DEVICE_CONTEXT_HOST_MEMORY_MANAGER_SIZE": "8589934592",
     },
     gpu_constraints = ["//:has_gpu"],
     tags = ["gpu"],
@@ -225,18 +225,18 @@ modular_cc_test(
 )
 
 modular_cc_test(
-    name = "BufferCacheTest",
+    name = "MemoryManagerTest",
     size = "small",
     srcs = [
-        "BufferCacheTest.cpp",
+        "MemoryManagerTest.cpp",
         "ScopedEnvVar.h",
     ],
     env = {
-        # Set up consistent buffer cache environment for testing
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE": "25",
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT": "25",
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK": "True",
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG": "False",
+        # Set up consistent memory manager environment for testing
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
     },
     deps = [
         ":TestUtils",

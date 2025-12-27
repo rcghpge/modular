@@ -12,7 +12,7 @@
 #include "CUDACompilationDevice.h"
 #include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
-#include "MLRT/lib/Driver/DeviceContext/BufferCache.h"
+#include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/Buffer.h"
 #include "Support/Profiling/Tracy.h"
 
@@ -237,7 +237,7 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
   clearFunctionCache();
-  bufferCache().clear();
+  memoryManager().clear();
   if (context_ != nullptr)
     // We ignore the result here as there is not much we can do if it fails
     // since in most cases the CUDA driver is in the process of shutting down.

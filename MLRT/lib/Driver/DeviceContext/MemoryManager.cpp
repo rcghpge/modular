@@ -4,11 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the portable buffer cache used by device contexts..
+// This file implements the portable memory manager used by device contexts.
 //
 //===----------------------------------------------------------------------===//
 
-#include "BufferCache.h"
+#include "MemoryManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -29,33 +29,33 @@ static constexpr size_t GB = 1024 * 1024 * 1024; // NOLINT
 
 namespace M::AsyncRT {
 
-class BufferCache::Chunk {
+class MemoryManager::Chunk {
 public:
-  Chunk(BufferCache &cache, void *base, size_t size);
+  Chunk(MemoryManager &cache, void *base, size_t size);
   ~Chunk() = default;
 
   Desc *splitFreeDesc(Desc *freeDesc, size_t size);
 
   // merged block descriptor to the freelist `owner`.
-  void mergeFreeBlockDesc(BufferCacheFreeList *owner, Desc *desc);
+  void mergeFreeBlockDesc(MemoryManagerFreeList *owner, Desc *desc);
 
 private:
-  friend class BufferCache;
-  friend class BufferCacheFreeList;
+  friend class MemoryManager;
+  friend class MemoryManagerFreeList;
 
   void selfCheck() const;
 
-  BufferCache &cache_;
+  MemoryManager &cache_;
   void *base_ = nullptr;
   size_t size_ = 0;
   Chunk *next_ = nullptr;
   Desc *descs_ = nullptr; // Ordered list of all memory regions in this chunk.
 };
 
-// Describes a memory region managed by the buffer cache. These descriptors are
-// maintained out of line of the allocated blocks so they can be accessed by the
-// host, while the memory resides on a device.
-class BufferCache::Desc {
+// Describes a memory region managed by the memory manager. These descriptors
+// are maintained out of line of the allocated blocks so they can be accessed by
+// the host, while the memory resides on a device.
+class MemoryManager::Desc {
 public:
   Desc() { reset(); }
 
@@ -71,23 +71,23 @@ public:
     nextMap_ = nullptr;
   }
 
-  BufferCacheFreeList *owner() const { return owner_; }
+  MemoryManagerFreeList *owner() const { return owner_; }
   bool isFree() const { return owner_ != nullptr; }
   bool isInUse() const { return !isFree(); }
 
   void setInUse() { owner_ = nullptr; }
-  void setFree(BufferCacheFreeList *owner) {
+  void setFree(MemoryManagerFreeList *owner) {
     assert(owner != nullptr);
     owner_ = owner;
   }
 
 private:
-  friend class BufferCache;
-  friend class BufferCache::Chunk;
-  friend class BufferCache::DescMap;
-  friend class BufferCacheFreeList;
+  friend class MemoryManager;
+  friend class MemoryManager::Chunk;
+  friend class MemoryManager::DescMap;
+  friend class MemoryManagerFreeList;
 
-  // Fields owned by BufferCache::Chunk.
+  // Fields owned by MemoryManager::Chunk.
   // Note: Fields read by other parts of the code are marked as atomic.
   char *ptr_;
   std::atomic<size_t> size_;
@@ -98,8 +98,8 @@ private:
   Desc *next_;
   Desc *prev_;
 
-  // Fields owned by the BufferCacheFreeList:
-  // These fields are only accessed by the BufferCacheFreeList and do not need
+  // Fields owned by the MemoryManagerFreeList:
+  // These fields are only accessed by the MemoryManagerFreeList and do not need
   // to be protected.
   //
   // Doubly-linked list of free buffers.
@@ -112,13 +112,13 @@ private:
   // Note: Atomic since it can be accessed by multiple threads while iterating
   // throuch descriptors checking for ownership. The value is only modified by
   // the freelist owning the descriptor.
-  std::atomic<BufferCacheFreeList *> owner_;
+  std::atomic<MemoryManagerFreeList *> owner_;
 
-  // Fields owned by BufferCache::DescMap.
+  // Fields owned by MemoryManager::DescMap.
   Desc *nextMap_;
 };
 
-BufferCache::DescMap::DescMap(int mapSizeLog2)
+MemoryManager::DescMap::DescMap(int mapSizeLog2)
     : bucketCount_(1 << mapSizeLog2), bucketMask_(bucketCount_ - 1),
       buckets_(new Desc *[bucketCount_]) {
   for (size_t i = 0; i < bucketCount_; ++i) {
@@ -126,9 +126,9 @@ BufferCache::DescMap::DescMap(int mapSizeLog2)
   }
 }
 
-BufferCache::DescMap::~DescMap() { delete[] buckets_; }
+MemoryManager::DescMap::~DescMap() { delete[] buckets_; }
 
-uint32_t BufferCache::DescMap::hash(void *ptr) {
+uint32_t MemoryManager::DescMap::hash(void *ptr) {
   // From https://gist.github.com/badboy/6267743#64-bit-to-32-bit-hash-functions
   uintptr_t hashVal = reinterpret_cast<uintptr_t>(ptr);
   hashVal = (~hashVal) + (hashVal << 18); // key = (key << 18) - key - 1;
@@ -140,7 +140,7 @@ uint32_t BufferCache::DescMap::hash(void *ptr) {
   return static_cast<uint32_t>(hashVal);
 }
 
-void BufferCache::DescMap::add(Desc *desc) {
+void MemoryManager::DescMap::add(Desc *desc) {
   assert(desc->nextMap_ == nullptr);
   assert(!desc->isFree());
 
@@ -150,7 +150,7 @@ void BufferCache::DescMap::add(Desc *desc) {
   *bucket = desc;
 }
 
-BufferCache::Desc *BufferCache::DescMap::remove(void *ptr) {
+MemoryManager::Desc *MemoryManager::DescMap::remove(void *ptr) {
   uint32_t h = hash(ptr);
   Desc **bucket = &buckets_[h & bucketMask_];
   Desc *result = *bucket;
@@ -170,7 +170,7 @@ BufferCache::Desc *BufferCache::DescMap::remove(void *ptr) {
   return result;
 }
 
-BufferCache::Chunk::Chunk(BufferCache &cache, void *base, size_t size)
+MemoryManager::Chunk::Chunk(MemoryManager &cache, void *base, size_t size)
     : cache_(cache), base_(base), size_(size) {
   descs_ = cache.popDesc();
   descs_->reset();
@@ -181,15 +181,15 @@ BufferCache::Chunk::Chunk(BufferCache &cache, void *base, size_t size)
   cache_.freeList_->addToFreeList(descs_);
 }
 
-BufferCache::Desc *BufferCache::Chunk::splitFreeDesc(Desc *freeDesc,
-                                                     size_t size) {
+MemoryManager::Desc *MemoryManager::Chunk::splitFreeDesc(Desc *freeDesc,
+                                                         size_t size) {
   // Split the descriptor. Keep the current freeDesc in the free list.
   assert(freeDesc->chunk_ == this);
   assert(freeDesc->isFree());
 
   // Remove the descriptor from the free list so that we can enter it at the
   // right place below.
-  BufferCacheFreeList *owner = freeDesc->owner();
+  MemoryManagerFreeList *owner = freeDesc->owner();
   owner->removeFromFreeList(freeDesc);
 
   // Get a new descriptor for the result. And split off the first part of the
@@ -223,22 +223,22 @@ BufferCache::Desc *BufferCache::Chunk::splitFreeDesc(Desc *freeDesc,
   return result;
 }
 
-void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
-                                            Desc *desc) {
+void MemoryManager::Chunk::mergeFreeBlockDesc(MemoryManagerFreeList *owner,
+                                              Desc *desc) {
   assert(desc != nullptr);
   assert(desc->isInUse());
 
   // The chunk where the block is located and into which we are attempting to
   // merge.
-  BufferCache::Chunk *chunk = desc->chunk_;
+  MemoryManager::Chunk *chunk = desc->chunk_;
   size_t bufSize = desc->size_;
-  BufferCache &bufferCache = chunk->cache_;
+  MemoryManager &memoryManager = chunk->cache_;
   void *ptr = desc->ptr_;
 
   // Check if we can merge with the next buffer.
   const char *codePath = "no entry";
-  BufferCache::Desc *next = desc->next_;
-  BufferCache::Desc *prev = desc->prev_;
+  MemoryManager::Desc *next = desc->next_;
+  MemoryManager::Desc *prev = desc->prev_;
   if ((next != nullptr) && (next->owner() == owner)) {
     // Check if we can also merge with the previous buffer.
     if ((prev != nullptr) && (prev->owner() == owner)) {
@@ -256,8 +256,8 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
       // Add the merged block into the free list.
       owner->addToFreeList(prev);
       codePath = "merge prev and next";
-      bufferCache.pushDesc(desc);
-      bufferCache.pushDesc(next);
+      memoryManager.pushDesc(desc);
+      memoryManager.pushDesc(next);
     } else {
       // Remove next from free list before merging.
       owner->removeFromFreeList(next);
@@ -276,7 +276,7 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
       // Add the merged block into the free list.
       owner->addToFreeList(next);
       codePath = "merge next";
-      bufferCache.pushDesc(desc);
+      memoryManager.pushDesc(desc);
     }
   } else if ((prev != nullptr) && (prev->owner() == owner)) {
     // Remove prev from free list before merging.
@@ -292,19 +292,19 @@ void BufferCache::Chunk::mergeFreeBlockDesc(BufferCacheFreeList *owner,
     // Add the merged block into the free list.
     owner->addToFreeList(prev);
     codePath = "merge prev";
-    bufferCache.pushDesc(desc);
+    memoryManager.pushDesc(desc);
   } else {
     // Add desc to the free list.
     owner->addToFreeList(desc);
     codePath = "no merge";
   }
-  if (bufferCache.doLog_) {
-    bufferCache.logErr("mergeFreeBlockDesc(" + TWINE_PTR(ptr) + " ; " +
-                       TWINE(bufSize) + ") -  (" + codePath + ")");
+  if (memoryManager.doLog_) {
+    memoryManager.logErr("mergeFreeBlockDesc(" + TWINE_PTR(ptr) + " ; " +
+                         TWINE(bufSize) + ") -  (" + codePath + ")");
   }
 }
 
-void BufferCache::Chunk::selfCheck() const {
+void MemoryManager::Chunk::selfCheck() const {
 #define SELF_CHECK(cond)                                                       \
   if (!(cond)) {                                                               \
     cache_.logErr("!!! selfCheck !!! - " #cond);                               \
@@ -322,7 +322,7 @@ void BufferCache::Chunk::selfCheck() const {
   // Check no missing buffers, no cycle
   while (curDesc != nullptr) {
     if (curDesc->isFree()) {
-      BufferCacheFreeList *owner = curDesc->owner();
+      MemoryManagerFreeList *owner = curDesc->owner();
       if (!owner->contains(curDesc)) {
         cache_.logErr(" !!! selfCheck !!! owner: " + TWINE_PTR(owner) +
                       " does not contain: " + TWINE_PTR(curDesc));
@@ -358,12 +358,12 @@ void BufferCache::Chunk::selfCheck() const {
 #undef SELF_CHECK
 }
 
-BufferCacheFreeList::BufferCacheFreeList(const DeviceContext *context,
-                                         BufferCache &bufferCache,
-                                         BufferCacheFreeList *parent)
-    : ctx_(context), bufferCache_(bufferCache), parent_(parent) {
+MemoryManagerFreeList::MemoryManagerFreeList(const DeviceContext *context,
+                                             MemoryManager &memoryManager,
+                                             MemoryManagerFreeList *parent)
+    : ctx_(context), memoryManager_(memoryManager), parent_(parent) {
   // Either parent and context are both null for the free list associated with
-  // the BufferCache or both are set for free lists associated with a
+  // the MemoryManager or both are set for free lists associated with a
   // DeviceContext.
   assert(((ctx_ == nullptr) && (parent_ == nullptr)) ||
          ((ctx_ != nullptr) && (parent_ != nullptr)));
@@ -372,35 +372,35 @@ BufferCacheFreeList::BufferCacheFreeList(const DeviceContext *context,
   }
 }
 
-BufferCacheFreeList::~BufferCacheFreeList() { flushToParent(); }
+MemoryManagerFreeList::~MemoryManagerFreeList() { flushToParent(); }
 
-void BufferCacheFreeList::flushToParent() {
-  std::lock_guard<std::mutex> lock(bufferCache_.mu_);
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("Flush all to parent from " + TWINE_PTR(this));
+void MemoryManagerFreeList::flushToParent() {
+  std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr("Flush all to parent from " + TWINE_PTR(this));
   }
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     flushFreeBuffersToParent(i);
   }
 }
 
-void BufferCacheFreeList::flushFreeBuffersToParent(int id) {
+void MemoryManagerFreeList::flushFreeBuffersToParent(int id) {
   if (parent_ == nullptr)
     return;
 
   // Early return if no chunks have been allocated yet.
-  if (bufferCache_.chunks_ == nullptr)
+  if (memoryManager_.chunks_ == nullptr)
     return;
 
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
-                        " to parent " + TWINE_PTR(parent_));
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
+                          " to parent " + TWINE_PTR(parent_));
   }
   size_t bufSize = 0;
-  BufferCache::Desc *curDesc = freeBuffers_[id];
+  MemoryManager::Desc *curDesc = freeBuffers_[id];
   while (curDesc != nullptr) {
     bufSize += curDesc->size_;
-    BufferCache::Desc *nextDesc = curDesc->nextFree_;
+    MemoryManager::Desc *nextDesc = curDesc->nextFree_;
 
     // "Remove" from free list. Avoid manipulating the list itself since it
     // will be entirely reset after this loop.
@@ -408,8 +408,8 @@ void BufferCacheFreeList::flushFreeBuffersToParent(int id) {
     curDesc->nextFree_ = nullptr;
     curDesc->prevFree_ = nullptr;
     curDesc->setInUse(); // Remove ownership by this.
-    bufferCache_.freeCount_--;
-    bufferCache_.freeSize_ -= curDesc->size_;
+    memoryManager_.freeCount_--;
+    memoryManager_.freeSize_ -= curDesc->size_;
 
     // Merge the block with surrounding free blocks if possible and add it
     // to the parent free list.
@@ -419,14 +419,14 @@ void BufferCacheFreeList::flushFreeBuffersToParent(int id) {
   // Reset the current freelist to empty.
   freeBuffers_[id] = nullptr;
 
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
-                            " to parent " + TWINE_PTR(parent_) + " : Done",
-                        0, bufSize);
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
+                              " to parent " + TWINE_PTR(parent_) + " : Done",
+                          0, bufSize);
   }
 }
 
-bool BufferCacheFreeList::empty() {
+bool MemoryManagerFreeList::empty() {
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     if (freeBuffers_[i] != nullptr)
       return false;
@@ -434,7 +434,7 @@ bool BufferCacheFreeList::empty() {
   return true;
 }
 
-void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
+void MemoryManagerFreeList::addToFreeList(MemoryManager::Desc *desc) {
   assert(!desc->isFree());
   assert(desc->nextFree_ == nullptr);
   assert(desc->prevFree_ == nullptr);
@@ -445,9 +445,9 @@ void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
   desc->setFree(this);
   // Add the descriptor to the currently active (aka newest) free buffers. Each
   // list of free buffers is ordered descending by size.
-  BufferCache::Desc *&activeList = freeBuffers_[primaryFreeBuffers_];
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr(
+  MemoryManager::Desc *&activeList = freeBuffers_[primaryFreeBuffers_];
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr(
         "In addToFreeList for (" + TWINE_PTR(this) +
         ") using free buffer id: " + TWINE(primaryFreeBuffers_) + " address " +
         TWINE_PTR(desc->ptr_));
@@ -462,8 +462,8 @@ void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
     activeList = desc;
   } else {
     assert(activeList != nullptr);
-    BufferCache::Desc *prevDesc = activeList;
-    BufferCache::Desc *nextDesc = activeList->nextFree_;
+    MemoryManager::Desc *prevDesc = activeList;
+    MemoryManager::Desc *nextDesc = activeList->nextFree_;
     while ((nextDesc != nullptr) && (nextDesc->size_ < descSize)) {
       prevDesc = nextDesc;
       nextDesc = prevDesc->nextFree_;
@@ -476,15 +476,15 @@ void BufferCacheFreeList::addToFreeList(BufferCache::Desc *desc) {
     }
   }
 
-  bufferCache_.freeSize_ += desc->size_.load(std::memory_order_relaxed);
-  bufferCache_.freeCount_++;
+  memoryManager_.freeSize_ += desc->size_.load(std::memory_order_relaxed);
+  memoryManager_.freeCount_++;
 }
 
-void BufferCacheFreeList::removeFromFreeList(BufferCache::Desc *desc) {
+void MemoryManagerFreeList::removeFromFreeList(MemoryManager::Desc *desc) {
   assert(desc->isFree());
 
-  bufferCache_.freeSize_ -= desc->size_.load(std::memory_order_relaxed);
-  bufferCache_.freeCount_--;
+  memoryManager_.freeSize_ -= desc->size_.load(std::memory_order_relaxed);
+  memoryManager_.freeCount_--;
 
   if (desc->prevFree_ == nullptr) {
     // desc is at the head of a freeBuffers_ list. Identify which list and
@@ -511,27 +511,27 @@ void BufferCacheFreeList::removeFromFreeList(BufferCache::Desc *desc) {
   desc->setInUse();
 }
 
-void BufferCacheFreeList::selfCheck() const {
-  if (!bufferCache_.doSelfCheck_ || bufferCache_.chunks_ == nullptr)
+void MemoryManagerFreeList::selfCheck() const {
+  if (!memoryManager_.doSelfCheck_ || memoryManager_.chunks_ == nullptr)
     return;
 
 #define SELF_CHECK(cond)                                                       \
   if (!(cond)) {                                                               \
-    bufferCache_.logErr("!!! selfCheck !!! - " #cond);                         \
+    memoryManager_.logErr("!!! selfCheck !!! - " #cond);                       \
     abort();                                                                   \
   }
 
   // Make sure all lists are checked.
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     // Check free markers, no cycle, increasing sizes.
-    BufferCache::Desc *curDesc = freeBuffers_[i];
-    BufferCache::Desc *aheadDesc = curDesc;
+    MemoryManager::Desc *curDesc = freeBuffers_[i];
+    MemoryManager::Desc *aheadDesc = curDesc;
     if (curDesc != nullptr) {
       SELF_CHECK(curDesc->prevFree_ == nullptr);
     }
     size_t prevSize = 0;
     while (curDesc != nullptr) {
-      BufferCache::Desc *next = curDesc->nextFree_;
+      MemoryManager::Desc *next = curDesc->nextFree_;
       SELF_CHECK(curDesc->isFree());
       SELF_CHECK(curDesc->owner() == this);
       SELF_CHECK(prevSize <= curDesc->size_);
@@ -540,7 +540,7 @@ void BufferCacheFreeList::selfCheck() const {
       if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
         aheadDesc = aheadDesc->nextFree_->nextFree_;
         if (aheadDesc == curDesc) {
-          bufferCache_.logErr("!!! selfCheck !!! cycle - free buffers");
+          memoryManager_.logErr("!!! selfCheck !!! cycle - free buffers");
           abort();
         }
       }
@@ -553,16 +553,16 @@ void BufferCacheFreeList::selfCheck() const {
     parent_->selfCheck();
   } else {
     // Reached the bottom of the hierarchical free lists, so we now check the
-    // associated buffer cache.
-    bufferCache_.selfCheck();
+    // associated memory manager.
+    memoryManager_.selfCheck();
   }
 
 #undef SELF_CHECK
 }
 
-bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
+bool MemoryManagerFreeList::contains(MemoryManager::Desc *desc) const {
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
-    BufferCache::Desc *curDesc = freeBuffers_[i];
+    MemoryManager::Desc *curDesc = freeBuffers_[i];
     while (curDesc != nullptr) {
       if (curDesc == desc)
         return true;
@@ -572,28 +572,28 @@ bool BufferCacheFreeList::contains(BufferCache::Desc *desc) const {
   return false;
 }
 
-std::string &BufferCache::getDeviceDescription() const {
+std::string &MemoryManager::getDeviceDescription() const {
   static std::mutex mu;
   std::lock_guard<std::mutex> lock(mu);
   if (deviceDescription_.empty()) {
     deviceDescription_ = (device().api() + "[" + llvm::Twine(device().id()) +
                           (isHost() ? " - host]" : "]"))
                              .str();
-    // Print the initial information about this BufferCache.
+    // Print the initial information about this MemoryManager.
     llvm::errs() << "##(" << deviceDescription_ << ":" << this
-                 << ")##: buffer_cache(chunk_size: " << chunkSize_
+                 << ")##: memory_manager(chunk_size: " << chunkSize_
                  << " ; max_cache_size: " << maxCacheSize_
                  << " ; free_list: " << freeList_.get() << ")\n";
   }
   return deviceDescription_;
 }
 
-void BufferCache::logErr(llvm::Twine msg) const {
+void MemoryManager::logErr(llvm::Twine msg) const {
   logErr(msg, 0, 0, /* printInfoSize = */ false);
 }
 
-void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
-                         bool printInfoSize) const {
+void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
+                           bool printInfoSize) const {
   if (chunkSize_ == 0)
     return;
 
@@ -614,11 +614,11 @@ void BufferCache::logErr(llvm::Twine msg, size_t info, int64_t size,
   }
 }
 
-BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
-                         size_t alignment, bool isHost)
+MemoryManager::MemoryManager(const Device &device, size_t maxSize,
+                             size_t chunkSize, size_t alignment, bool isHost)
     : device_(device), isHost_(isHost), maxCacheSize_(maxSize),
       chunkSize_(chunkSize),
-      // A minimum of 64 byte alignment for allocations from the buffer cache.
+      // A minimum of 64 byte alignment for allocations from the memory manager.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
       allocatedMap_(chunkSize_ == 0 ? 0 : 10) {
@@ -628,17 +628,18 @@ BufferCache::BufferCache(const Device &device, size_t maxSize, size_t chunkSize,
 
   // Allocate a freelist that maintains free memory blocks not associated with a
   // DeviceContext (aka stream).
-  freeList_ = std::make_unique<BufferCacheFreeList>(nullptr, *this, nullptr);
+  freeList_ = std::make_unique<MemoryManagerFreeList>(nullptr, *this, nullptr);
 
   // Determine state of debugging flags.
-  doLog_ = DeviceContext::configAsBool("buffer_cache_log", false);
-  doSelfCheck_ = DeviceContext::configAsBool("buffer_cache_self_check", false);
+  doLog_ = DeviceContext::configAsBool("memory_manager_log", false);
+  doSelfCheck_ =
+      DeviceContext::configAsBool("memory_manager_self_check", false);
   if (doLog_) {
-    logErr(llvm::Twine()); // Print initial config of buffer cache.
+    logErr(llvm::Twine()); // Print initial config of memory manager.
   }
 }
 
-BufferCache::~BufferCache() {
+MemoryManager::~MemoryManager() {
   if (doLog_) {
     logErr("destructor");
   }
@@ -647,11 +648,13 @@ BufferCache::~BufferCache() {
   assert(unusedDescs_ == nullptr);
 }
 
-size_t BufferCache::allocationAlignment() const { return alignmentOffset_ + 1; }
+size_t MemoryManager::allocationAlignment() const {
+  return alignmentOffset_ + 1;
+}
 
-bool BufferCache::isHost() const { return isHost_; }
+bool MemoryManager::isHost() const { return isHost_; }
 
-Device::MemInfo BufferCache::getMemoryInfo() const {
+Device::MemInfo MemoryManager::getMemoryInfo() const {
   Device::MemInfo info;
   std::lock_guard<std::mutex> lock(mu_);
 
@@ -663,9 +666,9 @@ Device::MemInfo BufferCache::getMemoryInfo() const {
   return info;
 }
 
-bool BufferCache::isEnabled() const { return maxCacheSize_ > 0; }
+bool MemoryManager::isEnabled() const { return maxCacheSize_ > 0; }
 
-bool BufferCache::allocateChunk() {
+bool MemoryManager::allocateChunk() {
   if (shouldUseMaxSize()) {
     // Ensure that we have grown chunkSize_ to the maximum.
     growChunkSizeTo(maxCacheSize_);
@@ -712,9 +715,9 @@ bool BufferCache::allocateChunk() {
   return true;
 }
 
-const Device &BufferCache::device() const { return device_; }
+const Device &MemoryManager::device() const { return device_; }
 
-void BufferCache::selfCheck() const {
+void MemoryManager::selfCheck() const {
   if (!doSelfCheck_ || chunks_ == nullptr) {
     return;
   }
@@ -730,7 +733,7 @@ void BufferCache::selfCheck() const {
   }
 }
 
-BufferCache::Desc *BufferCache::popDesc() {
+MemoryManager::Desc *MemoryManager::popDesc() {
   if (unusedDescs_ == nullptr) {
     return new Desc();
   }
@@ -741,16 +744,16 @@ BufferCache::Desc *BufferCache::popDesc() {
   return result;
 }
 
-void BufferCache::pushDesc(Desc *desc) {
+void MemoryManager::pushDesc(Desc *desc) {
   // Do not preemptively clear the desc. The reset work could be unnecessary
   // and reset before writing will load the memory locations into the CPU cache.
   desc->next_ = unusedDescs_;
   unusedDescs_ = desc;
 }
 
-bool BufferCache::shouldUseMaxSize() {
-  // The state whether this process has determined to use the full buffer
-  // cache in as few chunks as possible is kept in an atomic integer. A value
+bool MemoryManager::shouldUseMaxSize() {
+  // The state whether this process has determined to use the full memory
+  // manager in as few chunks as possible is kept in an atomic integer. A value
   // of zero is interpreted as false, while a value greater other than zero is
   // interpreted as true.
   // We use a relaxed load since we do not require strong synchronization. If
@@ -760,7 +763,7 @@ bool BufferCache::shouldUseMaxSize() {
   return useMaxSize_.load(std::memory_order_relaxed) != 0;
 }
 
-void BufferCache::enableUseMaxSize() {
+void MemoryManager::enableUseMaxSize() {
   // We use a relaxed store since we do not require strong synchronization. If
   // another thread races to set the value to "true" we potentially miss
   // allocating one chunk at maximum size. However even with proper locking
@@ -768,7 +771,7 @@ void BufferCache::enableUseMaxSize() {
   useMaxSize_.store(1, std::memory_order_relaxed);
 }
 
-void BufferCache::growChunkSizeTo(size_t newChunkSize) {
+void MemoryManager::growChunkSizeTo(size_t newChunkSize) {
   // Limit newChunkSize to fit overall cache size within maxCacheSize_.
   newChunkSize = std::min(
       newChunkSize, maxCacheSize_ -
@@ -791,9 +794,9 @@ void BufferCache::growChunkSizeTo(size_t newChunkSize) {
   }
 }
 
-std::atomic<int32_t> BufferCache::useMaxSize_ = {0};
+std::atomic<int32_t> MemoryManager::useMaxSize_ = {0};
 
-void BufferCache::clear() {
+void MemoryManager::clear() {
   if (chunks_ == nullptr) {
     return;
   }
@@ -838,7 +841,7 @@ void BufferCache::clear() {
     chunk = nextChunk;
   }
   chunks_ = nullptr;
-  for (int i = 0; i < BufferCacheFreeList::kNumFreeBufferLists; ++i) {
+  for (int i = 0; i < MemoryManagerFreeList::kNumFreeBufferLists; ++i) {
     assert(freeList_->freeBuffers_[i] == nullptr);
   }
 
@@ -851,74 +854,77 @@ void BufferCache::clear() {
   unusedDescs_ = nullptr;
 }
 
-BufferCacheFreeList *BufferCache::freeList() const { return freeList_.get(); }
+MemoryManagerFreeList *MemoryManager::freeList() const {
+  return freeList_.get();
+}
 
-ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
-                                              Device::AllocMode mode) {
+ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
+                                                Device::AllocMode mode) {
   assert(size != 0);
 
-  if (bufferCache_.chunkSize_ != 0) {
-    size = (size + bufferCache_.alignmentOffset_) & bufferCache_.alignmentMask_;
+  if (memoryManager_.chunkSize_ != 0) {
+    size = (size + memoryManager_.alignmentOffset_) &
+           memoryManager_.alignmentMask_;
 
-    BufferCache::Desc *desc = nullptr;
+    MemoryManager::Desc *desc = nullptr;
     {
-      std::lock_guard<std::mutex> lock(bufferCache_.mu_);
-      if (size > bufferCache_.chunkSize_) {
+      std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+      if (size > memoryManager_.chunkSize_) {
         // Check heuristics if chunk size should be updated.
 
-        if (bufferCache_.chunks_ == nullptr) {
+        if (memoryManager_.chunks_ == nullptr) {
           // Heuristic: If the first allocation does overrun the chunk size,
-          // then we override the "buffer_cache_chunk_percent" setting and
+          // then we override the "memory_manager_chunk_percent" setting and
           // adjust chunk size to max cache size. We take this situation as an
           // indication that a large amount of memory will be necessary during
           // the execution of a model.
           //
           // Avoid aggressive growth if the allocation will not fit within the
-          // maximum buffer cache size to start.
-          if (size <= bufferCache_.maxCacheSize_) {
-            assert(bufferCache_.cacheSize_ == 0);
-            BufferCache::enableUseMaxSize();
+          // maximum memory manager size to start.
+          if (size <= memoryManager_.maxCacheSize_) {
+            assert(memoryManager_.cacheSize_ == 0);
+            MemoryManager::enableUseMaxSize();
           } else {
-            if (bufferCache_.doLog_) {
-              bufferCache_.logErr("allocate(" + TWINE(size) +
-                                  ") - skip growChunkSizeTo()");
+            if (memoryManager_.doLog_) {
+              memoryManager_.logErr("allocate(" + TWINE(size) +
+                                    ") - skip growChunkSizeTo()");
             }
           }
         }
 
-        if (BufferCache::shouldUseMaxSize()) {
-          // Heuristic: The code above or another buffer cache has determined
+        if (MemoryManager::shouldUseMaxSize()) {
+          // Heuristic: The code above or another memory manager has determined
           // that we should grow to the largest possible chunk size. Update
           // the chunk size to all remaining memory for future chunk
           // allocations.
-          bufferCache_.growChunkSizeTo(bufferCache_.maxCacheSize_);
+          memoryManager_.growChunkSizeTo(memoryManager_.maxCacheSize_);
         }
       }
 
-      if (size <= bufferCache_.chunkSize_) {
+      if (size <= memoryManager_.chunkSize_) {
         selfCheck();
         desc = allocateDesc(size);
       }
     }
     if (desc != nullptr) {
-      // Allocation from buffer cache was successful, return the value.
+      // Allocation from memory manager was successful, return the value.
       return desc->ptr_;
     }
 
-    // If only allowing allocations from the buffer cache, raise an error at
+    // If only allowing allocations from the memory manager, raise an error at
     // this point, printing as much debugging information as needed.
-    static bool useOnlyBufferCache =
-        DeviceContext::configAsBool("buffer_cache_only", false);
-    if (useOnlyBufferCache) {
-      if (bufferCache_.doLog_) {
-        bufferCache_.logErr(
-            "allocate(" + TWINE(size) + ") - buffer_cache_only OOM", 0, 0);
+    static bool useOnlyMemoryManager =
+        DeviceContext::configAsBool("memory_manager_only", false);
+    if (useOnlyMemoryManager) {
+      if (memoryManager_.doLog_) {
+        memoryManager_.logErr(
+            "allocate(" + TWINE(size) + ") - memory_manager_only OOM", 0, 0);
         // Print more debugging information about the largest available blocks.
-        BufferCacheFreeList *cur = this;
+        MemoryManagerFreeList *cur = this;
         while (cur != nullptr) {
           for (int i = 0; i < kNumFreeBufferLists; ++i) {
             if (cur->freeBuffers_[i] != nullptr) {
-              bufferCache_.logErr(
+              memoryManager_.logErr(
                   "max block on " + TWINE_PTR(cur) + " id: " + TWINE(i) +
                   ": (" + TWINE_PTR(cur->freeBuffers_[i]->ptr_) + " ; " +
                   TWINE(cur->freeBuffers_[i]->size_) + ")");
@@ -928,13 +934,13 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
         }
       }
       return Error(
-          "[Use only buffer cache mode]: No room left in buffer cache: " +
-          bufferCache_.getDeviceDescription() + " on " + TWINE_PTR(this) +
+          "[Use only memory manager mode]: No room left in memory manager: " +
+          memoryManager_.getDeviceDescription() + " on " + TWINE_PTR(this) +
           " (size: " + humanMemorySize(size) +
-          " ; free: " + humanMemorySize(bufferCache_.freeSize_) +
-          " ; cache_size: " + humanMemorySize(bufferCache_.cacheSize_) +
-          " ; max_cache_size: " + humanMemorySize(bufferCache_.maxCacheSize_) +
-          ")");
+          " ; free: " + humanMemorySize(memoryManager_.freeSize_) +
+          " ; cache_size: " + humanMemorySize(memoryManager_.cacheSize_) +
+          " ; max_cache_size: " +
+          humanMemorySize(memoryManager_.maxCacheSize_) + ")");
     }
   }
 
@@ -946,9 +952,9 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
     // In the case of the bottom most freelist being consulted for allocation
     // we might not have a DeviceContext associated, so we fail the allocation
     // with an error.
-    if (bufferCache_.doLog_) {
-      bufferCache_.logErr("allocate_buffer(" + TWINE(size) +
-                          ") - failed due to missing context");
+    if (memoryManager_.doLog_) {
+      memoryManager_.logErr("allocate_buffer(" + TWINE(size) +
+                            ") - failed due to missing context");
     }
     return Error("memAlloc failed due to missing context");
   }
@@ -956,38 +962,38 @@ ErrorOr<void *> BufferCacheFreeList::allocate(size_t size,
       &ptr, size,
       // If allocating for host just forward that.
       (mode == Device::AllocMode::HOST) ? Device::AllocMode::HOST
-      // Ensure that all allocations are sync when using a buffer cache.
-      : (bufferCache_.chunkSize_ != 0) ? Device::AllocMode::SYNC
-                                       : mode);
+      // Ensure that all allocations are sync when using a memory manager.
+      : (memoryManager_.chunkSize_ != 0) ? Device::AllocMode::SYNC
+                                         : mode);
   if (err.isError()) {
-    if (bufferCache_.doLog_) {
-      bufferCache_.logErr("allocate_buffer(" + TWINE(size) +
-                          ") - failed with " + err.getError());
+    if (memoryManager_.doLog_) {
+      memoryManager_.logErr("allocate_buffer(" + TWINE(size) +
+                            ") - failed with " + err.getError());
     }
     return err.takeError();
   }
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr(
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr(
         "allocate_buffer(" + TWINE_PTR(ptr) + " ; " + TWINE(size) + ")", 0, 0);
   }
   assert(ptr != nullptr);
   return ptr;
 }
 
-BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
-  assert((size & bufferCache_.alignmentMask_) == size);
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr(
+MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
+  assert((size & memoryManager_.alignmentMask_) == size);
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr(
         "In allocateDesc with size " + TWINE(size) +
         " and primary free buffer id: " + TWINE(primaryFreeBuffers_));
   }
   int iterations = 0;
-  // Try allocating from all free buffer lists in this BufferCacheFreeList,
+  // Try allocating from all free buffer lists in this MemoryManagerFreeList,
   // starting with the primary free buffer list.
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     int freeListIdToUse = (primaryFreeBuffers_ + i) % kNumFreeBufferLists;
     // Find a fit in the free list.
-    BufferCache::Desc *desc = freeBuffers_[freeListIdToUse];
+    MemoryManager::Desc *desc = freeBuffers_[freeListIdToUse];
     while ((desc != nullptr) && (desc->size_ < size)) {
       desc = desc->nextFree_;
       ++iterations;
@@ -1003,10 +1009,10 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
       assert(desc->prevFree_ == nullptr);
       assert(desc->isInUse());
 
-      bufferCache_.allocatedMap_.add(desc);
+      memoryManager_.allocatedMap_.add(desc);
 
-      if (bufferCache_.doLog_) {
-        bufferCache_.logErr(
+      if (memoryManager_.doLog_) {
+        memoryManager_.logErr(
             "allocate on " + TWINE_PTR(this) +
                 " from free buffer at id: " + TWINE(freeListIdToUse) + " (" +
                 TWINE_PTR(desc->ptr_) + " ; " + TWINE(size) + ")",
@@ -1023,12 +1029,12 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   }
 
   // We only ever allocate chunks in the bottom most free list which is
-  // associated with the BufferCache directly.
+  // associated with the MemoryManager directly.
   assert(parent_ == nullptr);
-  if (!bufferCache_.allocateChunk()) {
-    if (bufferCache_.doLog_) {
-      bufferCache_.logErr("allocate(" + TWINE(size) + ") - nullptr (" +
-                          TWINE(iterations) + ")");
+  if (!memoryManager_.allocateChunk()) {
+    if (memoryManager_.doLog_) {
+      memoryManager_.logErr("allocate(" + TWINE(size) + ") - nullptr (" +
+                            TWINE(iterations) + ")");
     }
     // No success allocating a new Chunk, so we bail from allocating in the
     // cache. Instead we will try to allocate directly from the device and if
@@ -1039,20 +1045,20 @@ BufferCache::Desc *BufferCacheFreeList::allocateDesc(size_t size) {
   return allocateDesc(size);
 }
 
-ErrorOrSuccess BufferCacheFreeList::free(void *ptr) {
+ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
   if (ptr == nullptr)
     return success();
 
-  if (bufferCache_.chunks_ != nullptr) {
-    if (bufferCache_.doLog_) {
-      bufferCache_.logErr("Starting free of " + TWINE_PTR(ptr) +
-                          " on free list " + TWINE_PTR(this) +
-                          " with free id: " + TWINE(primaryFreeBuffers_));
+  if (memoryManager_.chunks_ != nullptr) {
+    if (memoryManager_.doLog_) {
+      memoryManager_.logErr("Starting free of " + TWINE_PTR(ptr) +
+                            " on free list " + TWINE_PTR(this) +
+                            " with free id: " + TWINE(primaryFreeBuffers_));
     }
-    std::lock_guard<std::mutex> lock(bufferCache_.mu_);
+    std::lock_guard<std::mutex> lock(memoryManager_.mu_);
     selfCheck();
 
-    BufferCache::Desc *desc = bufferCache_.allocatedMap_.remove(ptr);
+    MemoryManager::Desc *desc = memoryManager_.allocatedMap_.remove(ptr);
     if (desc != nullptr) {
       freeDesc(desc);
       if ((ctx_ != nullptr) && !handlerPending_) {
@@ -1074,11 +1080,11 @@ ErrorOrSuccess BufferCacheFreeList::free(void *ptr) {
             // pending, so we capture the DeviceContextRef.
             [contextRef = DeviceContextRef::copy(ctx_), freelist = this,
              id = toFreeId]() {
-              std::lock_guard<std::mutex> lock(freelist->bufferCache_.mu_);
-              if (freelist->bufferCache_.doLog_) {
-                freelist->bufferCache_.logErr("Running flush handler for " +
-                                              TWINE_PTR(freelist) +
-                                              " id: " + TWINE(id));
+              std::lock_guard<std::mutex> lock(freelist->memoryManager_.mu_);
+              if (freelist->memoryManager_.doLog_) {
+                freelist->memoryManager_.logErr("Running flush handler for " +
+                                                TWINE_PTR(freelist) +
+                                                " id: " + TWINE(id));
               }
               assert(freelist->handlerPending_);
               freelist->flushFreeBuffersToParent(id);
@@ -1087,45 +1093,45 @@ ErrorOrSuccess BufferCacheFreeList::free(void *ptr) {
         if (err.isError()) {
           return err.takeError();
         }
-        if (bufferCache_.doLog_) {
-          bufferCache_.logErr("Enqueued flush handler for " + TWINE_PTR(this) +
-                              " id: " + TWINE(toFreeId));
+        if (memoryManager_.doLog_) {
+          memoryManager_.logErr("Enqueued flush handler for " +
+                                TWINE_PTR(this) + " id: " + TWINE(toFreeId));
         }
       }
-      if (bufferCache_.doLog_) {
-        bufferCache_.logErr("Completed free of " + TWINE_PTR(ptr) +
-                            " after queuing flush handler");
+      if (memoryManager_.doLog_) {
+        memoryManager_.logErr("Completed free of " + TWINE_PTR(ptr) +
+                              " after queuing flush handler");
       }
       return success();
     }
   }
 
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("free_buffer(" + TWINE_PTR(ptr) + ")");
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr("free_buffer(" + TWINE_PTR(ptr) + ")");
   }
-  return ctx_->memFree(ptr, bufferCache_.isHost());
+  return ctx_->memFree(ptr, memoryManager_.isHost());
 }
 
-void BufferCacheFreeList::freeDesc(BufferCache::Desc *desc) {
+void MemoryManagerFreeList::freeDesc(MemoryManager::Desc *desc) {
   void *ptr = desc->ptr_;
   size_t bufSize = desc->size_;
   desc->chunk_->mergeFreeBlockDesc(this, desc);
-  if (bufferCache_.doLog_) {
-    bufferCache_.logErr("free on " + TWINE_PTR(this) + " (" + TWINE_PTR(ptr) +
-                            " ; " + TWINE(bufSize) + ")",
-                        0, bufSize);
+  if (memoryManager_.doLog_) {
+    memoryManager_.logErr("free on " + TWINE_PTR(this) + " (" + TWINE_PTR(ptr) +
+                              " ; " + TWINE(bufSize) + ")",
+                          0, bufSize);
   }
 }
 
-BufferCache *BufferCache::onDevice(const Device &device,
-                                   Device::MemInfo memInfo, size_t alignment,
-                                   int64_t memoryLimit) {
-  // Do not use buffer cache if buffer cache has been disabled by the calling
-  // code (empty memInfo).
+MemoryManager *MemoryManager::onDevice(const Device &device,
+                                       Device::MemInfo memInfo,
+                                       size_t alignment, int64_t memoryLimit) {
+  // Do not use memory manager if memory manager has been disabled by the
+  // calling code (empty memInfo).
   // This is for example the case for CPU Device: We are relying on malloc
   // optimizations instead.
   if (memInfo.free == 0 || memoryLimit == 0)
-    return new BufferCache(device, 0, 0, alignment, false);
+    return new MemoryManager(device, 0, 0, alignment, false);
 
   // Determine cache size
   bool isDefaultCacheSize = false;
@@ -1134,26 +1140,26 @@ BufferCache *BufferCache::onDevice(const Device &device,
     maxCacheSize = static_cast<size_t>(memoryLimit);
   else // Otherwise look in the config
     maxCacheSize = static_cast<size_t>(DeviceContext::configAsInt(
-        "buffer_cache_size", 0, &isDefaultCacheSize));
+        "memory_manager_size", 0, &isDefaultCacheSize));
 
-  // Disable the buffer cache if the requested cache size is 0
+  // Disable the memory manager if the requested cache size is 0
   if (maxCacheSize == 0 && !isDefaultCacheSize)
-    return new BufferCache(device, 0, 0, alignment, false);
+    return new MemoryManager(device, 0, 0, alignment, false);
 
   // If there's no provided size or if the provided size is larger than
   // the free memory, use a percentage of the available memory
   if (isDefaultCacheSize || maxCacheSize > memInfo.free) {
     // By default use 90% of the available memory
     int64_t percentMemoryLimit =
-        DeviceContext::configAsInt("buffer_cache_size_percent", 90);
+        DeviceContext::configAsInt("memory_manager_size_percent", 90);
 
     if (maxCacheSize > memInfo.free)
-      llvm::errs()
-          << "DeviceContext.BufferCache: Requested maximum buffer cache size ("
-          << humanMemorySize(maxCacheSize)
-          << ") does not fit into available free memory ("
-          << humanMemorySize(memInfo.free) << "), using " << percentMemoryLimit
-          << "% of all free memory instead.\n";
+      llvm::errs() << "DeviceContext.MemoryManager: Requested maximum memory "
+                      "manager size ("
+                   << humanMemorySize(maxCacheSize)
+                   << ") does not fit into available free memory ("
+                   << humanMemorySize(memInfo.free) << "), using "
+                   << percentMemoryLimit << "% of all free memory instead.\n";
 
     maxCacheSize = (memInfo.free * percentMemoryLimit) / 100;
   }
@@ -1166,43 +1172,44 @@ BufferCache *BufferCache::onDevice(const Device &device,
       std::max(static_cast<size_t>(0),
                std::min(static_cast<size_t>(100),
                         static_cast<size_t>(DeviceContext::configAsInt(
-                            "buffer_cache_chunk_percent", 2))));
+                            "memory_manager_chunk_percent", 2))));
 
   size_t chunkSize = std::min(
       maxCacheSize,
       llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
 
-  auto result = new BufferCache(device, maxCacheSize, chunkSize, alignment,
-                                /* isHost = */ false);
+  auto result = new MemoryManager(device, maxCacheSize, chunkSize, alignment,
+                                  /* isHost = */ false);
   if (result->doLog_) {
     result->logErr("initial memInfo(free: " + humanMemorySize(memInfo.free) +
                    ", total: " + humanMemorySize(memInfo.total) + ")");
   }
   return result;
 }
-BufferCache *BufferCache::onHost(const Device &device, size_t alignment) {
+MemoryManager *MemoryManager::onHost(const Device &device, size_t alignment) {
 
   size_t maxCacheSize = llvm::alignToPowerOf2(
-      DeviceContext::configAsInt("host_buffer_cache_size", 16 * GB), 256 * KB);
+      DeviceContext::configAsInt("host_memory_manager_size", 16 * GB),
+      256 * KB);
 
-  // Disable host buffer cache for Metal devices due to pointer tracking issues.
-  // Metal tracks buffers by exact pointer match, but the buffer cache uses
-  // sub-allocation with offset pointers that aren't in the tracking map.
-  // TODO: GEX-2688 - Enable host buffer cache for Metal.
+  // Disable host memory manager for Metal devices due to pointer tracking
+  // issues. Metal tracks buffers by exact pointer match, but the memory manager
+  // uses sub-allocation with offset pointers that aren't in the tracking map.
+  // TODO: GEX-2688 - Enable host memory manager for Metal.
   if (device.api() == Device::metalAPI) {
     maxCacheSize = 0;
   }
 
-  size_t chunkSize =
-      std::min(maxCacheSize,
-               static_cast<size_t>(llvm::alignToPowerOf2(
-                   (maxCacheSize * DeviceContext::configAsInt(
-                                       "host_buffer_cache_chunk_percent", 2)) /
-                       100,
-                   256 * KB)));
+  size_t chunkSize = std::min(
+      maxCacheSize,
+      static_cast<size_t>(llvm::alignToPowerOf2(
+          (maxCacheSize *
+           DeviceContext::configAsInt("host_memory_manager_chunk_percent", 2)) /
+              100,
+          256 * KB)));
 
-  return new BufferCache(device, maxCacheSize, chunkSize, alignment,
-                         /* isHost = */ true);
+  return new MemoryManager(device, maxCacheSize, chunkSize, alignment,
+                           /* isHost = */ true);
 }
 
 } // namespace M::AsyncRT

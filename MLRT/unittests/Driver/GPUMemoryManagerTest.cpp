@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/lib/Driver/DeviceContext/BufferCache.h"
+#include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
 
@@ -23,7 +23,7 @@ extern char **environ;
 
 namespace {
 
-class GPUBufferCacheTest : public ::testing::Test {
+class GPUMemoryManagerTest : public ::testing::Test {
 protected:
   static void SetUpTestSuite() {
     // Check if GPU is available before running tests.
@@ -31,12 +31,12 @@ protected:
     // retrieve the device object that the first call creates.
     ErrorOr<DeviceRef> device = Device::create(Device::gpuAPI);
     if (device.isError()) {
-      GTEST_SKIP() << "GPU not available, skipping GPU buffer cache tests";
+      GTEST_SKIP() << "GPU not available, skipping GPU memory manager tests";
     }
 #ifdef MODULAR_MACOS
-    // GEX-2567: Inside MetalDeviceContext::get(id), useBufferCache = false
+    // GEX-2567: Inside MetalDeviceContext::get(id), useMemoryManager = false
     GTEST_SKIP()
-        << "BufferCache not used in MacOS, skipping GPU buffer cache tests";
+        << "MemoryManager not used in MacOS, skipping GPU memory manager tests";
 #endif
   }
 
@@ -44,19 +44,19 @@ protected:
     return Device::create(Device::gpuAPI);
   }
 
-  // Helper to create DeviceContext for buffer cache testing
+  // Helper to create DeviceContext for memory manager testing
   ErrorOr<DeviceContextRef> createTestDeviceContext() {
     return DeviceContext::create(Device::gpuAPI);
   }
 
-  // Helper to create a host buffer cache for testing with CUDA device
-  std::unique_ptr<BufferCache> createTestHostCache() {
+  // Helper to create a host memory manager for testing with CUDA device
+  std::unique_ptr<MemoryManager> createTestHostCache() {
     auto deviceOr = createTestDevice();
     if (deviceOr.isError()) {
       return nullptr;
     }
     DeviceRef device = deviceOr.takeValue();
-    return std::unique_ptr<BufferCache>(BufferCache::onHost(*device, 64));
+    return std::unique_ptr<MemoryManager>(MemoryManager::onHost(*device, 64));
   }
 };
 
@@ -65,10 +65,10 @@ protected:
 // chunks. Since `createTestDevice()` retrieves a memoized device object, the
 // free list may not be empty as post-condition. Since this test checks for
 // pre-conditions right after the device is initialized, it must run first.
-TEST_F(GPUBufferCacheTest, FreeListEmpty) {
+TEST_F(GPUMemoryManagerTest, FreeListEmpty) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   // Initially, the free list should be empty (no chunks allocated yet)
   EXPECT_TRUE(freeList.empty());
@@ -84,20 +84,20 @@ TEST_F(GPUBufferCacheTest, FreeListEmpty) {
   EXPECT_NO_ERR(freeList.free(ptr));
 }
 
-TEST_F(GPUBufferCacheTest, BufferCacheCreation) {
+TEST_F(GPUMemoryManagerTest, MemoryManagerCreation) {
   // Test creation through CUDA device
   {
     ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-    BufferCache &cache = device->bufferCache();
+    MemoryManager &cache = device->memoryManager();
 
-    // CUDA device should create device buffer cache, not host cache
+    // CUDA device should create device memory manager, not host cache
     EXPECT_FALSE(cache.isHost());
     EXPECT_EQ(cache.allocationAlignment(), device->allocationAlignment());
   }
 
   // Test factory method for host cache with CUDA device
   {
-    std::unique_ptr<BufferCache> cache = createTestHostCache();
+    std::unique_ptr<MemoryManager> cache = createTestHostCache();
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_TRUE(cache->isHost());
@@ -109,8 +109,8 @@ TEST_F(GPUBufferCacheTest, BufferCacheCreation) {
     ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
     ASSIGN_NO_ERR(Device::MemInfo, memInfo, device->getMemoryInfo());
 
-    std::unique_ptr<BufferCache> cache(
-        BufferCache::onDevice(*device, memInfo, 128));
+    std::unique_ptr<MemoryManager> cache(
+        MemoryManager::onDevice(*device, memInfo, 128));
 
     EXPECT_TRUE(cache != nullptr);
     EXPECT_FALSE(cache->isHost());
@@ -118,11 +118,11 @@ TEST_F(GPUBufferCacheTest, BufferCacheCreation) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, AlignmentHandling) {
-  // Test device buffer cache alignment
+TEST_F(GPUMemoryManagerTest, AlignmentHandling) {
+  // Test device memory manager alignment
   {
     ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-    BufferCache &cache = device->bufferCache();
+    MemoryManager &cache = device->memoryManager();
 
     // CUDA device should have specific alignment requirements
     size_t expectedAlignment = device->allocationAlignment();
@@ -131,10 +131,10 @@ TEST_F(GPUBufferCacheTest, AlignmentHandling) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, BasicAllocationAndFree) {
+TEST_F(GPUMemoryManagerTest, BasicAllocationAndFree) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -154,10 +154,10 @@ TEST_F(GPUBufferCacheTest, BasicAllocationAndFree) {
   EXPECT_NO_ERR(freeList.free(nullptr));
 }
 
-TEST_F(GPUBufferCacheTest, MultipleAllocations) {
+TEST_F(GPUMemoryManagerTest, MultipleAllocations) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -186,10 +186,10 @@ TEST_F(GPUBufferCacheTest, MultipleAllocations) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, AllocationSizes) {
+TEST_F(GPUMemoryManagerTest, AllocationSizes) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
@@ -214,10 +214,10 @@ TEST_F(GPUBufferCacheTest, AllocationSizes) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, CUDASpecificMemoryPatterns) {
+TEST_F(GPUMemoryManagerTest, CUDASpecificMemoryPatterns) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -235,10 +235,10 @@ TEST_F(GPUBufferCacheTest, CUDASpecificMemoryPatterns) {
   EXPECT_NO_ERR(freeList.free(ptr));
 }
 
-TEST_F(GPUBufferCacheTest, LargeAllocationHandling) {
+TEST_F(GPUMemoryManagerTest, LargeAllocationHandling) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -260,10 +260,10 @@ TEST_F(GPUBufferCacheTest, LargeAllocationHandling) {
   EXPECT_NO_ERR(freeList.free(smallPtr));
 }
 
-TEST_F(GPUBufferCacheTest, AllocationModeHandling) {
+TEST_F(GPUMemoryManagerTest, AllocationModeHandling) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   // Test different allocation modes relevant to CUDA
   std::vector<Device::AllocMode> modes = {Device::AllocMode::SYNC};
@@ -275,16 +275,17 @@ TEST_F(GPUBufferCacheTest, AllocationModeHandling) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, ConfigurationVariations) {
+TEST_F(GPUMemoryManagerTest, ConfigurationVariations) {
   // Test different cache size configurations for CUDA
   {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "50000");
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE",
+                           "50000");
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "50");
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "50");
 
     ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-    BufferCache &cache = device->bufferCache();
-    BufferCacheFreeList &freeList = *cache.freeList();
+    MemoryManager &cache = device->memoryManager();
+    MemoryManagerFreeList &freeList = *cache.freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -296,13 +297,13 @@ TEST_F(GPUBufferCacheTest, ConfigurationVariations) {
 
   // Test small chunk percentage
   {
-    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25");
+    ScopedEnvVar cacheSize("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "25");
     ScopedEnvVar chunkPercent(
-        "MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "10");
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "10");
 
     ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-    BufferCache &cache = device->bufferCache();
-    BufferCacheFreeList &freeList = *cache.freeList();
+    MemoryManager &cache = device->memoryManager();
+    MemoryManagerFreeList &freeList = *cache.freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
@@ -313,7 +314,7 @@ TEST_F(GPUBufferCacheTest, ConfigurationVariations) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, DeviceContextIntegration) {
+TEST_F(GPUMemoryManagerTest, DeviceContextIntegration) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Test buffer creation through DeviceContext
@@ -342,7 +343,7 @@ TEST_F(GPUBufferCacheTest, DeviceContextIntegration) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, HostVsDeviceCacheComparison) {
+TEST_F(GPUMemoryManagerTest, HostVsDeviceCacheComparison) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   const size_t testSize = 2048;
@@ -373,7 +374,7 @@ TEST_F(GPUBufferCacheTest, HostVsDeviceCacheComparison) {
   // directly accessed from host code like CPU memory
 }
 
-TEST_F(GPUBufferCacheTest, MemoryTransfers) {
+TEST_F(GPUMemoryManagerTest, MemoryTransfers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
 
   // Create source and destination buffers
@@ -404,10 +405,10 @@ TEST_F(GPUBufferCacheTest, MemoryTransfers) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, ConcurrentAllocations) {
+TEST_F(GPUMemoryManagerTest, ConcurrentAllocations) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int numThreads = 4;
@@ -449,10 +450,10 @@ TEST_F(GPUBufferCacheTest, ConcurrentAllocations) {
   }
 }
 
-TEST_F(GPUBufferCacheTest, GetMemoryInfoAccuracy) {
+TEST_F(GPUMemoryManagerTest, GetMemoryInfoAccuracy) {
   ASSIGN_NO_ERR(DeviceRef, device, createTestDevice());
-  BufferCache &cache = device->bufferCache();
-  BufferCacheFreeList &freeList = *cache.freeList();
+  MemoryManager &cache = device->memoryManager();
+  MemoryManagerFreeList &freeList = *cache.freeList();
 
   // Get initial memory info
   Device::MemInfo initialInfo = cache.getMemoryInfo();

@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/lib/Driver/DeviceContext/BufferCache.h"
 #include "MLRT/lib/Driver/DeviceContext/CPU/CpuDeviceContext.h"
+#include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -457,7 +457,7 @@ TEST(DeviceContextTest, SyncMode) {
   }
 }
 
-TEST(DeviceContextTest, BufferCache) {
+TEST(DeviceContextTest, MemoryManager) {
   constexpr size_t chunkSize = 1024;
   constexpr size_t maxCacheSize = 4 * chunkSize;
 
@@ -467,20 +467,20 @@ TEST(DeviceContextTest, BufferCache) {
 
   ScopedEnvVar env[] = {
       // Ensure that maxCacheSize is all of memInfo.free.
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "25"),
       // Ensure that chunkSize is a 1/4th of maxCacheSize.
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "25"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "25"),
       // Ensure that selfCheck() is enabled.
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SELF_CHECK", "True"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK", "True"),
       // Ensure that logging is enabled.
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_LOG", "True")};
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG", "True")};
 
-  // Create a CPU device that is associated with a BufferCache by passing in a
+  // Create a CPU device that is associated with a MemoryManager by passing in a
   // non-empty memInfo.
   CpuDeviceRef device = CpuDeviceRef::create(memInfo);
   size_t allocAlignment = device->allocationAlignment();
 
-  BufferCacheFreeList &bufCache = *device->bufferCache().freeList();
+  MemoryManagerFreeList &bufCache = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   ASSIGN_NO_ERR(void *, base, bufCache.allocate(1, mode));
@@ -649,21 +649,22 @@ TEST(DeviceContextTest, BufferCache) {
   EXPECT_NO_ERR(bufCache.free(bh));
 }
 
-TEST(DeviceContextTest, GetMemoryInfoWithoutBufferCache) {
-  // Test that getMemoryInfo returns device memory when buffer cache is disabled
+TEST(DeviceContextTest, GetMemoryInfoWithoutMemoryManager) {
+  // Test that getMemoryInfo returns device memory when memory manager is
+  // disabled
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   ASSIGN_NO_ERR(Device::MemInfo, memInfo, ctx->getMemoryInfo());
   ASSIGN_NO_ERR(Device::MemInfo, deviceMemInfo, ctx->device().getMemoryInfo());
 
-  // Without buffer cache, context memory info should match device memory info
+  // Without memory manager, context memory info should match device memory info
   EXPECT_EQ(memInfo.total, deviceMemInfo.total);
   EXPECT_EQ(memInfo.free, deviceMemInfo.free);
 }
 
-TEST(DeviceContextTest, GetMemoryInfoWithBufferCache) {
-  // Test that getMemoryInfo returns buffer cache memory when buffer cache is
-  // enabled
+TEST(DeviceContextTest, GetMemoryInfoWithMemoryManager) {
+  // Test that getMemoryInfo returns memory manager memory when memory manager
+  // is enabled
   constexpr size_t maxCacheSize = 4 * 1024;
 
   Device::MemInfo memInfo;
@@ -671,29 +672,30 @@ TEST(DeviceContextTest, GetMemoryInfoWithBufferCache) {
   memInfo.total = 256 * maxCacheSize;
 
   ScopedEnvVar env[] = {
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25"),
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "25")};
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "25"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT",
+                   "25")};
 
-  // Create a CPU device with buffer cache enabled
+  // Create a CPU device with memory manager enabled
   CpuDeviceRef device = CpuDeviceRef::create(memInfo);
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 
   ASSIGN_NO_ERR(Device::MemInfo, contextMemInfo, ctx->getMemoryInfo());
   ASSIGN_NO_ERR(Device::MemInfo, deviceMemInfo, ctx->device().getMemoryInfo());
 
-  // With buffer cache enabled, context memory info should differ from device
+  // With memory manager enabled, context memory info should differ from device
   // memory info
   EXPECT_NE(contextMemInfo.total, deviceMemInfo.total);
   EXPECT_NE(contextMemInfo.free, deviceMemInfo.free);
 
-  // Context should report buffer cache limits, not device limits
+  // Context should report memory manager limits, not device limits
   size_t expectedCacheSize = (memInfo.total * 25) / 100;
   EXPECT_EQ(contextMemInfo.total, expectedCacheSize);
   EXPECT_EQ(contextMemInfo.free, expectedCacheSize);
 }
 
 TEST(DeviceContextTest, GetMemoryInfoDynamicUpdate) {
-  // Test that getMemoryInfo reflects allocations/frees in buffer cache
+  // Test that getMemoryInfo reflects allocations/frees in memory manager
   constexpr size_t maxCacheSize = 8 * 1024;
   constexpr size_t allocSize = 1024;
 
@@ -702,10 +704,11 @@ TEST(DeviceContextTest, GetMemoryInfoDynamicUpdate) {
   memInfo.total = 256 * maxCacheSize;
 
   ScopedEnvVar env[] = {
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_SIZE", "25"),
-      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_BUFFER_CACHE_CHUNK_PERCENT", "25")};
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE", "25"),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT",
+                   "25")};
 
-  // Create a CPU device with buffer cache enabled
+  // Create a CPU device with memory manager enabled
   CpuDeviceRef device = CpuDeviceRef::create(memInfo);
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 

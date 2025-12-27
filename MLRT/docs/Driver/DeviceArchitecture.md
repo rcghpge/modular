@@ -84,7 +84,7 @@ The device stack consists of several layers, from lowest to highest:
 **Responsibilities**:
 
 - Enqueue operations (kernel execution, memory copies, etc.) to a stream
-- Manage buffer allocation through the device's buffer cache
+- Manage buffer allocation through the device's memory manager
 - Synchronization between streams via events
 - **Delegates** all compilation operations to its parent `Device`
 
