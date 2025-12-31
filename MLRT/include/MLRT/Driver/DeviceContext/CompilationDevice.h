@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <string>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 // Forward declarations
 class DriverVersion;
@@ -94,6 +94,6 @@ private:
   std::string targetArch_;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_DRIVER_DEVICECONTEXT_COMPILATIONDEVICE_H

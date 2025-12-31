@@ -18,7 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 // clang-format off
 
@@ -676,6 +676,6 @@ private:
   static ErrorOr<std::unique_ptr<HIPDriver>> allocAndInitDriver();
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPDRIVER_H

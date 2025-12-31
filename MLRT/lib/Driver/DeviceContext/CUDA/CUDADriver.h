@@ -20,7 +20,7 @@
 #include <stddef.h>
 #include <thread>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 using CUcontext = struct CUctx_st *;
 using CUdevice = int;
@@ -302,6 +302,6 @@ private:
 
 #undef CUDA_DRIVER_CALL_LOG
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADRIVER_H

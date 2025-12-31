@@ -13,19 +13,18 @@
 #include "Support/ML/TensorSpec.h"
 #include "Support/SymbolExport.h"
 
-namespace M::Driver {
+namespace M::GenericML::Driver {
 
 // Construct a DeviceMemory block to hold the provided tensor.
 MODULAR_VISIBILITY_EXPORT
-ErrorOr<Driver::DeviceMemory *>
-constructDeviceMemoryFromTensor(M::ContextRef context, Driver::Device *device,
-                                M::Tensor tensor);
+ErrorOr<Driver::DeviceMemory *> constructDeviceMemoryFromTensor(
+    M::ContextRef context, GenericML::Driver::Device *device, M::Tensor tensor);
 
 /// Transforms a DeviceTensor representation into an AnyAsyncValueRef executable
 /// returned by an ExecutableModel.
 MODULAR_VISIBILITY_EXPORT AnyAsyncValueRef
 prepareInput(Runtime &runtime, DeviceMemory *inputMemory, TensorSpec inputSpec);
 
-} // namespace M::Driver
+} // namespace M::GenericML::Driver
 
 #endif

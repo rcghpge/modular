@@ -41,7 +41,7 @@ KGEN::CompilationOptions M::MOGG::createCompilationOptions(
   compilationOptions.targetCpu = target.getArch();
   compilationOptions.targetFeatures = target.getFeatures();
   compilationOptions.targetAccelerator =
-      AsyncRT::Device::getAcceleratorArchOrEmpty();
+      M::Driver::Device::getAcceleratorArchOrEmpty();
   compilationOptions.enableLLVMPerFunctionSplitting = false;
 
   if (kernelBuildType == KernelBuildType::kDebug)
@@ -71,7 +71,7 @@ ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
   ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
       ctx, llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName(),
       getHostCPUFeatures(), /*tuneCpu=*/"",
-      /*acceleratorArch=*/AsyncRT::Device::getAcceleratorArchOrEmpty());
+      /*acceleratorArch=*/M::Driver::Device::getAcceleratorArchOrEmpty());
 
   if (targetOr.isError())
     return targetOr.takeError();

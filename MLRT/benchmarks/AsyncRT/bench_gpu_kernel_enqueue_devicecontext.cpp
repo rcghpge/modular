@@ -49,49 +49,49 @@ int minimalKernelEnqueue() {
 
   // Check if CUDA devices are available
   int numDevices =
-      M::AsyncRT::Device::numberOfDevices(M::AsyncRT::Device::cudaAPI);
+      M::Driver::Device::numberOfDevices(M::Driver::Device::cudaAPI);
   if (numDevices == 0) {
     llvm::errs() << "No CUDA devices available\n";
     return 1;
   }
 
   // Create DeviceContext for device 0
-  M::ErrorOr<M::AsyncRT::DeviceContextRef> ctxOrErr =
-      M::AsyncRT::DeviceContext::create(M::AsyncRT::Device::cudaAPI, 0);
+  M::ErrorOr<M::Driver::DeviceContextRef> ctxOrErr =
+      M::Driver::DeviceContext::create(M::Driver::Device::cudaAPI, 0);
   if (M::failed(ctxOrErr)) {
     llvm::errs() << "Failed to create device context: " << ctxOrErr.getError()
                  << "\n";
     return 1;
   }
-  M::AsyncRT::DeviceContextRef ctx = ctxOrErr.takeValue();
+  M::Driver::DeviceContextRef ctx = ctxOrErr.takeValue();
 
   // Print device information
   llvm::errs() << "Device: " << ctx->device().name() << "\n";
 
   // Define kernel signature (one buffer argument)
-  M::AsyncRT::DeviceFunction::SignatureBuilder sig =
-      M::AsyncRT::DeviceFunction::SignatureBuilder().addBuffer();
+  M::Driver::DeviceFunction::SignatureBuilder sig =
+      M::Driver::DeviceFunction::SignatureBuilder().addBuffer();
 
   // Load the PTX kernel
-  M::ErrorOr<M::AsyncRT::DeviceFunctionRef> funcOrErr =
+  M::ErrorOr<M::Driver::DeviceFunctionRef> funcOrErr =
       ctx->loadFunction("small_kernel_module", "small_kernel", sig, kernelPTX);
   if (M::failed(funcOrErr)) {
     llvm::errs() << "Failed to load kernel function: " << funcOrErr.getError()
                  << "\n";
     return 1;
   }
-  M::AsyncRT::DeviceFunctionRef function = funcOrErr.takeValue();
+  M::Driver::DeviceFunctionRef function = funcOrErr.takeValue();
 
   // Allocate device buffer
   constexpr size_t bufferSize = 64;
-  M::ErrorOr<M::AsyncRT::DeviceBufferRef> bufferOrErr =
+  M::ErrorOr<M::Driver::DeviceBufferRef> bufferOrErr =
       ctx->createBuffer(bufferSize);
   if (M::failed(bufferOrErr)) {
     llvm::errs() << "Failed to allocate device buffer: "
                  << bufferOrErr.getError() << "\n";
     return 1;
   }
-  M::AsyncRT::DeviceBufferRef buffer = bufferOrErr.takeValue();
+  M::Driver::DeviceBufferRef buffer = bufferOrErr.takeValue();
 
   // Setup launch configuration
   constexpr uint32_t gridX = 1;

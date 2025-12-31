@@ -17,7 +17,7 @@
 #include <cassert>
 #include <string>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 //===----------------------------------------------------------------------===//
 // VirtualDevice
@@ -451,4 +451,4 @@ DeviceContext::MMapFileImplResult VirtualDeviceContext::memmapFileImpl(
       "VirtualDevice does not support memory mapping");
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

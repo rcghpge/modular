@@ -17,7 +17,7 @@
 #include "Support/Profiling/Tracy.h"
 
 using namespace M;
-using namespace M::AsyncRT;
+using namespace M::Driver;
 
 namespace {
 

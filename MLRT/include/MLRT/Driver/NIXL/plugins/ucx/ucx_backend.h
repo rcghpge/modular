@@ -191,9 +191,10 @@ protected:
 
   // If we have a device context, set it as active within the scope of the
   // returned object. Otherwise do nothing.
-  [[nodiscard]] std::unique_ptr<DeviceContextScope> activateContext() const {
+  [[nodiscard]] std::unique_ptr<M::Driver::DeviceContextScope>
+  activateContext() const {
     if (deviceCtx)
-      return std::make_unique<DeviceContextScope>(*deviceCtx);
+      return std::make_unique<M::Driver::DeviceContextScope>(*deviceCtx);
     return {};
   }
 
@@ -233,7 +234,7 @@ private:
   mutable std::atomic<size_t> sharedWorkerIndex_;
 
   /* CUDA data*/
-  DeviceContextRef deviceCtx;
+  M::Driver::DeviceContextRef deviceCtx;
   mutable std::optional<size_t> gpuSignalSize_;
 
   /* Notifications */

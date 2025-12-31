@@ -34,7 +34,7 @@
 #include <iostream>
 #include <vector>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 // Flag to control performance test output
 static constexpr bool kPrintPerformanceMetrics =
@@ -681,4 +681,4 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
                  "comparison.\n\n";
   }
 }
-} // namespace M::AsyncRT
+} // namespace M::Driver

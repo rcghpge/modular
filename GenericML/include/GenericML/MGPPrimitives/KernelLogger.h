@@ -31,7 +31,7 @@ void logKernelEvent(llvm::StringRef eventType, llvm::StringRef kernelName,
 
 /// Extract device contexts from operands
 template <typename OperandContainer>
-llvm::SmallVector<M::AsyncRT::DeviceContextRef>
+llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts(const OperandContainer &operands);
 
 /// Get device information string for logging (CPU vs GPU:id)

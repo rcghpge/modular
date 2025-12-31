@@ -50,13 +50,13 @@ void logKernelEvent(llvm::StringRef eventType, llvm::StringRef kernelName,
 
 /// Extract device contexts from operands
 template <typename OperandContainer>
-llvm::SmallVector<M::AsyncRT::DeviceContextRef>
+llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts(const OperandContainer &operands) {
-  llvm::SmallVector<M::AsyncRT::DeviceContextRef> deviceContexts;
+  llvm::SmallVector<M::Driver::DeviceContextRef> deviceContexts;
 
   for (const M::AsyncRT::AnyAsyncValueRef &operand : operands) {
     if (auto deviceCtxRef =
-            llvm::dyn_cast<M::AsyncRT::DeviceContextRef>(operand)) {
+            llvm::dyn_cast<M::Driver::DeviceContextRef>(operand)) {
       deviceContexts.push_back(*deviceCtxRef);
     }
   }
@@ -74,7 +74,7 @@ std::string getDeviceInfoString(const OperandContainer &operands) {
     const auto &device = deviceCtxRef->device();
     std::string deviceInfo;
 
-    if (device.api() == AsyncRT::Device::cpuAPI)
+    if (device.api() == M::Driver::Device::cpuAPI)
       deviceInfo = "CPU";
     else
       // All non-CPU devices are considered GPU with device ID
@@ -96,7 +96,7 @@ std::string getDeviceInfoString(const OperandContainer &operands) {
 }
 
 // Explicit template instantiations for common operand container types
-template llvm::SmallVector<M::AsyncRT::DeviceContextRef>
+template llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>>(
     const llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef> &operands);
 
@@ -104,7 +104,7 @@ template std::string
 getDeviceInfoString<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>>(
     const llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef> &operands);
 
-template llvm::SmallVector<M::AsyncRT::DeviceContextRef>
+template llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts<llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef>>(
     const llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef> &operands);
 
@@ -112,7 +112,7 @@ template std::string
 getDeviceInfoString<llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef>>(
     const llvm::SmallVector<M::AsyncRT::AnyAsyncValueRef> &operands);
 
-template llvm::SmallVector<M::AsyncRT::DeviceContextRef>
+template llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts<M::RemainingArguments>(
     const M::RemainingArguments &operands);
 

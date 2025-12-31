@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 #ifdef MODULAR_LINUX
 const char CUDADriver::lib_name[] = "libcuda.so.1";
@@ -74,4 +74,4 @@ ErrorOr<const CUDADriver &> CUDADriver::get() {
   return *errOrDriver.get();
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

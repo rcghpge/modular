@@ -13,7 +13,7 @@
 #include <cstring>
 #include <iostream>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 // Test fixture is needed to enable testing of private methods in DeviceContext.
 class GPUDeviceContextTest : public ::testing::Test {
@@ -644,4 +644,4 @@ TEST_F(GPUDeviceContextTest, CrossContextEvent) {
   delete[] checkData;
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

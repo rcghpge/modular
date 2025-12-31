@@ -28,7 +28,7 @@
 #include <memory>
 #include <string>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class VirtualDevice;
 class VirtualDeviceContext;
@@ -232,6 +232,6 @@ private:
   memmapFileImpl(const std::filesystem::path &filename) const override;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_VIRTUAL_VIRTUALDEVICECONTEXT_H

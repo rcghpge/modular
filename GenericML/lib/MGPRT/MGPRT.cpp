@@ -325,7 +325,7 @@ MGP_RT_CreateAsync_bool(bool data, AsyncRTWrapper<AnyAsyncValueRef> async) {
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_CreateAsyncDeviceBufferRef(void *data, size_t size,
                                   AsyncRTWrapper<AnyAsyncValueRef> async,
-                                  AsyncRT::DeviceContext *devCtx) {
+                                  Driver::DeviceContext *devCtx) {
   Runtime &runtime = *Runtime::getCurrentRuntimeOrNull();
   AnyAsyncValueRef &value = unwrap(async);
 
@@ -335,7 +335,8 @@ MGP_RT_CreateAsyncDeviceBufferRef(void *data, size_t size,
                                         /*owning=*/true);
   // Wrap the DeviceBuffer in an AsyncValue.
   auto asyncDeviceBufferRef =
-      AnyAsyncValueRef::createReady<DeviceBufferRef>(runtime, std::move(buf));
+      AnyAsyncValueRef::createReady<Driver::DeviceBufferRef>(runtime,
+                                                             std::move(buf));
 
   // Finally, wrap the pointer and the AsyncValue wrapper in a TensorBufferRef.
   auto tensorBufferRef =
@@ -516,8 +517,8 @@ MGP_RT_GetValueFromAsync(AsyncRTWrapper<AnyAsyncValueRef> async) {
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 MGP_RT_UnpackDeviceContext(AsyncRTWrapper<AnyAsyncValueRef> async) {
   AnyAsyncValueRef &value = unwrap(async);
-  auto deviceContextRef = value.get<AsyncRT::DeviceContextRef>();
-  return const_cast<AsyncRT::DeviceContext *>(deviceContextRef.getPointer());
+  auto deviceContextRef = value.get<Driver::DeviceContextRef>();
+  return const_cast<Driver::DeviceContext *>(deviceContextRef.getPointer());
 }
 
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *

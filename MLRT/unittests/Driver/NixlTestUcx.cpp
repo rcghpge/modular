@@ -34,7 +34,7 @@ std::ostream &operator<<(std::ostream &os, nixl_status_t status) {
 } // namespace M::AsyncRT::NIXL
 
 using namespace M;
-using namespace M::AsyncRT;
+using namespace M::Driver;
 using namespace M::AsyncRT::NIXL;
 
 // Make a NIXL call and assert that the status is NIXL_SUCCESS.

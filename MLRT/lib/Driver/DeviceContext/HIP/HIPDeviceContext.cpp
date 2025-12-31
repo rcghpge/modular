@@ -111,7 +111,7 @@
     }                                                                          \
   } while (0)
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 // Avoid using nullptr for the "device context pointer". We add/subtract the
 // following constant when handling the hipDevice_t as a pointer.
@@ -1362,4 +1362,4 @@ HIPDeviceContext::verified_cast(const DeviceContext *ctx) {
   return static_cast<const HIPDeviceContext *>(ctx);
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

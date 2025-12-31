@@ -12,7 +12,7 @@
 
 #include <chrono>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class VirtualDeviceContextTest : public ::testing::Test {
 protected:
@@ -236,4 +236,4 @@ TEST_F(VirtualDeviceContextTest, MultipleVirtualDevices) {
   EXPECT_NO_ERR(ctx2->synchronize());
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

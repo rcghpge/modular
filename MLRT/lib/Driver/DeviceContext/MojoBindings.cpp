@@ -23,7 +23,7 @@
 #include <chrono>
 
 using namespace M;
-using namespace M::AsyncRT;
+using namespace M::Driver;
 
 //===----------------------------------------------------------------------===//
 // DeviceContext
@@ -680,7 +680,7 @@ AsyncRT_DeviceContext_metal_device(MTL::Device **result,
 //
 // BinaryID
 //
-MODULAR_CXX_EXPORT std::string M::AsyncRT::getMojoBindingsBinaryID() {
+MODULAR_CXX_EXPORT std::string M::Driver::getMojoBindingsBinaryID() {
   // M::getBinaryID() returns the binary ID of the shared library that contains
   // it. For the purposes of MEF cache invalidation, we need to know when
   // there's been a change in these shared libraries.

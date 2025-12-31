@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares the M::AsyncRT::DeviceContext interface.
+// This file declares the M::Driver::DeviceContext interface.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class MemoryManager;
 class MemoryManagerFreeList;
@@ -459,7 +459,7 @@ public:
   virtual ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
                                           size_t valSize) const = 0;
 
-  ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+  ErrorOr<std::pair<Driver::DeviceBufferRef,
                     std::optional<llvm::sys::fs::mapped_file_region>>>
   memmapFile(const std::filesystem::path &filename) const;
 
@@ -678,24 +678,23 @@ private:
   const std::string name_;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 namespace llvm {
 template <>
-struct DenseMapInfo<M::AsyncRT::Device::FunctionCacheKey> {
-  static inline M::AsyncRT::Device::FunctionCacheKey getEmptyKey() {
+struct DenseMapInfo<M::Driver::Device::FunctionCacheKey> {
+  static inline M::Driver::Device::FunctionCacheKey getEmptyKey() {
     return {""};
   }
-  static inline M::AsyncRT::Device::FunctionCacheKey getTombstoneKey() {
+  static inline M::Driver::Device::FunctionCacheKey getTombstoneKey() {
     return {""};
   }
-  static unsigned
-  getHashValue(const M::AsyncRT::Device::FunctionCacheKey &val) {
+  static unsigned getHashValue(const M::Driver::Device::FunctionCacheKey &val) {
     return llvm::hash_combine(val.name, val.debugLevel,
                               val.maxDynamicSharedBytes, val.optimizationLevel);
   }
-  static bool isEqual(const M::AsyncRT::Device::FunctionCacheKey &lhs,
-                      const M::AsyncRT::Device::FunctionCacheKey &rhs) {
+  static bool isEqual(const M::Driver::Device::FunctionCacheKey &lhs,
+                      const M::Driver::Device::FunctionCacheKey &rhs) {
     return lhs == rhs;
   }
 };

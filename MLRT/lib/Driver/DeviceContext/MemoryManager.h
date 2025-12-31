@@ -21,7 +21,7 @@ namespace llvm {
 class raw_fd_ostream;
 } // namespace llvm
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class MemoryManagerFreeList;
 
@@ -203,6 +203,6 @@ private:
   bool handlerPending_ = false;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_MEMORYMANAGER_H

@@ -65,7 +65,7 @@
   }                                                                            \
   type var = _err_or_##var.takeValue()
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 // Global count of virtual devices for device creation.
 // When set to a positive value, Device::create() will return VirtualDevice
@@ -867,7 +867,7 @@ DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
 }
 
 MODULAR_CXX_EXPORT
-ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+ErrorOr<std::pair<Driver::DeviceBufferRef,
                   std::optional<llvm::sys::fs::mapped_file_region>>>
 DeviceContext::memmapFile(const std::filesystem::path &filename) const {
   auto result = this->memmapFileImpl(filename);
@@ -881,9 +881,9 @@ DeviceContext::memmapFile(const std::filesystem::path &filename) const {
       // Even if we allocate on the host, this fails further up the stack (SDK)
       // if we set isHost=true, since it gets treated as pinned memory (goes
       // down some other code path).
-      RCRef<AsyncRT::DeviceBuffer>::take(
-          new AsyncRT::DeviceBuffer(*this, ptr, size, /*isHost*/ false,
-                                    /*owning*/ false)),
+      RCRef<Driver::DeviceBuffer>::take(
+          new Driver::DeviceBuffer(*this, ptr, size, /*isHost*/ false,
+                                   /*owning*/ false)),
       std::optional{std::move(mmap)},
   };
 }
@@ -1153,4 +1153,4 @@ ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
       "enablePeerAccess not implemented for this device API" +
           Twine(peer.api()));
 }
-} // namespace M::AsyncRT
+} // namespace M::Driver

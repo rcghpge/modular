@@ -17,7 +17,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 #ifdef MODULAR_LINUX
 const char HIPDriver::lib_name[] = "libamdhip64.so";
@@ -102,4 +102,4 @@ ErrorOr<const HIPDriver &> HIPDriver::get() {
   return *errOrDriver.get();
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

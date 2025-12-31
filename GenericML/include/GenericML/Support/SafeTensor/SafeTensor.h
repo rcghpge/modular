@@ -48,12 +48,13 @@ struct MODULAR_CXX_EXPORT SafeTensor {
 
   /// Loads and parses a SafeTensor file from the given data.
   static ErrorOr<SafeTensor>
-  get(RCRef<Driver::Device> device, AsyncRT::DeviceBufferRef data,
+  get(RCRef<M::GenericML::Driver::Device> device,
+      M::Driver::DeviceBufferRef data,
       std::optional<llvm::sys::fs::mapped_file_region> mmap);
 
   /// Loads and parses a SafeTensor file from the given path.
   static ErrorOr<SafeTensor> get(const std::filesystem::path &path,
-                                 RCRef<Driver::Device> device);
+                                 RCRef<M::GenericML::Driver::Device> device);
 
   /// Serialize the SafeTensor to a JSON object.
   llvm::json::Value toJSON() const;
@@ -70,13 +71,14 @@ struct MODULAR_CXX_EXPORT SafeTensor {
   ErrorOr<SafeTensor::TensorInfo> getTensorInfo(StringRef name) const;
 
   /// Gets a tensor from given info.
-  std::shared_ptr<Driver::DeviceMemory>
+  std::shared_ptr<M::GenericML::Driver::DeviceMemory>
   getTensorMemory(const TensorInfo &info) const;
 
 private:
   /// Constructs a SafeTensor from parsed metadata and tensor information.
-  SafeTensor(uint64_t headerLength, RCRef<Driver::Device> &&device,
-             AsyncRT::DeviceBufferRef &&parentBuffer,
+  SafeTensor(uint64_t headerLength,
+             RCRef<M::GenericML::Driver::Device> &&device,
+             M::Driver::DeviceBufferRef &&parentBuffer,
              llvm::json::Object &&metadata,
              llvm::DenseMap<std::string, TensorInfo> &&tensorInfo)
       : headerLength(headerLength), device(std::move(device)),
@@ -85,9 +87,9 @@ private:
 
   uint64_t headerLength;
   // The device the parent buffer lives on
-  RCRef<Driver::Device> device;
+  RCRef<M::GenericML::Driver::Device> device;
   // Parent buffer for all subbuffers created.
-  AsyncRT::DeviceBufferRef parentBuffer;
+  M::Driver::DeviceBufferRef parentBuffer;
   // Holds a memmap RAII object if this SafeTensor object is backed by memmap'd
   // storage. This gets shared with any tensors created from it.
   std::optional<std::shared_ptr<llvm::sys::fs::mapped_file_region>> mmap;
@@ -103,10 +105,10 @@ struct SafeTensorBundle {
 
   /// Loads and parses a SafeTensorBundle from the given paths.
   static ErrorOr<SafeTensorBundle> get(ArrayRef<std::filesystem::path> paths,
-                                       RCRef<Driver::Device> ctx);
+                                       RCRef<M::GenericML::Driver::Device> ctx);
 
   /// Gets a tensor from given info.
-  ErrorOr<std::shared_ptr<Driver::DeviceMemory>>
+  ErrorOr<std::shared_ptr<M::GenericML::Driver::DeviceMemory>>
   getTensorMemory(StringRef name) const;
 
 private:

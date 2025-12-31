@@ -1018,7 +1018,7 @@ FailureOr<BufferizedTensor> MOOpLoweringState::createBuffer(
 
   auto bufferDevice = bufferBuilder->getDevice();
   auto preferredAlignment =
-      M::AsyncRT::getPreferredAlignment(bufferDevice.getLabel().str());
+      M::Driver::getPreferredAlignment(bufferDevice.getLabel().str());
   if (bufferDevice.getLabel() == M::kCPULabel)
     preferredAlignment = std::gcd(preferredAlignment, minimumCpuAlignment);
   auto deviceContext = loweringState.getExecuteDevice(bufferDevice);

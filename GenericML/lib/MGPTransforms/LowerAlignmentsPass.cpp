@@ -50,7 +50,7 @@ class LowerAlignmentsPass
       1; // Means we can't infer anything about alignment
 
   int64_t getDefaultAlignment(DeviceRefAttr deviceRef) {
-    return AsyncRT::getPreferredAlignment(deviceRef.getLabel().str());
+    return M::Driver::getPreferredAlignment(deviceRef.getLabel().str());
   }
   // Create a new alignment mapping valid for the interior of a block given
   // the alignmentMap of the scope of the parent Op.
@@ -67,7 +67,7 @@ class LowerAlignmentsPass
       if (auto deviceType = dyn_cast<MGPHasDeviceTypeInterface>(arg.getType()))
         innerAlignments[arg] = getDefaultAlignment(deviceType.getDevice());
       else
-        innerAlignments[arg] = AsyncRT::Device::preferredAlignment("cpu");
+        innerAlignments[arg] = M::Driver::Device::preferredAlignment("cpu");
       // If an outside operand exists and has scopedAlignments in the parent
       // scope we copy that for internal args
       if (block->getParentOp()->getNumOperands() > arg.getArgNumber()) {
@@ -137,7 +137,7 @@ class LowerAlignmentsPass
             // If there are no argument it depends on, assume it is cpu (comes
             // from kgen input placeholder)
             replacePlaceholder(placeholderOp,
-                               AsyncRT::Device::preferredAlignment("cpu"));
+                               M::Driver::Device::preferredAlignment("cpu"));
           } else {
             // Placeholder operand depend on arguments - infer from args. Always
             // try to get GCD of alignment from inputs (2, 16, 8 will have GCD
@@ -203,7 +203,7 @@ class LowerAlignmentsPass
           alignmentMap[extractBufferOp.getOutBuffer()] = it->second;
         else
           alignmentMap[extractBufferOp.getOutBuffer()] =
-              AsyncRT::Device::preferredAlignment("cpu");
+              M::Driver::Device::preferredAlignment("cpu");
       } else if (auto createTensorOp = dyn_cast<MGP::TensorCreateOp>(op)) {
         // Pass-through to Tensor Value
         alignmentMap[createTensorOp.getOutTensor()] =

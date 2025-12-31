@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class DriverVersion;
 
@@ -62,6 +62,6 @@ private:
   HIPCompilationDevice(std::string targetArch);
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_HIP_HIPCOMPILATIONDEVICE_H

@@ -11,11 +11,11 @@
 #include "gtest/gtest.h"
 
 using namespace M;
+using namespace M::GenericML::Driver;
 
 template <size_t N>
-AsyncRT::DeviceBufferRef
-getDeserializedBuffer(const char (&data)[N],
-                      const RCRef<M::Driver::Device> &device) {
+M::Driver::DeviceBufferRef getDeserializedBuffer(const char (&data)[N],
+                                                 const RCRef<Device> &device) {
   // There's got to be an easier way to do this
   auto ctx = device->tmpGetDeviceContext();
   auto buffer = ctx->createBuffer(N);
@@ -36,10 +36,10 @@ static std::string toString(const SafeTensor::TensorInfo &info) {
   return toString(info.toJSON());
 }
 
-static RCRef<M::Driver::Device> makeCPU() {
-  auto device = M::Driver::makeCPUDevice();
+static RCRef<Device> makeCPU() {
+  auto device = M::GenericML::Driver::makeCPUDevice();
   assert(!device.isError());
-  return RCRef<M::Driver::Device>::copy(&(**device));
+  return RCRef<Device>::copy(&(**device));
 }
 
 TEST(SafeTensor, CanReadMetadata) {

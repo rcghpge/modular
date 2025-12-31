@@ -11,7 +11,7 @@
 #include "Support/AssertStream.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
 
-using namespace M::Driver;
+using namespace M::GenericML::Driver;
 using namespace M;
 
 // Evaluate EXPR. If the returned value is an error, return it.
@@ -94,7 +94,7 @@ MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::isCompatible() const {
 }
 
 MODULAR_DRIVER_EXPORT
-ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+ErrorOr<std::pair<M::Driver::DeviceBufferRef,
                   std::optional<llvm::sys::fs::mapped_file_region>>>
 Device::memmapFile(const std::filesystem::path &filename) {
   return ctx->memmapFile(filename);
@@ -131,9 +131,9 @@ MODULAR_DRIVER_EXPORT DeviceMemory *Device::createDeviceMemory(
 }
 
 ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
-M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
-                                  const Driver::DeviceMap &deviceMap,
-                                  Runtime &runtime) {
+M::GenericML::Driver::mapDeviceRefsToDevices(
+    const ArrayRef<DeviceRef> deviceRefs, const DeviceMap &deviceMap,
+    Runtime &runtime) {
 
   // We need to explicitly synchronize the device here until MGP shares the same
   // DeviceContext as the driver. Otherwise there may be an async alloc/copy
@@ -149,16 +149,16 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
   for (const auto &devRef : deviceRefs) {
     // CPU device not explicitly set so deviceMap["cpu"] may be null
     if (devRef.label == kCPULabel) {
-      ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create("cpu", 0));
+      ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::create("cpu", 0));
       deviceContexts.push_back(
-          AnyAsyncValueRef::createReady<AsyncRT::DeviceContextRef>(runtime,
-                                                                   ctx));
+          AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(runtime,
+                                                                     ctx));
     } else {
       if (auto it = deviceMap.find(devRef);
           it != deviceMap.end() && it->second) {
         const RCRef<Device> &dev = it->second;
         deviceContexts.push_back(
-            AnyAsyncValueRef::createReady<AsyncRT::DeviceContextRef>(
+            AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(
                 runtime, dev->tmpGetDeviceContext()));
       } else {
         ASSERT_STREAM(devRef.label == kGPULabel,
@@ -168,15 +168,15 @@ M::Driver::mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
         // We should eventually push the device selection up the stack into the
         // mt command and remove all of the code in this else branch.
         size_t numPhysicalDevices =
-            AsyncRT::Device::numberOfDevices(AsyncRT::Device::gpuAPI);
+            M::Driver::Device::numberOfDevices(M::Driver::Device::gpuAPI);
         if (devRef.id >= numPhysicalDevices)
           return Error(devRef.toString() +
                        " id exceeds number of available accelerator devices.");
-        ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create(
-                                  AsyncRT::Device::gpuAPI, devRef.id));
+        ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::create(
+                                  M::Driver::Device::gpuAPI, devRef.id));
         deviceContexts.push_back(
-            AnyAsyncValueRef::createReady<AsyncRT::DeviceContextRef>(runtime,
-                                                                     ctx));
+            AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(runtime,
+                                                                       ctx));
       }
     }
   }
@@ -189,7 +189,7 @@ static ErrorOr<Device *> createCPUDevice(ssize_t numaId) {
   spec.ref.id = 0; // TODO: this was stored in CPUDevice but never used???
   spec.ref.label = kCPULabel;
   spec.target = std::move(targetInfo);
-  ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::create("cpu"));
+  ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::create("cpu"));
   auto device = RCRef<Device>::create(spec, ctx);
 
   ErrorOrSuccess compatibleOr = device->isCompatible();
@@ -200,7 +200,7 @@ static ErrorOr<Device *> createCPUDevice(ssize_t numaId) {
 }
 
 MODULAR_DRIVER_EXPORT Device *M_createCPUDevice(ssize_t numaId,
-                                                M::Driver::Status *status) {
+                                                Status *status) {
   auto deviceOrError = createCPUDevice(numaId);
   if (deviceOrError.isError()) {
     status->errorOr = deviceOrError.takeError();
@@ -210,9 +210,9 @@ MODULAR_DRIVER_EXPORT Device *M_createCPUDevice(ssize_t numaId,
 }
 
 ErrorOr<std::unique_ptr<Device, decltype(&M_destroyDevice)>>
-M::Driver::makeCPUDevice() {
-  M::Driver::Status status;
-  M::Driver::Device *device = M_createCPUDevice(0, &status);
+M::GenericML::Driver::makeCPUDevice() {
+  Status status;
+  Device *device = M_createCPUDevice(0, &status);
   if (status.errorOr.isError())
     return status.errorOr.takeError();
   return std::unique_ptr<Device, decltype(&M_destroyDevice)>{device,
@@ -223,8 +223,8 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID,
                                            int64_t deviceMemoryLimit = -1) {
   size_t id = gpuID >= 0 ? gpuID : 0;
 
-  ASSIGN_OR_RETURN(ctx, AsyncRT::DeviceContext::getOrCreate(
-                            AsyncRT::Device::gpuAPI, id, deviceMemoryLimit));
+  ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::getOrCreate(
+                            M::Driver::Device::gpuAPI, id, deviceMemoryLimit));
   DeviceSpec spec;
   spec.ref.label = kGPULabel;
   spec.ref.id = gpuID;
@@ -239,7 +239,7 @@ static ErrorOr<Device *> createAccelerator(ssize_t gpuID,
 
 MODULAR_DRIVER_EXPORT Device *
 M_createAcceleratorDevice(ssize_t gpuID, int64_t deviceMemoryLimit,
-                          M::Driver::Status *status) {
+                          M::GenericML::Driver::Status *status) {
   auto deviceOrError = createAccelerator(gpuID, deviceMemoryLimit);
   if (deviceOrError.isError()) {
     status->errorOr = deviceOrError.takeError();

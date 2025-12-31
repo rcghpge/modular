@@ -9,13 +9,13 @@
 
 #include "Support/ErrorOr.h"
 
-namespace M::Driver {
+namespace M::GenericML::Driver {
 struct Status {
 
   Status() : errorOr(success()) {}
 
   M::ErrorOrSuccess errorOr;
 };
-} // namespace M::Driver
+} // namespace M::GenericML::Driver
 
 #endif // GENERICML_LIB_DEVICEDRIVER_UTILS_H

@@ -19,6 +19,7 @@
 #include <filesystem>
 
 using namespace M;
+using namespace M::GenericML::Driver;
 
 namespace {
 
@@ -63,11 +64,11 @@ int main(int argc, char **argv) {
   if (opts.inputFilename == "-")
     return reportError("stdin not supported, please specify an input file");
 
-  auto device = M::Driver::makeCPUDevice();
+  auto device = M::GenericML::Driver::makeCPUDevice();
   if (device.isError())
     return reportError(device.getError());
-  ErrorOr<SafeTensor> safeTensorOr = SafeTensor::get(
-      opts.inputFilename, RCRef<M::Driver::Device>::copy(&(**device)));
+  ErrorOr<SafeTensor> safeTensorOr =
+      SafeTensor::get(opts.inputFilename, RCRef<Device>::copy(&(**device)));
   if (safeTensorOr.isError())
     return reportError(safeTensorOr.getError());
 

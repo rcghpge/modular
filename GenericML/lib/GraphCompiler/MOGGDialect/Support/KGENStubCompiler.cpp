@@ -141,7 +141,7 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
   ErrorOr<TargetInfoAttr> targetOr = getTargetInfoFor(
       ctx, llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName(),
       getHostCPUFeatures(), /*tuneCpu=*/"",
-      /*acceleratorArch=*/AsyncRT::Device::getAcceleratorArchOrEmpty());
+      /*acceleratorArch=*/M::Driver::Device::getAcceleratorArchOrEmpty());
   if (targetOr.isError())
     return targetOr;
 
@@ -151,7 +151,7 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx) {
   // additional fields derived from the 'core' fields.
   ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
       ctx, target.getTripleStr(), target.getArch(), target.getFeatures(),
-      target.getTuneCpu(), AsyncRT::Device::getAcceleratorArchOrEmpty());
+      target.getTuneCpu(), M::Driver::Device::getAcceleratorArchOrEmpty());
   return targetInfoOr;
 }
 

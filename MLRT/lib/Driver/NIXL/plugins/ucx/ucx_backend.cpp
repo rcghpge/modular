@@ -41,7 +41,7 @@
 #include <unistd.h>
 #include <unordered_map>
 
-using namespace M::AsyncRT;
+using namespace M::Driver;
 using namespace M::AsyncRT::NIXL;
 
 static void moveNotifList(notif_list_t &src, notif_list_t &tgt) {

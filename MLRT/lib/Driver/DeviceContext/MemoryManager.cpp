@@ -27,7 +27,7 @@
 static constexpr int KB = 1024;                  // NOLINT
 static constexpr size_t GB = 1024 * 1024 * 1024; // NOLINT
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class MemoryManager::Chunk {
 public:
@@ -1212,4 +1212,4 @@ MemoryManager *MemoryManager::onHost(const Device &device, size_t alignment) {
                            /* isHost = */ true);
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

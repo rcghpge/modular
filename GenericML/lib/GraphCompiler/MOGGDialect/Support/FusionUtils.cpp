@@ -472,7 +472,7 @@ buildTensorSpecAttr(DeviceRefAttr targetDevice, Value moValue, bool isExclusive,
   TypedAttr dtypeParam = typeManager.lookupDType(tensorType.getDtype());
   TypedAttr rankParam = builder.getIndexAttr(tensorType.getRankNonZero());
   TypedAttr alignmentParam = builder.getIndexAttr(
-      AsyncRT::getPreferredAlignment(targetDevice.getLabel().str()));
+      M::Driver::getPreferredAlignment(targetDevice.getLabel().str()));
 
   // Lower address space
   CompileDiagnosticOr<TypedAttr> maybeAddressSpace =

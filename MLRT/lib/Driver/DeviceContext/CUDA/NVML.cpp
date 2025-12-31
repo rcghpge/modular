@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <thread>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 #define CUDA_NVML_CALL_LOG()                                                   \
   if (doCallLog) {                                                             \
@@ -100,4 +100,4 @@ ErrorOr<const NVML &> NVML::get() {
   return errOrNVML.get();
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

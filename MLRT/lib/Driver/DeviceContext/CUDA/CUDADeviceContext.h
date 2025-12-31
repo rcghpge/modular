@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class CUDADevice;
 class CUDADeviceContext;
@@ -399,6 +399,6 @@ private:
   memmapFileImpl(const std::filesystem::path &filename) const override;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H

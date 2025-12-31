@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class DriverVersion;
 
@@ -66,6 +66,6 @@ protected:
   CUDACompilationDevice(std::string targetArch);
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDACOMPILATIONDEVICE_H

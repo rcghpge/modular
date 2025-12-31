@@ -142,8 +142,8 @@ llvm::json::Value SafeTensor::TensorInfo::toJSON() const {
 
 /// Load and parse a SafeTensor file from the given data.
 ErrorOr<SafeTensor>
-SafeTensor::get(RCRef<Driver::Device> device,
-                AsyncRT::DeviceBufferRef parentBuffer,
+SafeTensor::get(RCRef<M::GenericML::Driver::Device> device,
+                M::Driver::DeviceBufferRef parentBuffer,
                 std::optional<llvm::sys::fs::mapped_file_region> mmap) {
   // Get the buffer size.
   size_t bufferSize = parentBuffer->byteSize();
@@ -225,8 +225,9 @@ SafeTensor::get(RCRef<Driver::Device> device,
 }
 
 /// Load and parse a SafeTensor file from the given path.
-ErrorOr<SafeTensor> SafeTensor::get(const std::filesystem::path &path,
-                                    RCRef<Driver::Device> device) {
+ErrorOr<SafeTensor>
+SafeTensor::get(const std::filesystem::path &path,
+                RCRef<M::GenericML::Driver::Device> device) {
   // TODO: On the CPU path, can read just once.
   // On the GPU path, read the file twice: first for the metadata (tensor
   // names, etc) and second to send the data to the GPU.
@@ -250,13 +251,13 @@ SafeTensor::getTensorInfo(StringRef name) const {
 }
 
 /// Gets a tensor from given info.
-std::shared_ptr<Driver::DeviceMemory>
+std::shared_ptr<M::GenericML::Driver::DeviceMemory>
 SafeTensor::getTensorMemory(const TensorInfo &info) const {
   auto subBuffer = parentBuffer->createSubBuffer(
       8 + headerLength + info.offsets.first, info.getSizeInBytes());
   assert(!subBuffer.isError() &&
          "sub-buffer dimensions should already have been validated");
-  auto result = std::make_shared<Driver::DeviceMemory>(
+  auto result = std::make_shared<M::GenericML::Driver::DeviceMemory>(
       device, std::move(*subBuffer), TensorSpec{info.shape, info.dtype});
 
   // If the memory is memmap'ed, shared ownership of the RAII memmap object
@@ -274,7 +275,7 @@ SafeTensor::getTensorMemory(const TensorInfo &info) const {
 
 ErrorOr<SafeTensorBundle>
 SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths,
-                      RCRef<Driver::Device> ctx) {
+                      RCRef<M::GenericML::Driver::Device> ctx) {
   DenseMap<std::string, size_t> tensorNameToIndex;
   SmallVector<SafeTensor> files;
   files.reserve(files.size());
@@ -291,7 +292,7 @@ SafeTensorBundle::get(ArrayRef<std::filesystem::path> paths,
   return SafeTensorBundle(std::move(tensorNameToIndex), std::move(files));
 }
 
-ErrorOr<std::shared_ptr<Driver::DeviceMemory>>
+ErrorOr<std::shared_ptr<M::GenericML::Driver::DeviceMemory>>
 SafeTensorBundle::getTensorMemory(StringRef name) const {
   auto it = tensorNameToIndex.find(name.str());
   if (it == tensorNameToIndex.end())

@@ -10,7 +10,7 @@
 #include "Support/SymbolExport.h"
 #include <string>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 MODULAR_CXX_EXPORT std::string getMojoBindingsBinaryID();
 

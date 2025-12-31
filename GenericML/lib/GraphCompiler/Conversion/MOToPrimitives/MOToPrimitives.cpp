@@ -872,7 +872,7 @@ constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
 
   // Default alignment to the preferred alignment for device if not passed.
   uint64_t alignment = maybeAlignment.value_or(
-      AsyncRT::getPreferredAlignment(device.getLabel().str()));
+      M::Driver::getPreferredAlignment(device.getLabel().str()));
 
   uint64_t sizeInBytes = *tensorSpec.getType().getSizeInBytes();
   Value bufferSize =
@@ -1081,7 +1081,7 @@ MOGraphLowering::lowerDebugTensorPrint(MO::DebugTensorPrintOp printOp) {
     bufferSize = opLoweringState.bufferSizeBytes(tensorSpec, moTensorType);
   Value hostBuffer = opLoweringState.hostBufferAlloc(
       cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
-      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()));
+      M::Driver::getPreferredAlignment(hostDevice.getLabel().str()));
   auto transferChain = opLoweringState.bufferTransferToHost(
       chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
       moTensorType);
@@ -1129,7 +1129,7 @@ LogicalResult MOGraphLowering::lowerDebugTensorUnsafePrint(
       opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
   Value hostBuffer = opLoweringState.hostBufferAlloc(
       cast<TypedValue<MEF::ChainType>>(chain), bufferSize,
-      AsyncRT::getPreferredAlignment(hostDevice.getLabel().str()));
+      M::Driver::getPreferredAlignment(hostDevice.getLabel().str()));
   auto transferChain = opLoweringState.bufferTransferToHost(
       chain, buffer, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer),
       moTensorType);

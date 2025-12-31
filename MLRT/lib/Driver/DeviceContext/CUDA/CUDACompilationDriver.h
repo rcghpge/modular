@@ -24,7 +24,7 @@
 using nvPTXCompilerHandle = struct nvPTXCompiler *;
 #endif
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 /// CUDACompilationDriver provides access to NVPTX compiler functions.
 ///
@@ -77,6 +77,6 @@ private:
   static constexpr bool do_call_log = false;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDACOMPILATIONDRIVER_H

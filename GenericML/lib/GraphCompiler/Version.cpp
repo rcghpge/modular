@@ -27,7 +27,7 @@ std::string M::MO::getGraphCompilerVersionString() {
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
          M::MGPRT::getMGPRTBinaryID() + "-" +
-         M::AsyncRT::getMojoBindingsBinaryID() + "-" +
+         M::Driver::getMojoBindingsBinaryID() + "-" +
          M::AsyncRT::getRuntimeGlobalsBinaryID() + "-" +
          M::KGEN::getCompilerRTBinaryID() + "-" +
          M::getModularVersion().buildType;

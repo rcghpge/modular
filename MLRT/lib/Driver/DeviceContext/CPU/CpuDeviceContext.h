@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <stddef.h>
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class CpuDevice;
 class CpuDeviceContext;
@@ -183,6 +183,6 @@ private:
   memmapFileImpl(const std::filesystem::path &filename) const override;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H

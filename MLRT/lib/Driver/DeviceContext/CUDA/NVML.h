@@ -13,7 +13,7 @@
 
 #include "Support/ErrorOr.h"
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 using nvmlDevice_t = struct nvmlDevice_st *;
 
@@ -63,5 +63,5 @@ private:
   tnvmlDeviceGetCudaComputeCapability *nvmlDeviceGetCudaComputeCapability_;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_NVML_H

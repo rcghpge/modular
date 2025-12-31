@@ -20,7 +20,7 @@
 
 using namespace llvm;
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 HIPCompilationDevice::HIPCompilationDevice(std::string targetArch)
     : CompilationDevice(Device::hipAPI, std::move(targetArch)) {}
@@ -71,4 +71,4 @@ HIPCompilationDevice::compileFunction(StringRef ir, StringRef debugLevel,
       "backend.");
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

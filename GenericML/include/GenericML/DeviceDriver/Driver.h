@@ -21,17 +21,17 @@
 #include <string>
 #include <utility>
 namespace M {
-
+namespace GenericML {
 namespace Driver {
 // Maps compile time device info to runtime device handle
 
 struct Device;
 struct CPUDeviceMemory;
 
-using DeviceMap = llvm::DenseMap<DeviceRef, RCRef<M::Driver::Device>>;
+using DeviceMap = llvm::DenseMap<DeviceRef, RCRef<Device>>;
 
 struct DeviceMemory {
-  DeviceMemory(RCRef<Device> device, AsyncRT::DeviceBufferRef buf,
+  DeviceMemory(RCRef<Device> device, M::Driver::DeviceBufferRef buf,
                const TensorSpec &spec)
       : device(device), buf(buf), spec(spec) {}
 
@@ -57,7 +57,7 @@ struct DeviceMemory {
 
   bool isHost() const {
     return buf->isHost() ||
-           buf->context().device().api() == M::AsyncRT::Device::cpuAPI;
+           buf->context().device().api() == M::Driver::Device::cpuAPI;
   }
 
   bool isPinned() const { return buf->isHost(); }
@@ -79,7 +79,7 @@ struct DeviceMemory {
 
 protected:
   RCRef<Device> device;
-  AsyncRT::DeviceBufferRef buf;
+  M::Driver::DeviceBufferRef buf;
   M::TensorSpec spec;
   std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
       destructorFn = std::nullopt;
@@ -87,7 +87,7 @@ protected:
 
 struct Device : M::ReferenceCounted<Device> {
 
-  Device(const DeviceSpec &spec, AsyncRT::DeviceContextRef ctx)
+  Device(const DeviceSpec &spec, M::Driver::DeviceContextRef ctx)
       : ctx(ctx), deviceSpecification(spec), deviceDescription(toString()) {}
 
   llvm::StringRef getString() const { return deviceDescription; }
@@ -121,7 +121,7 @@ struct Device : M::ReferenceCounted<Device> {
   /// because the graph compiler expects it. In the future,
   /// the graph compiler should expect a Device* and this
   /// should be removed.
-  AsyncRT::DeviceContextRef tmpGetDeviceContext() { return ctx; }
+  M::Driver::DeviceContextRef tmpGetDeviceContext() { return ctx; }
 
   /// Returns true if this device can access the `peer` device.
   ErrorOr<bool> canAccess(const Device &peer) const {
@@ -132,7 +132,7 @@ struct Device : M::ReferenceCounted<Device> {
   ErrorOrSuccess synchronize() { return ctx->synchronize(); }
 
   bool isHost() const {
-    return ctx->device().api() == M::AsyncRT::Device::cpuAPI;
+    return ctx->device().api() == M::Driver::Device::cpuAPI;
   }
 
   DeviceId getId() const { return deviceSpecification.ref.id; }
@@ -151,12 +151,12 @@ struct Device : M::ReferenceCounted<Device> {
 
   /// On CPUs, memory maps the given file, returns a handle to the memmap'ed
   /// file. On GPUs, direct transfers the data to the GPU (TODO: unimplemented)
-  ErrorOr<std::pair<AsyncRT::DeviceBufferRef,
+  ErrorOr<std::pair<M::Driver::DeviceBufferRef,
                     std::optional<llvm::sys::fs::mapped_file_region>>>
   memmapFile(const std::filesystem::path &filename);
 
 protected:
-  AsyncRT::DeviceContextRef ctx;
+  M::Driver::DeviceContextRef ctx;
   DeviceSpec deviceSpecification;
   std::string toString() const;
   std::string deviceDescription;
@@ -183,31 +183,33 @@ inline std::string formatTarget(const DeviceSpec &deviceSpec) {
 /// mojo impl of the MAX driver).
 MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
 mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
-                       const Driver::DeviceMap &deviceMap, Runtime &runtime);
+                       const DeviceMap &deviceMap, Runtime &runtime);
 
 } // namespace Driver
+} // namespace GenericML
 } // namespace M
 
 /// `deviceMemoryLimit` is the maximum amount of memory in bytes that can be
 // allocated on the device. If it is -1, the device will apply defaults.
-MODULAR_DRIVER_EXPORT M::Driver::Device *
+MODULAR_DRIVER_EXPORT M::GenericML::Driver::Device *
 M_createAcceleratorDevice(ssize_t gpuID, int64_t deviceMemoryLimit,
-                          M::Driver::Status *status);
+                          M::GenericML::Driver::Status *status);
 
-MODULAR_DRIVER_EXPORT M::Driver::Device *
-M_createCPUDevice(ssize_t numaId, M::Driver::Status *status);
+MODULAR_DRIVER_EXPORT M::GenericML::Driver::Device *
+M_createCPUDevice(ssize_t numaId, M::GenericML::Driver::Status *status);
 
-MODULAR_DRIVER_EXPORT void M_destroyDevice(M::Driver::Device *devPtr);
+MODULAR_DRIVER_EXPORT void
+M_destroyDevice(M::GenericML::Driver::Device *devPtr);
 
 MODULAR_DRIVER_EXPORT const char *
-M_getDeviceDesc(const M::Driver::Device *devPtr);
+M_getDeviceDesc(const M::GenericML::Driver::Device *devPtr);
 
-namespace M::Driver {
+namespace M::GenericML::Driver {
 
 /// Creates a RAII wrapped Device object.
 MODULAR_VISIBILITY_EXPORT
 ErrorOr<std::unique_ptr<Device, decltype(&M_destroyDevice)>> makeCPUDevice();
 
-}; // namespace M::Driver
+}; // namespace M::GenericML::Driver
 
 #endif

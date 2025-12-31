@@ -137,12 +137,12 @@ static int deviceHintFor(const RemainingArguments &operands) {
 
   for (const AnyAsyncValueRef &operand : operands) {
     // Check for DeviceContextRef.
-    if (operand.isType<AsyncRT::DeviceContextRef>()) {
+    if (operand.isType<M::Driver::DeviceContextRef>()) {
       // getPointerToData() returns a pointer to the payload (DeviceContextRef).
       const auto &deviceCtxRef =
-          *static_cast<const AsyncRT::DeviceContextRef *>(
+          *static_cast<const M::Driver::DeviceContextRef *>(
               operand.getPointerToData());
-      if (deviceCtxRef->device().api() != AsyncRT::Device::cpuAPI) {
+      if (deviceCtxRef->device().api() != M::Driver::Device::cpuAPI) {
         // Track only accelerator device IDs.
         acceleratorIds.insert(deviceCtxRef->device().id());
       }

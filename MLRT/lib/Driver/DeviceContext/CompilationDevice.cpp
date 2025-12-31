@@ -15,7 +15,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 MODULAR_CXX_EXPORT ErrorOr<std::unique_ptr<CompilationDevice>>
 CompilationDevice::create(StringRef api, StringRef arch) {
@@ -55,4 +55,4 @@ CompilationDevice::create(StringRef api, StringRef arch) {
   }
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

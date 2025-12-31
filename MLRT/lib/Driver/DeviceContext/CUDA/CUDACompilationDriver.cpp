@@ -13,7 +13,7 @@
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 #ifdef MODULAR_LINUX
 
@@ -152,4 +152,4 @@ CUDACompilationDriver::NVPTXCompilerGetInfoLog(::nvPTXCompilerHandle compiler,
 
 #endif // MODULAR_LINUX
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

@@ -4165,8 +4165,9 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       state.builder.comptime(state.getStaticShapeAsMojoValue(tensorTy));
   auto stridesParam =
       state.builder.comptime(state.getStaticStridesAsMojoValue(tensorTy));
-  MojoValue alignmentParam(static_cast<uint64_t>(AsyncRT::getPreferredAlignment(
-      MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
+  MojoValue alignmentParam(
+      static_cast<uint64_t>(M::Driver::getPreferredAlignment(
+          MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
   auto shapeVar = state.builder.var(state.getShapeAsIndexListMojoValue(
       tensorTy.getTypedShapeAttr(), getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(

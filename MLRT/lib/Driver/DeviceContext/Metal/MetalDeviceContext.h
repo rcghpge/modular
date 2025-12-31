@@ -21,7 +21,7 @@
 #ifdef MODULAR_MACOS
 #include "MetalDriver.hpp"
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 class MetalDevice;
 class MetalDeviceContext;
@@ -246,17 +246,17 @@ private:
   MTL::ComputePipelineState &pipelineState_;
 };
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #else // !MODULAR_MACOS
 
-namespace M::AsyncRT {
+namespace M::Driver {
 // Stub declarations for non-macOS platforms
 class MetalDevice;
 class MetalDeviceContext;
 using MetalDeviceRef = RCRef<const MetalDevice>;
 using MetalDeviceContextRef = RCRef<const MetalDeviceContext>;
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MODULAR_MACOS
 #endif // MLRT_LIB_DRIVER_DEVICECONTEXT_METAL_METALDEVICECONTEXT_H

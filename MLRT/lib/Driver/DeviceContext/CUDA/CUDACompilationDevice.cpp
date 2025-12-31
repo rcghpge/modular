@@ -25,7 +25,7 @@
 
 using namespace llvm;
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 CUDACompilationDevice::CUDACompilationDevice(std::string targetArch)
     : CompilationDevice(Device::cudaAPI, std::move(targetArch)) {}
@@ -241,4 +241,4 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
 #endif // MODULAR_LINUX
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver

@@ -49,12 +49,12 @@
     if (metal_ctx.syncMode()) {                                                \
       ErrorOrSuccess _sync_result = metal_ctx.synchronize();                   \
       if (_sync_result.isError())                                              \
-        return M::AsyncRT::DeviceContext::formatError(                         \
+        return M::Driver::DeviceContext::formatError(                          \
             __FILE__, __LINE__, __FUNCTION__, _sync_result.getError());        \
     }                                                                          \
   } while (0)
 
-namespace M::AsyncRT {
+namespace M::Driver {
 
 static ErrorOr<int> getComputeCapability(StringRef name) {
   if (name.empty())
@@ -1313,6 +1313,6 @@ MetalDeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const MetalDeviceFunction &>(func);
 }
 
-} // namespace M::AsyncRT
+} // namespace M::Driver
 
 #endif // MODULAR_MACOS

@@ -8,7 +8,7 @@
 #include "Support/SymbolExport.h"
 
 using namespace M;
-using namespace Driver;
+using namespace M::GenericML::Driver;
 
 MODULAR_DRIVER_EXPORT Status *M_newStatus() { return new Status(); }
 

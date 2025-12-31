@@ -7,7 +7,10 @@
 #include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 
-using namespace M;
+using M::AnyAsyncValueRef;
+using M::ErrorOr;
+using M::GenericML::Driver::Device;
+using M::GenericML::Driver::DeviceMemory;
 namespace {
 
 // A managed memory block used to transfer device memory to graph execution.
@@ -15,16 +18,16 @@ namespace {
 // free memory.
 struct OwnedDeviceMemoryBlock {
   OwnedDeviceMemoryBlock() = delete;
-  OwnedDeviceMemoryBlock(Driver::DeviceMemory *memory) : deviceMemory(memory) {}
+  OwnedDeviceMemoryBlock(DeviceMemory *memory) : deviceMemory(memory) {}
   ~OwnedDeviceMemoryBlock() { delete deviceMemory; }
 
-  Driver::DeviceMemory *deviceMemory;
+  DeviceMemory *deviceMemory;
 };
 } // namespace
 
 // Construct on-device memory to hold a provided tensor.
-ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
-    M::ContextRef context, Driver::Device *device, M::Tensor tensor) {
+ErrorOr<DeviceMemory *> M::GenericML::Driver::constructDeviceMemoryFromTensor(
+    M::ContextRef context, Device *device, M::Tensor tensor) {
 
   // Take ownership of underlying tensor storage.
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
@@ -39,11 +42,11 @@ ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
     if (!device->isHost())
       return Error("Execution returned a null result on a GPU.");
 
-    ErrorOr<Driver::DeviceMemory *> memoryOr =
+    ErrorOr<DeviceMemory *> memoryOr =
         device->createDeviceMemory(tensor.getSpec());
     if (memoryOr.isError())
       return memoryOr.takeError();
-    Driver::DeviceMemory *memory = memoryOr.get();
+    DeviceMemory *memory = memoryOr.get();
 
     void *tensorBuffer = bufferRef.getBuffer();
     std::memcpy(memory->data(), tensorBuffer,
@@ -75,9 +78,9 @@ ErrorOr<Driver::DeviceMemory *> M::Driver::constructDeviceMemoryFromTensor(
                                     std::move(destructor));
 }
 
-AnyAsyncValueRef M::Driver::prepareInput(Runtime &runtime,
-                                         M::Driver::DeviceMemory *inputMemory,
-                                         TensorSpec inputSpec) {
+AnyAsyncValueRef M::GenericML::Driver::prepareInput(Runtime &runtime,
+                                                    DeviceMemory *inputMemory,
+                                                    TensorSpec inputSpec) {
   // Convert inputs from device memory we received to AsyncValue of tensor as
   // expected by graph. We take ownership of inputs here.
   AnyAsyncValueRef storageRef =
