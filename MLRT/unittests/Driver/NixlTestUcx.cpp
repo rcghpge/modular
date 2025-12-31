@@ -467,7 +467,8 @@ TEST_F(NixlUcxIntegrationTest, VramTransfer) {
   // NIXL plugin or else there will be a dlopen error.
   ASSIGN_NO_ERR(DeviceContextRef, ctx1,
                 DeviceContext::create(Device::gpuAPI, 0));
-  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer1, ctx1->createBuffer(bufferSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer1,
+                ctx1->enqueueCreateBuffer(bufferSize));
   EXPECT_NO_ERR(ctx1->enqueueSetMemory(*deviceBuffer1, srcValue, sizeof(char)));
   NixlAgentWithUCXBackend nixl1;
   NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Ucx1", available_port(),
@@ -479,7 +480,8 @@ TEST_F(NixlUcxIntegrationTest, VramTransfer) {
 
   ASSIGN_NO_ERR(DeviceContextRef, ctx2,
                 DeviceContext::create(Device::gpuAPI, 1));
-  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer2, ctx2->createBuffer(bufferSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer2,
+                ctx2->enqueueCreateBuffer(bufferSize));
   EXPECT_NO_ERR(
       ctx2->enqueueSetMemory(*deviceBuffer2, initialDstValue, sizeof(char)));
   NixlAgentWithUCXBackend nixl2;
@@ -1008,7 +1010,9 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithWrongContext) {
 
   // Create device buffer on device 0.
   const size_t bufferSize = 64 * 1024;
-  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer0, ctx0->createBuffer(bufferSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer0,
+                ctx0->enqueueCreateBuffer(bufferSize));
+  EXPECT_NO_ERR(deviceBuffer0->context().synchronize()); // Need its ptr() below
 
   // Create NIXL agent1 with device 0.
   NixlAgentWithUCXBackend nixl1;
@@ -1061,7 +1065,9 @@ TEST_F(NixlUcxIntegrationTest, LoadRemoteMDWithNoContext) {
 
   // Create device buffer on device 0.
   const size_t bufferSize = 64 * 1024;
-  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer0, ctx0->createBuffer(bufferSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, deviceBuffer0,
+                ctx0->enqueueCreateBuffer(bufferSize));
+  EXPECT_NO_ERR(deviceBuffer0->context().synchronize()); // Need its ptr() below
 
   // Create NIXL agent with device 0.
   NixlAgentWithUCXBackend nixl1;

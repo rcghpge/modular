@@ -18,7 +18,7 @@ M::Driver::DeviceBufferRef getDeserializedBuffer(const char (&data)[N],
                                                  const RCRef<Device> &device) {
   // There's got to be an easier way to do this
   auto ctx = device->tmpGetDeviceContext();
-  auto buffer = ctx->createBuffer(N);
+  auto buffer = ctx->enqueueCreateBuffer(N);
   assert(!buffer.isError());
   auto copyResult = (*buffer)->copyFrom(data);
   assert(!copyResult.isError());

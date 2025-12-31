@@ -85,13 +85,19 @@ int minimalKernelEnqueue() {
   // Allocate device buffer
   constexpr size_t bufferSize = 64;
   M::ErrorOr<M::Driver::DeviceBufferRef> bufferOrErr =
-      ctx->createBuffer(bufferSize);
+      ctx->enqueueCreateBuffer(bufferSize);
   if (M::failed(bufferOrErr)) {
-    llvm::errs() << "Failed to allocate device buffer: "
+    llvm::errs() << "Failed to enqueue device buffer allocation: "
                  << bufferOrErr.getError() << "\n";
     return 1;
   }
   M::Driver::DeviceBufferRef buffer = bufferOrErr.takeValue();
+  M::ErrorOrSuccess syncOrErr = buffer->context().synchronize();
+  if (M::failed(syncOrErr)) {
+    llvm::errs() << "Failed to sync after enqueueing device buffer allocation: "
+                 << syncOrErr.getError() << "\n";
+    return 1;
+  }
 
   // Setup launch configuration
   constexpr uint32_t gridX = 1;

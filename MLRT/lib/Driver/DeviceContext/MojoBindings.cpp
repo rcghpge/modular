@@ -152,16 +152,6 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_async(
   return errMsg;
 }
 
-MODULAR_EXPORT const char *AsyncRT_DeviceContext_createBuffer_sync(
-    const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
-    size_t len, size_t elemSize) {
-  const char *errMsg = checkRef(result, ctx->createBuffer(len * elemSize));
-  if (errMsg == nullptr) {
-    *devicePtr = (*result)->ptr();
-  }
-  return errMsg;
-}
-
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_createHostBuffer(
     const DeviceBuffer **result, void **devicePtr, const DeviceContext *ctx,
     size_t len, size_t elemSize) {

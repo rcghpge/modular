@@ -135,7 +135,8 @@ TEST_F(GPUDeviceContextTest, DeviceContextScope) {
     EXPECT_EQ(currentContext, ctx1->driverContext());
 
     // Create a buffer to verify the context is working
-    ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx1->createBuffer(256));
+    ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx1->enqueueCreateBuffer(256));
+    EXPECT_NO_ERR(ctx1->synchronize());
     EXPECT_NE(buf->ptr(), nullptr);
 
     // Create a nested scope with the same context (should be a no-op)
@@ -174,7 +175,8 @@ TEST_F(GPUDeviceContextTest, DeviceContextScope) {
       EXPECT_EQ(ctx2Current, ctx2->driverContext());
 
       // Create a buffer to verify the second context works
-      ASSIGN_NO_ERR(DeviceBufferRef, buf2, ctx2->createBuffer(256));
+      ASSIGN_NO_ERR(DeviceBufferRef, buf2, ctx2->enqueueCreateBuffer(256));
+      EXPECT_NO_ERR(ctx2->synchronize());
       EXPECT_NE(buf2->ptr(), nullptr);
     }
 
@@ -259,7 +261,7 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
     std::cerr << "DeviceContext copies(len: " << allocLen << ")\n";
 
     ASSIGN_NO_ERR(DeviceBufferRef, aBuf, ctx->createHostBuffer(allocLen));
-    ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->createBuffer(allocLen));
+    ASSIGN_NO_ERR(DeviceBufferRef, bBuf, ctx->enqueueCreateBuffer(allocLen));
     ASSIGN_NO_ERR(DeviceBufferRef, cBuf, ctx->enqueueCreateBuffer(allocLen));
 
     char *dPtr = static_cast<char *>(malloc(allocLen));

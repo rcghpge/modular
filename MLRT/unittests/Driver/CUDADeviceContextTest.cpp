@@ -320,10 +320,14 @@ $L__BB0_2:
     ASSIGN_NO_ERR(DeviceBufferRef, srcPtr, srcCtx->createHostBuffer(allocLen));
     EXPECT_TRUE(srcPtr);
 
-    ASSIGN_NO_ERR(DeviceBufferRef, srcBuf, srcCtx->createBuffer(allocLen));
+    ASSIGN_NO_ERR(DeviceBufferRef, srcBuf,
+                  srcCtx->enqueueCreateBuffer(allocLen));
+    EXPECT_NO_ERR(srcCtx->synchronize());
     EXPECT_TRUE(srcBuf);
 
-    ASSIGN_NO_ERR(DeviceBufferRef, dstBuf, dstCtx->createBuffer(allocLen));
+    ASSIGN_NO_ERR(DeviceBufferRef, dstBuf,
+                  dstCtx->enqueueCreateBuffer(allocLen));
+    EXPECT_NO_ERR(dstCtx->synchronize());
     EXPECT_TRUE(dstBuf);
 
     char *dstPtr = static_cast<char *>(malloc(allocLen));
@@ -622,7 +626,7 @@ $L__BB0_2:
       for (size_t j = 0; j < numElems; ++j) {
         hostPtr[j] = j + (3.0 * (ctx.device().id() + 1));
       }
-      ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx.createBuffer(allocLen));
+      ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx.enqueueCreateBuffer(allocLen));
       EXPECT_NO_ERR(hostBuf->copyTo(*devBuf));
       ASSIGN_NO_ERR(DeviceBufferRef, mapBuf, multiBuf->unicastBufferFor(ctx));
 

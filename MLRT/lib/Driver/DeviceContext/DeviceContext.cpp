@@ -798,13 +798,6 @@ DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
-DeviceContext::createBuffer(size_t byteSize) const {
-  if (byteSize == 0)
-    return this->createBufferOwning(nullptr, 0, true);
-  return allocBuffer(byteSize, Device::AllocMode::SYNC);
-}
-
-MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::createHostBuffer(size_t byteSize) const {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);

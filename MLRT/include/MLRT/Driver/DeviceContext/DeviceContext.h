@@ -429,7 +429,6 @@ public:
 
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
-  ErrorOr<DeviceBufferRef> createBuffer(size_t byteSize) const;
 
   // Host memory allocation.
   ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize) const;

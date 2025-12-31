@@ -174,15 +174,18 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   const size_t elemSize = sizeof(float);
 
   // Create device buffers
-  ErrorOr<DeviceBufferRef> in0DeviceOr = ctx_->createBuffer(length * elemSize);
+  ErrorOr<DeviceBufferRef> in0DeviceOr =
+      ctx_->enqueueCreateBuffer(length * elemSize);
   ASSERT_FALSE(in0DeviceOr.isError()) << "Failed to create in0Device buffer";
   DeviceBufferRef in0Device = in0DeviceOr.takeValue();
 
-  ErrorOr<DeviceBufferRef> in1DeviceOr = ctx_->createBuffer(length * elemSize);
+  ErrorOr<DeviceBufferRef> in1DeviceOr =
+      ctx_->enqueueCreateBuffer(length * elemSize);
   ASSERT_FALSE(in1DeviceOr.isError()) << "Failed to create in1Device buffer";
   DeviceBufferRef in1Device = in1DeviceOr.takeValue();
 
-  ErrorOr<DeviceBufferRef> outDeviceOr = ctx_->createBuffer(length * elemSize);
+  ErrorOr<DeviceBufferRef> outDeviceOr =
+      ctx_->enqueueCreateBuffer(length * elemSize);
   ASSERT_FALSE(outDeviceOr.isError()) << "Failed to create outDevice buffer";
   DeviceBufferRef outDevice = outDeviceOr.takeValue();
 
@@ -285,19 +288,19 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
 
     // Create device buffers
     ErrorOr<DeviceBufferRef> in0DeviceOr =
-        ctx_->createBuffer(length * elemSize);
+        ctx_->enqueueCreateBuffer(length * elemSize);
     ASSERT_FALSE(in0DeviceOr.isError())
         << "Failed to create in0Device buffer for size " << length;
     DeviceBufferRef in0Device = in0DeviceOr.takeValue();
 
     ErrorOr<DeviceBufferRef> in1DeviceOr =
-        ctx_->createBuffer(length * elemSize);
+        ctx_->enqueueCreateBuffer(length * elemSize);
     ASSERT_FALSE(in1DeviceOr.isError())
         << "Failed to create in1Device buffer for size " << length;
     DeviceBufferRef in1Device = in1DeviceOr.takeValue();
 
     ErrorOr<DeviceBufferRef> outDeviceOr =
-        ctx_->createBuffer(length * elemSize);
+        ctx_->enqueueCreateBuffer(length * elemSize);
     ASSERT_FALSE(outDeviceOr.isError())
         << "Failed to create outDevice buffer for size " << length;
     DeviceBufferRef outDevice = outDeviceOr.takeValue();
@@ -404,19 +407,19 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
     for (int run = 0; run < numRuns; ++run) {
       // Create device buffers
       ErrorOr<DeviceBufferRef> in0DeviceOr =
-          ctx_->createBuffer(length * elemSize);
+          ctx_->enqueueCreateBuffer(length * elemSize);
       ASSERT_FALSE(in0DeviceOr.isError())
           << "Failed to create in0Device buffer";
       DeviceBufferRef in0Device = in0DeviceOr.takeValue();
 
       ErrorOr<DeviceBufferRef> in1DeviceOr =
-          ctx_->createBuffer(length * elemSize);
+          ctx_->enqueueCreateBuffer(length * elemSize);
       ASSERT_FALSE(in1DeviceOr.isError())
           << "Failed to create in1Device buffer";
       DeviceBufferRef in1Device = in1DeviceOr.takeValue();
 
       ErrorOr<DeviceBufferRef> outDeviceOr =
-          ctx_->createBuffer(length * elemSize);
+          ctx_->enqueueCreateBuffer(length * elemSize);
       ASSERT_FALSE(outDeviceOr.isError())
           << "Failed to create outDevice buffer";
       DeviceBufferRef outDevice = outDeviceOr.takeValue();
@@ -582,19 +585,19 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
     for (int run = 0; run < numRuns; ++run) {
       // Create device buffers
       ErrorOr<DeviceBufferRef> in0DeviceOr =
-          ctx_->createBuffer(length * elemSize);
+          ctx_->enqueueCreateBuffer(length * elemSize);
       ASSERT_FALSE(in0DeviceOr.isError())
           << "Failed to create in0Device buffer";
       DeviceBufferRef in0Device = in0DeviceOr.takeValue();
 
       ErrorOr<DeviceBufferRef> in1DeviceOr =
-          ctx_->createBuffer(length * elemSize);
+          ctx_->enqueueCreateBuffer(length * elemSize);
       ASSERT_FALSE(in1DeviceOr.isError())
           << "Failed to create in1Device buffer";
       DeviceBufferRef in1Device = in1DeviceOr.takeValue();
 
       ErrorOr<DeviceBufferRef> outDeviceOr =
-          ctx_->createBuffer(length * elemSize);
+          ctx_->enqueueCreateBuffer(length * elemSize);
       ASSERT_FALSE(outDeviceOr.isError())
           << "Failed to create outDevice buffer";
       DeviceBufferRef outDevice = outDeviceOr.takeValue();
