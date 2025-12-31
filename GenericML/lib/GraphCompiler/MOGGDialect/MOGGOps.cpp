@@ -1216,7 +1216,8 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
         MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
     state.builder.fn(
         getSymNameAttr().strref(), {},
-        {MOGG::NamedMojoDef("arg", vUnsafePointer[vOpaquePointer]),
+        {MOGG::NamedMojoDef(
+             "arg", vUnsafePointer[{MojoValue("mut=True"), vOpaquePointer}]),
          MOGG::NamedMojoDef("arg", vOpaquePointer)},
         std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
           state.currentFunctionBody = functionBody;
