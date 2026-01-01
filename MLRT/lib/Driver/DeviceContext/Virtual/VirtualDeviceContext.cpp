@@ -321,14 +321,7 @@ ErrorOr<DeviceStreamRef> VirtualDeviceContext::stream() const {
 }
 
 ErrorOr<DeviceStreamRef>
-VirtualDeviceContext::streamCreate(unsigned int flags) const {
-  // Return a virtual stream for compile-only mode
-  return VirtualDeviceStreamRef::create(*this);
-}
-
-ErrorOr<DeviceStreamRef>
-VirtualDeviceContext::streamCreateWithPriority(unsigned int flags,
-                                               int priority) const {
+VirtualDeviceContext::streamCreate(int priority) const {
   // Return a virtual stream for compile-only mode (ignore priority)
   return VirtualDeviceStreamRef::create(*this);
 }

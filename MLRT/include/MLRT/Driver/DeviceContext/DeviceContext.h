@@ -474,9 +474,7 @@ public:
 
   // Synchronize asynchronous operations.
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
-  virtual ErrorOr<DeviceStreamRef> streamCreate(unsigned int flags) const = 0;
-  virtual ErrorOr<DeviceStreamRef>
-  streamCreateWithPriority(unsigned int flags, int priority) const = 0;
+  virtual ErrorOr<DeviceStreamRef> streamCreate(int priority = 0) const = 0;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                              int *greatestPriority) const = 0;
 

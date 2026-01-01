@@ -1206,19 +1206,18 @@ ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
   return HIPDeviceStreamRef::create(*this, stream_);
 }
 
-ErrorOr<DeviceStreamRef>
-HIPDeviceContext::streamCreate(unsigned int flags) const {
-  hipStream_t stream;
-  HIP_CHECK_ERR(this->hipDriver().hipStreamCreate(&stream, flags));
-  return HIPDeviceStreamRef::create(*this, stream);
-}
+ErrorOr<DeviceStreamRef> HIPDeviceContext::streamCreate(int priority) const {
+  // Default priority is 0 (lowest); compatible with CUDA specs.
+  // HIP specs don't explicitly call this out but we know they mirror CUDA.
 
-ErrorOr<DeviceStreamRef>
-HIPDeviceContext::streamCreateWithPriority(unsigned int flags,
-                                           int priority) const {
+  // HIP blocking streams are a legacy feature; interpretation of "blocking"
+  // is w.r.t. the default stream and does not mean "synchronous".
+  // We want our streams to be independent of any other stream.
+  unsigned int constexpr kNonBlocking = 0x1;
+
   hipStream_t stream;
-  HIP_CHECK_ERR(
-      this->hipDriver().hipStreamCreateWithPriority(&stream, flags, priority));
+  HIP_CHECK_ERR(this->hipDriver().hipStreamCreateWithPriority(
+      &stream, kNonBlocking, priority));
   return HIPDeviceStreamRef::create(*this, stream);
 }
 

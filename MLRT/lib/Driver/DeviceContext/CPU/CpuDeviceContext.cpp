@@ -357,14 +357,7 @@ ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
   return CpuDeviceStreamRef::create(*this);
 }
 
-ErrorOr<DeviceStreamRef>
-CpuDeviceContext::streamCreate(unsigned int flags) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
-}
-
-ErrorOr<DeviceStreamRef>
-CpuDeviceContext::streamCreateWithPriority(unsigned int flags,
-                                           int priority) const {
+ErrorOr<DeviceStreamRef> CpuDeviceContext::streamCreate(int priority) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 

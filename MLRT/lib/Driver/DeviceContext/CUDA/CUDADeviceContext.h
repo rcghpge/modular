@@ -337,9 +337,7 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> streamCreate(unsigned int flags) const override;
-  ErrorOr<DeviceStreamRef>
-  streamCreateWithPriority(unsigned int flags, int priority) const override;
+  ErrorOr<DeviceStreamRef> streamCreate(int priority = 0) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
 

@@ -1309,20 +1309,17 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
   return CUDADeviceStreamRef::create(*this, stream_);
 }
 
-ErrorOr<DeviceStreamRef>
-CUDADeviceContext::streamCreate(unsigned int flags) const {
-  CUstream stream;
-  CUDA_CHECK_ERR(this->cudaDriver().cuStreamCreate(&stream, flags));
+ErrorOr<DeviceStreamRef> CUDADeviceContext::streamCreate(int priority) const {
+  // Default priority is 0 (lowest); compatible with CUDA specs.
 
-  return CUDADeviceStreamRef::create(*this, stream);
-}
+  // CUDA blocking streams are a legacy feature; interpretation of "blocking"
+  // is w.r.t. the default stream and does not mean "synchronous".
+  // We want our streams to be independent of any other stream.
+  unsigned int constexpr kNonBlocking = 0x1;
 
-ErrorOr<DeviceStreamRef>
-CUDADeviceContext::streamCreateWithPriority(unsigned int flags,
-                                            int priority) const {
   CUstream stream;
-  CUDA_CHECK_ERR(
-      this->cudaDriver().cuStreamCreateWithPriority(&stream, flags, priority));
+  CUDA_CHECK_ERR(this->cudaDriver().cuStreamCreateWithPriority(
+      &stream, kNonBlocking, priority));
 
   return CUDADeviceStreamRef::create(*this, stream);
 }
