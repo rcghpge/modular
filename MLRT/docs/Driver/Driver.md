@@ -24,7 +24,7 @@ equivalent of the combination of CUDA Driver and Runtime API/libraries.
    implementation does not treat it that way. Maybe it should.
 - In order to interact and synchronize with external systems (e.g. PyTorch) we
   have an API to create an externally managed `DeviceStream` object based on the
-  raw GPU based driver value: `Device::createExternalStream(void*)`. This
+  raw GPU based driver value: `DeviceContext::createExternalStream(void*)`. This
   API-call simply creates a shared reference to the externally-managed stream
   for internal use.
 

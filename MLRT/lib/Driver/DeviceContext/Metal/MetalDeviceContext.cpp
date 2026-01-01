@@ -336,11 +336,6 @@ ErrorOr<DeviceContextRef> MetalDevice::createContext() const {
 }
 
 ErrorOr<DeviceStreamRef>
-MetalDevice::createExternalStream(void *externalStream) const {
-  RAISE_ERROR_MESSAGE("Metal not supported");
-}
-
-ErrorOr<DeviceStreamRef>
 MetalDeviceContext::streamCreate(unsigned int flags) const {
   RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
 }
@@ -357,6 +352,11 @@ MetalDeviceContext::streamPriorityRange(int *leastPriority,
   *leastPriority = 0;
   *greatestPriority = 0;
   return success();
+}
+
+ErrorOr<DeviceStreamRef>
+MetalDeviceContext::createExternalStream(void *externalStream) const {
+  RAISE_ERROR_MESSAGE("Metal not supported");
 }
 
 const MetalDevice &MetalDevice::cast(const Device &device) {

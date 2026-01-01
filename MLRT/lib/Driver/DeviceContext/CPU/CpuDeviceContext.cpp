@@ -78,11 +78,6 @@ ErrorOr<DeviceContextRef> CpuDevice::createContext() const {
   return CpuDeviceContextRef::create(*this);
 }
 
-ErrorOr<DeviceStreamRef>
-CpuDevice::createExternalStream(void *externalStream) const {
-  return CpuDeviceStreamRef::create(*this);
-}
-
 int CpuDevice::deviceCount() const {
   // Only a single CpuDevice is supported.
   return 1;
@@ -161,8 +156,8 @@ ErrorOr<const CpuDevice &> CpuDevice::get(int id, int64_t deviceMemoryLimit) {
 }
 
 // ===== CpuDeviceStream ===== //
-CpuDeviceStream::CpuDeviceStream(const CpuDevice &device)
-    : DeviceStream(device) {}
+CpuDeviceStream::CpuDeviceStream(const CpuDeviceContext &ctx)
+    : DeviceStream(ctx) {}
 
 ErrorOrSuccess CpuDeviceStream::synchronize() const { return success(); }
 
@@ -359,7 +354,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
-  return CpuDeviceStreamRef::create(CpuDevice::cast(this->device()));
+  return CpuDeviceStreamRef::create(*this);
 }
 
 ErrorOr<DeviceStreamRef>
@@ -379,6 +374,11 @@ CpuDeviceContext::streamPriorityRange(int *leastPriority,
   *leastPriority = 0;
   *greatestPriority = 0;
   return success();
+}
+
+ErrorOr<DeviceStreamRef>
+CpuDeviceContext::createExternalStream(void *externalStream) const {
+  return CpuDeviceStreamRef::create(*this);
 }
 
 ErrorOrSuccess CpuDeviceContext::synchronize() const {

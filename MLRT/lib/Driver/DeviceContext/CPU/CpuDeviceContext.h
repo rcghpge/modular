@@ -60,9 +60,6 @@ public:
 
   ErrorOr<DeviceContextRef> createContext() const override;
 
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
-
   const CompilationDevice *compilationDevice() const override {
     return nullptr; // CPU device does not have a compilation device
   }
@@ -74,7 +71,7 @@ public:
 
 class CpuDeviceStream : public DeviceStream {
 public:
-  CpuDeviceStream(const CpuDevice &device);
+  CpuDeviceStream(const CpuDeviceContext &ctx);
   ~CpuDeviceStream() override = default;
 
   ErrorOrSuccess synchronize() const override;
@@ -151,6 +148,9 @@ public:
   streamCreateWithPriority(unsigned int flags, int priority) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
+
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
 
   ErrorOrSuccess synchronize() const override;
 

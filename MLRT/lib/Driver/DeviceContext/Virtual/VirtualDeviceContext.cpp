@@ -129,14 +129,6 @@ ErrorOr<DeviceContextRef> VirtualDevice::createContext() const {
   return VirtualDeviceContextRef::create(*this);
 }
 
-ErrorOr<DeviceStreamRef>
-VirtualDevice::createExternalStream(void *externalStream) const {
-  assert(false && "VirtualDevice::createExternalStream not implemented");
-  return DeviceContext::formatError(
-      __FILE__, __LINE__, __FUNCTION__,
-      "VirtualDevice does not support external streams");
-}
-
 const VirtualDevice &VirtualDevice::cast(const Device &device) {
   // Virtual devices can have any API based on their backing device.
   // The cast is valid as long as the device is actually a VirtualDevice.
@@ -169,8 +161,8 @@ const VirtualDeviceEvent &VirtualDeviceEvent::cast(const DeviceEvent &event) {
 // VirtualDeviceStream
 //===----------------------------------------------------------------------===//
 
-VirtualDeviceStream::VirtualDeviceStream(const VirtualDevice &device)
-    : DeviceStream(device) {}
+VirtualDeviceStream::VirtualDeviceStream(const VirtualDeviceContext &ctx)
+    : DeviceStream(ctx) {}
 
 ErrorOrSuccess VirtualDeviceStream::synchronize() const {
   // No-op for virtual devices
@@ -325,20 +317,20 @@ ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
 
 ErrorOr<DeviceStreamRef> VirtualDeviceContext::stream() const {
   // Return a virtual stream for compile-only mode
-  return VirtualDeviceStreamRef::create(VirtualDevice::cast(device()));
+  return VirtualDeviceStreamRef::create(*this);
 }
 
 ErrorOr<DeviceStreamRef>
 VirtualDeviceContext::streamCreate(unsigned int flags) const {
   // Return a virtual stream for compile-only mode
-  return VirtualDeviceStreamRef::create(VirtualDevice::cast(device()));
+  return VirtualDeviceStreamRef::create(*this);
 }
 
 ErrorOr<DeviceStreamRef>
 VirtualDeviceContext::streamCreateWithPriority(unsigned int flags,
                                                int priority) const {
   // Return a virtual stream for compile-only mode (ignore priority)
-  return VirtualDeviceStreamRef::create(VirtualDevice::cast(device()));
+  return VirtualDeviceStreamRef::create(*this);
 }
 
 ErrorOrSuccess
@@ -350,6 +342,14 @@ VirtualDeviceContext::streamPriorityRange(int *leastPriority,
   if (greatestPriority)
     *greatestPriority = 0;
   return success();
+}
+
+ErrorOr<DeviceStreamRef>
+VirtualDeviceContext::createExternalStream(void *externalStream) const {
+  assert(false && "VirtualDeviceContext::createExternalStream not implemented");
+  return DeviceContext::formatError(
+      __FILE__, __LINE__, __FUNCTION__,
+      "VirtualDevice does not support external streams");
 }
 
 ErrorOrSuccess VirtualDeviceContext::synchronize() const {

@@ -86,9 +86,6 @@ public:
 
   ErrorOr<DeviceContextRef> createContext() const override;
 
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
-
   const CompilationDevice *compilationDevice() const override {
     return nullptr; // HIP device does not have a compilation device yet
   }
@@ -131,7 +128,7 @@ private:
 
 class HIPDeviceStream : public DeviceStream {
 public:
-  HIPDeviceStream(const HIPDevice &device, hipStream_t stream);
+  HIPDeviceStream(const HIPDeviceContext &ctx, hipStream_t stream);
   ~HIPDeviceStream() override = default;
 
   ErrorOrSuccess synchronize() const override;
@@ -269,6 +266,9 @@ public:
   streamCreateWithPriority(unsigned int flags, int priority) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
+
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
 
   ErrorOrSuccess synchronize() const override;
 

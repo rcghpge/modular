@@ -66,9 +66,6 @@ public:
 
   static ErrorOr<Device::MemInfo> getMemInfo();
 
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
-
   const CompilationDevice *compilationDevice() const override {
     return nullptr; // Metal device does not have a compilation device
   }
@@ -141,6 +138,9 @@ public:
   streamCreateWithPriority(unsigned int flags, int priority) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
+
   ErrorOrSuccess synchronize() const override;
 
   // Event management

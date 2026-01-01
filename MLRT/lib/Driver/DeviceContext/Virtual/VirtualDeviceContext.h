@@ -85,9 +85,6 @@ public:
 
   ErrorOr<DeviceContextRef> createContext() const override;
 
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
-
   static const VirtualDevice &cast(const Device &device);
 
 private:
@@ -113,7 +110,7 @@ public:
 /// Virtual Device Stream for compile-only mode.
 class VirtualDeviceStream : public DeviceStream {
 public:
-  VirtualDeviceStream(const VirtualDevice &device);
+  VirtualDeviceStream(const VirtualDeviceContext &ctx);
   ~VirtualDeviceStream() override = default;
 
   ErrorOrSuccess synchronize() const override;
@@ -198,6 +195,8 @@ public:
   streamCreateWithPriority(unsigned int flags, int priority) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
 
   ErrorOrSuccess synchronize() const override;
 

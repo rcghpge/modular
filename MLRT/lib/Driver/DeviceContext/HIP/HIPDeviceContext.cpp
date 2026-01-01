@@ -542,13 +542,6 @@ ErrorOr<DeviceContextRef> HIPDevice::createContext() const {
   return HIPDeviceContextRef::create(*this, stream);
 }
 
-ErrorOr<DeviceStreamRef>
-HIPDevice::createExternalStream(void *externalStream) const {
-  HIP_WITH_DEV_ERR(*this);
-  return HIPDeviceStreamRef::create(
-      *this, reinterpret_cast<hipStream_t>(externalStream));
-}
-
 ErrorOr<int> HIPDevice::numberOfGPUs() {
   static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
     ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
@@ -733,11 +726,12 @@ const HIPDeviceEvent &HIPDeviceEvent::cast(const DeviceEvent &event) {
 }
 
 // ===== HIPDeviceStream ===== //
-HIPDeviceStream::HIPDeviceStream(const HIPDevice &device, hipStream_t stream)
-    : DeviceStream(device), stream_(stream) {}
+HIPDeviceStream::HIPDeviceStream(const HIPDeviceContext &ctx,
+                                 hipStream_t stream)
+    : DeviceStream(ctx), stream_(stream) {}
 
 ErrorOrSuccess HIPDeviceStream::synchronize() const {
-  const auto &hipDevice = HIPDevice::cast(device());
+  const auto &hipDevice = HIPDevice::cast(this->device());
 
   HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamSynchronize(stream_));
@@ -745,19 +739,19 @@ ErrorOrSuccess HIPDeviceStream::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> HIPDeviceStream::enqueueEvent() const {
-  const auto &hipDevice = HIPDevice::cast(device());
+  const HIPDevice &hipDevice = HIPDevice::cast(this->device());
 
   HIP_WITH_DEV_ERR(hipDevice);
   hipEvent_t event;
   HIP_CHECK_ERR(hipDevice.hipDriver().hipEventCreateWithFlags(&event, 0));
   HIP_CHECK_ERR(hipDevice.hipDriver().hipEventRecord(event, stream_));
-  return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
+  return HIPDeviceEventRef::create(hipDevice, event);
 }
 
 ErrorOrSuccess
 HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
-  const auto &hipDevice = HIPDevice::cast(device());
+  const auto &hipDevice = HIPDevice::cast(this->device());
 
   HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitEvent(
@@ -767,7 +761,7 @@ HIPDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
 
 ErrorOrSuccess HIPDeviceStream::eventRecord(const DeviceEvent &event) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
-  const auto &hipDevice = HIPDevice::cast(device());
+  const auto &hipDevice = HIPDevice::cast(this->device());
   HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(
       hipDevice.hipDriver().hipEventRecord(hipEvent.hipEvent(), stream_));
@@ -777,7 +771,7 @@ ErrorOrSuccess HIPDeviceStream::eventRecord(const DeviceEvent &event) const {
 ErrorOrSuccess HIPDeviceStream::waitEvent(const DeviceEvent &event,
                                           unsigned int flags) const {
   const auto &hipEvent = HIPDeviceEvent::cast(event);
-  const auto &hipDevice = HIPDevice::cast(device());
+  const auto &hipDevice = HIPDevice::cast(this->device());
   HIP_WITH_DEV_ERR(hipDevice);
   HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitEvent(
       stream_, hipEvent.hipEvent(), flags));
@@ -789,7 +783,7 @@ ErrorOrSuccess HIPDeviceStream::enqueueFunctionExecDirect(
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args) const {
   const auto &hipFunc = HIPDeviceFunction::cast(func);
-  const auto &hipDevice = HIPDevice::cast(device());
+  const auto &hipDevice = HIPDevice::cast(this->device());
   HIP_WITH_DEV_ERR(hipDevice);
   if (numAttrs > 0)
     RAISE_ERROR("Function launch attributes not supported;");
@@ -1209,14 +1203,14 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
-  return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream_);
+  return HIPDeviceStreamRef::create(*this, stream_);
 }
 
 ErrorOr<DeviceStreamRef>
 HIPDeviceContext::streamCreate(unsigned int flags) const {
   hipStream_t stream;
   HIP_CHECK_ERR(this->hipDriver().hipStreamCreate(&stream, flags));
-  return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream);
+  return HIPDeviceStreamRef::create(*this, stream);
 }
 
 ErrorOr<DeviceStreamRef>
@@ -1225,7 +1219,7 @@ HIPDeviceContext::streamCreateWithPriority(unsigned int flags,
   hipStream_t stream;
   HIP_CHECK_ERR(
       this->hipDriver().hipStreamCreateWithPriority(&stream, flags, priority));
-  return HIPDeviceStreamRef::create(HIPDevice::cast(this->device()), stream);
+  return HIPDeviceStreamRef::create(*this, stream);
 }
 
 ErrorOrSuccess
@@ -1235,6 +1229,13 @@ HIPDeviceContext::streamPriorityRange(int *leastPriority,
   HIP_CHECK_ERR(
       driver_.hipDeviceGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
+}
+
+ErrorOr<DeviceStreamRef>
+HIPDeviceContext::createExternalStream(void *externalStream) const {
+  HIP_WITH_DEV_ERR(*this);
+  return HIPDeviceStreamRef::create(
+      *this, reinterpret_cast<hipStream_t>(externalStream));
 }
 
 ErrorOrSuccess HIPDeviceContext::synchronize() const {

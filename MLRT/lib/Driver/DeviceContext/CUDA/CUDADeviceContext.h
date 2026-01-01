@@ -96,9 +96,6 @@ public:
 
   ErrorOr<DeviceContextRef> createContext() const override;
 
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
-
   ErrorOr<const char *> getArchName() const override;
 
   static const CUDADevice &cast(const Device &device);
@@ -204,7 +201,7 @@ private:
 
 class CUDADeviceStream : public DeviceStream {
 public:
-  CUDADeviceStream(const CUDADevice &device, CUstream stream);
+  CUDADeviceStream(const CUDADeviceContext &ctx, CUstream stream);
   ~CUDADeviceStream() override = default;
 
   ErrorOrSuccess synchronize() const override;
@@ -345,6 +342,9 @@ public:
   streamCreateWithPriority(unsigned int flags, int priority) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
+
+  ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const override;
 
   ErrorOrSuccess synchronize() const override;
 

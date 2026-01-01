@@ -176,9 +176,6 @@ public:
 
   virtual ErrorOr<DeviceContextRef> createContext() const = 0;
 
-  virtual ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const = 0;
-
   /// Get the compilation device for this device, or nullptr if no
   /// compilation device is available.
   virtual const CompilationDevice *compilationDevice() const = 0;
@@ -356,10 +353,10 @@ public:
   virtual void *ptr() const = 0;
 
 protected:
-  DeviceStream(const Device &device);
+  DeviceStream(const DeviceContext &context);
 
 private:
-  DeviceRef device_;
+  DeviceContextRef context_;
 };
 
 class DeviceFunction : public ReferenceCounted<DeviceFunction> {
@@ -482,6 +479,9 @@ public:
   streamCreateWithPriority(unsigned int flags, int priority) const = 0;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                              int *greatestPriority) const = 0;
+
+  virtual ErrorOr<DeviceStreamRef>
+  createExternalStream(void *externalStream) const = 0;
 
   virtual ErrorOrSuccess synchronize() const = 0;
 
