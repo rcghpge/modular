@@ -47,12 +47,30 @@ struct _NoneType(ImplicitlyCopyable):
     pass
 
 
+@register_passable
+@fieldwise_init
+struct EmptyOptionalError[T: AnyType](ImplicitlyCopyable, Writable):
+    """An error type for when an empty `Optional` is accessed.
+
+    Parameters:
+        T: The type of the value that was accessed in the `Optional`.
+    """
+
+    fn write_to(self, mut writer: Some[Writer]):
+        """Write the error to a `Writer`.
+
+        Args:
+            writer: The `Writer` to write to.
+        """
+        writer.write("EmptyOptionalError[", get_type_name[Self.T](), "]")
+
+
 # ===-----------------------------------------------------------------------===#
 # Optional
 # ===-----------------------------------------------------------------------===#
 
 
-struct Optional[T: Movable & ImplicitlyDestructible](
+struct Optional[T: Movable](
     Boolable,
     Defaultable,
     ImplicitlyCopyable,
@@ -304,7 +322,9 @@ struct Optional[T: Movable & ImplicitlyDestructible](
         return not self
 
     @always_inline
-    fn __getitem__(ref self) raises -> ref [self._value] Self.T:
+    fn __getitem__(
+        ref self,
+    ) raises EmptyOptionalError[Self.T] -> ref [self._value] Self.T:
         """Retrieve a reference to the value inside the `Optional`.
 
         Returns:
@@ -314,7 +334,7 @@ struct Optional[T: Movable & ImplicitlyDestructible](
             On empty `Optional`.
         """
         if not self:
-            raise Error(".value() on empty Optional")
+            raise EmptyOptionalError[Self.T]()
         return self.unsafe_value()
 
     fn __str__(self: Self) -> String:
@@ -451,9 +471,15 @@ struct Optional[T: Movable & ImplicitlyDestructible](
         debug_assert(self.__bool__(), "`.unsafe_take()` on empty `Optional`")
         return self._value.unsafe_replace[_NoneType, Self.T](_NoneType())
 
-    fn or_else(deinit self, var default: Self.T) -> Self.T:
+    fn or_else[
+        _T: Movable & ImplicitlyDestructible, //
+    ](deinit self: Optional[_T], var default: _T) -> _T:
         """Return the underlying value contained in the `Optional` or a default
         value if the `Optional`'s underlying value is not present.
+
+        Parameters:
+            _T: Type of the optional element, which must conform to
+                `ImplicitlyDestructible`.
 
         Args:
             default: The new value to use if no value was present.

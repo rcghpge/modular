@@ -37,7 +37,7 @@ from compile import get_type_name
 struct _SpanIter[
     mut: Bool,
     //,
-    T: Copyable,
+    T: Copyable & ImplicitlyDestructible,
     origin: Origin[mut=mut],
     forward: Bool = True,
 ](ImplicitlyCopyable, Iterable, Iterator):
@@ -87,7 +87,12 @@ struct _SpanIter[
 
 
 @register_passable("trivial")
-struct Span[mut: Bool, //, T: Copyable, origin: Origin[mut=mut]](
+struct Span[
+    mut: Bool,
+    //,
+    T: Copyable & ImplicitlyDestructible,
+    origin: Origin[mut=mut],
+](
     Boolable,
     Defaultable,
     DevicePassable,
@@ -173,8 +178,7 @@ struct Span[mut: Bool, //, T: Copyable, origin: Origin[mut=mut]](
     @implicit
     @always_inline("nodebug")
     fn __init__(
-        other: Span[Self.T, _],
-        out self: Span[Self.T, ImmutOrigin(other.origin)],
+        other: Span, out self: Span[other.T, ImmutOrigin(other.origin)]
     ):
         """Implicitly cast the mutable origin of self to an immutable one.
 

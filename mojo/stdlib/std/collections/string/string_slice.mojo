@@ -375,10 +375,11 @@ struct CodepointsIter[mut: Bool, //, origin: Origin[mut=mut]](
         This returns the next `Codepoint` encoded in the underlying string, and
         advances the iterator state.
 
-        This function will abort if this iterator has been exhausted.
-
         Returns:
             The next character in the string.
+
+        Raises:
+            StopIteration: If the iterator is exhausted.
         """
         if len(self._slice) <= 0:
             raise StopIteration()
@@ -708,6 +709,22 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             value: The string value.
         """
         self = value.as_string_slice_mut()
+
+    @doc_private
+    @implicit
+    fn __init__(
+        out self: StaticString,
+        ref [
+            Origin(__mlir_attr.`#lit.comptime.origin : !lit.origin<0>`)
+        ]value: String,
+    ):
+        """Construct an immutable StringSlice at comptime.
+        FIXME: This is a hack.
+
+        Args:
+            value: The string value.
+        """
+        self = rebind[StaticString](value.as_string_slice())
 
     # ===------------------------------------------------------------------===#
     # Trait implementations
@@ -1201,6 +1218,25 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             .unsafe_origin_cast[result.origin](),
             length = len(self),
         }
+
+    @always_inline("nodebug")
+    fn __merge_with__[
+        other_type: type_of(String),
+    ](self, out result: String):
+        """Returns a string slice merge with a String.
+
+        Parameters:
+            other_type: The type of the origin to merge with.
+
+        Returns:
+            A String this is merged with.
+        """
+        # Note, this is used to disambiguate some cases because String converts
+        # to StringSlice and StringSlice converts to string.  Ideally this would
+        # return a StringSlice, but the __merge_with__ protocol is type
+        # directed, not value directed.  Types don't carry the origins of a
+        # value.
+        return String(self)
 
     # ===------------------------------------------------------------------===#
     # Methods
@@ -2525,7 +2561,8 @@ fn get_static_string[
 fn _to_string_list[
     O: Origin,
     //,
-    T: Copyable,  # TODO(MOCO-1446): Make `T` parameter inferred
+    # TODO(MOCO-1446): Make `T` parameter inferred
+    T: Copyable & ImplicitlyDestructible,
     len_fn: fn (T) -> Int,
     unsafe_ptr_fn: fn (T) -> UnsafePointer[Byte, O],
 ](items: List[T]) -> List[String]:

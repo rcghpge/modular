@@ -13,7 +13,9 @@
 
 from hashlib import default_comp_time_hasher
 from math import align_up, ceildiv
-from memory import LegacyUnsafePointer as UnsafePointer, bitcast
+from memory import LegacyUnsafePointer, bitcast
+
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
 from sys import argv, size_of
 
 import linalg.matmul.vendor.blas as vendor_blas
@@ -316,7 +318,9 @@ fn stsm_helper[
     swizzle: Swizzle
 ](
     vec: SIMD,
-    dst: LayoutTensor[_, _, address_space = AddressSpace.SHARED, *_, **_],
+    dst: LayoutTensor[
+        mut=True, _, _, address_space = AddressSpace.SHARED, *_, **_
+    ],
 ):
     # Number of elements in one row per stsmx4 tile, a row is 32B.
     comptime stsmx4_row_size = 32 // size_of[dst.dtype]()
