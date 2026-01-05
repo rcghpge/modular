@@ -86,7 +86,7 @@ LogicalResult ModuleLoadOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BufferConstantExternalOp::verify() {
-  uint64_t align = getDAlign();
+  uint64_t align = getBAlign();
   if (!isValidOptAlign(align))
     return emitOpError("invalid alignment ") << align << ".";
 
@@ -96,7 +96,7 @@ LogicalResult BufferConstantExternalOp::verify() {
 LogicalResult BufferConstantExternalOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  DeviceRefAttr device = adaptor.getEDeviceAttr();
+  DeviceRefAttr device = adaptor.getCDeviceAttr();
   getDeviceAttrOrDefault(context, device);
   inferredReturnTypes.emplace_back(DeviceBufferType::get(context, device));
   return success();

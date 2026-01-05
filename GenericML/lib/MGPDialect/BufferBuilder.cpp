@@ -115,11 +115,11 @@ Value MGPBufferBuilder::bufferConstantExternal(
                                           /*inChain=*/inChain,
                                           /*weightsRegistry=*/weightsRegistry,
                                           /*name=*/name,
-                                          /*cSize=*/size,
-                                          /*dAlign=*/align,
-                                          /*eDevice=*/device,
-                                          /*gHasAlias=*/hasAlias,
-                                          /*hIsPlaceholder=*/isPlaceholder);
+                                          /*aSize=*/size,
+                                          /*bAlign=*/align,
+                                          /*cDevice=*/device,
+                                          /*dHasAlias=*/hasAlias,
+                                          /*eIsPlaceholder=*/isPlaceholder);
 }
 
 Value MGPBufferBuilder::tensorExtractBuffer(OpBuilder &builder, Location loc,

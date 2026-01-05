@@ -106,7 +106,7 @@ static bool canBeLifted(Operation *op) {
   // torch tensors might be mutated by someone outside our stack), so we cannot
   // lift them to the init phase.
   if (auto externalConstOp = dyn_cast<BufferConstantExternalOp>(op))
-    if (externalConstOp.getGHasAlias())
+    if (externalConstOp.getDHasAlias())
       return false;
   return canBeConveyed(op) || isRecomputableOp(op);
 }

@@ -283,20 +283,20 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   let arguments = (ins ChainType:$inChain,
                        MGP_OpaqueType:$weightsRegistry,
                        MGP_OpaqueType:$name,
-                       UI64Attr:$cSize,                                        // 0
-                       UI64Attr:$dAlign,                                       // 1
-                       MGP_OptDeviceRefAttr:$eDevice,                          // 2
-                       DefaultValuedAttr<BoolAttr, "false">:$gHasAlias,        // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$hIsPlaceholder);  // 4
+                       UI64Attr:$aSize,                                        // 0
+                       UI64Attr:$bAlign,                                       // 1
+                       MGP_OptDeviceRefAttr:$cDevice,                          // 2
+                       DefaultValuedAttr<BoolAttr, "false">:$dHasAlias,        // 3
+                       DefaultValuedAttr<BoolAttr, "false">:$eIsPlaceholder);  // 4
 
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $weightsRegistry
     `[`
-    $name `,` $cSize `,` `align` $dAlign
-    oilist( `has_alias` $gHasAlias
-          | `placeholder` $hIsPlaceholder
-          | `device` $eDevice)
+    $name `,` $aSize `,` `align` $bAlign
+    oilist( `has_alias` $dHasAlias
+          | `placeholder` $eIsPlaceholder
+          | `device` $cDevice)
     `]`
     attr-dict `:` qualified(type($weightsRegistry)) `,` qualified(type($name))
     `->` qualified(type($outBuffer))
@@ -310,15 +310,15 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 
   let extraClassDefinition = [{
     SmallVector<Attribute> BufferConstantExternalOp::getLiftableAttributes() {
-      return {getCSizeAttr(), getDAlignAttr()};
+      return {getASizeAttr(), getBAlignAttr()};
     }
 
     // Ignore the devices.
     SmallVector<Attribute> BufferConstantExternalOp::getIgnorableAttributes() {
-      return {getEDeviceAttr(), getGHasAliasAttr()};
+      return {getCDeviceAttr(), getDHasAliasAttr()};
     }
 
-    M::DeviceRefAttr BufferConstantExternalOp::getDevice() { return getEDevice(); }
+    M::DeviceRefAttr BufferConstantExternalOp::getDevice() { return getCDevice(); }
 
     bool BufferConstantExternalOp::isTrivial() { return false; }
   }];

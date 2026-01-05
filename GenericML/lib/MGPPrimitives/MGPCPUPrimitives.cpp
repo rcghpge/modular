@@ -125,11 +125,11 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 static void mgp_buffer_constant_external_cpu(
     Chain inChain, AsyncValueRef<MojoValue> weights,
     AsyncValueRef<MojoValue> name, Result<TensorBufferRef> outBuffer,
-    MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dAlign,
-    MEFAttr<uint64_t> eDeviceId, MEFAttr<bool> gHasAlias,
-    MEFAttr<bool> hIsPlaceholder) {
+    MEFAttr<uint64_t> aSize, MEFAttr<uint64_t> bAlign,
+    MEFAttr<uint64_t> cDeviceId, MEFAttr<bool> dHasAlias,
+    MEFAttr<bool> eIsPlaceholder) {
 
-  if (dAlign.get() == 0) {
+  if (bAlign.get() == 0) {
     return std::move(outBuffer).setToError(
         "align must be a positive integer value");
   }
@@ -152,19 +152,19 @@ static void mgp_buffer_constant_external_cpu(
   const std::byte *weightPtr = llvm::bit_cast<const std::byte *>(data);
 
   // Validate alignment
-  if ((reinterpret_cast<uintptr_t>(weightPtr) % dAlign.get()) != 0) {
+  if ((reinterpret_cast<uintptr_t>(weightPtr) % bAlign.get()) != 0) {
     return std::move(outBuffer).setToError(
         Twine("invalid alignment for address ") +
         Twine(reinterpret_cast<uintptr_t>(weightPtr)) + " and align " +
-        Twine(dAlign.get()));
+        Twine(bAlign.get()));
   }
 
   // Create a TensorBufferRef from the weight data
   // Note: The weights registry owns the data, so we create a non-tracked buffer
   std::move(outBuffer).emplace(TensorBufferRef::createWithNonTrackedMemory(
       const_cast<void *>(reinterpret_cast<const void *>(weightPtr)),
-      cSize.get(),
-      /*alignment=*/dAlign.get()));
+      aSize.get(),
+      /*alignment=*/bAlign.get()));
 }
 
 //===----------------------------------------------------------------------===//

@@ -180,7 +180,7 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
     // Apply prefix handling for BufferConstantExternalOp placeholders
     // Concat the parent prefix with any ops that need it
     if (auto bufConstExtOp = dyn_cast<BufferConstantExternalOp>(clonedOp)) {
-      if (bufConstExtOp.getHIsPlaceholder()) {
+      if (bufConstExtOp.getEIsPlaceholder()) {
         Value nameValue = bufConstExtOp.getName();
 
         Value concatenatedName =

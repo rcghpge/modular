@@ -181,7 +181,7 @@ class LowerAlignmentsPass
             bufferOp.getResult().getType().getDevice());
       } else if (auto bufferOp = dyn_cast<MGP::BufferConstantExternalOp>(op)) {
         // Set from MGP Op
-        setAlignmentFromRawAlignment(bufferOp.getDAlign(),
+        setAlignmentFromRawAlignment(bufferOp.getBAlign(),
                                      bufferOp.getOutBuffer(),
                                      bufferOp.getDevice());
       } else if (auto bufferOp = dyn_cast<MGPBufferAliasOpInterface>(op)) {
