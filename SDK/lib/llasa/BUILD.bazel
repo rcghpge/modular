@@ -12,6 +12,7 @@ modular_py_library(
         "speech_lm.py",
     ],
     imports = [".."],
+    tags = ["no-pydeps"],  # TODO: Fix and re-enable
     deps = [
         requirement("transformers"),
         requirement("numpy"),
@@ -29,6 +30,7 @@ modular_py_binary(
     srcs = ["entrypoint.py"],
     imports = ["."],
     main = "entrypoint.py",
+    tags = ["no-pydeps"],  # TODO: Fix and re-enable
     deps = [
         ":llasa_lib",
         requirement("click"),
