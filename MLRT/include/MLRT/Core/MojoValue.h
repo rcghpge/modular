@@ -56,6 +56,17 @@ public:
     return MojoValue(data, nullptr, false, false, tag);
   }
 
+  /// Allows for values to be allocated within mojo
+  /// and destroyed at end of life without forcing an allocation for a
+  /// T to be done from C++.
+  /// `data` is, itself, a `*T`/`UnsafePointer[T]` with a backing allocation
+  /// originating in Mojo. It is expected that `destructor` free the backing
+  /// allocation.
+  static MojoValue createOwningRef(void *data, DestructorFn destructor,
+                                   Tag tag = Tag::kDefault) {
+    return MojoValue(data, destructor, true, false, tag);
+  }
+
   ~MojoValue();
 
   MojoValue(MojoValue &&rhs);

@@ -179,7 +179,7 @@ static void mgp_string_create(Result<MojoValue> outString,
                          static_cast<ssize_t>(strValue.size()));
 
   // Create MojoValue that owns the Mojo UnsafePointer[String]
-  std::move(outString).emplace(MojoValue(
+  std::move(outString).emplace(MojoValue::createOwningRef(
       mojoStringPtr,
       reinterpret_cast<MojoValue::DestructorFn>(destroy_mojo_string)));
 }
@@ -195,7 +195,7 @@ static void mgp_string_concat(AsyncValueRef<MojoValue> prefix,
   void *mojoStringPtr = concat_mojo_strings(prefix->getData(), end->getData());
 
   // Create MojoValue that owns the new Mojo UnsafePointer[String]
-  std::move(outString).emplace(MojoValue(
+  std::move(outString).emplace(MojoValue::createOwningRef(
       mojoStringPtr,
       reinterpret_cast<MojoValue::DestructorFn>(destroy_mojo_string)));
 }
