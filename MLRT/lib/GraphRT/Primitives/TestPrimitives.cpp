@@ -389,6 +389,17 @@ static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
   return addTask(runtime, [lhs, rhs] { return lhs + rhs; });
 }
 
+/// Async sleep primitive that simulates GPU kernel launch latency.
+/// Takes delayNs attribute specifying nanoseconds to sleep on a background
+/// thread. This is useful for benchmarking MEF executor scheduling overhead.
+static void test_sleep(Chain inChain, Result<Chain> outChain,
+                       MEFAttr<int32_t> delayNs, Runtime &runtime) {
+  addTask(runtime, [delayNs = *delayNs, outChain = outChain.copy()]() mutable {
+    std::this_thread::sleep_for(std::chrono::nanoseconds(delayNs));
+    std::move(outChain).emplace();
+  });
+}
+
 // It is silly to do this for add of course, but this shows how to handle this.
 static void async_add2_i32(AsyncValueRef<int32_t> lhs,
                            AsyncValueRef<int32_t> rhs, Result<int32_t> result) {
@@ -964,4 +975,7 @@ void M::registerGraphRTTestPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "test.crash.threadpool", test_many_tasks);
   ADD_PRIMITIVE(registry, "test.crash.threadpool.shutdown",
                 test_crash_threadpool_shutdown);
+
+  // Benchmark utilities
+  ADD_PRIMITIVE(registry, "test.sleep", test_sleep);
 }
