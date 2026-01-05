@@ -582,7 +582,7 @@ struct VariadicAdd:
         target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=rank],
-        inputs: FusedInputVariadicTensors[dtype, rank, *_],
+        inputs: FusedInputVariadicTensors[dtype, rank, ...],
     ) capturing raises:
         @parameter
         @always_inline
@@ -816,8 +816,8 @@ struct KernelWithNoTarget:
     fn execute[
         dtype: DType
     ](
-        outp: OutputTensor[dtype=dtype, *_],
-        x: InputTensor[dtype=dtype, *_],
+        outp: OutputTensor[dtype=dtype, ...],
+        x: InputTensor[dtype=dtype, ...],
     ) raises:
         print("hello from kernel with no target")
 
@@ -828,8 +828,8 @@ struct BasicTarget:
     fn execute[
         dtype: DType, target: StaticString
     ](
-        outp: OutputTensor[dtype=dtype, *_],
-        x: InputTensor[dtype=dtype, *_],
+        outp: OutputTensor[dtype=dtype, ...],
+        x: InputTensor[dtype=dtype, ...],
     ) raises:
         print("hello from kernel on", target)
 
@@ -895,8 +895,8 @@ struct SingleDeviceContext:
     fn execute[
         dtype: DType
     ](
-        output: OutputTensor[dtype=dtype, *_],
-        x: InputTensor[dtype=dtype, *_],
+        output: OutputTensor[dtype=dtype, ...],
+        x: InputTensor[dtype=dtype, ...],
         dev_ctx: DeviceContextPtrList[1],
     ) raises:
         dev_ctx[0].synchronize()
@@ -908,8 +908,8 @@ struct MultiDeviceContext:
     fn execute[
         dtype: DType
     ](
-        output: OutputTensor[dtype=dtype, *_],
-        x: InputTensor[dtype=dtype, *_],
+        output: OutputTensor[dtype=dtype, ...],
+        x: InputTensor[dtype=dtype, ...],
         dev_ctxs: DeviceContextPtrList[2],
     ) raises:
         print("dev_ctx0.id() =", dev_ctxs[0].id())
@@ -924,9 +924,9 @@ struct MultiDeviceContextDedup:
     fn execute[
         dtype: DType
     ](
-        output: OutputTensor[dtype=dtype, *_],
-        x: InputTensor[dtype=dtype, *_],
-        y: InputTensor[dtype=dtype, *_],
+        output: OutputTensor[dtype=dtype, ...],
+        x: InputTensor[dtype=dtype, ...],
+        y: InputTensor[dtype=dtype, ...],
         dev_ctxs: DeviceContextPtrList[2],
     ) raises:
         dev_ctxs[0].synchronize()
@@ -941,8 +941,8 @@ struct VariadicDeviceContext:
         rank: Int,
         target: StaticString = "gpu",
     ](
-        outputs: OutputVariadicTensors[dtype, rank, *_],
-        inputs: InputVariadicTensors[dtype, rank, *_],
+        outputs: OutputVariadicTensors[dtype, rank, ...],
+        inputs: InputVariadicTensors[dtype, rank, ...],
         dev_ctxs: DeviceContextPtrList,
     ) raises:
         for i in range(len(dev_ctxs)):
