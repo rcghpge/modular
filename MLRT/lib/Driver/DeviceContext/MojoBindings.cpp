@@ -29,13 +29,13 @@ using namespace M::Driver;
 // DeviceContext
 //===----------------------------------------------------------------------===//
 
-const char *raiseError(const char *msg) { return strdup(msg); }
+// Make a malloc'd copy of the string, so that we can safely free the
+// pointer from Mojo.
+static const char *raiseError(const char *msg) { return strdup(msg); }
 
-const char *checkSuccess(ErrorOrSuccess errOr) {
+static const char *checkSuccess(ErrorOrSuccess errOr) {
   if (errOr) {
-    // Make a malloc'd copy of the string, so that we can safely free the
-    // pointer from Mojo.
-    return strdup(errOr.getError());
+    return raiseError(errOr.getError());
   }
   return nullptr;
 }
@@ -44,9 +44,7 @@ template <typename T, typename R>
 const char *checkRef(const T **result, ErrorOr<R> errOr) {
   if (errOr) {
     *result = nullptr;
-    // Make a malloc'd copy of the string, so that we can safely free the
-    // pointer from Mojo.
-    return strdup(errOr.getError());
+    return raiseError(errOr.getError());
   }
   // Return the pointer, transferring the ownership to Mojo.
   *result = errOr.get().release();
@@ -57,9 +55,7 @@ template <typename T, typename V>
 const char *checkVal(T *result, V errVal, ErrorOr<T> errOr) {
   if (errOr) {
     *result = errVal;
-    // Make a malloc'd copy of the string, so that we can safely free the
-    // pointer from Mojo.
-    return strdup(errOr.getError());
+    return raiseError(errOr.getError());
   }
   *result = errOr.get();
   return nullptr;
@@ -90,7 +86,7 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_release(const DeviceContext *ctx) {
 
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_deviceName(const DeviceContext *ctx) {
-  return strdup(ctx->device().name().c_str());
+  return raiseError(ctx->device().name().c_str());
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceContext_deviceApi(llvm::StringRef *result,
@@ -493,7 +489,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enableAllPeerAccess() {
   for (int id = 0; id < numDevices; ++id) {
     ErrorOr<DeviceRef> devOr = Device::create(Device::gpuAPI, id);
     if (devOr)
-      return strdup(devOr.getError());
+      return raiseError(devOr.getError());
     devices.emplace_back(std::move(devOr.get()));
   }
 
@@ -501,11 +497,11 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_enableAllPeerAccess() {
     for (int j : llvm::seq(i + 1, numDevices)) {
       // i -> j
       if (ErrorOrSuccess errOr = devices[i]->enablePeerAccess(*devices[j]))
-        return strdup(errOr.getError());
+        return raiseError(errOr.getError());
 
       // j -> i
       if (ErrorOrSuccess errOr = devices[j]->enablePeerAccess(*devices[i]))
-        return strdup(errOr.getError());
+        return raiseError(errOr.getError());
     }
   }
 
@@ -561,7 +557,7 @@ AsyncRT_DeviceContext_cuda_context(CUcontext *result,
                                    const DeviceContext *ctx) {
   const CUDADeviceContext *verifiedCtx = CUDADeviceContext::verified_cast(ctx);
   if (verifiedCtx == nullptr) {
-    return strdup("Not a CUDAContext");
+    return raiseError("Not a CUDAContext");
   }
   *result = verifiedCtx->cudaContext();
   return nullptr;
@@ -572,7 +568,7 @@ AsyncRT_DeviceStream_cuda_stream(CUstream *result, const DeviceStream *stream) {
   const CUDADeviceStream *verifiedStream =
       CUDADeviceStream::verified_cast(stream);
   if (verifiedStream == nullptr) {
-    return strdup("Not a CUDAStream");
+    return raiseError("Not a CUDAStream");
   }
   *result = verifiedStream->cudaStream();
   return nullptr;
@@ -583,7 +579,7 @@ AsyncRT_DeviceFunction_cuda_module(CUmodule *result,
                                    const DeviceFunction *func) {
   // Check if the device context is CUDA
   if (func->context().device().api() != Device::cudaAPI) {
-    return strdup("Not a CUDA DeviceFunction");
+    return raiseError("Not a CUDA DeviceFunction");
   }
 
   const CUDADeviceFunction &cudaFunc = CUDADeviceFunction::cast(*func);
@@ -601,7 +597,7 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
   const CUDADeviceContext *verifiedCtx =
       CUDADeviceContext::verified_cast(&globalAddress->context());
   if (verifiedCtx == nullptr) {
-    return strdup("Not a CUDADeviceBuffer");
+    return raiseError("Not a CUDADeviceBuffer");
   }
   return checkSuccess(verifiedCtx->cudaTensorMapEncodeTiled(
       tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
@@ -620,7 +616,7 @@ AsyncRT_DeviceContext_hip_device(hipDevice_t *result,
                                  const DeviceContext *ctx) {
   const HIPDeviceContext *verifiedCtx = HIPDeviceContext::verified_cast(ctx);
   if (verifiedCtx == nullptr) {
-    return strdup("Not a HIPContext");
+    return raiseError("Not a HIPContext");
   }
   *result = verifiedCtx->hipDevice();
   return nullptr;
@@ -632,7 +628,7 @@ AsyncRT_DeviceStream_hip_stream(hipStream_t *result,
   const HIPDeviceStream *verifiedStream =
       HIPDeviceStream::verified_cast(stream);
   if (verifiedStream == nullptr) {
-    return strdup("Not a HIPStream");
+    return raiseError("Not a HIPStream");
   }
   *result = verifiedStream->hipStream();
   return nullptr;
@@ -652,11 +648,11 @@ AsyncRT_DeviceContext_metal_device(MTL::Device **result,
   const MetalDeviceContext *verifiedCtx =
       MetalDeviceContext::verified_cast(ctx);
   if (verifiedCtx == nullptr)
-    return strdup("Not a MetalContext");
+    return raiseError("Not a MetalContext");
   *result = verifiedCtx->metalDevice();
   return nullptr;
 #else
-  return strdup("Not a MetalContext");
+  return raiseError("Not a MetalContext");
 #endif
 }
 
