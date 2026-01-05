@@ -328,7 +328,7 @@ ErrorOr<DeviceContextRef> MetalDevice::createContext() const {
   return MetalDeviceContextRef::create(*this, commandQueue);
 }
 
-ErrorOr<DeviceStreamRef> MetalDeviceContext::streamCreate(int priority) const {
+ErrorOr<DeviceStreamRef> MetalDeviceContext::createStream(int priority) const {
   RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
 }
 

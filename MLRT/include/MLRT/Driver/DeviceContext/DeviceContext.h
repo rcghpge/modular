@@ -354,9 +354,10 @@ public:
 
 protected:
   DeviceStream(const DeviceContext &context);
+  const DeviceContext &context_() const { return *ctx_; }
 
 private:
-  DeviceContextRef context_;
+  DeviceContextRef ctx_;
 };
 
 class DeviceFunction : public ReferenceCounted<DeviceFunction> {
@@ -474,9 +475,9 @@ public:
 
   // Synchronize asynchronous operations.
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
-  virtual ErrorOr<DeviceStreamRef> streamCreate(int priority = 0) const = 0;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                              int *greatestPriority) const = 0;
+  virtual ErrorOr<DeviceStreamRef> createStream(int priority = 0) const = 0;
 
   virtual ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const = 0;

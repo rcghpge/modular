@@ -568,9 +568,9 @@ MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
 // ===== DeviceStream ===== //
 //
 DeviceStream::DeviceStream(const DeviceContext &context)
-    : context_(DeviceContextRef::copy(&context)) {}
+    : ctx_(DeviceContextRef::copy(&context)) {}
 
-const Device &DeviceStream::device() const { return context_->device(); }
+const Device &DeviceStream::device() const { return ctx_->device(); }
 
 //
 // ===== DeviceFunction ===== //

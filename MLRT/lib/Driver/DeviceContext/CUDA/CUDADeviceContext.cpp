@@ -13,7 +13,6 @@
 #include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
-#include "Support/Buffer.h"
 #include "Support/Profiling/Tracy.h"
 
 using namespace M;
@@ -769,8 +768,18 @@ const CUDADeviceEvent &CUDADeviceEvent::cast(const DeviceEvent &event) {
 
 // ===== CUDADeviceStream ===== //
 CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &ctx,
-                                   CUstream stream)
-    : DeviceStream(ctx), stream_(stream) {}
+                                   CUstream stream, bool isOwner)
+    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {}
+
+CUDADeviceStream::~CUDADeviceStream() {
+  if (!isOwner_) {
+    return;
+  }
+  CUDA_WITH_CTX(CUDADeviceContext::cast(context_()));
+  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDA_CHECK(cudaDevice.cudaDriver().cuStreamDestroy(stream_));
+  isOwner_ = false;
+}
 
 ErrorOrSuccess CUDADeviceStream::synchronize() const {
   const auto &cudaDevice = CUDADevice::cast(this->device());
@@ -976,8 +985,6 @@ CUDADeviceContext::~CUDADeviceContext() {
   CUDA_WITH_CTX(*this);
   // Synchronize to ensure that all of the chunks have been freed.
   CUDA_CHECK(driver_.cuStreamSynchronize(stream_));
-  // We do not need to synchronize on possible work queued on this stream.
-  // Resources will be released automatically once work has been completed.
   CUDA_CHECK(driver_.cuStreamDestroy(stream_));
 }
 
@@ -1012,7 +1019,7 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
   if (isHost) {
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
   } else {
-    CUDA_CHECK_ERR(driver_.cuMemFreeAsync(ptr, cudaStream()));
+    CUDA_CHECK_ERR(driver_.cuMemFreeAsync(ptr, stream_));
     MAYBE_SYNC(*this);
   }
   return success();
@@ -1306,22 +1313,8 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
-  return CUDADeviceStreamRef::create(*this, stream_);
-}
-
-ErrorOr<DeviceStreamRef> CUDADeviceContext::streamCreate(int priority) const {
-  // Default priority is 0 (lowest); compatible with CUDA specs.
-
-  // CUDA blocking streams are a legacy feature; interpretation of "blocking"
-  // is w.r.t. the default stream and does not mean "synchronous".
-  // We want our streams to be independent of any other stream.
-  unsigned int constexpr kNonBlocking = 0x1;
-
-  CUstream stream;
-  CUDA_CHECK_ERR(this->cudaDriver().cuStreamCreateWithPriority(
-      &stream, kNonBlocking, priority));
-
-  return CUDADeviceStreamRef::create(*this, stream);
+  // Do not destroy the wrapped stream_ in DTOR as it is owned by this Context.
+  return this->createExternalStream(reinterpret_cast<void *>(stream_));
 }
 
 ErrorOrSuccess
@@ -1333,10 +1326,27 @@ CUDADeviceContext::streamPriorityRange(int *leastPriority,
   return success();
 }
 
+ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) const {
+  // Default priority is 0 (lowest); compatible with CUDA specs.
+
+  // CUDA blocking streams are a legacy feature; interpretation of "blocking"
+  // is w.r.t. the default stream and does not mean "synchronous".
+  // We want our streams to be independent of any other stream.
+  unsigned int constexpr kNonBlocking = 0x1;
+
+  CUstream stream;
+  CUDA_CHECK_ERR(this->cudaDriver().cuStreamCreateWithPriority(
+      &stream, kNonBlocking, priority));
+
+  return CUDADeviceStreamRef::create(*this, stream,
+                                     /*isOwner=*/true);
+}
+
 ErrorOr<DeviceStreamRef>
 CUDADeviceContext::createExternalStream(void *externalStream) const {
-  return CUDADeviceStreamRef::create(
-      *this, reinterpret_cast<CUstream>(externalStream));
+  return CUDADeviceStreamRef::create(*this,
+                                     reinterpret_cast<CUstream>(externalStream),
+                                     /*isOwner=*/false);
 }
 
 ErrorOrSuccess CUDADeviceContext::synchronize() const {

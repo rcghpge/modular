@@ -215,9 +215,9 @@ AsyncRT_DeviceContext_stream(const DeviceStream **result,
 }
 
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_streamCreate(const DeviceStream **stream, int priority,
+AsyncRT_DeviceContext_createStream(const DeviceStream **stream, int priority,
                                    const DeviceContext *ctx) {
-  return checkRef(stream, ctx->streamCreate(priority));
+  return checkRef(stream, ctx->createStream(priority));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_streamPriorityRange(

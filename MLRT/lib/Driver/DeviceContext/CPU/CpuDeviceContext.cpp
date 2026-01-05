@@ -357,7 +357,7 @@ ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
   return CpuDeviceStreamRef::create(*this);
 }
 
-ErrorOr<DeviceStreamRef> CpuDeviceContext::streamCreate(int priority) const {
+ErrorOr<DeviceStreamRef> CpuDeviceContext::createStream(int priority) const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 

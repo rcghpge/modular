@@ -128,8 +128,9 @@ private:
 
 class HIPDeviceStream : public DeviceStream {
 public:
-  HIPDeviceStream(const HIPDeviceContext &ctx, hipStream_t stream);
-  ~HIPDeviceStream() override = default;
+  HIPDeviceStream(const HIPDeviceContext &ctx, hipStream_t stream,
+                  bool isOwner = true);
+  ~HIPDeviceStream() override;
 
   ErrorOrSuccess synchronize() const override;
 
@@ -156,6 +157,7 @@ public:
 
 private:
   hipStream_t stream_;
+  bool isOwner_;
 };
 
 class HIPModuleFunction : public DeviceFunctionCacheEntry {
@@ -261,10 +263,9 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> streamCreate(int priority = 0) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
-
+  ErrorOr<DeviceStreamRef> createStream(int priority = 0) const override;
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;
 
@@ -299,6 +300,11 @@ private:
 
   const HIPDriver &driver_;
   hipDevice_t device_;
+
+  // We could have made this a HIPDeviceStreamRef, but that would hold a
+  // reference to this DeviceContext object making the initial refcount 2
+  // instead of 1. We are going to move Streams out of Contexts soon so
+  // using a raw handle for now.
   hipStream_t stream_;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,

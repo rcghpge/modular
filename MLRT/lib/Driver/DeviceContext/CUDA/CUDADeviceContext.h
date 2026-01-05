@@ -15,7 +15,6 @@
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "NVML.h"
-#include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/RCRef.h"
@@ -201,8 +200,9 @@ private:
 
 class CUDADeviceStream : public DeviceStream {
 public:
-  CUDADeviceStream(const CUDADeviceContext &ctx, CUstream stream);
-  ~CUDADeviceStream() override = default;
+  CUDADeviceStream(const CUDADeviceContext &ctx, CUstream stream,
+                   bool isOwner = true);
+  ~CUDADeviceStream();
 
   ErrorOrSuccess synchronize() const override;
 
@@ -229,6 +229,7 @@ public:
 
 private:
   CUstream stream_;
+  bool isOwner_;
 };
 
 class CUDAModuleFunction : public DeviceFunctionCacheEntry {
@@ -337,10 +338,9 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> streamCreate(int priority = 0) const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
                                      int *greatestPriority) const override;
-
+  ErrorOr<DeviceStreamRef> createStream(int priority = 0) const override;
   ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) const override;
 
@@ -382,7 +382,12 @@ public:
 private:
   const CUDADriver &driver_;
   const CUcontext context_;
-  const CUstream stream_;
+
+  // We could have made this a CUDADeviceStreamRef, but that would hold a
+  // reference to this DeviceContext object making the initial refcount 2
+  // instead of 1. We are going to move Streams out of Contexts soon so
+  // using a raw handle for now.
+  CUstream stream_;
 
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;

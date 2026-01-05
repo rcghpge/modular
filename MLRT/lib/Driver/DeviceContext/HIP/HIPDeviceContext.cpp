@@ -727,8 +727,17 @@ const HIPDeviceEvent &HIPDeviceEvent::cast(const DeviceEvent &event) {
 
 // ===== HIPDeviceStream ===== //
 HIPDeviceStream::HIPDeviceStream(const HIPDeviceContext &ctx,
-                                 hipStream_t stream)
-    : DeviceStream(ctx), stream_(stream) {}
+                                 hipStream_t stream, bool isOwner)
+    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {}
+
+HIPDeviceStream::~HIPDeviceStream() {
+  if (isOwner_) {
+    HIP_WITH_CTX(HIPDeviceContext::cast(context_()));
+    const auto &hipDevice = HIPDevice::cast(this->device());
+    HIP_CHECK(hipDevice.hipDriver().hipStreamDestroy(stream_));
+    isOwner_ = false;
+  }
+}
 
 ErrorOrSuccess HIPDeviceStream::synchronize() const {
   const auto &hipDevice = HIPDevice::cast(this->device());
@@ -1203,22 +1212,8 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::stream() const {
-  return HIPDeviceStreamRef::create(*this, stream_);
-}
-
-ErrorOr<DeviceStreamRef> HIPDeviceContext::streamCreate(int priority) const {
-  // Default priority is 0 (lowest); compatible with CUDA specs.
-  // HIP specs don't explicitly call this out but we know they mirror CUDA.
-
-  // HIP blocking streams are a legacy feature; interpretation of "blocking"
-  // is w.r.t. the default stream and does not mean "synchronous".
-  // We want our streams to be independent of any other stream.
-  unsigned int constexpr kNonBlocking = 0x1;
-
-  hipStream_t stream;
-  HIP_CHECK_ERR(this->hipDriver().hipStreamCreateWithPriority(
-      &stream, kNonBlocking, priority));
-  return HIPDeviceStreamRef::create(*this, stream);
+  // Do not destroy the wrapped stream_ in DTOR as it is owned by this Context.
+  return this->createExternalStream(reinterpret_cast<void *>(stream_));
 }
 
 ErrorOrSuccess
@@ -1230,11 +1225,27 @@ HIPDeviceContext::streamPriorityRange(int *leastPriority,
   return success();
 }
 
+ErrorOr<DeviceStreamRef> HIPDeviceContext::createStream(int priority) const {
+  // Default priority is 0 (lowest); compatible with CUDA specs.
+  // HIP specs don't explicitly call this out but we know they mirror CUDA.
+
+  // HIP blocking streams are a legacy feature; interpretation of "blocking"
+  // is w.r.t. the default stream and does not mean "synchronous".
+  // We want our streams to be independent of any other stream.
+  unsigned int constexpr kNonBlocking = 0x1;
+
+  hipStream_t stream;
+  HIP_CHECK_ERR(this->hipDriver().hipStreamCreateWithPriority(
+      &stream, kNonBlocking, priority));
+  return HIPDeviceStreamRef::create(*this, stream, /*isOwner=*/true);
+}
+
 ErrorOr<DeviceStreamRef>
 HIPDeviceContext::createExternalStream(void *externalStream) const {
   HIP_WITH_DEV_ERR(*this);
   return HIPDeviceStreamRef::create(
-      *this, reinterpret_cast<hipStream_t>(externalStream));
+      *this, reinterpret_cast<hipStream_t>(externalStream),
+      /*isOwner=*/false);
 }
 
 ErrorOrSuccess HIPDeviceContext::synchronize() const {
