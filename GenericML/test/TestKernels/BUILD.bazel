@@ -33,7 +33,7 @@ alias(
     name = "MOGGKernelAPITestLibOrPkg",
     testonly = True,
     actual = select({
-        "//open-source/max:emit_mojo_enabled": ":MOGGKernelAPITest",
+        "//oss/modular:emit_mojo_enabled": ":MOGGKernelAPITest",
         "//conditions:default": ":MOGGKernelAPITestLib",
     }),
 )
