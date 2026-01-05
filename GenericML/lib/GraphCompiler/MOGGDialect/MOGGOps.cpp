@@ -3829,7 +3829,8 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
     auto chainCreateOp = operand.get().getDefiningOp<GRT::ChainCreateOp>();
     // Only remove grt.chain.create operands whose corresponding body
     // argument is unused.
-    if (!chainCreateOp || !bodyArgument.getUses().empty()) {
+    if (!chainCreateOp || !chainCreateOp.getResult().hasOneUse() ||
+        !bodyArgument.getUses().empty()) {
       operandsToKeep.push_back(operand.get());
       continue;
     }
