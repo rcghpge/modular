@@ -2,10 +2,12 @@
 
 // Test host weights with device output.
 // CHECK-LABEL: @external_weights_cpu_to_gpu
-// CHECK-DAG: [[HOST_BUFFER1:%.*]] = mgp.buffer.constant.external{{.*}}"foo"
+// CHECK-DAG: mgp.string.create "foo"
+// CHECK-DAG: [[HOST_BUFFER1:%.*]] = mgp.buffer.constant.external{{.*}}
 // CHECK-DAG: [[CUDA_BUFFER1:%.*]] = mgp.buffer.alloc{{.*}}gpu
 // CHECK: mgp.buffer.host_to_device{{.*}}[[HOST_BUFFER1]], [[CUDA_BUFFER1]]
-// CHECK-DAG: [[HOST_BUFFER2:%.*]] = mgp.buffer.constant.external{{.*}}"bar"{{.*}}has_alias
+// CHECK-DAG: mgp.string.create "bar"
+// CHECK-DAG: [[HOST_BUFFER2:%.*]] = mgp.buffer.constant.external{{.*}}has_alias
 // CHECK-DAG: [[CUDA_BUFFER2:%.*]] = mgp.buffer.alloc{{.*}}gpu
 // CHECK: mgp.buffer.host_to_device{{.*}}[[HOST_BUFFER2]], [[CUDA_BUFFER2]]
 mo.graph @external_weights_cpu_to_gpu() -> (!mo.tensor<[128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>) attributes {
@@ -18,9 +20,11 @@ mo.graph @external_weights_cpu_to_gpu() -> (!mo.tensor<[128], f32, gpu:0>, !mo.t
 
 // Test external weights that are already on device.
 // CHECK-LABEL: @external_weights_gpu_resident
-// CHECK: mgp.buffer.constant.external{{.*}}"foo"{{.*}}gpu
+// CHECK: mgp.string.create "foo"
+// CHECK: mgp.buffer.constant.external{{.*}}gpu
 // CHECK-NOT: mgp.buffer.host_to_device
-// CHECK: mgp.buffer.constant.external{{.*}}"bar"{{.*}}has_alias{{.*}}gpu
+// CHECK: mgp.string.create "bar"
+// CHECK: mgp.buffer.constant.external{{.*}}has_alias{{.*}}gpu
 // CHECK-NOT: mgp.buffer.host_to_device
 mo.graph @external_weights_gpu_resident() -> (!mo.tensor<[128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>) attributes {
     argument_names = [], result_names = ["output0"], target_info = #M.target<triple = "nvptx64-nvidia-cuda", arch = "sm_86", index_bit_width = 0>

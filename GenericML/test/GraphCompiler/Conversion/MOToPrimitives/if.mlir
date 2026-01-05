@@ -85,7 +85,8 @@ mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) 
 
 mo.graph @implicit_chaining(%init: !mo.chain, %cond: !mo.tensor<[], bool>, %arg0: !mo.buffer<[], ui32>) -> !mo.tensor<[10, 10], bf16> {
 
-  // CHECK: %[[CST:.*]] = mgp.buffer.constant.external %[[CHAIN]], %[[WEIGHTS]]["super_duper_weights"
+  // CHECK: %[[WEIGHT_NAME:.*]] = mgp.string.create "super_duper_weights"
+  // CHECK: %[[CST:.*]] = mgp.buffer.constant.external %[[CHAIN]], %[[WEIGHTS]][%[[WEIGHT_NAME]],
   // CHECK: %[[GUARD:.*]] = grt.chain.create (%[[CHAIN]], %[[CHAIN]])
 
   // CHECK: %[[ALLOC:.*]] = mgp.buffer.alloc %[[GUARD]], %{{.*}}, %[[CPU]], align {{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>

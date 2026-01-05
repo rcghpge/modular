@@ -108,12 +108,13 @@ Value MGPBufferBuilder::bufferConstant(OpBuilder &builder, Location loc,
 Value MGPBufferBuilder::bufferConstantExternal(
     OpBuilder &builder, Location loc, TypedValue<MEF::ChainType> inChain,
     TypedValue<ContextType> context,
-    TypedValue<MGP::OpaqueType> weightsRegistry, StringRef name, uint64_t size,
-    uint64_t align, bool hasAlias, bool isPlaceholder) {
+    TypedValue<MGP::OpaqueType> weightsRegistry,
+    TypedValue<MGP::OpaqueType> name, uint64_t size, uint64_t align,
+    bool hasAlias, bool isPlaceholder) {
   return BufferConstantExternalOp::create(builder, loc,
                                           /*inChain=*/inChain,
                                           /*weightsRegistry=*/weightsRegistry,
-                                          /*bName=*/name,
+                                          /*name=*/name,
                                           /*cSize=*/size,
                                           /*dAlign=*/align,
                                           /*eDevice=*/device,

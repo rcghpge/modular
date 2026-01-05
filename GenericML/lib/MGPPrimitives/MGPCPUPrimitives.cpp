@@ -11,6 +11,7 @@
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
+#include "MLRT/GraphRT/MEF/MEFAttr.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/SizeUtils.h"
@@ -123,7 +124,7 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 // this primitive.
 static void mgp_buffer_constant_external_cpu(
     Chain inChain, AsyncValueRef<MojoValue> weights,
-    Result<TensorBufferRef> outBuffer, MEFAttr<StringRef> bName,
+    AsyncValueRef<MojoValue> name, Result<TensorBufferRef> outBuffer,
     MEFAttr<uint64_t> cSize, MEFAttr<uint64_t> dAlign,
     MEFAttr<uint64_t> eDeviceId, MEFAttr<bool> gHasAlias,
     MEFAttr<bool> hIsPlaceholder) {
@@ -137,14 +138,15 @@ static void mgp_buffer_constant_external_cpu(
   void *data;
   static constexpr int kResultSuccess = 0;
 
-  // Copy into SmallString to guarantee null termination
-  SmallString<128> nameStr(bName.get());
+  if (weights_registry_lookup_mojo_string(&data, weights->getData(),
+                                          name->getData()) != kResultSuccess) {
+    auto mojoStringPtr = name->getData();
+    auto bytes = (char *)get_mojo_string_data(mojoStringPtr);
+    auto len = get_mojo_string_length(mojoStringPtr);
+    std::string nameCppStr(bytes, bytes + len);
 
-  if (weights_registry_lookup(&data, weights->getData(),
-                              const_cast<char *>(nameStr.c_str())) !=
-      kResultSuccess) {
-    return std::move(outBuffer).setToError(Twine("unable to look up weight: ") +
-                                           bName.get());
+    return std::move(outBuffer).setToError(
+        Twine("unable to look up weight by name: ") + Twine(nameCppStr));
   }
 
   const std::byte *weightPtr = llvm::bit_cast<const std::byte *>(data);

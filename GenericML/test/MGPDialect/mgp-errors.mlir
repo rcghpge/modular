@@ -533,8 +533,9 @@ mo.graph @list_concat_output_dtype_mismatch(
 // mgp.buffer.constant.external
 //
 func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) {
+  %name = mgp.string.create "foo" : !mgp.opaque<"mojo_string">
   // expected-error@+1 {{invalid alignment 10}}
-  %buf = mgp.buffer.constant.external %ch, %weights["foo", 16384, align 10] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %buf = mgp.buffer.constant.external %ch, %weights[%name, 16384, align 10] : !mgp.opaque<"weights_registry">, !mgp.opaque<"mojo_string"> -> !mgp.buffer
   mef.output %buf : !mgp.buffer
 }
 

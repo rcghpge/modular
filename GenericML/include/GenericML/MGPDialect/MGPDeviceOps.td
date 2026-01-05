@@ -259,6 +259,9 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
     runtime.
     The buffer is backed by a pointer retrieved by its name from a weights
     registry, which is simply a mapping from names to pointers.
+    The name is provided as an SSA value of type `!mgp.opaque<"mojo_string">`,
+    typically created by `mgp.string.create` (and optionally `mgp.string.concat`
+    for prefixed names).
     At runtime, the retrieved pointer must respect the alignment set on the op.
     Furthermore, like mgp.buffer.constant, the lifetime of the returned buffer
     is untracked and assumed to outlive graph execution.
@@ -267,11 +270,11 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
     ```mlir
     %weights : !mgp.opaque<"weights_registry">
     %ch : !mef.chain
+    %name = mgp.string.create "foo" : !mgp.opaque<"mojo_string">
     // Return a buffer corresponding to the named weight "foo" in the
     // weights registry.
-    %buf = mgp.buffer.constant.external
-      %ch, %ctx[0], %weights["foo", 16384, align 16] :
-      !mgp.opaque<"weights_registry"> -> !mgp.buffer
+    %buf = mgp.buffer.constant.external %ch, %weights[%name, 16384, align 16]
+      : !mgp.opaque<"weights_registry">, !mgp.opaque<"mojo_string"> -> !mgp.buffer
     ```
   }];
 
@@ -279,23 +282,23 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
   // names.
   let arguments = (ins ChainType:$inChain,
                        MGP_OpaqueType:$weightsRegistry,
-                       StrAttr:$bName,                                         // 0
-                       UI64Attr:$cSize,                                        // 1
-                       UI64Attr:$dAlign,                                       // 2
-                       MGP_OptDeviceRefAttr:$eDevice,                          // 3
-                       DefaultValuedAttr<BoolAttr, "false">:$gHasAlias,        // 4
-                       DefaultValuedAttr<BoolAttr, "false">:$hIsPlaceholder);  // 5
+                       MGP_OpaqueType:$name,
+                       UI64Attr:$cSize,                                        // 0
+                       UI64Attr:$dAlign,                                       // 1
+                       MGP_OptDeviceRefAttr:$eDevice,                          // 2
+                       DefaultValuedAttr<BoolAttr, "false">:$gHasAlias,        // 3
+                       DefaultValuedAttr<BoolAttr, "false">:$hIsPlaceholder);  // 4
 
   let results = (outs MGP_DeviceBufferType:$outBuffer);
   let assemblyFormat = [{
     $inChain `,` $weightsRegistry
     `[`
-    $bName `,` $cSize `,` `align` $dAlign
+    $name `,` $cSize `,` `align` $dAlign
     oilist( `has_alias` $gHasAlias
           | `placeholder` $hIsPlaceholder
           | `device` $eDevice)
     `]`
-    attr-dict `:` qualified(type($weightsRegistry))
+    attr-dict `:` qualified(type($weightsRegistry)) `,` qualified(type($name))
     `->` qualified(type($outBuffer))
   }];
   let hasVerifier = 1;
@@ -307,7 +310,7 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 
   let extraClassDefinition = [{
     SmallVector<Attribute> BufferConstantExternalOp::getLiftableAttributes() {
-      return {getBNameAttr(), getCSizeAttr(), getDAlignAttr()};
+      return {getCSizeAttr(), getDAlignAttr()};
     }
 
     // Ignore the devices.

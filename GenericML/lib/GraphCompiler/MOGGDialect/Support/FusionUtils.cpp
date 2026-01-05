@@ -58,11 +58,6 @@ StringAttr getSummaryString(Operation *op) {
   } else if (auto customOp = dyn_cast<MO::CustomOp>(op)) {
     name = "custom__";
     name += customOp.getSymbol();
-  } else if (auto loadExternalOpMGP =
-                 dyn_cast<MGP::BufferConstantExternalOp>(op)) {
-    name = (llvm::Twine(op->getName().getIdentifier().getValue()) + "(" +
-            loadExternalOpMGP.getBName() + ")")
-               .str();
   } else {
     name = op->getName().getIdentifier().getValue();
   }

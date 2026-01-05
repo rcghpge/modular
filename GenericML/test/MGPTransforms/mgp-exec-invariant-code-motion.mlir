@@ -24,7 +24,8 @@ mgp.model @liftable_op : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.buffer) {
-  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 37632, align 16] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %name = mgp.string.create "foo" : !mgp.opaque<"mojo_string">
+  %out_buf = mgp.buffer.constant.external %ch0, %weights[%name, 37632, align 16] : !mgp.opaque<"weights_registry">, !mgp.opaque<"mojo_string"> -> !mgp.buffer
   mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer
 }
 
@@ -41,7 +42,8 @@ mgp.model @constant_external_mutable : mof devices [#M.device_ref<"cpu", 0>] ini
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.buffer) {
-  %out_buf = mgp.buffer.constant.external %ch0, %weights["foo", 4096, align 4 has_alias true] : !mgp.opaque<"weights_registry"> -> !mgp.buffer
+  %name = mgp.string.create "foo" : !mgp.opaque<"mojo_string">
+  %out_buf = mgp.buffer.constant.external %ch0, %weights[%name, 4096, align 4 has_alias true] : !mgp.opaque<"weights_registry">, !mgp.opaque<"mojo_string"> -> !mgp.buffer
   mef.output %ch0, %out_buf : !mef.chain, !mgp.buffer
 }
 

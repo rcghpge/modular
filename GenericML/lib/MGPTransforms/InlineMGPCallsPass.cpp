@@ -51,18 +51,6 @@ void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
   });
 }
 
-/// Updates the name attribute of mgp.buffer.constant.external operations
-/// that have placeholder=true by prepending the given prefix.
-void updatePlaceholderNames(Operation *op, StringRef prefix) {
-  if (auto bufferConstExtOp = dyn_cast<BufferConstantExternalOp>(op)) {
-    if (bufferConstExtOp.getHIsPlaceholder() && !prefix.empty()) {
-      bufferConstExtOp.setBNameAttr(StringAttr::get(
-          op->getContext(), Twine(prefix) + bufferConstExtOp.getBName()));
-      bufferConstExtOp.setHIsPlaceholder(false);
-    }
-  }
-}
-
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -105,9 +93,6 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
   if (!subgraph)
     return callOp.emitError()
            << "failed to find symbol " << callOp.getCalleeAttr();
-
-  // Get the prefix from the call operation
-  StringRef callPrefix = callOp.getPrefix();
 
   // Find the parent's context (needed for both slot tracking and mapping)
   ContextCreateOp parentContextCreateOp = parentModelOp.getInitContext();
@@ -154,6 +139,14 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
                << "failed to map device context for argument "
                << subgraphArg.getArgNumber();
 
+  // Create the prefix string op for prepending to weight names
+  // Let DCE strip this out if nothing is marked placeholder
+  StringRef prefix = callOp.getPrefix();
+  auto mojoStringType = OpaqueType::get(
+      initBuilder.getContext(), initBuilder.getStringAttr("mojo_string"), {});
+  Value prefixStringValue = StringCreateOp::create(initBuilder, callOp.getLoc(),
+                                                   mojoStringType, prefix);
+
   // Clone operations from subgraph's init block, excluding context.create
   // and terminator, and apply slot offsetting and prefix handling
   for (Operation *subOp : getDataflowOrder(subgraph.getInitBlock())) {
@@ -184,8 +177,19 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
     // Apply slot offsetting to the cloned operation
     offsetRuntimeSlot(clonedOp, slotOffset);
 
-    // Update placeholder names with prefix
-    updatePlaceholderNames(clonedOp, callPrefix);
+    // Apply prefix handling for BufferConstantExternalOp placeholders
+    // Concat the parent prefix with any ops that need it
+    if (auto bufConstExtOp = dyn_cast<BufferConstantExternalOp>(clonedOp)) {
+      if (bufConstExtOp.getHIsPlaceholder()) {
+        Value nameValue = bufConstExtOp.getName();
+
+        Value concatenatedName =
+            StringConcatOp::create(initBuilder, callOp.getLoc(), mojoStringType,
+                                   prefixStringValue, nameValue);
+
+        bufConstExtOp.getNameMutable().assign(concatenatedName);
+      }
+    }
   }
 
   // Now inline the execute region at the call site
@@ -211,9 +215,6 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
 
     // Apply slot offsetting to the cloned operation
     offsetRuntimeSlot(clonedOp, slotOffset);
-
-    // Update placeholder names with prefix
-    updatePlaceholderNames(clonedOp, callPrefix);
   }
 
   // Map the return values of the subgraph to the results of the call

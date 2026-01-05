@@ -911,6 +911,8 @@ LogicalResult MOGraphLowering::lowerConstant(MO::ConstantOp constOp) {
 LogicalResult
 MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, constExternalOp);
+  OpBuilder &builder = opLoweringState.builder;
+  Location loc = constExternalOp.getLoc();
 
   TypedValue<MEF::ChainType> chain = loweringState.getExecuteChain();
   TypedValue<MO::TensorType> opResult = constExternalOp.getResult();
@@ -918,8 +920,14 @@ MOGraphLowering::lowerConstantExternal(MO::ConstantExternalOp constExternalOp) {
                          (*opResult.getType().getNumElements());
   uint64_t alignment = constExternalOp.getAlign();
   bool hasAlias = constExternalOp.getHasAlias();
-  StringRef name = constExternalOp.getName();
   bool isPlaceholder = constExternalOp.getIsPlaceholder();
+
+  // Create mgp.string.create op for the weight name.
+  auto mojoStringType = MGP::OpaqueType::get(
+      builder.getContext(), builder.getStringAttr("mojo_string"), {});
+  auto name = MGP::StringCreateOp::create(
+      builder, loc, mojoStringType,
+      builder.getStringAttr(constExternalOp.getName()));
 
   // Lower mo.constant.external depending on its device attribute.
   DeviceRefAttr opDevice = constExternalOp.getExecutionDevice();
