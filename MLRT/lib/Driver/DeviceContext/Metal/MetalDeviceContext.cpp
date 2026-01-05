@@ -82,9 +82,9 @@ static ErrorOr<int> getComputeCapability(StringRef name) {
 //
 // ===== MetalDevice ===== //
 //
-MetalDevice::MetalDevice(int id, MTL::Device *device, std::string name,
-                         Device::MemInfo memInfo, size_t allocAlignment,
-                         int64_t deviceMemoryLimit)
+MetalDevice::MetalDevice(int id, NS::SharedPtr<MTL::Device> device,
+                         std::string name, Device::MemInfo memInfo,
+                         size_t allocAlignment, int64_t deviceMemoryLimit)
     : Device(api, name, id, memInfo, allocAlignment, deviceMemoryLimit),
       device_(device), memInfo_(memInfo), driverVersion_([]() -> std::string {
         // Metal drivers ship with macOS, Darwin release is the driver version
@@ -92,13 +92,6 @@ MetalDevice::MetalDevice(int id, MTL::Device *device, std::string name,
         uname(&systemInfo);
         return systemInfo.release;
       }()) {}
-
-MetalDevice::~MetalDevice() {
-  if (device_) {
-    device_->release();
-    device_ = nullptr;
-  }
-}
 
 ErrorOr<int> MetalDevice::getApiVersion() const { return 0; }
 
@@ -279,23 +272,22 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
   // Create Metal buffer with shared storage mode for all allocations
   MTL::ResourceOptions options = MTL::ResourceStorageModeShared;
 
-  MTL::Buffer *buf = metalDev->newBuffer(byteSize, options);
-  if (buf == nullptr)
+  NS::SharedPtr<MTL::Buffer> buf =
+      NS::TransferPtr(metalDev->newBuffer(byteSize, options));
+  if (!buf)
     RAISE_ERROR_MESSAGE("Failed to create Metal buffer in chunkAlloc");
-  buf->retain();
 
   // For both host and device allocations, return the contents pointer
   // The memory manager will manage the memory layout
   void *contents = buf->contents();
-  if (contents == nullptr) {
-    buf->release();
+  if (contents == nullptr)
     RAISE_ERROR_MESSAGE("Failed to get contents from Metal buffer");
-  }
 
   *ptr = contents;
 
   // Track this allocation
-  trackBuffer(contents, buf);
+  trackBuffer(contents, buf.get());
+  buf.detach();
 
   return success();
 }
@@ -328,8 +320,9 @@ ErrorOrSuccess MetalDevice::setCurrentDriverContext(void *ctx) const {
 }
 
 ErrorOr<DeviceContextRef> MetalDevice::createContext() const {
-  MTL::CommandQueue *commandQueue = device_->newCommandQueue();
-  if (commandQueue == nullptr)
+  NS::SharedPtr<MTL::CommandQueue> commandQueue =
+      NS::TransferPtr(device_->newCommandQueue());
+  if (!commandQueue)
     RAISE_ERROR_MESSAGE("Failed to create Metal command queue for context.");
 
   return MetalDeviceContextRef::create(*this, commandQueue);
@@ -364,8 +357,9 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
   static RCRef<MetalDevice> metalDeviceInstance;
 
   if (!metalDeviceInstance) {
-    MTL::Device *device = MTL::CreateSystemDefaultDevice();
-    if (device == nullptr)
+    NS::SharedPtr<MTL::Device> device =
+        NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    if (!device)
       RAISE_ERROR_MESSAGE("Failed to create Metal device.");
 
     std::string name = device->name()->cString(NS::UTF8StringEncoding);
@@ -390,9 +384,9 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
 
 ErrorOr<int> MetalDevice::numberOfGPUs() {
   int count = 0;
-  if (NS::Array *devices = MTL::CopyAllDevices()) {
+  NS::SharedPtr<NS::Array> devices = NS::TransferPtr(MTL::CopyAllDevices());
+  if (devices) {
     count = devices->count();
-    devices->release();
   }
   return count;
 }
@@ -433,19 +427,9 @@ MetalDevice::getTrackedBuffers() const {
 // ===== MetalDeviceContext ===== //
 //
 
-MetalDeviceContext::MetalDeviceContext(const MetalDevice &device,
-                                       MTL::CommandQueue *commandQueue)
-    : DeviceContext(device), commandQueue_(commandQueue) {
-  if (commandQueue_)
-    commandQueue_->retain();
-}
-
-MetalDeviceContext::~MetalDeviceContext() {
-  if (commandQueue_) {
-    commandQueue_->release();
-    commandQueue_ = nullptr;
-  }
-}
+MetalDeviceContext::MetalDeviceContext(
+    const MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
+    : DeviceContext(device), commandQueue_(commandQueue) {}
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                        const void *src) const {
@@ -478,7 +462,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 
     cmdBuffer->commit();
     cmdBuffer->waitUntilCompleted();
-    cmdBuffer->release();
 
     return success();
   }
@@ -526,7 +509,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
   // Commit to queue but wait for memcpy completion
   cmdBuffer->commit();
   cmdBuffer->waitUntilCompleted();
-  cmdBuffer->release();
 
   return success();
 }
@@ -585,7 +567,6 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst,
   // buffer will be executed before the current one is completed
   cmdBuffer->commit();
   cmdBuffer->waitUntilCompleted();
-  cmdBuffer->release();
 
   return success();
 }
@@ -703,13 +684,15 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
   // Get the Metal device
-  const MetalDevice &metalDevice = MetalDevice::cast(device());
-  MTL::Device *mtlDevice = metalDevice.metalDevice();
+  MTL::Device *mtlDevice = MetalDevice::cast(device()).metalDevice();
   if (mtlDevice == nullptr)
     RAISE_ERROR_MESSAGE("Failed to get Metal device");
 
-  MTL::Library *library = nullptr;
+  NS::SharedPtr<MTL::Library> library;
 
   // Detect if input is binary or MSL source code
   bool isBinary = false;
@@ -730,25 +713,24 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     // Compile from MSL source code
     NS::String *sourceString =
         NS::String::string(code.data(), NS::UTF8StringEncoding);
-    MTL::CompileOptions *options = MTL::CompileOptions::alloc()->init();
+    NS::SharedPtr<MTL::CompileOptions> options =
+        NS::TransferPtr(MTL::CompileOptions::alloc()->init());
 
     NS::Error *error = nullptr;
-    library = mtlDevice->newLibrary(sourceString, options, &error);
+    library = NS::TransferPtr(
+        mtlDevice->newLibrary(sourceString, options.get(), &error));
     if (error) {
       RAISE_ERROR_MESSAGE(
           Twine("Failed to create Metal library (compiling MSL to AIR): ") +
           error->localizedDescription()->cString(NS::UTF8StringEncoding));
     }
-
-    sourceString->release();
-    options->release();
   } else {
     // Load from binary metallib data
     dispatch_data_t binaryData = dispatch_data_create(
         code.data(), code.size(), nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
 
     NS::Error *error = nullptr;
-    library = mtlDevice->newLibrary(binaryData, &error);
+    library = NS::TransferPtr(mtlDevice->newLibrary(binaryData, &error));
     if (error) {
       RAISE_ERROR_MESSAGE(
           Twine("Failed to create Metal library (loading binary/metallib): ") +
@@ -762,43 +744,26 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
   // Get the function from the library
   NS::String *funcName =
       NS::String::string(functionName.data(), NS::UTF8StringEncoding);
-  NS::Error *funcError = nullptr;
-  MTL::Function *function = nullptr;
-
-  function = library->newFunction(funcName);
-
-  funcName->release();
-
-  if (funcError) {
-    NS::String *errorDesc = funcError->localizedDescription();
-    std::string errorMsg = errorDesc->cString(NS::UTF8StringEncoding);
-    errorDesc->release();
-    funcError->release();
-    library->release();
-    RAISE_ERROR_MESSAGE("Failed to create Metal function: " + errorMsg);
-  }
-
-  if (function == nullptr) {
-    library->release();
+  NS::SharedPtr<MTL::Function> function =
+      NS::TransferPtr(library->newFunction(funcName));
+  if (!function) {
     RAISE_ERROR_MESSAGE("Failed to create Metal function: " +
                         functionName.str());
   }
 
   // Create a compute pipeline state with reflection to get argument info
-  MTL::ComputePipelineDescriptor *pipelineDesc =
-      MTL::ComputePipelineDescriptor::alloc()->init();
-  pipelineDesc->setComputeFunction(function);
+  NS::SharedPtr<MTL::ComputePipelineDescriptor> pipelineDesc =
+      NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
+  pipelineDesc->setComputeFunction(function.get());
   pipelineDesc->setThreadGroupSizeIsMultipleOfThreadExecutionWidth(true);
 
   // Create pipeline with reflection to get argument count
   MTL::ComputePipelineReflection *reflection = nullptr;
   NS::Error *error = nullptr;
-  MTL::ComputePipelineState *pipelineState = mtlDevice->newComputePipelineState(
-      pipelineDesc, MTL::PipelineOptionArgumentInfo, &reflection, &error);
-
-  pipelineDesc->release();
-  function->release();
-  library->release();
+  NS::SharedPtr<MTL::ComputePipelineState> pipelineState =
+      NS::TransferPtr(mtlDevice->newComputePipelineState(
+          pipelineDesc.get(), MTL::PipelineOptionArgumentInfo, &reflection,
+          &error));
 
   if (error) {
     RAISE_ERROR_MESSAGE(
@@ -807,7 +772,7 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
         error->localizedDescription()->cString(NS::UTF8StringEncoding));
   }
 
-  if (pipelineState == nullptr)
+  if (!pipelineState)
     RAISE_ERROR_MESSAGE(
         "Failed to create compute pipeline state (no error returned)");
 
@@ -832,7 +797,6 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
       }
       useReflectedSignature = true;
     }
-    reflection->release();
   }
 
   // Create and return a MetalDeviceFunction
@@ -840,7 +804,7 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
   // signature
   MetalDeviceFunctionRef func = MetalDeviceFunctionRef::create(
       *this, moduleName, functionName,
-      useReflectedSignature ? reflectedSignature : signature, *pipelineState);
+      useReflectedSignature ? reflectedSignature : signature, pipelineState);
 
   return func;
 }
@@ -855,21 +819,18 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 
   // 1) Validate pipeline
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
-  MTL::ComputePipelineState &pipeline = metalFunc.getPipelineState();
+  MTL::ComputePipelineState *pipeline = metalFunc.getPipelineState();
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr) {
+  if (cmdBuffer == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create command buffer");
-  }
 
   // 3) Create compute encoder
   MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
-  if (encoder == nullptr) {
-    cmdBuffer->release();
+  if (encoder == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create compute command encoder");
-  }
 
-  encoder->setComputePipelineState(&pipeline);
+  encoder->setComputePipelineState(pipeline);
   size_t numArgs = func.argumentCount();
   const MetalDevice &metalDevice = MetalDevice::cast(device());
   MTL::Device *mtlDevice = metalDevice.metalDevice();
@@ -878,7 +839,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   for (uint32_t i = 0; i < numArgs; ++i) {
     if (args[i] == nullptr) {
       encoder->endEncoding();
-      cmdBuffer->release();
       RAISE_ERROR_MESSAGE("Null argument at index " + std::to_string(i));
     }
 
@@ -965,7 +925,6 @@ ErrorOrSuccess MetalDeviceContext::synchronize() const {
   // This acts as a fence, ensuring all previously submitted work completes
   cmdBuffer->commit();
   cmdBuffer->waitUntilCompleted();
-  cmdBuffer->release();
 
   return success();
 }
@@ -974,7 +933,7 @@ ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
-  if (cmdBuffer == nullptr)
+  if (!cmdBuffer)
     RAISE_ERROR_MESSAGE("Failed to create command buffer for event");
 
   // Commit the command buffer - this creates the event
@@ -1066,6 +1025,11 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
 
   // create the Metal buffer
   MTL::ResourceOptions options = getResourceOptions(mode);
+  // TODO: Ideally this should be stored in an NS::SharedPtr for RAII refcount
+  // management, however this causes "Trace/breakpoint trap" crashes in some
+  // tests. This points to a subtle interaction with how MTL::Buffer* objects
+  // are currently managed by MetalDevice::trackBuffer() and
+  // MetalDevice::untrackBuffer().
   MTL::Buffer *buf = metalDev->newBuffer(byteSize, options);
   if (buf == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create Metal buffer");
@@ -1151,16 +1115,13 @@ ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
   }
 
   MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
-  if (blit == nullptr) {
-    cmdBuffer->release();
+  if (blit == nullptr)
     RAISE_ERROR_MESSAGE("Failed to create blit encoder");
-  }
 
   blit->copyFromBuffer(src, 0, dst, 0, size);
   blit->endEncoding();
 
   cmdBuffer->commit();
-  cmdBuffer->release();
   return success();
 }
 
@@ -1219,32 +1180,24 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
 //
 
 MetalDeviceEvent::MetalDeviceEvent(const MetalDevice &device,
-                                   MTL::CommandBuffer *buffer)
-    : DeviceEvent(device), buffer_(buffer) {
-  if (buffer_)
-    buffer_->retain();
-}
-
-MetalDeviceEvent::~MetalDeviceEvent() {
-  if (buffer_) {
-    buffer_->release();
-    buffer_ = nullptr;
-  }
+                                   MTL::CommandBuffer *cmdBuffer)
+    : DeviceEvent(device), cmdBuffer_(NS::TransferPtr(cmdBuffer)) {
+  if (cmdBuffer_)
+    cmdBuffer_->retain(); // Take ownership of autoreleased MTL::CommandBuffer
 }
 
 ErrorOrSuccess MetalDeviceEvent::synchronize() const {
-  if (buffer_ == nullptr)
+  if (!cmdBuffer_)
     RAISE_ERROR_MESSAGE("MetalDeviceEvent: null command buffer");
-
-  buffer_->waitUntilCompleted();
+  cmdBuffer_->waitUntilCompleted();
   return success();
 }
 
 ErrorOr<bool> MetalDeviceEvent::isReady() const {
-  if (buffer_ == nullptr)
+  if (!cmdBuffer_)
     RAISE_ERROR_MESSAGE("MetalDeviceEvent: null command buffer");
 
-  MTL::CommandBufferStatus status = buffer_->status();
+  MTL::CommandBufferStatus status = cmdBuffer_->status();
   return status == MTL::CommandBufferStatusCompleted;
 }
 
@@ -1279,13 +1232,9 @@ const MetalDeviceTimer &MetalDeviceTimer::cast(const DeviceTimer &timer) {
 MetalDeviceFunction::MetalDeviceFunction(
     const MetalDeviceContext &context, StringRef moduleName,
     StringRef functionName, const DeviceFunction::SignatureBuilder &signature,
-    MTL::ComputePipelineState &pipelineState)
+    NS::SharedPtr<MTL::ComputePipelineState> pipelineState)
     : DeviceFunction(context, signature), name_(functionName.str()),
-      pipelineState_(pipelineState) {
-  pipelineState_.retain();
-}
-
-MetalDeviceFunction::~MetalDeviceFunction() { pipelineState_.release(); }
+      pipelineState_(pipelineState) {}
 
 const std::string &MetalDeviceFunction::name() const { return name_; }
 

@@ -40,10 +40,9 @@ class MetalDevice : public Device {
 public:
   static constexpr API api = Device::metalAPI;
 
-  MetalDevice(int id, MTL::Device *device, std::string name,
+  MetalDevice(int id, NS::SharedPtr<MTL::Device> device, std::string name,
               Device::MemInfo memInfo, size_t allocAlignment,
               int64_t deviceMemoryLimit = -1);
-  ~MetalDevice() override;
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
@@ -77,7 +76,7 @@ public:
 
   static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);
 
-  MTL::Device *metalDevice() const { return device_; }
+  MTL::Device *metalDevice() const { return device_.get(); }
 
   // Buffer tracking methods
   void trackBuffer(void *ptr, MTL::Buffer *buffer) const;
@@ -87,7 +86,7 @@ public:
   std::unordered_map<void *, MTL::Buffer *> getTrackedBuffers() const;
 
 private:
-  MTL::Device *device_;
+  NS::SharedPtr<MTL::Device> device_;
   std::string name_;
   Device::MemInfo memInfo_;
   mutable DriverVersion driverVersion_;
@@ -100,8 +99,7 @@ private:
 class MetalDeviceContext : public DeviceContext {
 public:
   MetalDeviceContext(const MetalDevice &device,
-                     MTL::CommandQueue *commandQueue);
-  ~MetalDeviceContext() override;
+                     NS::SharedPtr<MTL::CommandQueue> commandQueue);
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
@@ -180,7 +178,7 @@ public:
   }
 
 private:
-  MTL::CommandQueue *commandQueue_;
+  NS::SharedPtr<MTL::CommandQueue> commandQueue_;
   // Memory allocation
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) const override;
@@ -195,7 +193,6 @@ private:
 class MetalDeviceEvent : public DeviceEvent {
 public:
   MetalDeviceEvent(const MetalDevice &device, MTL::CommandBuffer *buffer);
-  ~MetalDeviceEvent() override;
 
   ErrorOrSuccess synchronize() const override;
   ErrorOr<bool> isReady() const override;
@@ -203,7 +200,7 @@ public:
   static const MetalDeviceEvent &cast(const DeviceEvent &event);
 
 private:
-  MTL::CommandBuffer *buffer_;
+  NS::SharedPtr<MTL::CommandBuffer> cmdBuffer_;
 };
 
 class MetalDeviceTimer : public DeviceTimer {
@@ -225,8 +222,7 @@ public:
   MetalDeviceFunction(const MetalDeviceContext &context, StringRef moduleName,
                       StringRef functionName,
                       const DeviceFunction::SignatureBuilder &signature,
-                      MTL::ComputePipelineState &pipelineState);
-  ~MetalDeviceFunction() override;
+                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState);
 
   const std::string &name() const override;
 
@@ -235,13 +231,15 @@ public:
 
   ErrorOr<int32_t> getAttribute(int32_t code) const override;
 
-  MTL::ComputePipelineState &getPipelineState() const { return pipelineState_; }
+  MTL::ComputePipelineState *getPipelineState() const {
+    return pipelineState_.get();
+  }
 
   static const MetalDeviceFunction &cast(const DeviceFunction &func);
 
 private:
   std::string name_;
-  MTL::ComputePipelineState &pipelineState_;
+  NS::SharedPtr<MTL::ComputePipelineState> pipelineState_;
 };
 
 } // namespace M::Driver
