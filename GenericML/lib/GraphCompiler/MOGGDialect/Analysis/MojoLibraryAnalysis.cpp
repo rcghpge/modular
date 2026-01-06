@@ -376,13 +376,31 @@ MojoLibraryAnalysis::loadMojoPackageOrBytecode(StringRef kernelLibraryPath) {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::addKernelLibraryPath(StringRef kernelLibraryPath) {
-  auto moduleOr = loadMojoPackageOrBytecode(kernelLibraryPath);
+  if (registeredLITMojoKernelSymbol.empty()) {
+    auto moduleOr = loadMojoPackageOrBytecode(kernelLibraryPath);
+    if (moduleOr.isError())
+      return moduleOr.takeError();
+    auto module = moduleOr.takeValue();
+    return updateLoadedKernelsForCollisions(*module);
+  } else {
+    auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+    auto moduleOr = parseMojoPackage(getContext(), kernelLibraryPath, sourceMgr,
+                                     /*generateKGENLib=*/false);
+    if (moduleOr.isError())
+      return moduleOr.takeError();
+    auto module = moduleOr.takeValue();
+    ErrorOrSuccess ret;
+    module->walk([&](KGEN::LIT::FnOp funcOp) {
+      ret = updateRegisteredKernelsMap(funcOp, false);
+      if (ret.isError())
+        return mlir::WalkResult::interrupt();
+      return mlir::WalkResult::skip();
+    });
 
-  if (moduleOr.isError())
-    return moduleOr.takeError();
-
-  auto module = moduleOr.takeValue();
-  return updateLoadedKernelsForCollisions(*module);
+    if (ret.isError())
+      return ret;
+    return registerOpaqueTypesFromModule(*module);
+  }
 }
 
 // Update the state in MojoLibraryAnalysis for collisions etc.
