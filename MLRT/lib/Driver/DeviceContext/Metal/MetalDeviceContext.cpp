@@ -594,12 +594,16 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess
 MetalDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                                              size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDeviceSized",
+                       TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
 }
 
 ErrorOrSuccess
 MetalDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                                size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDeviceSized",
+                       TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
 }
 
@@ -707,6 +711,7 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
@@ -974,6 +979,7 @@ ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
 
 ErrorOr<DeviceEventRef>
 MetalDeviceContext::eventCreate(unsigned int flags) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
 }
 
@@ -1276,6 +1282,8 @@ const std::string &MetalDeviceFunction::name() const { return name_; }
 ErrorOrSuccess MetalDeviceFunction::copyToNamedConstant(const char *name,
                                                         const void *data,
                                                         size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceFunction::copyToNamedConstant",
+                       TRACY_COLOR_PURPLE);
   // Metal doesn't support named constants in the same way as CUDA/HIP
   RAISE_ERROR_MESSAGE("Named constants not supported in Metal");
 }

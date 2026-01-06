@@ -908,6 +908,8 @@ const std::string &CUDADeviceFunction::name() const {
 ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
                                                        const void *data,
                                                        size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceFunction::copyToNamedConstant",
+                       TRACY_COLOR_PURPLE);
   CUdeviceptr devicePtr;
   size_t deviceSize;
   const auto &cudaContext = CUDADeviceContext::cast(context());
@@ -1236,6 +1238,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   DeviceFunctionCacheEntryRef entry =
       device().findInFunctionCache(Device::FunctionCacheKey(
           moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),

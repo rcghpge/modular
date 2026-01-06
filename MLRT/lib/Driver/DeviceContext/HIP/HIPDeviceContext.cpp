@@ -858,6 +858,8 @@ const std::string &HIPDeviceFunction::name() const {
 ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
                                                       const void *data,
                                                       size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceFunction::copyToNamedConstant",
+                       TRACY_COLOR_PURPLE);
   hipDeviceptr_t devicePtr;
   size_t deviceSize;
   const auto &hipContext = HIPDeviceContext::cast(context());
@@ -1143,6 +1145,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   DeviceFunctionCacheEntryRef entry =
       device().findInFunctionCache(Device::FunctionCacheKey(
           moduleName.empty() ? code.str() : moduleName.str(), debugLevel.str(),

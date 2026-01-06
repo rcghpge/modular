@@ -17,6 +17,7 @@
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
 #include "Support/ML/Fill.h"
+#include "Support/Profiling/Tracy.h"
 #include "llvm/ADT/Twine.h"
 
 #include <chrono>
@@ -211,6 +212,7 @@ CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
 
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(byteSize != 0);
   *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
   if (*ptr == nullptr) {
@@ -220,6 +222,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
 }
 
 ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
   M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
   return success();
 }
@@ -228,6 +231,8 @@ void *CpuDeviceContext::driverContext() const { return nullptr; }
 
 ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                                      const void *src) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyToDevice",
+                       TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(dst.context().device());
   void *dstPtr = dst.ptr();
   memcpy(dstPtr, src, dst.byteSize());
@@ -237,6 +242,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess
 CpuDeviceContext::enqueueCopyFromDevice(void *dst,
                                         const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyFromDevice",
+                       TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(src.context().device());
   void *srcPtr = src.ptr();
   memcpy(dst, srcPtr, src.byteSize());
@@ -246,6 +253,8 @@ CpuDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess
 CpuDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                              size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyFromDeviceSized",
+                       TRACY_COLOR_PURPLE);
   void *srcPtr = src;
   memcpy(dst, srcPtr, byteSize);
   return success();
@@ -254,6 +263,8 @@ CpuDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
 ErrorOrSuccess
 CpuDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                                            size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyToDeviceSized",
+                       TRACY_COLOR_PURPLE);
   void *dstPtr = dst;
   memcpy(dstPtr, src, byteSize);
   return success();
@@ -261,6 +272,7 @@ CpuDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
 
 ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                              const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());
   void *srcPtr = src.ptr();
@@ -273,6 +285,8 @@ ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
                                                   uint64_t val,
                                                   size_t valSize) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueSetMemory",
+                       TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(dst.context().device());
 
   if (valSize > sizeof(uint64_t))
@@ -341,6 +355,7 @@ ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
@@ -349,6 +364,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueFunctionExecDirect",
+                       TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
@@ -375,26 +392,31 @@ CpuDeviceContext::createExternalStream(void *externalStream) const {
 }
 
 ErrorOrSuccess CpuDeviceContext::synchronize() const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   // Currently we do not schedule asynchronous work.
   return success();
 }
 
 ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
 ErrorOr<DeviceEventRef>
 CpuDeviceContext::eventCreate(unsigned int flags) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
 ErrorOrSuccess
 CpuDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
 ErrorOrSuccess
 CpuDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 

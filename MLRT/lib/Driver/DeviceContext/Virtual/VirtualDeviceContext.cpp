@@ -13,6 +13,7 @@
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h"
 #include "Support/Buffer.h"
 #include "Support/ErrorOr.h"
+#include "Support/Profiling/Tracy.h"
 
 #include <cassert>
 #include <string>
@@ -239,6 +240,8 @@ VirtualDeviceContext::~VirtualDeviceContext() = default;
 ErrorOrSuccess
 VirtualDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
                                           const void *src) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyToDevice",
+                       TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::enqueueCopyToDevice not implemented");
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,
@@ -248,6 +251,8 @@ VirtualDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 ErrorOrSuccess
 VirtualDeviceContext::enqueueCopyFromDevice(void *dst,
                                             const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyFromDevice",
+                       TRACY_COLOR_PURPLE);
   assert(false &&
          "VirtualDeviceContext::enqueueCopyFromDevice not implemented");
   return DeviceContext::formatError(
@@ -258,6 +263,8 @@ VirtualDeviceContext::enqueueCopyFromDevice(void *dst,
 ErrorOrSuccess
 VirtualDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                                                  size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyFromDeviceSized",
+                       TRACY_COLOR_PURPLE);
   assert(false &&
          "VirtualDeviceContext::enqueueCopyFromDeviceSized not implemented");
   return DeviceContext::formatError(
@@ -268,6 +275,8 @@ VirtualDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
 ErrorOrSuccess
 VirtualDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                                                size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyToDeviceSized",
+                       TRACY_COLOR_PURPLE);
   assert(false &&
          "VirtualDeviceContext::enqueueCopyToDeviceSized not implemented");
   return DeviceContext::formatError(
@@ -278,6 +287,7 @@ VirtualDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
 ErrorOrSuccess
 VirtualDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
                                   const DeviceBuffer &src) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memCopyDtoD not implemented");
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,
@@ -287,6 +297,8 @@ VirtualDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
                                                       uint64_t val,
                                                       size_t valSize) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueSetMemory",
+                       TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::enqueueSetMemory not implemented");
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,
@@ -298,6 +310,8 @@ ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::loadFunction",
+                       TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::loadFunction not implemented");
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,
@@ -308,6 +322,8 @@ ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueFunctionExecDirect",
+                       TRACY_COLOR_PURPLE);
   assert(false &&
          "VirtualDeviceContext::enqueueFunctionExecDirect not implemented");
   return DeviceContext::formatError(
@@ -346,27 +362,35 @@ VirtualDeviceContext::createExternalStream(void *externalStream) const {
 }
 
 ErrorOrSuccess VirtualDeviceContext::synchronize() const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   // No-op for virtual devices
   return success();
 }
 
 ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueEvent",
+                       TRACY_COLOR_PURPLE);
   return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOr<DeviceEventRef>
 VirtualDeviceContext::eventCreate(unsigned int flags) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueWaitFor",
+                       TRACY_COLOR_PURPLE);
   // No-op for virtual devices
   return success();
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueWaitFor",
+                       TRACY_COLOR_PURPLE);
   // No-op for virtual devices
   return success();
 }
@@ -418,6 +442,7 @@ VirtualDeviceContext::verified_cast(const DeviceContext *ctx) {
 
 ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                               Device::AllocMode mode) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memAlloc not implemented");
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,
@@ -425,6 +450,7 @@ ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,
 }
 
 ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr, bool isHost) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memFree", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memFree not implemented");
   return DeviceContext::formatError(
       __FILE__, __LINE__, __FUNCTION__,

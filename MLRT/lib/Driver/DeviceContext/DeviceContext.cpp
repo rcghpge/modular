@@ -368,6 +368,7 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
 
 DeviceFunctionCacheEntryRef
 Device::findInFunctionCache(const FunctionCacheKey &key) const {
+  TRACY_ZONE_SCOPED_NC("Device::findInFunctionCache", TRACY_COLOR_PURPLE);
   std::scoped_lock<std::mutex> lock(mu_);
   return funcMap_.lookup(key);
 }
@@ -375,6 +376,7 @@ Device::findInFunctionCache(const FunctionCacheKey &key) const {
 DeviceFunctionCacheEntryRef
 Device::insertInFunctionCache(const FunctionCacheKey &key,
                               const DeviceFunctionCacheEntry &entry) const {
+  TRACY_ZONE_SCOPED_NC("Device::insertInFunctionCache", TRACY_COLOR_PURPLE);
   {
     std::scoped_lock<std::mutex> lock(mu_);
     auto iter = funcMap_.find(key);
@@ -728,6 +730,7 @@ void DeviceContext::setPendingEventHandler(PendingEventHandler *h) const {
 }
 
 ErrorOrSuccess DeviceContext::checkPendingWork() const {
+  TRACY_ZONE_SCOPED_NC("DeviceContext::checkPendingWork", TRACY_COLOR_PURPLE);
   // Quickly check if we should check for a pending error.
   if (hasPendingWork_.load(std::memory_order_acquire) == 0) {
     return success();
