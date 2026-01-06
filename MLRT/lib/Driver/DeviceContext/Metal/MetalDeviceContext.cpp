@@ -679,6 +679,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
 
   return success();
 }
+
 ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
     StringRef moduleName, StringRef functionName,
     const DeviceFunction::SignatureBuilder &signature, StringRef code,
@@ -904,6 +905,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 
   return success();
 }
+
 ErrorOr<DeviceStreamRef> MetalDeviceContext::stream() const {
   RAISE_ERROR_MESSAGE("Metal stream not implemented");
 }
