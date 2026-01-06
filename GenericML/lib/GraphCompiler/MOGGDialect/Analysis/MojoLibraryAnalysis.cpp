@@ -838,79 +838,74 @@ MojoLibraryAnalysis::registerOpaqueTypesFromModule(ModuleOp module) {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  auto loadedModulesOr = loadAllMLIRKernels(kernelLibraryPaths);
+  if (!useExperimentalMojoPath()) {
+    auto loadedModulesOr = loadAllMLIRKernels(kernelLibraryPaths);
 
-  if (loadedModulesOr.isError())
-    return loadedModulesOr.takeError();
+    if (loadedModulesOr.isError())
+      return loadedModulesOr.takeError();
 
-  SmallVector<OwningOpRef<ModuleOp>> loadedModules =
-      loadedModulesOr.takeValue();
+    SmallVector<OwningOpRef<ModuleOp>> loadedModules =
+        loadedModulesOr.takeValue();
 
-  // TODO: Currently For EmitMojo, MOGGKernelAPI is loaded using LIT, but
-  // MOGGPrimitives using KGEN. Switch to load everything using LIT.
+    ASSERT_STREAM(loadedModules.size() >= 2,
+                  "Must contains standard library and MOGG primitives");
 
-  bool loadLITModules = useExperimentalMojoPath();
+    // Pull out the loaded standard library.
+    module = std::move(loadedModules[0]);
+    loadedModules.erase(loadedModules.begin());
 
-  // Standard library is loaded with KGEN only if emit mojo is disabled.
-  ASSERT_STREAM(loadLITModules || loadedModules.size() >= 2,
-                "Must contains standard library and MOGG primitives");
+    // Initialize the symbol table over the standard library module.
+    rawMojoKernelTable.emplace(*module);
 
-  // Pull out the loaded standard library.
-  module = std::move(loadedModules[0]);
-  loadedModules.erase(loadedModules.begin());
-
-  // Initialize the symbol table over the standard library module.
-  rawMojoKernelTable.emplace(*module);
-
-  for (auto generator : getRawMojoKernels()) {
-    // Mark standard library generators
-    if (auto updateErr = updateRegisteredKernelsMap(
-            generator, /*isGeneratorFromStandardLibrary*/ !loadLITModules))
-      return updateErr;
-  }
-
-  // Process all remaining modules.
-  for (auto [index, loadedModule] : llvm::enumerate(loadedModules)) {
-    if (auto updateErr = updateLoadedKernelsForCollisions(*loadedModule))
-      return Error(Twine("failed to load kernel library: ") +
-                   updateErr.getError());
-  }
-
-  // Take care of loading all LIT kernels if needed
-  if (loadLITModules) {
-    auto loadLitKernelsOr = loadAllLITKernels(kernelLibraryPaths);
-    if (loadLitKernelsOr.isError())
-      return loadLitKernelsOr.takeError();
-
-    ErrorOrSuccess maybeError = success();
-
-    auto registerLITFunctions = [&](ModuleOp package,
-                                    bool isGeneratorFromStandardLibrary) {
-      package->walk([&](KGEN::LIT::FnOp funcOp) {
-        if (auto updateErr = updateRegisteredKernelsMap(
-                funcOp, isGeneratorFromStandardLibrary))
-          maybeError = updateErr.takeError();
-      });
-    };
-
-    // Register all functions in the LIT packages
-    registerLITFunctions(*moggKernelAPILITPackage,
-                         /*isGeneratorFromStandardLibrary=*/true);
-    for (auto &package : litPackages)
-      registerLITFunctions(*package, /*isGeneratorFromStandardLibrary=*/false);
-
-    if (maybeError.isError())
-      return maybeError.takeError();
-
-    // Register all struct types for opaque type name resolution.
-    // MOGGKernelAPI is registered first, then other packages.
-    // Conflicts emit a warning and keep the first registered type.
-    if (auto err = registerOpaqueTypesFromModule(*moggKernelAPILITPackage))
-      return err.takeError();
-    for (auto &package : litPackages) {
-      if (auto err = registerOpaqueTypesFromModule(*package))
-        return err.takeError();
+    for (auto generator : getRawMojoKernels()) {
+      // Mark standard library generators
+      if (auto updateErr = updateRegisteredKernelsMap(
+              generator, /*isGeneratorFromStandardLibrary*/ true))
+        return updateErr;
     }
+
+    // Process all remaining modules.
+    for (auto [index, loadedModule] : llvm::enumerate(loadedModules)) {
+      if (auto updateErr = updateLoadedKernelsForCollisions(*loadedModule))
+        return Error(Twine("failed to load kernel library: ") +
+                     updateErr.getError());
+    }
+
+    return success();
+  }
+
+  auto loadLitKernelsOr = loadAllLITKernels(kernelLibraryPaths);
+  if (loadLitKernelsOr.isError())
+    return loadLitKernelsOr.takeError();
+
+  ErrorOrSuccess maybeError = success();
+
+  auto registerLITFunctions = [&](ModuleOp package,
+                                  bool isGeneratorFromStandardLibrary) {
+    package->walk([&](KGEN::LIT::FnOp funcOp) {
+      if (auto updateErr = updateRegisteredKernelsMap(
+              funcOp, isGeneratorFromStandardLibrary))
+        maybeError = updateErr.takeError();
+    });
+  };
+
+  // Register all functions in the LIT packages
+  registerLITFunctions(*moggKernelAPILITPackage,
+                       /*isGeneratorFromStandardLibrary=*/true);
+  for (auto &package : litPackages)
+    registerLITFunctions(*package, /*isGeneratorFromStandardLibrary=*/false);
+
+  if (maybeError.isError())
+    return maybeError.takeError();
+
+  // Register all struct types for opaque type name resolution.
+  // MOGGKernelAPI is registered first, then other packages.
+  // Conflicts emit a warning and keep the first registered type.
+  if (auto err = registerOpaqueTypesFromModule(*moggKernelAPILITPackage))
+    return err.takeError();
+  for (auto &package : litPackages) {
+    if (auto err = registerOpaqueTypesFromModule(*package))
+      return err.takeError();
   }
 
   return success();

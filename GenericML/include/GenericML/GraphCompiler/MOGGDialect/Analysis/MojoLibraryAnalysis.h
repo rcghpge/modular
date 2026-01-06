@@ -88,6 +88,11 @@ public:
     return registeredMojoKernelSymbol.contains(name);
   }
 
+  /// Returns true if a registered LIT Mojo symbol using the name exists.
+  bool hasRegisteredLITMojoKernelFor(StringRef name) const {
+    return registeredLITMojoKernelSymbol.contains(name);
+  }
+
   struct KernelCandidate {
     KernelCandidate(KGEN::GeneratorOp gen, int64_t priority)
         : generator(gen), priority(priority) {}

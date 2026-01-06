@@ -452,7 +452,7 @@ void LowerPrimitivesPass::runOnOperation() {
               op->getDialect()) ||
           isa<KGEN::ParamConstantOp>(op);
       if (!isAnIndexOrPOPOrParamConstantOp) {
-        if (!mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
+        if (!mojoLibraryAnalysis.hasRegisteredLITMojoKernelFor(
                 op->getName().getStringRef())) {
           // Operations that do not have a registration function can't be
           // lowered to a kernel.

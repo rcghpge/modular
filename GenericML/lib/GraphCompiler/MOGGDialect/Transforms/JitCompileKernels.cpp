@@ -71,10 +71,10 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       if (compileMojoToBinary(module, mojoLibraryAnalysis, kernelLibraryPaths)
               .isError())
         signalPassFailure();
+    } else {
+      if (compileKGENToBinary(module, mojoLibraryAnalysis).isError())
+        signalPassFailure();
     }
-
-    if (compileKGENToBinary(module, mojoLibraryAnalysis).isError())
-      signalPassFailure();
   }
 
   CompileDiagnosticOrSuccess
