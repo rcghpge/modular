@@ -131,8 +131,10 @@ createObjectCompiler(ModuleOp kgenModule,
       KGEN::ObjectCompiler::create(".mojo_cache", compilationOptions,
                                    /*isJit=*/true, *ctx, pmOptions);
 
-  if (compilerOr.isError())
+  if (compilerOr.isError()) {
     kgenModule->emitError(compilerOr.getError());
+    return nullptr;
+  }
 
   return compilerOr.takeValue();
 }
