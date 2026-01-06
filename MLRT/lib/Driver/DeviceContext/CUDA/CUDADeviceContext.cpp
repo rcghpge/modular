@@ -403,20 +403,21 @@ ErrorOr<DeviceContextRef> CUDADevice::createContext() const {
 }
 
 ErrorOr<int> CUDADevice::numberOfGPUs() {
-  static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
-    ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
+  static ErrorOr<unsigned int> errOrCount = []() -> ErrorOr<int> {
+    ErrorOr<const NVML &> errDriver = NVML::get();
     if (errDriver.isError())
       return errDriver.takeError();
 
-    int result;
-    CUDA_CHECK_ERR((*errDriver).cuDeviceGetCount(&result));
+    unsigned int result;
+    if (errDriver->DeviceGetCount_v2(&result) != NVML::SUCCESS)
+      RAISE_ERROR("NVML: Unable to get device count");
     return result;
   }();
 
   if (errOrCount.isError()) {
     return errOrCount.copy();
   }
-  return *errOrCount;
+  return static_cast<int>(*errOrCount);
 }
 
 int CUDADevice::deviceCount() const {

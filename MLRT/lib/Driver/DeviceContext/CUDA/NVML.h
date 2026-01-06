@@ -26,6 +26,9 @@ public:
   ~NVML();
 
   ErrorOr<std::string> GetDriverVersion() const;
+  Result DeviceGetCount_v2(unsigned int *count) const {
+    return nvmlDeviceGetCount_v2_(count);
+  }
   Result DeviceGetHandleByIndex(int idx, nvmlDevice_t *dev) const {
     return nvmlDeviceGetHandleByIndex_(idx, dev);
   }
@@ -54,6 +57,9 @@ private:
 
   using tnvmlSystemGetDriverVersion = Result(char *, int);
   tnvmlSystemGetDriverVersion *nvmlSystemGetDriverVersion_;
+
+  using tnvmlDeviceGetCount_v2 = Result(unsigned int *);
+  tnvmlDeviceGetCount_v2 *nvmlDeviceGetCount_v2_;
 
   using tnvmlDeviceGetHandleByIndex = Result(int, nvmlDevice_t *);
   tnvmlDeviceGetHandleByIndex *nvmlDeviceGetHandleByIndex_;

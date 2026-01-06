@@ -55,6 +55,7 @@ ErrorOr<const NVML &> NVML::allocAndInitNVML() {
   GET_FUNC(nvmlInit_v2);
   GET_FUNC(nvmlShutdown);
   GET_FUNC(nvmlErrorString);
+  GET_FUNC(nvmlDeviceGetCount_v2);
   GET_FUNC(nvmlDeviceGetHandleByIndex);
   GET_FUNC(nvmlDeviceGetCudaComputeCapability);
 
