@@ -409,7 +409,7 @@ ErrorOr<int> CUDADevice::numberOfGPUs() {
       return errDriver.takeError();
 
     unsigned int result;
-    if (errDriver->DeviceGetCount_v2(&result) != NVML::SUCCESS)
+    if (errDriver->nvmlDeviceGetCount_v2(&result) != NVML::SUCCESS)
       RAISE_ERROR("NVML: Unable to get device count");
     return result;
   }();
@@ -1512,11 +1512,11 @@ ErrorOr<std::string> CUDADevice::getFirstArchName() {
     return nvml.takeError();
 
   nvmlDevice_t device;
-  if (nvml->DeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
+  if (nvml->nvmlDeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
     RAISE_ERROR("NVML: Unable to get device index");
 
   int major, minor;
-  if (nvml->DeviceGetCudaComputeCapability(device, &major, &minor) !=
+  if (nvml->nvmlDeviceGetCudaComputeCapability(device, &major, &minor) !=
       NVML::SUCCESS)
     RAISE_ERROR("NVML: Unable to get compute capability");
 
