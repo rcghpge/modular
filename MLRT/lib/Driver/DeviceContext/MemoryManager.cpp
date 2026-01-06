@@ -912,10 +912,13 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     }
 
     // If only allowing allocations from the memory manager, raise an error at
-    // this point, printing as much debugging information as needed.
+    // this point if there is insufficient capacity, printing as much debugging
+    // information as needed.
     static bool useOnlyMemoryManager =
         DeviceContext::configAsBool("memory_manager_only", false);
-    if (useOnlyMemoryManager) {
+    auto availableCacheSize =
+        memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
+    if (useOnlyMemoryManager && availableCacheSize < size) {
       if (memoryManager_.doLog_) {
         memoryManager_.logErr(
             "allocate(" + TWINE(size) + ") - memory_manager_only OOM", 0, 0);
