@@ -87,7 +87,7 @@ CuGetErrorStringFn cuGetErrorString = nullptr;
 } // namespace
 
 /// Load CUDA driver functions from libcuda.so
-static bool loadCUDAFunctions() {
+[[maybe_unused]] static bool loadCUDAFunctions() {
   void *handle = dlopen("libcuda.so.1", RTLD_NOW | RTLD_GLOBAL);
   if (!handle) {
     handle = dlopen("libcuda.so", RTLD_NOW | RTLD_GLOBAL);
