@@ -487,8 +487,6 @@ public:
     return enqueueWaitFor(event);
   }
 
-  ErrorOrSuccess enqueueEventHandler(std::function<void()> handler) const;
-
   virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
@@ -526,8 +524,12 @@ public:
   // Error helpers.
   static Error formatError(const char *file, int line, const char *func,
                            const llvm::Twine &msg);
+  ErrorOrSuccess checkPendingError() const;
 
-  ErrorOrSuccess checkPendingWork() const;
+  // Enqueue event handlers.
+  ErrorOrSuccess enqueueEventHandler(std::function<void()> handler) const;
+  // Poll event handlers when events are ready.
+  ErrorOrSuccess pollPendingEvents() const;
 
   // Debugging helpers.
   bool syncMode() const;
@@ -578,19 +580,19 @@ private:
 
   mutable std::atomic<int> syncMode_ = {0};
 
-  // hasPendingWork_ does indicate whether pendingError_ and pendingEvents_
-  // should be checked. Since pending[Error_ | Events_] are protected by a lock
-  // we set an atomic value that can be quickly checked without fully acquiring
-  // a mutex lock. Raising errors and enqueueing work across threads is
-  // inherently racing, so we are fine with possibly missing an update to
-  // hasPendingWork_ from a different thread.
-  //
-  // To make sure the pendingWork_ is properly set and memory been made visible
-  // to other threads, we first need to lock mu_, update the pendingError_ or
-  // pendingEvents_, release mu_ and only then atomically set pendingWork_.
-  mutable std::atomic<int> hasPendingWork_ = {0};
-  mutable std::mutex mu_;
+  // hasPendingError_ indicates whether pendingError_ should be checked.
+  // Since pendingError_ is protected by a lock we set an atomic value that can
+  // be quickly checked without fully acquiring a mutex lock. Raising errors
+  // across threads is inherently racing, so we are fine with possibly
+  // missing an update to hasPendingError_ from a different thread.
+  mutable std::atomic<int> hasPendingError_ = {0};
+  mutable std::mutex pendingErrorMutex_;
   mutable ErrorOrSuccess pendingError_;
+
+  // hasPendingWork_ indicates whether pendingWork_ should be checked.
+  // pendingWorkMutex_ protects pendingEvents_ and pendingEventsLast_.
+  mutable std::atomic<int> hasPendingWork_ = {0};
+  mutable std::mutex pendingWorkMutex_;
   mutable PendingEventHandler *pendingEvents_ = nullptr;
   mutable PendingEventHandler *pendingEventsLast_ = nullptr;
 

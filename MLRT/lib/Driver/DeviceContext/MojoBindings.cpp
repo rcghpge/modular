@@ -83,7 +83,7 @@ MODULAR_EXPORT void AsyncRT_DeviceContext_release(const DeviceContext *ctx) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_release", TRACY_COLOR_GRAY);
   // Give the event handlers opportunity to run, which can decrement the
   // reference count.
-  [[maybe_unused]] ErrorOrSuccess ignored = ctx->checkPendingWork();
+  [[maybe_unused]] ErrorOrSuccess ignored = ctx->pollPendingEvents();
   // Decrement the low-level reference count.
   DeviceContextRef::lowLevelDropRef(ctx);
 }

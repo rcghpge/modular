@@ -82,13 +82,19 @@
     }                                                                          \
   } while (0)
 
+#define CHECK_PENDING_ERR(ctx)                                                 \
+  do {                                                                         \
+    ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                   \
+    if (__pendingErr.isError())                                                \
+      return __pendingErr.takeError();                                         \
+  } while (0)
+
 #define HIP_WITH_CTX_ERR(ctx)                                                  \
-  ErrorOrSuccess __pendingErr = (ctx).checkPendingWork();                      \
-  if (__pendingErr.isError()) {                                                \
-    return __pendingErr.takeError();                                           \
-  }                                                                            \
+  CHECK_PENDING_ERR(ctx);                                                      \
   HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
   HIP_CHECK_ERR(__hipWithContext.status());
+
+#define POLL_PENDING_EVENTS(ctx) ERR_CHECK_ERR((ctx).pollPendingEvents());
 
 #define HIP_WITH_CTX(ctx)                                                      \
   HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
@@ -865,6 +871,7 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
   const auto &hipContext = HIPDeviceContext::cast(context());
 
   HIP_WITH_CTX_ERR(hipContext);
+  POLL_PENDING_EVENTS(hipContext);
   HIP_CHECK_ERR(hipContext.hipDriver().hipModuleGetGlobal(
       &devicePtr, &deviceSize, moduleFunction_->hipModule(), name));
 
@@ -883,6 +890,7 @@ ErrorOr<int32_t> HIPDeviceFunction::getAttribute(int32_t code) const {
   const auto &hipContext = HIPDeviceContext::cast(context());
 
   HIP_WITH_CTX_ERR(hipContext);
+  POLL_PENDING_EVENTS(hipContext);
   HIP_CHECK_ERR(hipContext.hipDriver().hipFuncGetAttribute(
       &result, static_cast<hipFunction_attribute>(code),
       moduleFunction_->hipFunction()));
@@ -894,6 +902,7 @@ ErrorOrSuccess HIPDeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
   const auto &hipContext = HIPDeviceContext::cast(context());
 
   HIP_WITH_CTX_ERR(hipContext);
+  POLL_PENDING_EVENTS(hipContext);
   HIP_CHECK_ERR(
       hipContext.hipDriver().hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
           numBlocks, moduleFunction_->hipFunction(), blockSize,
@@ -943,6 +952,7 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
 
   assert(byteSize != 0);
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   switch (mode) {
   case Device::AllocMode::ASYNC: {
     HIP_CHECK_ERR(driver_.hipMallocAsync(ptr, byteSize, stream_));
@@ -966,6 +976,7 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   if (isHost) {
     HIP_CHECK_ERR(driver_.hipHostFree(ptr));
   } else {
@@ -986,6 +997,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 
   CHECK_IS_HIP_ERR(dst.context().device());
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   hipDeviceptr_t dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
@@ -1002,6 +1014,7 @@ HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 
   CHECK_IS_HIP_ERR(src.context().device());
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   hipDeviceptr_t srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
@@ -1017,6 +1030,7 @@ HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                        TRACY_COLOR_PURPLE);
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   HIP_CHECK_ERR(driver_.hipMemcpyHtoDAsync(dst, src, byteSize, stream_));
   MAYBE_SYNC(*this);
@@ -1030,6 +1044,7 @@ HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                        TRACY_COLOR_PURPLE);
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   hipDeviceptr_t srcPtr = src;
   HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
@@ -1055,6 +1070,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   // to documentation:
   // https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api/modules/memory_management.html#_CPPv49hipMemcpyPvPKv6size_t13hipMemcpyKind
   HIP_WITH_CTX_ERR(srcCtx);
+  POLL_PENDING_EVENTS(srcCtx);
 
   hipDeviceptr_t srcPtr = src.ptr();
   hipDeviceptr_t dstPtr = dst.ptr();
@@ -1166,6 +1182,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   hipModule_t module;
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipModuleLoadData(&module, code.data()));
 
   hipFunction_t function;
@@ -1194,6 +1211,7 @@ ErrorOrSuccess HIPDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
     size_t dynamicSharedMemSize) const {
   const auto &hipFunc = HIPDeviceFunction::cast(func);
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   return (hipFunc.occupancyMaxActiveBlocksPerMultiprocessor(
       numBlocks, blockSize, dynamicSharedMemSize));
 }
@@ -1210,6 +1228,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
     RAISE_ERROR("Function launch attributes not supported;");
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   return hipFunc.hipCallKernelDirect(gridX, gridY, gridZ, blockX, blockY,
                                      blockZ, sharedMemBytes, args, stream_);
 }
@@ -1223,6 +1242,7 @@ ErrorOrSuccess
 HIPDeviceContext::streamPriorityRange(int *leastPriority,
                                       int *greatestPriority) const {
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(
       driver_.hipDeviceGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
@@ -1256,8 +1276,9 @@ ErrorOrSuccess HIPDeviceContext::synchronize() const {
 
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.hipStreamSynchronize(stream_));
-  // Handle any pending events after synchronization.
-  ERR_CHECK_ERR(checkPendingWork());
+  // Check any pending errors and events after synchronization.
+  CHECK_PENDING_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   return success();
 }
 
@@ -1266,6 +1287,7 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
 
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&event, 0));
   HIP_CHECK_ERR(driver_.hipEventRecord(event, stream_));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
@@ -1277,6 +1299,7 @@ HIPDeviceContext::eventCreate(unsigned int flags) const {
 
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&event, flags));
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
 }
@@ -1287,6 +1310,7 @@ HIPDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
   const auto &hipEvent = HIPDeviceEvent::cast(event);
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipStreamWaitEvent(stream_, hipEvent.hipEvent(), 0));
   return success();
 }
@@ -1305,6 +1329,7 @@ ErrorOr<DeviceTimerRef> HIPDeviceContext::startTimer() const {
   hipEvent_t stop;
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&start, 0));
   HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&stop, 0));
 
@@ -1320,6 +1345,7 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   const auto &hipTimer = HIPDeviceTimer::cast(timer);
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipEventRecord(hipTimer.hipStopEvent(), stream_));
   HIP_CHECK_ERR(driver_.hipEventSynchronize(hipTimer.hipStopEvent()));
 
@@ -1345,6 +1371,7 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   }
 
   HIP_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipDeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
   return success();
 }

@@ -119,13 +119,19 @@ private:
     }                                                                          \
   } while (0)
 
+#define CHECK_PENDING_ERR(ctx)                                                 \
+  do {                                                                         \
+    ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                   \
+    if (__pendingErr.isError())                                                \
+      return __pendingErr.takeError();                                         \
+  } while (0)
+
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
-  ErrorOrSuccess __pendingErr = (ctx).checkPendingWork();                      \
-  if (__pendingErr.isError()) {                                                \
-    return __pendingErr.takeError();                                           \
-  }                                                                            \
+  CHECK_PENDING_ERR(ctx);                                                      \
   CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
   CUDA_CHECK_ERR(__cudaWithContext.status());
+
+#define POLL_PENDING_EVENTS(ctx) ERR_CHECK_ERR((ctx).pollPendingEvents());
 
 #define CUDA_WITH_CTX(ctx)                                                     \
   CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
@@ -946,6 +952,7 @@ ErrorOrSuccess CUDADeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
     int *numBlocks, int blockSize, size_t dynamicSharedMemSize) const {
   const auto &cudaContext = CUDADeviceContext::cast(context());
   CUDA_WITH_CTX_ERR(cudaContext);
+  POLL_PENDING_EVENTS(cudaContext);
   CUDA_CHECK_ERR(
       moduleFunction_->cudaDriver().cuOccupancyMaxActiveBlocksPerMultiprocessor(
           numBlocks, moduleFunction_->cudaFunction(), blockSize,
@@ -997,6 +1004,7 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
 
   assert(byteSize != 0);
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   switch (mode) {
   case Device::AllocMode::ASYNC: {
     CUDA_CHECK_ERR(driver_.cuMemAllocAsync(ptr, byteSize, stream_));
@@ -1018,7 +1026,8 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
 
-  CUDA_WITH_CTX(*this);
+  CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   if (isHost) {
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
   } else {
@@ -1037,6 +1046,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   CUdeviceptr dstPtr = dst.ptr();
   size_t byteSize = dst.byteSize();
@@ -1053,6 +1063,7 @@ CUDADeviceContext::enqueueCopyFromDevice(void *dst,
 
   CHECK_IS_CUDA_ERR(src.context().device());
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   CUdeviceptr srcPtr = src.ptr();
   size_t byteSize = src.byteSize();
@@ -1068,6 +1079,7 @@ CUDADeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
                        TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   CUDA_CHECK_ERR(driver_.cuMemcpyHtoDAsync_v2(dst, src, byteSize, stream_));
   MAYBE_SYNC(*this);
@@ -1081,6 +1093,7 @@ CUDADeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
                        TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   CUDA_CHECK_ERR(driver_.cuMemcpyDtoHAsync_v2(dst, src, byteSize, stream_));
   MAYBE_SYNC(*this);
@@ -1094,6 +1107,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   CHECK_IS_CUDA_ERR(src.context().device());
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   const auto &srcCtx = CUDADeviceContext::cast(src.context());
   const auto &dstCtx = CUDADeviceContext::cast(dst.context());
@@ -1140,6 +1154,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
 
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   void *ptr = dst.ptr();
   size_t byteSize = dst.byteSize();
   if (valSize == 1) {
@@ -1262,6 +1277,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
 
   CUmodule module;
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
 
   CUDA_CHECK_ERR(driver_.cuModuleLoadDataEx(
       &module, code.data(), optionKind.size(), optionKind.data(),
@@ -1311,6 +1327,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
   const auto &cudaFunc = CUDADeviceFunction::cast(func);
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   return cudaFunc.cudaCallKernelDirect(
       gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes,
       reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args, stream_);
@@ -1325,6 +1342,7 @@ ErrorOrSuccess
 CUDADeviceContext::streamPriorityRange(int *leastPriority,
                                        int *greatestPriority) const {
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(
       driver_.cuCtxGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
@@ -1358,8 +1376,9 @@ ErrorOrSuccess CUDADeviceContext::synchronize() const {
 
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.cuStreamSynchronize(stream_));
-  // Handle any pending events after synchronization.
-  ERR_CHECK_ERR(checkPendingWork());
+  // Check for any errors and events after synchronization.
+  CHECK_PENDING_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   return success();
 }
 
@@ -1367,6 +1386,7 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
   CUDA_CHECK_ERR(driver_.cuEventRecord(event, stream_));
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
@@ -1377,6 +1397,7 @@ CUDADeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUevent event;
   CUDA_CHECK_ERR(driver_.cuEventCreate(&event, flags));
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
@@ -1388,6 +1409,7 @@ CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuStreamWaitEvent(stream_, cudaEvent.cudaEvent(), 0));
   MAYBE_SYNC(*this);
   return success();
@@ -1407,6 +1429,7 @@ ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
   CUevent stop;
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuEventCreate(&start, 0));
   CUDA_CHECK_ERR(driver_.cuEventCreate(&stop, 0));
 
@@ -1422,6 +1445,7 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
   const auto &cudaTimer = CUDADeviceTimer::cast(timer);
 
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuEventRecord(cudaTimer.cudaStopEvent(), stream_));
   CUDA_CHECK_ERR(driver_.cuEventSynchronize(cudaTimer.cudaStopEvent()));
 
@@ -1437,6 +1461,7 @@ CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
 ErrorOrSuccess
 CUDADeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuCtxEnablePeerAccess(
       CUDADeviceContext::cast(peer).cudaContext(), 0));
 
@@ -1471,6 +1496,7 @@ ErrorOrSuccess CUDADeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
     size_t dynamicSharedMemSize) const {
   const auto &cudaFunc = CUDADeviceFunction::cast(func);
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   return cudaFunc.occupancyMaxActiveBlocksPerMultiprocessor(
       numBlocks, blockSize, dynamicSharedMemSize);
 }
@@ -1490,6 +1516,7 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeTiled(
     CUtensorMapFloatOOBfill oobFill) const {
   CHECK_IS_CUDA_ERR(globalAddress.context().device());
   CUDA_WITH_CTX_ERR(*this);
+  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuTensorMapEncodeTiled(
       tensorMap, tensorDataType, tensorRank, globalAddress.ptr(), globalDim,
       globalStrides, boxDim, elementStrides, interleave, swizzle, l2Promotion,

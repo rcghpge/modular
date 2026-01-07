@@ -945,7 +945,7 @@ ErrorOrSuccess MetalDeviceContext::synchronize() const {
   ensureThreadlocalAutoreleasePoolExists();
 
   // Check for any pending errors first, similar to CUDA's behavior
-  ErrorOrSuccess pendingErr = checkPendingWork();
+  ErrorOrSuccess pendingErr = checkPendingError();
   if (pendingErr.isError()) {
     return pendingErr.takeError();
   }

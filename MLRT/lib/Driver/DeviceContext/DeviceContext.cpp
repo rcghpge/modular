@@ -430,7 +430,7 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   // DEBUGGING AID
   // ERR_CHECK(ctx, ctx.enqueueSetMemory(*this, 0xf3, 1));
   // \DEBUGGING AID
-  ERR_CHECK(ctx, ctx.checkPendingWork());
+  ERR_CHECK(ctx, ctx.pollPendingEvents());
   if (!isHost()) {
     ERR_CHECK(ctx, ctx.freeList().free(ptr_));
   } else {
@@ -678,15 +678,15 @@ DeviceContext::getMemoryInfo() const {
 
 void DeviceContext::setPendingError(Error err) const {
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::lock_guard<std::mutex> lock(pendingErrorMutex_);
     // Do not overwrite an already pending error.
     if (pendingError_.isError())
       return;
 
     pendingError_ = std::move(err);
   }
-  // After releasing mu_ also set the atomic value to true.
-  hasPendingWork_.store(1, std::memory_order_release);
+  // After releasing pendingErrorMutex_ also set the atomic value to true.
+  hasPendingError_.store(1, std::memory_order_release);
 }
 
 class DeviceContext::PendingEventHandler {
@@ -713,7 +713,7 @@ private:
 
 void DeviceContext::setPendingEventHandler(PendingEventHandler *h) const {
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::lock_guard<std::mutex> lock(pendingWorkMutex_);
     if (pendingEventsLast_ != nullptr) {
       // Enqueue at end.
       assert(pendingEventsLast_->next_ == nullptr);
@@ -725,23 +725,52 @@ void DeviceContext::setPendingEventHandler(PendingEventHandler *h) const {
       pendingEventsLast_ = h;
     }
   }
-  // After releasing mu_ also set the atomic value to true.
+  // After releasing pendingWorkMutex_ also set the atomic value to true.
   hasPendingWork_.store(1, std::memory_order_release);
 }
 
-ErrorOrSuccess DeviceContext::checkPendingWork() const {
-  TRACY_ZONE_SCOPED_NC("DeviceContext::checkPendingWork", TRACY_COLOR_PURPLE);
+ErrorOrSuccess DeviceContext::checkPendingError() const {
+  TRACY_ZONE_SCOPED_NC("DeviceContext::checkPendingError", TRACY_COLOR_PURPLE);
+
   // Quickly check if we should check for a pending error.
-  if (hasPendingWork_.load(std::memory_order_acquire) == 0) {
+  if (hasPendingError_.load(std::memory_order_acquire) == 0) {
     return success();
   }
 
   // We can safely remove the flag indicating that the pending error should be
   // checked. We will unconditionally acquire the lock below and check the
-  // pending event handlers and errors while protected by the lock.
-  hasPendingWork_.store(0, std::memory_order_release);
+  // pending error while protected by the lock.
+  hasPendingError_.store(0, std::memory_order_release);
+
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::lock_guard<std::mutex> lock(pendingErrorMutex_);
+
+    // Check if we have a pending error recorded.
+    if (!pendingError_.isError())
+      return success();
+
+    // Return the error and reset.
+    Error result = pendingError_.takeError();
+    pendingError_ = success();
+    return result;
+  }
+}
+
+ErrorOrSuccess DeviceContext::pollPendingEvents() const {
+  TRACY_ZONE_SCOPED_NC("DeviceContext::pollPendingEvents", TRACY_COLOR_PURPLE);
+
+  // Quickly check if we should check for a pending work.
+  if (hasPendingWork_.load(std::memory_order_acquire) == 0) {
+    return success();
+  }
+
+  // We can safely remove the flag indicating that the pending work should be
+  // checked. We will unconditionally acquire the lock below and check the
+  // pending event handlers while protected by the lock.
+  hasPendingWork_.store(0, std::memory_order_release);
+
+  {
+    std::lock_guard<std::mutex> lock(pendingWorkMutex_);
 
     // Check if the head of the queue of pending events exists and its event is
     // ready.
@@ -776,21 +805,14 @@ ErrorOrSuccess DeviceContext::checkPendingWork() const {
       // Before calling the handler we need to release the lock in case there
       // are pending errors to be enqueued or there are other effects by the
       // handler code (e.g. causing dead lock or contention).
-      mu_.unlock();
+      pendingWorkMutex_.unlock();
       curHandler->runHandler();
       delete curHandler;
-      mu_.lock();
+      pendingWorkMutex_.lock();
     }
-
-    // Check if we have a pending error recorded.
-    if (!pendingError_.isError()) {
-      return success();
-    }
-    // Return the error and reset.
-    Error result = pendingError_.takeError();
-    pendingError_ = success();
-    return result;
   }
+
+  return success();
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
