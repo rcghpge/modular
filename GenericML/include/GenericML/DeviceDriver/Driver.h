@@ -125,7 +125,7 @@ struct Device : M::ReferenceCounted<Device> {
 
   /// Returns true if this device can access the `peer` device.
   ErrorOr<bool> canAccess(const Device &peer) const {
-    return ctx->canAccess(*peer.ctx);
+    return ctx->device().canAccess(peer.ctx->device());
   }
 
   /// Blocks until any pending async work on the device completes.

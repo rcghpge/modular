@@ -420,11 +420,6 @@ public:
 
   const Device &device() const;
 
-  /// Returns true if this device can access the `peer` device.
-  ErrorOr<bool> canAccess(const DeviceContext &peer) const {
-    return device().canAccess(peer.device());
-  }
-
   // DeviceBuffer allocation.
   ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
 
