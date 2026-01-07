@@ -9,7 +9,7 @@
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}, {{.*}}, {{.*}})
 // CHECK: comptime {{.*}} = StaticTuple[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec)
 // CHECK: var {{.*}} = VariadicTensors[io_spec = {{.*}}.io_spec, static_specs = {{.*}}]({{.*}})
-// CHECK: MOGGKernelAPI.Concat.execute[dtype = {{.*}}.dtype, rank = {{.*}}.rank, target = "cpu"]({{.*}}, {{.*}}, {{.*}}, {{.*}})
+// CHECK: MOGGKernelAPI.Concat.execute[target = "cpu"]({{.*}}, {{.*}}, {{.*}}, {{.*}})
 
 mo.graph @concat(%arg0: !mo.tensor<[2], si32>, %arg1: !mo.tensor<[3], si32>, %arg2: !mo.tensor<[4], si32>) -> !mo.tensor<[9], si32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
