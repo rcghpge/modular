@@ -1056,6 +1056,50 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
   MojoValue moggTensorInit("MOGGPrimitives.mogg_tensor_init");
   return state.builder.var(moggTensorInit(templateParams, runtimeArgs));
 }
+
+/// Build a mapping from function parameter names to MojoValues extracted from
+/// tensor operands. This is needed because Mojo's linearized parameter
+/// inference cannot infer keyword-only parameters like static_spec from tensor
+/// types. We extract these parameters explicitly from the tensor operands.
+llvm::StringMap<MojoValue>
+extractTensorParamValues(KGEN::LIT::FnOp function,
+                         ArrayRef<MojoValue> kernelOperands) {
+  llvm::StringMap<MojoValue> tensorParamValues;
+  auto inputParams = function->getAttrOfType<ArrayAttr>(
+      KGEN::MOGGPreElab::kKernelValueParameterAttrName);
+  if (!inputParams)
+    return tensorParamValues;
+
+  for (auto [argIdx, inputParam] : llvm::enumerate(inputParams)) {
+    auto inputParamDict = dyn_cast<DictionaryAttr>(inputParam);
+    if (!inputParamDict)
+      continue;
+
+    // Get the corresponding tensor operand for this argument
+    if (argIdx >= kernelOperands.size())
+      continue;
+
+    const MojoValue &tensorOperand = kernelOperands[argIdx];
+    for (auto param : inputParamDict) {
+      auto funcParamRef = dyn_cast<KGEN::ParamDeclRefAttr>(param.getValue());
+      if (!funcParamRef)
+        continue;
+
+      StringRef funcParamName = funcParamRef.getName().getValue();
+      // Skip parameters with complex names that can't be used in Mojo
+      // syntax (e.g., qualified names with dots or mangled names with
+      // backticks like "out_tensor.static_spec`2x")
+      if (funcParamName.contains('.') || funcParamName.contains('`'))
+        continue;
+
+      StringRef tensorFieldName = param.getName();
+      // Extract the parameter value from the tensor operand
+      tensorParamValues[funcParamName] =
+          tensorOperand.get(tensorFieldName.str());
+    }
+  }
+  return tensorParamValues;
+}
 } // namespace
 
 LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
@@ -1099,8 +1143,16 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   if (auto maybeContext = getDeviceContext())
     kernelOperands.push_back(state.getMojoValueFor(maybeContext));
 
+  // Extract tensor parameter values to help Mojo's parameter inference.
+  llvm::StringMap<MojoValue> tensorParamValues =
+      extractTensorParamValues(function, kernelOperands);
+
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    // First check if we extracted this parameter from a tensor operand
+    auto it = tensorParamValues.find(paramName);
+    if (it != tensorParamValues.end())
+      return it->second;
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
