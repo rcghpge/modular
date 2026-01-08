@@ -110,7 +110,7 @@ private:
   // - nullptr: in use
   // - other values: the owning free list
   // Note: Atomic since it can be accessed by multiple threads while iterating
-  // throuch descriptors checking for ownership. The value is only modified by
+  // through descriptors checking for ownership. The value is only modified by
   // the freelist owning the descriptor.
   std::atomic<MemoryManagerFreeList *> owner_;
 
@@ -444,7 +444,7 @@ void MemoryManagerFreeList::addToFreeList(MemoryManager::Desc *desc) {
 
   desc->setFree(this);
   // Add the descriptor to the currently active (aka newest) free buffers. Each
-  // list of free buffers is ordered descending by size.
+  // list of free buffers is ordered non-descending by size.
   MemoryManager::Desc *&activeList = freeBuffers_[primaryFreeBuffers_];
   if (memoryManager_.doLog_) {
     memoryManager_.logErr(
