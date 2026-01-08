@@ -4088,7 +4088,7 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
     // Store the pointer in a variable
     MojoValue ptrVar = state.builder.var(bitcastCall);
     // The value to use is the dereference expression: var_XX[]
-    finalValue = ptrVar[""];
+    finalValue = state.builder.var(ptrVar.get("take_pointee")());
   }
 
   state.setMojoValueFor(getResult(), finalValue);
@@ -4112,7 +4112,7 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
     MojoValue mojoVal = state.getMojoValueFor(operand);
     // The first operand (input) is consumed, so use transfer for opaque types
     // to handle move-only types correctly.
-    if (idx == 0 && isa<MO::OpaqueType>(operand.getType()))
+    if (idx == 0 && isa<MO::OpaqueType, MGP::OpaqueType>(operand.getType()))
       mojoVal = mojoVal.transfer();
     operands.push_back(mojoVal);
   }
