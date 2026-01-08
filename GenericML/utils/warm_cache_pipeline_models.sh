@@ -183,7 +183,6 @@ declare -a PIPELINES=(
     "mistralai/Mistral-Small-3.1-24B-Instruct-2503|gpu|big|Mistral Small 24B bfloat16"
 
     # Vision models
-    "meta-llama/Llama-3.2-11B-Vision-Instruct|gpu|big|Llama 3.2 Vision 11B bfloat16"
     "OpenGVLab/InternVL3-1B-Instruct|gpu|nvidia-only|InternVL3 1B bfloat16"
     "OpenGVLab/InternVL3-8B-Instruct|gpu|nvidia-multi|InternVL3 8B bfloat16"
     "OpenGVLab/InternVL3-14B-Instruct|gpu|nvidia-multi|InternVL3 14B bfloat16"
