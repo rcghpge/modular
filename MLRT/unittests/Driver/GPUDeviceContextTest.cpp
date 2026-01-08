@@ -441,6 +441,8 @@ TEST_F(GPUDeviceContextTest, RecycleBuffers) {
     ASSIGN_NO_ERR(DeviceBufferRef, buf,
                   allocCtx->enqueueCreateBuffer(allocSize));
     EXPECT_NO_ERR(buf->reassignOwnershipTo(*freeCtx));
+    // this synchronize guarantees that the flush handler is called
+    EXPECT_NO_ERR(freeCtx->synchronize());
     // buf goes out of scope here and is freed by freeCtx.
   }
 }
