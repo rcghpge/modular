@@ -355,68 +355,6 @@ void LowerPrimitivesPass::runOnOperation() {
   ModelOp model = getOperation();
   MLIRContext *ctx = model->getContext();
 
-  auto analysisOr = getLibraryAnalysis();
-  if (analysisOr.isError()) {
-    emitError(getOperation().getLoc(),
-              llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                            getPassName(), analysisOr.getError()));
-    return signalPassFailure();
-  }
-  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
-
-  auto moggCallBodyBuilder =
-      [&mojoLibraryAnalysis](OpBuilder &builder, Location loc, Operation *op,
-                             ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
-    SmallVector<Value> inputVec(inputs);
-    if (auto bufferConcat = dyn_cast<MGP::BufferConcatOp>(op)) {
-
-      // The inputs will be in the form [chain, outBuffer, *inBuffers] so we
-      // skip over the first two to get the input buffers.
-      SmallVector<Value> ins;
-      for (size_t i = 0; i < bufferConcat.getInBuffers().size(); ++i)
-        ins.push_back(inputs[i + 2]);
-
-      // Packs the variadic input buffers into tuple.
-      Value tuple = MOGG::AsTupleOp::create(
-          builder, op->getLoc(),
-          builder.getTupleType(bufferConcat.getInBuffers().getTypes()), ins);
-
-      // Rebuild the input vector.
-      inputVec.clear();
-      // Chain is dropped then output is the new first argument.
-      inputVec.push_back(inputs[1]);
-      inputVec.push_back(tuple);
-      // Device context is at the end.
-      inputVec.push_back(inputs[inputs.size() - 1]);
-    } else if (isa<MGP::BufferGetCachedOp, MGP::BufferConstantOp>(op)) {
-      // This is the storage_ref handle to the buffer.
-      Value asyncRef = MOGG::AnyAsyncRefPlaceholderOp::create(builder, loc);
-      // Both buffer get cache/constant create a new storage_ref handle.
-      // Differently only buffer.get_cache inherit the lifetime, and constant
-      // buffer only require a nullptr handle (to mark that this is a
-      // non-tracking memory).
-      if (isa<MGP::BufferGetCachedOp>(op))
-        inputVec.push_back(asyncRef);
-      ErrorOr<SmallVector<Value>> errOr =
-          buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
-      if (errOr)
-        return errOr;
-
-      // Instead of creating a new AsyncValue for the buffer, we extend the
-      // lifetime of a cached buffer.
-      SmallVector<Value> outputs = errOr.takeValue();
-      ValueRange ret =
-          MOGG::BufferBorrowOp::create(builder, loc, op->getResultTypes()[0],
-                                       outputs.front(), asyncRef)
-              ->getResults();
-
-      // Override the result.
-      outputs.assign(ret.begin(), ret.end());
-      return outputs;
-    }
-    return buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
-  };
-
   auto cloneOperationBuilder =
       [](OpBuilder &builder, Location loc, Operation *op,
          ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
@@ -451,19 +389,8 @@ void LowerPrimitivesPass::runOnOperation() {
           isa_and_nonnull<mlir::index::IndexDialect, KGEN::POP::POPDialect>(
               op->getDialect()) ||
           isa<KGEN::ParamConstantOp>(op);
-      if (!isAnIndexOrPOPOrParamConstantOp) {
-        if (!mojoLibraryAnalysis.hasRegisteredLITMojoKernelFor(
-                op->getName().getStringRef())) {
-          // Operations that do not have a registration function can't be
-          // lowered to a kernel.
-          return mlir::WalkResult::advance();
-        }
-
-        ASSERT_STREAM(implementsEmitsMojoInterface,
-                      << op->getName()
-                      << " has a Mojo implementation but it does not implement "
-                         "the EmitsMojoInterface");
-      }
+      if (!isAnIndexOrPOPOrParamConstantOp && !implementsEmitsMojoInterface)
+        return mlir::WalkResult::advance();
 
       Location opLoc = op->getLoc();
       OpBuilder builder{op};
@@ -531,7 +458,71 @@ void LowerPrimitivesPass::runOnOperation() {
       signalPassFailure();
       return;
     }
+
+    return;
   }
+
+  auto analysisOr = getLibraryAnalysis();
+  if (analysisOr.isError()) {
+    emitError(getOperation().getLoc(),
+              llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                            getPassName(), analysisOr.getError()));
+    return signalPassFailure();
+  }
+  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
+
+  auto moggCallBodyBuilder =
+      [&mojoLibraryAnalysis](OpBuilder &builder, Location loc, Operation *op,
+                             ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
+    SmallVector<Value> inputVec(inputs);
+    if (auto bufferConcat = dyn_cast<MGP::BufferConcatOp>(op)) {
+
+      // The inputs will be in the form [chain, outBuffer, *inBuffers] so we
+      // skip over the first two to get the input buffers.
+      SmallVector<Value> ins;
+      for (size_t i = 0; i < bufferConcat.getInBuffers().size(); ++i)
+        ins.push_back(inputs[i + 2]);
+
+      // Packs the variadic input buffers into tuple.
+      Value tuple = MOGG::AsTupleOp::create(
+          builder, op->getLoc(),
+          builder.getTupleType(bufferConcat.getInBuffers().getTypes()), ins);
+
+      // Rebuild the input vector.
+      inputVec.clear();
+      // Chain is dropped then output is the new first argument.
+      inputVec.push_back(inputs[1]);
+      inputVec.push_back(tuple);
+      // Device context is at the end.
+      inputVec.push_back(inputs[inputs.size() - 1]);
+    } else if (isa<MGP::BufferGetCachedOp, MGP::BufferConstantOp>(op)) {
+      // This is the storage_ref handle to the buffer.
+      Value asyncRef = MOGG::AnyAsyncRefPlaceholderOp::create(builder, loc);
+      // Both buffer get cache/constant create a new storage_ref handle.
+      // Differently only buffer.get_cache inherit the lifetime, and constant
+      // buffer only require a nullptr handle (to mark that this is a
+      // non-tracking memory).
+      if (isa<MGP::BufferGetCachedOp>(op))
+        inputVec.push_back(asyncRef);
+      ErrorOr<SmallVector<Value>> errOr =
+          buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
+      if (errOr)
+        return errOr;
+
+      // Instead of creating a new AsyncValue for the buffer, we extend the
+      // lifetime of a cached buffer.
+      SmallVector<Value> outputs = errOr.takeValue();
+      ValueRange ret =
+          MOGG::BufferBorrowOp::create(builder, loc, op->getResultTypes()[0],
+                                       outputs.front(), asyncRef)
+              ->getResults();
+
+      // Override the result.
+      outputs.assign(ret.begin(), ret.end());
+      return outputs;
+    }
+    return buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
+  };
 
   model.walk</*Order=*/mlir::WalkOrder::PreOrder>([&](Operation *op) {
     Location opLoc = op->getLoc();
