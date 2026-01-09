@@ -27,6 +27,39 @@ The MemoryManager solves these problems by:
   API
 - **Stream-aware operations**: Respects asynchronous GPU execution models
 
+## Concepts
+
+- `Chunk` is the unit of memory allocations from the OEM Drivers (eg: via
+cudaMallocAsync).
+
+- `Chunk list` is a linked-list of allocated chunks.
+- `Block` is an address-range ("buffer") requested by clients of MemoryManager.
+MemoryManager sub-divides chunks to form blocks (of allocated memory).
+- `Desc`(riptor) is CPU-side metadata describing the block. `Block` is only a
+concept - you will not see this in the code (except for comments); it is `Desc`
+objects that the MemoryManager tracks.
+- `Free list` is a linked list of descriptors for blocks that are not in use and
+can be allocated. Such free blocks can be formed either at allocation time when
+a chunk or block is split into a used (sub) block (returned) and a free (sub)
+block or when previously-used blocks are release. Free-lists form a hierarchy.
+The Global (root) free-list has a `NULL` parent and represents free blocks
+available DeviceContext-wide. Per-stream free-lists represent blocks that were
+previously released by the stream (associated `DeviceBuffer` objects expired)
+and can be recycled upon new (in-stream) allocations because the stream
+guarantees associated previous ops would have completed. There are separate
+free-lists for (on-)**device** memory and (on-)**host** (pinned) memory.
+- `Device memory` is on-device memory. For example, "VRAM" in GPUs.
+- `Host memory` is a special form of system memory (that we are used to
+easily accessing from CPU via pointers) that is pinned to system page-tables
+by the Accelerator (e.g. CUDA GPU) drivers. Why do Accelerator drivers pin
+memory at all when the host OS (eg. Linux) can do similar (eg: using `mlock()`)?
+Because, at the very least, the physical pages selected belong to the same NUMA
+domain that the GPU is in, making DMAs efficient (whereas `mlock()` provides no
+such guarantee). Such (device-)pinned buffers are very useful as staging areas
+for host <--> device copies (DMA). "Host memory" or "pinned memory" are both
+ambiguous terms to describe this concept. Something like "Device-Pinned Host
+(DPH) Memory" is unambiguous even if long.
+
 ## Underlying Memory API Mapping
 
 ### CUDA Integration
@@ -60,15 +93,73 @@ The MemoryManager solves these problems by:
 The source of the above image is available
 [here](https://excalidraw.com/#json=fvkxYZNkbOnKZGoYDFvvs,7FnGbaodiDehk0RVWHDlRQ).
 
-### Memory Layout
+### Operation
 
 The memory manager operates on a two-level hierarchy:
 
-1. **MemoryManager**: Owns large memory chunks allocated from CUDA/HIP
+1. **MemoryManager**: Owns (relatively large) memory chunks allocated from CUDA/HIP
 2. **MemoryManagerFreeList**: Manages free blocks within chunks, with hierarchy:
    - **Parent/Shared**: Global free list accessible to all DeviceContexts
    - **DeviceContext-local**: Stream-specific free lists for better cache
      locality
+
+When a block is requested, we first look up free-lists to recycle any
+previously-(allocated and) released blocks. If none are available, we allocate
+a (new) `Chunk` and split off a block from it (and track its `Desc`riptor).
+
+`Chunk`-s are tracked using a singly-linked list because we just need a way to
+invoke the OEM-Driver to (cuda)Free each at the end. This could have been any
+other kind of container, like `vector`.
+
+`Desc`-s on the other hand need to be in doubly-linked lists (blue lines) because
+of the need to coalesce/defragment. This is done greedily at the time the `Desc`
+is merged back into a free-list. The `next` and `prev` pointers in a `Desc`
+chain contiguous (in-use or free) blocks within a chunk.
+
+`Desc`-s are also part of a second doubly-linked list (red lines), characterized
+by `nextFree` and `prevFree`. These construct the free-list. Blocks may be
+released in an order that is different from their allocation-order. Such
+releases are chained into the free-list associated with that stream.
+
+### Usage by `DeviceBuffer`
+
+**Allocation**:
+
+`DeviceBuffer` objects are created by calling `DeviceContext::allocBuffer()`.
+which in turn calls `MemoryManagerFreeList::allocate()`. This claims blocks from
+MemoryManager (free lists). Related `Desc` objects are carved out of free-lists
+and placed inside `MemoryManager::allocatedMap_` for efficient pointer-to-`Desc`
+lookup during subsequent release. If this `allocate()` fails, the parent
+free-list is tried. If the root fails, then we allocate a chunk in the
+`MemoryManager` object associated with the `DeviceContext` and retry this
+`allocate()`. When all this fails, we declare out-of-memory (OOM).
+
+MemoryManager can be suppressed by setting `chunkSize_ == 0`. All allocations
+will routed directly to the OEM driver (eg. CUDA).
+
+There are heuristics to grow chunk-sizes when the requested size is larger than
+the current chunk size.
+
+**Deallocation**:
+
+When work is asynchronously executing on a device, how will we know when it is
+done so that we may recycle the associated blocks (`Desc`) into free-lists?
+This is best exemplified in `DeviceBuffer` DTORs. Via
+`DeviceContext::setPendingHandler()` API, they create an event on the stream
+that last wrote to that DeviceBuffer and associate a CPU-side handler callback.
+The could have registered a (CUDA) stream-callback instead but that would
+synchronize the stream with the CPU every time such an event fired; this adds
+latency. Hence, the design is to call `DeviceContext::pollPendingEvents()` at
+various points in the application, which then executes handlers for all "ready"
+events (some or all of which are from `~DeviceBuffer()`). These handlers then
+invoke `MemoryManagerFreeList::free(ptr)` which retrieves and pops the related
+`Desc` from `MemoryManager::allocatedMap_` and then further enqueues a handler
+to merge and coalesce free blocks to the parent.
+
+Note that the first level of enqueueing a "DeviceBuffer release" event+handler
+is unnecessary if the released `Desc` is going to be reused by the same stream.
+Hence, `MemoryManagerFreeList::free(ptr)` is called immediately in this case. It
+is for the DPH buffer that the two-level enqueueing is required.
 
 ### Example Setup
 
@@ -188,6 +279,27 @@ export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE=1048576  # KB
 # Enable debugging
 export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG=true
 export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK=true
+```
+
+### Bazel variables
+
+- In `oss/modular/bazel/config.bzl`, the `DEFAULT_GPU_MEMORY` variable lets us
+specify, in GB, the default MemoryManager capacity for all tests.
+
+- `oss/modular/bazel/internal/config.bzl`, the `get_default_test_env()` function
+uses this value to compute and set various `MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_*`
+environment variables.
+- In order to override this per test, follow this example (from `docs/internal/BazelBuildFiles.md`):
+
+```bzl
+modular_py_test(
+    name = "tests_gpu",
+    ...
+    exec_properties = {
+        # Ensure the test has at least 24GB of GPU memory available.
+        "test.resources:gpu-memory": "24",
+    },
+)
 ```
 
 ## Thread Safety and Performance
@@ -338,3 +450,29 @@ Monitor these metrics in production:
 - **Average allocation size**: Should align with chunk sizing
 - **Fragmentation ratio**: Available memory vs largest free block
 - **Chunk utilization**: Percentage of allocated chunks actively used
+
+## Developer Notes
+
+- `MemoryManager` was originally called `BufferCache`.
+
+- `MemoryManager::DescMap` is basically just a hash-map. This could very well have
+been std::unordered_map except that we implement per-bucket mutexes for
+fine-grain locking, for performance (hence the custom implementation).
+- The MemoryManager feature looks a lot like CUDA's mempools but in early
+experiments we found ~10% gains from such application-space memory pool
+management so we built this.
+  - It may still be useful for Accelerators that do not provide native memory
+  pooling.
+- The first implementation of `MemoryManager` had no concept of `Chunk`; it
+claimed its capacity in a single shot from the OEM driver in its CTOR. When its
+capacity was expressed in relative measure (eg. default of 90% (of available
+device memory!)), it left no room to run other applications (eg: packing
+multiple tests per node for CI/CD efficiency). Chunking was then introduced as
+a way to gently grow allocations based on actual demand even if its capacity was
+estimated very loosely. [CI/CD has been using `chunk-percent`=100](https://modular-ai.slack.com/archives/C05M07LTK0V/p1767836840942569?thread_ts=1767834473.328959&cid=C05M07LTK0V)
+for a while now and effective turns off chunking so we now retain it to control
+memory pressure. We expect use-cases like PyTorch inter-op to benefit from this.
+- Each `MemoryManagerFreeList` is internally implemented with "multi-buffering";
+there actually are more-than-1 such physical lists that we interact with on
+round-robin basis. This avoids one free list being starved when allocations are
+moved from one device context to another.
