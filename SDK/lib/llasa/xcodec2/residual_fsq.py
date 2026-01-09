@@ -50,15 +50,13 @@ class FSQ:
     @cached_property
     def levels_tensor(self) -> TensorValue:
         """Get levels tensor, creating it if needed."""
-        return ops.constant(
-            np.array(self.levels), dtype=DType.int32, device=self.device
-        )
+        return ops.constant(self.levels, dtype=DType.int32, device=self.device)
 
     @cached_property
     def basis_tensor(self) -> TensorValue:
         """Get basis tensor, creating it if needed."""
         return ops.constant(
-            np.array(self.basis_list), dtype=DType.int32, device=self.device
+            self.basis_list, dtype=DType.int32, device=self.device
         )
 
     def indices_to_level_indices(self, indices: TensorValue) -> TensorValue:
