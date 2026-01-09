@@ -596,7 +596,7 @@ enum DeviceFunction::ArgumentType : uint8_t {
   FP32,
   FP64,
   BUFFER,
-  _NUM_ENTRIES_ // This entry must be last.
+  NUM_ENTRIES_ // This entry must be last.
 };
 
 DeviceFunction::DeviceFunction(

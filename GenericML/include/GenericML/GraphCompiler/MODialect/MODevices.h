@@ -266,6 +266,8 @@ struct DeviceAwareRewriter {
   }
 };
 
+namespace detail {
+
 //===----------------------------------------------------------------------===//
 // DeviceAwarePattern
 //===----------------------------------------------------------------------===//
@@ -309,7 +311,7 @@ struct DeviceAwareRewriter {
 ///
 /// Which will automatically propagate device information correctly.
 template <typename RewritePatternT, typename OpT>
-struct _DeviceAwarePatternShim : public RewritePatternT {
+struct DeviceAwarePatternShim : public RewritePatternT {
   using RewritePatternT::RewritePatternT;
 
   LogicalResult matchAndRewrite(OpT op,
@@ -322,13 +324,15 @@ struct _DeviceAwarePatternShim : public RewritePatternT {
   deviceAwareMatchAndRewrite(OpT op, DeviceAwareRewriter &rewriter) const = 0;
 };
 
+} // namespace detail
+
 /// Forwards template parameters to `RewritePatternBaseT`, done to avoid
 /// uglier syntax.
 template <template <typename> typename RewritePatternBaseT, typename OpT>
 struct DeviceAwareRewritePattern
-    : _DeviceAwarePatternShim<RewritePatternBaseT<OpT>, OpT> {
-  using _DeviceAwarePatternShim<RewritePatternBaseT<OpT>,
-                                OpT>::_DeviceAwarePatternShim;
+    : detail::DeviceAwarePatternShim<RewritePatternBaseT<OpT>, OpT> {
+  using detail::DeviceAwarePatternShim<RewritePatternBaseT<OpT>,
+                                       OpT>::DeviceAwarePatternShim;
 };
 
 } // namespace M::MO
