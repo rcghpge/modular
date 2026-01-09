@@ -97,7 +97,9 @@ class SpeechLM:
         """
         # Find all speech tokens using the pattern from the config
         # Given `<|s_12345|>`, we want to extract `12345`
-        pattern = self.config.speech_token_pattern.replace("{}", r"(\d+)")
+        pattern = re.escape(self.config.speech_token_pattern).replace(
+            re.escape("{}"), r"(\d+)"
+        )
         matches = re.findall(pattern, generated_text)
 
         # Convert matched strings to integers, filtering out empty matches
