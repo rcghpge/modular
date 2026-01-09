@@ -15,7 +15,7 @@ from gpu import *
 from gpu.host import DeviceContext
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import assert_equal
 
 
@@ -54,7 +54,7 @@ fn test(ctx: DeviceContext) raises:
     var block_dim = 32
     var supplement = 5
 
-    ctx.enqueue_function_checked[vec_func, vec_func](
+    ctx.enqueue_function[vec_func, vec_func](
         in0_device,
         in1_device,
         out_device,

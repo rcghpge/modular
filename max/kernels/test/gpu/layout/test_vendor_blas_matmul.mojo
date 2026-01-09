@@ -23,7 +23,7 @@ from linalg.matmul.gpu import matmul_kernel_naive
 from linalg.matmul.vendor.blas import matmul
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 
 
 fn test_matmul[
@@ -101,7 +101,7 @@ fn test_matmul[
         BLOCK_DIM,
         transpose_b=True,
     ]
-    ctx.enqueue_function_checked[kernel, kernel](
+    ctx.enqueue_function[kernel, kernel](
         c_tensor_ref,
         a_tensor,
         b_tensor,

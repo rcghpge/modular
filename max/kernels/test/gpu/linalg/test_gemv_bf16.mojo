@@ -22,7 +22,7 @@ from linalg.gemv import gemv_kernel
 from linalg.matmul.gpu import matmul_kernel_naive
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import assert_false
 
 from utils.index import IndexList
@@ -70,7 +70,7 @@ fn run_matvec(M: Int, N: Int, K: Int, *, ctx: DeviceContext) raises:
     @always_inline
     @parameter
     fn run_func_gemv(ctx: DeviceContext) raises:
-        ctx.enqueue_function_checked[kernel, kernel](
+        ctx.enqueue_function[kernel, kernel](
             c_device,
             a_device,
             b_device,
@@ -129,7 +129,7 @@ fn run_matvec(M: Int, N: Int, K: Int, *, ctx: DeviceContext) raises:
             BLOCK_DIM,
         ]
 
-        ctx.enqueue_function_checked[kernel, kernel](
+        ctx.enqueue_function[kernel, kernel](
             c_tensor,
             a_tensor,
             b_tensor,

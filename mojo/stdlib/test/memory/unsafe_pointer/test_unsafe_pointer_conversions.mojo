@@ -35,7 +35,7 @@ fn v1_immutable_any(
     pass
 
 
-fn v1_unbound(_p: LegacyUnsafePointer[Int, **_]):
+fn v1_unbound(_p: LegacyUnsafePointer[Int, ...]):
     pass
 
 
@@ -102,7 +102,7 @@ fn v2_immutable_any(_p: UnsafePointer[Int, ImmutAnyOrigin]):
     pass
 
 
-fn v2_unbound(_p: UnsafePointer[Int, **_]):
+fn v2_unbound(_p: UnsafePointer[Int, ...]):
     pass
 
 
@@ -143,8 +143,8 @@ def test_v1_immutable_any_converts_to_v2():
 
 
 def test_v1_to_v2_external():
-    _: UnsafePointer[Int, MutOrigin.external] = LegacyUnsafePointer[
-        Int, origin = MutOrigin.external
+    _: UnsafePointer[Int, MutExternalOrigin] = LegacyUnsafePointer[
+        Int, origin=MutExternalOrigin
     ]()
 
 

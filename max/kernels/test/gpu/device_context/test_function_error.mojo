@@ -14,7 +14,7 @@
 from gpu.host import DeviceBuffer, DeviceContext
 from memory import LegacyUnsafePointer, OwnedPointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import *
 
 
@@ -35,7 +35,7 @@ def test_function_error(ctx: DeviceContext):
         var res_host = DeviceBuffer[DType.uint32](
             ctx, res_ptr_owned.unsafe_ptr(), 1, owning=False
         )
-        ctx.enqueue_function_checked[kernel, kernel](
+        ctx.enqueue_function[kernel, kernel](
             res_host, block_dim=(1), grid_dim=(1)
         )
         ctx.synchronize()

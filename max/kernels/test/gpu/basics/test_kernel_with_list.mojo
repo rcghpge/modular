@@ -14,7 +14,7 @@
 from gpu.host import DeviceContext
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 
 
 fn kernel_with_list(res: UnsafePointer[Float32]):
@@ -39,7 +39,7 @@ fn test_kernel_with_list(ctx: DeviceContext) raises:
     # CHECK: param0
     # CHECK: );
     comptime kernel = kernel_with_list
-    ctx.enqueue_function_checked[kernel, kernel, dump_asm=True](
+    ctx.enqueue_function[kernel, kernel, dump_asm=True](
         res_device, block_dim=(1), grid_dim=(1)
     )
     with res_device.map_to_host() as res_host:

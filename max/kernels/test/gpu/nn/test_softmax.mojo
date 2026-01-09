@@ -13,7 +13,7 @@
 
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from math import isclose
 from random import rand, random_float64, seed
 from sys import has_amd_gpu_accelerator
@@ -276,7 +276,7 @@ fn test_gpu_online_softmax[
         transpose_fragments,
     ]
 
-    ctx.enqueue_function_checked[kernel, kernel](
+    ctx.enqueue_function[kernel, kernel](
         in_device,
         out_device,
         grid_dim=1,

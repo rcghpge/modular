@@ -20,7 +20,7 @@ from gpu.host import DeviceContext
 from internal_utils import update_bench_config_args
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import assert_equal
 
 
@@ -59,7 +59,7 @@ fn bench_vec_add(
     @always_inline
     @parameter
     fn run_func() raises:
-        context.enqueue_function_checked[vec_func, vec_func](
+        context.enqueue_function[vec_func, vec_func](
             in0_device,
             in1_device,
             out_device,

@@ -383,7 +383,7 @@ struct _DictIndex(Movable):
     this in the current type system.
     """
 
-    var data: OpaquePointer[MutOrigin.external]
+    var data: OpaquePointer[MutExternalOrigin]
 
     @always_inline
     fn __init__(out self, reserved: Int):
@@ -814,7 +814,7 @@ struct Dict[
         return len(self._entries)
 
     @staticmethod
-    fn fromkeys(keys: List[Self.K, *_], value: Self.V) -> Self:
+    fn fromkeys(keys: List[Self.K, ...], value: Self.V) -> Self:
         """Create a new dictionary with keys from list and values set to value.
 
         Args:
@@ -831,7 +831,7 @@ struct Dict[
 
     @staticmethod
     fn fromkeys(
-        keys: List[Self.K, *_], value: Optional[Self.V] = None
+        keys: List[Self.K, ...], value: Optional[Self.V] = None
     ) -> Dict[Self.K, Optional[Self.V], Self.H]:
         """Create a new dictionary with keys from list and values set to value.
 

@@ -21,7 +21,7 @@ from gpu.intrinsics import AMDBufferResource
 from gpu.memory import CacheOperation
 from memory import LegacyUnsafePointer, stack_allocation
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import assert_equal, assert_true
 
 comptime size = 257
@@ -195,7 +195,7 @@ def test_buffer[dtype: DType, width: Int](ctx: DeviceContext):
     ctx.enqueue_copy(a_device_buf, a_host_buf)
 
     comptime kernel_func = kernel[dtype, width]
-    ctx.enqueue_function_checked[kernel_func, kernel_func](
+    ctx.enqueue_function[kernel_func, kernel_func](
         a_device_buf, grid_dim=1, block_dim=1
     )
     ctx.enqueue_copy(a_host_buf, a_device_buf)
@@ -219,7 +219,7 @@ def test_buffer_lds[dtype: DType, width: Int](ctx: DeviceContext):
     ctx.enqueue_copy(a_device_buf, a_host_buf)
 
     comptime kernel_lds_func = kernel_lds[dtype, width]
-    ctx.enqueue_function_checked[kernel_lds_func, kernel_lds_func](
+    ctx.enqueue_function[kernel_lds_func, kernel_lds_func](
         a_device_buf, grid_dim=1, block_dim=1
     )
     ctx.enqueue_copy(a_host_buf, a_device_buf)
@@ -253,5 +253,5 @@ def main():
         test_buffer_lds[DType.float32, 1](ctx)
 
         @parameter
-        if ctx.default_device_info is MI355X:
+        if ctx.default_device_info == MI355X:
             test_buffer_lds[DType.bfloat16, 8](ctx)

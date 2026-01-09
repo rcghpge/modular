@@ -17,7 +17,7 @@ from gpu.host import DeviceContext
 from gpu.host.device_context import DeviceExternalFunction
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from gpu.host.compile import _compile_code
 from testing import assert_equal
 
@@ -49,7 +49,7 @@ def test_vec_add(ctx: DeviceContext):
     var info = DeviceExternalFunction(
         ctx, _compile_code[vec_func, emission_kind="object"]()
     )
-    ctx.enqueue_function_checked(
+    ctx.enqueue_function(
         info,
         in0_device,
         in1_device,

@@ -35,7 +35,7 @@ from gpu.sync import (
 )
 from memory import LegacyUnsafePointer, stack_allocation
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import assert_almost_equal
 
 from utils.index import Index, IndexList
@@ -207,7 +207,7 @@ def test_tma_block_reduce[
             comptime kernel = tma_reduction_kernel[
                 dtype, accum_type, simd_width
             ]
-            ctx.enqueue_function_checked[kernel, kernel,](
+            ctx.enqueue_function[kernel, kernel,](
                 tma_desc,
                 rows,
                 cols,
@@ -238,7 +238,7 @@ def test_tma_block_reduce[
                 input_fn_2d,
             ]
 
-            ctx.enqueue_function_checked[kernel, kernel](
+            ctx.enqueue_function[kernel, kernel](
                 d_out,
                 cols,  # num_cols
                 grid_dim=grid_dim,

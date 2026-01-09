@@ -585,7 +585,7 @@ struct VariadicListMem[
                 ParentConformsTo="ImplicitlyDestructible",
             ]()
             comptime TDestructible = downcast[
-                ImplicitlyDestructible, Self.element_type
+                Self.element_type, ImplicitlyDestructible
             ]
 
             for i in reversed(range(len(self))):
@@ -644,9 +644,7 @@ struct VariadicListMem[
         # cast mutability of self to match the mutability of the element,
         # since that is what we want to use in the ultimate reference and
         # the union overall doesn't matter.
-        Origin[mut = Self.elt_is_mutable](
-            unsafe_cast=origin_of(Self.origin, self)
-        )
+        unsafe_origin_mutcast[origin_of(Self.origin, self), Self.elt_is_mutable]
     ] Self.element_type:
         """Gets a single element on the variadic list.
 

@@ -14,7 +14,7 @@
 from gpu.host import DeviceContext
 from memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 
 
 def test_fp8_constructor(ctx: DeviceContext):
@@ -23,7 +23,7 @@ def test_fp8_constructor(ctx: DeviceContext):
 
     # CHECK: v_mov_b32_e32 {{.*}}, 0x55
     # CHECK: store i8 85, ptr %{{.*}}, align 1
-    _ = ctx.compile_function_checked[
+    _ = ctx.compile_function[
         kernel,
         kernel,
         dump_llvm=True,
