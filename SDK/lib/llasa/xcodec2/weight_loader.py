@@ -39,9 +39,6 @@ def _map_xcodec2_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
         "SemanticEncoder_module.",
         "CodecEnc.",
         "encoder.",
-        "generator.backbone.embed.bias",
-        "conv1.bias",
-        "conv2.bias",
         "fc_prior",
         "generator.head.istft.window",
     ]

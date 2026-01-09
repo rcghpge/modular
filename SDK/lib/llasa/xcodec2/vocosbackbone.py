@@ -45,6 +45,7 @@ class VocosBackbone(nn.Module):
             padding=3,
             dtype=config.dtype,
             device=config.device,
+            has_bias=True,
         )
 
         # 2. Prior ResNet blocks (before transformers)

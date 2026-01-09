@@ -40,6 +40,7 @@ class ResnetBlock(nn.Module):
             padding=1,
             dtype=dtype,
             device=device,
+            has_bias=True,
         )
 
         self.norm2 = nn.GroupNorm(
@@ -57,6 +58,7 @@ class ResnetBlock(nn.Module):
             padding=1,
             dtype=dtype,
             device=device,
+            has_bias=True,
         )
 
     def __call__(self, x: TensorValue) -> TensorValue:
