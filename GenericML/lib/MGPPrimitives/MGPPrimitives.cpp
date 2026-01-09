@@ -130,10 +130,13 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
 
 /// Extract device hint from DeviceContext if present in operands.
 /// Returns kNoDevicePreference if no single accelerator device is found.
-static int deviceHintFor(const RemainingArguments &operands) {
-  TRACY_ZONE_SCOPED_NC("deviceHintFor", TRACY_COLOR_TEAL);
+/// Also returns the DeviceContextRef for pinning if exactly one accelerator
+/// context is found.
+static std::pair<int, M::Driver::DeviceContextRef>
+deviceHintAndContextFor(const RemainingArguments &operands) {
+  TRACY_ZONE_SCOPED_NC("deviceHintAndContextFor", TRACY_COLOR_TEAL);
 
-  llvm::SmallSet<int, 8> acceleratorIds;
+  llvm::SmallVector<M::Driver::DeviceContextRef, 4> acceleratorContexts;
 
   for (const AnyAsyncValueRef &operand : operands) {
     // Check for DeviceContextRef.
@@ -143,17 +146,21 @@ static int deviceHintFor(const RemainingArguments &operands) {
           *static_cast<const M::Driver::DeviceContextRef *>(
               operand.getPointerToData());
       if (deviceCtxRef->device().api() != M::Driver::Device::cpuAPI) {
-        // Track only accelerator device IDs.
-        acceleratorIds.insert(deviceCtxRef->device().id());
+        // Track only accelerator contexts.
+        acceleratorContexts.push_back(
+            M::Driver::DeviceContextRef::copy(deviceCtxRef.getPointer()));
       }
     }
   }
 
-  // Return valid ID only if there's exactly one accelerator DeviceContextRef.
-  if (acceleratorIds.size() == 1)
-    return *acceleratorIds.begin();
+  // Return valid hint and context only if there's exactly one accelerator
+  // DeviceContextRef.
+  if (acceleratorContexts.size() == 1) {
+    return {acceleratorContexts[0]->device().id(),
+            std::move(acceleratorContexts[0])};
+  }
   // Multiple contexts or CPU context -> no preference.
-  return kNoDevicePreference;
+  return {kNoDevicePreference, M::Driver::DeviceContextRef{}};
 }
 
 /// Compute the taskId for a device hint.
@@ -189,8 +196,9 @@ static void mgp_generic_execute(
   CompiledKernelAsyncABIFn *kernelPtr = kernelExecutionState.getKernelAsyncABI(
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
-  // Extract device hint from DeviceContext if present in operands.
-  int deviceHint = deviceHintFor(operands);
+  // Extract device hint and context from DeviceContext if present in operands.
+  // deviceCtx is only valid (non-null) when deviceHint != kNoDevicePreference.
+  auto [deviceHint, deviceCtx] = deviceHintAndContextFor(operands);
 
   // Compute taskId for worker affinity. Uses conservative worker 0 avoidance.
   AsyncRT::WorkQueue *workQueue = runtime.getWorkQueue();
@@ -214,28 +222,38 @@ static void mgp_generic_execute(
 
     // Run the kernel and extend the lifetime of the input and output async
     // values until it completes by capturing them.
-    auto runKernelAndExtendLifetimes = [outResults = outResults.copyAsVector(),
-                                        takenOperands = operands.takeAsVector(),
-                                        constantResources =
-                                            std::move(fConstantResources),
-                                        kernelPtr, dSummary]() {
-      TRACY_ZONE_SCOPED_NCT("runKernelAndExtendLifetimes", TRACY_COLOR_TEAL,
-                            "(Summary: " + dSummary.get().str() + ")");
+    // Also capture the device context for pinning optimization when valid.
+    auto runKernelAndExtendLifetimes =
+        [outResults = outResults.copyAsVector(),
+         takenOperands = operands.takeAsVector(),
+         constantResources = std::move(fConstantResources), kernelPtr, dSummary,
+         deviceCtx = std::move(deviceCtx)]() {
+          TRACY_ZONE_SCOPED_NCT("runKernelAndExtendLifetimes", TRACY_COLOR_TEAL,
+                                "(Summary: " + dSummary.get().str() + ")");
 
-      llvm::SmallVector<void *> kernelInputs =
-          getKernelInputs(takenOperands, outResults, constantResources);
-      MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, outResults);
-      {
-        TRACY_ZONE_SCOPED_NCT("Invoke Mojo function", TRACY_COLOR_ORANGE,
-                              "(Summary: " + dSummary.get().str() + ")");
+          llvm::SmallVector<void *> kernelInputs =
+              getKernelInputs(takenOperands, outResults, constantResources);
+          MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, outResults);
 
-        kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
-      }
-      // Must have all been released/reset by the compiled kernel.
-      assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
-        return !ref.getPointer();
-      }));
-    };
+          // Bind the device context to this thread for the duration of kernel
+          // execution.
+          if (deviceCtx.getPointer() != nullptr)
+            (void)deviceCtx->bindToCurrentThread();
+
+          {
+            TRACY_ZONE_SCOPED_NCT("Invoke Mojo function", TRACY_COLOR_ORANGE,
+                                  "(Summary: " + dSummary.get().str() + ")");
+            kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
+          }
+
+          if (deviceCtx.getPointer() != nullptr)
+            M::Driver::DeviceContext::unbindFromCurrentThread();
+
+          // Must have all been released/reset by the compiled kernel.
+          assert(llvm::all_of(takenOperands, [](const AnyAsyncValueRef &ref) {
+            return !ref.getPointer();
+          }));
+        };
 
     // Launch the kernel on a new thread with worker affinity.
     AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
@@ -244,6 +262,11 @@ static void mgp_generic_execute(
     TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (sync kernel)",
                           TRACY_COLOR_TEAL,
                           "(Summary: " + dSummary.get().str() + ")");
+
+    // Bind the device context to this thread for the duration of kernel
+    // execution.
+    if (deviceCtx.getPointer() != nullptr)
+      (void)deviceCtx->bindToCurrentThread();
 
     // Run the kernel on this thread.
     llvm::SmallVector<void *> kernelInputs =
@@ -255,6 +278,10 @@ static void mgp_generic_execute(
 
       kernelPtr(reinterpret_cast<void **>(kernelInputs.data()));
     }
+
+    if (deviceCtx.getPointer() != nullptr)
+      M::Driver::DeviceContext::unbindFromCurrentThread();
+
     // Must have all been released/reset by the compiled kernel.
     assert(llvm::all_of(operands, [](const AnyAsyncValueRef &ref) {
       return !ref.getPointer();

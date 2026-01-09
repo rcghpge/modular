@@ -67,6 +67,9 @@
 
 namespace M::Driver {
 
+// Thread-local pointer to the currently bound device context.
+static thread_local const DeviceContext *currentlyBoundContext = nullptr;
+
 // Global count of virtual devices for device creation.
 // When set to a positive value, Device::create() will return VirtualDevice
 // instead of real hardware devices for GPU APIs, and Device::numberOfDevices()
@@ -661,7 +664,45 @@ MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
 }
 
 ErrorOrSuccess DeviceContext::setAsCurrent() const {
+  // If this context is already bound, the driver context is already set.
+  if (currentlyBoundContext == this)
+    return success();
+  // If a different context is currently bound, unbind it since we're
+  // explicitly changing the current context.
+  if (currentlyBoundContext != nullptr)
+    unbindFromCurrentThread();
   return device().setCurrentDriverContext(driverContext());
+}
+
+MODULAR_CXX_EXPORT bool DeviceContext::isBoundToCurrentThread() const {
+  return currentlyBoundContext == this;
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::bindToCurrentThread() const {
+  // No-op if device context is already bound to current thread.
+  if (currentlyBoundContext == this) {
+    return success();
+  }
+
+  // Check if the driver context is already the current context.
+  ErrorOr<void *> currentCtx = device().getCurrentDriverContext();
+  if (currentCtx.isError()) {
+    return currentCtx.takeError();
+  }
+  if (*currentCtx != driverContext()) {
+    // Context is not the current context, so set it.
+    ErrorOrSuccess err = device().setCurrentDriverContext(driverContext());
+    if (err.isError()) {
+      return err;
+    }
+  }
+
+  currentlyBoundContext = this;
+  return success();
+}
+
+MODULAR_CXX_EXPORT void DeviceContext::unbindFromCurrentThread() {
+  currentlyBoundContext = nullptr;
 }
 
 MODULAR_CXX_EXPORT ErrorOr<Device::MemInfo>

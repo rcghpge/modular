@@ -499,8 +499,16 @@ public:
       int *numBlocks, const DeviceFunction &func, int blockSize,
       size_t dynamicSharedMemSize) const = 0;
 
-  // Set this device context as the current driver context
   ErrorOrSuccess setAsCurrent() const;
+
+  // Returns true if the device context is bound to the current thread.
+  bool isBoundToCurrentThread() const;
+
+  // Binds the device context to the current thread, or no-op if already bound.
+  ErrorOrSuccess bindToCurrentThread() const;
+
+  // Clears the bound context for the current thread.
+  static void unbindFromCurrentThread();
 
   MemoryManagerFreeList &freeList() const;
   MemoryManagerFreeList &hostFreeList() const;

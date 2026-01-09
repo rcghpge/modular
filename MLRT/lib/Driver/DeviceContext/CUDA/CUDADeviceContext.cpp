@@ -15,13 +15,15 @@
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/Profiling/Tracy.h"
 
+#include <optional>
+
 using namespace M;
 using namespace M::Driver;
 
 namespace {
 
-// The helper class CUDAContextScope is used to set and restore the CUcontext
-// around interactions with the CUDA driver.
+// Helper class to set and restore the CUcontext around interactions with the
+// CUDA driver.
 class CUDAContextScope {
 public:
   CUDAContextScope(const CUcontext ctx, const CUDADriver &driver)
@@ -128,8 +130,11 @@ private:
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
   CHECK_PENDING_ERR(ctx);                                                      \
-  CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
-  CUDA_CHECK_ERR(__cudaWithContext.status());
+  std::optional<CUDAContextScope> __cudaWithContext;                           \
+  if (!(ctx).isBoundToCurrentThread()) {                                       \
+    __cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());        \
+    CUDA_CHECK_ERR(__cudaWithContext->status());                               \
+  }
 
 // This MUST be called during all synchronous API calls like
 // cuStreamSynchronize. To reduce overhead, we omit polling during asynchronous
@@ -137,8 +142,11 @@ private:
 #define POLL_PENDING_EVENTS(ctx) ERR_CHECK_ERR((ctx).pollPendingEvents());
 
 #define CUDA_WITH_CTX(ctx)                                                     \
-  CUDAContextScope __cudaWithContext((ctx).cudaContext(), (ctx).cudaDriver()); \
-  CUDA_CHECK(__cudaWithContext.status());
+  std::optional<CUDAContextScope> __cudaWithContext;                           \
+  if (!(ctx).isBoundToCurrentThread()) {                                       \
+    __cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());        \
+    CUDA_CHECK(__cudaWithContext->status());                                   \
+  }
 
 #define CUDA_WITH_DEV_ERR(dev)                                                 \
   CUDAContextScope __cudaWithContext(*(dev).cudaContext(),                     \
