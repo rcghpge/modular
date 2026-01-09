@@ -61,6 +61,13 @@ class SpeechLM:
         assert isinstance(self.pipeline, pipelines.TextGenerationPipeline)
         self.text_pipeline = self.pipeline  # Type hint for linter
 
+        # Get the KV cache manager for resource management
+        self.kv_cache_manager = (
+            self.text_pipeline.kv_managers[0]
+            if self.text_pipeline.kv_managers
+            else None
+        )
+
     async def generate_speech_tokens(
         self, text: str, max_tokens: int | None = None
     ) -> np.ndarray:
@@ -136,10 +143,18 @@ class SpeechLM:
 
         context = await self.tokenizer.new_context(request)
 
+        # Claim the request ID in the KV cache manager
+        if self.kv_cache_manager is not None:
+            self.kv_cache_manager.claim(context.request_id)
+
         all_tokens = []
         batch = {request_id: context}
 
         while not context.status.is_done:
+            # Allocate KV cache blocks for this step
+            if self.kv_cache_manager is not None:
+                self.kv_cache_manager.alloc(context, num_steps=1)
+
             inputs: TextGenerationInputs = TextGenerationInputs(
                 batches=[batch], num_steps=1
             )
