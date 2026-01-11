@@ -111,7 +111,7 @@ private:
 
 class CpuDeviceContext : public DeviceContext {
 public:
-  CpuDeviceContext(const CpuDevice &device);
+  explicit CpuDeviceContext(const CpuDevice &device);
   ~CpuDeviceContext() override = default;
 
   // DeviceBuffer copies.

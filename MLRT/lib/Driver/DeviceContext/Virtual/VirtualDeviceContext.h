@@ -97,7 +97,7 @@ private:
 /// Virtual Device Event for compile-only mode.
 class VirtualDeviceEvent : public DeviceEvent {
 public:
-  VirtualDeviceEvent(const VirtualDevice &device);
+  explicit VirtualDeviceEvent(const VirtualDevice &device);
   ~VirtualDeviceEvent() override = default;
 
   ErrorOrSuccess synchronize() const override;
@@ -110,7 +110,7 @@ public:
 /// Virtual Device Stream for compile-only mode.
 class VirtualDeviceStream : public DeviceStream {
 public:
-  VirtualDeviceStream(const VirtualDeviceContext &ctx);
+  explicit VirtualDeviceStream(const VirtualDeviceContext &ctx);
   ~VirtualDeviceStream() override = default;
 
   ErrorOrSuccess synchronize() const override;
@@ -139,7 +139,7 @@ public:
 /// Virtual Device Timer for compile-only mode.
 class VirtualDeviceTimer : public DeviceTimer {
 public:
-  VirtualDeviceTimer(const VirtualDeviceContext &context);
+  explicit VirtualDeviceTimer(const VirtualDeviceContext &context);
   ~VirtualDeviceTimer() override = default;
 
   static const VirtualDeviceTimer &cast(const DeviceTimer &timer);
@@ -157,7 +157,7 @@ public:
 /// which can compile code without requiring GPU hardware.
 class VirtualDeviceContext : public DeviceContext {
 public:
-  VirtualDeviceContext(const VirtualDevice &device);
+  explicit VirtualDeviceContext(const VirtualDevice &device);
   ~VirtualDeviceContext() override;
 
   // DeviceBuffer copies - not implemented for virtual context

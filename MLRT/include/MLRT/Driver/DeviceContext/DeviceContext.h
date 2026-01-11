@@ -96,7 +96,7 @@ private:
 
 class DeviceContextScope {
 public:
-  DeviceContextScope(const DeviceContext &ctx);
+  explicit DeviceContextScope(const DeviceContext &ctx);
   ~DeviceContextScope();
 
   ErrorOrSuccess err() const;
@@ -305,7 +305,7 @@ public:
   allocate(const std::vector<DeviceContextRef> &contexts, size_t byteSize);
 
 protected:
-  DeviceMulticastBuffer(size_t byteSize);
+  explicit DeviceMulticastBuffer(size_t byteSize);
 
 private:
   size_t byteSize_;
@@ -321,7 +321,7 @@ public:
   virtual ErrorOr<bool> isReady() const = 0;
 
 protected:
-  DeviceEvent(const Device &device);
+  explicit DeviceEvent(const Device &device);
 
 private:
   DeviceRef device_;
@@ -353,7 +353,7 @@ public:
   virtual void *ptr() const = 0;
 
 protected:
-  DeviceStream(const DeviceContext &context);
+  explicit DeviceStream(const DeviceContext &context);
   const DeviceContext &context_() const { return *ctx_; }
 
 private:
@@ -408,7 +408,7 @@ public:
   const DeviceContext &context() const;
 
 protected:
-  DeviceTimer(const DeviceContext &context);
+  explicit DeviceTimer(const DeviceContext &context);
 
 private:
   DeviceContextRef context_;
@@ -545,7 +545,7 @@ public:
   void decSyncMode() const;
 
 protected:
-  DeviceContext(const Device &device);
+  explicit DeviceContext(const Device &device);
 
   // Device-specific memory information (raw hardware memory)
   virtual ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const = 0;
@@ -673,7 +673,7 @@ enum class Device::Attribute : int {
 class DeviceFunctionCacheEntry
     : public ReferenceCounted<DeviceFunctionCacheEntry> {
 public:
-  DeviceFunctionCacheEntry(const std::string name);
+  explicit DeviceFunctionCacheEntry(const std::string name);
 
   const std::string &name() const;
 
