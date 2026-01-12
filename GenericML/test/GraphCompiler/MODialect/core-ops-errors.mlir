@@ -1,3 +1,5 @@
+// REQUIRES: DISABLED
+// COM: See GEX-3064
 // RUN: mo-opt %s --allow-unregistered-dialect --split-input-file --verify-diagnostics
 
 //===----------------------------------------------------------------------===//

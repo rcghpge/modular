@@ -353,7 +353,7 @@ public:
       if (pi)
         pi->runBeforeAnalysis(getAnalysisName(), id, this->getOperation());
 
-      auto guard = llvm::make_scope_exit([&] {
+      auto guard = llvm::scope_exit([&] {
         if (pi)
           pi->runAfterAnalysis(getAnalysisName(), id, this->getOperation());
       });
