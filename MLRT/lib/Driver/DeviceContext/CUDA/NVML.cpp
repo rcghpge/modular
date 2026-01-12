@@ -12,9 +12,27 @@
 #include "Support/PlatformUtils.h"
 #include "llvm/Support/raw_ostream.h"
 #include <dlfcn.h>
+#include <sstream>
 #include <stddef.h>
+#include <thread>
 
 namespace M::Driver {
+
+#define CUDA_NVML_CALL_LOG()                                                   \
+  if (doCallLog) {                                                             \
+    /* Make sure we emit a single entry per log call. */                       \
+    std::ostringstream buffer;                                                 \
+    buffer << "THR-" << std::this_thread::get_id()                             \
+           << ": NVML::" << __FUNCTION__ << "\n";                              \
+    llvm::errs() << buffer.str();                                              \
+  }
+
+#define GET_FUNC(name)                                                         \
+  nvml->name##_ = reinterpret_cast<t##name *>(dlsym(nvmlLib, #name));          \
+  if (nvml->name##_ == nullptr) {                                              \
+    return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
+                 "\" in \"" + nvmlLibName + "\"");                             \
+  }
 
 #ifdef MODULAR_LINUX
 const char nvmlLibName[] = "libnvidia-ml.so.1";
@@ -34,25 +52,15 @@ ErrorOr<const NVML &> NVML::allocAndInitNVML() {
 
   NVML *nvml = new NVML();
 
-#define NVML_FUNC(name, ...)                                                   \
-  nvml->name##_ = reinterpret_cast<t##name *>(dlsym(nvmlLib, #name));          \
-  if (nvml->name##_ == nullptr) {                                              \
-    return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
-                 "\" in \"" + nvmlLibName + "\"");                             \
-  }
+  GET_FUNC(nvmlInit_v2);
+  GET_FUNC(nvmlShutdown);
+  GET_FUNC(nvmlErrorString);
+  GET_FUNC(nvmlDeviceGetHandleByIndex);
+  GET_FUNC(nvmlDeviceGetCudaComputeCapability);
 
-#define NVML_FUNC_NO_PARAMS(name, ret)                                         \
-  nvml->name##_ = reinterpret_cast<t##name *>(dlsym(nvmlLib, #name));          \
-  if (nvml->name##_ == nullptr) {                                              \
-    return Error(llvm::Twine("Failed to find symbol \"") + #name +             \
-                 "\" in \"" + nvmlLibName + "\"");                             \
-  }
+  GET_FUNC(nvmlSystemGetDriverVersion);
 
-#include "NVML.inc"
-#undef NVML_FUNC_NO_PARAMS
-#undef NVML_FUNC
-
-  auto result = nvml->nvmlInit_v2();
+  auto result = nvml->nvmlInit_v2_();
   if (result != SUCCESS) {
     return Error(llvm::Twine("Failed to initialize NVML: ") +
                  std::to_string(result));
@@ -61,7 +69,10 @@ ErrorOr<const NVML &> NVML::allocAndInitNVML() {
   return *nvml;
 }
 
-NVML::~NVML() { nvmlShutdown(); }
+NVML::~NVML() {
+  CUDA_NVML_CALL_LOG();
+  nvmlShutdown_();
+}
 
 ErrorOr<std::string> NVML::GetDriverVersion() const {
   CUDA_NVML_CALL_LOG();
@@ -70,11 +81,11 @@ ErrorOr<std::string> NVML::GetDriverVersion() const {
   constexpr int nvmlSystemDriverVersionBufferSize = 80;
   std::string driverVersion(nvmlSystemDriverVersionBufferSize, '\0');
 
-  auto result = nvmlSystemGetDriverVersion(&driverVersion[0],
-                                           nvmlSystemDriverVersionBufferSize);
+  auto result = nvmlSystemGetDriverVersion_(&driverVersion[0],
+                                            nvmlSystemDriverVersionBufferSize);
   if (result != SUCCESS) {
     return Error(llvm::Twine("Failed to get driver version: ") +
-                 nvmlErrorString(result));
+                 nvmlErrorString_(result));
   }
 
   return driverVersion;
