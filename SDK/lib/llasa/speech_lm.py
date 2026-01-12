@@ -126,15 +126,20 @@ class SpeechLM:
         if max_tokens is None:
             max_tokens = self.config.max_new_tokens
 
+        input_ids, hf_tokenizer = create_llasa_prompt(text, self.config)
+        input_token_list = input_ids.tolist()
+
+        stop_token_id = hf_tokenizer.convert_tokens_to_ids(
+            self.config.speech_generation_end
+        )
+
         sampling_params = SamplingParams(
             max_new_tokens=max_tokens,
             temperature=self.config.temperature,
             top_p=self.config.top_p,
             ignore_eos=False,  # Allow EOS token to stop generation
+            stop_token_ids=[stop_token_id],
         )
-
-        input_ids, _ = create_llasa_prompt(text, self.config)
-        input_token_list = input_ids.tolist()
 
         request = TextGenerationRequest(
             request_id=request_id,
