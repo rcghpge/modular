@@ -615,6 +615,12 @@ modular_cc_library(
         "lib/Driver/DeviceContext/Metal/MetalDriver.hpp",
         "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.h",
     ],
+    linkopts = select({
+        "@platforms//os:macos": [
+            "-Wl,-framework,IOKit",
+        ],
+        "//conditions:default": [],
+    }),
     local_defines = select({
         "@platforms//os:linux": ["MODULAR_LINUX"],
         "//conditions:default": [],
