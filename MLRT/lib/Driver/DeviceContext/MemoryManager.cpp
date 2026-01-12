@@ -615,9 +615,11 @@ void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
 }
 
 MemoryManager::MemoryManager(const Device &device, size_t maxSize,
-                             size_t chunkSize, size_t alignment, bool isHost)
-    : device_(device), isHost_(isHost), maxCacheSize_(maxSize),
-      chunkSize_(chunkSize),
+                             size_t chunkSize, size_t alignment, bool isHost,
+                             bool useOnlyMemoryManagerMode)
+    : device_(device), isHost_(isHost),
+      useOnlyMemoryManagerMode_(useOnlyMemoryManagerMode),
+      maxCacheSize_(maxSize), chunkSize_(chunkSize),
       // A minimum of 64 byte alignment for allocations from the memory manager.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
@@ -914,11 +916,11 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     // If only allowing allocations from the memory manager, raise an error at
     // this point if there is insufficient capacity, printing as much debugging
     // information as needed.
-    static bool useOnlyMemoryManager =
-        DeviceContext::configAsBool("memory_manager_only", false);
+    static bool useOnlyMemoryManagerMode =
+        memoryManager_.useOnlyMemoryManagerMode_;
     auto availableCacheSize =
         memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
-    if (useOnlyMemoryManager && availableCacheSize < size) {
+    if (useOnlyMemoryManagerMode && availableCacheSize < size) {
       if (memoryManager_.doLog_) {
         memoryManager_.logErr(
             "allocate(" + TWINE(size) + ") - memory_manager_only OOM", 0, 0);
@@ -1134,7 +1136,13 @@ MemoryManager *MemoryManager::onDevice(const Device &device,
   // This is for example the case for CPU Device: We are relying on malloc
   // optimizations instead.
   if (memInfo.free == 0 || memoryLimit == 0)
-    return new MemoryManager(device, 0, 0, alignment, false);
+    return new MemoryManager(
+        /*device=*/device,
+        /*maxSize=*/0,
+        /*chunkSize=*/0,
+        /*alignment=*/alignment,
+        /*isHost=*/false,
+        /*useOnlyMemoryManagerMode=*/false);
 
   // Determine cache size
   bool isDefaultCacheSize = false;
@@ -1147,7 +1155,13 @@ MemoryManager *MemoryManager::onDevice(const Device &device,
 
   // Disable the memory manager if the requested cache size is 0
   if (maxCacheSize == 0 && !isDefaultCacheSize)
-    return new MemoryManager(device, 0, 0, alignment, false);
+    return new MemoryManager(
+        /*device=*/device,
+        /*maxSize=*/0,
+        /*chunkSize=*/0,
+        /*alignment=*/alignment,
+        /*isHost=*/false,
+        /*useOnlyMemoryManagerMode=*/false);
 
   // If there's no provided size or if the provided size is larger than
   // the free memory, use a percentage of the available memory
@@ -1181,8 +1195,17 @@ MemoryManager *MemoryManager::onDevice(const Device &device,
       maxCacheSize,
       llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
 
-  auto result = new MemoryManager(device, maxCacheSize, chunkSize, alignment,
-                                  /* isHost = */ false);
+  // Determine whether to only allocate memory from the memory manager.
+  static bool useOnlyMemoryManagerMode =
+      DeviceContext::configAsBool("memory_manager_only", false);
+
+  auto result = new MemoryManager(
+      /*device=*/device,
+      /*maxSize=*/maxCacheSize,
+      /*chunkSize=*/chunkSize,
+      /*alignment=*/alignment,
+      /*isHost=*/false,
+      /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
   if (result->doLog_) {
     result->logErr("initial memInfo(free: " + humanMemorySize(memInfo.free) +
                    ", total: " + humanMemorySize(memInfo.total) + ")");
@@ -1211,8 +1234,15 @@ MemoryManager *MemoryManager::onHost(const Device &device, size_t alignment) {
               100,
           256 * KB)));
 
-  return new MemoryManager(device, maxCacheSize, chunkSize, alignment,
-                           /* isHost = */ true);
+  return new MemoryManager(
+      /*device=*/device,
+      /*maxSize=*/maxCacheSize,
+      /*chunkSize=*/chunkSize,
+      /*alignment=*/alignment,
+      /*isHost=*/true,
+      // We disable useOnlyMemoryManagerMode for host memory manager since it is
+      // not useful by bazel to better binpack tests on a runner.
+      /*useOnlyMemoryManagerMode=*/false);
 }
 
 } // namespace M::Driver

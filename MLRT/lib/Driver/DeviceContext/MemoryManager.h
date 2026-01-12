@@ -78,7 +78,7 @@ private:
   friend class MemoryManagerFreeList;
 
   MemoryManager(const Device &device, size_t maxSize, size_t chunkSize,
-                size_t alignment, bool isHost);
+                size_t alignment, bool isHost, bool useOnlyMemoryManagerMode);
 
   const Device &device() const;
 
@@ -113,6 +113,11 @@ private:
 
   // This memory manager is managing "pinned" host memory.
   const bool isHost_;
+
+  // Whether to only allocate memory from the memory manager.
+  // This setting is useful for bazel to enforce the cap on gpu memory used by
+  // a particular test. This enables better binpacking of tests on a CI runner.
+  const bool useOnlyMemoryManagerMode_;
 
   const size_t maxCacheSize_;
   size_t chunkSize_;
