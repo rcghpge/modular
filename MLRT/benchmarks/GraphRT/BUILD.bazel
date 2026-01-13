@@ -16,7 +16,7 @@ package(
         name = src.replace(".mlir", "_mef"),
         srcs = [src],
         outs = [src.replace(".mlir", ".mef")],
-        cmd = "$(location //MLRT/tools/GraphRT/mef-translate) " +
+        cmd = "MODULAR_HOME=. $(location //MLRT/tools/GraphRT/mef-translate) " +
               "-export-mef -allow-unregistered-dialect $< -o $@",
         tools = ["//MLRT/tools/GraphRT/mef-translate"],
     )
