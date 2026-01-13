@@ -1518,7 +1518,6 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeTiled(
     CUtensorMapFloatOOBfill oobFill) const {
   CHECK_IS_CUDA_ERR(globalAddress.context().device());
   CUDA_WITH_CTX_ERR(*this);
-  POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuTensorMapEncodeTiled(
       tensorMap, tensorDataType, tensorRank, globalAddress.ptr(), globalDim,
       globalStrides, boxDim, elementStrides, interleave, swizzle, l2Promotion,
