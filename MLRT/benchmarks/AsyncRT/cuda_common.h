@@ -11,6 +11,7 @@
 #ifndef MLRT_BENCHMARKS_ASYNCRT_CUDA_COMMON_H
 #define MLRT_BENCHMARKS_ASYNCRT_CUDA_COMMON_H
 
+#include <cstddef>
 #include <dlfcn.h>
 
 namespace CudaCommon {
