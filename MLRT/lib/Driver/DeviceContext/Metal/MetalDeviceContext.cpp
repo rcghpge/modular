@@ -905,6 +905,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   size_t numArgs = func.argumentCount();
   const MetalDevice &metalDevice = MetalDevice::cast(device());
   MTL::Device *mtlDevice = metalDevice.metalDevice();
+  std::vector<NS::SharedPtr<MTL::Buffer>> newBuffers(numArgs);
 
   // 4) Bind all buffer arguments
   for (uint32_t i = 0; i < numArgs; ++i) {
@@ -945,10 +946,10 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
       // new MTLBuffer and set it.
       MTL::ResourceOptions options =
           getResourceOptions(Device::AllocMode::ASYNC);
-      MTL::Buffer *buf = mtlDevice->newBuffer(args[i], argSize, options);
-      buf->retain();
-      metalDevice.trackBuffer(buf->contents(), buf);
-      encoder->setBuffer(buf, 0, i);
+      NS::SharedPtr<MTL::Buffer> buf =
+          NS::TransferPtr(mtlDevice->newBuffer(args[i], argSize, options));
+      encoder->setBuffer(buf.get(), 0, i);
+      newBuffers.push_back(buf);
     }
   }
 
