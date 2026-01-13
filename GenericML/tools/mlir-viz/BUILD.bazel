@@ -1,15 +1,40 @@
-load("//bazel:api.bzl", "modular_cc_binary")
+load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_library")
 
 package(default_visibility = [
     "//:__pkg__",
     "//GenericML:__subpackages__",
 ])
 
+modular_cc_library(
+    name = "mlir-viz-font",
+    srcs = [
+        "font.cpp",
+        "font.h",
+    ],
+    additional_compiler_inputs = [
+        "ProggyClean.ttf",
+    ],
+    copts = [
+        "-std=c++23",
+        "-Wno-c23-extensions",
+    ],
+    local_defines = [
+        "MLIR_VIZ_FONT=\\\"$(execpath ProggyClean.ttf)\\\"",
+    ],
+    deps = [
+        "//Support:Compiler",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 modular_cc_binary(
     name = "mlir-viz",
-    srcs = glob(["*.cpp"]),
-    data = ["ProggyClean.ttf"],
-    env = {"MLIR_VIZ_FONT": "$(location ProggyClean.ttf)"},
+    srcs = ["mlir-viz.cpp"],
+    copts = [
+        "-std=c++23",
+        "-Wno-c23-extensions",
+    ],
     linkopts = select({
         "@platforms//os:linux": [
             "-lxcb",
@@ -18,6 +43,7 @@ modular_cc_binary(
         "//conditions:default": [],
     }),
     deps = [
+        "mlir-viz-font",
         "//GenericML:MGPDialect",
         "//GenericML:MODialect",
         "//GenericML:MOGGDialect",

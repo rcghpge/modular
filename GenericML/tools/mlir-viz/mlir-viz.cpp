@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "font.h"
+
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
@@ -43,6 +45,7 @@
 #include <fstream>
 
 using namespace mlir;
+using namespace M::MlirViz;
 using namespace M;
 
 [[maybe_unused]] static constexpr auto kIconTrash = "\xef\x87\xb8";
@@ -663,16 +666,6 @@ struct MLIRGraphRenderer {
   }
 };
 
-static const char *getFontPath() {
-  const char *path = getenv("MLIR_VIZ_FONT");
-  if (!path) {
-    llvm::errs() << "Could not find MLIR_VIZ_FONT or empty path\n";
-    exit(1);
-  }
-
-  return path;
-}
-
 class MLIRVizRenderer {
 private:
   // Index of the font size.
@@ -722,9 +715,15 @@ public:
     ImGuiIO &io = ImGui::GetIO();
     io.Fonts->Clear();
     io.Fonts->AddFontDefault();
-    auto fontPath = getFontPath();
-    for (uint64_t i = 0; i < 6; ++i)
-      io.Fonts->AddFontFromFileTTF(fontPath, 13.0f + i);
+    auto fontData = getFontData();
+    for (uint64_t i = 0; i < 6; ++i) {
+      // ImGui expects ownership of the font data.
+      auto fontDataUnOwned = std::make_unique<char[]>(fontData.size());
+      std::memcpy(fontDataUnOwned.get(), fontData.data(), fontData.size());
+      io.Fonts->AddFontFromMemoryTTF((void *)fontDataUnOwned.get(),
+                                     fontData.size(), 13.0f + i);
+      fontDataUnOwned.release();
+    }
     io.Fonts->Build();
     io.FontDefault = io.Fonts->Fonts[1];
 
