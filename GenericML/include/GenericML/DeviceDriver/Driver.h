@@ -43,6 +43,11 @@ struct DeviceMemory {
     destructorFn = std::move(destructor);
   }
 
+  /// Underlying raw buffer on-device. Does not release ownership.
+  M::Driver::DeviceBufferRef getBuffer() const {
+    return M::Driver::DeviceBufferRef::copy(buf.getPointer());
+  }
+
   /// Returns the ptr backing the DeviceMemory object. Does not release
   /// ownership.
   void *data() const { return buf->ptr(); }
