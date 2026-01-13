@@ -12,6 +12,13 @@ modular_cc_binary(
         "//:emit_mojo_enabled": ["//max:MOGGKernelAPI"],
         "//conditions:default": [],
     }),
+    mojo_deps = select({
+        "//:emit_mojo_enabled": [
+            "//max:MOGGKernelAPI",
+            "//max:MOGGPrimitives",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         "//GenericML:GraphCompiler",
         "//Init",
