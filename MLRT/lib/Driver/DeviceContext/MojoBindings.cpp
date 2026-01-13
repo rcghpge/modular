@@ -731,6 +731,20 @@ AsyncRT_DeviceStream_hip_stream(hipStream_t *result,
   return nullptr;
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceFunction_hip_module(hipModule_t *result,
+                                  const DeviceFunction *func) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceFunction_hip_module", TRACY_COLOR_GRAY);
+  // Check if the device context is HIP
+  if (func->context().device().api() != Device::hipAPI) {
+    return raiseError("Not a HIP DeviceFunction");
+  }
+
+  const HIPDeviceFunction &hipFunc = HIPDeviceFunction::cast(*func);
+  *result = hipFunc.hipModule();
+  return nullptr;
+}
+
 //
 // Raw Metal accessors
 //

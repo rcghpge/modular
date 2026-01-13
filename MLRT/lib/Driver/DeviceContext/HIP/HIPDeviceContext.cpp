@@ -916,6 +916,10 @@ const HIPDeviceFunction &HIPDeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const HIPDeviceFunction &>(func);
 }
 
+hipModule_t HIPDeviceFunction::hipModule() const {
+  return moduleFunction_->hipModule();
+}
+
 // ===== HIPDeviceTimer ===== //
 HIPDeviceTimer::HIPDeviceTimer(const HIPDeviceContext &context,
                                hipEvent_t start, hipEvent_t stop)

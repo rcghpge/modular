@@ -204,6 +204,8 @@ public:
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
                                             size_t dynamicSharedMemSize) const;
 
+  hipModule_t hipModule() const;
+
 private:
   // The moduleFunction_ holds the HIP specific implementation. Methods on
   // HIPDeviceFunction forward to moduleFunction_ as needed.
