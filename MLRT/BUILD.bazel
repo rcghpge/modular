@@ -117,10 +117,10 @@ modular_cc_library(
     ],
     local_defines = select({
         "//:asyncrt_no_affinity_setting": ["ASYNCRT_NO_AFFINITY=1"],
-        "//conditions:default": [],
+        "//conditions:default": ["ASYNCRT_NO_AFFINITY=0"],
     }) + select({
         ":worker_stats_setting": ["ASYNCRT_WORKER_STATS=1"],
-        "//conditions:default": [],
+        "//conditions:default": ["ASYNCRT_WORKER_STATS=0"],
     }),
     visibility = ["//MLRT:consumers"],
     deps = [
