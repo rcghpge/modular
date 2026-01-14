@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER
-#define GENERICML_LIB_DEVICEDRIVER_DRIVER
+#ifndef GENERICML_LIB_DEVICEDRIVER_DRIVER_H
+#define GENERICML_LIB_DEVICEDRIVER_DRIVER_H
 
 #include "GenericML/DeviceDriver/Utils.h"
 #include "MLRT/AsyncRT/ForwardDecls.h"

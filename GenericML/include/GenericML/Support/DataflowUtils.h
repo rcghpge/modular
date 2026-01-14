@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DATALOW_UTILS
-#define GENERICML_DATALOW_UTILS
+#ifndef GENERICML_DATALOW_UTILS_H
+#define GENERICML_DATALOW_UTILS_H
 
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/Casting.h"

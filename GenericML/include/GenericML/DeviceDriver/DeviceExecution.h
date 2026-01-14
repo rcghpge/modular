@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_DEVICEDRIVER_DEVICEEXECUTION
-#define GENERICML_DEVICEDRIVER_DEVICEEXECUTION
+#ifndef GENERICML_DEVICEDRIVER_DEVICEEXECUTION_H
+#define GENERICML_DEVICEDRIVER_DEVICEEXECUTION_H
 
 #include "GenericML/DeviceDriver/Driver.h"
 #include "MLRT/Core/Tensor/Tensor.h"
