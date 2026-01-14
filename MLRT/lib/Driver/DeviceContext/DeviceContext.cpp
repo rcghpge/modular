@@ -1207,9 +1207,7 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
 }
 
 ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
-  return DeviceContext::formatError(
-      __FILE__, __LINE__, __FUNCTION__,
-      "enablePeerAccess not implemented for this device API" +
-          Twine(peer.api()));
+  RAISE_ERROR_MESSAGE("enablePeerAccess not implemented for this device API" +
+                      Twine(peer.api()));
 }
 } // namespace M::Driver
