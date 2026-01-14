@@ -11,10 +11,14 @@
 #include "MemoryManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/StringExtras.h"
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <mutex>
 
@@ -369,6 +373,15 @@ MemoryManagerFreeList::MemoryManagerFreeList(const DeviceContext *context,
          ((ctx_ != nullptr) && (parent_ != nullptr)));
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     freeBuffers_[i] = nullptr;
+  }
+
+  if (DeviceContext::configAsBool("memory_manager_redzone_enable", false)) {
+    if (context == nullptr) {
+      memoryManager_.logErr("redzone checks disabled due to null context in "
+                            "MemoryManagerFreeList");
+    } else {
+      enableRedzones();
+    }
   }
 }
 
@@ -860,18 +873,87 @@ MemoryManagerFreeList *MemoryManager::freeList() const {
   return freeList_.get();
 }
 
+void MemoryManagerFreeList::enableRedzones() {
+  redzoneEnable_ = true;
+  size_t alignment = memoryManager_.allocationAlignment();
+  redzoneSize_ =
+      DeviceContext::configAsInt("memory_manager_redzone_size", alignment);
+  size_t remainder = redzoneSize_ % alignment;
+  if (remainder != 0) {
+    redzoneSize_ += (alignment - remainder);
+    memoryManager_.logErr("memory_manager_redzone_size must be a multiple of " +
+                          Twine(alignment) + " rounding up to " +
+                          Twine(redzoneSize_));
+  }
+  redzonePattern_ = static_cast<uint8_t>(
+      DeviceContext::configAsInt("memory_manager_redzone_pattern", 0xBA));
+  memoryManager_.logErr("redzone checks enabled on free list: 0x" +
+                        Twine::utohexstr((uintptr_t)this));
+}
+
+ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
+                                                          size_t size) {
+  uint8_t *underflowRedzone = static_cast<uint8_t *>(unwrappedPtr);
+  uint8_t *wrappedPtr = underflowRedzone + redzoneSize_;
+  uint8_t *overflowRedzone = wrappedPtr + size;
+
+  memoryManager_.logErr(
+      "redzone(address 0x" + Twine::utohexstr((uintptr_t)wrappedPtr) +
+      " ; size: " + Twine(redzoneSize_) +
+      " ; pattern: " + Twine::utohexstr(redzonePattern_) + " ; underflow: 0x" +
+      Twine::utohexstr((uintptr_t)underflowRedzone) + " ; overflow: 0x" +
+      Twine::utohexstr((uintptr_t)overflowRedzone));
+
+  if (memoryManager_.isHost()) {
+    std::memset(underflowRedzone, redzonePattern_, redzoneSize_);
+    std::memset(overflowRedzone, redzonePattern_, redzoneSize_);
+  } else {
+    DeviceBufferRef underflowBuf = ctx_->createBufferOwning(
+        underflowRedzone, redzoneSize_, /*owning=*/false);
+    if (auto result = ctx_->enqueueSetMemory(*underflowBuf, redzonePattern_, 1);
+        result.isError())
+      return Error("failed writing underflow redzone pattern: " +
+                   Twine(result.getError()));
+
+    DeviceBufferRef overflowBuf = ctx_->createBufferOwning(
+        overflowRedzone, redzoneSize_, /*owning=*/false);
+    if (auto result = ctx_->enqueueSetMemory(*overflowBuf, redzonePattern_, 1);
+        result.isError())
+      return Error("failed writing overflow redzone pattern: " +
+                   Twine(result.getError()));
+
+    if (auto result = ctx_->synchronize(); result.isError())
+      return Error("failed writing redzone pattern: " +
+                   Twine(result.getError()));
+  }
+
+  // Store stack trace to print when an out-of-bounds access is detected
+  std::string stackTrace;
+  llvm::raw_string_ostream os(stackTrace);
+  llvm::sys::PrintStackTrace(os);
+  redzoneDeviceAllocSizeMap_[wrappedPtr] = {std::move(stackTrace), size};
+
+  return wrappedPtr;
+}
+
 ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
                                                 Device::AllocMode mode) {
   assert(size != 0);
 
+  size_t wrappedSize = size;
+  if (redzoneEnable_) {
+    // Add redzone padding to the allocation size
+    wrappedSize += redzoneSize_ * 2;
+  }
+
   if (memoryManager_.chunkSize_ != 0) {
-    size = (size + memoryManager_.alignmentOffset_) &
-           memoryManager_.alignmentMask_;
+    wrappedSize = (wrappedSize + memoryManager_.alignmentOffset_) &
+                  memoryManager_.alignmentMask_;
 
     MemoryManager::Desc *desc = nullptr;
     {
       std::lock_guard<std::mutex> lock(memoryManager_.mu_);
-      if (size > memoryManager_.chunkSize_) {
+      if (wrappedSize > memoryManager_.chunkSize_) {
         // Check heuristics if chunk size should be updated.
 
         if (memoryManager_.chunks_ == nullptr) {
@@ -883,12 +965,12 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
           //
           // Avoid aggressive growth if the allocation will not fit within the
           // maximum memory manager size to start.
-          if (size <= memoryManager_.maxCacheSize_) {
+          if (wrappedSize <= memoryManager_.maxCacheSize_) {
             assert(memoryManager_.cacheSize_ == 0);
             MemoryManager::enableUseMaxSize();
           } else {
             if (memoryManager_.doLog_) {
-              memoryManager_.logErr("allocate(" + TWINE(size) +
+              memoryManager_.logErr("allocate(" + TWINE(wrappedSize) +
                                     ") - skip growChunkSizeTo()");
             }
           }
@@ -903,13 +985,16 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         }
       }
 
-      if (size <= memoryManager_.chunkSize_) {
+      if (wrappedSize <= memoryManager_.chunkSize_) {
         selfCheck();
-        desc = allocateDesc(size);
+        desc = allocateDesc(wrappedSize);
       }
     }
     if (desc != nullptr) {
       // Allocation from memory manager was successful, return the value.
+      if (redzoneEnable_) {
+        return redzoneFillAndWrap(desc->ptr_, size);
+      }
       return desc->ptr_;
     }
 
@@ -920,10 +1005,11 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         memoryManager_.useOnlyMemoryManagerMode_;
     auto availableCacheSize =
         memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
-    if (useOnlyMemoryManagerMode && availableCacheSize < size) {
+    if (useOnlyMemoryManagerMode && availableCacheSize < wrappedSize) {
       if (memoryManager_.doLog_) {
-        memoryManager_.logErr(
-            "allocate(" + TWINE(size) + ") - memory_manager_only OOM", 0, 0);
+        memoryManager_.logErr("allocate(" + TWINE(wrappedSize) +
+                                  ") - memory_manager_only OOM",
+                              0, 0);
         // Print more debugging information about the largest available blocks.
         MemoryManagerFreeList *cur = this;
         while (cur != nullptr) {
@@ -941,7 +1027,7 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       return Error(
           "[Use only memory manager mode]: No room left in memory manager: " +
           memoryManager_.getDeviceDescription() + " on " + TWINE_PTR(this) +
-          " (size: " + humanMemorySize(size) +
+          " (size: " + humanMemorySize(wrappedSize) +
           " ; free: " + humanMemorySize(memoryManager_.freeSize_) +
           " ; cache_size: " + humanMemorySize(memoryManager_.cacheSize_) +
           " ; max_cache_size: " +
@@ -964,7 +1050,7 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     return Error("memAlloc failed due to missing context");
   }
   ErrorOrSuccess err = ctx_->memAlloc(
-      &ptr, size,
+      &ptr, wrappedSize,
       // If allocating for host just forward that.
       (mode == Device::AllocMode::HOST) ? Device::AllocMode::HOST
       // Ensure that all allocations are sync when using a memory manager.
@@ -982,6 +1068,10 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         "allocate_buffer(" + TWINE_PTR(ptr) + " ; " + TWINE(size) + ")", 0, 0);
   }
   assert(ptr != nullptr);
+  if (redzoneEnable_) {
+    // Returns pointer to immediately after the end of the underflow redzone
+    return redzoneFillAndWrap(ptr, size);
+  }
   return ptr;
 }
 
@@ -1050,9 +1140,134 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
   return allocateDesc(size);
 }
 
+ErrorOrSuccess
+MemoryManagerFreeList::validateRedzones(void *wrappedPtr,
+                                        const RedzoneInfo &info) {
+  uint8_t *underflowRedzonePtr = static_cast<uint8_t *>(wrappedPtr);
+  uint8_t *overflowRedzonePtr = underflowRedzonePtr + redzoneSize_ + info.size_;
+
+  uint8_t *underflowRedzone = underflowRedzonePtr;
+  uint8_t *overflowRedzone = overflowRedzonePtr;
+
+  std::vector<uint8_t> underflowRedzoneStorage;
+  std::vector<uint8_t> overflowRedzoneStorage;
+  if (!memoryManager_.isHost()) {
+    // Copy the redzone data from device back to host memory
+    underflowRedzoneStorage.resize(redzoneSize_);
+    overflowRedzoneStorage.resize(redzoneSize_);
+
+    if (auto result = ctx_->enqueueCopyFromDeviceSized(
+            underflowRedzoneStorage.data(), underflowRedzonePtr, redzoneSize_);
+        result.isError())
+      return Error("failed reading underflow redzone: " +
+                   Twine(result.getError()));
+
+    if (auto result = ctx_->enqueueCopyFromDeviceSized(
+            overflowRedzoneStorage.data(), overflowRedzonePtr, redzoneSize_);
+        result.isError())
+      return Error("failed reading overflow redzone: " +
+                   Twine(result.getError()));
+
+    if (auto result = ctx_->synchronize(); result.isError())
+      return Error("failed reading redzone: " + Twine(result.getError()));
+
+    underflowRedzone = underflowRedzoneStorage.data();
+    overflowRedzone = overflowRedzoneStorage.data();
+  }
+
+  const char *sectionLine = "=================================================="
+                            "==============================\n";
+
+  bool bufferUnderflow =
+      !std::all_of(underflowRedzone, underflowRedzone + redzoneSize_,
+                   [&](uint8_t c) { return c == redzonePattern_; });
+  if (bufferUnderflow) {
+    (llvm::errs().changeColor(llvm::raw_ostream::YELLOW)
+     << sectionLine
+     << "MemoryManager detected a device buffer underflow before address: "
+     << wrappedPtr << "\n")
+        .resetColor();
+    printRedzone(underflowRedzone, underflowRedzonePtr);
+  }
+
+  bool bufferOverflow =
+      !std::all_of(overflowRedzone, overflowRedzone + redzoneSize_,
+                   [&](uint8_t c) { return c == redzonePattern_; });
+  if (bufferOverflow) {
+    (llvm::errs().changeColor(llvm::raw_ostream::YELLOW)
+     << sectionLine
+     << "MemoryManager detected a device buffer overflow after "
+        "address+size: "
+     << wrappedPtr << "+" << info.size_ << " (" << overflowRedzonePtr << ")\n")
+        .resetColor();
+    printRedzone(overflowRedzone, overflowRedzonePtr);
+  }
+
+  if (bufferUnderflow || bufferOverflow) {
+    llvm::errs().changeColor(llvm::raw_ostream::YELLOW)
+        << "\nStack trace at the point of the device buffer allocation:\n\n";
+    llvm::errs().resetColor() << info.stackTraceOnAlloc_;
+    (llvm::errs().changeColor(llvm::raw_ostream::YELLOW) << sectionLine)
+        .resetColor();
+    std::abort();
+  }
+
+  return success();
+}
+
+void MemoryManagerFreeList::printRedzone(const uint8_t *dataPtr,
+                                         const uint8_t *displayPtr) {
+  llvm::errs() << "Redzone size: " << redzoneSize_ << " bytes, "
+               << "fill pattern: "
+               << llvm::format_hex_no_prefix(redzonePattern_, 2) << "\n\n";
+  constexpr uint32_t bytesPerLine = 16;
+  size_t numLines = redzoneSize_ / bytesPerLine;
+  bool invalidRegion = false;
+  for (uint32_t l = 0; l < numLines; l++) {
+    const uint8_t *dataLinePtr = dataPtr + l * bytesPerLine;
+    const uint8_t *displayLinePtr = displayPtr + l * bytesPerLine;
+
+    if (!std::all_of(dataLinePtr, dataLinePtr + bytesPerLine,
+                     [&](uint8_t c) { return c == redzonePattern_; })) {
+      (llvm::errs().changeColor(llvm::raw_ostream::RED) << "=>").resetColor();
+    } else
+      llvm::errs() << "  ";
+
+    llvm::errs() << displayLinePtr << ":";
+
+    for (uint32_t b = 0; b < bytesPerLine; b++) {
+      uint8_t byte = dataLinePtr[b];
+      if (invalidRegion) {
+        llvm::errs().changeColor(llvm::raw_ostream::RED);
+        if (byte == redzonePattern_) {
+          (llvm::errs() << "]").resetColor();
+          invalidRegion = false;
+        } else
+          llvm::errs() << " ";
+      } else {
+        if (byte != redzonePattern_) {
+          llvm::errs().changeColor(llvm::raw_ostream::RED) << "[";
+          invalidRegion = true;
+        } else
+          llvm::errs() << " ";
+      }
+      llvm::errs() << llvm::format_hex_no_prefix(byte, 2);
+    }
+    if (invalidRegion && l == numLines - 1)
+      llvm::errs() << "]";
+    llvm::errs() << "\n";
+  }
+}
+
 ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
   if (ptr == nullptr)
     return success();
+
+  uint8_t *unwrappedPtr = static_cast<uint8_t *>(ptr);
+  if (redzoneEnable_) {
+    // Unwrap redzone padding applied in allocate() by redzoneFillAndWrap()
+    unwrappedPtr -= redzoneSize_;
+  }
 
   if (memoryManager_.chunks_ != nullptr) {
     if (memoryManager_.doLog_) {
@@ -1063,8 +1278,18 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
     std::lock_guard<std::mutex> lock(memoryManager_.mu_);
     selfCheck();
 
-    MemoryManager::Desc *desc = memoryManager_.allocatedMap_.remove(ptr);
+    MemoryManager::Desc *desc =
+        memoryManager_.allocatedMap_.remove(unwrappedPtr);
     if (desc != nullptr) {
+      if (redzoneEnable_) {
+        RedzoneInfo info = redzoneDeviceAllocSizeMap_.at(ptr);
+        redzoneDeviceAllocSizeMap_.erase(ptr);
+        if (auto result = validateRedzones(unwrappedPtr, info);
+            result.isError()) {
+          return result;
+        }
+      }
+
       freeDesc(desc);
       if ((ctx_ != nullptr) && !handlerPending_) {
         // Free the list preceeding the next primary so that we can keep buffers
@@ -1108,6 +1333,14 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
                               " after queuing flush handler");
       }
       return success();
+    }
+  }
+
+  if (redzoneEnable_) {
+    RedzoneInfo info = redzoneDeviceAllocSizeMap_.at(ptr);
+    redzoneDeviceAllocSizeMap_.erase(ptr);
+    if (auto result = validateRedzones(unwrappedPtr, info); result.isError()) {
+      return result;
     }
   }
 

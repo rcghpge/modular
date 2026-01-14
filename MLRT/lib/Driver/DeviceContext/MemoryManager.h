@@ -174,6 +174,9 @@ public:
 
   bool empty();
 
+  // Enable out-of-bounds access checks
+  void enableRedzones();
+
 private:
   friend class MemoryManager;
   friend class MemoryManager::Chunk;
@@ -198,6 +201,15 @@ private:
 
   void flushFreeBuffersToParent(int id);
 
+  struct RedzoneInfo {
+    std::string stackTraceOnAlloc_;
+    size_t size_;
+  };
+
+  ErrorOr<void *> redzoneFillAndWrap(void *unwrappedPtr, size_t size);
+  ErrorOrSuccess validateRedzones(void *wrappedPtr, const RedzoneInfo &size);
+  void printRedzone(const uint8_t *dataPtr, const uint8_t *displayPtr);
+
   const DeviceContext *ctx_;
 
   MemoryManager &memoryManager_;
@@ -206,6 +218,11 @@ private:
   MemoryManager::Desc *freeBuffers_[kNumFreeBufferLists];
   int primaryFreeBuffers_ = 0;
   bool handlerPending_ = false;
+
+  bool redzoneEnable_ = false;
+  size_t redzoneSize_ = 0;
+  uint8_t redzonePattern_ = 0;
+  DenseMap<void *, RedzoneInfo> redzoneDeviceAllocSizeMap_;
 };
 
 } // namespace M::Driver

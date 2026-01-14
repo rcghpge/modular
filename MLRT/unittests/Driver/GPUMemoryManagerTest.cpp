@@ -488,4 +488,88 @@ TEST_F(GPUMemoryManagerTest, GetMemoryInfoAccuracy) {
   EXPECT_GE(afterFreeInfo.free, afterAllocInfo.free); // Free should increase
 }
 
+TEST_F(GPUMemoryManagerTest, BufferUnderflowTest) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+  ctx->freeList().enableRedzones();
+
+  ASSIGN_NO_ERR(void *, vptr,
+                ctx->freeList().allocate(1024, Device::AllocMode::SYNC));
+  ASSERT_NE(vptr, nullptr);
+
+  uint8_t *ptr = static_cast<uint8_t *>(vptr);
+  ptr -= 10;
+
+  uint8_t dead[2] = {0xDE, 0xAD};
+  EXPECT_NO_ERR(ctx->enqueueCopyToDeviceSized(ptr, dead, sizeof(dead)));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // Free the pointer which results in a std::abort() on buffer underflow
+  ASSERT_DEATH(EXPECT_NO_ERR(ctx->freeList().free(vptr));, ".*");
+}
+
+TEST_F(GPUMemoryManagerTest, BufferOverflowTest) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+  ctx->freeList().enableRedzones();
+
+  constexpr size_t size = 1024;
+  ASSIGN_NO_ERR(void *, vptr,
+                ctx->freeList().allocate(size, Device::AllocMode::SYNC));
+  ASSERT_NE(vptr, nullptr);
+
+  uint8_t *ptr = static_cast<uint8_t *>(vptr);
+  ptr += size + 9;
+
+  uint8_t dead[2] = {0xDE, 0xAD};
+  EXPECT_NO_ERR(ctx->enqueueCopyToDeviceSized(ptr, dead, sizeof(dead)));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // Free the pointer which results in a std::abort() on buffer overflow
+  ASSERT_DEATH(EXPECT_NO_ERR(ctx->freeList().free(vptr));, ".*");
+}
+
+TEST_F(GPUMemoryManagerTest, HostBufferUnderflowTest) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+  ctx->hostFreeList().enableRedzones();
+
+  ASSIGN_NO_ERR(void *, vptr,
+                ctx->hostFreeList().allocate(1024, Device::AllocMode::HOST));
+  ASSERT_NE(vptr, nullptr);
+
+  uint8_t *ptr = static_cast<uint8_t *>(vptr);
+  ASSERT_EQ(0xBA, *(ptr - 1));
+
+  *(ptr - 10) = 0xDE;
+  *(ptr - 9) = 0xAD;
+
+  // Free the pointer which results in a std::abort() on buffer underflow
+  ASSERT_DEATH(EXPECT_NO_ERR(ctx->hostFreeList().free(vptr)), ".*");
+}
+
+TEST_F(GPUMemoryManagerTest, HostBufferOverflowTest) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+  ctx->hostFreeList().enableRedzones();
+
+  constexpr size_t size = 1024;
+  ASSIGN_NO_ERR(void *, vptr,
+                ctx->hostFreeList().allocate(size, Device::AllocMode::HOST));
+  ASSERT_NE(vptr, nullptr);
+
+  uint8_t *ptr = static_cast<uint8_t *>(vptr);
+  ASSERT_EQ(0xBA, *(ptr - 1));
+
+  *(ptr + size + 9) = 0xDE;
+  *(ptr + size + 10) = 0xAD;
+
+  // Free the pointer which results in a std::abort() on buffer overflow
+  ASSERT_DEATH(EXPECT_NO_ERR(ctx->hostFreeList().free(vptr)), ".*");
+}
+
 } // namespace
