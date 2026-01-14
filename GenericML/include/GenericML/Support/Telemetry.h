@@ -51,10 +51,8 @@ public:
 
   template <MaxEngineErrorCode errorCode>
   void increment() {
-#ifdef MODULAR_ENABLE_TELEMETRY
     std::string category = stringifyErrorCode(errorCode);
     counter.add(1, {{category, to_underlying(errorCode)}});
-#endif // MODULAR_ENABLE_TELEMETRY
   }
 
 private:
@@ -109,11 +107,9 @@ private:
 /// occurrence but no associated error logs to emit along with it.
 template <MaxEngineErrorCode ErrorCode>
 void incrementTelemetryErrorCount(MaxEngineTelemetryContext &ctx) {
-#ifdef MODULAR_ENABLE_TELEMETRY
   auto &counter = ctx.getErrorCounter();
   counter.increment<ErrorCode>();
   ctx.flush();
-#endif // MODULAR_ENABLE_TELEMETRY
 }
 
 /// Increment error count and emit error logs into appropriate telemetry end
@@ -121,7 +117,6 @@ void incrementTelemetryErrorCount(MaxEngineTelemetryContext &ctx) {
 /// event name `compile.failure`.
 template <MaxEngineErrorCode ErrorCode>
 void emitErrorTelemetry(MaxEngineTelemetryContext &ctx, Error error) {
-#ifdef MODULAR_ENABLE_TELEMETRY
   incrementTelemetryErrorCount<ErrorCode>(ctx);
 
   std::shared_ptr<Telemetry::Logs::Logger> logger = ctx.getLogger("compiler");
@@ -131,7 +126,6 @@ void emitErrorTelemetry(MaxEngineTelemetryContext &ctx, Error error) {
   attributes.insert({"max.engine.error_code", errorCodeStr});
   attributes.insert({"max.engine.api.language", ctx.getAPILanguage()});
   logger->emitL1Event("compile.failure", attributes);
-#endif // MODULAR_ENABLE_TELEMETRY
 }
 
 /// Scoped handler that emits MLIR diagnostics to telemetry.
