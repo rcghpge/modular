@@ -17,6 +17,9 @@ modular_cc_library(
     hdrs = [
         "TestUtils.h",
     ],
+    visibility = [
+        "//GenericML:__subpackages__",
+    ],
     deps = [
         "@llvm-project//third-party/unittest:gmock",
     ],

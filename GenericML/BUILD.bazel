@@ -10,6 +10,7 @@ package_group(
     name = "consumers",
     packages = [
         "//GenericML/...",
+        "//MLRT/...",
         "//SDK/...",
         "//max/...",
         "//oss/modular/max/...",
@@ -1399,6 +1400,7 @@ modular_cc_library(
         ":Support",
         "//Init",
         "//MLRT:Driver/DeviceContext",
+        "//MLRT:Driver/DeviceContextImpl",
         "//Support:Context",
     ],
 )

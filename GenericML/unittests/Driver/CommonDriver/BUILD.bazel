@@ -4,9 +4,26 @@ package(default_visibility = ["//visibility:private"])
 
 modular_cc_test(
     name = "CommonDriverTests",
-    srcs = glob(["*.cpp"]),
+    srcs = glob(
+        ["*.cpp"],
+        exclude = ["DebugAllocPoisonTest.cpp"],
+    ),
     deps = [
         "//GenericML:CommonDriver",
         "//GenericML:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "DebugAllocPoisonTest",
+    size = "small",
+    srcs = ["DebugAllocPoisonTest.cpp"],
+    env = {
+        "MODULAR_DEVICE_CONTEXT_DEBUG_ALLOC_POISON": "true",
+    },
+    deps = [
+        "//GenericML:DeviceDriver",
+        "//MLRT/unittests/Driver:TestUtils",
+        "//Support:ML",
     ],
 )

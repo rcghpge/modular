@@ -10,6 +10,10 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/AssertStream.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
+#include <cstring>
 
 using namespace M::GenericML::Driver;
 using namespace M;
@@ -112,6 +116,74 @@ Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
   ASSIGN_OR_RETURN(buf, hostAlloc
                             ? ctx->createHostBuffer(spec.getSizeInBytes())
                             : ctx->enqueueCreateBuffer(spec.getSizeInBytes()));
+
+  // Debug allocation poisoning: fills newly allocated memory with default
+  // patterns to help detect use of uninitialized memory. Float types are filled
+  // with qNaN patterns, integers with 0xCD.
+  // Enable via: MODULAR_DEVICE_CONTEXT_DEBUG_ALLOC_POISON=true
+  if (M::Driver::DeviceContext::configAsBool("debug_alloc_poison", false)) {
+    DType dtype = spec.getEltType();
+
+    if (hostAlloc) {
+      if (dtype.isFloat()) {
+        llvm::errs() << "DEBUG_ALLOC_POISON: Filling host " << dtype
+                     << " allocation (" << spec.getSizeInBytes()
+                     << " bytes) with ";
+        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xFF")
+            .resetColor();
+        llvm::errs() << "\n";
+        std::memset(buf->ptr(), 0xFF, spec.getSizeInBytes());
+      } else {
+        llvm::errs() << "DEBUG_ALLOC_POISON: Filling host " << dtype
+                     << " allocation (" << spec.getSizeInBytes()
+                     << " bytes) with ";
+        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xCD")
+            .resetColor();
+        llvm::errs() << "\n";
+        std::memset(buf->ptr(), 0xCD, spec.getSizeInBytes());
+      }
+    } else {
+      ErrorOrSuccess err = success();
+      if (const llvm::fltSemantics *sem = dtype.getFloatSemantics()) {
+        // Use APFloat to generate the correct qNaN for any float type
+        llvm::APFloat nan = llvm::APFloat::getQNaN(*sem);
+        uint64_t bits = nan.bitcastToAPInt().getZExtValue();
+        size_t byteSize = llvm::APFloat::getSizeInBits(*sem) / 8;
+        llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << dtype
+                     << " allocation (" << spec.getSizeInBytes()
+                     << " bytes) with qNaN pattern ";
+        (llvm::errs().changeColor(llvm::raw_ostream::RED)
+         << "0x" << llvm::format_hex_no_prefix(bits, byteSize * 2))
+            .resetColor();
+        llvm::errs() << "\n";
+        err = ctx->enqueueSetMemory(*buf, bits, byteSize);
+      } else if (dtype.isFloat()) {
+        // Float type not known to LLVM, use generic pattern
+        llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << dtype
+                     << " allocation (" << spec.getSizeInBytes()
+                     << " bytes) with ";
+        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xFF")
+            .resetColor();
+        llvm::errs() << "\n";
+        err = ctx->enqueueSetMemory(*buf, 0xFF, 1);
+      } else {
+        // Integer types
+        llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << dtype
+                     << " allocation (" << spec.getSizeInBytes()
+                     << " bytes) with ";
+        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xCD")
+            .resetColor();
+        llvm::errs() << "\n";
+        err = ctx->enqueueSetMemory(*buf, 0xCD, 1);
+      }
+      if (err.isError())
+        return err.takeError();
+      err = ctx->synchronize();
+      if (err.isError())
+        return err.takeError();
+    }
+  }
+
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
