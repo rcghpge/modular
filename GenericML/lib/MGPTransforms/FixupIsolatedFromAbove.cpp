@@ -32,7 +32,7 @@ using namespace mlir;
 /// Returns false if a value is shared between inOp and outOp.
 /// The caller is expected to then assert fail.
 [[maybe_unused]] static bool checkRewrite(Operation *inOp, Operation *outOp) {
-#if MODULAR_DEBUG
+#ifdef MODULAR_DEBUG
   SetVector<Value> inValues = getValues(inOp);
   SetVector<Value> outValues = getValues(outOp);
   SetVector<Value> intersection = llvm::set_intersection(inValues, outValues);

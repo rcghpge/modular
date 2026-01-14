@@ -39,7 +39,7 @@ void M::MGP::accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
   }
 }
 
-#if MODULAR_DEBUG
+#ifdef MODULAR_DEBUG
 /// Finds a cycle starting at op. Recursive, so should only be used as
 /// a diagnostic where we are about to hard fail anyway.
 static bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
@@ -76,7 +76,7 @@ static bool shouldStartVisiting(DenseSet<Operation *> &visited,
 
   bool alreadyVisited = visited.contains(currOp);
 
-#if MODULAR_DEBUG
+#ifdef MODULAR_DEBUG
   if (alreadyVisited) {
     llvm::dbgs() << "model contains a dataflow cycle involving op:\n  ";
     currOp->print(llvm::dbgs(), mlir::OpPrintingFlags().printGenericOpForm());
