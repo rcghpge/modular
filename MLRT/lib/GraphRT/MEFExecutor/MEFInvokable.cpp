@@ -630,12 +630,7 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
 
       if constexpr (PrimitiveProfilerEntry::isEnabled()) {
         TimeTraceScope scope(PrimitiveProfilerEntry::create(
-            InternableString(mefFile->decodedPrimitiveNames[decoder.opcode])
-#if MEF_INCLUDE_LINE_NUMBERS
-                ,
-            frame.copyLocation().decode().line
-#endif
-            ));
+            InternableString(mefFile->decodedPrimitiveNames[decoder.opcode])));
         invokableImpl(frame);
       } else {
         invokableImpl(frame);
