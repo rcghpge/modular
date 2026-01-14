@@ -612,7 +612,7 @@ modular_cc_library(
         "lib/Driver/DeviceContext/HIP/HIPDriver.inc",
         "lib/Driver/DeviceContext/MemoryManager.h",
         "lib/Driver/DeviceContext/Metal/MetalDeviceContext.h",
-        "lib/Driver/DeviceContext/Metal/MetalDriver.hpp",
+        "lib/Driver/DeviceContext/Metal/MetalDriver.h",
         "lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.h",
     ],
     linkopts = select({

@@ -19,7 +19,7 @@
 #include <unordered_map>
 
 #ifdef MODULAR_MACOS
-#include "MetalDriver.hpp"
+#include "MetalDriver.h"
 
 namespace M::Driver {
 

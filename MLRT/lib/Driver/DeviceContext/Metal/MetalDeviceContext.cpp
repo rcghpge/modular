@@ -13,7 +13,7 @@
 #ifdef MODULAR_MACOS
 
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
-#include "MetalDriver.hpp"
+#include "MetalDriver.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
 #include "Support/Profiling/Tracy.h"
