@@ -373,6 +373,14 @@ ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() const {
   return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
 }
 
+ErrorOrSuccess
+VirtualDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueEvent",
+                       TRACY_COLOR_PURPLE);
+  // No-op for virtual devices
+  return success();
+}
+
 ErrorOr<DeviceEventRef>
 VirtualDeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::eventCreate", TRACY_COLOR_PURPLE);

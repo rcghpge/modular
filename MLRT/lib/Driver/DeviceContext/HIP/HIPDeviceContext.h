@@ -274,6 +274,7 @@ public:
   ErrorOrSuccess synchronize() const override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
+  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
   ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;

@@ -648,4 +648,48 @@ TEST_F(GPUDeviceContextTest, CrossContextEvent) {
   delete[] checkData;
 }
 
+TEST_F(GPUDeviceContextTest, BasicEvent) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+
+  // Enqueue with specific event not supported for Metal
+  if (ctx->device().api() == Device::metalAPI) {
+    GTEST_SKIP() << "Metal not supported";
+  }
+
+  const int allocLen = 12 * 1024 * 1024;
+  char *checkData = new char[allocLen];
+  // Initialize checkData with a pattern specific for this run.
+  for (int i = 0; i < allocLen; ++i) {
+    checkData[i] = i;
+  }
+
+  ASSIGN_NO_ERR(DeviceBufferRef, srcHostBuf, ctx->createHostBuffer(allocLen));
+  memcpy(srcHostBuf->ptr(), checkData, allocLen);
+  ASSIGN_NO_ERR(DeviceBufferRef, aHostBuf, ctx->createHostBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, bHostBuf, ctx->createHostBuffer(allocLen));
+
+  ASSIGN_NO_ERR(DeviceBufferRef, aDevBuf, ctx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, bDevBuf, ctx->enqueueCreateBuffer(allocLen));
+
+  EXPECT_NO_ERR(srcHostBuf->copyTo(*aDevBuf));
+  EXPECT_NO_ERR(aDevBuf->copyTo(*aHostBuf));
+
+  // Check enqueueEvent()
+  ASSIGN_NO_ERR(DeviceEventRef, aEvent, ctx->enqueueEvent());
+  EXPECT_NO_ERR(aEvent->synchronize());
+  EXPECT_EQ(memcmp(aHostBuf->ptr(), checkData, allocLen), 0);
+
+  // Check specific event enqueueEvent()
+  ASSIGN_NO_ERR(DeviceEventRef, bEvent, ctx->eventCreate(0));
+
+  EXPECT_NO_ERR(srcHostBuf->copyTo(*bDevBuf));
+  EXPECT_NO_ERR(bDevBuf->copyTo(*bHostBuf));
+
+  EXPECT_NO_ERR(ctx->enqueueEvent(*bEvent));
+  EXPECT_NO_ERR(bEvent->synchronize());
+  EXPECT_EQ(memcmp(bHostBuf->ptr(), checkData, allocLen), 0);
+
+  delete[] checkData;
+}
+
 } // namespace M::Driver

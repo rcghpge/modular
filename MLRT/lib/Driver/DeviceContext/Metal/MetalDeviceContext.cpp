@@ -1019,6 +1019,12 @@ ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
   return MetalDeviceEventRef::create(MetalDevice::cast(device()), cmdBuffer);
 }
 
+ErrorOrSuccess
+MetalDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+  RAISE_ERROR_MESSAGE("Unimplemented for Metal devices");
+}
+
 ErrorOr<DeviceEventRef>
 MetalDeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::eventCreate", TRACY_COLOR_PURPLE);

@@ -402,6 +402,11 @@ ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
   RAISE_ERROR_MESSAGE("Unimplemented");
 }
 
+ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+  RAISE_ERROR_MESSAGE("Unimplemented");
+}
+
 ErrorOr<DeviceEventRef>
 CpuDeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);

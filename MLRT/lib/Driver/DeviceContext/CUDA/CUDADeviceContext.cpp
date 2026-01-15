@@ -1409,6 +1409,15 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
 
+ErrorOrSuccess CUDADeviceContext::enqueueEvent(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+
+  CUDA_WITH_CTX_ERR(*this);
+  CUDA_CHECK_ERR(
+      driver_.cuEventRecord(CUDADeviceEvent::cast(event).cudaEvent(), stream_));
+  return success();
+}
+
 ErrorOr<DeviceEventRef>
 CUDADeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);

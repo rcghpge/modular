@@ -1312,6 +1312,15 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() const {
   return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
 }
 
+ErrorOrSuccess HIPDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
+
+  HIP_WITH_CTX_ERR(*this);
+  HIP_CHECK_ERR(
+      driver_.hipEventRecord(HIPDeviceEvent::cast(event).hipEvent(), stream_));
+  return success();
+}
+
 ErrorOr<DeviceEventRef>
 HIPDeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::eventCreate", TRACY_COLOR_PURPLE);

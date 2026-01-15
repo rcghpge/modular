@@ -483,6 +483,7 @@ public:
   virtual ErrorOrSuccess synchronize() const = 0;
 
   virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
+  virtual ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const = 0;
   virtual ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const = 0;
   virtual ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const = 0;
   virtual ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const = 0;
