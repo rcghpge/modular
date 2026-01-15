@@ -268,6 +268,9 @@ public:
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
                                            size_t byteSize) const;
 
+  // Either do a blocking synchronize or setup events with an external stream.
+  ErrorOrSuccess synchronize(void *external_stream = nullptr) const;
+
 private:
   friend class DeviceContext;
 

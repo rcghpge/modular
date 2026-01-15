@@ -515,6 +515,24 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
       context(), *this, origPtr + byteOffset, byteSize, isHost()));
 }
 
+MODULAR_CXX_EXPORT ErrorOrSuccess
+DeviceBuffer::synchronize(void *external_stream) const {
+  // Regular synchronization
+  if (!external_stream)
+    return context_->synchronize();
+
+  // Synchronization with an external stream
+  // Create an event on the buffer's stream
+  DEFINE_OR_RAISE(DeviceEventRef, event, context_->enqueueEvent());
+
+  // Enqueue a wait for that event on the external stream
+  DEFINE_OR_RAISE(DeviceStreamRef, extStream,
+                  context_->createExternalStream(external_stream));
+  ERR_CHECK_ERR(extStream->enqueueWaitForEvent(*event));
+
+  return success();
+}
+
 //
 // ===== DeviceMulticastBuffer ===== //
 //
