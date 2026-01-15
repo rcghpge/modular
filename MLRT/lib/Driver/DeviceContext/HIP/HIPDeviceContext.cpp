@@ -17,6 +17,7 @@
 #include "Support/Profiling/Tracy.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/Process.h"
 
 #include <algorithm>
 #include <cctype>
@@ -565,7 +566,27 @@ ErrorOr<int> HIPDevice::numberOfGPUs() {
   if (errOrCount.isError()) {
     return errOrCount.copy();
   }
-  return *errOrCount;
+  int numGPUs = static_cast<int>(*errOrCount);
+
+  // Users assume we use HIP under the hood
+  // Multiple options for AMD, we only support one
+  // https://rocm.docs.amd.com/en/latest/conceptual/gpu-isolation.html
+  // Known issue: we could be susceptible to other env vars listed
+  // on this page.
+  std::optional<std::string> envOr =
+      llvm::sys::Process::GetEnv("HIP_VISIBLE_DEVICES");
+  if (envOr) {
+    // Assuming responsible users.
+    // For CUDA, when such an env var is explicitly set to empty
+    // string, numGPUs is to be interpreted as zero. For HIP,
+    // there is no such explicit call-out. So we interpret like
+    // CUDA, to keep things consistent for users who switch
+    // systems without RTFM.
+    int const numCommas =
+        envOr->size() == 0 ? -1 : StringRef(*envOr).count(',');
+    numGPUs = std::min(numGPUs, numCommas + 1);
+  }
+  return numGPUs;
 }
 
 int HIPDevice::deviceCount() const {

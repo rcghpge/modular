@@ -191,6 +191,7 @@ modular_cc_test(
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Buffer",
+        "@llvm-project//llvm:Support",
     ],
 )
 

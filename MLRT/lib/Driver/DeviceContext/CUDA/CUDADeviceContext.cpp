@@ -14,6 +14,7 @@
 #include "CUDADriver.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/Profiling/Tracy.h"
+#include "llvm/Support/Process.h"
 
 #include <optional>
 
@@ -433,7 +434,19 @@ ErrorOr<int> CUDADevice::numberOfGPUs() {
   if (errOrCount.isError()) {
     return errOrCount.copy();
   }
-  return *errOrCount;
+  int numGPUs = *errOrCount;
+
+  // Users assume we use CUDA under the hood
+  std::optional<std::string> envOr =
+      llvm::sys::Process::GetEnv("CUDA_VISIBLE_DEVICES");
+  if (envOr) {
+    // Assuming responsible users
+    // https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html
+    int const numCommas =
+        envOr->size() == 0 ? -1 : StringRef(*envOr).count(',');
+    numGPUs = std::min(numGPUs, numCommas + 1);
+  }
+  return numGPUs;
 }
 
 int CUDADevice::deviceCount() const {
