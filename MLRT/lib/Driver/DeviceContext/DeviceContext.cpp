@@ -595,6 +595,14 @@ DeviceStream::DeviceStream(const DeviceContext &context)
 
 const Device &DeviceStream::device() const { return ctx_->device(); }
 
+ErrorOrSuccess DeviceStream::beginCapture() const {
+  RAISE_ERROR_MESSAGE("graph capture not supported on this device");
+}
+
+ErrorOr<DeviceGraphRef> DeviceStream::endCapture() const {
+  RAISE_ERROR_MESSAGE("graph capture not supported on this device");
+}
+
 //
 // ===== DeviceFunction ===== //
 //

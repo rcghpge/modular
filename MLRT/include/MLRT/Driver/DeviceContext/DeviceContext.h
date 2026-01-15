@@ -37,6 +37,7 @@ class DeviceBuffer;
 class DeviceContext;
 class DeviceEvent;
 class DeviceFunction;
+class DeviceGraph;
 class DeviceFunctionCacheEntry;
 class DeviceMulticastBuffer;
 class DeviceStream;
@@ -48,6 +49,7 @@ using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceEventRef = RCRef<const DeviceEvent>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
+using DeviceGraphRef = RCRef<const DeviceGraph>;
 using DeviceMulticastBufferRef = RCRef<const DeviceMulticastBuffer>;
 using DeviceStreamRef = RCRef<const DeviceStream>;
 using DeviceTimerRef = RCRef<const DeviceTimer>;
@@ -330,6 +332,23 @@ private:
   DeviceRef device_;
 };
 
+/// A captured sequence of GPU operations that can be replayed.
+class DeviceGraph : public ReferenceCounted<DeviceGraph> {
+public:
+  virtual ~DeviceGraph() = default;
+  const Device &device() const { return *device_; }
+
+  /// Replay the captured operations on a stream.
+  virtual ErrorOrSuccess replay(const DeviceStream &stream) const = 0;
+
+protected:
+  explicit DeviceGraph(const Device &device)
+      : device_(DeviceRef::copy(&device)) {}
+
+private:
+  DeviceRef device_;
+};
+
 class DeviceStream : public ReferenceCounted<DeviceStream> {
 public:
   virtual ~DeviceStream() = default;
@@ -354,6 +373,15 @@ public:
 
   // Raw device driver pointer to enable passing to PyTorch and similar APIs.
   virtual void *ptr() const = 0;
+
+  /// Begin capturing operations on this stream.
+  /// Operations enqueued after this call will be recorded into a graph.
+  /// Returns error if already capturing or capture not supported.
+  virtual ErrorOrSuccess beginCapture() const;
+
+  /// End capture and return the captured graph.
+  /// Returns error if not capturing or capture was invalidated.
+  virtual ErrorOr<DeviceGraphRef> endCapture() const;
 
 protected:
   explicit DeviceStream(const DeviceContext &context);

@@ -32,6 +32,7 @@ namespace M::Driver {
 class CUDADevice;
 class CUDADeviceContext;
 class CUDADeviceEvent;
+class CUDADeviceGraph;
 class CUDAModuleFunction;
 class CUDADeviceFunction;
 class CUDADeviceFunctionArguments;
@@ -42,6 +43,7 @@ class CUDADeviceTimer;
 using CUDADeviceRef = RCRef<const CUDADevice>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
 using CUDADeviceEventRef = RCRef<const CUDADeviceEvent>;
+using CUDADeviceGraphRef = RCRef<const CUDADeviceGraph>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
@@ -198,6 +200,19 @@ private:
   CUevent event_;
 };
 
+class CUDADeviceGraph : public DeviceGraph {
+public:
+  CUDADeviceGraph(const CUDADevice &device, CUgraphExec exec);
+  ~CUDADeviceGraph() override;
+
+  ErrorOrSuccess replay(const DeviceStream &stream) const override;
+
+  CUgraphExec cudaGraphExec() const { return exec_; }
+
+private:
+  CUgraphExec exec_;
+};
+
 class CUDADeviceStream : public DeviceStream {
 public:
   CUDADeviceStream(const CUDADeviceContext &ctx, CUstream stream,
@@ -223,11 +238,17 @@ public:
 
   void *ptr() const override;
 
+  ErrorOrSuccess beginCapture() const override;
+  ErrorOr<DeviceGraphRef> endCapture() const override;
+
   CUstream cudaStream() const;
 
   static const CUDADeviceStream *verified_cast(const DeviceStream *stream);
 
 private:
+  /// Query the current CUDA stream capture status.
+  CUstreamCaptureStatus getCaptureStatus() const;
+
   CUstream stream_;
   bool isOwner_;
 };

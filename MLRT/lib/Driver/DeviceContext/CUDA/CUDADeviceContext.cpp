@@ -796,6 +796,29 @@ const CUDADeviceEvent &CUDADeviceEvent::cast(const DeviceEvent &event) {
   return static_cast<const CUDADeviceEvent &>(event);
 }
 
+// ===== CUDADeviceGraph ===== //
+CUDADeviceGraph::CUDADeviceGraph(const CUDADevice &device, CUgraphExec exec)
+    : DeviceGraph(device), exec_(exec) {}
+
+CUDADeviceGraph::~CUDADeviceGraph() {
+  if (exec_) {
+    const auto &cudaDevice = CUDADevice::cast(device());
+    CUDA_WITH_DEV(cudaDevice);
+    CUDA_CHECK(cudaDevice.cudaDriver().cuGraphExecDestroy(exec_));
+  }
+}
+
+ErrorOrSuccess CUDADeviceGraph::replay(const DeviceStream &stream) const {
+  const auto *cudaStream = CUDADeviceStream::verified_cast(&stream);
+  if (!cudaStream)
+    RAISE_ERROR("cannot replay CUDA graph on non-CUDA stream");
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(
+      cudaDevice.cudaDriver().cuGraphLaunch(exec_, cudaStream->cudaStream()));
+  return success();
+}
+
 // ===== CUDADeviceStream ===== //
 CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &ctx,
                                    CUstream stream, bool isOwner)
@@ -879,6 +902,54 @@ CUDADeviceStream::verified_cast(const DeviceStream *stream) {
     return nullptr;
   }
   return static_cast<const CUDADeviceStream *>(stream);
+}
+
+CUstreamCaptureStatus CUDADeviceStream::getCaptureStatus() const {
+  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUstreamCaptureStatus status =
+      CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+  cudaDevice.cudaDriver().cuStreamIsCapturing(stream_, &status);
+  return status;
+}
+
+ErrorOrSuccess CUDADeviceStream::beginCapture() const {
+  auto status = getCaptureStatus();
+  if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_ACTIVE)
+    RAISE_ERROR("stream is already capturing");
+  if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_INVALIDATED)
+    RAISE_ERROR("stream capture was invalidated");
+
+  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuStreamBeginCapture(
+      stream_, CUstreamCaptureMode::CU_STREAM_CAPTURE_MODE_RELAXED));
+  return success();
+}
+
+ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
+  CUstreamCaptureStatus status = getCaptureStatus();
+  if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE)
+    RAISE_ERROR("stream is not capturing");
+  if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_INVALIDATED)
+    RAISE_ERROR("stream capture was invalidated");
+
+  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+
+  CUgraph graph = nullptr;
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuStreamEndCapture(stream_, &graph));
+
+  if (!graph)
+    RAISE_ERROR("cuStreamEndCapture returned null graph");
+
+  CUgraphExec exec = nullptr;
+  CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiate(
+      &exec, graph, nullptr, nullptr, 0);
+  cudaDevice.cudaDriver().cuGraphDestroy(graph);
+  if (res != CUDADriver::SUCCESS)
+    RAISE_ERROR("failed to instantiate CUDA graph");
+
+  return CUDADeviceGraphRef::create(cudaDevice, exec);
 }
 
 // ===== CUDAModuleFunction ===== //
