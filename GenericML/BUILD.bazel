@@ -806,6 +806,7 @@ modular_cc_library(
         "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
         "include/GenericML/GraphCompiler/MOGGDialect/Analysis/*.h",
     ]),
+    local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
         ":GraphCompilerInterfaces",
         ":GraphCompilerPublic.headers",
