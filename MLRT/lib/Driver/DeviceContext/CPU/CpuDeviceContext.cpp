@@ -12,6 +12,7 @@
 
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/Buffer.h"
@@ -28,20 +29,10 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
-#define RAISE_ERROR()                                                          \
-  do {                                                                         \
-    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, "");   \
-  } while (0)
-
-#define RAISE_ERROR_MESSAGE(msg)                                               \
-  do {                                                                         \
-    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
-  } while (0)
-
 #define CHECK_IS_CPU_ERR(dev)                                                  \
   do {                                                                         \
     if ((dev).api() != Device::cpuAPI) {                                       \
-      RAISE_ERROR_MESSAGE("Not a CPU device.");                                \
+      RAISE_ERROR("Not a CPU device.");                                        \
     }                                                                          \
   } while (0)
 
@@ -101,7 +92,7 @@ static ErrorOr<size_t> getSystemValue(int name) {
   errno = 0;
   auto value = sysconf(name);
   if (errno != 0)
-    RAISE_ERROR_MESSAGE(strerror(errno));
+    RAISE_ERROR(strerror(errno));
   return static_cast<size_t>(value);
 }
 
@@ -116,7 +107,7 @@ ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
 
   rusage usage;
   if (-1 == getrusage(RUSAGE_SELF, &usage))
-    RAISE_ERROR_MESSAGE("Failed to get current memory usage via rusage");
+    RAISE_ERROR("Failed to get current memory usage via rusage");
 
 // The unit for the _SC_PAGE_SIZE is bytes. The unit for the ru_maxrss is
 // kilobytes on Linux and bytes on MacOS.
@@ -148,7 +139,7 @@ const CpuDevice &CpuDevice::cast(const Device &device) {
 
 ErrorOr<const CpuDevice &> CpuDevice::get(int id, int64_t deviceMemoryLimit) {
   if (id != 0) {
-    RAISE_ERROR_MESSAGE("CPU device only supports id == 0.");
+    RAISE_ERROR("CPU device only supports id == 0.");
   }
 
   static CpuDevice *device =
@@ -163,28 +154,28 @@ CpuDeviceStream::CpuDeviceStream(const CpuDeviceContext &ctx)
 ErrorOrSuccess CpuDeviceStream::synchronize() const { return success(); }
 
 ErrorOr<DeviceEventRef> CpuDeviceStream::enqueueEvent() const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess
 CpuDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceStream::eventRecord(const DeviceEvent &event) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceStream::waitEvent(const DeviceEvent &event,
                                           unsigned int flags) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 void *CpuDeviceStream::ptr() const { return nullptr; }
@@ -216,7 +207,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
   assert(byteSize != 0);
   *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
   if (*ptr == nullptr) {
-    RAISE_ERROR();
+    RAISE_ERROR("Memory allocation failed");
   }
   return success();
 }
@@ -357,7 +348,7 @@ ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
     int32_t optimizationLevel) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
@@ -367,7 +358,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
@@ -375,7 +366,7 @@ ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
 }
 
 ErrorOr<DeviceStreamRef> CpuDeviceContext::createStream(int priority) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess
@@ -399,36 +390,36 @@ ErrorOrSuccess CpuDeviceContext::synchronize() const {
 
 ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOr<DeviceEventRef>
 CpuDeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess
 CpuDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess
 CpuDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
     int *numBlocks, const DeviceFunction &func, int blockSize,
     size_t dynamicSharedMemSize) const {
-  RAISE_ERROR_MESSAGE("Unimplemented");
+  RAISE_ERROR("Unimplemented");
 }
 
 ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() const {

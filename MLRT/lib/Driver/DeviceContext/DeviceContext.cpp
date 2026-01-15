@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
 #include "CPU/CpuDeviceContext.h"
 #include "CUDA/CUDACompilationDevice.h"
@@ -29,41 +30,6 @@
 #include <cstdio>
 #include <mutex>
 #include <string.h>
-
-#define ERR_CHECK_ERR(err_call)                                                \
-  do {                                                                         \
-    auto errResult = (err_call);                                               \
-    if (errResult.isError()) {                                                 \
-      return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,      \
-                                        errResult.getError());                 \
-    }                                                                          \
-  } while (0)
-
-#define ERR_CHECK(ctx, err_call)                                               \
-  do {                                                                         \
-    auto errResult = (err_call);                                               \
-    if (errResult.isError()) {                                                 \
-      M::Error err = DeviceContext::formatError(                               \
-          __FILE__, __LINE__, __FUNCTION__, errResult.getError());             \
-      /* We are not in a function where we can return an Error here. So we     \
-       * remember the error in the context and will report at a later time.    \
-       */                                                                      \
-      (ctx).setPendingError(std::move(err));                                   \
-    }                                                                          \
-  } while (0)
-
-#define RAISE_ERROR_MESSAGE(msg)                                               \
-  do {                                                                         \
-    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
-  } while (0)
-
-#define DEFINE_OR_RAISE(type, var, call)                                       \
-  auto _err_or_##var = call;                                                   \
-  if (_err_or_##var.isError()) {                                               \
-    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,        \
-                                      _err_or_##var.getError());               \
-  }                                                                            \
-  type var = _err_or_##var.takeValue()
 
 namespace M::Driver {
 
@@ -300,17 +266,16 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
 
   // Only zero and positive values are allowed as device ids.
   if (id < 0) {
-    RAISE_ERROR_MESSAGE("Device id must be positive. Got " + llvm::Twine(id));
+    RAISE_ERROR("Device id must be positive. Got " + llvm::Twine(id));
   }
   // Make sure that we are not requesting a device that is out of range. If
   // numberOfDevices(api) returned a zero, then this is an unsupported API and
   // we let the code below issue the correct error.
   int numDevices = numberOfDevices(api);
   if ((numDevices != 0) && (id >= numDevices)) {
-    RAISE_ERROR_MESSAGE(
-        "Device(api: " + api + ", id: " + llvm::Twine(id) +
-        ") is not available. Maximum number of supported devices is " +
-        llvm::Twine(numDevices) + ".");
+    RAISE_ERROR("Device(api: " + api + ", id: " + llvm::Twine(id) +
+                ") is not available. Maximum number of supported devices is " +
+                llvm::Twine(numDevices) + ".");
   }
 
   // TODO(iposva): Implement dynamic registration mechanism.
@@ -431,16 +396,17 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   // the corresponding device has completed all currently pending events.
   const DeviceContext &ctx = context();
   // DEBUGGING AID
-  // ERR_CHECK(ctx, ctx.enqueueSetMemory(*this, 0xf3, 1));
+  // RECORD_PENDING_ERROR(ctx, ctx.enqueueSetMemory(*this, 0xf3, 1));
   // \DEBUGGING AID
-  ERR_CHECK(ctx, ctx.pollPendingEvents());
+  RECORD_PENDING_ERROR(ctx, ctx.pollPendingEvents());
   if (!isHost()) {
-    ERR_CHECK(ctx, ctx.freeList().free(ptr_));
+    RECORD_PENDING_ERROR(ctx, ctx.freeList().free(ptr_));
   } else {
-    ERR_CHECK(
+    RECORD_PENDING_ERROR(
         ctx, ctx.enqueueEventHandler(
                  [contextRef = DeviceContextRef::copy(&ctx), ptr = ptr_]() {
-                   ERR_CHECK(*contextRef, contextRef->hostFreeList().free(ptr));
+                   RECORD_PENDING_ERROR(*contextRef,
+                                        contextRef->hostFreeList().free(ptr));
                  }));
   }
 }
@@ -494,7 +460,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
   if ((context().device().api() != ctx.device().api()) ||
       (context().device().id() != ctx.device().id())) {
-    RAISE_ERROR_MESSAGE("cannot reassign a buffer between different devices");
+    RAISE_ERROR("cannot reassign a buffer between different devices");
   }
   DEFINE_OR_RAISE(DeviceEventRef, srcEvent, context().enqueueEvent());
   ERR_CHECK_ERR(ctx.enqueueWaitForEvent(*srcEvent));
@@ -509,7 +475,7 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   size_t origByteSize = this->byteSize();
 
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
-    RAISE_ERROR_MESSAGE("offset, len and elem_size are out of range");
+    RAISE_ERROR("offset, len and elem_size are out of range");
   }
   return DeviceBufferRef::take(new DeviceBuffer(
       context(), *this, origPtr + byteOffset, byteSize, isHost()));
@@ -550,31 +516,31 @@ DeviceMulticastBuffer::allocate(const std::vector<DeviceContextRef> &contexts,
   for (const auto &ctx : contexts) {
     if (!devices.empty()) {
       if (devices[0]->api() != ctx->device().api()) {
-        RAISE_ERROR_MESSAGE("All contexts need to use the same API.");
+        RAISE_ERROR("All contexts need to use the same API.");
       }
     }
     // Check for duplicate entries.
     for (const auto &dev : devices) {
       if (dev->id() == ctx->device().id()) {
-        RAISE_ERROR_MESSAGE("Duplicate context on a device.");
+        RAISE_ERROR("Duplicate context on a device.");
       }
     }
     // Check that multicast is supported on this particular device.
     DEFINE_OR_RAISE(bool, multicastSupported,
                     ctx->device().supportsMulticast());
     if (!multicastSupported)
-      RAISE_ERROR_MESSAGE("Multicast buffer not supported.");
+      RAISE_ERROR("Multicast buffer not supported.");
 
     // Add to the set of devices participating in this multicast allocation.
     devices.emplace_back(&ctx->device());
   }
   if (devices.size() < 2) {
-    RAISE_ERROR_MESSAGE("At least two devices necessary.");
+    RAISE_ERROR("At least two devices necessary.");
   }
   if (devices[0]->api() == CUDADevice::api) {
     return CUDADeviceMulticastBuffer::allocate(devices, byteSize);
   }
-  RAISE_ERROR_MESSAGE("Multicast only supported on CUDA devices.");
+  RAISE_ERROR("Multicast only supported on CUDA devices.");
 }
 
 //
@@ -929,7 +895,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
   if (src.byteSize() < dst.byteSize()) {
-    RAISE_ERROR_MESSAGE("not enough data in src");
+    RAISE_ERROR("not enough data in src");
   }
   if (src.isHost() || (srcApi == Device::cpuAPI)) {
     return dst.context().enqueueCopyToDevice(dst, src.ptr());
@@ -1233,7 +1199,7 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
 }
 
 ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
-  RAISE_ERROR_MESSAGE("enablePeerAccess not implemented for this device API" +
-                      Twine(peer.api()));
+  RAISE_ERROR("enablePeerAccess not implemented for this device API" +
+              Twine(peer.api()));
 }
 } // namespace M::Driver

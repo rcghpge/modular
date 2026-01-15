@@ -599,6 +599,7 @@ modular_cc_library(
     hdrs = [
         "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
+        "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
         "lib/Driver/DeviceContext/CPU/CpuDeviceContext.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h",
         "lib/Driver/DeviceContext/CUDA/CUDACompilationDriver.h",

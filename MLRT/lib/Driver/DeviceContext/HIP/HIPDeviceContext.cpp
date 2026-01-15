@@ -12,6 +12,7 @@
 
 #include "HIPDriver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/ErrorOr.h"
 #include "Support/Profiling/Tracy.h"
@@ -54,40 +55,11 @@
     }                                                                          \
   } while (0)
 
-#define RAISE_ERROR(msg)                                                       \
-  do {                                                                         \
-    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__, msg);  \
-  } while (0)
-
 #define CHECK_IS_HIP_ERR(dev)                                                  \
   do {                                                                         \
     if ((dev).api() != Device::hipAPI) {                                       \
       RAISE_ERROR("Not a HIP device.");                                        \
     }                                                                          \
-  } while (0)
-
-#define DEFINE_OR_RAISE(type, var, call)                                       \
-  auto _err_or_##var = call;                                                   \
-  if (_err_or_##var.isError()) {                                               \
-    return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,        \
-                                      _err_or_##var.getError());               \
-  }                                                                            \
-  type var = _err_or_##var.takeValue()
-
-#define ERR_CHECK_ERR(err_call)                                                \
-  do {                                                                         \
-    auto err_result = (err_call);                                              \
-    if (err_result.isError()) {                                                \
-      return DeviceContext::formatError(__FILE__, __LINE__, __FUNCTION__,      \
-                                        err_result.getError());                \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_PENDING_ERR(ctx)                                                 \
-  do {                                                                         \
-    ErrorOrSuccess __pendingErr = (ctx).checkPendingError();                   \
-    if (__pendingErr.isError())                                                \
-      return __pendingErr.takeError();                                         \
   } while (0)
 
 #define HIP_WITH_CTX_ERR(ctx)                                                  \
