@@ -23,6 +23,7 @@
 #pragma clang diagnostic ignored "-Wdtor-name"
 #pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
 #pragma clang diagnostic ignored "-Wnested-anon-types"
+#pragma clang diagnostic ignored "-Wundef"
 
 #include "Metal/Metal.hpp"
 
