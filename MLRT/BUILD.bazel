@@ -621,10 +621,6 @@ modular_cc_library(
         ],
         "//conditions:default": [],
     }),
-    local_defines = select({
-        "@platforms//os:linux": ["MODULAR_LINUX"],
-        "//conditions:default": [],
-    }),
     visibility = [
         "//GenericML:__subpackages__",
         "//MLRT:__subpackages__",
