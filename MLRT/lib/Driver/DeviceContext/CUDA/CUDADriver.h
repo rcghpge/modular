@@ -31,7 +31,22 @@ using CUmemoryPool = struct CUmemPoolHandle_st *;
 using CUmodule = struct CUmod_st *;
 using CUstream = struct CUstream_st *;
 using CUevent = struct CUevent_st *;
+using CUgraph = struct CUgraph_st *;
+using CUgraphExec = struct CUgraphExec_st *;
+using CUgraphNode = struct CUgraphNode_st *;
 using CUhostFn = void(void *);
+
+enum class CUstreamCaptureMode {
+  CU_STREAM_CAPTURE_MODE_GLOBAL = 0,
+  CU_STREAM_CAPTURE_MODE_THREAD_LOCAL = 1,
+  CU_STREAM_CAPTURE_MODE_RELAXED = 2,
+};
+
+enum class CUstreamCaptureStatus {
+  CU_STREAM_CAPTURE_STATUS_NONE = 0,
+  CU_STREAM_CAPTURE_STATUS_ACTIVE = 1,
+  CU_STREAM_CAPTURE_STATUS_INVALIDATED = 2,
+};
 
 enum class CUdevice_attribute {
   TEXTURE_ALIGNMENT = 14,
