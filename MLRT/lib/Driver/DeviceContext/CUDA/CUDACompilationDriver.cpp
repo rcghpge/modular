@@ -15,7 +15,7 @@
 
 namespace M::Driver {
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
 
 CUDACompilationDriver::Result
 CUDACompilationDriver::NVPTXCompilerGetVersion(unsigned int *major,

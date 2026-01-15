@@ -17,7 +17,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
 #include "nvPTXCompiler.h"
 #else
 // Forward declare for non-Linux platforms (in global namespace)

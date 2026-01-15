@@ -341,7 +341,7 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
 
   std::string metalError;
   if ((api == gpuAPI) || (api == metalAPI)) {
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
 
     ErrorOr<const MetalDevice &> device =
         MetalDevice::get(id, deviceMemoryLimit);
@@ -1052,7 +1052,7 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
       return *count;
   }
   if ((api == gpuAPI) || (api == metalAPI)) {
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
     ErrorOr<int> count = MetalDevice::numberOfGPUs();
     if (!count.isError())
       return *count;
@@ -1191,7 +1191,7 @@ MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
       archName = HIPDevice::getArchName(0);
     }
 
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
     if (archName.isError()) {
       vendor = "metal";
       archName = MetalDevice::getArchName(nullptr);

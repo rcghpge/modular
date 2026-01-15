@@ -756,7 +756,7 @@ MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_metal_device(MTL::Device **result,
                                    const DeviceContext *ctx) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_metal_device", TRACY_COLOR_GRAY);
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
   const MetalDeviceContext *verifiedCtx =
       MetalDeviceContext::verified_cast(ctx);
   if (verifiedCtx == nullptr)

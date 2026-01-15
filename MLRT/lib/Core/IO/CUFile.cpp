@@ -11,7 +11,7 @@
 #include <math.h>   // for abs
 #include <string.h> // For strerror
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
 /// We do not want to depend on cuda.h, so we define a minimal set of types that
 /// are defined by cuda.h here.
 using CUresult = int;

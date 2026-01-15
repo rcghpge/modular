@@ -10,7 +10,7 @@
 
 #include "Support/PlatformUtils.h"
 
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
 
 // Generate the metal-cpp implementations here.
 #define NS_PRIVATE_IMPLEMENTATION

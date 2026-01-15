@@ -120,7 +120,7 @@ ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
 
 // The unit for the _SC_PAGE_SIZE is bytes. The unit for the ru_maxrss is
 // kilobytes on Linux and bytes on MacOS.
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
   const size_t maxrssMultiple = 1024;
 #else // macOS
   const size_t maxrssMultiple = 1;

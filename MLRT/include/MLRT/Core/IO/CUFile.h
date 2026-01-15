@@ -43,7 +43,7 @@ struct CUFile {
                          off_t devOffset);
 
 private:
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
   /// The underlying file descriptor.
   int fd = -1;
   /// The cuFile handle for the registered file.

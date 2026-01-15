@@ -21,7 +21,7 @@
 
 namespace M::Driver {
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
 const char CUDADriver::lib_name[] = "libcuda.so.1";
 #else
 const char CUDADriver::lib_name[] = "";

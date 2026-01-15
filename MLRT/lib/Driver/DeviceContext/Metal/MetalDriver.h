@@ -14,7 +14,7 @@
 
 #include "Support/PlatformUtils.h"
 
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
 
 // Suppress warnings from metal-cpp headers
 #pragma clang diagnostic push

@@ -33,7 +33,7 @@ protected:
     if (device.isError()) {
       GTEST_SKIP() << "GPU not available, skipping GPU memory manager tests";
     }
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
     // GEX-2567: Inside MetalDeviceContext::get(id), useMemoryManager = false
     GTEST_SKIP()
         << "MemoryManager not used in MacOS, skipping GPU memory manager tests";

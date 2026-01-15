@@ -293,7 +293,7 @@ static std::string apiVersionToString(int apiVersion) {
 }
 
 ErrorOrSuccess CUDADevice::isCompatible() const {
-#ifndef MODULAR_LINUX
+#if !MODULAR_LINUX
   return Error("MAX with GPUs is only supported on Linux based systems.");
 #endif
 

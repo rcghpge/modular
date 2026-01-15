@@ -34,7 +34,7 @@ namespace M::Driver {
                  "\" in \"" + nvmlLibName + "\"");                             \
   }
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
 const char nvmlLibName[] = "libnvidia-ml.so.1";
 #else
 const char nvmlLibName[] = "";

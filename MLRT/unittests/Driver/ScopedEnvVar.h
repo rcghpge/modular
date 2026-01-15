@@ -12,7 +12,7 @@
 
 #include <string>
 
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
 
 #include <crt_externs.h>
 static char **listOfEnvironmentVariables(void) {

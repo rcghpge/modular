@@ -71,7 +71,7 @@ CUDACompilationDevice::create(StringRef targetArch) {
 }
 
 ErrorOr<int> CUDACompilationDevice::getApiVersion() const {
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
   // Get the NVPTX compiler version
   unsigned int majorVer, minorVer;
   auto versionResult =
@@ -122,7 +122,7 @@ ErrorOr<M::BufferRef>
 CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
                                        int32_t optimizationLevel,
                                        StringRef targetAccelerator) const {
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
   // Use targetAccelerator if provided, otherwise use this device's target arch
   StringRef gpuName =
       targetAccelerator.empty() ? targetArch() : targetAccelerator;

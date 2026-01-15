@@ -18,7 +18,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
 #include "MetalDriver.h"
 
 namespace M::Driver {

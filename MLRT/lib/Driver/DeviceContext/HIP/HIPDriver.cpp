@@ -19,7 +19,7 @@
 
 namespace M::Driver {
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
 const char HIPDriver::lib_name[] = "libamdhip64.so";
 const char hsa_lib_name[] = "libhsa-runtime64.so";
 #else

@@ -10,7 +10,7 @@
 
 #include "MetalDeviceContext.h"
 #include <limits>
-#ifdef MODULAR_MACOS
+#if MODULAR_MACOS
 
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
 #include "MetalDriver.h"
@@ -135,7 +135,7 @@ ErrorOr<Device::MemInfo> MetalDevice::getMemInfo() {
   if (-1 == getrusage(RUSAGE_SELF, &usage))
     RAISE_ERROR_MESSAGE("Failed to get current memory usage via rusage");
 
-#ifdef MODULAR_LINUX
+#if MODULAR_LINUX
   const size_t maxrssMultiple = 1024;
 #else
   const size_t maxrssMultiple = 1;
