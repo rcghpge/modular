@@ -56,22 +56,20 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     KGEN::CompilerTimeTraceScope traceScope("jit-compile-kernels",
                                             module->getName().getStringRef());
 
-    auto analysisOr = getLibraryAnalysis();
-    if (analysisOr.isError()) {
-      emitError(getOperation().getLoc(),
-                llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                              getPassName(), analysisOr.getError()));
-      return signalPassFailure();
-    }
-    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
-
     initLLVM();
 
     if (MOGG::useExperimentalMojoPath()) {
-      if (compileMojoToBinary(module, mojoLibraryAnalysis, kernelLibraryPaths)
-              .isError())
+      if (compileMojoToBinary(module, kernelLibraryPaths).isError())
         signalPassFailure();
     } else {
+      auto analysisOr = getLibraryAnalysis();
+      if (analysisOr.isError()) {
+        emitError(getOperation().getLoc(),
+                  llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
+                                getPassName(), analysisOr.getError()));
+        return signalPassFailure();
+      }
+      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
       if (compileKGENToBinary(module, mojoLibraryAnalysis).isError())
         signalPassFailure();
     }
@@ -107,7 +105,6 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
   CompileDiagnosticOrSuccess
   compileMojoToBinary(ModuleOp module,
-                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                       ArrayRef<std::string> kernelLibraryPaths) {
     auto ctx = module.getContext();
     auto targetInfoAttr = getTargetInfo(ctx);
