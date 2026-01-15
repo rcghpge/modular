@@ -1,5 +1,5 @@
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
-load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES")
+load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES", "KERNEL_PROFILING_LOCAL_DEFINES")
 load("//max/python/max/_core/internal/mlir_nanobind:tblgen.bzl", "mlir_nanobind")  # buildifier: disable=bzl-visibility
 
 # gazelle:default_visibility //GenericML:consumers
@@ -830,11 +830,7 @@ modular_cc_library(
 modular_cc_library(
     name = "MOGGTransforms",
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
-    local_defines = select({
-        "//:kernel_e2e_gpu_profiling_setting": ["MODULAR_ENABLE_GPU_PROFILING"],
-        "//:kernel_e2e_gpu_profiling_detailed_setting": ["MODULAR_ENABLE_GPU_PROFILING_DETAILED"],
-        "//conditions:default": [],
-    }),
+    local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
         ":MOGGDialect",
         "//MLRT:Driver/DeviceContext",
