@@ -43,11 +43,15 @@
 
 #define DEBUG_TYPE "mgp"
 
-// Uncomment the line below to log each MGP kernel launch and completion to
+// For convenience this can be set here or in the BUILD.bazel file.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+// Change the value below to 1 to log each MGP kernel launch and completion to
 // stderr.
-// #define ENABLE_MGP_KERNEL_LOGGING
+#define ENABLE_MGP_KERNEL_LOGGING 0
+#pragma clang diagnostic pop
 
-#ifdef ENABLE_MGP_KERNEL_LOGGING
+#if ENABLE_MGP_KERNEL_LOGGING
 #define MAYBE_LOG_ASYNC_KERNEL(summary, operands, results)                     \
   MGP::KernelAsyncLogger<decltype(operands)> asyncLogger(summary, operands,    \
                                                          results)

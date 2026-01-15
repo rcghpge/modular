@@ -46,7 +46,7 @@ preprocessor define:
 
 ```cpp
 // Enabled in GenericML/lib/MGPPrimitives/MGPPrimitives.cpp
-#ifdef ENABLE_MGP_KERNEL_LOGGING
+#if ENABLE_MGP_KERNEL_LOGGING
   // Logging code paths active
 #else
   // No-op logging (default)

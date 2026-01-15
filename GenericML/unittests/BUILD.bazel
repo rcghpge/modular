@@ -29,7 +29,7 @@ modular_cc_test(
     srcs = [
         "KernelLoggerTest.cpp",
     ],
-    copts = ["-DENABLE_MGP_KERNEL_LOGGING"],
+    local_defines = ["ENABLE_MGP_KERNEL_LOGGING"],
     tags = ["kernel_logging"],
     deps = [
         "//GenericML:MGPPrimitivesWithLogging",

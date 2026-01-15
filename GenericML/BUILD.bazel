@@ -1150,10 +1150,10 @@ modular_cc_library(
     name = "MGPPrimitivesWithLogging",
     srcs = glob(["lib/MGPPrimitives/*.cpp"]),
     hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
-    copts = ["-DENABLE_MGP_KERNEL_LOGGING"],
     data = [
         ":MGPRT",
     ],
+    local_defines = ["ENABLE_MGP_KERNEL_LOGGING"],
     deps = [
         ":MGPDialect",
         "//Kernels:Tracing",
