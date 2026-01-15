@@ -29,11 +29,6 @@
 // included here for _HAS_CXX* macros
 #include <zmq.h>
 
-#if (!defined(__GNUC__) || __GNUC__ > 5 ||                                     \
-     (__GNUC__ == 5 && __GNUC_MINOR__ > 3))
-#define ZMQ_EXTENDED_CONSTEXPR
-#endif
-
 #include "Support/Error.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/Twine.h"
@@ -700,9 +695,7 @@ class mutable_buffer {
 public:
   constexpr mutable_buffer() noexcept : _data(nullptr), _size(0) {}
   constexpr mutable_buffer(void *p, size_t n) noexcept : _data(p), _size(n) {
-#ifdef ZMQ_EXTENDED_CONSTEXPR
     assert(p != nullptr || n == 0);
-#endif
   }
 
   constexpr void *data() const noexcept { return _data; }
@@ -734,9 +727,7 @@ public:
   constexpr const_buffer() noexcept : _data(nullptr), _size(0) {}
   constexpr const_buffer(const void *p, size_t n) noexcept
       : _data(p), _size(n) {
-#ifdef ZMQ_EXTENDED_CONSTEXPR
     assert(p != nullptr || n == 0);
-#endif
   }
   constexpr const_buffer(const mutable_buffer &mb) noexcept
       : _data(mb.data()), _size(mb.size()) {}
@@ -933,9 +924,7 @@ const_buffer buffer(std::basic_string_view<T, Traits> data,
 template <class Char, size_t N>
 constexpr const_buffer str_buffer(const Char (&data)[N]) noexcept {
   static_assert(detail::is_pod_like<Char>::value, "Char must be POD");
-#ifdef ZMQ_EXTENDED_CONSTEXPR
   assert(data[N - 1] == Char{0});
-#endif
   return const_buffer(static_cast<const Char *>(data), (N - 1) * sizeof(Char));
 }
 
