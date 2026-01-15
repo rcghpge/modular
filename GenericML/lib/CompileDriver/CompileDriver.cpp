@@ -23,6 +23,10 @@ using namespace M;
 #define _X_STRINGIFY(str) _STRINGIFY(str)
 #define STRINGIFY_MAX_CONFIG(path) _X_STRINGIFY(MAX_CONFIG_SECTION) path
 
+#ifndef MAX_CONFIG_SECTION // NOLINT(ifdef), Wundef doesn't handle the define
+#error "Expected MAX_CONFIG_SECTION to be set"
+#endif
+
 std::optional<std::filesystem::path> M::getMaxCacheDir() {
   // If config is accessible look if it's set or not. If it's set we are done.
   auto configOr = Config::open();
