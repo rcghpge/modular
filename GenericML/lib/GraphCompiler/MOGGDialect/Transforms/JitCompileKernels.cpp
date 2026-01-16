@@ -19,7 +19,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/MGPDialect/MGPOps.h"
-#include "Kernels/mojo/Mogg/MOGGLoader.h"
 
 #include "Cache/CacheTelemetryContext.h"
 #include "KGEN/Compiler/KGENCompiler.h"

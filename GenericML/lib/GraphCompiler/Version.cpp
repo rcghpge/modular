@@ -8,7 +8,6 @@
 #include "Config/Version.h"
 #include "GenericML/MGPRT/BinaryID.h"
 #include "KGEN/CompilerRT/BinaryID.h"
-#include "Kernels/mojo/Mogg/MOGGLoader.h"
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "Support/BinaryID.h"
@@ -25,7 +24,6 @@ std::string M::MO::getGraphCompilerVersionString() {
   // shared libraries, e.g., MOGGLoader, might result in a different compiled
   // MEF file too, include the binary ID for relevant shared libraries too.
   return M::getModularVersionString() + M::getBinaryID() + "-" +
-         M::MOGG::Embeddings::getMOGGEmbeddingID() + "-" +
          M::MGPRT::getMGPRTBinaryID() + "-" +
          M::Driver::getMojoBindingsBinaryID() + "-" +
          M::AsyncRT::getRuntimeGlobalsBinaryID() + "-" +
@@ -44,8 +42,7 @@ std::string M::MO::getMOGGCompilerVersionString() {
   static std::string version = []() {
     std::string versionString = M::getModularVersionString() +
                                 M::getBinaryID() + "-" +
-                                M::MOGG::Embeddings::getMOGGEmbeddingID() +
-                                "-" + M::KGEN::getCompilerRTBinaryID() + "-" +
+                                M::KGEN::getCompilerRTBinaryID() + "-" +
                                 M::getModularVersion().buildType;
     return llvm::utohexstr(llvm::xxh3_64bits(versionString),
                            /*LowerCase=*/true,

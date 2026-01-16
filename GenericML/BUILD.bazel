@@ -820,7 +820,6 @@ modular_cc_library(
         ":Support",
         "//KGEN:MojoParser",
         "//KGEN:ObjectCompiler",
-        "//Kernels/mojo/Mogg:MOGGLoader",
         "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/GRTDialect",
         "//Support:Context",

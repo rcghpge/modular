@@ -24,7 +24,6 @@
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/MojoParser/SharedState.h"
 #include "KGEN/ToolCommon/CompilationOptions.h"
-#include "Kernels/mojo/Mogg/MOGGLoader.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "Support/AssertStream.h"
 #include "Support/Context.h"
@@ -60,22 +59,6 @@ getFile(llvm::StringRef filepath) {
     return Error(memBufferOr.getError() + Twine(" [" + filepath + "]"));
 
   return memBufferOr;
-}
-
-static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsNewAPISourceBuffer() {
-  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
-      llvm::MemoryBuffer::getMemBuffer(Embeddings::moggKernelSource(),
-                                       "embedded MOGG bindings",
-                                       /*RequiresNullTerminator=*/false));
-}
-
-static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-getEmbeddingsPrimitiveSourceBuffer() {
-  return ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>(
-      llvm::MemoryBuffer::getMemBuffer(Embeddings::primitiveSource(),
-                                       "embedded MOGG Primitives bindings",
-                                       /*RequiresNullTerminator=*/false));
 }
 
 static ErrorOr<OwningOpRef<ModuleOp>>
@@ -252,31 +235,6 @@ ErrorOr<SmallVector<OwningOpRef<ModuleOp>>>
 MojoLibraryAnalysis::loadAllMLIRKernels(ArrayRef<std::string> paths) {
   SmallVector<OwningOpRef<ModuleOp>> loadedModules;
   loadedModules.reserve(paths.size() + 2);
-
-  // Load MOGGKernelAPI.mojo
-  if (!useExperimentalMojoPath()) {
-    auto buffer = getEmbeddingsNewAPISourceBuffer();
-    if (buffer.isError())
-      return buffer.takeError();
-
-    auto module = loadMLIRKernels(buffer.takeValue(), "the standard library");
-    if (module.isError())
-      return module.takeError();
-
-    loadedModules.push_back(module.takeValue());
-  }
-
-  { // Load MOGGPrimitives.mojo
-    auto buffer = getEmbeddingsPrimitiveSourceBuffer();
-    if (buffer.isError())
-      return buffer.takeError();
-
-    auto module = loadMLIRKernels(buffer.takeValue(), "the standard library");
-    if (module.isError())
-      return module.takeError();
-
-    loadedModules.push_back(module.takeValue());
-  }
 
   // Load all user provided library paths.
   for (auto index : llvm::seq(paths.size())) {
