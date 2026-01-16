@@ -13,7 +13,6 @@
 
 from algorithm import parallelize
 from collections.optional import OptionalReg
-from memory import alloc
 from os import abort, getenv, setenv
 from builtin.variadics import Variadic
 from builtin.device_passable import DevicePassable
@@ -178,8 +177,20 @@ struct SHMEMContext(ImplicitlyCopyable):
             has_nvidia_gpu_accelerator() or has_amd_gpu_accelerator()
         ), "SHMEMContext is currently only available on NVIDIA and AMD GPUs"
         shmem_init()
-        var mype = shmem_team_my_pe(team)
-        self._ctx = DeviceContext(device_id=Int(mype))
+
+        # nvshmem and rocshmem behave differently here, nvshmem requires that
+        # you set the current context to a device ID corrosponding with the
+        # GPU id on the node i.e. if team_my_pe is 3 then DeviceContext.id()
+        # should also be 3. rocshmem does this inside the rocshmem_init()
+        # call, and each process will launch kernels on the associated pe
+        # from MPI, the DeviceContext.id() will always be 0, but it's
+        # associated with a different GPU in each process.
+        @parameter
+        if has_nvidia_gpu_accelerator():
+            var mype = shmem_team_my_pe(team)
+            self._ctx = DeviceContext(device_id=Int(mype))
+        else:
+            self._ctx = DeviceContext()
         # Store main stream to avoid retrieving it in each collective launch.
         self._main_stream = self._ctx.stream()
 
@@ -193,12 +204,17 @@ struct SHMEMContext(ImplicitlyCopyable):
         self._multiprocessor_count = self._ctx.get_attribute(
             DeviceAttribute.MULTIPROCESSOR_COUNT
         )
-        # TODO(MSTDL-1761): add ability to query AMD cooperative launch
-        # capability with: hipLaunchAttributeCooperative and create function
-        # that works across NVIDIA/AMD.
-        self._cooperative = Bool(
-            self._ctx.get_attribute(DeviceAttribute.COOPERATIVE_LAUNCH)
-        )
+
+        @parameter
+        if has_nvidia_gpu_accelerator():
+            self._cooperative = Bool(
+                self._ctx.get_attribute(DeviceAttribute.COOPERATIVE_LAUNCH)
+            )
+        else:
+            # TODO(MSTDL-1761): add ability to query AMD cooperative launch
+            # capability with: hipLaunchAttributeCooperative and create function
+            # that works across NVIDIA/AMD. For now assume cooperative capability.
+            self._cooperative = True
         self._thread_per_gpu = False
 
     fn __init__(out self, ctx: DeviceContext) raises:
@@ -215,9 +231,10 @@ struct SHMEMContext(ImplicitlyCopyable):
         Raises:
             If initialization fails.
         """
-        __comptime_assert (
-            has_nvidia_gpu_accelerator()
-        ), "SHMEMContext is currently only available on NVIDIA GPUs"
+        __comptime_assert has_nvidia_gpu_accelerator(), (
+            "SHMEMContext in gpu-per-thread mode is currently only available on"
+            " NVIDIA GPUs"
+        )
 
         shmem_init_thread(ctx)
         self._ctx = ctx
@@ -234,12 +251,17 @@ struct SHMEMContext(ImplicitlyCopyable):
         self._multiprocessor_count = self._ctx.get_attribute(
             DeviceAttribute.MULTIPROCESSOR_COUNT
         )
-        # TODO(MSTDL-1761): add ability to query AMD cooperative launch
-        # capability with: hipLaunchAttributeCooperative and create function
-        # that works across NVIDIA/AMD.
-        self._cooperative = Bool(
-            self._ctx.get_attribute(DeviceAttribute.COOPERATIVE_LAUNCH)
-        )
+
+        @parameter
+        if has_nvidia_gpu_accelerator():
+            self._cooperative = Bool(
+                self._ctx.get_attribute(DeviceAttribute.COOPERATIVE_LAUNCH)
+            )
+        else:
+            # TODO(MSTDL-1761): add ability to query AMD cooperative launch
+            # capability with: hipLaunchAttributeCooperative and create function
+            # that works across NVIDIA/AMD. For now assume cooperative capability.
+            self._cooperative = True
         self._thread_per_gpu = True
 
     fn __enter__(var self) -> Self:
@@ -302,11 +324,9 @@ struct SHMEMContext(ImplicitlyCopyable):
     @always_inline
     @parameter
     fn enqueue_function[
-        func_type: AnyTrivialRegType,
         declared_arg_types: Variadic.TypesOfTrait[AnyType],
         //,
-        func: func_type,
-        signature_func: fn (* args: * declared_arg_types) -> None,
+        func: fn (* args: * declared_arg_types) -> None,
         *actual_arg_types: DevicePassable,
         dump_asm: _DumpPath = False,
         dump_llvm: _DumpPath = False,
@@ -326,12 +346,9 @@ struct SHMEMContext(ImplicitlyCopyable):
         """Compiles and enqueues a kernel for execution on this device.
 
         Parameters:
-            func_type: The dtype of the function to launch.
             declared_arg_types: The declared argument types from the function
                 signature (usually inferred).
             func: The function to launch.
-            signature_func: The kernel function, passed again for type checking.
-                Typically the same as `func`.
             actual_arg_types: The types of the arguments being passed (usually inferred).
             dump_asm: To dump the compiled assembly, pass `True`, or a file
                 path to dump to, or a function returning a file path.
@@ -358,31 +375,18 @@ struct SHMEMContext(ImplicitlyCopyable):
         compiling it first:
 
         ```mojo
-        from gpu.host import DeviceContext
+        from shmem import SHMEMContext
 
         fn kernel():
             print("hello from the GPU")
 
-        with DeviceContext() as ctx:
-            ctx.enqueue_function[kernel, kernel](grid_dim=1, block_dim=1)
-            ctx.synchronize()
-        ```
-
-        If you are reusing the same function and parameters multiple times, this
-        incurs 50-500 nanoseconds of overhead per enqueue, so you can compile it
-        first to remove the overhead:
-
-        ```mojo
-        with DeviceContext() as ctx:
-            var compile_func = ctx.compile_function[kernel, kernel]()
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
-            ctx.enqueue_function(compile_func, grid_dim=1, block_dim=1)
+        with SHMEMContext() as ctx:
+            ctx.enqueue_function[kernel](grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
         """
-        var gpu_kernel = self._ctx.compile_function[
+        var gpu_kernel = self._ctx.compile_function_experimental[
             func,
-            signature_func,
             dump_asm=dump_asm,
             dump_llvm=dump_llvm,
             _dump_sass=_dump_sass,
@@ -479,8 +483,8 @@ struct SHMEMContext(ImplicitlyCopyable):
 
         ```mojo
         with DeviceContext() as ctx:
-            ctx.enqueue_function[kernel, kernel](grid_dim=1, block_dim=1)
-            ctx.enqueue_function[kernel, kernel](grid_dim=1, block_dim=1)
+            ctx.enqueue_function_experimental[kernel](grid_dim=1, block_dim=1)
+            ctx.enqueue_function_experimental[kernel](grid_dim=1, block_dim=1)
             ctx.synchronize()
         ```
         """

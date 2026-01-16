@@ -96,7 +96,7 @@ struct TopK:
             ]()
 
             # Threads put their corresponding index and value into shared memory
-            top_k_sram[tid] = TopKElement(tid, in_vals[bid, tid][0])
+            top_k_sram[tid] = TopKElement(Int32(tid), in_vals[bid, tid][0])
             # Finish packing the values across threads in this block
             barrier()
 
@@ -128,12 +128,12 @@ struct TopK:
                     out_idxs[bid, i] = reduced.idx
 
                     # Remove found maximum from consideration in the next iter
-                    var index = reduced.idx % block_dim.x
+                    var index = reduced.idx % Int32(block_dim.x)
                     top_k_sram[index].val = min_or_neg_inf[dtype]()
 
         @parameter
         if target == "gpu":
-            dev_ctx.enqueue_function[top_k_gpu[K], top_k_gpu[K]](
+            dev_ctx.enqueue_function_experimental[top_k_gpu[K]](
                 out_vals_tensor,
                 out_idxs_tensor,
                 in_vals_tensor,

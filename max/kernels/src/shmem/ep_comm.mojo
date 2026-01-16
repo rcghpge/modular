@@ -58,6 +58,10 @@ comptime RtTuple_4 = RuntimeTuple[
     element_type = DType.int32,
 ]
 
+comptime elementwise_epilogue_type = fn[
+    dtype: DType, width: Int, *, alignment: Int = 1
+] (IndexList[2], SIMD[dtype, width]) capturing -> None
+
 comptime EP_DATA_READY_FLAG = 1 << 10
 
 
@@ -610,7 +614,7 @@ fn dispatch_kernel[
     # that need to be sent to each expert. It also monitors the completion of
     # the communication for each expert.
     if block_idx.x < UInt(n_aux_sms):
-        var expert_idx: Int32 = block_idx.x * UInt(n_warps) + warp_id()
+        var expert_idx = Int32(block_idx.x * UInt(n_warps) + warp_id())
         var expert_count: Int32 = 0
 
         if expert_idx < n_experts:
@@ -745,9 +749,10 @@ fn dispatch_kernel[
             # for each expert by using the correct warp.
             @parameter
             if use_shmem:
-                var rc_map_offset: Int32 = (
-                    block_idx.x * UInt(n_warps) + warp_id()
-                ) % UInt(n_local_experts)
+                var rc_map_offset = Int32(
+                    (block_idx.x * UInt(n_warps) + warp_id())
+                    % UInt(n_local_experts)
+                )
 
                 var topk_idx = lane_id()
                 if topk_idx < UInt(top_k) and warp_id() < UInt(n_local_experts):
@@ -1108,8 +1113,8 @@ fn dispatch_cb_kernel[
                         + Int(lane_id() * UInt(size_of[UInt16]())),
                     )
                 )
-                var global_expert_idx = (
-                    my_rank * n_local_experts + local_expert_id
+                var global_expert_idx = my_rank * n_local_experts + Int32(
+                    local_expert_id
                 )
                 if global_expert_idx == Int32(src_topk_idx):
                     # Store the source token index and the top-k id.
@@ -1120,7 +1125,7 @@ fn dispatch_cb_kernel[
                     )
 
                     src_info[token_pos, 0] = src_idx
-                    src_info[token_pos, 1] = lane_id()
+                    src_info[token_pos, 1] = Int32(lane_id())
 
         barrier()
         if lane_id() == 0 and warp_id_in_wg == 0:
@@ -1305,7 +1310,9 @@ fn combine_kernel[
 
                 var n_rounds = ceildiv(token_end - token_start, n_warps)
                 for round_i in range(n_rounds):
-                    var token_idx = token_start + round_i * n_warps + warp_id()
+                    var token_idx = (
+                        token_start + round_i * n_warps + Int32(warp_id())
+                    )
                     if token_idx < token_end:
                         var curr_send_buf_ptr = send_buf_p + send_buf_layout(
                             RtTuple_2(Int(token_idx), 0)
@@ -1330,7 +1337,7 @@ fn combine_kernel[
                         and local_expert_id == rc_map_offset
                     ):
                         var token_idx = (
-                            token_start + round_i * n_warps + lane_id()
+                            token_start + round_i * n_warps + Int32(lane_id())
                         )
                         if token_idx < token_end:
                             var src_token_info = src_info.aligned_load[2](
@@ -1410,6 +1417,10 @@ fn combine_cb_kernel[
     n_ranks: Int,
     msg_bytes: Int,
     max_tokens_per_rank: Int,
+    router_weights_wrapper: OptionalReg[
+        fn (Int, Int) capturing -> Float32
+    ] = None,
+    elementwise_lambda_fn: OptionalReg[elementwise_epilogue_type] = None,
 ](
     output_tokens: LayoutTensor[
         output_type, output_tokens_layout, MutAnyOrigin
@@ -1435,6 +1446,9 @@ fn combine_cb_kernel[
         n_ranks: The number of ranks.
         msg_bytes: The number of bytes in the message for each token.
         max_tokens_per_rank: The maximum number of tokens per rank.
+        router_weights_wrapper: The wrapper for the router weights. If provided,
+            all routed experts' outputs for a token will be weighted and summed.
+        elementwise_lambda_fn: Optional output lambda function.
 
     Args:
         output_tokens: The tensor to store the output tokens.
@@ -1455,7 +1469,8 @@ fn combine_cb_kernel[
     comptime dst_simd_width = simd_width_of[output_type]()
     comptime byte_simd_width = simd_width_of[DType.uint8]()
 
-    comptime hid_dim = output_tokens.shape[2]()
+    comptime last_dim = 1 if router_weights_wrapper else 2
+    comptime hid_dim = output_tokens_layout.shape[last_dim].value()
 
     __comptime_assert (
         msg_bytes == hid_dim * size_of[Scalar[output_type]]()
@@ -1478,6 +1493,7 @@ fn combine_cb_kernel[
     ]()
 
     comptime DATA_READY_FLAG = 1024
+    comptime _align = align_of[SIMD[DType.uint8, byte_simd_width]]()
 
     # `num_tokens` is the total number of tokens before the EP communication. The
     # actual number of tokens we receive is `num_tokens * top_k`.
@@ -1517,35 +1533,90 @@ fn combine_cb_kernel[
             atomic_counter.store(sm_id, 0)
         barrier()
 
-        for token_idx in range(sm_id - n_aux_sms, num_tokens, n_red_sms):
-            # The output tensor is of shape `(num_tokens, top_k, hid_dim)`.
-            var output_token_tensor = output_tokens.slice[:, :, (1, 2)](
-                IndexList[1](token_idx)
+        comptime n_chunk_elems = WARP_SIZE * dst_simd_width
+        comptime n_chunk_bytes = WARP_SIZE * byte_simd_width
+        comptime n_chunks_per_tok = hid_dim // n_chunk_elems
+
+        __comptime_assert (
+            hid_dim % n_chunk_elems == 0
+        ), "EP combine: hid_dim must be divisible by n_chunk_elems"
+
+        # This will allow a single token to be processed by multiple blocks.
+        # Reduce the latency when there is only a small number of tokens.
+        var global_id = sm_id - n_aux_sms + Int(warp_id()) * n_red_sms
+
+        for chunk_idx in range(
+            global_id, num_tokens * n_chunks_per_tok, n_warps * n_red_sms
+        ):
+            var token_idx, chunk_idx_in_token = divmod(
+                chunk_idx, n_chunks_per_tok
             )
 
-            # Copy the received tokens from all the experts.
+            var accum = SIMD[DType.float32, dst_simd_width](0)
+            var recv_chunk = SIMD[output_type, dst_simd_width](0)
+
             @parameter
-            for topk_id in range(top_k):
+            for topk_idx in range(top_k):
                 var recv_buf_ptr = recv_buf_p + recv_buf_layout(
-                    RtTuple_3(token_idx, topk_id, 0)
+                    RtTuple_3(
+                        token_idx,
+                        topk_idx,
+                        Int(chunk_idx_in_token * n_chunk_bytes),
+                    )
+                )
+                recv_chunk = bitcast[output_type, dst_simd_width](
+                    recv_buf_ptr.load[
+                        width=byte_simd_width,
+                        invariant=True,
+                        alignment=_align,
+                    ](
+                        Int(lane_id()) * byte_simd_width,
+                    )
                 )
 
-                for i in range(tid, hid_dim // dst_simd_width, num_threads):
-                    comptime _align = align_of[
-                        SIMD[DType.uint8, byte_simd_width]
-                    ]()
-                    output_token_tensor.aligned_store[width=dst_simd_width](
-                        topk_id,
-                        i * dst_simd_width,
-                        bitcast[output_type, dst_simd_width](
-                            recv_buf_ptr.load[
-                                width=byte_simd_width,
-                                invariant=True,
-                                alignment=_align,
-                            ](
-                                i * byte_simd_width,
-                            )
+                @parameter
+                if router_weights_wrapper:
+                    comptime router_weights_fn = router_weights_wrapper.value()
+
+                    var weight = router_weights_fn(token_idx, topk_idx)
+                    accum += weight * recv_chunk.cast[DType.float32]()
+
+                else:
+                    # The output tensor is of shape `(num_tokens, top_k, hid_dim)`.
+                    var output_token_slice = output_tokens.slice[:, :, (1, 2)](
+                        IndexList[1](token_idx)
+                    )
+
+                    output_token_slice.aligned_store[width=dst_simd_width](
+                        topk_idx,
+                        chunk_idx_in_token * n_chunk_elems
+                        + Int(lane_id()) * dst_simd_width,
+                        recv_chunk,
+                    )
+
+            @parameter
+            if router_weights_wrapper:
+
+                @parameter
+                if elementwise_lambda_fn:
+                    comptime lambda_fn = elementwise_lambda_fn.value()
+                    lambda_fn[alignment=_align](
+                        (
+                            Int(token_idx),
+                            Int(
+                                chunk_idx_in_token * n_chunk_elems
+                                + Int(lane_id()) * dst_simd_width
+                            ),
                         ),
+                        accum.cast[output_type](),
+                    )
+
+                else:
+                    output_tokens.aligned_store[width=dst_simd_width](
+                        token_idx,
+                        chunk_idx_in_token * n_chunk_elems
+                        + Int(lane_id()) * dst_simd_width,
+                        accum.cast[output_type](),
                     )
 
 
@@ -1676,9 +1747,10 @@ fn fused_silu_fp8_kernel[
     ), "Each warp must process a multiple of quantization groups"
     comptime fp8_max_t = Scalar[fp8_dtype].MAX_FINITE.cast[accum_dtype]()
 
-    var tid = Int(thread_idx.x)
-    var bid = Int(block_idx.x)
-    var gid = tid + bid * num_threads
+    # Scatter processing of a single token across different thread blocks
+    # to improve the memory access performance.
+    var global_warp_id = block_idx.x + warp_id() * UInt(num_sms)
+    var gid = lane_id() + global_warp_id * UInt(WARP_SIZE)
 
     with PDL():
         var num_tokens = row_offsets[row_offsets.size() - 1]

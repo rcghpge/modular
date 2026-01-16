@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import io
 import json
 import logging
@@ -37,7 +36,6 @@ from max.pipelines.core import TextAndVisionContext, TextContext
 from max.support.image import find_contiguous_ranges, hash_image
 from PIL import Image
 from transformers import (
-    AutoConfig,
     AutoProcessor,
     AutoTokenizer,
     CodeLlamaTokenizer,
@@ -226,12 +224,12 @@ class TextTokenizer(
     def __init__(
         self,
         model_path: str,
+        pipeline_config: PipelineConfig,
         *,
         revision: str | None = None,
         max_length: int | None = None,
         trust_remote_code: bool = False,
         enable_llama_whitespace_fix: bool = False,
-        pipeline_config: PipelineConfig | None = None,
         chat_template: str | None = None,
         context_validators: list[Callable[[TextContext], None]] | None = None,
         **unused_kwargs,
@@ -266,14 +264,6 @@ class TextTokenizer(
                 f"Set custom chat template on tokenizer for {model_path}"
             )
 
-        # As we are adding special tokens during chat templating prior to tokenization,
-        # when add_special_tokens=True, we duplicate BOS tokens specifically.
-        self._encode_with_special_tokens = functools.partial(
-            self.delegate.encode, add_special_tokens=True
-        )
-        self._encode_without_special_tokens = functools.partial(
-            self.delegate.encode, add_special_tokens=False
-        )
         self.max_length = max_length or self.delegate.model_max_length
 
         # configure Llama whitespace fix if needed
@@ -293,7 +283,7 @@ class TextTokenizer(
         )
 
         if pipeline_config:
-            huggingface_config = pipeline_config.model_config.huggingface_config
+            huggingface_config = pipeline_config.model.huggingface_config
             if eos_token_id := getattr(
                 huggingface_config, "eos_token_id", None
             ):
@@ -309,26 +299,26 @@ class TextTokenizer(
         flattened_messages: list[dict[str, str]] = []
         for message in messages:
             flattened_message = {
-                "role": message["role"],
+                "role": message.role,
                 "content": "",
             }
-            if isinstance(message["content"], str):
-                flattened_message["content"] = message["content"]
-            elif isinstance(message["content"], list):
-                for content in message["content"]:
-                    if "type" not in content:
+            if isinstance(message.content, str):
+                flattened_message["content"] = message.content
+            elif isinstance(message.content, list):
+                for content in message.content:
+                    if not hasattr(content, "type"):
                         raise ValueError(
                             "Malformed message content, missing 'type' field"
                         )
-                    if content["type"] != "text":
+                    if content.type != "text":
                         raise ValueError(
-                            f"Unsupported content type: {content['type']}"
+                            f"Unsupported content type: {content.type}"
                         )
 
                     if flattened_message["content"] != "":
                         flattened_message["content"] += "\n"
 
-                    flattened_message["content"] += content["text"]
+                    flattened_message["content"] += content.text
 
                 if "content" not in flattened_message:
                     raise ValueError(
@@ -336,7 +326,7 @@ class TextTokenizer(
                     )
             else:
                 raise ValueError(
-                    f"Unsupported content type: {type(message['content'])}"
+                    f"Unsupported content type: {type(message.content)}"
                 )
 
             flattened_messages.append(flattened_message)
@@ -400,16 +390,21 @@ class TextTokenizer(
 
         encoded_prompt: npt.NDArray[np.integer[Any]]
         if isinstance(prompt, str):
+
+            def _encode_fn(
+                prompt: str, add_special_tokens: bool
+            ) -> npt.NDArray[np.integer[Any]]:
+                return self.delegate.encode(
+                    prompt, add_special_tokens=add_special_tokens
+                )
+
             # Note: the underlying tokenizer may not be thread safe in some cases, see https://github.com/huggingface/tokenizers/issues/537
             # Add a standard (non-async) lock in the executor thread if needed.
-            if add_special_tokens:
-                encoded_prompt = await run_with_default_executor(
-                    self._encode_with_special_tokens, prompt
-                )
-            else:
-                encoded_prompt = await run_with_default_executor(
-                    self._encode_without_special_tokens, prompt
-                )
+            encoded_prompt = await run_with_default_executor(
+                _encode_fn,
+                prompt,
+                add_special_tokens,
+            )
 
             if self.max_length and len(encoded_prompt) > self.max_length:
                 raise ValueError(
@@ -448,13 +443,10 @@ class TextTokenizer(
     async def _generate_prompt_and_token_ids(
         self,
         prompt: Sequence[int] | str | None,
-        messages: list[TextGenerationRequestMessage] | None,
+        messages: list[TextGenerationRequestMessage],
         tools: list[TextGenerationRequestTool] | None = None,
         chat_template_options: dict[str, Any] | None = None,
     ) -> tuple[str | list[int], npt.NDArray[np.integer[Any]]]:
-        if prompt is not None and messages is not None:
-            raise ValueError("both prompt and messages cannot be provided.")
-
         if isinstance(prompt, str):
             return prompt, await self.encode(prompt, add_special_tokens=True)
         elif isinstance(prompt, list):
@@ -597,11 +589,11 @@ class TextAndVisionTokenizer(
     def __init__(
         self,
         model_path: str,
+        pipeline_config: PipelineConfig,
         *,
         revision: str | None = None,
         max_length: int | None = None,
         trust_remote_code: bool = False,
-        pipeline_config: PipelineConfig | None = None,
         context_validators: list[Callable[[TextAndVisionContext], None]]
         | None = None,
         **unused_kwargs,
@@ -618,38 +610,24 @@ class TextAndVisionTokenizer(
         )
         self.max_length = max_length or self.delegate.model_max_length
 
-        config = AutoConfig.from_pretrained(
-            model_path, revision=revision, trust_remote_code=trust_remote_code
-        )
+        # Use the pre-loaded HuggingFace config from pipeline_config
+        config = pipeline_config.model.huggingface_config
 
-        # As we are adding special tokens during chat templating prior to tokenization,
-        # when add_special_tokens=True, we duplicate BOS tokens specifically.
-        self._encode_with_special_tokens = functools.partial(
-            self.delegate.encode, add_special_tokens=True
-        )
-        self._encode_without_special_tokens = functools.partial(
-            self.delegate.encode, add_special_tokens=False
-        )
         self.processor = AutoProcessor.from_pretrained(
             model_path, revision=revision, trust_remote_code=trust_remote_code
         )
         self._default_eos_token_ids = set([self.eos])
 
-        if pipeline_config:
-            huggingface_config = pipeline_config.model_config.huggingface_config
-            if eos_token_id := getattr(
-                huggingface_config, "eos_token_id", None
-            ):
-                if isinstance(eos_token_id, int):
-                    self._default_eos_token_ids.add(eos_token_id)
-                elif isinstance(eos_token_id, list):
-                    self._default_eos_token_ids.update(eos_token_id)
+        huggingface_config = pipeline_config.model.huggingface_config
+        if eos_token_id := getattr(huggingface_config, "eos_token_id", None):
+            if isinstance(eos_token_id, int):
+                self._default_eos_token_ids.add(eos_token_id)
+            elif isinstance(eos_token_id, list):
+                self._default_eos_token_ids.update(eos_token_id)
 
-            self.enable_prefix_caching = (
-                pipeline_config.model_config.kv_cache_config.enable_prefix_caching
-                if pipeline_config
-                else False
-            )
+        self.enable_prefix_caching = (
+            pipeline_config.model.kv_cache_config.enable_prefix_caching
+        )
 
         self._context_validators = (
             context_validators if context_validators else []
@@ -698,16 +676,21 @@ class TextAndVisionTokenizer(
 
         encoded_prompt: npt.NDArray[np.integer[Any]]
         if isinstance(prompt, str):
+
+            def _encode_fn(
+                prompt: str, add_special_tokens: bool
+            ) -> npt.NDArray[np.integer[Any]]:
+                return self.delegate.encode(
+                    prompt, add_special_tokens=add_special_tokens
+                )
+
             # Note: the underlying tokenizer may not be thread safe in some cases, see https://github.com/huggingface/tokenizers/issues/537
             # Add a standard (non-async) lock in the executor thread if needed.
-            if add_special_tokens:
-                encoded_prompt = await run_with_default_executor(
-                    self._encode_with_special_tokens, prompt
-                )
-            else:
-                encoded_prompt = await run_with_default_executor(
-                    self._encode_without_special_tokens, prompt
-                )
+            encoded_prompt = await run_with_default_executor(
+                _encode_fn,
+                prompt,
+                add_special_tokens,
+            )
 
             max_length = self.max_length or self.delegate.model_max_length
             if max_length and len(encoded_prompt) > max_length:
@@ -737,7 +720,7 @@ class TextAndVisionTokenizer(
         add_special_tokens = True
         if request.prompt is not None:
             prompt = request.prompt
-        elif request.messages is not None:
+        elif request.messages:
             prompt = self.apply_chat_template(request.messages)
             add_special_tokens = False
         else:

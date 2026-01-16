@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import math
-import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -37,6 +36,7 @@ from max.nn.kv_cache import KVCacheInputs, KVCacheParams, PagedCacheValues
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
+    CompilationTimer,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -314,7 +314,7 @@ class InternVLModel(
 
         image_config = InternVLImageConfig(
             huggingface_config,
-            pipeline_config.model_config.vision_config_overrides,
+            pipeline_config.model.vision_config_overrides,
         )
 
         # Maximum number of images that can be processed is limited by
@@ -350,10 +350,7 @@ class InternVLModel(
 
         # Multiply by the number of devices since the above analysis is per
         # device, but memory estimation uses total memory across all devices.
-        return (
-            len(pipeline_config.model_config.device_specs)
-            * total_activation_memory
-        )
+        return len(pipeline_config.model.device_specs) * total_activation_memory
 
     def load_model(self, session: InferenceSession) -> tuple[Model, Model]:
         """Loads the compiled InternVL models into the MAX Engine session.
@@ -403,56 +400,26 @@ class InternVLModel(
         )
 
         # Build and compile vision model
-        logger.info("Building and compiling vision model...")
-        before = time.perf_counter()
+        timer = CompilationTimer("vision model")
         vision_graph, vision_model_state_dict = self._build_vision_graph(
             internvl_config, vision_model_weights_dict
         )
-        after_build = time.perf_counter()
-
-        logger.info(
-            f"Building vision graph took {after_build - before:.6f} seconds"
-        )
-
-        before_compile = time.perf_counter()
+        timer.mark_build_complete()
         vision_model = session.load(
             vision_graph, weights_registry=vision_model_state_dict
         )
-        after = time.perf_counter()
-
-        logger.info(
-            f"Compiling vision model took {after - before_compile:.6f} seconds"
-        )
-
-        logger.info(
-            f"Building and compiling vision model took {after - before:.6f} seconds"
-        )
+        timer.done()
 
         # Build and compile language model
-        logger.info("Building and compiling language model...")
-        before = time.perf_counter()
+        timer = CompilationTimer("language model")
         language_graph, language_model_state_dict = self._build_language_graph(
             internvl_config, llm_weights_dict
         )
-        after_build = time.perf_counter()
-
-        logger.info(
-            f"Building language graph took {after_build - before:.6f} seconds"
-        )
-
-        before_compile = time.perf_counter()
+        timer.mark_build_complete()
         language_model = session.load(
             language_graph, weights_registry=language_model_state_dict
         )
-        after = time.perf_counter()
-
-        logger.info(
-            f"Compiling language model took {after - before_compile:.6f} seconds"
-        )
-
-        logger.info(
-            f"Building and compiling language model took {after - before:.6f} seconds"
-        )
+        timer.done()
 
         return vision_model, language_model
 
@@ -743,7 +710,7 @@ class InternVLModel(
             if "image_token_indices" in ctx.extra_model_args:
                 indices = ctx.extra_model_args["image_token_indices"]
                 indices_and_offsets.append(indices + batch_offset)
-            batch_offset += ctx.active_length
+            batch_offset += ctx.tokens.active_length
 
         if not indices_and_offsets:
             return None
@@ -858,7 +825,7 @@ class InternVLModel(
         # Input row offset type: ["input_row_offsets_len"], UInt32
         input_row_offsets_host = Tensor.from_numpy(
             np.cumsum(
-                [0] + [ctx.active_length for ctx in context_batch],
+                [0] + [ctx.tokens.active_length for ctx in context_batch],
                 dtype=np.uint32,
             ),
         )
@@ -868,7 +835,7 @@ class InternVLModel(
 
         # Input Ids: ["total_seq_len"], Int64
         # Create a ragged token vector of length: sum(len(t) for t in tokens).
-        tokens = np.concatenate([ctx.next_tokens for ctx in context_batch])
+        tokens = np.concatenate([ctx.tokens.active for ctx in context_batch])
         input_ids = Tensor.from_numpy(tokens).to(self.devices[0])
 
         # Batch image token indices, offsetting for position in the batch.

@@ -16,8 +16,7 @@ These are Mojo built-ins, so you don't need to import them.
 """
 
 
-from collections.string.format import _CurlyEntryFormattable
-from fmt._utils import _WriteBufferStack
+from format._utils import _WriteBufferStack
 from sys import _libc, external_call, is_gpu
 from sys.ffi import c_char, CStringSlice
 
@@ -27,7 +26,7 @@ from memory import (
     alloc,
     memcpy,
 )
-from fmt._utils import _WriteBufferStack, _TotalWritableBytes
+from format._utils import _WriteBufferStack, _TotalWritableBytes
 
 
 # ===-----------------------------------------------------------------------===#
@@ -144,7 +143,6 @@ struct Error(
     Representable,
     Stringable,
     Writable,
-    _CurlyEntryFormattable,
 ):
     """This type represents an Error."""
 

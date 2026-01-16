@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import math
-import time
 from collections.abc import Sequence
 from typing import cast
 
@@ -34,6 +33,7 @@ from max.nn import Module, ReturnLogits
 from max.nn.kv_cache import KVCacheInputs, KVCacheParams, PagedCacheValues
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
+    CompilationTimer,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -180,7 +180,7 @@ class PixtralModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         # Input row offset type: ["input_row_offsets_len"], UInt32
         input_row_offsets = Tensor.from_numpy(
             np.cumsum(
-                [0] + [ctx.active_length for ctx in context_batch],
+                [0] + [ctx.tokens.active_length for ctx in context_batch],
                 dtype=np.uint32,
             )
         ).to(self.devices[0])
@@ -188,7 +188,7 @@ class PixtralModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         # Input Ids: ["total_seq_len"], Int64
         # Create a ragged token vector of length: sum(len(t) for t in tokens).
         tokens = np.ascontiguousarray(
-            np.concatenate([ctx.next_tokens for ctx in context_batch])
+            np.concatenate([ctx.tokens.active for ctx in context_batch])
         )
         input_ids = Tensor.from_numpy(tokens).to(self.devices[0])
 
@@ -375,7 +375,6 @@ class PixtralModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
     ) -> Graph:
         # Retrieve config
         state_dict = self._get_state_dict(weights, adapter)
-
         model_config = PixtralConfig(
             image_token_index=self.huggingface_config.image_token_index,
             vocab_size=self.huggingface_config.text_config.vocab_size,
@@ -473,23 +472,10 @@ class PixtralModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
                 "only safetensors weights are currently supported in Pixtral models."
             )
 
-        logger.info("Building and compiling model...")
-        before = time.perf_counter()
+        timer = CompilationTimer("model")
         graph = self._build_graph(self.weights, self.adapter)
-        after_build = time.perf_counter()
-
-        logger.info(f"Building graph took {after_build - before:.6f} seconds")
-
-        before_compile = time.perf_counter()
+        timer.mark_build_complete()
         model = session.load(graph, weights_registry=self.state_dict)
-        after = time.perf_counter()
-
-        logger.info(
-            f"Compiling model took {after - before_compile:.6f} seconds"
-        )
-
-        logger.info(
-            f"Building and compiling model took {after - before:.6f} seconds"
-        )
+        timer.done()
 
         return model

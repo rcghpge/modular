@@ -106,7 +106,7 @@ import contextlib
 from collections.abc import Generator
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeAlias
+from typing import Any, Protocol, TypeAlias, cast
 
 from max.graph.value import HasTensorValue
 from rich.pretty import pretty_repr
@@ -177,7 +177,7 @@ class RealizationState:
 class RealizationContext(Protocol, contextlib.AbstractContextManager):
     """Implements a way to realize unrealized tensors.
 
-    Most users should never have to think about the existance of this type.
+    Most users should never have to think about the existence of this type.
     It exists to facilitate optimizations around where and when tensor
     operations are executed.
 
@@ -185,8 +185,8 @@ class RealizationContext(Protocol, contextlib.AbstractContextManager):
     - If a tensor is not `real`, ie. "unrealized", then it is backed by some
       symbolic computation.
     - The RealizationContext is responsible for tracking this symbolic
-      omputation and "realizing" the tensor (executing the computation and
-      acking the tensor with real data) if and when it is asked to do so.
+      computation and "realizing" the tensor (executing the computation and
+      backing the tensor with real data) if and when it is asked to do so.
     - A RealizationContext can only realize tensors associated with it.
 
     RealizationContext abstracts over various semantics of tensor construction.
@@ -862,7 +862,7 @@ class Tensor(DLPackArray, HasTensorValue):
         dtype, device = defaults(dtype, device)
         if stop is None:
             start, stop = 0, start
-        return F.range(
+        return F.arange(
             start,
             stop,
             step,
@@ -905,7 +905,7 @@ class Tensor(DLPackArray, HasTensorValue):
                 the input type's shape.
         """
         dim = type.shape[-1]
-        range = F.range(
+        range = F.arange(
             start=0,
             stop=dim,
             out_dim=dim,
@@ -1112,10 +1112,20 @@ class Tensor(DLPackArray, HasTensorValue):
         yield "dtype", self.dtype
         yield "device", self.device
 
-    def __repr__(self):
-        # Janky repr for bootstrapping, we can do much better.
+    def __repr__(self) -> str:
+        """Returns a formatted string representation of the tensor.
+
+        For realized tensors, displays the data using a matrix-of-matrices
+        algorithm that preserves the multi-dimensional structure.
+        For unrealized tensors, shows shape, dtype, and device information.
+
+        Returns:
+            A string representation of the tensor.
+        """
         if self.real:
-            return f"{self.type}: [{', '.join(str(v) for v in self._values())}]"
+            from max.experimental import _tensor_repr
+
+            return _tensor_repr.render(self)
         return pretty_repr(self)
 
     def __deepcopy__(self, memo: object) -> Tensor:
@@ -1280,6 +1290,40 @@ class Tensor(DLPackArray, HasTensorValue):
         """
         return F.mean(self, axis=axis)
 
+    def sum(self, axis: int = -1) -> Tensor:
+        """Computes the sum of values along an axis.
+
+        Returns a tensor containing the sum of values along the specified axis.
+        This is a fundamental reduction operation used for aggregating data,
+        computing totals, and implementing other operations like mean.
+
+        .. code-block:: python
+
+            from max.experimental import tensor
+            from max.dtype import DType
+
+            # Create a 2x3 tensor
+            x = tensor.Tensor.constant(
+                [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=DType.float32
+            )
+
+            # Sum along last axis (within each row)
+            row_sum = x.sum(axis=-1)
+            # Result: [6.0, 15.0] (sum of each row)
+
+            # Sum along first axis (within each column)
+            col_sum = x.sum(axis=0)
+            # Result: [5.0, 7.0, 9.0] (sum of each column)
+
+        Args:
+            axis: The axis along which to compute the sum. Defaults to -1
+                (the last axis).
+
+        Returns:
+            Tensor: A tensor containing the sum along the specified axis.
+        """
+        return F.sum(self, axis=axis)
+
     def clip(
         self,
         *,
@@ -1353,6 +1397,78 @@ class Tensor(DLPackArray, HasTensorValue):
         """
         return F.squeeze(self, axis)
 
+    def unsqueeze(self, axis: int) -> Tensor:
+        """Inserts a size-1 dimension into the tensor.
+
+        Returns a tensor with a new size-1 dimension inserted at the specified
+        position. This is the inverse of :meth:`squeeze` and is useful for
+        adding dimensions needed for broadcasting or matrix operations.
+
+        .. code-block:: python
+
+            from max.experimental import tensor
+            from max.dtype import DType
+
+            # Create a 1D tensor
+            x = tensor.Tensor.constant([1.0, 2.0, 3.0], dtype=DType.float32)
+            print(x.shape)  # (3,)
+
+            # Add dimension at the end
+            y = x.unsqueeze(axis=-1)
+            print(y.shape)  # (3, 1)
+
+            # Add dimension at the beginning
+            z = x.unsqueeze(axis=0)
+            print(z.shape)  # (1, 3)
+
+        Args:
+            axis: The index at which to insert the new dimension. If negative,
+                indexes relative to 1 plus the rank of the tensor. For example,
+                ``axis=-1`` adds a dimension at the end.
+
+        Returns:
+            Tensor: A tensor with an additional size-1 dimension.
+        """
+        return F.unsqueeze(self, axis)
+
+    def split(
+        self, split_size_or_sections: int | list[int], axis: int = 0
+    ) -> list[Tensor]:
+        """Splits the tensor into multiple tensors along a given dimension.
+
+        This method supports two modes, matching PyTorch's behavior:
+
+        - If ``split_size_or_sections`` is an **int**, splits into chunks of
+          that size (the last chunk may be smaller if not evenly divisible).
+        - If ``split_size_or_sections`` is a **list of ints**, splits into
+          chunks with exactly those sizes (must sum to the dimension size).
+
+        .. code-block:: python
+
+            from max.experimental import tensor
+            from max.dtype import DType
+
+            # Create a 10x4 tensor
+            x = tensor.Tensor.ones([10, 4], dtype=DType.float32)
+
+            # Split into chunks of size 3 (last chunk is size 1)
+            chunks = x.split(3, axis=0)
+            # Result: 4 tensors with shapes [3,4], [3,4], [3,4], [1,4]
+
+            # Split into exact sizes
+            chunks = x.split([2, 3, 5], axis=0)
+            # Result: 3 tensors with shapes [2,4], [3,4], [5,4]
+
+        Args:
+            split_size_or_sections: Either an int (chunk size) or a list of
+                ints (exact sizes for each output tensor).
+            axis: The dimension along which to split. Defaults to 0.
+
+        Returns:
+            list[Tensor]: A list of tensors resulting from the split.
+        """
+        return cast(list[Tensor], F.split(self, split_size_or_sections, axis))
+
     def reshape(self, shape: ShapeLike) -> Tensor:
         """Reshapes the tensor to a new shape.
 
@@ -1384,6 +1500,41 @@ class Tensor(DLPackArray, HasTensorValue):
             Tensor: A reshaped tensor with the specified shape.
         """
         return F.reshape(self, shape)
+
+    def broadcast_to(self, shape: ShapeLike) -> Tensor:
+        """Broadcasts the tensor to the specified shape.
+
+        Returns a tensor broadcast to the target shape, following NumPy
+        broadcasting semantics. Dimensions of size 1 in the input can be
+        expanded to match larger dimensions in the target shape.
+
+        This is equivalent to PyTorch's :func:`torch.broadcast_to` and
+        :meth:`torch.Tensor.expand`.
+
+        .. code-block:: python
+
+            from max.experimental import tensor
+            from max.dtype import DType
+
+            # Create a tensor with shape (3, 1)
+            x = tensor.Tensor.ones([3, 1], dtype=DType.float32)
+
+            # Broadcast to (3, 4) - expands the second dimension
+            y = x.broadcast_to([3, 4])
+            print(y.shape)  # (3, 4)
+
+            # Add a new leading dimension
+            w = x.broadcast_to([2, 3, 1])
+            print(w.shape)  # (2, 3, 1)
+
+        Args:
+            shape: The target shape. Each dimension must either match the input
+                dimension or be broadcastable from size 1.
+
+        Returns:
+            Tensor: A tensor broadcast to the specified shape.
+        """
+        return F.broadcast_to(self, shape)
 
     def cast(self, dtype: DType) -> Tensor:
         """Casts the tensor to a different data type.

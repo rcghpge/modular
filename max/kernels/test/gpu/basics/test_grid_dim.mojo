@@ -29,11 +29,11 @@ fn kernel(
     if global_tid >= UInt(size):
         return
     if global_tid & 3 == 0:
-        output[global_tid] = grid_dim.x
+        output[global_tid] = Float32(grid_dim.x)
     elif global_tid & 3 == 1:
-        output[global_tid] = grid_dim.y
+        output[global_tid] = Float32(grid_dim.y)
     elif global_tid & 3 == 2:
-        output[global_tid] = grid_dim.z
+        output[global_tid] = Float32(grid_dim.z)
 
 
 fn test_grid_dim(ctx: DeviceContext) raises:
@@ -48,7 +48,7 @@ fn test_grid_dim(ctx: DeviceContext) raises:
 
     ctx.enqueue_copy(output_buffer, output_host)
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function_experimental[kernel](
         output_buffer,
         buffer_size,
         grid_dim=(20, 15, 10),

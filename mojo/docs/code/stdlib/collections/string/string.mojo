@@ -22,7 +22,7 @@ struct Person(Stringable):
 
 
 def string_summary():
-    from testing import assert_equal
+    from testing import assert_equal, assert_raises
 
     var person = Person("Alice", 30)
     print(String(person))  # => Alice (30)
@@ -36,8 +36,8 @@ def string_summary():
 
     # String properties and indexing
     print(len(text))  # 5
-    print(text[1])  # e
-    print(text[-1])  # o
+    print(text[byte=1])  # e
+    print(text[byte= -1])  # o
 
     # In-place concatenation
     text += " World"

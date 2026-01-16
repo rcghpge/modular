@@ -36,7 +36,7 @@ from collections.string import (
     chr,
     ord,
 )
-from fmt import Writable, Writer
+from format import Writable, Writer
 from hashlib.hash import Hashable, hash
 from io.file import FileHandle, open
 from io.file_descriptor import FileDescriptor
@@ -118,7 +118,7 @@ from builtin.simd import (
     UInt256,
 )
 from builtin.sort import partition, sort
-from builtin.str import Stringable, StringableRaising
+from builtin.str import Stringable
 from builtin.string_literal import StringLiteral
 from builtin.swap import swap
 from builtin.tuple import Tuple

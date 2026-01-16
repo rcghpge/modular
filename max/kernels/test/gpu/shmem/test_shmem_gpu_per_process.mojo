@@ -19,9 +19,8 @@ if running on a single node you can run the compiled binary directly without
 mpirun.
 """
 
-# RUN: NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 # RUN: %mojo-build %s -o %t
-# RUN: %mpirun -n $NUM_GPUS %t
+# RUN: %mpirun-all-gpus %t
 
 from gpu.host import DeviceBuffer, DeviceContext
 from memory import LegacyUnsafePointer, alloc
@@ -53,7 +52,7 @@ def main():
 
         # SHMEMContext takes care of initializing device state into
         # `simple_shift_kernel` constant memory
-        ctx.enqueue_function[simple_shift_kernel, simple_shift_kernel](
+        ctx.enqueue_function[simple_shift_kernel](
             target_device, grid_dim=1, block_dim=1
         )
         ctx.barrier_all()

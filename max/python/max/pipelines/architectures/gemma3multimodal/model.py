@@ -41,6 +41,7 @@ from max.nn.kv_cache import (
 )
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
+    CompilationTimer,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -336,20 +337,26 @@ class Gemma3_MultiModalModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         ]
 
         # Build and compile language model
+        timer = CompilationTimer("language model")
         language_graph, language_weight_dict = self._build_language_graph(
             model_config, language_weights_dict
         )
+        timer.mark_build_complete()
         language_model = session.load(
             language_graph, weights_registry=language_weight_dict
         )
+        timer.done()
 
         # Build and compile vision model
+        timer = CompilationTimer("vision model")
         vision_graph, vision_model_state_dict = self._build_vision_graph(
             model_config, vision_weights_dict
         )
+        timer.mark_build_complete()
         vision_model = session.load(
             vision_graph, weights_registry=vision_model_state_dict
         )
+        timer.done()
 
         return vision_model, language_model
 
@@ -612,7 +619,7 @@ class Gemma3_MultiModalModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         kv_cache_inputs = cast(KVCacheInputsSequence, kv_cache_inputs)
         input_row_offsets = Tensor.from_numpy(
             np.cumsum(
-                [0] + [ctx.active_length for ctx in context_batch],
+                [0] + [ctx.tokens.active_length for ctx in context_batch],
                 dtype=np.uint32,
             )
         )
@@ -620,7 +627,7 @@ class Gemma3_MultiModalModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             input_row_offsets.to(device) for device in self.devices
         ]
 
-        tokens = np.concatenate([ctx.next_tokens for ctx in context_batch])
+        tokens = np.concatenate([ctx.tokens.active for ctx in context_batch])
 
         # stack our images in a list of tensors
         pixel_values = self._prepare_vision_inputs(context_batch)
@@ -692,7 +699,7 @@ class Gemma3_MultiModalModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
         batch_offset = 0
 
         for ctx in context_batch:
-            input_ids = ctx.next_tokens
+            input_ids = ctx.tokens.active
 
             # Find where image tokens appear
             special_image_token_mask = (
@@ -703,7 +710,7 @@ class Gemma3_MultiModalModel(PipelineModel[TextAndVisionContext], KVCacheMixin):
             if len(indices) > 0:
                 indices_and_offsets.append(indices + batch_offset)
 
-            batch_offset += ctx.active_length
+            batch_offset += ctx.tokens.active_length
 
         if not indices_and_offsets:
             return [

@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cached_property
@@ -37,6 +36,7 @@ from max.nn.kv_cache import KVCacheInputs, KVCacheParams, PagedCacheValues
 from max.nn.parallel import ParallelArrayOps
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
+    CompilationTimer,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -297,62 +297,33 @@ class Qwen3VLModel(
         )
         self.model_config = qwen3vl_config
 
-        self.model: Module = Qwen3VL(self.model_config)
+        # Use the local non-optional variable to satisfy typing.
+        self.model: Module = Qwen3VL(qwen3vl_config)
         self.model.load_state_dict(
             model_state_dict, weight_alignment=1, strict=True
         )
 
         # Build and compile vision model
-        logger.info("Building and compiling vision model...")
-        before = time.perf_counter()
+        timer = CompilationTimer("vision model")
         vision_graph = self._build_vision_graph(
             qwen3vl_config, vision_state_dict
         )
-        after_build = time.perf_counter()
-
-        logger.info(
-            f"Building vision graph took {after_build - before:.6f} seconds"
-        )
-
-        before_compile = time.perf_counter()
+        timer.mark_build_complete()
         vision_model = session.load(
             vision_graph, weights_registry=vision_state_dict
         )
-        after = time.perf_counter()
+        timer.done()
 
-        logger.info(
-            f"Compiling vision model took {after - before_compile:.6f} seconds"
-        )
-
-        logger.info(
-            f"Building and compiling vision model took {after - before:.6f} seconds"
-        )
-
-        # TODO: Build and compile language model
-        logger.info("Building and compiling language model...")
-        before = time.perf_counter()
+        # Build and compile language model
+        timer = CompilationTimer("language model")
         language_graph = self._build_language_graph(
             qwen3vl_config, llm_state_dict
         )
-        after_build = time.perf_counter()
-
-        logger.info(
-            f"Building language graph took {after_build - before:.6f} seconds"
-        )
-
-        before_compile = time.perf_counter()
+        timer.mark_build_complete()
         language_model = session.load(
             language_graph, weights_registry=llm_state_dict
         )
-        after = time.perf_counter()
-
-        logger.info(
-            f"Compiling language model took {after - before_compile:.6f} seconds"
-        )
-
-        logger.info(
-            f"Building and compiling language model took {after - before:.6f} seconds"
-        )
+        timer.done()
 
         return vision_model, language_model
 
@@ -977,13 +948,13 @@ class Qwen3VLModel(
         # Prepare Inputs Needed Regardless of Images
         with Tracer("prepare_input_ids"):
             input_ids = Tensor.from_numpy(
-                np.concatenate([ctx.next_tokens for ctx in context_batch])
+                np.concatenate([ctx.tokens.active for ctx in context_batch])
             ).to(self.devices[0])
 
         with Tracer("prepare_input_row_offsets"):
             input_row_offsets_host = Tensor.from_numpy(
                 np.cumsum(
-                    [0] + [ctx.active_length for ctx in context_batch],
+                    [0] + [ctx.tokens.active_length for ctx in context_batch],
                     dtype=np.uint32,
                 ),
             )
@@ -995,19 +966,19 @@ class Qwen3VLModel(
             decoder_position_ids_list = []
             for ctx in context_batch:
                 ctx_decoder_position_ids = ctx.decoder_position_ids
-                if (
-                    ctx.needs_vision_encoding
-                    and ctx_decoder_position_ids.shape[1] == ctx.current_length
-                ):
+                if ctx.needs_vision_encoding and ctx_decoder_position_ids.shape[
+                    1
+                ] == len(ctx.tokens):
                     decoder_position_ids_list.append(
                         ctx_decoder_position_ids[
-                            :, ctx.processed_length : ctx.current_position
+                            :,
+                            ctx.tokens.processed_length : ctx.tokens.current_position,
                         ]
                     )
                 else:
                     # Recompute or use simple position IDs
                     # TODO: Implement proper position ID computation for Qwen3VL
-                    context_seq_length = ctx.active_length
+                    context_seq_length = ctx.tokens.active_length
                     # Qwen3VL uses 3D position IDs (mrope)
                     temp_pos_ids = np.tile(
                         np.arange(context_seq_length).reshape(1, 1, -1),
@@ -1019,7 +990,7 @@ class Qwen3VLModel(
                             1,
                         ),
                     )
-                    delta = ctx.processed_length + ctx.rope_delta
+                    delta = ctx.tokens.processed_length + ctx.rope_delta
                     temp_position_ids = (temp_pos_ids + delta).squeeze(1)
                     decoder_position_ids_list.append(temp_position_ids)
 

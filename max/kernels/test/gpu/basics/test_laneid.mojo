@@ -28,7 +28,7 @@ fn kernel(
     var global_tid = global_idx.x
     if global_tid >= UInt(size):
         return
-    output[global_tid] = lane_id()
+    output[global_tid] = Float32(lane_id())
 
 
 fn test_grid_dim(ctx: DeviceContext) raises:
@@ -43,7 +43,7 @@ fn test_grid_dim(ctx: DeviceContext) raises:
 
     ctx.enqueue_copy(output_buffer, output_host)
 
-    ctx.enqueue_function[kernel, kernel](
+    ctx.enqueue_function_experimental[kernel](
         output_buffer,
         buffer_size,
         grid_dim=1,

@@ -13,7 +13,7 @@
 
 
 def string_slice_summary():
-    from testing import assert_equal
+    from testing import assert_equal, assert_raises
 
     # Create a string slice
     var text = StringSlice("Hello, 世界")
@@ -34,6 +34,7 @@ def string_slice_summary():
 
     # --------
     # Not in docstring:
+    assert_equal(hello, "Hello")
     assert_equal(world, "世界")
     assert_equal(format_string.format("bats", 6), "bats: 6")
     # --------

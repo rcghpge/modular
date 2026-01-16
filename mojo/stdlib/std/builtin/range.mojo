@@ -53,7 +53,7 @@ struct _ZeroStartingRange(Iterable, Iterator, Movable, ReversibleRange, Sized):
 
     @always_inline
     fn __init__(out self, end: Int):
-        self.curr = max(0, end)
+        self.curr = max(end, 0)
         self.end = self.curr
 
     @always_inline
@@ -295,7 +295,7 @@ fn range(end: PythonObject) raises -> _ZeroStartingRange:
     Raises:
         An error if converting `end` to an `Int` failed.
     """
-    return range(Int(end))
+    return range(Int(py=end))
 
 
 @always_inline
@@ -353,7 +353,7 @@ fn range(start: PythonObject, end: PythonObject) raises -> _SequentialRange:
     Raises:
         An error if converting `start` or `end` to an `Int` failed.
     """
-    return range(Int(start), Int(end))
+    return range(Int(py=start), Int(py=end))
 
 
 @always_inline
@@ -421,7 +421,7 @@ fn range(
     Raises:
         An error if converting `start`, `end`, or `step` to an `Int` failed.
     """
-    return range(Int(start), Int(end), Int(step))
+    return range(Int(py=start), Int(py=end), Int(py=step))
 
 
 # ===----------------------------------------------------------------------=== #
@@ -623,7 +623,7 @@ struct _ZeroStartingScalarRange[dtype: DType](
 
     @always_inline
     fn __init__(out self, end: Scalar[Self.dtype]):
-        self.curr = max(0, end)
+        self.curr = max(end, 0)
         self.end = self.curr
 
     @always_inline

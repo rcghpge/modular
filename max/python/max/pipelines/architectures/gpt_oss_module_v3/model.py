@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable, Sequence
 from typing import Any, cast
 
@@ -29,6 +28,7 @@ from max.nn import ReturnLogits
 from max.nn.kv_cache import KVCacheInputs, KVCacheInputsSequence, KVCacheParams
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
+    CompilationTimer,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -221,9 +221,7 @@ class GptOssModel(PipelineModel[TextContext], KVCacheMixin):
             np.arange(self.pipeline_config.max_batch_size + 1, dtype=np.uint32)
         ).to(self.devices[0])
 
-        logger.info("Building and compiling model...")
-        before = time.perf_counter()
-
+        timer = CompilationTimer("model")
         device0 = self.devices[0]
         device_ref = DeviceRef(device0.label, device0.id)
         tokens_type = TensorType(
@@ -270,6 +268,7 @@ class GptOssModel(PipelineModel[TextContext], KVCacheMixin):
             kv_type for sublist in kv_inputs for kv_type in sublist
         ]
 
+        timer.mark_build_complete()
         compiled_model = nn_model.compile(
             tokens_type,
             return_n_logits_type,
@@ -277,11 +276,7 @@ class GptOssModel(PipelineModel[TextContext], KVCacheMixin):
             *flattened_kv_types,
             weights=state_dict,
         )
-        after = time.perf_counter()
-
-        logger.info(
-            f"Building and compiling model took {after - before:.6f} seconds"
-        )
+        timer.done()
 
         return compiled_model
 
@@ -352,11 +347,12 @@ class GptOssModel(PipelineModel[TextContext], KVCacheMixin):
         # Get input_row_offsets: start and end position of each batch in the
         # combined total_seq_len dimension.
         input_row_offsets = np.cumsum(
-            [0] + [ctx.active_length for ctx in context_batch], dtype=np.uint32
+            [0] + [ctx.tokens.active_length for ctx in context_batch],
+            dtype=np.uint32,
         )
 
         # Create a ragged token vector of length: sum(len(t) for t in tokens).
-        tokens = np.concatenate([ctx.next_tokens for ctx in context_batch])
+        tokens = np.concatenate([ctx.tokens.active for ctx in context_batch])
 
         # Create input_row_offsets
         input_row_offsets_tensor = Tensor.from_numpy(input_row_offsets).to(

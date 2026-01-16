@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Sequence
 from typing import Any, cast
 
@@ -30,6 +29,7 @@ from max.nn import Module, ReturnLogits, Signals
 from max.nn.kv_cache import KVCacheInputs, KVCacheParams, PagedCacheValues
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
+    CompilationTimer,
     KVCacheConfig,
     KVCacheMixin,
     ModelInputs,
@@ -102,7 +102,7 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
         adapter: WeightsAdapter | None = None,
         return_logits: ReturnLogits = ReturnLogits.ALL,
     ) -> None:
-        if pipeline_config.model_config.device_specs[0] == DeviceSpec.cpu():
+        if pipeline_config.model.device_specs[0] == DeviceSpec.cpu():
             raise ValueError("DeepseekV2 currently only supported on gpu.")
 
         super().__init__(
@@ -164,11 +164,12 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
         # Get input_row_offsets: start and end position of each batch in the
         # combined total_seq_len dimension.
         input_row_offsets = np.cumsum(
-            [0] + [ctx.active_length for ctx in context_batch], dtype=np.uint32
+            [0] + [ctx.tokens.active_length for ctx in context_batch],
+            dtype=np.uint32,
         )
 
         # Create a ragged token vector of length: sum(len(t) for t in tokens).
-        tokens = np.concatenate([ctx.next_tokens for ctx in context_batch])
+        tokens = np.concatenate([ctx.tokens.active for ctx in context_batch])
 
         return DeepseekV2Inputs(
             tokens=Tensor.from_numpy(tokens).to(self.devices[0]),
@@ -343,7 +344,7 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
         kv_params = self.kv_params
         device_refs = [
             DeviceRef(spec.device_type, spec.id)
-            for spec in pipeline_config.model_config.device_specs
+            for spec in pipeline_config.model.device_specs
         ]
 
         model_config = DeepseekV2Config(
@@ -457,25 +458,12 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
         self,
         session: InferenceSession,
     ) -> Model:
-        logger.info("Building and compiling model...")
-        before = time.perf_counter()
-
+        timer = CompilationTimer("model")
         graph = self._build_graph()
-        after_build = time.perf_counter()
-
-        logger.info(f"Building graph took {after_build - before:.6f} seconds")
-
-        before_compile = time.perf_counter()
+        timer.mark_build_complete()
         model = session.load(graph, weights_registry=self.state_dict)
-        after = time.perf_counter()
+        timer.done()
 
-        logger.info(
-            f"Compiling model took {after - before_compile:.6f} seconds"
-        )
-
-        logger.info(
-            f"Building and compiling model took {after - before:.6f} seconds"
-        )
         return model
 
     def load_logprobs_model(self, session: InferenceSession) -> Model:
