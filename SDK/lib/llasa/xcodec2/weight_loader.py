@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 from huggingface_hub import hf_hub_download
-from max.driver import Tensor
+from max.driver import Buffer
 from max.graph.weights import SafetensorWeights
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def _map_xcodec2_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
             # Conv1D kernels: (out, in, k) -> (k, in, out) for MAX
             if "embed" in weight_name or "conv" in weight_name:
                 transposed_np = np.transpose(tensor_np, (2, 1, 0))
-                processed_tensor = Tensor.from_numpy(transposed_np)
+                processed_tensor = Buffer.from_numpy(transposed_np)
 
         filtered_weights[weight_name] = processed_tensor
 

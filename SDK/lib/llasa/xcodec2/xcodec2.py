@@ -12,7 +12,7 @@ from pathlib import Path
 
 import max.nn as nn
 import numpy as np
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine.api import InferenceSession
 from max.graph import Graph, TensorType, TensorValue, ops
@@ -203,13 +203,13 @@ class XCodec2Model:
             speech_tokens_batched = speech_tokens
             is_batched = True
 
-        input_tensor = Tensor.from_numpy(speech_tokens_batched.astype(np.int32))
+        input_tensor = Buffer.from_numpy(speech_tokens_batched.astype(np.int32))
         input_tensor = input_tensor.to(self.config.device.to_device())
 
         output_tensors = self.compiled_model.execute(input_tensor)
 
         audio_tensor = output_tensors[0]
-        assert isinstance(audio_tensor, Tensor), (
+        assert isinstance(audio_tensor, Buffer), (
             f"Expected Tensor, got {type(audio_tensor)}"
         )
         audio_numpy = audio_tensor.to_numpy()
