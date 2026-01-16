@@ -874,7 +874,7 @@ void IfOp::getSuccessorRegions(
     SmallVectorImpl<mlir::RegionSuccessor> &regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.emplace_back(getOperation(), getResults());
+    regions.emplace_back(mlir::RegionSuccessor::parent(getResults()));
     return;
   }
 
@@ -958,7 +958,7 @@ void WhileOp::getSuccessorRegions(
     return;
   }
 
-  regions.emplace_back(getOperation(), getResults());
+  regions.emplace_back(mlir::RegionSuccessor::parent(getResults()));
   regions.emplace_back(&getBodyRegion(), getBodyRegion().getArguments());
 }
 
@@ -1043,7 +1043,7 @@ void WhileConditionOp::getSuccessorRegions(
   // depending on whether the condition is true or not.
   regions.emplace_back(&whileOp.getBodyRegion(),
                        whileOp.getBodyRegion().getArguments());
-  regions.emplace_back(whileOp.getOperation(), whileOp.getResults());
+  regions.emplace_back(mlir::RegionSuccessor::parent(whileOp.getResults()));
 }
 
 MutableOperandRange
