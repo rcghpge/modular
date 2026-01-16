@@ -265,6 +265,31 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   consistency checks (default: false)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: Fail if memory manager
   cannot satisfy allocation (testing mode)
+- **`MODULAR_DEBUG_HOST_ALLOCATOR`**: Enable host allocator debug features,
+  each allocator is either a base allocator which actually allocates memory or
+  a wrapper which extends a base allocator with additional checking or
+  profiling. This option can take one of two forms, `<any>` or
+  `<base>:<wrapper>` from the following choices:
+  - `tcmalloc` (base): Use the optimized tcmalloc allocator (default)
+  - `malloc` (base): Use the default system allocator
+  - `use-after-free` (base): Use the use-after-free detection allocator
+  - `leak-checker` (wrapper): Use the leak checking allocator
+  - `profiler` (wrapper): Use the profiling allocator to print allocation
+    statistics including `leak-checker`
+- **`MODULAR_DEBUG_DEVICE_ALLOCATOR`**: List of comma separated allocator
+  debugging features from the following:
+  - `uninitailized-poison`: enable filling buffers with type-aware posion
+    values to aid detection of uninitailized data, qNaN for floating-point
+    buffers (or `0xFF` if LLVM unaware of the FP type) and and `0xCD` for other
+    buffer types
+  - `out-of-bounds`: enable redzone out-of-bounds write checks see below for
+    additional configuration options
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_REDZONE_SIZE`**: specify the size in
+  bytes of the redzones to be use when
+  `MODULAR_DEBUG_DEVICE_ALLOCATOR=out-of-bounds` is enabled
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_REDZONE_PATTERN`**: specify the byte
+  pattern used to fill the redzones when
+  `MODULAR_DEBUG_DEVICE_ALLOCATOR=out-of-bounds` is enabled
 
 ### Configuration Examples
 

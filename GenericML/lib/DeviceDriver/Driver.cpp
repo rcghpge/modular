@@ -120,8 +120,10 @@ Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
   // Debug allocation poisoning: fills newly allocated memory with default
   // patterns to help detect use of uninitialized memory. Float types are filled
   // with qNaN patterns, integers with 0xCD.
-  // Enable via: MODULAR_DEVICE_CONTEXT_DEBUG_ALLOC_POISON=true
-  if (M::Driver::DeviceContext::configAsBool("debug_alloc_poison", false)) {
+  // Enable via: MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison
+  auto config = Config::open();
+  if (!config.isError() &&
+      config->isValueInList("debug.device_allocator", "uninitialized-poison")) {
     DType dtype = spec.getEltType();
 
     if (hostAlloc) {
