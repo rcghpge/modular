@@ -58,19 +58,19 @@
 #define CHECK_IS_HIP_ERR(dev)                                                  \
   do {                                                                         \
     if ((dev).api() != Device::hipAPI) {                                       \
-      RAISE_ERROR("Not a HIP device.");                                        \
+      RETURN_ERROR("Not a HIP device.");                                       \
     }                                                                          \
   } while (0)
 
 #define HIP_WITH_CTX_ERR(ctx)                                                  \
-  CHECK_PENDING_ERR(ctx);                                                      \
+  RETURN_IF_PENDING_ERROR(ctx);                                                \
   HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
   HIP_CHECK_ERR(__hipWithContext.status());
 
 // This MUST be called during all synchronous API calls like
 // hipStreamSynchronize. To reduce overhead, we omit polling during asynchronous
 // API calls like hipCallKernelDirect. The call to hipEventQuery is not free!
-#define POLL_PENDING_EVENTS(ctx) ERR_CHECK_ERR((ctx).pollPendingEvents());
+#define POLL_PENDING_EVENTS(ctx) RETURN_IF_ERROR((ctx).pollPendingEvents());
 
 #define HIP_WITH_CTX(ctx)                                                      \
   HIPDeviceScope __hipWithContext((ctx).hipDevice(), (ctx).hipDriver());       \
@@ -184,7 +184,7 @@ gethipDeviceAttribute(Device::Attribute attr) {
 
 #define RAISE_ENTRY(X)                                                         \
   case Device::Attribute::X:                                                   \
-    RAISE_ERROR("Attribute \"" #X "\" not supported for AMD GPU.")
+    RETURN_ERROR("Attribute \"" #X "\" not supported for AMD GPU.")
 
   switch (attr) {
     ENTRY(MAX_THREADS_PER_BLOCK, MaxThreadsPerBlock);
@@ -214,7 +214,7 @@ gethipDeviceAttribute(Device::Attribute attr) {
   // If a unsupported value is passed as a numerical value, fail with a generic
   // message here. This can happen if for example we create an unsupported value
   // from within Mojo.
-  RAISE_ERROR("Attribute not defined for AMD GPU");
+  RETURN_ERROR("Attribute not defined for AMD GPU");
 }
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
@@ -253,8 +253,8 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
   if (compute.isError())
     return compute.takeError();
   if (*compute < MIN_COMPUTE_CAPABILITY) {
-    RAISE_ERROR("MAX only supports HIP architectures " +
-                TWINE(MIN_COMPUTE_CAPABILITY) + " or higher");
+    RETURN_ERROR("MAX only supports HIP architectures " +
+                 TWINE(MIN_COMPUTE_CAPABILITY) + " or higher");
   }
 
   int driverVersionCoded = 0;
@@ -282,7 +282,7 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
     }
   }
 
-  RAISE_ERROR(
+  RETURN_ERROR(
       "MAX doesn't support your current AMD GPU driver. MAX requires a "
       "minimum driver version of " +
       TWINE(MIN_HIP_DRIVER_VERSION_MAJOR) + "." +
@@ -315,7 +315,7 @@ ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const {
 
   const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer);
   if (peerDevice == nullptr) {
-    RAISE_ERROR("Peer is not a HIP device");
+    RETURN_ERROR("Peer is not a HIP device");
   }
 
   int canAccess = 0;
@@ -328,7 +328,7 @@ ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
   const HIPDevice &peerHipDev = HIPDevice::cast(peer);
   if (id() == peerHipDev.id()) {
     // Enabling peer access to self is not allowed.
-    RAISE_ERROR("Cannot enable peer access to self");
+    RETURN_ERROR("Cannot enable peer access to self");
   }
 
   HIP_WITH_DEV_ERR(*this);
@@ -638,7 +638,7 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
   // If we did get an error during setup, skip accessing the device and forward
   // the error.
   if (err.isError()) {
-    RAISE_ERROR(err.getError());
+    RETURN_ERROR(err.getError());
   }
 
   assert(devices != nullptr);
@@ -650,8 +650,8 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
   if (device == nullptr) {
     ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
     if (errDriver) {
-      RAISE_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
-                  errDriver.getError());
+      RETURN_ERROR(llvm::Twine("HIP Driver initialization failed: ") +
+                   errDriver.getError());
     }
     const HIPDriver &driver = *errDriver;
     char hipName[256];
@@ -669,8 +669,8 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
 
     ErrorOr<std::string> errArch = getArchName(hipDevice);
     if (errArch)
-      RAISE_ERROR(llvm::Twine("HIP architecture query failed: ") +
-                  errArch.getError());
+      RETURN_ERROR(llvm::Twine("HIP architecture query failed: ") +
+                   errArch.getError());
 
     // HIP often returns an empty string for the device name, in these cases
     // AMD uses the architecture as the device name.
@@ -798,7 +798,7 @@ ErrorOrSuccess HIPDeviceStream::enqueueFunctionExecDirect(
   const auto &hipDevice = HIPDevice::cast(this->device());
   HIP_WITH_DEV_ERR(hipDevice);
   if (numAttrs > 0)
-    RAISE_ERROR("Function launch attributes not supported;");
+    RETURN_ERROR("Function launch attributes not supported;");
   return hipFunc.hipCallKernelDirect(gridX, gridY, gridZ, blockX, blockY,
                                      blockZ, sharedMemBytes, args, stream_);
 }
@@ -872,7 +872,7 @@ ErrorOrSuccess HIPDeviceFunction::copyToNamedConstant(const char *name,
       &devicePtr, &deviceSize, moduleFunction_->hipModule(), name));
 
   if (deviceSize < byteSize) {
-    RAISE_ERROR("byteSize too big");
+    RETURN_ERROR("byteSize too big");
   }
 
   HIP_CHECK_ERR(hipContext.hipDriver().hipMemcpyHtoDAsync(
@@ -1059,7 +1059,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   const auto &dstCtx = HIPDeviceContext::cast(dst.context());
 
   if (this->device_ != dstCtx.device_) {
-    RAISE_ERROR("device context does not match context of dst");
+    RETURN_ERROR("device context does not match context of dst");
   }
 
   // It is recommended to set the src device to be the current device according
@@ -1073,16 +1073,16 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   assert(src.byteSize() >= dstByteSize);
   if (srcCtx.hipStream() != dstCtx.hipStream()) {
     // Ensure that we are waiting for the source data to be ready.
-    DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
-    ERR_CHECK_ERR(dstCtx.enqueueWaitForEvent(*srcEvent));
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+    RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
 
     HIP_CHECK_ERR(
         driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
 
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).
-    DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
-    ERR_CHECK_ERR(srcCtx.enqueueWaitForEvent(*dstEvent));
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+    RETURN_IF_ERROR(srcCtx.enqueueWaitForEvent(*dstEvent));
   } else {
     HIP_CHECK_ERR(
         driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
@@ -1219,7 +1219,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueFunctionExecDirect(
 
   const auto &hipFunc = HIPDeviceFunction::cast(func);
   if (numAttrs > 0)
-    RAISE_ERROR("Function launch attributes not supported;");
+    RETURN_ERROR("Function launch attributes not supported;");
 
   HIP_WITH_CTX_ERR(*this);
   return hipFunc.hipCallKernelDirect(gridX, gridY, gridZ, blockX, blockY,
@@ -1269,7 +1269,7 @@ ErrorOrSuccess HIPDeviceContext::synchronize() const {
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.hipStreamSynchronize(stream_));
   // Check any pending errors and events after synchronization.
-  CHECK_PENDING_ERR(*this);
+  RETURN_IF_PENDING_ERROR(*this);
   POLL_PENDING_EVENTS(*this);
   return success();
 }
@@ -1318,8 +1318,8 @@ ErrorOrSuccess
 HIPDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
 
-  DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
-  ERR_CHECK_ERR(enqueueWaitFor(*event));
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, ctx.enqueueEvent());
+  RETURN_IF_ERROR(enqueueWaitFor(*event));
   return success();
 }
 
@@ -1361,12 +1361,12 @@ ErrorOrSuccess
 HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   if (device().id() == peer.device().id()) {
     // Enabling peer access to self is not allowed.
-    RAISE_ERROR("Cannot enable peer access to self");
+    RETURN_ERROR("Cannot enable peer access to self");
   }
 
   const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer.device());
   if (peerDevice == nullptr) {
-    RAISE_ERROR("Peer is not a HIP device");
+    RETURN_ERROR("Peer is not a HIP device");
   }
 
   HIP_WITH_CTX_ERR(*this);

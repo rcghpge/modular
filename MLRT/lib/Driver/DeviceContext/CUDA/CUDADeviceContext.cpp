@@ -94,7 +94,7 @@ private:
   } while (0)
 
 #define CUDA_WITH_CTX_ERR(ctx)                                                 \
-  CHECK_PENDING_ERR(ctx);                                                      \
+  RETURN_IF_PENDING_ERROR(ctx);                                                \
   std::optional<CUDAContextScope> __cudaWithContext;                           \
   if (!(ctx).isBoundToCurrentThread()) {                                       \
     __cudaWithContext.emplace((ctx).cudaContext(), (ctx).cudaDriver());        \
@@ -104,7 +104,7 @@ private:
 // This MUST be called during all synchronous API calls like
 // cuStreamSynchronize. To reduce overhead, we omit polling during asynchronous
 // API calls like cuLaunchKernel. The call to cuEventQuery is not free!
-#define POLL_PENDING_EVENTS(ctx) ERR_CHECK_ERR((ctx).pollPendingEvents());
+#define POLL_PENDING_EVENTS(ctx) RETURN_IF_ERROR((ctx).pollPendingEvents());
 
 #define CUDA_WITH_CTX(ctx)                                                     \
   std::optional<CUDAContextScope> __cudaWithContext;                           \
@@ -126,7 +126,7 @@ private:
 #define CHECK_IS_CUDA_ERR(dev)                                                 \
   do {                                                                         \
     if ((dev).api() != Device::cudaAPI) {                                      \
-      RAISE_ERROR("Not a CUDA device.");                                       \
+      RETURN_ERROR("Not a CUDA device.");                                      \
     }                                                                          \
   } while (0)
 
@@ -262,13 +262,13 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
 #endif
 
   if (computeCapability_ < MIN_COMPUTE_CAPABILITY) {
-    RAISE_ERROR("MAX only supports CUDA Pascal architectures or higher");
+    RETURN_ERROR("MAX only supports CUDA Pascal architectures or higher");
   }
 
   int driverVersion = 0;
   CUDA_CHECK_ERR(driver_.cuDriverGetVersion(&driverVersion));
   if (driverVersion < MIN_CUDA_DRIVER_VERSION) {
-    RAISE_ERROR(
+    RETURN_ERROR(
         "MAX doesn't support your current NVIDIA GPU driver. MAX "
         "requires a minimum driver version of " +
         llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version " +
@@ -482,7 +482,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   // If we did get an error during setup, skip accessing the device and forward
   // the error.
   if (err.isError()) {
-    RAISE_ERROR(err.getError());
+    RETURN_ERROR(err.getError());
   }
 
   assert(devices != nullptr);
@@ -494,8 +494,8 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   if (device == nullptr) {
     ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
     if (errDriver) {
-      RAISE_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
-                  errDriver.getError());
+      RETURN_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
+                   errDriver.getError());
     }
     const CUDADriver &driver = *errDriver;
     char name[256];
@@ -606,7 +606,7 @@ CUDADeviceMulticastBuffer::unicastBufferFor(const DeviceContext &ctx) const {
       return ctx.createBufferOwning(it.ptr_, byteSize(), /* owning = */ false);
     }
   }
-  RAISE_ERROR("device is not part of this DeviceMulticastBuffer");
+  RETURN_ERROR("device is not part of this DeviceMulticastBuffer");
 }
 
 size_t CUDADeviceMulticastBuffer::numberOfDevices() const {
@@ -617,11 +617,11 @@ ErrorOr<DeviceMulticastBufferRef>
 CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
                                     size_t byteSize) {
   if (devices.size() < 2)
-    RAISE_ERROR(
+    RETURN_ERROR(
         "At least two DeviceContexts needed for device multicast allocation.");
   for (const auto &it : devices) {
     if (it->api() != CUDADevice::api)
-      RAISE_ERROR("Only CUDADeviceContext supports device multicast access.");
+      RETURN_ERROR("Only CUDADeviceContext supports device multicast access.");
   }
   const CUDADevice &dev0 = CUDADevice::cast(*devices[0]);
   const CUDADriver &driver = dev0.cudaDriver();
@@ -632,7 +632,7 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
       &multicastSupported, CUdevice_attribute::MULTICAST_SUPPORTED,
       dev0.cudaDevice()));
   if (multicastSupported == 0)
-    RAISE_ERROR("Multicast buffer not supported.");
+    RETURN_ERROR("Multicast buffer not supported.");
 
   // Get minimum multicast and allocation granularity, adjust requested size up.
   CUmulticastObjectProp multiProp = {};
@@ -775,7 +775,7 @@ CUDADeviceGraph::~CUDADeviceGraph() {
 ErrorOrSuccess CUDADeviceGraph::replay(const DeviceStream &stream) const {
   const auto *cudaStream = CUDADeviceStream::verified_cast(&stream);
   if (!cudaStream)
-    RAISE_ERROR("cannot replay CUDA graph on non-CUDA stream");
+    RETURN_ERROR("cannot replay CUDA graph on non-CUDA stream");
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV_ERR(cudaDevice);
   CUDA_CHECK_ERR(
@@ -809,7 +809,7 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
 
 ErrorOr<DeviceEventRef> CUDADeviceStream::enqueueEvent() const {
   const auto &cudaDevice = CUDADevice::cast(this->device());
-  DEFINE_OR_RAISE(CUevent, event, cudaDevice.eventCachePop());
+  DEFINE_OR_RETURN_ERROR(CUevent, event, cudaDevice.eventCachePop());
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuEventRecord(event, stream_));
   return CUDADeviceEventRef::create(cudaDevice, event);
 }
@@ -879,9 +879,9 @@ CUstreamCaptureStatus CUDADeviceStream::getCaptureStatus() const {
 ErrorOrSuccess CUDADeviceStream::beginCapture() const {
   auto status = getCaptureStatus();
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_ACTIVE)
-    RAISE_ERROR("stream is already capturing");
+    RETURN_ERROR("stream is already capturing");
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_INVALIDATED)
-    RAISE_ERROR("stream capture was invalidated");
+    RETURN_ERROR("stream capture was invalidated");
 
   const auto &cudaDevice = CUDADevice::cast(this->device());
   CUDA_WITH_DEV_ERR(cudaDevice);
@@ -893,9 +893,9 @@ ErrorOrSuccess CUDADeviceStream::beginCapture() const {
 ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
   CUstreamCaptureStatus status = getCaptureStatus();
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE)
-    RAISE_ERROR("stream is not capturing");
+    RETURN_ERROR("stream is not capturing");
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_INVALIDATED)
-    RAISE_ERROR("stream capture was invalidated");
+    RETURN_ERROR("stream capture was invalidated");
 
   const auto &cudaDevice = CUDADevice::cast(this->device());
   CUDA_WITH_DEV_ERR(cudaDevice);
@@ -904,14 +904,14 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuStreamEndCapture(stream_, &graph));
 
   if (!graph)
-    RAISE_ERROR("cuStreamEndCapture returned null graph");
+    RETURN_ERROR("cuStreamEndCapture returned null graph");
 
   CUgraphExec exec = nullptr;
   CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiate(
       &exec, graph, nullptr, nullptr, 0);
   cudaDevice.cudaDriver().cuGraphDestroy(graph);
   if (res != CUDADriver::SUCCESS)
-    RAISE_ERROR("failed to instantiate CUDA graph");
+    RETURN_ERROR("failed to instantiate CUDA graph");
 
   return CUDADeviceGraphRef::create(cudaDevice, exec);
 }
@@ -983,7 +983,7 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
       &devicePtr, &deviceSize, moduleFunction_->cudaModule(), name));
 
   if (deviceSize < byteSize) {
-    RAISE_ERROR("byteSize too big");
+    RETURN_ERROR("byteSize too big");
   }
 
   CUDA_CHECK_ERR(cudaContext.cudaDriver().cuMemcpyHtoDAsync_v2(
@@ -1169,7 +1169,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   const auto &dstCtx = CUDADeviceContext::cast(dst.context());
 
   if (this->context_ != dstCtx.context_) {
-    RAISE_ERROR("device context does not match context of dst");
+    RETURN_ERROR("device context does not match context of dst");
   }
 
   CUdeviceptr srcPtr = src.ptr();
@@ -1178,8 +1178,8 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   assert(src.byteSize() >= dstByteSize);
   if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
     // Ensure that we are waiting for the source data to be ready.
-    DEFINE_OR_RAISE(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
-    ERR_CHECK_ERR(dstCtx.enqueueWaitForEvent(*srcEvent));
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+    RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
 
     if (srcCtx.cudaContext() != dstCtx.cudaContext()) {
       CUDA_CHECK_ERR(driver_.cuMemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
@@ -1192,8 +1192,8 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 
     // Wait for the copy to complete before proceeding with the source stream
     // (e.g. freeing or overwriting memory).
-    DEFINE_OR_RAISE(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
-    ERR_CHECK_ERR(srcCtx.enqueueWaitForEvent(*dstEvent));
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+    RETURN_IF_ERROR(srcCtx.enqueueWaitForEvent(*dstEvent));
   } else {
     CUDA_CHECK_ERR(
         driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
@@ -1281,11 +1281,11 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
     // level is something other than 0 or 4 (the default).
     if (!llvm::is_contained({0, kDefaultOptimizationLevel},
                             optimizationLevel)) {
-      RAISE_ERROR((("debugLevel of \"full\" requires optimizationLevel of "
-                    "either '0' or '" +
-                    llvm::Twine(kDefaultOptimizationLevel) + "' but got '" +
-                    llvm::Twine(optimizationLevel) + "'"))
-                      .str());
+      RETURN_ERROR((("debugLevel of \"full\" requires optimizationLevel of "
+                     "either '0' or '" +
+                     llvm::Twine(kDefaultOptimizationLevel) + "' but got '" +
+                     llvm::Twine(optimizationLevel) + "'"))
+                       .str());
     }
 
     optionKind.push_back(CUjit_option::JIT_GENERATE_DEBUG_INFO);
@@ -1430,7 +1430,7 @@ ErrorOrSuccess CUDADeviceContext::synchronize() const {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.cuStreamSynchronize(stream_));
   // Check for any errors and events after synchronization.
-  CHECK_PENDING_ERR(*this);
+  RETURN_IF_PENDING_ERROR(*this);
   POLL_PENDING_EVENTS(*this);
   return success();
 }
@@ -1439,7 +1439,8 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
-  DEFINE_OR_RAISE(CUevent, event, CUDADevice::cast(device()).eventCachePop());
+  DEFINE_OR_RETURN_ERROR(CUevent, event,
+                         CUDADevice::cast(device()).eventCachePop());
   CUDA_CHECK_ERR(driver_.cuEventRecord(event, stream_));
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
 }
@@ -1479,8 +1480,8 @@ ErrorOrSuccess
 CUDADeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
 
-  DEFINE_OR_RAISE(DeviceEventRef, event, ctx.enqueueEvent());
-  ERR_CHECK_ERR(enqueueWaitFor(*event));
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, ctx.enqueueEvent());
+  RETURN_IF_ERROR(enqueueWaitFor(*event));
   return success();
 }
 
@@ -1601,12 +1602,12 @@ ErrorOr<std::string> CUDADevice::getFirstArchName() {
 
   nvmlDevice_t device;
   if (nvml->DeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
-    RAISE_ERROR("NVML: Unable to get device index");
+    RETURN_ERROR("NVML: Unable to get device index");
 
   int major, minor;
   if (nvml->DeviceGetCudaComputeCapability(device, &major, &minor) !=
       NVML::SUCCESS)
-    RAISE_ERROR("NVML: Unable to get compute capability");
+    RETURN_ERROR("NVML: Unable to get compute capability");
 
   return cudaCCToSM(major, minor);
 }

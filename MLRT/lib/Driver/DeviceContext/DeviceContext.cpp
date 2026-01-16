@@ -266,16 +266,16 @@ Device::create(StringRef api, int id, int64_t deviceMemoryLimit) {
 
   // Only zero and positive values are allowed as device ids.
   if (id < 0) {
-    RAISE_ERROR("Device id must be positive. Got " + llvm::Twine(id));
+    RETURN_ERROR("Device id must be positive. Got " + llvm::Twine(id));
   }
   // Make sure that we are not requesting a device that is out of range. If
   // numberOfDevices(api) returned a zero, then this is an unsupported API and
   // we let the code below issue the correct error.
   int numDevices = numberOfDevices(api);
   if ((numDevices != 0) && (id >= numDevices)) {
-    RAISE_ERROR("Device(api: " + api + ", id: " + llvm::Twine(id) +
-                ") is not available. Maximum number of supported devices is " +
-                llvm::Twine(numDevices) + ".");
+    RETURN_ERROR("Device(api: " + api + ", id: " + llvm::Twine(id) +
+                 ") is not available. Maximum number of supported devices is " +
+                 llvm::Twine(numDevices) + ".");
   }
 
   // TODO(iposva): Implement dynamic registration mechanism.
@@ -460,10 +460,10 @@ MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
   if ((context().device().api() != ctx.device().api()) ||
       (context().device().id() != ctx.device().id())) {
-    RAISE_ERROR("cannot reassign a buffer between different devices");
+    RETURN_ERROR("cannot reassign a buffer between different devices");
   }
-  DEFINE_OR_RAISE(DeviceEventRef, srcEvent, context().enqueueEvent());
-  ERR_CHECK_ERR(ctx.enqueueWaitForEvent(*srcEvent));
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, context().enqueueEvent());
+  RETURN_IF_ERROR(ctx.enqueueWaitForEvent(*srcEvent));
 
   context_ = DeviceContextRef::copy(&ctx);
   return success();
@@ -475,7 +475,7 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
   size_t origByteSize = this->byteSize();
 
   if ((byteSize > origByteSize) || (origByteSize - byteSize < byteOffset)) {
-    RAISE_ERROR("offset, len and elem_size are out of range");
+    RETURN_ERROR("offset, len and elem_size are out of range");
   }
   return DeviceBufferRef::take(new DeviceBuffer(
       context(), *this, origPtr + byteOffset, byteSize, isHost()));
@@ -489,12 +489,12 @@ DeviceBuffer::synchronize(void *external_stream) const {
 
   // Synchronization with an external stream
   // Create an event on the buffer's stream
-  DEFINE_OR_RAISE(DeviceEventRef, event, context_->enqueueEvent());
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, context_->enqueueEvent());
 
   // Enqueue a wait for that event on the external stream
-  DEFINE_OR_RAISE(DeviceStreamRef, extStream,
-                  context_->createExternalStream(external_stream));
-  ERR_CHECK_ERR(extStream->enqueueWaitForEvent(*event));
+  DEFINE_OR_RETURN_ERROR(DeviceStreamRef, extStream,
+                         context_->createExternalStream(external_stream));
+  RETURN_IF_ERROR(extStream->enqueueWaitForEvent(*event));
 
   return success();
 }
@@ -516,31 +516,31 @@ DeviceMulticastBuffer::allocate(const std::vector<DeviceContextRef> &contexts,
   for (const auto &ctx : contexts) {
     if (!devices.empty()) {
       if (devices[0]->api() != ctx->device().api()) {
-        RAISE_ERROR("All contexts need to use the same API.");
+        RETURN_ERROR("All contexts need to use the same API.");
       }
     }
     // Check for duplicate entries.
     for (const auto &dev : devices) {
       if (dev->id() == ctx->device().id()) {
-        RAISE_ERROR("Duplicate context on a device.");
+        RETURN_ERROR("Duplicate context on a device.");
       }
     }
     // Check that multicast is supported on this particular device.
-    DEFINE_OR_RAISE(bool, multicastSupported,
-                    ctx->device().supportsMulticast());
+    DEFINE_OR_RETURN_ERROR(bool, multicastSupported,
+                           ctx->device().supportsMulticast());
     if (!multicastSupported)
-      RAISE_ERROR("Multicast buffer not supported.");
+      RETURN_ERROR("Multicast buffer not supported.");
 
     // Add to the set of devices participating in this multicast allocation.
     devices.emplace_back(&ctx->device());
   }
   if (devices.size() < 2) {
-    RAISE_ERROR("At least two devices necessary.");
+    RETURN_ERROR("At least two devices necessary.");
   }
   if (devices[0]->api() == CUDADevice::api) {
     return CUDADeviceMulticastBuffer::allocate(devices, byteSize);
   }
-  RAISE_ERROR("Multicast only supported on CUDA devices.");
+  RETURN_ERROR("Multicast only supported on CUDA devices.");
 }
 
 //
@@ -562,11 +562,11 @@ DeviceStream::DeviceStream(const DeviceContext &context)
 const Device &DeviceStream::device() const { return ctx_->device(); }
 
 ErrorOrSuccess DeviceStream::beginCapture() const {
-  RAISE_ERROR("graph capture not supported on this device");
+  RETURN_ERROR("graph capture not supported on this device");
 }
 
 ErrorOr<DeviceGraphRef> DeviceStream::endCapture() const {
-  RAISE_ERROR("graph capture not supported on this device");
+  RETURN_ERROR("graph capture not supported on this device");
 }
 
 //
@@ -895,7 +895,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
   if (src.byteSize() < dst.byteSize()) {
-    RAISE_ERROR("not enough data in src");
+    RETURN_ERROR("not enough data in src");
   }
   if (src.isHost() || (srcApi == Device::cpuAPI)) {
     return dst.context().enqueueCopyToDevice(dst, src.ptr());
@@ -910,7 +910,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
-  DEFINE_OR_RAISE(DeviceEventRef, event, this->enqueueEvent());
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, this->enqueueEvent());
   PendingEventHandler *eventHandler = new PendingEventHandler(
       DeviceContextRef::copy(this), std::move(event), std::move(handler));
   setPendingEventHandler(eventHandler);
@@ -1199,7 +1199,7 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
 }
 
 ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
-  RAISE_ERROR("enablePeerAccess not implemented for this device API" +
-              Twine(peer.api()));
+  RETURN_ERROR("enablePeerAccess not implemented for this device API" +
+               Twine(peer.api()));
 }
 } // namespace M::Driver
