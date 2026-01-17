@@ -385,20 +385,22 @@ ErrorOr<DeviceContextRef> CUDADevice::createContext() const {
 }
 
 ErrorOr<int> CUDADevice::numberOfGPUs() {
-  static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
-    ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
+  static ErrorOr<unsigned int> errOrCount = []() -> ErrorOr<int> {
+    ErrorOr<const NVML &> errDriver = NVML::get();
     if (errDriver.isError())
       return errDriver.takeError();
 
-    int result;
-    CUDA_CHECK_ERR((*errDriver).cuDeviceGetCount(&result));
+    unsigned int result;
+    if (errDriver->nvmlDeviceGetCount_v2(&result) != NVML::SUCCESS)
+      RETURN_ERROR("NVML: Unable to get device count");
     return result;
   }();
 
   if (errOrCount.isError()) {
     return errOrCount.copy();
   }
-  int numGPUs = *errOrCount;
+
+  int numGPUs = static_cast<int>(*errOrCount);
 
   // Users assume we use CUDA under the hood
   std::optional<std::string> envOr =
@@ -1601,11 +1603,11 @@ ErrorOr<std::string> CUDADevice::getFirstArchName() {
     return nvml.takeError();
 
   nvmlDevice_t device;
-  if (nvml->DeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
+  if (nvml->nvmlDeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get device index");
 
   int major, minor;
-  if (nvml->DeviceGetCudaComputeCapability(device, &major, &minor) !=
+  if (nvml->nvmlDeviceGetCudaComputeCapability(device, &major, &minor) !=
       NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get compute capability");
 
