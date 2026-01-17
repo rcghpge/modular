@@ -1042,8 +1042,7 @@ HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
 
   HIP_WITH_CTX_ERR(*this);
 
-  hipDeviceptr_t srcPtr = src;
-  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
+  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, src, byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }
