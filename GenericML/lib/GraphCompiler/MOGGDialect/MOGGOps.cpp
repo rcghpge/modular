@@ -1210,14 +1210,16 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
     state.mojoConstantResources.clear();
 
     bool errOccurred = false;
+    static const MOGG::MojoValue vMutAnyOrigin =
+        MOGG::MojoValue(MOGG::HardcodedMojoSymbols::comptime_MutAnyOrigin);
     static const MOGG::MojoValue vUnsafePointer =
         MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
     static const MOGG::MojoValue vOpaquePointer =
         MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
     state.builder.fn(
         getSymNameAttr().strref(), {},
-        {MOGG::NamedMojoDef(
-             "arg", vUnsafePointer[{MojoValue("mut=True"), vOpaquePointer}]),
+        {MOGG::NamedMojoDef("arg",
+                            vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}]),
          MOGG::NamedMojoDef("arg", vOpaquePointer)},
         std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
           state.currentFunctionBody = functionBody;
