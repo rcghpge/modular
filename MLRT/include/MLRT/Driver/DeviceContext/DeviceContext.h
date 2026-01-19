@@ -11,6 +11,7 @@
 #ifndef MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 #define MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 
+#include "ErrorMacros.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
@@ -464,17 +465,23 @@ public:
                                          bool owning) const;
 
   // DeviceBuffer copies.
-  virtual ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
-                                             const void *src) const = 0;
+  virtual ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
+                                             size_t byteSize) const = 0;
+  inline ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
+                                            const void *src) const {
+    if (dst.context().device().api() != device().api())
+      RETURN_ERROR("API mismatch between buffer and context");
+    return enqueueCopyToDevice(dst.ptr(), src, dst.byteSize());
+  }
 
-  virtual ErrorOrSuccess
-  enqueueCopyFromDevice(void *dst, const DeviceBuffer &src) const = 0;
-
-  virtual ErrorOrSuccess enqueueCopyToDeviceSized(void *dst, void *src,
-                                                  size_t byteSize) const = 0;
-
-  virtual ErrorOrSuccess enqueueCopyFromDeviceSized(void *dst, void *src,
-                                                    size_t byteSize) const = 0;
+  virtual ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
+                                               size_t byteSize) const = 0;
+  inline ErrorOrSuccess enqueueCopyFromDevice(void *dst,
+                                              const DeviceBuffer &src) const {
+    if (src.context().device().api() != device().api())
+      RETURN_ERROR("API mismatch between buffer and context");
+    return enqueueCopyFromDevice(dst, src.ptr(), src.byteSize());
+  }
 
   ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
                                            const DeviceBuffer &src) const;

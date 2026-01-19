@@ -11,8 +11,6 @@
 #ifndef MLRT_DRIVER_DEVICECONTEXT_ERRORMACROS_H
 #define MLRT_DRIVER_DEVICECONTEXT_ERRORMACROS_H
 
-#include "MLRT/Driver/DeviceContext/DeviceContext.h"
-
 /// Return a formatted error with file/line/function context.
 /// Usage: RETURN_ERROR("Something failed");
 #define RETURN_ERROR(msg)                                                      \

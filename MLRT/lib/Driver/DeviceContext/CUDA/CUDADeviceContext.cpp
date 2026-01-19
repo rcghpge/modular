@@ -1102,43 +1102,11 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
 
 void *CUDADeviceContext::driverContext() const { return cudaContext(); }
 
-ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                                      const void *src) const {
+ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
+                                                      const void *src,
+                                                      size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
-
-  CHECK_IS_CUDA_ERR(dst.context().device());
-  CUDA_WITH_CTX_ERR(*this);
-
-  CUdeviceptr dstPtr = dst.ptr();
-  size_t byteSize = dst.byteSize();
-  CUDA_CHECK_ERR(driver_.cuMemcpyHtoDAsync_v2(dstPtr, src, byteSize, stream_));
-  MAYBE_SYNC(*this);
-  return success();
-}
-
-ErrorOrSuccess
-CUDADeviceContext::enqueueCopyFromDevice(void *dst,
-                                         const DeviceBuffer &src) const {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyFromDevice",
-                       TRACY_COLOR_PURPLE);
-
-  CHECK_IS_CUDA_ERR(src.context().device());
-  CUDA_WITH_CTX_ERR(*this);
-
-  CUdeviceptr srcPtr = src.ptr();
-  size_t byteSize = src.byteSize();
-  CUDA_CHECK_ERR(driver_.cuMemcpyDtoHAsync_v2(dst, srcPtr, byteSize, stream_));
-  MAYBE_SYNC(*this);
-  return success();
-}
-
-ErrorOrSuccess
-CUDADeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
-                                            size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyToDeviceSized",
-                       TRACY_COLOR_PURPLE);
-
   CUDA_WITH_CTX_ERR(*this);
 
   CUDA_CHECK_ERR(driver_.cuMemcpyHtoDAsync_v2(dst, src, byteSize, stream_));
@@ -1146,15 +1114,15 @@ CUDADeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
   return success();
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
-                                              size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyFromDeviceSized",
+ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
+                                                        const void *src,
+                                                        size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
-
   CUDA_WITH_CTX_ERR(*this);
 
-  CUDA_CHECK_ERR(driver_.cuMemcpyDtoHAsync_v2(dst, src, byteSize, stream_));
+  CUDA_CHECK_ERR(driver_.cuMemcpyDtoHAsync_v2(dst, const_cast<void *>(src),
+                                              byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }

@@ -990,43 +990,10 @@ void *HIPDeviceContext::driverContext() const {
   return hipDeviceToPtr(hipDevice());
 }
 
-ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                                     const void *src) const {
+ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
+                                                     size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
-
-  CHECK_IS_HIP_ERR(dst.context().device());
-  HIP_WITH_CTX_ERR(*this);
-
-  hipDeviceptr_t dstPtr = dst.ptr();
-  size_t byteSize = dst.byteSize();
-  HIP_CHECK_ERR(driver_.hipMemcpyHtoDAsync(dstPtr, src, byteSize, stream_));
-  MAYBE_SYNC(*this);
-  return success();
-}
-
-ErrorOrSuccess
-HIPDeviceContext::enqueueCopyFromDevice(void *dst,
-                                        const DeviceBuffer &src) const {
-  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyFromDevice",
-                       TRACY_COLOR_PURPLE);
-
-  CHECK_IS_HIP_ERR(src.context().device());
-  HIP_WITH_CTX_ERR(*this);
-
-  hipDeviceptr_t srcPtr = src.ptr();
-  size_t byteSize = src.byteSize();
-  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, srcPtr, byteSize, stream_));
-  MAYBE_SYNC(*this);
-  return success();
-}
-
-ErrorOrSuccess
-HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
-                                           size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyToDeviceSized",
-                       TRACY_COLOR_PURPLE);
-
   HIP_WITH_CTX_ERR(*this);
 
   HIP_CHECK_ERR(driver_.hipMemcpyHtoDAsync(dst, src, byteSize, stream_));
@@ -1034,15 +1001,15 @@ HIPDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
   return success();
 }
 
-ErrorOrSuccess
-HIPDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
-                                             size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyFromDeviceSized",
+ErrorOrSuccess HIPDeviceContext::enqueueCopyFromDevice(void *dst,
+                                                       const void *src,
+                                                       size_t byteSize) const {
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
-
   HIP_WITH_CTX_ERR(*this);
 
-  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, src, byteSize, stream_));
+  HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, const_cast<void *>(src),
+                                           byteSize, stream_));
   MAYBE_SYNC(*this);
   return success();
 }

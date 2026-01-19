@@ -1158,13 +1158,13 @@ MemoryManagerFreeList::validateRedzones(void *wrappedPtr,
     underflowRedzoneStorage.resize(redzoneSize_);
     overflowRedzoneStorage.resize(redzoneSize_);
 
-    if (auto result = ctx_->enqueueCopyFromDeviceSized(
+    if (auto result = ctx_->enqueueCopyFromDevice(
             underflowRedzoneStorage.data(), underflowRedzonePtr, redzoneSize_);
         result.isError())
       return Error("failed reading underflow redzone: " +
                    Twine(result.getError()));
 
-    if (auto result = ctx_->enqueueCopyFromDeviceSized(
+    if (auto result = ctx_->enqueueCopyFromDevice(
             overflowRedzoneStorage.data(), overflowRedzonePtr, redzoneSize_);
         result.isError())
       return Error("failed reading overflow redzone: " +

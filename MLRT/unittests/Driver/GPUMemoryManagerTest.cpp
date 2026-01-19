@@ -502,7 +502,7 @@ TEST_F(GPUMemoryManagerTest, BufferUnderflowTest) {
   ptr -= 10;
 
   uint8_t dead[2] = {0xDE, 0xAD};
-  EXPECT_NO_ERR(ctx->enqueueCopyToDeviceSized(ptr, dead, sizeof(dead)));
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(ptr, dead, sizeof(dead)));
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Free the pointer which results in a std::abort() on buffer underflow
@@ -524,7 +524,7 @@ TEST_F(GPUMemoryManagerTest, BufferOverflowTest) {
   ptr += size + 9;
 
   uint8_t dead[2] = {0xDE, 0xAD};
-  EXPECT_NO_ERR(ctx->enqueueCopyToDeviceSized(ptr, dead, sizeof(dead)));
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(ptr, dead, sizeof(dead)));
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Free the pointer which results in a std::abort() on buffer overflow

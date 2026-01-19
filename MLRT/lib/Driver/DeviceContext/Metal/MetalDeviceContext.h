@@ -102,14 +102,10 @@ public:
                      NS::SharedPtr<MTL::CommandQueue> commandQueue);
 
   // DeviceBuffer copies.
-  ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
-                                     const void *src) const override;
-  ErrorOrSuccess enqueueCopyFromDevice(void *dst,
-                                       const DeviceBuffer &src) const override;
-  ErrorOrSuccess enqueueCopyToDeviceSized(void *dst, void *src,
-                                          size_t byteSize) const override;
-  ErrorOrSuccess enqueueCopyFromDeviceSized(void *dst, void *src,
-                                            size_t byteSize) const override;
+  ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
+                                     size_t byteSize) const override;
+  ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
+                                       size_t byteSize) const override;
   ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
                              const DeviceBuffer &src) const override;
 

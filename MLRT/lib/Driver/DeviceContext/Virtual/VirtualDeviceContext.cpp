@@ -223,8 +223,8 @@ VirtualDeviceContext::VirtualDeviceContext(const VirtualDevice &device)
 VirtualDeviceContext::~VirtualDeviceContext() = default;
 
 ErrorOrSuccess
-VirtualDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                          const void *src) const {
+VirtualDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
+                                          size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::enqueueCopyToDevice not implemented");
@@ -232,32 +232,12 @@ VirtualDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess
-VirtualDeviceContext::enqueueCopyFromDevice(void *dst,
-                                            const DeviceBuffer &src) const {
+VirtualDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
+                                            size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
   assert(false &&
          "VirtualDeviceContext::enqueueCopyFromDevice not implemented");
-  RETURN_ERROR("VirtualDevice does not support memory operations");
-}
-
-ErrorOrSuccess
-VirtualDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
-                                                 size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyFromDeviceSized",
-                       TRACY_COLOR_PURPLE);
-  assert(false &&
-         "VirtualDeviceContext::enqueueCopyFromDeviceSized not implemented");
-  RETURN_ERROR("VirtualDevice does not support memory operations");
-}
-
-ErrorOrSuccess
-VirtualDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
-                                               size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyToDeviceSized",
-                       TRACY_COLOR_PURPLE);
-  assert(false &&
-         "VirtualDeviceContext::enqueueCopyToDeviceSized not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 

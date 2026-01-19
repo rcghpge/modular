@@ -220,44 +220,20 @@ ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
 
 void *CpuDeviceContext::driverContext() const { return nullptr; }
 
-ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                                     const void *src) const {
+ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
+                                                     size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
-  CHECK_IS_CPU_ERR(dst.context().device());
-  void *dstPtr = dst.ptr();
-  memcpy(dstPtr, src, dst.byteSize());
+  memcpy(dst, src, byteSize);
   return success();
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enqueueCopyFromDevice(void *dst,
-                                        const DeviceBuffer &src) const {
+ErrorOrSuccess CpuDeviceContext::enqueueCopyFromDevice(void *dst,
+                                                       const void *src,
+                                                       size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
-  CHECK_IS_CPU_ERR(src.context().device());
-  void *srcPtr = src.ptr();
-  memcpy(dst, srcPtr, src.byteSize());
-  return success();
-}
-
-ErrorOrSuccess
-CpuDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
-                                             size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyFromDeviceSized",
-                       TRACY_COLOR_PURPLE);
-  void *srcPtr = src;
-  memcpy(dst, srcPtr, byteSize);
-  return success();
-}
-
-ErrorOrSuccess
-CpuDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
-                                           size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyToDeviceSized",
-                       TRACY_COLOR_PURPLE);
-  void *dstPtr = dst;
-  memcpy(dstPtr, src, byteSize);
+  memcpy(dst, src, byteSize);
   return success();
 }
 

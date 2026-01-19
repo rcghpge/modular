@@ -476,8 +476,9 @@ MetalDeviceContext::MetalDeviceContext(
     const MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
     : DeviceContext(device), commandQueue_(commandQueue) {}
 
-ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
-                                                       const void *src) const {
+ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
+                                                       const void *src,
+                                                       size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
 
@@ -487,14 +488,12 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
   if (src == nullptr)
     RETURN_ERROR("Source pointer is null");
 
-  size_t byteSize = dst.byteSize();
   if (byteSize == 0)
     return success();
 
   // For host destination buffers, we can do a direct memcpy
-  if (dst.isHost()) {
+  if (!isMetalBuffer(dst)) {
     // Host buffer - do direct memcpy
-    void *dstPtr = dst.ptr();
 
     // create a empty command buffer
     MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
@@ -504,7 +503,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
     // add completion handler to the command buffer
 
     cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-      std::memcpy(dstPtr, src, byteSize);
+      std::memcpy(dst, src, byteSize);
     });
 
     cmdBuffer->commit();
@@ -514,7 +513,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
   }
 
   // Get destination Metal buffer for device buffers
-  MTL::Buffer *dstBuf = getMetalBuffer(dst.ptr());
+  MTL::Buffer *dstBuf = getMetalBuffer(dst);
   if (dstBuf == nullptr)
     RETURN_ERROR("Invalid Metal buffer pointer");
 
@@ -561,8 +560,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(const DeviceBuffer &dst,
 }
 
 ErrorOrSuccess
-MetalDeviceContext::enqueueCopyFromDevice(void *dst,
-                                          const DeviceBuffer &src) const {
+MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
+                                          size_t byteSize) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
 
@@ -570,19 +569,14 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst,
 
   if (dst == nullptr)
     RETURN_ERROR("Destination pointer cannot be null");
-  if (src.isHost())
-    RETURN_ERROR("Source buffer must be a device buffer");
-  if (src.context().device().api() != Device::metalAPI)
-    RETURN_ERROR("Source buffer must be a Metal buffer");
 
-  size_t byteSize = src.byteSize();
   if (byteSize == 0)
-    return success();
+    return success(); // no-op
 
   // Get source Metal buffer
-  MTL::Buffer *srcBuf = getMetalBuffer(src.ptr());
+  MTL::Buffer *srcBuf = getMetalBuffer(src);
   if (srcBuf == nullptr)
-    RETURN_ERROR("Source buffer is null");
+    RETURN_ERROR("Invalid source buffer");
 
   // When we have 2 Device buffers we can do an async copy via
   // enqueueMetalCopy() similar to what the CUDA implementation does
@@ -618,22 +612,6 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst,
   cmdBuffer->waitUntilCompleted();
 
   return success();
-}
-
-ErrorOrSuccess
-MetalDeviceContext::enqueueCopyToDeviceSized(void *dst, void *src,
-                                             size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDeviceSized",
-                       TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented for Metal devices");
-}
-
-ErrorOrSuccess
-MetalDeviceContext::enqueueCopyFromDeviceSized(void *dst, void *src,
-                                               size_t byteSize) const {
-  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDeviceSized",
-                       TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented for Metal devices");
 }
 
 ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,

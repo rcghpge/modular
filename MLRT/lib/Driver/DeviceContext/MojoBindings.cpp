@@ -355,7 +355,7 @@ AsyncRT_DeviceContext_HtoD_async_sized(const DeviceContext *ctx, void *dst,
                                        void *src, size_t size) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_HtoD_async_sized",
                        TRACY_COLOR_GRAY);
-  return checkSuccess(ctx->enqueueCopyToDeviceSized(dst, src, size));
+  return checkSuccess(ctx->enqueueCopyToDevice(dst, src, size));
 }
 
 MODULAR_EXPORT const char *
@@ -363,7 +363,7 @@ AsyncRT_DeviceContext_DtoH_async_sized(const DeviceContext *ctx, void *dst,
                                        void *src, size_t size) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_DtoH_async_sized",
                        TRACY_COLOR_GRAY);
-  return checkSuccess(ctx->enqueueCopyFromDeviceSized(dst, src, size));
+  return checkSuccess(ctx->enqueueCopyFromDevice(dst, src, size));
 }
 
 MODULAR_EXPORT const char *
