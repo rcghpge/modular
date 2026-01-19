@@ -486,8 +486,15 @@ public:
   ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
                                            const DeviceBuffer &src) const;
 
-  virtual ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+  virtual ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize,
+                                          uint64_t val,
                                           size_t valSize) const = 0;
+  inline ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+                                         size_t valSize) const {
+    if (dst.context().device().api() != device().api())
+      RETURN_ERROR("API mismatch between buffer and context");
+    return enqueueSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
+  }
 
   ErrorOr<std::pair<Driver::DeviceBufferRef,
                     std::optional<llvm::sys::fs::mapped_file_region>>>

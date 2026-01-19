@@ -249,7 +249,8 @@ VirtualDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
-ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(void *dst,
+                                                      size_t byteSize,
                                                       uint64_t val,
                                                       size_t valSize) const {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueSetMemory",

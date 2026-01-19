@@ -637,7 +637,7 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   return enqueueMetalCopy(srcBuf, dstBuf, dst.byteSize());
 }
 
-ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                     uint64_t val,
                                                     size_t valSize) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
@@ -645,16 +645,11 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
 
   ensureThreadlocalAutoreleasePoolExists();
 
-  // 1) Validation
-  if (dst.context().device().api() != Device::metalAPI)
-    RETURN_ERROR("Destination buffer must be a Metal buffer");
-
-  size_t byteSize = dst.byteSize();
   if (byteSize == 0)
     return success(); // no-op
 
   // Get the Metal buffer for the destination
-  MTL::Buffer *dstBuf = getMetalBuffer(dst.ptr());
+  MTL::Buffer *dstBuf = getMetalBuffer(dst);
   if (dstBuf == nullptr)
     RETURN_ERROR("Destination buffer is null");
 

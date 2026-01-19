@@ -1057,31 +1057,28 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                   uint64_t val,
                                                   size_t valSize) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
 
-  CHECK_IS_HIP_ERR(dst.context().device());
-  void *ptr = dst.ptr();
-  size_t byteSize = dst.byteSize();
   if (valSize == 1) {
-    HIP_CHECK_ERR(driver_.hipMemsetD8Async(ptr, static_cast<uint8_t>(val),
+    HIP_CHECK_ERR(driver_.hipMemsetD8Async(dst, static_cast<uint8_t>(val),
                                            byteSize, stream_));
   } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 1;
-    HIP_CHECK_ERR(driver_.hipMemsetD16Async(ptr, static_cast<uint16_t>(val),
+    HIP_CHECK_ERR(driver_.hipMemsetD16Async(dst, static_cast<uint16_t>(val),
                                             len, stream_));
   } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
       return Error("byteSize of buffer is misaliged");
     }
     size_t len = byteSize >> 2;
-    HIP_CHECK_ERR(driver_.hipMemsetD32Async(ptr, static_cast<uint32_t>(val),
+    HIP_CHECK_ERR(driver_.hipMemsetD32Async(dst, static_cast<uint32_t>(val),
                                             len, stream_));
   } else {
     if (valSize != 8) {
@@ -1094,15 +1091,15 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
     uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
     if (hiBits == loBits) {
       size_t len = byteSize >> 2; // Divide by 4 as we are using 32-bit memset.
-      HIP_CHECK_ERR(driver_.hipMemsetD32Async(ptr, loBits, len, stream_));
+      HIP_CHECK_ERR(driver_.hipMemsetD32Async(dst, loBits, len, stream_));
     } else {
       size_t len = byteSize >> 3;
       // For each 64-bit element, set the low and high 32-bit parts separately
       for (size_t i = 0; i < len; ++i) {
         void *loPtr =
-            reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) + i * 8);
+            reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(dst) + i * 8);
         void *hiPtr = reinterpret_cast<void *>(
-            reinterpret_cast<uintptr_t>(ptr) + i * 8 + 4);
+            reinterpret_cast<uintptr_t>(dst) + i * 8 + 4);
         HIP_CHECK_ERR(driver_.hipMemsetD32Async(loPtr, loBits, 1, stream_));
         HIP_CHECK_ERR(driver_.hipMemsetD32Async(hiPtr, hiBits, 1, stream_));
       }

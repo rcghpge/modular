@@ -249,40 +249,36 @@ ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                   uint64_t val,
                                                   size_t valSize) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
-  CHECK_IS_CPU_ERR(dst.context().device());
 
   if (valSize > sizeof(uint64_t))
     return Error("unsupported val size");
 
-  size_t byteSize = dst.byteSize();
-
   if (valSize != 1 && (byteSize & (1 << valSize) - 1))
     return Error("byteSize of buffer is misaligned");
 
-  void *ptr = dst.ptr();
   size_t len = byteSize / valSize;
 
   switch (valSize) {
   case 1: {
     uint8_t u8Val = static_cast<uint8_t>(val);
-    return M::fillHomogeneous(ptr, len, DType::ui8, &u8Val);
+    return M::fillHomogeneous(dst, len, DType::ui8, &u8Val);
   }
   case 2: {
     uint16_t ui16Val = static_cast<uint16_t>(val);
-    return M::fillHomogeneous(ptr, len, DType::ui16, &ui16Val);
+    return M::fillHomogeneous(dst, len, DType::ui16, &ui16Val);
   }
   case 4: {
     uint32_t ui32Val = static_cast<uint32_t>(val);
-    return M::fillHomogeneous(ptr, len, DType::ui32, &ui32Val);
+    return M::fillHomogeneous(dst, len, DType::ui32, &ui32Val);
   }
   case 8: {
     uint64_t ui64Val = static_cast<uint64_t>(val);
-    return M::fillHomogeneous(ptr, len, DType::ui64, &ui64Val);
+    return M::fillHomogeneous(dst, len, DType::ui64, &ui64Val);
   }
   default:
     llvm_unreachable("unsupported val size");

@@ -910,16 +910,13 @@ ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
     std::memset(underflowRedzone, redzonePattern_, redzoneSize_);
     std::memset(overflowRedzone, redzonePattern_, redzoneSize_);
   } else {
-    DeviceBufferRef underflowBuf = ctx_->createBufferOwning(
-        underflowRedzone, redzoneSize_, /*owning=*/false);
-    if (auto result = ctx_->enqueueSetMemory(*underflowBuf, redzonePattern_, 1);
+    if (auto result = ctx_->enqueueSetMemory(underflowRedzone, redzoneSize_,
+                                             redzonePattern_, 1);
         result.isError())
       return Error("failed writing underflow redzone pattern: " +
                    Twine(result.getError()));
-
-    DeviceBufferRef overflowBuf = ctx_->createBufferOwning(
-        overflowRedzone, redzoneSize_, /*owning=*/false);
-    if (auto result = ctx_->enqueueSetMemory(*overflowBuf, redzonePattern_, 1);
+    if (auto result = ctx_->enqueueSetMemory(overflowRedzone, redzoneSize_,
+                                             redzonePattern_, 1);
         result.isError())
       return Error("failed writing overflow redzone pattern: " +
                    Twine(result.getError()));

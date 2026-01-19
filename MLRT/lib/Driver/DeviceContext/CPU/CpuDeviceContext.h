@@ -122,7 +122,7 @@ public:
   ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
                              const DeviceBuffer &src) const override;
 
-  ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+  ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) const override;
 
   // DeviceFunction loading and execution.
