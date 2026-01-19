@@ -19,6 +19,9 @@
 #include <sstream>
 #include <thread>
 
+#define NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE 32
+#define NVML_DEVICE_PCI_BUS_ID_BUFFER_V2_SIZE 16
+
 namespace M::Driver {
 
 using nvmlDevice_t = struct nvmlDevice_st *;
@@ -31,6 +34,16 @@ using nvmlDevice_t = struct nvmlDevice_st *;
            << ": NVML::" << __FUNCTION__ << "\n";                              \
     llvm::errs() << buffer.str();                                              \
   }
+
+struct nvmlPciInfo_t {
+  char busIdLegacy[NVML_DEVICE_PCI_BUS_ID_BUFFER_V2_SIZE];
+  unsigned int domain;
+  unsigned int bus;
+  unsigned int device;
+  unsigned int pciDeviceId;
+  unsigned int pciSubSystemId;
+  char busId[NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE];
+};
 
 class NVML {
 public:

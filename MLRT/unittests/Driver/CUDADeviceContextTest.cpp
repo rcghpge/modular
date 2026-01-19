@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/lib/Driver/DeviceContext/CUDA/NVML.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -728,6 +729,26 @@ $L__BB0_2:
       std::cerr << "------------\n";
     }
   }
+}
+
+TEST_F(CUDADeviceContextTest, NVMLGetPciInfo) {
+  // Get NVML instance
+  ErrorOr<const NVML &> nvmlOr = NVML::get();
+  ASSERT_FALSE(nvmlOr.isError()) << nvmlOr.getError();
+  const NVML &nvml = *nvmlOr;
+
+  // Get device handle for GPU 0
+  nvmlDevice_t device;
+  ASSERT_EQ(nvml.nvmlDeviceGetHandleByIndex(0, &device), NVML::SUCCESS);
+
+  // Retrieve PCI info
+  nvmlPciInfo_t pciInfo;
+  ASSERT_EQ(nvml.nvmlDeviceGetPciInfo_v3(device, &pciInfo), NVML::SUCCESS);
+
+  // Validate PCI info fields
+  EXPECT_GT(strlen(pciInfo.busId), 0u);
+  EXPECT_LE(pciInfo.bus, 0xffu);
+  EXPECT_LE(pciInfo.device, 31u);
 }
 
 } // namespace
