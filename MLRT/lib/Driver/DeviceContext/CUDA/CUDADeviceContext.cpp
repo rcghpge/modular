@@ -359,6 +359,21 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
   return value;
 }
 
+ErrorOr<std::string> CUDADevice::getPciBusId() const {
+  ErrorOr<const NVML &> driverOrError = NVML::get();
+  if (driverOrError.isError())
+    return driverOrError.takeError();
+
+  nvmlDevice_t device;
+  if (driverOrError->nvmlDeviceGetHandleByIndex(id(), &device) != NVML::SUCCESS)
+    RETURN_ERROR("NVML: Unable to get device index");
+
+  nvmlPciInfo_t pciInfo;
+  if (driverOrError->nvmlDeviceGetPciInfo_v3(device, &pciInfo) != NVML::SUCCESS)
+    RETURN_ERROR("NVML: Unable to get PCI info");
+  return std::string(pciInfo.busId);
+}
+
 ErrorOr<bool> CUDADevice::supportsMulticast() const {
   // Check if multicast memory is supported.
   int multicastSupported = 0;

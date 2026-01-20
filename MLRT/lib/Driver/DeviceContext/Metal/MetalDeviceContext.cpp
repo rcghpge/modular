@@ -297,6 +297,10 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
 #undef ATTRIBUTE_UNSUPPORTED
 }
 
+ErrorOr<std::string> MetalDevice::getPciBusId() const {
+  RETURN_ERROR("PCI bus address not available for Metal devices");
+}
+
 int MetalDevice::deviceCount() const { return 1; }
 
 ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,

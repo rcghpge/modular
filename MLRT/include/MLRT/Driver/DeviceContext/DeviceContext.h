@@ -161,6 +161,8 @@ public:
 
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
+  virtual ErrorOr<std::string> getPciBusId() const = 0;
+
   virtual ErrorOr<bool> supportsMulticast() const;
 
   virtual int deviceCount() const = 0;

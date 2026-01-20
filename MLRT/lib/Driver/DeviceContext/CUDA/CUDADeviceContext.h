@@ -82,6 +82,8 @@ public:
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
+  ErrorOr<std::string> getPciBusId() const override;
+
   ErrorOr<bool> supportsMulticast() const override;
 
   int deviceCount() const override;

@@ -692,4 +692,21 @@ TEST_F(GPUDeviceContextTest, BasicEvent) {
   delete[] checkData;
 }
 
+TEST_F(GPUDeviceContextTest, GetPciBusId) {
+  ASSIGN_NO_ERR(DeviceRef, dev, Device::create(Device::gpuAPI));
+
+  // Querying the PCI bus ID is only supported for CUDA and HIP devices.
+  if (dev->api() == Device::cudaAPI || dev->api() == Device::hipAPI) {
+
+    // Check that the PCI bus ID is not empty and contains colons and a dot.
+    ASSIGN_NO_ERR(std::string, busId, dev->getPciBusId());
+    EXPECT_FALSE(busId.empty());
+    EXPECT_NE(busId.find(':'), std::string::npos);
+    EXPECT_NE(busId.find('.'), std::string::npos);
+  } else {
+    // Check that an error is returned.
+    EXPECT_ERR(dev->getPciBusId());
+  }
+}
+
 } // namespace M::Driver

@@ -72,6 +72,8 @@ public:
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
+  ErrorOr<std::string> getPciBusId() const override;
+
   int deviceCount() const override;
 
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,

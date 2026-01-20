@@ -52,6 +52,8 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
+  ErrorOr<std::string> getPciBusId() const override;
+
   int deviceCount() const override;
 
   ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,

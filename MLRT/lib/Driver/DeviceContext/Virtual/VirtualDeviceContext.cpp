@@ -71,6 +71,10 @@ ErrorOr<int> VirtualDevice::getAttribute(Attribute attr) const {
   RETURN_ERROR("VirtualDevice does not support getAttribute");
 }
 
+ErrorOr<std::string> VirtualDevice::getPciBusId() const {
+  RETURN_ERROR("VirtualDevice does not support getPciBusId");
+}
+
 int VirtualDevice::deviceCount() const {
   // Virtual devices don't have real device count
   return 1;

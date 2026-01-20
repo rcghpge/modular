@@ -361,6 +361,34 @@ ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   return value;
 }
 
+ErrorOr<std::string> HIPDevice::getPciBusId() const {
+  ErrorOr<const HIPDriver &> driverOrError = HIPDriver::get();
+  if (driverOrError.isError())
+    return driverOrError.takeError();
+
+  const HIPDriver &driver = *driverOrError;
+
+  int pciDomain = 0;
+  HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
+      &pciDomain, hipDeviceAttribute_t::hipDeviceAttributePciDomainID,
+      hipDevice()));
+
+  int pciBus = 0;
+  HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
+      &pciBus, hipDeviceAttribute_t::hipDeviceAttributePciBusId, hipDevice()));
+
+  int pciDevice = 0;
+  HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
+      &pciDevice, hipDeviceAttribute_t::hipDeviceAttributePciDeviceId,
+      hipDevice()));
+
+  char pciBusId[16];
+  snprintf(pciBusId, sizeof(pciBusId), "%04x:%02x:%02x.0", pciDomain, pciBus,
+           pciDevice);
+
+  return std::string(pciBusId);
+}
+
 ErrorOr<const char *> HIPDevice::getArchName() const { return arch_.c_str(); }
 
 ErrorOr<std::string> HIPDevice::getArchName(hipDevice_t device) {

@@ -66,6 +66,10 @@ ErrorOr<bool> CpuDevice::canAccess(const Device &peer) const { return false; }
 
 ErrorOr<int> CpuDevice::getAttribute(Attribute attr) const { return 0; }
 
+ErrorOr<std::string> CpuDevice::getPciBusId() const {
+  RETURN_ERROR("PCI bus address not available for CPU devices");
+}
+
 ErrorOr<DeviceContextRef> CpuDevice::createContext() const {
   return CpuDeviceContextRef::create(*this);
 }

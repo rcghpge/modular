@@ -72,6 +72,8 @@ public:
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
+  ErrorOr<std::string> getPciBusId() const override;
+
   static ErrorOr<int> numberOfGPUs();
   int deviceCount() const override;
 
