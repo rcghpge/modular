@@ -127,6 +127,7 @@ modular_cc_library(
     hdrs = glob(["include/GenericML/ExecutionDriver/*.h"]),
     deps = [
         ":CommonDriver",
+        ":MEFModel",
         ":Support",
         "//Support:Base",
     ],
@@ -1126,7 +1127,17 @@ modular_cc_library(
     srcs = glob(["lib/MEFModel/*.cpp"]),
     hdrs = glob(["include/GenericML/MEFModel/*.h"]),
     deps = [
+        ":DeviceDriver",
         ":MGPPrimitives",
+        ":Support",
+        "//Kernels:WeightsRegistry",
+        "//MLRT:AsyncRT/Runtime",
+        "//MLRT:AsyncRT/RuntimeGlobals",
+        "//MLRT:Core",
+        "//MLRT:Core/Tensor",
+        "//MLRT:GraphRT/MEFExecutor",
+        "//MLRT:GraphRT/Primitives",
+        "//Support:Profiling",
     ],
 )
 
@@ -1141,6 +1152,7 @@ modular_cc_library(
         ":MGPDialect",
         "//Kernels:Tracing",
         "//Kernels:mojo_string_c_api",
+        "//Kernels:weights_registry_c_api",
         "//MLRT:AsyncRT/RuntimeGlobals",
     ],
 )
@@ -1158,6 +1170,7 @@ modular_cc_library(
         ":MGPDialect",
         "//Kernels:Tracing",
         "//Kernels:mojo_string_c_api",
+        "//Kernels:weights_registry_c_api",
         "//MLRT:AsyncRT/RuntimeGlobals",
     ],
 )
@@ -1176,11 +1189,10 @@ modular_cc_library(
         "//KGEN:CompilerRT",
         "//KGEN:ExecutionEngine",
         "//KGEN:ObjectCompiler",
-        "//Kernels:WeightsRegistry",
-        "//MLRT:AsyncRT/RuntimeGlobals",
+        "//MLRT:AsyncRT/Runtime",
         "//MLRT:Core",
         "//MLRT:Core/Tensor",
-        "//MLRT:GraphRT/Primitives",
+        "//MLRT:GraphRT/MEFExecutor",
         "//Support:Base",
         "//Support:Context",
         "//Support:ML",

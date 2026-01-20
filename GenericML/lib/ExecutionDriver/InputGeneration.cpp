@@ -7,7 +7,6 @@
 #include "GenericML/ExecutionDriver/DriverCLOptions.h"
 #include "GenericML/ExecutionDriver/DriverInternals.h"
 #include "GenericML/ExecutionDriver/ExecutionDriver.h"
-#include "GenericML/Support/Model.h"
 #include "GenericML/Support/QuantSpec.h"
 #include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/Core/Tensor/Tensor.h"

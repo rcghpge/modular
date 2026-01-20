@@ -20,10 +20,11 @@ modular_cc_binary(
     deps = [
         "//GenericML:CommonDriver",
         "//GenericML:ExecutionDriver",
+        "//GenericML:FrameworkFrontend",
+        "//GenericML:MEFModel",
         "//GenericML:MOFOptions",
         "//Init",
         "//Support:Context",
         "//Support:Globals",
-        "//max/internal:max",
     ],
 )

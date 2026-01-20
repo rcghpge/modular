@@ -12,7 +12,7 @@
 #define GENERICML_EXECUTIONDRIVER_DRIVERINTERNALS_H
 
 #include "GenericML/ExecutionDriver/DriverCLOptions.h"
-#include "GenericML/Support/Model.h"
+#include "GenericML/Support/QuantSpec.h"
 #include "Support/ForwardDecls.h"
 
 namespace M {

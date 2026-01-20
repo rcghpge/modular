@@ -16,6 +16,7 @@
 namespace M {
 
 class DriverConfig;
+class DriverOptions;
 class ExecutorDriverOptions;
 enum class FileFormat : uint8_t;
 namespace MOF {
@@ -40,6 +41,9 @@ public:
 
   // TODO: getExecutorDriverOptions is only used by mt
   EXPORT_FOR_MT const ExecutorDriverOptions *getExecutorDriverOptions() const;
+
+  // TODO: setDriverOptions is only used by mt
+  EXPORT_FOR_MT void setDriverOptions(const DriverOptions &options);
 
   // TODO: overrideLoweringOptions is only used by mt
   EXPORT_FOR_MT void overrideLoweringOptions(MOF::MOFLoweringOptions &,

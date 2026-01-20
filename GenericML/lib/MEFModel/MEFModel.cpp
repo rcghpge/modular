@@ -5,13 +5,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MEFModel/MEFModel.h"
-#include "GenericML/DeviceDriver/Driver.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/MEFTypeUtils.h"
-#include "GenericML/Support/Model.h"
+#include "GenericML/Support/ModelSpec.h"
 #include "GenericML/Support/QuantSpec.h"
+#include "GenericML/Support/ResultInfo.h"
+#include "GenericML/Support/Value.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
+#include "MLRT/AsyncRT/Runtime/AsyncValue.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/Core/MojoValue.h"
+#include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/GraphRT/MEF/MEFTypes.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
@@ -19,261 +24,123 @@
 #include "MLRT/GraphRT/Primitives.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
-#include "Support/LLVMForwardDecls.h"
 #include "Support/ML/CommonAttributes.h"
-#include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/Profiling/Tracy.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/JSON.h"
 
 using namespace M;
-using namespace M::MO;
 
-namespace M {
-class MEFFile;
-class ModelCollection;
-} // namespace M
+static SmallVector<QuantTensorSpec>
+getSpecsAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
+  SmallVector<QuantTensorSpec> result(modelIOSpec.size());
+  llvm::transform(
+      modelIOSpec, result.begin(),
+      [](const ModelSpec::ModelIOSpec &ioSpec) { return ioSpec.spec; });
+  return result;
+}
 
-namespace M::MO {
+static SmallVector<StringRef>
+getNamesAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
+  SmallVector<StringRef> result(modelIOSpec.size());
+  llvm::transform(modelIOSpec, result.begin(),
+                  [](const ModelSpec::ModelIOSpec &ioSpec) {
+                    return StringRef(ioSpec.name);
+                  });
+  return result;
+}
 
-struct ModularExecutableModel;
+//===----------------------------------------------------------------------===//
+// Model
+//===----------------------------------------------------------------------===//
 
-/// This class describes a model overall, including the MEF
-/// invokables that implement its phases and metadata about what tensors it
-/// takes and returns.
-struct ModularModel final : public Model {
-  static constexpr CompiledFrameworkLabel kFrameworkLabel{
-      CompiledFrameworkLabel::kModularModel};
+Model::Model(const ModelSpec &spec)
+    : name(spec.name),
+      location(AsyncRT::UnknownLocationDecoder::getEncodedLocation()) {
+  auto inputSpecs = getSpecsAsVector(spec.inputs);
+  auto outputSpecs = getSpecsAsVector(spec.outputs);
+  auto inputNames = getNamesAsVector(spec.inputs);
+  auto outputNames = getNamesAsVector(spec.outputs);
+  initializeSignature(inputSpecs, outputSpecs, inputNames, outputNames);
+}
 
-  /// Constructs a model using the positional input/output convention.
-  ModularModel(std::string_view name, SmallVector<DeviceRef> devices,
-               CompiledFrameworkLabel frameworkLabel,
-               const MEFInvokable *initFn, const MEFInvokable *executeFn,
-               ArrayRef<QuantTensorSpec> inputSpecs,
-               ArrayRef<QuantTensorSpec> outputSpecs,
-               SmallVector<DeviceRef> inputDevices,
-               SmallVector<DeviceRef> outputDevices, EncodedLocation location)
-      : Model(inputSpecs, outputSpecs), name(name), devices(std::move(devices)),
-        initFn(initFn), executeFn(executeFn),
-        inputDevices(std::move(inputDevices)),
-        outputDevices(std::move(outputDevices)), location(std::move(location)) {
-    ASSERT_STREAM(frameworkLabel == kFrameworkLabel,
-                  << "Expected " << kFrameworkLabel.getAsString()
-                  << " label for model, but got "
-                  << frameworkLabel.getAsString());
+void Model::initializeSignature(ArrayRef<QuantTensorSpec> inputSpecs,
+                                ArrayRef<QuantTensorSpec> outputSpecs,
+                                ArrayRef<StringRef> inputNamesRefs,
+                                ArrayRef<StringRef> outputNamesRefs) {
+  inputNames.clear();
+  outputNames.clear();
+  inputTensorNameToIndex.clear();
+  outputTensorNameToIndex.clear();
+
+  if (inputNamesRefs.empty()) {
+    for (size_t i = 0; i < inputSpecs.size(); ++i)
+      inputNames.push_back("input" + std::to_string(i));
+  } else {
+    inputNames.reserve(inputNamesRefs.size());
+    for (StringRef nameRef : inputNamesRefs)
+      inputNames.emplace_back(nameRef.str());
   }
 
-  /// Constructs a model using the named input/output convention.
-  ModularModel(std::string_view name, SmallVector<DeviceRef> devices,
-               CompiledFrameworkLabel frameworkLabel,
-               const MEFInvokable *initFn, const MEFInvokable *executeFn,
-               ArrayRef<QuantTensorSpec> inputSpecs,
-               ArrayRef<QuantTensorSpec> outputSpecs,
-               ArrayRef<StringRef> inputNames, ArrayRef<StringRef> outputNames,
-               SmallVector<DeviceRef> inputDevices,
-               SmallVector<DeviceRef> outputDevices, EncodedLocation location)
-      : Model(inputSpecs, outputSpecs, inputNames, outputNames), name(name),
-        devices(std::move(devices)), initFn(initFn), executeFn(executeFn),
-        inputDevices(std::move(inputDevices)),
-        outputDevices(std::move(outputDevices)), location(std::move(location)) {
-    ASSERT_STREAM(frameworkLabel == kFrameworkLabel,
-                  << "Expected " << kFrameworkLabel.getAsString()
-                  << " label for model, but got "
-                  << frameworkLabel.getAsString());
+  if (outputNamesRefs.empty()) {
+    for (size_t i = 0; i < outputSpecs.size(); ++i)
+      outputNames.push_back("output" + std::to_string(i));
+  } else {
+    outputNames.reserve(outputNamesRefs.size());
+    for (StringRef nameRef : outputNamesRefs)
+      outputNames.emplace_back(nameRef.str());
   }
 
-  /// Returns a ModularModel from an mgp.model descriptor.
-  static ErrorOr<std::unique_ptr<ModularModel>>
-  getFromDescriptor(const PrimitiveDescriptor &desc) {
-    // `MEFAttr` indices.
-    constexpr size_t devicesAttrIdx = 0;
-    constexpr size_t frameworkNameAttrIdx = 1;
-    constexpr size_t signatureAttrIdx = 2;
-    constexpr size_t modelNameAttrIdx = 3;
-    constexpr size_t extraAttrsAttrIdx = 4;
+  this->inputSpecs.assign(inputSpecs.begin(), inputSpecs.end());
+  this->outputSpecs.assign(outputSpecs.begin(), outputSpecs.end());
 
-    // `MEFInvokable` indices.
-    constexpr size_t initFnIdx = 0;
-    constexpr size_t executeFnIdx = 1;
+  for (size_t i = 0, e = getNumInputs(); i < e; ++i)
+    inputTensorNameToIndex.insert({inputNames[i], i});
 
-    StringRef frameworkName = *desc.getAttr<StringRef>(frameworkNameAttrIdx);
-    CompiledFrameworkLabel frameworkLabel =
-        CompiledFrameworkLabel::getLabelForOpName(getEntityName(),
-                                                  frameworkName);
+  for (size_t i = 0, e = getNumOutputs(); i < e; ++i)
+    outputTensorNameToIndex.insert({outputNames[i], i});
+}
 
-    MEFFunctionType signature = desc.getAttr<MEFFunctionType>(signatureAttrIdx);
-    StringRef modelName = *desc.getAttr<StringRef>(modelNameAttrIdx);
-    auto devicesJson = *desc.getAttr<StringRef>(devicesAttrIdx);
-    auto valueOr = llvm::json::parse(devicesJson);
-    if (!valueOr)
-      return toModularError(valueOr.takeError());
-    llvm::SmallVector<DeviceRef> devices(valueOr->getAsArray()->size());
-    for (auto [v, dev] : llvm::zip(*valueOr->getAsArray(), devices)) {
-      auto deviceOr = DeviceRef::deserializeFromJSON(&v);
-      if (deviceOr.isError())
-        return deviceOr.takeError();
-      dev = deviceOr.takeValue();
-    }
-    const MEFInvokable *init = desc.getInvokable(initFnIdx);
-    const MEFInvokable *execute = desc.getInvokable(executeFnIdx);
+Model::Model(std::string name, SmallVector<DeviceRef> devices,
+             CompiledFrameworkLabel frameworkLabel, const MEFInvokable *initFn,
+             const MEFInvokable *executeFn,
+             ArrayRef<QuantTensorSpec> inputSpecs,
+             ArrayRef<QuantTensorSpec> outputSpecs,
+             SmallVector<DeviceRef> inputDevices,
+             SmallVector<DeviceRef> outputDevices, EncodedLocation location)
+    : name(std::move(name)), initFn(initFn), executeFn(executeFn),
+      devices(std::move(devices)), inputDevices(std::move(inputDevices)),
+      outputDevices(std::move(outputDevices)), location(std::move(location)) {
+  ASSERT_STREAM(frameworkLabel == kFrameworkLabel,
+                << "Expected " << kFrameworkLabel.getAsString()
+                << " label for model, but got "
+                << frameworkLabel.getAsString());
+  initializeSignature(inputSpecs, outputSpecs, {}, {});
+}
 
-    SmallVector<QuantTensorSpec> inputSpecs, outputSpecs;
-    if (auto err = decodeQuantizedSignature(signature, inputSpecs, outputSpecs))
-      return err.takeError();
-
-    llvm::SmallVector<DeviceRef> inputDevices;
-    llvm::SmallVector<DeviceRef> outputDevices;
-    auto getIODevicesFromExtraAttr =
-        [&](const char *label) -> llvm::SmallVector<DeviceRef> {
-      auto theExtraAttrs = desc.getAttr<MEFDictionaryAttr>(extraAttrsAttrIdx);
-      SmallVector<DeviceRef> ioDevices;
-      auto deviceIndicesAttrOr = theExtraAttrs.find(label);
-      if (deviceIndicesAttrOr)
-        for (MEFDynamicAttr attr : deviceIndicesAttrOr->cast<MEFListAttr>())
-          ioDevices.push_back(devices[attr.cast<MEFAttr<uint32_t>>().get()]);
-      return ioDevices;
-    };
-
-    // Check for presence of optional attribute `theExtraAttrs`.
-    if (desc.getNumAttrs() >= (extraAttrsAttrIdx + 1)) {
-      auto theExtraAttrs = desc.getAttr<MEFDictionaryAttr>(extraAttrsAttrIdx);
-
-      inputDevices = getIODevicesFromExtraAttr(kMgpModelArgumentDeviceIndices);
-      outputDevices = getIODevicesFromExtraAttr(kMgpModelResultDeviceIndices);
-
-      if (theExtraAttrs.find(kMgpModelArgumentNames).has_value() &&
-          theExtraAttrs.find(kMgpModelResultNames).has_value()) {
-        // Create a ModularModel using the named input/output tensor convention.
-        SmallVector<StringRef> inputNames;
-        SmallVector<StringRef> outputNames;
-        if (auto err =
-                decodeTensorNames(theExtraAttrs, inputNames, outputNames))
-          return err.takeError();
-        return std::make_unique<ModularModel>(
-            modelName.str(), devices, frameworkLabel, init, execute, inputSpecs,
-            outputSpecs, inputNames, outputNames, inputDevices, outputDevices,
-            desc.copyLocation());
-      }
-    }
-
-    // Create a ModularModel using the positional tensor convention.
-    return std::make_unique<ModularModel>(
-        modelName.str(), devices, frameworkLabel, init, execute, inputSpecs,
-        outputSpecs, inputDevices, outputDevices, desc.copyLocation());
-  }
-
-  /// Used for matching primitives in MEFInvokable::{walk,recurse}Primitives.
-  static StringLiteral getEntityName() { return "mgp.model"; }
-
-  /// Calls the model's setup function using `runtime` and returns the results
-  /// immediately. This function does not await the results to be ready.
-  AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-  setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
-        const M::GenericML::Driver::DeviceMap &deviceMap =
-            M::GenericML::Driver::DeviceMap()) const final;
-
-  /// Returns the name of the model.
-  StringRef getName() const override { return name; }
-
-  const MEFInvokable *getInitFn() const { return initFn; }
-  const MEFInvokable *getExecuteFn() const { return executeFn; }
-  const EncodedLocation &getLocation() const override { return location; }
-
-  /// Return the devices used by the model.
-  ArrayRef<DeviceRef> getDevices() const override { return devices; }
-
-  /// Return an array of devices that map 1:1 to the devices used by each input.
-  ArrayRef<DeviceRef> getInputDevices() const override { return inputDevices; }
-
-  /// Return an array of devices that map 1:1 to the devices used by each
-  /// output.
-  ArrayRef<DeviceRef> getOutputDevices() const override {
-    return outputDevices;
-  }
-
-private:
-  std::string name;
-  const SmallVector<DeviceRef> devices;
-  const MEFInvokable *initFn;
-  const MEFInvokable *executeFn;
-  const SmallVector<DeviceRef> inputDevices;
-  const SmallVector<DeviceRef> outputDevices;
-  EncodedLocation location;
-};
-
-struct ModularExecutableModel final : public ExecutableModel {
-  const ModularModel *getModel() const {
-    return static_cast<const ModularModel *>(ExecutableModel::getModel());
-  }
-
-  /// Runs the model, feeding in `args` as inputs to the model, taking ownership
-  /// of the specified `AsyncValueRef`s.  This returns the result of invoking
-  /// the model, with the result chain as the first result.
-  ///
-  /// This method does not `await` on its results.
-  SmallVector<AnyAsyncValueRef>
-  execute(MutableArrayRef<AnyAsyncValueRef> args) const override {
-    TRACY_ZONE_SCOPED_NC("ModularExecutableModel::execute", TRACY_COLOR_TEAL);
-
-    checkUniqueRuntime(getRuntime());
-
-    // Pass fixed execute args (chain, context, and weights registry), devices,
-    // and model inputs.
-    // Number of devices and model inputs come from the graph op definition and
-    // are vary independently in general.
-    // See ModelOp in MGPOps.td for a detailed spec of mgp.model.
-    SmallVector<AnyAsyncValueRef> passedArgs;
-    passedArgs.reserve(kMgpModelNumFixedImplicitExecArgs + devices.size() +
-                       args.size());
-    passedArgs.emplace_back(chain.copy());
-    passedArgs.emplace_back(mgpContext.copy());
-    passedArgs.emplace_back(weightsRegistry.copy());
-    for (const AnyAsyncValueRef &dev : devices)
-      passedArgs.emplace_back(dev.copy());
-    for (AnyAsyncValueRef &arg : args)
-      passedArgs.emplace_back(std::move(arg));
-
-    // Set the thread local singleton runtime to the provided runtime. This is
-    // referenced internally by some kernels.
-    AsyncRT::CompactRuntimePtr::setCurrentRuntime(getRuntime());
-
-    return getModel()->getExecuteFn()->invoke(passedArgs, getRuntime());
-  }
-
-  ModularExecutableModel(AnyAsyncValueRef chain, AnyAsyncValueRef mgpContext,
-                         AnyAsyncValueRef weightsRegistry,
-                         SmallVector<AnyAsyncValueRef> &&devices,
-                         const Model *model, Runtime &runtime)
-      : ExecutableModel(model, runtime), chain(std::move(chain)),
-        mgpContext(std::move(mgpContext)),
-        weightsRegistry(std::move(weightsRegistry)),
-        devices(std::move(devices)) {}
-
-  AnyAsyncValueRef
-  convertToGenericTensor(AnyAsyncValueRef unknownTensor) const override {
-    return unknownTensor;
-  }
-
-  ErrorOrSuccess waitForModelSetup() final {
-    AsyncRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
-    if (chain.isError())
-      return Error(chain.takeDiagnostic().getMessage().get());
-    if (mgpContext.isError())
-      return Error(mgpContext.takeDiagnostic().getMessage().get());
-    if (weightsRegistry.isError())
-      return Error(weightsRegistry.takeDiagnostic().getMessage().get());
-    return success();
-  }
-
-private:
-  AnyAsyncValueRef chain;
-  AnyAsyncValueRef mgpContext;
-  AnyAsyncValueRef weightsRegistry;
-  SmallVector<AnyAsyncValueRef> devices;
-};
+Model::Model(std::string name, SmallVector<DeviceRef> devices,
+             CompiledFrameworkLabel frameworkLabel, const MEFInvokable *initFn,
+             const MEFInvokable *executeFn,
+             ArrayRef<QuantTensorSpec> inputSpecs,
+             ArrayRef<QuantTensorSpec> outputSpecs,
+             ArrayRef<StringRef> inputNames, ArrayRef<StringRef> outputNames,
+             SmallVector<DeviceRef> inputDevices,
+             SmallVector<DeviceRef> outputDevices, EncodedLocation location)
+    : name(std::move(name)), initFn(initFn), executeFn(executeFn),
+      devices(std::move(devices)), inputDevices(std::move(inputDevices)),
+      outputDevices(std::move(outputDevices)), location(std::move(location)) {
+  ASSERT_STREAM(frameworkLabel == kFrameworkLabel,
+                << "Expected " << kFrameworkLabel.getAsString()
+                << " label for model, but got "
+                << frameworkLabel.getAsString());
+  initializeSignature(inputSpecs, outputSpecs, inputNames, outputNames);
+}
 
 AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-ModularModel::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
-                    const M::GenericML::Driver::DeviceMap &deviceMap) const {
+Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
+             const M::GenericML::Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
 
   SmallVector<AnyAsyncValueRef> initArgs;
@@ -285,8 +152,8 @@ ModularModel::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
                                                     : nullptr)));
 
   // Set device contexts from the device ref to device mapping.
-  auto deviceContextsOr =
-      mapDeviceRefsToDevices(getDevices(), deviceMap, runtime);
+  auto deviceContextsOr = GenericML::Driver::mapDeviceRefsToDevices(
+      getDevices(), deviceMap, runtime);
   if (deviceContextsOr.isError())
     return AsyncRT::EncodedDiagnostic(
         Twine("setup for model ") + getName() +
@@ -321,19 +188,199 @@ ModularModel::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
   for (size_t i = kMgpModelNumFixedImplicitExecArgs; i < results.size(); ++i)
     deviceContexts.push_back(std::move(results[i]));
 
-  return {std::make_unique<ModularExecutableModel>(
+  return {std::unique_ptr<ExecutableModel>(new ExecutableModel(
       /*chain=*/std::move(results[0]),
       /*mgpContext=*/std::move(results[1]),
       /*weightsRegistry=*/std::move(results[2]), std::move(deviceContexts),
-      this, runtime)};
+      this, runtime))};
 }
 
-} // namespace M::MO
+ErrorOr<std::unique_ptr<Model>>
+Model::getFromDescriptor(const PrimitiveDescriptor &desc) {
+  constexpr size_t devicesAttrIdx = 0;
+  constexpr size_t frameworkNameAttrIdx = 1;
+  constexpr size_t signatureAttrIdx = 2;
+  constexpr size_t modelNameAttrIdx = 3;
+  constexpr size_t extraAttrsAttrIdx = 4;
 
-namespace M {
-M::ErrorOr<std::unique_ptr<M::ModelCollection>>
-MO::loadMGPMEFFile(RCRef<M::MEFFile> mefFile) {
-  // Set up all our primitives.
+  constexpr size_t initFnIdx = 0;
+  constexpr size_t executeFnIdx = 1;
+
+  StringRef frameworkName = *desc.getAttr<StringRef>(frameworkNameAttrIdx);
+  CompiledFrameworkLabel frameworkLabel =
+      CompiledFrameworkLabel::getLabelForOpName(getEntityName(), frameworkName);
+
+  MEFFunctionType signature = desc.getAttr<MEFFunctionType>(signatureAttrIdx);
+  StringRef modelName = *desc.getAttr<StringRef>(modelNameAttrIdx);
+  auto devicesJson = *desc.getAttr<StringRef>(devicesAttrIdx);
+  auto valueOr = llvm::json::parse(devicesJson);
+  if (!valueOr)
+    return toModularError(valueOr.takeError());
+  llvm::SmallVector<DeviceRef> devices(valueOr->getAsArray()->size());
+  for (auto [v, dev] : llvm::zip(*valueOr->getAsArray(), devices)) {
+    auto deviceOr = DeviceRef::deserializeFromJSON(&v);
+    if (deviceOr.isError())
+      return deviceOr.takeError();
+    dev = deviceOr.takeValue();
+  }
+  const MEFInvokable *init = desc.getInvokable(initFnIdx);
+  const MEFInvokable *execute = desc.getInvokable(executeFnIdx);
+
+  SmallVector<QuantTensorSpec> inputSpecs, outputSpecs;
+  if (auto err = decodeQuantizedSignature(signature, inputSpecs, outputSpecs))
+    return err.takeError();
+
+  llvm::SmallVector<DeviceRef> inputDevices;
+  llvm::SmallVector<DeviceRef> outputDevices;
+  auto getIODevicesFromExtraAttr =
+      [&](const char *label) -> llvm::SmallVector<DeviceRef> {
+    auto theExtraAttrs = desc.getAttr<MEFDictionaryAttr>(extraAttrsAttrIdx);
+    SmallVector<DeviceRef> ioDevices;
+    auto deviceIndicesAttrOr = theExtraAttrs.find(label);
+    if (deviceIndicesAttrOr)
+      for (MEFDynamicAttr attr : deviceIndicesAttrOr->cast<MEFListAttr>())
+        ioDevices.push_back(devices[attr.cast<MEFAttr<uint32_t>>().get()]);
+    return ioDevices;
+  };
+
+  if (desc.getNumAttrs() >= (extraAttrsAttrIdx + 1)) {
+    auto theExtraAttrs = desc.getAttr<MEFDictionaryAttr>(extraAttrsAttrIdx);
+
+    inputDevices = getIODevicesFromExtraAttr(kMgpModelArgumentDeviceIndices);
+    outputDevices = getIODevicesFromExtraAttr(kMgpModelResultDeviceIndices);
+
+    if (theExtraAttrs.find(kMgpModelArgumentNames).has_value() &&
+        theExtraAttrs.find(kMgpModelResultNames).has_value()) {
+      SmallVector<StringRef> inputNames;
+      SmallVector<StringRef> outputNames;
+      if (auto err = decodeTensorNames(theExtraAttrs, inputNames, outputNames))
+        return err.takeError();
+      return std::make_unique<Model>(modelName.str(), devices, frameworkLabel,
+                                     init, execute, inputSpecs, outputSpecs,
+                                     inputNames, outputNames, inputDevices,
+                                     outputDevices, desc.copyLocation());
+    }
+  }
+
+  return std::make_unique<Model>(modelName.str(), devices, frameworkLabel, init,
+                                 execute, inputSpecs, outputSpecs, inputDevices,
+                                 outputDevices, desc.copyLocation());
+}
+
+//===----------------------------------------------------------------------===//
+// ExecutableModel
+//===----------------------------------------------------------------------===//
+
+ExecutableModel::ExecutableModel(AnyAsyncValueRef chain,
+                                 AnyAsyncValueRef mgpContext,
+                                 AnyAsyncValueRef weightsRegistry,
+                                 SmallVector<AnyAsyncValueRef> &&devices,
+                                 const Model *model, Runtime &runtime)
+    : model(model), runtime(runtime), chain(std::move(chain)),
+      mgpContext(std::move(mgpContext)),
+      weightsRegistry(std::move(weightsRegistry)), devices(std::move(devices)) {
+}
+
+ExecutableModel::~ExecutableModel() = default;
+
+SmallVector<AnyAsyncValueRef>
+ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
+  TRACY_ZONE_SCOPED_NC("ExecutableModel::execute", TRACY_COLOR_TEAL);
+
+  checkUniqueRuntime(getRuntime());
+
+  // Pass fixed execute args (chain, context, and weights registry), devices,
+  // and model inputs.
+  // Number of devices and model inputs come from the graph op definition and
+  // vary independently in general.
+  // See ModelOp in MGPOps.td for a detailed spec of mgp.model.
+  SmallVector<AnyAsyncValueRef> passedArgs;
+  passedArgs.reserve(kMgpModelNumFixedImplicitExecArgs + devices.size() +
+                     args.size());
+  passedArgs.emplace_back(chain.copy());
+  passedArgs.emplace_back(mgpContext.copy());
+  passedArgs.emplace_back(weightsRegistry.copy());
+  for (const AnyAsyncValueRef &dev : devices)
+    passedArgs.emplace_back(dev.copy());
+  for (AnyAsyncValueRef &arg : args)
+    passedArgs.emplace_back(std::move(arg));
+
+  // Set the thread local singleton runtime to the provided runtime. This is
+  // referenced internally by some kernels.
+  AsyncRT::CompactRuntimePtr::setCurrentRuntime(getRuntime());
+
+  return getModel()->getExecuteFn()->invoke(passedArgs, getRuntime());
+}
+
+ErrorOrSuccess ExecutableModel::waitForModelSetup() {
+  AsyncRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
+  if (chain.isError())
+    return Error(chain.takeDiagnostic().getMessage().get());
+  if (mgpContext.isError())
+    return Error(mgpContext.takeDiagnostic().getMessage().get());
+  if (weightsRegistry.isError())
+    return Error(weightsRegistry.takeDiagnostic().getMessage().get());
+  return success();
+}
+
+AnyAsyncValueRef
+ExecutableModel::convertToSpecificValue(AnyAsyncValueRef genericValue) const {
+  return genericValue;
+}
+
+AnyAsyncValueRef
+ExecutableModel::convertToGenericTensor(AnyAsyncValueRef unknownTensor) const {
+  return unknownTensor;
+}
+
+AnyAsyncValueRef
+ExecutableModel::convertToGenericValue(AnyAsyncValueRef unknownValue) const {
+  AnyAsyncValueRef tensor = convertToGenericTensor(std::move(unknownValue));
+
+  if (!tensor.isError())
+    return tensor;
+
+  return AnyAsyncValueRef::createError(
+      tensor.getRuntime(),
+      {"cannot convert unknown value", getModel()->getLocation().copy()});
+}
+
+ErrorOrSuccess ExecutableModel::printValue(raw_ostream &os,
+                                           AnyAsyncValueRef const &value,
+                                           ResultOutputStyle style,
+                                           unsigned precision) const {
+  return GML::printGenericValue(os, value, style, precision);
+}
+
+ErrorOrSuccess
+ExecutableModel::processResultForBinaryOutput(const AnyAsyncValueRef &result,
+                                              const std::string &outputName,
+                                              ProcessedResults &results) const {
+  if (auto *tensor = dyn_cast<Tensor>(result)) {
+    results.insertResultInfo(
+        std::make_shared<TensorResultInfo>(outputName, *tensor));
+
+    const std::string illegalChars = "\\/:?\"<>|";
+    std::string sanitizedName = outputName;
+    std::replace_if(
+        sanitizedName.begin(), sanitizedName.end(),
+        [&](char c) { return illegalChars.find(c) != std::string::npos; }, '_');
+
+    results.insertTensor(sanitizedName, tensor);
+  } else {
+    ErrorOr<AsyncRT::AnyAsyncValueRef> outOrError =
+        M::getResultForBinaryOutput(result, results);
+    if (outOrError.isError())
+      results.insertResultInfo(
+          std::make_shared<TensorResultInfo>(outOrError.getError(), ""));
+    else
+      results.insertResultInfo(std::make_shared<M::VariantResultInfo>(
+          outputName, outOrError.takeValue()));
+  }
+  return success();
+}
+
+ErrorOr<ModelList> M::loadMGPMEFFile(RCRef<MEFFile> mefFile) {
   PrimitiveRegistry primitives;
   registerAllGraphRTPrimitives(primitives);
   registerMGPPrimitives(primitives);
@@ -342,13 +389,11 @@ MO::loadMGPMEFFile(RCRef<M::MEFFile> mefFile) {
   if (auto err = mefFile->installPrimitives(primitives))
     return err.takeError();
 
-  SmallVector<M::ModelCollection::ModelPtrTy> models;
+  ModelList models;
   auto *moduleInv = mefFile->getTopLevelInvokable();
-  if (auto err = moduleInv->walkPrimitives<MO::ModularModel>(
+  if (auto err = moduleInv->walkPrimitives<Model>(
           [&](auto &&m) { models.push_back(std::forward<decltype(m)>(m)); }))
     return err.takeError();
 
-  return std::make_unique<M::ModelCollection>(std::move(models));
+  return std::move(models);
 }
-
-} // namespace M

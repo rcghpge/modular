@@ -14,5 +14,5 @@ become `mgp.device_context`  attributes. When lowered to MEF, all device
 references used by the model are serialized as a JSON string.
 
 When the model is loaded by the model executor, DeviceContexts are created for
-each device used by the model (see `ModularModel::setup` in `GenericML/lib/MEFModel/MEFModel.cpp`).
+each device used by the model (see `Model::setup` in `GenericML/lib/MEFModel/MEFModel.cpp`).
 These are then passed to the kernels as expected when executing the primitives.

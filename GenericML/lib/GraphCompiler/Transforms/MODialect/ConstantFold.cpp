@@ -16,7 +16,6 @@
 #include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GenericML/Support/List.h"
-#include "GenericML/Support/Model.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
@@ -84,11 +83,19 @@ struct ModelResult {
 
 // Models need to ensure that their backing buffer lives as long as they do.
 struct ModelsWithBuffer {
-  std::unique_ptr<ModelCollection> models;
+  ModelList models;
   BufferRef buffer;
 };
 
 } // namespace
+
+static const Model *findModelByName(const ModelList &models, StringRef name) {
+  for (const std::unique_ptr<const Model> &model : models) {
+    if (model && model->getName() == name)
+      return model.get();
+  }
+  return nullptr;
+}
 
 llvm::SetVector<StringAttr> M::MO::Subgraph::paramDeclarations() const {
   llvm::SetVector<StringAttr> params;
@@ -903,10 +910,10 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   auto mefFileOr = MEFFile::open(buf->getBuffer());
   if (mefFileOr.isError())
     return mefFileOr.takeError();
-  auto modelsOr = loadMGPMEFFile(std::move(*mefFileOr));
+  auto modelsOr = M::loadMGPMEFFile(std::move(*mefFileOr));
   if (modelsOr.isError())
     return modelsOr.takeError();
-  return {ModelsWithBuffer{std::move(*modelsOr), std::move(buf)}};
+  return {ModelsWithBuffer{modelsOr.takeValue(), std::move(buf)}};
 }
 
 void ConstantFoldPass::runOnOperation() {
@@ -985,8 +992,8 @@ void ConstantFoldPass::runOnOperation() {
                      llvm::SmallVector<std::pair<ModelResult, SubgraphsInfo>>>
           executionResults;
       for (const SubgraphsInfo &subgraphsInfo : subgraphReplacements) {
-        const Model *model = modelsOr.get().models->getModelNamed(
-            subgraphsInfo.constantSubgraphName);
+        const Model *model = findModelByName(
+            modelsOr.get().models, subgraphsInfo.constantSubgraphName);
         ASSERT_STREAM(model != nullptr,
                       << "Model should exist, make sure names above match.");
         AsyncRT::ErrorDiagnosticOr<ModelResult> valuesToTensorsOr =

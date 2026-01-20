@@ -21,9 +21,7 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/GraphCompiler/Version.h"
-#include "GenericML/MEFModel/MEFModel.h"
 #include "GenericML/MOFOptions.h"
-#include "GenericML/Support/ModelCollection.h"
 #include "GenericML/Support/Telemetry.h"
 #include "KGEN/KGENDialect/KGENCompilationContext.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
@@ -54,35 +52,8 @@ using namespace M::MOF;
 
 namespace {
 
-class MOFDriverOptions : public DriverOptions, public MO::GraphCompilerOptions {
-public:
-  void overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
-                               MO::MoToMgpOptions &moToMgpOptions) const {
-    mofLoweringOptions.debugTensorPrintOptions.style = resultOutputStyle;
-    mofLoweringOptions.debugTensorPrintOptions.precision = printPrecision;
-    mofLoweringOptions.debugTensorPrintOptions.binaryDir = binaryOutputDir;
-
-    GraphCompilerOptions::overrideLoweringOptions(moToMgpOptions);
-    moToMgpOptions.compiledFrameworkLabel =
-        CompiledFrameworkLabel::asLabelString(
-            CompiledFrameworkLabel::kModularModel);
-    moToMgpOptions.minimumCpuAlignment = minimumCpuAlignment;
-    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
-  }
-};
-
-class MOFDriverCLOptions : public DriverCLOptions,
-                           public MO::GraphCompilerCLOptions {
-private:
-  llvm::cl::OptionCategory MOFDriverCLOptionsCategory{"MOF driver options"};
-
-public:
-  using DriverCLOptions::DriverCLOptions;
-  MOFDriverCLOptions(int argc, char **argv, MOFDriverOptions &o,
-                     bool skipInitLLVM = false)
-      : DriverCLOptions(argc, argv, o, skipInitLLVM),
-        MO::GraphCompilerCLOptions(o) {}
-};
+class MOFDriverOptions : public DriverOptions,
+                         public MO::GraphCompilerOptions {};
 
 /// Union of configuration gathered from MOFContext::setConfigs().
 struct MOFConfig {
@@ -114,15 +85,20 @@ struct MOFConfig {
 struct MOFContext::Impl final {
   ContextRef maxContext;
   std::unique_ptr<MOFDriverOptions> clOptions;
-  std::unique_ptr<MOFDriverCLOptions> parser;
+  const DriverOptions *driverOptions{nullptr};
+  std::unique_ptr<MO::GraphCompilerCLOptions> graphCompilerParser;
   std::unique_ptr<MOFConfig> mofConfig;
+  bool optionsParsed{false};
 
-  const CommonOptions *getCommonCLOptions() const { return clOptions.get(); }
+  const CommonOptions *getCommonCLOptions() const {
+    return driverOptions ? static_cast<const CommonOptions *>(driverOptions)
+                         : clOptions.get();
+  }
 
   bool getEnableMEFMetadata() const {
-    return clOptions ? clOptions->enableMEFMetadata : true;
+    return driverOptions ? driverOptions->enableMEFMetadata
+                         : (clOptions ? clOptions->enableMEFMetadata : true);
   }
-  bool getSaveTemps() const { return clOptions ? clOptions->saveTemps : false; }
 };
 
 /// Constructor when invoking from command line.
@@ -130,9 +106,11 @@ MOFContext::MOFContext(ContextRef maxContext, int &argc, char **&argv)
     : impl(std::make_unique<Impl>()) {
   impl->maxContext = std::move(maxContext);
   impl->clOptions = std::make_unique<MOFDriverOptions>();
-  impl->parser =
-      std::make_unique<MOFDriverCLOptions>(argc, argv, *impl->clOptions,
-                                           /*skipInitLLVM=*/true);
+  impl->driverOptions = impl->clOptions.get();
+  impl->clOptions->programName = argv[0];
+  (void)argc;
+  impl->graphCompilerParser =
+      std::make_unique<MO::GraphCompilerCLOptions>(*impl->clOptions);
 }
 
 /// Constructor when invoking via API.
@@ -140,13 +118,16 @@ MOFContext::MOFContext(ContextRef maxContext) : impl(std::make_unique<Impl>()) {
   impl->maxContext = std::move(maxContext);
 }
 
-MOFContext::~MOFContext() {
-  if (impl->clOptions)
-    llvm::cl::ResetCommandLineParser();
-}
+MOFContext::~MOFContext() = default;
 
 const ExecutorDriverOptions *MOFContext::getExecutorDriverOptions() const {
-  return impl->clOptions.get();
+  return impl->driverOptions
+             ? static_cast<const ExecutorDriverOptions *>(impl->driverOptions)
+             : impl->clOptions.get();
+}
+
+void MOFContext::setDriverOptions(const DriverOptions &options) {
+  impl->driverOptions = &options;
 }
 
 ErrorOrSuccess MOFContext::setOptions(ArrayRef<std::string> opts) {
@@ -156,8 +137,8 @@ ErrorOrSuccess MOFContext::setOptions(ArrayRef<std::string> opts) {
   if (!impl->clOptions)
     return Error("CL Options parser is not initialized");
 
-  // Reset all option occurrences every time this is called.
-  llvm::cl::ResetAllOptionOccurrences();
+  if (impl->optionsParsed)
+    return success();
 
   // Parse the options one at a time, so we don't have to combine the list
   // of strings.
@@ -168,6 +149,7 @@ ErrorOrSuccess MOFContext::setOptions(ArrayRef<std::string> opts) {
       return Error("unable to parse argument: " + opt);
   }
 
+  impl->optionsParsed = true;
   return success();
 }
 
@@ -193,9 +175,21 @@ MOFContext::setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs) {
 
 void MOFContext::overrideLoweringOptions(MOFLoweringOptions &mofLoweringOptions,
                                          MO::MoToMgpOptions &moToMgpOptions) {
+  if (impl->driverOptions) {
+    mofLoweringOptions.debugTensorPrintOptions.style =
+        impl->driverOptions->resultOutputStyle;
+    mofLoweringOptions.debugTensorPrintOptions.precision =
+        impl->driverOptions->printPrecision;
+    mofLoweringOptions.debugTensorPrintOptions.binaryDir =
+        impl->driverOptions->binaryOutputDir;
+    moToMgpOptions.minimumCpuAlignment =
+        impl->driverOptions->minimumCpuAlignment;
+  }
   if (impl->clOptions)
-    impl->clOptions->overrideLoweringOptions(mofLoweringOptions,
-                                             moToMgpOptions);
+    static_cast<const MO::GraphCompilerOptions &>(*impl->clOptions)
+        .overrideLoweringOptions(moToMgpOptions);
+  moToMgpOptions.compiledFrameworkLabel = CompiledFrameworkLabel::asLabelString(
+      CompiledFrameworkLabel::kModularModel);
   if (impl->mofConfig)
     impl->mofConfig->overrideLoweringOptions(mofLoweringOptions,
                                              moToMgpOptions);

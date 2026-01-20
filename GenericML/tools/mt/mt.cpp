@@ -33,10 +33,7 @@ namespace {
 // GenericDriverCLOptions
 //===--------------------------------------------------------------------===//
 
-class GenericDriverOptions : public DriverCommandOptions,
-                             public DriverInputFormatOptions,
-                             public CommonOptions,
-                             public AsyncRT::RuntimeOptions {
+class GenericDriverOptions : public DriverCommandOptions, public DriverOptions {
 public:
   //===--------------------------------------------------------------------===//
   // Sink for all unparsed options.
@@ -47,17 +44,14 @@ public:
 };
 
 class GenericDriverCLOptions : public DriverCommandCLOptions,
-                               public DriverInputFormatCLOptions,
-                               public CommonCLOptions,
-                               public AsyncRT::RuntimeCLOptions {
+                               public DriverCLOptions {
 
 public:
   GenericDriverOptions &options;
   GenericDriverCLOptions(int argc, char **argv, GenericDriverOptions &opts,
                          bool skipInitLLVM = false)
-      : DriverCommandCLOptions(opts), DriverInputFormatCLOptions(opts),
-        CommonCLOptions(argc, argv, opts, skipInitLLVM),
-        AsyncRT::RuntimeCLOptions(opts), options(opts) {}
+      : DriverCommandCLOptions(opts),
+        DriverCLOptions(argc, argv, opts, skipInitLLVM), options(opts) {}
 
 private:
   llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
@@ -96,7 +90,7 @@ static int setupMLIRAndRun(
 }
 
 static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
-                         M::BufferRef fileBuffer, ModelCollection &models) {
+                         M::BufferRef fileBuffer, const ModelList &models) {
   MOF::MOFLoweringOptions mofLoweringOptions;
   MO::MoToMgpOptions moToMgpOptions;
   ctx.overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
@@ -106,13 +100,15 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
   auto runModels = [&, context = maxCtx.copy()](
                        Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
     mofLoweringOptions.setupContext(context);
+    bool hadFailure = false;
     for (const auto &model : models) {
       if (failed(runModel(model.get(), runtime, *driverOptions))) {
+        hadFailure = true;
         if (driverOptions->stopOnFirstError())
           return failure();
       }
     }
-    return success();
+    return failure(hadFailure);
   };
 
   // Run it.
@@ -131,7 +127,6 @@ int main(int argc, char **argv) {
   // our signal handler.
   GenericDriverOptions options;
   GenericDriverCLOptions parser(argc, argv, options, /*skipInitLLVM=*/true);
-
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
 
   struct InputInfo {
@@ -196,46 +191,48 @@ int main(int argc, char **argv) {
   if (contextOr.isError())
     return options.reportError(contextOr.getError());
 
-  for (auto &inputInfo : inputsInfo) {
-    // If the driver command is just `-get-version` then print the version and
-    // exit right away. No need to do anything else.
-    if (options.command == DriverCommand::getVersion) {
-      // llvm::formatv does not support octal, so do it the hard way.
-      char profilingLevelStr[16];
-      snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
-               MODULAR_ASYNCRT_MAX_PROFILING_LEVEL);
-      llvm::outs() << "mt: " << getModularVersionString()
-                   << "\nmt profiling level: " << profilingLevelStr << "\n";
-      return EXIT_SUCCESS;
-    }
+  // If the driver command is just `-get-version` then print the version and
+  // exit right away. No need to do anything else.
+  if (options.command == DriverCommand::getVersion) {
+    // llvm::formatv does not support octal, so do it the hard way.
+    char profilingLevelStr[16];
+    snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
+             MODULAR_ASYNCRT_MAX_PROFILING_LEVEL);
+    llvm::outs() << "mt: " << getModularVersionString()
+                 << "\nmt profiling level: " << profilingLevelStr << "\n";
+    return EXIT_SUCCESS;
+  }
 
-    // Setup the framework context.
-    MOFContext frameworkCtx(contextOr->copy(), argc, argv);
+  // Setup the framework context.
+  MOFContext frameworkCtx(contextOr->copy(), argc, argv);
 
-    // We'll accumulate command line arguments for the framework as we go below,
-    SmallVector<std::string> dylibOptions;
-
-    // We might want to get the framework's help string.
-    if (options.command == DriverCommand::frameworkHelp) {
-      if (auto err = frameworkCtx.setOptions({"-h"}))
-        return options.reportError(err.getError());
-      return EXIT_SUCCESS;
-    }
-
-    // Hand over any explicitly designated unparsed options.
-    dylibOptions.append(options.forceUnparsed.begin(),
-                        options.forceUnparsed.end());
-    dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
-
-    // Hand over save-temps and temps-dir options to framework.
-    if (options.saveTemps) {
-      dylibOptions.push_back("--save-temps");
-      dylibOptions.push_back("--temps-dir=" + options.tempsDir);
-    }
-
-    // Tell the framework about our options.
-    if (auto err = frameworkCtx.setOptions(dylibOptions))
+  // We might want to get the framework's help string.
+  if (options.command == DriverCommand::frameworkHelp) {
+    if (auto err = frameworkCtx.setOptions({"-h"}))
       return options.reportError(err.getError());
+    return EXIT_SUCCESS;
+  }
+
+  // We'll accumulate command line arguments for the framework as we go below,
+  SmallVector<std::string> dylibOptions;
+
+  // Hand over any explicitly designated unparsed options.
+  dylibOptions.append(options.forceUnparsed.begin(),
+                      options.forceUnparsed.end());
+  dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
+
+  // Hand over save-temps and temps-dir options to framework.
+  if (options.saveTemps) {
+    dylibOptions.push_back("--save-temps");
+    dylibOptions.push_back("--temps-dir=" + options.tempsDir);
+  }
+
+  // Tell the framework about our options.
+  if (auto err = frameworkCtx.setOptions(dylibOptions))
+    return options.reportError(err.getError());
+  frameworkCtx.setDriverOptions(options);
+
+  for (auto &inputInfo : inputsInfo) {
 
     // Start processing the input in stages.  The inspect command is first,
     // because it works on any input without transformation.
@@ -301,14 +298,14 @@ int main(int argc, char **argv) {
     auto mefFileOr = MEFFile::open(inputInfo.file->getBuffer());
     if (failed(mefFileOr))
       return options.reportError(mefFileOr.getError());
-    auto modelsOr = MO::loadMGPMEFFile(*mefFileOr);
+    auto modelsOr = M::loadMGPMEFFile(*mefFileOr);
     if (modelsOr.isError())
       return options.reportError(modelsOr.getError());
 
     // Hand off the MEFFileHandle and the file buffer to the framework to
     // actually run the thing with all the various diagnostics.
     rc = runBinaryFile(contextOr->copy(), frameworkCtx, inputInfo.file.copy(),
-                       **modelsOr);
+                       *modelsOr);
   }
 
   return rc;
