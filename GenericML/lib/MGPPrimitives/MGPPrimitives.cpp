@@ -141,7 +141,7 @@ static std::pair<int, M::Driver::DeviceContextRef>
 deviceHintAndContextFor(const RemainingArguments &operands) {
   TRACY_ZONE_SCOPED_NC("deviceHintAndContextFor", TRACY_COLOR_TEAL);
 
-  llvm::SmallVector<M::Driver::DeviceContextRef, 4> acceleratorContexts;
+  llvm::SmallVector<M::Driver::DeviceContextRef, 8> acceleratorContexts;
 
   for (const AnyAsyncValueRef &operand : operands) {
     // Check for DeviceContextRef.
