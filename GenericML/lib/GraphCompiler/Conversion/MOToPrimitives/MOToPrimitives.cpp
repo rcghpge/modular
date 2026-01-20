@@ -2473,6 +2473,15 @@ struct CallGraphNode : public KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
   unsigned hash;
 };
 
+struct CallStubOrCalleeName {
+  MOGG::CallStubOp callOp;
+  StringAttr name;
+
+  CallStubOrCalleeName(MOGG::CallStubOp call)
+      : callOp(call), name(callOp.getCalleeSymbol().getAttr()) {}
+  CallStubOrCalleeName(StringAttr n) : callOp(nullptr), name(n) {}
+};
+
 struct CallGraph : public KGEN::SCCGraph<CallGraph, CallGraphNode,
                                          /*BottomUpRewrite=*/true> {
   bool doAnalysis(CallGraphNode *node) { return false; }
@@ -2488,6 +2497,12 @@ struct CallGraph : public KGEN::SCCGraph<CallGraph, CallGraphNode,
   // the replacement for the top-level kernels using this mapping.
   llvm::DenseMap<StringAttr, StringAttr> topLevelReplacements;
 
+  // A map of replacement-replaced that will be used at the very end to
+  // stabilize the replacements (execution order will determine the replacement
+  // without this which is non deterministic).
+  llvm::DenseMap<StringAttr, SmallVector<CallStubOrCalleeName>>
+      reverseReplacements;
+
   // The mutex to protect uniqueFuncSet accesses.
   std::mutex setAccessMutex;
 };
@@ -2500,6 +2515,8 @@ void CallGraph::doRewrite(CallGraphNode *node) {
       replacementCallee =
           uniqueFuncSet.insert(KernelStubHashEntry{callee->func, callee->hash})
               .first->op;
+      reverseReplacements[replacementCallee.getSymNameAttr()].emplace_back(
+          caller);
     }
 
     if (replacementCallee != callee->func) {
@@ -2512,16 +2529,17 @@ void CallGraph::doRewrite(CallGraphNode *node) {
   // Try to insert yourself if no CallGraphNode is calling you. If another top
   // level stub (that has no callers) hashes to the same value, store the
   // replacement in another map that will be used after the analysis to replace
-  // the external calls (see runOnOperation below).
+  // the external calls (see mergeIdenticalKernelStubs below).
   if (node->callers.empty()) {
     MOGG::KernelStubOp replacementCallee = nullptr;
     std::lock_guard<std::mutex> lock(setAccessMutex);
     replacementCallee =
         uniqueFuncSet.insert(KernelStubHashEntry{node->func, node->hash})
             .first->op;
-    if (replacementCallee != node->func)
-      topLevelReplacements[node->func.getSymNameAttr()] =
-          replacementCallee.getSymNameAttr();
+    reverseReplacements[replacementCallee.getSymNameAttr()].emplace_back(
+        node->func.getSymNameAttr());
+    topLevelReplacements[node->func.getSymNameAttr()] =
+        replacementCallee.getSymNameAttr();
   }
 }
 
@@ -2531,6 +2549,29 @@ void MGP::mergeIdenticalKernelStubs(ModuleOp module) {
   cg.build(module, symTable);
   cg.run(*loadContext(module.getContext())->get<AsyncRT::Runtime>());
 
+  // At this point, the replacement is valid but non deterministic because the
+  // analysis will pick the first candidate when deduplicating. The first
+  // candidate is a function of the execution order. To fix this, we keep track
+  // of all the stubs that got renamed and then sort them by name. Then, we pick
+  // the first candidate, which makes the analysis deterministic.
+  llvm::DenseMap<StringAttr, StringAttr> finalReplacements;
+  for (auto &[replacement, replacedCallOps] : cg.reverseReplacements) {
+    if (replacedCallOps.size() == 1)
+      continue;
+
+    auto finalCandidate =
+        *llvm::min_element(replacedCallOps, [](CallStubOrCalleeName lhs,
+                                               CallStubOrCalleeName rhs) {
+          return lhs.name.compare(rhs.name) < 0;
+        });
+    finalReplacements[replacement] = finalCandidate.name;
+
+    if (finalCandidate.callOp) {
+      for (auto &callOp : replacedCallOps)
+        callOp.callOp.setName(finalCandidate.name.strref());
+    }
+  }
+
   // ModelOp contain calls to stubs too but those do not come from a
   // KernelStubOp. They are ExecuteCompiledOp. In order to merge high level
   // stubs, we have to do the attribute replacement here.
@@ -2538,8 +2579,15 @@ void MGP::mergeIdenticalKernelStubs(ModuleOp module) {
     modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
       auto it =
           cg.topLevelReplacements.find(callOp.getCalleeSymbolAttr().getAttr());
-      if (it != cg.topLevelReplacements.end())
-        callOp.setCalleeSymbolAttr(mlir::FlatSymbolRefAttr::get(it->second));
+      if (it == cg.topLevelReplacements.end())
+        return;
+
+      auto replacement = finalReplacements.find(it->second);
+      if (replacement == finalReplacements.end())
+        return;
+
+      callOp.setCalleeSymbolAttr(
+          mlir::FlatSymbolRefAttr::get(replacement->second));
     });
   }
 }
