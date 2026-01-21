@@ -4,7 +4,7 @@ package(default_visibility = ["//visibility:private"])
 
 # Tests that require a GPU
 _GPU_ONLY_TESTS = [
-    "Conversion/MOToMOGG/emit-mojo-distributed-epilogue-fusion.mlir",
+    "Conversion/MOToMOGG/distributed-epilogue-fusion.mlir",
 ]
 
 lit_tests(

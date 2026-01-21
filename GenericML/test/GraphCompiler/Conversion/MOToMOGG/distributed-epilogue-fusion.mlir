@@ -1,5 +1,4 @@
-// TODO(GEX-2983): Fix the requirement of accelerators being present
-// RUN: EMIT_MOJO=1 mo-opt %s --mo-to-mgp | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp | FileCheck %s
 
 // Test that epilogue fusion with distributed operations works correctly in the
 // emit-mojo path. This tests the case where TensorFusedOp's user is not a

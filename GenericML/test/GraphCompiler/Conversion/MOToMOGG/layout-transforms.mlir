@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt %s --mo-to-mgp="constant-fold=false" --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" --mlir-print-ir-after=mo-to-mogg 2>&1 | FileCheck %s
 
 // Test layout transform lowering to MOGG dialect with experimental Mojo path.
 
