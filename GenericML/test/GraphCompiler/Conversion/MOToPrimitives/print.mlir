@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives | FileCheck %s
 
 // CHECK-LABEL: mgp.model @print_string
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,

@@ -115,21 +115,6 @@ def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "MGP::Mode
                           "MOGG::MOGGDialect"];
 }
 
-def PostABIFuseGenericRegions: Pass<"post-abi-fuse-generic-regions", "ModuleOp"> {
-  let summary = "Fuse sequences of GenericCompiledRegionOp (after lowering abi)";
-  let description = [{
-    Fuses all (currently only non-async) kernels into one. This helps reduce
-    overhead in the MEF interpreter by minimizing the number of mpg primitives.
-    The fusion need to be done after lowering abi to be able to analyze and
-    optimize the lifetime of async values (e.g., due to mgp.buffer.borrow).
-  }];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect"];
-}
-
 def RemoveRedundantOperands: Pass<"remove-redundant-operands", "MGP::ModelOp"> {
   let summary = "Removes all redundant operands as a result of seq fusion";
   let description = [{}];
@@ -139,22 +124,6 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "MGP::ModelOp"> {
                           "GRT::GRTDialect",
                           "MOGG::MOGGDialect"];
 }
-
-def LowerAsyncRefs: Pass<"lower-async-refs"> {
-  let summary = "Lower mogg.pack/unpack to mogg.calls";
-  let description = [{
-    Lower mogg.pack/upack calls to/from async refs to the corresponding
-    mogg.calls.
-  }];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-  ];
-
-  let dependentDialects = ["MOGG::MOGGDialect"];
-}
-
 
 def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "ModuleOp"> {
   let summary = "Legalize deallocation calls on async values";

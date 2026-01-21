@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives | FileCheck %s
 
 // CHECK-LABEL:  mgp.model @constants_with_multiple_returns : mof
 // CHECK:  } execute (

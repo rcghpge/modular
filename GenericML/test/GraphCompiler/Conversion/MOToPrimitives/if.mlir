@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives | FileCheck %s
 
 // CHECK: mgp.model @if_op
 // CHECK:  } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context

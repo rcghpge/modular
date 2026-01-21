@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
-#include "GenericML/GraphCompiler/Conversion/MOGGToKGEN.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -108,7 +107,7 @@ void M::MO::registerPasses() {
   MO::registerMOTransformsPasses();
   MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
-  MGP::registerLowerAsyncRefs();
+
   MGP::registerMergeIdenticalKernelStubs();
   MGP::registerAddTryExceptBlocksPass();
   MGP::registerLookupConstantResources();
@@ -121,12 +120,11 @@ void M::MO::registerPasses() {
   MGP::registerLowerPrimitives();
   MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
-  MGP::registerPostABIFuseGenericRegions();
+
   MGP::registerRemoveRedundantOperands();
   MGP::registerLegalizeAsyncRefDeallocations();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
-  MOGG::registerMOGGToKGENPasses();
 
   RMO::registerLegalizeRMOOpsPass();
 
@@ -292,10 +290,6 @@ void M::MO::buildMoToMgpPipeline(
   if (opts.fuseMutableLoadStore)
     pm.addPass(MOGG::createFuseMutableLoads());
 
-  // Convert output lambdas to compute output lambdas when possible.
-  pm.addPass(MOGG::createMOGGToKGEN(
-      {kernelLibraryPaths, opts.forceSync, opts.enableComputeLambdas},
-      libraryAnalysis));
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   // Add cleanup passes to catch e.g used/duplicated constants.
@@ -331,11 +325,6 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
-  MGP::HoistHarnessOptions harnessOpts;
-  harnessOpts.kernelLibraryPaths = kernelLibraryPaths;
-  harnessOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  pm.addPass(MGP::createHoistHarness(harnessOpts, libraryAnalysis));
-
   // Before any sort of fusion, use location information to create better
   // runtime assert messages.
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
@@ -360,24 +349,6 @@ void M::MO::buildMoToMgpPipeline(
 
   pm.addNestedPass<MGP::ModelOp>(MGP::createLowerMOGGABI());
 
-  if (opts.enablePostABIRegionFusion && opts.fuseJitKernels) {
-    pm.addPass(MGP::createPostABIFuseGenericRegions());
-    pm.addPass(MGP::createRemoveRedundantOperands());
-    // NOTE: We might be able to remove the CSE pass after modeling async value
-    // correctly.
-    pm.addPass(mlir::createCSEPass());
-    // TODO: Run cleanup per MOGG::GenericCompiledRegionOp for pass
-    // multi-threading. For now, we simply use a module pass, as the generic
-    // region might be enclosed inside a grt.if/while/... operations, making the
-    // pass nest harder to find. We should re-exam all passes, many of them can
-    // be triggered more locally.
-    pm.addPass(MGP::createLegalizeAsyncRefDeallocations());
-  }
-  // Lower async pack/unpack intrinsic.
-  MGP::LowerAsyncRefsOptions lowerAsyncopt;
-  lowerAsyncopt.kernelLibraryPaths = kernelLibraryPaths;
-  pm.addNestedPass<MGP::ModelOp>(
-      MGP::createLowerAsyncRefs(lowerAsyncopt, libraryAnalysis));
   pm.addNestedPass<MGP::ModelOp>(MGP::createCoalesceAsyncRefs());
 
   pm.addPass(MGP::createOutlineKernels());

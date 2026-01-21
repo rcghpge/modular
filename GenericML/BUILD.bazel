@@ -26,7 +26,6 @@ pkg_files(
         ":MODialect.doc",
         ":MOGGDialect.doc",
         ":MOGGDialectPassesIncGen.doc",
-        ":MOGGToKGENIncGen.doc",
         ":MOSHDialect.doc",
         ":MOToMOGGIncGen.doc",
         ":MOToPrimitivesIncGen.doc",
@@ -75,7 +74,6 @@ modular_cc_library(
         ":MGPRT",
         ":MODialect",
         ":MOGGDialect",
-        ":MOGGToKGEN",
         ":MOGGTransforms",
         ":MOToMOGG",
         ":MOToPrimitives",
@@ -144,7 +142,6 @@ modular_cc_library(
         # Deal with a circular dependency.
         exclude = [
             "include/GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h",
-            "include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.h",
             "include/GenericML/GraphCompiler/Conversion/MOToMOGG.h",
         ],
     ),
@@ -1332,41 +1329,6 @@ modular_cc_library(
         ":MODialect",
         ":MOGGDialect",
         ":MOToMOGGIncGen",
-        "//KGEN:ToolCommon",
-    ],
-)
-
-## MOGGToKGEN
-td_library(
-    name = "MOGGToKGENTdFiles",
-    srcs = ["include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.td"],
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_modular_passes(
-    name = "MOGGToKGENIncGen",
-    output_name = "MOGGToKGEN",
-    td_file = "include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.td",
-    deps = [
-        ":MOGGToKGENTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "MOGGToKGEN",
-    srcs = glob(["lib/GraphCompiler/Conversion/MOGGToKGEN/*.cpp"]),
-    hdrs = ["include/GenericML/GraphCompiler/Conversion/MOGGToKGEN.h"],
-    deps = [
-        ":GraphCompilerInterfaces",
-        ":MGPDialect",
-        ":MODialect",
-        ":MOGGDialect",
-        ":MOGGToKGENIncGen",
         "//KGEN:ToolCommon",
     ],
 )

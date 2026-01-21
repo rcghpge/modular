@@ -19,7 +19,6 @@
 #include "GenericML/MGPDialect/MGPOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/POPDialect/POPOps.h"
-#include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/IR/IRMapping.h"
@@ -86,214 +85,6 @@ static inline bool canDuplicate(Operation *op) {
     return true;
   return isa<KGEN::KGENDialect, KGEN::POP::POPDialect,
              mlir::index::IndexDialect>(op->getDialect());
-}
-
-// Anything we find a registry for, lower to generic regions
-static inline bool
-isLowerableToMOGGCall(MLIRContext *ctx,
-                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                      Operation *op) {
-  // Operations that involve runtime slots should not be lowered to mojo
-  // because they need special slot offsetting during inlining
-  if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
-          MGP::ExecuteGenericOp>(op))
-    return false;
-
-  // Constant external ops should not be lowered to mojo so they can be
-  // updated with a prefix during inlining.
-  if (isa<MGP::BufferConstantExternalOp>(op))
-    return false;
-
-  bool isRegistered = mojoLibraryAnalysis.hasRegisteredMojoKernelFor(
-      op->getName().getStringRef());
-  return isRegistered;
-}
-
-// Get a dictionary of the attributes for the lowered mogg call
-static DictionaryAttr getMoggCallAttrs(OpBuilder &builder, Operation *op) {
-  SmallVector<NamedAttribute> attrs;
-
-  SmallVector<NamedAttribute> needToParameterize{};
-  if (auto attrToValOp = dyn_cast<MGP::MGPSelectiveLowerAttrOpInterface>(op)) {
-    SmallVector<Attribute> liftAttrs = attrToValOp.getLiftableAttributes();
-    if (!liftAttrs.empty())
-      attrs.push_back(
-          builder.getNamedAttr("resources", builder.getArrayAttr(liftAttrs)));
-
-    needToParameterize = attrToValOp.getParameterizableAttributes();
-  } else {
-    needToParameterize.assign(op->getAttrs().begin(), op->getAttrs().end());
-  }
-
-  for (auto &attr : needToParameterize) {
-    if (auto devRefAttr = dyn_cast<DeviceRefAttr>(attr.getValue())) {
-      // Prune device attributes to string ref of label
-      attrs.push_back(builder.getNamedAttr(
-          attr.getName(), builder.getStringAttr(devRefAttr.getLabel())));
-    } else if (auto shapeAttr =
-                   dyn_cast<IntArrayElementsAttr>(attr.getValue())) {
-      // For Static TensorSpec attributes, we want to generate the rank param
-      // and pass the static shape.
-      auto shape = shapeAttr.asArrayRef<int64_t>();
-      auto name = attr.getName().str();
-      attrs.push_back(builder.getNamedAttr(name + "Rank",
-                                           builder.getIndexAttr(shape.size())));
-      attrs.push_back(
-          builder.getNamedAttr(name, builder.getI64TensorAttr(shape)));
-    } else if (auto cmpPredAttr = dyn_cast<mlir::index::IndexCmpPredicateAttr>(
-                   attr.getValue())) {
-      // For IndexCmpPredicate, we stringify it and passed as a StringLiteral.
-      StringRef predStr =
-          mlir::index::stringifyIndexCmpPredicate(cmpPredAttr.getValue());
-      attrs.push_back(
-          builder.getNamedAttr("pred", builder.getStringAttr(predStr)));
-    } else {
-      attrs.push_back(attr);
-    }
-  }
-
-  TypeAttr dtype = nullptr;
-  auto checkOrAssignDType = [&](TypeAttr toAssign) {
-    if (!dtype)
-      dtype = toAssign;
-    ASSERT_STREAM(dtype == toAssign, "Conflict DType founded");
-  };
-
-  // For anything that takes in a tensor-spec input, we need to parameterize the
-  // rank so the mojo calls can use that.
-  for (auto operandType : op->getOperands().getTypes()) {
-    if (auto tensorSpec = dyn_cast<MGP::TensorSpecType>(operandType)) {
-      attrs.push_back(builder.getNamedAttr(
-          "spec_rank", builder.getIndexAttr(tensorSpec.getShape().size())));
-
-      checkOrAssignDType(TypeAttr::get(tensorSpec.getElementType()));
-    } else if (auto tensor = dyn_cast<MGP::DeviceTensorType>(operandType)) {
-      // A scalar mgp.tensor is promoted to NDBuffer<[1]>
-      size_t rank = tensor.getRank();
-      attrs.push_back(
-          builder.getNamedAttr("tensor_rank", builder.getIndexAttr(rank)));
-      attrs.push_back(builder.getNamedAttr(
-          "buffer_rank", builder.getIndexAttr(rank == 0 ? 1 : rank)));
-
-      checkOrAssignDType(TypeAttr::get(tensor.getElementType()));
-    }
-  }
-
-  // For anything that produces a tensor output, we need to paramerized the
-  // dtype.
-  for (auto resultType : op->getResultTypes()) {
-    if (auto tensorType = dyn_cast<MGP::DeviceTensorType>(resultType)) {
-      checkOrAssignDType(TypeAttr::get(tensorType.getElementType()));
-      attrs.push_back(builder.getNamedAttr(
-          "buffer_rank", builder.getIndexAttr(tensorType.getRank() == 0
-                                                  ? 1
-                                                  : tensorType.getRank())));
-    }
-  }
-
-  if (dtype)
-    attrs.push_back(builder.getNamedAttr("dtype", dtype));
-
-  return builder.getDictionaryAttr(attrs);
-}
-
-// Transfer a operation into a mogg.call.
-static ErrorOr<SmallVector<Value>>
-buildMOGGCall(OpBuilder &builder, ValueRange args, Operation *op, Location loc,
-              MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-
-  KGEN::GeneratorOp kernel = nullptr;
-
-  // Remove chains from the inputs as they lower to NOPs.
-  SmallVector<Value> inputs;
-  for (auto [idx, val] : llvm::enumerate(args)) {
-    if (!isa<MEF::ChainType>(val.getType()))
-      inputs.push_back(val);
-  }
-
-  // Filter out returned chain type.
-  SmallVector<Type> callResultTps = llvm::filter_to_vector(
-      op->getResultTypes(), [](Type t) { return !isa<MEF::ChainType>(t); });
-
-  // Add the call to the actual implementing function in mojo.
-  MOGG::CallOp call = MOGG::CallOp::create(
-      builder, loc, callResultTps, op->getName().getStringRef(), inputs,
-      ArrayAttr{}, getMoggCallAttrs(builder, op));
-
-  SmallVector<Value> outputs;
-  unsigned resultIdx = 0;
-  for (Type t : op->getResultTypes()) {
-    if (isa<MEF::ChainType>(t)) {
-      // We create a separate op for chain creation, this allows us to optimize
-      // redundant chains independently from the MOGG.call itself.
-      outputs.push_back(MOGG::CreateReadyChainOp::create(
-          builder, loc, MEF::ChainType::get(builder.getContext())));
-    } else {
-      outputs.push_back(call->getResult(resultIdx++));
-    }
-  }
-
-  // Handle ops that may extend buffer lifetimes
-  if (auto extendsLifetime = dyn_cast<GRT::GRTExtendsLifetimeInterface>(*op)) {
-    for (size_t resultIdx = 0; resultIdx < op->getNumResults(); ++resultIdx) {
-
-      size_t numChains = 0;
-      for (size_t operandIdx = 0; operandIdx < op->getNumOperands();
-           ++operandIdx) {
-
-        // Skip chains.
-        if (isa<MEF::ChainType>(op->getOperandTypes()[operandIdx])) {
-          ++numChains;
-          continue;
-        }
-
-        if (extendsLifetime.extendsLifetime(operandIdx, resultIdx)) {
-          outputs[resultIdx] =
-              MOGG::BufferBorrowOp::create(builder, loc, op->getResultTypes(),
-                                           outputs[resultIdx],
-                                           inputs[operandIdx - numChains])
-                  ->getResult(0);
-        }
-      }
-    }
-  }
-
-  // Convert opaque outputs
-  for (auto [idx, ty] : llvm::enumerate(op->getResultTypes())) {
-    if (!isa<MGP::OpaqueType>(ty))
-      continue;
-
-    // Need to add extra ops for opaque outputs.
-    // Load the type infos from the kernel.
-    if (!kernel) {
-      kernel = mojoLibraryAnalysis.getRegisteredMojoKernelFor(
-          op->getName().getStringRef());
-    }
-    ASSERT_STREAM(kernel != nullptr, << "kernel `"
-                                     << op->getName().getStringRef()
-                                     << "` not found");
-
-    FailureOr<DictionaryAttr> methodsDictAttrOr =
-        MOGG::buildMojoObjectInfosOutputMethodsDict(
-            kernel, ArrayRef<StringRef>{"__moveinit__", "__del__"});
-    if (failed(methodsDictAttrOr)) {
-      return Error("missing methods for the primitive output opaque type: "
-                   "__moveinit__ / __del__ not found");
-    }
-    bool isRegister =
-        !kernel.getFuncTypeGenerator().getBody().hasMemoryOnlyResult();
-
-    // Convert opaque to MGP value.
-    // TODO: Simplify mgp.opaque lowerings for MGP Primitives (GEX-812).
-    Value val = outputs[idx];
-    auto moOpaqueTy = MO::OpaqueType::get(
-        StringAttr::get(kernel->getContext(), "OpaquePrimitive"));
-    val = MOGG::ToMOGGOp::create(builder, loc, moOpaqueTy, val,
-                                 *methodsDictAttrOr, isRegister);
-    outputs[idx] = MOGG::ToMGPFromOpaqueOp::create(builder, loc,
-                                                   outputs[idx].getType(), val);
-  }
-  return outputs;
 }
 
 // Wrap a mogg.generic_compiled_region around the given operation.
@@ -366,199 +157,93 @@ void LowerPrimitivesPass::runOnOperation() {
     return newOp->getResults();
   };
 
-  if (MOGG::useExperimentalMojoPath()) {
-    const auto walkerFn = [&](Operation *op) {
-      // Skip any operations nested within a region.
-      if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
-        return mlir::WalkResult::skip();
-
-      // Constant external ops should not be lowered to mojo so they can be
-      // updated with a prefix during inlining.
-      if (isa<MGP::BufferConstantExternalOp>(op))
-        return mlir::WalkResult::advance();
-
-      /// TODO(GEX-2588): Remove this.
-      if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
-              MGP::ExecuteGenericOp>(op)) {
-        return mlir::WalkResult::advance();
-      }
-
-      auto implementsEmitsMojoInterface =
-          dyn_cast<MOGG::EmitsMojoInterface>(op);
-      bool isAnIndexOrPOPOrParamConstantOp =
-          isa_and_nonnull<mlir::index::IndexDialect, KGEN::POP::POPDialect>(
-              op->getDialect()) ||
-          isa<KGEN::ParamConstantOp>(op);
-      if (!isAnIndexOrPOPOrParamConstantOp && !implementsEmitsMojoInterface)
-        return mlir::WalkResult::advance();
-
-      Location opLoc = op->getLoc();
-      OpBuilder builder{op};
-
-      auto newKernel =
-          wrapGenericRegionAround(builder, opLoc, op, cloneOperationBuilder);
-      if (newKernel.isError()) {
-        op->emitError(newKernel.takeError().get());
-        return mlir::WalkResult::interrupt();
-      }
-      newKernel->setEmitsMojo(true);
-
-      mlir::BitVector resultsToPack(op->getNumResults(), true);
-      mlir::BitVector operandsToUnpack(op->getNumOperands(), true);
-
-      if (implementsEmitsMojoInterface) {
-        resultsToPack = implementsEmitsMojoInterface.resultsToPack();
-        operandsToUnpack = implementsEmitsMojoInterface.operandsToUnpack();
-      }
-
-      MOGraphLoweringState::lowerMOGGABI(*newKernel, operandsToUnpack,
-                                         resultsToPack);
-
-      // If the op to lower is an index constant op, we should replace it with a
-      // mgp.buffer.constant and a resource attribute. This improves compilation
-      // time because we won't be hashing kernels based on the value of the
-      // constant.
-      if (isa<mlir::index::ConstantOp>(op)) {
-        auto loweredIndexOp = *newKernel->getBodyBlock()
-                                   .getOps<mlir::index::ConstantOp>()
-                                   .begin();
-        OpBuilder builder(loweredIndexOp);
-        auto loc = loweredIndexOp.getLoc();
-        uint64_t alignment =
-            static_cast<uint64_t>(minimumCpuAlignment.getValue());
-
-        int64_t indexValue = loweredIndexOp.getValue().getSExtValue();
-        auto blob =
-            mlir::HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
-                {&indexValue, 1});
-        auto elementsAttr =
-            AlignedBytesAttr::get(ctx, blob.getDataAs<uint8_t>(), alignment);
-
-        auto bufferConstantOp =
-            MGP::BufferConstantOp::create(builder, loc, elementsAttr);
-        auto dummyChain = MOGG::ChainDummyOp::create(builder, loc);
-        auto newIndexOp = MGP::BufferToIndexOp::create(
-            builder, loc, {dummyChain, bufferConstantOp.getResult()});
-        loweredIndexOp->replaceAllUsesWith(newIndexOp);
-        loweredIndexOp.erase();
-        auto currentResources = newKernel->getConstantResources();
-        SmallVector<Attribute> newResources(currentResources.begin(),
-                                            currentResources.end());
-        newResources.push_back(elementsAttr);
-        newKernel->setConstantResourcesAttr(ArrayAttr::get(ctx, newResources));
-      }
-
-      op->replaceAllUsesWith(*newKernel);
-      op->erase();
-
-      return mlir::WalkResult::skip();
-    };
-    if (model.walk</*Order=*/mlir::WalkOrder::PreOrder>(walkerFn)
-            .wasInterrupted()) {
-      signalPassFailure();
-      return;
-    }
-
-    return;
-  }
-
-  auto analysisOr = getLibraryAnalysis();
-  if (analysisOr.isError()) {
-    emitError(getOperation().getLoc(),
-              llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                            getPassName(), analysisOr.getError()));
-    return signalPassFailure();
-  }
-  MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
-
-  auto moggCallBodyBuilder =
-      [&mojoLibraryAnalysis](OpBuilder &builder, Location loc, Operation *op,
-                             ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
-    SmallVector<Value> inputVec(inputs);
-    if (auto bufferConcat = dyn_cast<MGP::BufferConcatOp>(op)) {
-
-      // The inputs will be in the form [chain, outBuffer, *inBuffers] so we
-      // skip over the first two to get the input buffers.
-      SmallVector<Value> ins;
-      for (size_t i = 0; i < bufferConcat.getInBuffers().size(); ++i)
-        ins.push_back(inputs[i + 2]);
-
-      // Packs the variadic input buffers into tuple.
-      Value tuple = MOGG::AsTupleOp::create(
-          builder, op->getLoc(),
-          builder.getTupleType(bufferConcat.getInBuffers().getTypes()), ins);
-
-      // Rebuild the input vector.
-      inputVec.clear();
-      // Chain is dropped then output is the new first argument.
-      inputVec.push_back(inputs[1]);
-      inputVec.push_back(tuple);
-      // Device context is at the end.
-      inputVec.push_back(inputs[inputs.size() - 1]);
-    } else if (isa<MGP::BufferGetCachedOp, MGP::BufferConstantOp>(op)) {
-      // This is the storage_ref handle to the buffer.
-      Value asyncRef = MOGG::AnyAsyncRefPlaceholderOp::create(builder, loc);
-      // Both buffer get cache/constant create a new storage_ref handle.
-      // Differently only buffer.get_cache inherit the lifetime, and constant
-      // buffer only require a nullptr handle (to mark that this is a
-      // non-tracking memory).
-      if (isa<MGP::BufferGetCachedOp>(op))
-        inputVec.push_back(asyncRef);
-      ErrorOr<SmallVector<Value>> errOr =
-          buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
-      if (errOr)
-        return errOr;
-
-      // Instead of creating a new AsyncValue for the buffer, we extend the
-      // lifetime of a cached buffer.
-      SmallVector<Value> outputs = errOr.takeValue();
-      ValueRange ret =
-          MOGG::BufferBorrowOp::create(builder, loc, op->getResultTypes()[0],
-                                       outputs.front(), asyncRef)
-              ->getResults();
-
-      // Override the result.
-      outputs.assign(ret.begin(), ret.end());
-      return outputs;
-    }
-    return buildMOGGCall(builder, inputVec, op, loc, mojoLibraryAnalysis);
-  };
-
-  model.walk</*Order=*/mlir::WalkOrder::PreOrder>([&](Operation *op) {
-    Location opLoc = op->getLoc();
-    OpBuilder builder{op};
-
+  const auto walkerFn = [&](Operation *op) {
     // Skip any operations nested within a region.
     if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
       return mlir::WalkResult::skip();
 
-    CompiledRegionBodyBuilder bodyBuilder(nullptr);
-    if ((isa_and_nonnull<mlir::index::IndexDialect>(op->getDialect()) ||
-         isa_and_nonnull<KGEN::POP::POPDialect>(op->getDialect()) ||
-         isa<KGEN::ParamConstantOp>(op))) {
-      // Clone index operations and pop operations when necessary.
-      bodyBuilder = cloneOperationBuilder;
-    } else if (isLowerableToMOGGCall(ctx, mojoLibraryAnalysis, op)) {
-      bodyBuilder = moggCallBodyBuilder;
+    // Constant external ops should not be lowered to mojo so they can be
+    // updated with a prefix during inlining.
+    if (isa<MGP::BufferConstantExternalOp>(op))
+      return mlir::WalkResult::advance();
+
+    /// TODO(GEX-2588): Remove this.
+    if (isa<MGP::BufferCacheOp, MGP::RuntimeCreateOp, MGP::ModuleLoadOp,
+            MGP::ExecuteGenericOp>(op)) {
+      return mlir::WalkResult::advance();
     }
 
-    if (bodyBuilder) {
-      ErrorOr<MOGG::GenericCompiledRegionOp> newKernel =
-          wrapGenericRegionAround(builder, opLoc, op, bodyBuilder);
+    auto implementsEmitsMojoInterface = dyn_cast<MOGG::EmitsMojoInterface>(op);
+    bool isAnIndexOrPOPOrParamConstantOp =
+        isa_and_nonnull<mlir::index::IndexDialect, KGEN::POP::POPDialect>(
+            op->getDialect()) ||
+        isa<KGEN::ParamConstantOp>(op);
+    if (!isAnIndexOrPOPOrParamConstantOp && !implementsEmitsMojoInterface)
+      return mlir::WalkResult::advance();
 
-      if (newKernel.isError()) {
-        op->emitError(newKernel.takeError().get());
-        signalPassFailure();
-        return mlir::WalkResult::interrupt();
-      }
+    Location opLoc = op->getLoc();
+    OpBuilder builder{op};
 
-      op->replaceAllUsesWith(newKernel.takeValue());
-      op->erase();
-      return mlir::WalkResult::skip();
+    auto newKernel =
+        wrapGenericRegionAround(builder, opLoc, op, cloneOperationBuilder);
+    if (newKernel.isError()) {
+      op->emitError(newKernel.takeError().get());
+      return mlir::WalkResult::interrupt();
+    }
+    newKernel->setEmitsMojo(true);
+
+    mlir::BitVector resultsToPack(op->getNumResults(), true);
+    mlir::BitVector operandsToUnpack(op->getNumOperands(), true);
+
+    if (implementsEmitsMojoInterface) {
+      resultsToPack = implementsEmitsMojoInterface.resultsToPack();
+      operandsToUnpack = implementsEmitsMojoInterface.operandsToUnpack();
     }
 
-    return mlir::WalkResult::advance();
-  });
+    MOGraphLoweringState::lowerMOGGABI(*newKernel, operandsToUnpack,
+                                       resultsToPack);
+
+    // If the op to lower is an index constant op, we should replace it with a
+    // mgp.buffer.constant and a resource attribute. This improves compilation
+    // time because we won't be hashing kernels based on the value of the
+    // constant.
+    if (isa<mlir::index::ConstantOp>(op)) {
+      auto loweredIndexOp =
+          *newKernel->getBodyBlock().getOps<mlir::index::ConstantOp>().begin();
+      OpBuilder builder(loweredIndexOp);
+      auto loc = loweredIndexOp.getLoc();
+      uint64_t alignment =
+          static_cast<uint64_t>(minimumCpuAlignment.getValue());
+
+      int64_t indexValue = loweredIndexOp.getValue().getSExtValue();
+      auto blob = mlir::HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
+          {&indexValue, 1});
+      auto elementsAttr =
+          AlignedBytesAttr::get(ctx, blob.getDataAs<uint8_t>(), alignment);
+
+      auto bufferConstantOp =
+          MGP::BufferConstantOp::create(builder, loc, elementsAttr);
+      auto dummyChain = MOGG::ChainDummyOp::create(builder, loc);
+      auto newIndexOp = MGP::BufferToIndexOp::create(
+          builder, loc, {dummyChain, bufferConstantOp.getResult()});
+      loweredIndexOp->replaceAllUsesWith(newIndexOp);
+      loweredIndexOp.erase();
+      auto currentResources = newKernel->getConstantResources();
+      SmallVector<Attribute> newResources(currentResources.begin(),
+                                          currentResources.end());
+      newResources.push_back(elementsAttr);
+      newKernel->setConstantResourcesAttr(ArrayAttr::get(ctx, newResources));
+    }
+
+    op->replaceAllUsesWith(*newKernel);
+    op->erase();
+
+    return mlir::WalkResult::skip();
+  };
+  if (model.walk</*Order=*/mlir::WalkOrder::PreOrder>(walkerFn)
+          .wasInterrupted()) {
+    signalPassFailure();
+  }
 }
 
 } // namespace

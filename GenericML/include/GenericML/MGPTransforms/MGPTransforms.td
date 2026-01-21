@@ -439,25 +439,6 @@ def DynamicMemoryPlanningPass : Pass<"dynamic-memory-planning", "MGP::ModelOp"> 
 }
 
 //===----------------------------------------------------------------------===//
-// HoistHarness
-//===----------------------------------------------------------------------===//
-
-def HoistHarness: Pass<"hoist-harness", "mlir::ModuleOp"> {
-  let summary = "Hoist kernels into a harness function.";
-  let description = [{
-    Given a MOGG kernel hoist the body into a harness function.
-  }];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-    Option<"minimumCpuAlignment", "min-cpu-alignment", "size_t",
-      /*default=*/"kPreferredMemoryAlignment",
-     "Minimum alignment for all CPU buffers (both constants and allocated)">
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // AddStackTracesToAssertsPass
 //===----------------------------------------------------------------------===//
 

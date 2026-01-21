@@ -27,16 +27,4 @@ namespace M::MGP {
 
 } // namespace M::MGP
 
-namespace M::MOGG {
-class MojoLibraryAnalysis;
-} // namespace M::MOGG
-
-namespace M::MGP {
-
-std::unique_ptr<mlir::Pass>
-createHoistHarness(const HoistHarnessOptions &opts,
-                   std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
-
-} // namespace M::MGP
-
 #endif // GENERICML_MGPDIALECT_MGPTRANSFORMS_H

@@ -814,42 +814,7 @@ MojoLibraryAnalysis::registerOpaqueTypesFromModule(ModuleOp module) {
 
 ErrorOrSuccess
 MojoLibraryAnalysis::init(ArrayRef<std::string> kernelLibraryPaths) {
-  if (!useExperimentalMojoPath()) {
-    auto loadedModulesOr = loadAllMLIRKernels(kernelLibraryPaths);
-
-    if (loadedModulesOr.isError())
-      return loadedModulesOr.takeError();
-
-    SmallVector<OwningOpRef<ModuleOp>> loadedModules =
-        loadedModulesOr.takeValue();
-
-    ASSERT_STREAM(loadedModules.size() >= 2,
-                  "Must contains standard library and MOGG primitives");
-
-    // Pull out the loaded standard library.
-    module = std::move(loadedModules[0]);
-    loadedModules.erase(loadedModules.begin());
-
-    // Initialize the symbol table over the standard library module.
-    rawMojoKernelTable.emplace(*module);
-
-    for (auto generator : getRawMojoKernels()) {
-      // Mark standard library generators
-      if (auto updateErr = updateRegisteredKernelsMap(
-              generator, /*isGeneratorFromStandardLibrary*/ true))
-        return updateErr;
-    }
-
-    // Process all remaining modules.
-    for (auto [index, loadedModule] : llvm::enumerate(loadedModules)) {
-      if (auto updateErr = updateLoadedKernelsForCollisions(*loadedModule))
-        return Error(Twine("failed to load kernel library: ") +
-                     updateErr.getError());
-    }
-
-    return success();
-  }
-
+  // The Mojo path is always used now, so we always load LIT kernels.
   auto loadLitKernelsOr = loadAllLITKernels(kernelLibraryPaths);
   if (loadLitKernelsOr.isError())
     return loadLitKernelsOr.takeError();
@@ -1279,10 +1244,7 @@ validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
 
 ErrorOrSuccess
 MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
-  if (useExperimentalMojoPath())
-    return validateCustomOpParametersImpl<KGEN::LIT::FnOp>(*this, customOp);
-  else
-    return validateCustomOpParametersImpl<KGEN::GeneratorOp>(*this, customOp);
+  return validateCustomOpParametersImpl<KGEN::LIT::FnOp>(*this, customOp);
 }
 
 template <class FuncT>
@@ -1308,10 +1270,7 @@ verifyMOOpMatchesKernelImpl(const MojoLibraryAnalysis &libraryAnalysis,
 
 ErrorOrSuccess
 MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
-  if (useExperimentalMojoPath())
-    return verifyMOOpMatchesKernelImpl<KGEN::LIT::FnOp>(*this, op);
-  else
-    return verifyMOOpMatchesKernelImpl<KGEN::GeneratorOp>(*this, op);
+  return verifyMOOpMatchesKernelImpl<KGEN::LIT::FnOp>(*this, op);
 }
 
 ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>

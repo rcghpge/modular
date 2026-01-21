@@ -33,7 +33,6 @@ namespace M::MGP {
 #define GEN_PASS_DECL_LOWERMOGGREGIONCOMPILES
 #define GEN_PASS_DECL_FUSEGENERICCOMPILEDREGIONS
 #define GEN_PASS_DECL_LEGALIZEASYNCREFDEALLOCATIONS
-#define GEN_PASS_DECL_LOWERASYNCREFS
 #define GEN_PASS_DECL_EMITMOJO
 #define GEN_PASS_DECL_MERGEIDENTICALKERNELSTUBS
 #define GEN_PASS_DECL_LOOKUPCONSTANTRESOURCES
@@ -44,7 +43,6 @@ namespace M::MGP {
 #define GEN_PASS_DECL_LOADMOJO
 #define GEN_PASS_DECL_LOWERPRIMITIVES
 #define GEN_PASS_DECL_LOWERMOGGABI
-#define GEN_PASS_DECL_POSTABIFUSEGENERICREGIONS
 #define GEN_PASS_DECL_REMOVEREDUNDANTOPERANDS
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
 
@@ -62,10 +60,6 @@ namespace M::MGP {
 
 std::unique_ptr<mlir::Pass> createLowerPrimitives(
     const LowerPrimitivesOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
-
-std::unique_ptr<mlir::Pass> createLowerAsyncRefs(
-    const LowerAsyncRefsOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
 
 std::unique_ptr<mlir::Pass>

@@ -516,16 +516,14 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
         forwardedParameters.push_back(validated.takeValue());
     }
 
-    // For emit-mojo path: infer kernel parameters from opaque types in
-    // operands and results. This resolves parameters like P0, P1 from the
-    // opaque type's parameter dictionary (S0=4, S1=8 -> P0=4, P1=8).
-    if (useExperimentalMojoPath()) {
-      // Get the LIT kernel function to access its parameter annotations.
-      KGEN::LIT::FnOp litFunction =
-          mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
-              custom.getSymbol());
-      inferOpaqueParameters(forwardedParameters, moOp, litFunction);
-    }
+    // Infer kernel parameters from opaque types in operands and results.
+    // This resolves parameters like P0, P1 from the opaque type's parameter
+    // dictionary (S0=4, S1=8 -> P0=4, P1=8).
+    // Get the LIT kernel function to access its parameter annotations.
+    KGEN::LIT::FnOp litFunction =
+        mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
+            custom.getSymbol());
+    inferOpaqueParameters(forwardedParameters, moOp, litFunction);
 
     return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
   }
@@ -624,16 +622,9 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
       }
     }
 
-    if (useExperimentalMojoPath()) {
-      // Build an ArrayAttr for EmitMojo.
-      forwardedParameters.push_back(
-          NamedAttribute(paramName, builder.getI64ArrayAttr(values)));
-    } else {
-      // Lower the dimensions to KGEN.
-      auto attrOrError = typeManager.lowerStaticDims(builder, values);
-      forwardedParameters.push_back(
-          NamedAttribute(paramName, attrOrError.takeValue()));
-    }
+    // Build an ArrayAttr for the Mojo path.
+    forwardedParameters.push_back(
+        NamedAttribute(paramName, builder.getI64ArrayAttr(values)));
   };
   if (auto convOp = dyn_cast<MO::ConvOp>(moOp)) {
     extractConstantValues(convOp.getStrides(),
@@ -777,9 +768,6 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
 }
 
 ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
-  if (useExperimentalMojoPath())
-    return lowerToKernelBase<KGEN::LIT::FnOp>();
-  else
-    return lowerToKernelBase<KGEN::GeneratorOp>();
+  return lowerToKernelBase<KGEN::LIT::FnOp>();
 }
 } // namespace M::MOGG

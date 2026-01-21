@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mogg-to-kgen --canonicalize --mo-to-primitives --lower-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --canonicalize --mo-to-primitives --lower-primitives | FileCheck %s
 
 // CHECK-LABEL: @while_op
 // CHECK: } execute
