@@ -4,8 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
-
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/SourceMgr.h"
@@ -15,9 +13,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/MGPDialect/MGPOps.h"
 
 #include "Cache/CacheTelemetryContext.h"
@@ -57,49 +53,8 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
     initLLVM();
 
-    if (MOGG::useExperimentalMojoPath()) {
-      if (compileMojoToBinary(module, kernelLibraryPaths).isError())
-        signalPassFailure();
-    } else {
-      auto analysisOr = getLibraryAnalysis();
-      if (analysisOr.isError()) {
-        emitError(getOperation().getLoc(),
-                  llvm::formatv("[{0}] Failed to load Mojo analysis: {1}",
-                                getPassName(), analysisOr.getError()));
-        return signalPassFailure();
-      }
-      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis = *analysisOr.takeValue();
-      if (compileKGENToBinary(module, mojoLibraryAnalysis).isError())
-        signalPassFailure();
-    }
-  }
-
-  CompileDiagnosticOrSuccess
-  compileKGENToBinary(ModuleOp module,
-                      MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis) {
-    CompileDiagnosticOrSuccess errOr = compileToBinary(
-        /*moduleOp=*/module,
-        /*mojoLibraryAnalysis=*/mojoLibraryAnalysis,
-        /*dumpStub=*/dumpStub.getValue(),
-        /*createMOGGReproducers=*/createMOGGReproducers.getValue(),
-        /*saveTempPrefix=*/saveTempPrefix.getValue(),
-        /*minimumCpuAlignment=*/minimumCpuAlignment.getValue(),
-        /*enableTiming=*/timeMOGGCompile.getValue(),
-        /*dryRun=*/dryRun.getValue(),
-        /*debugKGENStubs=*/debugKGENStubs.getValue(),
-        /*kernelBuildType=*/KernelBuildType::kRelease);
-
-    if (errOr.isError())
-      return errOr.takeError();
-
-    for (Operation &op : llvm::make_early_inc_range(module.getOps())) {
-      if (isa<KGEN::GeneratorOp, KGEN::ExternGeneratorOp,
-              KGEN::StructGeneratorOp>(op)) {
-        op.erase();
-      }
-    }
-
-    return success();
+    if (compileMojoToBinary(module, kernelLibraryPaths).isError())
+      signalPassFailure();
   }
 
   CompileDiagnosticOrSuccess
