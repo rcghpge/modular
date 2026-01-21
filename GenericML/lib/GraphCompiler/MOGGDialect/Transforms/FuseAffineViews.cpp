@@ -74,9 +74,6 @@ struct FuseAffineViewsPass
   }
 
   static Value lowerScalarDim(Location &loc, OpBuilder builder, TypedAttr dim) {
-    if (!useExperimentalMojoPath())
-      return lowerDimToKGEN(loc, builder, dim);
-
     if (auto intAttr = dyn_cast<IntegerAttr>(dim)) {
       auto scalarTy = MO::ScalarType::get(intAttr.getContext(),
                                           *MO::fromMLIRType(intAttr.getType()));
