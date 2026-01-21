@@ -19,7 +19,7 @@ modular_cc_test(
     size = "small",
     srcs = ["DebugAllocPoisonTest.cpp"],
     env = {
-        "MODULAR_DEBUG_DEVICE_ALLOCATOR": "uninitialized-poison",
+        "MODULAR_DEVICE_CONTEXT_DEBUG_ALLOC_POISON": "true",
     },
     deps = [
         "//GenericML:DeviceDriver",

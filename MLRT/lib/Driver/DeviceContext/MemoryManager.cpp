@@ -375,9 +375,7 @@ MemoryManagerFreeList::MemoryManagerFreeList(const DeviceContext *context,
     freeBuffers_[i] = nullptr;
   }
 
-  auto config = Config::open();
-  if (!config.isError() &&
-      config->isValueInList("debug.device_allocator", "out-of-bounds")) {
+  if (DeviceContext::configAsBool("memory_manager_redzone_enable", false)) {
     if (context == nullptr) {
       memoryManager_.logErr("redzone checks disabled due to null context in "
                             "MemoryManagerFreeList");
