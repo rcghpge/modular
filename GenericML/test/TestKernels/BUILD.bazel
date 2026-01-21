@@ -1,19 +1,8 @@
-load("//bazel:api.bzl", "mojo_kgen_lib", "mojo_library")
+load("//bazel:api.bzl", "mojo_library")
 
 # gazelle:default_visibility //GenericML:__subpackages__
 
 package(default_visibility = ["//GenericML:__subpackages__"])
-
-mojo_kgen_lib(
-    name = "MOGGKernelAPITestLib",
-    testonly = True,
-    srcs = glob(["**/*.mojo"]),
-    deps = [
-        "//max:compiler_internal",
-        "//max:tensor",
-        "@mojo//:std",
-    ],
-)
 
 mojo_library(
     name = "MOGGKernelAPITest",
@@ -27,13 +16,10 @@ mojo_library(
     ],
 )
 
-# Alias that switches between .mlirbc and .mojopkg based on emit-mojo config.
-# Use this for tests that need to work in both modes.
+# Alias for backward compatibility - now always uses MOGGKernelAPITest since
+# emit-mojo is always enabled.
 alias(
     name = "MOGGKernelAPITestLibOrPkg",
     testonly = True,
-    actual = select({
-        "//oss/modular:emit_mojo_enabled": ":MOGGKernelAPITest",
-        "//conditions:default": ":MOGGKernelAPITestLib",
-    }),
+    actual = ":MOGGKernelAPITest",
 )
