@@ -10,13 +10,10 @@ modular_cc_binary(
     name = "mt",
     srcs = glob(["*.cpp"]),
     local_defines = ASYNCRT_PROFILING_LOCAL_DEFINES,
-    mojo_deps = select({
-        "//:emit_mojo_enabled": [
-            "//max:MOGGKernelAPI",
-            "//max:MOGGPrimitives",
-        ],
-        "//conditions:default": [],
-    }),
+    mojo_deps = [
+        "//max:MOGGKernelAPI",
+        "//max:MOGGPrimitives",
+    ],
     deps = [
         "//GenericML:CommonDriver",
         "//GenericML:ExecutionDriver",

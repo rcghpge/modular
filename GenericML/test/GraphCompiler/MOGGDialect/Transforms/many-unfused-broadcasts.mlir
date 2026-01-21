@@ -1,6 +1,4 @@
-// RUN: test -n "$EMIT_MOJO" || (mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-views --cse --canonicalize --mogg-to-kgen --mo-to-primitives --lower-alignments --lower-primitives --lower-abi --canonicalize -cse --lower-async-refs --coalesce-async-refs --jit-compile-kernels --lower-mogg-region-compile %s | FileCheck %s)
-
-// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-views --cse --canonicalize --mo-to-primitives --lower-alignments --lower-primitives --lower-abi --canonicalize -cse --lower-async-refs --coalesce-async-refs --outline-kernels --add-try-except-blocks --emit-mojo --jit-compile-kernels --lower-mogg-region-compile %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-elementwise --cse --canonicalize --fuse-views --cse --canonicalize --mo-to-primitives --lower-alignments --lower-primitives --lower-abi --canonicalize -cse --lower-async-refs --coalesce-async-refs --outline-kernels --add-try-except-blocks --emit-mojo --jit-compile-kernels --lower-mogg-region-compile %s | FileCheck %s
 
 // Check that with many broadcasts of the same value we still produce a unique kernel for each
 
