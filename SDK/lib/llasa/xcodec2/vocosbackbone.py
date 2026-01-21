@@ -8,8 +8,8 @@
 
 from __future__ import annotations
 
-import max.nn as nn
 from max.graph import TensorValue
+from max.nn import legacy as nn
 
 from .config import XCodec2Config
 from .layers import ResnetBlock

@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from functools import cached_property
 
-import max.nn as nn
 import numpy as np
 from max.dtype import DType
 from max.graph import DeviceRef, TensorValue, ops
+from max.nn import legacy as nn
 
 from .config import XCodec2Config
 
