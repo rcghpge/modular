@@ -3,12 +3,10 @@
 // Test that mo.concat with variadic inputs properly generates VariadicTensors in the emitted Mojo code
 
 // CHECK: fn stub_0({{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}OutputTensor[dtype = DType.int32, rank = 1]{{.*}}) raises:
-// CHECK: var {{.*}} = DynamicTensor[dtype = {{.*}}.dtype, rank = {{.*}}.rank]({{.*}}._ptr, {{.*}}.shape())
-// CHECK: var {{.*}} = DynamicTensor[dtype = {{.*}}.dtype, rank = {{.*}}.rank]({{.*}}._ptr, {{.*}}.shape())
-// CHECK: var {{.*}} = DynamicTensor[dtype = {{.*}}.dtype, rank = {{.*}}.rank]({{.*}}._ptr, {{.*}}.shape())
-// CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}, {{.*}}, {{.*}})
+// CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)
+// CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}.shape(), {{.*}}.shape(), {{.*}}.shape())
 // CHECK: comptime {{.*}} = StaticTuple[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec)
-// CHECK: var {{.*}} = VariadicTensors[io_spec = {{.*}}.io_spec, static_specs = {{.*}}]({{.*}})
+// CHECK: var {{.*}} = VariadicTensors[io_spec = {{.*}}.io_spec, static_specs = {{.*}}]({{.*}}, {{.*}})
 // CHECK: MOGGKernelAPI.Concat.execute[target = "cpu"]({{.*}}, {{.*}}, {{.*}}, {{.*}})
 
 mo.graph @concat(%arg0: !mo.tensor<[2], si32>, %arg1: !mo.tensor<[3], si32>, %arg2: !mo.tensor<[4], si32>) -> !mo.tensor<[9], si32> {

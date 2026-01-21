@@ -4677,28 +4677,20 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
     return success();
   }
 
-  // Create DynamicTensor variables for each input
-  SmallVector<MojoValue> dynamicTensorVars;
-  for (const auto &inputVal : inputValues) {
-    // Create a DynamicTensor from each rebound input (which is already rebuilt)
-    // var aN = DynamicTensor[dtype = varN.dtype, rank = varN.rank](
-    //     varN._ptr, varN.shape()
-    // )
-    MojoValue dynamicTensorConstructor = MojoValue(
-        "DynamicTensor")[{MojoValue("dtype").equal(inputVal.get("dtype")),
-                          MojoValue("rank").equal(inputVal.get("rank"))}];
-    MojoValue dynamicTensorValue = dynamicTensorConstructor(
-        {}, {inputVal.get("_ptr"), inputVal.get("shape")()});
-    dynamicTensorVars.push_back(state.builder.var(dynamicTensorValue));
-  }
+  SmallVector<MojoValue> runtimePointers = llvm::map_to_vector(
+      inputValues, [&](const MojoValue &val) { return val.get("_ptr"); });
 
-  // Create StaticTuple with the DynamicTensor variables
-  // var inputTup = StaticTuple[size=N](a1, a2, ..., aN)
+  SmallVector<MojoValue> runtimeShapes = llvm::map_to_vector(
+      inputValues, [&](const MojoValue &val) { return val.get("shape")(); });
+
   MojoValue inputTupleConstructor =
       MojoValue(HardcodedMojoSymbols::struct_StaticTuple)[{
-          MojoValue("size").equal(std::to_string(dynamicTensorVars.size()))}];
-  MojoValue inputTupleValue = inputTupleConstructor({}, dynamicTensorVars);
-  MojoValue inputTupVar = state.builder.var(inputTupleValue);
+          MojoValue("size").equal(std::to_string(inputValues.size()))}];
+
+  MojoValue runtimePointersTuple =
+      state.builder.var(inputTupleConstructor({}, runtimePointers));
+  MojoValue runtimeShapesTuple =
+      state.builder.var(inputTupleConstructor({}, runtimeShapes));
 
   // Create the static specs tuple
   // comptime inputSpecs = StaticTuple[size=N](
@@ -4713,17 +4705,12 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   MojoValue staticSpecsValue = staticSpecsConstructor({}, staticSpecs);
   MojoValue inputSpecsComptime = state.builder.comptime(staticSpecsValue);
 
-  // Create the VariadicTensors
-  // var varInput = VariadicTensors[
-  //     io_spec = var1.io_spec, static_specs=inputSpecs
-  // ](inputTup)
-  // Note: Using the first rebound input's io_spec as they should all be the
-  // same
   MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
       MojoValue("io_spec").equal(inputValues[0].get("io_spec")),
       MojoValue("static_specs").equal(inputSpecsComptime)}];
-  MojoValue variadicTensorsValue =
-      variadicTensorsConstructor({}, {inputTupVar});
+
+  MojoValue variadicTensorsValue = variadicTensorsConstructor(
+      {}, {runtimePointersTuple, runtimeShapesTuple});
 
   state.setMojoValueFor(getResult(), state.builder.var(variadicTensorsValue));
   return success();
