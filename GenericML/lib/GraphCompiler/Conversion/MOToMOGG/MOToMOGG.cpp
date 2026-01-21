@@ -115,14 +115,6 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
 
-  const bool isaShapeFunc = isa<MO::InvokeShapeFuncOp>(op);
-  const bool isaLayoutTransform = isa<MO::LayoutTransformOp>(op);
-  const bool willEmitMojo = MOGG::useExperimentalMojoPath();
-
-  // Shape functions are only lowered under experimental Mojo path.
-  if ((isaLayoutTransform && !willEmitMojo) || (isaShapeFunc && !willEmitMojo))
-    return std::nullopt;
-
   MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
                                      mojoLibraryAnalysis);
 

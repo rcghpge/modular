@@ -221,46 +221,22 @@ struct AddFallbackShapeFunctions
         auto analysis = analysisOr.takeValue();
 
         // Find the kernel input parameters.
-        ArrayRef<ParamDeclAttr> mojoKernelInputParams;
+        auto mojoKernel =
+            analysis->getRegisteredLITMojoKernelFor(asOp.getSymbol());
 
-        if (MOGG::useExperimentalMojoPath()) {
-
-          auto mojoKernel =
-              analysis->getRegisteredLITMojoKernelFor(asOp.getSymbol());
-
-          if (!mojoKernel) {
-            mojoKernel = analysis->getRegisteredLITMojoShapeFunctionFor(
-                asOp.getSymbol());
-          }
-
-          if (!mojoKernel) {
-            asOp.emitError() << "Could not find registered mojo kernel named "
-                             << asOp.getSymbol();
-            return mlir::WalkResult::interrupt();
-          }
-
-          mojoKernelInputParams = mojoKernel.getInputParams();
-
-        } else {
-          // TODO(GEX-2613): Get rid of the KGEN path once we switched
-          // completely to LIT.
-
-          auto mojoKernel =
-              analysis->getRegisteredMojoKernelFor(asOp.getSymbol());
-
-          if (!mojoKernel) {
-            mojoKernel =
-                analysis->getRegisteredMojoShapeFunctionFor(asOp.getSymbol());
-          }
-
-          if (!mojoKernel) {
-            asOp.emitError() << "Could not find registered mojo kernel named "
-                             << asOp.getSymbol();
-            return mlir::WalkResult::interrupt();
-          }
-
-          mojoKernelInputParams = mojoKernel.getInputParams();
+        if (!mojoKernel) {
+          mojoKernel =
+              analysis->getRegisteredLITMojoShapeFunctionFor(asOp.getSymbol());
         }
+
+        if (!mojoKernel) {
+          asOp.emitError() << "Could not find registered mojo kernel named "
+                           << asOp.getSymbol();
+          return mlir::WalkResult::interrupt();
+        }
+
+        ArrayRef<ParamDeclAttr> mojoKernelInputParams =
+            mojoKernel.getInputParams();
 
         StringSet<> inputParams;
         for (KGEN::ParamDeclAttr inputParam : mojoKernelInputParams)
