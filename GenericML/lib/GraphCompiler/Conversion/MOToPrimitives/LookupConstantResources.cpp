@@ -5,7 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 
 using namespace M;
 
@@ -25,9 +26,6 @@ struct LookupConstantResources
   using LookupConstantResourcesBase::LookupConstantResourcesBase;
 
   void runOnOperation() override {
-    if (!MOGG::useExperimentalMojoPath())
-      return;
-
     auto kernelStubOp = getOperation();
     auto constantResources = kernelStubOp.getConstantResources();
     auto ctx = kernelStubOp->getContext();

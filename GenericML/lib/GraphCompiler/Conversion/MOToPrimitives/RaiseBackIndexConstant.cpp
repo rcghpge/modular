@@ -5,8 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/MGPDialect/MGPOps.h"
 
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Threading.h"
 
 using namespace M;
@@ -32,9 +34,6 @@ struct RaiseBackIndexConstant
   /// update the constant resource attributes because they will just no longer
   /// be used.
   void runOnOperation() override {
-    if (!MOGG::useExperimentalMojoPath())
-      return;
-
     auto moduleOp = getOperation();
     // Build a map of callee -> callers. Not using SymbolTable because it is
     // very slow to call it on a ModuleOp. Instead, we iterate through the model

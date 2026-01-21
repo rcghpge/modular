@@ -8,7 +8,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
 #include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "Support/CommonCLOptions.h"
@@ -182,9 +181,6 @@ struct EmitMojo
   // This pass emits Mojo text. [optional] phases exist strictly as compilation
   // time optimizations.
   void runOnOperation() override {
-    if (!MOGG::useExperimentalMojoPath())
-      return;
-
     auto moduleOp = getOperation();
 
     // [optional]

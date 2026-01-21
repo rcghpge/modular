@@ -8,7 +8,7 @@
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GenericML/MGPDialect/MGPDialect.h"
 
 using namespace M;
 
@@ -27,9 +27,6 @@ struct OutlineKernels : public MGP::impl::OutlineKernelsBase<OutlineKernels> {
   using OutlineKernelsBase::OutlineKernelsBase;
 
   void runOnOperation() override {
-    if (!MOGG::useExperimentalMojoPath())
-      return;
-
     auto moduleOp = getOperation();
     OpBuilder builder(moduleOp->getContext());
     builder.setInsertionPointToStart(moduleOp.getBody(0));
