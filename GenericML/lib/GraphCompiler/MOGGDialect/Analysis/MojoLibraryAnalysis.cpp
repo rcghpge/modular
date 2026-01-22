@@ -942,17 +942,17 @@ static bool isStaticStringLoweredPattern(Type ty) {
   if (!structTy)
     return false;
 
-  auto elementTypes = structTy.getElementTypes();
-  if (elementTypes.size() != 2)
+  std::optional<SmallVector<Type>> elementTypes = structTy.getElementTypes();
+  if (!elementTypes || elementTypes->size() != 2)
     return false;
 
   // First element should be pointer<none> (KGEN::NoneType, not MLIR NoneType)
-  auto ptrTy = dyn_cast<KGEN::PointerType>(elementTypes[0]);
+  auto ptrTy = dyn_cast<KGEN::PointerType>((*elementTypes)[0]);
   if (!ptrTy || !isa<KGEN::NoneType>(ptrTy.getElementType()))
     return false;
 
   // Second element should be index
-  return isa<IndexType>(elementTypes[1]);
+  return isa<IndexType>((*elementTypes)[1]);
 }
 
 /// Look through ref types and sugar to get underlying struct type if present.
