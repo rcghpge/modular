@@ -1529,7 +1529,6 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, !MO::isOnHost(*this)), // canFuseIntoOther
       BoolAttr::get(ctx, true),                 // canBeFusedInto
       BoolAttr::get(ctx, false),                // canDuplicate
-      BoolAttr::get(ctx, true),                 // emitsMojo
       BoolAttr::get(ctx, true)                  // isStructuredKernel
   );
   newKernel.setDeviceRef(device);
@@ -2697,7 +2696,6 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, !MO::isOnHost(*this)), // canFuseIntoOther
       BoolAttr::get(ctx, true),                 // canBeFusedInto
       BoolAttr::get(ctx, false),                // canDuplicate
-      BoolAttr::get(ctx, true),                 // emitsMojo
       BoolAttr::get(ctx, true)                  // isStructuredKernel
   );
   newKernel.setDeviceRef(device);
@@ -3788,14 +3786,12 @@ LogicalResult GenericCompiledRegionOp::verify() {
     return emitError("Compiled regions must have a device");
 
   // Ensure that output ops are fed by only a certain set of operations.
-  if (getEmitsMojo()) {
-    auto outputOp = body.front().getTerminator();
-    for (auto &&operand : outputOp->getOperands()) {
-      if (!isa<KernelTerminatorProvider>(operand.getDefiningOp())) {
-        return operand.getDefiningOp()->emitError(
-            "This operation is feeding an output op but it is not marked as a "
-            "KernelTerminatorProvider");
-      }
+  auto outputOp = body.front().getTerminator();
+  for (auto &&operand : outputOp->getOperands()) {
+    if (!isa<KernelTerminatorProvider>(operand.getDefiningOp())) {
+      return operand.getDefiningOp()->emitError(
+          "This operation is feeding an output op but it is not marked as a "
+          "KernelTerminatorProvider");
     }
   }
 

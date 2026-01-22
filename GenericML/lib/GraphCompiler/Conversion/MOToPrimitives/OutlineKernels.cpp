@@ -35,9 +35,6 @@ struct OutlineKernels : public MGP::impl::OutlineKernelsBase<OutlineKernels> {
     uint64_t stubNumber = 0;
     moduleOp.walk<mlir::WalkOrder::PreOrder>(
         [&](MOGG::GenericCompiledRegionOp kernelOp) {
-          if (!kernelOp.getEmitsMojo())
-            return mlir::WalkResult::skip();
-
           auto loc = kernelOp.getLoc();
           auto resultTypes = kernelOp->getResultTypes();
           auto functionType = TypeAttr::get(FunctionType::get(

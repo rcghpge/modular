@@ -28,14 +28,12 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK: mgp.buffer.to_index
 // CHECK: mogg.async.pack
 // CHECK: mogg.output
-// CHECK: emitsMojo = true
 
 // CHECK: mogg.generic.compiled.region () : () -> index{
 // CHECK: mgp.buffer.constant
 // CHECK: mgp.buffer.to_index
 // CHECK: mogg.async.pack
 // CHECK: mogg.output
-// CHECK: emitsMojo = true
 
 // index.add stays inline with async unpack/pack wrapping
 // CHECK: mogg.generic.compiled.region
@@ -44,7 +42,6 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK: index.add
 // CHECK: mogg.async.pack
 // CHECK: mogg.output
-// CHECK: emitsMojo = true
 
 // -----
 
@@ -76,4 +73,3 @@ mgp.model @buffer_borrow : mof devices [#M.device_ref<"cpu", 0>] init (%weights:
 // CHECK: mgp.buffer.slice
 // CHECK: mogg.async.pack.borrow
 // CHECK: mogg.output
-// CHECK: emitsMojo = true

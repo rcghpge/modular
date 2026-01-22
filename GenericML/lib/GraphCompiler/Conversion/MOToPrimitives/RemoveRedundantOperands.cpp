@@ -39,8 +39,7 @@ buildRegionOpWithResultType(OpBuilder &builder,
       regionOp.getConstantResourcesAttr(), // constantResources
       regionOp.getCanFuseIntoOtherAttr(),  // canFuseIntoOther
       regionOp.getCanBeFusedIntoAttr(),    // canBeFusedInto
-      regionOp.getCanDuplicateAttr(),      // canDuplicate
-      regionOp.getEmitsMojoAttr()          // emitsMojo
+      regionOp.getCanDuplicateAttr()       // canDuplicate
   );
   newKernel.setDeviceRef(regionOp.getExecutionDevice());
   return newKernel;

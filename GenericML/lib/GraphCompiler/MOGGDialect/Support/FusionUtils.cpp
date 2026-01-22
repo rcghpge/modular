@@ -348,8 +348,7 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
       MOGG::getSummaryString(toFuse, MOGG::FusionType::SOFT),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
-      canFuseIntoOther, canBeFusedInto, canDuplicate, false,
-      isStructuredKernel);
+      canFuseIntoOther, canBeFusedInto, canDuplicate, isStructuredKernel);
   fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());

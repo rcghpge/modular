@@ -150,7 +150,7 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
       MOGG::getSummaryString(toFuse, MOGG::FusionType::SOFT),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
-      canFuseIntoOther, canBeFusedInto, canDuplicate, true, isStructuredKernel);
+      canFuseIntoOther, canBeFusedInto, canDuplicate, isStructuredKernel);
   fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
@@ -300,9 +300,6 @@ static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
     if (duplicationFlag != parentRegion.getCanDuplicate())
       return false;
   }
-
-  if (parentRegion.getEmitsMojo() != childRegion.getEmitsMojo())
-    return false;
 
   return true;
 }

@@ -190,7 +190,6 @@ void LowerPrimitivesPass::runOnOperation() {
       op->emitError(newKernel.takeError().get());
       return mlir::WalkResult::interrupt();
     }
-    newKernel->setEmitsMojo(true);
 
     mlir::BitVector resultsToPack(op->getNumResults(), true);
     mlir::BitVector operandsToUnpack(op->getNumOperands(), true);
