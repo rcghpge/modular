@@ -55,7 +55,7 @@ struct Node : public KGEN::SCCNode<Node, KGEN::GeneratorOp, KGEN::CallOp> {
   /// Stored in a separate allocation as the hasher state is quite large
   /// (~800 bytes) and we only need them active while computing the hash for the
   /// current SCC.
-  std::unique_ptr<raw_xxhash_stream> hasher;
+  std::unique_ptr<raw_xxhash128_stream> hasher;
 
   /// Need to save the function name as we have to temporarily mutate it in
   /// setGeneratorHash while computing the bytecode hash.
@@ -143,7 +143,7 @@ void Graph::build(ModuleOp module, const SymbolTable &symtab) {
 }
 
 bool Graph::setGeneratorHash(Node *node) {
-  node->hasher = std::make_unique<raw_xxhash_stream>();
+  node->hasher = std::make_unique<raw_xxhash128_stream>();
 
   auto ctx = node->func.getContext();
   Builder builder(ctx);
