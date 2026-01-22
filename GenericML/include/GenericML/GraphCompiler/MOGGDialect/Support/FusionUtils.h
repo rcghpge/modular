@@ -18,8 +18,6 @@ enum class FusionType {
   HARD  // e.g. use lambda fusion interface
 };
 
-inline bool useExperimentalMojoPath() { return true; }
-
 /// Returns a compact, human readable 'summary' of op, which can be used
 /// at runtime for debugging and profiling.
 StringAttr getSummaryString(Operation *op);
