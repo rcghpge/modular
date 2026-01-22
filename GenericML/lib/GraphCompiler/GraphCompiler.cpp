@@ -117,7 +117,7 @@ void M::MO::registerPasses() {
   MGP::registerLoadMojo();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
-  MGP::registerFuseGenericCompiledRegions();
+  MGP::registerSequenceFusion();
 
   MGP::registerRemoveRedundantOperands();
   MGP::registerLegalizeAsyncRefDeallocations();
@@ -335,7 +335,7 @@ void M::MO::buildMoToMgpPipeline(
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts, libraryAnalysis));
-  pm.addPass(MGP::createFuseGenericCompiledRegions());
+  pm.addPass(MGP::createSequenceFusion());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());

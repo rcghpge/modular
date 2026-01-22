@@ -22,7 +22,7 @@ using namespace M;
 
 namespace M::MGP {
 
-#define GEN_PASS_DEF_FUSEGENERICCOMPILEDREGIONS
+#define GEN_PASS_DEF_SEQUENCEFUSION
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
 
 } // namespace M::MGP
@@ -372,10 +372,8 @@ doTransitiveDependencySequenceFusion(MGP::ModelOp model) {
   }
 }
 
-struct FuseGenericCompiledRegions
-    : public MGP::impl::FuseGenericCompiledRegionsBase<
-          FuseGenericCompiledRegions> {
-  using FuseGenericCompiledRegionsBase::FuseGenericCompiledRegionsBase;
+struct SequenceFusion : public MGP::impl::SequenceFusionBase<SequenceFusion> {
+  using SequenceFusionBase::SequenceFusionBase;
 
   void runOnOperation() override {
     MGP::ModelOp model = getOperation();

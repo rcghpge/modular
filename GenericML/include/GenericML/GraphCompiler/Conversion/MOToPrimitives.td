@@ -78,7 +78,7 @@ def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
   ];
 }
 
-def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "MGP::ModelOp"> {
+def SequenceFusion: Pass<"sequence-fusion", "MGP::ModelOp"> {
   let summary = "Fuse sequences of GenericCompiledRegionOp";
   let description = [{}];
 
