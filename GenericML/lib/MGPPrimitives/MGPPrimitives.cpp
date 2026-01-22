@@ -218,34 +218,6 @@ deviceHintAndContextFor(const RemainingArguments &operands) {
   return {kNoDevicePreference, M::Driver::DeviceContextRef{}};
 }
 
-/// Split the given environment variable by commas and parse the results
-/// into a list of ints.
-static llvm::SmallVector<int> parseIntListFromEnvVar(llvm::StringRef var) {
-  int n;
-  llvm::SmallVector<llvm::StringRef> parts;
-  llvm::SmallVector<int> ret;
-
-  // Read var & early-return if it's unset.
-  auto val = llvm::sys::Process::GetEnv(var);
-  if (!val) {
-    return ret;
-  }
-
-  // Split on commas
-  StringRef(*val).split(parts, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
-
-  // Parse each element
-  for (unsigned i = 0; i < parts.size(); ++i) {
-    if (parts[i].trim().getAsInteger(10, n)) {
-      LLVM_DEBUG(llvm::dbgs() << "Failed to parse " << i << "th element of "
-                              << var << "; substituting zero.\n");
-      n = 0;
-    }
-    ret.push_back(n);
-  }
-  return ret;
-}
-
 /// Compute the taskId for a device hint.
 /// Returns kDefaultTaskId if no affinity is needed.
 /// Always uses workers 1..N-1 for device affinity to avoid potential stalls
@@ -262,18 +234,34 @@ static int taskIdForDevice(int deviceHint,
   if (numWorkers <= 1)
     return kDefaultTaskId;
 
-  // If the user explicitly specified the cpu ID they want assigned to this
-  // device, then go with that. For example, if the system has 32 CPUs per NUMA
-  // node and the user wants all 8 GPUs controlled from NUMA node 1, then the
-  // user would set MODULAR_CPU_IDS_FOR_DEVICES="32,33,34,35,36,37,38,39".
-  //
-  // This can hopefully be removed (or updated to a CLI switch rather than
-  // environment variable) after GEX-3050 is resolved.
-  static auto envMapping =
-      parseIntListFromEnvVar("MODULAR_CPU_IDS_FOR_DEVICES");
-  if (envMapping.size() > static_cast<size_t>(deviceHint)) {
-    return envMapping[deviceHint];
-  }
+  // Initialize only once as Config::open() is expensive.
+  static SmallVector<int, 8> deviceTaskCpuIds = []() {
+    // If the user explicitly specified the cpu ID they want assigned to
+    // this device, then go with that. For example, if the system has 32
+    // CPUs per NUMA node and the user wants all 8 GPUs controlled from NUMA
+    // node 1, then the user would set
+    // MODULAR_RUNTIME_DEVICE_TASK_CPU_IDS="32,33,34,35,36,37,38,39".
+    SmallVector<int, 8> deviceTaskCpuIds;
+    auto config = Config::open();
+    if (!config.isError()) {
+      SmallVector<StringRef, 8> deviceTaskCpuIdStrs;
+      config->getValueAsList("runtime.device_task_cpu_ids",
+                             deviceTaskCpuIdStrs);
+      for (size_t i = 0; i < deviceTaskCpuIdStrs.size(); i++) {
+        int cpuId;
+        if (deviceTaskCpuIdStrs[i].getAsInteger(10, cpuId)) {
+          llvm::errs() << "Failed to parse runtime.device_task_cpu_ids[" << i
+                       << "] as an integer: " << deviceTaskCpuIdStrs[i] << "\n";
+          std::abort();
+        }
+        deviceTaskCpuIds.push_back(cpuId);
+      }
+    }
+    return deviceTaskCpuIds;
+  }();
+
+  if (deviceTaskCpuIds.size() > static_cast<size_t>(deviceHint))
+    return deviceTaskCpuIds[deviceHint];
 
   // Infer the task ID from the GPU to CPU core mapping, based on NUMA topology
   // affinity, if it is available for the target device.
