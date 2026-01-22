@@ -554,6 +554,30 @@ MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
 }
 
 //
+// ===== DeviceGraph ===== //
+//
+ErrorOr<DeviceGraphRef>
+DeviceGraph::capture(const DeviceStream &stream,
+                     llvm::function_ref<ErrorOrSuccess()> execute) {
+  if (auto beginErr = stream.beginCapture(); beginErr.isError())
+    return beginErr.takeError();
+
+  ErrorOrSuccess execResult = execute();
+  if (execResult.isError()) {
+    (void)stream.endCapture();
+    return execResult.takeError();
+  }
+
+  auto graphOrErr = stream.endCapture();
+  if (graphOrErr.isError())
+    return graphOrErr.takeError();
+
+  DeviceGraphRef graph = graphOrErr.takeValue();
+  graph->captureStream_ = DeviceStreamRef::copy(&stream);
+  return graph;
+}
+
+//
 // ===== DeviceStream ===== //
 //
 DeviceStream::DeviceStream(const DeviceContext &context)
@@ -729,7 +753,12 @@ public:
       : next_(nullptr), ctx_(ctx), event_(std::move(event)),
         handler_(std::move(handler)) {}
 
-  ErrorOr<bool> isReady() { return event_->isReady(); }
+  // Returns true if the event is ready (or if there's no event).
+  ErrorOr<bool> isReady() {
+    if (!event_)
+      return true; // No event means immediately ready
+    return event_->isReady();
+  }
 
   void runHandler() { handler_(); }
 
@@ -791,6 +820,20 @@ ErrorOrSuccess DeviceContext::checkPendingError() const {
 
 ErrorOrSuccess DeviceContext::pollPendingEvents() const {
   TRACY_ZONE_SCOPED_NC("DeviceContext::pollPendingEvents", TRACY_COLOR_PURPLE);
+
+  // During graph capture, events aren't executing - they're graph nodes.
+  // cuEventQuery is prohibited during capture, so skip polling. Handlers
+  // will run after capture ends and the graph executes.
+  if (device().api() == Device::cudaAPI) {
+    const auto &cudaCtx = CUDADeviceContext::cast(*this);
+    CUstreamCaptureStatus status =
+        CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+    if (cudaCtx.cudaDriver().cuStreamIsCapturing(
+            cudaCtx.cudaStream(), &status) == CUDADriver::SUCCESS &&
+        status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_ACTIVE) {
+      return success();
+    }
+  }
 
   // Quickly check if we should check for a pending work.
   if (hasPendingWork_.load(std::memory_order_acquire) == 0) {

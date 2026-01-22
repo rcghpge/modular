@@ -18,11 +18,21 @@
 #include "llvm/Support/Process.h"
 
 #include <optional>
+#include <vector>
 
 using namespace M;
 using namespace M::Driver;
 
 namespace {
+
+bool isStreamCapturing(const CUDADriver &driver, CUstream stream) {
+  CUstreamCaptureStatus status =
+      CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+  if (driver.cuStreamIsCapturing(stream, &status) != CUDADriver::SUCCESS)
+    return false;
+
+  return status != CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+}
 
 // Helper class to set and restore the CUcontext around interactions with the
 // CUDA driver.
@@ -739,8 +749,10 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
 }
 
 // ===== CUDADeviceEvent ===== //
-CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event)
-    : DeviceEvent(device), event_(event) {}
+CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event,
+                                 bool recordedDuringCapture)
+    : DeviceEvent(device), event_(event),
+      recordedDuringCapture_(recordedDuringCapture) {}
 
 CUDADeviceEvent::~CUDADeviceEvent() {
   const auto &cudaDevice = CUDADevice::cast(device());
@@ -756,6 +768,11 @@ ErrorOrSuccess CUDADeviceEvent::synchronize() const {
 }
 
 ErrorOr<bool> CUDADeviceEvent::isReady() const {
+  if (recordedDuringCapture_) {
+    // Events recorded during stream capture become graph nodes; polling them
+    // directly is not allowed, so treat them as ready.
+    return true;
+  }
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV_ERR(cudaDevice);
   CUDADriver::Result res = cudaDevice.cudaDriver().cuEventQuery(event_);
@@ -778,21 +795,21 @@ const CUDADeviceEvent &CUDADeviceEvent::cast(const DeviceEvent &event) {
 }
 
 // ===== CUDADeviceGraph ===== //
-CUDADeviceGraph::CUDADeviceGraph(const CUDADevice &device, CUgraphExec exec)
-    : DeviceGraph(device), exec_(exec) {}
-
 CUDADeviceGraph::~CUDADeviceGraph() {
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV(cudaDevice);
   if (exec_) {
-    const auto &cudaDevice = CUDADevice::cast(device());
-    CUDA_WITH_DEV(cudaDevice);
     CUDA_CHECK(cudaDevice.cudaDriver().cuGraphExecDestroy(exec_));
   }
 }
 
-ErrorOrSuccess CUDADeviceGraph::replay(const DeviceStream &stream) const {
-  const auto *cudaStream = CUDADeviceStream::verified_cast(&stream);
+ErrorOrSuccess CUDADeviceGraph::replay() const {
+  if (!hasStream())
+    RETURN_ERROR("cannot replay CUDA graph: no stream stored during capture");
+  const auto *cudaStream = CUDADeviceStream::verified_cast(captureStream());
   if (!cudaStream)
-    RETURN_ERROR("cannot replay CUDA graph on non-CUDA stream");
+    RETURN_ERROR(
+        "cannot replay CUDA graph: stored stream is not a CUDA stream");
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV_ERR(cudaDevice);
   CUDA_CHECK_ERR(
@@ -827,8 +844,10 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
 ErrorOr<DeviceEventRef> CUDADeviceStream::enqueueEvent() const {
   const auto &cudaDevice = CUDADevice::cast(this->device());
   DEFINE_OR_RETURN_ERROR(CUevent, event, cudaDevice.eventCachePop());
+  const bool recordedDuringCapture =
+      isStreamCapturing(cudaDevice.cudaDriver(), stream_);
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuEventRecord(event, stream_));
-  return CUDADeviceEventRef::create(cudaDevice, event);
+  return CUDADeviceEventRef::create(cudaDevice, event, recordedDuringCapture);
 }
 
 ErrorOrSuccess
@@ -926,11 +945,16 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
   CUgraphExec exec = nullptr;
   CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiate(
       &exec, graph, nullptr, nullptr, 0);
-  cudaDevice.cudaDriver().cuGraphDestroy(graph);
-  if (res != CUDADriver::SUCCESS)
+  if (res != CUDADriver::SUCCESS) {
+    // Clean up graph on failure.
+    cudaDevice.cudaDriver().cuGraphDestroy(graph);
     RETURN_ERROR("failed to instantiate CUDA graph");
+  }
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuGraphDestroy(graph));
 
-  return CUDADeviceGraphRef::create(cudaDevice, exec);
+  // Store the stream for replay/verification.
+  return CUDADeviceGraphRef::create(cudaDevice, exec,
+                                    DeviceStreamRef::copy(this));
 }
 
 // ===== CUDAModuleFunction ===== //
@@ -1423,8 +1447,10 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   CUDA_WITH_CTX_ERR(*this);
   DEFINE_OR_RETURN_ERROR(CUevent, event,
                          CUDADevice::cast(device()).eventCachePop());
+  const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
   CUDA_CHECK_ERR(driver_.cuEventRecord(event, stream_));
-  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event,
+                                    recordedDuringCapture);
 }
 
 ErrorOrSuccess CUDADeviceContext::enqueueEvent(const DeviceEvent &event) const {
@@ -1444,7 +1470,8 @@ CUDADeviceContext::eventCreate(unsigned int flags) const {
   POLL_PENDING_EVENTS(*this);
   CUevent event;
   CUDA_CHECK_ERR(driver_.cuEventCreate(&event, flags));
-  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event);
+  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event,
+                                    /*recordedDuringCapture=*/false);
 }
 
 ErrorOrSuccess

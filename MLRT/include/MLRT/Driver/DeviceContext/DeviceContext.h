@@ -20,6 +20,7 @@
 #include "Support/ReferenceCounted.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 
 #include <chrono>
 #include <cstdint>
@@ -50,7 +51,7 @@ using DeviceBufferRef = RCRef<const DeviceBuffer>;
 using DeviceContextRef = RCRef<const DeviceContext>;
 using DeviceEventRef = RCRef<const DeviceEvent>;
 using DeviceFunctionRef = RCRef<const DeviceFunction>;
-using DeviceGraphRef = RCRef<const DeviceGraph>;
+using DeviceGraphRef = RCRef<DeviceGraph>;
 using DeviceMulticastBufferRef = RCRef<const DeviceMulticastBuffer>;
 using DeviceStreamRef = RCRef<const DeviceStream>;
 using DeviceTimerRef = RCRef<const DeviceTimer>;
@@ -341,15 +342,32 @@ public:
   virtual ~DeviceGraph() = default;
   const Device &device() const { return *device_; }
 
-  /// Replay the captured operations on a stream.
-  virtual ErrorOrSuccess replay(const DeviceStream &stream) const = 0;
+  /// Capture a graph and baseline launch trace by executing a callback.
+  static ErrorOr<DeviceGraphRef>
+  capture(const DeviceStream &stream,
+          llvm::function_ref<ErrorOrSuccess()> execute);
+
+  /// Replay the captured operations on the stored capture stream.
+  virtual ErrorOrSuccess replay() const = 0;
 
 protected:
-  explicit DeviceGraph(const Device &device)
-      : device_(DeviceRef::copy(&device)) {}
+  explicit DeviceGraph(const Device &device, DeviceStreamRef captureStream = {})
+      : device_(DeviceRef::copy(&device)),
+        captureStream_(std::move(captureStream)) {}
+
+  const DeviceStream *captureStream() const {
+    return captureStream_.getPointer();
+  }
+  DeviceStreamRef captureStreamRef() const {
+    return DeviceStreamRef::copy(captureStream_.getPointer());
+  }
+  bool hasCaptureStream() const {
+    return captureStream_.getPointer() != nullptr;
+  }
 
 private:
   DeviceRef device_;
+  DeviceStreamRef captureStream_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {

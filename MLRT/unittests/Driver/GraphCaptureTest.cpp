@@ -5,11 +5,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
-
-#include <cstring>
 
 using namespace M::Driver;
 using M::ErrorOr;
@@ -57,8 +56,7 @@ TEST_F(GraphCaptureTest, CaptureAndReplayEmpty) {
   ASSIGN_NO_ERR(DeviceGraphRef, graph, stream->endCapture());
 
   // Replay the captured graph
-  EXPECT_NO_ERR(graph->replay(*stream));
-  EXPECT_NO_ERR(stream->synchronize());
+  EXPECT_NO_ERR(graph->replay());
 }
 
 TEST_F(GraphCaptureTest, ReplayMultipleTimes) {
@@ -70,10 +68,9 @@ TEST_F(GraphCaptureTest, ReplayMultipleTimes) {
   ASSIGN_NO_ERR(DeviceGraphRef, graph, stream->endCapture());
 
   // Replay multiple times
-  EXPECT_NO_ERR(graph->replay(*stream));
-  EXPECT_NO_ERR(graph->replay(*stream));
-  EXPECT_NO_ERR(graph->replay(*stream));
-  EXPECT_NO_ERR(stream->synchronize());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(graph->replay());
 }
 
 TEST_F(GraphCaptureTest, CPUDeviceReturnsNotSupported) {
@@ -86,20 +83,17 @@ TEST_F(GraphCaptureTest, CPUDeviceReturnsNotSupported) {
 }
 
 TEST_F(GraphCaptureTest, ReplayOnCPUStreamErrors) {
-  // Capture a graph on CUDA
   ASSIGN_NO_ERR(DeviceContextRef, cudaCtx,
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
-  ASSIGN_NO_ERR(DeviceStreamRef, cudaStream, cudaCtx->createStream());
-
-  EXPECT_NO_ERR(cudaStream->beginCapture());
-  ASSIGN_NO_ERR(DeviceGraphRef, graph, cudaStream->endCapture());
-
-  // Try to replay on CPU stream - should error
+  const auto &cudaDevice = CUDADevice::cast(cudaCtx->device());
   ASSIGN_NO_ERR(DeviceContextRef, cpuCtx,
                 DeviceContext::create(Device::cpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, cpuStream, cpuCtx->stream());
 
-  EXPECT_ERR(graph->replay(*cpuStream));
+  DeviceGraphRef graph =
+      CUDADeviceGraphRef::create(cudaDevice, /*exec=*/nullptr,
+                                 DeviceStreamRef::copy(cpuStream.getPointer()));
+  EXPECT_ERR(graph->replay());
 }
 
 // Test: Capture using context->stream() (default stream pattern used by
@@ -116,8 +110,7 @@ TEST_F(GraphCaptureTest, CaptureOnDefaultStream) {
   EXPECT_TRUE(graph);
 
   // Replay on the same stream
-  EXPECT_NO_ERR(graph->replay(*stream));
-  EXPECT_NO_ERR(stream->synchronize());
+  EXPECT_NO_ERR(graph->replay());
 }
 
 } // namespace

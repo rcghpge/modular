@@ -43,7 +43,7 @@ class CUDADeviceTimer;
 using CUDADeviceRef = RCRef<const CUDADevice>;
 using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
 using CUDADeviceEventRef = RCRef<const CUDADeviceEvent>;
-using CUDADeviceGraphRef = RCRef<const CUDADeviceGraph>;
+using CUDADeviceGraphRef = RCRef<CUDADeviceGraph>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
 using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
@@ -187,7 +187,8 @@ private:
 
 class CUDADeviceEvent : public DeviceEvent {
 public:
-  CUDADeviceEvent(const CUDADevice &device, CUevent event);
+  CUDADeviceEvent(const CUDADevice &device, CUevent event,
+                  bool recordedDuringCapture);
   ~CUDADeviceEvent() override;
 
   ErrorOrSuccess synchronize() const override;
@@ -200,16 +201,22 @@ public:
 
 private:
   CUevent event_;
+  bool recordedDuringCapture_;
 };
 
 class CUDADeviceGraph : public DeviceGraph {
 public:
-  CUDADeviceGraph(const CUDADevice &device, CUgraphExec exec);
+  CUDADeviceGraph(const CUDADevice &device, CUgraphExec exec,
+                  DeviceStreamRef stream = {})
+      : DeviceGraph(device, std::move(stream)), exec_(exec) {}
+
   ~CUDADeviceGraph() override;
 
-  ErrorOrSuccess replay(const DeviceStream &stream) const override;
+  /// Replay using the stored stream (set during capture).
+  ErrorOrSuccess replay() const override;
 
-  CUgraphExec cudaGraphExec() const { return exec_; }
+  /// Check if this graph has a stored stream for replay.
+  bool hasStream() const { return hasCaptureStream(); }
 
 private:
   CUgraphExec exec_;
