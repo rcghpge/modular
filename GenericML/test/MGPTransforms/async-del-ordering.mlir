@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -mo-to-mogg -mo-to-primitives -lower-abi -canonicalize -outline-kernels -add-try-except-blocks -emit-mojo -dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s -mo-to-mogg -mo-to-primitives -canonicalize -outline-kernels -add-try-except-blocks -emit-mojo -dump-mojo 2>&1 | FileCheck %s
 
 // Test that mogg_async_del is emitted BEFORE mogg_async_ready/mogg_async_error.
 // This ensures that when await() returns for downstream consumers, all cleanup

@@ -105,7 +105,6 @@ void M::MO::registerPasses() {
   MO::registerJITCompilationPipeline();
   MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
-  MGP::registerCoalesceAsyncRefsPass();
   MGP::registerMOToPrimitives();
 
   MGP::registerMergeIdenticalKernelStubs();
@@ -118,7 +117,6 @@ void M::MO::registerPasses() {
   MGP::registerLoadMojo();
   MGP::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
-  MGP::registerLowerMOGGABI();
   MGP::registerFuseGenericCompiledRegions();
 
   MGP::registerRemoveRedundantOperands();
@@ -346,10 +344,6 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
-
-  pm.addNestedPass<MGP::ModelOp>(MGP::createLowerMOGGABI());
-
-  pm.addNestedPass<MGP::ModelOp>(MGP::createCoalesceAsyncRefs());
 
   pm.addPass(MGP::createOutlineKernels());
   pm.addPass(MGP::createLookupConstantResources());

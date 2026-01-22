@@ -78,29 +78,6 @@ def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
   ];
 }
 
-def LowerMOGGABI: Pass<"lower-abi", "MGP::ModelOp"> {
-  let summary = "Lower MGP kernels into the correct ABI";
-  let description = [{
-    For each generic compilable function this pass will convert them from their
-    synchronous representation into a runtime executable representation which
-    contains the code to unpack from and to async values.
-  }];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect",
-                          "M::KGEN::KGENDialect",
-                          "M::KGEN::LIT::LITDialect",
-                          "M::KGEN::POP::POPDialect",
-                          "M::HLCF::HLCFDialect",
-                          "M::DebugInfo::DebugInfoDialect",
-                          "mlir::NVVM::NVVMDialect",
-                          "mlir::ROCDL::ROCDLDialect",
-                          "mlir::index::IndexDialect",
-  ];
-}
-
 def FuseGenericCompiledRegions: Pass<"fuse-generic-compiled-regions", "MGP::ModelOp"> {
   let summary = "Fuse sequences of GenericCompiledRegionOp";
   let description = [{}];
@@ -137,42 +114,6 @@ def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "Mod
   let dependentDialects = ["MOGG::MOGGDialect"];
 }
 
-
-def CoalesceAsyncRefs: Pass<"coalesce-async-refs"> {
-  let summary = "coalesce async ref (de)allocation sites";
-  let description = [{
-    Coalesces async ref (de)allocation sites and hoist the allocation sites to
-    the beginning of the block. This pass will make it easier to
-    async refs when a runtime error happens.
-
-    Note that the correspondence between async ref and the wrapped object will
-    no longer be available after the pass.
-
-    Before:
-    ```
-    ...
-    %a0 = allocate_async_ref_for(%a)
-    use(%a0)
-    ...
-    %a1 = allocate_async_ref_for(%b)
-    use(%a1)
-    ...
-    ```
-
-    After:
-    ```
-    // This is beginning of the block
-    %a:2 = mgp.allocate_async_refs
-    ...
-    use(%a#0)
-    ...
-    use(%a#1)
-    ```
-  }];
-
-  let dependentDialects = ["MOGG::MOGGDialect",
-                           "MGP::MGPDialect"];
-}
 
 def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
   let summary = "Dump Mojo text";

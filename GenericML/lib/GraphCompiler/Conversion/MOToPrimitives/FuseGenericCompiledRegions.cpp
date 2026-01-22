@@ -237,14 +237,8 @@ template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
   auto fusionSets = splitIfTooLarge(compiledRegionOpsToFuseTogether);
-  for (auto &&fusionSet : fusionSets) {
-    if (cast<MOGG::GenericCompiledRegionOp>(fusionSet.front()).getEmitsMojo()) {
-      fuseAndReplaceCompiledRegions(allowDuplication, fusionSet);
-    } else {
-      MOGG::fuseAndReplaceCompiledRegions(allowDuplication,
-                                          /*genReleaseOpaque=*/true, fusionSet);
-    }
-  }
+  for (auto &&fusionSet : fusionSets)
+    fuseAndReplaceCompiledRegions(allowDuplication, fusionSet);
 }
 
 static inline bool isaGenericCompiledRegionOp(Operation *op) {

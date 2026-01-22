@@ -926,7 +926,8 @@ def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
 
 def MOGG_CallOp : MOGG_Op<"call", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-    DeclareOpInterfaceMethods<EmitsMojoInterface>
+    DeclareOpInterfaceMethods<EmitsMojoInterface>,
+    DeclareOpInterfaceMethods<KernelTerminatorProvider>
   ]> {
   let summary = "Represents  KGEN function to call";
   let description = [{
@@ -1489,7 +1490,10 @@ def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
   }];
 }
 
-def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [Pure]> {
+def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [
+  Pure,
+  DeclareOpInterfaceMethods<KernelTerminatorProvider>
+]> {
   let results = (outs AnyType:$result);
 
   let summary = "Represents a chain output placeholder";

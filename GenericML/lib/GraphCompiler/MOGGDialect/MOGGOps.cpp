@@ -2697,7 +2697,7 @@ LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       BoolAttr::get(ctx, !MO::isOnHost(*this)), // canFuseIntoOther
       BoolAttr::get(ctx, true),                 // canBeFusedInto
       BoolAttr::get(ctx, false),                // canDuplicate
-      BoolAttr::get(ctx, false),                // emitsMojo
+      BoolAttr::get(ctx, true),                 // emitsMojo
       BoolAttr::get(ctx, true)                  // isStructuredKernel
   );
   newKernel.setDeviceRef(device);
