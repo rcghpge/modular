@@ -106,7 +106,7 @@ static ErrorOr<size_t> getSystemValue(int name) {
   return static_cast<size_t>(value);
 }
 
-ErrorOr<Device::MemInfo> MetalDevice::getMemInfo() {
+ErrorOr<Device::MemInfo> MetalDevice::getMemInfo(MTL::Device *metalDev) {
   Device::MemInfo info;
   ErrorOr<size_t> numPages = getSystemValue(_SC_PHYS_PAGES);
   if (numPages.isError())
@@ -131,13 +131,24 @@ ErrorOr<Device::MemInfo> MetalDevice::getMemInfo() {
 
   size_t used = usage.ru_maxrss * maxrssMultiple;
 
-  info.total = pages * size;
+  size_t systemTotal = pages * size;
+
+  // On Apple Silicon, Metal has a maxBufferLength limit that restricts the
+  // maximum size of a single buffer allocation. This is typically much smaller
+  // than total system memory (e.g., ~4GB vs 36GB). We need to report this limit
+  // as our effective memory ceiling to prevent buffer allocation failures.
+  size_t maxBufferLength = systemTotal;
+  if (metalDev != nullptr) {
+    maxBufferLength = metalDev->maxBufferLength();
+  }
+
+  info.total = std::min(systemTotal, maxBufferLength);
   info.free = info.total > used ? info.total - used : 0;
   return info;
 }
 
 ErrorOr<Device::MemInfo> MetalDevice::getMemoryInfo() const {
-  return getMemInfo();
+  return getMemInfo(device_.get());
 }
 
 ErrorOrSuccess MetalDevice::isCompatible() const { return success(); }
@@ -415,7 +426,7 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
     Device::MemInfo memInfo;
     bool useMemoryManager = false;
     if (useMemoryManager) {
-      ErrorOr<Device::MemInfo> memInfoOrError = getMemInfo();
+      ErrorOr<Device::MemInfo> memInfoOrError = getMemInfo(device.get());
       if (memInfoOrError.isError())
         RETURN_ERROR("Failed to get memory info from system.");
       memInfo = memInfoOrError.takeValue();

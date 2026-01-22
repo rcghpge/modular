@@ -65,7 +65,7 @@ public:
   ErrorOr<DeviceContextRef> createContext() const override;
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
-  static ErrorOr<Device::MemInfo> getMemInfo();
+  static ErrorOr<Device::MemInfo> getMemInfo(MTL::Device *metalDev = nullptr);
 
   const CompilationDevice *compilationDevice() const override {
     return nullptr; // Metal device does not have a compilation device
