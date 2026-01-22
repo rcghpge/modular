@@ -28,6 +28,7 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Profiling/Tracy.h"
+#include "Support/Threading/HWInfo.h"
 #include "Support/Threading/SpinWaiter.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -133,6 +134,55 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
   return kernelInputs;
 }
 
+static std::map<int, int> inferGpuToCpuCoreMapping() {
+  // Retrieve the NUMA topology.
+  auto numaTopologyOrError = NUMATopology::get();
+  if (numaTopologyOrError.isError())
+    return {};
+  const NUMATopology &numaTopology = *numaTopologyOrError;
+
+  // Retrieve a list of device IDs.
+  int numDevices =
+      M::Driver::Device::numberOfDevices(M::Driver::Device::gpuAPI);
+
+  // Iterate over device IDs and infer a mapping of each to a CPU core.
+  std::map<int, int> gpuToCpuCoreMapping;
+  std::map<int, size_t> nextCpuCoreIndexPerNuma;
+
+  for (int i = 0; i < numDevices; i++) {
+    auto deviceOrError =
+        M::Driver::Device::create(M::Driver::Device::gpuAPI, i);
+    if (deviceOrError.isError())
+      break;
+    auto &device = *deviceOrError;
+
+    auto pciBusIdOrError = device->getPciBusId();
+    if (pciBusIdOrError.isError())
+      break;
+
+    int numaNode = numaTopology.getNumaNodeForPciBus(*pciBusIdOrError);
+    if (numaNode == -1)
+      break;
+
+    std::vector<size_t> cpuIds = numaTopology.getCpuIdsForNumaNode(numaNode);
+    if (cpuIds.empty())
+      break;
+
+    size_t cpuCoreIndex =
+        (1 + nextCpuCoreIndexPerNuma[numaNode]++ % (cpuIds.size() - 1));
+
+    gpuToCpuCoreMapping[i] = cpuIds[cpuCoreIndex];
+  }
+  return gpuToCpuCoreMapping;
+}
+
+static std::map<int, int> getGpuToCpuCoreMapping() {
+  TRACY_ZONE_SCOPED_NC("getGpuToCpuCoreMapping", TRACY_COLOR_TEAL);
+
+  static std::map<int, int> mapping = inferGpuToCpuCoreMapping();
+  return mapping;
+}
+
 /// Extract device hint from DeviceContext if present in operands.
 /// Returns kNoDevicePreference if no single accelerator device is found.
 /// Also returns the DeviceContextRef for pinning if exactly one accelerator
@@ -200,7 +250,9 @@ static llvm::SmallVector<int> parseIntListFromEnvVar(llvm::StringRef var) {
 /// Returns kDefaultTaskId if no affinity is needed.
 /// Always uses workers 1..N-1 for device affinity to avoid potential stalls
 /// when worker 0 is the main/donating thread.
-static int taskIdForDevice(int deviceHint, size_t numWorkers) {
+static int taskIdForDevice(int deviceHint,
+                           M::Driver::DeviceContextRef deviceCtx,
+                           size_t numWorkers) {
   if (deviceHint == kNoDevicePreference)
     return kDefaultTaskId;
 
@@ -221,6 +273,23 @@ static int taskIdForDevice(int deviceHint, size_t numWorkers) {
       parseIntListFromEnvVar("MODULAR_CPU_IDS_FOR_DEVICES");
   if (envMapping.size() > static_cast<size_t>(deviceHint)) {
     return envMapping[deviceHint];
+  }
+
+  // Infer the task ID from the GPU to CPU core mapping, based on NUMA topology
+  // affinity, if it is available for the target device.
+  // Only use the mapping if numWorkers matches the number of physical CPU
+  // cores, which indicates the thread pool wasn't limited by cgroups or other
+  // means.
+  if (deviceCtx.getPointer() != nullptr &&
+      numWorkers >= M::getNumPhysicalCores()) {
+    auto gpuToCpuCoreMapping = getGpuToCpuCoreMapping();
+    if (!gpuToCpuCoreMapping.empty()) {
+      int deviceId = deviceCtx->device().id();
+      auto it = gpuToCpuCoreMapping.find(deviceId);
+      if (it != gpuToCpuCoreMapping.end()) {
+        return it->second;
+      }
+    }
   }
 
   // Conservative: always skip worker 0 for affinity tasks.
@@ -248,7 +317,8 @@ static void mgp_generic_execute(
 
   // Compute taskId for worker affinity. Uses conservative worker 0 avoidance.
   AsyncRT::WorkQueue *workQueue = runtime.getWorkQueue();
-  int taskId = taskIdForDevice(deviceHint, workQueue->getParallelismLevel());
+  int taskId =
+      taskIdForDevice(deviceHint, deviceCtx, workQueue->getParallelismLevel());
 
   // Launch the kernel on a new thread when:
   // - isAsync = true: always run out of line.
