@@ -14,12 +14,6 @@
 import time
 from collections import OptionalReg
 from math import ceildiv, floor
-from memory import LegacyUnsafePointer
-
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-comptime OpaquePointer = LegacyUnsafePointer[
-    mut=True, NoneType, origin=MutAnyOrigin
-]
 from sys import argv, env_get_string
 from builtin.device_passable import DevicePassable
 
@@ -40,6 +34,31 @@ from random import Random
 from layout import IntTuple, Layout, LayoutTensor, RuntimeLayout
 from tensor import DynamicTensor
 from utils import IndexList
+
+
+# ===----------------------------------------------------------------------=== #
+# Unsigned division/modulo helpers for Int
+# ===----------------------------------------------------------------------=== #
+# These helpers allow performing unsigned division and modulo operations on Int
+# arguments while using unsigned hardware operations internally. This is useful
+# when migrating from UInt to Int, as unsigned division is faster on NVIDIA GPUs.
+
+
+@always_inline
+fn ufloordiv(a: Int, b: Int) -> Int:
+    """Perform unsigned division (`//`) on Int arguments.
+
+    This function treats both arguments as unsigned values and performs
+    unsigned division, which is faster than signed division on NVIDIA GPUs.
+
+    Args:
+        a: The dividend (treated as unsigned).
+        b: The divisor (treated as unsigned).
+
+    Returns:
+        The quotient of unsigned division.
+    """
+    return Int(UInt(a) // UInt(b))
 
 
 struct ValOrDim[dim: Dim = Dim()](Defaultable):
@@ -107,7 +126,7 @@ struct InitializationType(DevicePassable, Equatable, ImplicitlyCopyable):
 
 # TODO: refactor the following to run exactly once.
 fn bench_compile_time[
-    func_type: AnyTrivialRegType,
+    func_type: __TypeOfAllTypes,
     //,
     func: func_type,
     emission_kind: StaticString = "asm",
@@ -223,7 +242,7 @@ fn static[d: Int]() -> ValOrDim[d]:
     return ValOrDim[d]()
 
 
-fn dynamic(d: Int) -> ValOrDim:
+fn dynamic(d: Int) -> ValOrDim[]:
     return ValOrDim(d)
 
 
@@ -373,7 +392,7 @@ struct Timer:
 fn init_vector_gpu[
     dtype: DType
 ](
-    x: UnsafePointer[Scalar[dtype]],
+    x: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     len: Int,
     mode: InitializationType,
     value: Scalar[dtype],

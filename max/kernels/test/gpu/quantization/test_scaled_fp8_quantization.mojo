@@ -25,7 +25,7 @@ from memory import LegacyUnsafePointer
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from testing import assert_equal
 
-from utils import IndexList
+from utils import Index, IndexList
 from utils.numerics import get_accum_type, max_finite, min_finite
 
 
@@ -39,7 +39,7 @@ fn test_static_scaled_fp8_quant[
     N: Optional[Int],
 ](ctx: DeviceContext, scale: Float32, m: Int, n: Int) raises:
     comptime static_shape = DimList(to_dim[M], to_dim[N])
-    var dynamic_shape = IndexList[2](M.or_else(m), N.or_else(n))
+    var dynamic_shape = Index(M.or_else(m), N.or_else(n))
     var total_size = m * n
 
     comptime layout_2d = Layout.row_major(
@@ -113,6 +113,7 @@ fn test_static_scaled_fp8_quant[
 fn test_dynamic_fp8_quant[
     out_dtype: DType,
     in_dtype: DType,
+    scales_dtype: DType,
     group_size_or_per_token: Int,
     M: Optional[Int],
     N: Optional[Int],
@@ -124,8 +125,8 @@ fn test_dynamic_fp8_quant[
 
     comptime static_shape = DimList(to_dim[M], to_dim[N])
     comptime static_scales_shape = DimList(to_dim[N] // group_size, to_dim[M])
-    var dynamic_shape = IndexList[2](M.or_else(m), N.or_else(n))
-    var dynamic_scales_shape = IndexList[2](n // group_size, m)
+    var dynamic_shape = Index(M.or_else(m), N.or_else(n))
+    var dynamic_scales_shape = Index(n // group_size, m)
     var total_size = m * n
     var scales_size = (n // group_size) * m
 
@@ -138,7 +139,7 @@ fn test_dynamic_fp8_quant[
 
     var in_host_ptr = UnsafePointer[Scalar[in_dtype]].alloc(total_size)
     var out_host_ptr = UnsafePointer[Scalar[out_dtype]].alloc(total_size)
-    var scales_host_ptr = UnsafePointer[Scalar[in_dtype]].alloc(scales_size)
+    var scales_host_ptr = UnsafePointer[Scalar[scales_dtype]].alloc(scales_size)
 
     var in_host = LayoutTensor[in_dtype, layout_2d](
         in_host_ptr,
@@ -148,14 +149,14 @@ fn test_dynamic_fp8_quant[
         out_host_ptr,
         RuntimeLayout[layout_2d].row_major(dynamic_shape),
     )
-    var scales_host = LayoutTensor[in_dtype, scales_layout](
+    var scales_host = LayoutTensor[scales_dtype, scales_layout](
         scales_host_ptr,
         RuntimeLayout[scales_layout].row_major(dynamic_scales_shape),
     )
 
     var in_device = ctx.enqueue_create_buffer[in_dtype](total_size)
     var out_device = ctx.enqueue_create_buffer[out_dtype](total_size)
-    var scales_device = ctx.enqueue_create_buffer[in_dtype](scales_size)
+    var scales_device = ctx.enqueue_create_buffer[scales_dtype](scales_size)
 
     random(in_host, -1.0, 1.0)
 
@@ -169,7 +170,7 @@ fn test_dynamic_fp8_quant[
         out_device.unsafe_ptr(),
         DimList(m, n),
     )
-    var scales_ndbuffer = NDBuffer[in_dtype, 2, _, static_scales_shape](
+    var scales_ndbuffer = NDBuffer[scales_dtype, 2, _, static_scales_shape](
         scales_device.unsafe_ptr(),
         DimList(n // group_size, m),
     )
@@ -177,8 +178,10 @@ fn test_dynamic_fp8_quant[
     @__copy_capture(in_ndbuffer)
     @always_inline
     @parameter
-    fn input_fn[width: Int](row: Int, col: Int) -> SIMD[in_dtype, width]:
-        return in_ndbuffer.load[width=width](row, col)
+    fn input_fn[
+        width: Int, alignment: Int
+    ](row: Int, col: Int) -> SIMD[in_dtype, width]:
+        return in_ndbuffer.load[width=width, alignment=alignment](row, col)
 
     quantize_dynamic_scaled_fp8[
         input_fn, group_size_or_per_token, in_ndbuffer.shape.get[1]()
@@ -203,15 +206,25 @@ fn test_dynamic_fp8_quant[
                     abs(in_host[i, j + group_idx * Int(group_size)][0]),
                 )
 
-            var scale_factor = (
-                min(group_max, 1200.0)
-                / Scalar[out_dtype].MAX_FINITE.cast[in_dtype]()
-            )
+            var scale_factor: Scalar[scales_dtype]
+
+            @parameter
+            if scales_dtype == DType.float8_e8m0fnu:
+                scale_factor = max(
+                    group_max.cast[accum_dtype]()
+                    / Scalar[out_dtype].MAX_FINITE.cast[accum_dtype](),
+                    Scalar[accum_dtype](1e-10),
+                ).cast[scales_dtype]()
+            else:
+                scale_factor = (
+                    min(group_max.cast[scales_dtype](), 1200.0)
+                    / Scalar[out_dtype].MAX_FINITE.cast[scales_dtype]()
+                )
             var scale_factor_recip = 1.0 / scale_factor.cast[accum_dtype]()
 
             assert_equal(
-                scales_host[group_idx, i].cast[DType.float64](),
-                scale_factor.cast[DType.float64](),
+                scales_host[group_idx, i].cast[DType.float32](),
+                scale_factor.cast[DType.float32](),
             )
 
             for j in range(group_size):
@@ -240,6 +253,7 @@ fn test_dynamic_fp8_quant[
 fn test_batched_dynamic_fp8_quant[
     out_dtype: DType,
     in_dtype: DType,
+    scales_dtype: DType,
     group_size_or_per_token: Int,
     BS: Optional[Int],
     M: Optional[Int],
@@ -256,8 +270,8 @@ fn test_batched_dynamic_fp8_quant[
         to_dim[K] // group_size,
         to_dim[M],
     )
-    var dynamic_shape = IndexList[3](BS.or_else(bs), M.or_else(m), K.or_else(k))
-    var dynamic_scales_shape = IndexList[3](bs, k // group_size, m)
+    var dynamic_shape = Index(BS.or_else(bs), M.or_else(m), K.or_else(k))
+    var dynamic_scales_shape = Index(bs, k // group_size, m)
     var total_size = bs * m * k
     var scales_size = bs * (k // group_size) * m
 
@@ -274,7 +288,7 @@ fn test_batched_dynamic_fp8_quant[
 
     var in_host_ptr = UnsafePointer[Scalar[in_dtype]].alloc(total_size)
     var out_host_ptr = UnsafePointer[Scalar[out_dtype]].alloc(total_size)
-    var scales_host_ptr = UnsafePointer[Scalar[in_dtype]].alloc(scales_size)
+    var scales_host_ptr = UnsafePointer[Scalar[scales_dtype]].alloc(scales_size)
 
     var in_host = LayoutTensor[in_dtype, layout_3d](
         in_host_ptr,
@@ -284,14 +298,14 @@ fn test_batched_dynamic_fp8_quant[
         out_host_ptr,
         RuntimeLayout[layout_3d].row_major(dynamic_shape),
     )
-    var scales_host = LayoutTensor[in_dtype, scales_layout](
+    var scales_host = LayoutTensor[scales_dtype, scales_layout](
         scales_host_ptr,
         RuntimeLayout[scales_layout].row_major(dynamic_scales_shape),
     )
 
     var in_device = ctx.enqueue_create_buffer[in_dtype](total_size)
     var out_device = ctx.enqueue_create_buffer[out_dtype](total_size)
-    var scales_device = ctx.enqueue_create_buffer[in_dtype](scales_size)
+    var scales_device = ctx.enqueue_create_buffer[scales_dtype](scales_size)
 
     random(in_host, -1.0, 1.0)
 
@@ -305,7 +319,7 @@ fn test_batched_dynamic_fp8_quant[
         out_device.unsafe_ptr(),
         DimList(bs, m, k),
     )
-    var scales_ndbuffer = NDBuffer[in_dtype, 3, _, static_scales_shape](
+    var scales_ndbuffer = NDBuffer[scales_dtype, 3, _, static_scales_shape](
         scales_device.unsafe_ptr(),
         DimList(bs, k // group_size, m),
     )
@@ -314,9 +328,11 @@ fn test_batched_dynamic_fp8_quant[
     @__copy_capture(in_ndbuffer)
     @always_inline
     fn input_fn[
-        width: Int
+        width: Int, alignment: Int
     ](batch: Int, row: Int, col: Int) capturing -> SIMD[in_dtype, width]:
-        return in_ndbuffer.load[width=width](IndexList[3](batch, row, col))
+        return in_ndbuffer.load[width=width, alignment=alignment](
+            Index(batch, row, col)
+        )
 
     batched_quantize_dynamic_scaled_fp8[
         input_fn=input_fn,
@@ -392,24 +408,69 @@ def main():
         test_static_scaled_fp8_quant[
             DType.float8_e4m3fn, DType.bfloat16, M=None, N = Int(15)
         ](ctx, 0.3323, 31, 15)
+
         test_dynamic_fp8_quant[
-            DType.float8_e4m3fn, DType.bfloat16, -1, M=None, N = Int(256)
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            -1,
+            M=None,
+            N = Int(256),
         ](ctx, 1, 256)
         test_dynamic_fp8_quant[
-            DType.float8_e4m3fn, DType.bfloat16, -1, M=None, N = Int(1024)
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            -1,
+            M=None,
+            N = Int(1024),
         ](ctx, 1, 1024)
         test_dynamic_fp8_quant[
-            DType.float8_e4m3fn, DType.bfloat16, -1, M=None, N = Int(16384)
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            -1,
+            M=None,
+            N = Int(16384),
         ](ctx, 1, 16384)
         test_dynamic_fp8_quant[
-            DType.float8_e4m3fn, DType.bfloat16, 128, M=None, N = Int(16384)
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            128,
+            M=None,
+            N = Int(16384),
         ](ctx, 4, 16384)
         test_dynamic_fp8_quant[
-            DType.float8_e4m3fn, DType.float32, 128, M=None, N = Int(576)
+            DType.float8_e4m3fn,
+            DType.float32,
+            DType.float32,
+            128,
+            M=None,
+            N = Int(576),
         ](ctx, 4, 576)
+
+        # Test different alignments of the group_size to exercise the computation of simd_width.
+        test_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            -1,
+            M=None,
+            N = Int(260),
+        ](ctx, 2, 260)
+        test_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            -1,
+            M=None,
+            N = Int(264),
+        ](ctx, 2, 264)
 
         test_batched_dynamic_fp8_quant[
             DType.float8_e4m3fn,
+            DType.bfloat16,
             DType.bfloat16,
             -1,
             BS=None,
@@ -419,6 +480,7 @@ def main():
         test_batched_dynamic_fp8_quant[
             DType.float8_e4m3fn,
             DType.bfloat16,
+            DType.bfloat16,
             -1,
             BS=None,
             M=None,
@@ -426,6 +488,7 @@ def main():
         ](ctx, 3, 1, 1024)
         test_batched_dynamic_fp8_quant[
             DType.float8_e4m3fn,
+            DType.bfloat16,
             DType.bfloat16,
             -1,
             BS=None,
@@ -435,6 +498,7 @@ def main():
         test_batched_dynamic_fp8_quant[
             DType.float8_e4m3fn,
             DType.bfloat16,
+            DType.bfloat16,
             128,
             BS=None,
             M=None,
@@ -443,8 +507,54 @@ def main():
         test_batched_dynamic_fp8_quant[
             DType.float8_e4m3fn,
             DType.float32,
+            DType.float32,
             128,
             BS=None,
             M=None,
             K = Int(128),
         ](ctx, 128, 1024, 128)
+
+        # Test different alignments of the group_size to exercise the computation of simd_width.
+        test_batched_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.bfloat16,
+            132,
+            BS=None,
+            M=None,
+            K = Int(528),
+        ](ctx, 128, 400, 528)
+        test_batched_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.float32,
+            DType.float32,
+            136,
+            BS=None,
+            M=None,
+            K = Int(544),
+        ](ctx, 128, 1024, 544)
+
+        test_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.float8_e8m0fnu,
+            128,
+            M=None,
+            N = Int(1024),
+        ](ctx, 43, 1024)
+        test_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.bfloat16,
+            DType.float8_e8m0fnu,
+            128,
+            M=None,
+            N = Int(16384),
+        ](ctx, 3, 16384)
+        test_dynamic_fp8_quant[
+            DType.float8_e4m3fn,
+            DType.float32,
+            DType.float8_e8m0fnu,
+            128,
+            M=None,
+            N = Int(576),
+        ](ctx, 1, 576)

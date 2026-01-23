@@ -15,24 +15,28 @@ import numpy as np
 import pytest
 import torch
 from max._core.engine import PrintStyle
-from max.driver import Accelerator, Tensor, accelerator_api
+from max.driver import Accelerator, Buffer, accelerator_api
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, Shape, TensorType, ops
 from max.graph.weights import WeightData
 from max.kv_cache import PagedKVCacheManager
-from max.nn.attention.multi_latent_attention_fp8 import (
+from max.nn.legacy.attention.multi_latent_attention_fp8 import (
     LatentAttentionWithRopeFp8,
 )
-from max.nn.float8_config import (
+from max.nn.legacy.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8ScaleGranularity,
     Float8ScaleOrigin,
     Float8WeightScaleSpec,
 )
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
-from max.nn.rotary_embedding import (
+from max.nn.legacy.kv_cache import (
+    KVCacheParams,
+    KVCacheStrategy,
+    PagedCacheValues,
+)
+from max.nn.legacy.rotary_embedding import (
     DeepseekYarnRopeScalingParams,
     DeepseekYarnRotaryEmbedding,
 )
@@ -53,7 +57,7 @@ def _quantize_attention_weights_to_fp8(
     Quantizes all weights except layer norm weights (which remain in bfloat16).
     Uses block-wise dynamic scaling with [128, 128] blocks as per DeepSeek V3.
 
-    The weights are wrapped as WeightData because MAX Tensor.from_dlpack() does
+    The weights are wrapped as WeightData because MAX Buffer.from_dlpack() does
     not support float8.
 
     Args:
@@ -83,7 +87,7 @@ def _quantize_attention_weights_to_fp8(
                 weight, block_size=[128, 128]
             )
             quantized_weights[key] = WeightData(
-                Tensor.from_dlpack(fp8_weight.view(torch.uint8)).view(
+                Buffer.from_dlpack(fp8_weight.view(torch.uint8)).view(
                     DType.float8_e4m3fn
                 ),
                 key,
@@ -329,7 +333,7 @@ def generate_max_outputs_fp8(
         kv_manager.claim(context.request_id)
         batch.append(context)
 
-    input_row_offsets = Tensor(DType.uint32, [batch_size + 1])
+    input_row_offsets = Buffer(DType.uint32, [batch_size + 1])
     running_sum = 0
     for i in range(batch_size):
         input_row_offsets[i] = running_sum
@@ -343,7 +347,7 @@ def generate_max_outputs_fp8(
                 kv_manager.alloc(ctx, 1)
             kv_inputs = kv_manager.get_runtime_inputs(batch)[0]
             input_tensor_device = (
-                Tensor.from_numpy(
+                Buffer.from_numpy(
                     input_tensor[:, tok_idx, :].view(torch.float16).numpy()
                 )
                 .view(DType.bfloat16)
@@ -365,7 +369,7 @@ def generate_max_outputs_fp8(
         kv_manager.alloc(ctx, 1)
     kv_inputs = kv_manager.get_runtime_inputs(batch)[0]
     input_tensor_device = (
-        Tensor.from_numpy(input_tensor[0, :, :].view(torch.float16).numpy())
+        Buffer.from_numpy(input_tensor[0, :, :].view(torch.float16).numpy())
         .view(DType.bfloat16)
         .to(device0)
     )

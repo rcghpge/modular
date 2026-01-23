@@ -17,7 +17,7 @@ comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from sys import align_of
 from collections import OptionalReg
 from gpu import WARP_SIZE
-from gpu.mma import mma
+from gpu.compute.mma import mma
 from itertools import product
 from layout import Layout, LayoutTensor
 from layout.int_tuple import product as prod
@@ -92,7 +92,9 @@ struct ThreadRole(Enum, Stringable, Writable):
 fn pipeline_layout[layout: Layout, pipeline_stages: Int]() -> Layout:
     constrained[layout.rank() == 2]()
     return blocked_product(
-        layout, Layout.row_major(1, pipeline_stages), coalesce_output=True
+        materialize[layout](),
+        Layout.row_major(1, pipeline_stages),
+        coalesce_output=True,
     )
 
 

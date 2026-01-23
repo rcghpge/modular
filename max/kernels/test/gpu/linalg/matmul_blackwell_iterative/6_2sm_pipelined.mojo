@@ -21,7 +21,7 @@ from sys import argv, size_of
 import linalg.matmul.vendor.blas as vendor_blas
 from bit import next_power_of_two, prev_power_of_two
 from gpu import WARP_SIZE, barrier
-from gpu.cluster import (
+from gpu.primitives.cluster import (
     block_rank_in_cluster,
     cluster_sync,
     elect_one_sync,
@@ -32,10 +32,10 @@ from gpu.host.nvidia.tma import TensorMapSwizzle
 from gpu import block_id_in_cluster, block_idx, lane_id, thread_idx
 from gpu import warp_id as get_warp_id
 from gpu.memory import fence_async_view_proxy, external_memory
-from gpu.mma import st_matrix
-from gpu.mma_sm100 import *
+from gpu.compute.mma import st_matrix
+from gpu.compute.arch.mma_nvidia_sm100 import *
 from gpu.sync import named_barrier
-from gpu.tcgen05 import *
+from gpu.compute.arch.tcgen05 import *
 from internal_utils import assert_almost_equal
 from random import rand
 from layout import (
@@ -58,6 +58,7 @@ from layout.tma_async import (
     PipelineState,
     SharedMemBarrier,
     TMATensorTile,
+    create_tensor_tile,
     create_tma_tile,
 )
 from linalg.arch.sm100 import MmaOpSM100_SS
@@ -85,7 +86,7 @@ struct WarpRole(ImplicitlyCopyable):
 
     @always_inline
     fn __eq__(self, other: UInt) -> Bool:
-        return self._role == other
+        return self._role == Int32(other)
 
     @always_inline
     fn __eq__(self, other: Self) -> Bool:
@@ -97,7 +98,7 @@ struct WarpRole(ImplicitlyCopyable):
 
     @always_inline
     fn __ge__(self, other: UInt) -> Bool:
-        return self._role >= other
+        return self._role >= Int32(other)
 
     @staticmethod
     @always_inline
@@ -409,7 +410,7 @@ fn store_C[
         dtype=accum_type,
         pack=False,
         width = c_upper_pow_2_main.size,
-    ](tmem_addr | ((warp_id * 32) << 16))
+    ](tmem_addr | UInt32((warp_id * 32) << 16))
 
     # Load c_frag_lower
     # Primary load
@@ -420,7 +421,7 @@ fn store_C[
         dtype=accum_type,
         pack=False,
         width = c_lower_pow_2_main.size,
-    ](tmem_addr | ((warp_id * 32 + 16) << 16))
+    ](tmem_addr | UInt32((warp_id * 32 + 16) << 16))
 
     @parameter
     if MMA_N != prev_power_of_two(MMA_N):
@@ -434,7 +435,7 @@ fn store_C[
             dtype=accum_type,
             pack=False,
             width = c_upper_pow_2_rem.size,
-        ](tmem_addr + 128 | ((warp_id * UInt(WARP_SIZE)) << 16))
+        ](tmem_addr + 128 | UInt32((warp_id * UInt(WARP_SIZE)) << 16))
 
         c_lower_pow_2_rem = tcgen05_ld[
             datapaths=data_paths,
@@ -443,7 +444,7 @@ fn store_C[
             dtype=accum_type,
             pack=False,
             width = c_lower_pow_2_rem.size,
-        ](tmem_addr + 128 | ((warp_id * UInt(WARP_SIZE) + 16) << 16))
+        ](tmem_addr + 128 | UInt32((warp_id * UInt(WARP_SIZE) + 16) << 16))
 
     # Remainder load happens later, only if needed
     tcgen05_load_wait()
@@ -542,7 +543,7 @@ fn store_C[
                     d_reg_lower_packed,
                 )
 
-    named_barrier[num_output_warps * UInt(WARP_SIZE)]()
+    named_barrier[Int32(num_output_warps * UInt(WARP_SIZE))]()
 
     # SMEM -> GMEM: Direct TMA store
     # UMMA (tensor memory) → registers → shared memory → global memory
@@ -569,7 +570,7 @@ fn store_C[
 
     if elect_one_warp:
         tcgen05_release_allocation_lock[cta_group]()
-        tcgen05_dealloc[cta_group](tmem_addr, max_tmem_cols)
+        tcgen05_dealloc[cta_group](tmem_addr, UInt32(max_tmem_cols))
 
 
 @__llvm_metadata(`nvvm.cluster_dim`=cluster_shape)
@@ -776,9 +777,9 @@ fn kernel_6[
     for i in range(CLUSTER_M // cta_group):
         b_multicast_mask |= 1 << (i * cta_group)
 
-    a_multicast_mask <<= rank_m
-    b_multicast_mask <<= peer_cta_coord[0]
-    b_multicast_mask <<= rank_n * UInt(CLUSTER_M)
+    a_multicast_mask <<= UInt16(rank_m)
+    b_multicast_mask <<= UInt16(peer_cta_coord[0])
+    b_multicast_mask <<= UInt16(rank_n * UInt(CLUSTER_M))
 
     var self_mask = 1 << Int(block_rank_in_cluster())
     var peer_mask = 1 << Int(block_rank_in_cluster() + 1)
@@ -889,11 +890,11 @@ fn blackwell_kernel_6[
     comptime MMA_N = umma_shape[1]
     comptime MMA_K = umma_shape[2]
 
-    a_tma_op = create_tma_tile[
+    a_tma_op = create_tensor_tile[
         Index(BM // cluster_shape[1], BK), swizzle_mode=a_swizzle
     ](ctx, a)
 
-    b_tma_op = create_tma_tile[
+    b_tma_op = create_tensor_tile[
         Index(
             BN // (cluster_shape[0] // cta_group), BK
         ) if transpose_b else Index(BK, BN // (cluster_shape[0] // cta_group)),

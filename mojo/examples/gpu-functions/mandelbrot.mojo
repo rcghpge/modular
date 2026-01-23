@@ -44,7 +44,7 @@ def main():
     var ctx = DeviceContext()
 
     # Allocate a tensor on the target device to hold the resulting set.
-    var dev_buf = ctx.enqueue_create_buffer[int_dtype](layout.size())
+    var dev_buf = ctx.enqueue_create_buffer[int_dtype](comptime (layout.size()))
     var out_tensor = LayoutTensor[int_dtype, layout](dev_buf)
 
     # Compute how many blocks are needed in each dimension to fully cover the grid,
@@ -54,7 +54,7 @@ def main():
     comptime ROW_BLOCKS = ceildiv(GRID_HEIGHT, BLOCK_SIZE)
 
     # Launch the Mandelbrot kernel on the GPU with a 2D grid of thread blocks.
-    ctx.enqueue_function_experimental[mandelbrot](
+    ctx.enqueue_function[mandelbrot, mandelbrot](
         out_tensor,
         grid_dim=(COL_BLOCKS, ROW_BLOCKS),
         block_dim=(BLOCK_SIZE, BLOCK_SIZE),

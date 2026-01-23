@@ -20,18 +20,22 @@ from enum import Enum
 import numpy as np
 import pytest
 import torch
-from max.driver import CPU, Tensor
+from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, TensorValue, ops
 from max.kv_cache import PagedKVCacheManager
 from max.mlir import StringAttr
-from max.nn.kernels import (
+from max.nn.legacy.kernels import (
     fused_qkv_ragged_matmul,
     matmul_k_cache_ragged,
     matmul_kv_cache_ragged,
 )
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
+from max.nn.legacy.kv_cache import (
+    KVCacheParams,
+    KVCacheStrategy,
+    PagedCacheValues,
+)
 from max.pipelines import TextContext
 from modular_graph_test import modular_graph_test
 from test_common.context_utils import create_text_context
@@ -215,7 +219,7 @@ def test_fused_qkv_ragged_matmul(session: InferenceSession) -> None:
         kv_manager.alloc(context, num_steps=1)
         batch.append(context)
 
-    input_row_offsets = Tensor(
+    input_row_offsets = Buffer(
         DType.uint32,
         [batch_size + 1],
     )
@@ -244,8 +248,8 @@ def test_fused_qkv_ragged_matmul(session: InferenceSession) -> None:
         },
     )
     def test_runs_without_nan(
-        execute: Callable[[Sequence[Tensor]], Tensor],
-        inputs: Sequence[Tensor],
+        execute: Callable[[Sequence[Buffer]], Buffer],
+        inputs: Sequence[Buffer],
         torch_inputs: Sequence[torch.Tensor],
     ) -> None:
         inputs = list(inputs)
@@ -373,7 +377,7 @@ def test_matmul_kv_ragged(session: InferenceSession, dtype: DType) -> None:
         batch.append(context)
 
     # Compute input row offsets for ragged tensors.
-    input_row_offsets = Tensor(DType.uint32, [batch_size + 1])
+    input_row_offsets = Buffer(DType.uint32, [batch_size + 1])
     running_sum = 0
     for i in range(batch_size):
         input_row_offsets[i] = running_sum
@@ -505,7 +509,7 @@ def test_matmul_k_ragged(session: InferenceSession, dtype: DType) -> None:
         batch.append(context)
 
     # Compute input row offsets for ragged tensors.
-    input_row_offsets = Tensor(DType.uint32, [batch_size + 1])
+    input_row_offsets = Buffer(DType.uint32, [batch_size + 1])
     running_sum = 0
     for i in range(batch_size):
         input_row_offsets[i] = running_sum

@@ -17,14 +17,14 @@ import copy
 import numpy as np
 import pytest
 import torch
-from max.driver import Accelerator, Device, Tensor
+from max.driver import Accelerator, Buffer, Device
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType
 from max.kv_cache import PagedKVCacheManager
-from max.nn.kernels import KVCacheParams
-from max.nn.kv_cache import PagedCacheValues
-from max.nn.rotary_embedding import Llama3RotaryEmbedding
+from max.nn.legacy.kernels import KVCacheParams
+from max.nn.legacy.kv_cache import PagedCacheValues
+from max.nn.legacy.rotary_embedding import Llama3RotaryEmbedding
 from max.pipelines.architectures.gemma3.layers.attention import (
     Gemma3Attention as MaxGemma3Attention,
 )
@@ -246,8 +246,8 @@ def generate_max_outputs(
     )
 
     output = compiled.execute(
-        Tensor.from_dlpack(input_tensor[0]).to(device),
-        Tensor.from_numpy(np.array([0, input_seq_len], dtype=np.uint32)).to(
+        Buffer.from_dlpack(input_tensor[0]).to(device),
+        Buffer.from_numpy(np.array([0, input_seq_len], dtype=np.uint32)).to(
             device
         ),
         blocks.to(device),

@@ -27,7 +27,7 @@ import llguidance.numpy
 import numpy as np
 import numpy.typing as npt
 from llguidance import LLMatcher
-from max.driver import load_devices
+from max.driver import Buffer, load_devices
 from max.engine import Model
 from max.graph.weights import WeightsAdapter, WeightsFormat
 from max.interfaces import (
@@ -42,17 +42,22 @@ from max.interfaces import (
     TextGenerationOutput,
     TextGenerationRequest,
 )
-from max.nn import ReturnLogits
-from max.nn.kv_cache import KVCacheInputsSequence
+from max.nn.legacy.kv_cache import KVCacheInputsSequence
+from max.nn.legacy.transformer import ReturnLogits
 from max.profiler import Tracer, traced
 from max.support.algorithm import flatten2d
 from transformers import PreTrainedTokenizerFast
 
+from .utils import (
+    calculate_num_steps,
+    get_eos_tokens,
+    get_weight_paths,
+    update_context_and_prepare_responses,
+)
+
 if TYPE_CHECKING:
     from ..config import PipelineConfig
 
-from ..config_enums import RepoType
-from ..hf_utils import download_weight_files
 from ..interfaces import PipelineModel
 from ..interfaces.generate import GenerateMixin
 from ..sampling import (
@@ -119,8 +124,10 @@ class TextGenerationPipeline(
                 requested without a valid tokenizer delegate.
         """
         self._pipeline_config = pipeline_config
-        self._devices = load_devices(pipeline_config.model.device_specs)
-        self._weight_adapters = weight_adapters
+        model_config = pipeline_config.model
+        huggingface_config = model_config.huggingface_config
+
+        self._devices = load_devices(model_config.device_specs)
         self._tokenizer = tokenizer
 
         self.batch_info_output_fname = environ.get(
@@ -128,34 +135,12 @@ class TextGenerationPipeline(
         )
         self.batch_infos: list[BatchInfo] = []
 
-        # Expand eos tokens if more are provided in pipeline_config
-        if "eos_token_id" in self._pipeline_config.model.huggingface_config:
-            eos_tokens = (
-                self._pipeline_config.model.huggingface_config.eos_token_id
-            )
-            if isinstance(eos_tokens, int):
-                if eos_tokens != eos_token_id:
-                    msg = f"eos_token_id provided in huggingface config ({eos_tokens}), does not match provided eos_token_id ({eos_token_id}), using provided eos_token_id"
-                    logger.warning(msg)
-
-                self._eos_token_id = set([eos_tokens])
-            elif isinstance(eos_tokens, list):
-                if eos_token_id in eos_tokens:
-                    self._eos_token_id = set(eos_tokens)
-                else:
-                    self._eos_token_id = set([eos_token_id])
-            else:
-                msg = f"eos_token_id in huggingface_config is neither int or list: {eos_tokens}"
-                logger.warning(msg)
-                self._eos_token_id = set([eos_token_id])
-
-        else:
-            self._eos_token_id = set([eos_token_id])
+        self._eos_token_id = get_eos_tokens(huggingface_config, eos_token_id)
 
         # Create a grammar compiler if constrained decoding is enabled
         self.vocab_size = None
 
-        if pipeline_config.sampling_config.enable_structured_output:
+        if pipeline_config.sampling.enable_structured_output:
             assert hasattr(self.tokenizer, "delegate")
             hf_tokenizer = self.tokenizer.delegate
             assert isinstance(hf_tokenizer, PreTrainedTokenizerFast)
@@ -174,32 +159,11 @@ class TextGenerationPipeline(
         self._pipeline_config.configure_session(session)
 
         # Load model.
-        if not self._pipeline_config.model.quantization_encoding:
+        if not model_config.quantization_encoding:
             raise ValueError("quantization_encoding must not be None")
 
         # Retrieve the weights repo id (falls back to model_path when unset).
-        weight_model_id = self._pipeline_config.model.huggingface_weight_repo_id
-
-        weight_paths: list[Path] = []
-        if (
-            self._pipeline_config.model.huggingface_weight_repo.repo_type
-            == RepoType.online
-        ):
-            # Download weight files if not existent.
-            weight_paths = download_weight_files(
-                huggingface_model_id=weight_model_id,
-                filenames=[
-                    str(x) for x in self._pipeline_config.model.weight_path
-                ],
-                revision=self._pipeline_config.model.huggingface_weight_revision,
-                force_download=self._pipeline_config.model.force_download,
-            )
-        else:
-            # Make sure the weight paths are absolute paths
-            weight_paths = [
-                self._pipeline_config.model.model_path / x
-                for x in self._pipeline_config.model.weight_path
-            ]
+        weight_paths: list[Path] = get_weight_paths(model_config)
 
         # late imports to minimize header deps
         from max.graph.weights import load_weights as _load_weights
@@ -208,14 +172,12 @@ class TextGenerationPipeline(
         self._pipeline_model = pipeline_model(
             pipeline_config=self._pipeline_config,
             session=session,
-            huggingface_config=self._pipeline_config.model.huggingface_config,
-            encoding=self._pipeline_config.model.quantization_encoding,
+            huggingface_config=huggingface_config,
+            encoding=model_config.quantization_encoding,
             devices=self._devices,
-            kv_cache_config=self._pipeline_config.model.kv_cache_config,
+            kv_cache_config=model_config.kv_cache,
             weights=_load_weights(weight_paths),
-            adapter=self._weight_adapters.get(
-                _weights_format(weight_paths), None
-            ),
+            adapter=weight_adapters.get(_weights_format(weight_paths)),
             return_logits=ReturnLogits.ALL
             if self._pipeline_config.enable_echo
             else ReturnLogits.LAST_TOKEN,
@@ -225,16 +187,14 @@ class TextGenerationPipeline(
         from max.graph import DeviceRef as _DeviceRef
 
         self._sampler_with_bitmask: Model | None = None
-        if self._pipeline_config.sampling_config.enable_structured_output:
+        if pipeline_config.sampling.enable_structured_output:
             self._sampler_with_bitmask = session.load(
                 token_sampler(
-                    self._pipeline_config.sampling_config,
+                    pipeline_config.sampling,
                     device=_DeviceRef.from_device(self._devices[0]),
                 )
             )
-            cfg_without_bitmask = copy.deepcopy(
-                self._pipeline_config.sampling_config
-            )
+            cfg_without_bitmask = copy.deepcopy(pipeline_config.sampling)
             cfg_without_bitmask.enable_structured_output = False
             self._sampler_without_bitmask = session.load(
                 token_sampler(
@@ -245,7 +205,7 @@ class TextGenerationPipeline(
         else:
             self._sampler_without_bitmask = session.load(
                 token_sampler(
-                    self._pipeline_config.sampling_config,
+                    pipeline_config.sampling,
                     device=_DeviceRef.from_device(self._devices[0]),
                 )
             )
@@ -274,36 +234,6 @@ class TextGenerationPipeline(
         """Return the list of KV cache managers backing this pipeline."""
         return [self._pipeline_model.kv_manager]
 
-    def calculate_num_steps(
-        self,
-        num_steps: int,
-        context: TextGenerationContextType,
-    ) -> int:
-        """Compute the number of generation steps allowed for a context.
-
-        The value is clamped by the remaining capacity with respect to
-        the model's configured ``max_seq_len``.
-
-        Args:
-            num_steps: Desired number of steps to attempt.
-            context: The context whose sequence length constraints apply.
-
-        Returns:
-            The number of steps to execute for this context (>= 1).
-
-        Raises:
-            ValueError: If the current request length is already >= ``max_seq_len``.
-        """
-        max_seq_len = self._pipeline_model.max_seq_len
-        num_available_steps = context.compute_num_available_steps(max_seq_len)
-
-        if num_available_steps <= 0:
-            raise ValueError(
-                f"Request {context.request_id} length ({len(context.tokens)}) is larger than or equal to the configured max_length ({max_seq_len})"
-            )
-
-        return min(num_available_steps, num_steps)
-
     def update_for_structured_output(
         self,
         context: TextGenerationContextType,
@@ -327,7 +257,7 @@ class TextGenerationPipeline(
                 enabled via sampling configuration.
         """
         if context.json_schema and context.matcher is None:
-            if not self._pipeline_config.sampling_config.enable_structured_output:
+            if not self._pipeline_config.sampling.enable_structured_output:
                 raise ValueError(
                     "json_schema provided but constrained decoding is not enabled."
                 )
@@ -367,7 +297,7 @@ class TextGenerationPipeline(
             A bitmask array of shape [batch_size, vocab_size] if structured
             output is enabled; otherwise ``None``.
         """
-        if not self._pipeline_config.sampling_config.enable_structured_output:
+        if not self._pipeline_config.sampling.enable_structured_output:
             return None
 
         if self.vocab_size is None:
@@ -441,7 +371,9 @@ class TextGenerationPipeline(
                 )
 
             # Update num_steps.
-            num_steps = self.calculate_num_steps(num_steps, context)
+            num_steps = calculate_num_steps(
+                context, num_steps, self._pipeline_model.max_seq_len
+            )
 
         # If structured output is enabled for a specific request, we only need to run for a single step.
         # This is the only check to ensure that we do not apply an outdated bitmask to new inputs, during the next step.
@@ -519,54 +451,6 @@ class TextGenerationPipeline(
                 f.flush()  # Refer to MAXSERV-893
 
     @traced
-    def update_context_and_prepare_responses(
-        self,
-        generated_tokens_host: npt.NDArray[np.int32],
-        batch_log_probabilities: list[list[LogProbabilities | None]],
-        flat_batch: list[TextGenerationContextType],
-        num_steps: int,
-        enable_log_probs: bool,
-    ) -> dict[RequestID, TextGenerationOutput]:
-        """
-        Update the context objects and prepare the response objects for each context in the batch after generation.
-
-        Args:
-            generated_tokens_host: Array of generated tokens on the host, indexed as [batch, step].
-            batch_log_probabilities: List of per-step log probability outputs (or None), each entry is a list per batch for that step.
-            flat_batch: List of generation contexts, one per request, matching batch dimension.
-            num_steps: Number of generation steps to process for each context.
-            enable_log_probs: Whether to include log probability data in outputs.
-
-        Returns:
-            A dictionary mapping request IDs to their respective generation outputs.
-        """
-        res: dict[RequestID, TextGenerationOutput] = {}
-        for batch_index, context in enumerate(flat_batch):
-            for step in range(num_steps):
-                # Convert to a Python scalar to improve serialization performance.
-                next_token = int(generated_tokens_host[batch_index, step])
-
-                # Get Log probs if needed.
-                log_probs: LogProbabilities | None = None
-                if enable_log_probs and step < len(batch_log_probabilities):
-                    log_probs_for_step = batch_log_probabilities[step]
-                    if log_probs_for_step and batch_index < len(
-                        log_probs_for_step
-                    ):
-                        log_probs = log_probs_for_step[batch_index]
-
-                context.update(
-                    new_token=next_token, log_probabilities=log_probs
-                )
-
-                if context.is_done:
-                    break
-
-            res[context.request_id] = context.to_generation_output()
-
-        return res
-
-    @traced
     def execute(
         self,
         inputs: TextGenerationInputs[TextGenerationContextType],
@@ -574,6 +458,8 @@ class TextGenerationPipeline(
         """Provided a batch, process batch inputs, execute the graph for num_steps in a multi-step scenario,
         then decode the tokens holistically and return the list of decoded tokens.
         """
+        device0 = self._devices[0]
+        pinned = not device0.is_host
         # Prepare the batch.
         model_inputs, num_steps, bitmask, flat_batch = self.prepare_batch(
             inputs.batches, inputs.num_steps
@@ -591,15 +477,16 @@ class TextGenerationPipeline(
             else:
                 sampler = self._sampler_without_bitmask
 
-            sampling_processor = FusedSamplingProcessor(
-                sampler=sampler,
-                pipeline_config=self._pipeline_config,
-                context_batch=flat_batch,
-                num_steps=num_steps,
-                device=self._devices[0],
-                bitmask=bitmask,
-                vocab_size=self.vocab_size,
-            )
+            with Tracer("FusedSamplingProcessor"):
+                sampling_processor = FusedSamplingProcessor(
+                    sampler=sampler,
+                    pipeline_config=self._pipeline_config,
+                    context_batch=flat_batch,
+                    num_steps=num_steps,
+                    device=device0,
+                    bitmask=bitmask,
+                    vocab_size=self.vocab_size,
+                )
 
             batch_processors.append(sampling_processor)
 
@@ -629,7 +516,7 @@ class TextGenerationPipeline(
             # Validate output. This is more of an internal check that the model
             # is implemented correctly.
             if (
-                self._pipeline_config.sampling_config.enable_variable_logits
+                self._pipeline_config.sampling.enable_variable_logits
                 and model_outputs.logit_offsets is None
             ):
                 raise ValueError(
@@ -703,18 +590,31 @@ class TextGenerationPipeline(
             return {}
 
         # Do the copy to host for each token generated.
-        with Tracer("generated_tokens.to(CPU())") as tracer:
-            generated_tokens_host = (
-                sampling_processor.generated_tokens.to_numpy()
+        with Tracer("D2H generated_tokens") as tracer:
+            generated_tokens_device = sampling_processor.generated_tokens
+            # Allocate a pinned tensor on the host for faster async d2h transfer
+            # speeds. If the model is on host, then fall back to normal pageable
+            # memory.
+            generated_tokens_host = Buffer(
+                shape=generated_tokens_device.shape,
+                dtype=generated_tokens_device.dtype,
+                device=device0,
+                pinned=not device0.is_host,
             )
+            generated_tokens_host.inplace_copy_from(generated_tokens_device)
+            # We assume that the call to `.to_numpy()` will insert a device
+            # synchronize to guarantee that the async d2h transfer is done.
+            # However, if this API changes we will have to add an explicit
+            # device0.synchronize() here.
+            generated_tokens_np = generated_tokens_host.to_numpy()
 
         # Update the context object.
-        res = self.update_context_and_prepare_responses(
-            generated_tokens_host,
-            batch_log_probabilities,
+        res = update_context_and_prepare_responses(
+            generated_tokens_np,
             flat_batch,
             num_steps,
-            inputs.enable_log_probs,
+            batch_log_probabilities=batch_log_probabilities,
+            enable_log_probs=inputs.enable_log_probs,
         )
 
         # Update the cache lengths in our kv_cache manager.

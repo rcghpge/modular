@@ -68,7 +68,7 @@ fn run_mandelbrot(iterations: PythonObject) raises -> PythonObject:
     comptime ROW_BLOCKS = ceildiv(GRID_HEIGHT, BLOCK_SIZE)
 
     # Launch the Mandelbrot kernel on the GPU with a 2D grid of thread blocks.
-    ctx.enqueue_function_experimental[mandelbrot](
+    ctx.enqueue_function[mandelbrot, mandelbrot](
         out_tensor,
         Int32(py=iterations),
         grid_dim=(COL_BLOCKS, ROW_BLOCKS),
@@ -80,7 +80,7 @@ fn run_mandelbrot(iterations: PythonObject) raises -> PythonObject:
     with dev_buf.map_to_host() as host_buf:
         var host_tensor = LayoutTensor[int_dtype, layout](host_buf)
         # Return the ASCII art string representation to Python.
-        return PythonObject(draw_mandelbrot(host_tensor, Int(py=iterations)))
+        return draw_mandelbrot(host_tensor, Int(py=iterations))
 
 
 fn mandelbrot(
@@ -96,8 +96,8 @@ fn mandelbrot(
     comptime SCALE_Y = (MAX_Y - MIN_Y) / GRID_HEIGHT
 
     # Calculate the complex C corresponding to that grid location.
-    var cx = MIN_X + col * SCALE_X
-    var cy = MIN_Y + row * SCALE_Y
+    var cx = MIN_X + Float32(col) * SCALE_X
+    var cy = MIN_Y + Float32(row) * SCALE_Y
     var c = ComplexScalar[float_dtype](cx, cy)
 
     # Perform the Mandelbrot iteration loop calculation.

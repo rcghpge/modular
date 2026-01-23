@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from gpu.cluster import block_rank_in_cluster, cluster_sync
+from gpu.primitives.cluster import block_rank_in_cluster, cluster_sync
 from gpu.host import DeviceContext, Dim
 from gpu import cluster_dim
 
@@ -21,7 +21,7 @@ fn test_cluster_sync_kernel():
     var num_blocks_in_cluster = cluster_dim.x * cluster_dim.y * cluster_dim.z
 
     for i in range(num_blocks_in_cluster):
-        if block_rank == i:
+        if block_rank == UInt32(i):
             print(block_rank)
         cluster_sync()
 

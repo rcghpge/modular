@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from max.dtype import DType
 from max.graph import DeviceRef, Graph, TensorType
-from max.nn.kernels import (
+from max.nn.legacy.kernels import (
     block_scales_interleave,
     dynamic_block_scaled_matmul_fp4,
     quantize_dynamic_block_scaled_fp4,
@@ -94,5 +94,5 @@ def test_block_scales_interleave() -> None:
         scales_interleaved = block_scales_interleave(
             scales,
         )
-        assert scales_interleaved.shape == [2, 3, 32, 4, 4]
+        assert scales_interleaved.shape == [2, 34, 32, 4, 4]
         assert scales_interleaved.dtype == DType.float8_e4m3fn

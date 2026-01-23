@@ -36,8 +36,12 @@ def main():
 
     var ctx = DeviceContext()
 
-    var rgb_buffer = ctx.enqueue_create_buffer[int_dtype](rgb_layout.size())
-    var gray_buffer = ctx.enqueue_create_buffer[int_dtype](gray_layout.size())
+    var rgb_buffer = ctx.enqueue_create_buffer[int_dtype](
+        comptime (rgb_layout.size())
+    )
+    var gray_buffer = ctx.enqueue_create_buffer[int_dtype](
+        comptime (gray_layout.size())
+    )
 
     # Map device buffer to host to initialize values from CPU
     with rgb_buffer.map_to_host() as host_buffer:
@@ -62,7 +66,7 @@ def main():
     # Launch the compiled function on the GPU. The target device is specified
     # first, followed by all function arguments. The last two named parameters
     # are the dimensions of the grid in blocks, and the block dimensions.
-    ctx.enqueue_function_experimental[color_to_grayscale](
+    ctx.enqueue_function[color_to_grayscale, color_to_grayscale](
         rgb_tensor,
         gray_tensor,
         grid_dim=(num_col_blocks, num_row_blocks),

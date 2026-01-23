@@ -21,6 +21,9 @@ from memory import ArcPointer
 
 from os.atomic import Atomic, Consistency, fence
 from sys.info import size_of
+from format._utils import Repr, FormatStruct
+from reflection.type_info import _unqualified_type_name
+from builtin.constrained import _constrained_conforms_to
 
 
 struct _ArcPointerInner[T: Movable & ImplicitlyDestructible]:
@@ -65,7 +68,7 @@ struct _ArcPointerInner[T: Movable & ImplicitlyDestructible]:
 
 @register_passable
 struct ArcPointer[T: Movable & ImplicitlyDestructible](
-    Identifiable, ImplicitlyCopyable
+    Identifiable, ImplicitlyCopyable, Writable
 ):
     """Atomic reference-counted pointer.
 
@@ -257,3 +260,39 @@ struct ArcPointer[T: Movable & ImplicitlyDestructible](
             False otherwise.
         """
         return self._inner == rhs._inner
+
+    fn write_to(self, mut writer: Some[Writer]):
+        """Formats this pointer's value to the provided Writer.
+
+        Args:
+            writer: The object to write to.
+
+        Constraints:
+            T must conform to Writable.
+        """
+        _constrained_conforms_to[
+            conforms_to(Self.T, Writable),
+            Parent=Self,
+            Element = Self.T,
+            ParentConformsTo="Writable",
+        ]()
+        trait_downcast[Writable](self[]).write_to(writer)
+
+    fn write_repr_to(self, mut writer: Some[Writer]):
+        """Write the string representation of the `ArcPointer`.
+
+        Args:
+            writer: The object to write to.
+
+        Constraints:
+            T must conform to Writable.
+        """
+        _constrained_conforms_to[
+            conforms_to(Self.T, Writable),
+            Parent=Self,
+            Element = Self.T,
+            ParentConformsTo="Writable",
+        ]()
+        FormatStruct(writer, "ArcPointer").params(
+            _unqualified_type_name[Self.T]()
+        ).fields(Repr(trait_downcast[Writable](self[])))

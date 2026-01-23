@@ -94,14 +94,15 @@ fn _compute_distribute_layout[
     @parameter
     if axis:
         return zipped_divide(
-            data_layout, Layout(threads_layout.shape[axis.value()])
+            materialize[data_layout](),
+            Layout(threads_layout.shape[axis.value()]),
         )
 
     else:
         for dim in threads_layout.shape:
             thread_tile.append(Layout(dim))
 
-        return zipped_divide(data_layout, thread_tile)
+        return zipped_divide(materialize[data_layout](), thread_tile)
 
 
 fn _project_on_axis[
@@ -365,11 +366,11 @@ struct LayoutTensor[
             ", dtype = ",
             Self.dtype,
             ", layout = ",
-            Self.layout,
+            materialize[Self.layout](),
             ", address_space = ",
             Self.address_space,
             ", element_layout = ",
-            Self.element_layout,
+            materialize[Self.element_layout](),
             ", layout_int_type = ",
             Self.layout_int_type,
             ", linear_idx_type = ",
@@ -1077,38 +1078,60 @@ struct LayoutTensor[
     fn _offset(self, m: Int, n: Int) -> Int:
         """Calculate the memory offset for a 2D tensor element.
 
-        Computes the linear memory offset based on the tensor's stride
-        configuration.
+        Delegates to the IndexList overload for consistent behavior.
 
         Args:
-            m: The row index.
-            n: The column index.
+            m: The row index (dimension 0).
+            n: The column index (dimension 1).
 
         Returns:
             The calculated memory offset as an integer.
         """
-        return Self.stride[0]() * m + Self.stride[1]() * n
+        return self._offset(Index(m, n))
 
     @always_inline
     fn _offset(self, coords: IndexList) -> Int:
-        """Calculate the memory offset for a row-major tensor element.
+        """Calculate the memory offset for a tensor element.
 
-        Computes the linear memory offset based on the tensor's stride
-        configuration.
+        Computes the linear memory offset for the given coordinates based on
+        the tensor's stride configuration. Uses a per-dimension approach:
+        for each dimension, if the compile-time stride is known (not
+        UNKNOWN_VALUE), uses the static stride to enable constant folding;
+        otherwise falls back to the runtime stride for that dimension.
+
+        This approach allows tensors with partially known strides to benefit
+        from constant folding where possible, while correctly handling view
+        tensors where some strides depend on runtime values.
 
         Args:
-            coords: The coordinates for the index.
+            coords: The coordinates for the index. Must have the same size as
+                the tensor's rank.
 
         Returns:
             The calculated memory offset as an integer.
         """
-        return Int(
-            self.runtime_layout(
-                RuntimeTuple[fill_like(self.layout.shape, UNKNOWN_VALUE)](
-                    coords
-                )
-            )
-        )
+        __comptime_assert self.rank == coords.size
+
+        # Use per-dimension approach: compile-time stride if known,
+        # runtime stride if UNKNOWN_VALUE
+        comptime static_strides = Self._to_static[
+            Self.layout.stride, Self.linear_idx_type
+        ]()
+        var offset = 0
+
+        @parameter
+        for i in range(Self.rank):
+
+            @parameter
+            if static_strides[i] == UNKNOWN_VALUE:
+                # Use runtime stride for unknown dimensions
+                offset += Int(self.runtime_layout.stride.value[i]) * coords[i]
+            else:
+                # Use compile-time stride for known dimensions (enables
+                # constant folding)
+                offset += static_strides[i] * coords[i]
+
+        return offset
 
     @always_inline("nodebug")
     fn ptr_at_offset(
@@ -2229,11 +2252,9 @@ struct LayoutTensor[
         __comptime_assert self.rank == coords.size
         debug_assert(Int(self.runtime_layout.stride.value[self.rank - 1]) == 1)
 
-        var idx = self.runtime_layout(
-            RuntimeTuple[fill_like(self.layout.shape, UNKNOWN_VALUE)](coords)
+        return self.ptr.load[width=width, alignment = Self.alignment](
+            self._offset(coords)
         )
-
-        return self.ptr.load[width=width, alignment = Self.alignment](idx)
 
     @always_inline
     fn prefetch(self, m: Int, n: Int):
@@ -2387,11 +2408,10 @@ struct LayoutTensor[
             to be valid.
         """
         __comptime_assert self.rank == coords.size
-        var idx = self.runtime_layout(
-            RuntimeTuple[fill_like(self.layout.shape, UNKNOWN_VALUE)](coords)
-        )
         comptime _alignment = align_of[SIMD[Self.dtype, width]]()
-        return self.ptr.load[width=width, alignment=_alignment](idx)
+        return self.ptr.load[width=width, alignment=_alignment](
+            self._offset(coords)
+        )
 
     @always_inline("nodebug")
     fn store[
@@ -2503,11 +2523,9 @@ struct LayoutTensor[
         __comptime_assert self.rank == coords.size
         debug_assert(Int(self.runtime_layout.stride.value[self.rank - 1]) == 1)
 
-        var idx = self.runtime_layout(
-            RuntimeTuple[fill_like(self.layout.shape, UNKNOWN_VALUE)](coords)
+        return self.ptr.store[alignment = Self.alignment](
+            self._offset(coords), val
         )
-
-        return self.ptr.store[alignment = Self.alignment](idx, val)
 
     @always_inline("nodebug")
     fn aligned_store[
@@ -3105,7 +3123,7 @@ struct LayoutTensor[
     @staticmethod
     fn _divide_tiles[*tile_sizes: Int]() -> Layout:
         comptime tiler = MakeTileLayoutList[*tile_sizes]()
-        return zipped_divide(Self.layout, materialize[tiler]())
+        return zipped_divide(materialize[Self.layout](), materialize[tiler]())
 
     @staticmethod
     fn _fast_varying_dim_tiler(shape: Int) -> Layout:
@@ -3163,8 +3181,8 @@ struct LayoutTensor[
         var tiler = Self._tuple_divide_tiler(shape, linear_vectorize)
         if is_int(shape) and not linear_vectorize:
             # legacy behavior
-            return zipped_divide(Self.layout, LayoutList(tiler))
-        return zipped_divide(Self.layout, tiler)
+            return zipped_divide(materialize[Self.layout](), LayoutList(tiler))
+        return zipped_divide(materialize[Self.layout](), tiler)
 
     @staticmethod
     @always_inline
@@ -3187,7 +3205,7 @@ struct LayoutTensor[
             else:
                 tiler.append(Layout(dim))
             i += 1
-        return zipped_divide(Self.layout, tiler)
+        return zipped_divide(materialize[Self.layout](), tiler)
 
     comptime TileType[*tile_sizes: Int] = LayoutTensor[
         Self.dtype,
@@ -4611,8 +4629,8 @@ struct LayoutTensor[
         ), "Only rank-2 tensors slices are supported for now!"
         return Layout(
             [
-                _get_slice_size(Self.layout, d0_slice, 0),
-                _get_slice_size(Self.layout, d1_slice, 1),
+                _get_slice_size(materialize[Self.layout](), d0_slice, 0),
+                _get_slice_size(materialize[Self.layout](), d1_slice, 1),
             ],
             Self.layout.stride,
         )
@@ -4623,7 +4641,9 @@ struct LayoutTensor[
     ) -> Layout:
         __comptime_assert Self.layout.rank() >= 2, "Rank should be >= 2"
 
-        var sliced_layout = sublayout(Self.layout, slice_0_axis, slice_1_axis)
+        var sliced_layout = sublayout(
+            materialize[Self.layout](), slice_0_axis, slice_1_axis
+        )
         return Layout(
             [
                 _get_slice_size(sliced_layout, slice_0, 0),
@@ -4635,7 +4655,7 @@ struct LayoutTensor[
     @staticmethod
     fn _compute_slice_layout(slice_0: Slice, slice_0_axis: Int) -> Layout:
         __comptime_assert Self.layout.shape.__len__() > 1, "Rank should be >= 1"
-        var sliced_layout = sublayout(Self.layout, slice_0_axis)
+        var sliced_layout = sublayout(materialize[Self.layout](), slice_0_axis)
         return Layout(
             [_get_slice_size(sliced_layout, slice_0, 0)],
             sliced_layout.stride[0],
@@ -8616,7 +8636,7 @@ struct LayoutTensorIter[
             idx=Int(self.idx),
         )
 
-    comptime BitcasType[
+    comptime BitcastType[
         new_type: DType,
         *,
         address_space: AddressSpace = Self.address_space,
@@ -8646,7 +8666,7 @@ struct LayoutTensorIter[
         *,
         target_address_space: AddressSpace = Self.address_space,
         target_alignment: Int = Self.alignment,
-    ](self) -> Self.BitcasType[
+    ](self) -> Self.BitcastType[
         new_type, address_space = Self.address_space, alignment = Self.alignment
     ]:
         """Reinterpret the iterator's underlying pointer as a different data
@@ -8666,7 +8686,7 @@ struct LayoutTensorIter[
         Returns:
             A new LayoutTensorIter with the same layout but different data type.
         """
-        return Self.BitcasType[
+        return Self.BitcastType[
             new_type,
             address_space = Self.address_space,
             alignment = Self.alignment,

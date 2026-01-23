@@ -373,7 +373,7 @@ class Qwen3VLTokenizer(TextAndVisionTokenizer):
                 self._default_eos_token_ids.update(eos_token_id)
 
         self.enable_prefix_caching = (
-            pipeline_config.model.kv_cache_config.enable_prefix_caching
+            pipeline_config.model.kv_cache.enable_prefix_caching
         )
 
         if image_token_id := getattr(
@@ -430,7 +430,9 @@ class Qwen3VLTokenizer(TextAndVisionTokenizer):
     ) -> str:
         """Apply chat template using tokenizer directly (not processor)."""
         templated_message = self.delegate.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            [msg.model_dump() for msg in messages],
+            tokenize=False,
+            add_generation_prompt=True,
         )
         assert isinstance(templated_message, str)
         return templated_message
@@ -445,7 +447,7 @@ class Qwen3VLTokenizer(TextAndVisionTokenizer):
         """
         # Check for video inputs and raise error; we do not support video inputs in MAX
         if request.messages:
-            messages_data = [dict(msg) for msg in request.messages]
+            messages_data = [msg.model_dump() for msg in request.messages]
             for msg in messages_data:
                 contents = msg.get("content", [])
                 if not isinstance(contents, list):
@@ -486,31 +488,11 @@ class Qwen3VLTokenizer(TextAndVisionTokenizer):
 
         # Step 2: Load and process images
         image_inputs = None
-        if request.messages:
-            messages_data = [dict(msg) for msg in request.messages]
-            imgs: list[Image.Image] = []
-            for msg in messages_data:
-                contents = msg.get("content", [])
-                if not isinstance(contents, list):
-                    continue
-                for item in contents:
-                    if isinstance(item, dict) and item.get("type") == "image":
-                        ele: dict[str, Any] = {}
-                        if "image" in item:
-                            ele["image"] = item["image"]
-                        if "image_url" in item:
-                            ele["image_url"] = item["image_url"]
-                        imgs.append(_load_image(ele))
-            image_inputs = imgs
-        else:
-            if request.images:
-                logger.info(
-                    "Loading images from request.images without resizing"
-                )
-                image_inputs = [
-                    _load_image({"image": image_data})
-                    for image_data in request.images
-                ]
+        if request.images:
+            image_inputs = [
+                _load_image({"image": image_data})
+                for image_data in request.images
+            ]
 
         # Check for BOS token BEFORE image expansion
         # This matches transformers' processing_utils.py line 1693-1694

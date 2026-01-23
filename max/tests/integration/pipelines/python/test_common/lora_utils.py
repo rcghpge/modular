@@ -16,12 +16,12 @@ import json
 import os
 import tempfile
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import NonCallableMock
 
 import hf_repo_lock
 import torch
 from max.driver import DeviceSpec
-from max.nn.kv_cache import KVCacheStrategy
+from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines import (
     PIPELINE_REGISTRY,
     PipelineConfig,
@@ -29,6 +29,7 @@ from max.pipelines import (
     TextGenerationPipeline,
     TextTokenizer,
 )
+from max.pipelines.lib import MAXModelConfig
 from safetensors.torch import save_file
 from transformers import AutoConfig
 
@@ -294,9 +295,9 @@ def create_tokenizer(
         hf_config = AutoConfig.from_pretrained(
             model_path, revision=REVISION, trust_remote_code=True
         )
-        mock_model_config = MagicMock()
+        mock_model_config = NonCallableMock(spec=MAXModelConfig)
         mock_model_config.huggingface_config = hf_config
-        pipeline_config = MagicMock()
+        pipeline_config = NonCallableMock(spec=PipelineConfig)
         pipeline_config.model = mock_model_config
 
     return TextTokenizer(

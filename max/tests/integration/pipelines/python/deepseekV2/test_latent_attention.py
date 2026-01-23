@@ -15,17 +15,21 @@ import numpy as np
 import pytest
 import torch
 from max._core.engine import PrintStyle
-from max.driver import Accelerator, Tensor, accelerator_api
+from max.driver import Accelerator, Buffer, accelerator_api
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, ops
 from max.kv_cache import PagedKVCacheManager
-from max.nn.attention.multi_latent_attention import (
+from max.nn.legacy.attention.multi_latent_attention import (
     DataParallelLatentAttentionWithRope,
     LatentAttentionWithRope,
 )
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
-from max.nn.rotary_embedding import (
+from max.nn.legacy.kv_cache import (
+    KVCacheParams,
+    KVCacheStrategy,
+    PagedCacheValues,
+)
+from max.nn.legacy.rotary_embedding import (
     DeepseekYarnRopeScalingParams,
     DeepseekYarnRotaryEmbedding,
 )
@@ -161,7 +165,7 @@ def generate_max_outputs(
         kv_manager.claim(context.request_id)
         batch.append(context)
 
-    input_row_offsets = Tensor(DType.uint32, [batch_size + 1])
+    input_row_offsets = Buffer(DType.uint32, [batch_size + 1])
     running_sum = 0
     for i in range(batch_size):
         input_row_offsets[i] = running_sum
@@ -175,7 +179,7 @@ def generate_max_outputs(
                 kv_manager.alloc(ctx, 1)
             kv_inputs = kv_manager.get_runtime_inputs(batch)[0]
             input_tensor_device = (
-                Tensor.from_numpy(
+                Buffer.from_numpy(
                     input_tensor[:, tok_idx, :].view(torch.float16).numpy()
                 )
                 .view(DType.bfloat16)
@@ -197,7 +201,7 @@ def generate_max_outputs(
         kv_manager.alloc(ctx)
     kv_inputs = kv_manager.get_runtime_inputs(batch)[0]
     input_tensor_device = (
-        Tensor.from_numpy(input_tensor[0, :, :].view(torch.float16).numpy())
+        Buffer.from_numpy(input_tensor[0, :, :].view(torch.float16).numpy())
         .view(DType.bfloat16)
         .to(device0)
     )
@@ -324,7 +328,7 @@ def generate_max_outputs_dp(
         kv_manager.claim(context.request_id)
         batch.append(context)
 
-    input_row_offsets = Tensor(DType.uint32, [batch_size + 1])
+    input_row_offsets = Buffer(DType.uint32, [batch_size + 1])
     running_sum = 0
     for i in range(batch_size):
         input_row_offsets[i] = running_sum
@@ -338,7 +342,7 @@ def generate_max_outputs_dp(
                 kv_manager.alloc(ctx)
             kv_inputs = kv_manager.get_runtime_inputs(batch)[0]
             input_tensor_device = (
-                Tensor.from_numpy(
+                Buffer.from_numpy(
                     input_tensor[:, tok_idx, :].view(torch.float16).numpy()
                 )
                 .view(DType.bfloat16)
@@ -360,7 +364,7 @@ def generate_max_outputs_dp(
         kv_manager.alloc(ctx)
     kv_inputs = kv_manager.get_runtime_inputs(batch)[0]
     input_tensor_device = (
-        Tensor.from_numpy(input_tensor[0, :, :].view(torch.float16).numpy())
+        Buffer.from_numpy(input_tensor[0, :, :].view(torch.float16).numpy())
         .view(DType.bfloat16)
         .to(device0)
     )

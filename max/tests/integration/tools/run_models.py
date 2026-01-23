@@ -27,6 +27,7 @@ from create_pipelines import (
     MaxPipelineAndTokenizer,
     PipelineOracle,
     TorchModelAndDataProcessor,
+    VLLMPipeline,
 )
 from max import driver, pipelines
 from max.interfaces import PipelineTask
@@ -35,6 +36,7 @@ from test_common import (
     evaluate,
     evaluate_embeddings,
     torch_utils,
+    vllm_utils,
 )
 from test_common.evaluate import ModelOutput
 from typing_extensions import ParamSpec
@@ -201,6 +203,7 @@ def run_max_model(
     num_steps: int,
     evaluation_batch_size: int | list[int],
     reference: list[ModelOutput] | None,
+    generate_logprobs: bool = False,
 ) -> Any:
     if task == PipelineTask.TEXT_GENERATION:
         assert isinstance(
@@ -215,6 +218,7 @@ def run_max_model(
             print_outputs=True,
             batch_size=evaluation_batch_size,
             reference=reference,
+            generate_logprobs=generate_logprobs,
         )
     elif task == PipelineTask.EMBEDDINGS_GENERATION:
         assert isinstance(
@@ -258,6 +262,7 @@ def run_torch_model(
     device: torch.device,
     inputs: list[Any],
     num_steps: int,
+    generate_logprobs: bool = False,
 ) -> Any:
     if pipeline_oracle.task == PipelineTask.TEXT_GENERATION:
         results = pipeline_oracle.run_torch_text_generation(
@@ -265,17 +270,58 @@ def run_torch_model(
             device=device,
             num_steps=num_steps,
             inputs=inputs,
+            generate_logprobs=generate_logprobs,
         )
     elif pipeline_oracle.task == PipelineTask.EMBEDDINGS_GENERATION:
+        # Get pool_embeddings from oracle config if it has config_params (GenericOracle)
+        pool_embeddings = getattr(pipeline_oracle, "config_params", {}).get(
+            "pool_embeddings", False
+        )
         results = torch_utils.run_embeddings_generation(
             model=torch_pipeline_and_tokenizer.model,
             data_processor=torch_pipeline_and_tokenizer.data_processor,
             device=device,
             prompts=(inp.prompt for inp in inputs),
+            pool_embeddings=pool_embeddings,
         )
     else:
         raise ValueError(
             f"Evaluating task {pipeline_oracle.task} is not supported."
+        )
+
+    return results
+
+
+def run_vllm_model(
+    *,
+    pipeline_oracle: PipelineOracle,
+    vllm_pipeline: VLLMPipeline,
+    inputs: list[Any],
+    num_steps: int,
+    max_batch_size: int | None = None,
+) -> Any:
+    """Runs the model using the vLLM engine.
+
+    NOTE: Unlike the Torch runner, this execution path treats the model as a
+    black box. It does not support `TorchPrintHook` or intermediate layer
+    inspection for debugging. This is not by choice; it's due to some
+    limitations in the vLLM API.
+    """
+    if pipeline_oracle.task == PipelineTask.TEXT_GENERATION:
+        # Note: vllm_pipeline is just a config object.
+        # The heavy lifting happens inside vllm_utils.
+        results = vllm_utils.run_text_generation(
+            model_path=vllm_pipeline.model_path,
+            textgen_requests=inputs,
+            num_steps=num_steps,
+            print_outputs=True,
+            encoding_name=vllm_pipeline.encoding,
+            trust_remote_code=vllm_pipeline.trust_remote_code,
+            max_batch_size=max_batch_size,
+        )
+    else:
+        raise NotImplementedError(
+            f"Task {pipeline_oracle.task} not yet supported for vLLM runner."
         )
 
     return results

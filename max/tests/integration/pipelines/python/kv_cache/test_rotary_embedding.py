@@ -19,11 +19,11 @@ import numpy as np
 import pytest
 import torch
 from hypothesis import assume, settings
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Dim, Graph, TensorType, TensorValueLike, ops
-from max.nn import (
+from max.nn.legacy import (
     DynamicRotaryEmbedding,
     Llama3RopeScalingParams,
     Llama3RotaryEmbedding,
@@ -113,7 +113,7 @@ def load_and_execute_numpy(
     results = model.execute()
     assert len(results) == 1
     result = results[0]
-    assert isinstance(result, Tensor)
+    assert isinstance(result, Buffer)
     return result.to_numpy()
 
 
@@ -354,8 +354,8 @@ def test_rope(
     @modular_graph_test(session, graph, max_magnitude=1.0)
     @settings(max_examples=10)
     def test_correctness(
-        execute: Callable[[Sequence[Tensor]], Tensor],
-        inputs: Sequence[Tensor],
+        execute: Callable[[Sequence[Buffer]], Buffer],
+        inputs: Sequence[Buffer],
         torch_inputs: Sequence[torch.Tensor],
     ) -> None:
         x, _freqs_cis, cache = inputs
@@ -378,8 +378,12 @@ def test_kv_cache_ragged_rope(session: InferenceSession) -> None:
     # These imports are deferred to avoid Mojo module import race conditions
     # when running with pytest-xdist parallel workers.
     from max.kv_cache import PagedKVCacheManager
-    from max.nn.kernels import fused_qk_ragged_rope
-    from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
+    from max.nn.legacy.kernels import fused_qk_ragged_rope
+    from max.nn.legacy.kv_cache import (
+        KVCacheParams,
+        KVCacheStrategy,
+        PagedCacheValues,
+    )
     from test_common.context_utils import create_text_context
 
     num_q_heads = 32
@@ -477,7 +481,7 @@ def test_kv_cache_ragged_rope(session: InferenceSession) -> None:
         assert isinstance(kv_manager, PagedKVCacheManager)
         kv_manager.alloc(context, num_steps=1)
 
-    input_row_offsets = Tensor(
+    input_row_offsets = Buffer(
         DType.uint32,
         [batch_size + 1],
     )
@@ -507,8 +511,8 @@ def test_kv_cache_ragged_rope(session: InferenceSession) -> None:
     )
     @settings(max_examples=10)
     def test_runs_without_nan(
-        execute: Callable[[Sequence[Tensor]], Tensor],
-        inputs: Sequence[Tensor],
+        execute: Callable[[Sequence[Buffer]], Buffer],
+        inputs: Sequence[Buffer],
         torch_inputs: Sequence[torch.Tensor],
     ) -> None:
         inputs = list(inputs)

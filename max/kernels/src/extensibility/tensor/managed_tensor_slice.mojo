@@ -21,8 +21,7 @@ from sys.info import CompilationTarget, is_gpu
 from sys.intrinsics import strided_load, strided_store
 
 import algorithm
-from buffer import DimList, NDBuffer
-from buffer.dimlist import _make_partially_static_index_list
+from buffer.dimlist import DimList, Dim, _make_partially_static_index_list
 from builtin.device_passable import DevicePassable
 from compiler_internal.directives import StaticTensorSpec, __mogg_intrinsic_attr
 from gpu.host import get_gpu_target
@@ -329,7 +328,7 @@ fn _extract_tensor_spec[
 
 @no_inline
 fn rebuild_static_tensor_specs_with_input_lambda[
-    func_type: AnyTrivialRegType,
+    func_type: __TypeOfAllTypes,
     //,
     dtype: DType,
     rank: Int,
@@ -351,7 +350,7 @@ fn rebuild_static_tensor_specs_with_input_lambda[
 
 @no_inline
 fn rebuild_static_tensor_specs_with_output_lambda[
-    func_type: AnyTrivialRegType,
+    func_type: __TypeOfAllTypes,
     //,
     dtype: DType,
     rank: Int,
@@ -373,7 +372,7 @@ fn rebuild_static_tensor_specs_with_output_lambda[
 
 @no_inline
 fn rebuild_static_tensor_specs_with_compute_output_lambda[
-    func_type: AnyTrivialRegType,
+    func_type: __TypeOfAllTypes,
     //,
     dtype: DType,
     rank: Int,
@@ -569,7 +568,7 @@ fn _mixed_precision_compute_output_fusion_hook_impl[
 )
 @no_inline
 fn rebuild_mix_precision_static_tensor_specs_with_input_lambda[
-    func_type: AnyTrivialRegType,
+    func_type: __TypeOfAllTypes,
     //,
     src_dtype: DType,
     dst_dtype: DType,
@@ -704,7 +703,7 @@ struct ManagedTensorSlice[
             + ", dtype = "
             + String(Self.device_type.dtype)
             + ", layout = "
-            + String(Self.device_type.layout)
+            + String(materialize[Self.device_type.layout]())
             + ", address_space = "
             + String(Self.device_type.address_space)
             + "]"
@@ -1392,7 +1391,7 @@ fn trace_slice_arg(name: String, buf: ManagedTensorSlice) -> String:
 
     Args:
         name: The name of the argument.
-        buf: The NDBuffer to trace.
+        buf: The tensor to trace.
 
     Returns:
         A string representation of the buffer with its shape and data type.
@@ -1429,6 +1428,27 @@ struct VariadicTensors[
     the graph compiler."""
 
     var _tensors: StaticTuple[DynamicTensor[Self.dtype, Self.rank], Self.size]
+
+    fn __init__(
+        out self,
+        ptrs: StaticTuple[UnsafePointer[Scalar[Self.dtype]], Self.size],
+        shapes: StaticTuple[IndexList[Self.rank], Self.size],
+    ):
+        """Initialize the variadic tensor from tuples of pointers and shapes.
+
+        This is a bulk initialization of the VariadicTensors value from an
+        array of pointers and an array of runtime shapes. This allows the graph
+        compiler to avoid generating code to construct DynamicTensor values
+        directly.
+        """
+
+        self._tensors = {}
+
+        for i in range(Self.size):
+            var tensor = DynamicTensor[Self.dtype, Self.rank](
+                ptrs[i], shapes[i]
+            )
+            self._tensors._unsafe_ref(i) = tensor
 
     fn __len__(self) -> Int:
         """Returns the number of variadic arguments in the pack.

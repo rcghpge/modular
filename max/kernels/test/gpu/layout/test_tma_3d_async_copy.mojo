@@ -21,7 +21,12 @@ from layout import IntTuple, Layout, LayoutTensor
 from layout._fillers import arange
 from layout._utils import ManagedLayoutTensor
 from layout.swizzle import make_swizzle
-from layout.tma_async import SharedMemBarrier, TMATensorTile, create_tma_tile
+from layout.tma_async import (
+    SharedMemBarrier,
+    TMATensorTile,
+    create_tensor_tile,
+    create_tma_tile,
+)
 from memory import stack_allocation
 from testing import assert_equal
 
@@ -83,9 +88,9 @@ fn test_tma_3d_load_kernel[
             smem_tile,
             mbar[0],
             (
-                UInt(block_idx.x * UInt(cta_tile_dim2)),
-                UInt(block_idx.y * UInt(cta_tile_dim1)),
-                UInt(block_idx.z * UInt(cta_tile_dim0)),
+                Int(block_idx.x) * cta_tile_dim2,
+                Int(block_idx.y) * cta_tile_dim1,
+                Int(block_idx.z) * cta_tile_dim0,
             ),
         )
     # Ensure all threads sees initialized mbarrier
@@ -135,7 +140,7 @@ def test_tma_3d_load_row_major[
 
     arange(src.tensor(), 1)
 
-    tma_tensor = create_tma_tile[
+    tma_tensor = create_tensor_tile[
         Index(cta_tile_dim0, cta_tile_dim1, cta_tile_dim2),
         swizzle_mode=swizzle_mode,
         __tile_layout=cta_tile_layout,
@@ -143,9 +148,9 @@ def test_tma_3d_load_row_major[
 
     ctx.synchronize()
 
-    print("src layout:", src_layout)
-    print("cta tile layout:", cta_tile_layout)
-    print("desc layout:", type_of(tma_tensor).desc_layout)
+    print("src layout:", materialize[src_layout]())
+    print("cta tile layout:", materialize[cta_tile_layout]())
+    print("desc layout:", materialize[type_of(tma_tensor).desc_layout]())
 
     comptime kernel = test_tma_3d_load_kernel[
         type_of(tma_tensor).dtype,

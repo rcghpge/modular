@@ -236,19 +236,35 @@ def config_to_flag(
     cls: type[BaseModel], prefix: str | None = None
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     options = []
-    if hasattr(cls, "help"):
-        help_text = cls.help()
-    else:
-        help_text = {}
+    help_text = {
+        field_name: field_info.description
+        for field_name, field_info in cls.model_fields.items()
+        if field_info.description
+    }
     field_types = get_type_hints(cls)
+    skip_fields = {
+        "device_specs",
+        "in_dtype",
+        "out_dtype",
+        "pdl_level",
+    }
+    if cls is PipelineConfig:
+        skip_fields.update(
+            {
+                "model",
+                "draft_model",
+                "sampling",
+                "profiling",
+                "lora",
+                "speculative",
+            }
+        )
+    elif cls is MAXModelConfig:
+        skip_fields.add("kv_cache")
+
     for _field in _get_fields_from_pydantic_model(cls):
         # Skip private config fields.
-        if _field.name.startswith("_") or _field.name in (
-            "device_specs",
-            "in_dtype",
-            "out_dtype",
-            "pdl_level",
-        ):
+        if _field.name.startswith("_") or _field.name in skip_fields:
             continue
 
         original_name = _field.name

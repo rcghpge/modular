@@ -21,7 +21,12 @@ from layout import Layout, LayoutTensor
 from layout._fillers import arange, random
 from layout._utils import ManagedLayoutTensor
 from layout.swizzle import make_swizzle
-from layout.tma_async import SharedMemBarrier, TMATensorTile, create_tma_tile
+from layout.tma_async import (
+    SharedMemBarrier,
+    TMATensorTile,
+    create_tensor_tile,
+    create_tma_tile,
+)
 from memory import stack_allocation
 
 from utils.index import Index, IndexList
@@ -63,7 +68,7 @@ fn tma_swizzle_load_kernel[
         tma_tile.async_copy(
             tile,
             mbar[0],
-            (UInt(block_idx.x * UInt(tileN)), UInt(block_idx.y * UInt(tileM))),
+            (Int(block_idx.x) * tileN, Int(block_idx.y) * tileM),
         )
     # Ensure all threads sees initialized mbarrier
     barrier()
@@ -98,7 +103,7 @@ def test_tma_swizzle[
         arange(src.tensor[update=False](), 0)
         arange(dst.tensor[update=False](), 0)
 
-    var tma_tensor = create_tma_tile[
+    var tma_tensor = create_tensor_tile[
         tile_shape,
         swizzle_mode=swizzle_mode,
     ](ctx, src.device_tensor())

@@ -38,7 +38,7 @@ from max.interfaces import (
     RequestID,
     TextGenerationRequest,
 )
-from max.nn import ReturnLogits
+from max.nn.legacy.transformer import ReturnLogits
 from max.profiler import Tracer, traced
 
 if TYPE_CHECKING:
@@ -100,7 +100,7 @@ class EmbeddingsPipeline(EmbeddingsPipelineType):
             huggingface_config=self._pipeline_config.model.huggingface_config,
             encoding=self._pipeline_config.model.quantization_encoding,
             devices=devices,
-            kv_cache_config=self._pipeline_config.model.kv_cache_config,
+            kv_cache_config=self._pipeline_config.model.kv_cache,
             weights=weights,
             adapter=self._weight_adapters.get(
                 weights_format(weight_paths), None
@@ -153,5 +153,4 @@ class EmbeddingsPipeline(EmbeddingsPipelineType):
 
     def release(self, request_id: RequestID) -> None:
         # Nothing to release.
-        pass
         pass

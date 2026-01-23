@@ -15,7 +15,7 @@ from buffer import NDBuffer
 from buffer.dimlist import DimList
 from gpu.host import DeviceContext
 from gpu import block_dim, block_idx, thread_idx
-from gpu.mma import mma
+from gpu.compute.mma import mma
 from gpu.sync import barrier
 from layout import *
 from layout._fillers import arange
@@ -217,7 +217,7 @@ fn test_sram_blocked_matmul(ctx: DeviceContext) raises:
         mat_a.device_tensor(),
         mat_b.device_tensor(),
         grid_dim=(N // BN, M // BM),
-        block_dim=(thread_layout.size()),
+        block_dim=(comptime (thread_layout.size())),
     )
 
     ctx.synchronize()
@@ -482,7 +482,7 @@ fn test_sram_blocked_matmul_dynamic_nd_buffer(ctx: DeviceContext) raises:
         mat_a,
         mat_b,
         grid_dim=(N // BN, M // BM),
-        block_dim=(thread_layout.size()),
+        block_dim=(comptime (thread_layout.size())),
     )
 
     ctx.enqueue_copy(mat_c_ptr, mat_c_dev)

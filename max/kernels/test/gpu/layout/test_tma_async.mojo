@@ -24,6 +24,7 @@ from layout._fillers import arange, random
 from layout._utils import ManagedLayoutTensor
 from layout.layout_tensor import copy_dram_to_sram, copy_sram_to_dram
 from layout.tma_async import (
+    create_tensor_tile,
     SharedMemBarrier,
     TMATensorTile,
     create_tma_tile,
@@ -138,7 +139,7 @@ fn test_tma_load_kernel[
         tma_tile.async_copy(
             tile,
             mbar[0],
-            (block_idx.x * UInt(tileN), block_idx.y * UInt(tileM)),
+            (Int(block_idx.x) * tileN, Int(block_idx.y) * tileM),
         )
     # Ensure all threads sees initialized mbarrier
     barrier()
@@ -192,7 +193,7 @@ fn test_tma_multiple_loads_kernel[
             tma_tile.async_copy(
                 tile,
                 mbar[0],
-                (UInt(i) * UInt(tileN), block_idx.y * UInt(tileM)),
+                (i * tileN, Int(block_idx.y) * tileM),
             )
         # Ensure all threads sees initialized mbarrier
         barrier()
@@ -237,7 +238,8 @@ def test_tma_ragged_store[
     comptime global_layout = Layout.row_major(total_num_sequences, depth)
     var max_length = max_length(sequence_lengths)
 
-    var device_buffer = ctx.enqueue_create_buffer[dtype](global_layout.size())
+    comptime global_layout_size = global_layout.size()
+    var device_buffer = ctx.enqueue_create_buffer[dtype](global_layout_size)
 
     comptime GlobalTensorType[sequence_length: Int] = LayoutTensor[
         dtype,
@@ -713,12 +715,12 @@ fn test_tma_loads_two_buffers_kernel[
             a_tma_tile.async_copy(
                 a_tile,
                 mbar[0],
-                (UInt(i) * UInt(tileN), block_idx.y * UInt(tileM)),
+                (i * tileN, Int(block_idx.y) * tileM),
             )
             b_tma_tile.async_copy(
                 b_tile,
                 mbar[0],
-                (UInt(i) * UInt(tileN), block_idx.y * UInt(tileM)),
+                (i * tileN, Int(block_idx.y) * tileM),
             )
 
         # Ensure all threads sees initialized mbarrier
@@ -872,12 +874,12 @@ fn test_tma_loads_and_store_two_buffers_kernel[
             a_tma_src_tile.async_copy(
                 a_tile,
                 mbar[0],
-                (UInt(i) * UInt(tileN), block_idx.y * UInt(tileM)),
+                (i * tileN, Int(block_idx.y) * tileM),
             )
             b_tma_src_tile.async_copy(
                 b_tile,
                 mbar[0],
-                (UInt(i) * UInt(tileN), block_idx.y * UInt(tileM)),
+                (i * tileN, Int(block_idx.y) * tileM),
             )
 
         # Ensure all threads sees initialized mbarrier
@@ -930,16 +932,16 @@ def test_tma_load_and_store_two_buffers_row_major[
 
     arange(a_src.tensor(), 1)
     arange(b_src.tensor(), 1)
-    var a_tma_src_tensor = create_tma_tile[Index(tileM, tileN)](
+    var a_tma_src_tensor = create_tensor_tile[Index(tileM, tileN)](
         ctx, a_src.device_tensor()
     )
-    var b_tma_src_tensor = create_tma_tile[Index(tileM, tileN)](
+    var b_tma_src_tensor = create_tensor_tile[Index(tileM, tileN)](
         ctx, b_src.device_tensor()
     )
-    var a_tma_dst_tensor = create_tma_tile[Index(tileM, tileN)](
+    var a_tma_dst_tensor = create_tensor_tile[Index(tileM, tileN)](
         ctx, a_dst.device_tensor()
     )
-    var b_tma_dst_tensor = create_tma_tile[Index(tileM, tileN)](
+    var b_tma_dst_tensor = create_tensor_tile[Index(tileM, tileN)](
         ctx, b_dst.device_tensor()
     )
     ctx.synchronize()

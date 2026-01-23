@@ -42,7 +42,10 @@ modular_py_library(
         ":torch_hooks",
         ":torch_utils",
         ":verify_utils",
-    ],
+    ] + select({
+        "//:nvidia_gpu": [":vllm_utils"],
+        "//conditions:default": [],
+    }),
 )
 
 modular_py_library(
@@ -94,6 +97,7 @@ modular_py_library(
     srcs = ["evaluate.py"],
     imports = [".."],
     deps = [
+        ":numerics",
         ":test_data",
         requirement("numpy"),
         requirement("transformers"),
@@ -199,6 +203,7 @@ modular_py_library(
     ],
     imports = [".."],
     deps = [
+        ":numerics",
         ":test_data",
         requirement("accelerate"),  # Required to run torch models on GPU.
         requirement("pillow"),
@@ -209,11 +214,28 @@ modular_py_library(
 )
 
 modular_py_library(
+    name = "vllm_utils",
+    testonly = True,
+    srcs = ["vllm_utils.py"],
+    imports = [".."],
+    deps = [
+        ":test_data",
+        requirement("numpy"),
+    ] + select({
+        "//:nvidia_gpu": [
+            requirement("vllm"),
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+modular_py_library(
     name = "numerics",
     testonly = True,
     srcs = ["numerics.py"],
     imports = [".."],
     deps = [
+        requirement("numpy"),
         requirement("torch"),
         requirement("typing-extensions"),
     ],
@@ -236,6 +258,7 @@ modular_py_library(
         "//max/python/max/engine",
         "//max/python/max/graph",
         "//max/python/max/interfaces",
+        "//max/python/max/kv_cache",
         "//max/python/max/nn",
         "//max/python/max/pipelines/core",
         "//max/python/max/pipelines/lib",
@@ -280,6 +303,7 @@ modular_py_library(
         "//max/python/max/driver",
         "//max/python/max/nn",
         "//max/python/max/pipelines",
+        "//max/python/max/pipelines/lib",
         "//max/tests/integration/pipelines/python:hf_repo_lock",
         requirement("safetensors"),
         requirement("torch"),
@@ -293,7 +317,7 @@ modular_py_library(
     srcs = ["torch_print_hook.py"],
     imports = [".."],
     deps = [
-        "//max/python/max/nn/hooks:base_print_hook",
+        "//max/python/max/nn/legacy/hooks:base_print_hook",
         requirement("torch"),
     ],
 )

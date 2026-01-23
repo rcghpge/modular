@@ -13,7 +13,6 @@
 
 from sys import size_of
 
-from buffer import NDBuffer
 from gpu import barrier
 from gpu.host import DeviceContext
 from gpu.host.nvidia.tma import TensorMapSwizzle, TMADescriptor
@@ -25,6 +24,7 @@ from layout._utils import ManagedLayoutTensor
 from layout.layout_tensor import copy_sram_to_dram
 from layout.swizzle import make_swizzle
 from layout.tma_async import (
+    create_tensor_tile,
     SharedMemBarrier,
     TMATensorTile,
     TMATensorTileArray,
@@ -81,9 +81,7 @@ fn test_tma_replace_global_addr_in_gmem_descriptor_kernel[
     if thread_idx.x == 0:
         mbar[0].init()
         mbar[0].expect_bytes(expected_bytes)
-        device_tma_tile[Int(block_idx.x)][].async_copy(
-            tile, mbar[0], (UInt(0), UInt(0))
-        )
+        device_tma_tile[Int(block_idx.x)][].async_copy(tile, mbar[0], (0, 0))
 
     # Ensure all threads sees initialized mbarrier
     barrier()
@@ -110,7 +108,7 @@ def test_tma_replace_global_addr_in_gmem_descriptor[
     arange(old_src.tensor(), 1)
     arange(new_src.tensor(), 1001)
 
-    var template_tma_tensormap = create_tma_tile[Index(M, N)](
+    var template_tma_tensormap = create_tensor_tile[Index(M, N)](
         ctx, old_src.device_tensor()
     )
 
@@ -238,9 +236,7 @@ fn test_tma_replace_global_addr_in_smem_descriptor_kernel[
     if thread_idx.x == 0:
         mbar[0].init()
         mbar[0].expect_bytes(expected_bytes)
-        device_tma_tile[Int(block_idx.x)][].async_copy(
-            tile, mbar[0], (UInt(0), UInt(0))
-        )
+        device_tma_tile[Int(block_idx.x)][].async_copy(tile, mbar[0], (0, 0))
 
     # Ensure all threads sees initialized mbarrier
     barrier()
@@ -266,7 +262,7 @@ def test_tma_replace_global_addr_in_smem_descriptor[
     arange(old_src.tensor(), 1)
     arange(new_src.tensor(), 1001)
 
-    var template_tma_tensormap = create_tma_tile[Index(M, N)](
+    var template_tma_tensormap = create_tensor_tile[Index(M, N)](
         ctx, old_src.device_tensor()
     )
 
@@ -410,9 +406,7 @@ fn test_tma_replace_global_dim_in_smem_descriptor_kernel[
     if thread_idx.x == 0:
         mbar[0].init()
         mbar[0].expect_bytes(expected_bytes)
-        device_tma_tile[Int(block_idx.x)][].async_copy(
-            tile, mbar[0], (UInt(0), UInt(0))
-        )
+        device_tma_tile[Int(block_idx.x)][].async_copy(tile, mbar[0], (0, 0))
 
     # Ensure all threads sees initialized mbarrier
     barrier()
@@ -455,7 +449,7 @@ def test_tma_replace_global_dim_in_smem_descriptor[
     ](ctx)
     arange(old_src.tensor(), 1)
 
-    var template_tma_tensormap = create_tma_tile[
+    var template_tma_tensormap = create_tensor_tile[
         Index(cta_tile_M, cta_tile_N), swizzle_mode=swizzle_mode
     ](ctx, old_src.device_tensor())
 

@@ -12,9 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 # REQUIRES: NVIDIA-GPU
 
-# RUN: NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 # RUN: %mojo-build %s -o %t
-# RUN: %mpirun -n $NUM_GPUS %t
+# RUN: %mpirun-gpu-per-process %t
 
 from collections import OptionalReg
 
@@ -35,10 +34,11 @@ from shmem import *
 from shmem._mpi import MPI_Finalize
 from shmem.ep_comm import (
     BF16TokenFormat,
-    combine_cb_kernel,
-    combine_kernel,
-    dispatch_cb_kernel,
-    dispatch_kernel,
+    EPLocalSyncCounters,
+    combine_wait_kernel,
+    combine_async_kernel,
+    dispatch_wait_kernel,
+    dispatch_async_kernel,
 )
 from testing import assert_equal
 
@@ -138,7 +138,9 @@ fn test_combine[
     var recv_count_buf = DeviceBuffer(
         ctx, recv_count, n_local_experts * n_ranks, owning=False
     )
-    var atomic_counter = ctx.enqueue_create_buffer[DType.int32](2 * n_experts)
+    var atomic_counter = ctx.enqueue_create_buffer[DType.int32](
+        EPLocalSyncCounters[n_experts].total_size()
+    )
 
     ctx.enqueue_memset(recv_count_buf, UInt64.MAX_FINITE)
     ctx.enqueue_memset(atomic_counter, Int32(0))
@@ -238,38 +240,36 @@ fn test_combine[
 
     comptime hw_info = ctx.default_device_info
 
-    comptime dispatch = dispatch_kernel[
+    comptime dispatch_async = dispatch_async_kernel[
         input_type,
         hw_info.max_thread_block_size,
         input_tokens_layout,
         topk_ids_layout,
         hw_info.sm_count,
-        n_experts // (hw_info.max_thread_block_size // hw_info.warp_size),
         n_experts,
         n_ranks,
         n_tokens_per_rank,
         1,  # p2p_world_size
         token_fmt_type,
     ]
-    var func = ctx.compile_function_experimental[dispatch]()
+    var func = ctx.compile_function_experimental[dispatch_async]()
     shmem_module_init(func)
 
-    comptime dispatch_cb = dispatch_cb_kernel[
+    comptime dispatch_wait = dispatch_wait_kernel[
         hw_info.max_thread_block_size,
         output_layout,
         row_offsets_layout,
         expert_ids_layout,
         src_token_info_layout,
         hw_info.sm_count,
-        1,
         n_experts,
         n_ranks,
         n_tokens_per_rank,
         type_of(format_handler),
     ]
-    var func_cb = ctx.compile_function_experimental[dispatch_cb]()
+    var func_dispatch_wait = ctx.compile_function_experimental[dispatch_wait]()
 
-    comptime combine = combine_kernel[
+    comptime combine_async = combine_async_kernel[
         input_type,
         hw_info.max_thread_block_size,
         output_layout,
@@ -282,28 +282,29 @@ fn test_combine[
         n_tokens_per_rank,
         1,  # p2p_world_size
     ]
-    var func_combine = ctx.compile_function_experimental[combine]()
-    shmem_module_init(func_combine)
+    var func_combine_async = ctx.compile_function_experimental[combine_async]()
+    shmem_module_init(func_combine_async)
 
-    comptime combine_cb = combine_cb_kernel[
+    comptime combine_wait = combine_wait_kernel[
         input_type,
         hw_info.max_thread_block_size,
         output_2_layout,
         hw_info.sm_count,
-        1,
         top_k,
         n_experts,
         n_ranks,
         combine_msg_bytes,
         n_tokens_per_rank,
     ]
-    var func_combine_cb = ctx.compile_function_experimental[combine_cb]()
+    var func_combine_async_wait = ctx.compile_function_experimental[
+        combine_wait
+    ]()
 
     var num_iters: Int = 100 if is_benchmark() or is_pressure_test() else 3
-    var combine_stat_m: Float64 = 0
-    var combine_stat_m2: Float64 = 0
-    var combine_cb_stat_m: Float64 = 0
-    var combine_cb_stat_m2: Float64 = 0
+    var combine_async_stat_m: Float64 = 0
+    var combine_async_stat_m2: Float64 = 0
+    var combine_wait_stat_m: Float64 = 0
+    var combine_wait_stat_m2: Float64 = 0
     var e2e_stat_m: Float64 = 0
     var e2e_stat_m2: Float64 = 0
 
@@ -327,20 +328,20 @@ fn test_combine[
             send_buf,
             recv_buf_ptrs,
             recv_count_ptrs,
-            atomic_counter,
+            EPLocalSyncCounters[n_experts](atomic_counter.unsafe_ptr()),
             Int32(my_rank),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )
         ctx.enqueue_function(
-            func_cb,
+            func_dispatch_wait,
             format_handler,
             row_offsets_tensor,
             expert_ids_tensor,
             src_token_info_tensor,
             recv_buf,
             recv_count,
-            atomic_counter,
+            EPLocalSyncCounters[n_experts](atomic_counter.unsafe_ptr()),
             Int32(my_rank),
             OptionalReg[
                 LayoutTensor[input_type, Layout.row_major[2](), ImmutAnyOrigin]
@@ -352,7 +353,7 @@ fn test_combine[
 
     @always_inline
     @parameter
-    fn run_combine(ctx: DeviceContext) raises:
+    fn run_combine_async(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
         var combine_recv_buf_ptrs = InlineArray[
             UnsafePointer[UInt8, MutAnyOrigin], 1
@@ -364,13 +365,13 @@ fn test_combine[
         combine_recv_count_ptrs[0] = recv_count
 
         ctx.enqueue_function(
-            func_combine,
+            func_combine_async,
             output_tensor,
             src_token_info_tensor,
             recv_buf,
             combine_recv_buf_ptrs,
             combine_recv_count_ptrs,
-            atomic_counter,
+            EPLocalSyncCounters[n_experts](atomic_counter.unsafe_ptr()),
             Int32(my_rank),
             OptionalReg[
                 LayoutTensor[input_type, Layout.row_major[2](), MutAnyOrigin]
@@ -381,13 +382,13 @@ fn test_combine[
 
     @always_inline
     @parameter
-    fn run_combine_cb(ctx: DeviceContext) raises:
+    fn run_combine_async_wait(ctx: DeviceContext) raises:
         ctx.enqueue_function(
-            func_combine_cb,
+            func_combine_async_wait,
             output_2_tensor,
             send_buf,
             recv_count,
-            atomic_counter,
+            EPLocalSyncCounters[n_experts](atomic_counter.unsafe_ptr()),
             Int32(my_rank),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
@@ -396,8 +397,8 @@ fn test_combine[
     @always_inline
     @parameter
     fn run_e2e(ctx: DeviceContext) raises:
-        run_combine(ctx)
-        run_combine_cb(ctx)
+        run_combine_async(ctx)
+        run_combine_async_wait(ctx)
 
     for i in range(num_iters):
         # Initialize the topk ids and input tokens using fixed seed,
@@ -423,14 +424,18 @@ fn test_combine[
 
         # First, bench kernel overhead
         run_full_dispatch(ctx)
-        new_value = ctx.execution_time[run_combine](1) * 1e-3
-        welford_update(combine_stat_m, combine_stat_m2, i + 1, new_value)
+        new_value = ctx.execution_time[run_combine_async](1) * 1e-3
+        welford_update(
+            combine_async_stat_m, combine_async_stat_m2, i + 1, new_value
+        )
 
         # sleep 10 ms to make sure transfer is finished
         time.sleep(1e-2)
 
-        new_value = ctx.execution_time[run_combine_cb](1) * 1e-3
-        welford_update(combine_cb_stat_m, combine_cb_stat_m2, i + 1, new_value)
+        new_value = ctx.execution_time[run_combine_async_wait](1) * 1e-3
+        welford_update(
+            combine_wait_stat_m, combine_wait_stat_m2, i + 1, new_value
+        )
 
         # run one more time to measure bandwidth
         shmem_barrier_all_on_stream(ctx.stream())
@@ -468,14 +473,14 @@ fn test_combine[
                         )
 
     _printf[
-        "Rank #%d:  Combine latency: %4.2fus ± %1.2fus  Combine_cb latency:"
-        " %4.2fus ± %1.2fus  E2E latency: %4.2fus ± %1.2fus\n"
+        "Rank #%d:  combine_async latency: %4.2fus ± %1.2fus  combine_wait"
+        " latency: %4.2fus ± %1.2fus  E2E latency: %4.2fus ± %1.2fus\n"
     ](
         my_rank,
-        combine_stat_m,
-        sqrt(combine_stat_m2 / num_iters),
-        combine_cb_stat_m,
-        sqrt(combine_cb_stat_m2 / num_iters),
+        combine_async_stat_m,
+        sqrt(combine_async_stat_m2 / num_iters),
+        combine_wait_stat_m,
+        sqrt(combine_wait_stat_m2 / num_iters),
         e2e_stat_m,
         sqrt(e2e_stat_m2 / num_iters),
     )

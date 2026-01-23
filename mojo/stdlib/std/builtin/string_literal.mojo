@@ -16,7 +16,11 @@ These are Mojo built-ins, so you don't need to import them.
 """
 
 from collections.string.format import _FormatUtils
-from collections.string.string_slice import CodepointSliceIter, StaticString
+from collections.string.string_slice import (
+    CodepointSliceIter,
+    CodepointsIter,
+    StaticString,
+)
 from os import PathLike
 from sys.ffi import c_char, CStringSlice
 
@@ -258,13 +262,14 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
         """
         return self.__str__()
 
+    @deprecated("Use `str.codepoints()` or `str.codepoint_slices()` instead.")
     fn __iter__(self) -> CodepointSliceIter[StaticConstantOrigin]:
         """Return an iterator over the string literal.
 
         Returns:
             An iterator over the string.
         """
-        return CodepointSliceIter(self.as_string_slice())
+        return self.codepoint_slices()
 
     fn __reversed__(self) -> CodepointSliceIter[StaticConstantOrigin, False]:
         """Iterate backwards over the string, returning immutable references.
@@ -322,6 +327,57 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
             This does not include the trailing null terminator in the count.
         """
         return Int(mlir_value=__mlir_op.`pop.string.size`(self.value))
+
+    @always_inline
+    fn count_codepoints(self) -> Int:
+        """Calculates the length in Unicode codepoints encoded in the
+        UTF-8 representation of this string.
+
+        This is an O(n) operation, where n is the length of the string, as it
+        requires scanning the full string contents.
+
+        Returns:
+            The length in Unicode codepoints.
+
+        Examples:
+
+            Query the length of a string, in bytes and Unicode codepoints:
+
+            ```mojo
+            %# from testing import assert_equal
+
+            var s = StringSlice("ನಮಸ್ಕಾರ")
+            assert_equal(s.count_codepoints(), 7)
+            assert_equal(s.byte_length(), 21)
+            ```
+
+            Strings containing only ASCII characters have the same byte and
+            Unicode codepoint length:
+
+            ```mojo
+            %# from testing import assert_equal
+
+            var s = StringSlice("abc")
+            assert_equal(s.count_codepoints(), 3)
+            assert_equal(s.byte_length(), 3)
+            ```
+
+            The character length of a string with visual combining characters is
+            the length in Unicode codepoints, not grapheme clusters:
+
+            ```mojo
+            %# from testing import assert_equal
+
+            var s = StringSlice("á")
+            assert_equal(s.count_codepoints(), 2)
+            assert_equal(s.byte_length(), 3)
+            ```
+
+        Notes:
+            This method needs to traverse the whole string to count, so it has
+            a performance hit compared to using the byte length.
+        """
+        return self.as_string_slice().count_codepoints()
 
     @always_inline("nodebug")
     fn unsafe_ptr(
@@ -405,6 +461,14 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
         """
 
         writer.write(self.as_string_slice())
+
+    fn write_repr_to(self, mut writer: Some[Writer]):
+        """Write the string representation of the string literal".
+
+        Args:
+            writer: The value to write to.
+        """
+        self.as_string_slice().write_repr_to(writer)
 
     fn find(self, substr: StaticString, start: Int = 0) -> Int:
         """Finds the offset of the first occurrence of `substr` starting at
@@ -692,6 +756,22 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
         """
         return self.as_string_slice().lstrip()
 
+    fn codepoint_slices(self) -> CodepointSliceIter[StaticConstantOrigin]:
+        """Iterate over the string's codepoints as immutable slices.
+
+        Returns:
+            An iterator of codepoint slices.
+        """
+        return self.as_string_slice().codepoint_slices()
+
+    fn codepoints(self) -> CodepointsIter[StaticConstantOrigin]:
+        """Iterate over the `Codepoint`s in this string constant.
+
+        Returns:
+            An iterator over successive `Codepoint` values.
+        """
+        return self.as_string_slice().codepoints()
+
     fn format[*Ts: AnyType](self, *args: *Ts) -> String:
         """Produce a formatted string using the current string as a template.
 
@@ -836,7 +916,7 @@ struct StringLiteral[value: __mlir_type.`!kgen.string`](
         _ = StringSlice("      hello    world     ").split() # ["hello", "world"]
         # Splitting adjacent universal newlines:
         _ = StringSlice(
-            "hello \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e\\x85\\u2028\\u2029world"
+            "hello \\t\\n\\v\\f\\r\\x1c\\x1d\\x1e\\x85world"
         ).split()  # ["hello", "world"]
         ```
         """

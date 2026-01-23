@@ -31,7 +31,6 @@ from gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import Layout, LayoutTensor
 from layout.tma_async import TMATensorTile
 
-from linalg.matmul.gpu.sm100.config import MatmulConfig
 from linalg.structuring import SMemTileArrayType
 from linalg.utils import elementwise_compute_lambda_type
 
@@ -61,17 +60,20 @@ struct TileWriter[
     c_layout: Layout,
     c_desc_layout: Layout,
     //,
-    # From MatmulConfig
+    # Explicit config parameters (works with any config type)
     a_type: DType,
-    b_type: DType,
-    transpose_b: Bool,
-    config: MatmulConfig[a_type, b_type, c_type, transpose_b],
+    accum_type: DType,
+    block_tile_shape: IndexList[3],
+    mma_shape: IndexList[3],
+    cta_group: Int,
+    num_accum_pipeline_stages: Int,
+    c_swizzle: TensorMapSwizzle,
+    transpose_c: Bool,
     # Kernel-level parameters
     c_smem_layout: Layout,
     num_output_stages: Int,
-    stage_stride_cols: UInt,
-    num_output_warps: UInt,
-    max_tmem_cols: UInt = 512,
+    stage_stride_cols: Int,  # Must match OutputTilePipeline's stage_stride_cols
+    num_output_warps: Int,
     elementwise_compute_lambda_fn: OptionalReg[
         elementwise_compute_lambda_type
     ] = None,
@@ -80,18 +82,14 @@ struct TileWriter[
     """Output tile writer for SM100 matmul epilogue.
 
     Stores pointer to TMA descriptor. SMEM tiles passed per-call.
-    """
 
-    # From config
-    comptime cta_group = Self.config.cta_group
-    comptime mma_shape = Self.config.mma_shape
-    comptime block_tile_shape = Self.config.block_tile_shape
-    comptime accum_type = Self.config.accum_type
-    comptime num_accum_pipeline_stages = Int(
-        Self.config.num_accum_pipeline_stages
-    )
-    comptime c_swizzle = Self.config.c_swizzle
-    comptime transpose_c = Self.config.AB_swapped
+    Parameters are passed explicitly to work with both MatmulConfig
+    and BlockScaledMatmulConfig.
+
+    The stage_stride_cols parameter must match the value used when
+    constructing the OutputTilePipeline that provides OutputStage
+    instances to the write() method.
+    """
 
     # Type aliases
     comptime TmaOp = TMATensorTile[
@@ -103,7 +101,7 @@ struct TileWriter[
     ]
     comptime Stage = OutputStage[
         Self.num_accum_pipeline_stages,
-        Int(Self.stage_stride_cols),
+        Self.stage_stride_cols,
         Self.cta_group,
     ]
 
@@ -157,6 +155,10 @@ struct TileWriter[
     @always_inline
     fn __init__(out self, c_tma_op: Self.TmaOpPtr):
         """Initialize with pointer to TMA descriptor."""
+        constrained[
+            Self.stage_stride_cols > 0,
+            "stage_stride_cols must be positive",
+        ]()
         self.c_tma_op = c_tma_op
 
     @always_inline
@@ -229,7 +231,7 @@ struct TileWriter[
             Self.MMA_N,
             Self.stageN,
             Self.cta_group,
-            Int(Self.num_output_warps),
+            Self.num_output_warps,
             Self.c_swizzle,
             Self.transpose_c,
         ]
@@ -261,8 +263,8 @@ struct TileWriter[
         var epilogue_applier = EpilogueApplierType(
             UInt32(warp_id), UInt32(lane)
         )
-        var c_row = UInt32(c_coord[0] * UInt(Self.BM))
-        var c_col = UInt32(c_coord[1] * UInt(Self.MMA_N))
+        var c_row = UInt32(c_coord[0] * UInt32(Self.BM))
+        var c_col = UInt32(c_coord[1] * UInt32(Self.MMA_N))
 
         var upper_frag_casted: SIMD[Self.epilogue_dtype, Self.rep_frag_size]
         var lower_frag_casted: SIMD[Self.epilogue_dtype, Self.rep_frag_size]
@@ -324,7 +326,7 @@ struct TileWriter[
                     ),
                     c_smem_tile,
                 )
-                WarpGroupBarrier[Int(Self.num_output_warps) * WARP_SIZE].sync()
+                WarpGroupBarrier[Self.num_output_warps * WARP_SIZE].sync()
             else:
                 var writer = SMemEpilogueWriter[
                     Self.epilogue_dtype,
@@ -333,7 +335,7 @@ struct TileWriter[
                     Self.MMA_M,
                     Self.MMA_N,
                     Self.cta_group,
-                    Int(Self.num_output_warps),
+                    Self.num_output_warps,
                     Self.c_swizzle,
                     Self.transpose_c,
                     Self.is_lower_frag_required,
@@ -374,4 +376,4 @@ struct TileWriter[
 
             @parameter
             if stage > 0 or stage == Self.num_stages - 1:
-                WarpGroupBarrier[Int(Self.num_output_warps) * WARP_SIZE].sync()
+                WarpGroupBarrier[Self.num_output_warps * WARP_SIZE].sync()

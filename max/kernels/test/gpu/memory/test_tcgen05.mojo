@@ -15,9 +15,9 @@ from gpu import WARP_SIZE
 from gpu.host import DeviceContext
 from gpu.host.nvidia.tma import TensorMapSwizzle
 from gpu import thread_idx, warp_id
-from gpu.mma_sm100 import *
+from gpu.compute.arch.mma_nvidia_sm100 import *
 from gpu.sync import barrier
-from gpu.tcgen05 import *
+from gpu.compute.arch.tcgen05 import *
 from layout import Layout, LayoutTensor
 from layout._utils import ManagedLayoutTensor
 from memory import stack_allocation
@@ -46,7 +46,7 @@ fn tcgen05_st_ld_roundtrip_kernel[
 
     var data_st = SIMD[DType.float32, width]()
     for n in range(N):
-        data_st[n] = thread_idx.x * UInt(N) + UInt(n)
+        data_st[n] = Float32(thread_idx.x * UInt(N) + UInt(n))
 
     tcgen05_st[
         datapaths=16,
@@ -227,7 +227,7 @@ fn tcgen05_cp_ld_roundtrip_kernel[
         tcgen05_dealloc[1](tmem_addr, num_cols)
 
     for n in range(N):
-        if data_ld[n] == thread_idx.x * UInt(N) + UInt(n):
+        if data_ld[n] == Float32(thread_idx.x * UInt(N) + UInt(n)):
             data[thread_idx.x, n] = data_ld[n]
 
 

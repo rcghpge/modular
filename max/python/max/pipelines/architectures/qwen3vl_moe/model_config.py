@@ -20,8 +20,8 @@ from typing import Literal
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.graph.weights import WeightData
-from max.nn import ReturnLogits
-from max.nn.kv_cache import KVCacheParams
+from max.nn.legacy.kv_cache import KVCacheParams
+from max.nn.legacy.transformer import ReturnLogits
 from max.pipelines.architectures.llama3.model_config import Llama3Config
 from max.pipelines.lib import KVCacheConfig, MAXModelConfigBase, PipelineConfig
 from transformers.models.auto.configuration_auto import AutoConfig
@@ -171,7 +171,7 @@ class Qwen3VLConfig(MAXModelConfigBase):
         return {}
 
     @staticmethod
-    def get_kv_params(
+    def construct_kv_params(
         huggingface_config: AutoConfig,
         pipeline_config: PipelineConfig,
         devices: list[DeviceRef],
@@ -182,7 +182,7 @@ class Qwen3VLConfig(MAXModelConfigBase):
         llm_config = getattr(
             huggingface_config, "text_config", huggingface_config
         )
-        return Llama3Config.get_kv_params(
+        return Llama3Config.construct_kv_params(
             huggingface_config=llm_config,
             pipeline_config=pipeline_config,
             devices=devices,
@@ -254,14 +254,12 @@ class Qwen3VLConfig(MAXModelConfigBase):
         )
 
         # Create Llama3Config for the language model (with Qwen2 attention_bias=True)
-        llm_config = Llama3Config.generate(
-            pipeline_config=pipeline_config,
+        llm_config = Llama3Config.initialize_from_config(
+            pipeline_config, huggingface_config.text_config
+        )
+        llm_config.finalize(
             huggingface_config=huggingface_config.text_config,
             state_dict=llm_state_dict,
-            dtype=dtype,
-            n_devices=n_devices,
-            cache_dtype=cache_dtype,
-            kv_cache_config=kv_cache_config,
             return_logits=return_logits,
             norm_method=norm_method,
             attention_bias=True,  # Qwen3VL uses Qwen2 which has attention_bias=True
@@ -269,6 +267,17 @@ class Qwen3VLConfig(MAXModelConfigBase):
         llm_config.interleaved_rope_weights = False
 
         text_config = huggingface_config.text_config
+
+        # Handle both MoE (e.g., 30B) and dense (e.g., VL 2B 4B etc) variants.
+        # For dense models, num_experts=0 ensures the decoder always uses MLP layers
+        num_experts = getattr(text_config, "num_experts", 0)
+        num_experts_per_tok = getattr(text_config, "num_experts_per_tok", 1)
+        moe_intermediate_size = getattr(
+            text_config, "moe_intermediate_size", text_config.intermediate_size
+        )
+        mlp_only_layers = getattr(text_config, "mlp_only_layers", [])
+        norm_topk_prob = getattr(text_config, "norm_topk_prob", False)
+        decoder_sparse_step = getattr(text_config, "decoder_sparse_step", 1)
 
         return Qwen3VLConfig(
             dtype=dtype,
@@ -283,12 +292,12 @@ class Qwen3VLConfig(MAXModelConfigBase):
             spatial_merge_size=hf_vision_config.spatial_merge_size,
             mrope_section=text_config.rope_scaling["mrope_section"],
             # MoE parameters
-            num_experts=text_config.num_experts,
-            num_experts_per_tok=text_config.num_experts_per_tok,
-            moe_intermediate_size=text_config.moe_intermediate_size,
-            mlp_only_layers=text_config.mlp_only_layers,
-            norm_topk_prob=text_config.norm_topk_prob,
-            decoder_sparse_step=text_config.decoder_sparse_step,
+            num_experts=num_experts,
+            num_experts_per_tok=num_experts_per_tok,
+            moe_intermediate_size=moe_intermediate_size,
+            mlp_only_layers=mlp_only_layers,
+            norm_topk_prob=norm_topk_prob,
+            decoder_sparse_step=decoder_sparse_step,
             # Vision configuration
             vision_config=vision_config,
             # Composed language model configuration

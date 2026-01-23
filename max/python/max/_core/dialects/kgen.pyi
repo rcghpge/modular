@@ -565,6 +565,30 @@ class GeneratorAttr(max._core.Attribute):
     @property
     def metadata(self) -> GeneratorMetadataAttrInterface: ...
 
+class GetBaseTypeNameAttr(max._core.Attribute):
+    """
+    The `#kgen.get_base_type_name` attribute extracts the unqualified name of
+    the base (unparameterized) type from a parameterized type. For example,
+    given `List[Int]`, it returns the string `"List"`. For non-parameterized
+    types, it returns the type's simple name.
+
+    This is useful for reflection-based code that needs to identify the base
+    type of parameterized types.
+
+    Example:
+
+    ```mlir
+    #kgen.get_base_type_name<#List[Int]> : !kgen.string
+    // Returns "List"
+    ```
+    """
+
+    def __init__(
+        self, type_value: max._core.dialects.builtin.TypedAttr
+    ) -> None: ...
+    @property
+    def type_value(self) -> max._core.dialects.builtin.TypedAttr: ...
+
 class GetLinkageNameAttr(max._core.Attribute):
     """
     The `#kgen.get_linkage_name` attribute is used to get the linkage name of
@@ -680,6 +704,29 @@ class GetWitnessAttr(max._core.Attribute):
     def witness_name(self) -> max._core.dialects.builtin.StringAttr: ...
     @property
     def type(self) -> max._core.Type | None: ...
+
+class IsStructTypeAttr(max._core.Attribute):
+    """
+    The `#kgen.is_struct_type` attribute returns true if the given type value
+    refers to a Mojo struct type, false otherwise. This is useful for guarding
+    reflection code that needs to avoid compiler errors on non-struct types.
+
+    Example:
+
+    ```mlir
+    #kgen.is_struct_type<#MyStruct> : i1
+    ```
+    """
+
+    def __init__(
+        self,
+        type_value: max._core.dialects.builtin.TypedAttr,
+        type: max._core.dialects.builtin.IntegerType,
+    ) -> None: ...
+    @property
+    def type_value(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def type(self) -> max._core.dialects.builtin.IntegerType: ...
 
 class LLVMBitcodeLibArrayAttr(max._core.Attribute):
     """
@@ -1201,6 +1248,67 @@ class StructFieldNamesAttr(max._core.Attribute):
     def type_value(self) -> max._core.dialects.builtin.TypedAttr: ...
     @property
     def type(self) -> VariadicType: ...
+
+class StructFieldOffsetByIndexAttr(max._core.Attribute):
+    """
+    The `#kgen.struct_field_offset_by_index` attribute returns the byte offset
+    of a field in a struct type given the field index. Produces a compile error
+    if the field index is out of bounds.
+
+    The offset is computed using the target's data layout to determine field
+    sizes and alignment requirements.
+
+    Example:
+
+    ```mlir
+    #kgen.struct_field_offset_by_index<#MyStruct, 0 : index, #target> : index
+    ```
+    """
+
+    def __init__(
+        self,
+        type_value: max._core.dialects.builtin.TypedAttr,
+        field_index: max._core.dialects.builtin.TypedAttr,
+        target: max._core.dialects.builtin.TypedAttr,
+    ) -> None: ...
+    @property
+    def type_value(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def field_index(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def target(self) -> max._core.dialects.builtin.TypedAttr: ...
+
+class StructFieldOffsetByNameAttr(max._core.Attribute):
+    """
+    The `#kgen.struct_field_offset_by_name` attribute returns the byte offset
+    of a field in a struct type given the field name. Produces a compile error
+    if the field name does not exist in the struct.
+
+    The fieldName parameter should resolve to a StringAttr (kgen.string) after
+    parameter evaluation.
+
+    The offset is computed using the target's data layout to determine field
+    sizes and alignment requirements.
+
+    Example:
+
+    ```mlir
+    #kgen.struct_field_offset_by_name<#MyStruct, "x", #target> : index
+    ```
+    """
+
+    def __init__(
+        self,
+        type_value: max._core.dialects.builtin.TypedAttr,
+        field_name: max._core.dialects.builtin.TypedAttr,
+        target: max._core.dialects.builtin.TypedAttr,
+    ) -> None: ...
+    @property
+    def type_value(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def field_name(self) -> max._core.dialects.builtin.TypedAttr: ...
+    @property
+    def target(self) -> max._core.dialects.builtin.TypedAttr: ...
 
 class StructFieldTypeByNameAttr(max._core.Attribute):
     """
@@ -4517,6 +4625,10 @@ class StructType(max._core.Type):
     strips away all information except for those necessary for understanding the
     memory layout of the data it describes.
 
+    The element types are stored as a `TypedAttr` which can be either:
+    - A concrete `VariadicAttr` with resolved types
+    - A parametric expression (e.g., a variadic parameter reference) before elaboration
+
     Example:
 
     ```mlir
@@ -4538,21 +4650,39 @@ class StructType(max._core.Type):
 
     // A struct with parameterized element types.
     !kgen.struct<(type, array<size, scalar<dtype>>)>
+
+    // A struct parameterized on a variadic sequence of element types.
+    kgen.generator @example<Ts: variadic<!kgen.type>>(
+      %0: !kgen.struct<(Ts)>,
+    ) { kgen.return }
     ```
     """
 
     @overload
-    def __init__(self, types: Sequence[max._core.Type]) -> None: ...
-    @overload
-    def __init__(self, types: Sequence[max._core.Type]) -> None: ...
+    def __init__(
+        self,
+        variadic: max._core.dialects.builtin.TypedAttr,
+        is_memory_only: bool = False,
+    ) -> None: ...
     @overload
     def __init__(
-        self, element_types: Sequence[max._core.Type], is_memory_only: bool
+        self, types: Sequence[max._core.Type], is_memory_only: bool = False
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        variadic: max._core.dialects.builtin.TypedAttr,
+        is_memory_only: bool = False,
+        min_alignment: max._core.dialects.builtin.TypedAttr = ...,
     ) -> None: ...
     @property
-    def element_types(self) -> Sequence[max._core.Type]: ...
+    def element_types_variadic(
+        self,
+    ) -> max._core.dialects.builtin.TypedAttr: ...
     @property
     def is_memory_only(self) -> bool: ...
+    @property
+    def min_alignment(self) -> max._core.dialects.builtin.TypedAttr: ...
 
 class TargetType(max._core.Type):
     """

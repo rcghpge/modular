@@ -20,14 +20,11 @@ from unittest.mock import MagicMock, patch
 
 from max.driver import DeviceSpec
 from max.graph.weights import WeightsFormat
-from max.nn.kv_cache import KVCacheStrategy
+from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.lib import (
     KVCacheConfig,
-    LoRAConfig,
     MAXModelConfig,
     PipelineConfig,
-    ProfilingConfig,
-    SamplingConfig,
     SupportedEncoding,
 )
 from transformers import AutoConfig
@@ -100,39 +97,23 @@ class DummyPipelineConfig(PipelineConfig):
             if hasattr(base, attr):
                 object.__setattr__(self, attr, getattr(base, attr))
 
-        # Back-compat: some mocks historically accessed these directly from the
-        # pipeline config, even though they're conceptually model config fields.
-        object.__setattr__(self, "model_path", model_path)
-        object.__setattr__(self, "quantization_encoding", quantization_encoding)
-
-        # `PipelineConfig` stores nested configs in Pydantic PrivateAttrs, which
-        # live in `__pydantic_private__`. Since we used `model_construct()`,
-        # validators (including the one that would initialize PrivateAttrs) did
-        # not run, so we must initialize private attrs explicitly.
-        pydantic_private = getattr(self, "__pydantic_private__", None)
-        if pydantic_private is None:
-            pydantic_private = {}
-            object.__setattr__(self, "__pydantic_private__", pydantic_private)
-        assert isinstance(pydantic_private, dict)
-
         model_config = DummyMAXModelConfig.model_construct(
             model_path=model_path,
             device_specs=device_specs,
             quantization_encoding=quantization_encoding,
         )
-        model_config._kv_cache = KVCacheConfig(
+        model_config.kv_cache = KVCacheConfig(
             cache_strategy=kv_cache_strategy,
         )
+        # NOTE: Using MagicMock without spec here because HuggingFace configs
+        # vary by model type (LlamaConfig, Qwen2Config, etc.). Tests that need
+        # strict type checking should pass a model-specific huggingface_config
+        # parameter to DummyPipelineConfig or use the real AutoConfig.
+        # TODO: Consider accepting huggingface_config as an optional parameter
+        # to allow tests to provide model-specific spec'd mocks.
         model_config._huggingface_config = MagicMock()
-        # Populate the private attrs that callers expect.
-        pydantic_private["_model"] = model_config
-        pydantic_private["_draft_model"] = None
-        pydantic_private["_sampling"] = SamplingConfig()
-        pydantic_private["_profiling"] = ProfilingConfig()
-        pydantic_private["_lora"] = LoRAConfig()
-        pydantic_private["_speculative"] = None
-        pydantic_private["_config_file_section_name"] = "pipeline_config"
-        pydantic_private["_unmatched_kwargs"] = {}
+        # Populate the model field so callers see the configured model.
+        object.__setattr__(self, "model", model_config)
 
         # These values don't belong in PipelineConfig, but are used by
         # MockPipelineModel in pipeline_model.py.
@@ -142,14 +123,20 @@ class DummyPipelineConfig(PipelineConfig):
 
 
 def mock_huggingface_config(func: Callable[_P, _R]) -> Callable[_P, _R]:
-    """Mock HuggingFace config to return correct architectures for test models."""
+    """Mock HuggingFace config to return correct architectures for test models.
+
+    NOTE: Uses MagicMock without spec because HuggingFace configs vary by model
+    type and have deeply nested structure (e.g., vision_config, llm_config).
+    Tests requiring strict type checking should use real AutoConfig.from_pretrained()
+    with appropriate network mocking or provide a specific config class as spec.
+    """
 
     @wraps(func)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         def mock_from_pretrained(  # noqa: ANN202
             model_name_or_path: str | os.PathLike[str], **kwargs: Any
         ):
-            # Create a mock config with the correct architectures based on model
+            # Create a mock config with the correct architectures based on model.
             mock_config = MagicMock()
 
             # Map specific test models to their architectures
@@ -236,7 +223,11 @@ def mock_huggingface_hub_repo_exists_with_retry(
     @wraps(func)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         with patch("huggingface_hub.revision_exists", return_value=True):
-            return func(*args, **kwargs)
+            with patch(
+                "max.pipelines.lib.hf_utils.generate_local_model_path",
+                return_value="/fake/cache/path",
+            ):
+                return func(*args, **kwargs)
 
     return wrapper
 
@@ -252,20 +243,43 @@ def mock_huggingface_hub_file_exists(
     return wrapper
 
 
+def mock_generate_local_model_path(
+    func: Callable[_P, _R],
+) -> Callable[_P, _R]:
+    """Mock generate_local_model_path to return a fake path.
+
+    This allows tests to run with HF_HUB_OFFLINE=1 without requiring
+    models to be in the local cache.
+    """
+
+    @wraps(func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        with patch(
+            "max.pipelines.lib.hf_utils.generate_local_model_path",
+            return_value="/fake/cache/path",
+        ):
+            return func(*args, **kwargs)
+
+    return wrapper
+
+
 def mock_pipeline_config_hf_dependencies(
     func: Callable[_P, _R],
 ) -> Callable[_P, _R]:
     """Decorator that combines multiple mock decorators for pipeline testing.
 
     Combines:
+    - mock_generate_local_model_path
     - mock_huggingface_hub_repo_exists_with_retry
     - mock_huggingface_hub_file_exists
     - mock_huggingface_config
     - mock_estimate_memory_footprint
     """
-    return mock_huggingface_hub_repo_exists_with_retry(
-        mock_huggingface_hub_file_exists(
-            mock_huggingface_config(mock_estimate_memory_footprint(func))
+    return mock_generate_local_model_path(
+        mock_huggingface_hub_repo_exists_with_retry(
+            mock_huggingface_hub_file_exists(
+                mock_huggingface_config(mock_estimate_memory_footprint(func))
+            )
         )
     )
 

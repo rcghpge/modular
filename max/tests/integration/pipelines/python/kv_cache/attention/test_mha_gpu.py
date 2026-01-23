@@ -16,11 +16,11 @@ import math
 
 import pytest
 import torch
-from max.driver import Accelerator, Tensor
+from max.driver import Accelerator, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType
-from max.nn.attention.multihead_attention import MultiheadAttention
+from max.nn.legacy.attention.multihead_attention import MultiheadAttention
 from torch.utils.dlpack import from_dlpack
 
 
@@ -185,7 +185,7 @@ def generate_max_outputs(
     graph = build_attention_model()
     model = session.load(graph, weights_registry=attention.state_dict())
 
-    x_tensor = Tensor.from_dlpack(input_tensor).to(cuda)
+    x_tensor = Buffer.from_dlpack(input_tensor).to(cuda)
     max_output = model.execute(x_tensor)[0]
 
     return max_output

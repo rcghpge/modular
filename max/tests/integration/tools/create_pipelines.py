@@ -36,7 +36,7 @@ from idefics3 import torch_utils as idefics3_torch_utils
 from internvl import torch_utils as internvl_torch_utils
 from max import driver, pipelines
 from max.interfaces import PipelineTask, PipelineTokenizer
-from max.nn.kv_cache import KVCacheStrategy
+from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.architectures.internvl.tokenizer import InternVLProcessor
 from peft.peft_model import PeftModel
 
@@ -105,6 +105,19 @@ class TorchModelAndDataProcessor:
     )
 
 
+@dataclass
+class VLLMPipeline:
+    """Configuration to run a vLLM pipeline.
+
+    We do not instantiate the LLM engine here to avoid CUDA context initialization
+    in the main process.
+    """
+
+    model_path: str
+    trust_remote_code: bool = False
+    encoding: str | None = None
+
+
 class PipelineOracle(ABC):
     """Knows about a kind of pipeline.
 
@@ -143,6 +156,25 @@ class PipelineOracle(ABC):
         """Instantiate a Torch pipeline for the given encoding/device."""
         raise NotImplementedError
 
+    def create_vllm_pipeline(
+        self, *, encoding: str | None, device_specs: list[driver.DeviceSpec]
+    ) -> VLLMPipeline:
+        """Instantiate a vLLM pipeline config."""
+        path = getattr(self, "model_path", None)
+        # We shouldn't hit this; we only have it because using the string
+        # `model_path` is standard practice rather than enforced behavior.
+        if not path:
+            raise ValueError(
+                f"Cannot find `model_path` for {self.__class__.__name__}"
+            )
+        config = getattr(self, "config_params", {})
+        return VLLMPipeline(
+            model_path=path,
+            trust_remote_code=config.get("trust_remote_code", False)
+            or getattr(self, "trust_remote_code", False),
+            encoding=encoding,
+        )
+
     @property
     def inputs(self) -> list[MockTextGenerationRequest]:
         """Input requests for the model.
@@ -164,6 +196,7 @@ class PipelineOracle(ABC):
         device: torch.device,
         num_steps: int,
         inputs: list[Any],
+        generate_logprobs: bool = False,
     ) -> list[dict[str, Any]]:
         """Run text generation using the standard torch_utils implementation.
 
@@ -177,6 +210,7 @@ class PipelineOracle(ABC):
             num_steps=num_steps,
             print_outputs=True,
             use_cache=self.use_cache,
+            generate_logprobs=generate_logprobs,
         )
 
 
@@ -258,6 +292,7 @@ class InternVLPipelineOracle(PipelineOracle):
         device: torch.device,
         num_steps: int,
         inputs: list[Any],
+        generate_logprobs: bool = False,
     ) -> list[dict[str, Any]]:
         """Run text generation using InternVL-specific preprocessing logic."""
         return internvl_torch_utils.run_text_generation(
@@ -267,7 +302,17 @@ class InternVLPipelineOracle(PipelineOracle):
             textgen_requests=inputs,
             num_steps=num_steps,
             print_outputs=True,
+            generate_logprobs=generate_logprobs,
             # Omit `use_cache` since the InternVL code hardcodes it.
+        )
+
+    def create_vllm_pipeline(
+        self, *, encoding: str | None, device_specs: list[driver.DeviceSpec]
+    ) -> VLLMPipeline:
+        return VLLMPipeline(
+            model_path=self.model_path,
+            trust_remote_code=True,
+            encoding=encoding,
         )
 
 
@@ -346,6 +391,7 @@ class Idefics3PipelineOracle(PipelineOracle):
         device: torch.device,
         num_steps: int,
         inputs: list[Any],
+        generate_logprobs: bool = False,
     ) -> list[dict[str, Any]]:
         """Run text generation using Idefics3-specific preprocessing logic."""
 
@@ -357,6 +403,7 @@ class Idefics3PipelineOracle(PipelineOracle):
             num_steps=num_steps,
             print_outputs=True,
             use_cache=self.use_cache,
+            generate_logprobs=generate_logprobs,
         )
 
 
@@ -456,6 +503,7 @@ class Qwen2_5VLPipelineOracle(PipelineOracle):
         device: torch.device,
         num_steps: int,
         inputs: list[Any],
+        generate_logprobs: bool = False,
     ) -> list[dict[str, Any]]:
         """Run text generation using Qwen2.5VL-specific preprocessing logic."""
 
@@ -467,6 +515,7 @@ class Qwen2_5VLPipelineOracle(PipelineOracle):
             num_steps=num_steps,
             print_outputs=True,
             use_cache=self.use_cache,
+            generate_logprobs=generate_logprobs,
         )
 
 
@@ -566,6 +615,7 @@ class Qwen3VLPipelineOracle(PipelineOracle):
         device: torch.device,
         num_steps: int,
         inputs: list[Any],
+        generate_logprobs: bool = False,
     ) -> list[dict[str, Any]]:
         """Run text generation using Qwen3VL-specific preprocessing logic."""
 
@@ -577,6 +627,7 @@ class Qwen3VLPipelineOracle(PipelineOracle):
             num_steps=num_steps,
             print_outputs=True,
             use_cache=self.use_cache,
+            generate_logprobs=generate_logprobs,
         )
 
 
@@ -1164,11 +1215,6 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
         config_params={"max_length": 512},
         device_encoding_map={"gpu": ["bfloat16"]},
     ),
-    "unsloth/gpt-oss-20b-BF16_ModuleV3": GenericOracle(
-        model_path="unsloth/gpt-oss-20b-BF16",
-        config_params={"max_length": 512, "use_module_v3": True},
-        device_encoding_map={"gpu": ["bfloat16"]},
-    ),
     "Qwen/Qwen2.5-VL-3B-Instruct": Qwen2_5VLPipelineOracle(
         "Qwen/Qwen2.5-VL-3B-Instruct"
     ),
@@ -1240,6 +1286,36 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
         device_encoding_map={
             "cpu": ["float32"],
             "gpu": ["float32"],
+        },
+    ),
+    "Qwen/Qwen3-Embedding-0.6B": GenericOracle(
+        model_path="Qwen/Qwen3-Embedding-0.6B",
+        config_params={"max_length": 8192, "pool_embeddings": True},
+        auto_model_cls=transformers.AutoModel,
+        task=PipelineTask.EMBEDDINGS_GENERATION,
+        device_encoding_map={
+            "cpu": ["float32"],
+            "gpu": ["float32", "bfloat16"],
+        },
+    ),
+    "Qwen/Qwen3-Embedding-4B": GenericOracle(
+        model_path="Qwen/Qwen3-Embedding-4B",
+        config_params={"max_length": 8192, "pool_embeddings": True},
+        auto_model_cls=transformers.AutoModel,
+        task=PipelineTask.EMBEDDINGS_GENERATION,
+        device_encoding_map={
+            "cpu": ["float32"],
+            "gpu": ["float32", "bfloat16"],
+        },
+    ),
+    "Qwen/Qwen3-Embedding-8B": GenericOracle(
+        model_path="Qwen/Qwen3-Embedding-8B",
+        config_params={"max_length": 8192, "pool_embeddings": True},
+        auto_model_cls=transformers.AutoModel,
+        task=PipelineTask.EMBEDDINGS_GENERATION,
+        device_encoding_map={
+            "cpu": ["float32"],
+            "gpu": ["float32", "bfloat16"],
         },
     ),
     # GPTQ llama with perm_idx
@@ -1318,19 +1394,9 @@ PIPELINE_ORACLES: Mapping[str, PipelineOracle] = {
         config_params={
             "max_length": 516,
             "trust_remote_code": False,
-            "prefill_chunk_size": 512,
+            "max_batch_input_tokens": 512,
             "ep_size": 8,
             "data_parallel_degree": 8,
-        },
-        device_encoding_map={"gpu": ["float8_e4m3fn"]},
-    ),
-    "deepseek-ai/DeepSeek-R1-TP8-DP1-EP1": GenericOracle(
-        model_path="deepseek-ai/DeepSeek-R1",
-        config_params={
-            "max_length": 516,
-            "trust_remote_code": False,
-            "prefill_chunk_size": 512,
-            "data_parallel_degree": 1,
         },
         device_encoding_map={"gpu": ["float8_e4m3fn"]},
     ),

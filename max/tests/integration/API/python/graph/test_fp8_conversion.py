@@ -14,11 +14,11 @@
 
 import numpy as np
 import pytest
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, Weight, ops
-from max.nn.kernels import (
+from max.nn.legacy.kernels import (
     needs_fp8_fnuz_conversion,
     normalize_e4m3fn_to_e4m3fnuz,
 )
@@ -70,8 +70,8 @@ def test_normalize_e4m3fn_to_e4m3fnuz(session: InferenceSession) -> None:
 
     weight_out = result[0]
     scale_out = result[1]
-    assert isinstance(weight_out, Tensor)
-    assert isinstance(scale_out, Tensor)
+    assert isinstance(weight_out, Buffer)
+    assert isinstance(scale_out, Buffer)
     weight_out_np = weight_out.to_numpy()
 
     np.testing.assert_allclose(

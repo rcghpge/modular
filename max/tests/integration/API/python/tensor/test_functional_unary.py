@@ -17,10 +17,10 @@ They don't otherwise make any attempt at coverage, edge cases, or correctness.
 """
 
 import pytest
+from max import functional as F
 from max.driver import CPU, Accelerator, accelerator_count
 from max.dtype import DType
-from max.experimental import functional as F
-from max.experimental.tensor import Tensor
+from max.tensor import Tensor
 
 DEVICE = Accelerator() if accelerator_count() else CPU()
 
@@ -61,7 +61,6 @@ LOGICAL_UNARY = [
 def test_unary(op) -> None:  # noqa: ANN001
     tensor = Tensor.zeros([10], dtype=DType.float32, device=DEVICE)
     result = op(tensor)
-    result._sync_realize()
     assert result.real
     assert list(result.driver_tensor.shape) == tensor.shape
 
@@ -70,6 +69,5 @@ def test_unary(op) -> None:  # noqa: ANN001
 def test_logical_unary(op) -> None:  # noqa: ANN001
     tensor = Tensor.full([10], False, dtype=DType.bool, device=DEVICE)
     result = op(tensor)
-    result._sync_realize()
     assert result.real
     assert list(result.driver_tensor.shape) == tensor.shape

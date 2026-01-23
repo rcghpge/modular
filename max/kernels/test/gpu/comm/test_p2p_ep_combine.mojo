@@ -41,10 +41,11 @@ from layout.runtime_layout import RuntimeLayout
 from shmem.ep_comm import (
     BF16TokenFormat,
     EP_DATA_READY_FLAG,
-    combine_cb_kernel,
-    combine_kernel,
-    dispatch_cb_kernel,
-    dispatch_kernel,
+    EPLocalSyncCounters,
+    combine_wait_kernel,
+    combine_async_kernel,
+    dispatch_wait_kernel,
+    dispatch_async_kernel,
 )
 from testing import assert_equal
 from utils import IndexList
@@ -134,7 +135,7 @@ fn test_combine[
     var device_expert_ids_bufs_list = List[DeviceBuffer[DType.int32]](capacity=n_ranks)
     var device_src_token_info_bufs_list = List[DeviceBuffer[DType.int32]](capacity=n_ranks)
 
-    # Output buffer for combine_cb
+    # Output buffer for combine_wait
     var device_output_2_bufs_list = List[DeviceBuffer[input_type]](capacity=n_ranks)
 
     for i in range(n_ranks):
@@ -152,7 +153,9 @@ fn test_combine[
         ctx.enqueue_memset(combine_recv_count_bufs_list[i], UInt64.MAX_FINITE)
 
         # Shared atomic counter
-        atomic_counters_list.append(ctx.enqueue_create_buffer[DType.int32](n_slots * 2 * n_experts))
+        atomic_counters_list.append(ctx.enqueue_create_buffer[DType.int32](
+            n_slots * EPLocalSyncCounters[n_experts].total_size()
+        ))
         ctx.enqueue_memset(atomic_counters_list[i], Int32(0))
 
         host_topk_ids_list[i] = alloc[Int32](n_slots * n_tokens_per_rank * top_k)
@@ -254,8 +257,8 @@ fn test_combine[
 
     @always_inline
     @parameter
-    fn get_atomic_counters_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[Int32, MutExternalOrigin]) raises:
-        return type_of(result)(atomic_counters_list[dev_idx].unsafe_ptr() + slot_idx * 2 * n_experts)
+    fn get_atomic_counters(dev_idx: Int, slot_idx: Int, out result: EPLocalSyncCounters[n_experts]) raises:
+        return EPLocalSyncCounters[n_experts](atomic_counters_list[dev_idx].unsafe_ptr() + slot_idx * EPLocalSyncCounters[n_experts].total_size())
 
     @always_inline
     @parameter
@@ -334,13 +337,12 @@ fn test_combine[
     )
 
     # Dispatch kernel
-    comptime dispatch = dispatch_kernel[
+    comptime dispatch_async = dispatch_async_kernel[
         input_type,
         hw_info.max_thread_block_size,
         input_tokens_layout,
         topk_ids_layout,
         hw_info.sm_count,
-        n_experts // (hw_info.max_thread_block_size // hw_info.warp_size),
         n_experts,
         n_ranks,
         n_tokens_per_rank,
@@ -350,14 +352,13 @@ fn test_combine[
     ]
 
     # Dispatch callback kernel
-    comptime dispatch_cb = dispatch_cb_kernel[
+    comptime dispatch_wait = dispatch_wait_kernel[
         hw_info.max_thread_block_size,
         output_layout,
         row_offsets_layout,
         expert_ids_layout,
         src_token_info_layout,
         hw_info.sm_count,
-        1,
         n_experts,
         n_ranks,
         n_tokens_per_rank,
@@ -365,7 +366,7 @@ fn test_combine[
     ]
 
     # Combine kernel
-    comptime combine = combine_kernel[
+    comptime combine_async = combine_async_kernel[
         input_type,
         hw_info.max_thread_block_size,
         output_layout,
@@ -381,12 +382,11 @@ fn test_combine[
     ]
 
     # Combine callback kernel
-    comptime combine_cb = combine_cb_kernel[
+    comptime combine_wait = combine_wait_kernel[
         input_type,
         hw_info.max_thread_block_size,
         output_2_layout,
         hw_info.sm_count,
-        1,
         top_k,
         n_experts,
         n_ranks,
@@ -396,15 +396,15 @@ fn test_combine[
 
     @always_inline
     @parameter
-    fn run_dispatch(dev_idx: Int, slot_idx: Int) raises:
+    fn run_dispatch_async(dev_idx: Int, slot_idx: Int) raises:
         var ctx = list_of_ctx[dev_idx]
-        ctx.enqueue_function[dispatch, dispatch](
+        ctx.enqueue_function[dispatch_async, dispatch_async](
             get_input_tokens_tensor(dev_idx, slot_idx),
             get_topk_ids_tensor(dev_idx, slot_idx),
             get_dispatch_send_buf_ptr(dev_idx, slot_idx),
             dispatch_recv_bufs_inputs[slot_idx],
             dispatch_recv_count_bufs_inputs[slot_idx],
-            get_atomic_counters_ptr(dev_idx, slot_idx),
+            get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
@@ -412,16 +412,16 @@ fn test_combine[
 
     @always_inline
     @parameter
-    fn run_dispatch_cb(dev_idx: Int, slot_idx: Int) raises:
+    fn run_dispatch_async_wait(dev_idx: Int, slot_idx: Int) raises:
         var ctx = list_of_ctx[dev_idx]
-        ctx.enqueue_function[dispatch_cb, dispatch_cb](
+        ctx.enqueue_function[dispatch_wait, dispatch_wait](
             type_of(format_handler)(get_output_tensor(dev_idx, slot_idx)),
             get_row_offsets_tensor(dev_idx, slot_idx),
             get_expert_ids_tensor(dev_idx, slot_idx),
             get_src_token_info_tensor(dev_idx, slot_idx),
             dispatch_recv_bufs_inputs[slot_idx][dev_idx],
             dispatch_recv_count_bufs_inputs[slot_idx][dev_idx],
-            get_atomic_counters_ptr(dev_idx, slot_idx),
+            get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
             OptionalReg[
                 LayoutTensor[input_type, Layout.row_major[2](), ImmutAnyOrigin]
@@ -433,20 +433,20 @@ fn test_combine[
     @always_inline
     @parameter
     fn run_full_dispatch(dev_idx: Int, slot_idx: Int) raises:
-        run_dispatch(dev_idx, slot_idx)
-        run_dispatch_cb(dev_idx, slot_idx)
+        run_dispatch_async(dev_idx, slot_idx)
+        run_dispatch_async_wait(dev_idx, slot_idx)
 
     @always_inline
     @parameter
-    fn run_combine(dev_idx: Int, slot_idx: Int) raises:
+    fn run_combine_async(dev_idx: Int, slot_idx: Int) raises:
         var ctx = list_of_ctx[dev_idx]
-        ctx.enqueue_function[combine, combine](
+        ctx.enqueue_function[combine_async, combine_async](
             get_output_tensor(dev_idx, slot_idx),
             get_src_token_info_tensor(dev_idx, slot_idx),
             get_combine_send_buf_ptr(dev_idx, slot_idx),
             combine_recv_bufs_inputs[slot_idx],
             combine_recv_count_bufs_inputs[slot_idx],
-            get_atomic_counters_ptr(dev_idx, slot_idx),
+            get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
             OptionalReg[
                 LayoutTensor[input_type, Layout.row_major[2](), MutAnyOrigin]
@@ -457,13 +457,13 @@ fn test_combine[
 
     @always_inline
     @parameter
-    fn run_combine_cb(dev_idx: Int, slot_idx: Int) raises:
+    fn run_combine_async_wait(dev_idx: Int, slot_idx: Int) raises:
         var ctx = list_of_ctx[dev_idx]
-        ctx.enqueue_function[combine_cb, combine_cb](
+        ctx.enqueue_function[combine_wait, combine_wait](
             get_output_2_tensor(dev_idx, slot_idx),
             get_combine_recv_buf_ptr(dev_idx, slot_idx),
             get_combine_recv_count_ptr(dev_idx, slot_idx),
-            get_atomic_counters_ptr(dev_idx, slot_idx),
+            get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
@@ -472,8 +472,8 @@ fn test_combine[
     @always_inline
     @parameter
     fn run_e2e(dev_idx: Int, slot_idx: Int) raises:
-        run_combine(dev_idx, slot_idx)
-        run_combine_cb(dev_idx, slot_idx)
+        run_combine_async(dev_idx, slot_idx)
+        run_combine_async_wait(dev_idx, slot_idx)
 
     @always_inline
     @parameter
@@ -528,7 +528,7 @@ fn test_combine[
             @always_inline
             fn call_fn(ctx: DeviceContext, cache_iter: Int) raises:
                 var dev_id = Int(ctx.id())
-                run_combine(dev_id, cache_iter)
+                run_combine_async(dev_id, cache_iter)
 
             b.iter_custom[call_fn](list_of_ctx[i])
 
@@ -557,12 +557,12 @@ fn test_combine[
     b_final.info_vec.append(results_b[max_loc].copy())
     b_final.dump_report()
 
-    # Then, bench the combine_cb kernel overhead
+    # Then, bench the combine_wait kernel overhead
     for dev_i in range(n_ranks):
         list_of_ctx[dev_i].synchronize()
 
     @parameter
-    fn per_gpu_combine_cb(i: Int) raises:
+    fn per_gpu_combine_wait(i: Int) raises:
         @parameter
         @always_inline
         fn bench_iter(mut b: Bencher) raises:
@@ -570,7 +570,7 @@ fn test_combine[
             @always_inline
             fn call_fn(ctx: DeviceContext, cache_iter: Int) raises:
                 var dev_id = Int(ctx.id())
-                run_combine_cb(dev_id, cache_iter)
+                run_combine_async_wait(dev_id, cache_iter)
 
             b.iter_custom[call_fn](list_of_ctx[i])
 
@@ -578,13 +578,13 @@ fn test_combine[
         bench_config.show_progress = False
         var b = Bench(bench_config^)
         b.bench_function[bench_iter](
-            BenchId("bench combine_cb"),
+            BenchId("bench combine_wait"),
             [ThroughputMeasure(BenchMetric.bytes, 0)],
             fixed_iterations=n_slots,
         )
         results_b[i] = b.info_vec[0].copy()
 
-    sync_parallelize[per_gpu_combine_cb](n_ranks)
+    sync_parallelize[per_gpu_combine_wait](n_ranks)
 
     max_time = 0.0
     max_loc = 0

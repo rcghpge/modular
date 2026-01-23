@@ -18,12 +18,11 @@ import re
 import weakref
 
 import pytest
-from max import driver
+from max import driver, random
+from max import functional as F
 from max.driver import CPU, Accelerator, accelerator_count
-from max.experimental import functional as F
-from max.experimental import random
-from max.experimental.tensor import Tensor, TensorType, defaults
-from max.nn.module_v3.module import Module, module_dataclass
+from max.nn.module import Module, module_dataclass
+from max.tensor import Tensor, TensorType, defaults
 
 
 @module_dataclass
@@ -309,7 +308,7 @@ def test_compile_with_weights(lazy_test_module: TestModule) -> None:
     parameters = weakref.WeakValueDictionary(test_module.parameters)
 
     weights = {
-        name: driver.Tensor.zeros(
+        name: driver.Buffer.zeros(
             [int(d) for d in param.shape], param.dtype, param.device
         )
         for name, param in test_module.parameters
@@ -323,7 +322,7 @@ def test_compile_with_weights(lazy_test_module: TestModule) -> None:
     assert not any(param.real for param in parameters.values())
     assert not any(param.real for _, param in test_module.parameters)
 
-    input = driver.Tensor.zeros([3, 3], dtype, device)
+    input = driver.Buffer.zeros([3, 3], dtype, device)
     _ = compiled(input)
 
     assert not any(param.real for param in parameters.values())

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from max.driver import CPU, Accelerator, accelerator_count
 from max.dtype import DType
-from max.experimental.tensor import Tensor
+from max.tensor import Tensor
 
 
 def test_matmul() -> None:
@@ -35,7 +35,6 @@ def test_matmul() -> None:
         device=Accelerator() if accelerator_count() else CPU(),
     )
     result = a @ b
-    result._sync_realize()
     assert result.real
     assert list(result.driver_tensor.shape) == [4, 6]
 
@@ -53,5 +52,4 @@ def test_rmatmul() -> None:
     )
     # a @ b would call __matmul__, so call __rmatmal__ explicitly
     result = b.__rmatmul__(a)
-    result._sync_realize()
     assert result.real

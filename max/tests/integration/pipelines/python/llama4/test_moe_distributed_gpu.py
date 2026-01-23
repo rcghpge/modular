@@ -14,11 +14,11 @@
 import pytest
 import torch
 from max._core.engine import PrintStyle
-from max.driver import CPU, Accelerator, Tensor, accelerator_count
+from max.driver import CPU, Accelerator, Buffer, accelerator_count
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType
-from max.nn import Signals
+from max.nn.legacy import Signals
 from max.pipelines.architectures.llama4.layers.moe import (
     DistributedLlama4MoE,
     Llama4MoEGate,
@@ -108,7 +108,7 @@ def generate_max_outputs(
 
     signals = Signals(devices=(DeviceRef(d.label, d.id) for d in devices))
     signal_buffers = [
-        Tensor.zeros(
+        Buffer.zeros(
             shape=(Signals.NUM_BYTES,),
             dtype=DType.uint8,
             device=dev,

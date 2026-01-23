@@ -20,13 +20,17 @@ from collections.abc import Callable, Sequence
 import numpy as np
 import pytest
 import torch
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, ops
 from max.kv_cache import PagedKVCacheManager
-from max.nn.kernels import MHAMaskVariant, flash_attention_ragged
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
+from max.nn.legacy.kernels import MHAMaskVariant, flash_attention_ragged
+from max.nn.legacy.kv_cache import (
+    KVCacheParams,
+    KVCacheStrategy,
+    PagedCacheValues,
+)
 from modular_graph_test import modular_graph_test
 from test_common.context_utils import create_text_context
 
@@ -138,7 +142,7 @@ def test_kv_cache_ragged_attention(
         assert isinstance(kv_manager, PagedKVCacheManager)
         kv_manager.alloc(context, num_steps=1)
 
-    input_row_offsets = Tensor(
+    input_row_offsets = Buffer(
         DType.uint32,
         [batch_size + 1],
     )
@@ -167,8 +171,8 @@ def test_kv_cache_ragged_attention(
         },
     )
     def test_runs_without_nan(
-        execute: Callable[[Sequence[Tensor]], Tensor],
-        inputs: Sequence[Tensor],
+        execute: Callable[[Sequence[Buffer]], Buffer],
+        inputs: Sequence[Buffer],
         torch_inputs: Sequence[torch.Tensor],
     ) -> None:
         inputs = list(inputs)

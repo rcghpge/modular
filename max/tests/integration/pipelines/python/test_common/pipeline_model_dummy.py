@@ -15,13 +15,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, cast
 
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph, TensorType
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask, TextGenerationContext
-from max.nn.kv_cache import KVCacheInputs, KVCacheParams, KVCacheStrategy
+from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParams, KVCacheStrategy
 from max.pipelines import (
     KVCacheConfig,
     ModelInputs,
@@ -39,17 +39,17 @@ from transformers import AutoConfig
 
 
 class DummyModelInputs(ModelInputs):
-    input1: Tensor | None = None
-    input2: Tensor | None = None
-    input3: Tensor | None = None
-    input4: Tensor | None = None
+    input1: Buffer | None = None
+    input2: Buffer | None = None
+    input3: Buffer | None = None
+    input4: Buffer | None = None
 
     def __init__(
         self,
-        input1: Tensor | None = None,
-        input2: Tensor | None = None,
-        input3: Tensor | None = None,
-        input4: Tensor | None = None,
+        input1: Buffer | None = None,
+        input2: Buffer | None = None,
+        input3: Buffer | None = None,
+        input4: Buffer | None = None,
         kv_cache_inputs: KVCacheInputs | None = None,
     ) -> None:
         self.input1 = input1
@@ -96,16 +96,16 @@ class DummyPipelineModel(PipelineModel, KVCacheMixin):
         cache if the ID hasn't been seen before, and return the inputs and
         caches as a list of tensors."""
         return DummyModelInputs(
-            input1=Tensor.zeros((0, 0), DType.float32),
-            input2=Tensor.zeros((0, 0), DType.float32),
-            input3=Tensor.zeros((0, 0), DType.float32),
-            input4=Tensor.zeros((0, 0), DType.float32),
+            input1=Buffer.zeros((0, 0), DType.float32),
+            input2=Buffer.zeros((0, 0), DType.float32),
+            input3=Buffer.zeros((0, 0), DType.float32),
+            input4=Buffer.zeros((0, 0), DType.float32),
             kv_cache_inputs=None,
         )
 
     def prepare_next_token_inputs(
         self,
-        next_tokens: Tensor,
+        next_tokens: Buffer,
         prev_model_inputs: ModelInputs,
     ) -> DummyModelInputs:
         """Prepares the secondary inputs to be passed to `.execute()`.
@@ -114,7 +114,7 @@ class DummyPipelineModel(PipelineModel, KVCacheMixin):
         This function is responsible for updating the inputs, for each step in a multi-step execution pattern.
         """
         return DummyModelInputs(
-            input1=Tensor.zeros((0, 0), DType.float32),
+            input1=Buffer.zeros((0, 0), DType.float32),
             kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
         )
 
@@ -143,7 +143,7 @@ class DummyPipelineModel(PipelineModel, KVCacheMixin):
             )
 
     @classmethod
-    def get_num_layers(cls, huggingface_config: AutoConfig) -> int:
+    def _get_num_layers(cls, huggingface_config: AutoConfig) -> int:
         if hasattr(huggingface_config, "num_hidden_layers"):
             return huggingface_config.num_hidden_layers
         elif hasattr(huggingface_config, "num_layers"):
@@ -171,7 +171,7 @@ class DummyPipelineModel(PipelineModel, KVCacheMixin):
             dtype=cache_dtype,
             n_kv_heads=num_kv_heads,
             head_dim=hidden_size // num_kv_heads,
-            num_layers=cls.get_num_layers(huggingface_config),
+            num_layers=cls._get_num_layers(huggingface_config),
             cache_strategy=kv_cache_config.cache_strategy,
             enable_prefix_caching=kv_cache_config.enable_prefix_caching,
             enable_kvcache_swapping_to_host=kv_cache_config.enable_kvcache_swapping_to_host,

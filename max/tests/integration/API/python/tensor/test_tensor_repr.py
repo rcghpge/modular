@@ -23,7 +23,7 @@ import re
 from conftest import assert_all_close
 from max.driver import CPU, Accelerator, accelerator_count
 from max.dtype import DType
-from max.experimental.tensor import Tensor, default_dtype
+from max.tensor import Tensor, default_dtype
 
 
 def test_ones_defaults() -> None:
@@ -39,7 +39,6 @@ def test_zeros_like() -> None:
         device=Accelerator() if accelerator_count() else CPU(),
     )
     result = Tensor.zeros_like(ref)
-    result._sync_realize()
     assert result.real
     assert list(result.driver_tensor.shape) == [4, 6]
     assert result.dtype == DType.float32
@@ -52,7 +51,6 @@ def test_ones_like() -> None:
         device=Accelerator() if accelerator_count() else CPU(),
     )
     result = Tensor.ones_like(ref)
-    result._sync_realize()
     assert result.real
     assert list(result.driver_tensor.shape) == [4, 6]
     assert result.dtype == DType.float32
@@ -65,7 +63,6 @@ def test_full_like() -> None:
         device=Accelerator() if accelerator_count() else CPU(),
     )
     result = Tensor.full_like(ref, value=42.0)
-    result._sync_realize()
     assert result.real
     assert list(result.driver_tensor.shape) == [4, 6]
     assert result.dtype == DType.float32

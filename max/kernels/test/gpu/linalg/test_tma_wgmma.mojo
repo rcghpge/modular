@@ -30,7 +30,12 @@ from layout.tensor_core_async import (
     tile_layout_mn_major,
     warpgroup_fence,
 )
-from layout.tma_async import SharedMemBarrier, TMATensorTile, create_tma_tile
+from layout.tma_async import (
+    SharedMemBarrier,
+    TMATensorTile,
+    create_tensor_tile,
+    create_tma_tile,
+)
 from memory import stack_allocation
 from testing import assert_almost_equal
 
@@ -193,17 +198,17 @@ fn tma_wgmma_kernel[
             a_tma_op.async_copy(
                 a_smem_tile,
                 mbar[0],
-                (UInt(i) * UInt(BK), block_idx.y * UInt(BM)),
+                (Int(i) * BK, Int(block_idx.y) * BM),
             )
             b_tma_op.async_copy(
                 b_smem_tile,
                 mbar[0],
                 (
-                    UInt(i) * UInt(BK),
-                    block_idx.x * UInt(BN),
+                    Int(i) * BK,
+                    Int(block_idx.x) * BN,
                 ) if transpose_b else (
-                    block_idx.x * UInt(BN),
-                    UInt(i) * UInt(BK),
+                    Int(block_idx.x) * BN,
+                    Int(i) * BK,
                 ),
             )
 
@@ -315,10 +320,10 @@ def test_tma_wgmma[
         Layout.row_major(M, N),
     ](ctx)
 
-    a_tma_op = create_tma_tile[Index(BM, BK), swizzle_mode=a_swizzle](
+    a_tma_op = create_tensor_tile[Index(BM, BK), swizzle_mode=a_swizzle](
         ctx, a.device_tensor()
     )
-    b_tma_op = create_tma_tile[
+    b_tma_op = create_tensor_tile[
         Index(BN, BK) if transpose_b else Index(BK, BN),
         swizzle_mode=b_swizzle,
     ](ctx, b.device_tensor())

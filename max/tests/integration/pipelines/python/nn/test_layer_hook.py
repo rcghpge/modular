@@ -16,12 +16,12 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, TensorValue, ops
-from max.nn.hooks.print_hook import PrintHook
-from max.nn.layer import Layer, add_layer_hook, clear_hooks
+from max.nn.legacy.hooks.print_hook import PrintHook
+from max.nn.legacy.layer import Layer, add_layer_hook, clear_hooks
 from pytest_mock import MockerFixture
 
 
@@ -260,7 +260,7 @@ def test_print_hook_filter(
     )
 
     model = session.load(g)
-    _ = model(Tensor.zeros((2, 4, 6), DType.float32))
+    _ = model(Buffer.zeros((2, 4, 6), DType.float32))
 
     print_hook.remove()
     del print_hook

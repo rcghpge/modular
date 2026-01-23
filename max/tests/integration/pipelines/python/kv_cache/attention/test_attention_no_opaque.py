@@ -18,7 +18,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 import torch
-from max.driver import CPU, Device, Tensor
+from max.driver import CPU, Buffer, Device
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import (
@@ -31,19 +31,19 @@ from max.graph import (
     ops,
 )
 from max.kv_cache import PagedKVCacheManager
-from max.nn.attention.attention_with_rope import (
+from max.nn.legacy.attention.attention_with_rope import (
     AttentionWithRope,
     AttentionWithRopeNoOpaque,
     Module,
     PagedKVCacheTensorsNoOpaque,
 )
-from max.nn.kv_cache import (
+from max.nn.legacy.kv_cache import (
     KVCacheParams,
     KVCacheStrategy,
     NestedIterableDataclass,
     PagedCacheValues,
 )
-from max.nn.rotary_embedding import RotaryEmbedding
+from max.nn.legacy.rotary_embedding import RotaryEmbedding
 from test_common.context_utils import create_text_context
 
 AttentionFn = Callable[
@@ -115,7 +115,7 @@ def build_and_execute_graph(
     compiled_model = session.load(g, weights_registry=model.state_dict())
 
     return cast(
-        Tensor, compiled_model(input, input_row_offsets, *kv_inputs)[0]
+        Buffer, compiled_model(input, input_row_offsets, *kv_inputs)[0]
     ).to_numpy()
 
 

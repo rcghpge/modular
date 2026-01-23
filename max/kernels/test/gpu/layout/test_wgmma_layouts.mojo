@@ -14,7 +14,7 @@
 from gpu import barrier, warp_id, lane_id
 from gpu.host import DeviceContext
 from gpu import thread_idx, warp_id, lane_id
-from gpu.mma import (
+from gpu.compute.mma import (
     WGMMADescriptor,
     wgmma_async,
     wgmma_commit_group_sync,
@@ -37,8 +37,8 @@ from memory import bitcast
 # Add the col-major version as a work-around. Generalizing the above
 # may touch too many places.
 fn _arange_2d_col_major_tensor(t: LayoutTensor[mut=True, ...]):
-    comptime layout = t.layout
-    comptime size = layout.size()
+    var layout = materialize[t.layout]()
+    var size = layout.size()
 
     for i in range(size):
         idx = layout(i)

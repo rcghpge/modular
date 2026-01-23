@@ -24,16 +24,19 @@ from sys import align_of, is_gpu, is_nvidia_gpu, size_of
 from sys.intrinsics import gather, scatter, strided_load, strided_store
 
 from builtin.rebind import downcast
+from builtin.format_int import _write_int
 from builtin.simd import _simd_construction_checks
 from builtin.variadics import Variadic
 from compile import get_type_name
+from format._utils import FormatStruct, Named
 from memory import memcpy
 from memory.memory import _free, _malloc
 from memory.maybe_uninitialized import UnsafeMaybeUninitialized
 from os import abort
 from python import PythonObject
+from reflection.type_info import _unqualified_type_name
+
 from builtin.device_passable import DevicePassable
-from compile import get_type_name
 
 
 from .legacy_unsafe_pointer import _default_invariant
@@ -920,7 +923,20 @@ struct UnsafePointer[
         Args:
             writer: The object to write to.
         """
-        return self._as_legacy().write_to(writer)
+        _write_int[radix=16](writer, Scalar[DType.int](Int(self)), prefix="0x")
+
+    @no_inline
+    fn write_repr_to(self, mut writer: Some[Writer]):
+        """Write the string representation of the UnsafePointer.
+
+        Args:
+            writer: The object to write to.
+        """
+        FormatStruct(writer, "UnsafePointer").params(
+            Named("mut", Self.mut),
+            _unqualified_type_name[Self.type](),
+            Named("address_space", Self.address_space),
+        ).fields(self)
 
     # ===-------------------------------------------------------------------===#
     # Methods

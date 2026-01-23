@@ -19,14 +19,18 @@ from sys import argv, size_of
 import linalg.matmul.vendor.blas as vendor_blas
 from buffer.dimlist import DimList
 from gpu import WARP_SIZE, barrier
-from gpu.cluster import block_rank_in_cluster, cluster_sync, elect_one_sync
+from gpu.primitives.cluster import (
+    block_rank_in_cluster,
+    cluster_sync,
+    elect_one_sync,
+)
 from gpu.host import DeviceContext, FuncAttribute
 from gpu.host.nvidia.tma import TensorMapSwizzle
 from gpu import block_id_in_cluster, block_idx, lane_id, thread_idx, warp_id
 from gpu.memory import fence_async_view_proxy, external_memory
-from gpu.mma import st_matrix
-from gpu.mma_sm100 import *
-from gpu.tcgen05 import *
+from gpu.compute.mma import st_matrix
+from gpu.compute.arch.mma_nvidia_sm100 import *
+from gpu.compute.arch.tcgen05 import *
 from internal_utils import assert_almost_equal
 from memory import LegacyUnsafePointer
 
@@ -45,7 +49,12 @@ from layout.tensor_core_async import (
     tile_layout_k_major,
     tile_layout_mn_major,
 )
-from layout.tma_async import SharedMemBarrier, TMATensorTile, create_tma_tile
+from layout.tma_async import (
+    SharedMemBarrier,
+    TMATensorTile,
+    create_tensor_tile,
+    create_tma_tile,
+)
 from linalg.arch.sm100 import MmaOpSM100_SS
 
 from utils.index import Index, IndexList
@@ -244,12 +253,12 @@ fn kernel_5[
     for i in range(CLUSTER_M // cta_group):
         b_multicast_mask |= 1 << (i * cta_group)
 
-    a_multicast_mask <<= rank_m
-    b_multicast_mask <<= peer_cta_coord[0]
-    b_multicast_mask <<= rank_n * UInt(CLUSTER_M)
+    a_multicast_mask <<= UInt16(rank_m)
+    b_multicast_mask <<= UInt16(peer_cta_coord[0])
+    b_multicast_mask <<= UInt16(rank_n * UInt(CLUSTER_M))
 
-    var a_mma_mask = a_multicast_mask >> peer_cta_coord[0]
-    var b_mma_mask = b_multicast_mask >> peer_cta_coord[0]
+    var a_mma_mask = a_multicast_mask >> UInt16(peer_cta_coord[0])
+    var b_mma_mask = b_multicast_mask >> UInt16(peer_cta_coord[0])
     var c_mma_mask: UInt16 = (a_mma_mask | a_mma_mask << 1) | (
         b_mma_mask | b_mma_mask << 1
     )
@@ -346,7 +355,7 @@ fn kernel_5[
         dtype=accum_type,
         pack=False,
         width = c_frag.size // 2,
-    ](tmem_addr | ((warp_id() * 32) << 16))
+    ](tmem_addr | UInt32((warp_id() * 32) << 16))
 
     var c_frag_lower = tcgen05_ld[
         datapaths=16,
@@ -355,7 +364,7 @@ fn kernel_5[
         dtype=accum_type,
         pack=False,
         width = c_frag.size // 2,
-    ](tmem_addr | ((warp_id() * 32 + 16) << 16))
+    ](tmem_addr | UInt32((warp_id() * 32 + 16) << 16))
     tcgen05_load_wait()
 
     comptime C_WBM = BM // 2 if MMA_M == 128 else BM // 4
@@ -497,11 +506,11 @@ fn blackwell_kernel_5[
     comptime MMA_N = umma_shape[1]
     comptime MMA_K = umma_shape[2]
 
-    a_tma_op = create_tma_tile[
+    a_tma_op = create_tensor_tile[
         Index(BM // cluster_shape[1], 64), swizzle_mode=a_swizzle
     ](ctx, a)
 
-    b_tma_op = create_tma_tile[
+    b_tma_op = create_tensor_tile[
         Index(
             BN // (cluster_shape[0] // cta_group), 64
         ) if transpose_b else Index(64, BN // (cluster_shape[0] // cta_group)),

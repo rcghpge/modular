@@ -12,12 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 
 import pytest
-from max.driver import Tensor
+from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, TensorValue
-from max.nn.hooks.print_hook import PrintHook
-from max.nn.layer import Layer
+from max.nn.legacy.hooks.print_hook import PrintHook
+from max.nn.legacy.layer import Layer
 
 
 class OuterLayer(Layer):
@@ -52,7 +52,7 @@ def test_unnamed_print_hook(
     )
 
     model = session.load(g)
-    unused_output = model(Tensor.zeros((2, 4, 6), DType.float32))
+    unused_output = model(Buffer.zeros((2, 4, 6), DType.float32))
 
     print_hook.remove()
     del print_hook  # Trigger print_hook.summarize()
@@ -85,7 +85,7 @@ def test_named_print_hook(
     )
 
     model = session.load(g)
-    unused_output = model(Tensor.zeros((2, 4, 6), DType.float32))
+    unused_output = model(Buffer.zeros((2, 4, 6), DType.float32))
 
     print_hook.remove()
     del print_hook  # Trigger print_hook.summarize()

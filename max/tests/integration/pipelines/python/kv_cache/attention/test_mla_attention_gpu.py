@@ -14,14 +14,18 @@
 
 import numpy as np
 import pytest
-from max.driver import CPU, Accelerator, Tensor, accelerator_api
+from max.driver import CPU, Accelerator, Buffer, accelerator_api
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, ops
 from max.kv_cache import PagedKVCacheManager
-from max.nn.attention import MHAMaskVariant
-from max.nn.kernels import flare_mla_prefill_ragged
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
+from max.nn.legacy.attention import MHAMaskVariant
+from max.nn.legacy.kernels import flare_mla_prefill_ragged
+from max.nn.legacy.kv_cache import (
+    KVCacheParams,
+    KVCacheStrategy,
+    PagedCacheValues,
+)
 from test_common.context_utils import create_text_context
 
 
@@ -133,7 +137,7 @@ def test_kv_cache_paged_mla_prefill(gpu_session: InferenceSession) -> None:
         kv_manager.alloc(context)
         batch.append(context)
 
-    input_row_offsets = Tensor(
+    input_row_offsets = Buffer(
         DType.uint32,
         [batch_size + 1],
     )
@@ -149,13 +153,13 @@ def test_kv_cache_paged_mla_prefill(gpu_session: InferenceSession) -> None:
     )
     model = session.load(g)
 
-    input_tensor = Tensor.zeros(
+    input_tensor = Buffer.zeros(
         (total_seq_len, num_q_heads, q_head_dim), dtype=DType.bfloat16
     )
-    k_buffer_tensor = Tensor.zeros(
+    k_buffer_tensor = Buffer.zeros(
         (total_seq_len, num_q_heads, k_head_dim), dtype=DType.bfloat16
     )
-    v_buffer_tensor = Tensor.zeros(
+    v_buffer_tensor = Buffer.zeros(
         (total_seq_len, num_q_heads, k_head_dim), dtype=DType.bfloat16
     )
 
@@ -169,7 +173,7 @@ def test_kv_cache_paged_mla_prefill(gpu_session: InferenceSession) -> None:
         lookup_table_tensor.to(cuda),
         is_cache_empty_buf,
     )[0]
-    assert isinstance(result, Tensor)
+    assert isinstance(result, Buffer)
 
     host = CPU(0)
     assert np.all(result.to(host).to_numpy() != np.inf)

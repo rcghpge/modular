@@ -16,13 +16,17 @@
 import numpy as np
 import pytest
 import torch
-from max.driver import Accelerator, Device, Tensor
+from max.driver import Accelerator, Buffer, Device
 from max.dtype import DType
 from max.engine.api import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, ops
 from max.kv_cache import PagedKVCacheManager, load_kv_manager
-from max.nn.kv_cache import KVCacheParams, KVCacheStrategy, PagedCacheValues
-from max.nn.linear import Linear
+from max.nn.legacy.kv_cache import (
+    KVCacheParams,
+    KVCacheStrategy,
+    PagedCacheValues,
+)
+from max.nn.legacy.linear import Linear
 from max.pipelines import KVCacheConfig
 from max.pipelines.architectures.qwen3vl_moe.nn.text_attention import (
     Qwen3VLMoEDecoderAttentionWithRope,
@@ -339,8 +343,8 @@ def generate_qwen3_max_outputs(
     max_lengths_tensor = kv_cache_runtime[3]
 
     result = compiled.execute(
-        Tensor.from_dlpack(flat_input.to(torch_device)).to(device),
-        Tensor.from_dlpack(input_row_offsets.to(torch_device)).to(device),
+        Buffer.from_dlpack(flat_input.to(torch_device)).to(device),
+        Buffer.from_dlpack(input_row_offsets.to(torch_device)).to(device),
         blocks_tensor,
         cache_lengths_tensor,
         lookup_table_tensor,

@@ -12,13 +12,13 @@
 # ===----------------------------------------------------------------------=== #
 # REQUIRES: NVIDIA-GPU
 
-# RUN: NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 # RUN: ./bazelw build @nvshmem_prebuilt//:device
 # RUN: BITCODE_PATH=$(./bazelw cquery '@nvshmem_prebuilt//:device' --output=files 2>/dev/null | head -1)
 # RUN: mojo build --bitcode-libs $BITCODE_PATH  <path_to>/modular/max/kernels/benchmarks/gpu/bench_ep_dispatch.mojo -o ./test
-# RUN: %mpirun -n $NUM_GPUS %t
+# RUN: %mpirun-gpu-per-process %t
 #
-# Alternatively, run with:
+# Alternatively, run manually with:
+# NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 # br --run_under="mpirun -n $NUM_GPUS --allow-run-as-root --bind-to none" //max/kernels/benchmarks:gpu/bench_ep_dispatch
 
 from collections import OptionalReg
@@ -36,9 +36,10 @@ from shmem.ep_comm import (
     BF16TokenFormat,
     BlockwiseFP8TokenFormat,
     EP_DATA_READY_FLAG,
+    EPLocalSyncCounters,
     TokenFormat,
-    dispatch_cb_kernel,
-    dispatch_kernel,
+    dispatch_wait_kernel,
+    dispatch_async_kernel,
 )
 from shmem._mpi import MPI_Finalize
 
@@ -90,7 +91,9 @@ fn bench_dispatch[
     var recv_count_buf = DeviceBuffer(
         ctx, recv_count, n_local_experts * n_ranks, owning=False
     )
-    var atomic_counter = ctx.enqueue_create_buffer[DType.int32](2 * n_experts)
+    var atomic_counter = ctx.enqueue_create_buffer[DType.int32](
+        EPLocalSyncCounters[n_experts].total_size()
+    )
 
     ctx.enqueue_memset(recv_count_buf, UInt64.MAX_FINITE)
     ctx.enqueue_memset(atomic_counter, Int32(0))
@@ -232,13 +235,12 @@ fn bench_dispatch[
             UInt(n_local_experts * n_ranks * n_tokens_per_rank * msg_bytes)
         )
 
-        comptime dispatch = dispatch_kernel[
+        comptime dispatch_async = dispatch_async_kernel[
             input_type,
             hw_info.max_thread_block_size,
             input_tokens_layout,
             topk_ids_layout,
             hw_info.sm_count,
-            n_experts // (hw_info.max_thread_block_size // hw_info.warp_size),
             n_experts,
             n_ranks,
             n_tokens_per_rank,
@@ -246,28 +248,27 @@ fn bench_dispatch[
             TokenFmtType,
         ]
 
-        var func = ctx.compile_function_experimental[dispatch]()
+        var func = ctx.compile_function_experimental[dispatch_async]()
         shmem_module_init(func)
 
-        comptime dispatch_cb = dispatch_cb_kernel[
+        comptime dispatch_wait = dispatch_wait_kernel[
             hw_info.max_thread_block_size,
             output_layout,
             row_offsets_layout,
             expert_ids_layout,
             src_token_info_layout,
             hw_info.sm_count,
-            1,
             n_experts,
             n_ranks,
             n_tokens_per_rank,
             FormatHandlerType,
         ]
 
-        var func_cb = ctx.compile_function_experimental[dispatch_cb]()
+        var func_wait = ctx.compile_function_experimental[dispatch_wait]()
 
         @always_inline
         @parameter
-        fn run_dispatch(ctx: DeviceContext) raises:
+        fn run_dispatch_async(ctx: DeviceContext) raises:
             # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
             var recv_buf_ptrs = InlineArray[
                 UnsafePointer[UInt8, MutAnyOrigin], 1
@@ -285,7 +286,7 @@ fn bench_dispatch[
                 send_buf,
                 recv_buf_ptrs,
                 recv_count_ptrs,
-                atomic_counter.unsafe_ptr(),
+                EPLocalSyncCounters[n_experts](atomic_counter.unsafe_ptr()),
                 Int32(my_rank),
                 grid_dim=hw_info.sm_count,
                 block_dim=hw_info.max_thread_block_size,
@@ -293,16 +294,16 @@ fn bench_dispatch[
 
         @always_inline
         @parameter
-        fn run_dispatch_cb(ctx: DeviceContext) raises:
+        fn run_dispatch_async_wait(ctx: DeviceContext) raises:
             ctx.enqueue_function(
-                func_cb,
+                func_wait,
                 format_handler,
                 row_offsets_tensor,
                 expert_ids_tensor,
                 src_token_info_tensor,
                 recv_buf,
                 recv_count,
-                atomic_counter.unsafe_ptr(),
+                EPLocalSyncCounters[n_experts](atomic_counter.unsafe_ptr()),
                 Int32(my_rank),
                 OptionalReg[
                     LayoutTensor[
@@ -316,8 +317,8 @@ fn bench_dispatch[
         @always_inline
         @parameter
         fn run_e2e(ctx: DeviceContext) raises:
-            run_dispatch(ctx)
-            run_dispatch_cb(ctx)
+            run_dispatch_async(ctx)
+            run_dispatch_async_wait(ctx)
 
         shmem_barrier_all_on_stream(ctx.stream())
 

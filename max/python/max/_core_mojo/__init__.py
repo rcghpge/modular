@@ -15,19 +15,13 @@ import os
 import sys
 from typing import Any
 
+# Install mojo import hook
+import mojo.importer
 import numpy as np
 import numpy.typing as npt
 
-# get directory of current file
-current_dir = os.path.dirname(os.path.abspath(__file__))
-
-sys.path.insert(0, current_dir)
-
-# Install mojo import hook
-import mojo.importer
-
 # Imports from 'mojo_module.mojo'
-from mojo_module import mojo_block_hasher  # type: ignore
+from .mojo_module import mojo_block_hasher  # type: ignore
 
 
 def block_hasher(
@@ -56,7 +50,7 @@ def block_hasher(
         raise ValueError(
             f"block_size must be greater than 0, found {block_size}"
         )
-    # Cast the array to int64 as that is what the mojo block hasher expects.
-    if tokens.dtype != np.int64:
-        tokens = tokens.astype(np.int64)
+    # Cast the array to int32 as that is what the mojo block hasher expects.
+    if tokens.dtype != np.int32:
+        tokens = tokens.astype(np.int32)
     return mojo_block_hasher(tokens, block_size, parent_hash)

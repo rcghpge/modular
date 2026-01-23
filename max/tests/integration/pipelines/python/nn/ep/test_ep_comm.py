@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import pytest
 import torch
-from max.driver import Accelerator, Tensor, accelerator_count
+from max.driver import Accelerator, Buffer, accelerator_count
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import BufferType, DeviceRef, Graph, TensorType, TensorValue, ops
-from max.nn.comm.ep import EPBatchManager, EPCommInitializer, EPConfig
-from max.nn.kernels import grouped_matmul_ragged
+from max.nn.legacy.comm.ep import EPBatchManager, EPCommInitializer, EPConfig
+from max.nn.legacy.kernels import grouped_matmul_ragged
 from test_common.graph_utils import is_b100_b200, is_h100_h200
 
 
@@ -82,7 +82,7 @@ def test_ep_comm(n_devices: int) -> None:
     ]
 
     per_device_inputs = [
-        Tensor.from_dlpack(input).to(devices[i])
+        Buffer.from_dlpack(input).to(devices[i])
         for i, input in enumerate(per_device_inputs_torch)
     ]
 
@@ -97,7 +97,7 @@ def test_ep_comm(n_devices: int) -> None:
             torch.int32
         )
         all_topk_ids_torch.append(topk_ids)
-        all_topk_ids.append(Tensor.from_dlpack(topk_ids).to(devices[i]))
+        all_topk_ids.append(Buffer.from_dlpack(topk_ids).to(devices[i]))
 
     # create expert weights
     expert_fingerprints = torch.randn(
@@ -115,7 +115,7 @@ def test_ep_comm(n_devices: int) -> None:
                 )
             )
         weights_list.append(
-            Tensor.from_dlpack(
+            Buffer.from_dlpack(
                 torch.stack(curr_device_expert_weights, dim=0)
             ).to(devices[i])
         )
@@ -152,8 +152,10 @@ def test_ep_comm(n_devices: int) -> None:
             outputs: list[TensorValue] = []
 
             for dev_idx in range(n_devices):
-                ep_manager.ep_dispatch(xs[dev_idx], topk_ids[dev_idx], dev_idx)
-                expert_inputs = ep_manager.ep_dispatch_cb(dev_idx)
+                ep_manager.ep_dispatch_async(
+                    xs[dev_idx], topk_ids[dev_idx], dev_idx
+                )
+                expert_inputs = ep_manager.ep_dispatch_wait(dev_idx)
 
                 expert_outputs = grouped_matmul_ragged(
                     expert_inputs[0],
@@ -161,14 +163,16 @@ def test_ep_comm(n_devices: int) -> None:
                     *expert_inputs[1:],
                 )
 
-                ep_manager.ep_combine(expert_outputs, dev_idx)
+                ep_manager.ep_combine_async(expert_outputs, dev_idx)
                 one = ops.constant(
                     1.0, dtype=DType.float32, device=DeviceRef.GPU(dev_idx)
                 )
                 router_weight = ops.broadcast_to(
                     one, (xs[dev_idx].shape[0], top_k)
                 )
-                outputs.append(ep_manager.ep_combine_cb(router_weight, dev_idx))
+                outputs.append(
+                    ep_manager.ep_combine_wait(router_weight, dev_idx)
+                )
 
             graph.output(*outputs)
 

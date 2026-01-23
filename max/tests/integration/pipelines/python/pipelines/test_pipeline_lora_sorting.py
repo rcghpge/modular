@@ -17,11 +17,11 @@ from collections import OrderedDict
 from collections.abc import Sequence
 from enum import Enum
 from typing import Any, TypeVar, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, NonCallableMock, patch
 
 import numpy as np
 import pytest
-from max.driver import CPU, Device, Tensor
+from max.driver import CPU, Buffer, Device
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.interfaces import (
@@ -30,7 +30,8 @@ from max.interfaces import (
     TextGenerationOutput,
     TokenBuffer,
 )
-from max.nn.kv_cache import (
+from max.kv_cache import PagedKVCacheManager
+from max.nn.legacy.kv_cache import (
     KVCacheInputs,
     KVCacheInputsSequence,
     KVCacheParams,
@@ -44,9 +45,10 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
     PipelineModel,
+    SamplingConfig,
     SupportedEncoding,
 )
-from max.pipelines.lib.lora import LoRAManager
+from max.pipelines.lib.lora import LoRAManager, LoRAModel
 from max.pipelines.lib.pipeline_variants.text_generation import (
     TextGenerationPipeline,
 )
@@ -103,7 +105,7 @@ class MockPipelineModel(PipelineModel[ContextT]):
         self.devices = [CPU()]
         self.max_seq_len = 2048
 
-        self.kv_manager = MagicMock()
+        self.kv_manager = MagicMock(spec=PagedKVCacheManager)
         self.kv_manager.contains = MagicMock(return_value=True)
         self.kv_manager.claim = MagicMock()
         self.kv_manager.alloc = MagicMock()
@@ -140,11 +142,6 @@ class MockPipelineModel(PipelineModel[ContextT]):
         )
 
     @classmethod
-    def get_num_layers(cls, huggingface_config: AutoConfig) -> int:
-        del huggingface_config
-        return 1
-
-    @classmethod
     def infer_optional_batch_size(
         cls,
         pipeline_config: PipelineConfig,
@@ -168,8 +165,8 @@ class MockPipelineModel(PipelineModel[ContextT]):
             np.float32
         )
         return ModelOutputs(
-            logits=Tensor.from_numpy(rand_values),
-            next_token_logits=Tensor.from_numpy(rand_values),
+            logits=Buffer.from_numpy(rand_values),
+            next_token_logits=Buffer.from_numpy(rand_values),
         )
 
     def prepare_initial_token_inputs(
@@ -193,7 +190,7 @@ class MockPipelineModel(PipelineModel[ContextT]):
 
     def prepare_next_token_inputs(
         self,
-        next_tokens: Tensor,
+        next_tokens: Buffer,
         prev_model_inputs: ModelInputs,
     ) -> ModelInputs:
         del next_tokens
@@ -221,16 +218,16 @@ class MockSamplingProcessor:
         self._step = 0
 
     @property
-    def generated_tokens(self) -> Tensor:
-        return Tensor.from_numpy(self._generated_tokens)
+    def generated_tokens(self) -> Buffer:
+        return Buffer.from_numpy(self._generated_tokens)
 
     @property
-    def new_tokens(self) -> Tensor:
+    def new_tokens(self) -> Buffer:
         if self._step < self._num_steps:
             tokens = self._generated_tokens[:, self._step]
             self._step += 1
-            return Tensor.from_numpy(tokens.astype(np.int64))
-        return Tensor.from_numpy(np.zeros(self._batch_size, dtype=np.int64))
+            return Buffer.from_numpy(tokens.astype(np.int64))
+        return Buffer.from_numpy(np.zeros(self._batch_size, dtype=np.int64))
 
 
 def create_context(
@@ -287,8 +284,9 @@ def create_lora_manager(
         )
 
     for name in lora_names:
-        fake_lora = MagicMock()
+        fake_lora = NonCallableMock(spec=LoRAModel)
         fake_lora.rank = 8
+        fake_lora.name = name
         manager._loras[name] = fake_lora
         manager._active_loras.put(name, fake_lora)
 
@@ -305,10 +303,11 @@ def create_pipeline_with_lora(
         lora_manager=lora_manager
     )
 
-    mock_config = MagicMock()
-    mock_config.max_length = 512
-    mock_config.sampling_config.enable_structured_output = False
-    mock_config.sampling_config.enable_variable_logits = False
+    mock_config = PipelineConfig.model_construct(max_length=512)
+    mock_config.model.quantization_encoding = SupportedEncoding.float32
+    mock_config.sampling = SamplingConfig()
+    mock_config.sampling.enable_structured_output = False
+    mock_config.sampling.enable_variable_logits = False
 
     if pipeline_type == PipelineType.TEXT_GENERATION:
 
@@ -323,7 +322,6 @@ def create_pipeline_with_lora(
             self._devices = [CPU()]
             self._eos_token_id = {999}
             self._tokenizer = MagicMock()
-            self._weight_adapters = {}
             self.batch_info_output_fname = None
             self.batch_infos = []
             self.vocab_size = 1000
@@ -351,7 +349,6 @@ def create_pipeline_with_lora(
             self._devices = [CPU()]
             self._eos_token_id = {999}
             self._tokenizer = MagicMock()
-            self._weight_adapters = {}
             self.batch_info_output_fname = None
             self.batch_infos = []
             self.vocab_size = 1000
