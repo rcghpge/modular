@@ -12,7 +12,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilder.h"
 
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
@@ -269,7 +268,7 @@ void addContextIfPresent(
 
 template <class FuncT>
 KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
-    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    KernelOp kernelOp, const OperandMapping &mapping,
     const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
@@ -350,7 +349,7 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
 
 template <class FuncT>
 ErrorOr<KernelCallInterface> MOGGExpKernelBuilder::lowerToViewKernel(
-    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    KernelOp kernelOp, const OperandMapping &mapping,
     const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   if (kernelOp->getNumResults() != 1)
     return Error("Expected view op to have exactly one result");
@@ -382,7 +381,7 @@ ErrorOr<KernelCallInterface> MOGGExpKernelBuilder::lowerToViewKernel(
 
 template <class FuncT>
 KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
-    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    KernelOp kernelOp, const OperandMapping &mapping,
     const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
@@ -437,7 +436,7 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
 
 template <class FuncT>
 KernelCallInterface MOGGExpKernelBuilder::lowerToShapeKernel(
-    ExpKernelOp kernelOp, const OperandMapping &mapping,
+    KernelOp kernelOp, const OperandMapping &mapping,
     const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
@@ -650,7 +649,7 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
 }
 
 template <class FuncT>
-ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
+ErrorOr<KernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
   auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(mojoLibraryAnalysis, moOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
@@ -690,7 +689,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
 
 // Helper to build the kernel op (common code for both paths)
 template <class FuncT>
-ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
+ErrorOr<KernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
     KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
     const OperandMapping &operandMapping) {
 
@@ -700,13 +699,13 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
     outputParamDecls = shapeFuncOp.getOutputParamDecls();
   }
 
-  auto kernelOp = ExpKernelOp::create(builder, loc,
-                                      /*results=*/moOp->getResultTypes(),
-                                      /*operands=*/moOp->getOperands(),
-                                      /*summary=*/getSummaryString(moOp),
-                                      /*isAsync=*/builder.getBoolAttr(isAsync),
-                                      /*device=*/getDevice(),
-                                      /*outputParamDecls=*/outputParamDecls);
+  auto kernelOp = KernelOp::create(builder, loc,
+                                   /*results=*/moOp->getResultTypes(),
+                                   /*operands=*/moOp->getOperands(),
+                                   /*summary=*/getSummaryString(moOp),
+                                   /*isAsync=*/builder.getBoolAttr(isAsync),
+                                   /*device=*/getDevice(),
+                                   /*outputParamDecls=*/outputParamDecls);
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   if (auto memEffectOp = dyn_cast<mlir::MemoryEffectOpInterface>(moOp)) {
     kernelOp.setHasWriteEffect(
@@ -767,7 +766,7 @@ ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
   return kernelOp;
 }
 
-ErrorOr<ExpKernelOp> MOGGExpKernelBuilder::lowerToKernel() {
+ErrorOr<KernelOp> MOGGExpKernelBuilder::lowerToKernel() {
   return lowerToKernelBase<KGEN::LIT::FnOp>();
 }
 } // namespace M::MOGG

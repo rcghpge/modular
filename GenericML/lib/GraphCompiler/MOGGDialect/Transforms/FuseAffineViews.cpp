@@ -12,7 +12,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubBuilderHelpers.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
@@ -40,7 +39,7 @@ struct FuseAffineViewsPass
     : public impl::FuseAffineViewsBase<FuseAffineViewsPass> {
   using Base::Base;
 
-  static inline bool isFusibleNonElementwise(ExpKernelOp kernel) {
+  static inline bool isFusibleNonElementwise(KernelOp kernel) {
     // Cannot be elementwise kernel, that is fused differently.
     auto isElemwise = kernel.getElemwiseBodyLambda();
     if (isElemwise)
@@ -49,7 +48,7 @@ struct FuseAffineViewsPass
     return true;
   }
 
-  static inline bool isOutputFusibleNonElementwise(ExpKernelOp kernel) {
+  static inline bool isOutputFusibleNonElementwise(KernelOp kernel) {
     if (kernel->getNumResults() != 1)
       return false;
 
@@ -88,7 +87,7 @@ struct FuseAffineViewsPass
 
   // Support fusion for new-style kernels which go directly to KGEN ops
   template <typename ViewOp>
-  void fuseViewOpDimKGEN(MOGG::ExpKernelOp kernel, ViewOp viewOpUser,
+  void fuseViewOpDimKGEN(MOGG::KernelOp kernel, ViewOp viewOpUser,
                          Value result) {
     mlir::IRRewriter builder(kernel.getContext());
 
@@ -151,7 +150,7 @@ struct FuseAffineViewsPass
   }
 
   template <typename ViewOp>
-  void fuseViewOpDim(MOGG::ExpKernelOp kernel, ViewOp viewOp, Value result) {
+  void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOp, Value result) {
     fuseViewOpDimKGEN(kernel, viewOp, result);
 
     // construct the new summary string
@@ -166,7 +165,7 @@ struct FuseAffineViewsPass
       SmallVector<Operation *> opsToErase;
 
       auto graph = getOperation();
-      graph.walk([&](MOGG::ExpKernelOp kernel) {
+      graph.walk([&](MOGG::KernelOp kernel) {
         // These fusions fuse `kernel` into users of the kernel for certain ops.
         if (isOutputFusibleNonElementwise(kernel)) {
           Value result = kernel.getResult(0);

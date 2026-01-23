@@ -2,7 +2,7 @@
 
 
 // CHECK-IR-LABEL: mo.graph @print_shape
-// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.experimental.kernel({{.+}})
+// CHECK-IR-NEXT: %[[OUT:.*]] = mogg.kernel({{.+}})
 // CHECK-IR: mo.output %[[OUT]]
 
 // CHECK-LABEL: Running 'print_shape':

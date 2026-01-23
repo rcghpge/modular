@@ -97,7 +97,7 @@ static bool checkMutableKernelFusible(std::optional<Value> srcInChain,
 }
 
 static inline bool isAnElementwiseKernel(Operation *op) {
-  if (auto kernelOp = dyn_cast<ExpKernelOp>(op)) {
+  if (auto kernelOp = dyn_cast<KernelOp>(op)) {
     return isa<MOGG::CallForeachOp>(kernelOp.getTerminator());
   }
 
@@ -109,11 +109,11 @@ static inline bool canDuplicateIfOnNotOnHost(Operation *op) {
 }
 
 //-------------------------------------------------
-// mogg.experimental.kernel fusion utils.
+// mogg.kernel fusion utils.
 //-------------------------------------------------
 
-static std::optional<SmallVector<int>> getFusionIndices(ExpKernelOp src,
-                                                        ExpKernelOp dst) {
+static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
+                                                        KernelOp dst) {
   LLVM_DEBUG({
     llvm::dbgs() << "Examining fusion indices between experimental kernels:\n";
     llvm::dbgs() << "  Source: " << src.getSummaryAttr().getValue() << " at ";
@@ -156,8 +156,8 @@ static std::optional<SmallVector<int>> getFusionIndices(ExpKernelOp src,
 }
 
 static inline bool expKernelsAreCompatible(Operation *src, Operation *dst) {
-  auto srcKernel = cast<ExpKernelOp>(src);
-  auto dstKernel = cast<ExpKernelOp>(dst);
+  auto srcKernel = cast<KernelOp>(src);
+  auto dstKernel = cast<KernelOp>(dst);
 
   if (!getFusionIndices(srcKernel, dstKernel).has_value())
     return false;
@@ -171,8 +171,8 @@ static inline bool expKernelsAreCompatible(Operation *src, Operation *dst) {
                                    dstOutChain);
 }
 
-static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
-                                      MOGG::ExpKernelOp src) {
+static void fuseAndReplaceOperandWith(MOGG::KernelOp dst, unsigned opIdx,
+                                      MOGG::KernelOp src) {
   Value toReplace = dst.getExecBody().getArgument(opIdx);
 
   dst.insertInputsAt(opIdx, src.getInputs());
@@ -199,12 +199,12 @@ static void fuseAndReplaceOperandWith(MOGG::ExpKernelOp dst, unsigned opIdx,
 }
 
 static void fuseKernelsIntoLastKernel(ArrayRef<Operation *> subgraph) {
-  auto dst = cast<ExpKernelOp>(subgraph.back());
+  auto dst = cast<KernelOp>(subgraph.back());
   PatternRewriter rewriter(dst.getContext());
   MOGG::BindLambdaOp dstBindOp = dst.getElemwiseBodyLambda();
   Block *dstFuseBody = &dstBindOp.getLambda().front();
   for (auto op : llvm::reverse(subgraph.drop_back())) {
-    auto src = cast<ExpKernelOp>(op);
+    auto src = cast<KernelOp>(op);
 
     SmallVector<int> indices = *getFusionIndices(src, dst);
     SmallVector<Value> fusedArgs(src->getNumOperands() + 1);

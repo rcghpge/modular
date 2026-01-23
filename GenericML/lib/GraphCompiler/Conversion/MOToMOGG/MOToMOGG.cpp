@@ -16,7 +16,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOToKGENLowering.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"

@@ -4,7 +4,7 @@
 
 // Check mo-to-mogg correctly lowers a view KernelAPI
 
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: %[[OUT:.*]] = mogg.output_placeholders
 // CHECK: %{{.*}} = mogg.tensor.shape
 // CHECK: mogg.call.view["mo.static.broadcast_to"]

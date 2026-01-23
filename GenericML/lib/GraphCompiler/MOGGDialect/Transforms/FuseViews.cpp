@@ -41,7 +41,7 @@ GUARANTEES:
 
 template <typename OpTy>
 bool isViewKernelOfType(Operation *op) {
-  auto kernel = dyn_cast<MOGG::ExpKernelOp>(op);
+  auto kernel = dyn_cast<MOGG::KernelOp>(op);
   if (!kernel || !kernel.isViewOp())
     return false;
 
@@ -62,7 +62,7 @@ bool isContiguousSliceKernel(Operation *op) {
   if (!isViewKernelOfType<MO::SliceOp>(op))
     return false;
 
-  auto kernel = cast<ExpKernelOp>(op);
+  auto kernel = cast<KernelOp>(op);
   auto callViewOp = *kernel.getExecBody().getOps<CallViewOp>().begin();
 
   // We obviously don't have access to the original SliceOp which makes these
@@ -101,7 +101,7 @@ bool isContiguousSliceKernel(Operation *op) {
 }
 
 void raiseBackReshapeKernels(MLIRContext *ctx,
-                             ArrayRef<ExpKernelOp> reshapeKernels) {
+                             ArrayRef<KernelOp> reshapeKernels) {
   OpBuilder builder(ctx);
   for (auto k : reshapeKernels) {
     builder.setInsertionPointAfter(k);
@@ -119,7 +119,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
   FuseViewsPass() = default;
   void runOnOperationImpl(MO::GraphOp graph, MLIRContext *ctx,
                           bool fuseReshape) {
-    graph.walk([&](MOGG::ExpKernelOp op) {
+    graph.walk([&](MOGG::KernelOp op) {
       // We never fuse other kernel into reshapes since reshape requires a
       // contiguous buffer.
       if (isViewKernelOfType<MO::Static::ReshapeOp>(op))
@@ -163,14 +163,14 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     if (edge->getBlock() != op->getBlock())
       return false;
 
-    auto dstKernel = dyn_cast<MOGG::ExpKernelOp>(op);
+    auto dstKernel = dyn_cast<MOGG::KernelOp>(op);
     if (!dstKernel)
       return false;
 
     if (auto alloc = dstKernel.getAllocIndices(); alloc && !alloc.empty())
       return false;
 
-    auto srcKernel = dyn_cast<MOGG::ExpKernelOp>(edge);
+    auto srcKernel = dyn_cast<MOGG::KernelOp>(edge);
     if (!srcKernel)
       return false;
 
@@ -198,11 +198,11 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     return false;
   }
 
-  void fuseInputAtIndex(MOGG::ExpKernelOp kernel, int32_t idx) {
+  void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
     ++numberOfFusedViews;
 
     Value toFuse = kernel.getOperand(idx);
-    auto viewProducer = cast<MOGG::ExpKernelOp>(toFuse.getDefiningOp());
+    auto viewProducer = cast<MOGG::KernelOp>(toFuse.getDefiningOp());
     kernel.insertInputsAt(idx + 1, viewProducer.getInputs());
 
     IRRewriter rewriter(kernel->getContext());
@@ -237,8 +237,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     runOnOperationImpl(graph, ctx, /*fuseReshape=*/false);
 
     // The fuse reshapes
-    SmallVector<ExpKernelOp> reshapes;
-    graph.walk([&](MOGG::ExpKernelOp op) {
+    SmallVector<KernelOp> reshapes;
+    graph.walk([&](MOGG::KernelOp op) {
       if (isViewKernelOfType<MO::Static::ReshapeOp>(op))
         reshapes.push_back(op);
     });

@@ -892,8 +892,13 @@ FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
   // We only create the mgp storage for the pre-allocated tensors. For those
   // have in-place allocation, we skip them.
   DenseSet<int> inplaceAllocIndicesSet;
-  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered))
-    inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
+  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered)) {
+    if (auto allocIndicesAttr = kernel.getAllocIndicesAttr()) {
+      for (auto attr : allocIndicesAttr) {
+        inplaceAllocIndicesSet.insert(cast<mlir::IntegerAttr>(attr).getInt());
+      }
+    }
+  }
 
   SmallVector<Value> results;
   for (auto [idx, res] : llvm::enumerate(opBeingLowered->getResults())) {
@@ -914,7 +919,12 @@ FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
 void MOOpLoweringState::createOutputs(
     Value inChain, SmallVector<MOOutputStorage> &loweredOutputsStorage) {
   if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered)) {
-    DenseSet<int> inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
+    DenseSet<int> inplaceAllocIndicesSet;
+    if (auto allocIndicesAttr = kernel.getAllocIndicesAttr()) {
+      for (auto attr : allocIndicesAttr) {
+        inplaceAllocIndicesSet.insert(cast<mlir::IntegerAttr>(attr).getInt());
+      }
+    }
     int index = 0;
     for (const auto &[idx, res] : llvm::enumerate(kernel.getResults())) {
       // ignore chain and opaque types as there are currently special carveouts
@@ -984,8 +994,13 @@ MOOpLoweringState::createOutputTensorSpecs() {
   tensorSpecs.reserve(opBeingLowered->getNumResults());
 
   DenseSet<int> inplaceAllocIndicesSet;
-  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered))
-    inplaceAllocIndicesSet = kernel.getInplaceAllocIndicesSet();
+  if (auto kernel = dyn_cast<MOGG::KernelOp>(opBeingLowered)) {
+    if (auto allocIndicesAttr = kernel.getAllocIndicesAttr()) {
+      for (auto attr : allocIndicesAttr) {
+        inplaceAllocIndicesSet.insert(cast<mlir::IntegerAttr>(attr).getInt());
+      }
+    }
+  }
 
   for (auto [idx, type] :
        llvm::enumerate(opBeingLowered->getResults().getType())) {

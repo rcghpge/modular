@@ -3,7 +3,7 @@
 // CHECK-LABEL: mo.graph @inout_fusion<seq_len>
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1:.*]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %[[ARG2:.*]]: !mo.tensor<[1, seq_len, 4096], f32>)
 // CHECK-SAME: -> !mo.tensor<[1, seq_len, 4096], f32>
-// CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.experimental.kernel(%[[ARG2]]: !mo.tensor<[1, seq_len, 4096], f32>, %[[ARG0]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, seq_len, 4096], f32>
+// CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.kernel(%[[ARG2]]: !mo.tensor<[1, seq_len, 4096], f32>, %[[ARG0]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[PLACEHOLDER]]) output_lambda (%[[ARG6:.*]]: f32, %[[ARG7:.*]]: !pop.array<2, index>)
 // CHECK: %[[INSERT_IDX:.*]] = mogg.call "insert_index"(%[[ARG7]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
@@ -26,7 +26,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 // CHECK-LABEL: mo.graph @mixed_precision<seq_len>
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1:.*]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>)
 // CHECK-SAME: -> !mo.tensor<[1, seq_len, 4096], si32>
-// CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.experimental.kernel(%[[ARG0]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, seq_len, 4096], si32>
+// CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.kernel(%[[ARG0]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, seq_len, 4096], si32>
 // CHECK: %[[OUT_PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], si32>
 // CHECK: %[[SCRATCH:.*]] = mogg.scratch_placeholders : !mo.tensor<[seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PLACEHOLDER]]) output_lambda (%[[ARG4:.*]]: f32, %[[ARG5:.*]]: !pop.array<2, index>)

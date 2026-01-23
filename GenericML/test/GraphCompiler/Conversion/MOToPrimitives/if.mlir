@@ -80,44 +80,6 @@ mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) 
   mo.output %if_1 : !mo.tensor<[2], f32>
 }
 
-// CHECK-LABEL: mgp.model @implicit_chaining
-// CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WEIGHTS:.*]]: !mgp.opaque<"weights_registry">, %[[CPU:.*]]: !mgp.device_context<<"cpu", 0>>
-
-mo.graph @implicit_chaining(%init: !mo.chain, %cond: !mo.tensor<[], bool>, %arg0: !mo.buffer<[], ui32>) -> !mo.tensor<[10, 10], bf16> {
-
-  // CHECK: %[[WEIGHT_NAME:.*]] = mgp.string.create "super_duper_weights"
-  // CHECK: %[[CST:.*]] = mgp.buffer.constant.external %[[CHAIN]], %[[WEIGHTS]][%[[WEIGHT_NAME]],
-  // CHECK: %[[GUARD:.*]] = grt.chain.create (%[[CHAIN]], %[[CHAIN]])
-
-  // CHECK: %[[ALLOC:.*]] = mgp.buffer.alloc %[[GUARD]], %{{.*}}, %[[CPU]], align {{.*}} : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
-  %constant = mo.constant.external {
-    align = 1 : ui64,
-    device = #M.device_ref<"cpu", 0>,
-    isPlaceholder = true,
-    name = "super_duper_weights"
-  } : !mo.tensor<[10, 10], bf16>
-
-  %val = mo.chain.create(%init) : !mo.chain
-
-  // The mo.if operation will be implicitly chained during mo-to-primitives.
-  // We want to make use that chaining does not interfere with the
-  // mo.constant.external being hoisted to the init section.
-  %unused = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.chain {
-    %res = mo.chain.create(%val) : !mo.chain
-    mo.yield %res : !mo.chain
-  } else {
-    mo.yield %init : !mo.chain
-  }
-
-  // %{{.*}} = mogg.generic.compiled.region (%{{.*}}, %[[ALLOC]], %[[CST]])
-  %kernel_out = mogg.kernel (%constant) : (%arg18: !mo.tensor<[10, 10], bf16>)  -> !mo.tensor<[10, 10], bf16> {
-    %out = mogg.output_placeholders : !mo.tensor<[10, 10], bf16>
-    mogg.output %out : !mo.tensor<[10, 10], bf16>
-  } {allocIndices = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = ""}
-
-  mo.output %kernel_out : !mo.tensor<[10, 10], bf16>
-}
-
 // CHECK-LABEL: mgp.model @if_output_params
 // CHECK: } execute (%[[CHAIN:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context, %[[WEIGHTS:.*]]: !mgp.opaque<"weights_registry">, %[[CPU:.*]]: !mgp.device_context<<"cpu", 0>>, %[[COND_TENSOR:.*]]: !mgp.tensor<bool>)
 // CHECK:   %[[BOOL:.*]] = mgp.buffer.to_bool %[[CHAIN]]

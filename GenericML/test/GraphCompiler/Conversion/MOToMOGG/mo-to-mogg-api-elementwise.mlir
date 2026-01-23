@@ -4,7 +4,7 @@
 
 // Check mo-to-mogg correctly lowers an elementwise KernelAPI
 
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.output_placeholders
 // CHECK: mogg.bind {{.*}} elemwise_lambda
 // CHECK: mogg.call.elementwise["imposter_add_elementwise"]

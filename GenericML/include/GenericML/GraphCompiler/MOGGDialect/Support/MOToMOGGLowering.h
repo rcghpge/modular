@@ -53,7 +53,7 @@ public:
 
   /// Main entry point for building most other kernels.
   /// TODO: unroll and factor common components to helpers.
-  ErrorOr<MOGG::ExpKernelOp> lowerToKernel();
+  ErrorOr<MOGG::KernelOp> lowerToKernel();
 
 private:
   DeviceRefAttr getDevice() const {
@@ -69,30 +69,30 @@ private:
   DeviceRefAttr getHostDevice() const { return M::getHostDevice(graphOp); }
 
   template <class FuncT>
-  ErrorOr<ExpKernelOp> lowerToKernelBase();
+  ErrorOr<KernelOp> lowerToKernelBase();
 
   template <class FuncT>
   KernelCallInterface lowerToElementwiseKernel(
-      ExpKernelOp kernelOp, const OperandMapping &mapping,
+      KernelOp kernelOp, const OperandMapping &mapping,
       const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
   template <class FuncT>
   ErrorOr<KernelCallInterface>
-  lowerToViewKernel(ExpKernelOp kernelOp, const OperandMapping &mapping,
+  lowerToViewKernel(KernelOp kernelOp, const OperandMapping &mapping,
                     const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
   template <class FuncT>
   KernelCallInterface lowerToNormalKernel(
-      ExpKernelOp kernelOp, const OperandMapping &mapping,
+      KernelOp kernelOp, const OperandMapping &mapping,
       const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
   template <class FuncT>
   KernelCallInterface lowerToShapeKernel(
-      ExpKernelOp kernelOp, const OperandMapping &mapping,
+      KernelOp kernelOp, const OperandMapping &mapping,
       const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
 
   template <class FuncT>
-  ErrorOr<ExpKernelOp>
+  ErrorOr<KernelOp>
   buildKernelOpImpl(KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
                     const OperandMapping &operandMapping);
 

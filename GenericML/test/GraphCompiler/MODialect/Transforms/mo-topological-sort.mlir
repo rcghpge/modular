@@ -91,14 +91,7 @@ mo.graph @sort_with_nested_region<D0, D1>(
 // CHECK-NEXT:  mo.output %[[RES]] : !mo.tensor<[[[D0]]], f32>
 // CHECK-NEXT: }
 
-// mogg.kernel regions are not graph regions, meaning order matters. topo
-// sort should not sort these regions.
-
 // CHECK-LABEL: mo.graph @sort_with_nested_non_graph_region
-// CHECK: mogg.kernel
-// CHECK-NEXT: kgen.param.declare OutOfOrder
-// CHECK-NEXT: kgen.param.declare IN1
-// CHECK-NEXT: kgen.param.declare IN2
 mo.graph @sort_with_nested_non_graph_region<D0, D1>(
   %cond: !mo.tensor<[], bool>,
   %scalar: !mo.tensor<[], f32>,
@@ -120,18 +113,6 @@ mo.graph @sort_with_nested_non_graph_region<D0, D1>(
 
   kgen.param.declare D3: si64 = <div(D2, D1)>
   kgen.param.declare D2: si64 = <add(D1, 1)>
-
-  // mogg.kernel does not have graph region so we should not topo sort it
-  %1 = mogg.kernel (%0) : (%arg0: !mo.tensor<[D0], f32>) -> !mo.tensor<[D0], f32>{
-    // Parameters are allowed to be declared non-topo order
-    // Make sure it stays non topo order
-    kgen.param.declare OutOfOrder: si64 = <add(IN1, IN2)>
-
-    kgen.param.declare IN1: si64 = <div(D0, 2)>
-    kgen.param.declare IN2: si64 = <add(D0, 1)>
-
-    mogg.output %arg0 : !mo.tensor<[D0], f32>
-  } {device = #M.device_ref<"cpu", 0>}
 
   mo.output %0 : !mo.tensor<[D0], f32>
 }

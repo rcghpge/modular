@@ -10,11 +10,11 @@ mo.graph @gpu_mul(%a: !mo.tensor<[2], f32, gpu:0>, %b: !mo.tensor<[2], f32, gpu:
 }
 
 // ASYNC-LABEL: mo.graph @gpu_mul
-// ASYNC: mogg.experimental.kernel
+// ASYNC: mogg.kernel
 // ASYNC: device = #M.device_ref<"gpu", 0>
 // ASYNC: isAsync = true
 
 // SYNC-LABEL: mo.graph @gpu_mul
-// SYNC: mogg.experimental.kernel
+// SYNC: mogg.kernel
 // SYNC: device = #M.device_ref<"gpu", 0>
 // SYNC: isAsync = false

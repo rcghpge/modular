@@ -28,9 +28,6 @@ StringAttr getSummaryString(Operation *op) {
   if (auto kernelOp = dyn_cast<MOGG::KernelOp>(op)) {
     if (auto summaryAttr = kernelOp.getSummaryAttr())
       return summaryAttr;
-  } else if (auto kernelOp = dyn_cast<MOGG::ExpKernelOp>(op)) {
-    if (auto summaryAttr = kernelOp.getSummaryAttr())
-      return summaryAttr;
   } else if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
     if (auto summaryAttr = kernelOp.getSummaryAttr())
       return summaryAttr;
@@ -113,7 +110,7 @@ static MO::ConstantOp tryGetConstantOp(Value val) {
 }
 
 /// Check whether the `index`-th operand of `kernel` is a fusable constant op.
-static bool canFuseOperand(MOGG::ExpKernelOp kernel, int32_t index) {
+static bool canFuseOperand(MOGG::KernelOp kernel, int32_t index) {
   // HACK HACK HACK https://github.com/modularml/modular/issues/22959
   // Don't fuse constant unless on the host. TEMPORARY until constant
   // lowering fixed.
@@ -145,7 +142,7 @@ static bool canFuseOperand(MOGG::ExpKernelOp kernel, int32_t index) {
 }
 
 /// Fold the constant at `idx`-th operand of `kernel` into the kernel body.
-static void fuseInputAtIndex(MOGG::ExpKernelOp kernel, int32_t idx) {
+static void fuseInputAtIndex(MOGG::KernelOp kernel, int32_t idx) {
   Value inputVal = kernel.getOperand(idx);
   MO::ConstantOp cst = tryGetConstantOp(inputVal);
 
@@ -170,7 +167,7 @@ static void fuseInputAtIndex(MOGG::ExpKernelOp kernel, int32_t idx) {
     cst->erase();
 }
 
-void fuseConstant(MOGG::ExpKernelOp kernel) {
+void fuseConstant(MOGG::KernelOp kernel) {
   // Traverse from the back to simplify removing operands.
   int32_t preFuseNumOperands = kernel.getNumOperands();
   for (int32_t index = preFuseNumOperands - 1; index >= 0; --index) {
@@ -219,19 +216,6 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps) {
     });
 
     MOGG::remapTypesAndAttrs(kernelOp, nameToDecl);
-
-    if (auto asKernelOp = dyn_cast<KernelOp>(kernelOp)) {
-      // Rename lambdas if they exist and they were renamed.
-      for (uint64_t i = 0; i < asKernelOp->getNumOperands(); ++i) {
-        if (auto lambdaNameAttr = asKernelOp.getInputFusionInterfaceAt(i)) {
-          auto it = nameToDecl.find(lambdaNameAttr);
-          if (it != nameToDecl.end()) {
-            if (auto decl = dyn_cast<KGEN::ParamDeclRefAttr>(it->second))
-              asKernelOp.setInputFusionInterface(i, decl.getName());
-          }
-        }
-      }
-    }
   }
 }
 
@@ -447,7 +431,7 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication, bool genReleaseOpaque,
 }
 
 static bool isExclusive(MOGG::KernelOp kernelOp, Value moValue) {
-  bool isInAViewKernel = kernelOp.getIsViewOp().value_or(false);
+  bool isInAViewKernel = kernelOp.isViewOp();
   bool hasUnknownProvenance = moValue.getDefiningOp<MOGG::CallOp>();
   return !isInAViewKernel && !hasUnknownProvenance;
 }

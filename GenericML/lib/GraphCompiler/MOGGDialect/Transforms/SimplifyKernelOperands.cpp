@@ -28,7 +28,7 @@ struct SimplifyKernelOperands
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
 
-    graphOp->walk([](MOGG::ExpKernelOp kernelOp) {
+    graphOp->walk([](MOGG::KernelOp kernelOp) {
       DenseMap<Value, BlockArgument> map;
       for (int idx = kernelOp.getInputs().size() - 1; idx >= 0; idx--) {
         auto [it, inserted] =

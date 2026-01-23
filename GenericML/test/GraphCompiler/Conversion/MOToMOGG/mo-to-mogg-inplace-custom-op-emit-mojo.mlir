@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: mo.graph @supports_scalars
 // CHECK-NEXT: mo.chain.create
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 // CHECK-NEXT: mogg.call.execute["mutable_test_op"]
 // CHECK-NEXT: summary = "custom__mutable_test_op
 // CHECK-NEXT: mo.output

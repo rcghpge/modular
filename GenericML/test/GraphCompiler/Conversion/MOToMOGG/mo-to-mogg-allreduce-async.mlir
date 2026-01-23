@@ -10,7 +10,7 @@ mo.graph @async_allreduce(%in0: !mo.tensor<[2], f32, gpu:0>, %in1: !mo.tensor<[2
 }
 
 // CHECK-LABEL: mo.graph @async_allreduce
-// CHECK: = mogg.experimental.kernel(
+// CHECK: = mogg.kernel(
 // CHECK: isAsync = true
-// CHECK: = mogg.experimental.kernel(
+// CHECK: = mogg.kernel(
 // CHECK: isAsync = true

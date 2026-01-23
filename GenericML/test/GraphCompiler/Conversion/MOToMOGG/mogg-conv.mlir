@@ -19,7 +19,7 @@ mo.graph @conv_const_params(
 }
 
 // CHECK-LABEL: mo.graph @conv_const_params
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.call.execute["mo.conv"]
 mo.graph @conv_unknown_params(
   %input: !mo.tensor<[4, 3, 3, 1], f32>,
@@ -39,5 +39,5 @@ mo.graph @conv_unknown_params(
 }
 
 // CHECK-LABEL: mo.graph @conv_unknown_params
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.call.execute["mo.conv"]

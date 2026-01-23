@@ -335,7 +335,7 @@ def MOGG_AsScalarOp: MOGG_Op<"as_scalar", [
   let hasVerifier = 1;
 }
 
-def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
+def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     AttrSizedOperandSegments,
@@ -344,18 +344,15 @@ def MOGG_ExpKernelOp : MOGG_LowerableOp<"experimental.kernel", [
     MO_HasDeviceInterface,
     MO_ExplicitDevice
 ]> {
-  let summary = "A experimental representation of a kernel which can be fused into and compiled without using kgen.";
+  let summary = "A representation of a kernel which can be fused into and compiled.";
   let description = [{
-    This is mostly a replica of `mogg.kernel` operation, the purposes
-    of the operations are:
-     1. to make the transition to mogg-based code-gen simpler (by making sure
-        unsupported pass wouldn't accidentally pick up a `mogg.kernel` but with
-        a mogg-based representation).
-     2. Provides a set of util functions that are only available under the
-        new representation.
+    This kernel represents a compiled region that can be fused with other
+    kernels. It uses BindLambdaOp operations within its body to define
+    fusion interfaces for inputs and outputs.
 
-    The operation should be short-lived and will be a drop-in replacement for
-    `mogg.kernel` after the transition is done.
+    The kernel takes tensor inputs and an optional chain, and produces
+    tensor outputs and optionally a chain. Fusion interfaces are defined
+    using `mogg.bind` operations within the kernel body.
   }];
 
   let arguments = (ins
@@ -560,266 +557,6 @@ def MOGG_ConcretizeTensorOp: MOGG_Op<"concretize", [Pure, SameOperandsAndResultT
   let results = (outs MO_Tensor:$result);
 }
 
-
-def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
-    IsolatedFromAbove,
-    SingleBlock,
-    SymbolTable,
-    DeclInterface,
-    DeclareOpInterfaceMethods<MO_MutableOpInterface, [
-      "getInChains", "getOutChains", "getInChainsMutable"
-    ]>,
-    DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
-    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-    MO_HasDeviceInterface,
-    MO_ExplicitDevice
-]> {
-  let summary = "A representation of a kernel which can be fused into and compiled";
-  let description = [{
-    This kernel represents the handover from the MO graph to the KGEN land.
-
-    The operation itself is a fully legal graph semantic operation which
-    composes with all other operations at the MO level.
-
-    Inside the kernel however the semantics are mirrors of the KGEN semantics.
-    We operate on lambdas and kgen function calls. This lets us have both inline
-    in the same graph while keeping the hard dependencies contained to lowering.
-
-    The kernel abstraction also exposes a number of hooks. These hooks are
-    details of the fusion algorithms. They allow this kernel to express the
-    semantics by which its outputs or inputs may be folded by being fused into.
-
-    Example:
-
-    ```mlir
-    %1 = mogg.kernel (%0, %arg1) : (%arg2: !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>{
-      ...
-    } {fusionBodyLambda = "elemwise_compute_lambda", inputFusionInterface = ["input_0_fn", "input_1_fn"], outputFusionInterface = ["output_0_fn"]}
-    ```
-
-    This above kernel has a graph semantic %1 and inputs %0, %arg1 which work
-    with the rest of the MO/MOGG operations.  Internally it works on `(%arg2:
-    !mo.tensor<[2, 3], f32>, %arg3: !mo.tensor<[2, 3], f32>)` which essentially
-    are the KGEN view of those values.
-
-    `outputParamDecls` allows this compiled operation to define parameter
-     values. These values are explicit parameter returns of the kernel. They
-     cannot be referred to within the kernel other than to set them. When the
-     kernel is executed they will be updated in the MGP parameter map. This is
-     completely separate from the normal kernel tensor returns. Their values
-     are set within the kernel using `SetParameterOp`.
-
-    The attributes at the end.
-    ```mlir
-    { fusionBodyLambda = "elemwise_compute_lambda",
-      inputFusionInterface = ["input_0_fn", "input_1_fn"],
-      outputFusionInterface = ["output_0_fn"]
-    }
-    ```
-    `fusionBodyLambda` Represents the fusable elementwise / view operation body
-    contained within. This signifies that this kernel is fully implemented by
-    applying this lambda to an otherwise identity operation, therefore we can
-    safely fuse it into a user.  Most ops will not have this, only elementwise
-    and view ops. After being fused into an op that doesn't have `fuseHook` it
-    will be lost and can no longer be fused. E.G elementwise into matmul.
-
-    `inputFusionInterface` Represents the lambdas within this kernel that are
-    responsible for loading each input. The name doesn't matter, we know which
-    input this matches by the index in the attr array vs the index of the
-    operand in the block.
-
-    `outputFusionInterface` Is the same as the above but for storing.
-
-    `isViewOp` Is an easy way for us to check if something can be represented as
-    a view, e.g., a broadcast in the form of a view change followed by a copy. We
-    can drop the copy and keep the view change op.
-
-    `allocIndices` is a list attribute containing the indices of the output tensors
-    that have in-place allocation. For example, allocIndices = [0] means the first
-    output tensor has been allocated in the kernel.
-
-    Kernels preserve the device of their original MO op.
-  }];
-
-  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, MO_Chain, Index]>>:$operands,
-    MO_ParamDecls:$outputParamDecls,
-    OptionalAttr<ArrayAttr>:$inputFusionInterface,
-    OptionalAttr<ArrayAttr>:$outputFusionInterface,
-    OptionalAttr<StrAttr>:$fusionBodyLambda,
-    OptionalAttr<BoolAttr>:$isViewOp,
-    OptionalAttr<StrAttr>:$summary,
-    OptionalAttr<BoolAttr>:$isAsync,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$computationallyTrivial,
-    OptionalAttr<ArrayAttr>:$allocIndices,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
-  );
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
-  let regions = (region SizedRegion<1>:$body);
-  let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
-
-  let assemblyFormat = [{
-    custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
-  }];
-
-
-  let extraClassDeclaration = [{
-
-    /// Sometimes it is necessary to temporarily pretend that a kernel has
-    /// fusion enabled however we still need to distinguish between those
-    /// which have fusion disabled by the user and those which we have
-    /// temporarily marked. These must be removed before the verifier runs.
-    static constexpr StringLiteral getTempLambdaName() {
-      return "__TMP__FUSE_HOOK";
-    }
-
-    /// Strip any of the temporary fusion lambda markers.
-    void removeTemporaryFusionMarks();
-
-    /// Returns the OutputPlaceholder for this operation or null if it doesn't
-    /// exist.
-    OutputPlaceholdersOp getOutputPlaceholder();
-
-    // Returns the StackAllocateTensorsOp for this operation or null if it
-    // does not exist.
-    StackAllocateTensorsOp getStackAllocateTensor();
-
-    // Returns the CreateEmptyTensorsOp for this operation or null if it does
-    // not exist.
-    CreateEmptyTensorsOp getCreateEmptyTensor();
-
-    // Returns the OutputOp for this operation or null if it does not exist.
-    OutputOp getOutputOp();
-
-    // Returns the ScratchPlaceholderOp for this operation or null if it does
-    // not exist.
-    ScratchPlaceholdersOp getScratchPlaceholder();
-
-    /// Disables future fusion on this input.
-    void disableInputFusionOnInput(size_t index);
-
-    /// Removes an operand at the given index and disables input fusion on that
-    /// position if this kernel otherwise supports it.
-    void removeOperandAtIndex(size_t index);
-
-    /// Add an operand to the kernel at the idx specified by insertIdx and adds an
-    /// argument to the kernel region. Fixes up the input fusion interfaces to
-    /// disallow input fusion on this position. Returns the added kernel argument.
-    /// NOTE: this is an O(n) operation.
-    Value addOperandAtIndex(Value operand, size_t insertIdx);
-
-    /// Add an operand to the kernel and adds an argument to the kernel region.
-    /// Fixes up the input fusion interfaces to disallow input fusion on this
-    /// position. Returns the added kernel argument.
-    Value addOperand(Value operand);
-
-    /// Mark a given input as having a lambda fusion interface
-    void setInputFusionInterface(size_t index, StringRef lambdaName);
-
-    /// Fuse this body into the given builder and symbol table, using the
-    /// remapper to update the SSA values and tracking the changed lambda
-    /// names in `oldLambdaNamesToNew`.
-    void fuseBodyIntoNew(OpBuilder& builder, mlir::SymbolTable& symTable,
-        IRMapping& remapper, llvm::StringMap<StringRef>& oldLambdaNamesToNew);
-
-    /// The same as the above but adds the option to skip an operation in the
-    /// body.
-    void fuseBodyIntoNewWithSkip(OpBuilder& builder, mlir::SymbolTable& symTable,
-        IRMapping& remapper, llvm::StringMap<StringRef>& oldLambdaNamesToNew,
-        std::function<bool(Operation*)> shouldSkip);
-
-    /// Sets the insertion point to the start of the kernel. This may not be
-    /// the precise start as it will place the operation after the output
-    /// placeholders if they exist.
-    void setInsertionPointToTop(OpBuilder& builder);
-
-    /// Returns the KGEN input parameters this depends on. Necessary to
-    /// implement the DeclInterface.
-    ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
-
-    /// Finds a lambda in the body of the op.
-    KGEN::ParamDeclareRegionOp findLambda(StringAttr name);
-
-    /// Returns an input lambda or an empty string if it does not exist.
-    StringAttr getInputFusionInterfaceAt(size_t index);
-
-    /// Returns an output lambda or an empty string if it does not exist.
-    StringAttr getOutputFusionInterfaceAt(size_t index);
-
-    /// Get the indices of the output tensors that are in-place allocated
-    DenseSet<int> getInplaceAllocIndicesSet();
-
-    /// Returns whether the kernel is a in-place allocated kernel
-    bool isInPlaceAlloc();
-
-    /// Returns the sole input chain (if present) and std::nullopt otherwise.
-    std::optional<MO::ChainValue> maybeGetInChain();
-
-    /// Returns the sole output chain (if present) and std::nullopt otherwise.
-    std::optional<MO::ChainValue> maybeGetOutChain();
-
-    //===------------------------------------------------------------------===//
-    // Helpers for operands/results excluding chains
-    //===------------------------------------------------------------------===//
-
-    /// Returns the number of operands excluding any MO::ChainType operands.
-    auto getNumNonChainOperands() {
-      return getNumOperands() - maybeGetInChain().has_value();
-    }
-
-    /// Returns the number of results excluding any MO::ChainType results.
-    auto getNumNonChainResults() {
-      return getNumResults() - maybeGetOutChain().has_value();
-    }
-
-    /// Returns a range of operands excluding any MO::ChainType operands.
-    auto getNonChainOperands() {
-      return getOperands().drop_back(maybeGetInChain().has_value());
-    }
-
-    /// Returns a range of results excluding any MO::ChainType results.
-    auto getNonChainResults() {
-      return getResults().drop_back(maybeGetOutChain().has_value());
-    }
-
-    /// Returns a range of operand types excluding any MO::ChainType operands.
-    auto getNonChainOperandTypes() {
-      auto types = getOperandTypes();
-      return llvm::make_range(types.begin(),
-                              types.end() - maybeGetInChain().has_value());
-    }
-
-    /// Returns a range of result types excluding any MO::ChainType results.
-    auto getNonChainResultTypes() {
-      auto types = getResultTypes();
-      return llvm::make_range(types.begin(),
-                              types.end() - maybeGetOutChain().has_value());
-    }
-  }];
-
-  // This should set all attributes including MO_HasDeviceInterface
-  let builders = [
-    OpBuilder<(ins
-      "TypeRange":$results,
-      "ValueRange":$operands,
-      "ArrayRef<ParamDeclAttr>":$outputParamDecls,
-      "ArrayAttr":$inputFusionInterface,
-      "ArrayAttr":$outputFusionInterface,
-      "StringAttr":$fusionBodyLambda,
-      "BoolAttr":$isViewOp,
-      "StringAttr":$summary,
-      "BoolAttr":$isAsync,
-      "BoolAttr":$computationallyTrivial,
-      "ArrayAttr":$allocIndices,
-      "bool":$hasReadEffect,
-      "bool":$hasWriteEffect,
-      "DeviceRefAttr":$device
-    )>,
-  ];
-  let skipDefaultBuilders=1;
-}
 
 def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     IsolatedFromAbove,

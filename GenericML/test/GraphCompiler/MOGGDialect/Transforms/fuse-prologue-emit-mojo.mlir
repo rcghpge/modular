@@ -1,7 +1,7 @@
 // RUN: EMIT_MOJO=1 mo-opt %s --mo-to-mogg --fuse-elementwise --fuse-prologues-epilogues | FileCheck %s
 
 // CHECK-LABEL: mo.graph @softmax
-// CHECK:       mogg.experimental.kernel({{.*}}: !mo.tensor<[], si64>, {{.*}}: !mo.tensor<[2, 3], f32>, {{.*}}: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64> {
+// CHECK:       mogg.kernel({{.*}}: !mo.tensor<[], si64>, {{.*}}: !mo.tensor<[2, 3], f32>, {{.*}}: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64> {
 // CHECK:       mogg.output_placeholders : !mo.tensor<[2, 3], f64>
 // CHECK:       mogg.device_context_placeholder
 // CHECK:       mogg.bind ({{.*}}, {{.*}}) input_lambda ({{.*}}: f32, {{.*}}: f32, {{.*}}: !pop.array<2, index>) {
@@ -23,7 +23,7 @@ mo.graph @softmax(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[], si64>) -
 
 // CHECK-LABEL: mo.graph @gather
 // CHECK:       mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-// CHECK:       mogg.experimental.kernel({{.*}}: !mo.tensor<[3, 3], f32>, {{.*}}: !mo.tensor<[], si64>, {{.*}}: !mo.tensor<[2, 2], si32>, {{.*}}: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32> {
+// CHECK:       mogg.kernel({{.*}}: !mo.tensor<[3, 3], f32>, {{.*}}: !mo.tensor<[], si64>, {{.*}}: !mo.tensor<[2, 2], si32>, {{.*}}: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32> {
 // CHECK:       mogg.output_placeholders : !mo.tensor<[2, 2, 3], f32>
 // CHECK:       mogg.bind ({{.*}}) input_lambda ({{.*}}: f32, {{.*}}: !pop.array<2, index>) {
 // CHECK-NEXT:  mogg.output {{.*}}, {{.*}} : f32, !pop.array<2, index>

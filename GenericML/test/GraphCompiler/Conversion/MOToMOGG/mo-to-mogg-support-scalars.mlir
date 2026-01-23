@@ -2,7 +2,7 @@
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 // CHECK-LABEL: mo.graph @supports_scalars
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.as_scalar
 // CHECK: mogg.call.execute["supports_scalar_kernel"]
 mo.graph @supports_scalars(%a : !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {

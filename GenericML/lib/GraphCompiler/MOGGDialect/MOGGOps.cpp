@@ -1337,10 +1337,10 @@ void KernelStubOp::print(OpAsmPrinter &p) {
 }
 
 //===----------------------------------------------------------------------===//
-// MOGG ExpKernelOp
+// MOGG KernelOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
   auto &builder = opLoweringState.builder;
   mlir::MLIRContext *ctx = getContext();
@@ -1755,7 +1755,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
     }
 
     // Handle dynamic dimensions from result types of all operations.
-    // This is needed for operations like mogg.experimental.kernel that have
+    // This is needed for operations like mogg.kernel that have
     // tensor result types with dynamic dimensions.
     for (Type resultType : stubOp->getResultTypes()) {
       if (auto tensorType = MO::dynCastFromTensorLike(resultType)) {
@@ -2067,7 +2067,7 @@ LogicalResult ExpKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return success();
 }
 
-void ExpKernelOp::insertInputsAt(unsigned idx, ValueRange vals) {
+void KernelOp::insertInputsAt(unsigned idx, ValueRange vals) {
   SmallVector<Value> ops = getInputs();
   ops.insert(ops.begin() + idx, vals.begin(), vals.end());
   getInputsMutable().assign(ops);
@@ -2076,25 +2076,25 @@ void ExpKernelOp::insertInputsAt(unsigned idx, ValueRange vals) {
     getExecBody().insertArgument(idx, v.getType(), v.getLoc());
 }
 
-void ExpKernelOp::eraseInputsAt(unsigned idx, size_t len) {
+void KernelOp::eraseInputsAt(unsigned idx, size_t len) {
   getInputsMutable().erase(idx, len);
 
   for (unsigned i = 0; i < len; ++i)
     getExecBody().eraseArgument(idx);
 }
 
-void ExpKernelOp::setChain(Value chain) {
+void KernelOp::setChain(Value chain) {
   if (chain)
     getChainMutable().assign(chain);
 }
-void ExpKernelOp::eraseChain() { getChainMutable().erase(0); }
+void KernelOp::eraseChain() { getChainMutable().erase(0); }
 
-std::optional<MO::ChainValue> ExpKernelOp::maybeGetInChain() {
+std::optional<MO::ChainValue> KernelOp::maybeGetInChain() {
   auto chainOrNull = getChain();
   return chainOrNull ? std::optional(chainOrNull) : std::nullopt;
 }
 
-std::optional<MO::ChainValue> ExpKernelOp::maybeGetOutChain() {
+std::optional<MO::ChainValue> KernelOp::maybeGetOutChain() {
   if (getNumResults() == 0)
     return std::nullopt;
 
@@ -2106,11 +2106,11 @@ std::optional<MO::ChainValue> ExpKernelOp::maybeGetOutChain() {
     return std::nullopt;
 }
 
-KernelTerminator ExpKernelOp::getTerminator() {
+KernelTerminator KernelOp::getTerminator() {
   return cast<KernelTerminator>(getExecBody().front().getTerminator());
 }
 
-BindLambdaOp ExpKernelOp::getBoundInputLambda(uint64_t operandIdx) {
+BindLambdaOp KernelOp::getBoundInputLambda(uint64_t operandIdx) {
   auto users = getExecBody().getArgument(operandIdx).getUsers();
   if (llvm::range_size(users) != 1)
     return nullptr;
@@ -2125,7 +2125,7 @@ BindLambdaOp ExpKernelOp::getBoundInputLambda(uint64_t operandIdx) {
   return lambda;
 }
 
-BindLambdaOp ExpKernelOp::getBoundOutputLambda(uint64_t resultIdx) {
+BindLambdaOp KernelOp::getBoundOutputLambda(uint64_t resultIdx) {
   // NOTE: dyn_cast<CallExecuteOp>(getTerminator()) won't work as expected
   // (it always returns non-nullptr) because the deduced return type would be
   // `const CallExecuteOp &`.
@@ -2156,14 +2156,14 @@ BindLambdaOp ExpKernelOp::getBoundOutputLambda(uint64_t resultIdx) {
   return lambdaOp;
 }
 
-BindLambdaOp ExpKernelOp::getElemwiseBodyLambda() {
+BindLambdaOp KernelOp::getElemwiseBodyLambda() {
   Operation *t = getTerminator();
   auto foreachOp = mlir::dyn_cast<CallForeachOp>(t);
   return foreachOp ? foreachOp.getInput().getDefiningOp<BindLambdaOp>()
                    : nullptr;
 }
 
-bool ExpKernelOp::isOperandFusible(uint64_t operandIdx, bool lookThroughView) {
+bool KernelOp::isOperandFusible(uint64_t operandIdx, bool lookThroughView) {
   auto users = getExecBody().getArgument(operandIdx).getUsers();
   SmallVector<Operation *> workList(users.begin(), users.end());
   while (!workList.empty()) {
@@ -2180,7 +2180,7 @@ bool ExpKernelOp::isOperandFusible(uint64_t operandIdx, bool lookThroughView) {
   return false;
 }
 
-void ExpKernelOp::getEffects(
+void KernelOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
 
   bool hasWriteEffect = false;
@@ -2209,7 +2209,7 @@ void ExpKernelOp::getEffects(
   }
 }
 
-LogicalResult ExpKernelOp::verify() {
+LogicalResult KernelOp::verify() {
   auto term =
       dyn_cast<MOGG::KernelTerminator>(getExecBody().front().getTerminator());
   if (!term)
@@ -2268,7 +2268,7 @@ LogicalResult ExpKernelOp::verify() {
   return success();
 }
 
-ParseResult ExpKernelOp::parse(OpAsmParser &parser, OperationState &state) {
+ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &state) {
   SmallVector<OpAsmParser::Argument> argInfo;
   OpAsmParser::UnresolvedOperand chain;
 
@@ -2300,7 +2300,7 @@ ParseResult ExpKernelOp::parse(OpAsmParser &parser, OperationState &state) {
   return success();
 }
 
-void ExpKernelOp::print(OpAsmPrinter &p) {
+void KernelOp::print(OpAsmPrinter &p) {
   printParenOperandListWithShadowing(p, getInputs(),
                                      getExecBody().getArguments(),
                                      /*isIsolatedFromAbove=*/true);
@@ -2317,13 +2317,12 @@ void ExpKernelOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict(getOperation()->getAttrs(), {"operandSegmentSizes"});
 }
 
-void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
-                        TypeRange results, ValueRange operands,
-                        StringAttr summary, BoolAttr isAsync,
-                        DeviceRefAttr device,
-                        ArrayRef<ParamDeclAttr> outputParamDecls,
-                        ArrayAttr allocIndices, bool hasReadEffect,
-                        bool hasWriteEffect) {
+void KernelOp::build(OpBuilder &builder, OperationState &state,
+                     TypeRange results, ValueRange operands, StringAttr summary,
+                     BoolAttr isAsync, DeviceRefAttr device,
+                     ArrayRef<ParamDeclAttr> outputParamDecls,
+                     ArrayAttr allocIndices, bool hasReadEffect,
+                     bool hasWriteEffect) {
   state.addOperands(operands);
   if (summary)
     state.addAttribute(getSummaryAttrName(state.name), summary);
@@ -2363,7 +2362,7 @@ void ExpKernelOp::build(OpBuilder &builder, OperationState &state,
            static_cast<int32_t>(operands.size() - body.getNumArguments())}));
 }
 
-OutputPlaceholdersOp ExpKernelOp::getOutputPlaceholder() {
+OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   auto placeholder = this->getOps<MOGG::OutputPlaceholdersOp>();
   if (placeholder.empty())
     return nullptr;
@@ -2373,7 +2372,7 @@ OutputPlaceholdersOp ExpKernelOp::getOutputPlaceholder() {
   return *placeholder.begin();
 }
 
-StackAllocateTensorsOp ExpKernelOp::getStackAllocateTensor() {
+StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
   auto stackAlloc = this->getOps<MOGG::StackAllocateTensorsOp>();
   if (stackAlloc.empty())
     return nullptr;
@@ -2383,7 +2382,7 @@ StackAllocateTensorsOp ExpKernelOp::getStackAllocateTensor() {
   return *stackAlloc.begin();
 }
 
-CreateEmptyTensorsOp ExpKernelOp::getCreateEmptyTensor() {
+CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
   auto createEmpty = this->getOps<MOGG::CreateEmptyTensorsOp>();
   if (createEmpty.empty())
     return nullptr;
@@ -2393,7 +2392,7 @@ CreateEmptyTensorsOp ExpKernelOp::getCreateEmptyTensor() {
   return *createEmpty.begin();
 }
 
-ScratchPlaceholdersOp ExpKernelOp::getScratchPlaceholder() {
+ScratchPlaceholdersOp KernelOp::getScratchPlaceholder() {
   auto scratch = this->getOps<MOGG::ScratchPlaceholdersOp>();
 
   if (scratch.empty())
@@ -2404,7 +2403,7 @@ ScratchPlaceholdersOp ExpKernelOp::getScratchPlaceholder() {
   return *scratch.begin();
 }
 
-OutputOp ExpKernelOp::getOutputOp() {
+OutputOp KernelOp::getOutputOp() {
   auto output = this->getOps<MOGG::OutputOp>();
   if (output.empty())
     return nullptr;
@@ -2454,1299 +2453,6 @@ LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
   MOGG::MojoValue scalarValue = moggAsScalar(ArrayRef<MojoValue>{}, {input});
   state.setMojoValueFor(getResult(), state.builder.var(scalarValue));
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// MOGG KernelOp
-//===----------------------------------------------------------------------===//
-
-void KernelOp::build(
-    OpBuilder &builder, OperationState &state, TypeRange results,
-    ValueRange operands, ArrayRef<ParamDeclAttr> outputParamDecls,
-    ArrayAttr inputFusionInterface, ArrayAttr outputFusionInterface,
-    StringAttr fusionBodyLambda, BoolAttr isViewOp, StringAttr summary,
-    BoolAttr isAsync, BoolAttr computationallyTrivial, ArrayAttr allocIndices,
-    bool hasReadEffect, bool hasWriteEffect, DeviceRefAttr device) {
-  state.addOperands(operands);
-
-  if (!outputParamDecls.empty())
-    state.addAttribute(getOutputParamDeclsAttrName(state.name),
-                       builder.getAttr<ParamDeclArrayAttr>(outputParamDecls));
-
-  if (inputFusionInterface)
-    state.addAttribute(getInputFusionInterfaceAttrName(state.name),
-                       inputFusionInterface);
-
-  if (outputFusionInterface)
-    state.addAttribute(getOutputFusionInterfaceAttrName(state.name),
-                       outputFusionInterface);
-
-  if (fusionBodyLambda)
-    state.addAttribute(getFusionBodyLambdaAttrName(state.name),
-                       fusionBodyLambda);
-
-  if (isViewOp)
-    state.addAttribute(getIsViewOpAttrName(state.name), isViewOp);
-
-  if (summary)
-    state.addAttribute(getSummaryAttrName(state.name), summary);
-
-  if (isAsync)
-    state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
-
-  if (computationallyTrivial)
-    state.addAttribute(getComputationallyTrivialAttrName(state.name),
-                       computationallyTrivial);
-
-  if (allocIndices)
-    state.addAttribute(getAllocIndicesAttrName(state.name), allocIndices);
-
-  state.addAttribute(getHasReadEffectAttrName(state.name),
-                     builder.getBoolAttr(hasReadEffect));
-  state.addAttribute(getHasWriteEffectAttrName(state.name),
-                     builder.getBoolAttr(hasWriteEffect));
-  (void)state.addRegion();
-  state.addTypes(results);
-
-  if (device)
-    state.addAttribute(MO::kOperationDeviceRefAttrName, device);
-}
-
-// This function lowers the `mogg.kernel` to `mogg.generic.compiled.region`,
-// adding the ability to consider the in-place allocated dynamic tensors from
-// the user kernels. We do the storage allocation of mgp buffers only for
-// pre-allocated tensors and leave the ones for the in-place allocation. We also
-// convert the parameter values to the indexes (materialization) during the
-// lowering.
-// NOTE: does mogg.kernel --> region lowering
-LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  MGP::MOOpLoweringState opLoweringState(loweringState, *this);
-  mlir::MLIRContext *ctx = getContext();
-  auto &builder = opLoweringState.builder;
-
-  auto voidStar = KGEN::PointerType::get(KGEN::NoneType::get(ctx));
-
-  auto maybeInChain = maybeGetInChain();
-  auto maybeOutChain = maybeGetOutChain();
-
-  Value chain = loweringState.getCurrentExecuteChain();
-  if (maybeInChain)
-    chain = loweringState.lookupExecuteLoweredValue(*maybeInChain);
-  chain = opLoweringState.getGuardChain(chain);
-
-  // Gather the lowered op operands.
-  SmallVector<Value> loweredInputOperands = [&]() {
-    // Dropping the lowered input chain simplifies subsequent lowering logic in
-    // this function.
-    if (maybeInChain) {
-      return SmallVector<Value>{
-          llvm::drop_end(opLoweringState.getLoweredOperands())};
-    } else
-      return opLoweringState.getLoweredOperands();
-  }();
-
-  SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
-  FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
-      opLoweringState.createOutputStorage(chain);
-  if (failed(loweredOutputsStorageOr))
-    return failure();
-  loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
-
-  // Handle scratch output placeholders if they exist
-  SmallVector<MGP::MOOutputStorage> scratchOutputsStorage;
-  MOGG::ScratchPlaceholdersOp scratchOutputs = getScratchPlaceholder();
-  if (scratchOutputs) {
-    SmallVector<TypedValue<MGP::TensorSpecType>> scratchSpecs;
-    for (Type t : scratchOutputs.getResultTypes()) {
-      auto tensorType = cast<MO::TensorType>(t);
-      auto specResult = opLoweringState.createTensorSpec(tensorType);
-      if (failed(specResult))
-        return failure();
-      scratchSpecs.push_back(*specResult);
-    }
-
-    scratchOutputsStorage.reserve(scratchSpecs.size());
-    for (auto [spec, type] :
-         llvm::zip(scratchSpecs, scratchOutputs.getResultTypes())) {
-      auto bufOr = opLoweringState.createBuffer(chain, spec, type);
-      if (failed(bufOr))
-        return failure();
-      scratchOutputsStorage.emplace_back(*bufOr);
-    }
-  }
-
-  DenseSet<int> inplaceAllocIndicesSet;
-  SmallVector<int> preAllocIndices;
-  SmallVector<int> inplaceAllocIndices;
-  auto alloc = getAllocIndices();
-  if (alloc.has_value()) {
-    for (auto idxAttr : alloc.value().getAsValueRange<mlir::IntegerAttr>()) {
-      int64_t idx = idxAttr.getSExtValue();
-      inplaceAllocIndicesSet.insert(idx);
-    }
-  }
-
-  OutputPlaceholdersOp oldOutputs = getOutputPlaceholder();
-
-  DenseSet<int> returnAllocIndicesSet;
-
-  for (unsigned int i = 0; i < getNumResults(); ++i) {
-    if (!oldOutputs || i >= oldOutputs->getNumResults())
-      returnAllocIndicesSet.insert(i);
-    if (!inplaceAllocIndicesSet.contains(i)) {
-      if (!isa<MO::ChainType>(getResult(i).getType()))
-        preAllocIndices.push_back(i);
-    } else
-      inplaceAllocIndices.push_back(i);
-  }
-
-  size_t numInplaceOutputs = inplaceAllocIndicesSet.size();
-
-  size_t numOperands = 1 + loweredInputOperands.size() +
-                       loweredOutputsStorage.size() +
-                       scratchOutputsStorage.size();
-
-  // Gather all the input and output operands and their in/out semantics.
-  SmallVector<Value> operands;
-  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-  operands.reserve(numOperands);
-  operandSemantics.reserve(numOperands);
-  operands.push_back(chain);
-  operandSemantics.emplace_back(InOutSignatureAttr::kIn);
-
-  for (auto &outputStorage : loweredOutputsStorage) {
-    operands.push_back(outputStorage.buffer);
-    operandSemantics.emplace_back(InOutSignatureAttr::kOut);
-  }
-
-  for (auto &&[origOperand, loweredInputOperand] :
-       llvm::zip(getOperands(), loweredInputOperands)) {
-
-    auto sig = isa<MO::BufferType>(origOperand.getType())
-                   ? InOutSignatureAttr::kMut
-                   : InOutSignatureAttr::kIn;
-
-    operands.push_back(loweredInputOperand);
-    operandSemantics.emplace_back(sig);
-  }
-
-  // Add scratch output buffers to operands (after input operands)
-  if (scratchOutputs) {
-    for (auto &scratchStorage : scratchOutputsStorage) {
-      operands.push_back(scratchStorage.buffer);
-      operandSemantics.emplace_back(InOutSignatureAttr::kNone);
-    }
-  }
-
-  SmallVector<KGEN::ParamDeclRefAttr> usedParams =
-      M::MOGG::getKernelUsedParameters(*this);
-  llvm::StringMap<int> paramDimToIdx;
-  for (auto param : usedParams) {
-    auto symbolicDimOr = loweringState.lowerExpression(
-        opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
-        param);
-
-    ASSERT_STREAM(!symbolicDimOr.isError(),
-                  << "can't find the symbolic dimension of the parameter: "
-                  << symbolicDimOr.takeError());
-
-    Value symbol = symbolicDimOr.takeValue();
-    paramDimToIdx[param.getName().strref()] = operands.size();
-    operands.push_back(symbol);
-    operandSemantics.emplace_back(InOutSignatureAttr::kIn);
-  }
-
-  DeviceRefAttr device = MO::getDeviceOrDefaultAny(*this);
-  auto mgpBufferType = MGP::DeviceBufferType::get(device);
-
-  SmallVector<mlir::Type> inPlaceMGPOutputsTypes(numInplaceOutputs);
-  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
-    Type oldOutTy = getResult(inPlaceIdx).getType();
-    // mgp.buffer is user for mo.tensor, mgp.opaque for mo.opaque.
-    Type mgpResultTy = mgpBufferType;
-    if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(oldOutTy))
-      mgpResultTy =
-          MGP::OpaqueType::get(ctx, moOpaqueType.getSymbol(), std::nullopt);
-    ASSERT_STREAM(!isa<MO::ListType>(oldOutTy), "in place list not supported");
-    inPlaceMGPOutputsTypes[idx] = mgpResultTy;
-  }
-
-  auto outParamNum = getOutputParamDecls().size();
-  llvm::StringMap<int> outParamNameToIdx;
-  SmallVector<mlir::Type> newKernelResTypes;
-
-  newKernelResTypes.push_back(chain.getType());
-  newKernelResTypes.insert(newKernelResTypes.end(),
-                           inPlaceMGPOutputsTypes.begin(),
-                           inPlaceMGPOutputsTypes.end());
-  for (size_t i = 0; i < outParamNum; ++i) {
-    newKernelResTypes.push_back(getOutputParamDecls()[i].getType());
-    StringRef name = getOutputParamDecls()[i].getName();
-    outParamNameToIdx[name] = i;
-  }
-
-  // Later update the isAsync instead of hard-coding
-  auto newKernel = MOGG::GenericCompiledRegionOp::create(
-      builder, getLoc(), TypeRange{newKernelResTypes}, operands,
-      getOutputParamDeclsAttr(), InOutSignatureAttr::get(ctx, operandSemantics),
-      getSummaryAttr(),                                 // summary
-      BoolAttr::get(ctx, getIsAsync().value_or(false)), // isAsync
-      ArrayAttr::get(ctx, {}), // KernelOp has no constant resources
-      // Sequence fuse GPU launching to reduce primitive launch overhead.
-      BoolAttr::get(ctx, !MO::isOnHost(*this)), // canFuseIntoOther
-      BoolAttr::get(ctx, true),                 // canBeFusedInto
-      BoolAttr::get(ctx, false),                // canDuplicate
-      BoolAttr::get(ctx, true)                  // isStructuredKernel
-  );
-  newKernel.setDeviceRef(device);
-
-  mlir::Block &kernelBody = newKernel.getBody().emplaceBlock();
-  builder.setInsertionPoint(&kernelBody, kernelBody.begin());
-  SmallVector<Location> locs =
-      llvm::map_to_vector(operands, [](Value v) { return v.getLoc(); });
-  kernelBody.addArguments(ValueRange(operands).getTypes(), locs);
-
-  DenseMap<TypedAttr, Value> loweredParams;
-  auto addParams = [&](Location loc, Type t) -> CompileDiagnosticOrSuccess {
-    ArrayRef<TypedAttr> dims;
-    if (auto asTensor = MO::dynCastFromTensorLike(t))
-      dims = asTensor.getDims();
-    else
-      return success();
-
-    for (auto dim : dims) {
-      if (loweredParams.contains(dim))
-        continue;
-
-      if (auto cst = dyn_cast<IntegerAttr>(dim)) {
-        KGEN::ParamConstantOp op =
-            KGEN::ParamConstantOp::create(builder, loc, cst);
-        loweredParams[dim] = op.getResult();
-      } else if (auto ref = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
-        loweredParams[dim] =
-            kernelBody.getArgument(paramDimToIdx[ref.getName()]);
-        loweredParams[ref.getName()] =
-            kernelBody.getArgument(paramDimToIdx[ref.getName()]);
-      } else {
-        return mlir::emitError(loc, "Unsupported dim attribute type: ") << dim;
-      }
-    }
-    return success();
-  };
-
-  // Look at all the GetDims to pick up any parameters which are only referenced
-  // by get dim.
-  this->walk([&](MOGG::GetDimOp getDim) {
-    StringAttr name = getDim.getDimension();
-    auto itr = loweredParams.find(name);
-    if (itr == loweredParams.end()) {
-      loweredParams[name] = kernelBody.getArgument(paramDimToIdx[name]);
-    }
-  });
-
-  // Add all the seen shape parameters values as concrete KGEN param values.
-  for (auto arg : this->getBodyRegion().getArguments()) {
-    auto err = addParams(arg.getLoc(), arg.getType());
-    if (err.isError())
-      return err.takeError();
-  }
-  for (auto &op : this->getOps()) {
-    for (auto type : op.getOperandTypes()) {
-      auto err = addParams(op.getLoc(), type);
-      if (err.isError())
-        return err.takeError();
-    }
-    for (auto type : op.getResultTypes()) {
-      auto err = addParams(op.getLoc(), type);
-      if (err.isError())
-        return err.takeError();
-    }
-  }
-
-  // Convert MGP block input to tensor object (!mo.tensor) or opaque.
-  auto convertMGPInputToTensorOrOpaque = [&](Value input, Type oldTy) -> Value {
-    // Opaque types are already pointer to objects, they don't need any
-    // transformation to be passed to the kernel.
-    if (isa<MGP::OpaqueType, MGP::DeviceContextType, mlir::IndexType>(
-            input.getType())) {
-      return input;
-    } else if (isa<MO::TensorType, MO::BufferType>(oldTy)) {
-      MO::TensorType asTensor = MO::castFromTensorLike(oldTy);
-
-      Value dataPtr = MOGG::DataPointerFromBufferOp::create(
-          builder, input.getLoc(), voidStar, input);
-
-      SmallVector<Value> operands;
-      operands.push_back(dataPtr);
-      for (auto dim : asTensor.getDims()) {
-        auto loweredParam = loweredParams.at(dim);
-        if (!loweredParam.getType().isIndex()) {
-          loweredParam = mlir::index::CastSOp::create(
-              builder, input.getLoc(), builder.getIndexType(), loweredParam);
-        }
-
-        operands.push_back(loweredParam);
-      }
-
-      return MOGG::ToTensorFromMGPOp::create(builder, input.getLoc(), asTensor,
-                                             operands);
-    } else if (auto asListTy = dyn_cast<MO::ListType>(oldTy)) {
-      // Assume the new extensibility API uses KGEN types.
-      return MOGG::ToListFromMGPOp::create(builder, input.getLoc(), oldTy,
-                                           input);
-    } else {
-      ASSERT_STREAM(false, << "Unknown type " << oldTy << " with value "
-                           << input);
-      llvm_unreachable("[convertMGPInputToMOValue] Unknown type.");
-      return {};
-    }
-  };
-
-  IRMapping mapper;
-
-  int outputOffset = 1; // 1 for the input chain
-  for (auto [idx, preAllocIdx] : llvm::enumerate(preAllocIndices)) {
-    Value newBlockArg = kernelBody.getArgument(outputOffset + idx);
-
-    // Order of pre-allocated result memory matches that of original outputs.
-    Value oldOut = getOutputOp()->getOperand(preAllocIdx);
-
-    // new path will insert a to_mogg to link the ssa, simply strip it.
-    if (auto simpleToMogg = oldOut.getDefiningOp<ToMOGGOp>())
-      oldOut = simpleToMogg->getOperand(0);
-
-    // TODO(GEX-1183): Another hack from inconsistency in opaque lowering.
-    // Sometimes we return the KGEN type directly, sometimes not depending
-    // on whether we are in the old and new pipelines.
-    if (isa<KGEN::StructType>(oldOut.getType())) {
-      while (!isa<OutputPlaceholdersOp>(oldOut.getDefiningOp())) {
-        Operation *definingOp = oldOut.getDefiningOp();
-
-        // Only expect ops like "convert_to_ndbuffer" or "mogg.to_kgen"
-        // which all have a single operand and just transform types.
-        ASSERT_STREAM(definingOp->getNumOperands() == 1,
-                      << "Expect one operand." << *definingOp);
-        oldOut = definingOp->getOperand(0);
-      }
-    }
-
-    ASSERT_STREAM(isa<OutputPlaceholdersOp>(oldOut.getDefiningOp()),
-                  << "Expect all pre-allocated outputs to be in "
-                     "`OutputPlaceholdersOp`. found:\n"
-                  << *oldOut.getDefiningOp());
-
-    Value loweredValue =
-        convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
-
-    mapper.map(oldOut, loweredValue);
-  }
-
-  int inputOffset = loweredOutputsStorage.size() + 1;
-  for (auto [idx, val] : llvm::enumerate(loweredInputOperands)) {
-    Value newBlockArg = kernelBody.getArgument(idx + inputOffset);
-    Value oldBlockArg = getBody().getArgument(idx);
-    Value loweredValue =
-        convertMGPInputToTensorOrOpaque(newBlockArg, oldBlockArg.getType());
-    mapper.map(oldBlockArg, loweredValue);
-  }
-
-  // Map scratch outputs if they exist
-  if (scratchOutputs) {
-    int scratchOffset = inputOffset + loweredInputOperands.size();
-    for (auto [idx, result] : llvm::enumerate(scratchOutputs.getResults())) {
-      Value newBlockArg = kernelBody.getArgument(scratchOffset + idx);
-      Value oldOut = result;
-      Value loweredValue =
-          convertMGPInputToTensorOrOpaque(newBlockArg, oldOut.getType());
-      mapper.map(oldOut, loweredValue);
-    }
-  }
-
-  // Allocate stack for in-place tensors
-  SmallVector<Type> internalTensorAllocTypes;
-  SmallVector<Type> internalOpaqueAllocTypes;
-  Operation *stackAllocOp = nullptr;
-  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
-    // Outputs directly return by the MOGG call don't need a stack allocation.
-    if (returnAllocIndicesSet.contains(inPlaceIdx))
-      continue;
-
-    Value oldOut = oldOutputs.getResult(inPlaceIdx);
-    if (auto asTensor = dyn_cast<MO::TensorType>(oldOut.getType())) {
-      SmallVector<int64_t> dynamicShape(asTensor.getRank(), 1);
-      auto dynamicTensorTy =
-          MO::TensorType::get(dynamicShape, asTensor.getElementType());
-      internalTensorAllocTypes.push_back(dynamicTensorTy);
-    } else if (isa<MO::OpaqueType>(oldOut.getType())) {
-      // Opaque type.
-      internalOpaqueAllocTypes.push_back(oldOut.getType());
-    }
-  }
-  if (!internalTensorAllocTypes.empty()) {
-    stackAllocOp = MOGG::StackAllocateTensorsOp::create(
-        builder, getLoc(), internalTensorAllocTypes);
-    for (auto [oldOut, newAlloc] :
-         llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
-      mapper.map(oldOut, newAlloc);
-  }
-  if (!internalOpaqueAllocTypes.empty()) {
-    assert(!stackAllocOp &&
-           "mix of tensor / opaque output types not supported");
-    stackAllocOp = MOGG::StackAllocateOpaquesOp::create(
-        builder, getLoc(), internalOpaqueAllocTypes);
-    for (auto [oldOut, newAlloc] :
-         llvm::zip(oldOutputs->getResults(), stackAllocOp->getResults()))
-      mapper.map(oldOut, newAlloc);
-  }
-
-  auto si64ScalarTy = KGEN::POP::SIMDType::get(ctx, 1, DType::si64);
-
-  // Clone the graph
-  for (Operation &op : getBody().front()) {
-    if (isa<MOGG::OutputPlaceholdersOp, MOGG::OutputOp,
-            MOGG::ScratchPlaceholdersOp>(op))
-      continue;
-
-    if (auto getDim = dyn_cast<MOGG::GetDimOp>(op)) {
-      auto dim = loweredParams.lookup(getDim.getDimension());
-      Value v = KGEN::POP::CastFromBuiltinOp::create(builder, op.getLoc(),
-                                                     si64ScalarTy, dim);
-      mapper.map(getDim.getResult(), v);
-      continue;
-    }
-
-    if (auto createEmptyOp = dyn_cast<MOGG::CreateEmptyTensorsOp>(op)) {
-      for (Value val : createEmptyOp->getResults()) {
-        auto tensorTy = cast<MO::TensorType>(val.getType());
-
-        SmallVector<Value> operands;
-        // We will allocate a stack of 1 element in place of a nullptr. This
-        // should never be read and the tensor considered 'empty'. I.E just a
-        // stride, type and size with a nullptr attached.
-        auto voidStar =
-            KGEN::PointerType::get(KGEN::NoneType::get(builder.getContext()));
-        Value dataPtr = KGEN::POP::StackAllocationOp::create(
-            builder, op.getLoc(), voidStar);
-        operands.push_back(dataPtr);
-        for (auto dim : tensorTy.getDims()) {
-          auto loweredParam = loweredParams.at(dim);
-          if (!loweredParam.getType().isIndex()) {
-            loweredParam = mlir::index::CastSOp::create(
-                builder, op.getLoc(), builder.getIndexType(), loweredParam);
-          }
-          operands.push_back(loweredParam);
-        }
-
-        Value newTensor = MOGG::ToTensorFromMGPOp::create(builder, op.getLoc(),
-                                                          tensorTy, operands);
-        mapper.map(val, newTensor);
-      }
-      continue;
-    }
-
-    // Make sure to replace get dim ops in regions / lambdas.
-    // Create an association between GetDim ops in the old kernelOp and their
-    // lowered form in the output kernelOp.
-    SmallVector<Value> loweredGetDimsNewOp;
-    if (auto regionDeclarationOldOp =
-            dyn_cast<KGEN::ParamDeclareRegionOp>(op)) {
-      for (auto op : regionDeclarationOldOp.getOps<MOGG::GetDimOp>()) {
-        auto loweredParam = loweredParams.lookup(op.getDimension());
-        Value v = KGEN::POP::CastFromBuiltinOp::create(
-            builder, op.getLoc(), si64ScalarTy, loweredParam);
-        loweredGetDimsNewOp.push_back(v);
-      }
-    }
-
-    // Replace all usages of GetDim ops in the new kernelOp using our map.
-    auto newOp = builder.clone(op, mapper);
-    if (auto regionDeclarationNewOp =
-            dyn_cast<KGEN::ParamDeclareRegionOp>(newOp)) {
-      for (auto [i, op] :
-           llvm::enumerate(regionDeclarationNewOp.getOps<MOGG::GetDimOp>())) {
-        op.replaceAllUsesWith(loweredGetDimsNewOp[i]);
-      }
-    }
-  }
-
-  DenseMap<int, MOGG::ToKGENOp> outIdxToKgenTensorOp;
-  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
-    // Outputs returned by a MOGG call don't have a stack allocation.
-    if (returnAllocIndicesSet.contains(inPlaceIdx))
-      continue;
-    Value moTensor = stackAllocOp->getResult(idx);
-    ToKGENOp toKGEN;
-    for (Operation *user : moTensor.getUsers())
-      if (auto tmp = dyn_cast<ToKGENOp>(user))
-        toKGEN = tmp;
-
-    ASSERT_STREAM(toKGEN, << " in-place allocated tensor must have a "
-                             "to_kgen op from an outputplaceholder.");
-    outIdxToKgenTensorOp[inPlaceIdx] = toKGEN;
-  }
-
-  builder.setInsertionPointToEnd(&kernelBody);
-
-  // newKernel generates outputs as follows:
-  //   mogg.output %other:numPrependedOutputs %inPlaceOutputs:numInplaceOutputs,
-  //   %OutputShapeParams:outParamNum
-  constexpr unsigned int numPrependedOutputs = 1;
-  SmallVector<Value> outputs(numPrependedOutputs + numInplaceOutputs +
-                             outParamNum);
-  // numPrependedOutputs: Create placeholder
-  outputs[0] = MOGG::CreateReadyChainOp::create(
-      builder, getLoc(), TypeRange{newKernel->getResult(0).getType()});
-  // numInplaceOutputs: Add intrinsic to map to mgp for specific types
-  for (auto [idx, inPlaceIdx] : llvm::enumerate(inplaceAllocIndices)) {
-    // Get the output KGEN value for in-place allocs.
-    // This is either the ToKGENOp following the stack alloc.
-    // Or the value directly returned by the kernel
-    Value kgenVal;
-    if (returnAllocIndicesSet.contains(inPlaceIdx))
-      kgenVal = mapper.lookup(
-          getBody().front().getTerminator()->getOperand(inPlaceIdx));
-    else
-      kgenVal = outIdxToKgenTensorOp[inPlaceIdx].getResult();
-
-    Type resultTy = inPlaceMGPOutputsTypes[idx];
-    if (isa<MGP::OpaqueType>(resultTy)) {
-      // TODO(GEX-1183): Stop hack which is needed only in new extensibility
-      // path Essentially kgenVal isn't the kgen val but instead the initial
-      // stack alloc for memory-types.
-      //
-      // But this requires fixing up this 500 line function.
-      if (isa<MO::OpaqueType>(kgenVal.getType())) {
-        auto users = kgenVal.getUsers();
-        for (auto op : users) {
-          if (auto asKGEN = dyn_cast<MOGG::ToKGENOp>(op)) {
-            kgenVal = asKGEN.getResult();
-            break;
-          }
-        }
-      }
-
-      outputs[idx + numPrependedOutputs] = MOGG::ToMGPFromOpaqueOp::create(
-          builder, getLoc(), TypeRange{resultTy}, kgenVal);
-    } else {
-      outputs[idx + numPrependedOutputs] = MOGG::ToMGPFromTensorOp::create(
-          builder, getLoc(), TypeRange{resultTy}, kgenVal);
-    }
-  }
-
-  // Elide all set dims so they simply return the value.
-  llvm::StringMap<Value> paramToDim;
-  SmallVector<MOGG::SetParameterOp> toRemove;
-  for (auto setParam : newKernel.getOps<MOGG::SetParameterOp>()) {
-    paramToDim[setParam.getParamName()] = setParam.getDim();
-    toRemove.push_back(setParam);
-  }
-
-  // outParamNum: Add all the params from stringMap paramToDim so do lookup
-  llvm::BitVector needCast(outputs.size());
-  for (const auto &[name, idx] : outParamNameToIdx) {
-    size_t outIdx = idx + numPrependedOutputs + numInplaceOutputs;
-    Type retTp = newKernel->getResultTypes()[outIdx];
-    Value outVal = paramToDim[name];
-    // Output for parameters might have been inferred to a different types when
-    // creating the new kernel. Here, we try to fix the type mismatch between
-    // scalar<builtin> to builtin.
-    //
-    // NOTE: we only record the indices of the value that needs to be casted
-    // here and insert the cast operation later to make sure that the inserted
-    // pop.cast_to_builtin appears in a deterministic order (i.e., in a index
-    // increasing order). The current loop order depends on the the storage
-    // order of the hashmap and an inconsistent order might result in caches
-    // missing during JitCompilerKernel pass, leading to worse compilation time.
-    if (auto scalarOut = dyn_cast<KGEN::POP::SIMDType>(outVal.getType());
-        scalarOut && retTp != scalarOut)
-      needCast.set(outIdx);
-
-    outputs[outIdx] = outVal;
-  }
-
-  for (auto idx : needCast.set_bits()) {
-    Value &toCast = outputs[idx];
-    toCast = KGEN::POP::CastToBuiltinOp::create(
-        builder, toCast.getLoc(), newKernel->getResultTypes()[idx], toCast);
-  }
-
-  for (MOGG::SetParameterOp p : toRemove)
-    p.erase();
-
-  // Construct a mogg.output that newKernel spec
-  MOGG::OutputOp::create(builder, getLoc(), outputs);
-
-  // Each of the parameter outputs now maps onto a concrete dimension value.
-  for (const auto param : getOutputParamDecls()) {
-    if (failed(loweringState.lowerParamDecl(
-            opLoweringState.opBeingLowered->getParentRegion(), param,
-            newKernel.getResult(outParamNameToIdx[param.getName()] + 1 +
-                                numInplaceOutputs))))
-      return failure();
-  }
-  builder.setInsertionPointAfter(newKernel);
-  for (unsigned int idx = 0; idx < numInplaceOutputs; ++idx) {
-    unsigned int resultIdx = idx + numPrependedOutputs;
-    Type resultTy = getResult(idx).getType();
-    if (!isa<MO::TensorType>(resultTy)) {
-      // Non-Tensor output types don't need to materialize a tensor or tie it
-      // to chains/specs
-      loweringState.emplaceExecuteLoweredValue(getResult(idx),
-                                               newKernel.getResult(resultIdx));
-      continue;
-    }
-    auto tensorTy = cast<MO::TensorType>(resultTy);
-    // Materialize the output tensor spec directly. This will automatically
-    // pick up any of the output dimensions set by the kernel.
-    FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
-        opLoweringState.createTensorSpec(tensorTy);
-    if (failed(tensorSpecOr))
-      return failure();
-    TypedValue<MGP::TensorSpecType> &spec = *tensorSpecOr;
-
-    opLoweringState.createOutputTensor(getResult(idx), newKernel.getResult(0),
-                                       newKernel.getResult(resultIdx), spec);
-  }
-  opLoweringState.createOutputs(newKernel->getResult(0), loweredOutputsStorage);
-
-  if (maybeOutChain) {
-    loweringState.emplaceExecuteLoweredValue(*maybeOutChain,
-                                             newKernel.getResult(0));
-  }
-
-  // Replace any device context placeholder with the actual context.
-  newKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholdCtx) {
-    OpBuilder::InsertionGuard guard{builder};
-    builder.setInsertionPoint(placeholdCtx);
-
-    Value old = placeholdCtx.getResult();
-    Value actualCtx = loweringState.getExecuteDevice(placeholdCtx.getDevice());
-    newKernel->insertOperands(newKernel.getNumOperands(), {actualCtx});
-
-    Value asArg =
-        kernelBody.addArgument(actualCtx.getType(), actualCtx.getLoc());
-
-    builder.setInsertionPoint(placeholdCtx);
-    Value toKGEN =
-        ToKGENOp::create(builder, actualCtx.getLoc(), old.getType(), asArg);
-    placeholdCtx.replaceAllUsesWith(toKGEN);
-    placeholdCtx.erase();
-
-    // Update the kernel InOut semantics if needed.
-    if (newKernel.getInOutSignature().size() != 0) {
-      SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
-          1, InOutSignatureAttr::InOutSemantics::kNone);
-      InOutSignatureAttr oldSemantics = newKernel.getInOutSignature();
-      newKernel.setInOutSignatureAttr(oldSemantics.append(newSemantics));
-    }
-  });
-
-  return success();
-}
-
-OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
-  auto placeholder = this->getOps<MOGG::OutputPlaceholdersOp>();
-  if (placeholder.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(placeholder));
-
-  return *placeholder.begin();
-}
-
-ScratchPlaceholdersOp KernelOp::getScratchPlaceholder() {
-  auto scratch = this->getOps<MOGG::ScratchPlaceholdersOp>();
-
-  if (scratch.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(scratch));
-
-  return *scratch.begin();
-}
-
-StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
-  auto stackAlloc = this->getOps<MOGG::StackAllocateTensorsOp>();
-  if (stackAlloc.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(stackAlloc));
-
-  return *stackAlloc.begin();
-}
-
-CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
-  auto createEmpty = this->getOps<MOGG::CreateEmptyTensorsOp>();
-  if (createEmpty.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(createEmpty));
-
-  return *createEmpty.begin();
-}
-
-OutputOp KernelOp::getOutputOp() {
-  auto output = this->getOps<MOGG::OutputOp>();
-  if (output.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(output));
-
-  return *output.begin();
-}
-
-void KernelOp::setInsertionPointToTop(OpBuilder &builder) {
-  OutputPlaceholdersOp outputPh = getOutputPlaceholder();
-
-  // Not everything has to have an input placeholder, e.g a shape function.
-  if (outputPh)
-    builder.setInsertionPointAfter(outputPh);
-  else
-    builder.setInsertionPointToStart(&getRegion().front());
-}
-
-/// Disables future fusion on this input.
-void KernelOp::disableInputFusionOnInput(size_t index) {
-  std::optional<ArrayAttr> inputLambdas = getInputFusionInterfaceAttr();
-
-  if (inputLambdas.has_value()) {
-    SmallVector<Attribute> lambdaNames;
-
-    // Add all the old attributes to the new one but remove the attribute at
-    // the disabled index.
-    size_t i = 0;
-    for (StringAttr attr : inputLambdas->getAsRange<StringAttr>()) {
-      if (i == index) {
-        lambdaNames.push_back(StringAttr::get(getContext(), ""));
-      } else {
-        lambdaNames.push_back(attr);
-      }
-
-      ++i;
-    }
-
-    // Update the attribute.
-    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
-  }
-}
-
-void KernelOp::removeTemporaryFusionMarks() {
-  SmallVector<Attribute> lambdaNames;
-  for (StringAttr attr : getInputFusionInterface()->getAsRange<StringAttr>()) {
-    // If this is the temporary string then replace it with null.
-    if (attr == KernelOp::getTempLambdaName())
-      lambdaNames.push_back(StringAttr::get(getContext(), ""));
-    else
-      lambdaNames.push_back(attr);
-  }
-  setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
-}
-
-/// Removes an operand at the given index and disables input fusion on that
-/// position if this kernel otherwise supports it.
-void KernelOp::removeOperandAtIndex(size_t index) {
-  (*this)->eraseOperand(index);
-  getBody().front().eraseArgument(index);
-
-  std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
-
-  // Update the input fusion interfaces if we have them to remove fusion on
-  // this attr.
-  if (inputInterfaces.has_value()) {
-    SmallVector<Attribute> lambdaNames;
-    size_t i = 0;
-    // Add each of the current input hooks to the list, skipping the input we
-    // just removed.
-    for (StringAttr name : inputInterfaces->getAsRange<StringAttr>()) {
-      if (i != index)
-        lambdaNames.push_back(name);
-      ++i;
-    }
-    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
-  }
-}
-
-/// Add an operand to the kernel at the idx specified by insertIdx and adds an
-/// argument to the kernel region. Fixes up the input fusion interfaces to
-/// disallow input fusion on this position. Returns the added kernel argument.
-Value KernelOp::addOperandAtIndex(Value operand, size_t insertIdx) {
-  SmallVector<Value> values = {operand};
-  (*this)->insertOperands(insertIdx, values);
-
-  Value blockArg = getBody().front().insertArgument(
-      insertIdx, operand.getType(), operand.getLoc());
-
-  std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
-
-  // Update the input fusion interfaces if we have them to remove fusion on
-  // this attr.
-  if (inputInterfaces.has_value()) {
-    SmallVector<Attribute> lambdaNames;
-    for (StringAttr name : inputInterfaces->getAsRange<StringAttr>())
-      lambdaNames.push_back(name);
-
-    // Add an empty lambda name for the operand we just added.
-    lambdaNames.insert(lambdaNames.begin() + insertIdx,
-                       StringAttr::get(getContext(), ""));
-    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
-  }
-
-  return blockArg;
-}
-
-/// Add an operand to the kernel and adds an argument to the kernel region.
-/// Fixes up the input fusion interfaces to disallow input fusion on this
-/// position. Returns the added kernel argument.
-Value KernelOp::addOperand(Value operand) {
-  // TODO(GEX-868): Make mogg.kernel lowering work with an input chains that
-  // aren't the final operand.
-  //
-  // For now, keep the chain as last if it exists.
-  if (maybeGetInChain().has_value())
-    return addOperandAtIndex(operand, getNumOperands() - 1);
-
-  return addOperandAtIndex(operand, getNumOperands());
-}
-
-void KernelOp::setInputFusionInterface(size_t index, StringRef lambdaName) {
-  std::optional<ArrayAttr> inputInterfaces = getInputFusionInterface();
-
-  // Update the input fusion interfaces if we have them to remove fusion on
-  // this attr.
-  if (inputInterfaces.has_value()) {
-    SmallVector<Attribute> lambdaNames;
-    for (StringAttr name : inputInterfaces->getAsRange<StringAttr>()) {
-      if (lambdaNames.size() == index)
-        lambdaNames.push_back(StringAttr::get(getContext(), lambdaName));
-      else
-        lambdaNames.push_back(name);
-    }
-    setInputFusionInterfaceAttr(ArrayAttr::get(getContext(), lambdaNames));
-  }
-}
-
-// Fuse the body of this kernel into another.
-void KernelOp::fuseBodyIntoNew(
-    OpBuilder &builder, mlir::SymbolTable &symTable, IRMapping &remapper,
-    llvm::StringMap<StringRef> &oldLambdaNamesToNew) {
-  auto neverSkip = [](Operation *) { return false; };
-
-  fuseBodyIntoNewWithSkip(builder, symTable, remapper, oldLambdaNamesToNew,
-                          neverSkip);
-}
-
-// Fuse the body of this kernel into another.
-void KernelOp::fuseBodyIntoNewWithSkip(
-    OpBuilder &builder, mlir::SymbolTable &symTable, IRMapping &remapper,
-    llvm::StringMap<StringRef> &oldLambdaNamesToNew,
-    std::function<bool(Operation *)> shouldSkip) {
-
-  // Clone the incoming kernel into this kernel.
-  for (Operation &op : getBody().front()) {
-    if (shouldSkip(&op))
-      continue;
-    if (isa<MOGG::OutputOp>(op)) {
-      // Skip placeholders & output, already remapped.
-    } else if (auto call = dyn_cast<CallOp>(op)) {
-      // Helper lambda to translate remap the lambda name.
-      auto translateLambdaSym = [&](SymbolRefAttr sym) {
-        StringRef name = sym.getLeafReference().strref();
-        auto itr = oldLambdaNamesToNew.find(name);
-        ASSERT_STREAM(
-            itr != oldLambdaNamesToNew.end(),
-            << "First use of lambda inserted before the lambda itself");
-
-        return FlatSymbolRefAttr::get(getContext(), itr->second);
-      };
-
-      // Lambdas will have been inlined. The only place we can have
-      // a lambda reference is in a call.
-      auto newCall = dyn_cast<CallOp>(builder.clone(op, remapper));
-      SmallVector<Attribute> newAttrs;
-
-      // Remap any lambda references to point to the new lambda name.
-      std::optional<ArrayAttr> params = newCall.getParams();
-      if (params) {
-        for (auto symOrArray : params->getAsRange<Attribute>()) {
-          if (auto sym = dyn_cast<SymbolRefAttr>(symOrArray)) {
-            newAttrs.push_back(translateLambdaSym(sym));
-          } else {
-            // Must be a tuple of lambda for tuple inputs. (e.g., concat).
-            SmallVector<Attribute> newTuple;
-            auto arraySym = cast<ArrayAttr>(symOrArray);
-            for (auto sym : arraySym.getAsRange<SymbolRefAttr>())
-              newTuple.push_back(translateLambdaSym(sym));
-            // Repack the lambda tuple.
-            newAttrs.push_back(builder.getArrayAttr(newTuple));
-          }
-        }
-        newCall.setParamsAttr(builder.getArrayAttr(newAttrs));
-      }
-    } else {
-      builder.clone(op, remapper);
-    }
-  }
-}
-
-KGEN::ParamDeclareRegionOp KernelOp::findLambda(StringAttr name) {
-  for (auto op : getBody().getOps<KGEN::ParamDeclareRegionOp>()) {
-    if (op.getParamDecl().getName() == name)
-      return op;
-  }
-
-  return nullptr;
-}
-
-StringAttr KernelOp::getInputFusionInterfaceAt(size_t index) {
-  auto ctx = getContext();
-  auto inputLambdaNamesOpt = getInputFusionInterface();
-  if (!inputLambdaNamesOpt)
-    return StringAttr::get(ctx, "");
-
-  auto inputLambdaNames = *inputLambdaNamesOpt;
-
-  return cast<StringAttr>(inputLambdaNames[index]);
-}
-
-DenseSet<int> KernelOp::getInplaceAllocIndicesSet() {
-  DenseSet<int> inplaceAllocIndicesSet;
-  auto alloc = getAllocIndices();
-  if (alloc.has_value()) {
-    for (auto idxAttr : alloc.value().getAsValueRange<mlir::IntegerAttr>()) {
-      int64_t idx = idxAttr.getSExtValue();
-      inplaceAllocIndicesSet.insert(idx);
-    }
-  }
-  return inplaceAllocIndicesSet;
-}
-
-bool KernelOp::isInPlaceAlloc() {
-  auto alloc = getAllocIndices();
-  if (alloc.has_value() && !alloc->getValue().empty())
-    return true;
-  return false;
-}
-
-bool KernelOp::isInPlace() {
-  return maybeGetInChain().has_value() && maybeGetOutChain().has_value();
-}
-
-SmallVector<MO::ChainValue> KernelOp::getInChains() {
-  auto inChain = maybeGetInChain();
-
-  if (!inChain)
-    return {};
-
-  return {*inChain};
-}
-
-SmallVector<MO::ChainValue> KernelOp::getOutChains() {
-  auto outChain = maybeGetOutChain();
-
-  if (!outChain)
-    return {};
-
-  return {*outChain};
-}
-
-SmallVector<OpOperand *> KernelOp::getInChainsMutable() {
-  OpOperand &finalOpOperand = getOperation()->getOpOperands().back();
-
-  if (!isa<MO::ChainValue>(finalOpOperand.get()))
-    return {};
-
-  return {&finalOpOperand};
-}
-
-std::optional<MO::ChainValue> KernelOp::maybeGetInChain() {
-  if (getNumOperands() == 0)
-    return std::nullopt;
-
-  auto finalVal = getOperands().back();
-
-  if (auto chain = dyn_cast<MO::ChainValue>(finalVal))
-    return chain;
-  else
-    return std::nullopt;
-}
-
-std::optional<MO::ChainValue> KernelOp::maybeGetOutChain() {
-  if (getNumResults() == 0)
-    return std::nullopt;
-
-  auto finalVal = getResults().back();
-
-  if (auto chain = dyn_cast<MO::ChainValue>(finalVal))
-    return chain;
-  else
-    return std::nullopt;
-}
-
-StringAttr KernelOp::getOutputFusionInterfaceAt(size_t index) {
-  auto ctx = getContext();
-  auto inputLambdaNamesOpt = getOutputFusionInterface();
-  if (!inputLambdaNamesOpt)
-    return StringAttr::get(ctx, "");
-
-  auto inputLambdaNames = *inputLambdaNamesOpt;
-
-  return cast<StringAttr>(inputLambdaNames[index]);
-}
-
-// Verify that all the `mogg.set_param` set the symbolic dimensions properly.
-static LogicalResult verifyKernelSetParam(KernelOp kernel) {
-  llvm::SmallSet<StringRef, 4> symbolicDimSet;
-
-  if (kernel.getOps<MOGG::SetParameterOp>().empty())
-    return success();
-
-  // Check that each symbolic dim gets assigned at most once.
-  for (auto op : kernel.getOps<MOGG::SetParameterOp>()) {
-    if (!symbolicDimSet.insert(op.getParamName()).second)
-      return mlir::emitError(op->getLoc(),
-                             "Symbolic dimension has been assigned more than "
-                             "once");
-  }
-
-  // Check that the output (at most one) has all the symbolic dimensions
-  // assigned by `mogg.set_param`.
-  for (auto outputPlaceholder : kernel.getOps<MOGG::OutputPlaceholdersOp>()) {
-    if (!llvm::all_of(outputPlaceholder.getResults(), [&](mlir::OpResult res) {
-          auto resType = dyn_cast<MO::TensorType>(res.getType());
-          if (!resType)
-            return true;
-
-          return llvm::all_of(
-              resType.getTypedShapeAttr().getValues(),
-              [&](mlir::TypedAttr dim) {
-                auto symbolicDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
-                if (!symbolicDim)
-                  return true;
-                return symbolicDimSet.contains(symbolicDim.getName());
-              });
-        }))
-      return mlir::emitError(outputPlaceholder->getLoc(),
-                             "Not all symbolic dimensions are assigned");
-  }
-
-  return success();
-}
-
-LogicalResult KernelOp::verify() {
-  if (llvm::range_size(getOps<MOGG::OutputPlaceholdersOp>()) > 1)
-    return emitError("A KernelOp must have at most one output placeholder op");
-
-  if (llvm::range_size(getOps<MOGG::ScratchPlaceholdersOp>()) > 1)
-    return emitError("A KernelOp must have at most one scratch placeholder op");
-
-  auto inputInterfaces = getInputFusionInterface();
-  auto outputInterfaces = getOutputFusionInterface();
-
-  if (getOutputOp()->getOperandTypes() != getResultTypes()) {
-    return emitError("Output types do not match what is returned by body. Body "
-                     "returns: ")
-           << getOutputOp()->getOperandTypes() << " but got "
-           << getResultTypes();
-  }
-
-  OutputOp outputOp = getOutputOp();
-
-  for (auto output : outputOp.getOperands()) {
-    if (auto scratchOp = output.getDefiningOp<MOGG::ScratchPlaceholdersOp>()) {
-      return emitError(
-          "Scratch output tensors cannot be used as outputs of the kernel");
-    }
-  }
-
-  if (inputInterfaces.has_value() &&
-      getNumOperands() != inputInterfaces->size()) {
-    return emitError("Number of input fusion interfaces does not match number "
-                     "of inputs")
-           << " (" << inputInterfaces->size() << " vs " << getNumOperands()
-           << ")";
-  }
-
-  if (outputInterfaces.has_value() &&
-      getNumResults() != outputInterfaces->size()) {
-    return emitError("Number of output fusion interfaces does not match number "
-                     "of results")
-           << " (" << outputInterfaces->size() << " vs " << getNumResults()
-           << ")";
-  }
-
-  DenseSet<StringRef> fusionInterfaces;
-  mlir::SymbolTable symTable{*this};
-
-  if (inputInterfaces.has_value()) {
-    for (auto interface : inputInterfaces->getAsValueRange<StringAttr>()) {
-      if (interface.empty())
-        continue;
-
-      if (!fusionInterfaces.insert(interface).second)
-        return emitError("Fusion interfaces must be unique");
-
-      Operation *lambda = symTable.lookup(interface);
-      if (!lambda)
-        return emitError("Could not find lambda op specified in the input "
-                         "fusion interface as \"")
-               << interface.str() << "\"";
-    }
-  }
-
-  if (outputInterfaces.has_value()) {
-    for (auto interface : outputInterfaces->getAsValueRange<StringAttr>()) {
-      if (interface.empty())
-        continue;
-
-      if (!fusionInterfaces.insert(interface).second)
-        return emitError("Fusion interfaces must be unique");
-
-      Operation *lambda = symTable.lookup(interface);
-      if (!lambda)
-        return emitError("Could not find lambda op specified in the output "
-                         "fusion interface as \"")
-               << interface.str() << "\"";
-    }
-  }
-
-  if (getBody().empty())
-    return emitError("Region cannot be empty");
-
-  uint64_t numArguments = llvm::range_size(getBody().getArguments());
-  if (getNumOperands() != numArguments) {
-    return emitError(
-               "Number of operands does not match number of body arguments ")
-           << " (" << getNumOperands() << " vs " << numArguments << ")";
-  }
-
-  // Verify that symbolic dims are set properly in the kernel.
-  auto setParamCheck =
-      verifyKernelSetParam(llvm::cast<KernelOp>(getOperation()));
-  if (mlir::failed(setParamCheck))
-    return setParamCheck;
-
-  auto isChain = [](Value val) { return isa<MO::ChainType>(val.getType()); };
-
-  auto chainIsLastIfPresent = [&isChain](auto &&rng) {
-    auto chainIter = llvm::find_if(rng, isChain);
-
-    if (chainIter == rng.end())
-      return true;
-
-    return std::next(chainIter) == rng.end();
-  };
-
-  if (!chainIsLastIfPresent(getOperands()))
-    return emitError("Found a chain operand that is not in the final position");
-
-  if (!chainIsLastIfPresent(getResults()))
-    return emitError("Found an output chain that is not in the final position");
-
-  bool hasMemoryEffects = getHasReadEffect() || getHasWriteEffect();
-  if (hasMemoryEffects) {
-    if (llvm::count_if(getOperands(), isChain) != 1)
-      return emitError(
-          "Kernels with memory effects must have exactly one input chain");
-
-    if (llvm::count_if(getResults(), isChain) != 1)
-      return emitError(
-          "Kernels with MemoryEffects must have exactly one output chain");
-
-    auto nMutOperands = llvm::count_if(getOperands(), MO::isMutableOperand);
-    if (nMutOperands == 0) {
-      return emitError("Kernel has no mutable operands but either "
-                       "hasReadEffect or hasWriteEffect is set to true\n");
-    }
-  }
-
-  return success();
-}
-
-static inline bool allNullFusionInterface(ArrayAttr arr) {
-  auto strArr = arr.getAsRange<StringAttr>();
-  return std::all_of(strArr.begin(), strArr.end(), [](StringAttr strAttr) {
-    return strAttr.strref().empty();
-  });
-}
-
-LogicalResult KernelOp::canonicalize(KernelOp op, PatternRewriter &rewriter) {
-  if (op.getInputFusionInterface().has_value() &&
-      allNullFusionInterface(op.getInputFusionInterfaceAttr())) {
-    op.removeInputFusionInterfaceAttr();
-  }
-
-  if (op.getOutputFusionInterface().has_value() &&
-      allNullFusionInterface(op.getOutputFusionInterfaceAttr())) {
-    op.removeOutputFusionInterfaceAttr();
-  }
-
-  return success();
-}
-
-static ParseResult parseKernel(
-    OpAsmParser &p, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
-    SmallVectorImpl<Type> &operandTypes, SmallVectorImpl<Type> &resultTypes,
-    Region &region, KGEN::ParamDeclArrayAttr &resultParams) {
-  SmallVector<OpAsmParser::Argument> args;
-  llvm::SMLoc loc;
-
-  llvm::SMLoc sigLoc;
-  if (parseParamDecls(p, resultParams) ||
-      p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
-      p.parseColon() || p.getCurrentLocation(&sigLoc) ||
-      parseRegionArguments(p, resultTypes, args) ||
-      p.getCurrentLocation(&loc) || p.parseRegion(region, args))
-    return failure();
-
-  for (auto &arg : args)
-    operandTypes.push_back(arg.type);
-
-  // For MOGG::ExpKernelOp, if the kernel takes in a chain, there will be 1
-  // fewer argument than operands.
-  operandTypes.resize(operands.size(), MO::ChainType::get(p.getContext()));
-
-  return success();
-}
-
-static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
-                        TypeRange operandTypes, TypeRange resultTypes,
-                        Region &region, KGEN::ParamDeclArrayAttr resultParams) {
-  printParamDecls(p, kernel, resultParams);
-  p << '(';
-  p.printOperands(operands);
-  p << ") : ";
-
-  printRegionArguments(p, resultTypes, region.getArguments());
-  p.printRegion(region, /*printEntryBlockArgs=*/false);
-}
-
-void KernelOp::getEffects(
-    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-
-  bool hasWriteEffect = false;
-  bool hasReadEffect = false;
-
-  if (getHasReadEffect())
-    hasReadEffect |= true;
-
-  if (getHasWriteEffect())
-    hasWriteEffect |= true;
-
-  if (!getOutputParamDecls().empty())
-    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
-
-  // Right now this will apply read/write effects to ALL mutable operands if the
-  // hasReadEffect/hasWriteEffect flag is true.
-  // TODO(GEX-1516): Establish fine-grained tracking of mem-effects for
-  // mogg.kernel operands and maintain it through transforms.
-  for (auto &&opOperand : getOperation()->getOpOperands()) {
-    if (!MO::isMutableOperand(opOperand.get()))
-      continue;
-    if (hasWriteEffect)
-      effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
-    if (hasReadEffect)
-      effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
-  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -4932,6 +3638,47 @@ LogicalResult ShapeInitOp::emitMojo(EmitMojoState &state) {
       state.getShapeAsIndexListMojoValue(getShape(), getDynamicDims());
   state.setMojoValueFor(getResult(), shapeValue);
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// GenericCompiledRegionOp Parsing/Printing
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseKernel(
+    OpAsmParser &p, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &operands,
+    SmallVectorImpl<Type> &operandTypes, SmallVectorImpl<Type> &resultTypes,
+    Region &region, KGEN::ParamDeclArrayAttr &resultParams) {
+  SmallVector<OpAsmParser::Argument> args;
+  llvm::SMLoc loc;
+
+  llvm::SMLoc sigLoc;
+  if (parseParamDecls(p, resultParams) ||
+      p.parseOperandList(operands, AsmParser::Delimiter::Paren) ||
+      p.parseColon() || p.getCurrentLocation(&sigLoc) ||
+      parseRegionArguments(p, resultTypes, args) ||
+      p.getCurrentLocation(&loc) || p.parseRegion(region, args))
+    return failure();
+
+  for (auto &arg : args)
+    operandTypes.push_back(arg.type);
+
+  // For GenericCompiledRegionOp, if the kernel takes in a chain, there will be
+  // 1 fewer argument than operands.
+  operandTypes.resize(operands.size(), MO::ChainType::get(p.getContext()));
+
+  return success();
+}
+
+static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
+                        TypeRange operandTypes, TypeRange resultTypes,
+                        Region &region, KGEN::ParamDeclArrayAttr resultParams) {
+  printParamDecls(p, kernel, resultParams);
+  p << '(';
+  p.printOperands(operands);
+  p << ") : ";
+
+  printRegionArguments(p, resultTypes, region.getArguments());
+  p.printRegion(region, /*printEntryBlockArgs=*/false);
 }
 
 //===----------------------------------------------------------------------===//

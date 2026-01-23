@@ -4,10 +4,10 @@
 // RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_lib" --mlir-print-ir-after="fuse-prologues-epilogues" 2>&1 | FileCheck --check-prefix=CHECK-IR %s
 
 // CHECK-IR-LABEL: @matmul_opaque_fusion
-// CHECK-IR: mogg.experimental.kernel
-// CHECK-IR: mogg.experimental.kernel
+// CHECK-IR: mogg.kernel
+// CHECK-IR: mogg.kernel
 // CHECK-IR: summary = "mo.matmul:{{[0-9]+}}+custom__fused_write_to_tensor_wrapper:{{[0-9]+}}"
-// CHECK-IR: mogg.experimental.kernel
+// CHECK-IR: mogg.kernel
 
 
 !tt1 = !mo.tensor<[5, 5], f32>

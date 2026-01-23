@@ -33,7 +33,7 @@ namespace M::MOGG {
 /// tensor output of the load op.
 ///
 /// Also the kernel op must not have any other buffer inputs
-std::optional<MOGG::ExpKernelOp>
+std::optional<MOGG::KernelOp>
 maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
 
   auto tensor = loadOp.getOutTensor();
@@ -54,8 +54,8 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
     return std::nullopt;
   }
 
-  MOGG::ExpKernelOp kernelOp =
-      dyn_cast<MOGG::ExpKernelOp>(*tensor.getUsers().begin());
+  MOGG::KernelOp kernelOp =
+      dyn_cast<MOGG::KernelOp>(*tensor.getUsers().begin());
 
   if (!kernelOp)
     return std::nullopt;
@@ -83,9 +83,8 @@ maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   return kernelOp;
 }
 
-ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
-                                    MO::MutableLoadOp loadOp,
-                                    ExpKernelOp kernelOp) {
+KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
+                                 KernelOp kernelOp) {
   MLIRContext *ctx = builder.getContext();
 
   auto loc = kernelOp.getLoc();
@@ -110,7 +109,7 @@ ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
   auto newSummaryString =
       MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
 
-  auto newKernelOp = MOGG::ExpKernelOp::create(
+  auto newKernelOp = MOGG::KernelOp::create(
       builder, kernelOp->getLoc(),
       /*results=*/newResults,
       /*operands=*/newOperandList,
@@ -199,7 +198,7 @@ ExpKernelOp fuseLoadBufferAndChains(OpBuilder &builder,
 // AFTER DETACHMENT (fusion enabled):
 //   %t, %outCh = mo.mutable.load(buf, %inCh)   // %outCh becomes dead
 //   %merged = mo.chain.create(%other, %inCh)   // %outCh → %inCh
-//   %result = mo.experimental.kernel(buf, ..., %merged)  // fused!
+//   %result = mogg.kernel(buf, ..., %merged)  // fused!
 //     {summary = "mo.mutable.load+custom__..."}
 //
 // Requires: %outCh and %merged have single use (exclusivity constraint).
@@ -283,7 +282,7 @@ static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
 }
 
 void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
-                    ExpKernelOp kernelOp, bool kernelHasLoadsOutputChain) {
+                    KernelOp kernelOp, bool kernelHasLoadsOutputChain) {
   auto buffer = loadOp.getInBuffer();
   auto tensor = loadOp.getOutTensor();
 
@@ -360,7 +359,7 @@ struct ParallelizeLoadsWithMultipleUsers
     // Check if any of the consumer kernels have a write effect and share the
     // same buffer
     for (OpOperand &use : tensor.getUses()) {
-      if (auto kernelOp = dyn_cast<MOGG::ExpKernelOp>(use.getOwner())) {
+      if (auto kernelOp = dyn_cast<MOGG::KernelOp>(use.getOwner())) {
         if (kernelOp.getHasWriteEffect()) {
           // Check if this kernel uses the same buffer as the load op
           for (auto operand : kernelOp.getOperands()) {
@@ -426,7 +425,7 @@ struct ParallelizeLoadsWithMultipleUsers
   }
 };
 
-bool kernelAlreadyHasDirectBufferInput(ExpKernelOp kernelOp,
+bool kernelAlreadyHasDirectBufferInput(KernelOp kernelOp,
                                        MO::MutableLoadOp loadOp) {
   // Check if kernel is sole consumer of load's chain output
   if (!loadOp.getOutChain().hasOneUse())
@@ -459,12 +458,12 @@ bool kernelAlreadyHasDirectBufferInput(ExpKernelOp kernelOp,
   return false;
 }
 
-bool hasBufferOperand(ExpKernelOp kernelOp) {
+bool hasBufferOperand(KernelOp kernelOp) {
   return llvm::any_of(kernelOp.getOperandTypes(),
                       [](Type type) { return isa<MO::BufferType>(type); });
 }
 
-bool kernelHasInOutChains(ExpKernelOp kernelOp) {
+bool kernelHasInOutChains(KernelOp kernelOp) {
   return kernelOp.maybeGetInChain().has_value() &&
          kernelOp.maybeGetOutChain().has_value();
 }

@@ -23,7 +23,7 @@ struct FuseConstants : public impl::FuseConstantsBase<FuseConstants> {
 
   void runOnOperation() override {
     MO::GraphOp graph = getOperation();
-    for (MOGG::ExpKernelOp kernel : graph.getOps<MOGG::ExpKernelOp>())
+    for (MOGG::KernelOp kernel : graph.getOps<MOGG::KernelOp>())
       fuseConstant(kernel);
   }
 };

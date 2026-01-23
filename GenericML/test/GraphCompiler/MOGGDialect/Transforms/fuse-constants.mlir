@@ -15,7 +15,7 @@ mo.graph @basic_constant_fuse(%arg0: !mo.tensor<[2, 2, 4], f32>) -> (!mo.tensor<
 // CHECK: (%[[ARG:.*]]: !mo.tensor<[2, 2, 4], f32>)
 
 // Check kernel is next (so consts have been dce'd) & that it has one arg.
-// CHECK-NEXT: mogg.experimental.kernel(%[[ARG]]: !mo.tensor<[2, 2, 4], f32>)
+// CHECK-NEXT: mogg.kernel(%[[ARG]]: !mo.tensor<[2, 2, 4], f32>)
 // CHECK-NEXT: mo.constant {value = #M.dense_array<1.500000e-01,
 // CHECK-NEXT: mo.constant {value = #M.dense_array<1.000000e+00,
 // CHECK-NEXT: mo.constant {value = #M.dense_array<1.500000e+01,
@@ -35,7 +35,7 @@ mo.graph @bcasted_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f32>) -> 
 
 
 // CHECK-LABEL: mo.graph @bcasted_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
@@ -56,7 +56,7 @@ mo.graph @bcasted_f64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], f64>)
 
 
 // CHECK-LABEL: mo.graph @bcasted_f64_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1.250000e-01>
@@ -76,7 +76,7 @@ mo.graph @bcasted_si32_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si32
 }
 
 // CHECK-LABEL: mo.graph @bcasted_si32_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
@@ -97,7 +97,7 @@ mo.graph @bcasted_si64_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si64
 }
 
 // CHECK-LABEL: mo.graph @bcasted_si64_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
@@ -118,7 +118,7 @@ mo.graph @bcasted_si16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si16
 }
 
 // CHECK-LABEL: mo.graph @bcasted_si16_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
@@ -139,7 +139,7 @@ mo.graph @bcasted_si8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], si8>)
 }
 
 // CHECK-LABEL: mo.graph @bcasted_si8_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
@@ -160,7 +160,7 @@ mo.graph @bcasted_ui8_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui8>)
 }
 
 // CHECK-LABEL: mo.graph @bcasted_ui8_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
@@ -181,7 +181,7 @@ mo.graph @bcasted_ui16_const_fusion<D14, D15>(%arg0: !mo.tensor<[D14, D15], ui16
 }
 
 // CHECK-LABEL: mo.graph @bcasted_ui16_const_fusion
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check constants are in kernel and used in broadcasts.
 // CHECK-NEXT: %[[CST1:.*]] = mo.constant {value = #M.dense_array<1>
@@ -198,7 +198,7 @@ mo.graph @transpose_fold_perm<D14, D15, D16>(%arg0: !mo.tensor<[D14, D15, D16], 
 }
 
 // CHECK-LABEL: mo.graph @transpose_fold_perm
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // Check permutation is in kernel and used in transpose.
 // CHECK-NEXT: %[[PERM:.*]] = mo.constant {value = #M.dense_array<2, 1, 0>
@@ -212,7 +212,7 @@ mo.graph @fuse_dense_resource(%input: !mo.tensor<[12, 64], f32>) -> !mo.tensor<[
 }
 
 // CHECK-LABEL: mo.graph @fuse_dense_resource
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.constant
 
 mo.graph @fuse_rebind(%input: !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>) {
@@ -225,9 +225,9 @@ mo.graph @fuse_rebind(%input: !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[2, 2], s
 
 // Check constants are in kernels
 // CHECK-LABEL: mo.graph @fuse_rebind
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.constant
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.constant
 
 {-#

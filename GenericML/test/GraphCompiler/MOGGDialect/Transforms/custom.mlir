@@ -1,13 +1,13 @@
 // RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_lib" --fuse-prologues-epilogues --cse | FileCheck %s
 
 // CHECK-LABEL: mo.graph @input_output_fusion
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.bind {{.*}} elemwise_lambda
 // CHECK: mogg.call.elementwise["mo.ceil"]
 // CHECK: mogg.call.foreach
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.call.execute["test_custom_op"]
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.bind {{.*}} elemwise_lambda
 // CHECK: mogg.call.elementwise["mo.relu"]
 // CHECK: mogg.call.foreach

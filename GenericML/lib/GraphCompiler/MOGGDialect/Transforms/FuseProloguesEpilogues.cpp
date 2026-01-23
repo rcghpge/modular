@@ -20,7 +20,7 @@ namespace {
 
 // TODO(#22349): Remove checks when matmul/conv/concat kernels respect the
 // fusion contract.
-static bool containsMatmulOrConvOrConcat(MOGG::ExpKernelOp kernel) {
+static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
   auto callExecuteOp =
       dyn_cast<MOGG::CallExecuteOp>(kernel.getTerminator().getOperation());
   if (!callExecuteOp)
@@ -35,7 +35,7 @@ static bool containsMatmulOrConvOrConcat(MOGG::ExpKernelOp kernel) {
           kernelName.contains(MO::ConvTransposeOp::getOperationName()));
 }
 
-static bool containsDistributedOp(MOGG::ExpKernelOp kernel) {
+static bool containsDistributedOp(MOGG::KernelOp kernel) {
   auto callExecuteOp =
       dyn_cast<MOGG::CallExecuteOp>(kernel.getTerminator().getOperation());
   if (!callExecuteOp)
@@ -48,7 +48,7 @@ static bool containsDistributedOp(MOGG::ExpKernelOp kernel) {
           kernelName.contains(MO::MatmulAllReduceOp::getOperationName()));
 }
 
-static bool containsMutableStore(MOGG::ExpKernelOp kernel) {
+static bool containsMutableStore(MOGG::KernelOp kernel) {
   for (auto bindOp : kernel.getOps<MOGG::BindLambdaOp>()) {
     auto kind = bindOp.getBindKind();
     if (kind != MOGG::BindLambdaKind::ElemwiseLambda &&
@@ -67,8 +67,7 @@ static bool containsMutableStore(MOGG::ExpKernelOp kernel) {
 }
 
 // Returns true if the two kernels share any operand of type mo.buffer.
-static bool haveSharedBufferOperand(MOGG::ExpKernelOp lhs,
-                                    MOGG::ExpKernelOp rhs) {
+static bool haveSharedBufferOperand(MOGG::KernelOp lhs, MOGG::KernelOp rhs) {
   for (Value lhsOperand : lhs.getInputs()) {
     if (!isa<MO::BufferType>(lhsOperand.getType()))
       continue;
@@ -125,7 +124,7 @@ struct FuseProloguesEpilogues
 
   void fusePrologues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
-    moGraph.walk([&](MOGG::ExpKernelOp dst) {
+    moGraph.walk([&](MOGG::KernelOp dst) {
       if (dst.getElemwiseBodyLambda())
         return;
       // Do signed subtraction to avoid integer underflow.
@@ -145,7 +144,7 @@ struct FuseProloguesEpilogues
         if (providerOp->getNumResults() != 1)
           continue;
 
-        auto src = dyn_cast<MOGG::ExpKernelOp>(providerOp);
+        auto src = dyn_cast<MOGG::KernelOp>(providerOp);
         if (!src)
           continue;
 
@@ -220,7 +219,7 @@ struct FuseProloguesEpilogues
   void fuseEpilogues(MO::GraphOp moGraph) {
     IRRewriter rewriter(moGraph->getContext());
     DenseSet<Operation *> toErase;
-    moGraph.walk([&](MOGG::ExpKernelOp dst) {
+    moGraph.walk([&](MOGG::KernelOp dst) {
       // skip fused one
       if (toErase.find(dst) != toErase.end())
         return;
@@ -254,7 +253,7 @@ struct FuseProloguesEpilogues
         if (consumingOp->getBlock() != dst->getBlock())
           continue;
 
-        auto src = dyn_cast<MOGG::ExpKernelOp>(consumingOp);
+        auto src = dyn_cast<MOGG::KernelOp>(consumingOp);
         if (!src)
           continue;
 

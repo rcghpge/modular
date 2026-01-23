@@ -1,7 +1,7 @@
 // RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg --fuse-affine-views --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add_singleton_non_elementwise<seq_len>
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
@@ -19,7 +19,7 @@ mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 409
 
 // CHECK-LABEL: mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>
 // CHECK-NEXT: [[RES:.*]] = mo.if
-// CHECK-NEXT: [[KER_RES:.*]] = mogg.experimental.kernel
+// CHECK-NEXT: [[KER_RES:.*]] = mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
@@ -47,7 +47,7 @@ mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>(%arg0: !mo.tensor<[
 // CHECK-LABEL: mo.graph @fuse_kernel_in_false_block_of_if_statement<seq_len>
 // CHECK-NEXT: [[RES:.*]] = mo.if
 // CHECK: } else {
-// CHECK-NEXT: [[KER_RES:.*]] = mogg.experimental.kernel
+// CHECK-NEXT: [[KER_RES:.*]] = mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
@@ -72,7 +72,7 @@ mo.graph @fuse_kernel_in_false_block_of_if_statement<seq_len>(%arg0: !mo.tensor<
 }
 
 // CHECK-LABEL: mo.graph @dont_fuse_kernel_across_blocks<seq_len>
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 // CHECK: summary = "mo.matmul:{{.*}}"
 // CHECK: mo.if
 // CHECK-NEXT: mo.add_singleton_dim
@@ -90,7 +90,7 @@ mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 40
 }
 
 // CHECK-LABEL: mo.graph @split_dim<seq_len, N, K>
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[N, K, 4096], f32>
 // CHECK-NEXT: %[[NEW_DIM:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
@@ -110,12 +110,12 @@ mo.graph @split_dim<seq_len, N, K>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg
 
 
 // CHECK-LABEL: mo.graph @gather_custom
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.bind (%{{.*}}) input_lambda
 // CHECK: mogg.bind (%{{.*}}) output_lambda
 // CHECK: mogg.call.execute["mo.gather"]
 // CHECK: summary = "mo.gather:{{.*}}"
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.bind (%{{.*}}) input_lambda
 // CHECK: mogg.bind (%{{.*}}) output_lambda
 // CHECK: mogg.call.execute["rms_norm"]
@@ -131,7 +131,7 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
 
 
 // CHECK-LABEL: mo.graph @merge_dim
-// CHECK-NEXT: mogg.experimental.kernel
+// CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[64], f32>
 // CHECK: %[[SIMD:.*]] = mogg.constant.scalar {value = 8 : si64} : !mo.scalar<si64>

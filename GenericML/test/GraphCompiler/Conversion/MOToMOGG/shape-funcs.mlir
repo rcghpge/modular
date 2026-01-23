@@ -3,7 +3,7 @@
 // Test shape function lowering to MOGG dialect with experimental Mojo path
 
 // CHECK-LABEL: mo.graph @avg_pool_mixed_dims
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK-SAME: (%[[INPUT:.*]]: !mo.tensor<[32, 10, 20, 3], f32>, %[[FILTER:.*]]: !mo.tensor<[2], si64>, %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>, %[[PADDINGS:.*]]: !mo.tensor<[4], si64>) -> ()
 // CHECK:   mogg.call.shape["mo.avg_pool"]
 // CHECK-SAME: (%[[INPUT]], %[[FILTER]], %[[STRIDES]], %[[DILATIONS]], %[[PADDINGS]]
@@ -26,7 +26,7 @@ mo.graph @avg_pool_mixed_dims<() -> D1, D2>(
 }
 
 // CHECK-LABEL: mo.graph @gather_fallback_shape_func
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK-SAME: (%[[G_INPUT:.*]]: !mo.tensor<[10, D0], f32>, %[[G_INDICES:.*]]: !mo.tensor<[D1, 20], si32>, %[[G_AXIS:.*]]: !mo.tensor<[], si32>) -> ()
 // CHECK:   mogg.as_scalar
 // CHECK:   mogg.call.shape["mo.gather"]

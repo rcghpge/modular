@@ -2,7 +2,7 @@
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 // CHECK-LABEL: mo.graph @mean
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mogg.call.execute["mo.mean"]
 
 mo.graph @mean(%input: !mo.tensor<[100, 50], f32>) -> (!mo.tensor<[100, 1], f32>) {

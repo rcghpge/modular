@@ -8,9 +8,9 @@ mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor
 }
 
 // CHECK-LABEL: mo.graph @basicMatmul
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @basicMatmulInIfStatement<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[M, N], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[M, N], f32>) {
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[M, N], f32> {
@@ -29,11 +29,11 @@ mo.graph @basicMatmulInIfStatement<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg
 
 // CHECK-LABEL: mo.graph @basicMatmulInIfStatement
 // CHECK: mo.if
-// CHECK: mogg.experimental.kernel
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK: mogg.kernel
+// CHECK-NOT: mogg.kernel
 // CHECK: } else {
-// CHECK: mogg.experimental.kernel
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK: mogg.kernel
+// CHECK-NOT: mogg.kernel
 // CHECK: mo.output
 
 mo.graph @dontFuseAcrossBlocks<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[M, N], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[M, N], f32>) {
@@ -51,11 +51,11 @@ mo.graph @dontFuseAcrossBlocks<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !
 }
 
 // CHECK-LABEL: mo.graph @dontFuseAcrossBlocks
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.if
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: } else {
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 
 mo.graph @noFuseMultiUse<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, %arg3: !mo.tensor<[], f32>, %arg4: !mo.tensor<[], f32>) -> (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>)  -> !mo.tensor<[M, N], f32>
@@ -67,9 +67,9 @@ mo.graph @noFuseMultiUse<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.ten
 }
 
 // CHECK-LABEL: mo.graph @noFuseMultiUse
-// CHECK: mogg.experimental.kernel
-// CHECK: mogg.experimental.kernel
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
+// CHECK: mogg.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.output
 
 mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2, 2], ui32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[2, 2], f32> {
@@ -79,9 +79,9 @@ mo.graph @mixed_precision(%arg0: !mo.tensor<[2, 2], ui32>, %arg1: !mo.tensor<[2,
 }
 
 // CHECK-LABEL: @mixed_precision
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @checkBasicFusionBehavior<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
@@ -90,10 +90,10 @@ mo.graph @checkBasicFusionBehavior<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg
 }
 
 // CHECK-LABEL: @checkBasicFusionBehavior
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: summary = "mo.matmul:{{.*}}+mo.relu:{{.*}}"
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
@@ -102,10 +102,10 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
 }
 
 // CHECK-LABEL: @checkNoFuseInputInterfaceDisabled
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: summary = "mo.matmul:{{.*}}+mo.relu:{{.*}}"
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
@@ -114,9 +114,9 @@ mo.graph @checkNoFuseOutputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], 
 }
 
 // CHECK-LABEL: @checkNoFuseOutputInterfaceDisabled
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
@@ -125,10 +125,10 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
 }
 
 // CHECK-LABEL: @checkNoFuseNoElementwiseAttr
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: summary = "mo.matmul:{{.*}}+mo.relu:{{.*}}"
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @fused_mixed_precision_gpu_device(%arg0: !mo.tensor<[2, 2], f16>, %arg1: !mo.tensor<[2, 2], f16>) -> !mo.tensor<[2, 2], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[2, 2], f16>, !mo.tensor<[2, 2], f16>) -> !mo.tensor<[2, 2], f16>
@@ -137,10 +137,10 @@ mo.graph @fused_mixed_precision_gpu_device(%arg0: !mo.tensor<[2, 2], f16>, %arg1
 }
 
 // CHECK-LABEL: @fused_mixed_precision_gpu_device
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: summary = "mo.matmul:{{.*}}+mo.cast:{{.*}}"
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel
 
 mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], f16>, %arg1: !mo.tensor<[2, 2], f16>) -> !mo.tensor<[2, 2], f32> {
   %mm = mo.matmul(%arg0, %arg1) : (!mo.tensor<[2, 2], f16>, !mo.tensor<[2, 2], f16>) -> !mo.tensor<[2, 2], f16>
@@ -149,7 +149,7 @@ mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], f16>, %a
 }
 
 // CHECK-LABEL: @nofuse_mixed_precision_mixed_device
-// CHECK: mogg.experimental.kernel
+// CHECK: mogg.kernel
 // CHECK: summary = "mo.matmul:{{.*}}+mo.cast:{{.*}}"
 // CHECK: mo.output
-// CHECK-NOT: mogg.experimental.kernel
+// CHECK-NOT: mogg.kernel

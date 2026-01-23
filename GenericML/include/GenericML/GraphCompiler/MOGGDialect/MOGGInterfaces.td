@@ -32,7 +32,7 @@ def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
 
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
-    A terminator for `mogg.experimental.kernel` operation.
+    A terminator for `mogg.kernel` operation.
 
     A kernel terminator represents a call to a particular registered mojo
     function with the following calling convention:
