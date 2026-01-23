@@ -155,7 +155,7 @@ class SpeechLM:
             self.kv_cache_manager.claim(context.request_id)
 
         all_tokens = []
-        batch = {request_id: context}
+        batch = [context]
 
         while not context.status.is_done:
             # Allocate KV cache blocks for this step
