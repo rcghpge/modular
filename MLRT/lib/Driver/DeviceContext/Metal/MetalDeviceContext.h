@@ -15,8 +15,8 @@
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
+#include <map>
 #include <mutex>
-#include <unordered_map>
 
 #if MODULAR_MACOS
 #include "MetalDriver.h"
@@ -39,6 +39,20 @@ using MetalDeviceFunctionRef = RCRef<const MetalDeviceFunction>;
 class MetalDevice : public Device {
 public:
   static constexpr API api = Device::metalAPI;
+
+  // Result type for buffer lookups - returns buffer AND offset within it
+  struct BufferLookupResult {
+    MTL::Buffer *buffer = nullptr;
+    size_t offset = 0;
+    bool isValid() const { return buffer != nullptr; }
+  };
+
+  // Allocation tracking with size info for range-based lookup
+  struct BufferAllocation {
+    uintptr_t baseAddress;
+    size_t size;
+    MTL::Buffer *buffer;
+  };
 
   MetalDevice(int id, NS::SharedPtr<MTL::Device> device, std::string name,
               Device::MemInfo memInfo, size_t allocAlignment,
@@ -85,7 +99,8 @@ public:
   void untrackBuffer(void *ptr) const;
   MTL::Buffer *getTrackedBuffer(const void *ptr) const;
   bool isTrackedBuffer(const void *ptr) const;
-  std::unordered_map<void *, MTL::Buffer *> getTrackedBuffers() const;
+  std::map<uintptr_t, BufferAllocation> getTrackedBuffers() const;
+  BufferLookupResult findContainingBuffer(const void *ptr) const;
 
 private:
   NS::SharedPtr<MTL::Device> device_;
@@ -93,9 +108,10 @@ private:
   Device::MemInfo memInfo_;
   mutable DriverVersion driverVersion_;
 
-  // Device-level buffer tracking
+  // Device-level buffer tracking (sorted by base address for range-based
+  // lookup)
   mutable std::mutex bufferMapMutex_;
-  mutable std::unordered_map<void *, MTL::Buffer *> ptrToBuffer_;
+  mutable std::map<uintptr_t, BufferAllocation> allocations_;
 };
 
 class MetalDeviceContext : public DeviceContext {
@@ -168,9 +184,12 @@ public:
   // Driver context
   void *driverContext() const override;
 
-  // Metal-specific helper
+  // Metal-specific helpers
   ErrorOrSuccess enqueueMetalCopy(MTL::Buffer *src, MTL::Buffer *dst,
-                                  size_t srcOffset, size_t size) const;
+                                  size_t srcOffset, size_t dstOffset,
+                                  size_t size) const;
+  MetalDevice::BufferLookupResult
+  getMetalBufferWithOffset(const void *ptr) const;
 
   static const MetalDeviceContext *verified_cast(const DeviceContext *ctx);
   MTL::Device *metalDevice() const {

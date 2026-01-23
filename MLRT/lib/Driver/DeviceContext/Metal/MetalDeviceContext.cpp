@@ -456,30 +456,45 @@ ErrorOr<int> MetalDevice::numberOfGPUs() {
 //
 void MetalDevice::trackBuffer(void *ptr, MTL::Buffer *buffer) const {
   std::lock_guard<std::mutex> lock(bufferMapMutex_);
-  ptrToBuffer_[ptr] = buffer;
+  uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+  allocations_[addr] = BufferAllocation{addr, buffer->length(), buffer};
 }
 
 void MetalDevice::untrackBuffer(void *ptr) const {
   std::lock_guard<std::mutex> lock(bufferMapMutex_);
-  ptrToBuffer_.erase(ptr);
+  allocations_.erase(reinterpret_cast<uintptr_t>(ptr));
+}
+
+MetalDevice::BufferLookupResult
+MetalDevice::findContainingBuffer(const void *ptr) const {
+  std::lock_guard<std::mutex> lock(bufferMapMutex_);
+  uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+
+  // Find first allocation with base address > addr
+  auto it = allocations_.upper_bound(addr);
+  if (it != allocations_.begin()) {
+    --it; // Step back to candidate allocation
+    const BufferAllocation &alloc = it->second;
+    if (addr >= alloc.baseAddress && addr < alloc.baseAddress + alloc.size) {
+      return {alloc.buffer, static_cast<size_t>(addr - alloc.baseAddress)};
+    }
+  }
+  return {nullptr, 0};
 }
 
 MTL::Buffer *MetalDevice::getTrackedBuffer(const void *ptr) const {
-  std::lock_guard<std::mutex> lock(bufferMapMutex_);
-  auto it = ptrToBuffer_.find(const_cast<void *>(ptr));
-  return (it != ptrToBuffer_.end()) ? it->second : nullptr;
+  return findContainingBuffer(ptr).buffer;
 }
 
 bool MetalDevice::isTrackedBuffer(const void *ptr) const {
-  std::lock_guard<std::mutex> lock(bufferMapMutex_);
-  return ptrToBuffer_.find(const_cast<void *>(ptr)) != ptrToBuffer_.end();
+  return findContainingBuffer(ptr).isValid();
 }
 
-std::unordered_map<void *, MTL::Buffer *>
+std::map<uintptr_t, MetalDevice::BufferAllocation>
 MetalDevice::getTrackedBuffers() const {
   std::lock_guard<std::mutex> lock(bufferMapMutex_);
   // return current copy of the tracked buffers.
-  return ptrToBuffer_;
+  return allocations_;
 }
 
 //
@@ -527,23 +542,26 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
     return success();
   }
 
-  // Get destination Metal buffer for device buffers
-  MTL::Buffer *dstBuf = getMetalBuffer(dst);
-  if (dstBuf == nullptr)
+  // Get destination Metal buffer with offset for device buffers (handles
+  // sub-buffers)
+  MetalDevice::BufferLookupResult dstResult = getMetalBufferWithOffset(dst);
+  if (!dstResult.isValid())
     RETURN_ERROR("Invalid Metal buffer pointer");
 
-  NS::UInteger bufferLength = dstBuf->length();
+  NS::UInteger bufferLength = dstResult.buffer->length();
   if (bufferLength == 0)
     RETURN_ERROR("Metal buffer length is 0 - buffer may be invalid");
 
-  if (byteSize > bufferLength)
+  // Check that copy fits within the buffer from the offset
+  if (dstResult.offset + byteSize > bufferLength)
     RETURN_ERROR("Copy size exceeds Metal buffer length");
 
   // Check if source is a Metal buffer allocated by our context
-  MTL::Buffer *srcBuf = getMetalBuffer(src);
-  if (srcBuf) {
-    // Source is a Metal buffer - use blit encoder for copy
-    return enqueueMetalCopy(srcBuf, dstBuf, 0, byteSize);
+  MetalDevice::BufferLookupResult srcResult = getMetalBufferWithOffset(src);
+  if (srcResult.isValid()) {
+    // Source is a Metal buffer - use blit encoder for copy with offsets
+    return enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
+                            srcResult.offset, dstResult.offset, byteSize);
   }
 
   // Source is regular host memory - use memcpy approach
@@ -556,11 +574,15 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
   // to queue
 
   __block size_t capturedByteSize = byteSize;
+  __block size_t capturedOffset = dstResult.offset;
+  MTL::Buffer *dstBuf = dstResult.buffer;
 
   // Add completion handler to perform the memcpy when GPU is done
   cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-    void *dstPtr = dstBuf->contents();
-    if (dstPtr) {
+    void *dstContents = dstBuf->contents();
+    if (dstContents) {
+      // Apply offset to destination pointer
+      void *dstPtr = static_cast<char *>(dstContents) + capturedOffset;
       std::memcpy(dstPtr, src, capturedByteSize);
 
       // If Managed mode, mark the range as modified
@@ -588,9 +610,9 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
   if (byteSize == 0)
     return success(); // no-op
 
-  // Get source Metal buffer
-  MTL::Buffer *srcBuf = getMetalBuffer(src);
-  if (srcBuf == nullptr)
+  // Get source Metal buffer with offset (handles sub-buffers)
+  MetalDevice::BufferLookupResult srcResult = getMetalBufferWithOffset(src);
+  if (!srcResult.isValid())
     RETURN_ERROR("Invalid source buffer");
 
   // When we have 2 Device buffers we can do an async copy via
@@ -600,10 +622,11 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
   // current one is completed
 
   // Check if destination is a Metal buffer allocated by our context
-  MTL::Buffer *dstBuf = getMetalBuffer(dst);
-  if (dstBuf) {
-    // Destination is a Metal buffer - use blit encoder for copy
-    return enqueueMetalCopy(srcBuf, dstBuf, 0, byteSize);
+  MetalDevice::BufferLookupResult dstResult = getMetalBufferWithOffset(dst);
+  if (dstResult.isValid()) {
+    // Destination is a Metal buffer - use blit encoder for copy with offsets
+    return enqueueMetalCopy(srcResult.buffer, dstResult.buffer,
+                            srcResult.offset, dstResult.offset, byteSize);
   }
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
@@ -612,9 +635,14 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
 
   // For memcpy operations, we need to wait for completion even though we commit
   // to queue Add completion handler to perform the memcpy when GPU is done
+  __block size_t capturedOffset = srcResult.offset;
+  MTL::Buffer *srcBuf = srcResult.buffer;
+
   cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-    void *srcPtr = srcBuf->contents();
-    if (srcPtr) {
+    void *srcContents = srcBuf->contents();
+    if (srcContents) {
+      // Apply offset to source pointer
+      void *srcPtr = static_cast<char *>(srcContents) + capturedOffset;
       std::memcpy(dst, srcPtr, byteSize);
     }
   });
@@ -646,15 +674,19 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     RETURN_ERROR("Requested source slice larger than source buffer");
 
   // 2) Handle Metal buffer to Metal buffer copies (both host and device are
-  // Metal buffers now)
-  MTL::Buffer *srcBuf = getMetalBuffer(src.ptr());
-  MTL::Buffer *dstBuf = getMetalBuffer(dst.ptr());
+  // Metal buffers now) with offset support
+  // This allows sub-buffers and slices to work correctly
+  MetalDevice::BufferLookupResult srcResult =
+      getMetalBufferWithOffset(src.ptr());
+  MetalDevice::BufferLookupResult dstResult =
+      getMetalBufferWithOffset(dst.ptr());
 
-  if (srcBuf == nullptr || dstBuf == nullptr)
+  if (!srcResult.isValid() || !dstResult.isValid())
     RETURN_ERROR("Invalid Metal buffer pointer");
 
-  // 3) Delegate to enqueueMetalCopy for all Metal-to-Metal copies
-  return enqueueMetalCopy(srcBuf, dstBuf, srcByteOffset, dst.byteSize());
+  // 3) Delegate to enqueueMetalCopy with offsets for all Metal-to-Metal copies
+  return enqueueMetalCopy(srcResult.buffer, dstResult.buffer, srcResult.offset,
+                          dstResult.offset, src.byteSize());
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
@@ -668,14 +700,17 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   if (byteSize == 0)
     return success(); // no-op
 
-  // Get the Metal buffer for the destination
-  MTL::Buffer *dstBuf = getMetalBuffer(dst);
-  if (dstBuf == nullptr)
+  // Get the Metal buffer for the destination with offset (handles sub-buffers)
+  MetalDevice::BufferLookupResult dstResult = getMetalBufferWithOffset(dst);
+  if (!dstResult.isValid())
     RETURN_ERROR("Destination buffer is null");
 
-  void *dstPtr = dstBuf->contents();
-  if (dstPtr == nullptr)
+  void *dstContents = dstResult.buffer->contents();
+  if (dstContents == nullptr)
     RETURN_ERROR("Shared buffer contents() returned null");
+
+  // Apply offset to get actual destination pointer
+  void *dstPtr = static_cast<char *>(dstContents) + dstResult.offset;
 
   size_t count = byteSize / valSize;
   if (reinterpret_cast<uintptr_t>(dstPtr) % valSize != 0)
@@ -688,8 +723,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
 
   // add completion handler to the command buffer
   cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer) {
-    // do nothing
-
     switch (valSize) {
     case 1:
       std::memset(dstPtr, static_cast<uint8_t>(val), byteSize);
@@ -932,8 +965,8 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 
   // 5) Set resources that might be used by the kernel
   // FIXME: only set resources that are used by the kernel
-  for (auto it : metalDevice.getTrackedBuffers())
-    encoder->useResource(it.second, MTL::ResourceUsageWrite);
+  for (const auto &it : metalDevice.getTrackedBuffers())
+    encoder->useResource(it.second.buffer, MTL::ResourceUsageWrite);
 
   // 6) Dispatch
   MTL::Size gridSize{gridX, gridY, gridZ};
@@ -1169,6 +1202,7 @@ void *MetalDeviceContext::driverContext() const {
 ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
                                                     MTL::Buffer *dst,
                                                     size_t srcOffset,
+                                                    size_t dstOffset,
                                                     size_t size) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueMetalCopy",
                        TRACY_COLOR_PURPLE);
@@ -1184,11 +1218,16 @@ ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
   if (blit == nullptr)
     RETURN_ERROR("Failed to create blit encoder");
 
-  blit->copyFromBuffer(src, srcOffset, dst, 0, size);
+  blit->copyFromBuffer(src, srcOffset, dst, dstOffset, size);
   blit->endEncoding();
 
   cmdBuffer->commit();
   return success();
+}
+
+MetalDevice::BufferLookupResult
+MetalDeviceContext::getMetalBufferWithOffset(const void *ptr) const {
+  return MetalDevice::cast(device()).findContainingBuffer(ptr);
 }
 
 //
