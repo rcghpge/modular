@@ -82,6 +82,22 @@ enum class CUgraphNodeType {
   CU_GRAPH_NODE_TYPE_BATCH_MEM_OP = 12,
 };
 
+enum class CUgraphDotFlags : unsigned int {
+  None = 0,
+  Verbose = 0x01, // 1: Output all debug data
+
+  // Detailed parameter flags
+  KernelNodeParams = 0x04,         // 4: Grid/Block dims, shared mem, etc.
+  MemcpyNodeParams = 0x08,         // 8: Src/Dst addrs, width/height/pitch
+  MemsetNodeParams = 0x10,         // 16: Dst addr, value, width/height/pitch
+  HostNodeParams = 0x20,           // 32: Host function details
+  EventNodeParams = 0x40,          // 64: Event record/wait details
+  ExtSemasSignalNodeParams = 0x80, // 128: External semaphore signal details
+  ExtSemasWaitNodeParams = 0x100,  // 256: External semaphore wait details
+  KernelNodeAttributes = 0x200,    // 512: Kernel attributes
+  Handles = 0x400                  // 1024: Internal handles for nodes/kernels
+};
+
 /// Kernel node parameters structure for CUDA graph introspection.
 /// This matches the CUDA_KERNEL_NODE_PARAMS_v2 structure from the CUDA driver.
 struct CUDA_KERNEL_NODE_PARAMS_v2 {

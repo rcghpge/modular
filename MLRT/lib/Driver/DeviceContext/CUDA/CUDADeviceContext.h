@@ -264,6 +264,8 @@ private:
 
   CUstream stream_;
   bool isOwner_;
+
+  StringRef logCudaGraphCapture_ = {};
 };
 
 class CUDAModuleFunction : public DeviceFunctionCacheEntry {

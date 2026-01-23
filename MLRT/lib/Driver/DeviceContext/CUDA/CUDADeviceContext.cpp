@@ -16,6 +16,7 @@
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/HashUtils.h"
 #include "Support/Profiling/Tracy.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Process.h"
 
 #include <memory>
@@ -950,7 +951,9 @@ ErrorOrSuccess CUDADeviceGraph::replay() const {
 // ===== CUDADeviceStream ===== //
 CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &ctx,
                                    CUstream stream, bool isOwner)
-    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {}
+    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {
+  logCudaGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
+}
 
 CUDADeviceStream::~CUDADeviceStream() {
   if (!isOwner_) {
@@ -1071,6 +1074,22 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
 
   if (!graph)
     RETURN_ERROR("cuStreamEndCapture returned null graph");
+
+  if (logCudaGraphCapture_ != "") {
+    static std::atomic<int32_t> graphCaptureCount = 0;
+
+    int32_t currentId = graphCaptureCount.fetch_add(1);
+    // Debug: print graph to DOT file for visualization.
+    // This is only enabled at compile time for debugging purposes.
+    // The DOT file can be visualized with Graphviz tools (e.g., dot -Tpng).
+    // Set MODULAR_CUDA_GRAPH_DOT_PATH to customize the output path.
+    std::string outputPath =
+        llvm::formatv("{}/cuda_graph_{}.dot", logCudaGraphCapture_, currentId)
+            .str();
+    cudaDevice.cudaDriver().cuGraphDebugDotPrint(
+        graph, outputPath.c_str(),
+        static_cast<unsigned>(CUgraphDotFlags::Verbose));
+  }
 
   CUgraphExec exec = nullptr;
   CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiate(
