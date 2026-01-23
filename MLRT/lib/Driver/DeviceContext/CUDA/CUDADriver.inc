@@ -161,3 +161,5 @@ CUDA_FUNC(cuPointerGetAttributes, Result, unsigned int, CUpointer_attribute *,
 
 CUDA_FUNC(cuOccupancyMaxActiveBlocksPerMultiprocessor, Result, int *,
           CUfunction, int, size_t)
+
+CUDA_FUNC(cuFuncGetParamInfo, Result, CUfunction, size_t, size_t *, size_t *)

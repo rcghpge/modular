@@ -64,6 +64,39 @@ enum class CUdevice_P2PAttribute {
   CU_DEVICE_P2P_ATTRIBUTE_CUDA_ARRAY_ACCESS_SUPPORTED = 0x04
 };
 
+/// Graph node types for CUDA graph introspection.
+/// These match the CUDA driver API CUgraphNodeType enum values.
+enum class CUgraphNodeType {
+  CU_GRAPH_NODE_TYPE_KERNEL = 0,
+  CU_GRAPH_NODE_TYPE_MEMCPY = 1,
+  CU_GRAPH_NODE_TYPE_MEMSET = 2,
+  CU_GRAPH_NODE_TYPE_HOST = 3,
+  CU_GRAPH_NODE_TYPE_GRAPH = 4,
+  CU_GRAPH_NODE_TYPE_EMPTY = 5,
+  CU_GRAPH_NODE_TYPE_WAIT_EVENT = 6,
+  CU_GRAPH_NODE_TYPE_EVENT_RECORD = 7,
+  CU_GRAPH_NODE_TYPE_EXT_SEMAS_SIGNAL = 8,
+  CU_GRAPH_NODE_TYPE_EXT_SEMAS_WAIT = 9,
+  CU_GRAPH_NODE_TYPE_MEM_ALLOC = 10,
+  CU_GRAPH_NODE_TYPE_MEM_FREE = 11,
+  CU_GRAPH_NODE_TYPE_BATCH_MEM_OP = 12,
+};
+
+/// Kernel node parameters structure for CUDA graph introspection.
+/// This matches the CUDA_KERNEL_NODE_PARAMS_v2 structure from the CUDA driver.
+struct CUDA_KERNEL_NODE_PARAMS_v2 {
+  CUfunction func;             // Kernel function
+  unsigned int gridDimX;       // Grid X dimension
+  unsigned int gridDimY;       // Grid Y dimension
+  unsigned int gridDimZ;       // Grid Z dimension
+  unsigned int blockDimX;      // Block X dimension
+  unsigned int blockDimY;      // Block Y dimension
+  unsigned int blockDimZ;      // Block Z dimension
+  unsigned int sharedMemBytes; // Dynamic shared memory size
+  void **kernelParams;         // Array of pointers to kernel parameters
+  void **extra;                // Extra options (usually nullptr)
+};
+
 enum class CUevent_flags {
   CU_EVENT_DEFAULT = 0x0,
   CU_EVENT_BLOCKING_SYNC = 0x1,

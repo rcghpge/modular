@@ -559,22 +559,58 @@ MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
 ErrorOr<DeviceGraphRef>
 DeviceGraph::capture(const DeviceStream &stream,
                      llvm::function_ref<ErrorOrSuccess()> execute) {
-  if (auto beginErr = stream.beginCapture(); beginErr.isError())
+  stream.beginLaunchTrace();
+  if (auto beginErr = stream.beginCapture(); beginErr.isError()) {
+    (void)stream.takeLaunchTrace();
     return beginErr.takeError();
+  }
 
   ErrorOrSuccess execResult = execute();
   if (execResult.isError()) {
     (void)stream.endCapture();
+    (void)stream.takeLaunchTrace();
     return execResult.takeError();
   }
 
   auto graphOrErr = stream.endCapture();
-  if (graphOrErr.isError())
+  if (graphOrErr.isError()) {
+    (void)stream.takeLaunchTrace();
     return graphOrErr.takeError();
+  }
 
+  std::vector<uint64_t> baselineTrace = stream.takeLaunchTrace();
   DeviceGraphRef graph = graphOrErr.takeValue();
   graph->captureStream_ = DeviceStreamRef::copy(&stream);
+  graph->hasBaselineLaunchTrace_ = true;
+  graph->baselineLaunchTrace_ = std::move(baselineTrace);
   return graph;
+}
+
+ErrorOrSuccess DeviceGraph::debugVerifyReplay(
+    llvm::function_ref<ErrorOrSuccess()> execute) const {
+  if (!captureStream_)
+    RETURN_ERROR("No capture stream stored for graph");
+  if (!hasBaselineLaunchTrace_)
+    RETURN_ERROR("No baseline launch trace for graph");
+
+  const DeviceStream &stream = *captureStream_;
+  stream.beginLaunchTrace();
+  ErrorOrSuccess execResult = execute();
+  if (execResult.isError()) {
+    (void)stream.takeLaunchTrace();
+    return execResult.takeError();
+  }
+
+  std::vector<uint64_t> currentTrace = stream.takeLaunchTrace();
+  if (currentTrace.size() != baselineLaunchTrace_.size()) {
+    return Error(Twine("Launch trace mismatch: expected ") +
+                 Twine(baselineLaunchTrace_.size()) + ", got " +
+                 Twine(currentTrace.size()));
+  }
+  if (currentTrace != baselineLaunchTrace_)
+    return Error("Launch trace mismatch: recorded launches differ");
+
+  return success();
 }
 
 //
@@ -592,6 +628,10 @@ ErrorOrSuccess DeviceStream::beginCapture() const {
 ErrorOr<DeviceGraphRef> DeviceStream::endCapture() const {
   RETURN_ERROR("graph capture not supported on this device");
 }
+
+void DeviceStream::beginLaunchTrace() const {}
+
+std::vector<uint64_t> DeviceStream::takeLaunchTrace() const { return {}; }
 
 //
 // ===== DeviceFunction ===== //

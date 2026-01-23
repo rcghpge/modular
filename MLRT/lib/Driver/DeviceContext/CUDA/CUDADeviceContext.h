@@ -154,6 +154,7 @@ private:
 
 class CUDADeviceMulticastBuffer : public DeviceMulticastBuffer {
 public:
+  // Per-device allocation backing a multicast buffer.
   struct DeviceToBuffer {
     const CUdevice device_;
     const CUmemGenericAllocationHandle handle_;
@@ -238,6 +239,9 @@ public:
 
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
+  void beginLaunchTrace() const override;
+  std::vector<uint64_t> takeLaunchTrace() const override;
+
   virtual ErrorOrSuccess
   enqueueFunctionExecDirect(const DeviceFunction &func, uint32_t gridX,
                             uint32_t gridY, uint32_t gridZ, uint32_t blockX,
@@ -271,6 +275,7 @@ public:
   const CUDADriver &cudaDriver() const;
   CUmodule cudaModule() const;
   CUfunction cudaFunction() const;
+  const std::vector<size_t> &paramSizes() const;
 
   static const CUDAModuleFunction *cast(const DeviceFunctionCacheEntry *entry);
 
@@ -278,6 +283,8 @@ private:
   const CUDADriver &driver_;
   const CUmodule module_;
   const CUfunction function_;
+  mutable std::once_flag paramSizesOnce_;
+  mutable std::vector<size_t> paramSizes_;
 };
 
 class CUDADeviceFunction : public DeviceFunction {

@@ -629,6 +629,7 @@ modular_cc_library(
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Configuration",
+        "//Support:HashUtils",
         "//Support:ML",
         "//Support:Profiling",
         "//Support:SymbolExport",
