@@ -12,7 +12,6 @@
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"

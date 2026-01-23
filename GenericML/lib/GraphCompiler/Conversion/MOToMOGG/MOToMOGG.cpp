@@ -14,9 +14,10 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
+#include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"
 #include "Support/Context.h"
@@ -28,6 +29,40 @@
 using namespace M;
 using namespace mlir;
 
+/// Check if a KGEN expression opcode is supported by the MOGG compiler.
+static bool isKGENExprSupported(KGEN::POC opcode) {
+  switch (opcode) {
+  case KGEN::POC::Add:
+  case KGEN::POC::MulNoWrap:
+  case KGEN::POC::Cond:
+  case KGEN::POC::EQ:
+  case KGEN::POC::Div:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Check whether all of the expression nested within `dimAttr` are supported by
+/// the MOGG compiler.
+static bool isDimAttrSupported(TypedAttr dimAttr) {
+  if (auto paramOpAttr = dyn_cast<KGEN::ParamOperatorAttr>(dimAttr)) {
+    // The opcode must be supported.
+    if (!isKGENExprSupported(paramOpAttr.getOpcode()))
+      return false;
+
+    // Make sure operands are supported.
+    return llvm::all_of(paramOpAttr.getOperands(), isDimAttrSupported);
+  }
+
+  // MOGG only supports compiling parameter of bool type.
+  if (auto paramDeclAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dimAttr))
+    if (!MOSH::ShapeAttr::isDim(paramDeclAttr))
+      return false;
+
+  return true;
+}
+
 namespace M::MO {
 
 #define GEN_PASS_DEF_MOTOMOGG
@@ -38,7 +73,7 @@ namespace M::MO {
 namespace {
 
 /// Return whether we support the types for lowering the given op.
-bool opHasCompatibleTypes(Operation *op) {
+static bool opHasCompatibleTypes(Operation *op) {
   auto isDTypeAllowed = [&](MO::TensorType tensorTy) {
     Type dtype = tensorTy.getElementType();
     return MOGG::MOGGTypeTraits::isSupportedMOGGType(dtype);
@@ -52,7 +87,7 @@ bool opHasCompatibleTypes(Operation *op) {
 
     // The symbolic shape must be trivial and not a compound expression. I.E
     // N*M.
-    return llvm::all_of(tensorTy.getDims(), MOGG::isDimAttrSupported);
+    return llvm::all_of(tensorTy.getDims(), isDimAttrSupported);
   };
 
   bool hasCompatibleTypes = true;
