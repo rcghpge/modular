@@ -1,6 +1,6 @@
 // TODO(GEX-2735): Support mo.opaque types and parametrization for EmitMojo
 // XFAIL: *
-// RUN: EMIT_MOJO=1 mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg" %s --mlir-print-ir-after="constant-fold" 2>&1 | FileCheck %s
+// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg" %s --mlir-print-ir-after="constant-fold" 2>&1 | FileCheck %s
 
 // COM: This needs to be a separate test since the constant fold pass (which is invoked directly in other tests) does not have a kernel-library-paths option
 // COM: Do not constant fold ops with constant operands if they have unsupported result types

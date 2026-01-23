@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt -allow-unregistered-dialect --lower-primitives %s | FileCheck %s
+// RUN: mo-opt -allow-unregistered-dialect --lower-primitives %s | FileCheck %s
 
 //--- Test lowering of MGP
 

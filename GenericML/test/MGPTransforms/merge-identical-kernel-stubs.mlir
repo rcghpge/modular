@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt -merge-identical-kernel-stubs
+// RUN: mo-opt -merge-identical-kernel-stubs
 
 mogg.kernel.stub @func_1()
   attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = "func_1"} {

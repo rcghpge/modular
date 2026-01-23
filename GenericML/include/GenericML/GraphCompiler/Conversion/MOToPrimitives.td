@@ -144,10 +144,10 @@ def LoadMojo: Pass<"load-mojo", "ModuleOp"> {
     -jit-pipeline can be run to compile all the way to the end.
 
     Example:
-    EMIT_MOJO=1 mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=emit-mojo &> program.mgp.mlir
-    EMIT_MOJO=1 mo-opt program.mgp.mlir -dump-mojo -o /dev/null &> program.mojo
+    mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=emit-mojo &> program.mgp.mlir
+    mo-opt program.mgp.mlir -dump-mojo -o /dev/null &> program.mojo
     # Modify Mojo here
-    EMIT_MOJO=1 mo-opt program.mgp.mlir -load-mojo=path=program.mojo -jit-pipeline
+    mo-opt program.mgp.mlir -load-mojo=path=program.mojo -jit-pipeline
   }];
 
   let options = [

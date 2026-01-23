@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt -mo-to-mogg -fuse-elementwise -fuse-prologues-epilogues -mo-to-primitives %s | FileCheck %s
+// RUN: mo-opt -mo-to-mogg -fuse-elementwise -fuse-prologues-epilogues -mo-to-primitives %s | FileCheck %s
 
 // CHECK-LABEL: mogg.kernel.stub @stub_0
 // CHECK:         mogg.bind

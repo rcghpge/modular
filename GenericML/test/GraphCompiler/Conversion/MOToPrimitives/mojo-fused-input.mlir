@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt %s -mo-to-mogg --fuse-prologues-epilogues --fuse-consts -mo-to-primitives -canonicalize | FileCheck %s
+// RUN: mo-opt %s -mo-to-mogg --fuse-prologues-epilogues --fuse-consts -mo-to-primitives -canonicalize | FileCheck %s
 
 // CHECK: mogg.kernel.stub @stub_0
 // CHECK:       [[IN:%.*]] = mogg.bind ({{.*}}, {{.*}}) input_lambda

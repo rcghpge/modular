@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg=kernel-library-paths="%kernel_api_test_pkg" %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg=kernel-library-paths="%kernel_api_test_pkg" %s | FileCheck %s
 
 !tt = !mo.tensor<[2, 2], f32>
 !bt = !mo.buffer<[2, 2], f32>

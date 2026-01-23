@@ -36,13 +36,12 @@ TARGET="${TARGET:-cuda:sm_80}"
 FILTER=""
 DRY_RUN=false
 VERBOSE=false
-EMIT_MOJO=false
 
 # Change to repo root
 cd "$(dirname "$0")/.."
 
 usage() {
-    cat <<EOF
+  cat <<EOF
 Usage: $0 [OPTIONS]
 
 Options:
@@ -61,7 +60,6 @@ Options:
                        - small         Only small models (exclude "big" tag)
   --dry-run          Print commands without executing
   --verbose          Show verbose output
-  --emit-mojo        Add --config=emit-mojo to bazel commands
   -h, --help         Show this help message
 
 Examples:
@@ -71,84 +69,75 @@ Examples:
   $0 --target cuda:sm_90 --filter multi-gpu # Multi-GPU models for H100
   $0 --filter cpu                           # CPU models only
 EOF
-    exit 0
+  exit 0
 }
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --target)
-            TARGET="$2"
-            shift 2
-            ;;
-        --filter)
-            FILTER="$2"
-            shift 2
-            ;;
-        --dry-run)
-            DRY_RUN=true
-            shift
-            ;;
-        --verbose)
-            VERBOSE=true
-            shift
-            ;;
-        --emit-mojo)
-            EMIT_MOJO=true
-            shift
-            ;;
-        -h|--help)
-            usage
-            ;;
-        *)
-            echo "Unknown option: $1"
-            usage
-            ;;
-    esac
+  case $1 in
+  --target)
+    TARGET="$2"
+    shift 2
+    ;;
+  --filter)
+    FILTER="$2"
+    shift 2
+    ;;
+  --dry-run)
+    DRY_RUN=true
+    shift
+    ;;
+  --verbose)
+    VERBOSE=true
+    shift
+    ;;
+  -h | --help)
+    usage
+    ;;
+  *)
+    echo "Unknown option: $1"
+    usage
+    ;;
+  esac
 done
 
 # Validate target
 case "$TARGET" in
-    cuda|cuda:sm_80|cuda:sm_90|cuda:sm_100|hip|hip:gfx942|hip:gfx1100)
-        ;;
-    *)
-        echo "Warning: Unknown target '$TARGET'. Proceeding anyway..."
-        ;;
+cuda | cuda:sm_80 | cuda:sm_90 | cuda:sm_100 | hip | hip:gfx942 | hip:gfx1100) ;;
+*)
+  echo "Warning: Unknown target '$TARGET'. Proceeding anyway..."
+  ;;
 esac
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
 run_warm_cache() {
-    local model="$1"
-    local devices="$2"
-    local description="$3"
+  local model="$1"
+  local devices="$2"
+  local description="$3"
 
-    local bazel_config=""
-    if $EMIT_MOJO; then
-        bazel_config="--config=emit-mojo "
-    fi
+  local bazel_config=""
+  local cmd="./bazelw run ${bazel_config}max -- warm-cache --model $model --devices $devices --target $TARGET"
 
-    local cmd="./bazelw run ${bazel_config}max -- warm-cache --model $model --devices $devices --target $TARGET"
+  if $DRY_RUN; then
+    echo "[DRY RUN] $cmd"
+    echo "  # $description"
+    return 0
+  fi
 
-    if $DRY_RUN; then
-        echo "[DRY RUN] $cmd"
-        echo "  # $description"
-        return 0
-    fi
+  log "Building: $model ($description)"
+  if $VERBOSE; then
+    echo "  Command: $cmd"
+  fi
 
-    log "Building: $model ($description)"
-    if $VERBOSE; then
-        echo "  Command: $cmd"
-    fi
+  if ! $cmd 2>&1; then
+    log "ERROR: Failed to build $model"
+    return 1
+  fi
 
-    if ! $cmd 2>&1; then
-        log "ERROR: Failed to build $model"
-        return 1
-    fi
-
-    log "SUCCESS: $model"
+  log "SUCCESS: $model"
 }
 
 # Define all pipelines from verify_pipelines.py
@@ -157,169 +146,169 @@ run_warm_cache() {
 # Tags: big, nvidia-only, nvidia-multi, float8-support, no-h100, no-b200, 8xb200, tts
 
 declare -a PIPELINES=(
-    # ========== Robust Pipelines ==========
-    # Model paths from create_pipelines.py PIPELINE_ORACLES
-    "meta-llama/Meta-Llama-3-8B-Instruct|cpu,gpu|big|Llama 3 8B float32"
-    "meta-llama/Llama-3.1-8B-Instruct|cpu,gpu|big|Llama 3.1 8B float32"
-    "sentence-transformers/all-mpnet-base-v2|cpu,gpu||MPNet embeddings"
-    "unsloth/gpt-oss-20b-BF16|gpu||GPT-OSS 20B bfloat16"
-    "allenai/OLMo-1B-hf|cpu,gpu||OLMo 1B float32"
+  # ========== Robust Pipelines ==========
+  # Model paths from create_pipelines.py PIPELINE_ORACLES
+  "meta-llama/Meta-Llama-3-8B-Instruct|cpu,gpu|big|Llama 3 8B float32"
+  "meta-llama/Llama-3.1-8B-Instruct|cpu,gpu|big|Llama 3.1 8B float32"
+  "sentence-transformers/all-mpnet-base-v2|cpu,gpu||MPNet embeddings"
+  "unsloth/gpt-oss-20b-BF16|gpu||GPT-OSS 20B bfloat16"
+  "allenai/OLMo-1B-hf|cpu,gpu||OLMo 1B float32"
 
-    # ========== Brittle Pipelines ==========
-    # Llama family
-    "meta-llama/Meta-Llama-3-8B-Instruct|gpu||Llama 3 8B bfloat16"
-    "meta-llama/Llama-3.1-8B-Instruct|gpu||Llama 3.1 8B bfloat16"
-    # data-parallel uses same model_path as base Llama 3.1
-    "meta-llama/Llama-3.1-8B-Instruct|gpu|nvidia-multi,no-h100|Llama 3.1 8B data-parallel bfloat16"
-    # FP8 static uses RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8 (not the -float8-static suffix)
-    "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8|gpu|float8-support|Llama 3.1 8B FP8 static"
-    "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic|gpu|float8-support|Llama 3.1 8B FP8 dynamic"
-    "meta-llama/Llama-3.2-1B|gpu|nvidia-only|Llama 3.2 1B bfloat16"
-    "meta-llama/Llama-3.3-70B-Instruct|gpu|nvidia-multi|Llama 3.3 70B bfloat16"
-    "meta-llama/Llama-4-Scout-17B-16E-Instruct|gpu|nvidia-multi|Llama 4 Scout 17B bfloat16"
+  # ========== Brittle Pipelines ==========
+  # Llama family
+  "meta-llama/Meta-Llama-3-8B-Instruct|gpu||Llama 3 8B bfloat16"
+  "meta-llama/Llama-3.1-8B-Instruct|gpu||Llama 3.1 8B bfloat16"
+  # data-parallel uses same model_path as base Llama 3.1
+  "meta-llama/Llama-3.1-8B-Instruct|gpu|nvidia-multi,no-h100|Llama 3.1 8B data-parallel bfloat16"
+  # FP8 static uses RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8 (not the -float8-static suffix)
+  "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8|gpu|float8-support|Llama 3.1 8B FP8 static"
+  "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic|gpu|float8-support|Llama 3.1 8B FP8 dynamic"
+  "meta-llama/Llama-3.2-1B|gpu|nvidia-only|Llama 3.2 1B bfloat16"
+  "meta-llama/Llama-3.3-70B-Instruct|gpu|nvidia-multi|Llama 3.3 70B bfloat16"
+  "meta-llama/Llama-4-Scout-17B-16E-Instruct|gpu|nvidia-multi|Llama 4 Scout 17B bfloat16"
 
-    # Mistral family
-    "mistralai/Mistral-Nemo-Instruct-2407|gpu|big|Mistral Nemo bfloat16"
-    "mistralai/Mistral-Small-3.1-24B-Instruct-2503|gpu|big|Mistral Small 24B bfloat16"
+  # Mistral family
+  "mistralai/Mistral-Nemo-Instruct-2407|gpu|big|Mistral Nemo bfloat16"
+  "mistralai/Mistral-Small-3.1-24B-Instruct-2503|gpu|big|Mistral Small 24B bfloat16"
 
-    # Vision models
-    "OpenGVLab/InternVL3-1B-Instruct|gpu|nvidia-only|InternVL3 1B bfloat16"
-    "OpenGVLab/InternVL3-8B-Instruct|gpu|nvidia-multi|InternVL3 8B bfloat16"
-    "OpenGVLab/InternVL3-14B-Instruct|gpu|nvidia-multi|InternVL3 14B bfloat16"
-    "OpenGVLab/InternVL3-38B-Instruct|gpu|nvidia-multi|InternVL3 38B bfloat16"
-    "OpenGVLab/InternVL3_5-8B-Instruct|gpu|nvidia-multi|InternVL3.5 8B bfloat16"
-    "mistral-community/pixtral-12b|gpu|big|Pixtral 12B bfloat16"
+  # Vision models
+  "OpenGVLab/InternVL3-1B-Instruct|gpu|nvidia-only|InternVL3 1B bfloat16"
+  "OpenGVLab/InternVL3-8B-Instruct|gpu|nvidia-multi|InternVL3 8B bfloat16"
+  "OpenGVLab/InternVL3-14B-Instruct|gpu|nvidia-multi|InternVL3 14B bfloat16"
+  "OpenGVLab/InternVL3-38B-Instruct|gpu|nvidia-multi|InternVL3 38B bfloat16"
+  "OpenGVLab/InternVL3_5-8B-Instruct|gpu|nvidia-multi|InternVL3.5 8B bfloat16"
+  "mistral-community/pixtral-12b|gpu|big|Pixtral 12B bfloat16"
 
-    # Qwen family
-    "Qwen/Qwen2.5-7B-Instruct|gpu|nvidia-only|Qwen2.5 7B bfloat16"
-    "Qwen/Qwen2.5-VL-3B-Instruct|gpu||Qwen2.5 VL 3B bfloat16"
-    "Qwen/Qwen2.5-VL-7B-Instruct|gpu|nvidia-multi|Qwen2.5 VL 7B bfloat16"
-    "Qwen/Qwen2.5-VL-32B-Instruct|gpu|nvidia-multi|Qwen2.5 VL 32B bfloat16"
-    "Qwen/Qwen3-8B|gpu|big,nvidia-only|Qwen3 8B bfloat16"
+  # Qwen family
+  "Qwen/Qwen2.5-7B-Instruct|gpu|nvidia-only|Qwen2.5 7B bfloat16"
+  "Qwen/Qwen2.5-VL-3B-Instruct|gpu||Qwen2.5 VL 3B bfloat16"
+  "Qwen/Qwen2.5-VL-7B-Instruct|gpu|nvidia-multi|Qwen2.5 VL 7B bfloat16"
+  "Qwen/Qwen2.5-VL-32B-Instruct|gpu|nvidia-multi|Qwen2.5 VL 32B bfloat16"
+  "Qwen/Qwen3-8B|gpu|big,nvidia-only|Qwen3 8B bfloat16"
 
-    # Other models
-    "allenai/olmOCR-2-7B-1025-FP8|gpu|nvidia-only|OLMoOCR 7B FP8"
-    "allenai/OLMo-2-1124-7B|cpu,gpu|big|OLMo 2 7B float32"
-    "HuggingFaceM4/Idefics3-8B-Llama3|gpu|big,nvidia-only|Idefics3 8B bfloat16"
-    "LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct|cpu,gpu|big|EXAONE 7.8B float32"
-    "microsoft/Phi-3.5-mini-instruct|gpu||Phi 3.5 mini bfloat16"
-    "microsoft/phi-4|gpu|big|Phi 4 bfloat16"
-    "hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4|gpu|nvidia-only|Llama 3.1 8B GPTQ"
-    "kaitchup/DeepSeek-R1-Distill-Llama-8B-AutoRound-GPTQ-4bit|gpu|nvidia-only|DeepSeek R1 Distill GPTQ"
+  # Other models
+  "allenai/olmOCR-2-7B-1025-FP8|gpu|nvidia-only|OLMoOCR 7B FP8"
+  "allenai/OLMo-2-1124-7B|cpu,gpu|big|OLMo 2 7B float32"
+  "HuggingFaceM4/Idefics3-8B-Llama3|gpu|big,nvidia-only|Idefics3 8B bfloat16"
+  "LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct|cpu,gpu|big|EXAONE 7.8B float32"
+  "microsoft/Phi-3.5-mini-instruct|gpu||Phi 3.5 mini bfloat16"
+  "microsoft/phi-4|gpu|big|Phi 4 bfloat16"
+  "hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4|gpu|nvidia-only|Llama 3.1 8B GPTQ"
+  "kaitchup/DeepSeek-R1-Distill-Llama-8B-AutoRound-GPTQ-4bit|gpu|nvidia-only|DeepSeek R1 Distill GPTQ"
 
-    # DeepSeek family
-    "deepseek-ai/DeepSeek-V2-Lite-Chat|gpu|big,nvidia-only|DeepSeek V2 Lite bfloat16"
-    "kathywu95/deepseek-v3-small-random|gpu|nvidia-only,no-b200|DeepSeek V3 small bfloat16"
-    "kathywu95/deepseek-v3-small-random-fp8|gpu|nvidia-only,no-h100|DeepSeek V3 small FP8"
-    "deepseek-ai/DeepSeek-R1|gpu|nvidia-multi,8xb200|DeepSeek R1 FP8"
+  # DeepSeek family
+  "deepseek-ai/DeepSeek-V2-Lite-Chat|gpu|big,nvidia-only|DeepSeek V2 Lite bfloat16"
+  "kathywu95/deepseek-v3-small-random|gpu|nvidia-only,no-b200|DeepSeek V3 small bfloat16"
+  "kathywu95/deepseek-v3-small-random-fp8|gpu|nvidia-only,no-h100|DeepSeek V3 small FP8"
+  "deepseek-ai/DeepSeek-R1|gpu|nvidia-multi,8xb200|DeepSeek R1 FP8"
 
-    # Gemma family
-    "google/gemma-3-1b-it|gpu||Gemma 3 1B bfloat16"
-    "google/gemma-3-12b-it|gpu|big|Gemma 3 12B bfloat16"
-    "google/gemma-3-27b-it|gpu|nvidia-multi|Gemma 3 27B bfloat16"
-    "RedHatAI/gemma-3-27b-it-FP8-dynamic|gpu|big,float8-support|Gemma 3 27B FP8 single GPU"
-    "RedHatAI/gemma-3-27b-it-FP8-dynamic|gpu|big,float8-support,nvidia-multi|Gemma 3 27B FP8 multi GPU"
+  # Gemma family
+  "google/gemma-3-1b-it|gpu||Gemma 3 1B bfloat16"
+  "google/gemma-3-12b-it|gpu|big|Gemma 3 12B bfloat16"
+  "google/gemma-3-27b-it|gpu|nvidia-multi|Gemma 3 27B bfloat16"
+  "RedHatAI/gemma-3-27b-it-FP8-dynamic|gpu|big,float8-support|Gemma 3 27B FP8 single GPU"
+  "RedHatAI/gemma-3-27b-it-FP8-dynamic|gpu|big,float8-support,nvidia-multi|Gemma 3 27B FP8 multi GPU"
 
-    # Misc
-    "HKUSTAudio/Llasa-8B|gpu|big,tts|Llasa 8B bfloat16"
-    # LoRA models use base model path from create_pipelines.py
-    "HuggingFaceTB/SmolLM2-360M-Instruct|gpu|nvidia-only|SmolLM2 360M LoRA bfloat16"
-    # FP8-dynamic-BF16-LoRA uses RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic as base
-    "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic|gpu|nvidia-only,no-h100,float8-support|Llama 3.1 8B FP8 LoRA"
+  # Misc
+  "HKUSTAudio/Llasa-8B|gpu|big,tts|Llasa 8B bfloat16"
+  # LoRA models use base model path from create_pipelines.py
+  "HuggingFaceTB/SmolLM2-360M-Instruct|gpu|nvidia-only|SmolLM2 360M LoRA bfloat16"
+  # FP8-dynamic-BF16-LoRA uses RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic as base
+  "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic|gpu|nvidia-only,no-h100,float8-support|Llama 3.1 8B FP8 LoRA"
 )
 
 # Function to check if a pipeline matches the filter
 matches_filter() {
-    local devices="$1"
-    local tags="$2"
+  local devices="$1"
+  local tags="$2"
 
-    case "$FILTER" in
-        "")
-            return 0  # No filter, match all
-            ;;
-        "cpu")
-            [[ "$devices" == *"cpu"* ]]
-            ;;
-        "gpu")
-            # Single GPU (not multi-GPU)
-            [[ "$devices" == *"gpu"* ]] && [[ "$tags" != *"nvidia-multi"* ]] && [[ "$tags" != *"8xb200"* ]]
-            ;;
-        "multi-gpu")
-            [[ "$tags" == *"nvidia-multi"* ]] || [[ "$tags" == *"8xb200"* ]]
-            ;;
-        "small")
-            [[ "$tags" != *"big"* ]]
-            ;;
-        *)
-            echo "Unknown filter: $FILTER" >&2
-            return 1
-            ;;
-    esac
+  case "$FILTER" in
+  "")
+    return 0 # No filter, match all
+    ;;
+  "cpu")
+    [[ "$devices" == *"cpu"* ]]
+    ;;
+  "gpu")
+    # Single GPU (not multi-GPU)
+    [[ "$devices" == *"gpu"* ]] && [[ "$tags" != *"nvidia-multi"* ]] && [[ "$tags" != *"8xb200"* ]]
+    ;;
+  "multi-gpu")
+    [[ "$tags" == *"nvidia-multi"* ]] || [[ "$tags" == *"8xb200"* ]]
+    ;;
+  "small")
+    [[ "$tags" != *"big"* ]]
+    ;;
+  *)
+    echo "Unknown filter: $FILTER" >&2
+    return 1
+    ;;
+  esac
 }
 
 # Function to determine devices for warm-cache
 get_devices_for_target() {
-    local devices="$1"
-    local tags="$2"
+  local devices="$1"
+  local tags="$2"
 
-    # For CPU-only models
-    if [[ "$devices" == "cpu" ]]; then
-        echo "cpu"
-        return
-    fi
+  # For CPU-only models
+  if [[ "$devices" == "cpu" ]]; then
+    echo "cpu"
+    return
+  fi
 
-    # For multi-GPU models, determine device count
-    if [[ "$tags" == *"8xb200"* ]]; then
-        echo "gpu:0,1,2,3,4,5,6,7"
-    elif [[ "$tags" == *"nvidia-multi"* ]]; then
-        # Default to 4 GPUs for multi-GPU models, or 2 for B200 multi
-        if [[ "$TARGET" == *"sm_100"* ]]; then
-            echo "gpu:0,1"  # B200 multi uses 2 GPUs
-        else
-            echo "gpu:0,1,2,3"  # H100 multi uses 4 GPUs
-        fi
+  # For multi-GPU models, determine device count
+  if [[ "$tags" == *"8xb200"* ]]; then
+    echo "gpu:0,1,2,3,4,5,6,7"
+  elif [[ "$tags" == *"nvidia-multi"* ]]; then
+    # Default to 4 GPUs for multi-GPU models, or 2 for B200 multi
+    if [[ "$TARGET" == *"sm_100"* ]]; then
+      echo "gpu:0,1" # B200 multi uses 2 GPUs
     else
-        echo "gpu:0"  # Single GPU
+      echo "gpu:0,1,2,3" # H100 multi uses 4 GPUs
     fi
+  else
+    echo "gpu:0" # Single GPU
+  fi
 }
 
 # Function to check if model should be skipped based on target and tags
 should_skip() {
-    local tags="$1"
+  local tags="$1"
 
-    # Skip nvidia-only models for HIP targets
-    if [[ "$TARGET" == hip* ]] && [[ "$tags" == *"nvidia-only"* ]]; then
-        return 0
-    fi
+  # Skip nvidia-only models for HIP targets
+  if [[ "$TARGET" == hip* ]] && [[ "$tags" == *"nvidia-only"* ]]; then
+    return 0
+  fi
 
-    # Skip non-float8 models if building for targets that don't support float8
-    if [[ "$TARGET" == hip* ]] && [[ "$tags" == *"float8-support"* ]]; then
-        return 0
-    fi
+  # Skip non-float8 models if building for targets that don't support float8
+  if [[ "$TARGET" == hip* ]] && [[ "$tags" == *"float8-support"* ]]; then
+    return 0
+  fi
 
-    # Skip H100-excluded models for sm_90
-    if [[ "$TARGET" == "cuda:sm_90" ]] && [[ "$tags" == *"no-h100"* ]]; then
-        return 0
-    fi
+  # Skip H100-excluded models for sm_90
+  if [[ "$TARGET" == "cuda:sm_90" ]] && [[ "$tags" == *"no-h100"* ]]; then
+    return 0
+  fi
 
-    # Skip B200-excluded models for sm_100
-    if [[ "$TARGET" == "cuda:sm_100" ]] && [[ "$tags" == *"no-b200"* ]]; then
-        return 0
-    fi
+  # Skip B200-excluded models for sm_100
+  if [[ "$TARGET" == "cuda:sm_100" ]] && [[ "$tags" == *"no-b200"* ]]; then
+    return 0
+  fi
 
-    # Skip 8xb200 models unless explicitly building for B200 8x
-    if [[ "$tags" == *"8xb200"* ]] && [[ "$TARGET" != "cuda:sm_100" ]]; then
-        return 0
-    fi
+  # Skip 8xb200 models unless explicitly building for B200 8x
+  if [[ "$tags" == *"8xb200"* ]] && [[ "$TARGET" != "cuda:sm_100" ]]; then
+    return 0
+  fi
 
-    return 1
+  return 1
 }
 
 # Main execution
 log "Starting warm-cache for pipeline verification models"
 log "Target: $TARGET"
 if [[ -n "$FILTER" ]]; then
-    log "Filter: $FILTER"
+  log "Filter: $FILTER"
 fi
 
 total=0
@@ -328,46 +317,46 @@ success=0
 failed=0
 
 for pipeline in "${PIPELINES[@]}"; do
-    IFS='|' read -r model devices tags description <<< "$pipeline"
+  IFS='|' read -r model devices tags description <<<"$pipeline"
 
-    ((total++)) || true
+  ((total++)) || true
 
-    # Check filter
-    if ! matches_filter "$devices" "$tags"; then
-        if $VERBOSE; then
-            log "SKIP (filter): $model"
-        fi
-        ((skipped++)) || true
-        continue
+  # Check filter
+  if ! matches_filter "$devices" "$tags"; then
+    if $VERBOSE; then
+      log "SKIP (filter): $model"
     fi
+    ((skipped++)) || true
+    continue
+  fi
 
-    # Check if should skip based on target
-    if should_skip "$tags"; then
-        if $VERBOSE; then
-            log "SKIP (target incompatible): $model"
-        fi
-        ((skipped++)) || true
-        continue
+  # Check if should skip based on target
+  if should_skip "$tags"; then
+    if $VERBOSE; then
+      log "SKIP (target incompatible): $model"
     fi
+    ((skipped++)) || true
+    continue
+  fi
 
-    # Determine devices for this pipeline
-    warm_cache_devices=$(get_devices_for_target "$devices" "$tags")
+  # Determine devices for this pipeline
+  warm_cache_devices=$(get_devices_for_target "$devices" "$tags")
 
-    # Skip CPU models when building for GPU target
-    if [[ "$warm_cache_devices" == "cpu" ]] && [[ "$TARGET" != "cpu" ]]; then
-        if $VERBOSE; then
-            log "SKIP (CPU model, GPU target): $model"
-        fi
-        ((skipped++)) || true
-        continue
+  # Skip CPU models when building for GPU target
+  if [[ "$warm_cache_devices" == "cpu" ]] && [[ "$TARGET" != "cpu" ]]; then
+    if $VERBOSE; then
+      log "SKIP (CPU model, GPU target): $model"
     fi
+    ((skipped++)) || true
+    continue
+  fi
 
-    # Run warm-cache
-    if run_warm_cache "$model" "$warm_cache_devices" "$description"; then
-        ((success++)) || true
-    else
-        ((failed++)) || true
-    fi
+  # Run warm-cache
+  if run_warm_cache "$model" "$warm_cache_devices" "$description"; then
+    ((success++)) || true
+  else
+    ((failed++)) || true
+  fi
 done
 
 log "============================================"
@@ -379,5 +368,5 @@ log "  Failed: $failed"
 log "============================================"
 
 if [[ $failed -gt 0 ]]; then
-    exit 1
+  exit 1
 fi

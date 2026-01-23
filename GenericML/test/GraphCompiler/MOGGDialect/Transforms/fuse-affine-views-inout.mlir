@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-prologues-epilogues --canonicalize %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-prologues-epilogues --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @inout_fusion<seq_len>
 // CHECK-SAME: (%[[ARG0:.*]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1:.*]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %[[ARG2:.*]]: !mo.tensor<[1, seq_len, 4096], f32>)

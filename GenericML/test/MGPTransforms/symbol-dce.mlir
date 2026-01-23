@@ -1,4 +1,4 @@
-// RUN: EMIT_MOJO=1 mo-opt -symbol-dce
+// RUN: mo-opt -symbol-dce
 
 mogg.kernel.stub @callee_1()
   attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = "callee_1"} {
