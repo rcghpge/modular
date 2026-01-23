@@ -32,9 +32,10 @@ namespace {
 // work submitted to a stream. We record a compact hash per kernel launch that
 // encodes the function, grid/block dimensions, shared memory size, launch
 // attributes, and the raw bytes of the kernel parameter values (as passed to
-// the launch). This lets us compare a replayed execution
-// against a known-good baseline without relying on timing or device-specific
-// side effects.
+// the launch). We also tag memcpy/memset submissions so replay verification
+// can detect changes in data movement. This lets us compare a replayed
+// execution against a known-good baseline without relying on timing or
+// device-specific side effects.
 //
 // The trace is stored per-stream so we can capture exactly what was enqueued
 // on the stream that owns a device graph. That keeps debugVerifyReplay scoped
@@ -58,6 +59,13 @@ struct LaunchTraceRegistry {
   std::unordered_map<CUstream, LaunchTraceState> states;
 };
 
+enum class LaunchTraceKind : uint64_t {
+  kMemcpyHtoD = 1,
+  kMemcpyDtoH = 2,
+  kMemcpyDtoD = 3,
+  kMemset = 4,
+};
+
 } // namespace
 
 static LaunchTraceRegistry &launchTraceRegistry() {
@@ -72,6 +80,15 @@ static bool isLaunchTraceEnabled(CUstream stream) {
   std::lock_guard<std::mutex> lock(registry.mu);
   auto it = registry.states.find(stream);
   return it != registry.states.end() && it->second.enabled;
+}
+
+static void appendLaunchTraceDigest(CUstream stream, uint64_t digest) {
+  auto &registry = launchTraceRegistry();
+  std::lock_guard<std::mutex> lock(registry.mu);
+  auto it = registry.states.find(stream);
+  if (it == registry.states.end() || !it->second.enabled)
+    return;
+  it->second.entries.push_back(digest);
 }
 
 // Hash the kernel launch signature and append it to the active trace.
@@ -106,13 +123,34 @@ static void recordLaunchTrace(const CUDAModuleFunction &moduleFunc,
                    paramSizes[paramIdx]);
   }
 
-  uint64_t digest = hasher.hash();
-  auto &registry = launchTraceRegistry();
-  std::lock_guard<std::mutex> lock(registry.mu);
-  auto it = registry.states.find(stream);
-  if (it == registry.states.end())
-    return;
-  it->second.entries.push_back(digest);
+  appendLaunchTraceDigest(stream, hasher.hash());
+}
+
+static uint64_t hashMemcpyTrace(LaunchTraceKind kind, uintptr_t dst,
+                                uintptr_t src, size_t byteSize) {
+  raw_xxhash64_stream hasher;
+  const uint64_t header[] = {
+      static_cast<uint64_t>(kind), static_cast<uint64_t>(dst),
+      static_cast<uint64_t>(src), static_cast<uint64_t>(byteSize)};
+  hasher.write(reinterpret_cast<const char *>(header), sizeof(header));
+  return hasher.hash();
+}
+
+static uint64_t hashMemsetTrace(uintptr_t dst, size_t byteSize, uint64_t value,
+                                size_t valueSize) {
+  uint64_t maskedValue = value;
+  if (valueSize < sizeof(value)) {
+    uint64_t mask = (1ULL << (valueSize * 8)) - 1;
+    maskedValue &= mask;
+  }
+
+  raw_xxhash64_stream hasher;
+  const uint64_t header[] = {static_cast<uint64_t>(LaunchTraceKind::kMemset),
+                             static_cast<uint64_t>(dst),
+                             static_cast<uint64_t>(byteSize), maskedValue,
+                             static_cast<uint64_t>(valueSize)};
+  hasher.write(reinterpret_cast<const char *>(header), sizeof(header));
+  return hasher.hash();
 }
 
 static bool isStreamCapturing(const CUDADriver &driver, CUstream stream) {
@@ -1288,6 +1326,12 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
   CUDA_WITH_CTX_ERR(*this);
 
   CUDA_CHECK_ERR(driver_.cuMemcpyHtoDAsync_v2(dst, src, byteSize, stream_));
+  if (isLaunchTraceEnabled(stream_)) {
+    appendLaunchTraceDigest(
+        stream_, hashMemcpyTrace(LaunchTraceKind::kMemcpyHtoD,
+                                 reinterpret_cast<uintptr_t>(dst),
+                                 reinterpret_cast<uintptr_t>(src), byteSize));
+  }
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1301,6 +1345,12 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
 
   CUDA_CHECK_ERR(driver_.cuMemcpyDtoHAsync_v2(dst, const_cast<void *>(src),
                                               byteSize, stream_));
+  if (isLaunchTraceEnabled(stream_)) {
+    appendLaunchTraceDigest(
+        stream_, hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoH,
+                                 reinterpret_cast<uintptr_t>(dst),
+                                 reinterpret_cast<uintptr_t>(src), byteSize));
+  }
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1348,6 +1398,13 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   } else {
     CUDA_CHECK_ERR(
         driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
+  }
+  if (isLaunchTraceEnabled(stream_)) {
+    appendLaunchTraceDigest(stream_,
+                            hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD,
+                                            reinterpret_cast<uintptr_t>(dstPtr),
+                                            reinterpret_cast<uintptr_t>(srcPtr),
+                                            dstByteSize));
   }
   MAYBE_SYNC(*this);
   return success();
@@ -1398,6 +1455,11 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
       CUDA_CHECK_ERR(
           driver_.cuMemsetD2D32Async(hiPtr, 8, hiBits, 1, len, stream_));
     }
+  }
+  if (isLaunchTraceEnabled(stream_)) {
+    appendLaunchTraceDigest(stream_,
+                            hashMemsetTrace(reinterpret_cast<uintptr_t>(dst),
+                                            byteSize, val, valSize));
   }
   MAYBE_SYNC(*this);
   return success();

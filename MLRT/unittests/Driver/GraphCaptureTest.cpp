@@ -231,6 +231,41 @@ TEST_F(GraphCaptureTest, LaunchTraceCapturesKernelLaunches) {
   EXPECT_NE(baseline, changed);
 }
 
+TEST_F(GraphCaptureTest, LaunchTraceCapturesMemcpyAndMemset) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+  const size_t bytes = 256;
+  std::vector<uint8_t> host(bytes, 0x5a);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx->enqueueCreateBuffer(bytes));
+
+  stream->beginLaunchTrace();
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(buf->ptr(), host.data(), bytes));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(buf->ptr(), bytes, /*val=*/0xA5,
+                                      /*valSize=*/1));
+  EXPECT_NO_ERR(stream->synchronize());
+  std::vector<uint64_t> baseline = stream->takeLaunchTrace();
+  EXPECT_EQ(baseline.size(), 2u);
+
+  stream->beginLaunchTrace();
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(buf->ptr(), host.data(), bytes));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(buf->ptr(), bytes, /*val=*/0xA5,
+                                      /*valSize=*/1));
+  EXPECT_NO_ERR(stream->synchronize());
+  std::vector<uint64_t> repeat = stream->takeLaunchTrace();
+  EXPECT_EQ(baseline, repeat);
+
+  stream->beginLaunchTrace();
+  EXPECT_NO_ERR(ctx->enqueueCopyToDevice(buf->ptr(), host.data(), bytes / 2));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(buf->ptr(), bytes, /*val=*/0x5A,
+                                      /*valSize=*/1));
+  EXPECT_NO_ERR(stream->synchronize());
+  std::vector<uint64_t> changed = stream->takeLaunchTrace();
+  EXPECT_NE(baseline, changed);
+}
+
 // Test: Capture using context->stream() (default stream pattern used by
 // device graph capture in the engine API).
 TEST_F(GraphCaptureTest, CaptureOnDefaultStream) {
