@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/MEFModel/MEFModel.h"
+#include "GenericML/DeviceDriver/DeviceExecution.h"
 #include "GenericML/MGPPrimitives/MGPPrimitives.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/MEFTypeUtils.h"
@@ -24,12 +25,17 @@
 #include "MLRT/GraphRT/Primitives.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
+#include "Support/HashUtils.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/Profiling/Tracy.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/JSON.h"
+
+#include <cstdint>
+#include <vector>
 
 using namespace M;
 
@@ -314,12 +320,124 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
 
 ErrorOrSuccess ExecutableModel::waitForModelSetup() {
   AsyncRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
+  AsyncRT::await(devices);
   if (chain.isError())
     return Error(chain.takeDiagnostic().getMessage().get());
   if (mgpContext.isError())
     return Error(mgpContext.takeDiagnostic().getMessage().get());
   if (weightsRegistry.isError())
     return Error(weightsRegistry.takeDiagnostic().getMessage().get());
+  for (auto &device : devices) {
+    if (device.isError())
+      return Error(device.takeDiagnostic().getMessage().get());
+  }
+  return success();
+}
+
+// Compute a stable key from input shapes and dtypes using xxhash. This is used
+// to look up captured graphs and ensures we only replay graphs for matching
+// signatures.
+static uint64_t
+computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  raw_xxhash64_stream hasher;
+  for (const GenericML::Driver::DeviceMemory *memory : inputs) {
+    const TensorSpec &spec = memory->getSpec();
+    uint64_t rank = spec.getRank();
+    hasher.write(reinterpret_cast<const char *>(&rank), sizeof(rank));
+    for (int64_t dim : spec)
+      hasher.write(reinterpret_cast<const char *>(&dim), sizeof(dim));
+
+    uint64_t dtype = static_cast<uint64_t>(spec.getEltType().getValue());
+    hasher.write(reinterpret_cast<const char *>(&dtype), sizeof(dtype));
+  }
+  return hasher.hash();
+}
+
+// Return the first CUDA stream from the model's device contexts. This keeps
+// capture/replay tied to the same runtime devices as execution.
+static ErrorOr<Driver::DeviceStreamRef>
+captureStream(ArrayRef<AnyAsyncValueRef> devices) {
+  AsyncRT::await(devices);
+  for (const AnyAsyncValueRef &deviceValue : devices) {
+    if (deviceValue.isError())
+      return deviceValue.getDiagnostic().getMessage().copy();
+    if (!deviceValue.isType<Driver::DeviceContextRef>())
+      return Error("unexpected device context type for capture");
+    const Driver::DeviceContextRef &context =
+        deviceValue.get<Driver::DeviceContextRef>();
+    if (context->device().api() != Driver::Device::cudaAPI)
+      continue;
+    ErrorOr<Driver::DeviceStreamRef> streamOr = context->stream();
+    if (streamOr.isError())
+      return streamOr.takeError();
+    return streamOr.takeValue();
+  }
+  return Error("No CUDA stream available for capture");
+}
+
+ErrorOrSuccess ExecutableModel::executeWithDeviceMemoryInputs(
+    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const {
+  SmallVector<AnyAsyncValueRef> inputValues;
+  inputValues.reserve(inputs.size());
+  for (GenericML::Driver::DeviceMemory *memory : inputs) {
+    ErrorOr<GenericML::Driver::DeviceMemory *> viewOrErr =
+        memory->createViewOn(*memory->getDevice());
+    if (viewOrErr.isError())
+      return viewOrErr.takeError();
+    GenericML::Driver::DeviceMemory *view = viewOrErr.takeValue();
+    inputValues.push_back(
+        GenericML::Driver::prepareInput(getRuntime(), view, view->getSpec()));
+  }
+
+  SmallVector<AnyAsyncValueRef> results = execute(inputValues);
+  AsyncRT::await(results);
+  for (AnyAsyncValueRef &result : results)
+    if (result.isError())
+      return result.getDiagnostic().getMessage().copy();
+
+  return success();
+}
+
+ErrorOrSuccess
+ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  uint64_t key = computeInputKey(inputs);
+  if (capturedGraphs.contains(key))
+    return success();
+
+  ErrorOr<Driver::DeviceStreamRef> streamOr = captureStream(devices);
+  if (streamOr.isError())
+    return streamOr.takeError();
+  Driver::DeviceStreamRef stream = streamOr.takeValue();
+
+  ErrorOr<Driver::DeviceGraphRef> graphOrErr = Driver::DeviceGraph::capture(
+      *stream, [&]() { return executeWithDeviceMemoryInputs(inputs); });
+  if (graphOrErr.isError())
+    return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
+  capturedGraphs.try_emplace(key, graphOrErr.takeValue());
+  return success();
+}
+
+ErrorOrSuccess ExecutableModel::debugVerifyReplay(
+    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  uint64_t key = computeInputKey(inputs);
+  auto it = capturedGraphs.find(key);
+  if (it == capturedGraphs.end())
+    return Error("No captured graph for these inputs");
+
+  return it->second->debugVerifyReplay(
+      [&]() { return executeWithDeviceMemoryInputs(inputs); });
+}
+
+ErrorOrSuccess
+ExecutableModel::replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  uint64_t key = computeInputKey(inputs);
+  auto it = capturedGraphs.find(key);
+  if (it == capturedGraphs.end())
+    return Error("No captured graph for these inputs");
+
+  ErrorOrSuccess result = it->second->replay();
+  if (result.isError())
+    return Error(Twine("Replay failed: ") + result.getError());
   return success();
 }
 

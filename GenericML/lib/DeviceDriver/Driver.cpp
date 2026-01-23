@@ -41,10 +41,12 @@ DeviceMemory::copyTo(DeviceMemory &dst) const {
 MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
 DeviceMemory::createViewOn(Device &device) const {
   ASSIGN_OR_RETURN(newBuf, buf->createSubBuffer(0, buf->byteSize()));
-  ErrorOrSuccess err =
-      newBuf->reassignOwnershipTo(*device.tmpGetDeviceContext());
-  if (err.isError())
-    return err.takeError();
+  if (!device.isHost()) {
+    ErrorOrSuccess err =
+        newBuf->reassignOwnershipTo(*device.tmpGetDeviceContext());
+    if (err.isError())
+      return err.takeError();
+  }
   return new DeviceMemory(M::copyRCRef(&device), newBuf, spec);
 }
 

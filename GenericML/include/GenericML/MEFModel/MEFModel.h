@@ -23,6 +23,7 @@
 #include "Support/ML/DebugPrint.h"
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -71,6 +72,17 @@ public:
                                               const std::string &outputName,
                                               ProcessedResults &results) const;
 
+  /// Capture a device graph for the given inputs. The graph is keyed by input
+  /// shapes and dtypes so later replay/debug verification can reuse it.
+  ErrorOrSuccess capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+
+  /// Replay a previously captured graph for these inputs.
+  ErrorOrSuccess replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+
+  /// Execute eagerly and compare the launch trace against the captured graph.
+  ErrorOrSuccess
+  debugVerifyReplay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+
   ExecutableModel(const ExecutableModel &) = delete;
   ExecutableModel &operator=(const ExecutableModel &) = delete;
 
@@ -81,6 +93,8 @@ private:
                   AnyAsyncValueRef weightsRegistry,
                   SmallVector<AnyAsyncValueRef> &&devices,
                   const class Model *model, Runtime &runtime);
+  ErrorOrSuccess executeWithDeviceMemoryInputs(
+      ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const;
 
   const class Model *model;
   Runtime &runtime;
@@ -88,6 +102,8 @@ private:
   AnyAsyncValueRef mgpContext;
   AnyAsyncValueRef weightsRegistry;
   SmallVector<AnyAsyncValueRef> devices;
+  // Cached device graphs keyed by input signature (shape + dtype).
+  llvm::DenseMap<uint64_t, Driver::DeviceGraphRef> capturedGraphs;
 };
 
 //===----------------------------------------------------------------------===//
