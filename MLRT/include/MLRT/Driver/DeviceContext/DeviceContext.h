@@ -263,7 +263,11 @@ public:
 
   bool isHost() const;
 
-  ErrorOrSuccess copyTo(const DeviceBuffer &dst) const;
+  inline ErrorOrSuccess copyTo(const DeviceBuffer &dst) const {
+    return copyTo(dst, 0, dst.byteSize());
+  }
+  ErrorOrSuccess copyTo(const DeviceBuffer &dst, size_t srcByteOffset,
+                        size_t srcByteSize) const;
   ErrorOrSuccess copyTo(void *dst) const;
 
   ErrorOrSuccess copyFrom(const DeviceBuffer &src) const;
@@ -516,8 +520,15 @@ public:
     return enqueueCopyFromDevice(dst, src.ptr(), src.byteSize());
   }
 
+  inline ErrorOrSuccess
+  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
+                            const DeviceBuffer &src) const {
+    return enqueueCopyDeviceToDevice(dst, src, 0, src.byteSize());
+  }
   ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                           const DeviceBuffer &src) const;
+                                           const DeviceBuffer &src,
+                                           size_t srcByteOffset,
+                                           size_t srcByteSize) const;
 
   virtual ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize,
                                           uint64_t val,
@@ -637,7 +648,9 @@ protected:
 
   // Low-level copies.
   virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
-                                     const DeviceBuffer &src) const = 0;
+                                     const DeviceBuffer &src,
+                                     size_t srcByteOffset,
+                                     size_t srcByteSize) const = 0;
 
   using MMapFileImplResult =
       ErrorOr<std::tuple<void *, size_t,

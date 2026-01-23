@@ -433,10 +433,11 @@ MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
 
-MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceBuffer::copyTo(const DeviceBuffer &dst) const {
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(
+    const DeviceBuffer &dst, size_t srcByteOffset, size_t srcByteSize) const {
   const DeviceBuffer &src = *this;
-  return dst.context().enqueueCopyDeviceToDevice(dst, src);
+  return dst.context().enqueueCopyDeviceToDevice(dst, src, srcByteOffset,
+                                                 srcByteSize);
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) const {
@@ -974,18 +975,21 @@ DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
-    const DeviceBuffer &dst, const DeviceBuffer &src) const {
+    const DeviceBuffer &dst, const DeviceBuffer &src, size_t srcByteOffset,
+    size_t srcByteSize) const {
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
-  if (src.byteSize() < dst.byteSize()) {
+  if ((srcByteOffset + srcByteSize) < dst.byteSize())
     RETURN_ERROR("not enough data in src");
-  }
+
   if (src.isHost() || (srcApi == Device::cpuAPI)) {
-    return dst.context().enqueueCopyToDevice(dst, src.ptr());
+    return dst.context().enqueueCopyToDevice(
+        dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (dst.isHost() || (dstApi == Device::cpuAPI)) {
-    return src.context().enqueueCopyFromDevice(dst.ptr(), src);
+    return src.context().enqueueCopyFromDevice(
+        dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (srcApi == dstApi) {
-    return this->memCopyDtoD(dst, src);
+    return this->memCopyDtoD(dst, src, srcByteOffset, srcByteSize);
   }
   return Error("Device API mismatch copying from \"" + srcApi + "\" to \"" +
                dstApi + "\"");

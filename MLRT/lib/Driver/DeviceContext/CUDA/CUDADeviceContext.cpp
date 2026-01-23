@@ -1306,7 +1306,9 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
 }
 
 ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                              const DeviceBuffer &src) const {
+                                              const DeviceBuffer &src,
+                                              size_t srcByteOffset,
+                                              size_t srcByteSize) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   CHECK_IS_CUDA_ERR(src.context().device());
@@ -1320,10 +1322,11 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     RETURN_ERROR("device context does not match context of dst");
   }
 
-  CUdeviceptr srcPtr = src.ptr();
+  CUdeviceptr srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  assert(src.byteSize() >= dstByteSize);
+  assert(srcByteOffset + srcByteSize >= src.byteSize());
+  assert(srcByteSize == dstByteSize);
   if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());

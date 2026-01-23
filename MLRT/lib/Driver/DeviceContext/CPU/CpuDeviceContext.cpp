@@ -242,13 +242,16 @@ ErrorOrSuccess CpuDeviceContext::enqueueCopyFromDevice(void *dst,
 }
 
 ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                             const DeviceBuffer &src) const {
+                                             const DeviceBuffer &src,
+                                             size_t srcByteOffset,
+                                             size_t srcByteSize) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());
-  void *srcPtr = src.ptr();
+  void *srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   void *dstPtr = dst.ptr();
-  assert(src.byteSize() >= dst.byteSize());
+  assert(srcByteOffset + srcByteSize >= src.byteSize());
+  assert(srcByteSize == dst.byteSize());
   memcpy(dstPtr, srcPtr, dst.byteSize());
   return success();
 }

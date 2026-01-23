@@ -108,8 +108,9 @@ public:
                                      size_t byteSize) const override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
                                        size_t byteSize) const override;
-  ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
-                             const DeviceBuffer &src) const override;
+  ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst, const DeviceBuffer &src,
+                             size_t srcByteOffset,
+                             size_t srcByteSize) const override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) const override;
@@ -169,7 +170,7 @@ public:
 
   // Metal-specific helper
   ErrorOrSuccess enqueueMetalCopy(MTL::Buffer *src, MTL::Buffer *dst,
-                                  size_t size) const;
+                                  size_t srcOffset, size_t size) const;
 
   static const MetalDeviceContext *verified_cast(const DeviceContext *ctx);
   MTL::Device *metalDevice() const {

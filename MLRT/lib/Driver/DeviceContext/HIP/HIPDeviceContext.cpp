@@ -1043,7 +1043,9 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 }
 
 ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                             const DeviceBuffer &src) const {
+                                             const DeviceBuffer &src,
+                                             size_t srcByteOffset,
+                                             size_t srcByteSize) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   CHECK_IS_HIP_ERR(src.context().device());
@@ -1061,10 +1063,11 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   // https://rocm.docs.amd.com/projects/HIP/en/latest/reference/hip_runtime_api/modules/memory_management.html#_CPPv49hipMemcpyPvPKv6size_t13hipMemcpyKind
   HIP_WITH_CTX_ERR(srcCtx);
 
-  hipDeviceptr_t srcPtr = src.ptr();
+  hipDeviceptr_t srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   hipDeviceptr_t dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  assert(src.byteSize() >= dstByteSize);
+  assert(srcByteOffset + srcByteSize >= src.byteSize());
+  assert(srcByteSize == dstByteSize);
   if (srcCtx.hipStream() != dstCtx.hipStream()) {
     // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());

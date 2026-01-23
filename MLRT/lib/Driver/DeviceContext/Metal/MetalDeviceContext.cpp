@@ -543,7 +543,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
   MTL::Buffer *srcBuf = getMetalBuffer(src);
   if (srcBuf) {
     // Source is a Metal buffer - use blit encoder for copy
-    return enqueueMetalCopy(srcBuf, dstBuf, byteSize);
+    return enqueueMetalCopy(srcBuf, dstBuf, 0, byteSize);
   }
 
   // Source is regular host memory - use memcpy approach
@@ -603,7 +603,7 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
   MTL::Buffer *dstBuf = getMetalBuffer(dst);
   if (dstBuf) {
     // Destination is a Metal buffer - use blit encoder for copy
-    return enqueueMetalCopy(srcBuf, dstBuf, byteSize);
+    return enqueueMetalCopy(srcBuf, dstBuf, 0, byteSize);
   }
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
@@ -630,7 +630,9 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
 }
 
 ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                               const DeviceBuffer &src) const {
+                                               const DeviceBuffer &src,
+                                               size_t srcByteOffset,
+                                               size_t srcByteSize) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   // 1) Basic validation
@@ -639,6 +641,9 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 
   if (dst.byteSize() < src.byteSize())
     RETURN_ERROR("Destination buffer size must be >= source buffer size");
+
+  if (srcByteOffset + srcByteSize < src.byteSize())
+    RETURN_ERROR("Requested source slice larger than source buffer");
 
   // 2) Handle Metal buffer to Metal buffer copies (both host and device are
   // Metal buffers now)
@@ -649,7 +654,7 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
     RETURN_ERROR("Invalid Metal buffer pointer");
 
   // 3) Delegate to enqueueMetalCopy for all Metal-to-Metal copies
-  return enqueueMetalCopy(srcBuf, dstBuf, dst.byteSize());
+  return enqueueMetalCopy(srcBuf, dstBuf, srcByteOffset, dst.byteSize());
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
@@ -1163,6 +1168,7 @@ void *MetalDeviceContext::driverContext() const {
 
 ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
                                                     MTL::Buffer *dst,
+                                                    size_t srcOffset,
                                                     size_t size) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueMetalCopy",
                        TRACY_COLOR_PURPLE);
@@ -1178,7 +1184,7 @@ ErrorOrSuccess MetalDeviceContext::enqueueMetalCopy(MTL::Buffer *src,
   if (blit == nullptr)
     RETURN_ERROR("Failed to create blit encoder");
 
-  blit->copyFromBuffer(src, 0, dst, 0, size);
+  blit->copyFromBuffer(src, srcOffset, dst, 0, size);
   blit->endEncoding();
 
   cmdBuffer->commit();
