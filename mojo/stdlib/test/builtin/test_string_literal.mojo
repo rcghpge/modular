@@ -207,10 +207,10 @@ def test_intable():
         _ = StringLiteral.__int__("hi")
 
 
-def test_isdigit():
-    assert_true("123".isdigit())
-    assert_false("abc".isdigit())
-    assert_false("123abc".isdigit())
+def test_is_ascii_digit():
+    assert_true("123".is_ascii_digit())
+    assert_false("abc".is_ascii_digit())
+    assert_false("123abc".is_ascii_digit())
     # TODO: Uncomment this when PR3439 is merged
     # assert_false("".isdigit())
 
@@ -334,16 +334,16 @@ def test_count():
     assert_equal(String("aaaaaa").count("aa"), 3)
 
 
-def test_rjust():
-    assert_equal("hello".rjust(4), "hello")
-    assert_equal("hello".rjust(8), "   hello")
-    assert_equal("hello".rjust(8, "*"), "***hello")
+def test_ascii_rjust():
+    assert_equal("hello".ascii_rjust(4), "hello")
+    assert_equal("hello".ascii_rjust(8), "   hello")
+    assert_equal("hello".ascii_rjust(8, "*"), "***hello")
 
 
-def test_ljust():
-    assert_equal("hello".ljust(4), "hello")
-    assert_equal("hello".ljust(8), "hello   ")
-    assert_equal("hello".ljust(8, "*"), "hello***")
+def test_ascii_ljust():
+    assert_equal("hello".ascii_ljust(4), "hello")
+    assert_equal("hello".ascii_ljust(8), "hello   ")
+    assert_equal("hello".ascii_ljust(8, "*"), "hello***")
 
 
 def test_center():

@@ -1427,6 +1427,16 @@ def test_reserve():
     assert_equal(s.capacity(), 64)
 
 
+def test_resize():
+    var s = String()
+    s.resize(100, 0)
+    for c in s.codepoints():
+        assert_equal(c, Codepoint(0))
+    var s2 = String("😀😃")
+    s2.resize(4)
+    assert_equal(s2, "😀")
+
+
 def test_uninit_ctor():
     var hello_len = len("hello")
     var s = String(unsafe_uninit_length=hello_len)
@@ -1547,9 +1557,7 @@ def test_sso():
     s += "f"
 
     # The capacity should be 2x the previous amount, rounded up to 8.
-    comptime expected_capacity = UInt(
-        (Int(String.INLINE_CAPACITY) * 2 + 7) & ~7
-    )
+    comptime expected_capacity = UInt((String.INLINE_CAPACITY * 2 + 7) & ~7)
     assert_equal(s.capacity(), Int(expected_capacity))
     assert_equal(s._is_inline(), False)
 

@@ -700,19 +700,12 @@ struct SIMD[dtype: DType, size: Int](
             value: The input value.
         """
         _simd_construction_checks[Self.dtype, Self.size]()
-        var si128_ = __mlir_attr[
-            `#pop<int_literal_convert<`, value.value, `, 0>> : si128`
+        self._mlir_value = __mlir_attr[
+            `#pop.int_literal_convert<`,
+            value.value,
+            `> : `,
+            Self._mlir_type,
         ]
-        var si128 = __mlir_op.`pop.cast_from_builtin`[
-            _type = __mlir_type.`!pop.scalar<si128>`
-        ](si128_)
-        var s = __mlir_op.`pop.cast`[_type = Scalar[Self.dtype]._mlir_type](
-            si128
-        )
-
-        self._mlir_value = __mlir_op.`pop.simd.splat`[_type = Self._mlir_type](
-            s
-        )
 
     @always_inline("nodebug")
     @implicit
@@ -1961,14 +1954,14 @@ struct SIMD[dtype: DType, size: Int](
         """
         return Self(mlir_value=__mlir_op.`pop.ceil`(self._mlir_value))
 
-    @always_inline("nodebug")
+    @always_inline("builtin")
     fn __trunc__(self) -> Self:
         """Performs elementwise truncation on the elements of a SIMD vector.
 
         Returns:
             The elementwise truncated values of this SIMD vector.
         """
-        return self._floor_ceil_trunc_impl["llvm.trunc"]()
+        return Self(mlir_value=__mlir_op.`pop.trunc`(self._mlir_value))
 
     @always_inline
     fn __abs__(self) -> Self:
@@ -2372,19 +2365,6 @@ struct SIMD[dtype: DType, size: Int](
             count=size_of[Self](),
         )
         return array^
-
-    fn _floor_ceil_trunc_impl[intrinsic: StaticString](self) -> Self:
-        __comptime_assert (
-            intrinsic == "llvm.floor"
-            or intrinsic == "llvm.ceil"
-            or intrinsic == "llvm.trunc"
-        ), "unsupported intrinsic"
-
-        @parameter
-        if Self.dtype.is_integral() or Self.dtype == DType.bool:
-            return self
-        else:
-            return llvm_intrinsic[intrinsic, Self, has_side_effect=False](self)
 
     fn clamp(self, lower_bound: Self, upper_bound: Self) -> Self:
         """Clamps the values in a SIMD vector to be in a certain range.
