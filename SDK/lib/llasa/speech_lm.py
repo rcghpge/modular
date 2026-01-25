@@ -152,7 +152,7 @@ class SpeechLM:
 
         # Claim the request ID in the KV cache manager
         if self.kv_cache_manager is not None:
-            self.kv_cache_manager.claim(context.request_id)
+            self.kv_cache_manager.claim(context.request_id, replica_idx=0)
 
         all_tokens = []
         batch = [context]
@@ -160,7 +160,7 @@ class SpeechLM:
         while not context.status.is_done:
             # Allocate KV cache blocks for this step
             if self.kv_cache_manager is not None:
-                self.kv_cache_manager.alloc(context, num_steps=1)
+                self.kv_cache_manager.alloc(context, replica_idx=0, num_steps=1)
 
             inputs: TextGenerationInputs = TextGenerationInputs(
                 batches=[batch], num_steps=1
