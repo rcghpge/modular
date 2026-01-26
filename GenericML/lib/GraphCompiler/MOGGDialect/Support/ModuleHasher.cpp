@@ -298,6 +298,13 @@ M::MOGG::applySemanticNaming(ModuleOp module,
   if (symbolsToRename.empty())
     return renaming;
 
+  for (StringAttr symbol : symbolsToRename) {
+    auto generator = symtab.lookup<KGEN::GeneratorOp>(symbol);
+    ASSERT_STREAM(generator, << "symbol " << symbol << " not found in module");
+    // Remove it because it influences the hashing.
+    generator.removeSourceNameAttr();
+  }
+
   hashModuleContents(module, symtab);
 
   // The semantic hashes of the functions we have visited already. This tells
@@ -307,8 +314,6 @@ M::MOGG::applySemanticNaming(ModuleOp module,
 
   for (StringAttr symbol : symbolsToRename) {
     auto generator = symtab.lookup<KGEN::GeneratorOp>(symbol);
-    ASSERT_STREAM(generator, << "symbol " << symbol << " not found in module");
-
     auto hash = generator->getAttrOfType<StringAttr>(kSemanticHashName);
     ASSERT_STREAM(hash, "module has not had semantic hashes computed");
 

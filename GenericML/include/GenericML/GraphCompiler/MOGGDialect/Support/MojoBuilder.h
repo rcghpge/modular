@@ -141,21 +141,21 @@ struct FunctionBody {
 // In most cases the MojoBuilder takes care of handling unique names so we don't
 // need to manipulate it.
 class UniqueMojoIdentifier {
-  StringLiteral prefix;
+  std::string prefix;
   std::optional<uint32_t> idx;
 
 public:
-  UniqueMojoIdentifier(StringLiteral prefix)
+  UniqueMojoIdentifier(const std::string &prefix)
       : prefix(prefix), idx(std::nullopt) {}
 
 private:
-  UniqueMojoIdentifier(StringLiteral prefix, std::optional<uint32_t> idx)
+  UniqueMojoIdentifier(const std::string &prefix, std::optional<uint32_t> idx)
       : prefix(prefix), idx(idx) {}
 
   // Get the corresponding identifier.
   std::string str() const {
     ASSERT_STREAM(idx.has_value(), << "UniqueMojoIdentifier must be resolved");
-    return llvm::formatv("{}_{}", prefix, *idx).str();
+    return llvm::formatv("{}{}", prefix, *idx).str();
   }
 
   friend class MojoBuilder;
@@ -171,7 +171,7 @@ struct NamedMojoDef {
                std::optional<MojoValue> defaultValue = std::nullopt)
       : name(name), type(type), defaultValue(defaultValue) {}
 
-  NamedMojoDef(StringLiteral name, MojoValue type,
+  NamedMojoDef(const std::string &name, MojoValue type,
                std::optional<MojoValue> defaultValue = std::nullopt)
       : NamedMojoDef(UniqueMojoIdentifier(name), type, defaultValue) {}
 };
@@ -182,7 +182,7 @@ using MojoValueCache = std::stack<llvm::StringMap<MojoValue>>;
 /// mlir::Operation and mlir::Value.
 class MojoBuilder {
 public:
-  MojoBuilder() : ss(sourceStr), variableCounter(0) {}
+  MojoBuilder() : ss(sourceStr), variableCounters({0}) {}
   ~MojoBuilder() {
     ASSERT_STREAM(comptimeCache.empty(),
                   << "Expected cahces of MojoValue to be empty");
@@ -280,8 +280,11 @@ public:
 
   void decreaseIndentation() { indentation.erase(indentation.size() - 4, 4); }
 
-  UniqueMojoIdentifier getIdentifier(StringLiteral prefix = "val") {
-    return UniqueMojoIdentifier(prefix, variableCounter++);
+  UniqueMojoIdentifier getIdentifier(const std::string &prefix = "val") {
+    auto prefixWithIdentationLevel =
+        prefix + std::string(variableCounters.size(), '_');
+    return UniqueMojoIdentifier(prefixWithIdentationLevel,
+                                variableCounters.top()++);
   }
 
   UniqueMojoIdentifier resolveIdentifier(UniqueMojoIdentifier name) {
@@ -291,7 +294,7 @@ public:
       return getIdentifier(name.prefix);
   }
 
-  MojoValue newVar(StringLiteral name = "val") {
+  MojoValue newVar(const std::string &name = "val") {
     return resolveIdentifier(name).str();
   }
 
@@ -299,8 +302,11 @@ public:
     return resolveIdentifier(name).str();
   }
 
+  void pushCounters() { variableCounters.push({0}); }
+
+  void popCounters() { variableCounters.pop(); }
+
   void pushCache() {
-    // foo
     varCache.push({});
     comptimeCache.push({});
   }
@@ -330,7 +336,8 @@ private:
   std::string sourceStr;
   llvm::raw_string_ostream ss;
   std::string indentation;
-  uint32_t variableCounter;
+
+  std::stack<uint32_t> variableCounters;
 
   // The MojoValue cache is effectively doing partial CSE for Mojo text. Certain
   // EmitsMojoInterface operations will generate many variables which are not

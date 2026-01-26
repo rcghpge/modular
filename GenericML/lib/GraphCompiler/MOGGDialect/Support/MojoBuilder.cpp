@@ -44,9 +44,13 @@ MojoValue createTypedVar(const MojoValue &name, const MojoValue &type) {
 
 class MojoBuilderScopeGuard {
 public:
-  MojoBuilderScopeGuard(MojoBuilder *e) : emitter(e) {
-    emitter->increaseIndentation();
-    emitter->pushCache();
+  MojoBuilderScopeGuard(MojoBuilder *e, bool deferExceptCounters = false)
+      : emitter(e) {
+    if (!deferExceptCounters) {
+      emitter->increaseIndentation();
+      emitter->pushCache();
+    }
+    emitter->pushCounters();
   }
   MojoBuilderScopeGuard() = delete;
   MojoBuilderScopeGuard(const MojoBuilderScopeGuard &other) = delete;
@@ -54,8 +58,14 @@ public:
     emitter->decreaseIndentation();
     emitter->newline();
     emitter->popCache();
+    emitter->popCounters();
   }
   MojoBuilder *emitter;
+
+  void doDeferredActions() {
+    emitter->increaseIndentation();
+    emitter->pushCache();
+  }
 };
 
 std::string MojoBuilder::funcDefBase(ArrayRef<NamedMojoDef> parameters,
@@ -112,12 +122,17 @@ void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
 
   FunctionBody body;
 
+  MojoBuilderScopeGuard guard(this, true);
+
   if (exported)
     statement("@export");
   statement("fn ", name,
             funcDefBase(parameters, arguments, returnType, raises, body));
 
-  MojoBuilderScopeGuard guard(this);
+  // This is necessary to increase indentation and the value cache. The reason
+  // we defer them is because we create the guard early to ensure that argument
+  // names use new counters.
+  guard.doDeferredActions();
   funcBody(body);
 }
 
@@ -127,7 +142,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                     std::optional<MojoValue> returnType, bool isInline,
                     bool isParameter,
                     std::function<void(const FunctionBody &)> &&lambdaBody) {
-  MojoValue lambdaParam = newVar(lambdaName);
+  MojoValue lambdaParam = newVar(lambdaName.str());
   FunctionBody body;
 
   if (isParameter)
@@ -147,7 +162,7 @@ MojoValue MojoBuilder::lambdaWithCopyCapture(
     ArrayRef<NamedMojoDef> parameters, ArrayRef<NamedMojoDef> arguments,
     std::optional<MojoValue> returnType, bool isInline, bool isParameter,
     std::function<void(const FunctionBody &)> &&lambdaBody) {
-  MojoValue lambdaParam = newVar(lambdaName);
+  MojoValue lambdaParam = newVar(lambdaName.str());
   FunctionBody body;
 
   // Add @__copy_capture decorator if there are captures
