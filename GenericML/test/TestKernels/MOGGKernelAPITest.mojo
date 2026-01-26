@@ -58,8 +58,7 @@ fn export():
 # ===-----------------------------------------------------------------------===#
 
 
-@register_passable("trivial")
-struct MyCustomScalarRegTrivialSI32(ImplicitlyCopyable):
+struct MyCustomScalarRegTrivialSI32(TrivialRegisterType):
     var val: Int32
 
     @implicit
@@ -1080,7 +1079,7 @@ struct CustomOpWithStaticStringParams:
 
 @fieldwise_init
 @register_passable
-struct TensorWrapper(ImplicitlyCopyable):
+struct TensorWrapper:
     var buffer: NDBuffer[DType.float32, 2, MutAnyOrigin]
 
 
@@ -1200,7 +1199,7 @@ struct InplaceNoOutFunc:
 
 @fieldwise_init
 @register_passable
-struct SIMDPair[S0: Int, S1: Int](ImplicitlyCopyable):
+struct SIMDPair[S0: Int, S1: Int]:
     var x: SIMD[DType.int32, Self.S0]
     var y: SIMD[DType.int32, Self.S1]
 
