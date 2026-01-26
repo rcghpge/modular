@@ -874,12 +874,16 @@ void IfOp::getSuccessorRegions(
     SmallVectorImpl<mlir::RegionSuccessor> &regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.emplace_back(mlir::RegionSuccessor::parent(getResults()));
+    regions.emplace_back(mlir::RegionSuccessor::parent());
     return;
   }
 
   regions.emplace_back(&getThenRegion());
   regions.emplace_back(&getElseRegion());
+}
+
+ValueRange IfOp::getSuccessorInputs(mlir::RegionSuccessor successor) {
+  return successor.isParent() ? getOperation()->getResults() : ValueRange();
 }
 
 void IfOp::getEntrySuccessorRegions(
@@ -943,7 +947,7 @@ void WhileOp::getSuccessorRegions(
     SmallVectorImpl<mlir::RegionSuccessor> &regions) {
   // The parent op always branches to the condition region.
   if (point.isParent()) {
-    regions.emplace_back(&getCondRegion(), getCondRegion().getArguments());
+    regions.emplace_back(&getCondRegion());
     return;
   }
 
@@ -954,12 +958,22 @@ void WhileOp::getSuccessorRegions(
   // The body region always branches back to the condition region.
   if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
       &getBodyRegion()) {
-    regions.emplace_back(&getCondRegion(), getCondRegion().getArguments());
+    regions.emplace_back(&getCondRegion());
     return;
   }
 
-  regions.emplace_back(mlir::RegionSuccessor::parent(getResults()));
-  regions.emplace_back(&getBodyRegion(), getBodyRegion().getArguments());
+  regions.emplace_back(mlir::RegionSuccessor::parent());
+  regions.emplace_back(&getBodyRegion());
+}
+
+ValueRange WhileOp::getSuccessorInputs(mlir::RegionSuccessor successor) {
+  if (successor.isParent())
+    return getOperation()->getResults();
+  if (successor == &getCondRegion())
+    return getCondRegion().getArguments();
+  if (successor == &getBodyRegion())
+    return getBodyRegion().getArguments();
+  llvm_unreachable("invalid region successor");
 }
 
 MutableArrayRef<OpOperand> WhileOp::getInitsMutable() {
@@ -1041,9 +1055,8 @@ void WhileConditionOp::getSuccessorRegions(
 
   // Condition can either lead to the after region or back to the parent op
   // depending on whether the condition is true or not.
-  regions.emplace_back(&whileOp.getBodyRegion(),
-                       whileOp.getBodyRegion().getArguments());
-  regions.emplace_back(mlir::RegionSuccessor::parent(whileOp.getResults()));
+  regions.emplace_back(&whileOp.getBodyRegion());
+  regions.emplace_back(mlir::RegionSuccessor::parent());
 }
 
 MutableOperandRange

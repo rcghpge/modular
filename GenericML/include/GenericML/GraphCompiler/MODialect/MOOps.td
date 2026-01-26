@@ -372,7 +372,7 @@ def MO_OutputOp : MO_ControlOp<"output", [
 //===----------------------------------------------------------------------===//
 
 def IfOp : MO_ControlOp<"if", [
-  DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions"]>,
+  DeclareOpInterfaceMethods<RegionBranchOpInterface, ["getEntrySuccessorRegions", "getSuccessorInputs"]>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   HasOnlyGraphRegion,
   NoRegionArguments,
@@ -442,7 +442,7 @@ def WhileOp : MO_ControlOp<"while", [
   DeclareOpInterfaceMethods<LoopLikeOpInterface,
     ["getRegionIterArgs", "getInitsMutable", "getYieldedValuesMutable"]>,
   DeclareOpInterfaceMethods<RegionBranchOpInterface,
-    ["getEntrySuccessorOperands"]>,
+    ["getEntrySuccessorOperands", "getSuccessorInputs"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   HasOnlyGraphRegion,
   RecursiveMemoryEffects,
