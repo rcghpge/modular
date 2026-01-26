@@ -3063,6 +3063,52 @@ void AllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// ReduceScatterSumOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceScatterSumOp::verify() {
+  // Verify we have inputs.
+  auto inputs = getInputs();
+  if (inputs.empty())
+    return emitError("reducescatter requires at least one input");
+
+  // Verify that all inputs have the same shape and element type.
+  auto firstInputType = getInputTensor(0).getType();
+  for (size_t i = 1; i < inputs.size(); ++i) {
+    auto inputType = getInputTensor(i).getType();
+    if (inputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
+      return emitError("all inputs must have the same shape");
+    if (inputType.getElementType() != firstInputType.getElementType())
+      return emitError("all inputs must have the same element type");
+  }
+
+  // Verify that output element type matches input element type.
+  auto outputType = getOutput().getType();
+  if (outputType.getElementType() != firstInputType.getElementType())
+    return emitError("output element type must match input element type");
+
+  // Verify that the device attribute matches the output device.
+  auto deviceAttr = getDeviceAttr();
+  auto outputDevice = outputType.getDeviceRef();
+  if (outputDevice && deviceAttr != outputDevice)
+    return emitError("device attribute must match output device");
+
+  // Verify signal buffers match input count
+  if (getSignalBuffers().size() != inputs.size())
+    return emitError("number of signal buffers must match number of inputs");
+
+  return success();
+}
+
+void ReduceScatterSumOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // AllGatherOp
 //===----------------------------------------------------------------------===//
 

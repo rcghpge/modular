@@ -1,5 +1,41 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
+// Test reducescatter with mismatched input shapes
+mo.graph @reducescatter_mismatched_shapes(
+    %arg0: !mo.tensor<[6, 3], f32, gpu:0>,
+    %arg1: !mo.tensor<[4, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[537919488], ui8, gpu:0>,
+    %sig1: !mo.buffer<[537919488], ui8, gpu:1>)
+    -> (!mo.tensor<[3, 3], f32, gpu:0>) {
+  %chain_in = mo.chain.create()
+  // expected-error@+1 {{all inputs must have the same shape}}
+  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+    (!mo.tensor<[6, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:1>,
+     !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test reducescatter with mismatched element types
+mo.graph @reducescatter_mismatched_dtypes(
+    %arg0: !mo.tensor<[6, 3], f32, gpu:0>,
+    %arg1: !mo.tensor<[6, 3], f16, gpu:1>,
+    %sig0: !mo.buffer<[537919488], ui8, gpu:0>,
+    %sig1: !mo.buffer<[537919488], ui8, gpu:1>)
+    -> (!mo.tensor<[3, 3], f32, gpu:0>) {
+  %chain_in = mo.chain.create()
+  // expected-error@+1 {{all inputs must have the same element type}}
+  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+    (!mo.tensor<[6, 3], f32, gpu:0>, !mo.tensor<[6, 3], f16, gpu:1>,
+     !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:0>
+}
+
+// -----
+
 // Test allgather with incorrect number of outputs (should be num_inputs * num_inputs)
 mo.graph @allgather_wrong_output_count(
     %arg0: !mo.tensor<[2, 3], f32, gpu:0>,
