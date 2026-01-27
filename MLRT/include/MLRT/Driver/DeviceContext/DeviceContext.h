@@ -354,11 +354,6 @@ public:
   /// Replay the captured operations on the stored capture stream.
   virtual ErrorOrSuccess replay() const = 0;
 
-  /// Debug verification: Execute with launch trace capture on the stored stream
-  /// and compare to the capture baseline.
-  ErrorOrSuccess
-  debugVerifyReplay(llvm::function_ref<ErrorOrSuccess()> execute) const;
-
 protected:
   explicit DeviceGraph(const Device &device, DeviceStreamRef captureStream = {})
       : device_(DeviceRef::copy(&device)),
@@ -377,8 +372,6 @@ protected:
 private:
   DeviceRef device_;
   DeviceStreamRef captureStream_;
-  bool hasBaselineLaunchTrace_ = false;
-  std::vector<uint64_t> baselineLaunchTrace_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -402,12 +395,6 @@ public:
 
   virtual ErrorOrSuccess
   enqueueWaitForEvent(const DeviceEvent &event) const = 0;
-
-  /// Begin recording a device launch trace. Default is a no-op.
-  virtual void beginLaunchTrace() const;
-
-  /// Take and clear the current device launch trace. Default is empty.
-  virtual std::vector<uint64_t> takeLaunchTrace() const;
 
   // Raw device driver pointer to enable passing to PyTorch and similar APIs.
   virtual void *ptr() const = 0;

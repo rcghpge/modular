@@ -417,17 +417,6 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   return success();
 }
 
-ErrorOrSuccess ExecutableModel::debugVerifyReplay(
-    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  uint64_t key = computeInputKey(inputs);
-  auto it = capturedGraphs.find(key);
-  if (it == capturedGraphs.end())
-    return Error("No captured graph for these inputs");
-
-  return it->second->debugVerifyReplay(
-      [&]() { return executeWithDeviceMemoryInputs(inputs); });
-}
-
 ErrorOrSuccess
 ExecutableModel::replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   uint64_t key = computeInputKey(inputs);
