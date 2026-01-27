@@ -6,7 +6,7 @@
 
 #include "GenericML/MEFModel/MEFModel.h"
 #include "GenericML/DeviceDriver/DeviceExecution.h"
-#include "GenericML/MGPPrimitives/MGPPrimitives.h"
+#include "GenericML/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.h"
 #include "GenericML/Support/FormatYAML.h"
 #include "GenericML/Support/MEFTypeUtils.h"
 #include "GenericML/Support/ModelSpec.h"

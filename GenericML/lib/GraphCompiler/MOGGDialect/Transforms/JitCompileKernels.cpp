@@ -8,13 +8,13 @@
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/ModuleHasher.h"
-#include "GenericML/MGPDialect/MGPOps.h"
 
 #include "Cache/CacheTelemetryContext.h"
 #include "KGEN/Compiler/KGENCompiler.h"

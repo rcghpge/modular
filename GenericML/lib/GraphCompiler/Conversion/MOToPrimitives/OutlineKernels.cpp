@@ -6,9 +6,9 @@
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/MGPDialect/MGPDialect.h"
 
 using namespace M;
 

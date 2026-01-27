@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ConstantFold.h"
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
@@ -13,7 +14,6 @@
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/MEFModel/MEFModel.h"
-#include "GenericML/MGPDialect/MGPDialect.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GenericML/Support/List.h"
 #include "KGEN/KGENDialect/KGENOps.h"

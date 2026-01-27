@@ -6,12 +6,12 @@
 #ifndef GENERICML_INTERFACES_EMITMOJOSTATE_H
 #define GENERICML_INTERFACES_EMITMOJOSTATE_H
 
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
-#include "GenericML/MGPDialect/MGPTypes.h"
 
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "Support/AssertStream.h"

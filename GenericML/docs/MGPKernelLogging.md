@@ -16,8 +16,8 @@ enable.
 
 ## Quick Start
 
-In the `GenericML/lib/MGPPrimitives/MGPPrimitives.cpp` file, enable the define
-`ENABLE_MGP_KERNEL_LOGGING`.
+In the `GenericML/lib/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.cpp`
+file, enable the define `ENABLE_MGP_KERNEL_LOGGING`.
 
 Tests for this logging capability automatically enable that define for this
 build target:
@@ -45,7 +45,7 @@ Kernel logging is controlled at compile time via the `ENABLE_MGP_KERNEL_LOGGING`
 preprocessor define:
 
 ```cpp
-// Enabled in GenericML/lib/MGPPrimitives/MGPPrimitives.cpp
+// Enabled in GenericML/lib/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.cpp
 #if ENABLE_MGP_KERNEL_LOGGING
   // Logging code paths active
 #else

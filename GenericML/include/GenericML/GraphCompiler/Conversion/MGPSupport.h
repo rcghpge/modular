@@ -7,9 +7,9 @@
 #ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MGPSUPPORT_H
 #define GENERICML_GRAPHCOMPILER_CONVERSION_MGPSUPPORT_H
 
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "GenericML/MGPDialect/MGPOps.h"
 
 namespace M::MGP {
 

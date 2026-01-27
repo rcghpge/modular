@@ -1,0 +1,160 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// Device-generic types in the MGP dialect. All of these types accept an
+// #M.device_ref attribute indicating the specific type and 'virtual' device
+// id the type should apply to.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef GENERICML_MGPDIALECT_MGPDEVICETYPES_TD
+#define GENERICML_MGPDIALECT_MGPDEVICETYPES_TD
+
+include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
+include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
+include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.td"
+include "MLRT/GraphRT/MEFDialect/MEFTypeInterfaces.td"
+include "Support/MDialect/MAttrs.td"
+include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/BuiltinTypeInterfaces.td"
+include "mlir/IR/AttrTypeBase.td"
+
+class MGP_DeviceType<string name, string mnemonic, list<Trait> traits = []> :
+    MGP_Type<
+      name,
+      mnemonic,
+      [DeclareTypeInterfaceMethods<MGP_HasDeviceTypeInterface>] # traits
+    >;
+
+def MGP_OptDeviceRefParam :
+  DefaultValuedParameter<"M::DeviceRefAttr",
+                         "M::DeviceRefAttr::getDefault($_ctxt)">;
+
+//===----------------------------------------------------------------------===//
+// DeviceBufferType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
+    DeclareTypeInterfaceMethods<ShapedTypeInterface>,
+]> {
+  let summary = "Byte array buffers.";
+  let description = [{
+    `!mgp.buffer`s are mutable byte arrays which reside on the device given by
+    the `#M.device_ref` attribute.
+
+    Nothing is implied about the internal structure of the bytes, such as rank,
+    dimensions, underlying element type, padding, or element endianness. The
+    compiler is responsible for ensuring the producers and consumers of buffers
+    agree on their interpretation of the buffer for the intended device.
+
+    Generally `!mgp.buffer`s are the lowest-common denominator representation
+    of tensor data across kernel implementations. Buffers may be wrapped by
+    various tensor types, including `!mgp.tensor`, or used directly.
+
+    This type implements `ShapedTypeInterface` as a rank-1 tensor over
+    `uint8_t`. This in turn supports the `ElementsAttrInterface` on buffer
+    attributes.
+
+    Note that buffers may respect alignment constraints. However those are
+    specified either when the buffer is created, or are encoded in the
+    attribute backing a constant buffer, and are not captured within the
+    buffer type.
+
+    Since `!mgp.buffers` are generally considered mutable, any op reading from
+    a buffer must also accept an `!mgp.chain`, and any op writing to a buffer
+    must also return an `!mgp.chain`. In this way the compiler can correctly
+    sequence writes and reads.
+
+    `!mgp.buffer`s are represented by (subclasses of)
+    `AsyncRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
+    such as CUDA, may need to include additional data to control device-side
+    synchronization, see `!mgp.chain` for more details.
+
+    Examples:
+    ```mlir
+    // A buffer on the CUDA GPU with virtual device id 3.
+    !mgp.buffer<<"gpu", 3>>
+    // A buffer on the CPU with virtual device id 0.
+    !mgp.buffer<<"cpu", 0>>
+    // Abbreviation for the above.
+    !mgp.buffer
+    ```
+  }];
+
+  let parameters = (ins MGP_OptDeviceRefParam:$device);
+  let assemblyFormat = "(`<` $device^ `>`)?";
+  let genVerifyDecl = 1;
+
+  let builders = [
+    /// Constructs a buffer type from the given device.
+    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device)>,
+
+    /// Constructs a buffer type which matches the device and any other properties
+    /// of the given tensor type.
+    TypeBuilderWithInferredContext<(ins "M::MGP::DeviceTensorType":$tensorType)>,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceTensorType
+//===----------------------------------------------------------------------===//
+
+def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
+    DeclareTypeInterfaceMethods<ShapedTypeInterface>,
+    DeclareTypeInterfaceMethods<MGP_TensorTypeInterface>,
+]> {
+  let summary = "Type of tensors respecting a tensor spec.";
+  let description = [{
+    `!mgp.tensor`s are immutable tensors consisting of a buffer and a tensor
+    spec, where the buffer resides on the device given by the `#M.device_ref`
+    attribute. The elements in the buffer are generally in dense row-major
+    order according to the runtime tensor spec, with endianness according to
+    the device's architecture.
+
+    Tensors are immutable. When a tensor is created from a buffer, the buffer
+    must be copied if it could still be written. When a buffer is extracted
+    from a tensor, the buffer must be copied if the tensor could still be read.
+
+    `!mgp.tensor`s are represented by (subclasses of) `Tensor` in the
+    host-side C++ runtime. Some devices, such as CUDA, may need to include
+    additional data with the tensor, such as synchronization streams. The
+    tensor's underlying byte-array buffer may also be passed around as a
+    raw `void*` pointer.
+
+    `!mgp.tensors`s are represented by (subclasses of)
+    `AsyncRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
+    such as CUDA, may need to include additional data to control device-side
+    synchronization, see `!mgp.chain` for more details.
+
+    Examples:
+    ```mlir
+    // Statically-shaped tensor on the CUDA GPU with virtual device id 3.
+    !mgp.tensor<4x16xf32, <"gpu", 3>>
+    // Dynamically-shaped tensor on the CPU with virtual device id 0.
+    !mgp.tensor<?x?xf32, <"cpu", 0>>
+    // Abbreviation for the above.
+    !mgp.tensor<?x?xf32>
+    ```
+  }];
+
+  let parameters = (ins MGP_OptDeviceRefParam:$device,
+                        "M::MGP::TensorSpecType":$tensorSpec);
+  let assemblyFormat = "`<` custom<TensorSpec>($tensorSpec) ( `,` $device^ )? `>`";
+
+  let builders = [
+    /// Constructs a tensor type from the given device and tensor spec.
+    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
+                                        "M::MGP::TensorSpecType":$tensorSpecType)>,
+  ];
+
+  let extraClassDeclaration = [{
+     /// Return the tensor spec for tensor. If isShapeOnly is true, the tensor
+     /// spec will have an unknown dtype.
+     M::MGP::TensorSpecType getTensorSpec(bool isShapeOnly);
+  }];
+}
+
+#endif  // GENERICML_MGPDIALECT_MGPDEVICETYPES_TD

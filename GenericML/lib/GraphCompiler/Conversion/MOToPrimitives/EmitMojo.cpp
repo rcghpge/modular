@@ -5,11 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
-#include "GenericML/MGPTransforms/MGPTransforms.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/ToolOutputFile.h"
 

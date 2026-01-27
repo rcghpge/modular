@@ -840,7 +840,7 @@ modular_cc_library(
 ##
 td_library(
     name = "MGPDialectTdFiles",
-    srcs = glob(["include/GenericML/MGPDialect/*.td"]),
+    srcs = glob(["include/GenericML/GraphCompiler/MGPDialect/Dialect/*.td"]),
     includes = ["include"],
     deps = [
         ":GraphCompilerInterfacesTdFiles",
@@ -858,10 +858,10 @@ gentbl_filegroup(
             "-gen-dialect-doc",
             "-dialect=mgp",
         ],
-        "include/GenericML/MGPDialect/MGPDialect.md",
+        "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.md",
     )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGP.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGP.td",
     deps = [
         ":MGPDialectTdFiles",
         "//MLRT:GraphRT/GRTTdFiles",
@@ -874,25 +874,25 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "include/GenericML/MGPDialect/MGP.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGP.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "include/GenericML/MGPDialect/MGP.cpp.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGP.cpp.inc",
         ),
         (
             [
                 "-gen-dialect-decls",
                 "-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPDialect.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.h.inc",
         ),
         (
             [
                 "-gen-dialect-defs",
                 "-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPDialect.cpp.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.cpp.inc",
         ),
         # Carry over from CMake. Original comment:
         # Type declarations need to be generated for MGPTypes.td directly so that
@@ -905,11 +905,11 @@ gentbl_cc_library(
                 "-gen-typedef-defs",
                 "-typedefs-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPTypes.cpp.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGP.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGP.td",
     deps = [
         ":GraphCompilerInterfacesTdFiles",
         ":MGPDialectTdFiles",
@@ -926,18 +926,18 @@ gentbl_cc_library(
                 "-gen-attrdef-decls",
                 "-attrdefs-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPAttrs.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPAttrs.h.inc",
         ),
         (
             [
                 "-gen-attrdef-defs",
                 "-attrdefs-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPAttrs.cpp.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPAttrs.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGP.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGP.td",
     deps = [
         ":MGPDialectTdFiles",
         "//MLRT:GraphRT/GRTTdFiles",
@@ -954,11 +954,11 @@ gentbl_cc_library(
                 "-gen-typedef-decls",
                 "-typedefs-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPTypes.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGPTypes.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.td",
     deps = [
         ":MGPDialectTdFiles",
         "//MLRT:GraphRT/MEFTdFiles",
@@ -974,11 +974,11 @@ gentbl_cc_library(
                 "-gen-typedef-decls",
                 "-typedefs-dialect=mgp",
             ],
-            "include/GenericML/MGPDialect/MGPTensorSpec.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGPTensorSpec.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.td",
     deps = [
         ":MGPDialectTdFiles",
     ],
@@ -992,17 +992,17 @@ gentbl_cc_library(
             [
                 "-gen-type-interface-decls",
             ],
-            "include/GenericML/MGPDialect/MGPTypeInterfaces.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.h.inc",
         ),
         (
             [
                 "-gen-type-interface-defs",
             ],
-            "include/GenericML/MGPDialect/MGPTypeInterfaces.cpp.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGPTypeInterfaces.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.td",
     deps = [
         ":MGPDialectTdFiles",
     ],
@@ -1016,17 +1016,17 @@ gentbl_cc_library(
             [
                 "-gen-op-interface-decls",
             ],
-            "include/GenericML/MGPDialect/MGPOpInterfaces.h.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.h.inc",
         ),
         (
             [
                 "-gen-op-interface-defs",
             ],
-            "include/GenericML/MGPDialect/MGPOpInterfaces.cpp.inc",
+            "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.cpp.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/GenericML/MGPDialect/MGPOpInterfaces.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.td",
     deps = [
         ":MGPDialectTdFiles",
     ],
@@ -1035,7 +1035,7 @@ gentbl_cc_library(
 modular_cc_library(
     name = "MGPDialect.headers",
     hdrs = glob([
-        "include/GenericML/MGPDialect/*.h",
+        "include/GenericML/GraphCompiler/MGPDialect/Dialect/*.h",
         "include/GenericML/GraphCompiler/Interfaces/*.h",
     ]),
     tags = ["no-clang-tidy-headers"],
@@ -1055,8 +1055,8 @@ modular_cc_library(
 
 modular_cc_library(
     name = "MGPDialect",
-    srcs = glob(["lib/MGPDialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/MGPDialect/*.h"]),
+    srcs = glob(["lib/GraphCompiler/MGPDialect/Dialect/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MGPDialect/Dialect/*.h"]),
     deps = [
         ":GraphCompilerInterfaces",
         ":MGPDialectAttrsIncGen",
@@ -1076,7 +1076,7 @@ modular_cc_library(
 ##
 td_library(
     name = "MGPTransformsTdFiles",
-    srcs = glob(["include/GenericML/MGPTransforms/*.td"]),
+    srcs = glob(["include/GenericML/GraphCompiler/MGPDialect/Transforms/*.td"]),
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -1086,7 +1086,7 @@ td_library(
 gentbl_modular_passes(
     name = "MGPTransformsIncGen",
     output_name = "MGPTransforms",
-    td_file = "include/GenericML/MGPTransforms/MGPTransforms.td",
+    td_file = "include/GenericML/GraphCompiler/MGPDialect/Transforms/MGPTransforms.td",
     deps = [
         ":MGPDialectTdFiles",
         ":MGPTransformsTdFiles",
@@ -1101,11 +1101,11 @@ modular_cc_library(
     name = "MGPTransforms",
     srcs = glob(
         [
-            "lib/MGPTransforms/*.cpp",
-            "lib/MGPTransforms/*.h",
+            "lib/GraphCompiler/MGPDialect/Transforms/*.cpp",
+            "lib/GraphCompiler/MGPDialect/Transforms/*.h",
         ],
     ),
-    hdrs = glob(["include/GenericML/MGPTransforms/*.h"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MGPDialect/Transforms/*.h"]),
     deps = [
         ":MGPDialect",
         ":MGPTransformsIncGen",
@@ -1138,10 +1138,21 @@ modular_cc_library(
     ],
 )
 
+# Shared source files for MGPPrimitives variants
+# Using filegroup to avoid duplicate source errors when used in multiple targets
+filegroup(
+    name = "MGPPrimitives_srcs",
+    srcs = [
+        "lib/GraphCompiler/MGPDialect/Primitives/KernelLogger.cpp",
+        "lib/GraphCompiler/MGPDialect/Primitives/MGPCPUPrimitives.cpp",
+        "lib/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.cpp",
+    ],
+)
+
 modular_cc_library(
     name = "MGPPrimitives",
-    srcs = glob(["lib/MGPPrimitives/*.cpp"]),
-    hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
+    srcs = [":MGPPrimitives_srcs"],
+    hdrs = glob(["include/GenericML/GraphCompiler/MGPDialect/Primitives/*.h"]),
     data = [
         ":MGPRT",
     ],
@@ -1155,14 +1166,17 @@ modular_cc_library(
 )
 
 # MGPPrimitives library with kernel logging always enabled (for testing)
+# Note: Uses same source files as MGPPrimitives but with different defines.
+# Tagged with no-clang-tidy to prevent duplicate tidy rules for the same source files.
 modular_cc_library(
     name = "MGPPrimitivesWithLogging",
-    srcs = glob(["lib/MGPPrimitives/*.cpp"]),
-    hdrs = glob(["include/GenericML/MGPPrimitives/*.h"]),
+    srcs = [":MGPPrimitives_srcs"],
+    hdrs = glob(["include/GenericML/GraphCompiler/MGPDialect/Primitives/*.h"]),
     data = [
         ":MGPRT",
     ],
     local_defines = ["ENABLE_MGP_KERNEL_LOGGING"],
+    tags = ["no-clang-tidy"],
     deps = [
         ":MGPDialect",
         "//Kernels:Tracing",
@@ -1378,9 +1392,9 @@ modular_cc_library(
 modular_shared_library(
     name = "MGPRT",
     srcs = glob([
-        "lib/MGPRT/*.cpp",
+        "lib/GraphCompiler/MGPDialect/RT/*.cpp",
     ]),
-    hdrs = glob(["include/GenericML/MGPRT/*.h"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MGPDialect/RT/*.h"]),
     deps = [
         ":Support",
         "//MLRT:Core/Tensor",

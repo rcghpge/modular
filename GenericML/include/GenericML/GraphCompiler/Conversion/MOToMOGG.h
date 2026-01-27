@@ -7,9 +7,9 @@
 #ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOTOMOGG_H
 #define GENERICML_GRAPHCOMPILER_CONVERSION_MOTOMOGG_H
 
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/MGPDialect/MGPOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 

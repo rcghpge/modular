@@ -10,11 +10,11 @@
 
 #include "font.h"
 
+#include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
-#include "GenericML/MGPDialect/MGPDialect.h"
 #include "KGEN/ToolCommon/InitAllDialects.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
 #include "MLRT/GraphRT/MEFDialect/MEFDialect.h"

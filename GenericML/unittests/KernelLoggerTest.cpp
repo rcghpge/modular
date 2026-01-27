@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/MGPPrimitives/KernelLogger.h"
+#include "GenericML/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"

@@ -6,7 +6,7 @@
 
 #include "GenericML/GraphCompiler/Version.h"
 #include "Config/Version.h"
-#include "GenericML/MGPRT/BinaryID.h"
+#include "GenericML/GraphCompiler/MGPDialect/RT/BinaryID.h"
 #include "KGEN/CompilerRT/BinaryID.h"
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
