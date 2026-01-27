@@ -990,25 +990,6 @@ def BufferGetSizeOp : MGP_Op<"buffer.get_size", [
 }
 
 //===----------------------------------------------------------------------===//
-// Async Ref Ops
-//===----------------------------------------------------------------------===//
-
-def MGP_GetInputAsyncValuesOp : MGP_Op<"get_input_async_vals", [Pure]> {
-  let results = (outs Variadic<AnyType>:$result);
-  let summary = "Returns pointers for each of the async value inputs ";
-}
-
-def MGP_GetOutputAsyncValuesOp : MGP_Op<"get_output_async_vals", [Pure]> {
-  let results = (outs Variadic<AnyType>:$result);
-  let summary = "Returns pointers for each of the async value outputs ";
-}
-
-def MGP_AllocateAsyncValuesOp : MGP_Op<"allocate_for_async_vals", [Pure]> {
-  let results = (outs Variadic<AnyType>:$result);
-  let summary = "Allocates pointers for each of the async value";
-}
-
-//===----------------------------------------------------------------------===//
 // DebugPrintOp
 //===----------------------------------------------------------------------===//
 

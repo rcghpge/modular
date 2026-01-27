@@ -544,20 +544,6 @@ def MOGG_BindLambdaOp : MOGG_Op<"bind", [
 }
 
 
-def MOGG_ConcretizeTensorOp: MOGG_Op<"concretize", [Pure, SameOperandsAndResultType]> {
-  let summary = "Concretizes the virtual tensor by assigning to it the pointer of the physical tensor";
-  let description = [{
-    This op is necessary when we want to concretize/materialize a tensor that is
-    the result of a lambda op. It happens with mixed precision output fusion on
-    kernels that still need the virtual tensor to exist.
-  }];
-
-  // Can't use `virtual` because it's a reserved keyword in C++.
-  let arguments = (ins MO_Tensor:$phy, MO_Tensor:$vir);
-  let results = (outs MO_Tensor:$result);
-}
-
-
 def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     IsolatedFromAbove,
     SingleBlockImplicitTerminator<"MOGG::OutputOp">,
@@ -849,51 +835,6 @@ def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
   }];
 
   let hasVerifier = 1;
-}
-
-def MOGG_DataPointerFromBufferOp : MOGG_Op<"get_buffer_data_ptr", [Pure]> {
-  let arguments = (ins AnyType:$buffer);
-  let results = (outs AnyType:$result);
-  let summary = "Returns the data pointer of a given tensor or buffer.";
-  let description = [{
-    Get the data pointer of the given MGP buffer.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
-  }];
-}
-
-def MOGG_ToMGPFromTensorOp : MOGG_Op<"to_mgp_from_tensor", [Pure]> {
-  let arguments = (ins AnyType:$tensor);
-  let results = (outs AnyType:$dataPointer);
-  let summary = "Get the data pointer from the kgen tensor";
-  let description = [{
-    Get the data pointer from the kgen tensor. The input tensor is the output of
-    a `to_kgen` taking a `mo.tensor`.
-  }];
-}
-
-def MOGG_ToListFromMGPOp : MOGG_Op<"to_list_from_mgp", [Pure]> {
-  let arguments = (
-    ins AnyType:$dataPointer
-  );
-  let results = (outs AnyType:$result);
-  let summary = "Represents the construction of an list type from a pointer";
-  let description = [{
-    Takes a pointer to !mgp.list to !mo.list.
-
-    `dataPointer` is an !mgp.list object and `result` is a !mo.list.
-
-    At the implementation level, it's just a rebind since we define the ABI for
-    both objects the same way (ABIList).
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
-  }];
 }
 
 def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
