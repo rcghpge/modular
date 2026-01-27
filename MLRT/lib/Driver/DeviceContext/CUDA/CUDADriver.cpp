@@ -33,6 +33,17 @@ ErrorOr<std::unique_ptr<CUDADriver>> CUDADriver::allocAndInitDriver() {
         llvm::Twine("Failed to open CUDA library: "
                     "cuda is not supported on this operating system."));
   }
+
+  // We use both NVML and CUDA Driver to access devices. NVML discovers devices
+  // in the order of PCI bus ID, so we want to force CUDA to enumerate in the
+  // same order.
+  // See:
+  // [1] Documentation for nvmlDeviceGetHandleByIndex_v2 (non-deterministic
+  //     device-ordering between reboots)
+  // [2]
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cuda-environment-variables
+  setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID", /*overwrite=*/1);
+
   // Attempt to open the shared library of the CUDA driver.
   // We use RTLD_GLOBAL to allow UCX CUDA backend to also use these loaded CUDA
   // symbols.

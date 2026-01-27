@@ -57,14 +57,16 @@ public:
 
   using DeviceList = std::vector<CUDADevice *>;
 
-  CUDADevice(const CUDADriver &driver, int id, CUdevice device,
-             CUcontext context, std::string name, int computeCapabilityMajor,
-             int computeCapabilityMinor, Device::MemInfo memInfo,
-             size_t allocAlignment, int64_t deviceMemoryLimit = -1);
+  CUDADevice(const CUDADriver &driver, int id, nvmlDevice_t nvmlDevice,
+             CUdevice cudaDevice, CUcontext context, std::string name,
+             int computeCapabilityMajor, int computeCapabilityMinor,
+             Device::MemInfo memInfo, size_t allocAlignment,
+             int64_t deviceMemoryLimit = -1);
   ~CUDADevice() override;
 
   const CUDADriver &cudaDriver() const;
   CUdevice cudaDevice() const;
+  nvmlDevice_t *getNvmlDevice();
   ErrorOr<CUcontext> cudaContext() const;
 
   /// Get the compilation device for code generation
@@ -138,7 +140,8 @@ private:
   static constexpr int MIN_NVIDIA_DRIVER_VERSION = 550;
 
   const CUDADriver &driver_;
-  const CUdevice device_;
+  const CUdevice cudaDevice_;
+  nvmlDevice_t nvmlDevice_;
   // Device context to be shared across all `CUDADeviceContext` objects. We
   // initialize this with the primary device context for the device to be able
   // to share resources with libraries using the CUDA Runtime API.

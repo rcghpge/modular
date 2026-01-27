@@ -14,6 +14,7 @@
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
+#include "NVML.h"
 #include "Support/HashUtils.h"
 #include "Support/Profiling/Tracy.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -76,6 +77,14 @@ private:
 };
 
 } // namespace
+
+#define NVML_CHECK_ERR(nvml_call)                                              \
+  do {                                                                         \
+    NVML::Result nvml_result = (nvml_call);                                    \
+    if (nvml_result != NVML::SUCCESS) {                                        \
+      return formatNVMLError(__FILE__, __LINE__, __FUNCTION__, nvml_result);   \
+    }                                                                          \
+  } while (0)
 
 #define CUDA_CHECK_ERR(cuda_call)                                              \
   do {                                                                         \
@@ -154,6 +163,22 @@ private:
   } while (0)
 
 [[maybe_unused]]
+static Error formatNVMLError(const char *file, int line, const char *func,
+                             NVML::Result result, std::string extra_msg = "") {
+  ErrorOr<const NVML &> errNVML = NVML::get();
+  const char *errStr = nullptr;
+
+  if (!errNVML) {
+    errStr = errNVML->nvmlErrorString(result);
+  }
+
+  return DeviceContext::formatError(file, line, func,
+                                    llvm::Twine("NVML call failed: ") + errStr +
+                                        (extra_msg.empty() ? "" : " - ") +
+                                        extra_msg);
+}
+
+[[maybe_unused]]
 static Error formatCUDAError(const char *file, int line, const char *func,
                              CUDADriver::Result result,
                              std::string extra_msg = "") {
@@ -216,7 +241,8 @@ static std::string cudaCCToSM(int major, int minor) {
 }
 
 // ===== CUDADevice ===== //
-CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
+CUDADevice::CUDADevice(const CUDADriver &driver, int id,
+                       nvmlDevice_t nvmlDevice, CUdevice cudaDevice,
                        CUcontext context, std::string name,
                        int computeCapabilityMajor, int computeCapabilityMinor,
                        Device::MemInfo memInfo, size_t allocAlignment,
@@ -225,9 +251,9 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id, CUdevice device,
              deviceMemoryLimit),
       CUDACompilationDevice(
           cudaCCToSM(computeCapabilityMajor, computeCapabilityMinor)),
-      driver_(driver), device_(device), context_(context),
-      computeCapability_(
-          cudaCCMonolithic(computeCapabilityMajor, computeCapabilityMinor)) {}
+      driver_(driver), cudaDevice_(cudaDevice), nvmlDevice_(nvmlDevice),
+      context_(context), computeCapability_(cudaCCMonolithic(
+                             computeCapabilityMajor, computeCapabilityMinor)) {}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
@@ -241,7 +267,9 @@ CUDADevice::~CUDADevice() {
 
 const CUDADriver &CUDADevice::cudaDriver() const { return driver_; }
 
-CUdevice CUDADevice::cudaDevice() const { return device_; }
+CUdevice CUDADevice::cudaDevice() const { return cudaDevice_; }
+
+nvmlDevice_t *CUDADevice::getNvmlDevice() { return &nvmlDevice_; }
 
 ErrorOr<CUcontext> CUDADevice::cudaContext() const { return context_; }
 
@@ -523,19 +551,38 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
   std::lock_guard<std::mutex> lock(mu);
   CUDADevice *device = (*devices)[id];
   if (device == nullptr) {
+    ErrorOr<const NVML &> errNVML = NVML::get();
+    if (errNVML.isError())
+      RETURN_ERROR(llvm::Twine("NVML initialization failed: ") +
+                   errNVML.getError());
+    nvmlDevice_t nvmlDevice;
+    NVML_CHECK_ERR(errNVML->nvmlDeviceGetHandleByIndex(id, &nvmlDevice));
+
+    char name[256];
+    NVML_CHECK_ERR(errNVML->nvmlDeviceGetName(nvmlDevice, name, sizeof(name)));
+
+    nvmlMemory_t nvmlMemInfo;
+    if (errNVML->nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo) !=
+        NVML::SUCCESS)
+      RETURN_ERROR("NVML: Unable to get memory info");
+    Device::MemInfo memInfo;
+    memInfo.free = nvmlMemInfo.free;
+    memInfo.total = nvmlMemInfo.total;
+
+    // Some info is available only via CUDA. Ideally, we will use only NVML,
+    // and not CUDA in CUDADevice.
     ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
     if (errDriver) {
       RETURN_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
                    errDriver.getError());
     }
     const CUDADriver &driver = *errDriver;
-    char name[256];
     int alignment;
     CUdevice cuDevice;
     CUcontext cuContext;
 
     CUDA_CHECK_ERR(driver.cuDeviceGet(&cuDevice, id));
-    CUDA_CHECK_ERR(driver.cuDeviceGetName(name, sizeof(name), cuDevice));
+    // Alignment does not seem to be available through NVML.
     CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
         &alignment, CUdevice_attribute::TEXTURE_ALIGNMENT, cuDevice));
 
@@ -543,20 +590,11 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
     // the same context with other users of the CUDA Runtime API.
     CUDA_CHECK_ERR(driver.cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
 
-    CUDAContextScope withCtx(cuContext, driver);
-    Device::MemInfo memInfo;
-    CUDA_CHECK_ERR(driver.cuMemGetInfo_v2(&memInfo.free, &memInfo.total));
-
     // Get compute capability to create compilation device
     int computeCapabilityMajor, computeCapabilityMinor;
-    CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
-        &computeCapabilityMajor, CUdevice_attribute::COMPUTE_CAPABILITY_MAJOR,
-        cuDevice));
-    CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
-        &computeCapabilityMinor, CUdevice_attribute::COMPUTE_CAPABILITY_MINOR,
-        cuDevice));
-
-    device = new CUDADevice(driver, id, cuDevice, cuContext, name,
+    NVML_CHECK_ERR(errNVML->nvmlDeviceGetCudaComputeCapability(
+        nvmlDevice, &computeCapabilityMajor, &computeCapabilityMinor));
+    device = new CUDADevice(driver, id, nvmlDevice, cuDevice, cuContext, name,
                             computeCapabilityMajor, computeCapabilityMinor,
                             memInfo, alignment, deviceMemoryLimit);
 

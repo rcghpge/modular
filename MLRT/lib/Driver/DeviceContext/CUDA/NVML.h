@@ -45,6 +45,12 @@ struct nvmlPciInfo_t {
   char busId[NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE];
 };
 
+struct nvmlMemory_t {
+  unsigned long long total;
+  unsigned long long free;
+  unsigned long long used;
+};
+
 class NVML {
 public:
   enum Result : unsigned int {
