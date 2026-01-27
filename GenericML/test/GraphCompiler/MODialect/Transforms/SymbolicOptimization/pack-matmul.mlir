@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
+// RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @pack_matmul_no_cache

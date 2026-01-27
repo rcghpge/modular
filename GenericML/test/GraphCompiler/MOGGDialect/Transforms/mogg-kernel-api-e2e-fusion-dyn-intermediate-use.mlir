@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_lib" --allow-unregistered-dialect --mlir-print-ir-after="fuse-prologues-epilogues" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_lib" --allow-unregistered-dialect --mlir-print-ir-after="mogg-fuse-prologues-epilogues" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-IR
 
 
 // CHECK-IR-LABEL: mo.graph @print_shape

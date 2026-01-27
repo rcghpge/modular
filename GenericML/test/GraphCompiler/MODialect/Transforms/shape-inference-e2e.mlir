@@ -3,7 +3,7 @@
 // Note: due to the size of the file, we want to filecheck with --enable-var-scope
 // which prevents variables from being reused across CHECK-LABEL boundaries.
 //
-// RUN: mo-opt %s --resolve-unknown-parameters --shape-inference --hoist-param-exprs | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-shape-inference --mo-hoist-param-exprs | FileCheck %s --enable-var-scope
 // CHECK-NOT: kgen.func
 
 mo.graph @static_ranks(%arg0: !mo.tensor<[?, ?], f32>, %arg1: !mo.tensor<[?, ?], f32>) -> !mo.tensor<?, f32> {

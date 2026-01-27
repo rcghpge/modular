@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @topk_dyn(%input: !mo.tensor<?, f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<?, si64>, %sorted: !mo.tensor<?, bool>) -> (!mo.tensor<?, f32>, !mo.tensor<?, si64>) {
   %values, %indices = rmo.mo.top_k(%input, %k, %axis, %sorted) : (

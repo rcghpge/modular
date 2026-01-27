@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @band_part_dyn(%arg0: !mo.tensor<?, f32>, %num_lower: !mo.tensor<?, si64>, %num_upper: !mo.tensor<?, si64>, %exclude: !mo.tensor<?, bool>) -> !mo.tensor<?, f32> {
   %0 = rmo.mo.linalg.band_part(%arg0, %num_lower, %num_upper, %exclude) : (!mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, bool>) -> !mo.tensor<?, f32>

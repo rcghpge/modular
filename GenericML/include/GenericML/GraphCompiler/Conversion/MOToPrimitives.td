@@ -9,7 +9,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
+def MOToPrimitives : Pass<"mgp-mo-to-primitives", "ModuleOp"> {
   let summary = "Convert `mo` dialect to primitives.";
   let description = [{
     This pass performs a conversion from known `mo` dialect ops to `mgp` and
@@ -31,7 +31,7 @@ def MOToPrimitives : Pass<"mo-to-primitives", "ModuleOp"> {
 }
 
 
-def LowerMOGGRegionCompiles: Pass<"lower-mogg-region-compile", "ModuleOp"> {
+def LowerMOGGRegionCompiles: Pass<"mogg-lower-mogg-region-compile", "ModuleOp"> {
   let summary = "Convert MOGG compile ops into MGP versions";
   let description = [{
     After lowering we will have raw MOGG compiled kernels in the graph, this
@@ -44,7 +44,7 @@ def LowerMOGGRegionCompiles: Pass<"lower-mogg-region-compile", "ModuleOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
+def LowerPrimitives: Pass<"mgp-lower-primitives", "MGP::ModelOp"> {
   let summary = "Lower MGP operations to primitives";
   let description = [{
     Using the loaded kernel library this looks for implementations for all
@@ -78,7 +78,7 @@ def LowerPrimitives: Pass<"lower-primitives", "MGP::ModelOp"> {
   ];
 }
 
-def SequenceFusion: Pass<"sequence-fusion", "MGP::ModelOp"> {
+def SequenceFusion: Pass<"mogg-sequence-fusion", "MGP::ModelOp"> {
   let summary = "Fuse sequences of GenericCompiledRegionOp";
   let description = [{}];
 
@@ -92,7 +92,7 @@ def SequenceFusion: Pass<"sequence-fusion", "MGP::ModelOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def RemoveRedundantOperands: Pass<"remove-redundant-operands", "MGP::ModelOp"> {
+def RemoveRedundantOperands: Pass<"mogg-remove-redundant-operands", "MGP::ModelOp"> {
   let summary = "Removes all redundant operands as a result of seq fusion";
   let description = [{}];
 
@@ -102,7 +102,7 @@ def RemoveRedundantOperands: Pass<"remove-redundant-operands", "MGP::ModelOp"> {
                           "MOGG::MOGGDialect"];
 }
 
-def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "ModuleOp"> {
+def LegalizeAsyncRefDeallocations: Pass<"mgp-legalize-async-ref-deallocations", "ModuleOp"> {
   let summary = "Legalize deallocation calls on async values";
   let description = [{
     Legalizes deallocation calls on async values in a compiled region. Double
@@ -115,7 +115,7 @@ def LegalizeAsyncRefDeallocations: Pass<"legalize-async-ref-deallocations", "Mod
 }
 
 
-def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
+def DumpMojo: Pass<"mgp-dump-mojo", "ModuleOp"> {
   let summary = "Dump Mojo text";
   let description = [{
     Dump to stderr the previously emitted Mojo as text.
@@ -136,7 +136,7 @@ def DumpMojo: Pass<"dump-mojo", "ModuleOp"> {
     ];
 }
 
-def LoadMojo: Pass<"load-mojo", "ModuleOp"> {
+def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
   let summary = "Load Mojo text";
   let description = [{
     Load the provided Mojo text and replace the existing module. This can be
@@ -144,10 +144,10 @@ def LoadMojo: Pass<"load-mojo", "ModuleOp"> {
     -jit-pipeline can be run to compile all the way to the end.
 
     Example:
-    mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=emit-mojo &> program.mgp.mlir
-    mo-opt program.mgp.mlir -dump-mojo -o /dev/null &> program.mojo
+    mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=mogg-emit-mojo &> program.mgp.mlir
+    mo-opt program.mgp.mlir -mgp-dump-mojo -o /dev/null &> program.mojo
     # Modify Mojo here
-    mo-opt program.mgp.mlir -load-mojo=path=program.mojo -jit-pipeline
+    mo-opt program.mgp.mlir -mgp-load-mojo=path=program.mojo -jit-pipeline
   }];
 
   let options = [
@@ -172,7 +172,7 @@ def LoadMojo: Pass<"load-mojo", "ModuleOp"> {
 
 // NOT safe to run in //. This has to run on the ModuleOp because of how we name
 // kernels.
-def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
+def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
   let summary = "Emit Mojo text";
   let description = [{
     Emit Mojo text from kernel stubs and `mogg.generic.compiled.region`. The
@@ -204,7 +204,7 @@ def EmitMojo: Pass<"emit-mojo", "ModuleOp"> {
   ];
 }
 
-def AddTryExceptBlocks: Pass<"add-try-except-blocks", "MOGG::KernelStubOp"> {
+def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp"> {
   let summary = "Adds a try-except block to raising kernels";
   let description = [{
     This pass should be run after sequence fusion and before Mojo codegen. It
@@ -215,7 +215,7 @@ def AddTryExceptBlocks: Pass<"add-try-except-blocks", "MOGG::KernelStubOp"> {
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
-def OutlineKernels: Pass<"outline-kernels", "ModuleOp"> {
+def OutlineKernels: Pass<"mogg-outline-kernels", "ModuleOp"> {
   let summary = "Outline kernels into stubs";
   let description = [{
     The same way MOGG kernels are outlined into KernelStubOp as we lower to MGP,
@@ -227,7 +227,7 @@ def OutlineKernels: Pass<"outline-kernels", "ModuleOp"> {
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
-def MergeIdenticalKernelStubs: Pass<"merge-identical-kernel-stubs", "ModuleOp"> {
+def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "ModuleOp"> {
   let summary = "Merge kernel stubs that are identical";
   let description = [{
     This is the equivalent of CSE but for MOGG::KernelStubOp. It can improve
@@ -241,7 +241,7 @@ def MergeIdenticalKernelStubs: Pass<"merge-identical-kernel-stubs", "ModuleOp"> 
   ];
 }
 
-def LookupConstantResources: Pass<"lookup-constant-resources", "MOGG::KernelStubOp"> {
+def LookupConstantResources: Pass<"mogg-lookup-constant-resources", "MOGG::KernelStubOp"> {
   let summary = "Replace mgp.buffer.constant with mgp.resource.constant";
   let description = [{
     Retrieves a pointer to the corresponding constant resources attached to the
@@ -253,7 +253,7 @@ def LookupConstantResources: Pass<"lookup-constant-resources", "MOGG::KernelStub
   let dependentDialects = ["MGP::MGPDialect"];
 }
 
-def RaiseBackIndexConstant: Pass<"raise-back-index-constant", "ModuleOp"> {
+def RaiseBackIndexConstant: Pass<"mgp-raise-back-index-constant", "ModuleOp"> {
   let summary = "Recover index constants if not part of kernel deduplication";
   let description = [{
     If the lowering of index.constant (mgp.buffer.constant + mgp.buffer._to_index)

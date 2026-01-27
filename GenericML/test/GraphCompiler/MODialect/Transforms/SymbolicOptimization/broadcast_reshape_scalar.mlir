@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize --cse | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize --cse | FileCheck %s
 
 // CHECK: mo.graph @broadcast_reshape_scalar(%[[ARG0:.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[64], f32> {
 mo.graph @broadcast_reshape_scalar(%arg0 : !mo.tensor<[], f32>) -> !mo.tensor<[64], f32>{

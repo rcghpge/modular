@@ -1293,6 +1293,27 @@ gentbl_modular_passes(
     ],
 )
 
+## PrimitiveCodegen
+td_library(
+    name = "PrimitiveCodegenTdFiles",
+    srcs = ["include/GenericML/GraphCompiler/Conversion/PrimitiveCodegen.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "PrimitiveCodegenIncGen",
+    output_name = "PrimitiveCodegen",
+    td_file = "include/GenericML/GraphCompiler/Conversion/PrimitiveCodegen.td",
+    deps = [
+        ":PrimitiveCodegenTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
 modular_cc_library(
     name = "MOToPrimitives",
     srcs = glob(["lib/GraphCompiler/Conversion/MOToPrimitives/*.cpp"]),
@@ -1305,6 +1326,7 @@ modular_cc_library(
         ":MOGGDialect",
         ":MOGGTransforms",
         ":MOToPrimitivesIncGen",
+        ":PrimitiveCodegenIncGen",
         "//KGEN:ToolCommon",
         "//MLRT:Driver/DeviceContext",
         "//Support:CommonCLOptions",

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize | FileCheck %s
 
 // CHECK: mo.graph @split_squeezes<[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
 mo.graph @split_squeezes<D0 -> D1, D2>(

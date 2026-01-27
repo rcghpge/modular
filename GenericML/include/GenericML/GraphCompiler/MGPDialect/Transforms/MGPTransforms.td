@@ -14,7 +14,7 @@ include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.td"
 // AsyncDataflowDependenciesTestPass
 //===----------------------------------------------------------------------===//
 
-def AsyncDataflowDependenciesTestPass : Pass<"async-dataflow-dependencies-test", "MGP::ModelOp"> {
+def AsyncDataflowDependenciesTestPass : Pass<"mgp-async-dataflow-dependencies-test", "MGP::ModelOp"> {
   let summary = "Prints the sameAs and impliesReady relations for all pairs of "
                 "values in the input model, leaving the model unchanged. "
                 "For testing only.";
@@ -24,7 +24,7 @@ def AsyncDataflowDependenciesTestPass : Pass<"async-dataflow-dependencies-test",
 // LowerAlignmentsPass
 //===----------------------------------------------------------------------===//
 
-def LowerAlignmentsPass : Pass<"lower-alignments", "MGP::ModelOp"> {
+def LowerAlignmentsPass : Pass<"mgp-lower-alignments", "MGP::ModelOp"> {
   let summary = "Lowers alignment information to the kgen op from MGP";
   let description = [{
     Alignment can be modified by kernel or operations. This pass will
@@ -37,7 +37,7 @@ def LowerAlignmentsPass : Pass<"lower-alignments", "MGP::ModelOp"> {
 // SimplifyExtendLifetimesPass
 //===----------------------------------------------------------------------===//
 
-def SimplifyExtendLifetimesPass : Pass<"simplify-extend-lifetimes", "MGP::ModelOp"> {
+def SimplifyExtendLifetimesPass : Pass<"mgp-simplify-extend-lifetimes", "MGP::ModelOp"> {
   let summary = "Simplify extend lifetime ops";
   let description = [{
     Given:
@@ -59,7 +59,7 @@ def SimplifyExtendLifetimesPass : Pass<"simplify-extend-lifetimes", "MGP::ModelO
 // SimplifyChainsPass
 //===----------------------------------------------------------------------===//
 
-def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
+def SimplifyChainsPass : Pass<"mgp-simplify-chains", "MGP::ModelOp"> {
   let summary = "Removed unnecessary chains from grt.chain.create ops.";
   let description = [{
     Given:
@@ -88,7 +88,7 @@ def SimplifyChainsPass : Pass<"simplify-chains", "MGP::ModelOp"> {
 // DeferAllocsPass
 //===----------------------------------------------------------------------===//
 
-def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
+def DeferAllocsPass : Pass<"mgp-defer-allocs", "MGP::ModelOp"> {
   let summary = "Defers allocations until the producing op is ready to execute.";
   let description = [{
     Ensures mgp.buffer.alloc.* operations are deferred till they are
@@ -113,7 +113,7 @@ def DeferAllocsPass : Pass<"defer-allocs", "MGP::ModelOp"> {
 // ConcatInPlacePass
 //===----------------------------------------------------------------------===//
 
-def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
+def ConcatInPlacePass : Pass<"mgp-concat-in-place", "MGP::ModelOp"> {
   let summary = "Replaces `mgp.buffer.concat` with `mgp.buffer.split.borrow`.";
   let description = [{
     This pass replaces `mgp.buffer.concat` with `mgp.buffer.split.borrow`,
@@ -155,7 +155,7 @@ def ConcatInPlacePass : Pass<"concat-in-place", "MGP::ModelOp"> {
 // ExecInvariantCodeMotionPass
 //===----------------------------------------------------------------------===//
 
-def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::ModelOp"> {
+def ExecInvariantCodeMotionPass : Pass<"mgp-exec-invariant-code-motion", "MGP::ModelOp"> {
   let summary = "Moves code from the 'execute' to the 'init' blocks.";
   let description = [{
     This pass moves computations which do not depend on the 'execute' block
@@ -264,7 +264,7 @@ def ExecInvariantCodeMotionPass : Pass<"exec-invariant-code-motion", "MGP::Model
 // FixupOverhangsPass
 //===----------------------------------------------------------------------===//
 
-def FixupOverhangsPass : Pass<"fixup-overhangs", "MGP::ModelOp"> {
+def FixupOverhangsPass : Pass<"mgp-fixup-overhangs", "MGP::ModelOp"> {
   let summary = "If necessary, inserts additional chain dependences to ensure "
                 "no overhanging chains in the graph.";
   let description = [{
@@ -278,7 +278,7 @@ def FixupOverhangsPass : Pass<"fixup-overhangs", "MGP::ModelOp"> {
 // PredicateAssertDependencies
 //===----------------------------------------------------------------------===//
 
-def PredicateAssertDependenciesPass : Pass<"predicate-asserts-deps", "MGP::ModelOp"> {
+def PredicateAssertDependenciesPass : Pass<"mgp-predicate-asserts-deps", "MGP::ModelOp"> {
   let summary = "Predicates the execution of operations that directly or "
                 "indirectly depend the result of an assert operation.";
   let description = [{
@@ -310,7 +310,7 @@ def PredicateAssertDependenciesPass : Pass<"predicate-asserts-deps", "MGP::Model
 // VerifyModelArgumentsPass
 //===----------------------------------------------------------------------===//
 
-def VerifyModelArgumentsPass : Pass<"verify-model-arguments", "MGP::ModelOp"> {
+def VerifyModelArgumentsPass : Pass<"mgp-verify-model-arguments", "MGP::ModelOp"> {
   let summary = "Ensures that user provided model arguments match the static "
                 "expectations";
   let description = [{
@@ -333,7 +333,7 @@ def VerifyModelArgumentsPass : Pass<"verify-model-arguments", "MGP::ModelOp"> {
 // PrepareDevicePrimitivesPass
 //===----------------------------------------------------------------------===//
 
-def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelOp"> {
+def PrepareDevicePrimitivesPass : Pass<"mgp-prepare-device-primitives", "MGP::ModelOp"> {
   let summary = "Prepares device-generic MGP primitives for execution by the "
                 "GraphRT.";
   let description = [{
@@ -366,7 +366,7 @@ def PrepareDevicePrimitivesPass : Pass<"prepare-device-primitives", "MGP::ModelO
 // ExplicitBufferLifetimesPass
 //===----------------------------------------------------------------------===//
 
-def ExplicitBufferLifetimesPass : Pass<"buffer-lifetimes", "MGP::ModelOp"> {
+def ExplicitBufferLifetimesPass : Pass<"mgp-buffer-lifetimes", "MGP::ModelOp"> {
   let summary = "Inserts mgp.buffer.free ops based on the results of MGPBufferLifetimeAnalysis";
   let description = [{
     This pass tries to insert an mgp.buffer.free op for each mgp.alloc
@@ -384,7 +384,7 @@ def ExplicitBufferLifetimesPass : Pass<"buffer-lifetimes", "MGP::ModelOp"> {
 // SimpleBufferReusePass
 //===----------------------------------------------------------------------===//
 
-def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
+def SimpleBufferReusePass : Pass<"mgp-simple-buffer-reuse", "MGP::ModelOp"> {
   let summary = "Reuses allocated buffers in simple cases";
   let description = [{
     This pass replaces a mgp.buffer.alloc op B with a
@@ -427,7 +427,7 @@ def SimpleBufferReusePass : Pass<"simple-buffer-reuse", "MGP::ModelOp"> {
 // DynamicMemoryPlanningPass
 //===----------------------------------------------------------------------===//
 
-def DynamicMemoryPlanningPass : Pass<"dynamic-memory-planning", "MGP::ModelOp"> {
+def DynamicMemoryPlanningPass : Pass<"mgp-dynamic-memory-planning", "MGP::ModelOp"> {
   let summary = "Dynamic (runtime) memory planning";
   let description = [{
     Uses BufferLifetimeAnalysisPass to compute lifetimes of all buffers, then
@@ -442,7 +442,7 @@ def DynamicMemoryPlanningPass : Pass<"dynamic-memory-planning", "MGP::ModelOp"> 
 // AddStackTracesToAssertsPass
 //===----------------------------------------------------------------------===//
 
-def AddStackTracesToAssertsPass : Pass<"add-stack-traces-to-asserts", "MGP::ModelOp"> {
+def AddStackTracesToAssertsPass : Pass<"mgp-add-stack-traces-to-asserts", "MGP::ModelOp"> {
   let summary = "Adds stack traces to all asserts";
   let description = [{
     Adds a stack trace to all assert messages in the ir. The stack traces
@@ -454,7 +454,7 @@ def AddStackTracesToAssertsPass : Pass<"add-stack-traces-to-asserts", "MGP::Mode
 // GlobalizeSlotIndicesPass
 //===----------------------------------------------------------------------===//
 
-def GlobalizeSlotIndicesPass : Pass<"globalize-slot-indices", "mlir::ModuleOp"> {
+def GlobalizeSlotIndicesPass : Pass<"mgp-globalize-slot-indices", "mlir::ModuleOp"> {
     let summary = "Globalizes slot indices across all models in the module";
     let description = [{
      Globalizes all slot indices used across all `mgp.model` operations within the module.
@@ -520,7 +520,7 @@ def GlobalizeSlotIndicesPass : Pass<"globalize-slot-indices", "mlir::ModuleOp"> 
 // InlineMGPCallsPass
 //===----------------------------------------------------------------------===//
 
-def InlineMGPCallsPass : Pass<"inline-mgp-calls", "mlir::ModuleOp"> {
+def InlineMGPCallsPass : Pass<"mgp-inline-mgp-calls", "mlir::ModuleOp"> {
   let summary = "Inlines the `execute` block of subgraphs at `mgp.call` sites";
   let description = [{
     Inline `mgp.call` operations into their calling `mgp.model` operations.

@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize %s | FileCheck %s
 
 mo.graph @pad_conv(
   %input: !mo.tensor<[32, 10, 10, 3], f32>,

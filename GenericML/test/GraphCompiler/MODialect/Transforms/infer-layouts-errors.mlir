@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --infer-layouts --verify-diagnostics
+// RUN: mo-opt %s --mo-infer-layouts --verify-diagnostics
 
 mo.graph @conv_same_input_and_filter(
   %input: !mo.tensor<[?, ?, ?, ?], f32>,

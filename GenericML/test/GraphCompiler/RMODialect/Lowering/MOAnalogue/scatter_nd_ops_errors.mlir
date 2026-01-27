@@ -1,4 +1,4 @@
-// RUN: not mo-opt --legalize-rmo-operators %s 2>&1 | FileCheck %s
+// RUN: not mo-opt --mo-legalize-rmo-operators %s 2>&1 | FileCheck %s
 
 mo.graph @forward() -> !mo.tensor<[2, 3], si32> {
   %data = mo.constant {value = #M.dense_array<10, 20, 30, 40, 50, 60> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>

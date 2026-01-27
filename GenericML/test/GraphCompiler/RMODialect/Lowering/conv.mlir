@@ -1,4 +1,4 @@
-// RUN: mo-opt --legalize-rmo-operators --canonicalize %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-legalize-rmo-operators --canonicalize %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph @conv
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[10, 5, 5, 32], f32>,

@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators --resolve-unknown-parameters --shape-inference %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators --mo-resolve-unknown-parameters --mo-shape-inference %s | FileCheck %s --enable-var-scope
 
 mo.graph @binary_elemwise_static(%arg0: !mo.tensor<[1, 4], si64>, %arg1: !mo.tensor<[1, 4], si64>) -> !mo.tensor<[1, 4], si64> {
     %1 = rmo.add(%arg0, %arg1) : (!mo.tensor<[1, 4], si64>, !mo.tensor<[1, 4], si64>) -> !mo.tensor<[1, 4], si64>

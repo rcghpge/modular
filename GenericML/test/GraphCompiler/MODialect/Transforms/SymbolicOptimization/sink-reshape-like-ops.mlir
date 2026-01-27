@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize | FileCheck %s
 
 mo.graph @sink_reshape_through_binary_elemwise(%input: !mo.tensor<[50, 50, 30], f32>, %elemwise: !mo.tensor<[30], f32>) -> !mo.tensor<[2500, 30], f32>{
     %reshape = mo.static.reshape(%input) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>

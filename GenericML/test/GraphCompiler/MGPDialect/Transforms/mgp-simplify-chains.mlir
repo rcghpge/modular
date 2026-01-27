@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --async-dataflow-dependencies-test --simplify-chains --cse --mlir-disable-threading | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --mgp-async-dataflow-dependencies-test --mgp-simplify-chains --cse --mlir-disable-threading | FileCheck %s
 
 // CHECK-LABEL: mgp.model @chains : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque{{.*}}
 mgp.model @chains : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {

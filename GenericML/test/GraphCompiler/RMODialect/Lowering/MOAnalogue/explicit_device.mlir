@@ -1,5 +1,5 @@
 // This file tests the proper handling of explicit devices on tensors for RMO-MO Analogue ops
-// RUN: mo-opt --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 
 // Ensures device annotations are properly forwarded in lowering

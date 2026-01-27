@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @output_param_decl_removed
 // CHECK-SAME: <[[SH0:.*]]: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32> {

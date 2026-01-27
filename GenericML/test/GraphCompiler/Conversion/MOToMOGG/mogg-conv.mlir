@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --infer-layouts --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mo-infer-layouts --mo-to-mogg | FileCheck %s
 // TODO(GEX-1573): Convert the following sniff test to a complete test.
 
 mo.graph @conv_const_params(

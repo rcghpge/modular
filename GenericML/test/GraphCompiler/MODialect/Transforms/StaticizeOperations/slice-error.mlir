@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize --verify-diagnostics
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize --verify-diagnostics
 
 
 mo.graph @slice_error<N2, N3 -> O1, O2>(

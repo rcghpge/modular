@@ -1,7 +1,7 @@
 // Check std:err
-// RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s
+// RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=mogg-jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s
+// RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=mogg-jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s
 
 // Under new api we expect the matmul add to be fused followed by sequence fusing the cumsum
 // CHECK: summary = {{.*}}mo.matmul:{{[0-9]+}}+mo.add:{{[0-9]+}}

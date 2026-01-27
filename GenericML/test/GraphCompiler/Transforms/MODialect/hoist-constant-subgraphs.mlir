@@ -1,4 +1,4 @@
-// RUN: mo-opt --hoist-constant-subgraphs-into-parent --split-input-file %s | FileCheck %s
+// RUN: mo-opt --mo-hoist-constant-subgraphs-into-parent --split-input-file %s | FileCheck %s
 
 
 // Test case: Single callsite with constants - NO hoisting (requires multiple callsites)

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --constant-fold-subgraph-test | FileCheck %s
+// RUN: mo-opt %s --mo-constant-fold-subgraph-test | FileCheck %s
 
 // CHECK-LABEL: all_const
 // CHECK-NEXT: %[[S1:.*]] = mo.constant {value = #M.dense_array<0, 1>

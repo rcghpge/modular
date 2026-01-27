@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-elementwise %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --mogg-fuse-elementwise %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @fuse_store_to_add
 // CHECK: [[CHAIN:%.*]] = mo.chain.create()

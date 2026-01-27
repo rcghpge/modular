@@ -1,4 +1,4 @@
-// RUN: mo-opt -split-input-file --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt -split-input-file --mo-symbolic-optimize %s | FileCheck %s
 
 mo.graph @split_to_slice<N>(%input: !mo.tensor<[N], si32>) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>, !mo.tensor<[3], si32>) {
   %ax = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>

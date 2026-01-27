@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --mogg-fuse-affine-views --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add_singleton_non_elementwise<seq_len>
 // CHECK-NEXT: mogg.kernel

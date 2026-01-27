@@ -1,4 +1,4 @@
-// RUN: mo-opt -resolve-unknown-parameters -shape-inference -symbolic-optimize -mo-pattern-fusion %s | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt -mo-resolve-unknown-parameters -mo-shape-inference -mo-symbolic-optimize -mogg-pattern-fusion %s | FileCheck %s --check-prefix=CHECK-IR
 
 // CHECK-IR: mo.graph @tf_layer_norm(%[[ARG0:.*]]:  !mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 2], f32>
 mo.graph @tf_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3, 2], f32>) {

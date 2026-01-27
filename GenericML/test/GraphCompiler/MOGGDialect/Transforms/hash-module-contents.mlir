@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -hash-module-contents -allow-unregistered-dialect -split-input-file | FileCheck %s
+// RUN: mo-opt %s -mogg-hash-module-contents -allow-unregistered-dialect -split-input-file | FileCheck %s
 
 // COM: Identical functions should hash to the same value, as should their
 // COM: transitive dependencies.

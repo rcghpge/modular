@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mgp-mo-to-primitives | FileCheck %s
 
 
 // This test makes sure we can properly lower `mo.transfer` with unknown dims.

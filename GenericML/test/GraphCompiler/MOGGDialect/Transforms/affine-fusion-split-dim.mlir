@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir --mlir-print-ir-after=fuse-prologues-epilogues  &> %t.debug_ir.mlir
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir --mlir-print-ir-after=mogg-fuse-prologues-epilogues  &> %t.debug_ir.mlir
 
 
 // This runs a heuristic check that all operations are fused together (and so affine fusion works).

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize -cse | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize -cse | FileCheck %s
 
 // CHECK: mo.graph @binary_static_rank<[[A:.*]], [[B:.*]] -> [[C:.*]], [[D:.*]]>(
 mo.graph @binary_static_rank<A, B -> C, D>(

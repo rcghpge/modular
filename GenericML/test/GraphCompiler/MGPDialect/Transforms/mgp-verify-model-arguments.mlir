@@ -1,4 +1,4 @@
-// RUN: mo-opt --verify-model-arguments --cse %s | FileCheck %s
+// RUN: mo-opt --mgp-verify-model-arguments --cse %s | FileCheck %s
 
 // CHECK-LABEL:  mgp.model @static
 // CHECK:        } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,

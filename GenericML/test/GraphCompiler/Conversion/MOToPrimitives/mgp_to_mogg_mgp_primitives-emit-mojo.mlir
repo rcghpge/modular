@@ -1,4 +1,4 @@
-// RUN: mo-opt -allow-unregistered-dialect --lower-primitives %s | FileCheck %s
+// RUN: mo-opt -allow-unregistered-dialect --mgp-lower-primitives %s | FileCheck %s
 
 //--- Test lowering of MGP
 

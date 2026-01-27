@@ -1,7 +1,7 @@
 // TODO(GEX-2314): Support opaque elementwise in the new dialect.
 // REQUIRES: disabled
 
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_lib" --mlir-print-ir-after="fuse-prologues-epilogues" 2>&1 | FileCheck --check-prefix=CHECK-IR %s
+// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_lib" --mlir-print-ir-after="mogg-fuse-prologues-epilogues" 2>&1 | FileCheck --check-prefix=CHECK-IR %s
 
 // CHECK-IR-LABEL: @matmul_opaque_fusion
 // CHECK-IR: mogg.kernel

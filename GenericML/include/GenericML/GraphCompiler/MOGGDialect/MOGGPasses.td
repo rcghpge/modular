@@ -9,7 +9,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
+def JitCompileKernels: Pass<"mogg-jit-compile-kernels", "ModuleOp"> {
   let summary = "Replace kernel op with calls into compiled kernel";
   let description = [{
     This pass finds all the kernels ops, compile the kernels with the KGEN
@@ -58,7 +58,7 @@ def JitCompileKernels: Pass<"jit-compile-kernels", "ModuleOp"> {
   ];
 }
 
-def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
+def PatternFusion: Pass<"mogg-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
   let description = [{
     This pass includes a variety of pattern rewrites which replaces a series of
@@ -85,7 +85,7 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
 
 // TODO update this to account for general view operation (e.g., transpose in
 // addition to broadcast)
-def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
+def FuseViews: Pass<"mogg-fuse-views", "MO::GraphOp"> {
   let summary = "Fuse views into other views or kernels";
   let description = [{
     This pass identifies kernels that (1). contains only view operations and
@@ -113,7 +113,7 @@ def FuseViews: Pass<"fuse-views", "MO::GraphOp"> {
   ];
 }
 
-def FuseAffineViews: Pass<"fuse-affine-views", "MO::GraphOp"> {
+def FuseAffineViews: Pass<"mogg-fuse-affine-views", "MO::GraphOp"> {
   let summary = "Fuse affine views into kernels";
   let description = [{
     A subset of view operations can be directly represented as affine expressions
@@ -126,7 +126,7 @@ def FuseAffineViews: Pass<"fuse-affine-views", "MO::GraphOp"> {
   ];
 }
 
-def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
+def FuseConstants: Pass<"mogg-fuse-consts", "MO::GraphOp"> {
   let summary = "Fold constants into the jit kernels";
   let description = [{
     This pass identifies small constant inputs to a kernel, and fuse those
@@ -136,7 +136,7 @@ def FuseConstants: Pass<"fuse-consts", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
-def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
+def FuseElementwise: Pass<"mogg-fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse blocks of elementwise operations if possible";
   let description = [{
     This pass identifies non-view kernels that are consumed by some other
@@ -167,7 +167,7 @@ def FuseElementwise: Pass<"fuse-elementwise", "MO::GraphOp"> {
   ];
 }
 
-def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
+def FuseProloguesEpilogues: Pass<"mogg-fuse-prologues-epilogues", "MO::GraphOp"> {
   let summary = "Fuse kernels into the lambda of their users";
   let description = [{
     An elementwise kernel can be directly fused into the lambda body of another
@@ -195,7 +195,7 @@ def FuseProloguesEpilogues: Pass<"fuse-prologues-epilogues", "MO::GraphOp"> {
   ];
 }
 
-def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
+def FuseMutableLoads: Pass<"mogg-fuse-mutable-loads", "MO::GraphOp"> {
   let summary = "'Fuse' mo.mutable.load ops with mogg.kernel ops.";
   let description = [{
     Will perform 'fusion' of a mo.mutable.load op with a mogg.kernel op.
@@ -209,7 +209,7 @@ def FuseMutableLoads: Pass<"fuse-mutable-loads", "MO::GraphOp"> {
   let dependentDialects = ["M::MOGG::MOGGDialect"];
 }
 
-def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
+def SimplifyKernelOperands: Pass<"mogg-simplify-kernel-operands", "MO::GraphOp"> {
   let summary = "Gets rid of duplicate kernel operands";
   let description = [{
     This pass uniques kernel operands.
@@ -221,7 +221,7 @@ def SimplifyKernelOperands: Pass<"simplify-kernel-operands", "MO::GraphOp"> {
   ];
 }
 
-def HashModuleContents: Pass<"hash-module-contents", "mlir::ModuleOp"> {
+def HashModuleContents: Pass<"mogg-hash-module-contents", "mlir::ModuleOp"> {
   let summary = "Compute and attach hash of module contents";
   let description = [{
     This pass computes a hash of the module contents and attaches it as an
@@ -234,7 +234,7 @@ def HashModuleContents: Pass<"hash-module-contents", "mlir::ModuleOp"> {
   ];
 }
 
-def NormalizeAllNames: Pass<"normalize-all-names", "mlir::ModuleOp"> {
+def NormalizeAllNames: Pass<"mogg-normalize-all-names", "mlir::ModuleOp"> {
   let summary = "Normalize all names in the module";
   let description = [{
     This pass normalizes all symbol and parameter names to a canonical form.

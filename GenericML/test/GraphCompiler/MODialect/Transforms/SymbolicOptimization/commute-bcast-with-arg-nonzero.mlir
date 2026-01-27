@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize --propagate-shapes --canonicalize -cse | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize --mo-propagate-shapes --canonicalize -cse | FileCheck %s
 
 // CHECK-LABEL: mo.graph @static_shape
 // CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[[[M]], 1], si64> {

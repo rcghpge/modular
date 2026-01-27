@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize --verify-diagnostics
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize --verify-diagnostics
 
 // Fails because dim index 2 in output we try to reconcile dim 50 with 40
 mo.graph @broadcast_shape_static_error<D0, D1 -> Sh0: !mosh.ape>(%input: !mo.tensor<[], si64>) -> !mo.tensor<Sh0, si64> {

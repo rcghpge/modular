@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-primitives %s | FileCheck --enable-var-scope %s
+// RUN: mo-opt --mgp-mo-to-primitives %s | FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: mgp.model @no_params
 // CHECK: execute ([[CHAIN:%.*]]: !mef.chain{{.*}}[[GPU:%.*]]: !mgp.device_context<<"gpu", 0>>

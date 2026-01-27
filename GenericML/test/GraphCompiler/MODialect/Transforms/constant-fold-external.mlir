@@ -1,4 +1,4 @@
-// RUN: mo-opt --constant-fold %s | FileCheck %s
+// RUN: mo-opt --mo-constant-fold %s | FileCheck %s
 
 // Subgraph with constant externals should not be folded or fail
 // CHECK-LABEL: @constant_fold_external_with_constant

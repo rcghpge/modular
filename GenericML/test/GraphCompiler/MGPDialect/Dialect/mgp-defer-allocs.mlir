@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --canonicalize --defer-allocs --simplify-chains -cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --canonicalize --mgp-defer-allocs --mgp-simplify-chains -cse | FileCheck %s
 
 // Check mgp.buffer.alloc.* ops are deferred until the writing op is ready.
 

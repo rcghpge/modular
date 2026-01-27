@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @roi_align_dyn(%input: !mo.tensor<?, f32>, %rois: !mo.tensor<?, f32>, %output_height: !mo.tensor<?, si64>, %output_width: !mo.tensor<?, si32>, %spatial_scale: !mo.tensor<?, f32>, %sampling_ratio: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
   %0 = rmo.mo.roi_align(%input, %rois, %output_height, %output_width, %spatial_scale, %sampling_ratio) {aligned = false,  mode = "AVG"} : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si32>, !mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>

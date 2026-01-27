@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize="symbolic-ffast-math=true symbolic-no-undefined-math=true" %s | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize="symbolic-ffast-math=true symbolic-no-undefined-math=true" %s | FileCheck %s
 
 // The first few tests have different data types and negative checks for constants.
 

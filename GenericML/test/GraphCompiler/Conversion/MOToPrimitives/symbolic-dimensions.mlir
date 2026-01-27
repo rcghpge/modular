@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mgp-mo-to-primitives | FileCheck %s
 
 // There should be two assertions in the primary graph checking that D0 is equal
 // to the other occurrences of D0 and no checks in the subgraph version.

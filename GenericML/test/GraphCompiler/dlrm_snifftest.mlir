@@ -1,6 +1,6 @@
-// RUN: mo-opt %s --resolve-unknown-parameters --mo-to-mgp=constant-fold=false | FileCheck %s
+// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-to-mgp=constant-fold=false | FileCheck %s
 
-// RUN: mo-opt %s --resolve-unknown-parameters --mo-to-mgp=constant-fold=false | FileCheck %s
+// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-to-mgp=constant-fold=false | FileCheck %s
 
 // Just check we can compile it.
 

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-primitives %s | FileCheck --enable-var-scope %s
+// RUN: mo-opt --mgp-mo-to-primitives %s | FileCheck --enable-var-scope %s
 
 // In the following test we don't expect any guard op to be materialized even
 // though the second assertion consumes a chain from the first and they both

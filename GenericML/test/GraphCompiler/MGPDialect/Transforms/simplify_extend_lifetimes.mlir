@@ -1,4 +1,4 @@
-// RUN: mo-opt --simplify-extend-lifetimes %s | FileCheck %s
+// RUN: mo-opt --mgp-simplify-extend-lifetimes %s | FileCheck %s
 
 // CHECK-LABEL: mgp.model @extend_lifetimes
 // CHECK: execute (%[[CH:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context{{.*}}, %[[T1:.*]]: !mgp.tensor<2x4xf32>, %[[T2:.*]]: !mgp.tensor<2x4xf32>

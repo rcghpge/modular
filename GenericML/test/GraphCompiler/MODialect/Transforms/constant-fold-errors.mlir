@@ -1,4 +1,4 @@
-// RUN: mo-opt --constant-fold --verify-diagnostics
+// RUN: mo-opt --mo-constant-fold --verify-diagnostics
 mo.graph @crashes() -> !mo.tensor<[3], si32> {
   %data = mo.constant {value = #M.dense_array<1,1,1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   // expected-error@below {{[ConstantFold] setup for model crashes_constant_subgraphs returned error: This is an error}}

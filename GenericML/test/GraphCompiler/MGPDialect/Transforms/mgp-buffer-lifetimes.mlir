@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --buffer-lifetimes  | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --mgp-buffer-lifetimes  | FileCheck %s
 
 mgp.model @serial : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %0 = grt.chain.create ()

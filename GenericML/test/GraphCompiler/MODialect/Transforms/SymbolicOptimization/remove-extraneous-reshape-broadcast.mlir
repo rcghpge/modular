@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-symbolic-optimize %s | FileCheck %s --enable-var-scope
 
 // If a reshape feeding into a broadcast is simply padding dimensions to the LHS of the shape, the reshape is extraneous
 // CHECK-LABEL: @simple_broadcasts

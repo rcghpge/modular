@@ -1,5 +1,5 @@
 
-// RUN: mo-opt %s -invoke-shape-packing-funcs="use-host-system=false" --verify-diagnostics | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s -mo-invoke-shape-packing-funcs="use-host-system=false" --verify-diagnostics | FileCheck %s --enable-var-scope
 
 #AVX2 = #M.target<
   triple = "x86_64-unknown-linux-gnu",

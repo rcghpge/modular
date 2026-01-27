@@ -1,4 +1,4 @@
-// RUN: mo-opt --legalize-rmo-operators --canonicalize --split-input-file %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-legalize-rmo-operators --canonicalize --split-input-file %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph @conv_transpose
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[1, 2, 2, 1], si64>,

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --canonicalize -cse | FileCheck --enable-var-scope %s
+// RUN: mo-opt %s --mo-to-mogg --mgp-mo-to-primitives --canonicalize -cse | FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: mgp.model @collect_chains
 // CHECK:      execute{{.*}}[[ARG2:%.*]]: !mgp.tensor<?x?xf32>, [[ARG3:%.*]]: !mgp.tensor<?x?xf32>

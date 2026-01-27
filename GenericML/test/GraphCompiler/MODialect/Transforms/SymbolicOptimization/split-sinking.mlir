@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s -split-input-file | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize %s -split-input-file | FileCheck %s
 
 /////////////////////////////////
 ////////// ELEMENTWISE //////////

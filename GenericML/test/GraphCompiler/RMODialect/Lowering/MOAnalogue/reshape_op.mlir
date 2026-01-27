@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
+// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
 
 // COM: note rmo.mo.reshape also has information on rank information potentially stored in the output rank of the original op
 

@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @cast_dyn(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32> {
   %1 = rmo.mo.cast(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?, ?], si32>

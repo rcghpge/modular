@@ -1,5 +1,5 @@
 // UNSUPPORTED: asan
-// RUN: mo-opt --constant-fold=iterations=1 %s | FileCheck %s
+// RUN: mo-opt --mo-constant-fold=iterations=1 %s | FileCheck %s
 
 // COM: Should not constant fold due to presence of parameters.
 // COM: Must run shape inference first to get @shape_func graph which will fold

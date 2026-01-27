@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o /dev/null --mlir-print-ir-after=fuse-prologues-epilogues 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o /dev/null --mlir-print-ir-after=mogg-fuse-prologues-epilogues 2>&1 | FileCheck %s
 
 // The kernel summary string should reflect an accurate fusion record.
 // DAG because the order things are printed in the middle of the pipeline is

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-elementwise --simplify-kernel-operands --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --mogg-fuse-elementwise --mogg-simplify-kernel-operands --canonicalize --cse %s | FileCheck %s
 
 mo.graph @simpleDoubleUse(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[4, 3], f32>) {
   %0 = mo.sqrt(%arg0) : !mo.tensor<[4, 3], f32>

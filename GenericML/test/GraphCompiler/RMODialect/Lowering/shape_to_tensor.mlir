@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators %s | FileCheck %s --enable-var-scope
 
 mo.graph @shape_to_tensor() -> !mo.tensor<[1], si64> {
   %1 = rmo.shape_to_tensor() { shape = #mosh<ape[7]> : !mosh.ape } : () -> !mo.tensor<[1], si64>

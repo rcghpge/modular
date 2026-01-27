@@ -1,4 +1,4 @@
-// RUN: mo-opt --elide-redundant-mutable-ops %s | FileCheck --enable-var-scope %s
+// RUN: mo-opt --mo-elide-redundant-mutable-ops %s | FileCheck --enable-var-scope %s
 
 !tt = !mo.tensor<[2, 2], f32>
 !bt = !mo.buffer<[2, 2], f32>

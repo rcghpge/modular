@@ -1,4 +1,4 @@
-// RUN: mo-opt --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 !tt  = !mo.tensor<[5, 5], f32>
 !stt = !mo.tensor<[d0, d1], f32>

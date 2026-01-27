@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize | FileCheck %s
 
 // Test that verifies the SinkSplitThroughStaticReshapeLikeOpsPattern correctly
 // creates host constants for split sizes and axis.

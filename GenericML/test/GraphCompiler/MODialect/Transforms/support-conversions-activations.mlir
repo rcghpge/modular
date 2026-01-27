@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --split-input-file --support-conversions-test --legalize-rmo-operators --constant-fold --resolve-unknown-parameters --shape-inference --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --split-input-file --mo-support-conversions-test --mo-legalize-rmo-operators --mo-constant-fold --mo-resolve-unknown-parameters --mo-shape-inference --allow-unregistered-dialect | FileCheck %s
 
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @support_convert_prelu() -> !mo.tensor<[5], f32> {

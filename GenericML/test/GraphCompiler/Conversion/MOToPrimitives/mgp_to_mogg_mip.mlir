@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -allow-unregistered-dialect --lower-primitives | FileCheck %s
+// RUN: mo-opt %s -allow-unregistered-dialect --mgp-lower-primitives | FileCheck %s
 
 //--- Test lowering of Index Primitives
 

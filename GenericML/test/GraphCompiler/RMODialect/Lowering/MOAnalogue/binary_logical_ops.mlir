@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @and_dyn(%arg0: !mo.tensor<?, bool>, %arg1: !mo.tensor<?, bool>) -> !mo.tensor<?, bool> {
   %1 = rmo.mo.and(%arg0, %arg1) : (!mo.tensor<?, bool>, !mo.tensor<?, bool>) -> !mo.tensor<?, bool>

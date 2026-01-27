@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --lower-primitives --split-input-file | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --mgp-lower-primitives --split-input-file | FileCheck %s
 
 // Check we can lower a given MGP primitive to a mogg kernel with emit-mojo enabled.
 // In emit-mojo mode, constants are lowered to buffer constants and ops like

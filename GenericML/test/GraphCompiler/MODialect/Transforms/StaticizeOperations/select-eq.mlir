@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @select_eq_cond
 //  CHECK-SAME:   <[[N1:.*]], [[N2:.*]], [[N3:.*]], [[N4:.*]]>(

@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @gather_dyn(%input: !mo.tensor<?, f32>, %indices: !mo.tensor<?, si32>, %axis: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
   %0 = rmo.mo.gather(%input, %indices, %axis) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>

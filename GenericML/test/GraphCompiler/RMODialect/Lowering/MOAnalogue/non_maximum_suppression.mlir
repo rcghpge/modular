@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @nms_dyn(%boxes: !mo.tensor<?, f32>, %scores: !mo.tensor<?, f32>, %maxb: !mo.tensor<?, si64>, %iou_thres: !mo.tensor<?, f32>, %scores_thres: !mo.tensor<?, f32>) -> !mo.tensor<?, si64> {
   %0 = rmo.mo.non_maximum_suppression(%boxes, %scores, %maxb, %iou_thres, %scores_thres) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, si64>

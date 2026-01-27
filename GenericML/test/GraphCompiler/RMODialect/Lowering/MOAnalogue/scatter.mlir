@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @scatter_dyn_dyn<[[SH5:[^ ]*]]: !mosh.ape, [[SH6:[^ ]*]]: !mosh.ape, [[SH7:[^ ]*]]: !mosh.ape -> [[SH8:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[[SH5]], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[[SH6]], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[[SH7]], si64>) -> !mo.tensor<[[SH8]], f32> {

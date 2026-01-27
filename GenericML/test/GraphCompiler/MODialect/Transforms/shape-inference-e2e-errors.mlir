@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --resolve-unknown-parameters --shape-inference --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-shape-inference --split-input-file --verify-diagnostics
 
 // TODO make first input dimension dynamic dynamic, which would require folding
 // `eq(mul(D0, 10), mul(D0, 8))` in order to emit compile time error.

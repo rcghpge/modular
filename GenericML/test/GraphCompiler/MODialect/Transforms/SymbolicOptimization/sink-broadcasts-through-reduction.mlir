@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize -canonicalize -cse | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mo-symbolic-optimize -canonicalize -cse | FileCheck %s --enable-var-scope
 
 // Standard case, run reduction on axis not affected by the bcast
 mo.graph @reduce_sinking_success<A, B, P1, P2, P3>(

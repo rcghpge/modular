@@ -1,5 +1,5 @@
 
-// RUN: mo-opt --lower-primitives %s | FileCheck %s
+// RUN: mo-opt --mgp-lower-primitives %s | FileCheck %s
 
 mgp.model @fold_true_assert : mof devices [#M.device_ref<"cpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"cpu", 0>>) {
   %0 = grt.chain.create ()

@@ -1,4 +1,4 @@
-// RUN: mo-opt --decompose-views --cse %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-decompose-views --cse %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph @slice
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[3, 11, 5], si32>, %[[START:.*]]: !mo.tensor<[3], si32>, %[[END:.*]]: !mo.tensor<[3], si32>, %[[STEP:.*]]: !mo.tensor<[3], si32>

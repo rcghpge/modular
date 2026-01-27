@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --constant-fold | FileCheck %s
+// RUN: mo-opt %s --mo-constant-fold | FileCheck %s
 
 
 // CHECK: mo.graph @gather_param_no_fold<[[SH0:.*]]: !mosh.ape -> [[SH1:.*]]: !mosh.ape>(

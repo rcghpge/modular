@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @split_dyn(%arg0: !mo.tensor<?, f32>, %axis: !mo.tensor<?, si64>, %sizes: !mo.tensor<?, si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>) {
   %0:2 = rmo.mo.split[%axis: !mo.tensor<?, si64>](%arg0, %sizes) : (!mo.tensor<?, f32>, !mo.tensor<?, si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>)

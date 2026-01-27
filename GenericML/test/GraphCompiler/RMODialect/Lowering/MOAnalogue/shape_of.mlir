@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
+// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
 
 mo.graph @shape_of_dyn(%input: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
     %1 = rmo.mo.shape_of(%input): (!mo.tensor<?, f32>) -> !mo.tensor<[?], si64>

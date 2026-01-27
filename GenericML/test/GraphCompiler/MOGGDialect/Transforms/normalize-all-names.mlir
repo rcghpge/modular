@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -normalize-all-names -allow-unregistered-dialect -split-input-file | FileCheck %s
+// RUN: mo-opt %s -mogg-normalize-all-names -allow-unregistered-dialect -split-input-file | FileCheck %s
 
 // COM: Test that symbol names are normalized to __S0, __S1, etc.
 // COM: and that references to those symbols are updated.

@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-symbolic-optimize %s | FileCheck %s --enable-var-scope
 
 
 // CHECK:      mo.graph @bmm_no_rebind(

@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s -split-input-file | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL:  mo.graph @reshape_last_dim
 // CHECK-NEXT:     %[[AXIS:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>

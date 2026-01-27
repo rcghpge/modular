@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize | FileCheck %s
 
 // CHECK:         @parallel_matmuls_static(%[[ACT:.*]]:{{.*}})
 // CHECK:         %[[CONCAT:.*]] = mo.concat{{.*}} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 8], f32>

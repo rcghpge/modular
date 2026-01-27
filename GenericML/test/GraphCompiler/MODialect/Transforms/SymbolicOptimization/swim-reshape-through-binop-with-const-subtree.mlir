@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @success_const_rhs([[VARG0:[^ ]*]]: !mo.tensor<[16, 64, 128, 128], f32>) -> !mo.tensor<[1, 1024, 128, 128], f32> {

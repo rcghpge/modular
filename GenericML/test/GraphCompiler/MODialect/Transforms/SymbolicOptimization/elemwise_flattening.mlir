@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize --cse | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize --cse | FileCheck %s
 
 // CHECK: mo.graph @erf(%[[ARG0:.*]]: !mo.tensor<[64, 1], f32>) -> !mo.tensor<[64, 1], f32> {
 mo.graph @erf(%arg0 : !mo.tensor<[64, 1], f32>) -> !mo.tensor<[64, 1], f32>{

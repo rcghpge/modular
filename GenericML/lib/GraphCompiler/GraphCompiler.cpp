@@ -55,7 +55,7 @@ void M::MO::loadDialects(mlir::DialectRegistry &registry) {
 
 void M::MO::registerShapeInferencePipeline() {
   mlir::PassPipelineRegistration<>(
-      "shape-inference", "Run the end-to-end shape inference pipeline.",
+      "mo-shape-inference", "Run the end-to-end shape inference pipeline.",
       buildShapeInferencePipeline);
 }
 

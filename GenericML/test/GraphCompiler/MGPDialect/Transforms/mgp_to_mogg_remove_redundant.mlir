@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -allow-unregistered-dialect --remove-redundant-operands --split-input-file | FileCheck %s
+// RUN: mo-opt %s -allow-unregistered-dialect --mogg-remove-redundant-operands --split-input-file | FileCheck %s
 
 mgp.model @remove_redundant_operands : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %0 = grt.chain.create ()

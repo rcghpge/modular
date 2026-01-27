@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" --split-input-file -o /dev/null --mlir-print-ir-after=fuse-prologues-epilogues 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" --split-input-file -o /dev/null --mlir-print-ir-after=mogg-fuse-prologues-epilogues 2>&1 | FileCheck %s
 
 // CHECK-LABEL: mo.graph @conv_merge_dim_rank3_merge_1
 // CHECK-DAG: summary = "mo.conv:{{[0-9]+}}+mo.merge_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"

@@ -1,6 +1,6 @@
 // UNSUPPORTED: ubsan
 
-// RUN: mo-opt %s --add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
+// RUN: mo-opt %s --mo-add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" | FileCheck %s
 
 mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, D1], si64>,

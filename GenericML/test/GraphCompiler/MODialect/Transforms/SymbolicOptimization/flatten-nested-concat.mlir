@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --symbolic-optimize | FileCheck %s
+// RUN: mo-opt %s --mo-symbolic-optimize | FileCheck %s
 
 // CHECK: mo.graph @nested_concat(
 mo.graph @nested_concat(

@@ -1,4 +1,4 @@
-// RUN: mo-opt -mo-to-mogg --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt -mo-to-mogg --mogg-fuse-mutable-loads %s | FileCheck %s
 
 // Check that the second mutable.load doesn't fuse when doing so would create a
 // cycle.

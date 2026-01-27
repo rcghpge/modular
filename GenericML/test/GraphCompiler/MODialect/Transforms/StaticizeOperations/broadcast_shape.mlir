@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @broadcast_shape
 // CHECK-DAG: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "[broadcast_shape] dimensions are not broadcastable" : !kgen.string}, or(eq(:si64 D0, 1), eq(:si64 D0, 50)))>

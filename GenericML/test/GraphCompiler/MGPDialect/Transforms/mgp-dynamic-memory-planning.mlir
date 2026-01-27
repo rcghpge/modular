@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --dynamic-memory-planning --split-input-file --allow-unregistered-dialect | FileCheck %s
+// RUN: mo-opt %s --mgp-dynamic-memory-planning --split-input-file --allow-unregistered-dialect | FileCheck %s
 
 // Test basic memory planning with non-overlapping lifetimes
 // CHECK-LABEL: mgp.model @basic_memory_planning

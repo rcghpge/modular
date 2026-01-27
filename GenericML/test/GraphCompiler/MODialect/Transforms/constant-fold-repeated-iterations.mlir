@@ -1,5 +1,5 @@
 // UNSUPPORTED: asan
-// RUN: mo-opt --constant-fold=iterations=2 %s | FileCheck %s
+// RUN: mo-opt --mo-constant-fold=iterations=2 %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @repeated_application
 mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si32> {

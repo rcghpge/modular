@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --infer-layouts | FileCheck %s
+// RUN: mo-opt %s --mo-infer-layouts | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @chained_conv2d_with_reused_filter(

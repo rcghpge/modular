@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --splat-large-constants=num-elements=4 --cse --canonicalize --resolve-unknown-parameters --shape-inference --symbolic-optimize --cse --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-splat-large-constants=num-elements=4 --cse --canonicalize --mo-resolve-unknown-parameters --mo-shape-inference --mo-symbolic-optimize --cse --canonicalize | FileCheck %s
 
 // CHECK-LABEL:  mo.graph @base_case
 // CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[1], si32>

@@ -1,4 +1,4 @@
-// RUN: mo-opt --canonicalize-chain-sequences %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-canonicalize-chain-sequences %s | FileCheck %s --enable-var-scope
 
 !tt = !mo.tensor<[3, 3], f32>
 !bt = !mo.buffer<[3, 3], f32>

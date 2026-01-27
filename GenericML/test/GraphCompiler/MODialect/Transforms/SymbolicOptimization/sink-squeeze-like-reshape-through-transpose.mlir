@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize %s | FileCheck %s
 
 // CHECK-LABEL: @symbolic_4d
 // CHECK-SAME: %[[ARG0:.*]]: 

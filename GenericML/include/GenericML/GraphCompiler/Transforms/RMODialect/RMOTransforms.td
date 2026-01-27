@@ -13,7 +13,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeRMOOps : Pass<"legalize-rmo-operators", "GraphOp"> {
+def LegalizeRMOOps : Pass<"mo-legalize-rmo-operators", "GraphOp"> {
   let summary = "Legalize RMO operators to mo operators.";
   let description = [{
     There are broadly two categories of RMO operators. The first are those

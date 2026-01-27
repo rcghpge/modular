@@ -1,6 +1,6 @@
 // TODO(GEX-2037): Fix and re-enable test
 // REQUIRES: disabled
-// RUN: mo-opt --infer-layouts --mo-to-mogg --split-input-file --verify-diagnostics %s
+// RUN: mo-opt --mo-infer-layouts --mo-to-mogg --split-input-file --verify-diagnostics %s
 
 !tt = !mo.tensor<[10, 10], f32>
 !bt = !mo.buffer<[10, 10], f32>

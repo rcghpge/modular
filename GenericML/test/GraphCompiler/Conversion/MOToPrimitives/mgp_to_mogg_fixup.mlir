@@ -1,4 +1,4 @@
-// RUN: mo-opt -allow-unregistered-dialect --lower-mogg-region-compile %s | FileCheck %s
+// RUN: mo-opt -allow-unregistered-dialect --mogg-lower-mogg-region-compile %s | FileCheck %s
 
 // Jit compile kernels will output the function execution in a particular way,
 // we need to run a fixup pass over it to convert to the form MGP expects.

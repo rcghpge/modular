@@ -1,4 +1,4 @@
-// RUN: mo-opt -mo-to-mogg -fuse-elementwise -fuse-prologues-epilogues -mo-to-primitives %s | FileCheck %s
+// RUN: mo-opt -mo-to-mogg -mogg-fuse-elementwise -mogg-fuse-prologues-epilogues -mgp-mo-to-primitives %s | FileCheck %s
 
 // CHECK-LABEL: mogg.kernel.stub @stub_0
 // CHECK:         mogg.bind

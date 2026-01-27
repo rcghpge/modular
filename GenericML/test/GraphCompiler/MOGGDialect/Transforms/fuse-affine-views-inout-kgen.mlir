@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-affine-views --canonicalize --fuse-prologues-epilogues --canonicalize %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --mogg-fuse-affine-views --canonicalize --mogg-fuse-prologues-epilogues --canonicalize %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @many_affine_views
 // CHECK: summary = "mo.matmul{{.*}}mo.add_singleton_dim{{.*}}mo.add_singleton_dim{{.*}}mo.add_singleton_dim{{.*}}mo.relu{{.*}}"

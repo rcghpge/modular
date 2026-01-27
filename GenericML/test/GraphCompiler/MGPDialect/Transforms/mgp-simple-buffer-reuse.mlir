@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --simple-buffer-reuse --split-input-file | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --mgp-simple-buffer-reuse --split-input-file | FileCheck %s
 
 // This test case covers the case of serial execution commonly found in models
 //

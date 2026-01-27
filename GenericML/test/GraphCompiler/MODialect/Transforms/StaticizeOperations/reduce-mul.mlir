@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @reduce_mul
 //  CHECK-SAME:   <[[N1:.*]], [[N2:.*]] -> {{.*}}>(

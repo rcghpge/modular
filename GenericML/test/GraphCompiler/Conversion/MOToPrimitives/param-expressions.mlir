@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-primitives --cse | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mgp-mo-to-primitives --cse | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mgp.model @add_expressions : mof
 // CHECK: } execute

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --propagate-shapes --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mo-propagate-shapes --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @broadcast_to_from_scalar
 //  CHECK-SAME:   [[INPUT:%.*]]: !mo.tensor<[], si64>

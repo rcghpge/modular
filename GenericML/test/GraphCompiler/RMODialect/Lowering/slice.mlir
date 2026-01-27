@@ -1,4 +1,4 @@
-// RUN: mo-opt --resolve-unknown-parameters --legalize-rmo-operators --shape-inference %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-resolve-unknown-parameters --mo-legalize-rmo-operators --mo-shape-inference %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph @slice
 mo.graph @slice<dim0>(%arg0: !mo.tensor<[dim0], f32>) -> !mo.tensor<[add(dim0, -1)], f32> attributes {argument_names = ["input0"], result_names = ["output0"]} {

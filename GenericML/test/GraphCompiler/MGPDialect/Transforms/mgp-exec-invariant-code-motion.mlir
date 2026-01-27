@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --exec-invariant-code-motion --canonicalize --cse --split-input-file | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --mgp-exec-invariant-code-motion --canonicalize --cse --split-input-file | FileCheck %s
 
 //
 // @liftable_op

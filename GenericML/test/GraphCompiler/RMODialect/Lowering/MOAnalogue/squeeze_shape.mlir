@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s
 
 mo.graph @squeeze_shape_dyn_dyn(%shape: !mo.tensor<?, si64>, %indices: !mo.tensor<?, si64>) -> !mo.tensor<?, si64> {
   %1 = rmo.mo.squeeze_shape(%shape, %indices) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<?, si64>

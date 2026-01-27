@@ -1,4 +1,4 @@
-// RUN: mo-opt -split-input-file --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt -split-input-file --mo-symbolic-optimize %s | FileCheck %s
 
 // CHECK-LABEL:  mo.graph @usual_case
 // CHECK-NEXT:    %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>

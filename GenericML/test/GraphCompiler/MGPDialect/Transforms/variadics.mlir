@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -mo-to-mogg -mo-to-primitives -canonicalize -outline-kernels -add-try-except-blocks -emit-mojo -dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s -mo-to-mogg -mgp-mo-to-primitives -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that mo.concat with variadic inputs properly generates VariadicTensors in the emitted Mojo code
 

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mgp-mo-to-primitives | FileCheck %s
 
 // Test host weights with device output.
 // CHECK-LABEL: @external_weights_cpu_to_gpu

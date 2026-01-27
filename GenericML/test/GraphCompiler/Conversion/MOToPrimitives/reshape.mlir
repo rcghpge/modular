@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mgp-mo-to-primitives | FileCheck %s
 
 // Entry point
 // CHECK-LABEL:   mgp.model @static_reshape : mof

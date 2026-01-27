@@ -1,8 +1,8 @@
 // UNSUPPORTED: asan
-// RUN: mo-opt --constant-fold=iterations=1 %s | FileCheck %s
+// RUN: mo-opt --mo-constant-fold=iterations=1 %s | FileCheck %s
 
 // COM: Examine dumped MO constant subgraph before execution
-// RUN: mo-opt --constant-fold=iterations=1 --mlir-print-ir-after=mo-to-mogg 2>&1 %s | FileCheck %s -check-prefix=CHECK-CONST-MO-SUBGRAPH
+// RUN: mo-opt --mo-constant-fold=iterations=1 --mlir-print-ir-after=mo-to-mogg 2>&1 %s | FileCheck %s -check-prefix=CHECK-CONST-MO-SUBGRAPH
 
 // CHECK-CONST-MO-SUBGRAPH-LABEL: @partial_fold_bcast_constant_subgraphs
 // CHECK-CONST-MO-SUBGRAPH: mo.static.broadcast_to

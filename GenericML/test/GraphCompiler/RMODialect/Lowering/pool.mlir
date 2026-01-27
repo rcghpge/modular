@@ -1,4 +1,4 @@
-// RUN: mo-opt --legalize-rmo-operators --canonicalize %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --mo-legalize-rmo-operators --canonicalize %s | FileCheck %s --enable-var-scope
 
 // CHECK-LABEL: mo.graph @max_pool
 // CHECK: (%[[INPUT:.*]]: !mo.tensor<[1, 6, 15, 1], f32>)

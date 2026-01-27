@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --hoist-param-exprs | FileCheck %s
+// RUN: mo-opt %s --mo-hoist-param-exprs | FileCheck %s
 
 // CHECK-LABEL: mo.graph @complex_expression
 mo.graph @complex_expression<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[M], f32>) -> (!mo.tensor<[add(N, M)], f32>) {

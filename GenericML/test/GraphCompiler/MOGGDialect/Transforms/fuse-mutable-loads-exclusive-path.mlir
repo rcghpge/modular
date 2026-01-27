@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --fuse-mutable-loads %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --mogg-fuse-mutable-loads %s | FileCheck %s
 
 // Builds an "exclusive" chain path from a load's out-chain to the kernel's
 // in-chain composed solely of mo.chain.create, with no other users.

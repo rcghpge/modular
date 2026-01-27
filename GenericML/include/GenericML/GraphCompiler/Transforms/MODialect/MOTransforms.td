@@ -10,7 +10,7 @@
 include "mlir/Pass/PassBase.td"
 
 def AddFallbackShapeFunctions :
-    Pass<"add-fallback-shape-funcs", "GraphOp"> {
+    Pass<"mo-add-fallback-shape-funcs", "GraphOp"> {
   let summary = "Adds fallback shape functions to unmaterialized mo ops";
   let description = [{
     This ensures all MO operations will have parameterized outputs by checking
@@ -38,7 +38,7 @@ def AddFallbackShapeFunctions :
   ];
 }
 
-def InvokeShapePackingFunctions : Pass<"invoke-shape-packing-funcs", "GraphOp"> {
+def InvokeShapePackingFunctions : Pass<"mo-invoke-shape-packing-funcs", "GraphOp"> {
   let summary = "Process fallback shape functions for packing operations";
 
   let description = [{
@@ -65,7 +65,7 @@ def InvokeShapePackingFunctions : Pass<"invoke-shape-packing-funcs", "GraphOp"> 
   ];
 }
 
-def MergeDuplicateShapeMaterializations : Pass<"merge-duplicate-shape-materializations", "GraphOp"> {
+def MergeDuplicateShapeMaterializations : Pass<"mo-merge-duplicate-shape-materializations", "GraphOp"> {
   let summary = "Merges duplicate shape materialization operations";
   let description = [{
     This pass goes through ops that implement the Staticization interface and
@@ -99,7 +99,7 @@ def MergeDuplicateShapeMaterializations : Pass<"merge-duplicate-shape-materializ
   }];
 }
 
-def PropagateShapes : Pass<"propagate-shapes", "GraphOp"> {
+def PropagateShapes : Pass<"mo-propagate-shapes", "GraphOp"> {
   let summary = "Propagates shape parameters through the graph.";
   let description = [{
     This pass evaluates shape parameter logic in the graph, simplifying and
@@ -107,7 +107,7 @@ def PropagateShapes : Pass<"propagate-shapes", "GraphOp"> {
   }];
 }
 
-def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
+def ResolveUnknownParameters : Pass<"mo-resolve-unknown-parameters", "ModuleOp"> {
   let summary = "Resolves unknown tensor shape and dimension parameters.";
   let description = [{
     This pass parameterizes `mo` ops that can be parameterized. This involves 2
@@ -119,7 +119,7 @@ def ResolveUnknownParameters : Pass<"resolve-unknown-parameters", "ModuleOp"> {
   }];
 }
 
-def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
+def SymbolicOptimization : Pass<"mo-symbolic-optimize", "GraphOp"> {
   let summary = "Optimize the graph using symbolic reasoning.";
   let description = [{
     This pass leverages symbolic information present in the graph (usually as a
@@ -142,7 +142,7 @@ def SymbolicOptimization : Pass<"symbolic-optimize", "GraphOp"> {
   ];
 }
 
-def InferLayouts : Pass<"infer-layouts", "GraphOp"> {
+def InferLayouts : Pass<"mo-infer-layouts", "GraphOp"> {
   let summary = "Infer layouts of tensor values";
   let description = [{
     This pass tries to infer the layout of tensor values in a `mo.graph`, based
@@ -152,7 +152,7 @@ def InferLayouts : Pass<"infer-layouts", "GraphOp"> {
   }];
 }
 
-def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
+def HoistParameterExpressions : Pass<"mo-hoist-param-exprs", "GraphOp"> {
   let summary = "Move parameter expressions out of ops and into a preceding alias.";
   let description = [{
     Transforms
@@ -172,7 +172,7 @@ def HoistParameterExpressions : Pass<"hoist-param-exprs", "GraphOp"> {
   }];
 }
 
-def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
+def ConstantFold : Pass<"mo-constant-fold", "ModuleOp"> {
   let summary = "Partially evaluate constant subgraphs";
   let description = [{
     This pass identifies constant subgraphs and executes them at compile time
@@ -224,7 +224,7 @@ def ConstantFold : Pass<"constant-fold", "ModuleOp"> {
   ];
 }
 
-def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
+def ConstantFoldSubgraphTest : Pass<"mo-constant-fold-subgraph-test", "ModuleOp"> {
   let summary = "Test constant subgraph detection";
   let description = [{
     This is a testing only pass. It prints out the constant subgraphs found
@@ -245,7 +245,7 @@ def ConstantFoldSubgraphTest : Pass<"constant-fold-subgraph-test", "ModuleOp"> {
   }];
 }
 
-def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
+def SupportConversionsTest : Pass<"mo-support-conversions-test", "ModuleOp"> {
   let summary = "Testing only pass for testing MO Conversion support library.";
   let description = [{
     This is a testing only pass. It looks for hard-coded, unregistered ops and
@@ -268,7 +268,7 @@ def SupportConversionsTest : Pass<"support-conversions-test", "ModuleOp"> {
   ];
 }
 
-def ValidateDevicesPass : Pass<"validate-devices", "GraphOp"> {
+def ValidateDevicesPass : Pass<"mo-validate-devices", "GraphOp"> {
   let summary = "Validates that each data type used in tensors in the graph "
                 "can be implemented on the target device.";
   let description = [{
@@ -287,7 +287,7 @@ def ValidateDevicesPass : Pass<"validate-devices", "GraphOp"> {
   ];
 }
 
-def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
+def DebugPrintAllTensorsPass : Pass<"mo-debug-print-all-tensors", "GraphOp"> {
   let summary = "Print all intermediate tensors as they are produced.";
   let description = [{
     This pass emits a mo.debug.tensor.print for every mo.tensor typed value
@@ -298,7 +298,7 @@ def DebugPrintAllTensorsPass : Pass<"debug-print-all-tensors", "GraphOp"> {
 }
 
 def SplatLargeConstants :
-    Pass<"splat-large-constants", "GraphOp"> {
+    Pass<"mo-splat-large-constants", "GraphOp"> {
   let summary = "Will splat a large constant for development purposes";
   let description = [{
     This pass will replace a large constant with a splatted version by
@@ -325,7 +325,7 @@ def TopologicalSort :
 }
 
 def ElideRedundantMutableOps :
-    Pass<"elide-redundant-mutable-ops", "GraphOp"> {
+    Pass<"mo-elide-redundant-mutable-ops", "GraphOp"> {
   let summary = "Eliminates redundant mo.mutable.store and mo.mutable.load ops.";
   let description = [{
     This pass contains patterns meant to eliminate mo.mutable.store and
@@ -375,7 +375,7 @@ def ElideRedundantMutableOps :
   }];
 }
 
-def DecomposeViewOps : Pass<"decompose-views", "GraphOp"> {
+def DecomposeViewOps : Pass<"mo-decompose-views", "GraphOp"> {
   let summary = "Decompose view ops into simpler ops";
   let description = [{
     Breaks down large CISC like view ops into a series of simpler
@@ -384,7 +384,7 @@ def DecomposeViewOps : Pass<"decompose-views", "GraphOp"> {
   }];
 }
 
-def FlattenElementwise : Pass<"flatten-elementwise", "ModuleOp"> {
+def FlattenElementwise : Pass<"mo-flatten-elementwise", "ModuleOp"> {
   let summary = "Flattens elementwise ops";
   let description = [{
     This pass will flatten the tensor shapes for certain elementwise ops if it
@@ -392,7 +392,7 @@ def FlattenElementwise : Pass<"flatten-elementwise", "ModuleOp"> {
   }];
 }
 
-def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp"> {
+def CanonicalizeChainSequences : Pass<"mo-canonicalize-chain-sequences", "GraphOp"> {
   let summary = "Optimize linear chains of side-effecting operations.";
   let description = [{
     Will optimize a linear chain of side-effecting operations.
@@ -430,7 +430,7 @@ def CanonicalizeChainSequences : Pass<"canonicalize-chain-sequences", "GraphOp">
   }];
 }
 
-def HoistConstantSubgraphsIntoParent : Pass<"hoist-constant-subgraphs-into-parent", "ModuleOp"> {
+def HoistConstantSubgraphsIntoParent : Pass<"mo-hoist-constant-subgraphs-into-parent", "ModuleOp"> {
   let summary = "Hoist constant and constant-derived subgraphs to the parent graph.";
   let description = [{
     This pass hoists constant and constant-derived ops within subgraphs to the

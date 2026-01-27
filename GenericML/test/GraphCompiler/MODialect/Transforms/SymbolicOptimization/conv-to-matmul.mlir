@@ -1,4 +1,4 @@
-// RUN: mo-opt --symbolic-optimize %s | FileCheck %s
+// RUN: mo-opt --mo-symbolic-optimize %s | FileCheck %s
 
 mo.graph @conv_to_matmul_static_dims(
   %input: !mo.tensor<[32, 10, 10, 3], f32>,

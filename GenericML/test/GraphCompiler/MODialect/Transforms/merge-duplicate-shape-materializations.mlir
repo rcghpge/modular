@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --merge-duplicate-shape-materializations --cse --canonicalize --split-input-file | FileCheck %s
+// RUN: mo-opt %s --mo-merge-duplicate-shape-materializations --cse --canonicalize --split-input-file | FileCheck %s
 
 // CHECK-LABEL: mo.graph @merge_params_test_case
 mo.graph @merge_params_test_case<N1 -> O1>(

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --mo-to-primitives --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --mo-to-mogg --mgp-mo-to-primitives --split-input-file --verify-diagnostics
 
 kgen.func @foo() -> si64 {
   %c = mosh.param.to_value = <42>

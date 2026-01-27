@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --resolve-unknown-parameters --legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s
+// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s
 
 mo.graph @broadcast_to_dyn_dyn(%data: !mo.tensor<?, si64>, %shape: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
     %1 = rmo.mo.broadcast_to(%data, %shape) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>

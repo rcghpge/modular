@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --allow-unregistered-dialect --predicate-asserts-deps --simplify-chains --cse | FileCheck %s
+// RUN: mo-opt %s --allow-unregistered-dialect --mgp-predicate-asserts-deps --mgp-simplify-chains --cse | FileCheck %s
 //
 
 // CHECK-LABEL: mgp.model @simple_case : mof devices [#M.device_ref<"cpu", 0>] init
