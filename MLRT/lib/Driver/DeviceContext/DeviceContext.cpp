@@ -1174,6 +1174,12 @@ StringRef DeviceContext::configAsString(StringRef key, StringRef defaultValue,
                             defaultValue);
 }
 
+bool DeviceContext::isDebugAllocatorEnabled(StringRef name) const {
+  std::lock_guard<std::mutex> lock(getGlobalMutex());
+  ErrorOr<Config> &config = getConfig();
+  return config->isValueInList("debug.device_allocator", name);
+}
+
 ErrorOr<Config> &DeviceContext::getConfig() {
   static ErrorOr<Config> configuration = Config::open();
   return configuration;

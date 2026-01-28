@@ -125,6 +125,7 @@ modular_cc_library(
         "//Support:ADT",
         "//Support:Base",
         "//Support:ConcurrentAppendingVector",
+        "//Support:Configuration",
         "//Support:Context",
         "//Support:MArchTargetMinimal",
         "//Support:Profiling",

@@ -620,6 +620,7 @@ public:
   bool syncMode() const;
   void incSyncMode() const;
   void decSyncMode() const;
+  bool isDebugAllocatorEnabled(StringRef name) const;
 
 protected:
   explicit DeviceContext(const Device &device);
@@ -696,7 +697,7 @@ private:
   void setPendingEventHandler(PendingEventHandler *h) const;
 
   // Shared configuration object.
-  // REQUIRES: `DeviceContext::mu_` must be held to get and access the shared
+  // REQUIRES: `getGlobalMutex()` must be held to get and access the shared
   // Config object.
   static ErrorOr<Config> &getConfig();
 };

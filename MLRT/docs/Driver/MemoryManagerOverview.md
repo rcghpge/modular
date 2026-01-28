@@ -265,6 +265,20 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   consistency checks (default: false)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: Fail if memory manager
   cannot satisfy allocation (testing mode)
+- **`MODULAR_DEBUG_DEVICE_ALLOCATOR`**: List of comma separated allocator
+  debugging features from the following:
+  - `uninitialized-poison`: enable filling buffers with type-aware poison
+    values to aid detection of uninitialized data, qNaN for floating-point
+    buffers (or `0xFF` if LLVM unaware of the FP type) and and `0xCD` for other
+    buffer types
+  - `out-of-bounds`: enable redzone out-of-bounds write checks see below for
+    additional configuration options
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_REDZONE_SIZE`**: specify the size in
+  bytes of the redzones to be use when
+  `MODULAR_DEBUG_DEVICE_ALLOCATOR=out-of-bounds` is enabled
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_REDZONE_PATTERN`**: specify the byte
+  pattern used to fill the redzones when
+  `MODULAR_DEBUG_DEVICE_ALLOCATOR=out-of-bounds` is enabled
 
 ### Configuration Examples
 
