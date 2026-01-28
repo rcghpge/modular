@@ -234,7 +234,7 @@ fn _matmul[
     elementwise_lambda_fn: Optional[
         fn[
             dtype: DType, width: Int, *, alignment: Int = 1
-        ] (IndexList[2], SIMD[dtype, width]) capturing -> None
+        ](IndexList[2], SIMD[dtype, width]) capturing -> None
     ] = None,
 ](
     c: ManagedTensorSlice[mut=True],
