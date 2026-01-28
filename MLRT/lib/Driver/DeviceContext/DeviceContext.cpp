@@ -23,6 +23,8 @@
 #include "Support/SymbolExport.h"
 #include "Virtual/VirtualDeviceContext.h"
 
+#include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Process.h"
 
@@ -578,6 +580,16 @@ DeviceGraph::capture(const DeviceStream &stream,
   return graph;
 }
 
+void DeviceGraph::setOutputs(MutableArrayRef<AnyAsyncValueRef> values) {
+  resultTensors = llvm::map_to_vector(
+      values, [](AnyAsyncValueRef &ref) { return ref.copy(); });
+}
+
+SmallVector<AsyncRT::AnyAsyncValueRef> DeviceGraph::getOutputs() {
+  return llvm::map_to_vector(resultTensors,
+                             [](AnyAsyncValueRef &ref) { return ref.copy(); });
+}
+
 //
 // ===== DeviceStream ===== //
 //
@@ -825,16 +837,8 @@ ErrorOrSuccess DeviceContext::pollPendingEvents() const {
   // During graph capture, events aren't executing - they're graph nodes.
   // cuEventQuery is prohibited during capture, so skip polling. Handlers
   // will run after capture ends and the graph executes.
-  if (device().api() == Device::cudaAPI) {
-    const auto &cudaCtx = CUDADeviceContext::cast(*this);
-    CUstreamCaptureStatus status =
-        CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
-    if (cudaCtx.cudaDriver().cuStreamIsCapturing(
-            cudaCtx.cudaStream(), &status) == CUDADriver::SUCCESS &&
-        status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_ACTIVE) {
-      return success();
-    }
-  }
+  if (isGraphCapturing())
+    return success();
 
   // Quickly check if we should check for a pending work.
   if (hasPendingWork_.load(std::memory_order_acquire) == 0) {
@@ -895,7 +899,7 @@ ErrorOrSuccess DeviceContext::pollPendingEvents() const {
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
 DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
   if (byteSize == 0)
-    return this->createBufferOwning(nullptr, 0, true);
+    return this->createBufferOwning(nullptr, 0, /*owning=*/true);
   return allocBuffer(byteSize, Device::AllocMode::ASYNC);
 }
 
@@ -922,14 +926,22 @@ ErrorOr<DeviceBufferRef>
 DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
   assert(byteSize != 0);
   void *ptr = nullptr;
-  // Allocate from the correct memory manager.
-  ErrorOr<void *> errPtr =
-      ((mode == Device::AllocMode::HOST) ? hostFreeList() : freeList())
-          .allocate(byteSize, mode);
-  if (errPtr.isError()) {
-    return errPtr.takeError();
+
+  // When in graph capture mode, we bypass the MemoryManager and allow the
+  // graph capture mechanism handle memory allocations.
+  if (isGraphCapturing()) {
+    if (ErrorOrSuccess err = memAlloc(&ptr, byteSize, mode))
+      return err.takeError();
+  } else {
+    // Allocate from the correct memory manager.
+    ErrorOr<void *> errPtr =
+        ((mode == Device::AllocMode::HOST) ? hostFreeList() : freeList())
+            .allocate(byteSize, mode);
+    if (errPtr.isError()) {
+      return errPtr.takeError();
+    }
+    ptr = errPtr.takeValue();
   }
-  ptr = errPtr.takeValue();
   return DeviceBufferRef::take(
       new DeviceBuffer(*this, ptr, byteSize, mode == Device::AllocMode::HOST));
 }
@@ -1107,6 +1119,21 @@ void DeviceContext::incSyncMode() const {
 }
 void DeviceContext::decSyncMode() const {
   syncMode_.fetch_add(-1, std::memory_order_relaxed);
+}
+
+bool DeviceContext::isGraphCapturing() const {
+  if (device().api() == Device::cudaAPI) {
+    const auto &cudaCtx = CUDADeviceContext::cast(*this);
+    CUstreamCaptureStatus status =
+        CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+    if (cudaCtx.cudaDriver().cuStreamIsCapturing(
+            cudaCtx.cudaStream(), &status) == CUDADriver::SUCCESS &&
+        status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_ACTIVE) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 bool DeviceContext::configAsBool(StringRef key, bool defaultValue,

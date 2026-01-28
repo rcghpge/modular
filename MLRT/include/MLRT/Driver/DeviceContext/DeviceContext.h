@@ -12,6 +12,7 @@
 #define MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 
 #include "ErrorMacros.h"
+#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
@@ -354,6 +355,12 @@ public:
   /// Replay the captured operations on the stored capture stream.
   virtual ErrorOrSuccess replay() const = 0;
 
+  /// Capture the set of outputs associated with the captured graph.
+  void setOutputs(MutableArrayRef<AnyAsyncValueRef> values);
+
+  /// Return the set of values associated with the captured graph.
+  SmallVector<AsyncRT::AnyAsyncValueRef> getOutputs();
+
 protected:
   explicit DeviceGraph(const Device &device, DeviceStreamRef captureStream = {})
       : device_(DeviceRef::copy(&device)),
@@ -372,6 +379,13 @@ protected:
 private:
   DeviceRef device_;
   DeviceStreamRef captureStream_;
+
+  /// The tensor values returned from the graph during graph capture.
+  /// These values are special in that they were allocated during graph
+  /// capture and have a lifetime tied to the captured graph.
+  ///
+  /// All replays of the graph will write to these result tensors.
+  SmallVector<AsyncRT::AnyAsyncValueRef> resultTensors;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -695,6 +709,10 @@ private:
                                        Device::AllocMode mode) const;
 
   void setPendingEventHandler(PendingEventHandler *h) const;
+
+  // Is the current execution stream for the device running in graph capture
+  // mode?
+  bool isGraphCapturing() const;
 
   // Shared configuration object.
   // REQUIRES: `getGlobalMutex()` must be held to get and access the shared

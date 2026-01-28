@@ -82,6 +82,13 @@ enum class CUgraphNodeType {
   CU_GRAPH_NODE_TYPE_BATCH_MEM_OP = 12,
 };
 
+enum class CUgraphInstantiateFlags : unsigned long long {
+  CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH = 1,
+  CUDA_GRAPH_INSTANTIATE_FLAG_UPLOAD = 2,
+  CUDA_GRAPH_INSTANTIATE_FLAG_DEVICE_LAUNCH = 4,
+  CUDA_GRAPH_INSTANTIATE_FLAG_USE_NODE_PRIORITY = 8,
+};
+
 enum class CUgraphDotFlags : unsigned int {
   None = 0,
   Verbose = 0x01, // 1: Output all debug data

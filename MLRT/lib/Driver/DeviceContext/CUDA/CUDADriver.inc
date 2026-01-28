@@ -64,6 +64,7 @@ CUDA_FUNC(cuStreamEndCapture, Result, CUstream, CUgraph *)
 CUDA_FUNC(cuStreamIsCapturing, Result, CUstream, CUstreamCaptureStatus *)
 
 CUDA_FUNC(cuGraphInstantiate, Result, CUgraphExec *, CUgraph, CUgraphNode *, char *, size_t)
+CUDA_FUNC(cuGraphInstantiateWithFlags, Result, CUgraphExec *, CUgraph, unsigned long long)
 CUDA_FUNC(cuGraphDestroy, Result, CUgraph)
 CUDA_FUNC(cuGraphExecDestroy, Result, CUgraphExec)
 CUDA_FUNC(cuGraphLaunch, Result, CUgraphExec, CUstream)

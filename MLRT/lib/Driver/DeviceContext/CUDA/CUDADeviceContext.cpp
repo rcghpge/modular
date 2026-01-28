@@ -1003,8 +1003,10 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
   }
 
   CUgraphExec exec = nullptr;
-  CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiate(
-      &exec, graph, nullptr, nullptr, 0);
+  CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiateWithFlags(
+      &exec, graph,
+      M::to_underlying(CUgraphInstantiateFlags::
+                           CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH));
   if (res != CUDADriver::SUCCESS) {
     // Clean up graph on failure.
     cudaDevice.cudaDriver().cuGraphDestroy(graph);

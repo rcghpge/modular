@@ -565,6 +565,7 @@ modular_shared_library(
     ],
     output_name = "AsyncRTMojoBindings",
     deps = [
+        ":AsyncRT/Runtime",
         ":Driver/DeviceContextImpl",
         "//Support:Base",
         "//Support:BinaryID",
@@ -626,6 +627,7 @@ modular_cc_library(
         "//MLRT:__subpackages__",
     ],
     deps = [
+        ":AsyncRT/Runtime",
         ":AsyncRT/RuntimeGlobals",
         "//Support:Base",
         "//Support:Buffer",

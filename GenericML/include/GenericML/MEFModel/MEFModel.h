@@ -74,7 +74,8 @@ public:
 
   /// Capture a device graph for the given inputs. The graph is keyed by input
   /// shapes and dtypes so later replay/debug verification can reuse it.
-  ErrorOrSuccess capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+  ErrorOr<SmallVector<AnyAsyncValueRef>>
+  capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
   /// Replay a previously captured graph for these inputs.
   ErrorOrSuccess replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
@@ -89,7 +90,8 @@ private:
                   AnyAsyncValueRef weightsRegistry,
                   SmallVector<AnyAsyncValueRef> &&devices,
                   const class Model *model, Runtime &runtime);
-  ErrorOrSuccess executeWithDeviceMemoryInputs(
+
+  ErrorOr<SmallVector<AnyAsyncValueRef>> executeWithDeviceMemoryInputs(
       ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const;
 
   const class Model *model;

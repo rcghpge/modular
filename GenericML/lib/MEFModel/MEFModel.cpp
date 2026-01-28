@@ -375,7 +375,8 @@ captureStream(ArrayRef<AnyAsyncValueRef> devices) {
   return Error("No CUDA stream available for capture");
 }
 
-ErrorOrSuccess ExecutableModel::executeWithDeviceMemoryInputs(
+ErrorOr<SmallVector<AnyAsyncValueRef>>
+ExecutableModel::executeWithDeviceMemoryInputs(
     ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const {
   SmallVector<AnyAsyncValueRef> inputValues;
   inputValues.reserve(inputs.size());
@@ -395,26 +396,41 @@ ErrorOrSuccess ExecutableModel::executeWithDeviceMemoryInputs(
     if (result.isError())
       return result.getDiagnostic().getMessage().copy();
 
-  return success();
+  return results;
 }
 
-ErrorOrSuccess
+ErrorOr<SmallVector<AnyAsyncValueRef>>
 ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   uint64_t key = computeInputKey(inputs);
-  if (capturedGraphs.contains(key))
-    return success();
+
+  if (auto it = capturedGraphs.find(key); it != capturedGraphs.end())
+    return it->second->getOutputs();
 
   ErrorOr<Driver::DeviceStreamRef> streamOr = captureStream(devices);
   if (streamOr.isError())
     return streamOr.takeError();
   Driver::DeviceStreamRef stream = streamOr.takeValue();
 
-  ErrorOr<Driver::DeviceGraphRef> graphOrErr = Driver::DeviceGraph::capture(
-      *stream, [&]() { return executeWithDeviceMemoryInputs(inputs); });
+  SmallVector<AnyAsyncValueRef> graphResults;
+
+  ErrorOr<Driver::DeviceGraphRef> graphOrErr =
+      Driver::DeviceGraph::capture(*stream, [&]() -> ErrorOrSuccess {
+        auto maybeResult = executeWithDeviceMemoryInputs(inputs);
+        if (maybeResult.isError())
+          return maybeResult.takeError();
+
+        graphResults = maybeResult.takeValue();
+        return success();
+      });
+
   if (graphOrErr.isError())
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
-  capturedGraphs.try_emplace(key, graphOrErr.takeValue());
-  return success();
+
+  Driver::DeviceGraphRef graph = graphOrErr.takeValue();
+  graph->setOutputs(graphResults);
+
+  capturedGraphs.try_emplace(key, std::move(graph));
+  return graphResults;
 }
 
 ErrorOrSuccess
