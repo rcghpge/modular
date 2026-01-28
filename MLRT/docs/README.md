@@ -59,9 +59,3 @@ interface with existing foreign runtimes.
 Driver is a low-level cross-vendor runtime which allows device discovery,
 memory management and kernel execution on the CPU and various different
 accelerators and GPUs, and NIXL; a cross-vendor multi-node communication layer.
-
-## WIP Status
-
-The `MLRT` directory will also contain the `Async RT` and `GraphRT` directories,
-this change is WIP and is described in
-<https://www.notion.so/modularai/Runtime-Folder-Restructuring-2a11044d37bb80bfb665d92acb950201>.
