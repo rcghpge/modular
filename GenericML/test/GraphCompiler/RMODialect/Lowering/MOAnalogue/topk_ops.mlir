@@ -1,165 +1,143 @@
-// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
-mo.graph @topk_dyn(%input: !mo.tensor<?, f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<?, si64>, %sorted: !mo.tensor<?, bool>) -> (!mo.tensor<?, f32>, !mo.tensor<?, si64>) {
-  %values, %indices = rmo.mo.top_k(%input, %k, %axis, %sorted) : (
-        !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, bool>
+mo.graph @topk_dyn<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape -> Sh4: !mosh.ape, Sh5: !mosh.ape>(%input: !mo.tensor<Sh0, f32>, %k: !mo.tensor<Sh1, si64>, %axis: !mo.tensor<Sh2, si64>, %sorted: !mo.tensor<Sh3, bool>) -> (!mo.tensor<Sh4, f32>, !mo.tensor<Sh5, si64>) {
+  %values, %indices = rmo.mo.top_k<() -> Sh6: !mosh.ape, Sh7: !mosh.ape>(%input, %k, %axis, %sorted) : (
+        !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si64>, !mo.tensor<Sh2, si64>, !mo.tensor<Sh3, bool>
       ) -> (
-        !mo.tensor<?, f32>, !mo.tensor<?, si64>
+        !mo.tensor<Sh6, f32>, !mo.tensor<Sh7, si64>
       )
-  mo.output %values, %indices : !mo.tensor<?, f32>, !mo.tensor<?, si64>
+  mo.output<:!mosh.ape Sh6, :!mosh.ape Sh7> %values, %indices : !mo.tensor<Sh6, f32>, !mo.tensor<Sh7, si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @topk_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], si64>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], bool>) -> (!mo.tensor<[[SH5]], f32>, !mo.tensor<[[SH6]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH7]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], si64> -> !mo.tensor<[[SH8]], si64>
-//  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH9]], si64>
-//  CHECK-NEXT:   [[V3:%.*]] = mo.rebind<() -> [[SH10:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG3]]) : !mo.tensor<[[SH4]], bool> -> !mo.tensor<[[SH10]], bool>
-//  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_SH13:[A-Za-z0-9_]*]]: !mosh.ape>([[V0]]) {{.*}} : (!mo.tensor<[[SH7]], f32>) -> !mo.tensor<[[RMO_SH13]], f32>
-//  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH8]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V6:%.*]] = rmo.rebind_tensor_shape([[V2]]) {{.*}} : (!mo.tensor<[[SH9]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V7:%.*]] = rmo.rebind_tensor_shape([[V3]]) {{.*}} : (!mo.tensor<[[SH10]], bool>) -> !mo.tensor<[], bool>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.top_k<() -> [[RMO_SH14:[A-Za-z0-9_]*]]: !mosh.ape>([[V4]], [[V5]], [[V6]], [[V7]]) : (!mo.tensor<[[RMO_SH13]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[RMO_SH14]], f32>, !mo.tensor<[[RMO_SH14]], si64>)
-//  CHECK-NEXT:   [[V8:%.*]] = rmo.rebind_tensor_shape<() -> [[SH11:[A-Za-z0-9_]*]]: !mosh.ape>([[VALUES]]) {{.*}} : (!mo.tensor<[[RMO_SH14]], f32>) -> !mo.tensor<[[SH11]], f32>
-//  CHECK-NEXT:   [[V9:%.*]] = rmo.rebind_tensor_shape<() -> [[SH12:[A-Za-z0-9_]*]]: !mosh.ape>([[INDICES]]) {{.*}} : (!mo.tensor<[[RMO_SH14]], si64>) -> !mo.tensor<[[SH12]], si64>
-//  CHECK-NEXT:   mo.output<:!mosh.ape [[SH11]], :!mosh.ape [[SH12]]> [[V8]], [[V9]] : !mo.tensor<[[SH11]], f32>, !mo.tensor<[[SH12]], si64>
+//  CHECK-SAME: @topk_dyn<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape -> Sh4: !mosh.ape, Sh5: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>, %[[ARG1:.*]]: !mo.tensor<Sh1, si64>, %[[ARG2:.*]]: !mo.tensor<Sh2, si64>, %[[ARG3:.*]]: !mo.tensor<Sh3, bool>) -> (!mo.tensor<Sh4, f32>, !mo.tensor<Sh5, si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_SH0:[A-Za-z0-9_]*]]: !mosh.ape>(%[[ARG0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[RMO_SH0]], f32>
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape(%[[ARG1]]) {{.*}} : (!mo.tensor<Sh1, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape(%[[ARG2]]) {{.*}} : (!mo.tensor<Sh2, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V3:.*]] = rmo.rebind_tensor_shape(%[[ARG3]]) {{.*}} : (!mo.tensor<Sh3, bool>) -> !mo.tensor<[], bool>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k<() -> [[RMO_SH1:[A-Za-z0-9_]*]]: !mosh.ape>(%[[V0]], %[[V1]], %[[V2]], %[[V3]]) : (!mo.tensor<[[RMO_SH0]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[RMO_SH1]], f32>, !mo.tensor<[[RMO_SH1]], si64>)
+//  CHECK-NEXT:   %[[V4:.*]] = rmo.rebind_tensor_shape<() -> [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[RMO_SH1]], f32>) -> !mo.tensor<[[SH6]], f32>
+//  CHECK-NEXT:   %[[V5:.*]] = rmo.rebind_tensor_shape<() -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[RMO_SH1]], si64>) -> !mo.tensor<[[SH7]], si64>
+//  CHECK-NEXT:   mo.output<:!mosh.ape [[SH6]], :!mosh.ape [[SH7]]> %[[V4]], %[[V5]] : !mo.tensor<[[SH6]], f32>, !mo.tensor<[[SH7]], si64>
 
 // -----
 
-mo.graph @topk_dyn_params(%input: !mo.tensor<[?, ?], f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<?, si64>, %sorted: !mo.tensor<?, bool>) -> (!mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>) {
-  %values, %indices = rmo.mo.top_k(%input, %k, %axis, %sorted) : (
-        !mo.tensor<[?, ?], f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, bool>
+mo.graph @topk_dyn_params<D0, D1, Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape -> D2, D3, D4, D5>(%input: !mo.tensor<[D0, D1], f32>, %k: !mo.tensor<Sh0, si64>, %axis: !mo.tensor<Sh1, si64>, %sorted: !mo.tensor<Sh2, bool>) -> (!mo.tensor<[D2, D3], f32>, !mo.tensor<[D4, D5], si64>) {
+  %values, %indices = rmo.mo.top_k<() -> TmpD0, TmpD1, TmpD2, TmpD3>(%input, %k, %axis, %sorted) : (
+        !mo.tensor<[D0, D1], f32>, !mo.tensor<Sh0, si64>, !mo.tensor<Sh1, si64>, !mo.tensor<Sh2, bool>
       ) -> (
-        !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>
+        !mo.tensor<[TmpD0, TmpD1], f32>, !mo.tensor<[TmpD2, TmpD3], si64>
       )
-  mo.output %values, %indices : !mo.tensor<[?, ?], f32>, !mo.tensor<[?, ?], si64>
+  mo.output<TmpD0, TmpD1, TmpD2, TmpD3> %values, %indices : !mo.tensor<[TmpD0, TmpD1], f32>, !mo.tensor<[TmpD2, TmpD3], si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @topk_dyn_params<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape, [[SH5:[A-Za-z0-9_]*]]: !mosh.ape -> [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]], [[D8:[A-Za-z0-9_]*]], [[D9:[A-Za-z0-9_]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG2:%.*]]: !mo.tensor<[[SH4]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH5]], bool>) -> (!mo.tensor<[[[D6]], [[D7]]], f32>, !mo.tensor<[[[D8]], [[D9]]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D1]], [[D2]]], f32> -> !mo.tensor<[[[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH12:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH12]], si64>
-//  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH13:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH4]], si64> -> !mo.tensor<[[SH13]], si64>
-//  CHECK-NEXT:   [[V3:%.*]] = mo.rebind<() -> [[SH14:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG3]]) : !mo.tensor<[[SH5]], bool> -> !mo.tensor<[[SH14]], bool>
-//  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D19:[A-Za-z0-9_]*]], [[RMO_D20:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[D10]], [[D11]]], f32>) -> !mo.tensor<[[[RMO_D19]], [[RMO_D20]]], f32>
-//  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH12]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V6:%.*]] = rmo.rebind_tensor_shape([[V2]]) {{.*}} : (!mo.tensor<[[SH13]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V7:%.*]] = rmo.rebind_tensor_shape([[V3]]) {{.*}} : (!mo.tensor<[[SH14]], bool>) -> !mo.tensor<[], bool>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.top_k<() -> [[RMO_D21:[A-Za-z0-9_]*]], [[RMO_D22:[A-Za-z0-9_]*]]>([[V4]], [[V5]], [[V6]], [[V7]]) : (!mo.tensor<[[[RMO_D19]], [[RMO_D20]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D21]], [[RMO_D22]]], f32>, !mo.tensor<[[[RMO_D21]], [[RMO_D22]]], si64>)
-//  CHECK-NEXT:   [[V8:%.*]] = rmo.rebind_tensor_shape<() -> [[D15:[A-Za-z0-9_]*]], [[D16:[A-Za-z0-9_]*]]>([[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D21]], [[RMO_D22]]], f32>) -> !mo.tensor<[[[D15]], [[D16]]], f32>
-//  CHECK-NEXT:   [[V9:%.*]] = rmo.rebind_tensor_shape<() -> [[D17:[A-Za-z0-9_]*]], [[D18:[A-Za-z0-9_]*]]>([[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D21]], [[RMO_D22]]], si64>) -> !mo.tensor<[[[D17]], [[D18]]], si64>
-//  CHECK-NEXT:   mo.output<[[D15]], [[D16]], [[D17]], [[D18]]> [[V8]], [[V9]] : !mo.tensor<[[[D15]], [[D16]]], f32>, !mo.tensor<[[[D17]], [[D18]]], si64>
+//  CHECK-SAME: @topk_dyn_params<D0, D1, Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape -> D2, D3, D4, D5>(%[[ARG0:.*]]: !mo.tensor<[D0, D1], f32>, %[[ARG1:.*]]: !mo.tensor<Sh0, si64>, %[[ARG2:.*]]: !mo.tensor<Sh1, si64>, %[[ARG3:.*]]: !mo.tensor<Sh2, bool>) -> (!mo.tensor<[D2, D3], f32>, !mo.tensor<[D4, D5], si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D0:[A-Za-z0-9_]*]], [[RMO_D1:[A-Za-z0-9_]*]]>(%[[ARG0]]) {{.*}} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape(%[[ARG1]]) {{.*}} : (!mo.tensor<Sh0, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape(%[[ARG2]]) {{.*}} : (!mo.tensor<Sh1, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V3:.*]] = rmo.rebind_tensor_shape(%[[ARG3]]) {{.*}} : (!mo.tensor<Sh2, bool>) -> !mo.tensor<[], bool>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k<() -> [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]]>(%[[V0]], %[[V1]], %[[V2]], %[[V3]]) : (!mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>, !mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>)
+//  CHECK-NEXT:   %[[V4:.*]] = rmo.rebind_tensor_shape<() -> [[TmpD0:[A-Za-z0-9_]*]], [[TmpD1:[A-Za-z0-9_]*]]>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>) -> !mo.tensor<[[[TmpD0]], [[TmpD1]]], f32>
+//  CHECK-NEXT:   %[[V5:.*]] = rmo.rebind_tensor_shape<() -> [[TmpD2:[A-Za-z0-9_]*]], [[TmpD3:[A-Za-z0-9_]*]]>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>) -> !mo.tensor<[[[TmpD2]], [[TmpD3]]], si64>
+//  CHECK-NEXT:   mo.output<[[TmpD0]], [[TmpD1]], [[TmpD2]], [[TmpD3]]> %[[V4]], %[[V5]] : !mo.tensor<[[[TmpD0]], [[TmpD1]]], f32>, !mo.tensor<[[[TmpD2]], [[TmpD3]]], si64>
 
 
 // -----
 
-mo.graph @topk_dyn_params_2(%input: !mo.tensor<[?, ?], f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<[], si64>, %sorted: !mo.tensor<[], bool>) -> (!mo.tensor<[?, ?], f32>, !mo.tensor<?, si64>) {
-  %values, %indices = rmo.mo.top_k(%input, %k, %axis, %sorted) : (
-        !mo.tensor<[?, ?], f32>, !mo.tensor<?, si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
+mo.graph @topk_dyn_params_2<D0, D1, Sh0: !mosh.ape -> D2, D3, Sh1: !mosh.ape>(%input: !mo.tensor<[D0, D1], f32>, %k: !mo.tensor<Sh0, si64>, %axis: !mo.tensor<[], si64>, %sorted: !mo.tensor<[], bool>) -> (!mo.tensor<[D2, D3], f32>, !mo.tensor<Sh1, si64>) {
+  %values, %indices = rmo.mo.top_k<() -> TmpD0, TmpD1, TmpSh0: !mosh.ape>(%input, %k, %axis, %sorted) : (
+        !mo.tensor<[D0, D1], f32>, !mo.tensor<Sh0, si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
       ) -> (
-        !mo.tensor<[?, ?], f32>, !mo.tensor<?, si64>
+        !mo.tensor<[TmpD0, TmpD1], f32>, !mo.tensor<TmpSh0, si64>
       )
-  mo.output %values, %indices : !mo.tensor<[?, ?], f32>, !mo.tensor<?, si64>
+  mo.output<TmpD0, TmpD1, :!mosh.ape TmpSh0> %values, %indices : !mo.tensor<[TmpD0, TmpD1], f32>, !mo.tensor<TmpSh0, si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @topk_dyn_params_2<[[D1:[A-Za-z0-9_]*]], [[D2:[A-Za-z0-9_]*]], [[SH3:[A-Za-z0-9_]*]]: !mosh.ape -> [[D4:[A-Za-z0-9_]*]], [[D5:[A-Za-z0-9_]*]], [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[[D1]], [[D2]]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], bool>) -> (!mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[[SH6]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D7:[A-Za-z0-9_]*]], [[D8:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D1]], [[D2]]], f32> -> !mo.tensor<[[[D7]], [[D8]]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH9]], si64>
-//  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D13:[A-Za-z0-9_]*]], [[RMO_D14:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[D7]], [[D8]]], f32>) -> !mo.tensor<[[[RMO_D13]], [[RMO_D14]]], f32>
-//  CHECK-NEXT:   [[V3:%.*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH9]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.top_k<() -> [[RMO_D15:[A-Za-z0-9_]*]], [[RMO_D16:[A-Za-z0-9_]*]]>([[V2]], [[V3]], [[ARG2]], [[ARG3]]) : (!mo.tensor<[[[RMO_D13]], [[RMO_D14]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D15]], [[RMO_D16]]], f32>, !mo.tensor<[[[RMO_D15]], [[RMO_D16]]], si64>)
-//  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[D10:[A-Za-z0-9_]*]], [[D11:[A-Za-z0-9_]*]]>([[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D15]], [[RMO_D16]]], f32>) -> !mo.tensor<[[[D10]], [[D11]]], f32>
-//  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape<() -> [[SH12:[A-Za-z0-9_]*]]: !mosh.ape>([[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D15]], [[RMO_D16]]], si64>) -> !mo.tensor<[[SH12]], si64>
-//  CHECK-NEXT:   mo.output<[[D10]], [[D11]], :!mosh.ape [[SH12]]> [[V4]], [[V5]] : !mo.tensor<[[[D10]], [[D11]]], f32>, !mo.tensor<[[SH12]], si64>
+//  CHECK-SAME: @topk_dyn_params_2<D0, D1, Sh0: !mosh.ape -> D2, D3, Sh1: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[D0, D1], f32>, %[[ARG1:.*]]: !mo.tensor<Sh0, si64>, %[[ARG2:.*]]: !mo.tensor<[], si64>, %[[ARG3:.*]]: !mo.tensor<[], bool>) -> (!mo.tensor<[D2, D3], f32>, !mo.tensor<Sh1, si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D0:[A-Za-z0-9_]*]], [[RMO_D1:[A-Za-z0-9_]*]]>(%[[ARG0]]) {{.*}} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape(%[[ARG1]]) {{.*}} : (!mo.tensor<Sh0, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k<() -> [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]]>(%[[V0]], %[[V1]], %[[ARG2]], %[[ARG3]]) : (!mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>, !mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>)
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape<() -> [[TmpD0:[A-Za-z0-9_]*]], [[TmpD1:[A-Za-z0-9_]*]]>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>) -> !mo.tensor<[[[TmpD0]], [[TmpD1]]], f32>
+//  CHECK-NEXT:   %[[V3:.*]] = rmo.rebind_tensor_shape<() -> [[TmpSh0:[A-Za-z0-9_]*]]: !mosh.ape>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>) -> !mo.tensor<[[TmpSh0]], si64>
+//  CHECK-NEXT:   mo.output<[[TmpD0]], [[TmpD1]], :!mosh.ape [[TmpSh0]]> %[[V2]], %[[V3]] : !mo.tensor<[[[TmpD0]], [[TmpD1]]], f32>, !mo.tensor<[[TmpSh0]], si64>
 
 
 // -----
 
-mo.graph @topk_dyn_mix(%input: !mo.tensor<[?, 3], f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<?, si64>, %sorted: !mo.tensor<?, bool>) -> (!mo.tensor<[?, 3], f32>, !mo.tensor<[?, ?], si64>) {
-  %values, %indices = rmo.mo.top_k(%input, %k, %axis, %sorted) : (
-        !mo.tensor<[?, 3], f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, bool>
+mo.graph @topk_dyn_mix<D0, Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape -> D1, D2, D3>(%input: !mo.tensor<[D0, 3], f32>, %k: !mo.tensor<Sh0, si64>, %axis: !mo.tensor<Sh1, si64>, %sorted: !mo.tensor<Sh2, bool>) -> (!mo.tensor<[D1, 3], f32>, !mo.tensor<[D2, D3], si64>) {
+  %values, %indices = rmo.mo.top_k<() -> TmpD0, TmpD1, TmpD2>(%input, %k, %axis, %sorted) : (
+        !mo.tensor<[D0, 3], f32>, !mo.tensor<Sh0, si64>, !mo.tensor<Sh1, si64>, !mo.tensor<Sh2, bool>
       ) -> (
-        !mo.tensor<[?, 3], f32>, !mo.tensor<[?, ?], si64>
+        !mo.tensor<[TmpD0, 3], f32>, !mo.tensor<[TmpD1, TmpD2], si64>
       )
-  mo.output %values, %indices : !mo.tensor<[?, 3], f32>, !mo.tensor<[?, ?], si64>
+  mo.output<TmpD0, TmpD1, TmpD2> %values, %indices : !mo.tensor<[TmpD0, 3], f32>, !mo.tensor<[TmpD1, TmpD2], si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @topk_dyn_mix<[[D1:[A-Za-z0-9_]*]], [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape -> [[D5:[A-Za-z0-9_]*]], [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]]>([[ARG0:%.*]]: !mo.tensor<[[[D1]], 3], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], si64>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], bool>) -> (!mo.tensor<[[[D5]], 3], f32>, !mo.tensor<[[[D6]], [[D7]]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[D8:[A-Za-z0-9_]*]]>([[ARG0]]) : !mo.tensor<[[[D1]], 3], f32> -> !mo.tensor<[[[D8]], 3], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], si64> -> !mo.tensor<[[SH9]], si64>
-//  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH10:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH10]], si64>
-//  CHECK-NEXT:   [[V3:%.*]] = mo.rebind<() -> [[SH11:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG3]]) : !mo.tensor<[[SH4]], bool> -> !mo.tensor<[[SH11]], bool>
-//  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D15:[A-Za-z0-9_]*]], [[RMO_D16:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[[D8]], 3], f32>) -> !mo.tensor<[[[RMO_D15]], [[RMO_D16]]], f32>
-//  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH9]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V6:%.*]] = rmo.rebind_tensor_shape([[V2]]) {{.*}} : (!mo.tensor<[[SH10]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V7:%.*]] = rmo.rebind_tensor_shape([[V3]]) {{.*}} : (!mo.tensor<[[SH11]], bool>) -> !mo.tensor<[], bool>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.top_k<() -> [[RMO_D17:[A-Za-z0-9_]*]], [[RMO_D18:[A-Za-z0-9_]*]]>([[V4]], [[V5]], [[V6]], [[V7]]) : (!mo.tensor<[[[RMO_D15]], [[RMO_D16]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D17]], [[RMO_D18]]], f32>, !mo.tensor<[[[RMO_D17]], [[RMO_D18]]], si64>)
-//  CHECK-NEXT:   [[V8:%.*]] = rmo.rebind_tensor_shape<() -> [[D12:[A-Za-z0-9_]*]]>([[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D17]], [[RMO_D18]]], f32>) -> !mo.tensor<[[[D12]], 3], f32>
-//  CHECK-NEXT:   [[V9:%.*]] = rmo.rebind_tensor_shape<() -> [[D13:[A-Za-z0-9_]*]], [[D14:[A-Za-z0-9_]*]]>([[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D17]], [[RMO_D18]]], si64>) -> !mo.tensor<[[[D13]], [[D14]]], si64>
-//  CHECK-NEXT:   mo.output<[[D12]], [[D13]], [[D14]]> [[V8]], [[V9]] : !mo.tensor<[[[D12]], 3], f32>, !mo.tensor<[[[D13]], [[D14]]], si64>
+//  CHECK-SAME: @topk_dyn_mix<D0, Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape -> D1, D2, D3>(%[[ARG0:.*]]: !mo.tensor<[D0, 3], f32>, %[[ARG1:.*]]: !mo.tensor<Sh0, si64>, %[[ARG2:.*]]: !mo.tensor<Sh1, si64>, %[[ARG3:.*]]: !mo.tensor<Sh2, bool>) -> (!mo.tensor<[D1, 3], f32>, !mo.tensor<[D2, D3], si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D0:[A-Za-z0-9_]*]], [[RMO_D1:[A-Za-z0-9_]*]]>(%[[ARG0]]) {{.*}} : (!mo.tensor<[D0, 3], f32>) -> !mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape(%[[ARG1]]) {{.*}} : (!mo.tensor<Sh0, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape(%[[ARG2]]) {{.*}} : (!mo.tensor<Sh1, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V3:.*]] = rmo.rebind_tensor_shape(%[[ARG3]]) {{.*}} : (!mo.tensor<Sh2, bool>) -> !mo.tensor<[], bool>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k<() -> [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]]>(%[[V0]], %[[V1]], %[[V2]], %[[V3]]) : (!mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>, !mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>)
+//  CHECK-NEXT:   %[[V4:.*]] = rmo.rebind_tensor_shape<() -> [[TmpD0:[A-Za-z0-9_]*]]>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>) -> !mo.tensor<[[[TmpD0]], 3], f32>
+//  CHECK-NEXT:   %[[V5:.*]] = rmo.rebind_tensor_shape<() -> [[TmpD1:[A-Za-z0-9_]*]], [[TmpD2:[A-Za-z0-9_]*]]>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>) -> !mo.tensor<[[[TmpD1]], [[TmpD2]]], si64>
+//  CHECK-NEXT:   mo.output<[[TmpD0]], [[TmpD1]], [[TmpD2]]> %[[V4]], %[[V5]] : !mo.tensor<[[[TmpD0]], 3], f32>, !mo.tensor<[[[TmpD1]], [[TmpD2]]], si64>
 
 // -----
 
-mo.graph @topk_static(%input: !mo.tensor<[4, 6], f32>, %k: !mo.tensor<[], si64>, %axis: !mo.tensor<[], si64>, %sorted: !mo.tensor<[], bool>) -> (!mo.tensor<?, f32>, !mo.tensor<?, si64>) {
-  %values, %indices = rmo.mo.top_k(%input, %k, %axis, %sorted) : (
+mo.graph @topk_static<() -> Sh0: !mosh.ape, Sh1: !mosh.ape>(%input: !mo.tensor<[4, 6], f32>, %k: !mo.tensor<[], si64>, %axis: !mo.tensor<[], si64>, %sorted: !mo.tensor<[], bool>) -> (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si64>) {
+  %values, %indices = rmo.mo.top_k<() -> TmpSh0: !mosh.ape, TmpSh1: !mosh.ape>(%input, %k, %axis, %sorted) : (
         !mo.tensor<[4, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>
       ) -> (
-        !mo.tensor<?, f32>, !mo.tensor<?, si64>
+        !mo.tensor<TmpSh0, f32>, !mo.tensor<TmpSh1, si64>
       )
-  mo.output %values, %indices : !mo.tensor<?, f32>, !mo.tensor<?, si64>
+  mo.output<:!mosh.ape TmpSh0, :!mosh.ape TmpSh1> %values, %indices : !mo.tensor<TmpSh0, f32>, !mo.tensor<TmpSh1, si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @topk_static<() -> [[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[4, 6], f32>, [[ARG1:%.*]]: !mo.tensor<[], si64>, [[ARG2:%.*]]: !mo.tensor<[], si64>, [[ARG3:%.*]]: !mo.tensor<[], bool>) -> (!mo.tensor<[[SH1]], f32>, !mo.tensor<[[SH2]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D5:[A-Za-z0-9_]*]], [[RMO_D6:[A-Za-z0-9_]*]]>([[ARG0]]) {{.*}} : (!mo.tensor<[4, 6], f32>) -> !mo.tensor<[[[RMO_D5]], [[RMO_D6]]], f32>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.top_k<() -> [[RMO_D7:[A-Za-z0-9_]*]], [[RMO_D8:[A-Za-z0-9_]*]]>([[V0]], [[ARG1]], [[ARG2]], [[ARG3]]) : (!mo.tensor<[[[RMO_D5]], [[RMO_D6]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D7]], [[RMO_D8]]], f32>, !mo.tensor<[[[RMO_D7]], [[RMO_D8]]], si64>)
-//  CHECK-NEXT:   [[V1:%.*]] = rmo.rebind_tensor_shape<() -> [[SH3:[A-Za-z0-9_]*]]: !mosh.ape>([[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D7]], [[RMO_D8]]], f32>) -> !mo.tensor<[[SH3]], f32>
-//  CHECK-NEXT:   [[V2:%.*]] = rmo.rebind_tensor_shape<() -> [[SH4:[A-Za-z0-9_]*]]: !mosh.ape>([[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D7]], [[RMO_D8]]], si64>) -> !mo.tensor<[[SH4]], si64>
-//  CHECK-NEXT:   mo.output<:!mosh.ape [[SH3]], :!mosh.ape [[SH4]]> [[V1]], [[V2]] : !mo.tensor<[[SH3]], f32>, !mo.tensor<[[SH4]], si64>
+//  CHECK-SAME: @topk_static<() -> Sh0: !mosh.ape, Sh1: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[4, 6], f32>, %[[ARG1:.*]]: !mo.tensor<[], si64>, %[[ARG2:.*]]: !mo.tensor<[], si64>, %[[ARG3:.*]]: !mo.tensor<[], bool>) -> (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D0:[A-Za-z0-9_]*]], [[RMO_D1:[A-Za-z0-9_]*]]>(%[[ARG0]]) {{.*}} : (!mo.tensor<[4, 6], f32>) -> !mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.top_k<() -> [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]]>(%[[V0]], %[[ARG1]], %[[ARG2]], %[[ARG3]]) : (!mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>, !mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>)
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[TmpSh0:[A-Za-z0-9_]*]]: !mosh.ape>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>) -> !mo.tensor<[[TmpSh0]], f32>
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape<() -> [[TmpSh1:[A-Za-z0-9_]*]]: !mosh.ape>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>) -> !mo.tensor<[[TmpSh1]], si64>
+//  CHECK-NEXT:   mo.output<:!mosh.ape [[TmpSh0]], :!mosh.ape [[TmpSh1]]> %[[V1]], %[[V2]] : !mo.tensor<[[TmpSh0]], f32>, !mo.tensor<[[TmpSh1]], si64>
 
 // -----
 
-mo.graph @bottomk_dyn(%input: !mo.tensor<?, f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<?, si64>, %sorted: !mo.tensor<?, bool>) -> (!mo.tensor<?, f32>, !mo.tensor<?, si64>) {
-  %values, %indices = rmo.mo.bottom_k(%input, %k, %axis, %sorted) : (
-        !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, bool>
+mo.graph @bottomk_dyn<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape -> Sh4: !mosh.ape, Sh5: !mosh.ape>(%input: !mo.tensor<Sh0, f32>, %k: !mo.tensor<Sh1, si64>, %axis: !mo.tensor<Sh2, si64>, %sorted: !mo.tensor<Sh3, bool>) -> (!mo.tensor<Sh4, f32>, !mo.tensor<Sh5, si64>) {
+  %values, %indices = rmo.mo.bottom_k<() -> Sh6: !mosh.ape, Sh7: !mosh.ape>(%input, %k, %axis, %sorted) : (
+        !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si64>, !mo.tensor<Sh2, si64>, !mo.tensor<Sh3, bool>
       ) -> (
-        !mo.tensor<?, f32>, !mo.tensor<?, si64>
+        !mo.tensor<Sh6, f32>, !mo.tensor<Sh7, si64>
       )
-  mo.output %values, %indices : !mo.tensor<?, f32>, !mo.tensor<?, si64>
+  mo.output<:!mosh.ape Sh6, :!mosh.ape Sh7> %values, %indices : !mo.tensor<Sh6, f32>, !mo.tensor<Sh7, si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @bottomk_dyn<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[SH6:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], si64>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], bool>) -> (!mo.tensor<[[SH5]], f32>, !mo.tensor<[[SH6]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH7:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH7]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], si64> -> !mo.tensor<[[SH8]], si64>
-//  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH9]], si64>
-//  CHECK-NEXT:   [[V3:%.*]] = mo.rebind<() -> [[SH10:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG3]]) : !mo.tensor<[[SH4]], bool> -> !mo.tensor<[[SH10]], bool>
-//  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_SH13:[A-Za-z0-9_]*]]: !mosh.ape>([[V0]]) {{.*}} : (!mo.tensor<[[SH7]], f32>) -> !mo.tensor<[[RMO_SH13]], f32>
-//  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH8]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V6:%.*]] = rmo.rebind_tensor_shape([[V2]]) {{.*}} : (!mo.tensor<[[SH9]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V7:%.*]] = rmo.rebind_tensor_shape([[V3]]) {{.*}} : (!mo.tensor<[[SH10]], bool>) -> !mo.tensor<[], bool>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.bottom_k<() -> [[RMO_SH14:[A-Za-z0-9_]*]]: !mosh.ape>([[V4]], [[V5]], [[V6]], [[V7]]) : (!mo.tensor<[[RMO_SH13]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[RMO_SH14]], f32>, !mo.tensor<[[RMO_SH14]], si64>)
-//  CHECK-NEXT:   [[V8:%.*]] = rmo.rebind_tensor_shape<() -> [[SH11:[A-Za-z0-9_]*]]: !mosh.ape>([[VALUES]]) {{.*}} : (!mo.tensor<[[RMO_SH14]], f32>) -> !mo.tensor<[[SH11]], f32>
-//  CHECK-NEXT:   [[V9:%.*]] = rmo.rebind_tensor_shape<() -> [[SH12:[A-Za-z0-9_]*]]: !mosh.ape>([[INDICES]]) {{.*}} : (!mo.tensor<[[RMO_SH14]], si64>) -> !mo.tensor<[[SH12]], si64>
-//  CHECK-NEXT:   mo.output<:!mosh.ape [[SH11]], :!mosh.ape [[SH12]]> [[V8]], [[V9]] : !mo.tensor<[[SH11]], f32>, !mo.tensor<[[SH12]], si64>
+//  CHECK-SAME: @bottomk_dyn<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape -> Sh4: !mosh.ape, Sh5: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>, %[[ARG1:.*]]: !mo.tensor<Sh1, si64>, %[[ARG2:.*]]: !mo.tensor<Sh2, si64>, %[[ARG3:.*]]: !mo.tensor<Sh3, bool>) -> (!mo.tensor<Sh4, f32>, !mo.tensor<Sh5, si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_SH0:[A-Za-z0-9_]*]]: !mosh.ape>(%[[ARG0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[RMO_SH0]], f32>
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape(%[[ARG1]]) {{.*}} : (!mo.tensor<Sh1, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape(%[[ARG2]]) {{.*}} : (!mo.tensor<Sh2, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V3:.*]] = rmo.rebind_tensor_shape(%[[ARG3]]) {{.*}} : (!mo.tensor<Sh3, bool>) -> !mo.tensor<[], bool>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k<() -> [[RMO_SH1:[A-Za-z0-9_]*]]: !mosh.ape>(%[[V0]], %[[V1]], %[[V2]], %[[V3]]) : (!mo.tensor<[[RMO_SH0]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[RMO_SH1]], f32>, !mo.tensor<[[RMO_SH1]], si64>)
+//  CHECK-NEXT:   %[[V4:.*]] = rmo.rebind_tensor_shape<() -> [[TmpSh6:[A-Za-z0-9_]*]]: !mosh.ape>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[RMO_SH1]], f32>) -> !mo.tensor<[[TmpSh6]], f32>
+//  CHECK-NEXT:   %[[V5:.*]] = rmo.rebind_tensor_shape<() -> [[TmpSh7:[A-Za-z0-9_]*]]: !mosh.ape>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[RMO_SH1]], si64>) -> !mo.tensor<[[TmpSh7]], si64>
+//  CHECK-NEXT:   mo.output<:!mosh.ape [[TmpSh6]], :!mosh.ape [[TmpSh7]]> %[[V4]], %[[V5]] : !mo.tensor<[[TmpSh6]], f32>, !mo.tensor<[[TmpSh7]], si64>
 
 // -----
 
-mo.graph @bottomk_dyn_out_param(%input: !mo.tensor<?, f32>, %k: !mo.tensor<?, si64>, %axis: !mo.tensor<?, si64>, %sorted: !mo.tensor<?, bool>) -> (!mo.tensor<?, f32>, !mo.tensor<[?, ?], si64>) {
-  %values, %indices = rmo.mo.bottom_k(%input, %k, %axis, %sorted) : (
-        !mo.tensor<?, f32>, !mo.tensor<?, si64>, !mo.tensor<?, si64>, !mo.tensor<?, bool>
+mo.graph @bottomk_dyn_out_param<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape -> Sh4: !mosh.ape, D0, D1>(%input: !mo.tensor<Sh0, f32>, %k: !mo.tensor<Sh1, si64>, %axis: !mo.tensor<Sh2, si64>, %sorted: !mo.tensor<Sh3, bool>) -> (!mo.tensor<Sh4, f32>, !mo.tensor<[D0, D1], si64>) {
+  %values, %indices = rmo.mo.bottom_k<() -> TmpSh0: !mosh.ape, TmpD0, TmpD1>(%input, %k, %axis, %sorted) : (
+        !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si64>, !mo.tensor<Sh2, si64>, !mo.tensor<Sh3, bool>
       ) -> (
-        !mo.tensor<?, f32>, !mo.tensor<[?, ?], si64>
+        !mo.tensor<TmpSh0, f32>, !mo.tensor<[TmpD0, TmpD1], si64>
       )
-  mo.output %values, %indices : !mo.tensor<?, f32>, !mo.tensor<[?, ?], si64>
+  mo.output<:!mosh.ape TmpSh0, TmpD0, TmpD1> %values, %indices : !mo.tensor<TmpSh0, f32>, !mo.tensor<[TmpD0, TmpD1], si64>
 }
 // CHECK-LABEL: mo.graph
-//  CHECK-SAME: @bottomk_dyn_out_param<[[SH1:[A-Za-z0-9_]*]]: !mosh.ape, [[SH2:[A-Za-z0-9_]*]]: !mosh.ape, [[SH3:[A-Za-z0-9_]*]]: !mosh.ape, [[SH4:[A-Za-z0-9_]*]]: !mosh.ape -> [[SH5:[A-Za-z0-9_]*]]: !mosh.ape, [[D6:[A-Za-z0-9_]*]], [[D7:[A-Za-z0-9_]*]]>([[ARG0:%.*]]: !mo.tensor<[[SH1]], f32>, [[ARG1:%.*]]: !mo.tensor<[[SH2]], si64>, [[ARG2:%.*]]: !mo.tensor<[[SH3]], si64>, [[ARG3:%.*]]: !mo.tensor<[[SH4]], bool>) -> (!mo.tensor<[[SH5]], f32>, !mo.tensor<[[[D6]], [[D7]]], si64>) {
-//  CHECK-NEXT:   [[V0:%.*]] = mo.rebind<() -> [[SH8:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH8]], f32>
-//  CHECK-NEXT:   [[V1:%.*]] = mo.rebind<() -> [[SH9:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG1]]) : !mo.tensor<[[SH2]], si64> -> !mo.tensor<[[SH9]], si64>
-//  CHECK-NEXT:   [[V2:%.*]] = mo.rebind<() -> [[SH10:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG2]]) : !mo.tensor<[[SH3]], si64> -> !mo.tensor<[[SH10]], si64>
-//  CHECK-NEXT:   [[V3:%.*]] = mo.rebind<() -> [[SH11:[A-Za-z0-9_]*]]: !mosh.ape>([[ARG3]]) : !mo.tensor<[[SH4]], bool> -> !mo.tensor<[[SH11]], bool>
-//  CHECK-NEXT:   [[V4:%.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D15:[A-Za-z0-9_]*]], [[RMO_D16:[A-Za-z0-9_]*]]>([[V0]]) {{.*}} : (!mo.tensor<[[SH8]], f32>) -> !mo.tensor<[[[RMO_D15]], [[RMO_D16]]], f32>
-//  CHECK-NEXT:   [[V5:%.*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH9]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V6:%.*]] = rmo.rebind_tensor_shape([[V2]]) {{.*}} : (!mo.tensor<[[SH10]], si64>) -> !mo.tensor<[], si64>
-//  CHECK-NEXT:   [[V7:%.*]] = rmo.rebind_tensor_shape([[V3]]) {{.*}} : (!mo.tensor<[[SH11]], bool>) -> !mo.tensor<[], bool>
-//  CHECK-NEXT:   [[VALUES:%.*]], [[INDICES:%.*]] = mo.bottom_k<() -> [[RMO_D17:[A-Za-z0-9_]*]], [[RMO_D18:[A-Za-z0-9_]*]]>([[V4]], [[V5]], [[V6]], [[V7]]) : (!mo.tensor<[[[RMO_D15]], [[RMO_D16]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D17]], [[RMO_D18]]], f32>, !mo.tensor<[[[RMO_D17]], [[RMO_D18]]], si64>)
-//  CHECK-NEXT:   [[V8:%.*]] = rmo.rebind_tensor_shape<() -> [[SH12:[A-Za-z0-9_]*]]: !mosh.ape>([[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D17]], [[RMO_D18]]], f32>) -> !mo.tensor<[[SH12]], f32>
-//  CHECK-NEXT:   [[V9:%.*]] = rmo.rebind_tensor_shape<() -> [[D13:[A-Za-z0-9_]*]], [[D14:[A-Za-z0-9_]*]]>([[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D17]], [[RMO_D18]]], si64>) -> !mo.tensor<[[[D13]], [[D14]]], si64>
-//  CHECK-NEXT:   mo.output<:!mosh.ape [[SH12]], [[D13]], [[D14]]> [[V8]], [[V9]] : !mo.tensor<[[SH12]], f32>, !mo.tensor<[[[D13]], [[D14]]], si64>
+//  CHECK-SAME: @bottomk_dyn_out_param<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape -> Sh4: !mosh.ape, D0, D1>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>, %[[ARG1:.*]]: !mo.tensor<Sh1, si64>, %[[ARG2:.*]]: !mo.tensor<Sh2, si64>, %[[ARG3:.*]]: !mo.tensor<Sh3, bool>) -> (!mo.tensor<Sh4, f32>, !mo.tensor<[D0, D1], si64>) {
+//  CHECK-NEXT:   %[[V0:.*]] = rmo.rebind_tensor_shape<() -> [[RMO_D0:[A-Za-z0-9_]*]], [[RMO_D1:[A-Za-z0-9_]*]]>(%[[ARG0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>
+//  CHECK-NEXT:   %[[V1:.*]] = rmo.rebind_tensor_shape(%[[ARG1]]) {{.*}} : (!mo.tensor<Sh1, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V2:.*]] = rmo.rebind_tensor_shape(%[[ARG2]]) {{.*}} : (!mo.tensor<Sh2, si64>) -> !mo.tensor<[], si64>
+//  CHECK-NEXT:   %[[V3:.*]] = rmo.rebind_tensor_shape(%[[ARG3]]) {{.*}} : (!mo.tensor<Sh3, bool>) -> !mo.tensor<[], bool>
+//  CHECK-NEXT:   %[[VALUES:.*]], %[[INDICES:.*]] = mo.bottom_k<() -> [[RMO_D2:[A-Za-z0-9_]*]], [[RMO_D3:[A-Za-z0-9_]*]]>(%[[V0]], %[[V1]], %[[V2]], %[[V3]]) : (!mo.tensor<[[[RMO_D0]], [[RMO_D1]]], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>) -> (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>, !mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>)
+//  CHECK-NEXT:   %[[V4:.*]] = rmo.rebind_tensor_shape<() -> [[TmpSh0:[A-Za-z0-9_]*]]: !mosh.ape>(%[[VALUES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], f32>) -> !mo.tensor<[[TmpSh0]], f32>
+//  CHECK-NEXT:   %[[V5:.*]] = rmo.rebind_tensor_shape<() -> [[TmpD0:[A-Za-z0-9_]*]], [[TmpD1:[A-Za-z0-9_]*]]>(%[[INDICES]]) {{.*}} : (!mo.tensor<[[[RMO_D2]], [[RMO_D3]]], si64>) -> !mo.tensor<[[[TmpD0]], [[TmpD1]]], si64>
+//  CHECK-NEXT:   mo.output<:!mosh.ape [[TmpSh0]], [[TmpD0]], [[TmpD1]]> %[[V4]], %[[V5]] : !mo.tensor<[[TmpSh0]], f32>, !mo.tensor<[[[TmpD0]], [[TmpD1]]], si64>

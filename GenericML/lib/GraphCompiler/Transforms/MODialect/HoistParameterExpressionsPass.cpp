@@ -53,8 +53,6 @@ struct RewriteParamExprTypes : public RewritePattern {
     auto tensorTy = dyn_cast<MO::TensorType>(ty);
     if (!tensorTy)
       return false;
-    if (tensorTy.hasUnknownShape())
-      return false;
     auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(tensorTy.getShapeAttr());
     if (!shapeAttr)
       return false;

@@ -128,7 +128,7 @@ mo.graph @split_squeezes_dyn_axis<D0 -> D1, D2>(
   mo.output<D3, D6> %res_reshape1, %res_reshape2 : !mo.tensor<[D3, 10], f32>, !mo.tensor<[D6, 10], f32>
 }
 
-// No effect
+// Split is now converted to slices
 // CHECK: mo.graph @split_squeezes_split_sizes_not_all_ones<[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
 mo.graph @split_squeezes_split_sizes_not_all_ones<D0 -> D1, D2>(
   // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2, 10], f32>
@@ -136,71 +136,70 @@ mo.graph @split_squeezes_split_sizes_not_all_ones<D0 -> D1, D2>(
 // CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
-  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<2, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   %split_sizes = mo.constant {value = #M.dense_array<2, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 
-  // CHECK-DAG: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   %axis = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
 
-  // CHECK-NEXT: %[[SPLIT_RES:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT]], %[[SPLIT_SIZES]])
-  // CHECK-SAME: : (!mo.tensor<[[[D0]], 2, 10], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>)
+  // CHECK-DAG: %[[C0:.*]] = mo.constant {value = #M.dense_array<0, 2, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C1:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C2:.*]] = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C3:.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 2, 9223372036854775807> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK: %[[SLICE1:.*]] = mo.slice(%[[INPUT]], %[[C2]], %[[C3]], %[[C1]])
+  // CHECK-SAME: : (!mo.tensor<[{{.*}}, 2, 10], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  // CHECK: %[[SLICE2:.*]] = mo.slice(%[[INPUT]], %[[C0]], %[[C3]], %[[C1]])
+  // CHECK-SAME: : (!mo.tensor<[{{.*}}, 2, 10], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
   %split_res:2 = mo.split[%axis : !mo.tensor<[], si32>] (%input, %split_sizes)
   : (!mo.tensor<[D0, 2, 10], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>)
 
-  // CHECK-NEXT: %[[RES_REB1:.*]] = mo.rebind<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[SPLIT_RES]]#0)
-  // CHECK-SAME: : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+  // CHECK: %[[RES_REB1:.*]] = mo.rebind<() -> {{.*}}>(%[[SLICE1]])
+  // CHECK-SAME: : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[{{.*}}], f32>
   %res_reb1 = mo.rebind<() -> D3, D4, D5>(%split_res#0) : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[D3, D4, D5], f32>
   // CHECK-NEXT: %[[RES_RESHAPE1:.*]] = mo.static.reshape(%[[RES_REB1]])
-  // CHECK-SAME: : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32> -> !mo.tensor<[[[D3]], 10], f32>
+  // CHECK-SAME: : !mo.tensor<[{{.*}}], f32> -> !mo.tensor<[{{.*}}, 10], f32>
   %res_reshape1 = mo.static.reshape(%res_reb1) : !mo.tensor<[D3, D4, D5], f32> -> !mo.tensor<[D3, 10], f32>
 
-  // CHECK-NEXT: %[[RES_REB2:.*]] = mo.rebind<() -> [[D6:.*]], [[D7:.*]], [[D8:.*]]>(%[[SPLIT_RES]]#1)
-  // CHECK-SAME: : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32>
+  // CHECK: %[[RES_REB2:.*]] = mo.rebind<() -> {{.*}}>(%[[SLICE2]])
+  // CHECK-SAME: : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[{{.*}}], f32>
   %res_reb2 = mo.rebind<() -> D6, D7, D8>(%split_res#1) : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[D6, D7, D8], f32>
   // CHECK-NEXT: %[[RES_RESHAPE2:.*]] = mo.static.reshape(%[[RES_REB2]])
-  // CHECK-SAME: : !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32> -> !mo.tensor<[[[D6]], 10], f32>
+  // CHECK-SAME: : !mo.tensor<[{{.*}}], f32> -> !mo.tensor<[{{.*}}, 10], f32>
   %res_reshape2 = mo.static.reshape(%res_reb2) : !mo.tensor<[D6, D7, D8], f32> -> !mo.tensor<[D6, 10], f32>
 
-  // CHECK-NEXT: mo.output<[[D3]], [[D6]]> %[[RES_RESHAPE1]], %[[RES_RESHAPE2]]
-  // CHECK-SAME: !mo.tensor<[[[D3]], 10], f32>, !mo.tensor<[[[D6]], 10], f32>
+  // CHECK: mo.output<{{.*}}> %[[RES_RESHAPE1]], %[[RES_RESHAPE2]]
+  // CHECK-SAME: !mo.tensor<[{{.*}}, 10], f32>, !mo.tensor<[{{.*}}, 10], f32>
   mo.output<D3, D6> %res_reshape1, %res_reshape2 : !mo.tensor<[D3, 10], f32>, !mo.tensor<[D6, 10], f32>
 }
 
-// No effect; TODO(#13349) consider relaxing this test
-// CHECK: mo.graph @split_squeezes_non_squeezing_reshape<[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
+// Split is now converted to slices
+// CHECK: mo.graph @split_squeezes_non_squeezing_reshape<{{.*}}>(
 mo.graph @split_squeezes_non_squeezing_reshape<D0 -> D1, D2>(
-  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[[[D0]], 2, 10], f32>
+  // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[{{.*}}, 2, 10], f32>
   %input: !mo.tensor<[D0, 2, 10], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[[[D1]]], f32>, !mo.tensor<[[[D2]], 10], f32>) {
+// CHECK-SAME: ) -> (!mo.tensor<[{{.*}}], f32>, !mo.tensor<[{{.*}}, 10], f32>) {
 ) -> (!mo.tensor<[D1], f32>, !mo.tensor<[D2, 10], f32>)  {
 
-  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
   %split_sizes = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
 
-  // CHECK-DAG: %[[AXIS:.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
   %axis = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
 
-  // CHECK-NEXT: %[[SPLIT_RES:.*]]:2 = mo.split[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT]], %[[SPLIT_SIZES]])
-  // CHECK-SAME: : (!mo.tensor<[[[D0]], 2, 10], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>)
+  // CHECK: %[[SLICE1:.*]] = mo.slice(%[[INPUT]]
+  // CHECK: %[[SLICE2:.*]] = mo.slice(%[[INPUT]]
   %split_res:2 = mo.split[%axis : !mo.tensor<[], si32>] (%input, %split_sizes)
   : (!mo.tensor<[D0, 2, 10], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?, ?, ?], f32>, !mo.tensor<[?, ?, ?], f32>)
 
-  // CHECK-NEXT: %[[RES_REB1:.*]] = mo.rebind<() -> [[D3:.*]], [[D4:.*]], [[D5:.*]]>(%[[SPLIT_RES]]#0)
-  // CHECK-SAME: : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32>
+  // CHECK: mo.rebind<() -> {{.*}}>(%[[SLICE1]])
   %res_reb1 = mo.rebind<() -> D3, D4, D5>(%split_res#0) : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[D3, D4, D5], f32>
-  // CHECK-NEXT: %[[RES_RESHAPE1:.*]] = mo.static.reshape(%[[RES_REB1]])
-  // CHECK-SAME: : !mo.tensor<[[[D3]], [[D4]], [[D5]]], f32> -> !mo.tensor<[100], f32>
+  // CHECK: mo.static.reshape
+  // CHECK-SAME: -> !mo.tensor<[100], f32>
   %res_reshape1 = mo.static.reshape(%res_reb1) : !mo.tensor<[D3, D4, D5], f32> -> !mo.tensor<[100], f32>
 
-  // CHECK-NEXT: %[[RES_REB2:.*]] = mo.rebind<() -> [[D6:.*]], [[D7:.*]], [[D8:.*]]>(%[[SPLIT_RES]]#1)
-  // CHECK-SAME: : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32>
+  // CHECK: mo.rebind<() -> {{.*}}>(%[[SLICE2]])
   %res_reb2 = mo.rebind<() -> D6, D7, D8>(%split_res#1) : !mo.tensor<[?, ?, ?], f32> -> !mo.tensor<[D6, D7, D8], f32>
-  // CHECK-NEXT: %[[RES_RESHAPE2:.*]] = mo.static.reshape(%[[RES_REB2]])
-  // CHECK-SAME: : !mo.tensor<[[[D6]], [[D7]], [[D8]]], f32> -> !mo.tensor<[[[D6]], 10], f32>
+  // CHECK: mo.static.reshape
+  // CHECK-SAME: -> !mo.tensor<[{{.*}}, 10], f32>
   %res_reshape2 = mo.static.reshape(%res_reb2) : !mo.tensor<[D6, D7, D8], f32> -> !mo.tensor<[D6, 10], f32>
 
-  // CHECK-NEXT: mo.output<100, [[D6]]> %[[RES_RESHAPE1]], %[[RES_RESHAPE2]]
-  // CHECK-SAME: !mo.tensor<[100], f32>, !mo.tensor<[[[D6]], 10], f32>
+  // CHECK: mo.output
   mo.output<100, D6> %res_reshape1, %res_reshape2 : !mo.tensor<[100], f32>, !mo.tensor<[D6, 10], f32>
 }
 

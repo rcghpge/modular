@@ -131,10 +131,6 @@ static LogicalResult runShapePropagation(
 }
 
 OpFoldResult RebindTensorShapeOp::fold(FoldAdaptor adaptor) {
-  // Note `?` != `?` in terms of shapes
-  if (getInput().getType().hasUnknownShape())
-    return {};
-
   if (getInput().getType() == getResult().getType())
     return getInput();
 

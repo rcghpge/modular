@@ -223,27 +223,6 @@ mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
 // CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[RESHAPED_LHS]], %[[BCAST_RHS]]) : !mo.tensor<[2], f32>
 // CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[2], f32>
 
-mo.graph @dont_sink_binary_rebinds_from_unknown_shape<D0>(
-    %lhs: !mo.tensor<[2, ?], f32>,
-    %rhs: !mo.tensor<[2, ?], f32>
-) -> !mo.tensor<[2, D0], f32> {
-    %lhs_reb = mo.rebind(%lhs) : !mo.tensor<[2, ?], f32> -> !mo.tensor<[2, D0], f32>
-    %rhs_reb = mo.rebind(%rhs) : !mo.tensor<[2, ?], f32> -> !mo.tensor<[2, D0], f32>
-    %add = mo.add(%lhs_reb, %rhs_reb) : !mo.tensor<[2, D0], f32>
-    mo.output %add : !mo.tensor<[2, D0], f32>
-}
-// No change.
-// CHECK-LABEL: mo.graph @dont_sink_binary_rebinds_from_unknown_shape
-// CHECK-SAME:     <[[D0:.*]]>(
-// CHECK-SAME:     %[[LHS:.*]]: !mo.tensor<[2, ?], f32>,
-// CHECK-SAME:     %[[RHS:.*]]: !mo.tensor<[2, ?], f32>
-// CHECK-SAME: ) -> !mo.tensor<[2, [[D0]]], f32>
-//
-// CHECK-NEXT:     %[[LHS_REB:.*]] = mo.rebind(%[[LHS]]) : !mo.tensor<[2, ?], f32> -> !mo.tensor<[2, [[D0]]], f32>
-// CHECK-NEXT:     %[[RHS_REB:.*]] = mo.rebind(%[[RHS]]) : !mo.tensor<[2, ?], f32> -> !mo.tensor<[2, [[D0]]], f32>
-// CHECK-NEXT:     %[[ADD:.*]] = mo.add(%[[LHS_REB]], %[[RHS_REB]]) : !mo.tensor<[2, [[D0]]], f32>
-// CHECK-NEXT:     mo.output %[[ADD:.*]] : !mo.tensor<[2, [[D0]]], f32>
-// CHECK-NEXT: }
 
 mo.graph @sink_rebind_through_unary_elemwise<D0, D1>(%in: !mo.tensor<[D0, 2, 4], f32>) -> !mo.tensor<[D1, 2, 4], f32> {
   %0 = mo.rebind(%in) : !mo.tensor<[D0, 2, 4], f32> -> !mo.tensor<[D1, 2, 4], f32>

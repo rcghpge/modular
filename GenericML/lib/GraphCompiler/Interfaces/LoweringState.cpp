@@ -217,10 +217,6 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
     if (argType.hasStaticShape()) {
       // No parameters to deal with.
       /* no-op */
-    } else if (argType.hasUnknownShape()) {
-      // Also no parameters to deal with, however this argument won't be
-      // usable by any MO ops.
-      /* no-op */
     } else if (auto inShapeParam =
                    dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShapeAttr())) {
       // Argument has dynamic rank. The parameter needs to be represented by

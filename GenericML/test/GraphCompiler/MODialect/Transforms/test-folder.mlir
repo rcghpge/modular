@@ -36,33 +36,33 @@ mo.graph @fold_split_scalar_non_consts(%arg0 : !mo.tensor<[1], f32>, %arg1 : !mo
 }
 
 
-mo.graph @fold_num_splits_1(%arg0 : !mo.tensor<[100, ?, 50], f32>) -> (!mo.tensor<[100, ?, 50], f32>) {
+mo.graph @fold_num_splits_1<N>(%arg0 : !mo.tensor<[100, N, 50], f32>) -> (!mo.tensor<[100, N, 50], f32>) {
     %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
     %num_splits = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-    %o1 = mo.split[%axis : !mo.tensor<[], si32>] (%arg0, %num_splits) : (!mo.tensor<[100, ?, 50], f32>, !mo.tensor<[1], si64>) -> (!mo.tensor<[100, ?, 50], f32>)
+    %o1 = mo.split[%axis : !mo.tensor<[], si32>] (%arg0, %num_splits) : (!mo.tensor<[100, N, 50], f32>, !mo.tensor<[1], si64>) -> (!mo.tensor<[100, N, 50], f32>)
 
     // CHECK-LABEL: mo.graph @fold_num_splits_1
-    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, ?, 50], f32>)
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, N, 50], f32>)
     // CHECK-NEXT: mo.output %[[ARG0]]
-    mo.output %o1 : !mo.tensor<[100, ?, 50], f32>
+    mo.output %o1 : !mo.tensor<[100, N, 50], f32>
 }
 
-mo.graph @fold_cast(%arg0 : !mo.tensor<[100, ?, 50], f32>) -> (!mo.tensor<[100, ?, 50], f32>) {
-    %output = mo.cast(%arg0) : (!mo.tensor<[100, ?, 50], f32>) -> !mo.tensor<[100, ?, 50],f32>
+mo.graph @fold_cast<N>(%arg0 : !mo.tensor<[100, N, 50], f32>) -> (!mo.tensor<[100, N, 50], f32>) {
+    %output = mo.cast(%arg0) : (!mo.tensor<[100, N, 50], f32>) -> !mo.tensor<[100, N, 50],f32>
     // CHECK-LABEL: mo.graph @fold_cast
-    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, ?, 50], f32>)
+    // CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, N, 50], f32>)
     // CHECK-NEXT: mo.output %[[ARG0]]
-    mo.output %output : !mo.tensor<[100, ?, 50], f32>
+    mo.output %output : !mo.tensor<[100, N, 50], f32>
 }
 
-mo.graph @fold_cast_ui64_fp64(%arg0 : !mo.tensor<[100, ?, 50], f64>) -> (!mo.tensor<[100, ?, 50], ui64>) {
-    %output = mo.cast(%arg0) : (!mo.tensor<[100, ?, 50], f64>) -> !mo.tensor<[100, ?, 50],ui64>
-    mo.output %output : !mo.tensor<[100, ?, 50], ui64>
+mo.graph @fold_cast_ui64_fp64<N>(%arg0 : !mo.tensor<[100, N, 50], f64>) -> (!mo.tensor<[100, N, 50], ui64>) {
+    %output = mo.cast(%arg0) : (!mo.tensor<[100, N, 50], f64>) -> !mo.tensor<[100, N, 50],ui64>
+    mo.output %output : !mo.tensor<[100, N, 50], ui64>
 }
 // CHECK-LABEL: mo.graph @fold_cast_ui64_fp64
-// CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, ?, 50], f64>)
+// CHECK: (%[[ARG0:.*]]: !mo.tensor<[100, N, 50], f64>)
 // CHECK-NEXT: %[[OUT:.*]] = mo.cast(%[[ARG0]])
-// CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[100, ?, 50], ui64>
+// CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[100, N, 50], ui64>
 
 
 mo.graph @fold_slice(%arg0: !mo.tensor<[5, 500], f64>,
@@ -93,18 +93,6 @@ mo.graph @no_fold_slice_reverse(%arg0: !mo.tensor<[5, 500], f64>,
 // CHECK-NEXT: %[[OUT:.*]] = mo.slice
 // CHECK-NEXT: mo.output %[[OUT]]
 
-
-mo.graph @no_fold_slice_unknown(%arg0: !mo.tensor<[5, ?], f64>,
-    %start: !mo.tensor<[2], si64>,
-    %stop: !mo.tensor<[2], si64>) -> !mo.tensor<[5, ?], f64> {
-    %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-    %2 = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[5, ?], f64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, ?], f64>
-    mo.output %2 : !mo.tensor<[5, ?], f64>
-}
-// CHECK-LABEL: mo.graph @no_fold_slice_unknown
-// CHECK-NEXT: mo.constant
-// CHECK-NEXT: %[[OUT:.*]] = mo.slice
-// CHECK-NEXT: mo.output %[[OUT]]
 
 mo.graph @no_fold_slice_shape_mismatch(%arg0: !mo.tensor<[5, 500], f64>,
     %start: !mo.tensor<[2], si64>,
@@ -148,7 +136,7 @@ mo.graph @fold_slice_dim(%arg0: !mo.tensor<[5, 500], f64>,
     %start: !mo.tensor<[], si64>,
     %stop: !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64> {
     %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %2 = mo.slice_dim[0](%arg0, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64>    
+    %2 = mo.slice_dim[0](%arg0, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64>
     %3 = mo.slice_dim[1](%2, %start, %stop, %step) : (!mo.tensor<[5, 500], f64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[5, 500], f64>
     mo.output %3 : !mo.tensor<[5, 500], f64>
 }

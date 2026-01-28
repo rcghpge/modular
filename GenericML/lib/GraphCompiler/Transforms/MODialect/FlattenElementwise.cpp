@@ -16,10 +16,6 @@ namespace M::MO {
 
 template <typename ElemwiseInterfaceT>
 bool isElemwiseOpSimple(ElemwiseInterfaceT elemwise) {
-  // abort if we can't flatten shape due to unknown dim
-  if (elemwise.getResult().getType().hasUnknownShape())
-    return false;
-
   // abort if the elemwise op cannot have its resulting tensor type changed
   // trivially.
   if (isa<MO::RangeOp, MO::UnsqueezeShapeOp>(elemwise))

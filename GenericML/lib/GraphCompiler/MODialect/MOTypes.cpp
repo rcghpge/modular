@@ -656,20 +656,12 @@ ArrayRef<TypedAttr> TensorType::getDims() const {
 
 TypedAttr TensorType::getDim(size_t n) const { return getDims()[n]; }
 
-bool TensorType::isUnknownDim(size_t n) const {
-  return isUnknownDimParam(getDim(n));
-}
-
 bool TensorType::isParameterizedDim(size_t n) const {
   return isParameterizedDimParam(getDim(n));
 }
 
 bool TensorType::isIntegerDim(size_t n) const {
   return isIntegerDimParam(getDim(n));
-}
-
-bool TensorType::isUnknownDimParam(TypedAttr attr) {
-  return llvm::isa<KGEN::UnknownAttr>(attr) && ShapeAttr::isDim(attr);
 }
 
 bool TensorType::isParameterizedDimParam(TypedAttr attr) {
@@ -688,21 +680,6 @@ SmallVector<int64_t> TensorType::getIntDims() const {
 
 int64_t TensorType::getIntDim(size_t n) const {
   return getTypedShapeAttr().getIntDim(n);
-}
-
-bool TensorType::hasUnknownShape() const {
-  if (llvm::isa<KGEN::UnknownAttr>(getShapeAttr()))
-    return true;
-  if (llvm::isa<KGEN::ParamDeclRefAttr>(getShapeAttr()))
-    return false;
-  bool res = false;
-  mlir::AttrTypeWalker walker;
-  walker.addWalk([&](KGEN::UnknownAttr attr) {
-    res = true;
-    return WalkResult::interrupt();
-  });
-  walker.walk(getTypedShapeAttr());
-  return res;
 }
 
 TypedAttr TensorType::getSymbolicNumElements() const {

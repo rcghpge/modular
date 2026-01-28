@@ -365,12 +365,6 @@ struct LegalizeTransferOp : public OpRewritePattern<RMO::MOTransferOp> {
         cast<TensorType>(op.getInput().getType());
     [[maybe_unused]] TensorType outTy =
         cast<TensorType>(op.getResult().getType());
-    ASSERT_STREAM(!inTy.hasUnknownShape(),
-                  << "rmo.mo.transfer input must not have dynamic dims; got "
-                  << inTy);
-    ASSERT_STREAM(!outTy.hasUnknownShape(),
-                  << "rmo.mo.transfer result must not have dynamic dims; got "
-                  << outTy);
 
     rewriter.replaceOpWithNewOp<MO::TransferOp>(
         op, op.getInput(), outTy.getDeviceRef(), op.getInChain());

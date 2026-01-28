@@ -1,4 +1,4 @@
-// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators --mo-resolve-unknown-parameters --mo-shape-inference %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-legalize-rmo-operators --mo-shape-inference %s | FileCheck %s --enable-var-scope
 
 mo.graph @matmul_static(%arg0: !mo.tensor<[1, 4], si64>, %arg1: !mo.tensor<[4, 1], si64>) -> !mo.tensor<[1, 1], si64> {
     %1 = rmo.matmul(%arg0, %arg1) : (!mo.tensor<[1, 4], si64>, !mo.tensor<[4, 1], si64>) -> !mo.tensor<[1, 1], si64>

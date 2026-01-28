@@ -1,179 +1,155 @@
-// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
-mo.graph @abs_dyn_dyn(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.abs(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @abs_dyn_dyn<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
+  %1 = rmo.mo.abs<() -> Sh2: !mosh.ape>(%arg0) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<Sh2, f32>
+  mo.output<:!mosh.ape Sh2> %1 : !mo.tensor<Sh2, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @abs_dyn_dyn<[[SH1:[^ ]*]]: !mosh.ape -> [[SH2:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[SH2]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[SH3:[^ ]*]]: !mosh.ape>([[VARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.abs([[V0]]) : !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[SH4:[^ ]*]]: !mosh.ape>([[V1]]) {{.*}} : (!mo.tensor<[[SH3]], f32>) -> !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT: mo.output<:!mosh.ape [[SH4]]> [[V2]] : !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @abs_dyn_dyn<Sh0: !mosh.ape -> Sh1: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.abs(%[[ARG0]]) : !mo.tensor<Sh0, f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[SH2:.*]]: !mosh.ape>(%[[V0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[SH2]], f32>
+// CHECK-NEXT: mo.output<:!mosh.ape [[SH2]]> %[[V1]] : !mo.tensor<[[SH2]], f32>
 
 // -----
 
-mo.graph @ceil_dyn_params(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], f32> {
-  %1 = rmo.mo.ceil(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %1 : !mo.tensor<[?, ?], f32>
+mo.graph @ceil_dyn_params<Sh0: !mosh.ape -> D0, D1>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, D1], f32> {
+  %1 = rmo.mo.ceil<() -> D2, D3>(%arg0) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[D2, D3], f32>
+  mo.output<D2, D3> %1 : !mo.tensor<[D2, D3], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @ceil_dyn_params<[[SH1:[^ ]*]]: !mosh.ape -> [[D2:[^ ]*]], [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[SH4:[^ ]*]]: !mosh.ape>([[VARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.ceil([[V0]]) : !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D5:[^ ]*]], [[D6:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[[SH4]], f32>) -> !mo.tensor<[[[D5]], [[D6]]], f32>
-// CHECK-NEXT: mo.output<[[D5]], [[D6]]> [[V2]] : !mo.tensor<[[[D5]], [[D6]]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @ceil_dyn_params<Sh0: !mosh.ape -> D0, D1>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, D1], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.ceil(%[[ARG0]]) : !mo.tensor<Sh0, f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D2:.*]], [[D3:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[[D2]], [[D3]]], f32>
+// CHECK-NEXT: mo.output<[[D2]], [[D3]]> %[[V1]] : !mo.tensor<[[[D2]], [[D3]]], f32>
 
 // -----
 
-mo.graph @cos_dyn_mixed(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[?, 10], f32> {
-  %1 = rmo.mo.cos(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, 10], f32>
-  mo.output %1 : !mo.tensor<[?, 10], f32>
+mo.graph @cos_dyn_mixed<Sh0: !mosh.ape -> D0>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, 10], f32> {
+  %1 = rmo.mo.cos<() -> D1>(%arg0) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[D1, 10], f32>
+  mo.output<D1> %1 : !mo.tensor<[D1, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @cos_dyn_mixed<[[SH1:[^ ]*]]: !mosh.ape -> [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[[D2]], 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[SH3:[^ ]*]]: !mosh.ape>([[VARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.cos([[V0]]) : !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D4:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[[SH3]], f32>) -> !mo.tensor<[[[D4]], 10], f32>
-// CHECK-NEXT: mo.output<[[D4]]> [[V2]] : !mo.tensor<[[[D4]], 10], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @cos_dyn_mixed<Sh0: !mosh.ape -> D0>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, 10], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.cos(%[[ARG0]]) : !mo.tensor<Sh0, f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D1:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[[D1]], 10], f32>
+// CHECK-NEXT: mo.output<[[D1]]> %[[V1]] : !mo.tensor<[[[D1]], 10], f32>
 
 // -----
 
-mo.graph @erf_dyn_static(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<[20, 10], f32> {
-  %1 = rmo.mo.erf(%arg0) : (!mo.tensor<?, f32>) -> !mo.tensor<[20, 10], f32>
+mo.graph @erf_dyn_static<Sh0: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<[20, 10], f32> {
+  %1 = rmo.mo.erf(%arg0) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[20, 10], f32>
   mo.output %1 : !mo.tensor<[20, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @erf_dyn_static<[[SH1:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[20, 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[SH2:[^ ]*]]: !mosh.ape>([[VARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH2]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.erf([[V0]]) : !mo.tensor<[[SH2]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[SH2]], f32>) -> !mo.tensor<[20, 10], f32>
-// CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[20, 10], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @erf_dyn_static<Sh0: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>) -> !mo.tensor<[20, 10], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.erf(%[[ARG0]]) : !mo.tensor<Sh0, f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape(%[[V0]]) {{.*}} : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[20, 10], f32>
+// CHECK-NEXT: mo.output %[[V1]] : !mo.tensor<[20, 10], f32>
 
 // -----
 
-mo.graph @exp_params_dyn(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.exp(%arg0) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @exp_params_dyn<D0, D1 -> Sh0: !mosh.ape>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<Sh0, f32> {
+  %1 = rmo.mo.exp<() -> Sh1: !mosh.ape>(%arg0) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<Sh1, f32>
+  mo.output<:!mosh.ape Sh1> %1 : !mo.tensor<Sh1, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @exp_params_dyn<[[D1:[^ ]*]], [[D2:[^ ]*]] -> [[SH3:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]], [[D2]]], f32>) -> !mo.tensor<[[SH3]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D4:[^ ]*]], [[D5:[^ ]*]]>([[VARG0]]) : !mo.tensor<[[[D1]], [[D2]]], f32> -> !mo.tensor<[[[D4]], [[D5]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.exp([[V0]]) : !mo.tensor<[[[D4]], [[D5]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[SH6:[^ ]*]]: !mosh.ape>([[V1]]) {{.*}} : (!mo.tensor<[[[D4]], [[D5]]], f32>) -> !mo.tensor<[[SH6]], f32>
-// CHECK-NEXT: mo.output<:!mosh.ape [[SH6]]> [[V2]] : !mo.tensor<[[SH6]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @exp_params_dyn<D0, D1 -> Sh0: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<Sh0, f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.exp(%[[ARG0]]) : !mo.tensor<[D0, D1], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[SH1:.*]]: !mosh.ape>(%[[V0]]) {{.*}} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[[SH1]], f32>
+// CHECK-NEXT: mo.output<:!mosh.ape [[SH1]]> %[[V1]] : !mo.tensor<[[SH1]], f32>
 
 // -----
 
-mo.graph @floor_params_params(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32> {
-  %1 = rmo.mo.floor(%arg0) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %1 : !mo.tensor<[?, ?], f32>
+mo.graph @floor_params_params<D0, D1 -> D2, D3>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], f32> {
+  %1 = rmo.mo.floor<() -> D4, D5>(%arg0) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D4, D5], f32>
+  mo.output<D4, D5> %1 : !mo.tensor<[D4, D5], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @floor_params_params<[[D1:[^ ]*]], [[D2:[^ ]*]] -> [[D3:[^ ]*]], [[D4:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]], [[D2]]], f32>) -> !mo.tensor<[[[D3]], [[D4]]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D5:[^ ]*]], [[D6:[^ ]*]]>([[VARG0]]) : !mo.tensor<[[[D1]], [[D2]]], f32> -> !mo.tensor<[[[D5]], [[D6]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.floor([[V0]]) : !mo.tensor<[[[D5]], [[D6]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D7:[^ ]*]], [[D8:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[[[D5]], [[D6]]], f32>) -> !mo.tensor<[[[D7]], [[D8]]], f32>
-// CHECK-NEXT: mo.output<[[D7]], [[D8]]> [[V2]] : !mo.tensor<[[[D7]], [[D8]]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @floor_params_params<D0, D1 -> D2, D3>(%[[ARG0:.*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.floor(%[[ARG0]]) : !mo.tensor<[D0, D1], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D4:.*]], [[D5:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[[[D4]], [[D5]]], f32>
+// CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[V1]] : !mo.tensor<[[[D4]], [[D5]]], f32>
 
 // -----
 
-mo.graph @log_params_static(%arg0: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[20, 10], f32> {
-  %1 = rmo.mo.log(%arg0) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[20, 10], f32>
+mo.graph @log_params_static<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[20, 10], f32> {
+  %1 = rmo.mo.log(%arg0) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[20, 10], f32>
   mo.output %1 : !mo.tensor<[20, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @log_params_static<[[D1:[^ ]*]], [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]], [[D2]]], f32>) -> !mo.tensor<[20, 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D3:[^ ]*]], [[D4:[^ ]*]]>([[VARG0]]) : !mo.tensor<[[[D1]], [[D2]]], f32> -> !mo.tensor<[[[D3]], [[D4]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.log([[V0]]) : !mo.tensor<[[[D3]], [[D4]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[[[D3]], [[D4]]], f32>) -> !mo.tensor<[20, 10], f32>
-// CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[20, 10], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @log_params_static<D0, D1>(%[[ARG0:.*]]: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[20, 10], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.log(%[[ARG0]]) : !mo.tensor<[D0, D1], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape(%[[V0]]) {{.*}} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[20, 10], f32>
+// CHECK-NEXT: mo.output %[[V1]] : !mo.tensor<[20, 10], f32>
 
 // -----
 
-mo.graph @log1p_mixed_dyn(%arg0: !mo.tensor<[20, ?], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.log1p(%arg0) : (!mo.tensor<[20, ?], f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @log1p_mixed_dyn<D0 -> Sh0: !mosh.ape>(%arg0: !mo.tensor<[20, D0], f32>) -> !mo.tensor<Sh0, f32> {
+  %1 = rmo.mo.log1p<() -> Sh1: !mosh.ape>(%arg0) : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<Sh1, f32>
+  mo.output<:!mosh.ape Sh1> %1 : !mo.tensor<Sh1, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @log1p_mixed_dyn<[[D1:[^ ]*]] -> [[SH2:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[20, [[D1]]], f32>) -> !mo.tensor<[[SH2]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D3:[^ ]*]]>([[VARG0]]) : !mo.tensor<[20, [[D1]]], f32> -> !mo.tensor<[20, [[D3]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.log1p([[V0]]) : !mo.tensor<[20, [[D3]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[SH4:[^ ]*]]: !mosh.ape>([[V1]]) {{.*}} : (!mo.tensor<[20, [[D3]]], f32>) -> !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT: mo.output<:!mosh.ape [[SH4]]> [[V2]] : !mo.tensor<[[SH4]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @log1p_mixed_dyn<D0 -> Sh0: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[20, D0], f32>) -> !mo.tensor<Sh0, f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.log1p(%[[ARG0]]) : !mo.tensor<[20, D0], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[SH1:.*]]: !mosh.ape>(%[[V0]]) {{.*}} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[[SH1]], f32>
+// CHECK-NEXT: mo.output<:!mosh.ape [[SH1]]> %[[V1]] : !mo.tensor<[[SH1]], f32>
 
 // -----
 
-mo.graph @logsoftmax_mixed_params(%arg0: !mo.tensor<[20, ?], f32>, %arg1: !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32> {
-  %1 = rmo.mo.logsoftmax(%arg0, %arg1) : (!mo.tensor<[20, ?], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32>
-  mo.output %1 : !mo.tensor<[?, ?], f32>
+mo.graph @logsoftmax_mixed_params<D0 -> D1, D2>(%arg0: !mo.tensor<[20, D0], f32>, %arg1: !mo.tensor<[], si64>) -> !mo.tensor<[D1, D2], f32> {
+  %1 = rmo.mo.logsoftmax<() -> D3, D4>(%arg0, %arg1) : (!mo.tensor<[20, D0], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4], f32>
+  mo.output<D3, D4> %1 : !mo.tensor<[D3, D4], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @logsoftmax_mixed_params<[[D1:[^ ]*]] -> [[D2:[^ ]*]], [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, [[D1]]], f32>, [[ARG1:[^ ]*]]: !mo.tensor<[], si64>) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D4:[^ ]*]]>([[VARG0]]) : !mo.tensor<[20, [[D1]]], f32> -> !mo.tensor<[20, [[D4]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.logsoftmax([[V0]], [[ARG1]]) : (!mo.tensor<[20, [[D4]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[20, [[D4]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D5:[^ ]*]], [[D6:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[20, [[D4]]], f32>) -> !mo.tensor<[[[D5]], [[D6]]], f32>
-// CHECK-NEXT: mo.output<[[D5]], [[D6]]> [[V2]] : !mo.tensor<[[[D5]], [[D6]]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @logsoftmax_mixed_params<D0 -> D1, D2>(%[[ARG0:.*]]: !mo.tensor<[20, D0], f32>, %[[ARG1:.*]]: !mo.tensor<[], si64>) -> !mo.tensor<[D1, D2], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.logsoftmax(%[[ARG0]], %[[ARG1]]) : (!mo.tensor<[20, D0], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[20, D0], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D3:.*]], [[D4:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[[[D3]], [[D4]]], f32>
+// CHECK-NEXT: mo.output<[[D3]], [[D4]]> %[[V1]] : !mo.tensor<[[[D3]], [[D4]]], f32>
 
 // -----
 
-mo.graph @negative_mixed_mixed(%arg0: !mo.tensor<[20, ?], f32>) -> !mo.tensor<[?, 10], f32> {
-  %1 = rmo.mo.negative(%arg0) : (!mo.tensor<[20, ?], f32>) -> !mo.tensor<[?, 10], f32>
-  mo.output %1 : !mo.tensor<[?, 10], f32>
+mo.graph @negative_mixed_mixed<D0 -> D1>(%arg0: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[D1, 10], f32> {
+  %1 = rmo.mo.negative<() -> D2>(%arg0) : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[D2, 10], f32>
+  mo.output<D2> %1 : !mo.tensor<[D2, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @negative_mixed_mixed<[[D1:[^ ]*]] -> [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, [[D1]]], f32>) -> !mo.tensor<[[[D2]], 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D3:[^ ]*]]>([[VARG0]]) : !mo.tensor<[20, [[D1]]], f32> -> !mo.tensor<[20, [[D3]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.negative([[V0]]) : !mo.tensor<[20, [[D3]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D4:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[20, [[D3]]], f32>) -> !mo.tensor<[[[D4]], 10], f32>
-// CHECK-NEXT: mo.output<[[D4]]> [[V2]] : !mo.tensor<[[[D4]], 10], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @negative_mixed_mixed<D0 -> D1>(%[[ARG0:.*]]: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[D1, 10], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.negative(%[[ARG0]]) : !mo.tensor<[20, D0], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D2:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[[[D2]], 10], f32>
+// CHECK-NEXT: mo.output<[[D2]]> %[[V1]] : !mo.tensor<[[[D2]], 10], f32>
 
 // -----
 
-mo.graph @relu_mixed_static(%arg0: !mo.tensor<[20, ?], f32>) -> !mo.tensor<[20, 10], f32> {
-  %1 = rmo.mo.relu(%arg0) : (!mo.tensor<[20, ?], f32>) -> !mo.tensor<[20, 10], f32>
+mo.graph @relu_mixed_static<D0>(%arg0: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32> {
+  %1 = rmo.mo.relu(%arg0) : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32>
   mo.output %1 : !mo.tensor<[20, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @relu_mixed_static<[[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, [[D1]]], f32>) -> !mo.tensor<[20, 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D2:[^ ]*]]>([[VARG0]]) : !mo.tensor<[20, [[D1]]], f32> -> !mo.tensor<[20, [[D2]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.relu([[V0]]) : !mo.tensor<[20, [[D2]]], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape([[V1]]) {{.*}} : (!mo.tensor<[20, [[D2]]], f32>) -> !mo.tensor<[20, 10], f32>
-// CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[20, 10], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @relu_mixed_static<D0>(%[[ARG0:.*]]: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.relu(%[[ARG0]]) : !mo.tensor<[20, D0], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape(%[[V0]]) {{.*}} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, 10], f32>
+// CHECK-NEXT: mo.output %[[V1]] : !mo.tensor<[20, 10], f32>
 
 // -----
 
-mo.graph @round_static_dyn(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.round(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @round_static_dyn<() -> Sh0: !mosh.ape>(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<Sh0, f32> {
+  %1 = rmo.mo.round<() -> Sh1: !mosh.ape>(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<Sh1, f32>
+  mo.output<:!mosh.ape Sh1> %1 : !mo.tensor<Sh1, f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @round_static_dyn<() -> [[SH1:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[[SH1]], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.round([[VARG0]]) : !mo.tensor<[20, 30], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[SH2:[^ ]*]]: !mosh.ape>([[V0]]) {{.*}} : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[SH2]], f32>
-// CHECK-NEXT: mo.output<:!mosh.ape [[SH2]]> [[V1]] : !mo.tensor<[[SH2]], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @round_static_dyn<() -> Sh0: !mosh.ape>(%[[ARG0:.*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<Sh0, f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.round(%[[ARG0]]) : !mo.tensor<[20, 30], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[SH1:.*]]: !mosh.ape>(%[[V0]]) {{.*}} : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[SH1]], f32>
+// CHECK-NEXT: mo.output<:!mosh.ape [[SH1]]> %[[V1]] : !mo.tensor<[[SH1]], f32>
 
 // -----
 
-mo.graph @rsqrt_static_mixed(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32> {
-  %1 = rmo.mo.rsqrt(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[?, 10], f32>
-  mo.output %1 : !mo.tensor<[?, 10], f32>
+mo.graph @rsqrt_static_mixed<() -> D0>(%arg0: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[D0, 10], f32> {
+  %1 = rmo.mo.rsqrt<() -> D1>(%arg0) : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[D1, 10], f32>
+  mo.output<D1> %1 : !mo.tensor<[D1, 10], f32>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @rsqrt_static_mixed<() -> [[D1:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D1]], 10], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rsqrt([[VARG0]]) : !mo.tensor<[20, 30], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D2:[^ ]*]]>([[V0]]) {{.*}} : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D2]], 10], f32>
-// CHECK-NEXT: mo.output<[[D2]]> [[V1]] : !mo.tensor<[[[D2]], 10], f32>
-// CHECK-NEXT: }
+// CHECK-SAME: @rsqrt_static_mixed<() -> D0>(%[[ARG0:.*]]: !mo.tensor<[20, 30], f32>) -> !mo.tensor<[D0, 10], f32> {
+// CHECK-NEXT: %[[V0:.*]] = mo.rsqrt(%[[ARG0]]) : !mo.tensor<[20, 30], f32>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D1:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[20, 30], f32>) -> !mo.tensor<[[[D1]], 10], f32>
+// CHECK-NEXT: mo.output<[[D1]]> %[[V1]] : !mo.tensor<[[[D1]], 10], f32>

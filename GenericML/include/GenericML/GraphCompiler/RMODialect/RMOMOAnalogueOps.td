@@ -34,11 +34,7 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
         SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
         SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
 
-        // Rebind values to remove any possible `?`
-        SmallVector<Value> reboundInputs =
-            rebindUnknownShapeInValues(inputValues, graphOp, $_builder);
-
-        inferMOTypesImpl(odsState.getContext(), graphOp, ValueRange{reboundInputs},
+        inferMOTypesImpl(odsState.getContext(), graphOp, inputValues,
                          std::nullopt, _moOperandTypes, moResultTypes,
                          moInputParamDecls, moOutputParamDecls);
 
@@ -49,7 +45,7 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []>
         }
 
         // Call normal output type, input value builder
-        build($_builder, $_state, mlir::TypeRange{moResultTypes}, reboundInputs);
+        build($_builder, $_state, mlir::TypeRange{moResultTypes}, inputValues);
 
         // Manually set outputParamDecls field
         $_state.addAttribute(

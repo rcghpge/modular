@@ -111,7 +111,7 @@ OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
 
   // If the input and the output are the same and neither have ? in them then
   // we can maybe fold.
-  if (slice.getResult().getType() != inputTy || inputTy.hasUnknownShape())
+  if (slice.getResult().getType() != inputTy)
     return {};
 
   // If all of the steps are `1` then this is an identity. We need to check
@@ -388,13 +388,10 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
 LogicalResult BroadcastToOp::canonicalize(BroadcastToOp op,
                                           PatternRewriter &rewriter) {
   TensorValue inputVal = op.getInput();
-  TensorType inputTy = inputVal.getType();
-  TensorType resTy = op.getType();
 
   // If we have a known input and an known output with no parameter decls then
   // we can convert this to static.
-  if (!resTy.hasUnknownShape() && !inputTy.hasUnknownShape() &&
-      op.getOutputParamDecls().empty()) {
+  if (op.getOutputParamDecls().empty()) {
     rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, op.getType(),
                                                        inputVal);
   }
@@ -662,22 +659,6 @@ LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
 // ConstantOp
 //===----------------------------------------------------------------------===//
 OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }
-
-LogicalResult ConstantOp::canonicalize(ConstantOp op,
-                                       PatternRewriter &rewriter) {
-  if (op.getType().hasUnknownShape()) {
-    Location loc = op.getLoc();
-    ElementsAttr elements = op.getValue();
-    auto staticTensorType = op.getResult().getType().cloneWith(
-        cast<ShapedType>(elements.getType()).getShape(),
-        elements.getElementType());
-    auto constantOp =
-        ConstantOp::create(rewriter, loc, staticTensorType, elements);
-    rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), constantOp);
-    return success();
-  }
-  return failure();
-}
 
 //===----------------------------------------------------------------------===//
 // ConstantExternalOp
@@ -1263,37 +1244,6 @@ LogicalResult RebindOp::canonicalize(RebindOp op,
   // Likely already processed, or doesn't help shape inference.
   if (op.getInput().getDefiningOp<RebindOp>())
     return success(succeeded(paramsResolved));
-  //  %0 = mo.rebind<...>(%arg) // dominator
-  //  %1 = mo.rebind<...>(%arg)
-  //  %2 = mo.rebind<...>(%arg)
-  // ==>
-  //  %0 = mo.rebind<...>(%arg) // dominator
-  //  %1 = mo.rebind<...>(%0)
-  //  %2 = mo.rebind<...>(%0)
-  //
-  // NOTE This helps shape inference propagate parameter constraints across
-  // these rebinds, in case `%arg`'s type is never parameterized and contains
-  // unknown dimension `?`.
-  if (op.getInput().getType().hasUnknownShape()) {
-    SmallVector<RebindOp> rebindsWithSameInput;
-    RebindOp dominatorRebindOp = op;
-    for (Operation *rebindInputUser : op.getInput().getUsers()) {
-      auto rebindOp = dyn_cast<RebindOp>(rebindInputUser);
-      // TODO To support this across blocks, we need `DominanceInfo`, which
-      // might require us to move this into a pass
-      if (rebindOp && rebindOp->getBlock() == dominatorRebindOp->getBlock()) {
-        rebindsWithSameInput.push_back(rebindOp);
-        if (rebindOp->isBeforeInBlock(dominatorRebindOp))
-          dominatorRebindOp = rebindOp;
-      }
-    }
-    if (rebindsWithSameInput.size() > 1) {
-      for (RebindOp rebindOp : rebindsWithSameInput)
-        if (rebindOp != dominatorRebindOp)
-          rebindOp.getInputMutable().assign(dominatorRebindOp);
-      return success();
-    }
-  }
   return success(succeeded(paramsResolved));
 }
 
@@ -1335,8 +1285,6 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
   TensorValue inputVal = op.getInput();
   TensorType inputTy = inputVal.getType();
-  if (inputTy.hasUnknownShape())
-    return failure();
 
   TensorType resTy = op.getType();
   if (!inputTy.hasRank() || !resTy.hasRank())
@@ -1365,7 +1313,7 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
     return success();
   }
 
-  if (resTy.hasUnknownShape() || !op.getOutputParamDecls().empty())
+  if (!op.getOutputParamDecls().empty())
     return failure();
 
   rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, resTy, inputVal);
@@ -1378,8 +1326,7 @@ LogicalResult ReshapeOp::canonicalize(ReshapeOp op, PatternRewriter &rewriter) {
 LogicalResult ShapeOfOp::canonicalize(ShapeOfOp op, PatternRewriter &rewriter) {
   TensorType inputTy = op.getInput().getType();
   TensorType resTy = op.getResult().getType();
-  if (inputTy.hasUnknownShape() || !inputTy.hasRank() ||
-      resTy.hasUnknownShape())
+  if (!inputTy.hasRank())
     return failure();
 
   auto moshVal = MOSH::ParamToValueOp::create(rewriter, op.getLoc(),
@@ -1661,7 +1608,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
   if (auto rebindOp = inputVal.getDefiningOp<RebindOp>()) {
     TensorValue rebIn = rebindOp.getInput();
     TensorType rebInTy = rebIn.getType();
-    if (rebInTy.hasRank() && !rebInTy.hasUnknownShape()) {
+    if (rebInTy.hasRank()) {
       rewriter.modifyOpInPlace(op, [&] { op.setOperand(rebIn); });
       return success();
     }

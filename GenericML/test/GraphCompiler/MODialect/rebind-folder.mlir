@@ -1,17 +1,17 @@
 // RUN: mo-opt %s --canonicalize | FileCheck %s
 
-// CHECK: mo.graph @rebinds_with_same_input<[[N:.*]], [[M:.*]], [[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape>(
-mo.graph @rebinds_with_same_input<N, M, Sh0: !mosh.ape, Sh1: !mosh.ape>(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[?, ?], f32>
-  %arg0: !mo.tensor<[?, ?], f32>
+// CHECK: mo.graph @rebinds_with_same_input<[[D0:.*]], [[D1:.*]], [[N:.*]], [[M:.*]], [[SH0:.*]]: !mosh.ape, [[SH1:.*]]: !mosh.ape>(
+mo.graph @rebinds_with_same_input<D0, D1, N, M, Sh0: !mosh.ape, Sh1: !mosh.ape>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[D0, D1], f32>
+  %arg0: !mo.tensor<[D0, D1], f32>
 // CHECK-SAME: ) -> (!mo.tensor<[[SH0]], f32>, !mo.tensor<[[[N]], [[M]]], f32>, !mo.tensor<[[SH1]], f32>) {
 ) -> (!mo.tensor<Sh0, f32>, !mo.tensor<[N, M], f32>, !mo.tensor<Sh1, f32>) {
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[[SH0]], f32>
-  %0 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh0, f32>
-  // CHECK-NEXT: %[[VAL1:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
-  %1 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  // CHECK-NEXT: %[[VAL2:.*]] = mo.rebind(%[[VAL0]]) : !mo.tensor<[[SH0]], f32> -> !mo.tensor<[[SH1]], f32>
-  %2 = mo.rebind(%arg0) : !mo.tensor<[?, ?], f32> -> !mo.tensor<Sh1, f32>
+  // CHECK-NEXT: %[[VAL0:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[{{.*}}], f32> -> !mo.tensor<{{.*}}, f32>
+  %0 = mo.rebind(%arg0) : !mo.tensor<[D0, D1], f32> -> !mo.tensor<Sh0, f32>
+  // CHECK-NEXT: %[[VAL1:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[{{.*}}], f32> -> !mo.tensor<[{{.*}}], f32>
+  %1 = mo.rebind(%arg0) : !mo.tensor<[D0, D1], f32> -> !mo.tensor<[N, M], f32>
+  // CHECK-NEXT: %[[VAL2:.*]] = mo.rebind(%[[ARG0]]) : !mo.tensor<[{{.*}}], f32> -> !mo.tensor<{{.*}}, f32>
+  %2 = mo.rebind(%arg0) : !mo.tensor<[D0, D1], f32> -> !mo.tensor<Sh1, f32>
   // CHECK-NEXT: mo.output
   mo.output %0, %1, %2 : !mo.tensor<Sh0, f32>, !mo.tensor<[N, M], f32>, !mo.tensor<Sh1, f32>
 }
@@ -33,19 +33,6 @@ mo.graph @rebind_param_materialization<A, B, Sh0: !mosh.ape -> N, M, Sh1: !mosh.
   mo.output<K, L, :!mosh.ape Sh2> %0, %1 : !mo.tensor<[K, L], f32>, !mo.tensor<Sh2, f32>
 }
 
-// CHECK: mo.graph @rebind_no_fold<[[N:.*]], [[M:.*]], [[SH:.*]]: !mosh.ape>(
-mo.graph @rebind_no_fold<N, M, Sh: !mosh.ape>(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[?], f32>, %[[ARG1:.*]]: !mo.tensor<[?, ?], f32>
-  %arg0: !mo.tensor<[?], f32>, %arg1: !mo.tensor<[?, ?], f32>
-// CHECK-SAME: ) -> (!mo.tensor<[[SH]], f32>, !mo.tensor<[[[N]], [[M]]], f32>) {
-) -> (!mo.tensor<Sh, f32>, !mo.tensor<[N, M], f32>) {
-  // CHECK-DAG: mo.rebind(%[[ARG0]]) : !mo.tensor<[?], f32> -> !mo.tensor<[[SH]], f32>
-  %0 = mo.rebind(%arg0) : !mo.tensor<[?], f32> -> !mo.tensor<Sh, f32>
-  // CHECK-DAG: mo.rebind(%[[ARG1]]) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[[[N]], [[M]]], f32>
-  %1 = mo.rebind(%arg1) : !mo.tensor<[?, ?], f32> -> !mo.tensor<[N, M], f32>
-  // CHECK-NEXT: mo.output
-  mo.output %0, %1 : !mo.tensor<Sh, f32>, !mo.tensor<[N, M], f32>
-}
 
 // Key is only one definition of param C
 // CHECK: mo.graph @rebind_reuse_declared_param<A, B -> O>

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-resolve-unknown-parameters --mo-shape-inference --mo-infer-layouts --mo-to-mogg --mgp-mo-to-primitives --mo-topological-sort %s | FileCheck %s
+// RUN: mo-opt --mo-shape-inference --mo-infer-layouts --mo-to-mogg --mgp-mo-to-primitives --mo-topological-sort %s | FileCheck %s
 
 // using the rather laborious specification of passes above because
 // predicate-asserts-deps pass doesn't currently handle mo.guard ops and I dont

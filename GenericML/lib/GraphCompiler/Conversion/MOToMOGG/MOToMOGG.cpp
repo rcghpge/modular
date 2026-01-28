@@ -81,8 +81,7 @@ static bool opHasCompatibleTypes(Operation *op) {
 
   // Returns true if a type is compatible with jit.
   auto isShapeAllowed = [&](MO::TensorType tensorTy) {
-    if (!tensorTy || !tensorTy.hasRank() || tensorTy.getRank() > kMaxRank ||
-        tensorTy.hasUnknownShape())
+    if (!tensorTy || !tensorTy.hasRank() || tensorTy.getRank() > kMaxRank)
       return false;
 
     // The symbolic shape must be trivial and not a compound expression. I.E
@@ -178,8 +177,6 @@ struct MOToMOGGPass : public MOGG::MojoLibraryAnalysisPass<
       // name.
       MO::TensorType inTy = op.getInput().getType();
       MO::TensorType outTy = op.getResult().getType();
-      if (inTy.hasUnknownShape() || outTy.hasUnknownShape())
-        return WalkResult::advance();
 
       // Preserve layout attributes which are needed for best matmul/conv impl.
       if (outTy.getLayoutAttr() || inTy.getLayoutAttr())

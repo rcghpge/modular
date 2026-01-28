@@ -1,26 +1,23 @@
-// RUN: mo-opt %s --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
+// RUN: mo-opt %s --mo-legalize-rmo-operators="skip-rmo-rebinds" | FileCheck %s
 
-mo.graph @shape_of_dyn(%input: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.mo.shape_of(%input): (!mo.tensor<?, f32>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @shape_of_dyn<Sh0: !mosh.ape -> D0>(%input: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0], si64> {
+    %1 = rmo.mo.shape_of<() -> D1>(%input): (!mo.tensor<Sh0, f32>) -> !mo.tensor<[D1], si64>
+    mo.output<D1> %1: !mo.tensor<[D1], si64>
 }
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @shape_of_dyn<[[SH1:[^ ]*]]: !mosh.ape -> [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], f32>) -> !mo.tensor<[[[D2]]], si64> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[SH3:[^ ]*]]: !mosh.ape>([[VARG0]]) : !mo.tensor<[[SH1]], f32> -> !mo.tensor<[[SH3]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.shape_of<() -> [[RMO_D5:[^ ]*]]>([[V0]]) : (!mo.tensor<[[SH3]], f32>) -> !mo.tensor<[[[RMO_D5]]], si64>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D4:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[[[RMO_D5]]], si64>) -> !mo.tensor<[[[D4]]], si64>
-// CHECK-NEXT: mo.output<[[D4]]> [[V2]] : !mo.tensor<[[[D4]]], si64>
+// CHECK-SAME: @shape_of_dyn<Sh0: !mosh.ape -> D0>(%[[ARG0:.*]]: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0], si64> {
+// CHECK-NEXT: %[[V0:.*]] = mo.shape_of<() -> [[RMO_D1:.*]]>(%[[ARG0]]) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[[[RMO_D1]]], si64>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D1:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[[[RMO_D1]]], si64>) -> !mo.tensor<[[[D1]]], si64>
+// CHECK-NEXT: mo.output<[[D1]]> %[[V1]] : !mo.tensor<[[[D1]]], si64>
 
 // -----
 
-mo.graph @shape_of_params(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.mo.shape_of(%input): (!mo.tensor<[?, ?, ?], f32>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @shape_of_params<D0, D1, D2 -> D3>(%input: !mo.tensor<[D0, D1, D2], f32>) -> !mo.tensor<[D3], si64> {
+    %1 = rmo.mo.shape_of<() -> D4>(%input): (!mo.tensor<[D0, D1, D2], f32>) -> !mo.tensor<[D4], si64>
+    mo.output<D4> %1: !mo.tensor<[D4], si64>
 }
-
 // CHECK-LABEL: mo.graph
-// CHECK-SAME: @shape_of_params<[[D1:[^ ]*]], [[D2:[^ ]*]], [[D3:[^ ]*]] -> [[D4:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[[D1]], [[D2]], [[D3]]], f32>) -> !mo.tensor<[[[D4]]], si64> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.rebind<() -> [[D5:[^ ]*]], [[D6:[^ ]*]], [[D7:[^ ]*]]>([[VARG0]]) : !mo.tensor<[[[D1]], [[D2]], [[D3]]], f32> -> !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.shape_of([[V0]]) : (!mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>) -> !mo.tensor<[3], si64>
-// CHECK-NEXT: [[V2:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D8:[^ ]*]]>([[V1]]) {{.*}} : (!mo.tensor<[3], si64>) -> !mo.tensor<[[[D8]]], si64>
-// CHECK-NEXT: mo.output<[[D8]]> [[V2]] : !mo.tensor<[[[D8]]], si64>
+// CHECK-SAME: @shape_of_params<D0, D1, D2 -> D3>(%[[ARG0:.*]]: !mo.tensor<[D0, D1, D2], f32>) -> !mo.tensor<[D3], si64> {
+// CHECK-NEXT: %[[V0:.*]] = mo.shape_of(%[[ARG0]]) : (!mo.tensor<[D0, D1, D2], f32>) -> !mo.tensor<[3], si64>
+// CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D4:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[3], si64>) -> !mo.tensor<[[[D4]]], si64>
+// CHECK-NEXT: mo.output<[[D4]]> %[[V1]] : !mo.tensor<[[[D4]]], si64>

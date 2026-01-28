@@ -34,14 +34,6 @@ mo.graph @binary_comparison_ok_cast_ui8_bf16(%arg0: !mo.tensor<[7], ui8>, %arg1:
 
 // -----
 
-mo.graph @binary_comparison_not_ok_dyn(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tensor<[?], si64>) -> !mo.tensor<[?], bool> {
-    // expected-error@below {{'rmo.greater_equal' op operand #0 must be parametrically known shape, but got '!mo.tensor<[?], si64>'}}
-    %1 = rmo.greater_equal(%arg0, %arg1) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], bool>
-    mo.output %1: !mo.tensor<[?], bool>
-}
-
-// -----
-
 mo.graph @binary_comparison_not_ok_bad_cast_ui8_si8(%arg0: !mo.tensor<[7], si8>, %arg1: !mo.tensor<[7], ui8>) -> !mo.tensor<[7], bool> {
     // expected-error@below {{Failed to resolve valid dtype: Unsafe cast from ui8 to si8. Insert an explicit cast op if this conversion is wanted.}}
     // expected-error@below {{'rmo.equal' op failed to infer returned types}}

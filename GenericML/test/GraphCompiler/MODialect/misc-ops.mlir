@@ -54,15 +54,6 @@ mo.graph @broadcast_diff_rank(%from: !mo.tensor<[3], f32>) -> !mo.tensor<[2, 3],
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
 
-// CHECK-LABEL: mo.graph @broadcast_dynamic
-// CHECK: (%[[FROM:.*]]: !mo.tensor<[1], f32>, %[[TO:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
-mo.graph @broadcast_dynamic(%from: !mo.tensor<[1], f32>, %to: !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.broadcast_to(%[[FROM]], %[[TO]]) : (!mo.tensor<[1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<[1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
-}
-
 //===----------------------------------------------------------------------===//
 // ChainCreateOp
 //===----------------------------------------------------------------------===//
@@ -127,27 +118,18 @@ mo.graph @concat(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2, 5], f32>)
   mo.output %0 : !mo.tensor<[2, 8], f32>
 }
 
-// CHECK: mo.graph @concat_dyn_rank(%[[ARG0:.*]]: !mo.tensor<?, f32>, %[[ARG1:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-mo.graph @concat_dyn_rank(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  // CHECK: mo.concat[%[[VAL0]] : !mo.tensor<[], si64>] (%[[ARG0]], %[[ARG1]]) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  mo.output %0 : !mo.tensor<?, f32>
-}
-
-// CHECK: mo.graph @concat_canonicalize(
-mo.graph @concat_canonicalize(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, ?], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 0], f32>, %[[AX:.*]]: !mo.tensor<[], si64>
-  %arg0: !mo.tensor<[2, ?], f32>, %arg1: !mo.tensor<[2, 0], f32>, %ax: !mo.tensor<[], si64>
-// CHECK-SAME: ) -> !mo.tensor<[2, ?], f32> {
-) -> !mo.tensor<[2, ?], f32> {
+// CHECK: mo.graph @concat_canonicalize<{{.*}}>(
+mo.graph @concat_canonicalize<D0>(
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, {{.*}}], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 0], f32>, %[[AX:.*]]: !mo.tensor<[], si64>
+  %arg0: !mo.tensor<[2, D0], f32>, %arg1: !mo.tensor<[2, 0], f32>, %ax: !mo.tensor<[], si64>
+// CHECK-SAME: ) -> !mo.tensor<[2, {{.*}}], f32> {
+) -> !mo.tensor<[2, D0], f32> {
   // CHECK-NEXT: %[[RES:.*]] = mo.concat[%[[AX]] : !mo.tensor<[], si64>] (%[[ARG0]], %[[ARG0]]) : (
-  // CHECK-SAME:   !mo.tensor<[2, ?], f32>, !mo.tensor<[2, ?], f32>) -> !mo.tensor<[2, ?], f32>
+  // CHECK-SAME:   !mo.tensor<[2, {{.*}}], f32>, !mo.tensor<[2, {{.*}}], f32>) -> !mo.tensor<[2, {{.*}}], f32>
   %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1, %arg0) : (
-    !mo.tensor<[2, ?], f32>, !mo.tensor<[2, 0], f32>, !mo.tensor<[2, ?], f32>) -> !mo.tensor<[2, ?], f32>
-  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, ?], f32>
-  mo.output %0 : !mo.tensor<[2, ?], f32>
+    !mo.tensor<[2, D0], f32>, !mo.tensor<[2, 0], f32>, !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
+  // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[2, {{.*}}], f32>
+  mo.output %0 : !mo.tensor<[2, D0], f32>
 }
 
 // CHECK: mo.graph @concat_canonicalize_to_rebind<[[N:.*]], [[K:.*]] -> [[M:.*]]>(
@@ -163,16 +145,14 @@ mo.graph @concat_canonicalize_to_rebind<N, K -> M>(
   mo.output<K> %0 : !mo.tensor<[2, K], f32>
 }
 
-// CHECK:      mo.graph @concat_canonicalize_single_input(
-// CHECK-SAME:   %[[ARG0:.*]]: !mo.tensor<[2, ?], f32>, %[[AX:.*]]: !mo.tensor<[], si64>
-// CHECK-SAME: ) -> !mo.tensor<[2, ?], f32>
-mo.graph @concat_canonicalize_single_input(
-  %arg0: !mo.tensor<[2, ?], f32>,  %ax: !mo.tensor<[], si64>
-) -> !mo.tensor<[2, ?], f32> {
+// CHECK: mo.graph @concat_canonicalize_single_input
+mo.graph @concat_canonicalize_single_input<D0>(
+  %arg0: !mo.tensor<[2, D0], f32>,  %ax: !mo.tensor<[], si64>
+) -> !mo.tensor<[2, D0], f32> {
 
-  // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[2, ?], f32>
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[2, ?], f32>) -> !mo.tensor<[2, ?], f32>
-  mo.output %0 : !mo.tensor<[2, ?], f32>
+  // CHECK-NEXT: mo.output %[[ARG0]] : !mo.tensor<[2, {{.*}}], f32>
+  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0) : (!mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
+  mo.output %0 : !mo.tensor<[2, D0], f32>
 }
 
 // CHECK-LABEL: mo.graph @concat_do_not_canonicalize_param_decls
@@ -387,16 +367,6 @@ mo.graph @reshape_static_shape(%arg: !mo.tensor<[4], f32>) -> !mo.tensor<[2, 2],
   %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: %[[RES:.*]] = mo.static.reshape(%[[ARG]]) : !mo.tensor<[4], f32> -> !mo.tensor<[2, 2], f32>
   %res = mo.reshape(%arg, %shape) : (!mo.tensor<[4], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
-  // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 2], f32>
-  mo.output %res : !mo.tensor<[2, 2], f32>
-}
-
-// CHECK: mo.graph @reshape_dyn_shape(%[[ARG:.*]]: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f32>
-mo.graph @reshape_dyn_shape(%arg: !mo.tensor<[?], f32>) -> !mo.tensor<[2, 2], f32> {
-  // CHECK: %[[SHAPE:.*]] = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK: %[[RES:.*]] = mo.reshape(%[[ARG]], %[[SHAPE]]) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
-  %res = mo.reshape(%arg, %shape) : (!mo.tensor<[?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 2], f32>
   mo.output %res : !mo.tensor<[2, 2], f32>
 }
@@ -960,11 +930,12 @@ mo.graph @tile_dynamic(%input: !mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f3
 
 // CHECK: mo.graph @tile_broadcast(%[[INPUT:.*]]: !mo.tensor<[1, ?], f32>) -> !mo.tensor<[?, ?], f32> {
 mo.graph @tile_broadcast(%input: !mo.tensor<[1, ?], f32>) -> !mo.tensor<[?, ?], f32> {
-  // CHECK: %[[REPEATS:.*]] = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+
+  // CHECK: mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[1, ?], f32> -> !mo.tensor<[?, ?], f32>
   %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  // CHECK: %[[SHAPE_OF:.*]] = mo.shape_of(%[[INPUT]]) : (!mo.tensor<[1, ?], f32>) -> !mo.tensor<[2], si64>
-  // CHECK: %[[BCST:.*]] = mo.broadcast_shape(%[[SHAPE_OF]], %[[REPEATS]]) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
-  // CHECK: mo.broadcast_to(%[[INPUT]], %[[BCST]]) : (!mo.tensor<[1, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
+
+
+
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[1, ?], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[?, ?], f32>
   mo.output %res : !mo.tensor<[?, ?], f32>
 }

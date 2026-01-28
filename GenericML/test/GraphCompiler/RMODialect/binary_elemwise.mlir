@@ -34,14 +34,6 @@ mo.graph @binary_elemwise_ok_cast_ui8_bf16(%arg0: !mo.tensor<[7], ui8>, %arg1: !
 
 // -----
 
-mo.graph @binary_elemwise_not_ok_unranked(%arg0: !mo.tensor<[?], si64>, %arg1: !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64> {
-    // expected-error@below {{'rmo.div' op operand #0 must be parametrically known shape, but got '!mo.tensor<[?], si64>'}}
-    %1 = rmo.div(%arg0, %arg1) : (!mo.tensor<[?], si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
-}
-
-// -----
-
 mo.graph @binary_elemwise_not_ok_bad_cast_ui8_si8(%arg0: !mo.tensor<[7], si8>, %arg1: !mo.tensor<[7], ui8>) -> !mo.tensor<[7], si8> {
     // expected-error@below {{Failed to resolve valid dtype: Unsafe cast from ui8 to si8. Insert an explicit cast op if this conversion is wanted.}}
     // expected-error@below {{'rmo.mod' op failed to infer returned types}}

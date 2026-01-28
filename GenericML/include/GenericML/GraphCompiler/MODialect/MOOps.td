@@ -774,7 +774,6 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
 
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 
-  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
   let hasFolder = 1;
   let skipDefaultBuilders = 1;
@@ -2827,8 +2826,8 @@ class MOStatic_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
     : MOStatic_TensorOp<mnemonic, traits # [Pure, MO_SameFirstOperandAndResultsElementType, MO_SingleDevice]> {
   string cppNamespace = MODialect.cppNamespace # "::Static";
 
-  let arguments = (ins MO_KnownTensor:$input);
-  let results = (outs MO_KnownTensor:$result);
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:`

@@ -308,8 +308,7 @@ struct ConvertBatchMatmulToMatmulPattern
     auto weightTy = cast<MO::TensorType>(weight.getType());
     auto broadcastTy = cast<MO::TensorType>(broadcast->getResult(0).getType());
     auto bmmTy = cast<MO::TensorType>(op->getResult(0).getType());
-    if (inputTy.hasUnknownShape() || bcastedTensorTy.hasUnknownShape() ||
-        bmmTy.hasUnknownShape() || !bmmTy.hasRank()) {
+    if (!bmmTy.hasRank()) {
       return rewriter.notifyMatchFailure(
           op, "ops aren't parameterized, can't rewrite");
     }
@@ -1410,9 +1409,6 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     }
 
     TensorType inputTensorTy = inputTensor.getType();
-    // This avoids creating a binary op with unknown shapes.
-    if (inputTensorTy.hasUnknownShape())
-      return rewriter.notifyMatchFailure(op, "Shape must be known");
 
     // Ensure the smallest rank tensor is `elemwise`
     TensorType reshapedTensorTy = reshapedTensor.getType();
@@ -1538,11 +1534,6 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
           op, "Don't sink reshape that squeezes final dim.");
     }
 
-    auto inputType = llvm::cast<TensorType>(inputTensor.getType());
-    // This avoids creating a unary op with unknown shapes.
-    if (inputType.hasUnknownShape())
-      return rewriter.notifyMatchFailure(op, "Shape must be known");
-
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
@@ -1608,10 +1599,6 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
 
     if (!inputTy.hasRank() || !reshapedTy.hasRank())
       return rewriter.notifyMatchFailure(op, "Shape must be ranked");
-
-    // This avoids creating a softmax op with unknown shapes.
-    if (inputTy.hasUnknownShape())
-      return rewriter.notifyMatchFailure(op, "Shape must be known");
 
     std::optional<int64_t> maybeAxis = tryGetConstantInt(axisTensor);
     if (!maybeAxis.has_value())
@@ -1694,10 +1681,6 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
 
     if (input1TensorTy.getShapeAttr() != input2TensorTy.getShapeAttr())
       return rewriter.notifyMatchFailure(op, "Inputs shapes must be equal");
-
-    // This avoids creating a binary op with unknown shapes.
-    if (input1TensorTy.hasUnknownShape())
-      return rewriter.notifyMatchFailure(op, "Input shapes must be known");
 
     // TODO(#18823) find a more general solution
     if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getLhsInput()) ||
@@ -2485,7 +2468,7 @@ struct SplitToSlicePattern
                                          "Op needs a shape function first.");
 
     TensorType inTy = cast<TensorType>(in.getType());
-    if (inTy.hasUnknownShape() || !inTy.hasRank())
+    if (!inTy.hasRank())
       return rewriter.notifyMatchFailure(op, "Pattern needs known input shape");
     size_t rank = inTy.getRank();
 
@@ -2502,8 +2485,7 @@ struct SplitToSlicePattern
     // check).
     if (llvm::any_of(op.getResultTypes(), [&](Type type) {
           auto tensor = cast<TensorType>(type);
-          return tensor.hasUnknownShape() || !tensor.hasRank() ||
-                 tensor.getRank() != rank;
+          return !tensor.hasRank() || tensor.getRank() != rank;
         }))
       return rewriter.notifyMatchFailure(op, "Output shape is unknown.");
 
@@ -2593,9 +2575,6 @@ struct SliceToSplitPattern
         [&](SliceOp sliceOp) {
           auto type = sliceOp.getResult().getType();
           if (!type.hasRank())
-            return false;
-
-          if (type.hasUnknownShape())
             return false;
 
           int64_t differentDimensions = 0;

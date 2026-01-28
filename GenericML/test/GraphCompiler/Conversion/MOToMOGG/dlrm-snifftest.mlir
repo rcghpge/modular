@@ -150,5 +150,5 @@ module {
     %127 = mo.matmul(%125, %126) : (!mo.tensor<[D474, 64], f32>, !mo.tensor<[64, 24], f32, {layout = #mo.layout<KNkni>}>) -> !mo.tensor<[D474, 1], f32>
     %128 = mo.sin(%127) : !mo.tensor<[D474, 1], f32>
     mo.output %128 : !mo.tensor<[D474, 1], f32>
-  } {counter = 627 : i64}
+  }
 }

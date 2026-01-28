@@ -25,7 +25,8 @@ mo.graph @shape_of_fold_dim_parameter<D0>(%arg0: !mo.tensor<[D0, 1], f32>) -> !m
 
 // CHECK-LABEL: mo.graph @shape_of_no_fold_1
 mo.graph @shape_of_no_fold_1(%arg0: !mo.tensor<[?, 1], si32>) -> !mo.tensor<[2], si64> {
-  // CHECK-NEXT: mo.shape_of
+  // CHECK: mosh.param.to_value
+  // CHECK: mo.shape.to_tensor
   %0 = mo.shape_of(%arg0) : (!mo.tensor<[?, 1], si32>) -> !mo.tensor<[2], si64>
   mo.output %0 : !mo.tensor<[2], si64>
 }

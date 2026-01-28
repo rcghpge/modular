@@ -1,5 +1,5 @@
 // This file tests the proper handling of explicit devices on tensors for RMO-MO Analogue ops
-// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 //
 mo.graph @transfer_d2d(%arg0: !mo.tensor<[4, 4], f32, gpu:0>) -> !mo.tensor<[4, 4], f32, gpu:1> {

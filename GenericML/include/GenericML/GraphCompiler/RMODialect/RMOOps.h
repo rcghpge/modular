@@ -32,10 +32,6 @@ MO::TensorType refineShape(MO::TensorType ty1, MO::TensorType ty2);
 MO::TensorType refineShapeWithDType(MO::TensorType ty1, MO::TensorType ty2,
                                     DType dtype);
 
-/// Rebinds all values
-SmallVector<Value> rebindUnknownShapeInValues(ValueRange inputValues,
-                                              MO::GraphOp graphOp,
-                                              OpBuilder &builder);
 /// inferMoTypesImpl for all scatter-like ops
 void inferMOTypesScatterImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,

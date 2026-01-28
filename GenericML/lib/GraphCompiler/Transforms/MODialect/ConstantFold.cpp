@@ -737,22 +737,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
 static Value runtimeTensorToConstant(OpBuilder &builder, Location loc,
                                      RuntimeTensor tensor, Type type) {
   auto [constant, shape] = std::move(tensor);
-  // Resolve instances where the output shape is not statically
-  // known (mo.tensor<[?], f32> for example) by using the size of
-  // the output.
-  if (cast<TensorType>(type).hasUnknownShape()) {
-    auto resolvedType = TensorType::get(
-        MOSH::ShapeAttr::get(SmallVector<int64_t>(shape.begin(), shape.end()),
-                             MOSH::ShapeType::get(builder.getContext())),
-        cast<TensorType>(type).getDtype());
-    auto constantOp = ConstantOp::create(builder, loc, resolvedType, constant);
-    // Rebind the shape so it matches what is expected. For example,
-    // transform [1, 2] to [1, A] so that types shapes with
-    // parameters match.
-    return RebindOp::create(builder, loc, type, constantOp);
-  } else {
-    return ConstantOp::create(builder, loc, type, constant);
-  }
+  return ConstantOp::create(builder, loc, type, constant);
 }
 
 /// Replace a constant subgraph with results from executing it. Replaces outputs

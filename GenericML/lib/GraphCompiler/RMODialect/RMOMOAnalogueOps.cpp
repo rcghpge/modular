@@ -94,8 +94,6 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
   // TODO(AIPIPE-312): Re-enable once the graph API propagates devices.
   // ASSERT_STREAM(ty1.getDeviceRef() == ty2.getDeviceRef(),
   //               << " tried to refine types with different devices");
-  ASSERT_STREAM(!ty1.hasUnknownShape() && !ty2.hasUnknownShape(),
-                << " no question marks should be here");
   bool ty1Ranked = ty1.hasRank();
   bool ty2Ranked = ty2.hasRank();
 
@@ -139,49 +137,6 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
 // ty1.
 TensorType RMO::refineShape(TensorType ty1, TensorType ty2) {
   return refineShapeWithDType(ty1, ty2, ty1.getDtype());
-}
-
-SmallVector<Value> RMO::rebindUnknownShapeInValues(ValueRange inputValues,
-                                                   MO::GraphOp graphOp,
-                                                   OpBuilder &builder) {
-  SmallVector<Value> valuesNoUnknowns = inputValues;
-
-  // Replace values with those rebound expressions
-  for (int64_t i = 0, boundI = inputValues.size(); i < boundI; ++i) {
-    auto curTensor = dyn_cast<TensorValue>(inputValues[i]);
-
-    // not a tensor, no need to modify as no `?`
-    if (!curTensor)
-      continue;
-
-    if (!curTensor.getType().hasUnknownShape())
-      continue;
-
-    Location loc = curTensor.getLoc();
-    SmallVector<KGEN::ParamDeclAttr> newParamDecls;
-
-    if (!curTensor.getType().hasRank()) {
-      TypedAttr newShape = createDynamicRankedShapeType(graphOp, newParamDecls);
-      TensorType outTy = curTensor.getType().cloneWith(newShape);
-      curTensor = RMO::RebindTensorShapeOp::create(builder, loc, outTy,
-                                                   curTensor, newParamDecls);
-    } else {
-      SmallVector<TypedAttr> dims(curTensor.getType().getDims());
-      for (int64_t j = 0, boundJ = dims.size(); j < boundJ; ++j) {
-        TypedAttr curDim = dims[j];
-        if (TensorType::isUnknownDimParam(curDim)) {
-          curDim = createDynamicDimensionType(graphOp, newParamDecls);
-          dims[j] = curDim;
-        }
-      }
-      TensorType outTy = curTensor.getType().cloneWith(dims);
-      curTensor = RMO::RebindTensorShapeOp::create(builder, loc, outTy,
-                                                   curTensor, newParamDecls);
-    }
-
-    valuesNoUnknowns[i] = curTensor;
-  }
-  return valuesNoUnknowns;
 }
 
 //===----------------------------------------------------------------------===//

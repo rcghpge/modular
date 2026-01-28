@@ -26,18 +26,11 @@ mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
 // GraphOp and TensorType
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: mo.graph @empty_parametric_graph(
-// CHECK-SAME: %[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-mo.graph @empty_parametric_graph<>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
-  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<?, f32>
-  mo.output %arg : !mo.tensor<?, f32>
-}
-
 // CHECK-LABEL: mo.graph @nullary_parametric_graph<
-// CHECK-SAME: () -> [[R1:.*]]>(%[[ARG:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-mo.graph @nullary_parametric_graph<() -> R1>(%arg: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
-  // CHECK-NEXT: mo.output<42> %[[ARG]] : !mo.tensor<?, f32>
-  mo.output<42> %arg : !mo.tensor<?, f32>
+// CHECK-SAME: () -> [[R1:.*]]>(%[[ARG:.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[], f32> {
+mo.graph @nullary_parametric_graph<() -> R1>(%arg: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
+  // CHECK-NEXT: mo.output<42> %[[ARG]] : !mo.tensor<[], f32>
+  mo.output<42> %arg : !mo.tensor<[], f32>
 }
 
 // CHECK-LABEL: mo.graph @unary_void_parametric_graph<
@@ -68,18 +61,6 @@ mo.graph @parametric_result<() -> D2>() {
 mo.graph @output_with_bindings<D1 -> D2>(%arg: !mo.tensor<[D1], f32>) -> (!mo.tensor<[D2], f32>) {
   // CHECK-NEXT: mo.output<D1> %[[ARG]] : !mo.tensor<[[[D1]]], f32>
   mo.output<D1> %arg : !mo.tensor<[D1], f32>
-}
-
-// CHECK-LABEL: mo.graph @dyn_rank(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-mo.graph @dyn_rank(%arg0: !mo.tensor<?, f32>) -> (!mo.tensor<?, f32>) {
-  mo.output %arg0 : !mo.tensor<?, f32>
-}
-
-// CHECK-LABEL: mo.graph @dyn_dims(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, ?, 1], f32>) -> !mo.tensor<[2, ?, 1], f32> {
-mo.graph @dyn_dims(%arg0: !mo.tensor<[2, ?, 1], f32>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  mo.output %arg0 : !mo.tensor<[2, ?, 1], f32>
 }
 
 // CHECK-LABEL: mo.graph @empty_dims(
@@ -123,31 +104,31 @@ mo.graph @tensor_int_metadata(%arg0: !mo.tensor<[], si32, {foo = 42}>) -> !mo.te
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @if_op(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, ?, 1], f32>, %[[ARG1:.*]]: !mo.tensor<[2, ?, 1], f32>, %[[ARG2:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
-mo.graph @if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %arg1: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  // CHECK: %0 = mo.if(%[[ARG2]] : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
-  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
-    // CHECK: mo.yield %[[ARG0]] : !mo.tensor<[2, ?, 1], f32>
-    mo.yield %arg0 : !mo.tensor<[2, ?, 1], f32>
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, 1], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 1], f32>, %[[ARG2:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2, 1], f32> {
+mo.graph @if_op(%arg0: !mo.tensor<[2, 1], f32>, %arg1: !mo.tensor<[2, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, 1], f32>) {
+  // CHECK: %0 = mo.if(%[[ARG2]] : !mo.tensor<[], bool>) -> !mo.tensor<[2, 1], f32> {
+  %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, 1], f32> {
+    // CHECK: mo.yield %[[ARG0]] : !mo.tensor<[2, 1], f32>
+    mo.yield %arg0 : !mo.tensor<[2, 1], f32>
   // CHECK: } else {
   } else {
-    // CHECK: mo.yield %[[ARG1]] : !mo.tensor<[2, ?, 1], f32>
-    mo.yield %arg1 : !mo.tensor<[2, ?, 1], f32>
+    // CHECK: mo.yield %[[ARG1]] : !mo.tensor<[2, 1], f32>
+    mo.yield %arg1 : !mo.tensor<[2, 1], f32>
   }
-  // CHECK: mo.output %0 : !mo.tensor<[2, ?, 1], f32>
-  mo.output %0 : !mo.tensor<[2, ?, 1], f32>
+  // CHECK: mo.output %0 : !mo.tensor<[2, 1], f32>
+  mo.output %0 : !mo.tensor<[2, 1], f32>
 }
 
 // CHECK-LABEL: mo.graph @empty_if_op(
-// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, ?, 1], f32>, %[[ARG2:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2, ?, 1], f32> {
-mo.graph @empty_if_op(%arg0: !mo.tensor<[2, ?, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, ?, 1], f32>) {
-  // CHECK: mo.output %[[ARG0]] : !mo.tensor<[2, ?, 1], f32>
+// CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2, 1], f32>, %[[ARG2:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[2, 1], f32> {
+mo.graph @empty_if_op(%arg0: !mo.tensor<[2, 1], f32>, %cond : !mo.tensor<[], bool>) -> (!mo.tensor<[2, 1], f32>) {
+  // CHECK: mo.output %[[ARG0]] : !mo.tensor<[2, 1], f32>
   mo.if(%cond : !mo.tensor<[], bool>) {
     mo.yield
   } else {
     mo.yield
   }
-  mo.output %arg0 : !mo.tensor<[2, ?, 1], f32>
+  mo.output %arg0 : !mo.tensor<[2, 1], f32>
 }
 
 // CHECK-LABEL: mo.graph @constant_fold_if_tensor(
@@ -357,15 +338,6 @@ mo.graph @two_constants() -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>) {
   %1 = mo.constant {value = dense_resource<some_buffer> : tensor<4xsi8>} : !mo.tensor<[4], si8>
   // CHECK: mo.output %[[VAL_0]], %[[VAL_1]] : !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>
   mo.output %0, %1 : !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>
-}
-
-// CHECK-LABEL: mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32>
-mo.graph @constant_unknown_shape_fold() -> !mo.tensor<[2, ?], si32> {
-  // CHECK-NEXT: %[[VAL:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  // CHECK-NEXT: %[[VAL_REB:.*]] = mo.rebind(%[[VAL]]) : !mo.tensor<[2, 2], si32> -> !mo.tensor<[2, ?], si32>
-  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, ?], si32>
-  // CHECK-NEXT: mo.output %[[VAL_REB]] : !mo.tensor<[2, ?], si32>
-  mo.output %0 : !mo.tensor<[2, ?], si32>
 }
 
 //===----------------------------------------------------------------------===//

@@ -262,9 +262,6 @@ struct MatmulConstBPattern
       return rewriter.notifyMatchFailure(op,
                                          "Transposed op has already been run");
 
-    if (weightsType.hasUnknownShape())
-      return rewriter.notifyMatchFailure(op, "Weights have unknown shape");
-
     // TODO(KERN-1160): This can change back to MO::ConstantLike after the
     // kernel crash described in this ticket has been resolved.
     if (!input || !dependsOnConstantsOnly<MO::ConstantOp, MO::ChainCreateOp>(

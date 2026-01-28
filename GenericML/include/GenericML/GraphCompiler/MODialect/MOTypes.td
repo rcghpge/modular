@@ -171,10 +171,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     /// Return the nth symbolic dimensions. Fails if the shape is unknown.
     TypedAttr getDim(size_t n) const;
 
-    /// Return whether the nth dimension is `?`. Parameters are known.
-    /// Fails if dynamically ranked.
-    bool isUnknownDim(size_t n) const;
-
     /// Return whether the nth dimension is a parameter. Does not include `?`.
     /// Fails if dynamically ranked. Accepts expressions with parameters e.g.
     /// (A + 2).
@@ -185,7 +181,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     bool isIntegerDim(size_t n) const;
 
     /// Returns what type of value is represented by the given dimension attr.
-    static bool isUnknownDimParam(TypedAttr attr);
     static bool isParameterizedDimParam(TypedAttr attr);
     static bool isIntegerDimParam(TypedAttr attr);
 
@@ -196,10 +191,6 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     /// Return the nth dimension as an integer, using mlir::ShapedType::kDynamic
     /// for unknown dimensions. Fails if the shape is unknown.
     int64_t getIntDim(size_t n) const;
-
-    /// Checks if the shape or any dimensions are unknown. Parameters are
-    /// considered known.
-    bool hasUnknownShape() const;
 
     /// Returns the number of elements as a symbolic (i.e. parametric)
     /// expression. Fails if not statically ranked.
@@ -600,12 +591,6 @@ def MO_IndexScalarIfRanked : MO_ConfinedTensor<
 /// Confines the MO_TensorType so that it has rank 2 if rank is static.
 def MO_MatrixIfRanked : MO_ConfinedTensor<
   [HasRankIfRankedPred<2>], "rank 2 or unranked">;
-
-/// Confines the MO_TensorType so that it cannot have unknown shape or dimension
-/// parameters.
-def MO_KnownTensor : MO_ConfinedTensor<
-  [CPred<"!cast<MO::TensorType>($_self).hasUnknownShape()">],
-  "parametrically known shape">;
 
 def MO_ScalarOfAnyRank : MO_ConfinedTensor<
   [CPred<"cast<MO::TensorType>($_self).getNumElements().value_or(0) == 1">],

@@ -1,8 +1,15 @@
-// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
-mo.graph @bcast_like_dyn_dyn(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_like(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @bcast_like_dyn_dyn<Sh1: !mosh.ape, Sh2: !mosh.ape -> D3>(%arg0: !mo.tensor<Sh1, si64>, %arg1: !mo.tensor<Sh2, si64>) -> !mo.tensor<[D3], si64> {
+    %0 = mo.rebind<() -> Sh4: !mosh.ape>(%arg0) : !mo.tensor<Sh1, si64> -> !mo.tensor<Sh4, si64>
+    %1 = mo.rebind<() -> Sh5: !mosh.ape>(%arg1) : !mo.tensor<Sh2, si64> -> !mo.tensor<Sh5, si64>
+    %2 = mo.shape_of<() -> RMO_D12>(%1) : (!mo.tensor<Sh5, si64>) -> !mo.tensor<[RMO_D12], si64>
+    %3 = rmo.rebind_tensor_shape<() -> RMO_D7>(%2) {message = ""} : (!mo.tensor<[RMO_D12], si64>) -> !mo.tensor<[RMO_D7], si64>
+    %4 = rmo.rebind_tensor_shape<() -> RMO_D10>(%3) {message = ""} : (!mo.tensor<[RMO_D7], si64>) -> !mo.tensor<[RMO_D10], si64>
+    %5 = mo.broadcast_to<() -> RMO_Sh11: !mosh.ape>(%0, %4) : (!mo.tensor<Sh4, si64>, !mo.tensor<[RMO_D10], si64>) -> !mo.tensor<RMO_Sh11, si64>
+    %6 = rmo.rebind_tensor_shape<() -> RMO_Sh9: !mosh.ape>(%5) {message = ""} : (!mo.tensor<RMO_Sh11, si64>) -> !mo.tensor<RMO_Sh9, si64>
+    %7 = rmo.rebind_tensor_shape<() -> D6>(%6) {message = ""} : (!mo.tensor<RMO_Sh9, si64>) -> !mo.tensor<[D6], si64>
+    mo.output<D6> %7 : !mo.tensor<[D6], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @bcast_like_dyn_dyn<[[SH1:[^ ]*]]: !mosh.ape, [[SH2:[^ ]*]]: !mosh.ape -> [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[[SH2]], si64>) -> !mo.tensor<[[[D3]]], si64> {
@@ -18,9 +25,14 @@ mo.graph @bcast_like_dyn_dyn(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?
 
 // -----
 
-mo.graph @bcast_like_dyn_params(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_like(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @bcast_like_dyn_params<Sh1: !mosh.ape, D2 -> D3>(%arg0: !mo.tensor<Sh1, si64>, %arg1: !mo.tensor<[D2], si64>) -> !mo.tensor<[D3], si64> {
+    %0 = mo.rebind<() -> Sh4: !mosh.ape>(%arg0) : !mo.tensor<Sh1, si64> -> !mo.tensor<Sh4, si64>
+    %1 = mo.rebind<() -> D5>(%arg1) : !mo.tensor<[D2], si64> -> !mo.tensor<[D5], si64>
+    %2 = mo.shape_of(%1) : (!mo.tensor<[D5], si64>) -> !mo.tensor<[1], si64>
+    %3 = mo.broadcast_to<() -> RMO_D8>(%0, %2) : (!mo.tensor<Sh4, si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[RMO_D8], si64>
+    %4 = rmo.rebind_tensor_shape<() -> RMO_D7>(%3) {message = ""} : (!mo.tensor<[RMO_D8], si64>) -> !mo.tensor<[RMO_D7], si64>
+    %5 = rmo.rebind_tensor_shape<() -> D6>(%4) {message = ""} : (!mo.tensor<[RMO_D7], si64>) -> !mo.tensor<[D6], si64>
+    mo.output<D6> %5 : !mo.tensor<[D6], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @bcast_like_dyn_params<[[SH1:[^ ]*]]: !mosh.ape, [[D2:[^ ]*]] -> [[D3:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[[[D2]]], si64>) -> !mo.tensor<[[[D3]]], si64> {
@@ -34,9 +46,13 @@ mo.graph @bcast_like_dyn_params(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tenso
 
 // -----
 
-mo.graph @bcast_like_dyn_static(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<[5], si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.broadcast_like(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<[5], si64>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @bcast_like_dyn_static<Sh1: !mosh.ape -> D2>(%arg0: !mo.tensor<Sh1, si64>, %arg1: !mo.tensor<[5], si64>) -> !mo.tensor<[D2], si64> {
+    %0 = mo.rebind<() -> Sh3: !mosh.ape>(%arg0) : !mo.tensor<Sh1, si64> -> !mo.tensor<Sh3, si64>
+    %1 = mo.shape_of(%arg1) : (!mo.tensor<[5], si64>) -> !mo.tensor<[1], si64>
+    %2 = mo.broadcast_to<() -> RMO_D6>(%0, %1) : (!mo.tensor<Sh3, si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[RMO_D6], si64>
+    %3 = rmo.rebind_tensor_shape<() -> RMO_D5>(%2) {message = ""} : (!mo.tensor<[RMO_D6], si64>) -> !mo.tensor<[RMO_D5], si64>
+    %4 = rmo.rebind_tensor_shape<() -> D4>(%3) {message = ""} : (!mo.tensor<[RMO_D5], si64>) -> !mo.tensor<[D4], si64>
+    mo.output<D4> %4 : !mo.tensor<[D4], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @bcast_like_dyn_static<[[SH1:[^ ]*]]: !mosh.ape -> [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[[SH1]], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[5], si64>) -> !mo.tensor<[[[D2]]], si64> {
@@ -49,9 +65,12 @@ mo.graph @bcast_like_dyn_static(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tenso
 
 // -----
 
-mo.graph @bcast_like_real_world_condition(%shape0: !mo.tensor<[1, 10, 1, 10], si64>, %shape1: !mo.tensor<[50, 20, 10, 20, 10], si64>) -> !mo.tensor<?, si64> {
-    %1 = rmo.broadcast_like(%shape0, %shape1) : (!mo.tensor<[1, 10, 1, 10], si64>, !mo.tensor<[50, 20, 10, 20, 10], si64>) -> !mo.tensor<?, si64>
-    mo.output %1: !mo.tensor<?, si64>
+mo.graph @bcast_like_real_world_condition<() -> Sh1: !mosh.ape>(%arg0: !mo.tensor<[1, 10, 1, 10], si64>, %arg1: !mo.tensor<[50, 20, 10, 20, 10], si64>) -> !mo.tensor<Sh1, si64> {
+    %0 = mo.shape_of(%arg1) : (!mo.tensor<[50, 20, 10, 20, 10], si64>) -> !mo.tensor<[5], si64>
+    %1 = mo.broadcast_to<() -> RMO_D8, RMO_D9, RMO_D10, RMO_D11, RMO_D12>(%arg0, %0) : (!mo.tensor<[1, 10, 1, 10], si64>, !mo.tensor<[5], si64>) -> !mo.tensor<[RMO_D8, RMO_D9, RMO_D10, RMO_D11, RMO_D12], si64>
+    %2 = rmo.rebind_tensor_shape<() -> RMO_D3, RMO_D4, RMO_D5, RMO_D6, RMO_D7>(%1) {message = ""} : (!mo.tensor<[RMO_D8, RMO_D9, RMO_D10, RMO_D11, RMO_D12], si64>) -> !mo.tensor<[RMO_D3, RMO_D4, RMO_D5, RMO_D6, RMO_D7], si64>
+    %3 = rmo.rebind_tensor_shape<() -> Sh2: !mosh.ape>(%2) {message = ""} : (!mo.tensor<[RMO_D3, RMO_D4, RMO_D5, RMO_D6, RMO_D7], si64>) -> !mo.tensor<Sh2, si64>
+    mo.output<:!mosh.ape Sh2> %3 : !mo.tensor<Sh2, si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @bcast_like_real_world_condition<() -> [[SH1:[^ ]*]]: !mosh.ape>([[VARG0:[^ ]*]]: !mo.tensor<[1, 10, 1, 10], si64>, [[VARG1:[^ ]*]]: !mo.tensor<[50, 20, 10, 20, 10], si64>) -> !mo.tensor<[[SH1]], si64> {

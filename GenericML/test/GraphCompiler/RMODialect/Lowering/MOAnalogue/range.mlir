@@ -1,36 +1,37 @@
-// RUN: mo-opt --split-input-file --mo-resolve-unknown-parameters --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
+// RUN: mo-opt --split-input-file --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 
-mo.graph @range_folded_away() -> (!mo.tensor<[?], ui32>) {
+mo.graph @range_folded_away<() -> D0>() -> (!mo.tensor<[D0], ui32>) {
   %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
   %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
   %step = mo.constant {value = #M.dense_array<2> : tensor<ui32>} : !mo.tensor<[], ui32>
-  %0 = rmo.mo.range(%start, %limit, %step) : (
-    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[?], ui32>
+  %0 = rmo.mo.range<() -> D1>(%start, %limit, %step) : (
+    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[D1], ui32>
 
-  mo.output %0 : !mo.tensor<[?], ui32>
+  mo.output<D1> %0 : !mo.tensor<[D1], ui32>
 }
 // CHECK-LABEL: mo.graph @range_folded_away
+// CHECK-SAME: <() -> D0>() -> !mo.tensor<[D0], ui32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1, 3, 5, 7, 9> : tensor<5xui32>} : !mo.tensor<[5], ui32>
 // CHECK-NEXT: [[V1:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D1:[^ ]*]]>([[V0]]) {{.*}} : (!mo.tensor<[5], ui32>) -> !mo.tensor<[[[D1]]], ui32>
 // CHECK-NEXT: mo.output<[[D1]]> [[V1]] : !mo.tensor<[[[D1]]], ui32>
 
 // -----
 
-mo.graph @non_constant_range_input(%step: !mo.tensor<[], ui32>) -> (!mo.tensor<[?], ui32>) {
+mo.graph @non_constant_range_input<() -> D0>(%step: !mo.tensor<[], ui32>) -> (!mo.tensor<[D0], ui32>) {
   %start = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
   %limit = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
-  %0 = rmo.mo.range(%start, %limit, %step) : (
-    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[?], ui32>
+  %0 = rmo.mo.range<() -> D1>(%start, %limit, %step) : (
+    !mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[D1], ui32>
 
-  mo.output %0 : !mo.tensor<[?], ui32>
+  mo.output<D1> %0 : !mo.tensor<[D1], ui32>
 }
 // CHECK-LABEL: mo.graph @non_constant_range_input
-// CHECK-SAME: <() -> [[D2:[^ ]*]]>([[VARG0:[^ ]*]]: !mo.tensor<[], ui32>) -> !mo.tensor<[[[D2]]], ui32> {
+// CHECK-SAME: <() -> D0>(%[[ARG0:[^ ]*]]: !mo.tensor<[], ui32>) -> !mo.tensor<[D0], ui32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1> : tensor<ui32>} : !mo.tensor<[], ui32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<11> : tensor<ui32>} : !mo.tensor<[], ui32>
-// CHECK-NEXT: [[V2:[^ ]*]] = mo.range<() -> [[RMO_D3:[^ ]*]]>([[V0]], [[V1]], [[VARG0]]) : (!mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[[[RMO_D3]]], ui32>
-// CHECK-NEXT: [[V3:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D1:[^ ]*]]>([[V2]]) {{.*}} : (!mo.tensor<[[[RMO_D3]]], ui32>) -> !mo.tensor<[[[D1]]], ui32>
+// CHECK-NEXT: [[V2:[^ ]*]] = mo.range<() -> [[RMO_D1:[^ ]*]]>([[V0]], [[V1]], %[[ARG0]]) : (!mo.tensor<[], ui32>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>) -> !mo.tensor<[[[RMO_D1]]], ui32>
+// CHECK-NEXT: [[V3:[^ ]*]] = rmo.rebind_tensor_shape<() -> [[D1:[^ ]*]]>([[V2]]) {{.*}} : (!mo.tensor<[[[RMO_D1]]], ui32>) -> !mo.tensor<[[[D1]]], ui32>
 // CHECK-NEXT: mo.output<[[D1]]> [[V3]] : !mo.tensor<[[[D1]]], ui32>
 
 // -----
@@ -56,17 +57,17 @@ mo.graph @range_floats() -> (!mo.tensor<[5], f32>) {
 
 // -----
 
-mo.graph @range_floats_unknown_output_shape() -> (!mo.tensor<[?], f32>) {
+mo.graph @range_floats_unknown_output_shape<() -> D0>() -> (!mo.tensor<[D0], f32>) {
   %start = mo.constant {value = #M.dense_array<1.0> : tensor<f32>} : !mo.tensor<[], f32>
   %limit = mo.constant {value = #M.dense_array<11.0> : tensor<f32>} : !mo.tensor<[], f32>
   %step = mo.constant {value = #M.dense_array<2.0> : tensor<f32>} : !mo.tensor<[], f32>
-  %0 = rmo.mo.range(%start, %limit, %step) : (
-    !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[?], f32>
+  %0 = rmo.mo.range<() -> D1>(%start, %limit, %step) : (
+    !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D1], f32>
 
-  mo.output %0 : !mo.tensor<[?], f32>
+  mo.output<D1> %0 : !mo.tensor<[D1], f32>
 }
 // CHECK-LABEL: mo.graph @range_floats_unknown_output_shape
-// CHECK-SAME: <() -> [[D2:[^ ]*]]>() -> !mo.tensor<[[[D2]]], f32> {
+// CHECK-SAME: <() -> D0>() -> !mo.tensor<[D0], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant {value = #M.dense_array<1.100000e+01> : tensor<f32>} : !mo.tensor<[], f32>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
