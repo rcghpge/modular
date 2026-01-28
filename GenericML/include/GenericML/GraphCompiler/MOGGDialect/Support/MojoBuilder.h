@@ -265,6 +265,31 @@ public:
   /// Keep the value alive longer `_ = value`
   void keepAlive(const MojoValue &value);
 
+  /// Emits a struct definition with the given name and fields.
+  /// Each field is a (name, type) pair.
+  /// If fieldwiseInit is true, emits @fieldwise_init decorator.
+  /// Example output (with fieldwiseInit=true):
+  ///   @fieldwise_init
+  ///   struct MyStruct:
+  ///       var field1: Type1
+  ///       var field2: Type2
+  void structDecl(const MojoValue &name,
+                  ArrayRef<std::pair<MojoValue, MojoValue>> fields,
+                  bool fieldwiseInit = true);
+
+  /// Emits a struct definition with parameters and fields.
+  /// Each parameter is a (name, type) pair, and each field is a (name, type)
+  /// pair. If fieldwiseInit is true, emits @fieldwise_init decorator.
+  /// Example output (with fieldwiseInit=true):
+  ///   @fieldwise_init
+  ///   struct MyStruct[param1: Type1, param2: Type2]:
+  ///       var field1: FieldType1
+  ///       var field2: FieldType2
+  void structDecl(const MojoValue &name,
+                  ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
+                  ArrayRef<std::pair<MojoValue, MojoValue>> fields,
+                  bool fieldwiseInit = true);
+
   /// Imports the specified module.
   void import(const MojoValue &mod);
 

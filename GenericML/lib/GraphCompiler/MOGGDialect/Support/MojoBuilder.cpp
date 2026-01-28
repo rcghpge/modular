@@ -45,26 +45,35 @@ MojoValue createTypedVar(const MojoValue &name, const MojoValue &type) {
 class MojoBuilderScopeGuard {
 public:
   MojoBuilderScopeGuard(MojoBuilder *e, bool deferExceptCounters = false)
-      : emitter(e) {
+      : emitter(e), posBeforeBody(0) {
     if (!deferExceptCounters) {
       emitter->increaseIndentation();
       emitter->pushCache();
+      // Record position after indentation setup for empty body detection.
+      posBeforeBody = emitter->str().size();
     }
     emitter->pushCounters();
   }
   MojoBuilderScopeGuard() = delete;
   MojoBuilderScopeGuard(const MojoBuilderScopeGuard &other) = delete;
   ~MojoBuilderScopeGuard() {
+    // Mojo requires non-empty function bodies. Emit 'pass' if nothing was
+    // written.
+    if (emitter->str().size() == posBeforeBody)
+      emitter->pass();
     emitter->decreaseIndentation();
     emitter->newline();
     emitter->popCache();
     emitter->popCounters();
   }
   MojoBuilder *emitter;
+  size_t posBeforeBody;
 
   void doDeferredActions() {
     emitter->increaseIndentation();
     emitter->pushCache();
+    // Record position after indentation setup for empty body detection.
+    posBeforeBody = emitter->str().size();
   }
 };
 
@@ -280,6 +289,43 @@ void MojoBuilder::import(const MojoValue &mod) {
 
 void MojoBuilder::import(const MojoValue &from, const MojoValue &import) {
   statement("from ", from.text, " import ", import.text);
+}
+
+void MojoBuilder::structDecl(const MojoValue &name,
+                             ArrayRef<std::pair<MojoValue, MojoValue>> fields,
+                             bool fieldwiseInit) {
+  structDecl(name, /*parameters=*/{}, fields, fieldwiseInit);
+}
+
+void MojoBuilder::structDecl(
+    const MojoValue &name, ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
+    ArrayRef<std::pair<MojoValue, MojoValue>> fields, bool fieldwiseInit) {
+  newline();
+  if (fieldwiseInit)
+    statement("@fieldwise_init");
+
+  // Build struct header with optional parameters
+  if (parameters.empty()) {
+    statement("struct ", name, ":");
+  } else {
+    std::string paramStr;
+    llvm::raw_string_ostream os(paramStr);
+    os << "struct " << name.text << "[";
+    for (size_t i = 0; i < parameters.size(); ++i) {
+      if (i > 0)
+        os << ", ";
+      os << parameters[i].first.text << ": " << parameters[i].second.text;
+    }
+    os << "]:";
+    statement(paramStr);
+  }
+
+  increaseIndentation();
+  for (const auto &[fieldName, fieldType] : fields) {
+    statement("var ", fieldName, ": ", fieldType);
+  }
+  decreaseIndentation();
+  newline();
 }
 
 } // namespace M::MOGG
