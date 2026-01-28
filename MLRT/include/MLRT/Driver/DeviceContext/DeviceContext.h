@@ -254,6 +254,7 @@ public:
 
   const DeviceContext &context() const;
   const DeviceBuffer *parent() const;
+  const DeviceEvent *manualEvent() const;
 
   // Returns the raw device pointer, which is not safe to access on the host
   void *ptr() const;
@@ -282,10 +283,14 @@ public:
   // Either do a blocking synchronize or setup events with an external stream.
   ErrorOrSuccess synchronize(void *external_stream = nullptr) const;
 
+  ErrorOrSuccess disableAutoSync() const;
+  ErrorOrSuccess markAsReady() const;
+
 private:
   friend class DeviceContext;
 
   mutable DeviceContextRef context_;
+  mutable DeviceEventRef manualEvent_;
   DeviceBufferRef parent_;
   mutable void *ptr_;
   size_t byteSize_;
