@@ -9,90 +9,291 @@
 using namespace M;
 using namespace M::MGP;
 
+void KernelOperandsMapping::addOperand(Value operandValue,
+                                       bool isMGPRegionOperand,
+                                       bool isKernelStubOperand,
+                                       InOutSignatureAttr::InOutSemantics sig,
+                                       Value keyValue) {
+  if (!keyValue)
+    keyValue = operandValue;
+  unsigned operandIdx = operands.size();
+  OperandValue operand;
+  operand.operandValue = operandValue;
+
+  if (isMGPRegionOperand) {
+    operand.mgpRegionOperandIdx = mgpRegionOperands.size();
+    mgpRegionOperands.push_back(operandValue);
+    mgpRegionOperandSemantics.push_back(sig);
+  }
+  if (isKernelStubOperand) {
+    operand.kernelperandIdx = kernelStubOperands.size();
+    // Set it to null for now. The parameter will be updated later
+    kernelStubOperands.push_back(nullptr);
+  }
+
+  operands.push_back(operand);
+  valToOperandsMap[keyValue] = operandIdx;
+}
+
+void KernelOperandsMapping::addOperand(KGEN::ParamDeclRefAttr paramName,
+                                       Value paramValue,
+                                       bool isKernelStubOperand) {
+  unsigned operandIdx = operands.size();
+  addOperand(paramValue, /*isMGPRegionOperand=*/true, isKernelStubOperand);
+  ASSERT_STREAM(!parameterToOperandsMap.contains(paramName.getName()),
+                "redefinition of the same parameter");
+  parameterToOperandsMap[paramName.getName()] = operandIdx;
+}
+
+void KernelOperandsMapping::remapKernelStubOperand(unsigned operandIdx,
+                                                   Value newValue) {
+  OperandValue &operand = operands[operandIdx];
+  auto kernelStubOperandIdx = operand.kernelperandIdx.value();
+  kernelStubOperands[kernelStubOperandIdx] = newValue;
+}
+
+Value KernelOperandsMapping::get(unsigned operandIdx, bool isInsideStub) const {
+  const OperandValue &operand = operands[operandIdx];
+
+  if (isInsideStub) {
+    ASSERT_STREAM(operand.kernelStubOperand,
+                  "No kernel stub argument mapped for "
+                      << operand.operandValue);
+    return operand.kernelStubOperand;
+  } else {
+    ASSERT_STREAM(operand.mgpRegionOperand,
+                  "No mgp region argument mapped for " << operand.operandValue);
+    return operand.mgpRegionOperand;
+  }
+}
+
+Value KernelOperandsMapping::get(Value val, bool isInsideStub) const {
+  auto it = valToOperandsMap.find(val);
+  ASSERT_STREAM(it != valToOperandsMap.end(), "No mapping found for " << val);
+  return get(it->second, isInsideStub);
+}
+
+Value KernelOperandsMapping::get(StringAttr paramName,
+                                 bool isInsideStub) const {
+  auto it = parameterToOperandsMap.find(paramName);
+  ASSERT_STREAM(it != parameterToOperandsMap.end(),
+                "No mapping found for parameter " << paramName);
+  return get(it->second, isInsideStub);
+}
+
+SmallVector<Value>
+KernelOperandsMapping::getTensorDynamicDimensions(MO::TensorType asTensor,
+                                                  bool isInsideStub) {
+  SmallVector<Value> dynamicDimensions;
+  for (auto dim : asTensor.getDims()) {
+    if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+      dynamicDimensions.push_back(get(dimParamAttr.getName(), isInsideStub));
+  }
+
+  return dynamicDimensions;
+}
+
+void KernelOperandsMapping::setupMGPRegionArgs(Block *mgpRegion) {
+  // Add the arguments.
+  SmallVector<Location> locs = llvm::map_to_vector(
+      mgpRegionOperands, [](Value v) { return v.getLoc(); });
+  mgpRegion->addArguments(ValueRange(mgpRegionOperands).getTypes(), locs);
+
+  // And now update the mapping with the created block arguments.
+  for (auto &operand : operands) {
+    if (!operand.mgpRegionOperandIdx.has_value())
+      continue;
+
+    BlockArgument blockArg =
+        mgpRegion->getArgument(operand.mgpRegionOperandIdx.value());
+
+    operand.mgpRegionOperand = blockArg;
+    if (auto stubOperandIdx = operand.kernelperandIdx) {
+      kernelStubOperands[*stubOperandIdx] = blockArg;
+    }
+  }
+}
+
+void KernelOperandsMapping::setupKernelStubArgs(Block *kernelStubBody) {
+  // The KernelStub already has arguments for the existing kernel operands.
+  // But some type signatures must be updated for the tensor objects.
+  // And all extra other arguments must be added
+  // Fix and cleanup the argument
+  for (auto [idx, operand] : llvm::enumerate(kernelStubOperands)) {
+    if (idx < kernelStubBody->getNumArguments()) {
+      // Update the argument type if needed.
+      if (kernelStubBody->getArgument(idx).getType() != operand.getType())
+        kernelStubBody->getArgument(idx).setType(operand.getType());
+    } else {
+      // Add a new argument.
+      kernelStubBody->addArgument(operand.getType(), operand.getLoc());
+    }
+  }
+
+  // And now update the mapping with the created block arguments.
+  for (auto &operand : operands) {
+    if (!operand.kernelperandIdx.has_value())
+      continue;
+
+    operand.kernelStubOperand =
+        kernelStubBody->getArgument(operand.kernelperandIdx.value());
+  }
+}
+
 MOGGKernelOpLoweringState::MOGGKernelOpLoweringState(
     Operation *op, MGP::MOGraphLoweringState &loweringState)
     : moggOp(op), loweringState(loweringState),
       opLoweringState(loweringState, op), builder(opLoweringState.builder),
       device(MO::getDeviceOrDefaultAny(op)) {}
 
-void MOGGKernelOpLoweringState::addOperandAndMapToIndex(
-    Value operand, InOutSignatureAttr::InOutSemantics sig) {
-  outsideValueToOperandIndex[operand] = operands.size();
-  operands.emplace_back(operand);
-  operandSemantics.emplace_back(sig);
+Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
+    Value bufferValue, const TensorOperandInfos &tensorInfos) {
+  mlir::MLIRContext *ctx = moggOp->getContext();
+  auto loc = moggOp->getLoc();
+  Value stubValue = tensorInfos.stubValue;
+
+  auto asTensor = MO::castFromTensorLike(stubValue.getType());
+  auto dynamicDimensions = operandsMapping.getTensorDynamicDimensions(
+      asTensor, /*isInsideStub=*/false);
+
+  MO::IOKind io = tensorInfos.isOutput ? MO::IOKind::Output : MO::IOKind::Input;
+  bool mut = tensorInfos.isOutput || isa<MO::BufferType>(stubValue.getType());
+
+  // Exclusive is True unless it's used by a view kernel
+  bool isExclusive = llvm::none_of(stubValue.getUsers(), [](Operation *use) {
+    return isa<MOGG::CallViewOp>(use);
+  });
+
+  // Build the new tensor type.
+  auto ioAttr = MO::IOKindAttr::get(ctx, io);
+  auto mutAttr = BoolAttr::get(ctx, mut);
+  MO::TensorType newTensorTy = asTensor.cloneWith(ioAttr).cloneWithMut(mutAttr);
+
+  // Build the tensor object.
+  return MOGG::TensorInitOp::create(builder, loc, newTensorTy, bufferValue,
+                                    dynamicDimensions, mutAttr, ioAttr,
+                                    BoolAttr::get(ctx, isExclusive))
+      .getResult();
 }
 
-ErrorOr<Value>
-MOGGKernelOpLoweringState::getDynamicDimension(StringAttr dim,
-                                               bool isInsideStub) {
-  auto outsideSSAIt = parameterToOutsideSSAValue.find(dim);
-  if (outsideSSAIt == parameterToOutsideSSAValue.end()) {
-    return Error(
-        llvm::formatv("Failed to find the runtime value of the parametric "
-                      "dimension `{}`",
-                      dim));
-  }
-  Value outsideSSAValue = outsideSSAIt->second;
+LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
+    Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters) {
+  llvm::DenseSet<StringAttr> paramsInKernelStub;
+  auto markTensorDimsInStub = [&](MO::TensorType asTensor) {
+    for (auto dim : asTensor.getDims())
+      if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+        paramsInKernelStub.insert(dimParamAttr.getName());
+  };
 
-  if (isInsideStub) {
-    if (!outsideValueToStubOperandIndex.contains(outsideSSAValue)) {
-      return Error(llvm::formatv(
-          "Failed to find the stub argument for the runtime value "
-          "of the parametric dimension `{}`",
-          dim));
+  MOGG::OutputPlaceholdersOp outputPlaceholdersOp;
+  MOGG::ScratchPlaceholdersOp scratchPlaceholdersOp;
+
+  // Walk through the IR first to find all extra needed operands: parameters, or
+  // special ops.
+  kernelStub.walk([&](mlir::Operation *stubOp) {
+    if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(stubOp)) {
+      // We only need to get the dynamic dimensions when materializing an
+      // intermediate tensor for the fused kernel operand. This happens only for
+      // Input and AffineView fusion.
+      if (bindOp.getBindKind() != MOGG::BindLambdaKind::InputLambda &&
+          !bindOp.hasAffineViewOperation())
+        return;
+
+      Value fusedOutput = bindOp.getOutput();
+      // Ensure the dynamic dimensions of the tensor are available in the stub.
+      markTensorDimsInStub(MO::castFromTensorLike(fusedOutput.getType()));
     }
-    return kernelStub.getBody().getArgument(
-        outsideValueToStubOperandIndex[outsideSSAValue]);
-  } else {
-    if (!outsideValueToOperandIndex.contains(outsideSSAValue)) {
-      return Error(llvm::formatv(
-          "Failed to find the kernel argument for the runtime value "
-          "of the parametric dimension `{}`",
-          dim));
+
+    else if (auto tensorShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(stubOp)) {
+      // The dynamic dimensions of TensorGetShapeOp must be lowered.
+      markTensorDimsInStub(MO::castFromTensorLike(tensorShapeOp.getTensor()));
     }
-    return mgpRegionBody->getArgument(
-        outsideValueToOperandIndex[outsideSSAValue]);
-  }
-}
 
-ErrorOr<SmallVector<Value>>
-MOGGKernelOpLoweringState::getTensorDynamicDimensions(MO::TensorType asTensor,
-                                                      bool isInsideStub) {
-  SmallVector<Value> dynamicDimensions;
-  for (auto dim : asTensor.getDims()) {
-    if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim)) {
-      ErrorOr<Value> dimValueOr =
-          getDynamicDimension(dimParamAttr.getName(), isInsideStub);
-      if (dimValueOr.isError())
-        return dimValueOr.takeError();
-      dynamicDimensions.push_back(*dimValueOr);
+    else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(stubOp)) {
+      paramsInKernelStub.insert(getDimOp.getDimension());
+    }
+
+    // The OutputPlaceholdersOp must be replaced with the output buffers.
+    else if (auto outputOp = dyn_cast<MOGG::OutputPlaceholdersOp>(stubOp)) {
+      outputPlaceholdersOp = outputOp;
+    }
+
+    // The ScratchPlaceholdersOp must be replaced with the scratchpad buffers.
+    else if (auto scratchOp = dyn_cast<MOGG::ScratchPlaceholdersOp>(stubOp)) {
+      scratchPlaceholdersOp = scratchOp;
+    }
+
+    // Handle dynamic dimensions from result types of all operations.
+    // This is needed for operations like mogg.experimental.kernel that have
+    // tensor result types with dynamic dimensions.
+    for (Type resultType : stubOp->getResultTypes()) {
+      if (auto tensorType = MO::dynCastFromTensorLike(resultType)) {
+        markTensorDimsInStub(tensorType);
+      }
+    }
+  });
+
+  // Allocate and pass the output buffers to the kernels if needed.
+  if (outputPlaceholdersOp) {
+    auto loweredOutputsStorageOr =
+        opLoweringState.createOutputStorage(chainValue);
+    if (failed(loweredOutputsStorageOr))
+      return failure();
+    loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
+    for (auto [outputStorage, value] :
+         llvm::zip(loweredOutputsStorage, outputPlaceholdersOp.getResults())) {
+      // Add the kernel operand for the output buffer.
+      operandsMapping.addOperand(outputStorage.buffer,
+                                 /*isMGPRegionOperand=*/true,
+                                 /*isKernelStubOperand=*/true,
+                                 InOutSignatureAttr::kOut, /*keyValue=*/value);
+      tensorOperandInfos.push_back(
+          TensorOperandInfos{.stubValue = value,
+                             .operandIdx = operandsMapping.getNumOperands() - 1,
+                             .isOutput = true});
     }
   }
 
-  return dynamicDimensions;
-}
+  // Allocate and pass the scratch buffers to the kernels if needed.
+  if (scratchPlaceholdersOp) {
 
-void MOGGKernelOpLoweringState::passDynDimensionToKernelStub(Location loc,
-                                                             StringAttr dim) {
-  Value outsideSSAValue = parameterToOutsideSSAValue.at(dim);
+    // Add the kernel operand for the scratchpad buffer.
+    // Use the none signature because it is only used.
+    for (auto value : scratchPlaceholdersOp.getResults()) {
 
-  // Check if the argument isn't already defined.
-  if (outsideValueToStubOperandIndex.contains(outsideSSAValue))
-    return;
+      auto specOr = opLoweringState.createTensorSpec(
+          cast<MO::TensorType>(value.getType()));
+      if (failed(specOr))
+        return failure();
 
-  // Pass the dynamic dimension as an argument of the stub.
-  Value regionArg =
-      mgpRegionBody->getArgument(outsideValueToOperandIndex[outsideSSAValue]);
-  kernelStub.getBody().addArgument(regionArg.getType(), loc);
-  outsideValueToStubOperandIndex[outsideSSAValue] = stubCallOperands.size();
-  stubCallOperands.emplace_back(regionArg);
-}
+      auto bufOr =
+          opLoweringState.createBuffer(chainValue, *specOr, value.getType());
+      if (failed(bufOr))
+        return failure();
 
-void MOGGKernelOpLoweringState::passTensorDynDimensionsToKernelStub(
-    Location loc, MO::TensorType asTensor) {
-  for (auto dim : asTensor.getDims())
-    if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
-      passDynDimensionToKernelStub(loc, dimParamAttr.getName());
+      operandsMapping.addOperand(bufOr->buffer,
+                                 /*isMGPRegionOperand=*/true,
+                                 /*isKernelStubOperand=*/true,
+                                 InOutSignatureAttr::kNone, /*keyValue=*/value);
+      tensorOperandInfos.push_back(
+          TensorOperandInfos{.stubValue = value,
+                             .operandIdx = operandsMapping.getNumOperands() - 1,
+                             .isOutput = true});
+    }
+  }
+
+  // Turn parameters into values and pass them to the kernel.
+  for (auto param : usedKernelParameters) {
+    auto symbolicDimOr = loweringState.lowerExpression(
+        opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
+        param);
+    Value symbol = symbolicDimOr.takeValue();
+    operandsMapping.addOperand(
+        param, symbol,
+        /*=isKernelStubOperand*/ paramsInKernelStub.contains(param.getName()));
+  }
+
+  return success();
 }
 
 void MOGGKernelOpLoweringState::lowerDeviceContextPlaceholder(
@@ -120,15 +321,14 @@ void MOGGKernelOpLoweringState::lowerDeviceContextPlaceholder(
   moggContext.erase();
 }
 
-LogicalResult
-MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
+void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   mlir::MLIRContext *ctx = moggOp->getContext();
   auto loc = moggOp->getLoc();
 
   // Only replace I/O lambdas.
   if (bindOp.getBindKind() != MOGG::BindLambdaKind::InputLambda &&
       bindOp.getBindKind() != MOGG::BindLambdaKind::OutputLambda)
-    return success();
+    return;
 
   Value tensorVal = bindOp.getFusibleTensors().front();
   Value lambdaVal = bindOp.getOutput();
@@ -146,7 +346,7 @@ MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   // in the MOGG IR. We should either have all transformations implicit or all
   // explicit in MOGG IR
   if (isa<MOGG::TensorFusedOp>(*lambdaVal.getUsers().begin()))
-    return success();
+    return;
 
   // We always pass an empty tensor to the kernels for fused input tensors or
   // output lambdas with a cast.
@@ -164,17 +364,16 @@ MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   if (substituteWithEmptyTensor) {
     Value emptyBuffer =
         MOGG::EmptyBufferOp::create(builder, bindOp->getLoc(), mgpBufferType);
-    auto dynamicDimensionsOr =
-        getTensorDynamicDimensions(MO::castFromTensorLike(lambdaVal.getType()),
-                                   /*isInsideStub=*/true);
-    if (dynamicDimensionsOr.isError())
-      return moggOp->emitError(dynamicDimensionsOr.getError());
+    auto dynamicDimensions = operandsMapping.getTensorDynamicDimensions(
+        MO::castFromTensorLike(lambdaVal.getType()),
+        /*isInsideStub=*/true);
+
     MO::TensorType tensorType = MO::castFromTensorLike(lambdaVal.getType());
     tensorType =
         tensorType.cloneWith(MO::IOKindAttr::get(ctx, MO::IOKind::Input))
             .cloneWithMut(BoolAttr::get(ctx, false));
     tensorVal = MOGG::TensorInitOp::create(
-        builder, loc, tensorType, emptyBuffer, *dynamicDimensionsOr,
+        builder, loc, tensorType, emptyBuffer, dynamicDimensions,
         /*mut=*/BoolAttr::get(ctx, false),
         /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
         /*exclusive=*/BoolAttr::get(ctx, true));
@@ -183,13 +382,11 @@ MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   else if (bindOp.hasAffineViewOperation()) {
     // The tensor needs to be reshaped to match the expected kernel operand
     // shape.
-    auto dynamicDimensionsOr =
-        getTensorDynamicDimensions(MO::castFromTensorLike(lambdaVal.getType()),
-                                   /*isInsideStub=*/true);
-    if (dynamicDimensionsOr.isError())
-      return moggOp->emitError(dynamicDimensionsOr.getError());
+    auto dynamicDimensions = operandsMapping.getTensorDynamicDimensions(
+        MO::castFromTensorLike(lambdaVal.getType()),
+        /*isInsideStub=*/true);
     tensorVal = MOGG::TensorReshapeOp::create(builder, loc, lambdaVal.getType(),
-                                              tensorVal, *dynamicDimensionsOr);
+                                              tensorVal, dynamicDimensions);
   }
 
   // Build the Fused tensor object.
@@ -198,7 +395,6 @@ MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
 
   // And finally replace it for the users of the lambda.
   lambdaVal.replaceAllUsesExcept(fusedTensorOp.getResult(), fusedTensorOp);
-  return success();
 }
 
 void MOGGKernelOpLoweringState::lowerConstantOp(MO::ConstantOp constantOp) {
@@ -243,57 +439,56 @@ void MOGGKernelOpLoweringState::lowerConstantOp(MO::ConstantOp constantOp) {
   constantOp->erase();
 }
 
-LogicalResult
-MOGGKernelOpLoweringState::lowerGetDimOp(MOGG::GetDimOp getDimOp) {
-  ErrorOr<Value> dimValueOr =
-      getDynamicDimension(getDimOp.getDimension(), /*isInsideStub=*/true);
-  if (dimValueOr.isError())
-    return moggOp->emitError(dimValueOr.getError());
-  getDimOp.getResult().replaceAllUsesWith(*dimValueOr);
+void MOGGKernelOpLoweringState::lowerGetDimOp(MOGG::GetDimOp getDimOp) {
+  auto dimValue =
+      operandsMapping.get(getDimOp.getDimension(), /*isInsideStub=*/true);
+  getDimOp.getResult().replaceAllUsesWith(dimValue);
   getDimOp->erase();
-  return success();
 }
 
-LogicalResult MOGGKernelOpLoweringState::lowerTensorGetShapeOp(
+void MOGGKernelOpLoweringState::lowerTensorGetShapeOp(
     MOGG::TensorGetShapeOp getShapeOp) {
   // Get the dynamic dimensions
   auto asTensor = MO::castFromTensorLike(getShapeOp.getTensor());
-  auto dynamicDimensionsOr = getTensorDynamicDimensions(asTensor,
-                                                        /*isInsideStub=*/true);
-  if (dynamicDimensionsOr.isError())
-    return moggOp->emitError(dynamicDimensionsOr.getError());
+  auto dynamicDimensions =
+      operandsMapping.getTensorDynamicDimensions(asTensor,
+                                                 /*isInsideStub=*/true);
 
   // Build a ShapeInitOp to materialize the new shape mojo value
   builder.setInsertionPoint(getShapeOp);
-  Value shapeValue = MOGG::ShapeInitOp::create(builder, getShapeOp.getLoc(),
-                                               *dynamicDimensionsOr,
-                                               asTensor.getTypedShapeAttr());
+  Value shapeValue =
+      MOGG::ShapeInitOp::create(builder, getShapeOp.getLoc(), dynamicDimensions,
+                                asTensor.getTypedShapeAttr());
 
   getShapeOp.getResult().replaceAllUsesWith(shapeValue);
   getShapeOp->erase();
-  return success();
 }
 
-LogicalResult MOGGKernelOpLoweringState::lowerKernelStub() {
-  auto walkResult = kernelStub.walk([&](mlir::Operation *op) {
+void MOGGKernelOpLoweringState::lowerKernelOpWithOperandsMapping(
+    Operation *op) {
+  for (Value val : op->getResults()) {
+    Value newVal = operandsMapping.get(val, /*isInsideStub=*/true);
+    val.replaceAllUsesWith(newVal);
+  }
+  op->erase();
+}
+
+void MOGGKernelOpLoweringState::lowerKernelStub() {
+  // Walk through the IR and lower some ops to MGP.
+  kernelStub.walk([&](mlir::Operation *op) {
     if (auto moggContext = dyn_cast<MOGG::DeviceContextPlaceholderOp>(op))
       lowerDeviceContextPlaceholder(moggContext);
-    else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op)) {
-      if (failed(lowerBindLambdaOp(bindOp)))
-        return WalkResult::interrupt();
-    } else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
+    else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
+      lowerBindLambdaOp(bindOp);
+    else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
       lowerConstantOp(constantOp);
-    else if (auto tensorGetShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(op)) {
-      if (failed(lowerTensorGetShapeOp(tensorGetShapeOp)))
-        return WalkResult::interrupt();
-    } else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(op)) {
-      if (failed(lowerGetDimOp(getDimOp)))
-        return WalkResult::interrupt();
-    }
-
-    return WalkResult::advance();
+    else if (auto tensorGetShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(op))
+      lowerTensorGetShapeOp(tensorGetShapeOp);
+    else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(op))
+      lowerGetDimOp(getDimOp);
+    else if (isa<MOGG::OutputPlaceholdersOp, MOGG::ScratchPlaceholdersOp>(op))
+      lowerKernelOpWithOperandsMapping(op);
   });
-  return success(!walkResult.wasInterrupted());
 }
 
 LogicalResult
@@ -308,18 +503,6 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // the kernel op we are lowering. Output and scratch placeholders are part of
   // the MGP memory management analysis which means they will come from the
   // outside.
-  Block *kernelBody = &moggKernelOp.getExecBody().front();
-  auto outputPlaceholdersOp = moggKernelOp.getOutputPlaceholder();
-  if (outputPlaceholdersOp) {
-    for (auto value : outputPlaceholdersOp.getResults())
-      value.replaceAllUsesWith(kernelBody->addArgument(value.getType(), loc));
-  }
-
-  auto scratchPlaceholdersOp = moggKernelOp.getScratchPlaceholder();
-  if (scratchPlaceholdersOp) {
-    for (auto value : scratchPlaceholdersOp.getResults())
-      value.replaceAllUsesWith(kernelBody->addArgument(value.getType(), loc));
-  }
 
   // If the kernel returns opaque types, they must be part of the stub's
   // signature.
@@ -377,72 +560,38 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   }
   chain = opLoweringState.getGuardChain(chain);
 
-  // This is a list of all the outputs of the kernel but lowered to MGP.
-  SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
-  auto loweredOutputsStorageOr = opLoweringState.createOutputStorage(chain);
-  if (failed(loweredOutputsStorageOr))
-    return failure();
-  loweredOutputsStorage = *std::move(loweredOutputsStorageOr);
-
-  // Scratch output placeholders turn into DPS kernel inputs. This makes it
-  // possible to do memory scheduling on temporary storage. Lower the output of
-  // the scratch placeholders into MGP types.
-  SmallVector<MGP::MOOutputStorage> scratchOutputsStorage;
-  if (scratchPlaceholdersOp) {
-    for (Type t : scratchPlaceholdersOp.getResultTypes()) {
-      auto specResult =
-          opLoweringState.createTensorSpec(cast<MO::TensorType>(t));
-      if (failed(specResult))
-        return failure();
-
-      auto bufOr = opLoweringState.createBuffer(chain, *specResult, t);
-      if (failed(bufOr))
-        return failure();
-      scratchOutputsStorage.emplace_back(*bufOr);
-    }
-  }
-
-  SmallVector<mlir::Type> mgpKernelResTypes;
-
-  // 1. Add the chain with the input signature.
-  addOperandAndMapToIndex(chain, InOutSignatureAttr::kIn);
+  // 1. Add the chain with the input signature. (Only pass it to the region, not
+  // the stub)
+  operandsMapping.addOperand(chain, /*isMGPRegionOperand=*/true,
+                             /*isKernelStubOperand=*/false,
+                             /*sig=*/InOutSignatureAttr::kIn);
 
   // 2. Add the inputs with the input or mutable input signature.
   // Use zip_first because we removed the original chain from the list.
-  auto operandsRange = moggKernelOp.getOperands();
-  auto operandsToZip = maybeInChain ? operandsRange.drop_back() : operandsRange;
-  for (auto &&[origOperand, loweredInputOperand] :
-       llvm::zip_first(operandsToZip, loweredInputOperands)) {
+  for (auto &&[origOperand, loweredInputOperand] : llvm::zip_first(
+           kernelStub.getBody().getArguments(), loweredInputOperands)) {
     auto sig = isa<MO::BufferType>(origOperand.getType())
                    ? InOutSignatureAttr::kMut
                    : InOutSignatureAttr::kIn;
-    addOperandAndMapToIndex(loweredInputOperand, sig);
+    operandsMapping.addOperand(loweredInputOperand, /*isMGPRegionOperand=*/true,
+                               /*isKernelStubOperand=*/true, sig);
+    if (MO::dynCastFromTensorLike(origOperand.getType()))
+      tensorOperandInfos.push_back(
+          TensorOperandInfos{.stubValue = origOperand,
+                             .operandIdx = operandsMapping.getNumOperands() - 1,
+                             .isOutput = false});
   }
 
-  // 3. Add the outputs with the output signature.
-  for (auto &&outputStorage : loweredOutputsStorage)
-    addOperandAndMapToIndex(outputStorage.buffer, InOutSignatureAttr::kOut);
+  // 3. Pass and map all other kernel arguments (dynamic dimensions, device
+  // context, etc).
+  if (failed(findExtraKernelArguments(chain, usedKernelParameters)))
+    return failure();
 
-  // 4. Add scratch buffers with the none signature because it is only used
-  // internally.
-  for (auto &&scratchStorage : scratchOutputsStorage)
-    addOperandAndMapToIndex(scratchStorage.buffer, InOutSignatureAttr::kNone);
-
-  // 5. In MGP, parameters turn into values. Add the values of input parameters
-  // with the input signature.
-  for (auto param : usedKernelParameters) {
-    auto symbolicDimOr = loweringState.lowerExpression(
-        opLoweringState.opBeingLowered->getParentRegion(), opLoweringState.loc,
-        param);
-    Value symbol = symbolicDimOr.takeValue();
-    addOperandAndMapToIndex(symbol, InOutSignatureAttr::kIn);
-    parameterToOutsideSSAValue[param.getName()] = symbol;
-  }
-
-  // 6. Add a chain to the result types.
+  // 4. Add a chain to the result types.
+  SmallVector<mlir::Type> mgpKernelResTypes;
   mgpKernelResTypes.push_back(chain.getType());
 
-  // 7. The original kernel could also return an opaque type which is allocated
+  // 5. The original kernel could also return an opaque type which is allocated
   // inside of its own body. If that's the case, add it to the output of the
   // mogg.generic.compiled.region op since it is not in DPS form. The current
   // contract is that if a kernel op returns an opaque type, it must have been
@@ -452,16 +601,18 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     mgpKernelResTypes.push_back(resultTypes.front());
   }
 
-  // 8. The original kernel may be setting some parameters (shape functions do
+  // 6. The original kernel may be setting some parameters (shape functions do
   // just that). These will returned from the mogg.generic.compiled.region.
   for (size_t i = 0; i < moggKernelOp.getOutputParamDecls().size(); ++i)
     mgpKernelResTypes.push_back(
         moggKernelOp.getOutputParamDecls()[i].getType());
 
   mgpRegion = MOGG::GenericCompiledRegionOp::create(
-      builder, loc, TypeRange{mgpKernelResTypes}, operands,
+      builder, loc, TypeRange{mgpKernelResTypes},
+      operandsMapping.getMGPRegionOperands(),
       moggKernelOp.getOutputParamDeclsAttr(),
-      InOutSignatureAttr::get(ctx, operandSemantics),
+      InOutSignatureAttr::get(ctx,
+                              operandsMapping.getMGPRegionOperandsSemantics()),
       moggKernelOp.getSummaryAttr(), // summary
       moggKernelOp.getIsAsyncAttr(), // isAsync
       ArrayAttr::get(ctx, {}),       // KernelOp has no constant resources
@@ -477,10 +628,7 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // Add a body to the created operation and mirror its operands with block
   // arguments.
   mgpRegionBody = &mgpRegion.getBody().emplaceBlock();
-  builder.setInsertionPoint(mgpRegionBody, mgpRegionBody->begin());
-  SmallVector<Location> locs =
-      llvm::map_to_vector(operands, [](Value v) { return v.getLoc(); });
-  mgpRegionBody->addArguments(ValueRange(operands).getTypes(), locs);
+  operandsMapping.setupMGPRegionArgs(mgpRegionBody);
 
   // Call the previously created kernel stub by creating ops that bridge the gap
   // between MGP and MO/MOGG.
@@ -497,134 +645,27 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     }
   });
 
-  // Explicitly track operand counts for correct mapping between stub and region
-  // arguments. The stub body arguments are structured as:
-  // [input operands..., output placeholders..., scratch placeholders...]
-  // The region body arguments are structured as:
-  // [chain, input operands..., output storage buffers..., scratch storage
-  // buffers..., parameters...]
-  const uint64_t numInputOperands = loweredInputOperands.size();
-  const uint64_t numOutputOperands = loweredOutputsStorage.size();
-  const uint64_t numScratchOperands = scratchOutputsStorage.size();
+  // Convert all tensor operands
+  for (const auto &tensorInfos : tensorOperandInfos) {
+    // Build a ManagedTensorSlice and pass it to the stub.
+    Value regionArg =
+        operandsMapping.get(tensorInfos.operandIdx, /*isInsideStub=*/false);
 
-  // Helper to calculate region argument index based on stub argument position.
-  // Region args: [chain, inputs..., outputs..., scratch...]
-  // Stub args: [inputs..., outputs..., scratch...] (same order, no chain)
-  auto getRegionArgIndex = [&](uint64_t stubArgIdx) -> uint64_t {
-    // Add 1 for the chain argument at position 0
-    return 1 + stubArgIdx;
-  };
+    // Build the tensor object and pass it as an operand.
+    ErrorOr<Value> tensorValueOr =
+        buildMojoIOTensorObject(regionArg, tensorInfos);
+    if (tensorValueOr.isError())
+      return moggKernelOp.emitError(tensorValueOr.getError());
 
-  // Track the count of tensor-only arguments seen (for input/output boundary)
-  uint64_t tensorArgIdx = 0;
-  // Track overall stub argument index for region argument mapping
-  uint64_t stubArgIdx = 0;
-  for (auto stubArgument : kernelStub.getBody().front().getArguments()) {
-    auto asTensor = MO::dynCastFromTensorLike(stubArgument.getType());
-    if (!asTensor) {
-      // Non-tensor arguments: opaque types are passed directly from region,
-      // device contexts use chain placeholder (handled later by
-      // lowerDeviceContextPlaceholder).
-      if (isa<MO::OpaqueType>(stubArgument.getType())) {
-        uint64_t regionArgIndex = getRegionArgIndex(stubArgIdx);
-        if (regionArgIndex >= mgpRegionBody->getArguments().size()) {
-          return moggKernelOp.emitError(
-              "Region argument index out of bounds for opaque");
-        }
-        stubCallOperands.emplace_back(
-            mgpRegionBody->getArguments()[regionArgIndex]);
-      } else {
-        // Device context or other types - use chain placeholder
-        stubCallOperands.emplace_back(mgpRegionBody->getArguments()[0]);
-      }
-      ++stubArgIdx;
-      continue;
-    }
-
-    auto dynamicDimensionsOr =
-        getTensorDynamicDimensions(asTensor, /*isInsideStub=*/false);
-    if (dynamicDimensionsOr.isError())
-      return moggKernelOp.emitError(dynamicDimensionsOr.getError());
-
-    // Determine if this is an output: either in output/scratch range or
-    // explicitly marked. Use tensorArgIdx for this comparison since
-    // numInputOperands/numOutputOperands count tensor-only operands.
-    bool isOutput = (tensorArgIdx >= numInputOperands) ||
-                    outputArguments.contains(stubArgument);
-    MO::IOKind io = isOutput ? MO::IOKind::Output : MO::IOKind::Input;
-    bool mut = isOutput || isa<MO::BufferType>(stubArgument.getType());
-
-    // Exclusive is True unless it's used by a view kernel
-    bool isExclusive =
-        llvm::none_of(stubArgument.getUsers(), [](Operation *use) {
-          return isa<MOGG::CallViewOp>(use);
-        });
-
-    // Update stub argument type
-    auto ioAttr = MO::IOKindAttr::get(ctx, io);
-    auto mutAttr = BoolAttr::get(ctx, mut);
-    stubArgument.setType(asTensor.cloneWith(ioAttr).cloneWithMut(mutAttr));
-
-    // Verify tensor index is within expected bounds
-    if (tensorArgIdx >=
-        numInputOperands + numOutputOperands + numScratchOperands) {
-      return moggKernelOp.emitError(
-          "Stub argument index exceeds expected tensor argument count");
-    }
-
-    // Get corresponding region argument using stubArgIdx (accounts for opaques)
-    uint64_t regionArgIndex = getRegionArgIndex(stubArgIdx);
-    if (regionArgIndex >= mgpRegionBody->getArguments().size()) {
-      return moggKernelOp.emitError("Region argument index out of bounds");
-    }
-    Value regionValue = mgpRegionBody->getArguments()[regionArgIndex];
-
-    // Create tensor initialization
-    auto tensorInitOp = MOGG::TensorInitOp::create(
-        builder, loc, stubArgument.getType(), regionValue, *dynamicDimensionsOr,
-        mutAttr, ioAttr, BoolAttr::get(ctx, isExclusive));
-    stubCallOperands.emplace_back(tensorInitOp);
-
-    ++tensorArgIdx;
-    ++stubArgIdx;
+    // Remap the kernel operand
+    operandsMapping.remapKernelStubOperand(tensorInfos.operandIdx,
+                                           *tensorValueOr);
   }
 
-  // Add extra arguments for the dynamic dimensions for some ops
-  kernelStub.walk([&](mlir::Operation *stubOp) {
-    if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(stubOp)) {
-      // We only need to get the dynamic dimensions when materializing an
-      // intermediate tensor for the fused kernel operand. This happens only for
-      // Input and AffineView fusion.
-      if (bindOp.getBindKind() != MOGG::BindLambdaKind::InputLambda &&
-          !bindOp.hasAffineViewOperation())
-        return;
-
-      Value fusedOutput = bindOp.getOutput();
-      passTensorDynDimensionsToKernelStub(
-          bindOp.getLoc(), MO::castFromTensorLike(fusedOutput.getType()));
-    }
-
-    else if (auto tensorShapeOp = dyn_cast<MOGG::TensorGetShapeOp>(stubOp)) {
-      // The dynamic dimensions of TensorGetShapeOp must be lowered.
-      passTensorDynDimensionsToKernelStub(
-          tensorShapeOp.getLoc(),
-          MO::castFromTensorLike(tensorShapeOp.getTensor()));
-    }
-
-    else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(stubOp)) {
-      passDynDimensionToKernelStub(getDimOp.getLoc(), getDimOp.getDimension());
-    }
-
-    // Handle dynamic dimensions from result types of all operations.
-    // This is needed for operations like mogg.experimental.kernel that have
-    // tensor result types with dynamic dimensions.
-    for (Type resultType : stubOp->getResultTypes()) {
-      if (auto tensorType = MO::dynCastFromTensorLike(resultType)) {
-        passTensorDynDimensionsToKernelStub(stubOp->getLoc(), tensorType);
-      }
-    }
-  });
-
+  // Setup the KernelStub region and call.
+  operandsMapping.setupKernelStubArgs(&kernelStub.getBody().front());
+  llvm::ArrayRef<Value> stubCallOperands =
+      operandsMapping.getKernelStubOperands();
   assert(stubCallOperands.size() ==
          (kernelStub.getBodyBlock().getNumArguments()));
 
@@ -665,8 +706,7 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   MOGG::OutputOp::create(builder, loc, outputs);
 
   // Some operations needs to be lowered to work with EmitMojo.
-  if (failed(lowerKernelStub()))
-    return failure();
+  lowerKernelStub();
 
   // The following is to inform the lowering state of the values we have
   // created.
@@ -717,10 +757,6 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   }
 
   // Remove the placeholder ops that we replaced with DPS operands.
-  if (outputPlaceholdersOp)
-    outputPlaceholdersOp.erase();
-  if (scratchPlaceholdersOp)
-    scratchPlaceholdersOp.erase();
 
   mlir::BitVector unpackItAll(mgpRegionBody->getNumArguments(), true);
   mlir::BitVector packItAll(mgpRegion.getNumResults(), true);

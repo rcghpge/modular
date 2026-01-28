@@ -16,6 +16,110 @@
 
 namespace M::MGP {
 
+// Helper class to keep track of the mapping between top-level value, and the
+// corresponding MGP region / KernelStub argument mapping. It also keeps track
+// of the mapping from parameter attributes to their corresponding dynamic
+// values.
+class KernelOperandsMapping {
+
+public:
+private:
+  struct OperandValue {
+    Value operandValue;
+    BlockArgument mgpRegionOperand;
+    BlockArgument kernelStubOperand;
+    std::optional<unsigned> mgpRegionOperandIdx;
+    std::optional<unsigned> kernelperandIdx;
+  };
+
+private:
+  // List of all the kernel operands.
+  llvm::SmallVector<OperandValue> operands;
+
+  // Mapping from key to OperandValue (index of `operands` array).
+  llvm::DenseMap<Value, unsigned> valToOperandsMap;
+
+  // Mapping from parameter name to OperandValue (index of `operands` array).
+  DenseMap<StringAttr, unsigned> parameterToOperandsMap;
+
+  // Operands list to build the MGP Region.
+  SmallVector<Value> mgpRegionOperands;
+  SmallVector<InOutSignatureAttr::InOutSemantics> mgpRegionOperandSemantics;
+
+  // Operands list for the KernelStub op.
+  SmallVector<Value> kernelStubOperands;
+
+public:
+  ArrayRef<Value> getMGPRegionOperands() const { return mgpRegionOperands; }
+  ArrayRef<InOutSignatureAttr::InOutSemantics>
+  getMGPRegionOperandsSemantics() const {
+    return mgpRegionOperandSemantics;
+  }
+  ArrayRef<Value> getKernelStubOperands() const { return kernelStubOperands; }
+
+  // Returns the total number of operands (including MGP / Stub arguments).
+  size_t getNumOperands() const { return operands.size(); }
+
+  // Add a new kernel operand with value `operandValue`.
+  // `isMGPRegionOperand` indicates the operand is an argument of the
+  // mgp.compiled.region op. `isKernelStubOperand` indicates the operand is an
+  // argument of the KernelStubOp. It'll be forwarded automatically from the MGP
+  // region if needed. `sig` is the operand semantic, needed only if
+  // `isMGPRegionOperand` is true. The mapped operand can be retrieved with
+  // `get(operandValue, isInsideStub)`. If `keyValue` is set, it's used instead
+  // as a key for retrieval: `get(keyValue, isInsideStub)`.
+  void addOperand(Value operandValue, bool isMGPRegionOperand,
+                  bool isKernelStubOperand,
+                  InOutSignatureAttr::InOutSemantics sig =
+                      InOutSignatureAttr::InOutSemantics::kNone,
+                  Value keyValue = nullptr);
+
+  // Add a new kernel operand for the parameter `paramName`.
+  // `paramValue` is the corresponding runtime value of the parameter.
+  // If `isKernelStubOperand`, the operand will also be forwarded automatically
+  // to the KernelStub. The mapped operand can be retrieved with `get(paramName,
+  // isInsideStub)`.
+  void addOperand(KGEN::ParamDeclRefAttr paramName, Value paramValue,
+                  bool isKernelStubOperand);
+
+  // Change the value of a KernelStub operand.
+  // `operandIdx is the global operand index (not just for the KernelStub).
+  // This functions helps for operands that must be updated when passed between
+  // the MGP -> KernelStub region.
+  void remapKernelStubOperand(unsigned operandIdx, Value newValue);
+
+  // Get the mapped operand #operandIdx.
+  // `isInsideStub` is true if we need it inside the kernel stub (and not the
+  // region).
+  Value get(unsigned operandIdx, bool isInsideStub) const;
+
+  // Get the mapped operand corresponding to `val`.
+  // `isInsideStub` is true if we need it inside the kernel stub (and not the
+  // region).
+  Value get(Value val, bool isInsideStub) const;
+
+  // Get the dynamic value corresponding to the parameter `paramName`.
+  // `isInsideStub` is true if we need it inside the kernel stub (and not the
+  // region).
+  Value get(StringAttr paramName, bool isInsideStub) const;
+
+  // Get the list of dynamic values corresponding to the parametric dimensions
+  // of the shape of `asTensor`. `inInsideTrue` is true if we need it inside the
+  // kernel stub (and not the region).
+  SmallVector<Value> getTensorDynamicDimensions(MO::TensorType asTensor,
+                                                bool isInsideStub);
+
+  // Setup all the arguments of `mgpRegion` and update all mapping tables.
+  // This must be done only after all operands where added with
+  // `addOperand`.
+  void setupMGPRegionArgs(Block *mgpRegion);
+
+  // Setup all the arguments of `kernelStub` and update all mapping tables.
+  // This must be done only after all operands where added with
+  // `addOperand`.
+  void setupKernelStubArgs(Block *kernelStubBody);
+};
+
 // This class holds the state and methods needed to lower MOGG kernels to MGP
 class MOGGKernelOpLoweringState {
 
@@ -33,6 +137,8 @@ private:
   OpBuilder &builder;
   DeviceRefAttr device;
 
+  KernelOperandsMapping operandsMapping;
+
   /// Built output KernelStub for the mojo kernel implementation.
   MOGG::KernelStubOp kernelStub;
 
@@ -42,74 +148,53 @@ private:
   /// Block of the lowered output region.
   mlir::Block *mgpRegionBody = nullptr;
 
-  // Staging all the necessary inputs to create the mgp.generic.compiled.region
-  // op.
-  SmallVector<Value> operands;
-  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-
-  // Map between a parameter to a lowered SSA value. We use TypedAttr instead of
-  // ParamDeclRefAttr to make it possible to search integers (they won't be
-  // present obviously).
-  DenseMap<StringAttr, Value> parameterToOutsideSSAValue;
-
-  // This maps an outside SSA value into its position in the operand list of the
-  // mogg.generic.compiled.region.
-  DenseMap<Value, uint64_t> outsideValueToOperandIndex;
-
-  // This mapping is similar to `outsideValueToOperandIndex`.
-  // But it covers the parameters needed inside the region stub.
-  // Usually these are fused parameters of fused-intermediate tensors.
-  // They are created inside the stub directly.
-  DenseMap<Value, uint64_t> outsideValueToStubOperandIndex;
-
-  // List of the operands for `callStubOp`.
-  SmallVector<Value> stubCallOperands;
-
   // Created call op to the KernelStubOp.
   MOGG::CallStubOp callStubOp;
 
-  // Add and map a new kernel operand.
-  void addOperandAndMapToIndex(Value operand,
-                               InOutSignatureAttr::InOutSemantics sig);
+  // This is a list of all the outputs of the kernel but lowered to MGP.
+  SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
 
-  // Get the dynamic value corresponding to the parametric dimension `dim`.
-  // `isInsideStub` is true if we need it inside the kernel stub (and not the
-  // region).
-  ErrorOr<Value> getDynamicDimension(StringAttr dim, bool isInsideStub);
+  struct TensorOperandInfos {
+    Value stubValue;   // Tensor value inside the KernelStub
+    size_t operandIdx; // Argument index for the OperandsMapping.
+    bool isOutput;
+  };
 
-  // Get the list of dynamic values corresponding to the parametric dimensions
-  // of the shape of `asTensor`. `inInsideTrue` is true if we need it inside the
-  // kernel stub (and not the region).
-  ErrorOr<SmallVector<Value>>
-  getTensorDynamicDimensions(MO::TensorType asTensor, bool isInsideStub);
+  // Keep track all inputs / output / scratchpad operands;
+  SmallVector<TensorOperandInfos> tensorOperandInfos;
 
-  // Register `dim` as an extra parametric dimension to be converted to a
-  // dynamic value and passed to the kernel stub as argument.
-  void passDynDimensionToKernelStub(Location loc, StringAttr dim);
+  /// Build a ManagedTensorSlice object corresponding to the KernelStubOp
+  /// argument `stubArgument` from the buffer pointer `bufferValue`.
+  Value buildMojoIOTensorObject(Value bufferValue,
+                                const TensorOperandInfos &tensorInfos);
 
-  // Register all parametric dimensions of `asTensor` to be converted to dynamic
-  // values and passed to the kernel stub as arguments.
-  void passTensorDynDimensionsToKernelStub(Location loc,
-                                           MO::TensorType asTensor);
+  LogicalResult findExtraKernelArguments(
+      Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters);
 
   // Lower the DeviceContextPlaceholderOp to be compatible with the MGP region.
   void
   lowerDeviceContextPlaceholder(MOGG::DeviceContextPlaceholderOp moggContext);
 
   // Lower the BimdLambdaOp to be compatible with the MGP region.
-  LogicalResult lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
+  void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
 
   // Lower the ConstantOp to be compatible with the MGP region.
   void lowerConstantOp(MO::ConstantOp constantOp);
 
   // Lower the GetDimOp to be compatible with the MGP region.
-  LogicalResult lowerGetDimOp(MOGG::GetDimOp getDimOp);
+  void lowerGetDimOp(MOGG::GetDimOp getDimOp);
 
   // Lower the TensorGetShapeOp to be compatible with the MGP region.
-  LogicalResult lowerTensorGetShapeOp(MOGG::TensorGetShapeOp getShapeOp);
+  void lowerTensorGetShapeOp(MOGG::TensorGetShapeOp getShapeOp);
+
+  // Lower `op` to be compatible with the MGP region.
+  // Simply use the OperandsMapping to replace the op.
+  // This is needed for ops like OutputPlaceholder that are replaced with a
+  // kernel argument.
+  void lowerKernelOpWithOperandsMapping(Operation *op);
 
   // Lower all kernel stubs ops to be compatible with the MGP region.
-  LogicalResult lowerKernelStub();
+  void lowerKernelStub();
 };
 
 } // namespace M::MGP
