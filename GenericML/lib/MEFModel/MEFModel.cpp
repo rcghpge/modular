@@ -339,6 +339,10 @@ static uint64_t
 computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   raw_xxhash64_stream hasher;
   for (const GenericML::Driver::DeviceMemory *memory : inputs) {
+    void *bufferAddress = memory->getBuffer().getPointer()->ptr();
+    hasher.write(reinterpret_cast<char *>(&bufferAddress),
+                 sizeof(bufferAddress));
+
     const TensorSpec &spec = memory->getSpec();
     uint64_t rank = spec.getRank();
     hasher.write(reinterpret_cast<const char *>(&rank), sizeof(rank));
