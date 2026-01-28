@@ -246,7 +246,7 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE`**: Maximum memory manager size
   in KB (default: uses percentage)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT`**: Percentage of GPU
-  memory to use, after the driver has taken its memory (default: 90%)
+  memory to use, after the driver has taken its memory (default: 99%)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT`**: Chunk size as
   percentage of max memory manager size (default: 2%)
 
