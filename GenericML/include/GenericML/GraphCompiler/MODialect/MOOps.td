@@ -527,7 +527,7 @@ def MO_YieldOp : MO_ControlOp<"yield", [
   Terminator,
   ReturnLike,
   Pure,
-  ParentOneOf<["IfOp", "WhileOp"]>,
+  ParentOneOf<["IfOp", "WhileOp", "ParallelOp"]>,
   DeclareOpInterfaceMethods<ParamOpInterface>
 ]>, NoParamDecls {
   let hasVerifier = 1;
@@ -589,6 +589,45 @@ def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
   let assemblyFormat = [{
     `(` $condition `)` attr-dict ($args^ `:` type($args))?
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// ParallelOp
+//===----------------------------------------------------------------------===//
+
+def MO_ParallelOp : MO_ControlOp<"parallel", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
+  HasOnlyGraphRegion,
+  RecursiveMemoryEffects,
+  RegionKindInterface,
+  SingleBlock,
+  DeclInterface,
+  SingleBlockImplicitTerminator<"MO::YieldOp">,
+]> {
+  let summary = "`parallel` region operation";
+  let description = [{
+    The `mo.parallel` operation takes a single "body" block, which is executed
+    in parallel for each set of inputs.
+
+    The results of the `mo.parallel` op are the operands of the
+    `mo.yield` op from each iteration, which must all have the same type.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$inputs);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$bodyRegion);
+
+  let extraClassDeclaration = [{
+    /// Implement the DeclInterface methods with our own parameter
+    /// implementation in MO.
+    ArrayRef<ParamDeclAttr> getInputParams();
+    SmallVector<ParamDeclAttr> getAllParams();
+  }];
+
+  // Custom assembly format: mo.parallel %arg in (%a, %b, ... : type) { ... }
+  // Multiple inputs map to a single block argument that processes each in parallel.
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

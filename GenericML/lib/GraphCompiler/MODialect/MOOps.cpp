@@ -1070,6 +1070,138 @@ WhileConditionOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
 }
 
 //===----------------------------------------------------------------------===//
+// ParallelOp
+//===----------------------------------------------------------------------===//
+
+ArrayRef<ParamDeclAttr> ParallelOp::getInputParams() { return {}; }
+SmallVector<ParamDeclAttr> ParallelOp::getAllParams() { return {}; }
+
+/// Custom assembly format: mo.parallel %arg in (%a, %b, ... : type) { ... }
+/// Multiple inputs map to a single block argument that processes each in
+/// parallel.
+ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
+  Region *bodyRegion = result.addRegion();
+
+  // Parse the block argument: %arg
+  OpAsmParser::Argument blockArg;
+  if (parser.parseArgument(blockArg, /*allowType=*/false))
+    return failure();
+
+  // Parse 'in' keyword
+  if (parser.parseKeyword("in"))
+    return failure();
+
+  // Parse the operand list: (%a, %b, ... : type)
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
+  Type operandType;
+  if (parser.parseLParen() ||
+      parser.parseOperandList(operands, OpAsmParser::Delimiter::None) ||
+      parser.parseColon() || parser.parseType(operandType) ||
+      parser.parseRParen())
+    return failure();
+
+  // Resolve all operands to the same type
+  if (parser.resolveOperands(operands, operandType, result.operands))
+    return failure();
+
+  // Set block argument type
+  blockArg.type = operandType;
+
+  // Parse optional attribute dictionary
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  // Parse the body region with the single block argument
+  if (parser.parseRegion(*bodyRegion, {blockArg},
+                         /*enableNameShadowing=*/false))
+    return failure();
+
+  // Result types: one result per input, all with the same type as the yield.
+  // The yield type must match the block argument type for this op.
+  // We infer result types from input count - each input produces one result.
+  for (size_t i = 0; i < operands.size(); ++i)
+    result.types.push_back(operandType);
+
+  return success();
+}
+
+void ParallelOp::print(OpAsmPrinter &p) {
+  // Print: mo.parallel %arg in (%a, %b, ... : type) { ... }
+  Block &body = getBodyRegion().front();
+  assert(body.getNumArguments() == 1 &&
+         "ParallelOp body must have exactly one argument");
+
+  p << ' ';
+  p.printRegionArgument(body.getArgument(0), /*argAttrs=*/{},
+                        /*omitType=*/true);
+  p << " in (";
+  llvm::interleaveComma(getInputs(), p,
+                        [&](Value input) { p.printOperand(input); });
+  p << " : " << body.getArgument(0).getType() << ")";
+
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+  p << ' ';
+
+  // Print region without entry block args (we printed them above)
+  p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
+}
+
+SmallVector<ChainValue> ParallelOp::getInChains() {
+  return getChainValues(getOperands());
+}
+
+SmallVector<ChainValue> ParallelOp::getOutChains() {
+  return getChainValues(getResults());
+}
+
+SmallVector<OpOperand *> ParallelOp::getInChainsMutable() {
+  SmallVector<OpOperand *> results;
+
+  for (auto &value : getInputsMutable()) {
+    if (isa<ChainType>(value.get().getType()))
+      results.push_back(&value);
+  }
+
+  return results;
+}
+
+LogicalResult ParallelOp::verify() {
+  Block &body = getBodyRegion().front();
+
+  // Verify the block has exactly one argument.
+  if (body.getNumArguments() != 1)
+    return emitOpError("body block must have exactly one argument, got ")
+           << body.getNumArguments();
+
+  Type blockArgType = body.getArgument(0).getType();
+
+  // Verify all input types match the block argument type.
+  for (auto [idx, input] : llvm::enumerate(getInputs())) {
+    if (input.getType() != blockArgType)
+      return emitOpError("input #")
+             << idx << " type '" << input.getType()
+             << "' does not match block argument type '" << blockArgType << "'";
+  }
+
+  // Verify yield has exactly one operand.
+  auto yieldOp = cast<YieldOp>(body.getTerminator());
+  if (yieldOp.getNumOperands() != 1)
+    return emitOpError("yield must have exactly one operand, got ")
+           << yieldOp.getNumOperands();
+
+  // Verify all result types match the yield type.
+  Type yieldType = yieldOp.getOperand(0).getType();
+  for (auto [idx, result] : llvm::enumerate(getResults())) {
+    if (result.getType() != yieldType)
+      return emitOpError("result #")
+             << idx << " type '" << result.getType()
+             << "' does not match yield type '" << yieldType << "'";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastShapeOp
 //===----------------------------------------------------------------------===//
 
