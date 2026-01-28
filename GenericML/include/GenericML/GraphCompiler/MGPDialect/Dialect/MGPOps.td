@@ -1037,8 +1037,9 @@ def MGP_CallOp : MGP_Op<"call", [
 ]> {
   let summary = "Call a subgraph.";
   let description = [{
-    Placeholder for the execute block of another graph, which will be inlined by
-    `InlineMGPCallsPass`.
+    Placeholder for the execute block of another graph,
+    which will be replaced by individual mef.callables and
+    grt.invoke ops by `ConvertSubgraphsToCallablesPass`.
     The graph is referenced via symbol name of the target !mgp.model.
 
     Operands and results must match the signature of the target model's execute block.

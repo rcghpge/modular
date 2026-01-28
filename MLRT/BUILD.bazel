@@ -194,6 +194,7 @@ td_library(
     srcs = glob(["include/MLRT/GraphRT/MEFDialect/*.td"]),
     includes = ["include"],
     deps = [
+        "//Support:MTdFiles",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:FunctionInterfacesTdFiles",
@@ -293,6 +294,7 @@ modular_cc_library(
         ":GraphRT/MEFTypeInterfaces",
         "//Support:Base",
         "//Support:Compiler",
+        "//Support:MDialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:ControlFlowInterfaces",

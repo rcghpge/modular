@@ -88,7 +88,7 @@ private:
 
   ExecutableModel(AnyAsyncValueRef chain, AnyAsyncValueRef mgpContext,
                   AnyAsyncValueRef weightsRegistry,
-                  SmallVector<AnyAsyncValueRef> &&devices,
+                  SmallVector<AnyAsyncValueRef> &&extraArgs,
                   const class Model *model, Runtime &runtime);
 
   ErrorOr<SmallVector<AnyAsyncValueRef>> executeWithDeviceMemoryInputs(
@@ -99,7 +99,7 @@ private:
   AnyAsyncValueRef chain;
   AnyAsyncValueRef mgpContext;
   AnyAsyncValueRef weightsRegistry;
-  SmallVector<AnyAsyncValueRef> devices;
+  SmallVector<AnyAsyncValueRef> extraArgs;
   // Cached device graphs keyed by input signature (shape + dtype).
   llvm::DenseMap<uint64_t, Driver::DeviceGraphRef> capturedGraphs;
 };
@@ -178,7 +178,7 @@ public:
   /// output.
   ArrayRef<DeviceRef> getOutputDevices() const { return outputDevices; }
 
-  static StringLiteral getEntityName() { return "mgp.model"; }
+  static StringLiteral getEntityName() { return "mef.model"; }
   static ErrorOr<std::unique_ptr<Model>>
   getFromDescriptor(const PrimitiveDescriptor &descriptor);
 

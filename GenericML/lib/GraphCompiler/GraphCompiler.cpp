@@ -75,7 +75,7 @@ void buildJITCompilationPipeline(
 
   pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
   pm.addPass(MGP::createLowerMOGGRegionCompiles());
-  pm.addPass(MGP::createInlineMGPCallsPass());
+  pm.addPass(MGP::createOutlineModelsToCallables());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());

@@ -333,7 +333,7 @@ def VerifyModelArgumentsPass : Pass<"mgp-verify-model-arguments", "MGP::ModelOp"
 // PrepareDevicePrimitivesPass
 //===----------------------------------------------------------------------===//
 
-def PrepareDevicePrimitivesPass : Pass<"mgp-prepare-device-primitives", "MGP::ModelOp"> {
+def PrepareDevicePrimitivesPass : Pass<"mgp-prepare-device-primitives"> {
   let summary = "Prepares device-generic MGP primitives for execution by the "
                 "GraphRT.";
   let description = [{
@@ -517,37 +517,153 @@ def GlobalizeSlotIndicesPass : Pass<"mgp-globalize-slot-indices", "mlir::ModuleO
 }
 
 //===----------------------------------------------------------------------===//
-// InlineMGPCallsPass
+// OutlineModelsToCallables
 //===----------------------------------------------------------------------===//
 
-def InlineMGPCallsPass : Pass<"mgp-inline-mgp-calls", "mlir::ModuleOp"> {
-  let summary = "Inlines the `execute` block of subgraphs at `mgp.call` sites";
+def OutlineModelsToCallables : Pass<"mgp-outline-models-to-callables", "mlir::ModuleOp"> {
+  let summary = "Converts all MGP::ModelOps into component MEF::CallableOps and wrapping MEF::ModelOps";
   let description = [{
-    Inline `mgp.call` operations into their calling `mgp.model` operations.
+    Lowers all `MGP::ModelOps` into a structure directly executable by GraphRT,
+    including subgraphs.
 
-    This pass constructs a call graph of `mgp.model` operations within a module.
-    It performs a post-order traversal (reverse topological sort) of the call
-    graph to determine a safe inlining order, ensuring that callees are inlined
-    before their callers. Recursion is detected and reported as an error, as it
-    is not supported for inlining.
+    This pass has two major conceptual steps:
+    1) Propagate prefix handling through model call graph
+    2) Take the (now, and progressively moreso) denormalized `mgp.model` ops
+        and lower them fully to a series of:
+        a) `mef.model` ops that represent entry points to the module,
+            and that package the init and exec regions in a form
+            our executor can interpret without too much magic, and
+        b) `mef.callable` ops holding the component regions
+            of the model, which can be directly called by
+            `grt.invoke` ops in other regions.
 
-    For each `mgp.call` operation encountered during the traversal of the calling
-    model's `init` and `execute` regions:
-    1.  **Init Block Inlining (Once per Callee):** If the callee's `init` block
-        has not been inlined into the caller's `init` block yet, its operations
-        (excluding `mgp.context.create` and the terminator) are cloned into the
-        caller's `init` block before the terminator. Arguments (weights registry,
-        devices, context) are mapped appropriately.
-    2.  **Execute Block Inlining:** Operations from the callee's `execute` block
-        (excluding the terminator) are cloned at the call site. Operands of the
-        call are mapped to the callee's block arguments, and results are mapped
-        back.
-    3.  The `mgp.call` operation is replaced with the results of the inlined
-        execute block and then erased.
+    This allows for reuse of subgraphs without fully inlining and
+    monomorphising their contents. Instead, subgraphs are
+    reused at runtime by the executor across all their invocations.
 
-    After all possible calls have been inlined, the pass attempts to erase any
-    `mgp.model` operations that were targets of inlining and now have no remaining
-    uses.
+    A `mef.model` is used to encapsulate this new form with a relaxed
+    relationship between `init` and `exec`. The only requirement
+    that is placed on that relationship is that the output
+    of init be a prefix to the input to exec, and that the
+    remainder of the input to exec match the input signature
+    for the model itself.
+
+    Example:
+
+    BEFORE:
+    ```mlir
+    module {
+      mgp.model @exp subgraph : mof ...
+      init (/* weights registry, device contexts */...) {
+        %0 = grt.chain.create ()
+        %1 = mgp.context.create 2
+        %2 = mgp.runtime.create %0, %1[0]
+        %3 = mgp.module.load %2, %1[0] [0], ...
+        %4 = mgp.string.create "foo" : !mgp.opaque<"mojo_string">
+        %5 = mgp.buffer.constant.external %3, %arg0[%4, 80, align 16 placeholder true] ...
+        %6 = mgp.buffer.cache %0, %1[1], %5
+        mef.output %6, %1, %arg0, %arg1
+      } execute (/* implicits */..., %arg4: !mgp.tensor<4x5xf32>, %arg5: index)
+      -> (!mef.chain, !mgp.tensor<4x5xf32>) {
+        ...
+        mef.output %arg0, %3 : !mef.chain, !mgp.tensor<4x5xf32>
+      }
+      mgp.model @main : mof
+        {argument_device_indices = [0 : ui32], result_device_indices = [0 : ui32]}
+        devices [#M.device_ref<"cpu", 0>]
+        init (/* weights registry, device contexts */)
+      {
+        %0 = grt.chain.create ()
+        %1 = mgp.context.create 1
+        %2 = mgp.runtime.create %0, %1[0]
+        %3 = mgp.module.load %2, %1[0] [0], ...
+        mef.output %3, %1, %arg0, %arg1
+      } execute (/* implicits */..., %arg4: !mgp.tensor<4x5xf32>)
+      -> (!mef.chain, !mgp.tensor<4x5xf32>) {
+        ...
+        %1:2 = mgp.call @exp(%arg0, %arg1, %arg2, %arg3, %arg4, %0) {..., prefix = "prefix"} ...
+        mef.output %1#0, %1#1 : !mef.chain, !mgp.tensor<4x5xf32>
+      }
+    }
+    ```
+
+    AFTER:
+    ```mlir
+    module {
+      mef.callable @exp$init(..., %arg2: !mgp.opaque<"mojo_string">) -> (
+        !mef.chain,
+        !mgp.context,
+        !mgp.opaque<"weights_registry">,
+        !mgp.device_context<<"cpu", 0>>,
+        !mgp.opaque<"mojo_string">
+      ) {
+        %0 = grt.chain.create ()
+        %1 = mgp.context.create 2
+        %2 = mgp.runtime.create %0, %1[0] // note that subgraphs still
+                                          // get their own context and runtime
+        %3 = mgp.module.load %2, %1[0] [0], ...
+        %4 = mgp.string.create "foo"
+        %5 = mgp.string.concat %arg2, %4 // NEW
+        %6 = mgp.buffer.constant.external %3,
+            %arg0[%5, 80, align 16 placeholder true]
+            // MODIFIED: uses concat'd prefix from %5
+        %7 = mgp.buffer.cache %0, %1[1], %6
+        mef.output %7, %1, %arg0, %arg1, %arg2
+              : !mef.chain,
+                !mgp.context,
+                !mgp.opaque<"weights_registry">,
+                !mgp.device_context<<"cpu", 0>>,
+                !mgp.opaque<"mojo_string"> // added context to pass to exec
+      }
+      mef.callable @exp$exec(/* implicits */...,
+        %arg4: !mgp.opaque<"mojo_string">,
+        %arg5: !mgp.tensor<4x5xf32>,
+        %arg6: index)
+      -> (!mef.chain, !mgp.tensor<4x5xf32>) {
+        ...
+        mef.output %arg0, %3 : !mef.chain, !mgp.tensor<4x5xf32>
+      }
+      mef.callable @main$init(
+        %arg0: !mgp.opaque<"weights_registry">,
+        %arg1: !mgp.device_context<<"cpu", 0>>)
+      -> (...) {
+        %0 = grt.chain.create ()
+        %1 = mgp.context.create 1
+        %2 = mgp.runtime.create %0, %1[0]
+        %3 = mgp.module.load %2, %1[0] [0], ...
+        %4 = mgp.string.create "prefix" : !mgp.opaque<"mojo_string">
+        %5:5 = grt.invoke @exp$init(%arg0, %arg1, %4)
+        mef.output %3, %1, %arg0, %arg1, %5#0, %5#1, %5#2, %5#3, %5#4
+            : !mef.chain,
+              !mgp.context,
+              !mgp.opaque<"weights_registry">,
+              !mgp.device_context<<"cpu", 0>>, // main's forwarded implicits
+              !mef.chain,
+              !mgp.context,
+              !mgp.opaque<"weights_registry">,
+              !mgp.device_context<<"cpu", 0>>, // exp's forwarded implicits
+              !mgp.opaque<"mojo_string"> // exp's SSA prefix for all placeholder
+                                         // accesses to weights registry
+      }
+      mef.callable @main$exec(
+        /* main's forwarded implicits */...,
+        /* subgraph's forwarded implicits */...,
+        %arg9: !mgp.tensor<4x5xf32>)
+      -> (...) {
+        %0 = "mgp.generic.execute"(%arg1) ...
+        %1:2 = grt.invoke @exp$exec(%arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %0) ...
+        mef.output %1#0, %1#1 : !mef.chain, !mgp.tensor<4x5xf32>
+      }
+      mef.model @main : mof ... {
+        %0:9 = grt.invoke @main$init(%arg0, %arg1) : ...
+        mef.output %0#0, %0#1, %0#2, %0#3, %0#4, %0#5, %0#6, %0#7, %0#8 : ...
+      } execute (...) -> (...) {
+        %0:2 = grt.invoke @main$exec(
+          arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9) : ...
+        mef.output %0#0, %0#1 ...
+      }
+    }
+    ```
   }];
 }
 

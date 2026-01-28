@@ -1,7 +1,7 @@
 // RUN: mo-opt --mo-to-mgp %s | FileCheck %s
 
-// CHECK: } execute ({{.*}}[[BUFFER:%.*]]: !mgp.tensor<2x2xf32>
-// CHECK: mef.output{{.*}}[[BUFFER]]
+// CHECK: mef.callable @buffer_output$exec({{.*}}[[BUFFER:%.*]]: !mgp.tensor<2x2xf32>) -> (!mef.chain, !mgp.tensor<2x2xf32>)
+// CHECK: mef.output %{{.*}}, [[BUFFER]] : !mef.chain, !mgp.tensor<2x2xf32>
 mo.graph @buffer_output(%buffer: !mo.buffer<[2, 2], f32>) -> !mo.buffer<[2, 2], f32>
 {
   mo.output %buffer : !mo.buffer<[2, 2], f32>

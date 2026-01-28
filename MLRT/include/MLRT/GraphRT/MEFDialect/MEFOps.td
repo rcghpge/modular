@@ -9,9 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 include "MLRT/GraphRT/MEFDialect/MEFDialect.td"
+include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
+include "Support/MDialect/M.td"
+include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/BuiltinAttributes.td"
 
 // Base class for the operation in this dialect.
 class MEFOp<string mnemonic, list<Trait> traits = []> :
@@ -83,6 +87,69 @@ def OpaqueOp : MEFOp<"opaque"> {
     $opName (`nonstrict` $nonstrict^)? $attrs `(` $operands `)` attr-dict `:`
             functional-type($operands, $results) $body
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// ModelOp
+//===----------------------------------------------------------------------===//
+
+def ModelOp
+  : MEFOp<"model", [HasParent<"ModuleOp">, IsolatedFromAbove,
+                    RegionKindInterface, HasOnlyGraphRegion, Symbol]> {
+  let summary = "A model with 'init' and 'execute' entry points";
+  let description = [{
+    This op is a lowered correlary to MGP::ModelOp that is allowed to have a
+    looser relationship between init and exec regions.
+
+    Example:
+    ```mlir
+    mef.model @my_model
+      init (%arg0: !mef.chain) -> (!mef.chain) {
+        mef.output %arg0 : !mef.chain
+      }
+      execute (%arg0: !mef.chain, %arg1: tensor<?xf32>) -> (!mef.chain, tensor<?xf32>) {
+        mef.output %arg0, %arg1 : !mef.chain, tensor<?xf32>
+      }
+    ```
+  }];
+
+  let arguments = (ins
+                       M_DeviceRefArrayAttr:$aDevices,                 // 0
+                       StrAttr:$bFrameworkName,                        // 1
+                       TypeAttrOf<FunctionType>:$cInitType,            // 2
+                       TypeAttrOf<FunctionType>:$dExecuteType,         // 3
+                       TypeAttrOf<FunctionType>:$eModelSignature,      // 4
+                       ArrayAttr:$fInputDeviceIndices,                 // 5
+                       ArrayAttr:$gResultDeviceIndices,                // 6
+                       ArrayAttr:$hArgumentNames,                      // 7
+                       ArrayAttr:$iResultNames,                        // 8
+                       SymbolNameAttr:$sym_name);                      // 9
+  let regions = (region SizedRegion<1>:$init, SizedRegion<1>:$execute);
+
+  let extraClassDeclaration = [{
+    Block *getInitBlock() { return &getInit().front(); }
+    Block *getExecuteBlock() { return &getExecute().front(); }
+
+    /// Get the execute block. This function is useful for callgraph utilities.
+    Region &getBodyRegion() { return getExecute(); }
+
+    StringAttr getName() { return getSymNameAttr(); }
+  }];
+
+  let assemblyFormat = [{
+    $sym_name `:` custom<FrameworkName>($bFrameworkName)
+      $eModelSignature
+      `devices` $aDevices
+      `inputDeviceIndices` $fInputDeviceIndices
+      `resultDeviceIndices` $gResultDeviceIndices
+      `argumentNames` $hArgumentNames
+      `resultNames` $iResultNames
+      `init` custom<ModelRegion>($init, $cInitType)
+      `execute` custom<ModelRegion>($execute, $dExecuteType)
+      attr-dict
+  }];
+
+  let hasRegionVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

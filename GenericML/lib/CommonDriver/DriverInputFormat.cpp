@@ -40,17 +40,17 @@ FileFormat M::sniffInputFormat(StringRef fileExtension,
   if (llvm::isASCII(fileContents)) {
     if (fileContents.contains("mo.graph"))
       return FileFormat::kMODialect;
-    if (size_t start = fileContents.find("mgp.model");
+    if (size_t start = fileContents.find("mef.model");
         start != StringRef::npos) {
-      // For mgp.model our desperation is even worse: we'll just look for
-      //    mgp.model @<name> : <framework>
+      // For mef.model our desperation is even worse: we'll just look for
+      //    mef.model @<name> : <framework>
       StringRef suffix = fileContents.drop_front(start);
-      std::regex regex(R"(mgp\.model\s+@\w+\s*:\s*(\w+))");
+      std::regex regex(R"(mef\.model\s+@\w+\s*:\s*(\w+))");
       std::match_results<StringRef::iterator> m;
       std::regex_search(suffix.begin(), suffix.end(), m, regex);
       if (!m.empty() && m.size() == 2) {
         // Map the CompiledFrameworkLabel enum into the larger FileFormat enum.
-        switch (CompiledFrameworkLabel::getLabelForOpName("mgp.model",
+        switch (CompiledFrameworkLabel::getLabelForOpName("mef.model",
                                                           StringRef(m[1]))
                     .value) {
         case CompiledFrameworkLabel::kUnknown:

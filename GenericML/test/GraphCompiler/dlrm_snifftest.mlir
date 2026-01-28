@@ -4,7 +4,7 @@
 
 // Just check we can compile it.
 
-// CHECK: mgp.model @dlrm
+// CHECK: mef.model @dlrm
 
 mo.graph @dlrm(%arg0: !mo.tensor<[?, 8, 100], si32>, %arg1: !mo.tensor<[?, 256], f32>, %arg2: !mo.tensor<[200000, 32], f32>, %arg3: !mo.tensor<[200000, 32], f32>, %arg4: !mo.tensor<[200000, 32], f32>, %arg5: !mo.tensor<[200000, 32], f32>, %arg6: !mo.tensor<[200000, 32], f32>, %arg7: !mo.tensor<[200000, 32], f32>, %arg8: !mo.tensor<[200000, 32], f32>, %arg9: !mo.tensor<[200000, 32], f32>, %arg10: !mo.tensor<[256, 64], f32>, %arg11: !mo.tensor<[77, 256], f32>, %arg12: !mo.tensor<[128, 32], f32>, %arg13: !mo.tensor<[256, 128], f32>) -> !mo.tensor<[?, 1], f32> {
   %0 = mo.constant {value = #M.dense_array<> : tensor<0xsi32>} : !mo.tensor<[0], si32>

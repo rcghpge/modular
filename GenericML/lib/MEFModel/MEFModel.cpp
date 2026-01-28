@@ -18,6 +18,7 @@
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/Tensor.h"
+#include "MLRT/GraphRT/MEF/MEFAttr.h"
 #include "MLRT/GraphRT/MEF/MEFTypes.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
@@ -120,9 +121,9 @@ Model::Model(std::string name, SmallVector<DeviceRef> devices,
       devices(std::move(devices)), inputDevices(std::move(inputDevices)),
       outputDevices(std::move(outputDevices)), location(std::move(location)) {
   ASSERT_STREAM(frameworkLabel == kFrameworkLabel,
-                << "Expected " << kFrameworkLabel.getAsString()
-                << " label for model, but got "
-                << frameworkLabel.getAsString());
+                << "Expected '" << kFrameworkLabel.getAsString()
+                << "' label for model, but got '"
+                << frameworkLabel.getAsString() << "'");
   initializeSignature(inputSpecs, outputSpecs, {}, {});
 }
 
@@ -171,13 +172,6 @@ Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
 
   // Run the init block.
   auto results = initFn->invoke(initArgs, runtime);
-  if (results.size() != kMgpModelNumFixedImplicitExecArgs + devices.size())
-    return AsyncRT::EncodedDiagnostic(
-        Twine("setup for model ") + getName() + " returned " +
-            Twine(results.size()) + " results (was expecting " +
-            std::to_string(kMgpModelNumFixedImplicitExecArgs) + " + " +
-            Twine(devices.size()) + " (device contexts))",
-        location.copy());
 
   for (AnyAsyncValueRef &result : results) {
     if (result.isError()) {
@@ -189,39 +183,45 @@ Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
     }
   }
 
-  SmallVector<AnyAsyncValueRef> deviceContexts;
-  deviceContexts.reserve(results.size() - kMgpModelNumFixedImplicitExecArgs);
+  SmallVector<AnyAsyncValueRef> extraArgs;
+  extraArgs.reserve(results.size() - kMgpModelNumFixedImplicitExecArgs);
   for (size_t i = kMgpModelNumFixedImplicitExecArgs; i < results.size(); ++i)
-    deviceContexts.push_back(std::move(results[i]));
+    extraArgs.push_back(std::move(results[i]));
 
   return {std::unique_ptr<ExecutableModel>(new ExecutableModel(
       /*chain=*/std::move(results[0]),
       /*mgpContext=*/std::move(results[1]),
-      /*weightsRegistry=*/std::move(results[2]), std::move(deviceContexts),
-      this, runtime))};
+      /*weightsRegistry=*/std::move(results[2]),
+      /*extraArgs*/ std::move(extraArgs), this, runtime))};
 }
 
 ErrorOr<std::unique_ptr<Model>>
 Model::getFromDescriptor(const PrimitiveDescriptor &desc) {
   constexpr size_t devicesAttrIdx = 0;
   constexpr size_t frameworkNameAttrIdx = 1;
-  constexpr size_t signatureAttrIdx = 2;
-  constexpr size_t modelNameAttrIdx = 3;
-  constexpr size_t extraAttrsAttrIdx = 4;
+  constexpr size_t modelFnTypeAttrIdx = 4;
+  constexpr size_t inputDeviceIndicesIdx = 5;
+  constexpr size_t resultDeviceIndicesIdx = 6;
+  constexpr size_t argumentNamesIdx = 7;
+  constexpr size_t resultNamesIdx = 8;
+  constexpr size_t modelNameAttrIdx = 9;
 
   constexpr size_t initFnIdx = 0;
   constexpr size_t executeFnIdx = 1;
 
+  StringRef modelName = *desc.getAttr<StringRef>(modelNameAttrIdx);
   StringRef frameworkName = *desc.getAttr<StringRef>(frameworkNameAttrIdx);
+
   CompiledFrameworkLabel frameworkLabel =
       CompiledFrameworkLabel::getLabelForOpName(getEntityName(), frameworkName);
 
-  MEFFunctionType signature = desc.getAttr<MEFFunctionType>(signatureAttrIdx);
-  StringRef modelName = *desc.getAttr<StringRef>(modelNameAttrIdx);
+  MEFFunctionType signature = desc.getAttr<MEFFunctionType>(modelFnTypeAttrIdx);
+
   auto devicesJson = *desc.getAttr<StringRef>(devicesAttrIdx);
   auto valueOr = llvm::json::parse(devicesJson);
   if (!valueOr)
     return toModularError(valueOr.takeError());
+
   llvm::SmallVector<DeviceRef> devices(valueOr->getAsArray()->size());
   for (auto [v, dev] : llvm::zip(*valueOr->getAsArray(), devices)) {
     auto deviceOr = DeviceRef::deserializeFromJSON(&v);
@@ -229,6 +229,7 @@ Model::getFromDescriptor(const PrimitiveDescriptor &desc) {
       return deviceOr.takeError();
     dev = deviceOr.takeValue();
   }
+
   const MEFInvokable *init = desc.getInvokable(initFnIdx);
   const MEFInvokable *execute = desc.getInvokable(executeFnIdx);
 
@@ -236,41 +237,38 @@ Model::getFromDescriptor(const PrimitiveDescriptor &desc) {
   if (auto err = decodeQuantizedSignature(signature, inputSpecs, outputSpecs))
     return err.takeError();
 
-  llvm::SmallVector<DeviceRef> inputDevices;
-  llvm::SmallVector<DeviceRef> outputDevices;
-  auto getIODevicesFromExtraAttr =
-      [&](const char *label) -> llvm::SmallVector<DeviceRef> {
-    auto theExtraAttrs = desc.getAttr<MEFDictionaryAttr>(extraAttrsAttrIdx);
+  auto getIODevices = [&](const PrimitiveDescriptor &desc,
+                          size_t attrIdx) -> llvm::SmallVector<DeviceRef> {
+    auto deviceList = desc.getAttr<MEFListAttr>(attrIdx);
     SmallVector<DeviceRef> ioDevices;
-    auto deviceIndicesAttrOr = theExtraAttrs.find(label);
-    if (deviceIndicesAttrOr)
-      for (MEFDynamicAttr attr : deviceIndicesAttrOr->cast<MEFListAttr>())
-        ioDevices.push_back(devices[attr.cast<MEFAttr<uint32_t>>().get()]);
+    for (MEFDynamicAttr attr : deviceList)
+      ioDevices.push_back(devices[attr.cast<MEFAttr<uint32_t>>().get()]);
+
     return ioDevices;
   };
 
-  if (desc.getNumAttrs() >= (extraAttrsAttrIdx + 1)) {
-    auto theExtraAttrs = desc.getAttr<MEFDictionaryAttr>(extraAttrsAttrIdx);
-
-    inputDevices = getIODevicesFromExtraAttr(kMgpModelArgumentDeviceIndices);
-    outputDevices = getIODevicesFromExtraAttr(kMgpModelResultDeviceIndices);
-
-    if (theExtraAttrs.find(kMgpModelArgumentNames).has_value() &&
-        theExtraAttrs.find(kMgpModelResultNames).has_value()) {
-      SmallVector<StringRef> inputNames;
-      SmallVector<StringRef> outputNames;
-      if (auto err = decodeTensorNames(theExtraAttrs, inputNames, outputNames))
-        return err.takeError();
-      return std::make_unique<Model>(modelName.str(), devices, frameworkLabel,
-                                     init, execute, inputSpecs, outputSpecs,
-                                     inputNames, outputNames, inputDevices,
-                                     outputDevices, desc.copyLocation());
+  auto getNames = [&](const PrimitiveDescriptor &desc,
+                      size_t attrIdx) -> llvm::SmallVector<StringRef> {
+    auto namesAttr = desc.getAttr<MEFListAttr>(attrIdx);
+    SmallVector<StringRef> namesList;
+    for (MEFDynamicAttr attr : namesAttr) {
+      namesList.push_back(attr.cast<MEFAttr<StringRef>>().get());
     }
-  }
+    return namesList;
+  };
+
+  SmallVector<DeviceRef> inputDevices =
+      getIODevices(desc, inputDeviceIndicesIdx);
+  SmallVector<DeviceRef> outputDevices =
+      getIODevices(desc, resultDeviceIndicesIdx);
+
+  SmallVector<StringRef> inputNames = getNames(desc, argumentNamesIdx);
+  SmallVector<StringRef> outputNames = getNames(desc, resultNamesIdx);
 
   return std::make_unique<Model>(modelName.str(), devices, frameworkLabel, init,
-                                 execute, inputSpecs, outputSpecs, inputDevices,
-                                 outputDevices, desc.copyLocation());
+                                 execute, inputSpecs, outputSpecs, inputNames,
+                                 outputNames, inputDevices, outputDevices,
+                                 desc.copyLocation());
 }
 
 //===----------------------------------------------------------------------===//
@@ -280,12 +278,12 @@ Model::getFromDescriptor(const PrimitiveDescriptor &desc) {
 ExecutableModel::ExecutableModel(AnyAsyncValueRef chain,
                                  AnyAsyncValueRef mgpContext,
                                  AnyAsyncValueRef weightsRegistry,
-                                 SmallVector<AnyAsyncValueRef> &&devices,
+                                 SmallVector<AnyAsyncValueRef> &&extraArgs,
                                  const Model *model, Runtime &runtime)
     : model(model), runtime(runtime), chain(std::move(chain)),
       mgpContext(std::move(mgpContext)),
-      weightsRegistry(std::move(weightsRegistry)), devices(std::move(devices)) {
-}
+      weightsRegistry(std::move(weightsRegistry)),
+      extraArgs(std::move(extraArgs)) {}
 
 ExecutableModel::~ExecutableModel() = default;
 
@@ -296,17 +294,17 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
   checkUniqueRuntime(getRuntime());
 
   // Pass fixed execute args (chain, context, and weights registry), devices,
-  // and model inputs.
+  // init->exec context bundles, and inputs to the forward pass.
   // Number of devices and model inputs come from the graph op definition and
   // vary independently in general.
   // See ModelOp in MGPOps.td for a detailed spec of mgp.model.
   SmallVector<AnyAsyncValueRef> passedArgs;
-  passedArgs.reserve(kMgpModelNumFixedImplicitExecArgs + devices.size() +
+  passedArgs.reserve(kMgpModelNumFixedImplicitExecArgs + extraArgs.size() +
                      args.size());
   passedArgs.emplace_back(chain.copy());
   passedArgs.emplace_back(mgpContext.copy());
   passedArgs.emplace_back(weightsRegistry.copy());
-  for (const AnyAsyncValueRef &dev : devices)
+  for (const AnyAsyncValueRef &dev : extraArgs)
     passedArgs.emplace_back(dev.copy());
   for (AnyAsyncValueRef &arg : args)
     passedArgs.emplace_back(std::move(arg));
@@ -320,16 +318,16 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
 
 ErrorOrSuccess ExecutableModel::waitForModelSetup() {
   AsyncRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
-  AsyncRT::await(devices);
+  AsyncRT::await(extraArgs);
   if (chain.isError())
     return Error(chain.takeDiagnostic().getMessage().get());
   if (mgpContext.isError())
     return Error(mgpContext.takeDiagnostic().getMessage().get());
   if (weightsRegistry.isError())
     return Error(weightsRegistry.takeDiagnostic().getMessage().get());
-  for (auto &device : devices) {
-    if (device.isError())
-      return Error(device.takeDiagnostic().getMessage().get());
+  for (auto &arg : extraArgs) {
+    if (arg.isError())
+      return Error(arg.takeDiagnostic().getMessage().get());
   }
   return success();
 }
@@ -356,15 +354,15 @@ computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
 // Return the first CUDA stream from the model's device contexts. This keeps
 // capture/replay tied to the same runtime devices as execution.
 static ErrorOr<Driver::DeviceStreamRef>
-captureStream(ArrayRef<AnyAsyncValueRef> devices) {
-  AsyncRT::await(devices);
-  for (const AnyAsyncValueRef &deviceValue : devices) {
-    if (deviceValue.isError())
-      return deviceValue.getDiagnostic().getMessage().copy();
-    if (!deviceValue.isType<Driver::DeviceContextRef>())
-      return Error("unexpected device context type for capture");
+captureStream(ArrayRef<AnyAsyncValueRef> extraArgs) {
+  AsyncRT::await(extraArgs);
+  for (const AnyAsyncValueRef &arg : extraArgs) {
+    if (arg.isError())
+      return arg.getDiagnostic().getMessage().copy();
+    if (!arg.isType<Driver::DeviceContextRef>())
+      continue; // ignore non-device extraArgs
     const Driver::DeviceContextRef &context =
-        deviceValue.get<Driver::DeviceContextRef>();
+        arg.get<Driver::DeviceContextRef>();
     if (context->device().api() != Driver::Device::cudaAPI)
       continue;
     ErrorOr<Driver::DeviceStreamRef> streamOr = context->stream();
@@ -406,7 +404,7 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   if (auto it = capturedGraphs.find(key); it != capturedGraphs.end())
     return it->second->getOutputs();
 
-  ErrorOr<Driver::DeviceStreamRef> streamOr = captureStream(devices);
+  ErrorOr<Driver::DeviceStreamRef> streamOr = captureStream(extraArgs);
   if (streamOr.isError())
     return streamOr.takeError();
   Driver::DeviceStreamRef stream = streamOr.takeValue();

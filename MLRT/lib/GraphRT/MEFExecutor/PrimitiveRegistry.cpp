@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
+#include "Support/AssertStream.h"
+#include "Support/Profiling/Tracy.h"
 #include "llvm/ADT/StringRef.h"
 
 using namespace M;
@@ -24,12 +26,19 @@ struct PrimitiveRegistry::Impl {
 // PrimitiveRegistry
 //===----------------------------------------------------------------------===//
 
+static void mef_model() {
+  TRACY_ZONE_SCOPED_NC("mef_model", TRACY_COLOR_TEAL);
+
+  ASSERT_STREAM(false, << "mef.model should never be invoked");
+}
+
 static void mef_callable() {}
 static void builtin_module() {}
 
 PrimitiveRegistry::PrimitiveRegistry() : impl(std::make_unique<Impl>()) {
   // FIXME: remove this and the mef_callable primitive impl above
   ADD_PRIMITIVE(*this, "mef.callable", mef_callable);
+  ADD_PRIMITIVE(*this, "mef.model", mef_model);
   // FIXME: We should make it possible for others to implement this to do some
   //        substantive thing.
   ADD_PRIMITIVE(*this, "builtin.module", builtin_module);

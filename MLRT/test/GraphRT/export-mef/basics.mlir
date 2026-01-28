@@ -17,3 +17,10 @@ mef.callable @args_results(%a: si32, %b: si8) -> (si8, si32) {
 mef.callable @unknown_args(%a: !mef.unknown, %b: !mef.unknown) -> !mef.unknown {
   mef.output %b : !mef.unknown
 }
+
+// Test that mef.model can be exported to MEF.
+mef.model @test_model : mof (si32, tensor<?xf32>) -> tensor<?xf32> devices [] inputDeviceIndices [] resultDeviceIndices [] argumentNames [] resultNames [] init (%arg0: si32) -> (si32) {
+    mef.output %arg0 : si32
+  } execute (%arg0: si32, %arg1: tensor<?xf32>) -> (tensor<?xf32>) {
+    mef.output %arg1 : tensor<?xf32>
+  }

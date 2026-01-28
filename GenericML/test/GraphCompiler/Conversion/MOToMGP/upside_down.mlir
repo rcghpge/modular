@@ -9,7 +9,8 @@ mo.graph @updside_down(
     mo.output %relu : !mo.tensor<[256], f32>
 }
 
-// CHECK-LABEL: mgp.model @updside_down
+// CHECK-LABEL: mef.callable @updside_down$exec
 // CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.mul{{.*}}"
 // CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.add{{.*}}"
 // CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.relu{{.*}}"
+// CHECK: mef.model @updside_down

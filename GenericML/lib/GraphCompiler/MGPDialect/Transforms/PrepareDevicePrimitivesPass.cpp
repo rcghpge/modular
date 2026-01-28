@@ -31,9 +31,10 @@ class PrepareDevicePrimitivesPass
     : public impl::PrepareDevicePrimitivesPassBase<
           PrepareDevicePrimitivesPass> {
   void runOnOperation() override {
-    ModelOp model = getOperation();
-    OpBuilder builder(model.getContext());
-    model.walk([&](Operation *origOp) {
+    Operation *op = getOperation();
+    OpBuilder builder(op);
+
+    op->walk([&](Operation *origOp) {
       if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(origOp)) {
         assert(!origOp->hasSuccessors());
         assert(origOp->getNumRegions() == 0);

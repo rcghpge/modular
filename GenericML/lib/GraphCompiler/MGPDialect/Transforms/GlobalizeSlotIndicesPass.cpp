@@ -52,8 +52,8 @@ LogicalResult
 MGPCallGraphNode::createSubgraphOffset(MGPCallGraphNode::EdgeT edge,
                                        uint64_t &modelSlotUsage) const {
   OpBuilder execBuilder(edge.call);
-  auto slotOffsetOp = mlir::index::ConstantOp::create(
-      execBuilder, edge.call->getLoc(), modelSlotUsage);
+  auto slotOffsetOp =
+      mlir::index::ConstantOp::create(execBuilder, edge.call->getLoc(), 0);
   edge.call->insertOperands(edge.call.getNumOperands(),
                             slotOffsetOp.getResult());
   edge.call.setIsGlobalizedIndex(true);

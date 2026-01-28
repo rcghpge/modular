@@ -28,7 +28,8 @@ class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // ContextType
 //===----------------------------------------------------------------------===//
 
-def MGP_ContextType : MGP_Type<"Context", "context"> {
+def MGP_ContextType : MGP_Type<"Context", "context",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
   let summary = "Type of execution contexts holding a number of state slots.";
   let description = [{
     Contexts may be created by the 'init' entry point of a model, then reused
@@ -140,7 +141,8 @@ def MGP_OpaqueType : MGP_Type<"Opaque", "opaque",
 // DeviceContextType
 //===----------------------------------------------------------------------===//
 
-def MGP_DeviceContextType : MGP_Type<"DeviceContext", "device_context", []> {
+def MGP_DeviceContextType : MGP_Type<"DeviceContext", "device_context",
+  [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
   let summary = "MGP representation of the driver DeviceContext";
   let description = [{
     This is essentially opaque to MGP but it is still useful to represent

@@ -13,6 +13,7 @@
 
 #include "MLRT/GraphRT/MEFDialect/MEFTypes.h"
 #include "Support/LLVMCompilerForwardDecls.h"
+#include "Support/MDialect/MAttrs.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"

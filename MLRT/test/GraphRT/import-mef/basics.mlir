@@ -154,6 +154,39 @@ mef.callable @opaque_round_trip() {
   "a.secondregion"() : () -> ()
 }) {sym_name = "multi_region"} : () -> ()
 
+// Test mef.model export/import round-trip.
+// CHECK-LABEL: mef.opaque "mef.model" [
+// CHECK-SAME:    "mof"
+// CHECK-SAME:    (si32) -> si32
+// CHECK-SAME:    (si32, tensor<?xf32>) -> tensor<?xf32>
+// CHECK-SAME:    (si32, tensor<?xf32>) -> tensor<?xf32>
+// CHECK-SAME:    "test_model"
+// CHECK-SAME:  ]() : () -> () {
+// CHECK-NEXT: ^bb0(%[[INIT_ARG:.*]]: !mef.unknown):
+// CHECK-NEXT:   mef.output %[[INIT_ARG]] : !mef.unknown
+// CHECK-NEXT: }, {
+// CHECK-NEXT: ^bb0(%[[EXEC_ARG0:.*]]: !mef.unknown, %[[EXEC_ARG1:.*]]: !mef.unknown):
+// CHECK-NEXT:   mef.output %[[EXEC_ARG1]] : !mef.unknown
+// CHECK-NEXT: }
+// MD-LABEL: mef.opaque "mef.model" [
+// MD-SAME:    "mof"
+// MD-SAME:    (si32) -> si32
+// MD-SAME:    (si32, tensor<?xf32>) -> tensor<?xf32>
+// MD-SAME:    (si32, tensor<?xf32>) -> tensor<?xf32>
+// MD-SAME:    "test_model"
+// MD-SAME:  ]() : () -> () {
+// MD-NEXT: ^bb0(%[[INIT_ARG:.*]]: si32):
+// MD-NEXT:   mef.output %[[INIT_ARG]] : si32
+// MD-NEXT: }, {
+// MD-NEXT: ^bb0(%[[EXEC_ARG0:.*]]: si32, %[[EXEC_ARG1:.*]]: tensor<?xf32>):
+// MD-NEXT:   mef.output %[[EXEC_ARG1]] : tensor<?xf32>
+// MD-NEXT: }
+mef.model @test_model : mof (si32, tensor<?xf32>) -> tensor<?xf32> devices [#M.device_ref<"cpu", 0>] inputDeviceIndices [] resultDeviceIndices [] argumentNames [] resultNames [] init (%arg0: si32) -> (si32) {
+    mef.output %arg0 : si32
+  } execute (%arg0: si32, %arg1: tensor<?xf32>) -> (tensor<?xf32>) {
+    mef.output %arg1 : tensor<?xf32>
+  }
+
 // CHECK-LABEL: "mef.callable" ["controlflow_if"]
 // CHECK-NEXT: ^bb0(%[[ARG0:.*]]: !mef.unknown, %[[ARG1:.*]]: !mef.unknown, %[[ARG2:.*]]: !mef.unknown):
 // CHECK-NEXT:   %[[V0:.*]] = mef.opaque "grt.if" nonstrict [](%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (!mef.unknown, !mef.unknown, !mef.unknown) -> !mef.unknown {

@@ -4,8 +4,8 @@
 // emit-mojo path. This tests the case where TensorFusedOp's user is not a
 // CallExecuteOp after fusion transformations.
 
-// CHECK-LABEL: mgp.model @matmul_allreduce_with_epilogue
 // The matmul_allreduce should be fused with the add operations
+// CHECK-LABEL: mef.callable @matmul_allreduce_with_epilogue$exec
 // CHECK: mo.distributed.matmul_allreduce{{.*}}+mo.add
 // CHECK: mef.output
 mo.graph @matmul_allreduce_with_epilogue<total_seq_len>(
@@ -69,8 +69,8 @@ mo.graph @matmul_allreduce_with_epilogue<total_seq_len>(
       !mo.chain
 }
 
-// CHECK-LABEL: mgp.model @allreduce_sum_with_epilogue
 // The allreduce.sum should be fused with the add operation
+// CHECK-LABEL: mef.callable @allreduce_sum_with_epilogue$exec
 // CHECK: mo.distributed.allreduce.sum{{.*}}+mo.add
 // CHECK: mef.output
 mo.graph @allreduce_sum_with_epilogue(
