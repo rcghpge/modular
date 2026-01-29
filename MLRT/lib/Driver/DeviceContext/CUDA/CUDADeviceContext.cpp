@@ -1248,7 +1248,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   CUdeviceptr srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   CUdeviceptr dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  assert(srcByteOffset + srcByteSize >= src.byteSize());
+  assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dstByteSize);
   if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
     if (src.manualEvent())

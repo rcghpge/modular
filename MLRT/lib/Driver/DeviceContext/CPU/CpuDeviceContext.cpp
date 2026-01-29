@@ -250,7 +250,7 @@ ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   CHECK_IS_CPU_ERR(dst.context().device());
   void *srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   void *dstPtr = dst.ptr();
-  assert(srcByteOffset + srcByteSize >= src.byteSize());
+  assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dst.byteSize());
   memcpy(dstPtr, srcPtr, dst.byteSize());
   return success();

@@ -1066,7 +1066,7 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   hipDeviceptr_t srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   hipDeviceptr_t dstPtr = dst.ptr();
   size_t dstByteSize = dst.byteSize();
-  assert(srcByteOffset + srcByteSize >= src.byteSize());
+  assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dstByteSize);
   if (srcCtx.hipStream() != dstCtx.hipStream()) {
     // Ensure that we are waiting for the source data to be ready.
