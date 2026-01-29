@@ -15,6 +15,7 @@ mo.graph @static_ranks<D11, D12, D13, D14>(%arg0: !mo.tensor<[D11, D12], f32>, %
     %4 = mo.relu(%3) : !mo.tensor<[D11, D12], f32>
     mo.output %4 : !mo.tensor<[D11, D12], f32>
 }
+
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @static_ranks<[[D11:.*]], [[D12:.*]], [[D13:.*]], [[D14:.*]]>([[VARG0:%.*]]: !mo.tensor<[[[D11]], [[D12]]], f32>, [[VARG1:%.*]]: !mo.tensor<[[[D13]], [[D14]]], f32>) -> !mo.tensor<[[[D11]], [[D12]]], f32> {
 // CHECK-NEXT:   [[V0:%.*]] = mo.rebind([[VARG1]]) : !mo.tensor<[[[D13]], [[D14]]], f32> -> !mo.tensor<[[[D11]], [[D12]]], f32>

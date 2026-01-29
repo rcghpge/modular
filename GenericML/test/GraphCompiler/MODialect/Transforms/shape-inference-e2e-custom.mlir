@@ -1,13 +1,13 @@
-// RUN: mo-opt --mo-resolve-unknown-parameters --mo-shape-inference --mo-add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" %s | FileCheck %s
+// RUN: mo-opt --mo-shape-inference --mo-add-fallback-shape-funcs="kernel-library-paths=%kernel_api_test_lib" %s | FileCheck %s
 
 
 // CHECK-LABEL: mo.graph @custom_op
 // CHECK-SAME: <[[D0:.*]], [[D1:.*]] -> [[O0:.*]], [[O1:.*]]>(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]]], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[O0]], [[O1]]], f32> {
-mo.graph @custom_op(
-  %input: !mo.tensor<[?, ?], f32>
-) -> !mo.tensor<[?, ?], f32> {
+mo.graph @custom_op<D0, D1 -> O0, O1>(
+  %input: !mo.tensor<[D0, D1], f32>
+) -> !mo.tensor<[O0, O1], f32> {
 
   // We can't symbolicize the fallback shape function call because it contains a
   // side-effecting print statement.
@@ -17,8 +17,8 @@ mo.graph @custom_op(
 
   // CHECK-NEXT:  %[[RES:.*]] = mo.custom {symbol = "test_custom_op"}(%[[INPUT]]) :
   // CHECK-SAME:    (!mo.tensor<[[[D0]], [[D1]]], f32>) -> !mo.tensor<[[[D2]], [[D3]]], f32>
-  %res = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "test_custom_op"}(%input) : (!mo.tensor<[?, ?], f32>) -> !mo.tensor<[?, ?], f32>
+  %res = mo.custom<() -> D2, D3> {device = #M.device_ref<"cpu", 0>, symbol = "test_custom_op"}(%input) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], f32>
 
   // CHECK-NEXT:  mo.output<[[D2]], [[D3]]> %[[RES]] : !mo.tensor<[[[D2]], [[D3]]], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
+  mo.output<D2, D3> %res : !mo.tensor<[D2, D3], f32>
 }

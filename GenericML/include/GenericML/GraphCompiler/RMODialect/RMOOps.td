@@ -585,9 +585,9 @@ def RMO_ConvOp : RMO_Op<"conv", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$filter,
-    KnownShapeAttr:$strides,
-    KnownShapeAttr:$dilations,
-    KnownShapeAttr:$paddings,
+    MOSH_ShapeAttr:$strides,
+    MOSH_ShapeAttr:$dilations,
+    MOSH_ShapeAttr:$paddings,
     SI64Attr:$num_groups,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout
   );
@@ -669,10 +669,10 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$filter,
-    KnownShapeAttr:$strides,
-    KnownShapeAttr:$dilations,
-    KnownShapeAttr:$paddings,
-    KnownShapeAttr:$output_paddings,
+    MOSH_ShapeAttr:$strides,
+    MOSH_ShapeAttr:$dilations,
+    MOSH_ShapeAttr:$paddings,
+    MOSH_ShapeAttr:$output_paddings,
     DefaultValuedAttr<StrAttr, "\"NHWC\"">:$input_layout
   );
 
@@ -689,10 +689,10 @@ class RMO_PoolOp<string name> : RMO_Op<name, [
 ]> {
     let arguments = (ins
       MO_Tensor:$input,
-      KnownShapeAttr:$filter_shape,
-      KnownShapeAttr:$strides,
-      KnownShapeAttr:$dilations,
-      KnownShapeAttr:$paddings,
+      MOSH_ShapeAttr:$filter_shape,
+      MOSH_ShapeAttr:$strides,
+      MOSH_ShapeAttr:$dilations,
+      MOSH_ShapeAttr:$paddings,
       BoolAttr:$ceil_mode
     );
     let results = (outs MO_Tensor:$result);
@@ -738,10 +738,10 @@ def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool">{
 
   let arguments = (ins
     MO_Tensor:$input,
-    KnownShapeAttr:$filter_shape,
-    KnownShapeAttr:$strides,
-    KnownShapeAttr:$dilations,
-    KnownShapeAttr:$paddings,
+    MOSH_ShapeAttr:$filter_shape,
+    MOSH_ShapeAttr:$strides,
+    MOSH_ShapeAttr:$dilations,
+    MOSH_ShapeAttr:$paddings,
     BoolAttr:$ceil_mode,
     BoolAttr:$count_boundary
   );

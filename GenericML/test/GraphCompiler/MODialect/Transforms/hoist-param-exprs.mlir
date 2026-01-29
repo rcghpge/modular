@@ -98,10 +98,12 @@ mo.graph @rebind_output<D21, D22, D23, D24 -> D27>(%arg0: !mo.tensor<[D21, 12, D
 
 // COM: mo.rebind can't used with an opaque type.
 // CHECK-LABEL: mo.graph @dont_rebind_opaque
-mo.graph @dont_rebind_opaque(%arg0: !mo.tensor<[?], f32>, %arg1: !mo.opaque<"Opaque">) -> (!mo.opaque<"Opaque">) {
+// CHECK-SAME: <[[D0:[^,>]*]]>
+mo.graph @dont_rebind_opaque<D0>(%arg0: !mo.tensor<[D0], f32>, %arg1: !mo.opaque<"Opaque">) -> (!mo.opaque<"Opaque">) {
 
+  // CHECK-NEXT: kgen.param.declare [[D1:[^ ]*]]: si64 = <[[D0]]>
   // CHECK-NEXT: mo.rebind
-  %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[?], f32> -> !mo.tensor<[D1], f32>
+  %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[D0], f32> -> !mo.tensor<[D1], f32>
 
   // CHECK-NEXT: mo.custom
   %1 = mo.custom {symbol = "custom0", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_no_wrap(D1, 2)], f32>

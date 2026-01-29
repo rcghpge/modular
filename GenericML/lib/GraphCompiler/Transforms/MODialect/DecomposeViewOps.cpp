@@ -327,8 +327,7 @@ static void decomposeReshape(Static::ReshapeOp reshape, OpBuilder &builder) {
 
   // The following decompositions require that all dims are known at compile
   // time and that the number of elements is non-zero.
-  if (!inShapeAttr.hasUnknownDims() && !outShapeAttr.hasUnknownDims() &&
-      !isStaticShapeWithZeroElts(inShapeAttr) &&
+  if (!isStaticShapeWithZeroElts(inShapeAttr) &&
       !isStaticShapeWithZeroElts(outShapeAttr)) {
     // Ultra specific decompositions for flattening and unflattening
     if (inRank > 1 && outRank == 1) {

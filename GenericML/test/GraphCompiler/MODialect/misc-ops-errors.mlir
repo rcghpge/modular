@@ -14,10 +14,10 @@ mo.graph @broadcast_shape_f32_output(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.te
 
 // -----
 
-mo.graph @broadcast_shape_dyn_rank(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<?, si64> {
-  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
-  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<?, si64>
-  mo.output %res : !mo.tensor<?, si64>
+mo.graph @broadcast_shape_dyn_rank<Sh0: !mosh.ape>(%arg0: !mo.tensor<[3], si64>, %arg1: !mo.tensor<[2], si64>) -> !mo.tensor<Sh0, si64> {
+  // expected-error@+1 {{'mo.broadcast_shape' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<Sh0, si64>'}}
+  %res = mo.broadcast_shape(%arg0, %arg1) : (!mo.tensor<[3], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<Sh0, si64>
+  mo.output %res : !mo.tensor<Sh0, si64>
 }
 
 // -----
@@ -74,55 +74,55 @@ mo.graph @broadcast_shape_input_2_partially_ranked<D0>(%arg0: !mo.tensor<[3], si
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-mo.graph @broadcast_to_bad_shape(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[2, 3], si64>) -> !mo.tensor<?, f32> {
+mo.graph @broadcast_to_bad_shape<Sh0: !mosh.ape, Sh1: !mosh.ape>(%from: !mo.tensor<Sh0, f32>, %to: !mo.tensor<[2, 3], si64>) -> !mo.tensor<Sh1, f32> {
   // expected-error@+1 {{'mo.broadcast_to' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements}}
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[2, 3], si64>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<Sh0, f32>, !mo.tensor<[2, 3], si64>) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
 
-mo.graph @broadcast_to_bad_type(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], f32>) -> !mo.tensor<?, f32> {
+mo.graph @broadcast_to_bad_type<Sh0: !mosh.ape, D0, Sh1: !mosh.ape>(%from: !mo.tensor<Sh0, f32>, %to: !mo.tensor<[D0], f32>) -> !mo.tensor<Sh1, f32> {
   // expected-error@+1 {{'mo.broadcast_to' op operand #1 must be rank 1 and signed 64 or signed 32 integer elements}}
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[?], f32>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<Sh0, f32>, !mo.tensor<[D0], f32>) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
 
-mo.graph @broadcast_to_change_dtype(%from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], si32>) -> !mo.tensor<?, f64> {
+mo.graph @broadcast_to_change_dtype<Sh0: !mosh.ape, D0, Sh1: !mosh.ape>(%from: !mo.tensor<Sh0, f32>, %to: !mo.tensor<[D0], si32>) -> !mo.tensor<Sh1, f64> {
   // expected-error@+1 {{'mo.broadcast_to' op requires the element type of results match first operand}}
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[?], si32>) -> !mo.tensor<?, f64>
-  mo.output %res : !mo.tensor<?, f64>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<Sh0, f32>, !mo.tensor<[D0], si32>) -> !mo.tensor<Sh1, f64>
+  mo.output %res : !mo.tensor<Sh1, f64>
 }
 
 // -----
 
-mo.graph @broadcast_new_shape_size_res_unranked(
-  %from: !mo.tensor<?, f32>, %to: !mo.tensor<[2], si32>
-) -> !mo.tensor<?, f32> {
+mo.graph @broadcast_new_shape_size_res_unranked<Sh0: !mosh.ape, Sh1: !mosh.ape>(
+  %from: !mo.tensor<Sh0, f32>, %to: !mo.tensor<[2], si32>
+) -> !mo.tensor<Sh1, f32> {
   // expected-error@+1 {{result must be statically ranked if new shape has static size}}
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[2], si32>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<Sh0, f32>, !mo.tensor<[2], si32>) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
 
-mo.graph @broadcast_new_shape_size_res_ranked(
-  %from: !mo.tensor<?, f32>, %to: !mo.tensor<[?], si32>
+mo.graph @broadcast_new_shape_size_res_ranked<Sh0: !mosh.ape, D0>(
+  %from: !mo.tensor<Sh0, f32>, %to: !mo.tensor<[D0], si32>
 ) -> !mo.tensor<[2, 3], f32> {
   // expected-error@+1 {{result must be dynamically ranked if new shape has unknown size}}
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[?], si32>) -> !mo.tensor<[2, 3], f32>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<Sh0, f32>, !mo.tensor<[D0], si32>) -> !mo.tensor<[2, 3], f32>
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
 
 // -----
 
-mo.graph @broadcast_new_shape_size_res_rank(
-  %from: !mo.tensor<?, f32>, %to: !mo.tensor<[3], si32>
+mo.graph @broadcast_new_shape_size_res_rank<Sh0: !mosh.ape>(
+  %from: !mo.tensor<Sh0, f32>, %to: !mo.tensor<[3], si32>
 ) -> !mo.tensor<[2, 3], f32> {
   // expected-error@+1 {{new shape size and output rank must match}}
-  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<?, f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[2, 3], f32>
+  %res = mo.broadcast_to(%from, %to) : (!mo.tensor<Sh0, f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[2, 3], f32>
   mo.output %res : !mo.tensor<[2, 3], f32>
 }
 
@@ -197,10 +197,10 @@ mo.graph @concat_non_matching_output_rank(%arg0: !mo.tensor<[2, 2], f32>, %arg1:
 
 // -----
 
-mo.graph @concat_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<[2, 8], f32> {
+mo.graph @concat_partial_dyn_rank<Sh0: !mosh.ape>(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<Sh0, f32>) -> !mo.tensor<[2, 8], f32> {
   %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<?, f32>) -> !mo.tensor<[2, 8], f32>
+  %0 = mo.concat[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<Sh0, f32>) -> !mo.tensor<[2, 8], f32>
   mo.output %0 : !mo.tensor<[2, 8], f32>
 }
 
@@ -280,11 +280,11 @@ mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: 
 
 // -----
 
-mo.graph @split_partial_dyn_rank(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>) {
+mo.graph @split_partial_dyn_rank<Sh0: !mosh.ape, Sh1: !mosh.ape>(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) {
   %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0, %1 = mo.split[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<?, f32>, !mo.tensor<?, f32>)
-  mo.output %0, %1 : !mo.tensor<?, f32>, !mo.tensor<?, f32>
+  %0, %1 = mo.split[%ax: !mo.tensor<[], si64>](%arg0, %arg1) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>)
+  mo.output %0, %1 : !mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>
 }
 
 // -----
@@ -375,10 +375,10 @@ mo.graph @gather_non_int_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.ten
 
 // -----
 
-mo.graph @gather_unranked_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<?, si64>
-  // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<?, si64>'}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<?, si64>) -> !mo.tensor<[2, 2], f32>
+mo.graph @gather_unranked_axis<Sh0: !mosh.ape>(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<Sh0, si64>
+  // expected-error @below {{'mo.gather' op operand #2 must be ranked scalar index tensor, but got '!mo.tensor<Sh0, si64>'}}
+  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<Sh0, si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -402,11 +402,11 @@ mo.graph @gather_result_rank_too_small(%input: !mo.tensor<[?, ?], f32>, %indices
 
 // -----
 
-mo.graph @gather_unranked_output(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<?, f32> {
+mo.graph @gather_unranked_output<Sh0: !mosh.ape>(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<Sh0, f32> {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   // expected-error @below {{result must be ranked if both param and indices are ranked}}
-  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
-  mo.output %0 : !mo.tensor<?, f32>
+  %0 = mo.gather(%input, %indices, %axis) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<Sh0, f32>
+  mo.output %0 : !mo.tensor<Sh0, f32>
 }
 
 // -----
@@ -439,26 +439,26 @@ mo.graph @pad_invalid_static_paddings(%input: !mo.tensor<[2, 3], f32>, %paddings
 
 // -----
 
-mo.graph @pad_invalid_dynamic_paddings(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<?, f32> {
+mo.graph @pad_invalid_dynamic_paddings<Sh0: !mosh.ape, Sh1: !mosh.ape>(%input: !mo.tensor<Sh0, f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<Sh1, f32> {
   // expected-error@+1 {{'mo.pad.constant' op paddings shape does not match dynamic input rank}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<Sh0, f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
 
-mo.graph @pad_input_ranked_res_unranked(%input: !mo.tensor<[?, ?], f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<?, f32> {
+mo.graph @pad_input_ranked_res_unranked<D0, D1, Sh0: !mosh.ape>(%input: !mo.tensor<[D0, D1], f32>, %paddings: !mo.tensor<[4], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<Sh0, f32> {
   // expected-error@+1 {{'mo.pad.constant' op result must be ranked if input is ranked}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[?, ?], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<Sh0, f32>
+  mo.output %res : !mo.tensor<Sh0, f32>
 }
 
 // -----
 
-mo.graph @pad_input_unranked_res_ranked(%input: !mo.tensor<?, f32>, %paddings: !mo.tensor<[?], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @pad_input_unranked_res_ranked<Sh0: !mosh.ape, D0, D1, D2>(%input: !mo.tensor<Sh0, f32>, %paddings: !mo.tensor<[D0], si64>, %constant: !mo.tensor<[], f32>) -> !mo.tensor<[D1, D2], f32> {
   // expected-error@+1 {{'mo.pad.constant' op result must be unranked if input is unranked}}
-  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[?, ?], f32>
-  mo.output %res : !mo.tensor<[?, ?], f32>
+  %res = mo.pad.constant(%input, %paddings, %constant) : (!mo.tensor<Sh0, f32>, !mo.tensor<[D0], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[D1, D2], f32>
+  mo.output %res : !mo.tensor<[D1, D2], f32>
 }
 
 // -----
@@ -535,10 +535,10 @@ mo.graph @shape_of_f32_output(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2], 
 
 // -----
 
-mo.graph @shape_of_dyn_rank(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64> {
-  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<?, si64>'}}
-  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<?, si64>
-  mo.output %res : !mo.tensor<?, si64>
+mo.graph @shape_of_dyn_rank<Sh0: !mosh.ape>(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<Sh0, si64> {
+  // expected-error@+1 {{'mo.shape_of' op result #0 must be rank 1 and signed 64 or signed 32 integer elements, but got '!mo.tensor<Sh0, si64>'}}
+  %res = mo.shape_of(%arg) : (!mo.tensor<[1, 3], f32>) -> !mo.tensor<Sh0, si64>
+  mo.output %res : !mo.tensor<Sh0, si64>
 }
 
 // -----
@@ -551,9 +551,9 @@ mo.graph @shape_of_rank_2(%arg: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 1], s
 
 // -----
 
-mo.graph @shape_of_dyn_rank_static_res(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[2], si64> {
+mo.graph @shape_of_dyn_rank_static_res<Sh0: !mosh.ape>(%arg: !mo.tensor<Sh0, f32>) -> !mo.tensor<[2], si64> {
   // expected-error@+1 {{input must have static rank if result has known size}}
-  %res = mo.shape_of(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[2], si64>
+  %res = mo.shape_of(%arg) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[2], si64>
   mo.output %res : !mo.tensor<[2], si64>
 }
 
@@ -654,47 +654,47 @@ mo.graph @slice_step_invalid_rank(
 
 // -----
 
-mo.graph @slice_dyn_rank_input_static_start(
-  %input: !mo.tensor<?, f32>,
+mo.graph @slice_dyn_rank_input_static_start<Sh0: !mosh.ape, D0, D1, Sh1: !mosh.ape>(
+  %input: !mo.tensor<Sh0, f32>,
   %start : !mo.tensor<[2], si64>,
-  %stop : !mo.tensor<[?], si32>,
-  %step : !mo.tensor<[?], si64>
-) -> !mo.tensor<?, f32> {
+  %stop : !mo.tensor<[D0], si32>,
+  %step : !mo.tensor<[D1], si64>
+) -> !mo.tensor<Sh1, f32> {
   // expected-error @below {{start shape must be dynamic if input is has dynamic rank}}
   %res = mo.slice(%input, %start, %stop, %step) : (
-    !mo.tensor<?, f32>, !mo.tensor<[2], si64>, !mo.tensor<[?], si32>, !mo.tensor<[?], si64>
-  ) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+    !mo.tensor<Sh0, f32>, !mo.tensor<[2], si64>, !mo.tensor<[D0], si32>, !mo.tensor<[D1], si64>
+  ) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
 
-mo.graph @slice_dyn_rank_input_static_stop(
-  %input: !mo.tensor<?, f32>,
-  %start : !mo.tensor<[?], si64>,
+mo.graph @slice_dyn_rank_input_static_stop<Sh0: !mosh.ape, D0, D1, Sh1: !mosh.ape>(
+  %input: !mo.tensor<Sh0, f32>,
+  %start : !mo.tensor<[D0], si64>,
   %stop : !mo.tensor<[1], si32>,
-  %step : !mo.tensor<[?], si64>
-) -> !mo.tensor<?, f32> {
+  %step : !mo.tensor<[D1], si64>
+) -> !mo.tensor<Sh1, f32> {
   // expected-error @below {{stop shape must be dynamic if input is has dynamic rank}}
   %res = mo.slice(%input, %start, %stop, %step) : (
-    !mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[1], si32>, !mo.tensor<[?], si64>
-  ) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+    !mo.tensor<Sh0, f32>, !mo.tensor<[D0], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D1], si64>
+  ) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
 
-mo.graph @slice_dyn_rank_input_static_step(
-  %input: !mo.tensor<?, f32>,
-  %start : !mo.tensor<[?], si64>,
-  %stop : !mo.tensor<[?], si32>,
+mo.graph @slice_dyn_rank_input_static_step<Sh0: !mosh.ape, D0, D1, Sh1: !mosh.ape>(
+  %input: !mo.tensor<Sh0, f32>,
+  %start : !mo.tensor<[D0], si64>,
+  %stop : !mo.tensor<[D1], si32>,
   %step : !mo.tensor<[3], si64>
-) -> !mo.tensor<?, f32> {
+) -> !mo.tensor<Sh1, f32> {
   // expected-error @below {{step shape must be dynamic if input is has dynamic rank}}
   %res = mo.slice(%input, %start, %stop, %step) : (
-    !mo.tensor<?, f32>, !mo.tensor<[?], si64>, !mo.tensor<[?], si32>, !mo.tensor<[3], si64>
-  ) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+    !mo.tensor<Sh0, f32>, !mo.tensor<[D0], si64>, !mo.tensor<[D1], si32>, !mo.tensor<[3], si64>
+  ) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
@@ -721,11 +721,11 @@ mo.graph @transpose_2d_perm(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2
 
 // -----
 
-mo.graph @transpose_perm_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @transpose_perm_size_static<Sh0: !mosh.ape, Sh1: !mosh.ape>(%input: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
   %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{argument and result must be statically ranked if perm has known shape}}
-  %res = mo.transpose(%input, %perm) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.transpose(%input, %perm) : (!mo.tensor<Sh0, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----
@@ -795,18 +795,18 @@ mo.graph @arg_nonzero_bad_result_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tens
 
 // -----
 
-mo.graph @arg_nonzero_dynamic_result_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<?, si64> {
+mo.graph @arg_nonzero_dynamic_result_rank<Sh0: !mosh.ape>(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<Sh0, si64> {
   // expected-error@+1 {{mo.arg_nonzero: invalid output shape: rank must be 2}}
-  %res = mo.arg_nonzero(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<?, si64>
-  mo.output %res : !mo.tensor<?, si64>
+  %res = mo.arg_nonzero(%arg) : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<Sh0, si64>
+  mo.output %res : !mo.tensor<Sh0, si64>
 }
 
 // -----
 
-mo.graph @arg_nonzero_dynamic_input_rank(%arg: !mo.tensor<?, f32>) -> !mo.tensor<[?, 2], si64> {
+mo.graph @arg_nonzero_dynamic_input_rank<Sh0: !mosh.ape, D0>(%arg: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, 2], si64> {
   // expected-error@+1 {{mo.arg_nonzero: invalid output shape: inner_dim != input_rank}}
-  %res = mo.arg_nonzero(%arg) : (!mo.tensor<?, f32>) -> !mo.tensor<[?, 2], si64>
-  mo.output %res : !mo.tensor<[?, 2], si64>
+  %res = mo.arg_nonzero(%arg) : (!mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, 2], si64>
+  mo.output %res : !mo.tensor<[D0, 2], si64>
 }
 
 // -----
@@ -932,11 +932,11 @@ mo.graph @tile_2d_repeats(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3],
 
 // -----
 
-mo.graph @tile_repeats_size_static(%input: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+mo.graph @tile_repeats_size_static<Sh0: !mosh.ape, Sh1: !mosh.ape>(%input: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh1, f32> {
   %repeats = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // expected-error@+1 {{argument and result must be statically ranked if repeats has known shape}}
-  %res = mo.tile(%input, %repeats) : (!mo.tensor<?, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<?, f32>
-  mo.output %res : !mo.tensor<?, f32>
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<Sh0, f32>, !mo.tensor<[2], si64>) -> !mo.tensor<Sh1, f32>
+  mo.output %res : !mo.tensor<Sh1, f32>
 }
 
 // -----

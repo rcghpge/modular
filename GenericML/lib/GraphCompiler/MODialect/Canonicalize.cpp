@@ -175,17 +175,11 @@ LogicalResult materializeShapeInference(RebindOp op,
   if (paramDecls.empty())
     return failure();
   // TODO lift into a method on MO::TensorType?
-  auto doesShapeAttrContainUnknown = [](TypedAttr shapeAttr) {
-    if (auto dimAttrs = dyn_cast<ShapeAttr>(shapeAttr))
-      return dimAttrs.hasUnknownDims();
-    return isa<KGEN::UnknownAttr>(shapeAttr);
-  };
   Location loc = op.getLoc();
   TypedAttr inputShapeAttr = op.getInput().getType().getShapeAttr();
   if (paramDecls.size() == 1) {
     KGEN::ParamDeclAttr newDecl = paramDecls.front();
-    if (isa<ShapeType>(newDecl.getType()) &&
-        !doesShapeAttrContainUnknown(inputShapeAttr)) {
+    if (isa<ShapeType>(newDecl.getType())) {
       // If there is a single declaration in rebind that is a shape parameter,
       // we materialize into a kgen.param.declare.
       KGEN::ParamDeclareOp::create(rewriter, loc, newDecl, inputShapeAttr);
@@ -244,9 +238,7 @@ LogicalResult materializeShapeInference(RebindOp op,
                 dyn_cast<KGEN::ParamDeclRefAttr>(outputDimAttr)) {
           if (KGEN::ParamDeclAttr paramDecl =
                   nameToParamDecl.lookup(outputDimParamRef.getName())) {
-            if (isa<KGEN::UnknownAttr>(inputDimAttr)) {
-              unknownParamDecls.insert(paramDecl);
-            } else if (declaredParams.insert(paramDecl)) {
+            if (declaredParams.insert(paramDecl)) {
               KGEN::ParamDeclareOp::create(rewriter, loc, paramDecl,
                                            inputDimAttr);
             }

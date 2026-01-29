@@ -21,11 +21,10 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     of which have index type. The type of this attribute is always `!mosh.ape`.
 
     Each dimension `TypedAttr` inside `values` is one of:
-    1. `KGEN::UnknownAttr` for unparameterized dimension, e.g., `?`.
-    2. `KGEN::ParamDeclRefAttr` for a dimension parameter, e.g., `D0`.
-    3. `KGEN::ParamOperatorAttr` for a dimension parameter expression, e.g.,
+    1. `KGEN::ParamDeclRefAttr` for a dimension parameter, e.g., `D0`.
+    2. `KGEN::ParamOperatorAttr` for a dimension parameter expression, e.g.,
     `add(D1, 2)`.
-    4. `IntegerAttr` for a concrete integer dimension, e.g., `42`
+    3. `IntegerAttr` for a concrete integer dimension, e.g., `42`
 
     Note that -1 can be used as a special dimension value that denotes a
     dimension to be inferred from other dimensions and total number of elements
@@ -102,9 +101,6 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// unknown dimensions.
     int64_t getIntDim(size_t n) const;
 
-    /// Check whether any of the dimensions are KGEN::UnknownAttr.
-    bool hasUnknownDims() const;
-
     /// Returns the number of elements as a symbolic expression.
     TypedAttr getSymbolicNumElements() const;
 
@@ -132,11 +128,5 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
 
   let genVerifyDecl = 1;
 }
-
-/// ShapeAttr confined to have no unknown (?) dimensions.
-def KnownShapeAttr : ConfinedAttr<MOSH_ShapeAttr, [
-  AttrConstraint<CPred<"!cast<::MOSH::ShapeAttr>($_self).hasUnknownDims()">,
-                 "has parametrically known shape">
-]> {}
 
 #endif // GENERICML_GRAPHCOMPILER_MOSHDIALECT_MOSHATTRS_TD

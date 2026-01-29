@@ -732,10 +732,6 @@ static ParseResult parseOutputValues(AsmParser &p,
     Type type = ShapeAttr::getDimType(p.getContext());
     if (succeeded(p.parseOptionalColon()) && KGEN::parseKGENType(p, type))
       return failure();
-    if (succeeded(p.parseOptionalQuestion())) {
-      values.push_back(KGEN::UnknownAttr::get(type));
-      return success();
-    }
     return KGEN::parseParamValue(p, values.emplace_back(), type);
   };
   if (p.parseCommaSeparatedList(OpAsmParser::Delimiter::OptionalLessGreater,
@@ -757,10 +753,7 @@ static void printOutputValues(AsmPrinter &p, Operation *op,
       KGEN::printKGENType(p, type);
       p << ' ';
     }
-    if (isa<KGEN::UnknownAttr>(value))
-      p << '?';
-    else
-      KGEN::printParamValue(p, value);
+    KGEN::printParamValue(p, value);
   });
   p << '>';
 }
@@ -2689,10 +2682,7 @@ static bool isSubtype(TensorType ty1, TensorType ty2) {
   if (!ty2.hasRank()) { // ty2: !mo.tensor<?|Sh0, f32>
     // If `ty2` has unknown shape `?`, any `ty1` will be a subtype of `ty2`;
     // otherwise the shape must match textually, e.g., `Sh0 == Sh0`.
-    if (isa<KGEN::UnknownAttr>(shapeAttr2))
-      return true;
-    else
-      return shapeAttr1 != shapeAttr2;
+    return shapeAttr1 != shapeAttr2;
   }
 
   // Otherwise `ty2` is ranked, i.e., ty2: !mo.tensor<[...], f32>
@@ -2713,7 +2703,7 @@ static bool isSubtype(TensorType ty1, TensorType ty2) {
     // If `dimAttr2` is an unknown dimension `?`, `dimAttr1` can be anything in
     // order for `ty1` to be a subtype of `ty2`; otherwise the dimensions must
     // match textually, e.g., `42 == 42`.
-    if (!isa<KGEN::UnknownAttr>(dimAttr2) && dimAttr1 != dimAttr2)
+    if (dimAttr1 != dimAttr2)
       return false;
   }
 

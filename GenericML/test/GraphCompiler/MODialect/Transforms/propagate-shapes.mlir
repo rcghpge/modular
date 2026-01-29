@@ -91,31 +91,31 @@ mo.graph @unfolded_apply_shouldnt_be_inlined<Sh0: !mosh.ape, Sh1: !mosh.ape -> S
 }
 
 // CHECK-LABEL: mo.graph @graph_with_param_decls_in_ops
-// CHECK-SAME: <[[D0:.*]] -> [[D1:.*]], [[D2:.*]]>(
+// CHECK-SAME: <[[D0:.*]] -> [[D2:.*]]>(
 mo.graph @graph_with_param_decls_in_ops<D0 -> D1, D2>(
-  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], 20, ?], f32>,
-  %arg0: !mo.tensor<[D0, 20, ?], f32>,
+  // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[[[D0]], 20], f32>,
+  %arg0: !mo.tensor<[D0, 20], f32>,
   // CHECK-SAME: %[[SHAPE:.*]]: !mo.tensor<[2], si32>
   %shape: !mo.tensor<[2], si32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D1]], [[D2]]], f32> {
+// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D2]]], f32> {
 ) -> !mo.tensor<[D1, D2], f32> {
   kgen.param.declare D3: si64 = <D0>
   kgen.param.declare D4: si64 = <20>
-  // CHECK-NEXT: %[[VAL0:.*]] = mo.rebind<() -> [[D5:.*]]>(%[[ARG0]]) :
-  // CHECK-SAME: !mo.tensor<[[[D0]], 20, ?], f32> -> !mo.tensor<[[[D0]], 20, [[D5]]], f32>
-  %0 = mo.rebind<() -> D5>(%arg0) : !mo.tensor<[D0, 20, ?], f32> -> !mo.tensor<[D3, D4, D5], f32>
-  // CHECK-NEXT: %[[VAL1:.*]] = mo.reshape<() -> [[D6:.*]], [[D7:.*]]>(%[[VAL0]], %[[SHAPE]]) : (
-  // CHECK-SAME:   !mo.tensor<[[[D0]], 20, [[D5]]], f32>, !mo.tensor<[2], si32>
+
+
+  %0 = mo.rebind(%arg0) : !mo.tensor<[D0, 20], f32> -> !mo.tensor<[D3, D4], f32>
+  // CHECK-NEXT: %[[VAL1:.*]] = mo.reshape<() -> [[D6:.*]], [[D7:.*]]>(%[[ARG0]], %[[SHAPE]]) : (
+  // CHECK-SAME:   !mo.tensor<[[[D0]], 20], f32>, !mo.tensor<[2], si32>
   // CHECK-SAME: ) -> !mo.tensor<[[[D6]], [[D7]]], f32>
   %1 = mo.reshape<() -> D6, D7>(%0, %shape) : (
-    !mo.tensor<[D3, D4, D5], f32>, !mo.tensor<[2], si32>
+    !mo.tensor<[D3, D4], f32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[D6, D7], f32>
-  kgen.param.declare D8: si64 = <D5>
+  kgen.param.declare D8: si64 = <D3>
   kgen.param.declare D9: si64 = <D7>
   // CHECK-NEXT: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) :
-  // CHECK-SAME: !mo.tensor<[[[D6]], [[D7]]], f32> -> !mo.tensor<[[[D5]], [[D7]]], f32>
+  // CHECK-SAME: !mo.tensor<[[[D6]], [[D7]]], f32> -> !mo.tensor<[[[D0]], [[D7]]], f32>
   %2 = mo.rebind(%1) : !mo.tensor<[D6, D7], f32> -> !mo.tensor<[D8, D9], f32>
-  // CHECK-NEXT: mo.output<[[D5]], [[D7]]> %[[VAL2]] : !mo.tensor<[[[D5]], [[D7]]], f32>
+  // CHECK-NEXT: mo.output<[[D7]]> %[[VAL2]] : !mo.tensor<[[[D0]], [[D7]]], f32>
   mo.output<D8, D9> %2 : !mo.tensor<[D8, D9], f32>
 }
 

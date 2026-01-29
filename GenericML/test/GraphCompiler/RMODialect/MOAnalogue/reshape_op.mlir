@@ -1,18 +1,14 @@
-// RUN: mo-opt %s --split-input-file --verify-diagnostics | FileCheck %s
+// RUN: mo-opt %s --split-input-file --verify-diagnostics
 
-mo.graph @reshape_op_ok(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
-    %1 = rmo.mo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @reshape_ok<Sh0: !mosh.ape, Sh1: !mosh.ape -> Sh2: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %shape: !mo.tensor<Sh1, si64>) -> !mo.tensor<Sh2, f32> {
+  %1 = rmo.mo.reshape<() -> Sh3: !mosh.ape>(%arg0, %shape) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si64>) -> !mo.tensor<Sh3, f32>
+  mo.output<:!mosh.ape Sh3> %1 : !mo.tensor<Sh3, f32>
 }
-// CHECK-LABEL: mo.graph
-// CHECK-SAME: @reshape_op_ok([[VARG0:[^ ]*]]: !mo.tensor<?, si64>, [[VARG1:[^ ]*]]: !mo.tensor<?, si64>) -> !mo.tensor<[?], si64> {
-// CHECK-NEXT: [[V0:[^ ]*]] = rmo.mo.reshape([[VARG0]], [[VARG1]]) : (!mo.tensor<?, si64>, !mo.tensor<?, si64>) -> !mo.tensor<[?], si64>
-// CHECK-NEXT: mo.output [[V0]] : !mo.tensor<[?], si64>
 
 // -----
 
-mo.graph @reshape_op_not_ok(%shape0: !mo.tensor<?, si64>, %shape1: !mo.tensor<?, f32>) -> !mo.tensor<[?], si64> {
-    // expected-error@below {{'rmo.mo.reshape' op operand #1 must be rank 1 or unranked with signed 64 or signed 32 integer elements, but got '!mo.tensor<?, f32>'}}
-    %1 = rmo.mo.reshape(%shape0, %shape1) : (!mo.tensor<?, si64>, !mo.tensor<?, f32>) -> !mo.tensor<[?], si64>
-    mo.output %1: !mo.tensor<[?], si64>
+mo.graph @reshape_not_ok<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %shape: !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32> {
+  // expected-error@below {{'rmo.mo.reshape' op operand #1 must be rank 1 or unranked with signed 64 or signed 32 integer elements, but got '!mo.tensor<Sh1, f32>'}}
+  %1 = rmo.mo.reshape(%arg0, %shape) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32>
+  mo.output %1 : !mo.tensor<Sh2, f32>
 }

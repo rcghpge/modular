@@ -36,13 +36,9 @@ void MOSHDialect::registerAttributes() {
 // ShapeAttr
 //===----------------------------------------------------------------------===//
 
-OptionalParseResult M::MOSH::parseShapeAttrOrUnknown(AsmParser &p,
-                                                     TypedAttr &shapeAttr) {
+OptionalParseResult M::MOSH::parseShapeAttr(AsmParser &p,
+                                            TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<ShapeType>();
-  if (succeeded(p.parseOptionalQuestion())) {
-    shapeAttr = KGEN::UnknownAttr::get(shapeTy);
-    return mlir::success();
-  }
 
   if (succeeded(p.parseOptionalLSquare())) {
     SmallVector<TypedAttr> values;
@@ -60,9 +56,7 @@ OptionalParseResult M::MOSH::parseShapeAttrOrUnknown(AsmParser &p,
 
 void M::MOSH::printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr) {
   assert(isa<ShapeType>(shapeAttr.getType()));
-  if (isa<KGEN::UnknownAttr>(shapeAttr)) {
-    p << "?";
-  } else if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
+  if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
     KGEN::printParamName(p, declRef.getName());
   } else if (auto declRef = dyn_cast<KGEN::ParamIndexRefAttr>(shapeAttr)) {
     KGEN::printParamValue(p, declRef, declRef.getType());
@@ -108,13 +102,8 @@ static ParseResult parseShapeValueElement(AsmParser &p, TypedAttr &value) {
 ParseResult M::MOSH::parseShapeValue(AsmParser &p,
                                      SmallVectorImpl<TypedAttr> &values) {
   values.clear();
-  auto idxTy = ShapeAttr::getDimType(p.getContext());
 
   if (p.parseCommaSeparatedList([&]() -> ParseResult {
-        if (succeeded(p.parseOptionalQuestion())) {
-          values.push_back(KGEN::UnknownAttr::get(idxTy));
-          return success();
-        }
         return parseShapeValueElement(p, values.emplace_back());
       }))
     return failure();
@@ -139,11 +128,6 @@ static void printColonTypeOrDimensionPrefix(AsmPrinter &p, Type type) {
 }
 
 void M::MOSH::printDimensionValue(AsmPrinter &p, TypedAttr value) {
-  if (isa<KGEN::UnknownAttr>(value)) {
-    p << '?';
-    return;
-  }
-
   printColonTypeOrDimensionPrefix(p, value.getType());
   KGEN::printParamValue(p, value);
 }
@@ -173,10 +157,11 @@ SmallVector<TypedAttr> dimAttrs(MLIRContext *context,
   attrs.reserve(values.size());
 
   for (auto v : values) {
-    if (mlir::ShapedType::isDynamic(v))
-      attrs.push_back(KGEN::UnknownAttr::get(idxTy));
-    else
+    if (mlir::ShapedType::isDynamic(v)) {
+      ASSERT_STREAM(false, "ShapeAttr does not support dynamic dimensions");
+    } else {
       attrs.push_back(IntegerAttr::get(idxTy, v));
+    }
   }
   return attrs;
 }
@@ -210,12 +195,6 @@ bool ShapeAttr::isConstant() const {
   // A shape is constant if the dimensions are concrete integers.
   return llvm::all_of(
       getValues(), [](TypedAttr attr) { return llvm::isa<IntegerAttr>(attr); });
-}
-
-bool ShapeAttr::hasUnknownDims() const {
-  return llvm::any_of(getValues(), [](TypedAttr attr) {
-    return llvm::isa<KGEN::UnknownAttr>(attr);
-  });
 }
 
 LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
@@ -279,6 +258,7 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
       result.push_back(xShDim.value());
       continue;
     }
+
     if (!xShDim.has_value()) {
       result.push_back(yShDim.value());
       continue;
@@ -296,29 +276,8 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
       result.push_back(yShDimVal);
       continue;
     }
+
     if (yShDimVal == intDim1) {
-      result.push_back(xShDimVal);
-      continue;
-    }
-
-    if (llvm::isa<KGEN::ParamDeclRefAttr>(xShDimVal)) {
-      if (llvm::isa<KGEN::UnknownAttr>(yShDimVal)) {
-        return Error(Twine("xShDim and yShDim are incompatible"));
-      }
-    }
-
-    if (llvm::isa<KGEN::ParamDeclRefAttr>(yShDimVal)) {
-      if (llvm::isa<KGEN::UnknownAttr>(xShDimVal)) {
-        return Error(Twine("xShDim and yShDim are incompatible"));
-      }
-    }
-
-    if (llvm::isa<KGEN::UnknownAttr>(xShDimVal)) {
-      result.push_back(yShDimVal);
-      continue;
-    }
-
-    if (llvm::isa<KGEN::UnknownAttr>(yShDimVal)) {
       result.push_back(xShDimVal);
       continue;
     }
@@ -375,9 +334,6 @@ TypedAttr ShapeAttr::getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams) {
 
 ErrorOr<SmallVector<int64_t>>
 ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
-  if (beforeShape.hasUnknownDims() || bcastedShape.hasUnknownDims())
-    return Error("We cannot calculate this with unknown dims.");
-
   ArrayRef<TypedAttr> beforeDims = beforeShape.getValues();
   ArrayRef<TypedAttr> bcastedDims = bcastedShape.getValues();
 

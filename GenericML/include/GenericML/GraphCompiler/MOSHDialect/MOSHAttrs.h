@@ -21,7 +21,7 @@ class ShapeAttr;
 
 /// Return none if parser encountered something other than ShapeAttr or
 /// UnknownAttr.
-OptionalParseResult parseShapeAttrOrUnknown(AsmParser &p, TypedAttr &shapeAttr);
+OptionalParseResult parseShapeAttr(AsmParser &p, TypedAttr &shapeAttr);
 
 /// Print an attribute that has MOSH::ShapeType.
 void printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr);

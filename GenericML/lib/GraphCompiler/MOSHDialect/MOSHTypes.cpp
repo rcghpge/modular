@@ -31,7 +31,7 @@ LogicalResult ShapeType::printValue(AsmPrinter &p, TypedAttr value) const {
 
 OptionalParseResult ShapeType::parseValue(AsmParser &p,
                                           TypedAttr &value) const {
-  return parseShapeAttrOrUnknown(p, value);
+  return parseShapeAttr(p, value);
 }
 
 //===----------------------------------------------------------------------===//

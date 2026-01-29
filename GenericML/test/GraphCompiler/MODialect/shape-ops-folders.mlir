@@ -24,18 +24,20 @@ mo.graph @shape_of_fold_dim_parameter<D0>(%arg0: !mo.tensor<[D0, 1], f32>) -> !m
 }
 
 // CHECK-LABEL: mo.graph @shape_of_no_fold_1
-mo.graph @shape_of_no_fold_1(%arg0: !mo.tensor<[?, 1], si32>) -> !mo.tensor<[2], si64> {
+// CHECK-SAME: <[[D0:[^,>]*]]>(%{{.*}}: !mo.tensor<{{\[}}[[D0]], 1{{\]}}, si32>) -> !mo.tensor<[2], si64>
+mo.graph @shape_of_no_fold_1<D0>(%arg0: !mo.tensor<[D0, 1], si32>) -> !mo.tensor<[2], si64> {
   // CHECK: mosh.param.to_value
   // CHECK: mo.shape.to_tensor
-  %0 = mo.shape_of(%arg0) : (!mo.tensor<[?, 1], si32>) -> !mo.tensor<[2], si64>
+  %0 = mo.shape_of(%arg0) : (!mo.tensor<[D0, 1], si32>) -> !mo.tensor<[2], si64>
   mo.output %0 : !mo.tensor<[2], si64>
 }
 
 // CHECK-LABEL: mo.graph @shape_of_no_fold_2
-mo.graph @shape_of_no_fold_2(%arg0: !mo.tensor<?, si32>) -> !mo.tensor<[?], si64> {
+// CHECK-SAME: <[[SH0:[^,>]*]]: !mosh.ape, [[D0:[^,>]*]]>(%{{.*}}: !mo.tensor<[[SH0]], si32>) -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si64>
+mo.graph @shape_of_no_fold_2<Sh0: !mosh.ape, D0>(%arg0: !mo.tensor<Sh0, si32>) -> !mo.tensor<[D0], si64> {
   // CHECK-NEXT: mo.shape_of
-  %0 = mo.shape_of(%arg0) : (!mo.tensor<?, si32>) -> !mo.tensor<[?], si64>
-  mo.output %0 : !mo.tensor<[?], si64>
+  %0 = mo.shape_of(%arg0) : (!mo.tensor<Sh0, si32>) -> !mo.tensor<[D0], si64>
+  mo.output %0 : !mo.tensor<[D0], si64>
 }
 
 // CHECK-LABEL: mo.graph @shape_of_no_fold_3
@@ -51,40 +53,40 @@ mo.graph @shape_of_no_fold_3<Sh0: !mosh.ape -> D0>(%arg0: !mo.tensor<Sh0, si32>)
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @to_tensor_fold
-// CHECK-SAME: <[[D0:.*]], [[SH0:.*]]: !mosh.ape -> [[D1:.*]]>() -> (
-mo.graph @to_tensor_fold<D0, Sh0: !mosh.ape -> D1>() -> (
-  // CHECK-SAME: !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[[[D1]]], si32>
-  !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D1], si32>
+// CHECK-SAME: <[[D0:.*]], [[D1:.*]], [[SH0:.*]]: !mosh.ape>() -> (
+mo.graph @to_tensor_fold<D0, D1, Sh0: !mosh.ape>() -> (
+  // CHECK-SAME: !mo.tensor<{{\[}}[[D1]]{{\]}}, si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
+  !mo.tensor<[D1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
 ) {
   // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<17, 42> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[VAL1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH0]]>
-  // CHECK-DAG: %[[VAL2:.*]] = mosh.param.to_value: !mosh.ape = <[[[D0]], 42]>
-  // CHECK-DAG: %[[VAL3:.*]] = mo.shape.to_tensor(%[[VAL1]]) -> !mo.tensor<[?], si64>
+  // CHECK-DAG: %[[VAL2:.*]] = mosh.param.to_value: !mosh.ape = <{{\[}}[[D0]], 42{{\]}}>
+  // CHECK-DAG: %[[VAL3:.*]] = mo.shape.to_tensor(%[[VAL1]]) -> !mo.tensor<{{\[}}[[D1]]{{\]}}, si64>
   // CHECK-DAG: %[[VAL4:.*]] = mo.shape.to_tensor(%[[VAL2]]) -> !mo.tensor<[2], si64>
   // CHECK-DAG: %[[VAL5:.*]] = mo.constant {value = #M.dense_array<23> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  // CHECK-DAG: %[[VAL6:.*]] = mo.rebind(%[[VAL5]]) : !mo.tensor<[1], si32> -> !mo.tensor<[[[D0]]], si32>
+  // CHECK-DAG: %[[VAL6:.*]] = mo.rebind(%[[VAL5]]) : !mo.tensor<[1], si32> -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
   %sh0 = mosh.param.to_value: !mosh.ape = <Sh0>
   %sh1 = mosh.param.to_value: !mosh.ape = <[D0, 42]>
   %sh2 = mosh.param.to_value: !mosh.ape = <[17, 42]>
   %sh3 = mosh.param.to_value: !mosh.ape = <[23]>
-  %0 = mo.shape.to_tensor(%sh0) -> !mo.tensor<[?], si64>
+  %0 = mo.shape.to_tensor(%sh0) -> !mo.tensor<[D1], si64>
   %1 = mo.shape.to_tensor(%sh1) -> !mo.tensor<[2], si64>
   %2 = mo.shape.to_tensor(%sh2) -> !mo.tensor<[2], si64>
   %3 = mo.shape.to_tensor(%sh3) -> !mo.tensor<[1], si32>
   %4 = mo.shape.to_tensor(%sh3) -> !mo.tensor<[D0], si32>
-  // CHECK-NEXT: mo.output<[[D0]]> %[[VAL3]], %[[VAL4]], %[[VAL0]], %[[VAL5]], %[[VAL6]] : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
-  mo.output<D0> %0, %1, %2, %3, %4 : !mo.tensor<[?], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
+  // CHECK-NEXT: mo.output %[[VAL3]], %[[VAL4]], %[[VAL0]], %[[VAL5]], %[[VAL6]] : !mo.tensor<{{\[}}[[D1]]{{\]}}, si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
+  mo.output %0, %1, %2, %3, %4 : !mo.tensor<[D1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
 }
 
-// CHECK: mo.graph @to_tensor_fold_unknown<[[K:.*]]>() -> !mo.tensor<[?], si32> {
-mo.graph @to_tensor_fold_unknown<K>() -> !mo.tensor<[?], si32> {
-  // CHECK: %[[VAL0:.*]] = mosh.param.to_value: !mosh.ape = <[[[K]]]>
+// CHECK: mo.graph @to_tensor_fold_unknown<[[K:.*]], [[D0:.*]]>() -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si32> {
+mo.graph @to_tensor_fold_unknown<K, D0>() -> !mo.tensor<[D0], si32> {
+  // CHECK: %[[VAL0:.*]] = mosh.param.to_value: !mosh.ape = <{{\[}}[[K]]{{\]}}>
   %0 = mosh.param.to_value: !mosh.ape = <[K]>
   // CHECK: %[[VAL1:.*]] = mo.shape.to_tensor(%[[VAL0]]) -> !mo.tensor<[1], si32>
-  %1 = mo.shape.to_tensor(%0) -> !mo.tensor<[?], si32>
-  // CHECK: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) : !mo.tensor<[1], si32> -> !mo.tensor<[?], si32>
-  // CHECK: mo.output %[[VAL2]] : !mo.tensor<[?], si32>
-  mo.output %1 : !mo.tensor<[?], si32>
+  %1 = mo.shape.to_tensor(%0) -> !mo.tensor<[D0], si32>
+  // CHECK: %[[VAL2:.*]] = mo.rebind(%[[VAL1]]) : !mo.tensor<[1], si32> -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
+  // CHECK: mo.output %[[VAL2]] : !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
+  mo.output %1 : !mo.tensor<[D0], si32>
 }
 
 // CHECK-LABEL: mo.graph @to_tensor_from_tensor

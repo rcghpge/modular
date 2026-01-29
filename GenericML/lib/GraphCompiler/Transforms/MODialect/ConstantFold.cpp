@@ -189,24 +189,19 @@ static bool isMaybeConstantFoldable(Operation *op) {
   auto findParamDeclRefAttr = [](KGEN::ParamDeclRefAttr paramRef) {
     return WalkResult::interrupt();
   };
-  auto findUnknownAttr = [](KGEN::UnknownAttr param) {
-    return WalkResult::interrupt();
-  };
+
   for (auto operandTy : op->getOperandTypes()) {
-    if (operandTy.walk(findParamDeclRefAttr, findUnknownAttr)
-            .wasInterrupted()) {
+    if (operandTy.walk(findParamDeclRefAttr).wasInterrupted()) {
       return false;
     }
   }
   for (auto resultTy : op->getResultTypes()) {
-    if (resultTy.walk(findParamDeclRefAttr, findUnknownAttr).wasInterrupted()) {
+    if (resultTy.walk(findParamDeclRefAttr).wasInterrupted()) {
       return false;
     }
   }
   for (auto attr : op->getAttrs()) {
-    if (attr.getValue()
-            .walk(findParamDeclRefAttr, findUnknownAttr)
-            .wasInterrupted()) {
+    if (attr.getValue().walk(findParamDeclRefAttr).wasInterrupted()) {
       return false;
     }
   }

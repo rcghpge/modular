@@ -34,8 +34,8 @@ mo.graph @linalg_band_part_dynamic_batch(%arg0: !mo.tensor<[?, 2, 3], f32>) -> !
   mo.output %4 : !mo.tensor<[?, 2, 3], f32>
 }
 
-// CHECK: mo.graph @linalg_band_part_dynamic_rank(%[[VAL_0:.*]]: !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-mo.graph @linalg_band_part_dynamic_rank(%arg0: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
+// CHECK: mo.graph @linalg_band_part_dynamic_rank<[[SH0:[^,>]*]]: !mosh.ape>(%[[VAL_0:.*]]: !mo.tensor<[[SH0]], f32>) -> !mo.tensor<[[SH0]], f32>
+mo.graph @linalg_band_part_dynamic_rank<Sh0: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>) -> !mo.tensor<Sh0, f32> {
   // CHECK: %[[VAL_1:.*]] = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   %1 = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
   // CHECK: %[[VAL_2:.*]] = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
@@ -43,7 +43,7 @@ mo.graph @linalg_band_part_dynamic_rank(%arg0: !mo.tensor<?, f32>) -> !mo.tensor
   // CHECK: %[[VAL_3:.*]] = mo.constant {value = #M.dense_array<0> : tensor<i8>} : !mo.tensor<[], bool>
   %3 = mo.constant {value = #M.dense_array<0> : tensor<i8>} : !mo.tensor<[], bool>
   // CHECK: %[[VAL_4:.*]] = mo.linalg.band_part(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]])
-  %4 = mo.linalg.band_part(%arg0, %1, %2, %3) : (!mo.tensor<?, f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<?, f32>
-  // CHECK: mo.output %[[VAL_4]] : !mo.tensor<?, f32>
-  mo.output %4 : !mo.tensor<?, f32>
+  %4 = mo.linalg.band_part(%arg0, %1, %2, %3) : (!mo.tensor<Sh0, f32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<Sh0, f32>
+  // CHECK: mo.output %[[VAL_4]] : !mo.tensor<[[SH0]], f32>
+  mo.output %4 : !mo.tensor<Sh0, f32>
 }

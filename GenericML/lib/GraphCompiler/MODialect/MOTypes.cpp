@@ -32,7 +32,7 @@ namespace {
 
 ParseResult parseShapeParam(AsmParser &p, TypedAttr &shapeAttr) {
   auto shapeTy = p.getBuilder().getType<ShapeType>();
-  OptionalParseResult res = MOSH::parseShapeAttrOrUnknown(p, shapeAttr);
+  OptionalParseResult res = MOSH::parseShapeAttr(p, shapeAttr);
   if (res.has_value() && succeeded(res.value()))
     return success();
 
@@ -245,13 +245,6 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (!deviceRef)
     return emitError() << "no device attribute was defined";
 
-  if (auto unkAttr = llvm::dyn_cast<KGEN::UnknownAttr>(shapeAttr)) {
-    if (Type ty = unkAttr.getType(); !llvm::isa<ShapeType>(ty)) {
-      return emitError() << "unknown shape attribute must have ShapeType, got "
-                         << ty;
-    }
-    return success();
-  }
   if (auto declRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(shapeAttr)) {
     if (Type ty = declRef.getType(); !llvm::isa<ShapeType>(ty)) {
       return emitError()
@@ -506,6 +499,7 @@ IOKindAttr TensorType::getIOKindAttr() {
       getMetadata().get(kIOKindMetadataName));
 }
 
+// TODO: Delete this method.
 TensorType TensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                  Type dtype) const {
   auto shapeTy = ShapeType::get(getContext());
@@ -607,9 +601,7 @@ TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
 
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
-  if (llvm::isa<KGEN::UnknownAttr, KGEN::ParamDeclRefAttr>(getShapeAttr()))
-    return false;
-  return true;
+  return !isa<KGEN::ParamDeclRefAttr>(getShapeAttr());
 }
 
 size_t TensorType::getRank() const {
@@ -638,8 +630,6 @@ ShapeAttr TensorType::getTypedShapeAttr() const {
 }
 
 SmallPtrSet<StringAttr, 4> TensorType::getUsedParamNames() const {
-  if (llvm::isa<KGEN::UnknownAttr>(getShapeAttr()))
-    return {};
   if (auto shapeRef = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(getShapeAttr()))
     return {shapeRef.getName()};
   SmallPtrSet<StringAttr, 4> res;

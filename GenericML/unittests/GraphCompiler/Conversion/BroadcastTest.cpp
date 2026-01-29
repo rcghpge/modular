@@ -64,12 +64,6 @@ protected:
     return typeAttr;
   }
 
-  TypedAttr getUnknownDim() {
-    auto idxTy = MOSH::ShapeAttr::getDimType(builder.getContext());
-    TypedAttr typeAttr = KGEN::UnknownAttr::get(idxTy);
-    return typeAttr;
-  }
-
   TypedAttr getIntegerDim(int64_t v) {
     return MOSH::ShapeAttr::getDim(builder.getContext(), v);
   }
@@ -106,69 +100,6 @@ TEST_F(BroadcastTest, Multi) {
   SmallVector<int64_t> refDims{1ll, 5ll, 3ll, 2ll};
   ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
   ASSERT_EQ(bcastY.getType().getIntDims(), refDims);
-}
-
-TEST_F(BroadcastTest, Dynamic1) {
-  MO::TensorValue x = getTestValue({5, 1});
-  MO::TensorValue y = getTestValue(SmallVector<TypedAttr>{
-      getIntegerDim(1ll), getUnknownDim(), getIntegerDim(1ll)});
-  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
-  SmallVector<int64_t> refDims{1, 5ll, 1ll};
-  ASSERT_EQ(bcastX.getType().getIntDims(), refDims);
-  ASSERT_EQ(bcastY.getType().getIntDims(), refDims);
-}
-
-TEST_F(BroadcastTest, Dynamic2) {
-  auto deviceRef = DeviceRefAttr::getDefault(&ctx);
-  MO::TensorValue x = getTestValue(
-      ArrayRef<TypedAttr>{getIntegerDim(5ll), getUnknownDim(), getUnknownDim()},
-      deviceRef);
-  MO::TensorValue y =
-      getTestValue(ArrayRef<TypedAttr>{getIntegerDim(1ll), getUnknownDim(),
-                                       getIntegerDim(1ll)},
-                   deviceRef);
-  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
-  auto refDims = SmallVector<TypedAttr>{getIntegerDim(5ll), getUnknownDim(),
-                                        getUnknownDim()};
-  ASSERT_EQ(bcastX.getType().getDims(), ArrayRef<TypedAttr>(refDims));
-  ASSERT_EQ(bcastY.getType().getDims(), ArrayRef<TypedAttr>(refDims));
-  ASSERT_EQ(bcastX.getType().getDeviceRef(), deviceRef);
-  ASSERT_EQ(bcastY.getType().getDeviceRef(), deviceRef);
-
-  // Also test that the devices are correctly set within the pattern.
-  for (Type opType : bcastX.getDefiningOp()->getOperandTypes())
-    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
-  for (Type opType : bcastY.getDefiningOp()->getOperandTypes())
-    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
-}
-
-TEST_F(BroadcastTest, Parametric) {
-  auto deviceRef = DeviceRefAttr::getDefault(&ctx);
-  auto shapeTy = builder.getType<ShapeType>();
-  SmallVector<TypedAttr> shapeX{getParametricDim("n"), getIntegerDim(1),
-                                getParametricDim("m")};
-
-  SmallVector<TypedAttr> shapeY{getParametricDim("n"), getUnknownDim(),
-                                getIntegerDim(1ll)};
-
-  SmallVector<TypedAttr> shapeRef{getParametricDim("n"), getUnknownDim(),
-                                  getParametricDim("m")};
-  ShapeAttr shapeRefAttr = builder.getAttr<ShapeAttr>(shapeRef, shapeTy);
-
-  MO::TensorValue x = getTestValue(shapeX, deviceRef);
-  MO::TensorValue y = getTestValue(shapeY, deviceRef);
-
-  auto [bcastX, bcastY] = RMO::reifyImplicitBroadcasting(builder, loc, x, y);
-  ASSERT_EQ(bcastX.getType().getTypedShapeAttr(), shapeRefAttr);
-  ASSERT_EQ(bcastY.getType().getTypedShapeAttr(), shapeRefAttr);
-  ASSERT_EQ(bcastX.getType().getDeviceRef(), deviceRef);
-  ASSERT_EQ(bcastY.getType().getDeviceRef(), deviceRef);
-
-  // Also test that the devices are correctly set within the pattern.
-  for (Type opType : bcastX.getDefiningOp()->getOperandTypes())
-    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
-  for (Type opType : bcastY.getDefiningOp()->getOperandTypes())
-    ASSERT_EQ(cast<TensorType>(opType).getDeviceRef(), deviceRef);
 }
 
 TEST_F(BroadcastTest, ReshapeAndBroadcast) {

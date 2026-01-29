@@ -20,20 +20,20 @@ mo.graph @non_int_axis(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f3
 
 // -----
 
-mo.graph @input_static_res_dyn_rank(%input: !mo.tensor<[?, ?, 5], f32>) -> !mo.tensor<?, f32> {
+mo.graph @input_static_res_dyn_rank<D0, D1, Sh0: !mosh.ape>(%input: !mo.tensor<[D0, D1, 5], f32>) -> !mo.tensor<Sh0, f32> {
   %axis = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output must either both have dynamic ranks or both have the same size static ranks}}
-  %output = mo.reduce.min(%input, %axis) : (!mo.tensor<[?, ?, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<?, f32>
-  mo.output %output : !mo.tensor<?, f32>
+  %output = mo.reduce.min(%input, %axis) : (!mo.tensor<[D0, D1, 5], f32>, !mo.tensor<[], si64>) -> !mo.tensor<Sh0, f32>
+  mo.output %output : !mo.tensor<Sh0, f32>
 }
 
 // -----
 
-mo.graph @input_dyn_res_static_rank(%input: !mo.tensor<?, f32>) -> !mo.tensor<[?, ?], f32> {
+mo.graph @input_dyn_res_static_rank<Sh0: !mosh.ape, D0, D1>(%input: !mo.tensor<Sh0, f32>) -> !mo.tensor<[D0, D1], f32> {
   %axis = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
   // expected-error @below {{input and output must either both have dynamic ranks or both have the same size static ranks}}
-  %output = mo.reduce.mul(%input, %axis) : (!mo.tensor<?, f32>, !mo.tensor<[], si64>) -> !mo.tensor<[?, ?], f32>
-  mo.output %output : !mo.tensor<[?, ?], f32>
+  %output = mo.reduce.mul(%input, %axis) : (!mo.tensor<Sh0, f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D0, D1], f32>
+  mo.output %output : !mo.tensor<[D0, D1], f32>
 }
 
 // -----

@@ -1,39 +1,39 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
-mo.graph @mean_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
-  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @mean_ok<Sh0: !mosh.ape, Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, f32> {
+  %1 = rmo.mo.mean<() -> Sh2: !mosh.ape>(%arg0, %arg1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, f32>
+  mo.output %1 : !mo.tensor<Sh2, f32>
 }
 
 // -----
 
-mo.graph @mean_bad_axis(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, f32>) -> !mo.tensor<?, f32> {
-  // expected-error@+1 {{'rmo.mo.mean' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<?, f32>'}}
-  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, f32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @mean_bad_axis<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32> {
+  // expected-error@+1 {{'rmo.mo.mean' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<Sh1, f32>'}}
+  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f32>) -> !mo.tensor<Sh2, f32>
+  mo.output %1 : !mo.tensor<Sh2, f32>
 }
 
 // -----
 
-mo.graph @mean_bad_output(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo.tensor<?, f16> {
+mo.graph @mean_bad_output<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, f16> {
   // expected-error@+1 {{'rmo.mo.mean' op failed to verify that all of {input, result} have same dtype}}
-  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f16>
-  mo.output %1 : !mo.tensor<?, f16>
+  %1 = rmo.mo.mean(%arg0, %arg1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, f16>
+  mo.output %1 : !mo.tensor<Sh2, f16>
 }
 
 // -----
 
-mo.graph @argmin_ok(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo.tensor<?, si64> {
-  %1 = rmo.mo.arg_min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, si64>
-  mo.output %1 : !mo.tensor<?, si64>
+mo.graph @argmin_ok<Sh0: !mosh.ape, Sh1: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, si64> {
+  %1 = rmo.mo.arg_min<() -> Sh2: !mosh.ape>(%arg0, %arg1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, si64>
+  mo.output %1 : !mo.tensor<Sh2, si64>
 }
 
 // -----
 
-mo.graph @argmin_bad_output(%arg0: !mo.tensor<?, f32>, %arg1: !mo.tensor<?, si32>) -> !mo.tensor<?, f32> {
-  // expected-error @+1 {{'rmo.mo.arg_min' op result #0 must be tensor with integer or index elements, but got '!mo.tensor<?, f32>'}}
-  %1 = rmo.mo.arg_min(%arg0, %arg1) : (!mo.tensor<?, f32>, !mo.tensor<?, si32>) -> !mo.tensor<?, f32>
-  mo.output %1 : !mo.tensor<?, f32>
+mo.graph @argmin_bad_output<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %arg1: !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, f32> {
+  // expected-error @+1 {{'rmo.mo.arg_min' op result #0 must be tensor with integer or index elements, but got '!mo.tensor<Sh2, f32>'}}
+  %1 = rmo.mo.arg_min(%arg0, %arg1) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, si32>) -> !mo.tensor<Sh2, f32>
+  mo.output %1 : !mo.tensor<Sh2, f32>
 }
 
 // -----
