@@ -6,7 +6,7 @@ module {
         %1 = mgp.context.create 2
         %2 = mgp.runtime.create %0, %1[1]
         mef.output %2, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
-    } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<4x16xf32>, %idx: index) -> (!mef.chain, !mgp.tensor<4x16xf32>) {
+    } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<4x16xf32>) -> (!mef.chain, !mgp.tensor<4x16xf32>) {
         %out = "mgp.generic.execute"(%arg1, %arg0, %input) {aRuntimeSlot = 0 : ui64, bModuleIndex = 0 : ui64, cFunctionIndex = 2 : ui64, dSummary = "do_stuff", eIsAsync = false, fConstantResource = []} : (!mgp.context, !mef.chain, !mgp.tensor<4x16xf32>) -> !mgp.tensor<4x16xf32>
         mef.output %arg0, %out : !mef.chain, !mgp.tensor<4x16xf32>
     }

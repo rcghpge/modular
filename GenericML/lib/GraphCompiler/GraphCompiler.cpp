@@ -327,7 +327,6 @@ void M::MO::buildMoToMgpPipeline(
   // runtime assert messages.
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
 
-  pm.addPass(MGP::createGlobalizeSlotIndicesPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
