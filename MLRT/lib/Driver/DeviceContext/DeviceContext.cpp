@@ -187,19 +187,6 @@ Device::~Device() {
   funcMap_.clear();
 }
 
-// DeviceFunction compiling.
-ErrorOr<M::BufferRef>
-Device::compileFunction(StringRef ir, StringRef debugLevel,
-                        int32_t optimizationLevel,
-                        StringRef targetAccelerator) const {
-  const CompilationDevice *compDev = compilationDevice();
-  if (!compDev) {
-    return Error("No compilation device available for this device");
-  }
-
-  return compDev->compileFunction(ir, debugLevel, optimizationLevel,
-                                  targetAccelerator);
-}
 MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
 ErrorOr<const char *> Device::getArchName() const {

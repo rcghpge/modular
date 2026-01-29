@@ -9,8 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "CUDADeviceContext.h"
-#include "CUDACompilationDevice.h"
-#include "CUDACompilationDriver.h"
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
@@ -213,18 +211,6 @@ static Error formatCUDAError(const char *file, int line, const char *func,
       file, line, func, "CUDA call failed: " + llvm::Twine(result) + extra_msg);
 }
 
-[[maybe_unused]]
-static Error formatCUDAError(const char *file, int line, const char *func,
-                             CUDACompilationDriver::Result result,
-                             std::string extra_msg = "") {
-  if (!extra_msg.empty())
-    extra_msg = std::string(" - ") + extra_msg;
-
-  return DeviceContext::formatError(
-      file, line, func,
-      "NVPTX Compiler call failed: " + llvm::Twine(result) + extra_msg);
-}
-
 static int cudaCCMonolithic(int major, int minor) { return major * 10 + minor; }
 
 static std::string cudaCCToSM(int major, int minor) {
@@ -249,11 +235,10 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id,
                        int64_t deviceMemoryLimit)
     : Device(api, std::move(name), id, memInfo, allocAlignment,
              deviceMemoryLimit),
-      CUDACompilationDevice(
-          cudaCCToSM(computeCapabilityMajor, computeCapabilityMinor)),
       driver_(driver), cudaDevice_(cudaDevice), nvmlDevice_(nvmlDevice),
       context_(context), computeCapability_(cudaCCMonolithic(
-                             computeCapabilityMajor, computeCapabilityMinor)) {}
+                             computeCapabilityMajor, computeCapabilityMinor)),
+      targetArch_(cudaCCToSM(computeCapabilityMajor, computeCapabilityMinor)) {}
 
 CUDADevice::~CUDADevice() {
   // Destroy the function map before destroying the context.
@@ -273,18 +258,34 @@ nvmlDevice_t *CUDADevice::getNvmlDevice() { return &nvmlDevice_; }
 
 ErrorOr<CUcontext> CUDADevice::cudaContext() const { return context_; }
 
-const CUDACompilationDevice *CUDADevice::compilationDevice() const {
-  return this;
-}
-
 ErrorOr<int> CUDADevice::getApiVersion() const {
-  // CUDADevice always has a compilation device - delegate to it
-  return CUDACompilationDevice::getApiVersion();
+  int apiVersion = 0;
+  CUDA_CHECK_ERR(driver_.cuDriverGetVersion(&apiVersion));
+  return apiVersion;
 }
 
 ErrorOr<DriverVersion &> CUDADevice::getDriverVersion() const {
-  // CUDADevice always has a compilation device - delegate to it
-  return CUDACompilationDevice::getDriverVersion();
+  // Initialize the driver version once on first call of this method
+  // or remember the error.
+  static ErrorOr<std::string> errOrVersion = []() -> ErrorOr<std::string> {
+    ErrorOr<const NVML &> errOrNVML = NVML::get();
+    if (errOrNVML.isError()) {
+      return errOrNVML.takeError();
+    }
+    ErrorOr<std::string> errOrVersion = errOrNVML->GetDriverVersion();
+    if (errOrVersion.isError()) {
+      return errOrVersion.takeError();
+    }
+    return *errOrVersion;
+  }();
+
+  // Propagate the error if getting the version produced an error.
+  if (errOrVersion.isError()) {
+    return Error(errOrVersion.getError());
+  }
+  // Return the version string.
+  static DriverVersion version(*errOrVersion);
+  return version;
 }
 
 // The value returned by `cuDriverGetVersion_` from the CUDA API is an integer
@@ -590,7 +591,6 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
     // the same context with other users of the CUDA Runtime API.
     CUDA_CHECK_ERR(driver.cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
 
-    // Get compute capability to create compilation device
     int computeCapabilityMajor, computeCapabilityMinor;
     NVML_CHECK_ERR(errNVML->nvmlDeviceGetCudaComputeCapability(
         nvmlDevice, &computeCapabilityMajor, &computeCapabilityMinor));
@@ -605,7 +605,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
 }
 
 ErrorOr<const char *> CUDADevice::getArchName() const {
-  return CUDACompilationDevice::getArchName();
+  return targetArch_.c_str();
 }
 
 void CUDADevice::eventCacheClear() const {

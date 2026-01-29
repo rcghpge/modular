@@ -11,7 +11,6 @@
 #ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADEVICECONTEXT_H
 
-#include "CUDACompilationDevice.h"
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "NVML.h"
@@ -51,7 +50,7 @@ using CUDADeviceMulticastBufferRef = RCRef<const CUDADeviceMulticastBuffer>;
 using CUDADeviceStreamRef = RCRef<const CUDADeviceStream>;
 using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
 
-class CUDADevice : public Device, public CUDACompilationDevice {
+class CUDADevice : public Device {
 public:
   static constexpr API api = Device::cudaAPI;
 
@@ -68,9 +67,6 @@ public:
   CUdevice cudaDevice() const;
   nvmlDevice_t *getNvmlDevice();
   ErrorOr<CUcontext> cudaContext() const;
-
-  /// Get the compilation device for code generation
-  const CUDACompilationDevice *compilationDevice() const override;
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
@@ -148,6 +144,7 @@ private:
   CUcontext context_;
 
   const int computeCapability_;
+  std::string targetArch_;
 
   // Mutex to protect mutable data.
   mutable std::mutex mu_;

@@ -81,10 +81,6 @@ public:
 
   static ErrorOr<Device::MemInfo> getMemInfo(MTL::Device *metalDev = nullptr);
 
-  const CompilationDevice *compilationDevice() const override {
-    return nullptr; // Metal device does not have a compilation device
-  }
-
   static const MetalDevice &cast(const Device &device);
   static ErrorOr<const MetalDevice &> get(int id,
                                           int64_t deviceMemoryLimit = -1);

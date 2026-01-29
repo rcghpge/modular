@@ -34,7 +34,6 @@ namespace M::Driver {
 
 class MemoryManager;
 class MemoryManagerFreeList;
-class CompilationDevice;
 class Device;
 class DeviceBuffer;
 class DeviceContext;
@@ -182,15 +181,6 @@ public:
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
   virtual ErrorOr<DeviceContextRef> createContext() const = 0;
-
-  /// Get the compilation device for this device, or nullptr if no
-  /// compilation device is available.
-  virtual const CompilationDevice *compilationDevice() const = 0;
-
-  // Device function compilation.
-  virtual ErrorOr<M::BufferRef>
-  compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
-                  StringRef targetAccelerator) const;
 
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);

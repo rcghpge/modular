@@ -55,11 +55,6 @@ public:
                 int64_t deviceMemoryLimit = -1);
   ~VirtualDevice() override;
 
-  /// Get the compilation device used for code generation
-  const CompilationDevice *compilationDevice() const override {
-    return compilationDevice_.get();
-  }
-
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
   ErrorOrSuccess isCompatible() const override;
