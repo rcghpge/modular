@@ -1396,9 +1396,9 @@ MemoryManager *MemoryManager::onDevice(const Device &device,
   // If there's no provided size or if the provided size is larger than
   // the free memory, use a percentage of the available memory
   if (isDefaultCacheSize || maxCacheSize > memInfo.free) {
-    // By default use 99% of the available memory
+    // By default use 90% of the available memory
     int64_t percentMemoryLimit =
-        DeviceContext::configAsInt("memory_manager_size_percent", 99);
+        DeviceContext::configAsInt("memory_manager_size_percent", 90);
 
     if (maxCacheSize > memInfo.free)
       llvm::errs() << "DeviceContext.MemoryManager: Requested maximum memory "
