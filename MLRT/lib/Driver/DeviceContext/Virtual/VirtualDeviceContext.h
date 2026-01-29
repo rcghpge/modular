@@ -32,15 +32,11 @@ namespace M::Driver {
 
 class VirtualDevice;
 class VirtualDeviceContext;
-class VirtualDeviceEvent;
 class VirtualDeviceStream;
-class VirtualDeviceTimer;
 
 using VirtualDeviceRef = RCRef<const VirtualDevice>;
 using VirtualDeviceContextRef = RCRef<const VirtualDeviceContext>;
-using VirtualDeviceEventRef = RCRef<const VirtualDeviceEvent>;
 using VirtualDeviceStreamRef = RCRef<const VirtualDeviceStream>;
-using VirtualDeviceTimerRef = RCRef<const VirtualDeviceTimer>;
 
 /// Virtual Device for compile-only mode.
 ///
@@ -91,19 +87,6 @@ private:
   int64_t deviceMemoryLimit_;
 };
 
-/// Virtual Device Event for compile-only mode.
-class VirtualDeviceEvent : public DeviceEvent {
-public:
-  explicit VirtualDeviceEvent(const VirtualDevice &device);
-  ~VirtualDeviceEvent() override = default;
-
-  ErrorOrSuccess synchronize() const override;
-
-  ErrorOr<bool> isReady() const override;
-
-  static const VirtualDeviceEvent &cast(const DeviceEvent &event);
-};
-
 /// Virtual Device Stream for compile-only mode.
 class VirtualDeviceStream : public DeviceStream {
 public:
@@ -131,15 +114,6 @@ public:
   void *ptr() const override;
 
   static const VirtualDeviceStream *verified_cast(const DeviceStream *stream);
-};
-
-/// Virtual Device Timer for compile-only mode.
-class VirtualDeviceTimer : public DeviceTimer {
-public:
-  explicit VirtualDeviceTimer(const VirtualDeviceContext &context);
-  ~VirtualDeviceTimer() override = default;
-
-  static const VirtualDeviceTimer &cast(const DeviceTimer &timer);
 };
 
 /// Virtual Device Context for compile-only mode.

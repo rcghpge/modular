@@ -127,28 +127,6 @@ const VirtualDevice &VirtualDevice::cast(const Device &device) {
 }
 
 //===----------------------------------------------------------------------===//
-// VirtualDeviceEvent
-//===----------------------------------------------------------------------===//
-
-VirtualDeviceEvent::VirtualDeviceEvent(const VirtualDevice &device)
-    : DeviceEvent(device) {}
-
-ErrorOrSuccess VirtualDeviceEvent::synchronize() const {
-  // No-op for virtual devices
-  return success();
-}
-
-ErrorOr<bool> VirtualDeviceEvent::isReady() const {
-  // Virtual events are always ready
-  return true;
-}
-
-const VirtualDeviceEvent &VirtualDeviceEvent::cast(const DeviceEvent &event) {
-  // Virtual device events can have any API based on their backing device.
-  return static_cast<const VirtualDeviceEvent &>(event);
-}
-
-//===----------------------------------------------------------------------===//
 // VirtualDeviceStream
 //===----------------------------------------------------------------------===//
 
@@ -161,7 +139,7 @@ ErrorOrSuccess VirtualDeviceStream::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> VirtualDeviceStream::enqueueEvent() const {
-  return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
+  RETURN_ERROR("VirtualDevice does not support events");
 }
 
 ErrorOrSuccess
@@ -202,18 +180,6 @@ VirtualDeviceStream::verified_cast(const DeviceStream *stream) {
     return nullptr;
   // Virtual device streams can have any API based on their backing device.
   return static_cast<const VirtualDeviceStream *>(stream);
-}
-
-//===----------------------------------------------------------------------===//
-// VirtualDeviceTimer
-//===----------------------------------------------------------------------===//
-
-VirtualDeviceTimer::VirtualDeviceTimer(const VirtualDeviceContext &context)
-    : DeviceTimer(context) {}
-
-const VirtualDeviceTimer &VirtualDeviceTimer::cast(const DeviceTimer &timer) {
-  // Virtual device timers can have any API based on their backing device.
-  return static_cast<const VirtualDeviceTimer &>(timer);
 }
 
 //===----------------------------------------------------------------------===//
@@ -320,54 +286,40 @@ ErrorOrSuccess VirtualDeviceContext::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueEvent",
-                       TRACY_COLOR_PURPLE);
-  return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
+  RETURN_ERROR("VirtualDevice does not support events");
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::enqueueEvent(const DeviceEvent &event) const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueEvent",
-                       TRACY_COLOR_PURPLE);
-  // No-op for virtual devices
-  return success();
+  RETURN_ERROR("VirtualDevice does not support events");
 }
 
 ErrorOr<DeviceEventRef>
 VirtualDeviceContext::eventCreate(unsigned int flags) const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
-  return VirtualDeviceEventRef::create(VirtualDevice::cast(device()));
+  RETURN_ERROR("VirtualDevice does not support events");
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueWaitFor",
-                       TRACY_COLOR_PURPLE);
-  // No-op for virtual devices
-  return success();
+  RETURN_ERROR("VirtualDevice does not support events");
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
-  TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueWaitFor",
-                       TRACY_COLOR_PURPLE);
-  // No-op for virtual devices
-  return success();
+  RETURN_ERROR("VirtualDevice does not support events");
 }
 
 ErrorOr<DeviceTimerRef> VirtualDeviceContext::startTimer() const {
-  return VirtualDeviceTimerRef::create(*this);
+  RETURN_ERROR("VirtualDevice does not support timers");
 }
 
 ErrorOr<std::chrono::nanoseconds>
 VirtualDeviceContext::stopTimer(const DeviceTimer &timer) const {
-  // Return 0 duration for virtual timers
-  return std::chrono::nanoseconds(0);
+  RETURN_ERROR("VirtualDevice does not support timers");
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  // No-op for virtual devices
   return success();
 }
 
