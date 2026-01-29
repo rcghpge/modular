@@ -272,3 +272,48 @@ mo.graph @caller<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1: !mo.tensor<[
   mo.output %res_add : !mo.tensor<[seq_len], f32>
 }
 
+// -----
+
+// Test case: Subgraph with multiple chains (trailing and non-trailing) - after
+// hoisting, moveChainsToTheEnd ensures all chains end up trailing in the
+// subgraph signature and at the call site. One mid chain is unused (not output)
+// so the pass removes it; the other mid chain and trailing chain are output so
+// preserved. Result: two trailing chains in signature and at call site.
+// CHECK-LABEL: module
+module {
+
+// Subgraph has (invariant_tensor, ch_mid_unused, ch_mid, non_invariant_tensor,
+// trailing_chain). ch_mid_unused is not used in body or output -> removed.
+// ch_mid and ch_trailing are output -> preserved. After hoisting and
+// moveChainsToTheEnd, signature is (non_invariant_tensor, boundary_tensor,
+// ch_mid, trailing_chain) - two chains at end (unused mid chain removed).
+// CHECK-LABEL: mo.graph @chains_non_trailing
+// CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[ARG1:.+]]: !mo.tensor<[4], f32>, %[[CH0:.+]]: !mo.chain, %[[CH1:.+]]: !mo.chain)
+mo.graph @chains_non_trailing(%arg0_invariant: !mo.tensor<[4], f32>, %ch_mid_unused: !mo.chain, %ch_mid: !mo.chain, %arg1: !mo.tensor<[4], f32>, %ch_trailing: !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain) attributes {isSubgraph} {
+  %0 = mo.relu(%arg0_invariant) : !mo.tensor<[4], f32>
+  %1 = mo.add(%0, %arg1) : !mo.tensor<[4], f32>
+  mo.output %1, %ch_mid, %ch_trailing : !mo.tensor<[4], f32>, !mo.chain, !mo.chain
+}
+
+// Caller passes ch_unused for the unused mid chain; pass removes it so call
+// has only 4 operands (tensors then two chains).
+// CHECK-LABEL: mo.graph @caller_chains_non_trailing
+// CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>, %[[CH_UNUSED:.+]]: !mo.chain, %[[CH1:.+]]: !mo.chain, %[[CH2:.+]]: !mo.chain)
+mo.graph @caller_chains_non_trailing(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>, %ch_unused: !mo.chain, %ch1: !mo.chain, %ch2: !mo.chain) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>, !mo.chain, !mo.chain) {
+  // CHECK: %[[CST:.+]] = mo.constant.external
+  %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
+
+  // Unused mid chain (ch_unused) removed from call; operands are
+  // (tensors, two chains) - 4 operands total.
+  // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[CST]])
+  // CHECK: %[[CALL1:.+]] = mo.call @chains_non_trailing(%[[CALLER_ARG0]], %[[HOISTED_RELU1]], %[[CH1]], %[[CH2]])
+  %res1, %out_ch_mid1, %out_ch_trailing1 = mo.call @chains_non_trailing(%cst, %ch_unused, %ch1, %arg0, %ch2) : (!mo.tensor<[4], f32>, !mo.chain, !mo.chain, !mo.tensor<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain)
+
+  // CHECK: %[[HOISTED_RELU2:.+]] = mo.relu(%[[CST]])
+  // CHECK: %[[CALL2:.+]] = mo.call @chains_non_trailing(%[[CALLER_ARG1]], %[[HOISTED_RELU2]], %[[CH1]], %[[CH2]])
+  %res2, %out_ch_mid2, %out_ch_trailing2 = mo.call @chains_non_trailing(%cst, %ch_unused, %ch1, %arg1, %ch2) : (!mo.tensor<[4], f32>, !mo.chain, !mo.chain, !mo.tensor<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain)
+
+  mo.output %res1, %res2, %out_ch_mid1, %out_ch_trailing1 : !mo.tensor<[4], f32>, !mo.tensor<[4], f32>, !mo.chain, !mo.chain
+}
+
+} // module

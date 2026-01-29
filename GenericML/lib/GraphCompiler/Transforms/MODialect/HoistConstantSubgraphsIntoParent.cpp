@@ -282,13 +282,61 @@ private:
     }
 
     // STEP 6: Hoist constant operations to parent at each callsite
-    hoistConstantOperations(graphOp, callsites, preservedArgs,
-                            effectiveInvariantArgMask, constantOps,
-                            boundaryValues, sortedConstantOps);
+    auto newCallsites = hoistConstantOperations(
+        graphOp, callsites, preservedArgs, effectiveInvariantArgMask,
+        constantOps, boundaryValues, sortedConstantOps);
 
     // STEP 7: Update the subgraph definition
     updateSubgraphDefinition(graphOp, preservedArgs, boundaryValues,
                              sortedConstantOps);
+
+    // STEP 8: Push chains to the back of the subgraph's signature and update
+    // call sites.
+    moveChainsToTheEnd(graphOp, newCallsites);
+  }
+
+  void moveChainsToTheEnd(GraphOp subgraphGraphOp, ArrayRef<CallOp> callsites) {
+    SmallVector<uint64_t> argumentsToErase;
+    auto block = subgraphGraphOp.getBodyBlock();
+    // Clone arguments to the end of the argument list and do the use-def
+    // replacement.
+    for (auto &&arg : llvm::make_early_inc_range(block->getArguments())) {
+      if (isa<ChainType>(arg.getType())) {
+        auto newArg = block->insertArgument(block->getNumArguments(),
+                                            arg.getType(), arg.getLoc());
+        arg.replaceAllUsesWith(newArg);
+        argumentsToErase.push_back(arg.getArgNumber());
+      }
+    }
+
+    // Erase the old arguments.
+    for (uint64_t idx : llvm::reverse(argumentsToErase))
+      block->eraseArgument(idx);
+
+    synchronizeMetadataUpdates(subgraphGraphOp);
+
+    // Update the call sites.
+    for (CallOp callOp : callsites) {
+      OpBuilder builder(callOp);
+      SmallVector<Value> newOperands;
+      SmallVector<Value> chains;
+      for (auto &&operand : callOp->getOperands()) {
+        if (isa<ChainType>(operand.getType()))
+          chains.push_back(operand);
+        else
+          newOperands.push_back(operand);
+      }
+      newOperands.insert(newOperands.end(), chains.begin(), chains.end());
+
+      auto newCallOp = CallOp::create(
+          builder, callOp->getLoc(), callOp->getResultTypes(), newOperands,
+          callOp.getCalleeAttr(), callOp.getPrefixAttr(),
+          /*outputParamDecls=*/{},
+          /*arg_attrs=*/{},
+          /*res_attrs=*/{});
+      callOp->replaceAllUsesWith(newCallOp.getResults());
+      callOp->erase();
+    }
   }
 
   // Identify which arguments are callsite-invariant across all callsites.
@@ -508,7 +556,7 @@ private:
   }
 
   // Hoist callsite-invariant-derived operations to parent at each callsite
-  void hoistConstantOperations(
+  SmallVector<CallOp> hoistConstantOperations(
       GraphOp subgraphGraphOp, ArrayRef<CallOp> callsites,
       const llvm::BitVector &preservedArgs,
       const llvm::BitVector &effectiveInvariantArgMask,
@@ -531,6 +579,7 @@ private:
               return decl.second.declOp != subgraphGraphOp;
             })));
 
+    SmallVector<CallOp> newCallSites;
     for (CallOp callOp : callsites) {
       OpBuilder builder(callOp);
       IRMapping valueMapping;
@@ -600,14 +649,6 @@ private:
         newCallOperands.push_back(mappedVal);
       }
 
-      // Move the chain to the end of the operand list
-      auto chainIt = llvm::find_if(newCallOperands, [&](Value v) {
-        return isa<ChainType>(v.getType());
-      });
-      if (chainIt != newCallOperands.end()) {
-        std::rotate(chainIt, chainIt + 1, newCallOperands.end());
-      }
-
       // Create new call with updated operands
       auto newCallOp = CallOp::create(
           builder, callOp.getLoc(), callOp.getResultTypes(), newCallOperands,
@@ -623,8 +664,11 @@ private:
                               << " with new call\n");
 
       // Erase the original call
+      newCallSites.push_back(newCallOp);
       callOp.erase();
     }
+
+    return newCallSites;
   }
 
   // Update subgraph definition by removing constants and adding new arguments
@@ -645,14 +689,7 @@ private:
       if (!preservedArgs[i])
         argsToDelete.push_back(i);
 
-    // Update boundary values to use new block arguments
-    // If the last argument is a chain, we need to insert the new arguments
-    // before it.
     unsigned insertionIndex = numArgs;
-    if (insertionIndex > 0 &&
-        isa<ChainType>(body->getArgument(insertionIndex - 1).getType()))
-      --insertionIndex;
-
     for (Value boundaryVal : boundaryValues) {
       BlockArgument newArg = body->insertArgument(
           insertionIndex++, boundaryVal.getType(), graphOp.getLoc());
