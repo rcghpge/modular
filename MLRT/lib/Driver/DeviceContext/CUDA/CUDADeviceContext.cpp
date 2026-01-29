@@ -1250,21 +1250,31 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   size_t dstByteSize = dst.byteSize();
   assert(srcByteOffset + srcByteSize >= src.byteSize());
   assert(srcByteSize == dstByteSize);
-
-  // Enqueue the memcpy on the source stream to ensure the source data is ready
-  if (srcCtx.cudaContext() != dstCtx.cudaContext())
-    CUDA_CHECK_ERR(driver_.cuMemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
-                                             srcCtx.context_, dstByteSize,
-                                             srcCtx.cudaStream()));
-  else
-    CUDA_CHECK_ERR(driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize,
-                                                srcCtx.cudaStream()));
-
-  // If the destination is on a different stream, the destination stream needs
-  // to wait on the copy
   if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
-    DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
-    RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
+    if (src.manualEvent())
+      RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*src.manualEvent()));
+    else {
+      // Ensure that we are waiting for the source data to be ready.
+      DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+      RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
+    }
+
+    if (srcCtx.cudaContext() != dstCtx.cudaContext()) {
+      CUDA_CHECK_ERR(driver_.cuMemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,
+                                               srcCtx.context_, dstByteSize,
+                                               stream_));
+    } else {
+      CUDA_CHECK_ERR(
+          driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
+    }
+
+    // Wait for the copy to complete before proceeding with the source stream
+    // (e.g. freeing or overwriting memory).
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+    RETURN_IF_ERROR(srcCtx.enqueueWaitForEvent(*dstEvent));
+  } else {
+    CUDA_CHECK_ERR(
+        driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
   }
 
   MAYBE_SYNC(*this);

@@ -1068,18 +1068,22 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   size_t dstByteSize = dst.byteSize();
   assert(srcByteOffset + srcByteSize >= src.byteSize());
   assert(srcByteSize == dstByteSize);
-
-  // Enqueue the memcpy on the source stream to ensure the source data is ready
-  HIP_CHECK_ERR(driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize,
-                                           srcCtx.hipStream()));
-
-  // If the destination is on a different stream, the destination stream needs
-  // to wait on the copy
   if (srcCtx.hipStream() != dstCtx.hipStream()) {
+    // Ensure that we are waiting for the source data to be ready.
     DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
     RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
-  }
 
+    HIP_CHECK_ERR(
+        driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+
+    // Wait for the copy to complete before proceeding with the source stream
+    // (e.g. freeing or overwriting memory).
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, dstEvent, dstCtx.enqueueEvent());
+    RETURN_IF_ERROR(srcCtx.enqueueWaitForEvent(*dstEvent));
+  } else {
+    HIP_CHECK_ERR(
+        driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
+  }
   MAYBE_SYNC(*this);
   return success();
 }
