@@ -13,12 +13,14 @@ void KernelOperandsMapping::addOperand(Value operandValue,
                                        bool isMGPRegionOperand,
                                        bool isKernelStubOperand,
                                        InOutSignatureAttr::InOutSemantics sig,
-                                       Value keyValue) {
+                                       Value keyValue, Type stubOperandType) {
   if (!keyValue)
     keyValue = operandValue;
+
   unsigned operandIdx = operands.size();
   OperandValue operand;
   operand.operandValue = operandValue;
+  operand.kernelStubOperandType = stubOperandType;
 
   if (isMGPRegionOperand) {
     operand.mgpRegionOperandIdx = mgpRegionOperands.size();
@@ -119,24 +121,27 @@ void KernelOperandsMapping::setupKernelStubArgs(Block *kernelStubBody) {
   // But some type signatures must be updated for the tensor objects.
   // And all extra other arguments must be added
   // Fix and cleanup the argument
-  for (auto [idx, operand] : llvm::enumerate(kernelStubOperands)) {
-    if (idx < kernelStubBody->getNumArguments()) {
-      // Update the argument type if needed.
-      if (kernelStubBody->getArgument(idx).getType() != operand.getType())
-        kernelStubBody->getArgument(idx).setType(operand.getType());
-    } else {
-      // Add a new argument.
-      kernelStubBody->addArgument(operand.getType(), operand.getLoc());
-    }
-  }
-
-  // And now update the mapping with the created block arguments.
-  for (auto &operand : operands) {
-    if (!operand.kernelperandIdx.has_value())
+  for (auto &operandInfos : operands) {
+    if (!operandInfos.kernelperandIdx.has_value())
       continue;
 
-    operand.kernelStubOperand =
-        kernelStubBody->getArgument(operand.kernelperandIdx.value());
+    unsigned idx = operandInfos.kernelperandIdx.value();
+    Value operand = kernelStubOperands[idx];
+    Type operandType = operandInfos.kernelStubOperandType
+                           ? operandInfos.kernelStubOperandType
+                           : operand.getType();
+
+    if (idx < kernelStubBody->getNumArguments()) {
+      // Update the argument type if needed.
+      if (kernelStubBody->getArgument(idx).getType() != operandType)
+        kernelStubBody->getArgument(idx).setType(operandType);
+    } else {
+      // Add a new argument.
+      kernelStubBody->addArgument(operandType, operand.getLoc());
+    }
+
+    // And now update the mapping
+    operandInfos.kernelStubOperand = kernelStubBody->getArgument(idx);
   }
 }
 
@@ -187,6 +192,7 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
 
   MOGG::OutputPlaceholdersOp outputPlaceholdersOp;
   MOGG::ScratchPlaceholdersOp scratchPlaceholdersOp;
+  llvm::SmallVector<MOGG::DeviceContextPlaceholderOp> devicePlaceholderOps;
 
   // Walk through the IR first to find all extra needed operands: parameters, or
   // special ops.
@@ -221,6 +227,12 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
     // The ScratchPlaceholdersOp must be replaced with the scratchpad buffers.
     else if (auto scratchOp = dyn_cast<MOGG::ScratchPlaceholdersOp>(stubOp)) {
       scratchPlaceholdersOp = scratchOp;
+    }
+
+    // The DevicePlaceholderOp must be replaced with the device context object.
+    else if (auto deviceOp =
+                 dyn_cast<MOGG::DeviceContextPlaceholderOp>(stubOp)) {
+      devicePlaceholderOps.push_back(deviceOp);
     }
 
     // Handle dynamic dimensions from result types of all operations.
@@ -293,32 +305,20 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
         /*=isKernelStubOperand*/ paramsInKernelStub.contains(param.getName()));
   }
 
-  return success();
-}
-
-void MOGGKernelOpLoweringState::lowerDeviceContextPlaceholder(
-    MOGG::DeviceContextPlaceholderOp moggContext) {
-  Value moggContextArg = kernelStub.getBodyBlock().addArgument(
-      moggContext.getType(), moggContext.getLoc());
-  moggContext.replaceAllUsesWith(moggContextArg);
-
-  Value mgpContext = loweringState.getExecuteDevice(moggContext.getDevice());
-  mgpRegion->insertOperands(mgpRegion.getNumOperands(), {mgpContext});
-  Value mgpContextArg =
-      mgpRegionBody->addArgument(mgpContext.getType(), mgpContext.getLoc());
-  // The MGP context to MOGG context conversion happens at the stub (no
-  // need for a conversion op since it's 1:1).
-  callStubOp->insertOperands(callStubOp.getNumOperands(), mgpContextArg);
-
-  // Update the kernel InOut semantics if needed.
-  if (mgpRegion.getInOutSignature().size() != 0) {
-    SmallVector<InOutSignatureAttr::InOutSemantics> newSemantics(
-        1, InOutSignatureAttr::InOutSemantics::kNone);
-    InOutSignatureAttr oldSemantics = mgpRegion.getInOutSignature();
-    mgpRegion.setInOutSignatureAttr(oldSemantics.append(newSemantics));
+  // Add the DeviceContext argument
+  for (auto devicePlaceholderOp : devicePlaceholderOps) {
+    Value moggContext = devicePlaceholderOp.getResult();
+    Value mgpContext =
+        loweringState.getExecuteDevice(devicePlaceholderOp.getDevice());
+    operandsMapping.addOperand(mgpContext,
+                               /*isMGPRegionOperand=*/true,
+                               /*isKernelStubOperand=*/true,
+                               InOutSignatureAttr::kNone,
+                               /*keyValue=*/moggContext,
+                               /*stubOperandType=*/moggContext.getType());
   }
 
-  moggContext.erase();
+  return success();
 }
 
 void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
@@ -476,9 +476,7 @@ void MOGGKernelOpLoweringState::lowerKernelOpWithOperandsMapping(
 void MOGGKernelOpLoweringState::lowerKernelStub() {
   // Walk through the IR and lower some ops to MGP.
   kernelStub.walk([&](mlir::Operation *op) {
-    if (auto moggContext = dyn_cast<MOGG::DeviceContextPlaceholderOp>(op))
-      lowerDeviceContextPlaceholder(moggContext);
-    else if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
+    if (auto bindOp = dyn_cast<MOGG::BindLambdaOp>(op))
       lowerBindLambdaOp(bindOp);
     else if (auto constantOp = dyn_cast<MO::ConstantOp>(op))
       lowerConstantOp(constantOp);
@@ -486,7 +484,8 @@ void MOGGKernelOpLoweringState::lowerKernelStub() {
       lowerTensorGetShapeOp(tensorGetShapeOp);
     else if (auto getDimOp = dyn_cast<MOGG::GetDimOp>(op))
       lowerGetDimOp(getDimOp);
-    else if (isa<MOGG::OutputPlaceholdersOp, MOGG::ScratchPlaceholdersOp>(op))
+    else if (isa<MOGG::OutputPlaceholdersOp, MOGG::ScratchPlaceholdersOp,
+                 MOGG::DeviceContextPlaceholderOp>(op))
       lowerKernelOpWithOperandsMapping(op);
   });
 }

@@ -28,6 +28,7 @@ private:
     Value operandValue;
     BlockArgument mgpRegionOperand;
     BlockArgument kernelStubOperand;
+    Type kernelStubOperandType;
     std::optional<unsigned> mgpRegionOperandIdx;
     std::optional<unsigned> kernelperandIdx;
   };
@@ -68,11 +69,14 @@ public:
   // `isMGPRegionOperand` is true. The mapped operand can be retrieved with
   // `get(operandValue, isInsideStub)`. If `keyValue` is set, it's used instead
   // as a key for retrieval: `get(keyValue, isInsideStub)`.
+  // If set, `stubOperandType` change the type of the operand of the KernelStub.
+  // This is only needed for special arguments like DeviceContext where the MGP
+  // / MOGG types differs.
   void addOperand(Value operandValue, bool isMGPRegionOperand,
                   bool isKernelStubOperand,
                   InOutSignatureAttr::InOutSemantics sig =
                       InOutSignatureAttr::InOutSemantics::kNone,
-                  Value keyValue = nullptr);
+                  Value keyValue = nullptr, Type stubOperandType = nullptr);
 
   // Add a new kernel operand for the parameter `paramName`.
   // `paramValue` is the corresponding runtime value of the parameter.
@@ -168,12 +172,11 @@ private:
   Value buildMojoIOTensorObject(Value bufferValue,
                                 const TensorOperandInfos &tensorInfos);
 
+  // Look for extra arguments that must be passed from the mgp.model to the
+  // mgp.region and / or the kernel stub. These includes dynamic dimensions,
+  // extra buffers and device context objects.
   LogicalResult findExtraKernelArguments(
       Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters);
-
-  // Lower the DeviceContextPlaceholderOp to be compatible with the MGP region.
-  void
-  lowerDeviceContextPlaceholder(MOGG::DeviceContextPlaceholderOp moggContext);
 
   // Lower the BimdLambdaOp to be compatible with the MGP region.
   void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
