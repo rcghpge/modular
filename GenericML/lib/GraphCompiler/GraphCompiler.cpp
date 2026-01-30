@@ -74,7 +74,7 @@ void buildJITCompilationPipeline(
   jitOpts.debugKGENStubs = opts.debugKGENStubs;
 
   pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
-  pm.addPass(MGP::createLowerMOGGRegionCompiles());
+  pm.addPass(MOGG::createLowerMOGGRegionCompiles());
   pm.addPass(MGP::createOutlineModelsToCallables());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
@@ -107,19 +107,19 @@ void M::MO::registerPasses() {
   MO::registerMOTransformsPasses();
   MGP::registerMOToPrimitives();
 
-  MGP::registerMergeIdenticalKernelStubs();
-  MGP::registerAddTryExceptBlocksPass();
-  MGP::registerLookupConstantResources();
+  MOGG::registerMergeIdenticalKernelStubs();
+  MOGG::registerAddTryExceptBlocksPass();
+  MOGG::registerLookupConstantResources();
   MGP::registerRaiseBackIndexConstant();
-  MGP::registerOutlineKernelsPass();
-  MGP::registerEmitMojo();
-  MGP::registerDumpMojo();
-  MGP::registerLoadMojo();
-  MGP::registerLowerMOGGRegionCompiles();
+  MOGG::registerOutlineKernelsPass();
+  MOGG::registerEmitMojo();
+  MOGG::registerDumpMojo();
+  MOGG::registerLoadMojo();
+  MOGG::registerLowerMOGGRegionCompiles();
   MGP::registerLowerPrimitives();
-  MGP::registerSequenceFusion();
+  MOGG::registerSequenceFusion();
 
-  MGP::registerRemoveRedundantOperands();
+  MOGG::registerRemoveRedundantOperands();
   MGP::registerLegalizeAsyncRefDeallocations();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
@@ -334,29 +334,29 @@ void M::MO::buildMoToMgpPipeline(
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts, libraryAnalysis));
-  pm.addPass(MGP::createSequenceFusion());
+  pm.addPass(MOGG::createSequenceFusion());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
-  pm.addPass(MGP::createRemoveRedundantOperands());
+  pm.addPass(MOGG::createRemoveRedundantOperands());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 
-  pm.addPass(MGP::createOutlineKernels());
-  pm.addPass(MGP::createLookupConstantResources());
+  pm.addPass(MOGG::createOutlineKernels());
+  pm.addPass(MOGG::createLookupConstantResources());
 
-  MGP::EmitMojoOptions emitMojoOptions;
+  MOGG::EmitMojoOptions emitMojoOptions;
   emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;
   emitMojoOptions.enableOpTraceComments = opts.enableOpTraceComments;
   emitMojoOptions.enableComputeLambdas = opts.enableComputeLambdas;
   emitMojoOptions.moggDebugDumpFusedTensorSpecs =
       opts.moggDebugDumpFusedTensorSpecs;
-  pm.addPass(MGP::createEmitMojo(emitMojoOptions));
+  pm.addPass(MOGG::createEmitMojo(emitMojoOptions, libraryAnalysis));
 
   if (opts.dumpMojoText)
-    pm.addPass(MGP::createDumpMojo());
+    pm.addPass(MOGG::createDumpMojo());
 
   buildJITCompilationPipeline(pm, opts, libraryAnalysis);
 }

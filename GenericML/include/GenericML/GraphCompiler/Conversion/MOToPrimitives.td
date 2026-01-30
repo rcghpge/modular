@@ -31,19 +31,6 @@ def MOToPrimitives : Pass<"mgp-mo-to-primitives", "ModuleOp"> {
 }
 
 
-def LowerMOGGRegionCompiles: Pass<"mogg-lower-mogg-region-compile", "ModuleOp"> {
-  let summary = "Convert MOGG compile ops into MGP versions";
-  let description = [{
-    After lowering we will have raw MOGG compiled kernels in the graph, this
-    converts them into the same MGP format used for the other compiled code.
-  }];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect"];
-}
-
 def LowerPrimitives: Pass<"mgp-lower-primitives", "MGP::ModelOp"> {
   let summary = "Lower MGP operations to primitives";
   let description = [{
@@ -78,30 +65,6 @@ def LowerPrimitives: Pass<"mgp-lower-primitives", "MGP::ModelOp"> {
   ];
 }
 
-def SequenceFusion: Pass<"mogg-sequence-fusion", "MGP::ModelOp"> {
-  let summary = "Fuse sequences of GenericCompiledRegionOp";
-  let description = [{}];
-
-  let options = [
-    Option<"enableTransitiveFusion", "enable-transitive-fusion", "bool", "false",
-      "Flag to allow control of fusion pass">
-  ];
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect"];
-}
-
-def RemoveRedundantOperands: Pass<"mogg-remove-redundant-operands", "MGP::ModelOp"> {
-  let summary = "Removes all redundant operands as a result of seq fusion";
-  let description = [{}];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect"];
-}
-
 def LegalizeAsyncRefDeallocations: Pass<"mgp-legalize-async-ref-deallocations", "ModuleOp"> {
   let summary = "Legalize deallocation calls on async values";
   let description = [{
@@ -114,144 +77,6 @@ def LegalizeAsyncRefDeallocations: Pass<"mgp-legalize-async-ref-deallocations", 
   let dependentDialects = ["MOGG::MOGGDialect"];
 }
 
-
-def DumpMojo: Pass<"mgp-dump-mojo", "ModuleOp"> {
-  let summary = "Dump Mojo text";
-  let description = [{
-    Dump to stderr the previously emitted Mojo as text.
-  }];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect",
-                          "M::KGEN::KGENDialect",
-                          "M::KGEN::LIT::LITDialect",
-                          "M::KGEN::POP::POPDialect",
-                          "M::HLCF::HLCFDialect",
-                          "M::DebugInfo::DebugInfoDialect",
-                          "mlir::NVVM::NVVMDialect",
-                          "mlir::ROCDL::ROCDLDialect",
-                          "mlir::index::IndexDialect",
-    ];
-}
-
-def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
-  let summary = "Load Mojo text";
-  let description = [{
-    Load the provided Mojo text and replace the existing module. This can be
-    achieved by dumping Mojo, modifying it and then running this pass. Then, the
-    -jit-pipeline can be run to compile all the way to the end.
-
-    Example:
-    mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=mogg-emit-mojo &> program.mgp.mlir
-    mo-opt program.mgp.mlir -mgp-dump-mojo -o /dev/null &> program.mojo
-    # Modify Mojo here
-    mo-opt program.mgp.mlir -mgp-load-mojo=path=program.mojo -jit-pipeline
-  }];
-
-  let options = [
-    Option<"path", "path", "std::string", "\"\"",
-      "The label for resulting MGP graph. Default is mof.">
-  ];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect",
-                          "M::KGEN::KGENDialect",
-                          "M::KGEN::LIT::LITDialect",
-                          "M::KGEN::POP::POPDialect",
-                          "M::HLCF::HLCFDialect",
-                          "M::DebugInfo::DebugInfoDialect",
-                          "mlir::NVVM::NVVMDialect",
-                          "mlir::ROCDL::ROCDLDialect",
-                          "mlir::index::IndexDialect",
-  ];
-}
-
-// NOT safe to run in //. This has to run on the ModuleOp because of how we name
-// kernels.
-def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
-  let summary = "Emit Mojo text";
-  let description = [{
-    Emit Mojo text from kernel stubs and `mogg.generic.compiled.region`. The
-    Mojo is put in a stub that will be held until JIT compilation.
-  }];
-
-  let options = [
-    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
-      "Paths to mojo packages containing mojo kernel definitions to be loaded.">,
-    Option<"enableOpTraceComments", "enable-op-trace-comments", "bool", "false", "Flag to enable adding comments in the Mojo code detailing which operation is being emitted.">,
-    Option<"enableComputeLambdas", "enable-compute-lambdas", "bool", "true",
-      "Enable compute lambdas for the fused I/O kernels">,
-    Option<"moggDebugDumpFusedTensorSpecs", "mogg-debug-dump-fused-tensor-specs", "bool", "false",
-      "Flag to add prints for the fused tensor specs in the lambdas">
-  ];
-
-  let dependentDialects = ["MEF::MEFDialect",
-                          "MGP::MGPDialect",
-                          "GRT::GRTDialect",
-                          "MOGG::MOGGDialect",
-                          "M::KGEN::KGENDialect",
-                          "M::KGEN::LIT::LITDialect",
-                          "M::KGEN::POP::POPDialect",
-                          "M::HLCF::HLCFDialect",
-                          "M::DebugInfo::DebugInfoDialect",
-                          "mlir::NVVM::NVVMDialect",
-                          "mlir::ROCDL::ROCDLDialect",
-                          "mlir::index::IndexDialect",
-  ];
-}
-
-def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp"> {
-  let summary = "Adds a try-except block to raising kernels";
-  let description = [{
-    This pass should be run after sequence fusion and before Mojo codegen. It
-    adds a try-except block to raising kernels such that the emit mojo pass can
-    generate adequate Mojo.
-  }];
-
-  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
-}
-
-def OutlineKernels: Pass<"mogg-outline-kernels", "ModuleOp"> {
-  let summary = "Outline kernels into stubs";
-  let description = [{
-    The same way MOGG kernels are outlined into KernelStubOp as we lower to MGP,
-    outline GenericCompiledRegionOp into KernelStubOp. This should be done after
-    all optimization passes, just before Mojo codegen. The purpose of this pass
-    is to stage things for the merging of identical kernel stubs.
-  }];
-
-  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
-}
-
-def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "ModuleOp"> {
-  let summary = "Merge kernel stubs that are identical";
-  let description = [{
-    This is the equivalent of CSE but for MOGG::KernelStubOp. It can improve
-    compilation time by reducing the IR size and emitted Mojo text.
-  }];
-
-  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
-
-  let statistics = [
-    Statistic<"numMergedStubs", "# of stubs that were merged", "Number of stubs that were merged">
-  ];
-}
-
-def LookupConstantResources: Pass<"mogg-lookup-constant-resources", "MOGG::KernelStubOp"> {
-  let summary = "Replace mgp.buffer.constant with mgp.resource.constant";
-  let description = [{
-    Retrieves a pointer to the corresponding constant resources attached to the
-    parent `mogg.kernel.stub` operation. This makes compilation faster because
-    the value of the constant can be different but identical kernels will still
-    merge if the index is the same.
-  }];
-
-  let dependentDialects = ["MGP::MGPDialect"];
-}
 
 def RaiseBackIndexConstant: Pass<"mgp-raise-back-index-constant", "ModuleOp"> {
   let summary = "Recover index constants if not part of kernel deduplication";

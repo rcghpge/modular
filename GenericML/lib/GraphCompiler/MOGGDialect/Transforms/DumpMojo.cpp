@@ -4,19 +4,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_DUMPMOJO
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-namespace M::MGP {
+namespace M::MOGG {
 
 struct DumpMojo
     : public MOGG::MojoLibraryAnalysisPass<impl::DumpMojoBase<DumpMojo>> {
@@ -35,4 +35,4 @@ struct DumpMojo
   }
 };
 
-} // namespace M::MGP
+} // namespace M::MOGG

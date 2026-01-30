@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -20,14 +21,14 @@
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_EMITMOJO
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
@@ -226,7 +227,7 @@ struct EmitMojo
     // recoverIndexConstantFromUniqueKernels can cause a kernel to become
     // non-raising again. This causes Mojo compiler warning because we would
     // have a try-except clause around non-raising code.
-    pm.addPass(MGP::createAddTryExceptBlocks());
+    pm.addPass(MOGG::createAddTryExceptBlocks());
 
     if (pm.run(moduleOp).failed())
       return signalPassFailure();
@@ -237,9 +238,9 @@ struct EmitMojo
 
 } // namespace
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-std::unique_ptr<mlir::Pass> M::MGP::createEmitMojo(
+std::unique_ptr<mlir::Pass> M::MOGG::createEmitMojo(
     const EmitMojoOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
   return std::make_unique<EmitMojo>(opts, std::move(libraryAnalysis));

@@ -29,19 +29,9 @@ namespace M::MGP {
 
 /// Generate the code for declaring the pass.
 #define GEN_PASS_DECL_MOTOPRIMITIVES
-#define GEN_PASS_DECL_LOWERMOGGREGIONCOMPILES
-#define GEN_PASS_DECL_SEQUENCEFUSION
 #define GEN_PASS_DECL_LEGALIZEASYNCREFDEALLOCATIONS
-#define GEN_PASS_DECL_EMITMOJO
-#define GEN_PASS_DECL_MERGEIDENTICALKERNELSTUBS
-#define GEN_PASS_DECL_LOOKUPCONSTANTRESOURCES
 #define GEN_PASS_DECL_RAISEBACKINDEXCONSTANT
-#define GEN_PASS_DECL_ADDTRYEXCEPTBLOCKS
-#define GEN_PASS_DECL_OUTLINEKERNELS
-#define GEN_PASS_DECL_DUMPMOJO
-#define GEN_PASS_DECL_LOADMOJO
 #define GEN_PASS_DECL_LOWERPRIMITIVES
-#define GEN_PASS_DECL_REMOVEREDUNDANTOPERANDS
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
 
 /// Generate the code for registering the pass.
@@ -59,12 +49,6 @@ namespace M::MGP {
 std::unique_ptr<mlir::Pass> createLowerPrimitives(
     const LowerPrimitivesOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
-
-std::unique_ptr<mlir::Pass>
-createEmitMojo(const EmitMojoOptions &opts,
-               std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
-
-void mergeIdenticalKernelStubs(ModuleOp module);
 
 } // namespace M::MGP
 

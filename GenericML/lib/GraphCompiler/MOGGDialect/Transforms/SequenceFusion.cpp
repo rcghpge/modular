@@ -8,26 +8,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/SequenceFusionAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_SEQUENCEFUSION
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
@@ -372,7 +373,7 @@ doTransitiveDependencySequenceFusion(MGP::ModelOp model) {
   }
 }
 
-struct SequenceFusion : public MGP::impl::SequenceFusionBase<SequenceFusion> {
+struct SequenceFusion : public MOGG::impl::SequenceFusionBase<SequenceFusion> {
   using SequenceFusionBase::SequenceFusionBase;
 
   void runOnOperation() override {
@@ -391,4 +392,4 @@ struct SequenceFusion : public MGP::impl::SequenceFusionBase<SequenceFusion> {
 
 } // namespace
 
-} // namespace M::MGP
+} // namespace M::MOGG

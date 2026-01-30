@@ -98,6 +98,12 @@ std::unique_ptr<mlir::Pass>
 createJitCompileKernels(const JitCompileKernelsOptions &opts,
                         std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
 
+std::unique_ptr<mlir::Pass>
+createEmitMojo(const EmitMojoOptions &opts,
+               std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
+
+void mergeIdenticalKernelStubs(mlir::ModuleOp module);
+
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_TRANSFORMS_MOGGPASSES_H

@@ -4,27 +4,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_ADDTRYEXCEPTBLOCKS
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
 struct AddTryExceptBlocks
-    : public MGP::impl::AddTryExceptBlocksBase<AddTryExceptBlocks> {
+    : public MOGG::impl::AddTryExceptBlocksBase<AddTryExceptBlocks> {
   using AddTryExceptBlocksBase::AddTryExceptBlocksBase;
 
   /// Helper to set the builder insertion point for AsyncDelOp operations.
@@ -136,4 +136,4 @@ struct AddTryExceptBlocks
 
 } // namespace
 
-} // namespace M::MGP
+} // namespace M::MOGG

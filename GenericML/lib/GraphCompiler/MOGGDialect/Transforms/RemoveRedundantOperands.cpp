@@ -8,23 +8,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AssertStream.h"
 
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_REMOVEREDUNDANTOPERANDS
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
 inline static MOGG::GenericCompiledRegionOp
 buildRegionOpWithResultType(OpBuilder &builder,
@@ -45,7 +45,7 @@ buildRegionOpWithResultType(OpBuilder &builder,
   return newKernel;
 }
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
@@ -138,7 +138,7 @@ struct RemoveUnusedTryResults : public OpRewritePattern<MOGG::TryOp> {
 // generic-compiled region and collapse the usage.  This reduces the number of
 // async values crossing the generic-region boundary
 struct RemoveRedundantOperands
-    : public MGP::impl::RemoveRedundantOperandsBase<RemoveRedundantOperands> {
+    : public MOGG::impl::RemoveRedundantOperandsBase<RemoveRedundantOperands> {
   using RemoveRedundantOperandsBase::RemoveRedundantOperandsBase;
 
   void runOnOperation() override {
@@ -298,4 +298,4 @@ struct RemoveRedundantOperands
 
 } // namespace
 
-} // namespace M::MGP
+} // namespace M::MOGG

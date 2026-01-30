@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
@@ -17,28 +16,30 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
+#include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_LOWERMOGGREGIONCOMPILES
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
 //===----------------------------------------------------------------------===//
 // MOGraphLowering implementation
 //===----------------------------------------------------------------------===//
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
 struct LowerMOGGRegionCompilesPass
-    : public MGP::impl::LowerMOGGRegionCompilesBase<
+    : public MOGG::impl::LowerMOGGRegionCompilesBase<
           LowerMOGGRegionCompilesPass> {
   using LowerMOGGRegionCompilesBase::LowerMOGGRegionCompilesBase;
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
@@ -104,7 +105,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     OpBuilder builder{ctx};
 
     // Set up the exec state
-    ExecuteState execState(ctx, model);
+    MGP::ExecuteState execState(ctx, model);
 
     // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
     // need to make sure we use and count the right one for moduleIndex
@@ -232,4 +233,4 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
 
 } // namespace
 
-} // namespace M::MGP
+} // namespace M::MOGG

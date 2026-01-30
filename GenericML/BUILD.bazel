@@ -830,7 +830,14 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
     local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
+        ":GraphCompilerDeviceBuggerizationRegistry",
+        ":MGPTransforms",
+        ":MOAnalysis",
         ":MOGGDialect",
+        ":MOToPrimitives",
+        ":Support",
+        "//KGEN:TransformUtils",
+        "//MLRT:AsyncRT/CompilerSupport",
         "//MLRT:Driver/DeviceContext",
     ],
 )
@@ -1324,7 +1331,6 @@ modular_cc_library(
         ":MOAnalysis",
         ":MODialect",
         ":MOGGDialect",
-        ":MOGGTransforms",
         ":MOToPrimitivesIncGen",
         ":PrimitiveCodegenIncGen",
         "//KGEN:ToolCommon",

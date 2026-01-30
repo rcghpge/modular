@@ -4,26 +4,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Interfaces/LoweringState.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_OUTLINEKERNELS
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
-struct OutlineKernels : public MGP::impl::OutlineKernelsBase<OutlineKernels> {
+struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
   using OutlineKernelsBase::OutlineKernelsBase;
 
   void runOnOperation() override {
@@ -75,4 +75,4 @@ struct OutlineKernels : public MGP::impl::OutlineKernelsBase<OutlineKernels> {
 
 } // namespace
 
-} // namespace M::MGP
+} // namespace M::MOGG

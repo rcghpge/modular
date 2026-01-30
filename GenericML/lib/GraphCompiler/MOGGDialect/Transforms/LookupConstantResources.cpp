@@ -4,25 +4,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 
 using namespace M;
 
-namespace M::MGP {
+namespace M::MOGG {
 
 #define GEN_PASS_DEF_LOOKUPCONSTANTRESOURCES
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
-} // namespace M::MGP
+} // namespace M::MOGG
 
-namespace M::MGP {
+namespace M::MOGG {
 
 namespace {
 
 struct LookupConstantResources
-    : public MGP::impl::LookupConstantResourcesBase<LookupConstantResources> {
+    : public MOGG::impl::LookupConstantResourcesBase<LookupConstantResources> {
   using LookupConstantResourcesBase::LookupConstantResourcesBase;
 
   void runOnOperation() override {
@@ -31,7 +31,7 @@ struct LookupConstantResources
     auto ctx = kernelStubOp->getContext();
     bool wasInterrupted =
         kernelStubOp
-            ->walk([&](BufferConstantOp bufferConstantOp) {
+            ->walk([&](MGP::BufferConstantOp bufferConstantOp) {
               auto elementsAttr = bufferConstantOp.getAValue();
               auto it = llvm::find(constantResources, elementsAttr);
               if (it == constantResources.end()) {
@@ -44,7 +44,7 @@ struct LookupConstantResources
                   std::distance(constantResources.begin(), it);
 
               OpBuilder builder(bufferConstantOp);
-              auto newConstantResource = ResourceConstantOp::create(
+              auto newConstantResource = MGP::ResourceConstantOp::create(
                   builder, bufferConstantOp->getLoc(),
                   bufferConstantOp.getType(),
                   IntegerAttr::get(IndexType::get(ctx), resourceIndex));
@@ -71,4 +71,4 @@ struct LookupConstantResources
 };
 
 } // namespace
-} // namespace M::MGP
+} // namespace M::MOGG
