@@ -17,6 +17,9 @@ void KernelOperandsMapping::addOperand(Value operandValue,
   if (!keyValue)
     keyValue = operandValue;
 
+  ASSERT_STREAM(isMGPRegionOperand || isKernelStubOperand,
+                "The operand must be for the MGP Region and/or the KernelStub");
+
   unsigned operandIdx = operands.size();
   OperandValue operand;
   operand.operandValue = operandValue;
@@ -29,8 +32,11 @@ void KernelOperandsMapping::addOperand(Value operandValue,
   }
   if (isKernelStubOperand) {
     operand.kernelperandIdx = kernelStubOperands.size();
-    // Set it to null for now. The parameter will be updated later
-    kernelStubOperands.push_back(nullptr);
+    // If the operand is forwarded from the MGP region to the stub, set it to
+    // null, it'll be updated later. Otherwise if it's only a stub argument,
+    // set it now.
+    Value stubOperand = isMGPRegionOperand ? nullptr : operandValue;
+    kernelStubOperands.push_back(stubOperand);
   }
 
   operands.push_back(operand);
@@ -321,6 +327,34 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
   return success();
 }
 
+void MOGGKernelOpLoweringState::findExtraKernelStubOnlyArguments() {
+
+  SmallVector<Attribute> newKernelRessources;
+
+  kernelStub.walk([&](MO::ConstantOp constantOp) {
+    // Add the constant resource to the kernel, and create an MGP Buffer.
+    auto constantAttr = *loweringState.lowerElementsAttr(constantOp.getValue());
+    newKernelRessources.push_back(constantAttr);
+    Value bufferConstant = MGP::BufferConstantOp::create(
+        builder, constantOp->getLoc(), cast<ElementsAttr>(constantAttr));
+    operandsMapping.addOperand(bufferConstant,
+                               /*isMGPRegionOperand=*/false,
+                               /*isKernelStubOperand=*/true,
+                               InOutSignatureAttr::kNone,
+                               /*keyValue=*/constantOp.getResult());
+  });
+
+  // Attach all new resources to the constant kernel.
+  if (!newKernelRessources.empty()) {
+    SmallVector<Attribute> allKernelRessources(
+        mgpRegion.getConstantResources().begin(),
+        mgpRegion.getConstantResources().end());
+    allKernelRessources.append(std::move(newKernelRessources));
+    mgpRegion.setConstantResourcesAttr(
+        ArrayAttr::get(mgpRegion->getContext(), allKernelRessources));
+  }
+}
+
 void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   mlir::MLIRContext *ctx = moggOp->getContext();
   auto loc = moggOp->getLoc();
@@ -401,27 +435,14 @@ void MOGGKernelOpLoweringState::lowerConstantOp(MO::ConstantOp constantOp) {
   mlir::MLIRContext *ctx = moggOp->getContext();
   auto loc = moggOp->getLoc();
 
+  // Replace the op with the corresponding kernel arguments.
+  Value bufferValue =
+      operandsMapping.get(constantOp.getResult(), /*isInsideStub=*/true);
+
   // Exclusive is True unless it's used by a view kernel.
   bool isExclusive =
       llvm::none_of(constantOp.getResult().getUsers(),
                     [](Operation *use) { return isa<MOGG::CallViewOp>(use); });
-
-  builder.setInsertionPoint(callStubOp);
-  auto currentResources = mgpRegion.getConstantResources();
-  SmallVector<Attribute> newResources(currentResources.begin(),
-                                      currentResources.end());
-  newResources.push_back(
-      *loweringState.lowerElementsAttr(constantOp.getValue()));
-  mgpRegion.setConstantResourcesAttr(ArrayAttr::get(ctx, newResources));
-  Value bufferConstant = MGP::BufferConstantOp::create(
-      builder, constantOp->getLoc(), cast<ElementsAttr>(newResources.back()));
-  callStubOp->insertOperands(callStubOp->getNumOperands(), bufferConstant);
-  auto bufferValue = kernelStub.getBodyBlock().addArgument(
-      bufferConstant.getType(), bufferConstant.getLoc());
-  auto newFunctionType =
-      FunctionType::get(ctx, kernelStub.getBodyBlock().getArgumentTypes(),
-                        kernelStub.getFunctionType().getResults());
-  kernelStub.setFunctionType(newFunctionType);
 
   builder.setInsertionPoint(constantOp);
   SmallVector<Value> dynamicDimensions;
@@ -660,6 +681,9 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     operandsMapping.remapKernelStubOperand(tensorInfos.operandIdx,
                                            *tensorValueOr);
   }
+
+  // Find extra KernelStub only arguments
+  findExtraKernelStubOnlyArguments();
 
   // Setup the KernelStub region and call.
   operandsMapping.setupKernelStubArgs(&kernelStub.getBody().front());

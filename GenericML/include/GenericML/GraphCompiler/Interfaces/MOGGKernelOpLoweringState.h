@@ -178,6 +178,11 @@ private:
   LogicalResult findExtraKernelArguments(
       Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters);
 
+  // Look for extra arguments that must be passed only to the KernelStub.
+  // These includes mo.contant buffer objects.
+  // They must be setup after the MGP region is built
+  void findExtraKernelStubOnlyArguments();
+
   // Lower the BimdLambdaOp to be compatible with the MGP region.
   void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
 
