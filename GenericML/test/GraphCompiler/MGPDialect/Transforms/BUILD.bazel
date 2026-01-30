@@ -6,10 +6,10 @@ lit_tests(
     name = "test",
     srcs = glob(["**/*.mlir"]),
     custom_substitutions = {
-        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITestLibOrPkg)",
+        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
     },
     data = [
-        "//GenericML/test/TestKernels:MOGGKernelAPITestLibOrPkg",
+        "//GenericML/test/TestKernels:MOGGKernelAPITest",
     ],
     mojo_deps = [
         "//max:MOGGKernelAPI",

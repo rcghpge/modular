@@ -15,11 +15,3 @@ mojo_library(
         "@mojo//:std",
     ],
 )
-
-# Alias for backward compatibility - now always uses MOGGKernelAPITest since
-# emit-mojo is always enabled.
-alias(
-    name = "MOGGKernelAPITestLibOrPkg",
-    testonly = True,
-    actual = ":MOGGKernelAPITest",
-)
