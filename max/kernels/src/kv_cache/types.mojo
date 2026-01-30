@@ -85,8 +85,7 @@ fn _compute_kv_cache_dynamic_shape_strides[
     return (kv_cache_shape, kv_cache_strides)
 
 
-@register_passable("trivial")
-struct KVCacheStaticParams(Equatable, ImplicitlyCopyable):
+struct KVCacheStaticParams(Equatable, TrivialRegisterType):
     var num_heads: UInt
     var head_size: UInt
     var is_mla: Bool
@@ -107,21 +106,8 @@ struct KVCacheStaticParams(Equatable, ImplicitlyCopyable):
         self.head_size = head_size
         self.is_mla = is_mla
 
-    @always_inline("nodebug")
-    fn __eq__(self, rhs: KVCacheStaticParams) -> Bool:
-        return (
-            self.num_heads == rhs.num_heads
-            and self.head_size == rhs.head_size
-            and self.is_mla == rhs.is_mla
-        )
 
-    @always_inline("nodebug")
-    fn __ne__(self, rhs: KVCacheStaticParams) -> Bool:
-        return not (self == rhs)
-
-
-@register_passable("trivial")
-trait KVCacheT(DevicePassable, ImplicitlyCopyable):
+trait KVCacheT(DevicePassable, TrivialRegisterType):
     """Trait for different KVCache types and implementations.
 
     Represents a single (key or value) cache.
@@ -295,11 +281,10 @@ trait KVCacheT(DevicePassable, ImplicitlyCopyable):
         ...
 
 
-@register_passable("trivial")
 struct ContinuousBatchingKVCache[
     dtype_: DType,
     kv_params_: KVCacheStaticParams,
-](KVCacheT):
+](KVCacheT, TrivialRegisterType):
     """Wrapper for the ContinuousKVCache of a given layer in the transformer
     model.
 
@@ -356,10 +341,6 @@ struct ContinuousBatchingKVCache[
     @staticmethod
     fn get_type_name() -> String:
         return "ContinuousBatchingKVCache"
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        return Self.get_type_name()
 
     @always_inline
     fn _get_idx_tuple(
@@ -558,8 +539,12 @@ struct ContinuousBatchingKVCache[
         Self.dtype,
         IndexList[3](BN, 1, BK),
         swizzle_mode,
-    ] where (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0:
+    ]:
         """Creates a TMA tile for this KV cache."""
+        constrained[
+            (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0,
+            "BK must be a multiple of swizzle granularity",
+        ]()
         # The continuous cache is laid out as [num_blocks, num_layers, seq_len, num_heads, head_size]
         # We create a view of the data as a flattened 2D tensor
         var total_blocks = self.blocks.dim[0]()
@@ -599,7 +584,11 @@ struct ContinuousBatchingKVCache[
             BM=BN,
             BN=BK,
         ],
-    ) raises where (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0:
+    ) raises:
+        constrained[
+            (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0,
+            "BK must be a multiple of swizzle granularity",
+        ]()
         var total_blocks = self.blocks.dim[0]()
         var rows = (total_blocks - 1) * self._stride() + self.blocks.dim[1]()
         tma = type_of(tma).create[depth = Int(Self.kv_params.head_size)](
@@ -642,14 +631,13 @@ struct ContinuousBatchingKVCache[
         return UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]()
 
 
-@register_passable("trivial")
 struct PagedKVCache[
     dtype_: DType,
     kv_params_: KVCacheStaticParams,
     page_size: Int,
     scale_dtype_: DType = DType.invalid,
     quantization_granularity: Int = 1,
-](KVCacheT):
+](KVCacheT, TrivialRegisterType):
     """The PagedKVCache is a wrapper around the KVCache blocks for a given layer.
     It is used to access the KVCache blocks for PagedAttention.
 
@@ -741,10 +729,6 @@ struct PagedKVCache[
     fn get_type_name() -> String:
         return "PagedKVCache"
 
-    @staticmethod
-    fn get_device_type_name() -> String:
-        return Self.get_type_name()
-
     fn __init__(
         out self,
         blocks: Self.blocks_type,
@@ -834,8 +818,12 @@ struct PagedKVCache[
         Self.dtype,
         IndexList[3](BN, 1, BK),
         swizzle_mode,
-    ] where (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0:
+    ]:
         """Creates a TMA tile for this KV cache."""
+        constrained[
+            (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0,
+            "BK must be a multiple of swizzle granularity",
+        ]()
         # Paged cache collection is (where `$idx` means subsetting that idx):
         # [total_num_blocks, $kv_idx, $layer_idx, page_size, num_heads, head_size]
         #
@@ -877,7 +865,11 @@ struct PagedKVCache[
             BM=BN,
             BN=BK,
         ],
-    ) raises where (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0:
+    ) raises:
+        constrained[
+            (BK % swizzle_granularity[Self.dtype, swizzle_mode]()) == 0,
+            "BK must be a multiple of swizzle granularity",
+        ]()
         var total_blocks = self.blocks.dim[0]()
         var rows = (total_blocks - 1) * self._stride() + Self.page_size
         tma = type_of(tma).create[depth = Int(Self.kv_params.head_size)](

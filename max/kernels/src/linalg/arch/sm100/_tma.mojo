@@ -104,9 +104,7 @@ fn create_tma_descriptor[
         create_tensormap(
             DeviceBuffer(
                 ctx,
-                gmem_tensor.ptr.mut_cast[True]().address_space_cast[
-                    AddressSpace.GENERIC
-                ](),
+                gmem_tensor.ptr.address_space_cast[AddressSpace.GENERIC](),
                 1,
                 owning=False,
             ),
@@ -147,10 +145,6 @@ struct TMALoad[
             Self.swizzle_mode,
             "]",
         )
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        return Self.get_type_name()
 
     @always_inline
     @implicit

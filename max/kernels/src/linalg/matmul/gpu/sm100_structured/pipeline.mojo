@@ -52,8 +52,7 @@ comptime MbarPtr = UnsafePointer[
 ]
 
 
-@register_passable("trivial")
-struct ProducerConsumerPipeline[num_stages: Int]:
+struct ProducerConsumerPipeline[num_stages: Int](TrivialRegisterType):
     """A producer-consumer pipeline using shared memory barriers to
     enforce synchronization (between producer and consumer warps).
 
@@ -105,6 +104,55 @@ struct ProducerConsumerPipeline[num_stages: Int]:
     fn wait_consumer(self):
         """Producer waits for consumer."""
         self.empty[self._producer_stage].wait(self._producer_phase)
+
+    @always_inline
+    fn try_wait_producer(self) -> Bool:
+        """Non-blocking check if producer data is ready.
+
+        Returns:
+            True if the producer has filled the current stage, False otherwise.
+
+        Note:
+            Use this with wait_producer_if_needed() for the try-acquire pattern:
+            ```
+            var ready = pipeline.try_wait_producer()
+            # ... do other work ...
+            pipeline.wait_producer_if_needed(ready)
+            ```
+        """
+        return self.full[self._consumer_stage].try_wait(self._consumer_phase)
+
+    @always_inline
+    fn try_wait_consumer(self) -> Bool:
+        """Non-blocking check if consumer has freed the stage.
+
+        Returns:
+            True if the consumer has freed the current stage, False otherwise.
+
+        Note:
+            Use this with wait_consumer_if_needed() for the try-acquire pattern.
+        """
+        return self.empty[self._producer_stage].try_wait(self._producer_phase)
+
+    @always_inline
+    fn wait_producer_if_needed(self, already_ready: Bool):
+        """Conditionally wait for producer if not already ready.
+
+        Args:
+            already_ready: Result from try_wait_producer(). If True, skips waiting.
+        """
+        if not already_ready:
+            self.wait_producer()
+
+    @always_inline
+    fn wait_consumer_if_needed(self, already_ready: Bool):
+        """Conditionally wait for consumer if not already ready.
+
+        Args:
+            already_ready: Result from try_wait_consumer(). If True, skips waiting.
+        """
+        if not already_ready:
+            self.wait_consumer()
 
     @always_inline
     fn producer_mbar(self, stage: UInt32) -> MbarPtr:
@@ -160,7 +208,7 @@ struct ProducerConsumerPipeline[num_stages: Int]:
         """
         self._consumer_stage += 1
 
-        if self._consumer_stage == Self.num_stages:
+        if self._consumer_stage == UInt32(Self.num_stages):
             self._consumer_stage = 0
             self._consumer_phase ^= 1
 
@@ -173,7 +221,7 @@ struct ProducerConsumerPipeline[num_stages: Int]:
         """
         self._producer_stage += 1
 
-        if self._producer_stage == Self.num_stages:
+        if self._producer_stage == UInt32(Self.num_stages):
             self._producer_stage = 0
             self._producer_phase ^= 1
 
@@ -186,7 +234,7 @@ struct ProducerConsumerPipeline[num_stages: Int]:
             The total number of bytes needed for all pipeline barriers
             (2 * num_stages barriers).
         """
-        return 2 * Self.num_stages * size_of[SharedMemBarrier]()
+        return UInt32(2 * Self.num_stages * size_of[SharedMemBarrier]())
 
     @always_inline
     fn init_mbars(
@@ -303,8 +351,7 @@ struct ProducerConsumerPipeline[num_stages: Int]:
 # =============================================================================
 
 
-@register_passable("trivial")
-struct ProducerStage:
+struct ProducerStage(TrivialRegisterType):
     """Stage info returned by ProduceContext.__enter__."""
 
     var _index: UInt32
@@ -329,11 +376,10 @@ struct ProducerStage:
         return self._mbar
 
 
-@register_passable("trivial")
 struct ProduceContext[
     pipeline_origin: MutOrigin,
     num_stages: Int,
-]:
+](TrivialRegisterType):
     """Context for producing one pipeline stage.
 
     - __enter__: Waits for consumer to be ready, returns stage info
@@ -371,8 +417,7 @@ struct ProduceContext[
         self.pipeline[].producer_step()
 
 
-@register_passable("trivial")
-struct ConsumerStage:
+struct ConsumerStage(TrivialRegisterType):
     """Stage info returned by ConsumeContext.__enter__."""
 
     var _index: UInt32
@@ -419,11 +464,10 @@ struct ConsumerStage:
         _ = self._mbar[0].arrive()
 
 
-@register_passable("trivial")
 struct ConsumeContext[
     pipeline_origin: MutOrigin,
     num_stages: Int,
-]:
+](TrivialRegisterType):
     """Context for consuming one pipeline stage.
 
     - __enter__: Waits for producer to be ready, returns stage info
@@ -456,11 +500,10 @@ struct ConsumeContext[
         self.pipeline[].consumer_step()
 
 
-@register_passable("trivial")
 struct ExplicitConsumeContext[
     pipeline_origin: MutOrigin,
     num_stages: Int,
-]:
+](TrivialRegisterType):
     """Context for consuming one pipeline stage with EXPLICIT arrive.
 
     Use this when you need lane-guarded or specialized barrier signaling.

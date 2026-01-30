@@ -11,12 +11,12 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections import OptionalReg
 from math import align_up, ceildiv
 from os.atomic import Atomic, Consistency
 from sys.info import align_of, simd_width_of, size_of
 
 import gpu.primitives.warp as warp
+from collections import OptionalReg
 from gpu import (
     PDL,
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -60,7 +60,7 @@ comptime RtTuple_4 = RuntimeTuple[
 
 comptime elementwise_epilogue_type = fn[
     dtype: DType, width: Int, *, alignment: Int = 1
-] (IndexList[2], SIMD[dtype, width]) capturing -> None
+](IndexList[2], SIMD[dtype, width]) capturing -> None
 
 comptime EP_DATA_READY_FLAG = 1 << 10
 
@@ -162,8 +162,7 @@ fn ep_signal_completion[
             )
 
 
-@register_passable("trivial")
-trait TokenFormat(DevicePassable):
+trait TokenFormat(DevicePassable, TrivialRegisterType):
     comptime hid_dim: Int
     comptime top_k: Int
     comptime alignment: Int
@@ -229,10 +228,9 @@ trait TokenFormat(DevicePassable):
         ...
 
 
-@register_passable("trivial")
 struct BF16TokenFormat[
     output_layout: Layout, //, _hid_dim: Int, _top_k: Int, _alignment: Int
-](TokenFormat):
+](TokenFormat, TrivialRegisterType):
     comptime hid_dim = Self._hid_dim
     comptime top_k = Self._top_k
     comptime alignment = Self._alignment
@@ -266,10 +264,6 @@ struct BF16TokenFormat[
             String(Self.alignment),
             "]",
         )
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        return Self.get_type_name()
 
     @always_inline
     fn __init__(out self, output_tokens: Self.TensorType):
@@ -324,7 +318,6 @@ struct BF16TokenFormat[
             )
 
 
-@register_passable("trivial")
 struct BlockwiseFP8TokenFormat[
     fp8_dtype: DType,
     scales_dtype: DType,
@@ -334,7 +327,7 @@ struct BlockwiseFP8TokenFormat[
     _hid_dim: Int,
     _top_k: Int,
     _alignment: Int,
-](TokenFormat):
+](TokenFormat, TrivialRegisterType):
     comptime hid_dim = Self._hid_dim
     comptime top_k = Self._top_k
     comptime alignment = Self._alignment
@@ -380,10 +373,6 @@ struct BlockwiseFP8TokenFormat[
             String(Self.alignment),
             "]",
         )
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        return Self.get_type_name()
 
     @always_inline
     fn __init__(
@@ -523,8 +512,7 @@ struct BlockwiseFP8TokenFormat[
 # ===-----------------------------------------------------------------------===#
 
 
-@register_passable("trivial")
-struct EPLocalSyncCounters[n_experts: Int](DevicePassable):
+struct EPLocalSyncCounters[n_experts: Int](DevicePassable, TrivialRegisterType):
     """Manages atomic counters for EP kernel synchronization within a device.
 
     This struct provides dedicated atomic counter space for each of the four
@@ -563,10 +551,6 @@ struct EPLocalSyncCounters[n_experts: Int](DevicePassable):
     @staticmethod
     fn get_type_name() -> String:
         return String("EPLocalSyncCounters[n_experts=", Self.n_experts, "]")
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        return Self.get_type_name()
 
     @always_inline
     @staticmethod
@@ -1967,9 +1951,9 @@ struct EPCombineKernel[
         output_type: DType,
         output_tokens_layout: Layout,
         router_weights_wrapper: OptionalReg[
-            fn (Int, Int) capturing -> Float32
+            fn(Int, Int) capturing -> Float32
         ] = None,
-        elementwise_lambda_fn: OptionalReg[elementwise_epilogue_type] = None,
+        elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     ](
         output_tokens: LayoutTensor[
             output_type, output_tokens_layout, MutAnyOrigin
@@ -2238,9 +2222,9 @@ fn combine_wait_kernel[
     msg_bytes: Int,
     max_tokens_per_rank: Int,
     router_weights_wrapper: OptionalReg[
-        fn (Int, Int) capturing -> Float32
+        fn(Int, Int) capturing -> Float32
     ] = None,
-    elementwise_lambda_fn: OptionalReg[elementwise_epilogue_type] = None,
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     use_shmem: Bool = True,
 ](
     output_tokens: LayoutTensor[
@@ -2507,10 +2491,10 @@ fn combine_kernel[
     max_tokens_per_rank: Int,
     p2p_world_size: Int,
     router_weights_wrapper: OptionalReg[
-        fn (Int, Int) capturing -> Float32
+        fn(Int, Int) capturing -> Float32
     ] = None,
     fused_shared_expert: Bool = False,
-    epilogue_fn: OptionalReg[elementwise_epilogue_type] = None,
+    epilogue_fn: Optional[elementwise_epilogue_type] = None,
     use_shmem: Bool = True,
 ](
     input_tokens: LayoutTensor[input_type, input_tokens_layout, MutAnyOrigin],

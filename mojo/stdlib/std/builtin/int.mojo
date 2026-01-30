@@ -165,7 +165,6 @@ trait IntableRaising:
 
 
 @lldb_formatter_wrapping_type
-@register_passable("trivial")
 struct Int(
     Absable,
     Boolable,
@@ -188,6 +187,7 @@ struct Int(
     Representable,
     Roundable,
     Stringable,
+    TrivialRegisterType,
     Truncable,
     Writable,
 ):
@@ -232,19 +232,6 @@ struct Int(
             This type's name.
         """
         return "Int"
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        """
-        Gets device_type's name, for use in error messages when handing
-        arguments to kernels.
-        TODO: This will go away soon, when we get better error messages for
-        kernel calls.
-
-        Returns:
-            This type's name.
-        """
-        return Self.get_type_name()
 
     # ===------------------------------------------------------------------=== #
     # Life cycle methods
@@ -1160,4 +1147,4 @@ struct Int(
         if n >> 32 == 0:
             return _calc_initial_buffer_size_int32(n)
 
-        return _calc_initial_buffer_size_int64(n)
+        return _calc_initial_buffer_size_int64(UInt64(n))

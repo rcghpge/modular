@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections import OptionalReg
 from sys import align_of, simd_width_of, size_of, has_nvidia_gpu_accelerator
 from sys.info import _is_sm_100x_or_newer
 
@@ -25,6 +24,7 @@ from utils import Index, IndexList
 from ...utils import elementwise_epilogue_type
 from ...utils_gpu import MatmulConfig
 from .blas import matmul as vendor_matmul
+from collections import OptionalReg
 
 
 fn matmul[
@@ -33,7 +33,7 @@ fn matmul[
     b_type: DType,
     //,
     transpose_b: Bool = False,
-    elementwise_lambda_fn: OptionalReg[elementwise_epilogue_type] = None,
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     config: OptionalReg[
         MatmulConfig[a_type, b_type, c_type, transpose_b]
     ] = None,

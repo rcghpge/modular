@@ -681,8 +681,9 @@ struct Optional[T: Movable](
 # ===-----------------------------------------------------------------------===#
 
 
-@register_passable("trivial")
-struct OptionalReg[T: __TypeOfAllTypes](Boolable, Defaultable, DevicePassable):
+struct OptionalReg[T: __TypeOfAllTypes](
+    Boolable, Defaultable, DevicePassable, TrivialRegisterType
+):
     """A register-passable optional type.
 
     This struct optionally contains a value. It only works with trivial register
@@ -710,15 +711,6 @@ struct OptionalReg[T: __TypeOfAllTypes](Boolable, Defaultable, DevicePassable):
             A string representation of the type, e.g. `OptionalReg[Int]`.
         """
         return String("OptionalReg[", get_type_name[Self.T](), "]")
-
-    @staticmethod
-    fn get_device_type_name() -> String:
-        """Get the human-readable device type name for this `OptionalReg` type.
-
-        Returns:
-            A string representation of the device type (same as type name for `OptionalReg`).
-        """
-        return Self.get_type_name()
 
     # ===-------------------------------------------------------------------===#
     # Life cycle methods

@@ -36,7 +36,7 @@ from gpu.memory import (
 )
 from math import recip
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, *_, **_]
+comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from layout.layout_tensor import LayoutTensorIter
 from gpu.host import DeviceContext, FuncAttribute
 from utils.static_tuple import StaticTuple
@@ -146,8 +146,8 @@ def test_nvfp4_quantization[
     )
 
     var scales_total = (
-        Int(ceildiv(m.value, SF_MN_GROUP_SIZE))
-        * Int(ceildiv(n.value, SF_VECTOR_SIZE * SF_ATOM_K))
+        ceildiv(m.value, SF_MN_GROUP_SIZE)
+        * ceildiv(n.value, SF_VECTOR_SIZE * SF_ATOM_K)
         * SF_ATOM_M[0]
         * SF_ATOM_M[1]
         * SF_ATOM_K

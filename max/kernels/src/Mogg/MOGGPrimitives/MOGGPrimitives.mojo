@@ -54,8 +54,7 @@ fn bytecount_with_dtype[dtype: DType](shape: IndexList) -> Int:
 # just create a C++ function for it. For the time being, this is safe because of
 # the `constrained` and `static_assert` we added to ensure the type has the
 # right byte size.
-@register_passable("trivial")
-struct StateContext:
+struct StateContext(TrivialRegisterType):
     """Defines a StateContext structure which holds a ptr to context and has accessors that go to external calls
     This is currently meant as a mojo-side container for GML::StateContext."""
 
@@ -265,8 +264,8 @@ fn create_mojo_value_async(
     async_ptr: OpaquePointer[MutAnyOrigin],
     size: Int,
     align: Int,
-    destructor_fn: fn (UnsafePointer[UInt8, MutExternalOrigin]) -> None,
-    move_fn: fn (
+    destructor_fn: fn(UnsafePointer[UInt8, MutExternalOrigin]) -> None,
+    move_fn: fn(
         UnsafePointer[UInt8, MutAnyOrigin], UnsafePointer[UInt8, MutAnyOrigin]
     ) -> None,
 ):
@@ -298,8 +297,8 @@ fn create_python_mojo_value_async(
     async_ptr: OpaquePointer[MutAnyOrigin],
     size: Int,
     align: Int,
-    destructor_fn: fn (UnsafePointer[UInt8, MutExternalOrigin]) -> None,
-    move_fn: fn (
+    destructor_fn: fn(UnsafePointer[UInt8, MutExternalOrigin]) -> None,
+    move_fn: fn(
         UnsafePointer[UInt8, MutAnyOrigin], UnsafePointer[UInt8, MutAnyOrigin]
     ) -> None,
 ):
@@ -552,7 +551,7 @@ fn mgp_buffer_constant_external(
         )
 
     var weight_ptr = weights[][pack_string_res(name_ptr, Int(name_len))]
-    if (Int(weight_ptr) % align) != 0:
+    if (UInt64(Int(weight_ptr)) % align) != 0:
         raise Error(
             "invalid alignment for address ",
             weight_ptr,
@@ -570,7 +569,7 @@ fn fill_buffer[
     var ptr = buf.data.bitcast[Scalar[dtype]]()
     var offset: Int = 0
     for val in vals:
-        ptr.store(offset, val)
+        ptr.store(offset, Scalar[dtype](val))
         offset += 1
 
 
@@ -832,8 +831,8 @@ fn mgp_tensor_spec_create[
 fn mgp_tensor_spec_get_dim[
     spec_rank: Int, axis: UInt64
 ](spec: IndexList[spec_rank]) -> Int:
-    __comptime_assert (
-        axis < spec_rank
+    __comptime_assert axis < UInt64(
+        spec_rank
     ), "axis for get_dim must be less than rank of TensorSpec"
     return spec[Int(axis)]
 
@@ -1329,8 +1328,7 @@ fn test_my_int_to_index(x: MyInt) -> Int:
     return x.val
 
 
-@register_passable("trivial")
-struct MyIntReg(ImplicitlyCopyable):
+struct MyIntReg(TrivialRegisterType):
     var val: Int
 
     fn __init__(out self, val: Int):
