@@ -131,6 +131,23 @@ static ErrorOr<std::string> resolveLITModulePath(MLIRContext *ctx,
   return *modulePath;
 }
 
+ErrorOr<SmallVector<std::string>>
+MojoLibraryAnalysis::getBuiltInKernelPackagePaths(MLIRContext *ctx) {
+  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+  SmallVector<std::string> paths;
+  auto moggKernelAPIPkgPathOr =
+      resolveLITModulePath(ctx, *sourceMgr, MOGGKernelAPIModuleName);
+  if (moggKernelAPIPkgPathOr.isError())
+    return moggKernelAPIPkgPathOr.takeError();
+  paths.push_back(*moggKernelAPIPkgPathOr);
+  auto moggPrimitivesPathOr =
+      resolveLITModulePath(ctx, *sourceMgr, MOGGPrimitivesModuleName);
+  if (moggPrimitivesPathOr.isError())
+    return moggPrimitivesPathOr.takeError();
+  paths.push_back(*moggPrimitivesPathOr);
+  return paths;
+}
+
 KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
     StringRef name, StringRef functionLabel) const {
   auto registeredFunctions = registeredKernelFunctionSymbols.find(name);

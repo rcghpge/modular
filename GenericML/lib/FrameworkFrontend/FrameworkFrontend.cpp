@@ -457,6 +457,20 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     *keyBuf << (*bufferOr)->getBuffer();
   }
 
+  // Include the binary contents of built-in kernel packages (MOGGKernelAPI,
+  // MOGGPrimitives) so that changes to them invalidate the MEF cache.
+  auto builtInPathsOr =
+      MOGG::MojoLibraryAnalysis::getBuiltInKernelPackagePaths(mlirCtx);
+  if (builtInPathsOr.isError())
+    return builtInPathsOr.takeError();
+  for (const std::string &libraryPath : *builtInPathsOr) {
+    auto bufferOr = M::openInputFile(libraryPath);
+    if (bufferOr.isError())
+      return Error(Twine("failed to open built-in kernel package: ") +
+                   libraryPath);
+    *keyBuf << (*bufferOr)->getBuffer();
+  }
+
   // We specifically use a version of the module without location information
   // for caching. Otherwise, python refactors that don't change the module would
   // invalidate the cache.

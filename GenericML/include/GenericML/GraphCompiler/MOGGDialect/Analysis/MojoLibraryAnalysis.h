@@ -220,6 +220,12 @@ public:
   static ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>
   fromPaths(MLIRContext *ctx, ArrayRef<std::string> paths);
 
+  /// Returns the paths to built-in kernel packages (MOGGKernelAPI,
+  /// MOGGPrimitives) for use in MEF cache key computation. The order is
+  /// stable.
+  static ErrorOr<SmallVector<std::string>>
+  getBuiltInKernelPackagePaths(MLIRContext *ctx);
+
 private:
   /// Get the iterator range of the mojo kernels.
   auto getRawMojoKernels() { return module->getOps<KGEN::GeneratorOp>(); }
