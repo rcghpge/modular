@@ -1792,12 +1792,6 @@ template <typename TOp>
 void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, TensorValue axis,
                       TensorType outputTy) {
-  if (input.getType().hasRank() && !outputTy) {
-    outputTy = input.getType().cloneWithUnknownDims(input.getType().getRank());
-  } else if (!outputTy) {
-    outputTy = input.getType().cloneWithUnknownRank();
-  }
-
   TOp::build(odsBuilder, odsState, outputTy, input, axis);
 }
 
