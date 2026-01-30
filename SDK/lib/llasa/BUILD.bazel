@@ -7,9 +7,12 @@ modular_py_library(
     srcs = [
         "__init__.py",
         "config.py",
+        "decoder.py",
         "model.py",
+        "pipeline_model.py",
         "prompt_template.py",
         "speech_lm.py",
+        "tokenizer.py",
     ],
     ignore_extra_deps = [
         # Undeclared dep of transformers
@@ -23,19 +26,31 @@ modular_py_library(
         requirement("soundfile"),
         "//SDK/lib/llasa/xcodec2",
         "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
         "//max/python/max/interfaces",
+        "//max/python/max/nn",
         "//max/python/max/pipelines",
+        "//max/python/max/pipelines/core",
+        "//max/python/max/pipelines/lib",
+        "//max/python/max/profiler",
     ],
 )
 
 modular_py_binary(
     name = "llasa",
     srcs = ["entrypoint.py"],
+    ignore_extra_deps = [
+        # entrypoints is not directly imported, but may be used by max package
+        "//max/python/max/entrypoints",
+    ],
     imports = ["."],
     main = "entrypoint.py",
     deps = [
         ":llasa_lib",
         "//max/python/max/driver",
+        "//max/python/max/entrypoints",
         requirement("click"),
     ],
 )
