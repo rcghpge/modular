@@ -23,7 +23,7 @@ modular_cc_test(
     ],
 )
 
-# Kernel logging tests - can run directly with: ./bazelw test //GenericML/unittests:KernelLoggerTests
+# Kernel logging tests - can run directly with: ./bazelw test //GenericML/test/unittests:KernelLoggerTests
 modular_cc_test(
     name = "KernelLoggerTests",
     srcs = [

@@ -23,7 +23,7 @@ Tests for this logging capability automatically enable that define for this
 build target:
 
 ```bash
-./bazelw test //GenericML/unittests:KernelLoggerTests
+./bazelw test //GenericML/test/unittests:KernelLoggerTests
 ```
 
 Example output when enabled:
@@ -57,7 +57,7 @@ preprocessor define:
 
 - **Standard builds**: `//GenericML:MGPPrimitives` - No logging (default)
 - **Logging builds**: `//GenericML:MGPPrimitivesWithLogging` - Always logs
-- **Test target**: `//GenericML/unittests:KernelLoggerTests` - Uses
+- **Test target**: `//GenericML/test/unittests:KernelLoggerTests` - Uses
   logging-enabled library
 
 ## Log Format
