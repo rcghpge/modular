@@ -14,11 +14,11 @@ lit_tests(
         exclude = _GPU_ONLY_TESTS,
     ),
     custom_substitutions = {
-        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
-        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
+        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
     },
     data = [
-        "//GenericML/test/TestKernels:MOGGKernelAPITest",
+        "//GenericML/test/testing_kernels:MOGGKernelAPITest",
     ],
     mojo_deps = [
         "//max:MOGGKernelAPI",
@@ -37,11 +37,11 @@ lit_tests(
     name = "test-gpu",
     srcs = _GPU_ONLY_TESTS,
     custom_substitutions = {
-        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
-        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/TestKernels:MOGGKernelAPITest)",
+        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
     },
     data = [
-        "//GenericML/test/TestKernels:MOGGKernelAPITest",
+        "//GenericML/test/testing_kernels:MOGGKernelAPITest",
     ],
     gpu_constraints = ["//:has_gpu"],
     mojo_deps = [
