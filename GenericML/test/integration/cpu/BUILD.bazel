@@ -1,0 +1,88 @@
+load("//bazel:api.bzl", "lit_tests", "requirement")
+
+# gazelle:default_visibility //visibility:private
+
+package(default_visibility = ["//visibility:private"])
+
+# Shared test data filegroup to avoid duplicate source errors when multiple
+# lit_tests targets need the same files. The find_duplicate_srcs.py checker
+# ignores filegroup rules.
+filegroup(
+    name = "test_data",
+    testonly = True,
+    srcs = glob(["**/*.mojo"]),
+)
+
+# External data files needed for custom_substitutions - must be direct dependencies
+# for $(rlocationpath) to resolve them.
+_COMMON_DATA = [
+    ":test_data",
+    "//GenericML/test/testing_kernels:MOGGKernelAPITest",
+    "//GenericML/test/utils/test-helper:test_vs_numpy.py",
+]
+
+# Common configuration shared across all lit_tests targets
+_COMMON_CUSTOM_SUBSTITUTIONS = {
+    "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+    "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+    "%mo_vs_numpy_py": "$(rlocationpath //GenericML/test/utils/test-helper:test_vs_numpy.py)",
+    "mo-opt": "$(rlocationpath //GenericML/tools/mo-opt)",
+    "mojo": "$(rlocationpath //KGEN/tools/mojo)",
+    "mojo-lldb": "$(rlocationpath //KGEN:mojo-lldb)",
+    "mt": "$(rlocationpath //GenericML/tools/mt)",
+}
+
+_COMMON_MOJO_DEPS = [
+    "//max:MOGGKernelAPI",
+    "//max:MOGGPrimitives",
+    "//max:compiler_internal",
+    "//max:register",
+    "//max:tensor",
+]
+
+_COMMON_TOOLS = [
+    "//GenericML/tools/mo-opt",
+    "//GenericML/tools/mt",
+    "//KGEN:mojo-lldb",
+    "//KGEN/tools/mojo",
+]
+
+_COMMON_DEPS = [
+    requirement("numpy"),
+    "//GenericML/test/utils/test-helper:test_vs_numpy",
+]
+
+lit_tests(
+    name = "tests",
+    size = "enormous",
+    srcs = glob(
+        ["**/*.mlir"],
+        exclude = ["**/*-gpu.mlir"],
+    ),
+    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
+    data = _COMMON_DATA,
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tools = _COMMON_TOOLS,
+    deps = _COMMON_DEPS,
+)
+
+lit_tests(
+    name = "tests-gpu",
+    size = "enormous",
+    srcs = glob(["**/*-gpu.mlir"]),
+    custom_substitutions = {
+        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+        "mo-opt": "$(rlocationpath //GenericML/tools/mo-opt)",
+        "mojo": "$(rlocationpath //KGEN/tools/mojo)",
+        "mojo-lldb": "$(rlocationpath //KGEN:mojo-lldb)",
+        "mt": "$(rlocationpath //GenericML/tools/mt)",
+    },
+    data = [
+        "//GenericML/test/testing_kernels:MOGGKernelAPITest",
+    ],
+    gpu_constraints = ["//:has_gpu"],
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tags = ["gpu"],
+    tools = _COMMON_TOOLS,
+)

@@ -1,0 +1,29 @@
+// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=true fuse-jit-kernels=true" %s -o %t.mlir
+// RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
+
+// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=false fuse-jit-kernels=true" %s -o %t.mlir
+// RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
+
+// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=true fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
+
+// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=false fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
+
+// CHECK-LABEL: --- Running 'load_add_mean':
+// CHECK{LITERAL}: ([[2.0000, 2.0000, 2.0000]], dtype=f32, shape=[1,3])
+mo.graph @load_add_mean(%buf: !mo.buffer<[2, 3], f32>, %add_input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[1, 3], f32> {
+  %ch0 = mo.chain.create()
+
+  // Load tensor from buffer
+  %loaded_tensor, %ch1 = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[2, 3], f32>, !mo.chain) -> (!mo.tensor<[2, 3], f32>, !mo.chain)
+
+  // Add the loaded tensor with another tensor
+  %added_tensor = mo.add(%loaded_tensor, %add_input) : !mo.tensor<[2, 3], f32>
+
+  // Take mean along axis 0 (reduce the first dimension)
+  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %mean_result = mo.mean(%added_tensor, %axis) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[1, 3], f32>
+
+  mo.output %mean_result : !mo.tensor<[1, 3], f32>
+}

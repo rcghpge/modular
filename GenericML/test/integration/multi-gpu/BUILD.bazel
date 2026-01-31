@@ -1,0 +1,39 @@
+load("//bazel:api.bzl", "lit_tests")
+
+# gazelle:default_visibility //visibility:private
+
+package(default_visibility = ["//visibility:private"])
+
+# Common configuration shared across all lit_tests targets
+_COMMON_CUSTOM_SUBSTITUTIONS = {
+    "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+}
+
+_COMMON_DATA = [
+    "//GenericML/test/testing_kernels:MOGGKernelAPITest",
+    "//max/kernels/src/Mogg/MOGGKernelAPI",
+]
+
+_COMMON_MOJO_DEPS = [
+    "//max:MOGGKernelAPI",
+    "//max:MOGGPrimitives",
+    "//max:compiler_internal",
+    "//max:register",
+    "//max:tensor",
+]
+
+_COMMON_TOOLS = [
+    "//GenericML/tools/mo-opt",
+    "//GenericML/tools/mt",
+]
+
+lit_tests(
+    name = "multi-gpu-integration-test",
+    srcs = glob(["**/*.mlir"]),
+    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
+    data = _COMMON_DATA,
+    gpu_constraints = ["//:has_multi_gpu"],
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tags = ["gpu"],
+    tools = _COMMON_TOOLS,
+)

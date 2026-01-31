@@ -1,0 +1,157 @@
+// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
+
+// Note: To hit as many options in as few tests as possible, always doing negative axis
+
+// input:
+//   [[[1, 2, 3],
+//     [4, 5, 6]],
+//    [[-1, -2, -3],
+//     [-4, -5, -6]]]
+//
+
+mo.graph @mean_rank3_first_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-3> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.mean<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'mean_rank3_first_axis' returned tensor<1x2x3xf32> [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]
+
+mo.graph @mean_rank3_second_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.mean<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'mean_rank3_second_axis' returned tensor<2x1x3xf32> [2.500000e+00, 3.500000e+00, 4.500000e+00, -2.500000e+00, -3.500000e+00, -4.500000e+00]
+
+mo.graph @mean_rank3_last_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.mean<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'mean_rank3_last_axis' returned tensor<2x2x1xf32> [2.000000e+00, 5.000000e+00, -2.000000e+00, -5.000000e+00]
+
+mo.graph @sum_rank3_first_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-3> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.add<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'sum_rank3_first_axis' returned tensor<1x2x3xf32> [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]
+
+mo.graph @sum_rank3_second_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.add<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'sum_rank3_second_axis' returned tensor<2x1x3xf32> [5.000000e+00, 7.000000e+00, 9.000000e+00, -5.000000e+00, -7.000000e+00, -9.000000e+00]
+
+mo.graph @sum_rank3_last_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.add<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'sum_rank3_last_axis' returned tensor<2x2x1xf32> [6.000000e+00, 1.500000e+01, -6.000000e+00, -1.500000e+01]
+
+mo.graph @prod_rank3_first_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-3> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.mul<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'prod_rank3_first_axis' returned tensor<1x2x3xf32> [-1.000000e+00, -4.000000e+00, -9.000000e+00, -1.600000e+01, -2.500000e+01, -3.600000e+01]
+
+mo.graph @prod_rank3_second_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.mul<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'prod_rank3_second_axis' returned tensor<2x1x3xf32> [4.000000e+00, 1.000000e+01, 1.800000e+01, 4.000000e+00, 1.000000e+01, 1.800000e+01]
+
+mo.graph @prod_rank3_last_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.mul<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'prod_rank3_last_axis' returned tensor<2x2x1xf32> [6.000000e+00, 1.200000e+02, -6.000000e+00, -1.200000e+02]
+
+mo.graph @min_rank3_first_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-3> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.min<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'min_rank3_first_axis' returned tensor<1x2x3xf32> [-1.000000e+00, -2.000000e+00, -3.000000e+00, -4.000000e+00, -5.000000e+00, -6.000000e+00]
+
+mo.graph @min_rank3_second_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.min<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'min_rank3_second_axis' returned tensor<2x1x3xf32> [1.000000e+00, 2.000000e+00, 3.000000e+00, -4.000000e+00, -5.000000e+00, -6.000000e+00]
+
+mo.graph @min_rank3_last_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.min<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'min_rank3_last_axis' returned tensor<2x2x1xf32> [1.000000e+00, 4.000000e+00, -3.000000e+00, -6.000000e+00]
+
+mo.graph @max_rank3_first_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-3> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.max<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'max_rank3_first_axis' returned tensor<1x2x3xf32> [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00]
+
+mo.graph @max_rank3_second_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.max<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'max_rank3_second_axis' returned tensor<2x1x3xf32> [4.000000e+00, 5.000000e+00, 6.000000e+00, -1.000000e+00, -2.000000e+00, -3.000000e+00]
+
+mo.graph @max_rank3_last_axis<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], f32> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<2x2x3xf32>} : !mo.tensor<[2, 2, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.reduce.max<() -> D3, D4, D5>(%input, %axis) : (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D3, D4, D5], f32>
+  mo.output<D3, D4, D5> %res : !mo.tensor<[D3, D4, D5], f32>
+}
+// CHECK{LITERAL}: 'max_rank3_last_axis' returned tensor<2x2x1xf32> [3.000000e+00, 6.000000e+00, -1.000000e+00, -4.000000e+00]
+
+mo.graph @arg_max_rank2_last_axis<() -> D0, D1>() -> !mo.tensor<[D0, D1], si64> {
+  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0> : tensor<4x3xf32>} : !mo.tensor<[4, 3], f32>
+  %axis  = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %res   = mo.arg_max<() -> D2, D3>(%input, %axis) : (!mo.tensor<[4, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[D2, D3], si64>
+  mo.output<D2, D3> %res : !mo.tensor<[D2, D3], si64>
+}
+// CHECK{LITERAL}: 'arg_max_rank2_last_axis' returned tensor<4x1xsi64> [2, 2, 0, 0]
+
+
+// CHECK-LABEL: --- Running 'reduce_fallback_shape_func':
+// CHECK-NEXT: 'reduce_fallback_shape_func' returned tensor<10x1x30xsi32>
+mo.graph @reduce_fallback_shape_func<() -> D0, D1, D2>(
+  %input: !mo.tensor<[10, 20, 30], f32>
+) -> !mo.tensor<[D0, D1, D2], si32> {
+
+  %axis = mo.constant {value = #M.dense_array<-2> : tensor<si32>} : !mo.tensor<[], si32>
+
+  mo.invoke_shape_func["mo.reduce.add"]<() -> D3, D4, D5>(%input, %axis)
+    {dataDeptTensors = [1 : i32]} : (!mo.tensor<[10, 20, 30], f32>, !mo.tensor<[], si32>)
+
+  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D3, D4, D5], si32>
+
+  mo.output<D3, D4, D5> %val : !mo.tensor<[D3, D4, D5], si32>
+}

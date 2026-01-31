@@ -1,0 +1,81 @@
+load("//bazel:api.bzl", "lit_tests", "modular_py_test", "requirement")
+
+# gazelle:default_visibility //visibility:private
+
+package(default_visibility = ["//visibility:private"])
+
+# Tests that are broken and need to be excluded from all targets.
+# TODO: fix the regex comparison for floating point numbers
+_BROKEN_TESTS = ["Conversion/mogg-kernel-api-e2e-gpu-matmul.mlir"]
+
+# Keep broken tests referenced so linter doesn't complain about unreferenced files.
+filegroup(
+    name = "broken_tests",
+    testonly = True,
+    srcs = _BROKEN_TESTS,
+    tags = ["maybe-unused"],
+)
+
+# Common configuration shared across all lit_tests targets
+_COMMON_CUSTOM_SUBSTITUTIONS = {
+    "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
+}
+
+_COMMON_DATA = [
+    "//GenericML/test/testing_kernels:MOGGKernelAPITest",
+    "//max/kernels/src/Mogg/MOGGKernelAPI",
+]
+
+_COMMON_MOJO_DEPS = [
+    "//max:MOGGKernelAPI",
+    "//max:MOGGPrimitives",
+    "//max:compiler_internal",
+    "//max:register",
+    "//max:tensor",
+]
+
+_COMMON_TOOLS = [
+    "//GenericML/tools/mo-opt",
+    "//GenericML/tools/mt",
+    "//GenericML/test/utils/test-helper:test_vs_numpy.py",
+]
+
+lit_tests(
+    name = "gpu-integration-test",
+    srcs = glob(
+        ["**/*.mlir"],
+        exclude = _BROKEN_TESTS,
+    ),
+    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
+    data = _COMMON_DATA,
+    gpu_constraints = ["//:has_gpu"] + select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tags = ["gpu"],
+    tools = _COMMON_TOOLS,
+)
+
+modular_py_test(
+    name = "graph_api_tests",
+    srcs = glob([
+        "pytests/*.py",
+    ]),
+    data = [
+        "//GenericML/test/integration/gpu/pytests/testdata",
+    ],
+    env = {"TESTDATA_DIRECTORY": "GenericML/test/integration/gpu/pytests/testdata"},
+    gpu_constraints = ["//:has_gpu"] + select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        requirement("numpy"),
+    ],
+)
