@@ -32,6 +32,7 @@ llasa_arch = SupportedArchitecture(
     tokenizer=LlasaTokenizer,
     context_type=TTSContext,
     multi_gpu_supported=False,  # XCodec2 decoder currently uses single device
+    config=LlasaConfig,
 )
 
 

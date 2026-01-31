@@ -24,6 +24,7 @@ modular_py_library(
         requirement("numpy"),
         requirement("jinja2"),
         requirement("soundfile"),
+        requirement("typing-extensions"),
         "//SDK/lib/llasa/xcodec2",
         "//max/python/max/driver",
         "//max/python/max/dtype",

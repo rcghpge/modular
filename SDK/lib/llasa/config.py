@@ -6,11 +6,15 @@
 
 from dataclasses import dataclass, field
 
+from max.pipelines.lib.config import PipelineConfig
+from max.pipelines.lib.interfaces.arch_config import ArchConfig
+from typing_extensions import Self
+
 from .xcodec2.config import XCodec2Config
 
 
 @dataclass(frozen=True)
-class LlasaConfig:
+class LlasaConfig(ArchConfig):
     """Configuration for the Llasa TTS model."""
 
     llama_model_path: str = "HKUSTAudio/Llasa-8B"
@@ -33,3 +37,10 @@ class LlasaConfig:
 
     # XCodec2 configuration
     xcodec2_config: XCodec2Config = field(default_factory=XCodec2Config)
+
+    @classmethod
+    def initialize(cls, pipeline_config: PipelineConfig) -> Self:
+        return cls()
+
+    def get_max_seq_len(self) -> int:
+        return self.max_length
