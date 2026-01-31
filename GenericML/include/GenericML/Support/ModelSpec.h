@@ -26,9 +26,7 @@ namespace M {
 /// information. It is intended to contain the name, input and output tensor
 /// specs, and the input and output layer names.
 ///
-/// Keep in sync with the description in Models/docs/README.md, the YAML
-/// conversion in GenericML/lib/Support/FormatYAML.cpp, and the Python
-/// reader in GenericML/tools/model/model/utils/manifest.py.
+/// Keep in sync with the description in Models/docs/README.md.
 class ModelSpec {
 public:
   /// Per-tensor specification
