@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ShapeInferencePassesCommon.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/ShapeInferencePassesCommon.h"
 #include "mlir/Pass/PassManager.h"
 
 using namespace M;

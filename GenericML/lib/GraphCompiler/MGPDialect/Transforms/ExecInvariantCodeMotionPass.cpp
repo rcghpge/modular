@@ -22,7 +22,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 
-#include "./RelationDataflowAnalysis.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/RelationDataflowAnalysis.h"
 
 using namespace std::placeholders;
 using namespace mlir;

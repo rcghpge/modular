@@ -9,7 +9,7 @@
 #include "mlir/IR/Visitors.h"
 #include "llvm/ADT/DenseMap.h"
 
-#include "Utils.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/Utils.h"
 
 #define DEBUG_TYPE "validate-devices"
 

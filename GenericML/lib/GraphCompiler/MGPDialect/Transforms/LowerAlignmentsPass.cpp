@@ -7,8 +7,8 @@
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
-#include "./AsyncDataflowDependencies.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/AsyncDataflowDependencies.h"
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/Utils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "KGEN/KGENDialect/KGENOps.h"

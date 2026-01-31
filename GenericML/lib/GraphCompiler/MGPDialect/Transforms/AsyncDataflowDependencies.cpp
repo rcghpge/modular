@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AsyncDataflowDependencies.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/AsyncDataflowDependencies.h"
 
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/Utils.h"
 #include "MLRT/GraphRT/GRTDialect/GRTExtendsLifetimeInterface.h"

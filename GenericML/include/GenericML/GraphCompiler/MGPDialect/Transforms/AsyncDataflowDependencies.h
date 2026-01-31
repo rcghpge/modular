@@ -18,7 +18,7 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 
-#include "./RelationDataflowAnalysis.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/RelationDataflowAnalysis.h"
 
 namespace M::MGP {
 

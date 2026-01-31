@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ConstantFold.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/ConstantFold.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"

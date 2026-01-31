@@ -6,10 +6,10 @@
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/ShapeInferencePassesCommon.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
-#include "ShapeInferencePassesCommon.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace M;

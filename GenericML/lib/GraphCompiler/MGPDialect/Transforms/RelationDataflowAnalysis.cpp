@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "./RelationDataflowAnalysis.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/RelationDataflowAnalysis.h"
 
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/Utils.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"

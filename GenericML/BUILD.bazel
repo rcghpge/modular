@@ -526,10 +526,7 @@ gentbl_modular_passes(
 
 modular_cc_library(
     name = "MOTransforms",
-    srcs = glob([
-        "lib/GraphCompiler/MODialect/Transforms/*.cpp",
-        "lib/GraphCompiler/MODialect/Transforms/*.h",
-    ]),
+    srcs = glob(["lib/GraphCompiler/MODialect/Transforms/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MODialect/Transforms/*.h"]),
     copts = ["-fvisibility=default"],
     deps = [
@@ -1106,12 +1103,7 @@ gentbl_modular_passes(
 
 modular_cc_library(
     name = "MGPTransforms",
-    srcs = glob(
-        [
-            "lib/GraphCompiler/MGPDialect/Transforms/*.cpp",
-            "lib/GraphCompiler/MGPDialect/Transforms/*.h",
-        ],
-    ),
+    srcs = glob(["lib/GraphCompiler/MGPDialect/Transforms/*.cpp"]),
     hdrs = glob(["include/GenericML/GraphCompiler/MGPDialect/Transforms/*.h"]),
     deps = [
         ":MGPDialect",

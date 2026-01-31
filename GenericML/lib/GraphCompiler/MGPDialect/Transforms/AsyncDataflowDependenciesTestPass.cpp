@@ -13,7 +13,7 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
 
-#include "./AsyncDataflowDependencies.h"
+#include "GenericML/GraphCompiler/MGPDialect/Transforms/AsyncDataflowDependencies.h"
 
 using namespace mlir;
 

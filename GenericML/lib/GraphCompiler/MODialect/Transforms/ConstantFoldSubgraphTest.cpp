@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ConstantFold.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/ConstantFold.h"
 #include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 namespace M::MO {
