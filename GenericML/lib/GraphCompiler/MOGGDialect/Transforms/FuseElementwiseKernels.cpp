@@ -6,7 +6,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"

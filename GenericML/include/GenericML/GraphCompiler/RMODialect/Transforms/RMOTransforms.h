@@ -24,11 +24,11 @@ namespace M::RMO {
 
 /// Generate the code for declaring the passes.
 #define GEN_PASS_DECL
-#include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h.inc"
+#include "GenericML/GraphCompiler/RMODialect/Transforms/RMOTransforms.h.inc"
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
-#include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h.inc"
+#include "GenericML/GraphCompiler/RMODialect/Transforms/RMOTransforms.h.inc"
 
 } // namespace M::RMO
 

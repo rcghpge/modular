@@ -4,16 +4,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 
 namespace M::MO {
 
 #define GEN_PASS_DEF_TOPOLOGICALSORT
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 struct TopologicalSort : public impl::TopologicalSortBase<TopologicalSort> {
 

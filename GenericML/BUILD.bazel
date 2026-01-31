@@ -269,7 +269,7 @@ mlir_nanobind(
     name = "MODialectNanobindInc",
     srcs = glob([
         "include/GenericML/GraphCompiler/MODialect/*.td",
-        "include/GenericML/GraphCompiler/Transforms/MODialect/**/*.td",
+        "include/GenericML/GraphCompiler/MODialect/Transforms/**/*.td",
         "include/GenericML/GraphCompiler/Conversion/**/*.td",
     ]),
     output_dir = "include/GenericML/MODialect/Nanobind",
@@ -284,7 +284,7 @@ mlir_nanobind(
     name = "RMODialectNanobindInc",
     srcs = glob([
         "include/GenericML/GraphCompiler/RMODialect/*.td",
-        "include/GenericML/GraphCompiler/Transforms/RMODialect/**/*.td",
+        "include/GenericML/GraphCompiler/RMODialect/Transforms/**/*.td",
     ]),
     exclude = [
         # rmo.concat uses OptionalAttr, which tblgen generates as a normal
@@ -498,8 +498,8 @@ modular_cc_library(
 
 modular_cc_library(
     name = "MOAnalysis",
-    srcs = glob(["lib/GraphCompiler/Analysis/MODialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/Analysis/MODialect/*.h"]),
+    srcs = glob(["lib/GraphCompiler/MODialect/Analysis/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MODialect/Analysis/*.h"]),
     deps = [
         ":MODialect",
     ],
@@ -507,7 +507,7 @@ modular_cc_library(
 
 td_library(
     name = "MOTransformsTdFiles",
-    srcs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.td"]),
+    srcs = glob(["include/GenericML/GraphCompiler/MODialect/Transforms/*.td"]),
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -517,7 +517,7 @@ td_library(
 gentbl_modular_passes(
     name = "MOTransformsIncGen",
     output_name = "MOTransforms",
-    td_file = "include/GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.td",
+    td_file = "include/GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.td",
     deps = [
         ":MOTransformsTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
@@ -527,10 +527,10 @@ gentbl_modular_passes(
 modular_cc_library(
     name = "MOTransforms",
     srcs = glob([
-        "lib/GraphCompiler/Transforms/MODialect/*.cpp",
-        "lib/GraphCompiler/Transforms/MODialect/*.h",
+        "lib/GraphCompiler/MODialect/Transforms/*.cpp",
+        "lib/GraphCompiler/MODialect/Transforms/*.h",
     ]),
-    hdrs = glob(["include/GenericML/GraphCompiler/Transforms/MODialect/*.h"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/MODialect/Transforms/*.h"]),
     copts = ["-fvisibility=default"],
     deps = [
         ":CommonDriver",
@@ -661,7 +661,7 @@ modular_cc_library(
 
 td_library(
     name = "RMOTransformsTdFiles",
-    srcs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.td"]),
+    srcs = glob(["include/GenericML/GraphCompiler/RMODialect/Transforms/*.td"]),
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -670,7 +670,7 @@ td_library(
 
 gentbl_modular_passes(
     name = "RMOTransformsIncGen",
-    td_file = "include/GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.td",
+    td_file = "include/GenericML/GraphCompiler/RMODialect/Transforms/RMOTransforms.td",
     deps = [
         ":RMOTransformsTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
@@ -679,8 +679,8 @@ gentbl_modular_passes(
 
 modular_cc_library(
     name = "RMOTransforms",
-    srcs = glob(["lib/GraphCompiler/Transforms/RMODialect/*.cpp"]),
-    hdrs = glob(["include/GenericML/GraphCompiler/Transforms/RMODialect/*.h"]),
+    srcs = glob(["lib/GraphCompiler/RMODialect/Transforms/*.cpp"]),
+    hdrs = glob(["include/GenericML/GraphCompiler/RMODialect/Transforms/*.h"]),
     copts = ["-fvisibility=default"],
     deps = [
         ":RMODialect",

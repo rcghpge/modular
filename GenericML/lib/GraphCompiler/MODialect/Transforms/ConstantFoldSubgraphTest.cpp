@@ -6,11 +6,11 @@
 
 #include "ConstantFold.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 namespace M::MO {
 #define GEN_PASS_DEF_CONSTANTFOLDSUBGRAPHTEST
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 class ConstantFoldSubgraphTestPass
     : public impl::ConstantFoldSubgraphTestBase<ConstantFoldSubgraphTestPass> {

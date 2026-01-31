@@ -4,13 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
@@ -32,7 +32,7 @@ namespace M::MO {
 
 #define GEN_PASS_DEF_PROPAGATESHAPES
 
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 } // namespace M::MO
 

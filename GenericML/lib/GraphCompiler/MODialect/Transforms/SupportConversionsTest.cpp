@@ -7,8 +7,8 @@
 #include "GenericML/GraphCompiler/Conversion/MOTarget/Conversion.h"
 #include "GenericML/GraphCompiler/Conversion/RMOSupport/Activations.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/RMODialect/RMODialect.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -64,7 +64,7 @@ public:
 namespace M::MO {
 
 #define GEN_PASS_DEF_SUPPORTCONVERSIONSTEST
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 class SupportConversionTestPass
     : public impl::SupportConversionsTestBase<SupportConversionTestPass> {

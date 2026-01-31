@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -38,7 +38,7 @@ namespace M::MO {
 
 #define GEN_PASS_DEF_MERGEDUPLICATESHAPEMATERIALIZATIONS
 
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 } // namespace M::MO
 

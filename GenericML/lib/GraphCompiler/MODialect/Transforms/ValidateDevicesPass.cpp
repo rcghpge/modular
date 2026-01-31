@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "mlir/IR/Visitors.h"
 #include "llvm/ADT/DenseMap.h"
 
@@ -16,7 +16,7 @@
 namespace M::MO {
 
 #define GEN_PASS_DEF_VALIDATEDEVICESPASS
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 }; // namespace M::MO
 

@@ -7,10 +7,10 @@
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/PatternMatch.h"
@@ -23,7 +23,7 @@
 namespace M::MO {
 
 #define GEN_PASS_DEF_ELIDEREDUNDANTMUTABLEOPS
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 namespace {
 

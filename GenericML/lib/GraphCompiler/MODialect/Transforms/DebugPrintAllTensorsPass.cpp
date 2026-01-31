@@ -6,7 +6,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Pass/Pass.h"
 
@@ -17,7 +17,7 @@ namespace M::MO {
 //===----------------------------------------------------------------------===//
 
 #define GEN_PASS_DEF_DEBUGPRINTALLTENSORSPASS
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 } // namespace M::MO
 

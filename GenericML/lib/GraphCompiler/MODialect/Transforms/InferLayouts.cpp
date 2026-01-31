@@ -7,12 +7,12 @@
 #include "GenericML/GraphCompiler/MODialect/MOAttrs.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 
 namespace M::MO {
 
 #define GEN_PASS_DEF_INFERLAYOUTS
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 //===----------------------------------------------------------------------===//
 // InferLayouts pass.

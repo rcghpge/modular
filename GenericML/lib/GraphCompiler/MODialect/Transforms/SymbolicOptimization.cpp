@@ -6,14 +6,14 @@
 
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/StaticReshapeDimensionsMappingAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Matchers.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/Support/DataflowUtils.h"
 #include "GenericML/Support/Dims.h"
 #include "KGEN/KGENDialect/KGENOps.h"
@@ -31,7 +31,7 @@ using namespace GraphCompiler::Matchers;
 
 namespace M::MO {
 #define GEN_PASS_DEF_SYMBOLICOPTIMIZATION
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 } // namespace M::MO
 

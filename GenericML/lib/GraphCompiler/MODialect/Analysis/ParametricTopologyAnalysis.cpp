@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"

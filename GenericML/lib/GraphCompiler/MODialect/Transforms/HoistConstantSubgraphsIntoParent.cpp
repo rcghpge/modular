@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "KGEN/KGENDialect/AttrTypeMangler.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 
@@ -25,7 +25,7 @@ using namespace mlir;
 
 namespace M::MO {
 #define GEN_PASS_DEF_HOISTCONSTANTSUBGRAPHSINTOPARENT
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 } // namespace M::MO
 
 using namespace M;

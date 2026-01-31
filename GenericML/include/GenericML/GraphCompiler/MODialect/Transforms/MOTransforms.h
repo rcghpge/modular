@@ -7,8 +7,8 @@
 #ifndef GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_H
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_H
 
+#include "GenericML/GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/ConstantFoldPass.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/Pass/Pass.h"
 
@@ -32,11 +32,11 @@ namespace M::MO {
 
 /// Generate the code for declaring the passes.
 #define GEN_PASS_DECL
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 std::unique_ptr<Pass> createAddFallbackShapeFunctions(
     const M::MO::AddFallbackShapeFunctionsOptions &opts,

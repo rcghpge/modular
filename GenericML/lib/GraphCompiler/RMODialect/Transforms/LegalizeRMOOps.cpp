@@ -10,7 +10,7 @@
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOOps.h"
-#include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h"
+#include "GenericML/GraphCompiler/RMODialect/Transforms/RMOTransforms.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/DeviceSpecs.h"
@@ -21,7 +21,7 @@ using namespace M;
 
 namespace M::RMO {
 #define GEN_PASS_DEF_LEGALIZERMOOPS
-#include "GenericML/GraphCompiler/Transforms/RMODialect/RMOTransforms.h.inc"
+#include "GenericML/GraphCompiler/RMODialect/Transforms/RMOTransforms.h.inc"
 } // namespace M::RMO
 
 namespace {

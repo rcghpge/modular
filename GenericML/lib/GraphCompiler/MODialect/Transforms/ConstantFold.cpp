@@ -9,10 +9,10 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GenericML/GraphCompiler/Passes.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
 #include "GenericML/MEFModel/MEFModel.h"
 #include "GenericML/Support/BlobLifetimeManager.h"
 #include "GenericML/Support/List.h"
@@ -46,7 +46,7 @@ using namespace M::MO;
 
 namespace M::MO {
 #define GEN_PASS_DEF_CONSTANTFOLD
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 } // namespace M::MO
 
 namespace {

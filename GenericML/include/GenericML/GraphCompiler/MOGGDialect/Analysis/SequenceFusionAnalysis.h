@@ -10,7 +10,7 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/DenseSet.h"
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
 

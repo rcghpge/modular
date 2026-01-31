@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/StaticReshapeDimensionsMappingAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/StaticReshapeDimensionsMappingAnalysis.h"
 
 namespace M::MO {
 

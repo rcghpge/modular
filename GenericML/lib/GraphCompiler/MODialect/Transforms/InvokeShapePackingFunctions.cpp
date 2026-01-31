@@ -7,7 +7,7 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/PackingShapeFunctions.h"
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "Support/MArchTarget/MArchTargetMinimal.h"
@@ -23,7 +23,7 @@
 namespace M::MO {
 
 #define GEN_PASS_DEF_INVOKESHAPEPACKINGFUNCTIONS
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 using ShapeInferenceFunction =
     llvm::function_ref<std::optional<SmallVector<int64_t>>(InvokeShapeFuncOp,

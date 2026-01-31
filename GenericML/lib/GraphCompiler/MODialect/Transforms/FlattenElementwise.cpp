@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h"
+#include "GenericML/GraphCompiler/MODialect/Analysis/ParametricTopologyAnalysis.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
@@ -12,7 +12,7 @@
 namespace M::MO {
 
 #define GEN_PASS_DEF_FLATTENELEMENTWISE
-#include "GenericML/GraphCompiler/Transforms/MODialect/MOTransforms.h.inc"
+#include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
 template <typename ElemwiseInterfaceT>
 bool isElemwiseOpSimple(ElemwiseInterfaceT elemwise) {
