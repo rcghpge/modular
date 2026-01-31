@@ -181,7 +181,7 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
 
     EXPECT_NO_ERR(ctx->enqueueFunctionExecDirect(
         *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, args, argSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, 4, argSizes));
 
     EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(outHost, *outDevice));
 
@@ -361,7 +361,7 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(srcCtx->enqueueFunctionExecDirect(
         *deviceFunction, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, args, argSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, 3, argSizes));
 
     EXPECT_NO_ERR(srcCtx->synchronize());
 
@@ -648,7 +648,7 @@ $L__BB0_2:
 
       EXPECT_NO_ERR(ctx.enqueueFunctionExecDirect(
           *copyFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-          /*attrs=*/nullptr, /*numAttrs=*/0, copyArgs, copyArgSizes));
+          /*attrs=*/nullptr, /*numAttrs=*/0, copyArgs, 3, copyArgSizes));
 
       bzero(hostPtr, allocLen);
       EXPECT_NO_ERR(mapBuf->copyTo(*hostBuf));
@@ -681,7 +681,7 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(ctx0.enqueueFunctionExecDirect(
         *mapFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, mapArgs, mapArgSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, mapArgs, 3, mapArgSizes));
 
     bzero(hostPtr, allocLen); // Reset the memory used to validate.
     EXPECT_NO_ERR(devBuf->copyTo(*hostBuf));
@@ -711,7 +711,7 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(ctx0.enqueueFunctionExecDirect(
         *splatFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, splatArgs, splatArgSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, splatArgs, 3, splatArgSizes));
 
     EXPECT_NO_ERR(ctx0.synchronize());
     for (int i = 0; i < numDevices; ++i) {

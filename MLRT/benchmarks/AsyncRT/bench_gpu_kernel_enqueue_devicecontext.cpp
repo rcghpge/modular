@@ -120,7 +120,7 @@ int minimalKernelEnqueue() {
           for (size_t i = 0; i < NUM_KERNELS_PER_ITERATION; ++i) {
             M::ErrorOrSuccess result = ctx->enqueueFunctionExecDirect(
                 *function, gridX, gridY, gridZ, blockX, blockY, blockZ,
-                sharedMemBytes, nullptr, 0, args, nullptr);
+                sharedMemBytes, nullptr, 0, args, 0, nullptr);
             if (M::failed(result)) {
               state.reportError(M::Error("Kernel launch failed."));
               return;
