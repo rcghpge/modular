@@ -74,7 +74,6 @@ mo.graph @matmul_allreduce_with_epilogue<total_seq_len>(
 // CHECK: mo.distributed.allreduce.sum{{.*}}+mo.add
 // CHECK: mef.output
 mo.graph @allreduce_sum_with_epilogue(
-  %input0: !mo.tensor<[5, 64], bf16, gpu:0>,
   %input1: !mo.tensor<[5, 64], bf16, gpu:1>,
   %residual: !mo.tensor<[5, 64], bf16, gpu:1>,
   %buf0: !mo.buffer<[537919488], ui8, gpu:0>,
@@ -83,9 +82,8 @@ mo.graph @allreduce_sum_with_epilogue(
   %chain = mo.chain.create()
 
   // AllReduce sum across GPUs
-  %output, %outChain = mo.distributed.allreduce.sum(%input0, %input1, %buf0, %buf1, %chain)
-    {device = #M.device_ref<"gpu", 1>} : (!mo.tensor<[5, 64], bf16, gpu:0>,
-                                !mo.tensor<[5, 64], bf16, gpu:1>,
+  %output, %outChain = mo.distributed.allreduce.sum(%input1, %buf0, %buf1, %chain)
+    {device = #M.device_ref<"gpu", 1>} : (!mo.tensor<[5, 64], bf16, gpu:1>,
                                 !mo.buffer<[537919488], ui8, gpu:0>,
                                 !mo.buffer<[537919488], ui8, gpu:1>,
                                 !mo.chain)

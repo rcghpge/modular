@@ -267,10 +267,10 @@ namespace M::MO {
 //===----------------------------------------------------------------------===//
 LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult> &results) {
-  // If the all-reduce has 1 input, return the input (identity op).
-  if (getInputs().size() == 1 &&
-      getInputs()[0].getType() == getOutput().getType()) {
-    results.push_back(getInputs()[0]);
+  // If there's only 1 signal buffer (single GPU), this is a no-op identity.
+  if (getSignalBuffers().size() == 1 &&
+      getInput().getType() == getOutput().getType()) {
+    results.push_back(getInput());
     results.push_back(getInChain());
     return success();
   }

@@ -5278,10 +5278,11 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
 ]> {
   let summary = "Allreduce sum across N devices for a single device.";
   let description = [{
-    Allreduce takes in inputs each coming from a different device with
-    the same shape as the final output and performs a sum reduction
-    across the devices. This op instance executes on a specific device
-    (specified by the device attribute) and produces the output for that device.
+    Allreduce takes a single input tensor from this device and performs a sum
+    reduction across all devices. Peer input addresses are obtained via signal
+    buffer payloads at runtime (P2P access required). This op instance executes
+    on a specific device (specified by the device attribute) and produces the
+    output for that device.
 
     Multiple instances of this op are created (one per device) to enable
     multi-threaded execution.
@@ -5290,7 +5291,7 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
   let arguments = (ins
-    Variadic<MO_Tensor>:$inputs,
+    MO_Tensor:$input,
     Variadic<MO_Buffer>:$signalBuffers,
     MO_Chain:$inChain,
     M_DeviceRefAttr:$device
