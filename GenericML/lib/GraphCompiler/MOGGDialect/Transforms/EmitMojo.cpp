@@ -190,10 +190,6 @@ struct EmitMojo
     // and thus they should not be an obstacle to deduplication.
     stripDeviceIdsAndDynamicShapes();
 
-    // [optional]
-    // Merge identical kernel stubs using their hashes.
-    mergeIdenticalKernelStubs(moduleOp);
-
     // The following are a series of passes that run nested within the current
     // pass because we have to disable the verifier after stripping device
     // attributes.
@@ -205,6 +201,10 @@ struct EmitMojo
     // IR is in an invalid state and we do not want the verifiers to catch that
     // as we run SymbolDCE.
     pm.enableVerifier(false);
+
+    // [optional]
+    // Merge identical kernel stubs using their hashes.
+    pm.addPass(MOGG::createMergeIdenticalKernelStubs());
 
     // [optional]
     // Any remaining kernel that has the lowering ops of an index.constant op
