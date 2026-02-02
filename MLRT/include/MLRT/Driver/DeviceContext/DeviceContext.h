@@ -336,6 +336,9 @@ private:
   DeviceRef device_;
 };
 
+/// A collection of device graphs generated during a recording session.
+using DeviceGraphCollection = SmallVector<DeviceGraphRef>;
+
 /// A captured sequence of GPU operations that can be replayed.
 class DeviceGraph : public ReferenceCounted<DeviceGraph> {
 public:
@@ -343,8 +346,8 @@ public:
   const Device &device() const { return *device_; }
 
   /// Capture a graph and baseline launch trace by executing a callback.
-  static ErrorOr<DeviceGraphRef>
-  capture(const DeviceStream &stream,
+  static ErrorOr<DeviceGraphCollection>
+  capture(ArrayRef<DeviceStreamRef> streams,
           llvm::function_ref<ErrorOrSuccess()> execute);
 
   /// Replay the captured operations on the stored capture stream.
@@ -352,6 +355,9 @@ public:
 
   /// Capture the set of outputs associated with the captured graph.
   void setOutputs(MutableArrayRef<AnyAsyncValueRef> values);
+
+  /// Set the stream associated with the device graph.
+  void setStream(DeviceStreamRef stream);
 
   /// Return the set of values associated with the captured graph.
   SmallVector<AsyncRT::AnyAsyncValueRef> getOutputs();

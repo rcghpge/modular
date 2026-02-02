@@ -573,33 +573,88 @@ MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
   return *device_;
 }
 
+/// RAII type for managing the capture state of a stream.
+class DeviceGraphCaptureContext {
+public:
+  DeviceGraphCaptureContext(const DeviceGraphCaptureContext &other) = delete;
+  DeviceGraphCaptureContext(DeviceGraphCaptureContext &&other) = default;
+
+  /// Initiate capture on a particular stream.
+  static ErrorOr<DeviceGraphCaptureContext>
+  beginCapture(const DeviceStreamRef &stream) {
+    if (auto err = stream->beginCapture())
+      return err.takeError();
+    return DeviceGraphCaptureContext(stream);
+  }
+
+  /// End capture and return the resulting device graph.
+  ErrorOr<DeviceGraphRef> endCapture() {
+    ErrorOr<DeviceGraphRef> result = stream->endCapture();
+
+    if (result.isError()) {
+      stream.reset();
+      return result.takeError();
+    }
+
+    result.get()->setStream(std::move(stream));
+    return result;
+  }
+
+  ~DeviceGraphCaptureContext() {
+    if (stream)
+      (void)stream->endCapture();
+  }
+
+private:
+  DeviceGraphCaptureContext(const DeviceStreamRef &ref) : stream(ref.copy()) {}
+
+  /// The stream on which capture is occurring (can be nullptr).
+  DeviceStreamRef stream;
+};
+
 //
 // ===== DeviceGraph ===== //
 //
-ErrorOr<DeviceGraphRef>
-DeviceGraph::capture(const DeviceStream &stream,
+ErrorOr<DeviceGraphCollection>
+DeviceGraph::capture(ArrayRef<DeviceStreamRef> streams,
                      llvm::function_ref<ErrorOrSuccess()> execute) {
-  if (auto beginErr = stream.beginCapture(); beginErr.isError())
-    return beginErr.takeError();
+  SmallVector<DeviceGraphCaptureContext> captures;
 
-  ErrorOrSuccess execResult = execute();
-  if (execResult.isError()) {
-    (void)stream.endCapture();
-    return execResult.takeError();
+  // Begin capture on all streams.
+  for (const DeviceStreamRef &stream : streams) {
+    auto capture = DeviceGraphCaptureContext::beginCapture(stream);
+    if (capture.isError())
+      return capture.takeError();
+
+    captures.push_back(capture.takeValue());
   }
 
-  auto graphOrErr = stream.endCapture();
-  if (graphOrErr.isError())
-    return graphOrErr.takeError();
+  ErrorOrSuccess execResult = execute();
 
-  DeviceGraphRef graph = graphOrErr.takeValue();
-  graph->captureStream_ = DeviceStreamRef::copy(&stream);
-  return graph;
+  if (execResult.isError())
+    return execResult.takeError();
+
+  SmallVector<DeviceGraphRef> results;
+  results.reserve(streams.size());
+
+  for (DeviceGraphCaptureContext &context : captures) {
+    ErrorOr<DeviceGraphRef> graphOr = context.endCapture();
+    if (graphOr.isError())
+      return graphOr.takeError();
+
+    results.push_back(graphOr.takeValue());
+  }
+
+  return results;
 }
 
 void DeviceGraph::setOutputs(MutableArrayRef<AnyAsyncValueRef> values) {
   resultTensors = llvm::map_to_vector(
       values, [](AnyAsyncValueRef &ref) { return ref.copy(); });
+}
+
+void DeviceGraph::setStream(DeviceStreamRef stream) {
+  captureStream_ = std::move(stream);
 }
 
 SmallVector<AsyncRT::AnyAsyncValueRef> DeviceGraph::getOutputs() {

@@ -355,26 +355,29 @@ computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   return hasher.hash();
 }
 
-// Return the first CUDA stream from the model's device contexts. This keeps
+// Return all CUDA streams from the model's device contexts. This keeps
 // capture/replay tied to the same runtime devices as execution.
-static ErrorOr<Driver::DeviceStreamRef>
-captureStream(ArrayRef<AnyAsyncValueRef> extraArgs) {
-  AsyncRT::await(extraArgs);
+static ErrorOr<SmallVector<Driver::DeviceStreamRef>>
+captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
+  if (auto err = AsyncRT::awaitOrError(extraArgs))
+    return err.takeError();
+
+  SmallVector<Driver::DeviceStreamRef> results;
   for (const AnyAsyncValueRef &arg : extraArgs) {
-    if (arg.isError())
-      return arg.getDiagnostic().getMessage().copy();
-    if (!arg.isType<Driver::DeviceContextRef>())
-      continue; // ignore non-device extraArgs
-    const Driver::DeviceContextRef &context =
-        arg.get<Driver::DeviceContextRef>();
-    if (context->device().api() != Driver::Device::cudaAPI)
+    M::RCRef<const M::Driver::DeviceContext> *context =
+        dyn_cast<Driver::DeviceContextRef>(arg);
+    if (!context ||
+        context->getPointer()->device().api() != Driver::Device::cudaAPI)
       continue;
-    ErrorOr<Driver::DeviceStreamRef> streamOr = context->stream();
+
+    ErrorOr<Driver::DeviceStreamRef> streamOr = context->getPointer()->stream();
     if (streamOr.isError())
       return streamOr.takeError();
-    return streamOr.takeValue();
+
+    results.push_back(streamOr.takeValue());
   }
-  return Error("No CUDA stream available for capture");
+
+  return results;
 }
 
 ErrorOr<SmallVector<AnyAsyncValueRef>>
@@ -405,18 +408,22 @@ ErrorOr<SmallVector<AnyAsyncValueRef>>
 ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   uint64_t key = computeInputKey(inputs);
 
-  if (auto it = capturedGraphs.find(key); it != capturedGraphs.end())
-    return it->second->getOutputs();
+  if (auto it = capturedGraphs.find(key); it != capturedGraphs.end()) {
+    if (it->second.empty())
+      return Error("no device graphs associated with an existing capture");
+    return it->second.front()->getOutputs();
+  }
 
-  ErrorOr<Driver::DeviceStreamRef> streamOr = captureStream(extraArgs);
-  if (streamOr.isError())
-    return streamOr.takeError();
-  Driver::DeviceStreamRef stream = streamOr.takeValue();
+  ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
+      captureStreams(extraArgs);
+
+  if (streamsOr.isError())
+    return streamsOr.takeError();
 
   SmallVector<AnyAsyncValueRef> graphResults;
 
-  ErrorOr<Driver::DeviceGraphRef> graphOrErr =
-      Driver::DeviceGraph::capture(*stream, [&]() -> ErrorOrSuccess {
+  ErrorOr<Driver::DeviceGraphCollection> graphOrErr =
+      Driver::DeviceGraph::capture(*streamsOr, [&]() -> ErrorOrSuccess {
         auto maybeResult = executeWithDeviceMemoryInputs(inputs);
         if (maybeResult.isError())
           return maybeResult.takeError();
@@ -428,10 +435,11 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   if (graphOrErr.isError())
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
 
-  Driver::DeviceGraphRef graph = graphOrErr.takeValue();
-  graph->setOutputs(graphResults);
+  SmallVector<Driver::DeviceGraphRef> graphs = graphOrErr.takeValue();
+  for (Driver::DeviceGraphRef &graph : graphs)
+    graph->setOutputs(graphResults);
 
-  capturedGraphs.try_emplace(key, std::move(graph));
+  capturedGraphs.try_emplace(key, std::move(graphs));
   return graphResults;
 }
 
@@ -442,9 +450,13 @@ ExecutableModel::replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   if (it == capturedGraphs.end())
     return Error("No captured graph for these inputs");
 
-  ErrorOrSuccess result = it->second->replay();
-  if (result.isError())
-    return Error(Twine("Replay failed: ") + result.getError());
+  // A forward pass of the model may correspond to multiple graphs (one per
+  // device), we launch all graphs in a single replay call.
+  ArrayRef<Driver::DeviceGraphRef> graphs = it->second;
+  for (auto graph : graphs)
+    if (auto err = graph->replay())
+      return Error(Twine("Replay failed") + err.getError());
+
   return success();
 }
 
