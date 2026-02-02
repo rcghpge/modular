@@ -100,8 +100,10 @@ private:
   AnyAsyncValueRef mgpContext;
   AnyAsyncValueRef weightsRegistry;
   SmallVector<AnyAsyncValueRef> extraArgs;
-  // Cached device graphs keyed by input signature (shape + dtype).
-  llvm::DenseMap<uint64_t, SmallVector<Driver::DeviceGraphRef>> capturedGraphs;
+
+  /// Cached device graphs keyed by input signature
+  /// (memory address + shape + dtype).
+  llvm::DenseMap<uint64_t, Driver::DeviceGraphCollection> capturedGraphs;
 };
 
 //===----------------------------------------------------------------------===//

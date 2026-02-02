@@ -22,6 +22,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 
 #include <chrono>
 #include <cstdint>
@@ -337,7 +338,47 @@ private:
 };
 
 /// A collection of device graphs generated during a recording session.
-using DeviceGraphCollection = SmallVector<DeviceGraphRef>;
+///
+/// This class contains all the information needed to replay a multi-device
+/// model. Each contained DeviceGraph corresponds to a captured graph for a
+/// single execution stream.
+///
+/// The outputs correspond to the pinned memory allocated by one of the
+/// DeviceGraphs during the record session and are used to ensure the backing
+/// memory lives as long as the allocating DeviceGraph.
+class DeviceGraphCollection {
+public:
+  explicit DeviceGraphCollection(SmallVector<DeviceGraphRef> &&graphs)
+      : graphs(std::move(graphs)) {}
+
+  /// Set the outputs for the device graph collection by taking ownership of
+  /// the set of provided async references.
+  void setOutputs(ArrayRef<AsyncRT::AnyAsyncValueRef> outputs);
+
+  /// Get the output async values for the graph collection. These correspond
+  /// to the outputs of the MEF model, not any particular DeviceGraph.
+  SmallVector<AsyncRT::AnyAsyncValueRef> getOutputs() const;
+
+  /// Replay the graph collection by launching all graphs.
+  ErrorOrSuccess replay() const;
+
+  /// The number of graphs in the collection.
+  int64_t numGraphs() const;
+
+private:
+  /// A DeviceGraphCollection holds the set of captured device graphs which
+  /// correspond to a single capture session of a MAX graph. There will be
+  /// one graph per device context used by the graph.
+  SmallVector<DeviceGraphRef> graphs;
+
+  /// The set of outputs produced during a capture session of a MAX graph.
+  /// The memory allocated for these outputs is stable and has a lifetime tied
+  /// to that graph.
+  ///
+  /// Note: these outputs are the outputs of the entire MAX graph, not for any
+  /// particular device.
+  SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
+};
 
 /// A captured sequence of GPU operations that can be replayed.
 class DeviceGraph : public ReferenceCounted<DeviceGraph> {
@@ -353,14 +394,8 @@ public:
   /// Replay the captured operations on the stored capture stream.
   virtual ErrorOrSuccess replay() const = 0;
 
-  /// Capture the set of outputs associated with the captured graph.
-  void setOutputs(MutableArrayRef<AnyAsyncValueRef> values);
-
   /// Set the stream associated with the device graph.
   void setStream(DeviceStreamRef stream);
-
-  /// Return the set of values associated with the captured graph.
-  SmallVector<AsyncRT::AnyAsyncValueRef> getOutputs();
 
 protected:
   explicit DeviceGraph(const Device &device, DeviceStreamRef captureStream = {})
@@ -380,13 +415,6 @@ protected:
 private:
   DeviceRef device_;
   DeviceStreamRef captureStream_;
-
-  /// The tensor values returned from the graph during graph capture.
-  /// These values are special in that they were allocated during graph
-  /// capture and have a lifetime tied to the captured graph.
-  ///
-  /// All replays of the graph will write to these result tensors.
-  SmallVector<AsyncRT::AnyAsyncValueRef> resultTensors;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {

@@ -409,9 +409,10 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   uint64_t key = computeInputKey(inputs);
 
   if (auto it = capturedGraphs.find(key); it != capturedGraphs.end()) {
-    if (it->second.empty())
+    const Driver::DeviceGraphCollection &graph = it->second;
+    if (graph.numGraphs() == 0)
       return Error("no device graphs associated with an existing capture");
-    return it->second.front()->getOutputs();
+    return graph.getOutputs();
   }
 
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
@@ -435,9 +436,8 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   if (graphOrErr.isError())
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
 
-  SmallVector<Driver::DeviceGraphRef> graphs = graphOrErr.takeValue();
-  for (Driver::DeviceGraphRef &graph : graphs)
-    graph->setOutputs(graphResults);
+  Driver::DeviceGraphCollection graphs = graphOrErr.takeValue();
+  graphs.setOutputs(graphResults);
 
   capturedGraphs.try_emplace(key, std::move(graphs));
   return graphResults;
@@ -452,12 +452,8 @@ ExecutableModel::replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
 
   // A forward pass of the model may correspond to multiple graphs (one per
   // device), we launch all graphs in a single replay call.
-  ArrayRef<Driver::DeviceGraphRef> graphs = it->second;
-  for (auto graph : graphs)
-    if (auto err = graph->replay())
-      return Error(Twine("Replay failed") + err.getError());
-
-  return success();
+  const Driver::DeviceGraphCollection &graphs = it->second;
+  return graphs.replay();
 }
 
 AnyAsyncValueRef

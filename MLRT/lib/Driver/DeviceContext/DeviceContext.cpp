@@ -19,6 +19,7 @@
 #include "MemoryManager.h"
 #include "Metal/MetalDeviceContext.h"
 #include "Support/AlignedAlloc.h"
+#include "Support/AssertStream.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
 #include "Virtual/VirtualDeviceContext.h"
@@ -573,6 +574,32 @@ MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
   return *device_;
 }
 
+//
+// ===== DeviceGraphCollection ===== //
+//
+void DeviceGraphCollection::setOutputs(
+    ArrayRef<AsyncRT::AnyAsyncValueRef> values) {
+  ASSERT_STREAM(outputs.empty(), "DeviceGraphCollection already has values");
+  outputs = llvm::map_to_vector(values, [](auto &ref) { return ref.copy(); });
+}
+
+SmallVector<AsyncRT::AnyAsyncValueRef>
+DeviceGraphCollection::getOutputs() const {
+  return llvm::map_to_vector(outputs, [](auto &ref) { return ref.copy(); });
+}
+
+ErrorOrSuccess DeviceGraphCollection::replay() const {
+  for (const DeviceGraphRef &graph : graphs)
+    if (auto err = graph->replay())
+      return err;
+
+  return success();
+}
+
+int64_t DeviceGraphCollection::numGraphs() const {
+  return static_cast<int64_t>(graphs.size());
+}
+
 /// RAII type for managing the capture state of a stream.
 class DeviceGraphCaptureContext {
 public:
@@ -619,6 +646,7 @@ ErrorOr<DeviceGraphCollection>
 DeviceGraph::capture(ArrayRef<DeviceStreamRef> streams,
                      llvm::function_ref<ErrorOrSuccess()> execute) {
   SmallVector<DeviceGraphCaptureContext> captures;
+  captures.reserve(streams.size());
 
   // Begin capture on all streams.
   for (const DeviceStreamRef &stream : streams) {
@@ -645,21 +673,11 @@ DeviceGraph::capture(ArrayRef<DeviceStreamRef> streams,
     results.push_back(graphOr.takeValue());
   }
 
-  return results;
-}
-
-void DeviceGraph::setOutputs(MutableArrayRef<AnyAsyncValueRef> values) {
-  resultTensors = llvm::map_to_vector(
-      values, [](AnyAsyncValueRef &ref) { return ref.copy(); });
+  return DeviceGraphCollection(std::move(results));
 }
 
 void DeviceGraph::setStream(DeviceStreamRef stream) {
   captureStream_ = std::move(stream);
-}
-
-SmallVector<AsyncRT::AnyAsyncValueRef> DeviceGraph::getOutputs() {
-  return llvm::map_to_vector(resultTensors,
-                             [](AnyAsyncValueRef &ref) { return ref.copy(); });
 }
 
 //
