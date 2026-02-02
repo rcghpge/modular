@@ -65,18 +65,6 @@ def LowerPrimitives: Pass<"mgp-lower-primitives", "MGP::ModelOp"> {
   ];
 }
 
-def LegalizeAsyncRefDeallocations: Pass<"mgp-legalize-async-ref-deallocations", "ModuleOp"> {
-  let summary = "Legalize deallocation calls on async values";
-  let description = [{
-    Legalizes deallocation calls on async values in a compiled region. Double
-    free might occur after post-abi fusion and/or cse. This pass tries to remove
-    extra deallocation calls such that the compiled region will be free of
-    memory errors.
-  }];
-
-  let dependentDialects = ["MOGG::MOGGDialect"];
-}
-
 
 def RaiseBackIndexConstant: Pass<"mgp-raise-back-index-constant", "ModuleOp"> {
   let summary = "Recover index constants if not part of kernel deduplication";

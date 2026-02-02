@@ -29,7 +29,6 @@ namespace M::MGP {
 
 /// Generate the code for declaring the pass.
 #define GEN_PASS_DECL_MOTOPRIMITIVES
-#define GEN_PASS_DECL_LEGALIZEASYNCREFDEALLOCATIONS
 #define GEN_PASS_DECL_RAISEBACKINDEXCONSTANT
 #define GEN_PASS_DECL_LOWERPRIMITIVES
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"

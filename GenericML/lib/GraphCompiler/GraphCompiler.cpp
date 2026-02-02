@@ -120,7 +120,6 @@ void M::MO::registerPasses() {
   MOGG::registerSequenceFusion();
 
   MOGG::registerRemoveRedundantOperands();
-  MGP::registerLegalizeAsyncRefDeallocations();
   MGP::registerMGPTransformsPasses();
   MOGG::registerPasses();
 
