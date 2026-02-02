@@ -254,7 +254,19 @@ static int taskIdForDevice(int deviceHint,
                        << "] as an integer: " << deviceTaskCpuIdStrs[i] << "\n";
           std::abort();
         }
-        deviceTaskCpuIds.push_back(cpuId);
+        if (cpuId == 0) {
+          llvm::errs()
+              << "CPU ID 0 is not allowed in runtime.device_task_cpu_ids\n";
+          std::abort();
+        } else if (std::find(deviceTaskCpuIds.begin(), deviceTaskCpuIds.end(),
+                             cpuId) != deviceTaskCpuIds.end()) {
+          llvm::errs()
+              << "Duplicate CPU ID found in runtime.device_task_cpu_ids: "
+              << cpuId << "\n";
+          std::abort();
+        } else {
+          deviceTaskCpuIds.push_back(cpuId);
+        }
       }
     }
     return deviceTaskCpuIds;
