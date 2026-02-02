@@ -2572,46 +2572,31 @@ LogicalResult TensorFusedOp::emitMojo(EmitMojoState &state) {
   MojoValue lambdaParam = state.getMojoValueFor(getLambda());
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
 
-  if (lambdaOp.getBindKind() == BindLambdaKind::InputLambda) {
-    // Build the FusedTensor with the new spec.
-    // TODO(MOCO-2595): Use helper function instead of relying on rebind.
-    MojoValue newSpec = MojoValue(
-        HardcodedMojoSymbols::
-            func_rebuild_static_tensor_specs_with_input_lambda)(
-        {}, ArrayRef<MojoValue>({tensorValue.get("static_spec"), lambdaParam}));
-    MojoValue fusedTensor = tensorValue.rebind(
-        MojoValue(HardcodedMojoSymbols::comptime_FusedInputTensor)
-            [MojoValue("static_spec").equal(newSpec)]);
+  // Figure out if we need to build a fused input / output / compute tensor
+  // object.
+  auto bindMethodNameOr = [&]() -> ErrorOr<StringLiteral> {
+    if (lambdaOp.getBindKind() == BindLambdaKind::InputLambda)
+      return HardcodedMojoSymbols::func_ManagedTensorSlice_bind_to_fused_input;
 
-    state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
-  } else {
-
-    // Check if we need a compute or an output lambda.
+    // For the output lambdas, we need to look at the kernel signature to figure
+    // out if we need to build a FusedOutputTensor or a FusedComputeOutputTensor
+    // object.
     auto outputLambdaTypeOr = getKernelOutputFusionLambdaType(
         state.analysis, *this, state.enableComputeLambdas);
     if (outputLambdaTypeOr.isError())
-      return emitError(outputLambdaTypeOr.getError());
-    auto tensorTypeName =
-        *outputLambdaTypeOr == KernelOutputFusionLambdaType::Output
-            ? HardcodedMojoSymbols::comptime_FusedOutputTensor
-            : HardcodedMojoSymbols::comptime_FusedComputeOutputTensor;
-    auto rebuildSpecFuncName =
-        *outputLambdaTypeOr == KernelOutputFusionLambdaType::Compute
-            ? HardcodedMojoSymbols::
-                  func_rebuild_static_tensor_specs_with_compute_output_lambda
-            : HardcodedMojoSymbols::
-                  func_rebuild_static_tensor_specs_with_output_lambda;
+      return outputLambdaTypeOr.takeError();
 
-    // Build the FusedTensor with the new spec.
-    // TODO(MOCO-2595): Use helper function instead of relying on rebind.
-    MojoValue newSpec = MojoValue(rebuildSpecFuncName)(
-        {}, ArrayRef<MojoValue>({tensorValue.get("static_spec"), lambdaParam}));
-    MojoValue fusedTensor = tensorValue.rebind(
-        MojoValue(tensorTypeName)[MojoValue("static_spec").equal(newSpec)]);
+    return *outputLambdaTypeOr == KernelOutputFusionLambdaType::Output
+               ? HardcodedMojoSymbols::
+                     func_ManagedTensorSlice_bind_to_fused_output
+               : HardcodedMojoSymbols::
+                     func_ManagedTensorSlice_bind_to_fused_compute_output;
+  }();
+  if (bindMethodNameOr.isError())
+    return emitError(bindMethodNameOr.getError());
 
-    state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
-  }
-
+  MojoValue fusedTensor = tensorValue.get(*bindMethodNameOr)(lambdaParam);
+  state.setMojoValueFor(getResult(), state.builder.var(fusedTensor));
   return success();
 }
 

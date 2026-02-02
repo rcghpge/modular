@@ -61,18 +61,16 @@ constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
     "managed_tensor_slice.simd_load_from_managed_tensor_slice";
 constexpr StringLiteral func_simd_load_from_tensor_pointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
-constexpr StringLiteral func_rebuild_static_tensor_specs_with_output_lambda =
-    "managed_tensor_slice.rebuild_static_tensor_specs_with_output_lambda";
-constexpr StringLiteral
-    func_rebuild_static_tensor_specs_with_compute_output_lambda =
-        "managed_tensor_slice.rebuild_static_tensor_specs_with_compute_output_"
-        "lambda";
 constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
     "managed_tensor_slice.simd_store_into_managed_tensor_slice";
 constexpr StringLiteral func_simd_store_into_tensor_pointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
-constexpr StringLiteral func_rebuild_static_tensor_specs_with_input_lambda =
-    "managed_tensor_slice.rebuild_static_tensor_specs_with_input_lambda";
+constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_input =
+    "_bind_to_fused_input";
+constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_output =
+    "_bind_to_fused_output";
+constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_compute_output =
+    "_bind_to_fused_compute_output";
 constexpr StringLiteral func_reshape_contiguous_buffer =
     "MOGGPrimitives.tmp_reshape_contiguous_buffer";
 constexpr StringLiteral func_unpack_tensor_spec =
@@ -98,12 +96,6 @@ constexpr StringLiteral comptime_InputTensor =
     "managed_tensor_slice.InputTensor";
 constexpr StringLiteral comptime_OutputTensor =
     "managed_tensor_slice.OutputTensor";
-constexpr StringLiteral comptime_FusedOutputTensor =
-    "managed_tensor_slice._FusedOutputTensor";
-constexpr StringLiteral comptime_FusedComputeOutputTensor =
-    "managed_tensor_slice._FusedComputeOutputTensor";
-constexpr StringLiteral comptime_FusedInputTensor =
-    "managed_tensor_slice._FusedInputTensor";
 constexpr StringLiteral comptime_MutableInputTensor =
     "managed_tensor_slice._MutableInputTensor";
 constexpr StringLiteral comptime_UInt8 = "UInt8";
