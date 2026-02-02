@@ -282,31 +282,6 @@ mo.graph @concat_variadic_input<D0, D1, D2, D3 -> D4, D5>(
 // CHECK-NEXT:   mo.output<[[D6]], [[D7]]> %[[RES]] : !mo.tensor<[[[D6]], [[D7]]], f32>
 
 
-mo.graph @concat_from_list<() -> D0, D1>(
-  %input: !mo.list<!mo.tensor<[?, ?], f32>>,
-  %axis: !mo.tensor<[], si32>
-) -> !mo.tensor<[D0, D1], f32> {
-
-  %res = mo.concat_from_list<() -> D2, D3>[%axis : !mo.tensor<[], si32>](%input) :
-    !mo.list<!mo.tensor<[?, ?], f32>> -> !mo.tensor<[D2, D3], f32>
-
-  mo.output<D2, D3> %res : !mo.tensor<[D2, D3], f32>
-}
-// CHECK-LABEL: mo.graph @concat_from_list
-// CHECK-SAME: <() -> [[D0:.*]], [[D1:.*]]>(
-// CHECK-SAME:   %[[INPUT:.*]]: !mo.list<!mo.tensor<[?, ?], f32>>,
-// CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si32>
-// CHECK-SAME: ) -> !mo.tensor<[[[D0]], [[D1]]], f32> {
-//
-// CHECK-NEXT:   mo.invoke_shape_func["mo.concat_from_list"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]], %[[AXIS]])
-// CHECK-SAME:     {dataDeptTensors = [0 : i32, 1 : i32]} :
-// CHECK-SAME:     (!mo.list<!mo.tensor<[?, ?], f32>>, !mo.tensor<[], si32>)
-//
-// CHECK-NEXT:   %[[RES:.*]] = mo.concat_from_list[%[[AXIS]] : !mo.tensor<[], si32>] (%[[INPUT]]) :
-// CHECK-SAME:     !mo.list<!mo.tensor<[?, ?], f32>> -> !mo.tensor<[[[D2]], [[D3]]], f32>
-//
-// CHECK-NEXT:   mo.output<[[D2]], [[D3]]> %[[RES]] : !mo.tensor<[[[D2]], [[D3]]], f32>
-
 
 mo.graph @conv_fallback_shape_func<() -> D0, D1, D2, D3>(
   %input: !mo.tensor<[32, 10, 20, 3], f32>,

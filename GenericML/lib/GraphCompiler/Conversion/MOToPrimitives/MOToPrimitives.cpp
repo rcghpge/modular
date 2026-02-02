@@ -200,24 +200,6 @@ public:
   /// Lowers mo.while op.
   LogicalResult lowerWhile(MO::WhileOp whileOp);
 
-  /// Lowers mo.list.append op.
-  LogicalResult lowerListAppend(MO::ListAppendOp listAppendOp);
-
-  /// Lowers mo.list.concat op.
-  LogicalResult lowerListConcat(MO::ListConcatOp listConcatOp);
-
-  /// Lowers mo.list.create op.
-  LogicalResult lowerListCreate(MO::ListCreateOp listCreateOp);
-
-  /// Lowers mo.list.get op.
-  LogicalResult lowerListGet(MO::ListGetOp listGetOp);
-
-  /// Lowers mo.list.insert op.
-  LogicalResult lowerListInsert(MO::ListInsertOp listInsertOp);
-
-  // Lowers mo.list.slice op.
-  LogicalResult lowerListSlice(MO::ListSliceOp listSliceOp);
-
   /// Lowers mo.guard op
   LogicalResult lowerGuard(MO::GuardOp guardOp);
 
@@ -1250,136 +1232,6 @@ MOGraphLowering::lowerBufferTransfer(MO::BufferTransferOp transferOp) {
   return success();
 }
 
-LogicalResult MOGraphLowering::lowerListAppend(MO::ListAppendOp listAppendOp) {
-  ASSERT_STREAM(MO::isOnHost(listAppendOp),
-                << "mo.list.append is for host only");
-  MGP::MOOpLoweringState opLoweringState(loweringState, listAppendOp);
-
-  // Collect lowered inputs.
-  Value mgpInputList =
-      loweringState.lookupExecuteLoweredValue(listAppendOp.getInput());
-  Value mgpElementTensor =
-      loweringState.lookupExecuteLoweredValue(listAppendOp.getElement());
-
-  // Construct output mgp list type
-  MGP::ListType mgpOutputListTy = lowerListType(listAppendOp.getType());
-
-  // Construct the corresponding mgp.list.insert op
-  Value mgpOutputTensor = opLoweringState.create<MGP::ListAppendOp>(
-      mgpOutputListTy, mgpInputList, mgpElementTensor);
-  loweringState.emplaceExecuteLoweredValue(listAppendOp, mgpOutputTensor);
-
-  return success();
-}
-
-LogicalResult MOGraphLowering::lowerListConcat(MO::ListConcatOp listConcatOp) {
-  ASSERT_STREAM(MO::isOnHost(listConcatOp),
-                << "mo.list.concat is for host only");
-  MGP::MOOpLoweringState opLoweringState(loweringState, listConcatOp);
-
-  Value mgpLhsList =
-      loweringState.lookupExecuteLoweredValue(listConcatOp.getLhs());
-  Value mgpRhsList =
-      loweringState.lookupExecuteLoweredValue(listConcatOp.getRhs());
-
-  MGP::ListType mgpOutputListTy = lowerListType(listConcatOp.getType());
-
-  Value mgpOutputList = opLoweringState.create<MGP::ListConcatOp>(
-      mgpOutputListTy, mgpLhsList, mgpRhsList);
-
-  loweringState.emplaceExecuteLoweredValue(listConcatOp, mgpOutputList);
-
-  return mlir::success();
-}
-
-LogicalResult MOGraphLowering::lowerListCreate(MO::ListCreateOp listCreateOp) {
-  ASSERT_STREAM(MO::isOnHost(listCreateOp),
-                << "mo.list.create is for host only");
-  MGP::MOOpLoweringState opLoweringState(loweringState, listCreateOp);
-
-  // Collect lowered input tensors
-  SmallVector<Value> mgpInputTensors;
-  for (Value input : listCreateOp.getInputs()) {
-    mgpInputTensors.push_back(loweringState.lookupExecuteLoweredValue(input));
-  }
-
-  // Construct output mgp list type
-  MGP::ListType mgpOutputListTy = lowerListType(listCreateOp.getType());
-
-  // Construct the corresponding mgp.list.create op
-  Value mgpOutputList = opLoweringState.create<MGP::ListCreateOp>(
-      mgpOutputListTy, mgpInputTensors);
-  loweringState.emplaceExecuteLoweredValue(listCreateOp, mgpOutputList);
-
-  return success();
-}
-
-LogicalResult MOGraphLowering::lowerListGet(MO::ListGetOp listGetOp) {
-  ASSERT_STREAM(MO::isOnHost(listGetOp), << "mo.list.get is for host only");
-  MGP::MOOpLoweringState opLoweringState(loweringState, listGetOp);
-
-  // Collect lowered inputs.
-  Value mgpInputList =
-      loweringState.lookupExecuteLoweredValue(listGetOp.getInput());
-  Value mgpIndexTensor =
-      loweringState.lookupExecuteLoweredValue(listGetOp.getIndex());
-
-  // Construct the corresponding mgp.list.create op
-  Value mgpOutputTensor =
-      opLoweringState.create<MGP::ListGetOp>(mgpInputList, mgpIndexTensor);
-  loweringState.emplaceExecuteLoweredValue(listGetOp, mgpOutputTensor);
-
-  return success();
-}
-
-LogicalResult MOGraphLowering::lowerListInsert(MO::ListInsertOp listInsertOp) {
-  ASSERT_STREAM(MO::isOnHost(listInsertOp),
-                << "mo.list.insert is for host only");
-  MGP::MOOpLoweringState opLoweringState(loweringState, listInsertOp);
-
-  // Collect lowered inputs.
-  Value mgpInputList =
-      loweringState.lookupExecuteLoweredValue(listInsertOp.getInput());
-  Value mgpElementTensor =
-      loweringState.lookupExecuteLoweredValue(listInsertOp.getElement());
-  Value mgpIndexTensor =
-      loweringState.lookupExecuteLoweredValue(listInsertOp.getIndex());
-
-  // Construct output mgp list type
-  MGP::ListType mgpOutputListTy = lowerListType(listInsertOp.getType());
-
-  // Construct the corresponding mgp.list.insert op
-  Value mgpOutputTensor = opLoweringState.create<MGP::ListInsertOp>(
-      mgpOutputListTy, mgpInputList, mgpElementTensor, mgpIndexTensor);
-  loweringState.emplaceExecuteLoweredValue(listInsertOp, mgpOutputTensor);
-
-  return success();
-}
-
-LogicalResult MOGraphLowering::lowerListSlice(MO::ListSliceOp listSliceOp) {
-  ASSERT_STREAM(MO::isOnHost(listSliceOp), << "mo.list.slice is for host only");
-  MGP::MOOpLoweringState opLoweringState(loweringState, listSliceOp);
-
-  Value mgpInputList =
-      loweringState.lookupExecuteLoweredValue(listSliceOp.getInput());
-  Value mgpStartTensor =
-      loweringState.lookupExecuteLoweredValue(listSliceOp.getStart());
-  Value mgpEndTensor =
-      loweringState.lookupExecuteLoweredValue(listSliceOp.getEnd());
-  Value mgpStepTensor =
-      loweringState.lookupExecuteLoweredValue(listSliceOp.getStep());
-
-  // Construct output mgp list type
-  MGP::ListType mgpOutputListTy = lowerListType(listSliceOp.getType());
-
-  Value mgpOutputTensor = opLoweringState.create<MGP::ListSliceOp>(
-      mgpOutputListTy, mgpInputList, mgpStartTensor, mgpEndTensor,
-      mgpStepTensor);
-  loweringState.emplaceExecuteLoweredValue(listSliceOp, mgpOutputTensor);
-
-  return success();
-}
-
 LogicalResult MOGraphLowering::lowerGuard(MO::GuardOp guardOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, guardOp);
 
@@ -2006,42 +1858,6 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
 
     if (auto transferOp = dyn_cast<MO::TransferOp>(op)) {
       if (failed(lowerTransfer(transferOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto listAppendOp = dyn_cast<MO::ListAppendOp>(op)) {
-      if (failed(lowerListAppend(listAppendOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto listConcatOp = dyn_cast<MO::ListConcatOp>(op)) {
-      if (failed(lowerListConcat(listConcatOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto listCreateOp = dyn_cast<MO::ListCreateOp>(op)) {
-      if (failed(lowerListCreate(listCreateOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto listGetOp = dyn_cast<MO::ListGetOp>(op)) {
-      if (failed(lowerListGet(listGetOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto listInsertOp = dyn_cast<MO::ListInsertOp>(op)) {
-      if (failed(lowerListInsert(listInsertOp)))
-        return failure();
-      continue;
-    }
-
-    if (auto listSliceOp = dyn_cast<MO::ListSliceOp>(op)) {
-      if (failed(lowerListSlice(listSliceOp)))
         return failure();
       continue;
     }

@@ -35,10 +35,11 @@ mo.graph @unk_dims<D0, D1, D2, D3, D4, D5>(%arg0: !mo.buffer<[D0, D1], f32>, %ar
   %13 = rmo.mo.reshape(%11, %3) : (!mo.tensor<[1], si64>, !mo.tensor<[0], si64>) -> !mo.tensor<[], si64>
   %14 = rmo.rebind_tensor_shape(%outTensor) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32>
   %15 = rmo.mo.shape_of(%14) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[2], si64>
-  %17 = rmo.mo.slice(%15, %2, %4, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
-  %18 = rmo.mo.reshape(%17, %3) : (!mo.tensor<[1], si64>, !mo.tensor<[0], si64>) -> !mo.tensor<[], si64>
-  %19 = mo.list.create(%13, %18) : (!mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.list<!mo.tensor<[], si64>>
-  %20 = mo.concat_from_list<() -> D6>[%5 : !mo.tensor<[], si64>] (%19) : !mo.list<!mo.tensor<[], si64>> -> !mo.tensor<[D6], si64>
+  %16 = rmo.mo.slice(%15, %2, %4, %2) : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
+  %17 = rmo.mo.reshape(%16, %3) : (!mo.tensor<[1], si64>, !mo.tensor<[0], si64>) -> !mo.tensor<[], si64>
+  %18 = rmo.mo.reshape(%13, %2) : (!mo.tensor<[], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
+  %19 = rmo.mo.reshape(%17, %2) : (!mo.tensor<[], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
+  %20 = rmo.mo.concat<() -> D6>[%5 : !mo.tensor<[], si64>] (%18, %19) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[D6], si64>
   %21 = rmo.mo.shape_of(%8) : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[2], si64>
   %22 = rmo.mo.concat[%5 : !mo.tensor<[], si64>] (%1, %1) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %23 = rmo.mo.pad.constant(%21, %22, %5) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[2], si64>

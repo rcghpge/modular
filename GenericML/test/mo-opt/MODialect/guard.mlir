@@ -25,23 +25,23 @@ mo.graph @matmul_assert<D0, D1, D2, D3>(%X: !mo.tensor<[D0, D1], f32>, %Y: !mo.t
 
 
 // CHECK-LABEL: mo.graph @various_types
-// CHECK-SAME: ([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[30, 50], f32>, [[VARG2:[^ ]*]]: !mo.list<!mo.tensor<[], si64>>, [[VARG3:[^ ]*]]: !mo.scalar<f64>, [[VARG4:[^ ]*]]: !mo.chain) -> (!mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.list<!mo.tensor<[], si64>>, !mo.scalar<f64>) {
-// CHECK-NEXT: [[V0:[^ ]*]]:4 = mo.guard[[[VARG4]]] ([[VARG0]], [[VARG1]], [[VARG2]], [[VARG3]]) : !mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.list<!mo.tensor<[], si64>>, !mo.scalar<f64>
-// CHECK-NEXT: mo.output [[V0]]#0, [[V0]]#1, [[V0]]#2, [[V0]]#3 : !mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.list<!mo.tensor<[], si64>>, !mo.scalar<f64>
+// CHECK-SAME: ([[VARG0:[^ ]*]]: !mo.tensor<[20, 30], f32>, [[VARG1:[^ ]*]]: !mo.tensor<[30, 50], f32>, [[VARG2:[^ ]*]]: !mo.tensor<[5], si64>, [[VARG3:[^ ]*]]: !mo.scalar<f64>, [[VARG4:[^ ]*]]: !mo.chain) -> (!mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.tensor<[5], si64>, !mo.scalar<f64>) {
+// CHECK-NEXT: [[V0:[^ ]*]]:4 = mo.guard[[[VARG4]]] ([[VARG0]], [[VARG1]], [[VARG2]], [[VARG3]]) : !mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.tensor<[5], si64>, !mo.scalar<f64>
+// CHECK-NEXT: mo.output [[V0]]#0, [[V0]]#1, [[V0]]#2, [[V0]]#3 : !mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.tensor<[5], si64>, !mo.scalar<f64>
 mo.graph @various_types(%X: !mo.tensor<[20, 30], f32>,
                         %Y: !mo.tensor<[30, 50], f32>,
-                        %lst: !mo.list<!mo.tensor<[], si64>>,
+                        %tensor3: !mo.tensor<[5], si64>,
                         %scalar: !mo.scalar<f64>,
                         %chain: !mo.chain ) ->
-                    (!mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.list<!mo.tensor<[], si64>>, !mo.scalar<f64>)
+                    (!mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.tensor<[5], si64>, !mo.scalar<f64>)
 {
-  %Xp, %Yp, %lstp, %scalarp = mo.guard[%chain](%X, %Y, %lst, %scalar) :
+  %Xp, %Yp, %tensor3p, %scalarp = mo.guard[%chain](%X, %Y, %tensor3, %scalar) :
    !mo.tensor<[20, 30], f32>,
    !mo.tensor<[30, 50], f32>,
-   !mo.list<!mo.tensor<[], si64>>,
+   !mo.tensor<[5], si64>,
    !mo.scalar<f64>
 
-  mo.output %Xp, %Yp, %lstp, %scalarp : !mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.list<!mo.tensor<[], si64>>, !mo.scalar<f64>
+  mo.output %Xp, %Yp, %tensor3p, %scalarp : !mo.tensor<[20, 30], f32>, !mo.tensor<[30, 50], f32>, !mo.tensor<[5], si64>, !mo.scalar<f64>
 }
 
 

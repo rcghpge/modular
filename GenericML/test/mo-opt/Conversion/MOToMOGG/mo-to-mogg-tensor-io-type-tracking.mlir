@@ -7,13 +7,6 @@ mo.graph @test_simple_add(%0: !mo.tensor<[5], f32>, %1: !mo.tensor<[5], f32>) ->
   mo.output %2 : !mo.tensor<[5], f32>
 }
 
-// CHECK-LABEL: @with_a_list_type
-// CHECK-NOT: mogg.bind
-mo.graph @with_a_list_type(%l0: !mo.list<!mo.tensor<[10], si32>>) -> !mo.tensor<[30], si32> {
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %res = mo.concat_from_list[%zero: !mo.tensor<[], si64>](%l0) : !mo.list<!mo.tensor<[10], si32>> -> !mo.tensor<[30], si32>
-  mo.output %res : !mo.tensor<[30], si32>
-}
 
 // CHECK-LABEL: @with_variadic_inputs
 // CHECK: mogg.bind {{.*}} input_lambda ({{.*}}) {

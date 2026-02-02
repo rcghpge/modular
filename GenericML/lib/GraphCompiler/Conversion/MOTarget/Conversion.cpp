@@ -25,9 +25,6 @@ RMOConversionTarget::RMOConversionTarget(MLIRContext &ctx)
       MO::ConstantOp, MO::ConstantExternalOp,
       // Control flow
       MO::IfOp, MO::YieldOp, MO::WhileOp, MO::WhileConditionOp,
-      // List operations
-      MO::ListAppendOp, MO::ListCreateOp, MO::ListInsertOp, MO::ListGetOp,
-      MO::ConcatFromListOp, MO::ListConcatOp, MO::ListSliceOp,
       // Custom ops allowed for now
       MO::CustomOp,
       // TODO (GEX-723)

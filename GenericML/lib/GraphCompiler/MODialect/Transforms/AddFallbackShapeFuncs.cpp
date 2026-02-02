@@ -67,7 +67,6 @@ HAS_FALLBACK(MO::BottomKOp)
 HAS_FALLBACK(MO::BroadcastToOp)
 HAS_FALLBACK(MO::BroadcastShapeOp)
 HAS_FALLBACK(MO::ConcatOp)
-HAS_FALLBACK(MO::ConcatFromListOp)
 HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
@@ -166,7 +165,6 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::BroadcastToOp)
       CALL_FALLBACK(MO::BroadcastShapeOp)
       CALL_FALLBACK(MO::ConcatOp)
-      CALL_FALLBACK(MO::ConcatFromListOp)
       CALL_FALLBACK(MO::ConvOp)
       CALL_FALLBACK(MO::ConvTransposeOp)
       CALL_FALLBACK(MO::GatherOp)
@@ -464,16 +462,6 @@ ErrorOrSuccess Fallback<MO::ConcatOp>::build(GraphOp &graph, OpBuilder &builder,
       /*kgenParams=*/
       {{"input_type", inputDTypeAttr}, {"input_rank", inputRankAttr}},
       op.getDataDependentInputIndices());
-  return success();
-}
-
-ErrorOrSuccess Fallback<MO::ConcatFromListOp>::build(GraphOp &graph,
-                                                     OpBuilder &builder,
-                                                     MO::ConcatFromListOp op) {
-  buildForOpResult(graph, builder, op, MO::ConcatFromListOp::getOperationName(),
-                   op.getOperands(), op.getOutputParamDecls(),
-                   /*kgenParams=*/{},
-                   /*dataDepInputIdxs=*/{0, 1});
   return success();
 }
 

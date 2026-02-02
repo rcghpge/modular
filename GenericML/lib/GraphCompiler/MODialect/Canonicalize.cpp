@@ -588,66 +588,6 @@ LogicalResult ConcatOp::canonicalize(ConcatOp op, PatternRewriter &rewriter) {
 }
 
 //===----------------------------------------------------------------------===//
-// ConcatFromListOp
-//===----------------------------------------------------------------------===//
-LogicalResult ConcatFromListOp::canonicalize(ConcatFromListOp op,
-                                             PatternRewriter &rewriter) {
-  auto resultType = cast<TensorType>(op->getResultTypes()[0]);
-  MO::ListValue inputList = op.getInput();
-  if (resultType.getElementType().isInteger()) {
-    if (auto constData = tryGetConstantAPIntVector(inputList)) {
-      rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
-                                              resultType.getElementType(),
-                                              resultType.getDeviceRef());
-      return success();
-    }
-  } else if (resultType.getElementType().isIntOrFloat()) {
-    if (auto constData = tryGetConstantAPFloatVector(inputList)) {
-      rewriter.replaceOpWithNewOp<ConstantOp>(op, *constData,
-                                              resultType.getElementType(),
-                                              resultType.getDeviceRef());
-      return success();
-    }
-  }
-  // If the input is a mo.list.create, maybe we can simplify to a mo.concat.
-  if (auto listCreateOp = inputList.getDefiningOp<MO::ListCreateOp>()) {
-    auto listElementTy =
-        cast<TensorType>(listCreateOp.getResult().getType().getElementType());
-    if (!listElementTy.hasRank())
-      return failure();
-    // If the list elements are rank-0, we can simplify, but we need to
-    // broadcast each input to rank-1 with a single element.
-    if (listElementTy.getRank() == 0) {
-      // If the result type is not rank-1, we won't simplify (to be safe).
-      if (!resultType.hasRank() || resultType.getRank() != 1)
-        return failure();
-      auto rankOneTy = listElementTy.cloneWith(SmallVector<int64_t>{1},
-                                               listElementTy.getElementType());
-      size_t numInputs = listCreateOp->getNumOperands();
-      SmallVector<Value> rankOneInputs;
-      rankOneInputs.reserve(numInputs);
-      for (size_t i = 0; i < numInputs; ++i) {
-        rankOneInputs.push_back(Static::ReshapeOp::create(
-            rewriter, op->getLoc(), rankOneTy, listCreateOp.getInputTensor(i)));
-      }
-      rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, resultType, op.getAxis(),
-                                                rankOneInputs,
-                                                op.getOutputParamDeclsAttr());
-      return success();
-    }
-    // If any of the inputs are dynamically ranked, we won't simplify.
-    for (Value input : listCreateOp.getInputs())
-      if (!cast<MO::TensorType>(input.getType()).hasRank())
-        return failure();
-    rewriter.replaceOpWithNewOp<MO::ConcatOp>(op, resultType, op.getAxis(),
-                                              listCreateOp.getInputs(),
-                                              op.getOutputParamDeclsAttr());
-    return success();
-  }
-  return failure();
-}
-
-//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }

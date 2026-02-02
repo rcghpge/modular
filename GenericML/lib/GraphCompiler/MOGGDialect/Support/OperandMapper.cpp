@@ -21,8 +21,6 @@ MOTypeToMojoKernelOperand(Type type) {
     return TensorOperandAdaptor{IOSpec::InputTensor};
   if (isa<MO::BufferType>(type))
     return TensorOperandAdaptor{IOSpec::MutableInputTensor};
-  if (isa<MO::ListType>(type))
-    return ListOfTensorOperandAdaptor{IOSpec::FusedInputTensor};
   if (isa<MO::ScalarType>(type))
     return ScalarOperandAdaptor{};
   if (auto opaqueType = dyn_cast<MO::OpaqueType>(type))

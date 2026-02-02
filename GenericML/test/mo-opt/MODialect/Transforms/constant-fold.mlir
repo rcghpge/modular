@@ -29,22 +29,6 @@ mo.graph @multiple_internal_ops(%arg0: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[1
   mo.output %17 : !mo.tensor<[1, 2], f32>
 }
 
-// Check that various operations on lists are constant folded.
-// CHECK-LABEL: mo.graph @list
-// CHECK-NOT: mo.concat_from_list
-// CHECK-NOT: mo.list.insert
-// CHECK: mo.list.create
-// CHECK: mo.output
-mo.graph @list() -> (!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>) {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[1], f32>
-  %zero = mo.constant {value = #M.dense_array<0.000000e+00> : !M.array<1xf32>} : !mo.tensor<[1], f32>
-  %axis = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %idx = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %list = mo.list.create(%0, %0) :(!mo.tensor<[1], f32>, !mo.tensor<[1], f32>) -> !mo.list<!mo.tensor<[1], f32>>
-  %1 = mo.concat_from_list[%axis: !mo.tensor<[], si64>](%list) : !mo.list<!mo.tensor<[1], f32>> -> !mo.tensor<[2], f32>
-  %2 = mo.list.insert(%list, %zero, %idx) : (!mo.list<!mo.tensor<[1], f32>>, !mo.tensor<[1], f32>, !mo.tensor<[], si64>) -> !mo.list<!mo.tensor<[1], f32>>
-  mo.output %1, %2 :!mo.tensor<[2], f32>, !mo.list<!mo.tensor<[1], f32>>
-}
 
 // Check that transitive dependencies are removed in the policy.
 // CHECK-LABEL: @transitive_remove

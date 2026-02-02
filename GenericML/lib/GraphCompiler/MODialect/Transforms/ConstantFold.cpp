@@ -19,7 +19,6 @@
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
-#include "MLRT/AsyncRT/CompilerSupport/MLIRLocationDecoder.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/GraphRT/GRTDialect/GRTDialect.h"
@@ -29,8 +28,6 @@
 #include "Support/Context.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
@@ -39,7 +36,6 @@
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/FileUtilities.h"
 
 using namespace M;
 using namespace M::MO;
@@ -60,22 +56,14 @@ struct SubgraphsInfo {
   SmallVector<Subgraph> subgraphs;
 };
 
-struct ValueParamCompare {
-  bool operator()(const Operation *lhs, const Operation *rhs) const {
-    return hash_value(lhs) < hash_value(rhs);
-  }
-};
-
 using RuntimeTensor = std::pair<ElementsAttr, TensorShape>;
-using RuntimeList = std::vector<RuntimeTensor>;
-using RuntimeOutput = std::variant<RuntimeTensor, RuntimeList>;
 
 /// Simple struct holding results of a model execution.
 struct ModelResult {
   /// Mapping from subgraph output operation to the constants that should
   /// replace it. Also includes the output shape so that unknown shapes in the
   /// constant graph can be resolved.
-  llvm::DenseMap<Operation *, SmallVector<RuntimeOutput>> constants;
+  llvm::DenseMap<Operation *, SmallVector<RuntimeTensor>> constants;
   /// Mapping from parameter name in subgraph to the value that it should be
   /// defined as.
   llvm::DenseMap<StringAttr, int64_t> parameters;
@@ -320,19 +308,19 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
       arrayType, resourceManager.insert("folded_const", std::move(blob)));
 }
 
-static RuntimeOutput extractRuntimeOutput(
+static RuntimeTensor extractRuntimeOutput(
     const AnyAsyncValueRef &ref, MLIRContext *ctx,
     llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> &cachedConstants) {
-  if (ref.isType<Tensor>()) {
-    Tensor &tensor = ref.get<Tensor>();
+  if (M::Tensor *tensor = dyn_cast<Tensor>(ref)) {
     ElementsAttr constantsArr;
-    if (auto it = cachedConstants.find(ref.getPointer());
-        it != cachedConstants.end()) {
+
+    auto [it, inserted] =
+        cachedConstants.try_emplace(ref.getPointer(), nullptr);
+    if (!inserted) {
       // The same output value was returned multiple times by the graph.
-      // There is no need to create the same attribute another time, just reuse
-      // the existing one.
-      // This avoids creating twice the same dense_resources.
-      // For example, if we constant-fold the following IR:
+      // There is no need to create the same attribute another time, just
+      // reuse the existing one. This avoids creating twice the same
+      // dense_resources. For example, if we constant-fold the following IR:
       //  mo.if(...) {
       //     %1 = some_op(%cst0)
       //  } else {
@@ -349,17 +337,9 @@ static RuntimeOutput extractRuntimeOutput(
       // Create an `ElementsAttr`, possibly by taking ownership of
       // `ref/tensor`'s buffer.
       constantsArr = elementsAttrFromTensor(ref, ctx);
-      cachedConstants.try_emplace(ref.getPointer(), constantsArr);
+      it->second = constantsArr;
     }
-    return RuntimeOutput(RuntimeTensor(constantsArr, tensor.getShape()));
-  } else if (ref.isType<GML::List>()) {
-    GML::List &list = ref.get<GML::List>();
-    RuntimeList out;
-    for (auto &v : list.getElements()) {
-      out.push_back(std::get<RuntimeTensor>(
-          extractRuntimeOutput(v.getValue(), ctx, cachedConstants)));
-    }
-    return out;
+    return RuntimeTensor(constantsArr, tensor->getShape());
   } else {
     ASSERT_STREAM(false, << "Unexpected GML type");
     llvm_unreachable("Unexpected GML type");
@@ -419,12 +399,12 @@ executeModel(MLIRContext *ctx, const Model *model,
 
   // Get the constant values.
   llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> cachedConstants;
-  llvm::DenseMap<Operation *, SmallVector<RuntimeOutput>> opToTensors;
+  llvm::DenseMap<Operation *, SmallVector<RuntimeTensor>> opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
   size_t outIdx = 0;
   for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
     for (auto op : subgraph.outputs) {
-      SmallVector<RuntimeOutput> opTensors;
+      SmallVector<RuntimeTensor> opTensors;
       for (size_t i = 0; i < op->getNumResults(); ++i) {
         AnyAsyncValueRef &tensorRef = resultCopy[outIdx];
         if (tensorRef.isError())
@@ -577,14 +557,6 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     llvm::SetVector<Operation *> members(constSubgraphs.member_begin(*(*it)),
                                          constSubgraphs.member_end());
     Subgraph subgraph(members);
-    // Remove any mo.list.create that are the output of the op as they will get
-    // recreated after executing the subgraph.
-    llvm::SmallVector<Operation *> toRemove;
-    for (auto output : subgraph.outputs)
-      if (isa<ListCreateOp>(output))
-        toRemove.push_back(output);
-    for (auto op : toRemove)
-      subgraph.remove(op);
 
     // Ignore subgraphs that only contain constant ops.
     if (llvm::all_of(subgraph.ops, [](Operation *op) {
@@ -769,26 +741,14 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
       Type type = opResult.getType();
       // Each result can either be a tensor or a shape.
       if (llvm::isa<TensorType>(type)) {
-        newResults.push_back(runtimeTensorToConstant(
-            builder, op->getLoc(), std::get<RuntimeTensor>(constantTensor),
-            type));
+        newResults.push_back(runtimeTensorToConstant(builder, op->getLoc(),
+                                                     constantTensor, type));
       } else if (llvm::isa<ShapeType>(type)) {
-        auto intElems = dyn_cast<IntArrayElementsAttr>(
-            std::get<RuntimeTensor>(constantTensor).first);
+        auto intElems = dyn_cast<IntArrayElementsAttr>(constantTensor.first);
         newResults.push_back(MOSH::ParamToValueOp::create(
             builder, op->getLoc(),
             ShapeAttr::get(intElems.asArrayRef<int64_t>(),
                            MOSH::ShapeType::get(ctx))));
-      } else if (llvm::isa<ListType>(type)) {
-        auto tensors =
-            llvm::map_to_vector(std::get<RuntimeList>(constantTensor),
-                                [&](const RuntimeTensor &tensor) {
-                                  return runtimeTensorToConstant(
-                                      builder, op->getLoc(), tensor,
-                                      cast<ListType>(type).getElementType());
-                                });
-        newResults.push_back(
-            ListCreateOp::create(builder, op->getLoc(), type, tensors));
       } else {
         ASSERT_STREAM(false,
                       << "constants must be tensors or shapes but one is a "
@@ -800,8 +760,8 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
   }
   // Remove internal ops (DCE). Ops are removed in reverse topological ordering
   // so we don't erase a dependency of another op.
-  for (auto op = internalOps.rbegin(); op < internalOps.rend(); ++op)
-    (*op)->erase();
+  for (auto op : llvm::reverse(internalOps))
+    op->erase();
 
   // Add parameters that were defined in the subgraph.
   builder.setInsertionPointToStart(graph.getBodyBlock());
