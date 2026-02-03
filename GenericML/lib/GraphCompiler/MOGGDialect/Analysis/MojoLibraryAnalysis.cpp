@@ -40,16 +40,6 @@ using namespace MOGG;
 constexpr StringLiteral MOGGKernelAPIModuleName = "MOGGKernelAPI";
 constexpr StringLiteral MOGGPrimitivesModuleName = "MOGGPrimitives";
 
-static bool areFunctionsTheSame(KGEN::GeneratorOp gen1,
-                                KGEN::GeneratorOp gen2) {
-  if (gen1.getFuncTypeGenerator() != gen2.getFuncTypeGenerator())
-    return false;
-
-  return mlir::OperationEquivalence::isRegionEquivalentTo(
-      &gen1.getBodyRegion(), &gen2.getBodyRegion(),
-      /*flags=*/mlir::OperationEquivalence::IgnoreLocations);
-}
-
 [[maybe_unused]] static ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
 getFile(llvm::StringRef filepath) {
   auto memBufferOr = toModularErrorOr(
@@ -148,19 +138,6 @@ MojoLibraryAnalysis::getBuiltInKernelPackagePaths(MLIRContext *ctx) {
   return paths;
 }
 
-KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoFunctionFor(
-    StringRef name, StringRef functionLabel) const {
-  auto registeredFunctions = registeredKernelFunctionSymbols.find(name);
-  if (registeredFunctions == registeredKernelFunctionSymbols.end())
-    return {};
-
-  auto registeredFunction = registeredFunctions->second.find(functionLabel);
-  if (registeredFunction == registeredFunctions->second.end())
-    return {};
-
-  return registeredFunction->getValue();
-}
-
 KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoFunctionFor(
     StringRef name, StringRef functionLabel) const {
   auto registeredFunctions = registeredLITKernelFunctionSymbols.find(name);
@@ -172,96 +149,6 @@ KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoFunctionFor(
     return {};
 
   return registeredFunction->getValue();
-}
-
-KGEN::GeneratorOp
-MojoLibraryAnalysis::getMojoFunctionNamed(StringRef name) const {
-  return rawMojoKernelTable->lookup<KGEN::GeneratorOp>(name);
-}
-
-ErrorOr<KGEN::SymbolConstantAttr>
-MojoLibraryAnalysis::getSpecializedKernel(StringRef name,
-                                          ArrayRef<TypedAttr> params) const {
-  KGEN::GeneratorOp generator = getRegisteredMojoKernelFor(name);
-  if (!generator)
-    return Error("Cannot find mojo kernel for " + name);
-
-  auto emitError = [&]() -> mlir::InFlightDiagnostic {
-    return generator->emitError("couldn't not retrieve specialized signature");
-  };
-
-  KGEN::FuncTypeGeneratorType signature =
-      generator.getFuncTypeGenerator().getSpecializedGenerator(
-          params,
-          /*evaluationContext=*/nullptr, emitError);
-  if (!signature)
-    return Error("unable to specialize signature for " + name);
-
-  return KGEN::SymbolConstantAttr::get(generator, signature, params);
-}
-
-ErrorOr<TypedAttr>
-MojoLibraryAnalysis::buildParameterCall(llvm::StringLiteral callee,
-                                        ArrayRef<TypedAttr> parameters,
-                                        ArrayRef<TypedAttr> operands) const {
-  ErrorOr<KGEN::SymbolConstantAttr> maybeSymbol =
-      getSpecializedKernel(callee, parameters);
-
-  if (failed(maybeSymbol))
-    return maybeSymbol.takeError();
-
-  SmallVector<TypedAttr> allOperands;
-  allOperands.push_back(*maybeSymbol);
-  allOperands.append(operands.begin(), operands.end());
-
-  auto resultTy = maybeSymbol->getType().getBody().getResults()[0];
-  return KGEN::ParamOperatorAttr::get(KGEN::POC::Apply, allOperands, resultTy);
-}
-
-bool MojoLibraryAnalysis::kernelHasInputParameter(
-    KGEN::GeneratorOp kernel, StringRef parameterName) const {
-  return llvm::any_of(kernel.getInputParams(), [&](auto param) {
-    return KGEN::LIT::demangleParameterName(param.getName()) == parameterName;
-  });
-}
-
-ErrorOr<OwningOpRef<ModuleOp>> MojoLibraryAnalysis::loadMLIRKernels(
-    std::unique_ptr<llvm::MemoryBuffer> bufferRef, const Twine &diag) {
-  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
-  unsigned bufferId =
-      sourceMgr->AddNewSourceBuffer(std::move(bufferRef), llvm::SMLoc());
-
-  auto internedBuffer = sourceMgr->getMemoryBuffer(bufferId);
-
-  mlir::BytecodeReader reader(*internedBuffer, config, /*lazyLoad=*/false,
-                              sourceMgr);
-
-  Block block;
-  if (failed(reader.readTopLevel(&block))) {
-    return Error(
-        "[MojoLibraryAnalysis] Could not load the mojo kernel operators in " +
-        diag);
-  }
-
-  auto module = cast<ModuleOp>(&block.back());
-  module->remove();
-  return module;
-}
-
-ErrorOr<SmallVector<OwningOpRef<ModuleOp>>>
-MojoLibraryAnalysis::loadAllMLIRKernels(ArrayRef<std::string> paths) {
-  SmallVector<OwningOpRef<ModuleOp>> loadedModules;
-  loadedModules.reserve(paths.size() + 2);
-
-  // Load all user provided library paths.
-  for (auto index : llvm::seq(paths.size())) {
-    if (auto buffer = loadMojoPackageOrBytecode(paths[index]))
-      return buffer.takeError();
-    else
-      loadedModules.push_back(buffer.takeValue());
-  }
-
-  return loadedModules;
 }
 
 ErrorOrSuccess
@@ -309,168 +196,25 @@ MojoLibraryAnalysis::loadAllLITKernels(ArrayRef<std::string> paths) {
   return success();
 }
 
-// Load a list of kernels from the provided user libraries.
-ErrorOr<OwningOpRef<ModuleOp>>
-MojoLibraryAnalysis::loadMojoPackageOrBytecode(StringRef kernelLibraryPath) {
-
-  // Load the extra user library and update the book-keepings.
-  OwningOpRef<ModuleOp> userModule;
-
-  if (Filesystem::isMojoBinaryPackagePath(kernelLibraryPath.str())) {
-    auto sourceMgr = std::make_shared<llvm::SourceMgr>();
-
-    // Load user library that is a mojo package file.
-    ErrorOr<OwningOpRef<ModuleOp>> userModuleOr = parseMojoPackage(
-        getContext(), kernelLibraryPath, sourceMgr, /*generateKGENLib=*/true);
-    if (userModuleOr.isError())
-      return userModuleOr.takeError();
-
-    OwningOpRef<ModuleOp> parsedModule = userModuleOr.takeValue();
-
-    if (!parsedModule)
-      return Error("[MojoLibraryAnalysis] Could not load MOGG Mojo "
-                   "auxiliary binding library");
-
-    userModule = std::move(parsedModule);
-  } else {
-    // Load user library that is a mojo mlibrc file.
-    ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufOr =
-        getFile(kernelLibraryPath);
-    if (bufOr.isError())
-      return bufOr.takeError();
-
-    auto moduleOr = loadMLIRKernels(bufOr.takeValue(), kernelLibraryPath);
-    if (failed(moduleOr))
-      return moduleOr.takeError();
-
-    userModule = moduleOr.takeValue();
-  }
-
-  return userModule;
-}
-
 ErrorOrSuccess
 MojoLibraryAnalysis::addKernelLibraryPath(StringRef kernelLibraryPath) {
-  if (registeredLITMojoKernelSymbol.empty()) {
-    auto moduleOr = loadMojoPackageOrBytecode(kernelLibraryPath);
-    if (moduleOr.isError())
-      return moduleOr.takeError();
-    auto module = moduleOr.takeValue();
-    return updateLoadedKernelsForCollisions(*module);
-  } else {
-    auto sourceMgr = std::make_shared<llvm::SourceMgr>();
-    auto moduleOr = parseMojoPackage(getContext(), kernelLibraryPath, sourceMgr,
-                                     /*generateKGENLib=*/false);
-    if (moduleOr.isError())
-      return moduleOr.takeError();
-    auto module = moduleOr.takeValue();
-    ErrorOrSuccess ret;
-    module->walk([&](KGEN::LIT::FnOp funcOp) {
-      ret = updateRegisteredKernelsMap(funcOp, false);
-      if (ret.isError())
-        return mlir::WalkResult::interrupt();
-      return mlir::WalkResult::skip();
-    });
-
+  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+  auto moduleOr = parseMojoPackage(getContext(), kernelLibraryPath, sourceMgr,
+                                   /*generateKGENLib=*/false);
+  if (moduleOr.isError())
+    return moduleOr.takeError();
+  auto module = moduleOr.takeValue();
+  ErrorOrSuccess ret;
+  module->walk([&](KGEN::LIT::FnOp funcOp) {
+    ret = updateRegisteredKernelsMap(funcOp, false);
     if (ret.isError())
-      return ret;
-    return registerOpaqueTypesFromModule(*module);
-  }
-}
+      return mlir::WalkResult::interrupt();
+    return mlir::WalkResult::skip();
+  });
 
-// Update the state in MojoLibraryAnalysis for collisions etc.
-ErrorOrSuccess
-MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
-
-  SymbolTable userModuleTable(userModule);
-  SymbolTable &rawMojoTable = *rawMojoKernelTable;
-
-  // Generate a new name that is unique to both userModuleTable and
-  // rawMojoTable.
-  auto newUniqueName = [&](StringAttr oldName) {
-    MLIRContext *context = oldName.getContext();
-    SmallString<64> prefix = oldName.getValue();
-    int uniqueId = 0;
-    prefix.push_back('_');
-
-    StringAttr newName;
-    do
-      newName = StringAttr::get(context, prefix + Twine(uniqueId++));
-    while (userModuleTable.lookup(newName) || rawMojoTable.lookup(newName));
-
-    return newName;
-  };
-
-  llvm::DenseMap<Attribute, Attribute> renaming;
-
-  // Remap only exposed kernel functions if their name collides with an
-  // existing function.
-  for (auto op : userModule.getOps<KGEN::GeneratorOp>()) {
-    // We will insert a slightly mangled version of the current name if it
-    // already exists in the mlir file we intend to compile.
-    auto oldSymName = op.getSymNameAttr();
-
-    // If there's no collision we can copy directly obviously.
-    auto existingKernel = rawMojoTable.lookup<KGEN::GeneratorOp>(oldSymName);
-    if (!existingKernel)
-      continue;
-
-    // We ignore duplicated functions.
-    // TODO (GEX-1925): Correctly check if the functions are identical.
-    if (areFunctionsTheSame(op, existingKernel))
-      continue;
-
-    // Create a new symbol which is unique in both files.
-    auto newSymName = newUniqueName(op.getSymNameAttr());
-    op.setSymNameAttr(newSymName);
-
-    auto oldSymbolRef = FlatSymbolRefAttr::get(oldSymName);
-    auto newSymbolRef = FlatSymbolRefAttr::get(newSymName);
-    renaming[oldSymbolRef] = newSymbolRef;
-  }
-
-  if (!renaming.empty()) {
-    // The symbol table infrastructure does not descend into types when renaming
-    // a symbol. Use the replacer to perform renaming in type positions.
-    mlir::AttrTypeReplacer symbolReplacer;
-    symbolReplacer.addReplacement(
-        [renaming = std::move(renaming)](
-            FlatSymbolRefAttr ref) -> std::optional<Attribute> {
-          if (auto it = renaming.find(ref); it != renaming.end())
-            return it->second;
-          return std::nullopt;
-        });
-
-    symbolReplacer.recursivelyReplaceElementsIn(
-        userModule, /*replaceAttrs=*/true, /*replaceLocs=*/false,
-        /*replaceTypes=*/true);
-  }
-
-  // Update the metadata and clone the operators.
-  for (auto op : llvm::make_early_inc_range(
-           userModule.getOps<mlir::SymbolOpInterface>())) {
-    StringAttr oldName = op.getNameAttr();
-
-    // Don't duplicate.
-    if (rawMojoTable.lookup(oldName))
-      continue;
-
-    // Move the operation to the end of the module and insert into the symbol
-    // table. The operation has to be unlinked from its parent before symbol
-    // table insertion.
-    op->moveBefore(module->getBody(), module->getBody()->end());
-
-    [[maybe_unused]] StringAttr newName = rawMojoTable.insert(op);
-    ASSERT_STREAM(oldName == newName, "no renaming should occur at this point");
-
-    if (auto gen = dyn_cast<KGEN::GeneratorOp>(op.getOperation())) {
-      if (auto updateErr = updateRegisteredKernelsMap(
-              gen, /*isGeneratorFromStandardLibrary*/ false))
-        return updateErr;
-    }
-  }
-
-  return success();
+  if (ret.isError())
+    return ret;
+  return registerOpaqueTypesFromModule(*module);
 }
 
 // If the generator is from the standard library and it has a default priority
@@ -479,125 +223,6 @@ MojoLibraryAnalysis::updateLoadedKernelsForCollisions(ModuleOp userModule) {
 // open source standard library code and have it used by the graph compiler.
 static bool shouldIncreasePriority(bool isStandardLibrary, int priority) {
   return isStandardLibrary && priority == -1;
-}
-
-ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
-    KGEN::GeneratorOp generator, bool isGeneratorFromStandardLibrary) {
-  auto registerKernelFunction = [&](StringRef name, StringRef label,
-                                    bool override = true) {
-    auto [it, _] = registeredKernelFunctionSymbols.try_emplace(
-        name, llvm::StringMap<KGEN::GeneratorOp>{});
-
-    auto [it2, inserted] = it->second.try_emplace(label, generator);
-    if (!inserted && override)
-      it2->second = generator;
-  };
-
-  auto registerKernelCandidate = [&](StringRef name,
-                                     int64_t priority) -> ErrorOrSuccess {
-    if (shouldIncreasePriority(isGeneratorFromStandardLibrary, priority))
-      priority = 1;
-
-    auto [it, inserted] = registeredMojoKernelSymbol.try_emplace(
-        name, KernelCandidate(generator, priority));
-    if (inserted) {
-      // First time we find the kernel, just register it.
-      return success();
-    }
-
-    // Returns an error if two kernels have the same priority.
-    int64_t oldPriority = it->getValue().priority;
-    if (oldPriority == priority) {
-      auto diag = generator->emitError() << "override of operation named "
-                                         << name << " has multiple candidates";
-      diag.attachNote(it->getValue().generator.getLoc())
-          << "override with priority " << priority;
-      return Error("Operation overriding error");
-    }
-
-    // Replace it if the new kernel has an higher priority.
-    if (priority > oldPriority)
-      it->getValue() = KernelCandidate(generator, priority);
-    return success();
-  };
-
-  // Detect foreach kernel, treat it specially.
-  if (generator->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_ELEMWISE_FOR_EACH)) {
-    if (!foreachKernel) {
-      foreachKernel = generator;
-    } else if (foreachKernel.getLoc() == generator.getLoc()) {
-      return Error(
-          llvm::formatv("Multiple elementwise foreach kernels detected.\n"
-                        "  Previous: {0} at {1}\n"
-                        "  New: {2} at {3}",
-                        foreachKernel.getSymName(), foreachKernel.getLoc(),
-                        generator.getSymName(), generator.getLoc())
-              .str());
-    } else if (isGeneratorFromStandardLibrary) {
-      // There is an existing kernel, but this one is a different location.
-      // Favor the one from the standard library then.
-      foreachKernel = generator;
-    }
-  }
-
-  if (generator->hasAttr(KGEN::MOGGPreElab::MOGG_INTRINSIC_VIEW_MATERIALIZE)) {
-    if (!viewMaterializeKernel) {
-      viewMaterializeKernel = generator;
-    } else if (viewMaterializeKernel.getLoc() == generator.getLoc()) {
-      return Error(llvm::formatv("Multiple materialize view kernels detected.\n"
-                                 "  Previous: {0} at {1}\n"
-                                 "  New: {2} at {3}",
-                                 viewMaterializeKernel.getSymName(),
-                                 viewMaterializeKernel.getLoc(),
-                                 generator.getSymName(), generator.getLoc())
-                       .str());
-    } else if (isGeneratorFromStandardLibrary) {
-      // There is an existing kernel, but this one is a different location.
-      // Favor the one from the standard library then.
-      viewMaterializeKernel = generator;
-    }
-  }
-
-  // Skipping functions that aren't exported.
-  if (!generator.isExported())
-    return success();
-
-  // Check if the generator has a the registration attribute directly
-  // attached.
-  if (auto regs = generator->getAttrOfType<ArrayAttr>(
-          KGEN::MOGGPreElab::kernelRegistrationAttr)) {
-    ArrayRef<Attribute> kernels = regs.getValue();
-    // Each kernel is stored as a pair of name / priority.
-    for (size_t i = 0; i < kernels.size(); i += 2) {
-      auto asString = cast<StringAttr>(kernels[i]).strref();
-      auto intPriority = cast<IntegerAttr>(kernels[i + 1]);
-      if (auto registerErr =
-              registerKernelCandidate(asString, intPriority.getInt()))
-        return registerErr;
-    }
-  }
-  if (auto kernelName = generator->getAttrOfType<StringAttr>(
-          KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel)) {
-    if (auto registerErr = registerKernelCandidate(kernelName, /*priority=*/0))
-      return registerErr;
-    registerKernelFunction(kernelName,
-                           KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
-  }
-  if (auto name = generator->getAttrOfType<StringAttr>(
-          KGEN::MOGGPreElab::kMOGGShapeFunctionLabel)) {
-    registerKernelFunction(name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
-  }
-  if (auto name = generator->getAttrOfType<StringAttr>(
-          KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel)) {
-    registerKernelFunction(name,
-                           KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
-  }
-  if (auto name = generator->getAttrOfType<StringAttr>(
-          KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel)) {
-    registerKernelFunction(name,
-                           KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
-  }
-  return success();
 }
 
 ErrorOrSuccess MojoLibraryAnalysis::updateRegisteredKernelsMap(
@@ -874,15 +499,6 @@ MojoLibraryAnalysis::MojoLibraryAnalysis(MLIRContext *ctx)
 
 MojoLibraryAnalysis::~MojoLibraryAnalysis() = default;
 
-KGEN::GeneratorOp
-MojoLibraryAnalysis::getRegisteredMojoKernelFor(StringRef name) const {
-  auto registeredFunction = registeredMojoKernelSymbol.find(name);
-  if (registeredFunction == registeredMojoKernelSymbol.end())
-    return nullptr;
-
-  return registeredFunction->getValue().generator;
-}
-
 KGEN::LIT::FnOp
 MojoLibraryAnalysis::getRegisteredLITMojoKernelFor(StringRef name) const {
   auto registeredFunction = registeredLITMojoKernelSymbol.find(name);
@@ -892,22 +508,10 @@ MojoLibraryAnalysis::getRegisteredLITMojoKernelFor(StringRef name) const {
   return registeredFunction->getValue().fun;
 }
 
-KGEN::GeneratorOp
-MojoLibraryAnalysis::getRegisteredMojoShapeFunctionFor(StringRef name) const {
-  return getRegisteredMojoFunctionFor(
-      name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
-}
-
 KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoShapeFunctionFor(
     StringRef name) const {
   return getRegisteredLITMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGShapeFunctionLabel);
-}
-
-KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoUpdateViewFunctionFor(
-    StringRef name) const {
-  return getRegisteredMojoFunctionFor(
-      name, KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
 }
 
 KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoUpdateViewFunctionFor(
@@ -916,22 +520,10 @@ KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoUpdateViewFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGUpdateViewFunctionLabel);
 }
 
-KGEN::GeneratorOp
-MojoLibraryAnalysis::getRegisteredMojoExecuteFunctionFor(StringRef name) const {
-  return getRegisteredMojoFunctionFor(
-      name, KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
-}
-
 KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoExecuteFunctionFor(
     StringRef name) const {
   return getRegisteredLITMojoFunctionFor(
       name, KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel);
-}
-
-KGEN::GeneratorOp MojoLibraryAnalysis::getRegisteredMojoElementwiseFunctionFor(
-    StringRef name) const {
-  return getRegisteredMojoFunctionFor(
-      name, KGEN::MOGGPreElab::kMOGGElementwiseFunctionLabel);
 }
 
 KGEN::LIT::FnOp MojoLibraryAnalysis::getRegisteredLITMojoElementwiseFunctionFor(
