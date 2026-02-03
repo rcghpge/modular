@@ -1,6 +1,3 @@
-// TODO(GEX-2397)
-// REQUIRES: disabled
-
 // RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
