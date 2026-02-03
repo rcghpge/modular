@@ -151,6 +151,43 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "GraphCaptureTest",
+    size = "small",
+    srcs = ["GraphCaptureTest.cpp"],
+    exec_properties = {
+        # Measured peak GPU memory: ~628 MB, set to 2x for safety margin.
+        "test.resources:gpu-memory": "1.3",
+    },
+    gpu_constraints = ["//:nvidia_gpu"],
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "GraphCaptureMultiDeviceTest",
+    size = "small",
+    srcs = ["GraphCaptureMultiDeviceTest.cpp"],
+    exec_properties = {
+        # Measured peak GPU memory: ~628 MB, set to 2x for safety margin.
+        "test.resources:gpu-memory": "1.3",
+    },
+    gpu_constraints = [
+        "//:nvidia_gpu",
+        "//:has_multi_gpu",
+    ],
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
     name = "CUDAMultiDeviceContextTest",
     size = "small",
     srcs = ["CUDADeviceContextTest.cpp"],
