@@ -79,6 +79,13 @@ TensorType dynCastFromTensorLike(Type ty);
 /// TensorType.
 TensorType castFromTensorLike(Type ty);
 
+/// Returns the calculated strides based on the static shape of the tensor.
+/// If `unknown` is true, then the strides for all dimensions will be dynamic,
+/// otherwise the result will have at least the innermost dimension have a
+/// stride of 1.
+llvm::SmallVector<int64_t> getStridesForTensor(MO::TensorType tensor,
+                                               bool unknown);
+
 } // namespace M::MO
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTYPES_H

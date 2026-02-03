@@ -10,7 +10,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
@@ -341,7 +340,7 @@ public:
 
   static MojoValue getStaticStridesAsMojoValue(MO::TensorType type) {
     return getAsDimListMojoValue(
-        MOGG::getStridesForTensor(type, /*unknown=*/false));
+        MO::getStridesForTensor(type, /*unknown=*/false));
   }
 
   MojoValue getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,

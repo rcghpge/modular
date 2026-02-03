@@ -6,8 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 
 using namespace M;
 

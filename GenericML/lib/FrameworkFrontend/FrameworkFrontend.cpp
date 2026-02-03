@@ -17,7 +17,7 @@
 #include "GenericML/GraphCompiler/GraphCompilerCLOptions.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 #include "GenericML/GraphCompiler/Passes.h"
 #include "GenericML/GraphCompiler/RMODialect/RMOAttrs.h"
 #include "GenericML/GraphCompiler/Version.h"

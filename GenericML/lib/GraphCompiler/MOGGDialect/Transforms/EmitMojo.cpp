@@ -10,7 +10,6 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/LowerABIHelper.h"
 #include "Support/CommonCLOptions.h"
 #include "llvm/Support/ToolOutputFile.h"
 

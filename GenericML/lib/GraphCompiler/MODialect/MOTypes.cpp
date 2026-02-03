@@ -939,6 +939,24 @@ size_t BufferType::getRankNonZero() const {
   return rank == 0 ? rank + 1 : rank;
 }
 
+llvm::SmallVector<int64_t> M::MO::getStridesForTensor(MO::TensorType tensor,
+                                                      bool unknown) {
+  size_t rank = std::max(tensor.getRank(), static_cast<size_t>(1));
+  llvm::SmallVector<int64_t> strides(rank, mlir::ShapedType::kDynamic);
+
+  if (unknown)
+    return strides;
+
+  strides.back() = 1;
+  for (int64_t i = rank - 2; i >= 0; --i) {
+    if (tensor.getIntDim(i + 1) == mlir::ShapedType::kDynamic)
+      break;
+    strides[i] = strides[i + 1] * tensor.getIntDim(i + 1);
+  }
+
+  return strides;
+}
+
 //===----------------------------------------------------------------------===//
 // OpaqueType
 //===----------------------------------------------------------------------===//

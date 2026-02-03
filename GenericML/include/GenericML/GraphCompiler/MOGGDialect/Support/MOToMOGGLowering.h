@@ -11,7 +11,6 @@
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "Support/ErrorOr.h"
@@ -104,9 +103,6 @@ private:
   Location loc;
 
   MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis;
-
-  /// Type manager derived from the mojoLibraryAnalysis.
-  MOGG::TypeManager typeManager;
 };
 
 } // namespace M::MOGG

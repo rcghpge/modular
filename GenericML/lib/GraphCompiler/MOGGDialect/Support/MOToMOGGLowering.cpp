@@ -148,9 +148,7 @@ MOGGExpKernelBuilder::MOGGExpKernelBuilder(
     MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis)
     : moOp(op), graphOp(op->getParentOfType<MO::GraphOp>()),
       builder(insertPoint), ctx(op->getContext()), loc(op->getLoc()),
-      mojoLibraryAnalysis(mojoLibraryAnalysis),
-      typeManager(
-          MOGG::TypeManager::get(ctx, mojoLibraryAnalysis).takeValue()) {
+      mojoLibraryAnalysis(mojoLibraryAnalysis) {
 
   // Most ops are async, with specific exceptions:
   // - forceSync overrides everything (unsafe, for debugging only)
@@ -750,9 +748,6 @@ ErrorOr<KernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
 
   kernelOp.setAllocIndicesAttr(
       builder.getIndexArrayAttr(moResultIndicesAllocatedInPlace));
-
-  MOGG::addForwardDeclsOfReferencedFuncs(
-      kernelOp, kernelOp->getParentOfType<ModuleOp>(), mojoLibraryAnalysis);
 
   return kernelOp;
 }

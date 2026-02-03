@@ -6,7 +6,7 @@
 
 #include "GenericML/GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/KGENUtils.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
 #include "KGEN/KGENDialect/KGENParameters.h"
 #include "llvm/ADT/STLExtras.h"
 
