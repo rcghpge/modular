@@ -7,7 +7,6 @@
 #define GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GenericML/GraphCompiler/MOGGDialect/Support/TypeManager.h"
 
 using namespace M;
 
@@ -44,11 +43,6 @@ StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType);
 ///   }
 void fuseConstant(MOGG::KernelOp kernel);
 
-/// Given a set of kernels to fuse together, rename just the right number of
-/// parameters to avoid collisions. Any attempt at fusing the bodies of two
-/// kernels should be prefaced with a call to this function.
-void stageKernelsForFusion(ArrayRef<Operation *> kernelOps);
-
 /// Callback type to intercept inlining on a specific operation.
 /// Return true if the operation is handled by the callback, false otherwise.
 ///
@@ -61,33 +55,6 @@ void stageKernelsForFusion(ArrayRef<Operation *> kernelOps);
 using fuseRegionInlineCallBackT = llvm::function_ref<bool(
     OpBuilder &, mlir::IRMapping &, Operation *, MOGG::GenericCompiledRegionOp,
     MOGG::GenericCompiledRegionOp)>;
-
-/// This function will sequence fuse a set of MOGG::GenericCompiledRegionOp.
-/// It expects the input vector of MOGG::GenericCompiledRegionOp to be
-/// topologically sorted.
-/// `allowDuplication` indicates whether the operation can be duplicated in
-/// order to fuse.
-/// An optional inlineOpCallBack can be provided to handle special
-/// operations that need to be inlined differently.
-void fuseAndReplaceCompiledRegions(
-    bool allowDuplication, bool genReleaseOpaque, ArrayRef<Operation *> toFuse,
-    fuseRegionInlineCallBackT inlineOpCallBack = nullptr);
-
-/// Build the static tensor spec used as a parameter for kernels.
-/// The tensor spec value does not include fusion lambdas.
-ErrorOr<TypedAttr>
-buildTensorSpecAttr(DeviceRefAttr targetDevice, Value moValue, bool isExclusive,
-                    MOGG::MojoLibraryAnalysis &libraryAnalysis,
-                    MOGG::TypeManager &typeManager, OpBuilder &builder);
-/// Same as above, except extracting `isExclusive`from MOGG::KernelOp.
-ErrorOr<TypedAttr>
-buildTensorSpecAttr(MOGG::KernelOp kernelOp, Value moValue,
-                    MOGG::MojoLibraryAnalysis &libraryAnalysis,
-                    M::MOGG::TypeManager &typeManager, OpBuilder &builder);
-
-/// Generate a kgen.param.decl `paramName` `toBind`
-KGEN::ParamDeclAttr bindAttrToParam(Location loc, TypedAttr toBind,
-                                    StringRef paramName, OpBuilder &builder);
 
 // Aliased constant (introduced in MAXPLAT-70) will not be lifted to init, which
 // might reduce the performance gains from certain optimization. We probably
