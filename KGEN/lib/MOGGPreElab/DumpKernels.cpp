@@ -46,18 +46,10 @@ public:
     });
 
     for (auto &[structName, entry] : kernels) {
-      if (isa<LIT::FnOp>(entry.execute)) {
-        llvm::errs() << MojoKernelAdaptor<LIT::FnOp>(
-            structName.strref(), dyn_cast_or_null<LIT::FnOp>(entry.execute),
-            dyn_cast_or_null<LIT::FnOp>(entry.shape),
-            dyn_cast_or_null<LIT::FnOp>(entry.elementwise));
-      } else {
-        llvm::errs() << MojoKernelAdaptor<KGEN::GeneratorOp>(
-            structName.strref(),
-            dyn_cast_or_null<KGEN::GeneratorOp>(entry.execute),
-            dyn_cast_or_null<KGEN::GeneratorOp>(entry.shape),
-            dyn_cast_or_null<KGEN::GeneratorOp>(entry.elementwise));
-      }
+      llvm::errs() << MojoKernelAdaptor(
+          structName.strref(), dyn_cast_or_null<LIT::FnOp>(entry.execute),
+          dyn_cast_or_null<LIT::FnOp>(entry.shape),
+          dyn_cast_or_null<LIT::FnOp>(entry.elementwise));
       llvm::errs() << "\n";
     }
   }

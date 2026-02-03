@@ -19,9 +19,8 @@ namespace M::KGEN::MOGGPreElab {
 
 namespace {
 
-LogicalResult
-verifyHasExecuteFunction(LIT::StructDeclOp structDeclOp,
-                         const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult verifyHasExecuteFunction(LIT::StructDeclOp structDeclOp,
+                                       const MojoKernelAdaptor &adaptor) {
   if (!adaptor.executeFunction.has_value()) {
     structDeclOp->emitError()
         << "All kernels must have an execution entry point named "
@@ -32,8 +31,8 @@ verifyHasExecuteFunction(LIT::StructDeclOp structDeclOp,
   return success();
 }
 
-LogicalResult verifyShapeFunctionHasNoDPSOutputs(
-    const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult
+verifyShapeFunctionHasNoDPSOutputs(const MojoKernelAdaptor &adaptor) {
   if (!adaptor.shapeFunction.has_value())
     return success();
 
@@ -53,7 +52,7 @@ LogicalResult verifyShapeFunctionHasNoDPSOutputs(
 }
 
 LogicalResult verifyShapeFunctionInputsMatchExecuteFunction(
-    const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+    const MojoKernelAdaptor &adaptor) {
   if (!adaptor.shapeFunction.has_value())
     return success();
 
@@ -128,8 +127,8 @@ LogicalResult verifyShapeFunctionInputsMatchExecuteFunction(
   return success();
 }
 
-LogicalResult verifyExecuteFunctionDoesNotReturnATensor(
-    const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult
+verifyExecuteFunctionDoesNotReturnATensor(const MojoKernelAdaptor &adaptor) {
 
   if (!adaptor.executeFunction->outputResult.has_value())
     return success();
@@ -143,8 +142,7 @@ LogicalResult verifyExecuteFunctionDoesNotReturnATensor(
   return success();
 }
 
-LogicalResult
-verifyOutputsAppearBeforeInputs(MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult verifyOutputsAppearBeforeInputs(MojoKernelAdaptor &adaptor) {
   int64_t indexOfFirstInput = std::numeric_limits<int64_t>::max();
   for (auto &arg : adaptor.executeFunction->inputArguments) {
     indexOfFirstInput =
@@ -166,10 +164,9 @@ verifyOutputsAppearBeforeInputs(MojoKernelAdaptor<LIT::FnOp> &adaptor) {
   return success();
 }
 
-LogicalResult
-verifyContextsAppearLastInSignature(MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult verifyContextsAppearLastInSignature(MojoKernelAdaptor &adaptor) {
   const auto contextsAreLast =
-      [](const std::optional<MojoKernelFunctionAdaptor<LIT::FnOp>> &func)
+      [](const std::optional<MojoKernelFunctionAdaptor> &func)
       -> LogicalResult {
     if (!func.has_value())
       return success();
@@ -210,11 +207,10 @@ verifyContextsAppearLastInSignature(MojoKernelAdaptor<LIT::FnOp> &adaptor) {
   return success();
 }
 
-LogicalResult verifyOpaqueArgumentsArePassedByReference(
-    MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult
+verifyOpaqueArgumentsArePassedByReference(MojoKernelAdaptor &adaptor) {
   auto opaquesByReference =
-      [](std::optional<MojoKernelFunctionAdaptor<LIT::FnOp>> &func)
-      -> LogicalResult {
+      [](std::optional<MojoKernelFunctionAdaptor> &func) -> LogicalResult {
     if (!func.has_value())
       return success();
 
@@ -246,14 +242,14 @@ LogicalResult verifyOpaqueArgumentsArePassedByReference(
   return success();
 }
 
-LogicalResult verifyAtMostOneVariadicInputAndOutput(
-    const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult
+verifyAtMostOneVariadicInputAndOutput(const MojoKernelAdaptor &adaptor) {
   /// TODO: (GEX-1994) Remove this.
   if (adaptor.isCoreMOOperation())
     return success();
 
   auto atMostOneVariadic =
-      [](const std::optional<MojoKernelFunctionAdaptor<LIT::FnOp>> &func)
+      [](const std::optional<MojoKernelFunctionAdaptor> &func)
       -> LogicalResult {
     if (!func.has_value())
       return success();
@@ -288,8 +284,8 @@ LogicalResult verifyAtMostOneVariadicInputAndOutput(
   return success();
 }
 
-LogicalResult verifyExecuteNotReturningOpaqueAndThrows(
-    MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult
+verifyExecuteNotReturningOpaqueAndThrows(MojoKernelAdaptor &adaptor) {
   if (!adaptor.executeFunction->outputResult.has_value())
     return success();
 
@@ -307,9 +303,9 @@ LogicalResult verifyExecuteNotReturningOpaqueAndThrows(
 }
 
 LogicalResult
-verifyAllOperandTypesAreSupported(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+verifyAllOperandTypesAreSupported(const MojoKernelAdaptor &adaptor) {
   auto noUnsupportedArgument =
-      [&](const std::optional<MojoKernelFunctionAdaptor<LIT::FnOp>> &function)
+      [&](const std::optional<MojoKernelFunctionAdaptor> &function)
       -> LogicalResult {
     if (!function.has_value())
       return success();
@@ -351,14 +347,12 @@ verifyAllOperandTypesAreSupported(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
   return noUnsupportedArgument(adaptor.shapeFunction);
 }
 
-LogicalResult
-verifyElementwiseFunction(const MojoKernelAdaptor<LIT::FnOp> &adaptor) {
+LogicalResult verifyElementwiseFunction(const MojoKernelAdaptor &adaptor) {
 
   if (!adaptor.elementwiseFunction.has_value())
     return success();
 
-  const MojoKernelFunctionAdaptor<LIT::FnOp> &elemwiseFn =
-      *adaptor.elementwiseFunction;
+  const MojoKernelFunctionAdaptor &elemwiseFn = *adaptor.elementwiseFunction;
 
   // The elementwise must only take SIMD in / outs and the IndexList operand.
   // TODO: Check if the scalars I/Os are properly parametrized SIMD values.
@@ -444,7 +438,7 @@ public:
     // Iterate over all existing kernels and apply the verification.
     bool failed = false;
     for (auto &[structDeclOp, entry] : kernels) {
-      MojoKernelAdaptor<LIT::FnOp> adaptor(
+      MojoKernelAdaptor adaptor(
           structDeclOp.getSourceName().value().getName().strref(),
           entry.execute, entry.shape, entry.elementwise);
 

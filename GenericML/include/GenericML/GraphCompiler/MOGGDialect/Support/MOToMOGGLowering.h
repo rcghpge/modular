@@ -39,8 +39,6 @@ for those of the new ExtensibilityAPI.
 
 namespace M::MOGG {
 
-using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
-
 // Forward declarations
 class MojoLibraryAnalysis;
 
@@ -68,32 +66,26 @@ private:
 
   DeviceRefAttr getHostDevice() const { return M::getHostDevice(graphOp); }
 
-  template <class FuncT>
   ErrorOr<KernelOp> lowerToKernelBase();
 
-  template <class FuncT>
-  KernelCallInterface lowerToElementwiseKernel(
-      KernelOp kernelOp, const OperandMapping &mapping,
-      const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
+  KernelCallInterface
+  lowerToElementwiseKernel(KernelOp kernelOp, const OperandMapping &mapping,
+                           const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
 
-  template <class FuncT>
   ErrorOr<KernelCallInterface>
   lowerToViewKernel(KernelOp kernelOp, const OperandMapping &mapping,
-                    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
+                    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
 
-  template <class FuncT>
-  KernelCallInterface lowerToNormalKernel(
-      KernelOp kernelOp, const OperandMapping &mapping,
-      const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
+  KernelCallInterface
+  lowerToNormalKernel(KernelOp kernelOp, const OperandMapping &mapping,
+                      const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
 
-  template <class FuncT>
-  KernelCallInterface lowerToShapeKernel(
-      KernelOp kernelOp, const OperandMapping &mapping,
-      const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor);
+  KernelCallInterface
+  lowerToShapeKernel(KernelOp kernelOp, const OperandMapping &mapping,
+                     const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
 
-  template <class FuncT>
   ErrorOr<KernelOp>
-  buildKernelOpImpl(KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
+  buildKernelOpImpl(KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor,
                     const OperandMapping &operandMapping);
 
   ErrorOr<DictionaryAttr> forwardParameters();

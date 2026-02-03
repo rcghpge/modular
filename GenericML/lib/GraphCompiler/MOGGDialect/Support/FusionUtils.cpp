@@ -596,8 +596,7 @@ getKernelOutputFusionLambdaType(MojoLibraryAnalysis &mojoLibraryAnalysis,
   // Check if the output operand corresponds to an output lambda.
   auto function = mojoLibraryAnalysis.getRegisteredLITMojoExecuteFunctionFor(
       executeOp.getKernelName());
-  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp> functionAdaptor(
-      function);
+  KGEN::MOGGPreElab::MojoKernelFunctionAdaptor functionAdaptor(function);
   if (!functionAdaptor.outputArguments[*outputIdx].isTensorWithIOSpec(
           KGEN::MOGGPreElab::IOSpec::FusedComputeOutputTensor)) {
     return KernelOutputFusionLambdaType::Output;

@@ -1050,7 +1050,7 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 
   // Build kernel adaptor to check what types the kernel expects
   using namespace KGEN::MOGGPreElab;
-  MojoKernelFunctionAdaptor<KGEN::LIT::FnOp> kernelAdaptor(function);
+  MojoKernelFunctionAdaptor kernelAdaptor(function);
 
   // Collect all kernel I/Os
   SmallVector<MojoValue> kernelOperands;

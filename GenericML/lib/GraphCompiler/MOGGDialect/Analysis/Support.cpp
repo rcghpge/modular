@@ -71,20 +71,6 @@ static MojoOperationInfo getMojoOperationInfo(Operation *op) {
           KGEN::MOGGPreElab::kMOGGExecuteFunctionLabel};
 }
 
-template <>
-ErrorOr<KGEN::GeneratorOp>
-getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
-                    StringRef mojoOperationName, StringRef functionLabel) {
-  auto generatorOp = mojoLibraryAnalysis.getRegisteredMojoFunctionFor(
-      mojoOperationName, functionLabel);
-
-  if (!generatorOp)
-    return Error(Twine("Could not find a mojo kernel registered for ") +
-                 mojoOperationName + " with function " + functionLabel);
-  return generatorOp;
-}
-
-template <>
 ErrorOr<KGEN::LIT::FnOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     StringRef mojoOperationName, StringRef functionLabel) {
@@ -97,43 +83,33 @@ getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
   return generatorOp;
 }
 
-template <class FuncT>
-ErrorOr<FuncT>
+ErrorOr<KGEN::LIT::FnOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     Operation *op) {
   MojoOperationInfo info = getMojoOperationInfo(op);
-  return getMojoKernelTarget<FuncT>(mojoLibraryAnalysis, info.operationName,
-                                    info.functionLabel);
+  return getMojoKernelTarget(mojoLibraryAnalysis, info.operationName,
+                             info.functionLabel);
 }
 
-template <class FuncT>
-static FuncT
+static KGEN::LIT::FnOp
 getElementwiseFunc(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                    StringRef name) {
-  if constexpr (std::is_same_v<FuncT, KGEN::GeneratorOp>) {
-    return mojoLibraryAnalysis.getRegisteredMojoElementwiseFunctionFor(name);
-  } else if constexpr (std::is_same_v<FuncT, KGEN::LIT::FnOp>) {
-    return mojoLibraryAnalysis.getRegisteredLITMojoElementwiseFunctionFor(name);
-  } else {
-    llvm_unreachable("Invalid type");
-    return nullptr;
-  }
+  return mojoLibraryAnalysis.getRegisteredLITMojoElementwiseFunctionFor(name);
 }
 
-template <class FuncT>
-ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT>>
+ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor>
 getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                      Operation *op) {
   // Find the kernel from the library.
   MojoOperationInfo info = getMojoOperationInfo(op);
-  ErrorOr<FuncT> maybeFuncOp = getMojoKernelTarget<FuncT>(
+  ErrorOr<KGEN::LIT::FnOp> maybeFuncOp = getMojoKernelTarget(
       mojoLibraryAnalysis, info.operationName, info.functionLabel);
-  FuncT funcOp = maybeFuncOp.isError() ? nullptr : *maybeFuncOp;
+  KGEN::LIT::FnOp funcOp = maybeFuncOp.isError() ? nullptr : *maybeFuncOp;
 
-  FuncT executeFunc = nullptr;
-  FuncT shapeFunc = nullptr;
-  FuncT elemtwiseFunc =
-      getElementwiseFunc<FuncT>(mojoLibraryAnalysis, info.operationName);
+  KGEN::LIT::FnOp executeFunc = nullptr;
+  KGEN::LIT::FnOp shapeFunc = nullptr;
+  KGEN::LIT::FnOp elemtwiseFunc =
+      getElementwiseFunc(mojoLibraryAnalysis, info.operationName);
 
   // Determine which function type we retrieved based on the label
   if (info.functionLabel == KGEN::MOGGPreElab::kMOGGShapeFunctionLabel) {
@@ -150,21 +126,9 @@ getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
     }
   }
 
-  return KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT>(
-      "", /*execute=*/executeFunc, /*shape=*/shapeFunc,
-      /*elementwise=*/elemtwiseFunc);
+  return KGEN::MOGGPreElab::MojoKernelAdaptor("", /*execute=*/executeFunc,
+                                              /*shape=*/shapeFunc,
+                                              /*elementwise=*/elemtwiseFunc);
 }
-
-template ErrorOr<KGEN::GeneratorOp> getMojoKernelTarget<KGEN::GeneratorOp>(
-    const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, Operation *op);
-template ErrorOr<KGEN::LIT::FnOp> getMojoKernelTarget<KGEN::LIT::FnOp>(
-    const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, Operation *op);
-
-template ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>>
-getMojoKernelAdaptor<KGEN::GeneratorOp>(
-    const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, Operation *op);
-template ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::LIT::FnOp>>
-getMojoKernelAdaptor<KGEN::LIT::FnOp>(
-    const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis, Operation *op);
 
 } // namespace M::MOGG

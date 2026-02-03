@@ -228,11 +228,9 @@ convertTuplesIfNeeded(ArrayRef<Value> originalInputs,
   return ret;
 }
 
-template <class FuncT>
-void addContextIfPresent(
-    Operation *op, SmallVector<Value> &inputs,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
-    OpBuilder &builder, bool forceAddContext = false) {
+void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
+                         const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor,
+                         OpBuilder &builder, bool forceAddContext = false) {
   bool hasContextType = forceAddContext;
   bool isVariadic = false;
   for (auto &&arg : adaptor.executeFunction->inputArguments) {
@@ -266,10 +264,9 @@ void addContextIfPresent(
   }
 }
 
-template <class FuncT>
 KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
     KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
+    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -347,10 +344,9 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToElementwiseKernel(
   return ret;
 }
 
-template <class FuncT>
 ErrorOr<KernelCallInterface> MOGGExpKernelBuilder::lowerToViewKernel(
     KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
+    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
   if (kernelOp->getNumResults() != 1)
     return Error("Expected view op to have exactly one result");
 
@@ -379,10 +375,9 @@ ErrorOr<KernelCallInterface> MOGGExpKernelBuilder::lowerToViewKernel(
   return view;
 }
 
-template <class FuncT>
 KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
     KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
+    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   auto outputPlaceholder = kernelOp.getOutputPlaceholder();
   SmallVector<Value> outputs;
@@ -434,10 +429,9 @@ KernelCallInterface MOGGExpKernelBuilder::lowerToNormalKernel(
                                regRetTypeAttr, isThrows, inputs, outputs);
 }
 
-template <class FuncT>
 KernelCallInterface MOGGExpKernelBuilder::lowerToShapeKernel(
     KernelOp kernelOp, const OperandMapping &mapping,
-    const KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor) {
+    const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
                             execBody->getArguments().end());
@@ -648,14 +642,12 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
   return DictionaryAttr::get(moOp->getContext(), forwardedParameters);
 }
 
-template <class FuncT>
 ErrorOr<KernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
-  auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(mojoLibraryAnalysis, moOp);
+  auto maybeAdaptor = getMojoKernelAdaptor(mojoLibraryAnalysis, moOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
-  KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> adaptor =
-      maybeAdaptor.takeValue();
+  KGEN::MOGGPreElab::MojoKernelAdaptor adaptor = maybeAdaptor.takeValue();
 
   // For shape functions, use the shape function instead of execute function
   // Shape functions return IndexList for dimension binding, not as SSA values,
@@ -688,9 +680,8 @@ ErrorOr<KernelOp> MOGGExpKernelBuilder::lowerToKernelBase() {
 }
 
 // Helper to build the kernel op (common code for both paths)
-template <class FuncT>
 ErrorOr<KernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
-    KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT> &adaptor,
+    KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor,
     const OperandMapping &operandMapping) {
 
   // For shape functions, forward the outputParamDecls
@@ -767,6 +758,6 @@ ErrorOr<KernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
 }
 
 ErrorOr<KernelOp> MOGGExpKernelBuilder::lowerToKernel() {
-  return lowerToKernelBase<KGEN::LIT::FnOp>();
+  return lowerToKernelBase();
 }
 } // namespace M::MOGG

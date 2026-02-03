@@ -1021,14 +1021,11 @@ static bool isLITStaticStringType(Type ty) {
   return true;
 }
 
-using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
-
-template <class FuncT>
 static ErrorOrSuccess
 validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
                                MO::CustomOp customOp) {
   // Find the kernel from the library.
-  auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(libraryAnalysis, customOp);
+  auto maybeAdaptor = getMojoKernelAdaptor(libraryAnalysis, customOp);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
@@ -1042,22 +1039,15 @@ validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
   SmallVector<KGEN::ParamDeclAttr> inputParamsVec;
   ArrayAttr parameterTypeNames;
 
-  if constexpr (std::is_same_v<FuncT, KGEN::LIT::FnOp>) {
-    // For LIT, get both the parent struct's parameters and the function's
-    // parameters. Struct params come first, then function params.
-    if (auto structDeclOp =
-            mojoCode->template getParentOfType<KGEN::LIT::StructDeclOp>()) {
-      llvm::append_range(inputParamsVec, structDeclOp.getInputParams());
-    }
-    llvm::append_range(inputParamsVec, mojoCode.getInputParams());
-    parameterTypeNames = mojoCode->template getAttrOfType<ArrayAttr>(
-        KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
-  } else {
-    // For GeneratorOp, get the function's parameters.
-    llvm::append_range(inputParamsVec, mojoCode.getInputParams());
-    parameterTypeNames = mojoCode->template getAttrOfType<ArrayAttr>(
-        KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
+  // For LIT, get both the parent struct's parameters and the function's
+  // parameters. Struct params come first, then function params.
+  if (auto structDeclOp =
+          mojoCode->template getParentOfType<KGEN::LIT::StructDeclOp>()) {
+    llvm::append_range(inputParamsVec, structDeclOp.getInputParams());
   }
+  llvm::append_range(inputParamsVec, mojoCode.getInputParams());
+  parameterTypeNames = mojoCode->template getAttrOfType<ArrayAttr>(
+      KGEN::MOGGPreElab::MOGG_INPUT_PARAM_TYPES);
   ArrayRef<KGEN::ParamDeclAttr> inputParams = inputParamsVec;
 
   struct MojoParameterAdaptor {
@@ -1261,15 +1251,14 @@ validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
 
 ErrorOrSuccess
 MojoLibraryAnalysis::validateCustomOpParameters(MO::CustomOp customOp) const {
-  return validateCustomOpParametersImpl<KGEN::LIT::FnOp>(*this, customOp);
+  return validateCustomOpParametersImpl(*this, customOp);
 }
 
-template <class FuncT>
 static ErrorOrSuccess
 verifyMOOpMatchesKernelImpl(const MojoLibraryAnalysis &libraryAnalysis,
                             Operation *op) {
   // Find the kernel from the library.
-  auto maybeAdaptor = getMojoKernelAdaptor<FuncT>(libraryAnalysis, op);
+  auto maybeAdaptor = getMojoKernelAdaptor(libraryAnalysis, op);
   if (maybeAdaptor.isError())
     return maybeAdaptor.takeError();
 
@@ -1287,7 +1276,7 @@ verifyMOOpMatchesKernelImpl(const MojoLibraryAnalysis &libraryAnalysis,
 
 ErrorOrSuccess
 MojoLibraryAnalysis::verifyMOOpMatchesKernel(Operation *op) const {
-  return verifyMOOpMatchesKernelImpl<KGEN::LIT::FnOp>(*this, op);
+  return verifyMOOpMatchesKernelImpl(*this, op);
 }
 
 ErrorOr<std::shared_ptr<MojoLibraryAnalysis>>

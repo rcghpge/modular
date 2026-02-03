@@ -82,10 +82,10 @@ static StringRef moOperationName(Operation *op) {
 // If matchOperands is set to true, this function will not attempt to validate
 // results. Conversely, if set to false, it will do extra checks beyond DPS
 // arguments with result types.
-template <class FuncT, bool matchOperands>
+template <bool matchOperands>
 static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
     Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<FuncT> &adaptor) {
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor &adaptor) {
   using namespace KGEN::MOGGPreElab;
   static const char *argumentKind = matchOperands ? "input" : "output";
 
@@ -311,16 +311,14 @@ static ErrorOr<IndexToOperandAdaptorMapping> matchOperandsOrResults(
   return mapping;
 }
 
-template <class FuncT>
 ErrorOr<OperandMapping> mapMOOpToKernelImplementation(
     Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<FuncT> &adaptor) {
-  auto matchedInputsOrError = matchOperandsOrResults<FuncT, true>(op, adaptor);
+    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor &adaptor) {
+  auto matchedInputsOrError = matchOperandsOrResults<true>(op, adaptor);
   if (matchedInputsOrError.isError())
     return matchedInputsOrError.takeError();
 
-  auto matchedOutputsOrError =
-      matchOperandsOrResults<FuncT, false>(op, adaptor);
+  auto matchedOutputsOrError = matchOperandsOrResults<false>(op, adaptor);
   if (matchedOutputsOrError.isError())
     return matchedOutputsOrError.takeError();
 
@@ -350,26 +348,5 @@ InverseOperandMapping invertMapping(const OperandMapping &mapping) {
 
   return ret;
 }
-
-ErrorOr<InverseOperandMapping> mapKernelImplementationToMOOp(
-    Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor) {
-  auto directMapping = mapMOOpToKernelImplementation(op, adaptor);
-  if (directMapping.isError())
-    return directMapping.takeError();
-
-  return invertMapping(*directMapping);
-}
-
-template ErrorOr<OperandMapping>
-mapMOOpToKernelImplementation<KGEN::GeneratorOp>(
-    Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::GeneratorOp>
-        &adaptor);
-template ErrorOr<OperandMapping> mapMOOpToKernelImplementation<KGEN::LIT::FnOp>(
-    Operation *op,
-    const KGEN::MOGGPreElab::MojoKernelFunctionAdaptor<KGEN::LIT::FnOp>
-        &adaptor);
 
 } // namespace M::MOGG

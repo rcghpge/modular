@@ -18,22 +18,17 @@ class MojoLibraryAnalysis;
 int64_t getNumDPSStyleOutputs(KGEN::GeneratorOp mojoCode);
 
 /// Returns the KGEN Generator associated with the given operation.
-template <class FuncT>
-ErrorOr<FuncT>
+ErrorOr<KGEN::LIT::FnOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     Operation *op);
 
 /// Returns the KGEN Generator associated with the given name and label.
-template <class FuncT>
-ErrorOr<FuncT>
+ErrorOr<KGEN::LIT::FnOp>
 getMojoKernelTarget(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                     StringRef mojoOperationName, StringRef functionLabel);
 
-using KernelAdaptor = KGEN::MOGGPreElab::MojoKernelAdaptor<KGEN::GeneratorOp>;
-
 /// Construct the kernel adaptor for the given operation.
-template <class FuncT>
-ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor<FuncT>>
+ErrorOr<KGEN::MOGGPreElab::MojoKernelAdaptor>
 getMojoKernelAdaptor(const MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis,
                      Operation *op);
 
