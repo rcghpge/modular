@@ -790,8 +790,6 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     } else if (auto bufferSliceOp = value.getDefiningOp<MGP::BufferSliceOp>()) {
       newValue = createAsyncPackBorrowV2WithUnpack(builder, loc, value,
                                                    bufferSliceOp.getInBuffer());
-    } else {
-      newValue = MOGG::AsyncPackBorrowOp::create(builder, loc, value);
     }
 
     if (newValue) {

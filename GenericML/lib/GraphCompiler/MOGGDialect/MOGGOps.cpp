@@ -2245,23 +2245,6 @@ LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
 }
 
 //===----------------------------------------------------------------------===//
-// AsyncPackBorrowOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
-  auto resultIndexOr = getOutputIndex();
-  if (!resultIndexOr)
-    return failure();
-  auto moggAsyncPackBorrowFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
-  state.builder.call(moggAsyncPackBorrowFunc, {},
-                     {/* borrower */ state.mojoReturnValues[*resultIndexOr],
-                      /* borrowee */ state.getMojoValueFor(getInput())});
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // AsyncPackBorrowV2Op
 //===----------------------------------------------------------------------===//
 

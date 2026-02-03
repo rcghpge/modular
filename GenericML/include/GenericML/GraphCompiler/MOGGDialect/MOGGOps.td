@@ -1422,13 +1422,12 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 }
 
 
-def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
+def MOGG_AsyncPackBorrowV2Op : MOGG_Op<"async.pack.borrow.v2", [
   Pure,
-  SameOperandsAndResultType,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,
 ]> {
-  let arguments = (ins AnyType:$input);
+  let arguments = (ins AnyType:$input, AnyType:$mem);
   let results = (outs AnyType:$output);
   let summary = "Borrows the input tensor ref value";
   let description = [{
@@ -1455,20 +1454,6 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
     Another similar op has this issue: mogg.async.ready. It does not create a
     chain but rather gets the kernel chain from the void** and sets it to ready.
   }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
-def MOGG_AsyncPackBorrowV2Op : MOGG_Op<"async.pack.borrow.v2", [
-  Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>,
-]> {
-  let arguments = (ins AnyType:$input, AnyType:$mem);
-  let results = (outs AnyType:$output);
-  let summary = "v2 version of AsyncPackBorrowOp";
 
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
