@@ -1962,7 +1962,7 @@ LogicalResult AsyncUnpackOp::canonicalize(AsyncUnpackOp unpackOp,
     return success();
   }
 
-  if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackBorrowV2Op>()) {
+  if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackBorrowOp>()) {
     rewriter.replaceOp(unpackOp, packOp.getInput());
     return success();
   }
@@ -2245,15 +2245,15 @@ LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
 }
 
 //===----------------------------------------------------------------------===//
-// AsyncPackBorrowV2Op
+// AsyncPackBorrowOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AsyncPackBorrowV2Op::emitMojo(EmitMojoState &state) {
+LogicalResult AsyncPackBorrowOp::emitMojo(EmitMojoState &state) {
   auto resultIndexOr = getOutputIndex();
   if (!resultIndexOr)
     return failure();
   MojoValue moggAsyncPackBorrowFunc{
-      HardcodedMojoSymbols::func_mogg_async_pack_borrow_v2};
+      HardcodedMojoSymbols::func_mogg_async_pack_borrow};
   MojoValue specRankParam;
   MojoValue isTensorParam;
   if (isa<MGP::DeviceBufferType>(getInput().getType())) {
@@ -2282,7 +2282,7 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::canonicalize(
   ASSERT_STREAM(!unpackOp.getValue().getDefiningOp<AsyncPackOp>(),
                 << "WE do not support unpacking async memory refs from packed "
                    "operations. This should not happen.");
-  if (auto packOp = unpackOp.getValue().getDefiningOp<AsyncPackBorrowV2Op>()) {
+  if (auto packOp = unpackOp.getValue().getDefiningOp<AsyncPackBorrowOp>()) {
     rewriter.replaceOp(unpackOp, packOp.getMem());
     return success();
   }

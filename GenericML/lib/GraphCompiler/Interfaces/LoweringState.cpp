@@ -710,15 +710,15 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
   return newOp->getResult(0);
 }
 
-/// Helper function to create AsyncPackBorrowV2Op with an async unpack from a
+/// Helper function to create AsyncPackBorrowOp with an async unpack from a
 /// source value. This is used for operations that need to borrow a
 /// buffer/tensor and track its async reference.
-static Value createAsyncPackBorrowV2WithUnpack(OpBuilder &builder, Location loc,
-                                               Value value, Value sourceValue) {
+static Value createAsyncPackBorrowWithUnpack(OpBuilder &builder, Location loc,
+                                             Value value, Value sourceValue) {
   auto asyncUnpackAnyAsyncValueRefOp =
       MOGG::AsyncUnpackAnyAsyncValueRefOp::create(builder, loc, sourceValue);
-  return MOGG::AsyncPackBorrowV2Op::create(builder, loc, value.getType(), value,
-                                           asyncUnpackAnyAsyncValueRefOp);
+  return MOGG::AsyncPackBorrowOp::create(builder, loc, value.getType(), value,
+                                         asyncUnpackAnyAsyncValueRefOp);
 }
 
 void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
@@ -760,7 +760,7 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
       newValue = MOGG::AsyncPackOp::create(builder, loc, value.getType(),
                                            packOperands);
     } else if (value.getDefiningOp<MGP::BufferConstantOp>()) {
-      newValue = MOGG::AsyncPackBorrowV2Op::create(
+      newValue = MOGG::AsyncPackBorrowOp::create(
           builder, loc, value.getType(), value,
           MOGG::AsyncPlaceholderAnyAsyncValueRefOp::create(builder, loc));
     } else if (auto bufferGetCachedOp =
@@ -776,20 +776,20 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
         value = bufferGetCachedOp.getOutBuffer();
         oldBufferGetCachedOp->erase();
       }
-      newValue = MOGG::AsyncPackBorrowV2Op::create(
+      newValue = MOGG::AsyncPackBorrowOp::create(
           builder, loc, value.getType(), bufferGetCachedOp.getOutBuffer(),
           bufferGetCachedOp.getMemStorageHandle());
     } else if (auto tensorExtractBufferOp =
                    value.getDefiningOp<MGP::TensorExtractBufferOp>()) {
-      newValue = createAsyncPackBorrowV2WithUnpack(
+      newValue = createAsyncPackBorrowWithUnpack(
           builder, loc, value, tensorExtractBufferOp.getTensor());
     } else if (auto tensorCreateOp =
                    value.getDefiningOp<MGP::TensorCreateOp>()) {
-      newValue = createAsyncPackBorrowV2WithUnpack(builder, loc, value,
-                                                   tensorCreateOp.getBuffer());
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 tensorCreateOp.getBuffer());
     } else if (auto bufferSliceOp = value.getDefiningOp<MGP::BufferSliceOp>()) {
-      newValue = createAsyncPackBorrowV2WithUnpack(builder, loc, value,
-                                                   bufferSliceOp.getInBuffer());
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 bufferSliceOp.getInBuffer());
     }
 
     if (newValue) {

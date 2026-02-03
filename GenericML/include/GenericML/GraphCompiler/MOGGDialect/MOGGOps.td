@@ -1422,7 +1422,7 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
 }
 
 
-def MOGG_AsyncPackBorrowV2Op : MOGG_Op<"async.pack.borrow.v2", [
+def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>,

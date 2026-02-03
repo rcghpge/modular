@@ -85,8 +85,8 @@ constexpr StringLiteral func_unpack_device_ctx =
     "MOGGPrimitives.unpack_device_ctx";
 constexpr StringLiteral func_unpack_tensor = "MOGGPrimitives.unpack_tensor";
 constexpr StringLiteral func_all_zeros = "MOGGPrimitives.all_zeros";
-constexpr StringLiteral func_mogg_async_pack_borrow_v2 =
-    "MOGGPrimitives.mogg_async_pack_borrow_v2";
+constexpr StringLiteral func_mogg_async_pack_borrow =
+    "MOGGPrimitives.mogg_async_pack_borrow";
 constexpr StringLiteral func_get_buffer_mem_storage_handle =
     "MOGGPrimitives.get_buffer_mem_storage_handle";
 
