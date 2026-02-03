@@ -48,20 +48,6 @@ static auto stringifyMLIRObject(T entity) {
   return str;
 }
 
-static void printSetDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
-                        Value val) {
-  KGEN::printParamName(p, dim);
-  p << " = ";
-  p << val;
-}
-
-static ParseResult parseSetDim(OpAsmParser &p, StringAttr &name,
-                               mlir::OpAsmParser::UnresolvedOperand &value) {
-  if (KGEN::parseParamName(p, name) || p.parseEqual() || p.parseOperand(value))
-    return failure();
-  return success();
-}
-
 static ParseResult parseDim(OpAsmParser &p, StringAttr &name,
                             Type &resultType) {
   SmallVector<Type> tmpTypes;
@@ -1710,20 +1696,6 @@ LogicalResult AsScalarOp::verify() {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// MOGG UnpackShapeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult M::MOGG::UnpackShapeOp::verify() {
-  auto shapeResTy = getShape().getType();
-  uint64_t rank = shapeResTy.getRank();
-  if (rank != getNumResults())
-    return emitError("expected ") << rank << " results for rank-" << rank
-                                  << " shape, but got " << getNumResults();
-
-  return success();
-}
-
 LogicalResult AsScalarOp::emitMojo(EmitMojoState &state) {
   const MojoValue &input = state.getMojoValueFor(getInput());
 
@@ -1903,17 +1875,6 @@ OpFoldResult ToMGPFromOpaqueOp::fold(FoldAdaptor adaptor) {
 void AlignmentPlaceholderOp::walkDefinitions(
     function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
   walkDef(getParamDecl(), {});
-}
-
-//===----------------------------------------------------------------------===//
-// GetResourcePtrOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult GetResourcePtrOp::verify() {
-  auto parent = cast<GenericCompiledRegionOp>(getParentOp());
-  if (getResourceSlot().getZExtValue() >= parent.getConstantResources().size())
-    return emitError("Request resources slot out of bound.");
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

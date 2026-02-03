@@ -625,27 +625,6 @@ def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
   }];
 }
 
-def MOGG_SetParameterOp : MOGG_Op<"set_param"> {
-  let summary = "Assign a param a value";
-  let description = [{
-    Sets the parameter to the given dimension.
-
-    ```
-    %d0 = kgen.param.constant: scalar<si64> = <4>
-    mogg.set_param N = %d0
-    ```
-  }];
-
-  let arguments = (ins
-     DimensionType:$dim,
-     Builtin_StringAttr:$paramName
-  );
-
-  let assemblyFormat = [{
-    custom<SetDim>($paramName, $dim) attr-dict
-  }];
-}
-
 def MOGG_CallOp : MOGG_Op<"call", [
     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
     DeclareOpInterfaceMethods<EmitsMojoInterface>,
@@ -696,46 +675,6 @@ def MOGG_CallOp : MOGG_Op<"call", [
     bool setKGENParamToValueIfPresent(StringRef name, Attribute value);
   }];
 }
-
-def MOGG_LambdaInvokeOp : MOGG_Op<"invoke",
-   [MemoryEffectsOpInterface]> {
-  let summary = "Represents an inlined call to a lambda";
-  let description = [{
-    Lambda invoke is a direct call of that lambda. This will lower to a
-    kgen.call_param operation. It cannot take in any parameters. It can take
-    in/return only on simd values or indices, not tensors directly. Tensors are
-    just captured from above in the invoked lambda.
-
-    Example:
-    ```mlir
-    %0 = mogg.invoke @test_lambda(%input, %output) : !mogg.indices, !mogg.simd<f32> -> !mogg.simd<f32>
-    ```
-  }];
-
-  let arguments = (ins
-     SymbolRefAttr:$lambda,
-     Variadic<AnyTypeOf<[MOGG_Simd, MOGG_Indices]>>:$operands,
-     OptionalAttr<BoolAttr>:$readOnly
-  );
-  let results = (outs Variadic<MOGG_Simd>:$outs);
-
-  let assemblyFormat = [{
-    $lambda `(`($operands^)?`)` attr-dict
-      (`:` type($operands)^)? (`->` type($outs)^)?
-  }];
-
-  // TODO(10098): We will want to come up with a proper side effect analysis here.
-  let extraClassDeclaration = [{
-    void getEffects(
-      llvm::SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-      // If we don't have attr or it is false assume this has a side effect.
-      bool isReadOnly = getReadOnly().value_or(false);
-      if (!isReadOnly)
-        effects.emplace_back(mlir::MemoryEffects::Write::get());
-    }
-  }];
- }
-
 
 def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {
   let results = (outs Variadic<MO_Tensor>:$results);
@@ -861,21 +800,6 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   }];
 
   let hasFolder = 1;
-}
-
-def MOGG_GetResourcePtrOp : MOGG_Op<"get_resource_ptr", [Pure,
-  HasParent<"MOGG::GenericCompiledRegionOp">
-]> {
-  let arguments = (ins IndexAttr:$resourceSlot);
-  let results = (outs Index: $byteCount, PointerOf<KGEN_NoneType>:$resPtr);
-
-  let summary = "Retrieves a pointer to the corresponding constant resources";
-  let description = [{
-    Retrieves a pointer to the corresponding constant resources attached to the
-    parent `mgp.generic.execute` operation.
-  }];
-
-  let hasVerifier = 1;
 }
 
 def MOGG_MGPToAsyncRefOp : MOGG_Op<"mgp_to_async_ref", [Pure]> {
@@ -1803,29 +1727,6 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [Pure,
 
   let assemblyFormat = [{
     `(` $shape `,` $index `)` attr-dict `:` functional-type(operands, results)
-  }];
-
-  let hasVerifier = 1;
-}
-
-def MOGG_UnpackShapeOp : MOGG_Op<"unpack_shape", [Pure]> {
-  let summary = "Unpacks a shape value into individual dimensions";
-  let description = [{
-    This operation takes a !mogg.shape_func_result<rank> value and unpacks it into individual
-    si64 dimension values. The number of results is variadic and corresponds
-    to the rank of the shape.
-
-    Example:
-    ```
-    %dims:3 = mogg.unpack_shape(%shape) : (!mogg.shape_func_result<3>) -> (si64, si64, si64)
-    ```
-  }];
-
-  let arguments = (ins MOGG_ShapeFuncResult:$shape);
-  let results = (outs Variadic<SI64>:$dims);
-
-  let assemblyFormat = [{
-    `(` $shape `)` attr-dict `:` functional-type(operands, results)
   }];
 
   let hasVerifier = 1;
