@@ -75,12 +75,13 @@ void buildJITCompilationPipeline(
 
   pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
   pm.addPass(MOGG::createLowerMOGGRegionCompiles());
-  pm.addPass(MGP::createOutlineModelsToCallables());
+  pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addPass(MGP::createOutlineModelsToCallables());
 }
 
 void M::MO::registerMoToMgpPipeline() {
@@ -326,6 +327,7 @@ void M::MO::buildMoToMgpPipeline(
   // runtime assert messages.
   pm.addPass(MGP::createAddStackTracesToAssertsPass());
 
+  pm.addPass(MGP::createGlobalizeSlotIndicesPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 

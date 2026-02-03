@@ -831,7 +831,10 @@ CallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
 
   // Verify operand types match the execute block argument types.
   Block *executeBlock = targetModel.getExecuteBlock();
-  auto expectedArgs = executeBlock->getArguments();
+  // If the index was not yet added, remove the last operand of the execute
+  // block because that's the index.
+  auto expectedArgs =
+      executeBlock->getArguments().drop_back(!getIsGlobalizedIndex());
   auto actualArgTypes = getOperandTypes();
   if (expectedArgs.size() != actualArgTypes.size()) {
     return emitOpError() << "operand types " << actualArgTypes
@@ -1056,8 +1059,11 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   SmallVector<Type> finalInputTypes(inputTypes.begin(), inputTypes.end());
   SmallVector<Location> finalInputLocs(inputArgLocs.begin(),
                                        inputArgLocs.end());
-  if (isSubgraph)
+  if (isSubgraph) {
     state.addAttribute(getIsSubgraphAttrName(state.name), UnitAttr::get(ctx));
+    finalInputTypes.push_back(IndexType::get(ctx));
+    finalInputLocs.push_back(state.location);
+  }
 
   DictionaryAttr extraAttrsDict =
       extraAttrs.empty() ? nullptr : DictionaryAttr::get(ctx, extraAttrs);
@@ -1162,6 +1168,15 @@ LogicalResult ModelOp::verifyRegions() {
 
     if (failed(checkOperandTypes(output, expectedResultTypes)))
       return failure();
+  }
+
+  if (getIsSubgraph()) {
+    auto argTypes = execBlock->getArgumentTypes();
+    if (argTypes.empty() ||
+        !isa<IndexType>(*(argTypes.begin() + argTypes.size() - 1))) {
+      return emitOpError() << "expected the last argument of a subgraph to be "
+                              "an index offset";
+    }
   }
 
   return success();

@@ -22,7 +22,7 @@ module {
         %1 = mgp.context.create 1
         %2 = mgp.runtime.create %0, %1[0]
         mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
-    } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<4x4xf32>) -> (!mef.chain, !mgp.tensor<4x4xf32>) {
+    } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<4x4xf32>, %idx: index) -> (!mef.chain, !mgp.tensor<4x4xf32>) {
         %pre = "a_preprocess"(%arg1, %arg0, %input) : (!mgp.context, !mef.chain, !mgp.tensor<4x4xf32>) -> !mgp.tensor<4x4xf32>
         // Cyclical call to model B
         %ch1, %processed = mgp.call @model_b(%arg0, %arg1, %arg2, %arg3, %pre) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<4x4xf32>) -> (!mef.chain, !mgp.tensor<4x4xf32>)
@@ -35,7 +35,7 @@ module {
         %1 = mgp.context.create 1
         %2 = mgp.runtime.create %0, %1[0]
         mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
-    } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<4x4xf32>) -> (!mef.chain, !mgp.tensor<4x4xf32>) {
+    } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<4x4xf32>, %idx: index) -> (!mef.chain, !mgp.tensor<4x4xf32>) {
         %pre = "b_preprocess"(%arg1, %arg0, %input) : (!mgp.context, !mef.chain, !mgp.tensor<4x4xf32>) -> !mgp.tensor<4x4xf32>
         // Cyclical call back to model A
         %ch1, %processed = mgp.call @model_a(%arg0, %arg1, %arg2, %arg3, %pre) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<4x4xf32>) -> (!mef.chain, !mgp.tensor<4x4xf32>)

@@ -574,6 +574,7 @@ def ModelOp : MGP_Op<"model", [HasParent<"ModuleOp">,
     }
     BlockArgument getExecuteChain() { return getExecuteBlock()->getArgument(0); }
     BlockArgument getExecuteWeightsRegistry() { return getExecuteBlock()->getArgument(2); }
+    BlockArgument getSubgraphIndex() { return getExecuteBlock()->getArguments().back(); }
 
     /// Retrieve the single ContextCreateOp from the init block.
     ContextCreateOp getInitContext();
@@ -844,6 +845,7 @@ def MGP_CallOp : MGP_Op<"call", [
     FlatSymbolRefAttr:$callee,
     DefaultValuedAttr<StrAttr, "\"\"">:$prefix,
     Variadic<AnyType>:$operands,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$isGlobalizedIndex,
 
     // Needed to satisfy CallOpInterface
     DefaultValuedOptionalAttr<DictArrayAttr, "{}">:$arg_attrs,
