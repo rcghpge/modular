@@ -221,7 +221,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   constexpr uint32_t blockDim = 256;
   EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*libFunction, length / blockDim,
                                                 1, 1, blockDim, 1, 1, 0,
-                                                nullptr, 4, args, 4, argSizes));
+                                                nullptr, 4, args, argSizes));
 
   // Copy results back
   EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(outHost, *outDevice));
@@ -338,7 +338,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
         static_cast<uint32_t>((length + blockDim - 1) / blockDim);
     EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*libFunction, gridSize, 1, 1,
                                                   blockDim, 1, 1, 0, nullptr, 4,
-                                                  args, 4, argSizes));
+                                                  args, argSizes));
     EXPECT_NO_ERR(ctx_->synchronize());
 
     // Copy results back
@@ -459,7 +459,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       uint32_t gridSize =
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
-          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args, 4,
+          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
           argSizes));
       EXPECT_NO_ERR(ctx_->synchronize());
 
@@ -626,7 +626,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
       uint32_t gridSize =
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
-          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args, 4,
+          *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
           argSizes));
       EXPECT_NO_ERR(ctx_->synchronize());
 
