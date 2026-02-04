@@ -6,7 +6,7 @@
 from collections import Optional
 from collections.string import StaticString
 from math import iota
-from sys import external_call
+from ffi import external_call
 from sys.info import simd_width_of
 
 import compiler_internal as compiler
