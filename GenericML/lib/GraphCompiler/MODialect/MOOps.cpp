@@ -2895,14 +2895,26 @@ LogicalResult MutableStoreSliceOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AllReduceSumOp::verify() {
-  // Get input type for validation (getInput().getType() returns TensorType).
-  auto inputType = getInput().getType();
+  // Verify we have inputs.
+  auto inputs = getInputs();
+  if (inputs.empty())
+    return emitError("allreduce requires at least one input");
+
+  // Verify that all inputs have the same shape and element type.
+  auto firstInputType = getInputTensor(0).getType();
+  for (size_t i = 1; i < inputs.size(); ++i) {
+    auto inputType = getInputTensor(i).getType();
+    if (inputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
+      return emitError("all inputs must have the same shape");
+    if (inputType.getElementType() != firstInputType.getElementType())
+      return emitError("all inputs must have the same element type");
+  }
 
   // Verify that output type matches input type (shape and element type).
   auto outputType = getOutput().getType();
-  if (outputType.getTypedShapeAttr() != inputType.getTypedShapeAttr())
+  if (outputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
     return emitError("output shape must match input shape");
-  if (outputType.getElementType() != inputType.getElementType())
+  if (outputType.getElementType() != firstInputType.getElementType())
     return emitError("output element type must match input element type");
 
   // Verify that the device attribute matches the output device.
@@ -2911,9 +2923,9 @@ LogicalResult AllReduceSumOp::verify() {
   if (outputDevice && deviceAttr != outputDevice)
     return emitError("device attribute must match output device");
 
-  // Verify we have at least one signal buffer.
-  if (getSignalBuffers().empty())
-    return emitError("allreduce requires at least one signal buffer");
+  // Verify signal buffers match input count
+  if (getSignalBuffers().size() != inputs.size())
+    return emitError("number of signal buffers must match number of inputs");
 
   return success();
 }
