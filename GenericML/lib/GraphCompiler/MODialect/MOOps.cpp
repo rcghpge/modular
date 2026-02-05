@@ -2973,6 +2973,48 @@ LogicalResult ReduceScatterSumOp::verify() {
   if (getSignalBuffers().size() != inputs.size())
     return emitError("number of signal buffers must match number of inputs");
 
+  // Verify output shape is correct for reducescatter.
+  // The scatter axis dimension is divided among GPUs.
+  if (firstInputType.getRank() != outputType.getRank())
+    return emitError("output rank must match input rank");
+
+  int64_t ngpus = inputs.size();
+  int64_t rank = firstInputType.getRank();
+
+  // Get device index from device attribute
+  int64_t deviceIdx = deviceAttr.getId();
+
+  for (int64_t i = 0; i < rank; ++i) {
+    int64_t inputDim = firstInputType.getIntDim(i);
+    int64_t outputDim = outputType.getIntDim(i);
+
+    // Skip dynamic dimensions
+    if (mlir::ShapedType::isDynamic(inputDim) ||
+        mlir::ShapedType::isDynamic(outputDim))
+      continue;
+
+    // TODO(KERN-2337): Support scatter axis other than -1.
+    if (i == rank - 1) {
+      // Scatter axis: verify partitioned size
+      int64_t base = inputDim / ngpus;
+      int64_t remainder = inputDim % ngpus;
+      // Lower-ranked GPUs get one extra element
+      int64_t expectedSize = base + (deviceIdx < remainder ? 1 : 0);
+
+      if (outputDim != expectedSize)
+        return emitError(llvm::formatv(
+            "output dimension {0} should be {1} for device {2} "
+            "(input dim {3} / {4} GPUs), but got {5}",
+            i, expectedSize, deviceIdx, inputDim, ngpus, outputDim));
+    } else {
+      // Non-scatter axes: must match exactly
+      if (outputDim != inputDim)
+        return emitError(
+            llvm::formatv("output dimension {0} must match input ({1} vs {2})",
+                          i, inputDim, outputDim));
+    }
+  }
+
   return success();
 }
 

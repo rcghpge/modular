@@ -110,3 +110,83 @@ mo.graph @allgather_two_devices(
     !mo.tensor<[5, 10], f32, gpu:0>, !mo.tensor<[5, 10], f32, gpu:0>,
     !mo.tensor<[5, 10], f32, gpu:1>, !mo.tensor<[5, 10], f32, gpu:1>
 }
+
+// -----
+
+// Test reducescatter with wrong output size on scatter axis (axis -1)
+// Input [3, 6] with 3 GPUs should give [3, 2] output, not [3, 3]
+mo.graph @reducescatter_wrong_scatter_dim(
+    %arg0: !mo.tensor<[3, 6], f32, gpu:0>,
+    %arg1: !mo.tensor<[3, 6], f32, gpu:1>,
+    %arg2: !mo.tensor<[3, 6], f32, gpu:2>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>,
+    %sig2: !mo.buffer<[1], ui8, gpu:2>)
+    -> (!mo.tensor<[3, 3], f32, gpu:0>) {
+  %chain_in = mo.chain.create()
+  // expected-error@+1 {{output dimension 1 should be 2 for device 0 (input dim 6 / 3 GPUs), but got 3}}
+  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %arg2, %sig0, %sig1, %sig2, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+    (!mo.tensor<[3, 6], f32, gpu:0>, !mo.tensor<[3, 6], f32, gpu:1>, !mo.tensor<[3, 6], f32, gpu:2>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.buffer<[1], ui8, gpu:2>, !mo.chain)
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test reducescatter with wrong non-scatter dimension
+// Non-scatter dims must match exactly: input [3, 6] should give [3, x], not [4, x]
+mo.graph @reducescatter_wrong_non_scatter_dim(
+    %arg0: !mo.tensor<[3, 6], f32, gpu:0>,
+    %arg1: !mo.tensor<[3, 6], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[4, 3], f32, gpu:0>) {
+  %chain_in = mo.chain.create()
+  // expected-error@+1 {{output dimension 0 must match input (3 vs 4)}}
+  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+    (!mo.tensor<[3, 6], f32, gpu:0>, !mo.tensor<[3, 6], f32, gpu:1>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[4, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[4, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test reducescatter with wrong output rank
+mo.graph @reducescatter_wrong_rank(
+    %arg0: !mo.tensor<[3, 6], f32, gpu:0>,
+    %arg1: !mo.tensor<[3, 6], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[3], f32, gpu:0>) {
+  %chain_in = mo.chain.create()
+  // expected-error@+1 {{output rank must match input rank}}
+  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+    (!mo.tensor<[3, 6], f32, gpu:0>, !mo.tensor<[3, 6], f32, gpu:1>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[3], f32, gpu:0>
+}
+
+// -----
+
+// Test reducescatter ragged case with wrong partition size for GPU 1
+// Input [3, 7] with 3 GPUs: 7/3 = 2 base + 1 remainder
+// GPU 0 gets 3, GPU 1 gets 2, GPU 2 gets 2
+mo.graph @reducescatter_ragged_wrong_size(
+    %arg0: !mo.tensor<[3, 7], f32, gpu:0>,
+    %arg1: !mo.tensor<[3, 7], f32, gpu:1>,
+    %arg2: !mo.tensor<[3, 7], f32, gpu:2>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>,
+    %sig2: !mo.buffer<[1], ui8, gpu:2>)
+    -> (!mo.tensor<[3, 3], f32, gpu:1>) {
+  %chain_in = mo.chain.create()
+  // expected-error@+1 {{output dimension 1 should be 2 for device 1 (input dim 7 / 3 GPUs), but got 3}}
+  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %arg2, %sig0, %sig1, %sig2, %chain_in) {device = #M.device_ref<"gpu", 1>} :
+    (!mo.tensor<[3, 7], f32, gpu:0>, !mo.tensor<[3, 7], f32, gpu:1>, !mo.tensor<[3, 7], f32, gpu:2>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.buffer<[1], ui8, gpu:2>, !mo.chain)
+    -> (!mo.tensor<[3, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:1>
+}
