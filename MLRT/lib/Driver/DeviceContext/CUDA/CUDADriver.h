@@ -344,6 +344,20 @@ public:
 #include "CUDADriver.inc"
 #undef CUDA_FUNC
 
+  // Hand-written wrapper for cuTensorMapEncodeIm2col (exceeds macro limit).
+  Result cuTensorMapEncodeIm2col(
+      void *arg1, CUtensorMapDataType arg2, uint32_t arg3, void *arg4,
+      const uint64_t *arg5, const uint64_t *arg6, const int *arg7,
+      const int *arg8, uint32_t arg9, uint32_t arg10, const uint32_t *arg11,
+      CUtensorMapInterleave arg12, CUtensorMapSwizzle arg13,
+      CUtensorMapL2promotion arg14, CUtensorMapFloatOOBfill arg15) const {
+    CUDA_DRIVER_CALL_LOG();
+    TRACY_ZONE_SCOPED_NC("cuTensorMapEncodeIm2col", TRACY_COLOR_GREEN);
+    return cuTensorMapEncodeIm2col_(arg1, arg2, arg3, arg4, arg5, arg6, arg7,
+                                    arg8, arg9, arg10, arg11, arg12, arg13,
+                                    arg14, arg15);
+  }
+
   static ErrorOr<const CUDADriver &> get();
 
   // CUDADriver object lifetime is tied to a static unique_ptr.
@@ -367,6 +381,15 @@ private:
 #include "CUDADriver.inc"
 
 #undef CUDA_FUNC
+
+  // Hand-written because cuTensorMapEncodeIm2col has 15 parameters,
+  // exceeding the EXPAND_PARAMS macro limit (12).
+  using tcuTensorMapEncodeIm2col =
+      Result(void *, CUtensorMapDataType, uint32_t, void *, const uint64_t *,
+             const uint64_t *, const int *, const int *, uint32_t, uint32_t,
+             const uint32_t *, CUtensorMapInterleave, CUtensorMapSwizzle,
+             CUtensorMapL2promotion, CUtensorMapFloatOOBfill);
+  tcuTensorMapEncodeIm2col *cuTensorMapEncodeIm2col_;
 
   static ErrorOr<std::unique_ptr<CUDADriver>> allocAndInitDriver();
 };

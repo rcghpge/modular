@@ -63,8 +63,10 @@ CUDA_FUNC(cuStreamBeginCapture, Result, CUstream, CUstreamCaptureMode)
 CUDA_FUNC(cuStreamEndCapture, Result, CUstream, CUgraph *)
 CUDA_FUNC(cuStreamIsCapturing, Result, CUstream, CUstreamCaptureStatus *)
 
-CUDA_FUNC(cuGraphInstantiate, Result, CUgraphExec *, CUgraph, CUgraphNode *, char *, size_t)
-CUDA_FUNC(cuGraphInstantiateWithFlags, Result, CUgraphExec *, CUgraph, unsigned long long)
+CUDA_FUNC(cuGraphInstantiate, Result, CUgraphExec *, CUgraph, CUgraphNode *,
+          char *, size_t)
+CUDA_FUNC(cuGraphInstantiateWithFlags, Result, CUgraphExec *, CUgraph,
+          unsigned long long)
 CUDA_FUNC(cuGraphDestroy, Result, CUgraph)
 CUDA_FUNC(cuGraphExecDestroy, Result, CUgraphExec)
 CUDA_FUNC(cuGraphLaunch, Result, CUgraphExec, CUstream)
@@ -158,6 +160,9 @@ CUDA_FUNC(cuTensorMapEncodeTiled, Result, void *, CUtensorMapDataType, uint32_t,
           void *, const uint64_t *, const uint64_t *, const uint32_t *,
           const uint32_t *, CUtensorMapInterleave, CUtensorMapSwizzle,
           CUtensorMapL2promotion, CUtensorMapFloatOOBfill)
+// NOTE: cuTensorMapEncodeIm2col is NOT in CUDADriver.inc because it has
+// 15 parameters which exceeds the EXPAND_PARAMS macro limit (12).
+// It is hand-written in CUDADriver.h and CUDADriver.cpp instead.
 CUDA_FUNC(cuPointerGetAttributes, Result, unsigned int, CUpointer_attribute *,
           void **, CUdeviceptr)
 

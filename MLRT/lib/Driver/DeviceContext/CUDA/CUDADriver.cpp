@@ -65,6 +65,16 @@ ErrorOr<std::unique_ptr<CUDADriver>> CUDADriver::allocAndInitDriver() {
 #include "CUDADriver.inc"
 #undef CUDA_FUNC
 
+  // Hand-written dlsym for cuTensorMapEncodeIm2col (exceeds macro limit).
+  driver->cuTensorMapEncodeIm2col_ =
+      reinterpret_cast<tcuTensorMapEncodeIm2col *>(
+          dlsym(dlLib, "cuTensorMapEncodeIm2col"));
+  if (driver->cuTensorMapEncodeIm2col_ == nullptr) {
+    return Error(llvm::Twine("Failed to find symbol "
+                             "\"cuTensorMapEncodeIm2col\" in \"") +
+                 lib_name + "\"");
+  }
+
   // Initialize the driver and return the newly allocated driver if successful.
   Result err = driver->Init(0);
   if (err != SUCCESS) {

@@ -407,6 +407,19 @@ public:
       CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
       CUtensorMapFloatOOBfill oobFill) const;
 
+  /// Create a TMA descriptor for im2col transformation.
+  /// Used for implicit GEMM convolution where the TMA hardware performs
+  /// the im2col coordinate transformation on-the-fly.
+  ErrorOrSuccess cudaTensorMapEncodeIm2col(
+      void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
+      const DeviceBuffer &globalAddress, const uint64_t *globalDim,
+      const uint64_t *globalStrides, const int *pixelBoxLowerCorner,
+      const int *pixelBoxUpperCorner, uint32_t channelsPerPixel,
+      uint32_t pixelsPerColumn, const uint32_t *elementStrides,
+      CUtensorMapInterleave interleave, CUtensorMapSwizzle swizzle,
+      CUtensorMapL2promotion l2Promotion,
+      CUtensorMapFloatOOBfill oobFill) const;
+
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
 

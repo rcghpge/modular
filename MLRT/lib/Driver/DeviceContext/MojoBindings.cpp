@@ -703,6 +703,30 @@ MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeTiled(
       static_cast<CUtensorMapFloatOOBfill>(oobFill)));
 }
 
+MODULAR_EXPORT const char *AsyncRT_cuda_tensorMapEncodeIm2col(
+    void *tensorMap, int32_t tensorDataType, uint32_t tensorRank,
+    const DeviceBuffer *globalAddress, const uint64_t *globalDim,
+    const uint64_t *globalStrides, const int32_t *pixelBoxLowerCorner,
+    const int32_t *pixelBoxUpperCorner, uint32_t channelsPerPixel,
+    uint32_t pixelsPerColumn, const uint32_t *elementStrides,
+    int32_t interleave, int32_t swizzle, int32_t l2Promotion, int32_t oobFill) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_cuda_tensorMapEncodeIm2col", TRACY_COLOR_GRAY);
+  // Extract the device context from the device buffer.
+  const CUDADeviceContext *verifiedCtx =
+      CUDADeviceContext::verified_cast(&globalAddress->context());
+  if (verifiedCtx == nullptr) {
+    return raiseError("Not a CUDADeviceBuffer");
+  }
+  return checkSuccess(verifiedCtx->cudaTensorMapEncodeIm2col(
+      tensorMap, static_cast<CUtensorMapDataType>(tensorDataType), tensorRank,
+      *globalAddress, globalDim, globalStrides, pixelBoxLowerCorner,
+      pixelBoxUpperCorner, channelsPerPixel, pixelsPerColumn, elementStrides,
+      static_cast<CUtensorMapInterleave>(interleave),
+      static_cast<CUtensorMapSwizzle>(swizzle),
+      static_cast<CUtensorMapL2promotion>(l2Promotion),
+      static_cast<CUtensorMapFloatOOBfill>(oobFill)));
+}
+
 //
 // Raw HIP accessors
 //

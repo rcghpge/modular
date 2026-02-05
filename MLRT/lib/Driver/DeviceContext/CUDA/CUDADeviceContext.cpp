@@ -1663,6 +1663,24 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeTiled(
   return success();
 }
 
+ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeIm2col(
+    void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
+    const DeviceBuffer &globalAddress, const uint64_t *globalDim,
+    const uint64_t *globalStrides, const int *pixelBoxLowerCorner,
+    const int *pixelBoxUpperCorner, uint32_t channelsPerPixel,
+    uint32_t pixelsPerColumn, const uint32_t *elementStrides,
+    CUtensorMapInterleave interleave, CUtensorMapSwizzle swizzle,
+    CUtensorMapL2promotion l2Promotion, CUtensorMapFloatOOBfill oobFill) const {
+  CHECK_IS_CUDA_ERR(globalAddress.context().device());
+  CUDA_WITH_CTX_ERR(*this);
+  CUDA_CHECK_ERR(driver_.cuTensorMapEncodeIm2col(
+      tensorMap, tensorDataType, tensorRank, globalAddress.ptr(), globalDim,
+      globalStrides, pixelBoxLowerCorner, pixelBoxUpperCorner, channelsPerPixel,
+      pixelsPerColumn, elementStrides, interleave, swizzle, l2Promotion,
+      oobFill));
+  return success();
+}
+
 const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);
 }
