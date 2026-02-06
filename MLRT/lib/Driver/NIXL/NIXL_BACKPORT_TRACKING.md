@@ -1692,9 +1692,9 @@ All test suites pass with the changes:
 - Result: PASS (1/1)
 - Command: `./bazelw test //AsyncRT/unittests:NixlTestUcx`
 - Result: PASS (1/1)
-- Command: `./bazelw test //max/tests/integration/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv`
+- Command: `./bazelw test //max/tests/integration/nn/kv_cache/transfer_engine:test_send_recv`
 - Result: PASS (1/1)
-- Command: `./bazelw test //max/tests/integration/pipelines/python/nn/kv_cache/transfer_engine:test_send_recv_multi_process_gpu`
+- Command: `./bazelw test //max/tests/integration/nn/kv_cache/transfer_engine:test_send_recv_multi_process_gpu`
 - Result: PASS (1/1)
 
 ### Notes / Adaptations
@@ -1758,9 +1758,9 @@ All test suites pass with the changes:
   - ✅ `//MLRT:AsyncRT/NIXL` builds successfully
   - ✅ `//AsyncRT/unittests:NixlTest` passes
   - ✅ `//max/tests/tests/nixl:tests` passes
-  - ✅ `//max/tests/integration/pipelines/python/nn/kv_cache/
+  - ✅ `//max/tests/integration/nn/kv_cache/
     transfer_engine:test_send_recv` passes
-  - ✅ `//max/tests/integration/pipelines/python/nn/kv_cache/
+  - ✅ `//max/tests/integration/nn/kv_cache/
     transfer_engine:test_send_recv_multi_process_gpu` passes
 
 - **Week 16 Summary**: Out of 28 commits, 3 fully ported (45204fa, 4ccd41d, 57c29f5),
