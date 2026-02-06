@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from huggingface_hub import constants as hf_hub_constants
 from max.config import ConfigFileModel
 from max.driver import DeviceSpec, devices_exist, scan_available_devices
+from max.dtype import DType
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
 from max.graph.weights import WeightsFormat, weights_format
 from max.interfaces import SamplingParamsGenerationConfigDefaults
@@ -32,11 +33,13 @@ from pydantic import (
     Field,
     PrivateAttr,
     computed_field,
+    field_validator,
 )
 from transformers import AutoConfig
 from transformers.generation import GenerationConfig
 
 from .config_enums import RepoType, RopeType, SupportedEncoding
+from .device_specs import coerce_device_specs_input
 from .hf_utils import (
     HuggingFaceRepo,
     try_to_load_from_cache,
@@ -156,6 +159,11 @@ class MAXModelConfig(MAXModelConfigBase):
             "directly via the CLI entrypoint."
         ),
     )
+
+    @field_validator("device_specs", mode="before")
+    @classmethod
+    def _coerce_device_specs(cls, value: Any) -> list[DeviceSpec]:
+        return coerce_device_specs_input(value)
 
     force_download: bool = Field(
         default=False,
@@ -511,7 +519,7 @@ class MAXModelConfig(MAXModelConfigBase):
         """
         import json
 
-        from huggingface_hub import hf_hub_download
+        from huggingface_hub import hf_hub_download, list_repo_files
 
         # Extract class name and version
         class_name = model_index.get("_class_name")
@@ -519,6 +527,48 @@ class MAXModelConfig(MAXModelConfigBase):
 
         # Build components dict with loaded configs
         components = {}
+        repo = self.huggingface_model_repo
+        repo_root: Path | None = None
+        if repo.repo_type == RepoType.local:
+            repo_root = Path(repo.repo_id)
+            assert repo_root.exists(), (
+                "Local Hugging Face repository path does not exist: "
+                f"{repo_root}"
+            )
+            repo_files = [
+                path.relative_to(repo_root).as_posix()
+                for path in repo_root.rglob("*")
+                if path.is_file()
+            ]
+        else:
+            repo_files = list_repo_files(
+                repo_id=repo.repo_id,
+                revision=repo.revision,
+            )
+
+        component_configs = {}
+        for file_name in repo_files:
+            if file_name.endswith("config.json") and "/" in file_name:
+                try:
+                    component_name = file_name.split("/")[0]
+                    if repo.repo_type == RepoType.local:
+                        assert repo_root is not None, (
+                            "repo_root must be set for local repo types."
+                        )
+                        cfg_path = repo_root / file_name
+                    else:
+                        cfg_path = Path(
+                            hf_hub_download(
+                                repo_id=repo.repo_id,
+                                filename=file_name,
+                                revision=repo.revision,
+                            )
+                        )
+                    with open(cfg_path) as f:
+                        component_configs[component_name] = json.load(f)
+                except Exception as e:
+                    logger.debug(f"Could not load config for {file_name}: {e}")
+
         for component_name, component_info in model_index.items():
             if component_name.startswith("_"):
                 continue
@@ -528,23 +578,10 @@ class MAXModelConfig(MAXModelConfigBase):
 
             library, class_type = component_info
 
-            # Try to load the component's config file
-            component_config = {}
-            try:
-                config_file_path = hf_hub_download(
-                    repo_id=self.huggingface_model_repo.repo_id,
-                    filename=f"{component_name}/config.json",
-                    revision=self.huggingface_model_repo.revision,
-                )
-                with open(config_file_path) as f:
-                    component_config = json.load(f)
-            except Exception as e:
-                logger.debug(f"Could not load config for {component_name}: {e}")
-
             components[component_name] = {
                 "library": library,
                 "class_name": class_type,
-                "config_dict": component_config,
+                "config_dict": component_configs.get(component_name, {}),
             }
 
         # Build the final config structure
@@ -844,7 +881,7 @@ class MAXModelConfig(MAXModelConfigBase):
                 and len(supported_encodings) > 1
             ):
                 # TODO(AITLIB-137): replace this with more full featured logic.
-                # If we are running on an accelerator and the quantiziation encoding is not set, override to bfloat16.
+                # If we are running on an accelerator and the quantization encoding is not set, override to bfloat16.
                 if SupportedEncoding.float4_e2m1fnx2 in supported_encodings:
                     self.quantization_encoding = (
                         SupportedEncoding.float4_e2m1fnx2
@@ -1110,3 +1147,97 @@ class MAXModelConfig(MAXModelConfigBase):
             The default device spec for the model.
         """
         return self.device_specs[0]
+
+    def create_kv_cache_config(self, **kv_cache_kwargs) -> None:
+        """Create and set the KV cache configuration with the given parameters.
+
+        This method creates a new KVCacheConfig from the provided keyword arguments
+        and automatically sets the cache_dtype based on the model's quantization
+        encoding (or any explicit override in kv_cache_kwargs).
+
+        Args:
+            **kv_cache_kwargs: Keyword arguments to pass to KVCacheConfig constructor.
+                Common options include:
+                - cache_strategy: The KV cache strategy (continuous, paged, etc.)
+                - kv_cache_page_size: Number of tokens per page for paged cache
+                - enable_prefix_caching: Whether to enable prefix caching
+                - device_memory_utilization: Fraction of device memory to use
+                - cache_dtype: Override for the cache data type
+        """
+        self.kv_cache = KVCacheConfig(**kv_cache_kwargs)
+        # Note: the quantization_encoding is possibly not set yet here, so we first check for an explicit override.
+        if cache_dtype := self._get_cache_override():
+            self.kv_cache._cache_dtype = cache_dtype
+
+    def set_cache_dtype_given_quantization_encoding(
+        self,
+    ) -> None:
+        """Determine the KV cache dtype based on quantization encoding configuration.
+
+        The dtype is determined in the following priority order:
+        1. Explicit override from kv_cache.kv_cache_format (if set)
+        2. Derived from the model's quantization_encoding
+        3. Falls back to float32 if no encoding is specified
+
+        Returns:
+            The DType to use for the KV cache. Typical values are:
+            - DType.float32 for float32, q4_k, q4_0, q6_k encodings
+            - DType.bfloat16 for bfloat16, float8_e4m3fn, float4_e2m1fnx2, gptq encodings
+        """
+        # First check for an explicit override.
+        if self.kv_cache.kv_cache_format is not None:
+            return  # No default needed, override is set.
+
+        # If there's no quantization encoding return a default value.
+        if not self.quantization_encoding:
+            self.kv_cache._cache_dtype = DType.float32
+            return
+
+        # Otherwise select the default KV cache dtype based on the quantization encoding.
+        supported_encoding_to_cache_dtype = {
+            SupportedEncoding.float32: DType.float32,
+            SupportedEncoding.bfloat16: DType.bfloat16,
+            SupportedEncoding.float8_e4m3fn: DType.bfloat16,
+            SupportedEncoding.float4_e2m1fnx2: DType.bfloat16,
+            SupportedEncoding.q4_k: DType.float32,
+            SupportedEncoding.q4_0: DType.float32,
+            SupportedEncoding.q6_k: DType.float32,
+            SupportedEncoding.gptq: DType.bfloat16,
+        }
+        if self.quantization_encoding in supported_encoding_to_cache_dtype:
+            self.kv_cache._cache_dtype = supported_encoding_to_cache_dtype[
+                self.quantization_encoding
+            ]
+            return
+        else:
+            raise ValueError(
+                f"Unsupported quantization encoding for KV cache dtype resolution: {self.quantization_encoding}"
+            )
+
+    def _get_cache_override(self) -> DType | None:
+        """Check for an explicit KV cache dtype override from kv_cache_format.
+
+        Parses the kv_cache.kv_cache_format string (if set) and converts it
+        to the corresponding DType.
+
+        Returns:
+            The DType corresponding to the override string, or None if no
+            override is set or the string is not recognized. Supported values
+            are 'float32', 'bfloat16', and 'float8_e4m3fn' (case-insensitive).
+        """
+        if self.kv_cache.kv_cache_format is None:
+            return None
+
+        dtype_str = self.kv_cache.kv_cache_format.lower()
+        cache_format_to_dtype = {
+            "float32": DType.float32,
+            "bfloat16": DType.bfloat16,
+            "float8_e4m3fn": DType.float8_e4m3fn,
+        }
+        if dtype_str in cache_format_to_dtype:
+            return cache_format_to_dtype[dtype_str]
+        else:
+            raise ValueError(
+                f"Unrecognized kv_cache_format override: '{self.kv_cache.kv_cache_format}'. "
+                "Supported values are 'float32', 'bfloat16', and 'float8_e4m3fn'."
+            )

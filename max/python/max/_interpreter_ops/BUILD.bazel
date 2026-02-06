@@ -6,12 +6,14 @@ modular_py_library(
     name = "_interpreter_ops",
     srcs = glob(["**/*.py"]),
     data = glob(["**/*.mojo"]) + [
+        "//max:MOGGKernelAPI",
         "@mojo//:std",
     ],
     deps = [
         "//max/python/max:_core",
         "//max/python/max/driver",
         "//max/python/max/dtype",
+        "//max/python/max/graph",
         "@mojo//:python",
         requirement("numpy"),
     ],

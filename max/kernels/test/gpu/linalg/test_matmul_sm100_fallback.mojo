@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -29,7 +29,9 @@ from internal_utils import assert_almost_equal
 from random import rand
 from internal_utils._utils import ValOrDim, dynamic, static
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from linalg.matmul.gpu.sm100_structured.matmul import matmul_sm100_fallback
+from linalg.matmul.gpu.sm100_structured.default.matmul import (
+    matmul_sm100_fallback,
+)
 from linalg.utils import elementwise_epilogue_type
 
 from utils.index import Index, IndexList
@@ -174,7 +176,7 @@ def test_matmul_sm100_fallback[
 
     ctx.synchronize()
 
-    __comptime_assert a_type != DType.float8_e4m3fn or transpose_b, (
+    comptime assert a_type != DType.float8_e4m3fn or transpose_b, (
         "Testing is only supported for transposed_b==True when"
         " a_type==float8_e4m3fn. Add the non-transposed case if needed."
     )

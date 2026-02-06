@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -708,7 +708,7 @@ struct Bench(Stringable, Writable):
         self.bench_function[input_closure](bench_id, measures)
 
     fn bench_with_input[
-        T: __TypeOfAllTypes,
+        T: TrivialRegisterType,
         bench_fn: fn(mut Bencher, T) raises capturing[_] -> None,
     ](
         mut self,
@@ -716,7 +716,7 @@ struct Bench(Stringable, Writable):
         input: T,
         measures: List[ThroughputMeasure] = {},
     ) raises:
-        """Benchmarks an input function with input args of type __TypeOfAllTypes.
+        """Benchmarks an input function with input args of type TrivialRegisterType.
 
         Parameters:
             T: Benchmark function input type.
@@ -1053,7 +1053,7 @@ struct Bench(Stringable, Writable):
         Returns:
             A string padded to the given width.
         """
-        __comptime_assert len(pad_str) == 1, "pad_str must be length 1."
+        comptime assert len(pad_str) == 1, "pad_str must be length 1."
 
         if self.config.format == Format.csv:
             return ""

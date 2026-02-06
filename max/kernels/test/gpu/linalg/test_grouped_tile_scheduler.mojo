@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -25,7 +25,7 @@ from layout import Layout, LayoutTensor
 from layout._utils import ManagedLayoutTensor
 from memory import stack_allocation
 
-from linalg.matmul.gpu.sm100_structured.grouped_tile_scheduler import (
+from linalg.matmul.gpu.sm100_structured.grouped_block_scaled.grouped_tile_scheduler import (
     GroupedTileScheduler,
     GroupedWorkInfo,
     GroupedWorkIterator,

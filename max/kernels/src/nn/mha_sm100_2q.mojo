@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -121,7 +121,6 @@ from sys import size_of, bit_width_of
 from sys._assembly import inlined_assembly
 from sys.info import _has_blackwell_tcgen05
 
-from pathlib import Path
 
 comptime logger = Logger()
 
@@ -384,7 +383,7 @@ struct TMemTile[
             accum_type_size = Self.dtype_size,
         ].TensorType[Self.dtype],
     ):
-        __comptime_assert Self.dtype_size <= 4
+        comptime assert Self.dtype_size <= 4
         ptr = src.ptr.bitcast[UInt32]()
         comptime st_mat_layout = STMatrixLayout[
             Self.BM,
@@ -392,7 +391,7 @@ struct TMemTile[
             num_threads=num_threads,
             accum_type_size = Self.dtype_size,
         ]
-        __comptime_assert st_mat_layout.bits == 128 or st_mat_layout.bits == 256
+        comptime assert st_mat_layout.bits == 128 or st_mat_layout.bits == 256
 
         @parameter
         @always_inline
@@ -457,7 +456,7 @@ struct TMemTile[
             accum_type_size = Self.dtype_size,
         ].TensorType[Self.dtype],
     ):
-        __comptime_assert (
+        comptime assert (
             Self.dtype_size <= 4
         ), "Loading for st matrix requires elements to be <= 4 bytes."
         comptime st_mat_layout = STMatrixLayout[
@@ -466,7 +465,7 @@ struct TMemTile[
             num_threads=num_threads,
             accum_type_size = Self.dtype_size,
         ]()
-        __comptime_assert (st_mat_layout.num_m_tiles == 1) or (
+        comptime assert (st_mat_layout.num_m_tiles == 1) or (
             st_mat_layout.num_m_tiles == 2
         ), (
             "Only 1 or 2 m tiles are supported, but"
@@ -488,7 +487,7 @@ struct TMemTile[
         @parameter
         @always_inline
         fn load_fn[pow_two: Int, offset: Int]():
-            __comptime_assert pow_two + offset <= repeat
+            comptime assert pow_two + offset <= repeat
 
             @parameter
             if pow_two > 0:
@@ -1165,7 +1164,7 @@ fn bulk_mma[
     c_scale: UInt32,
     elect: Int32,
 ):
-    __comptime_assert num_k_mmas >= 1 and num_k_mmas <= 16
+    comptime assert num_k_mmas >= 1 and num_k_mmas <= 16
     comptime mma_string = build_mma_ts(
         String(kind),
         layout_b,
@@ -1260,6 +1259,11 @@ fn elect() -> Int32:
 
 
 @always_inline
+fn llvm_opaque_tid() -> UInt32:
+    return inlined_assembly["mov.u32 $0, %tid.x;", UInt32, constraints="=r"]()
+
+
+@always_inline
 fn sub_ftz(a: Float32, b: Float32) -> Float32:
     return inlined_assembly[
         """
@@ -1302,6 +1306,39 @@ fn add_ftz(a: Float32, b: Float32) -> Float32:
 
 
 @always_inline
+fn max_ftz(a: Float32, b: Float32) -> Float32:
+    return inlined_assembly[
+        """
+        max.ftz.f32 $0, $1, $2;
+        """,
+        Float32,
+        constraints="=f,f,f",
+    ](a, b)
+
+
+@always_inline
+fn max_ftz(a: Float32, b: Float32, c: Float32) -> Float32:
+    return inlined_assembly[
+        """
+        max.ftz.f32 $0, $1, $2, $3;
+        """,
+        Float32,
+        constraints="=f,f,f,f",
+    ](a, b, c)
+
+
+@always_inline
+fn max3(a: Float32, b: Float32, c: Float32) -> Float32:
+    return inlined_assembly[
+        """
+        max.f32 $0, $1, $2, $3;
+        """,
+        Float32,
+        constraints="=f,f,f,f",
+    ](a, b, c)
+
+
+@always_inline
 fn add_ftz(
     a: SIMD[DType.float32, 2], b: SIMD[DType.float32, 2]
 ) -> SIMD[DType.float32, 2]:
@@ -1313,6 +1350,26 @@ fn add_ftz(
         mov.b64 %ra, {$2, $3};
         mov.b64 %rb, {$4, $5};
         add.ftz.f32x2 %rc, %ra, %rb;
+        mov.b64 {$0, $1}, %rc;
+        }""",
+        _RegisterPackType[Float32, Float32],
+        constraints="=f,=f,f,f,f,f",
+    ](a[0], a[1], b[0], b[1])
+    return {ret[0], ret[1]}
+
+
+@always_inline
+fn add_ftz_rm(
+    a: SIMD[DType.float32, 2], b: SIMD[DType.float32, 2]
+) -> SIMD[DType.float32, 2]:
+    ret = inlined_assembly[
+        """{
+        .reg .b64 %ra;
+        .reg .b64 %rb;
+        .reg .b64 %rc;
+        mov.b64 %ra, {$2, $3};
+        mov.b64 %rb, {$4, $5};
+        add.rm.ftz.f32x2 %rc, %ra, %rb;
         mov.b64 {$0, $1}, %rc;
         }""",
         _RegisterPackType[Float32, Float32],
@@ -1366,6 +1423,42 @@ fn fma_ftz(
 
 
 @always_inline
+fn exp2_emulation[
+    use_exp2_emulation: Bool = False
+](x: SIMD[DType.float32, 2]) -> SIMD[DType.float32, 2]:
+    @parameter
+    if use_exp2_emulation:
+        comptime fp32_round_int = SIMD[DType.float32, 2]((1 << 23) + (1 << 22))
+        clamped = max(x, -127)
+        # We want to round down here, so that the fractional part is in [0, 1)
+        rounded = add_ftz_rm(clamped, fp32_round_int)
+        rounded_back = sub_ftz(rounded, fp32_round_int)
+        frac = sub_ftz(clamped, rounded_back)
+        # Tri Dao assumes x <= 127.0 and y <= 127.0
+        frac_ex2 = fma_ftz(
+            fma_ftz(
+                fma_ftz(
+                    0.077119089663028717041015625,
+                    frac,
+                    0.227564394474029541015625,
+                ),
+                frac,
+                0.695146143436431884765625,
+            ),
+            frac,
+            1.0,
+        )
+        # The integer floor of x & y are now in the last 8 bits of xy_rounded
+        # We want the next 2 ops to round to nearest even. The rounding mode is important.
+        return bitcast[DType.float32](
+            bitcast[DType.int32](frac_ex2)
+            + (bitcast[DType.int32](rounded) << 23)
+        )
+    else:
+        return exp2(x)
+
+
+@always_inline
 fn elect_mma_arrive[
     cta_group: Int = 1
 ](
@@ -1382,12 +1475,12 @@ fn elect_mma_arrive[
         elect: `elect()`.
     """
 
-    __comptime_assert cta_group in (1, 2), String(
+    comptime assert cta_group in (1, 2), String(
         "Unsupported cta group: ", cta_group
     )
 
     comptime type = mbar_ptr.type
-    __comptime_assert size_of[type]() == 8, "mbar_ptr must be 8 bytes"
+    comptime assert size_of[type]() == 8, "mbar_ptr must be 8 bytes"
 
     inlined_assembly[
         """{
@@ -1406,45 +1499,70 @@ fn elect_mma_arrive[
 
 @always_inline
 fn maximum[
-    dtype: DType, BN: Int, //, *, width: Int = 8
-](x: LocalTensor[dtype, Layout.row_major(BN)]) -> SIMD[dtype, width]:
-    __comptime_assert BN % width == 0
-    vx = x.vectorize[width]()
-    acc = vx[0]
+    BN: Int, //, *, width: Int = 4
+](
+    x: LocalTensor[DType.float32, Layout.row_major(BN)],
+    out res: StaticTuple[Float32, width],
+):
+    comptime assert BN % (2 * width) == 0
+    res = {}
+
+    @parameter
+    for w in range(width):
+        res[w] = max_ftz(
+            rebind[Float32](x[2 * w]), rebind[Float32](x[2 * w + 1])
+        )
 
     # unroll (using SIMD) to break up dependency chain
     @parameter
-    for i in range(1, BN // width):
-        acc = max(acc, vx[i])
-    # return acc.reduce_max()
-    return rebind[SIMD[dtype, width]](acc)
+    for i in range(1, BN // (2 * width)):
+
+        @parameter
+        for w in range(width):
+            comptime j = i * 2 * width + 2 * w
+            res[w] = max_ftz(
+                res[w], rebind[Float32](x[j]), rebind[Float32](x[j + 1])
+            )
 
 
 @always_inline
 fn maximum[
-    dtype: DType,
-    BN: Int,
-    width: Int,
-    //,
+    BN: Int, //, *, width: Int = 4
 ](
-    x: LocalTensor[dtype, Layout.row_major(BN)], init: SIMD[dtype, width]
-) -> SIMD[dtype, width]:
-    __comptime_assert BN % width == 0
-    vx = x.vectorize[width]()
-    acc = rebind[vx.element_type](init)
+    x: LocalTensor[DType.float32, Layout.row_major(BN)],
+    init: StaticTuple[Float32, width],
+    out res: StaticTuple[Float32, width],
+):
+    comptime assert BN % (2 * width) == 0
+    res = init
 
     # unroll (using SIMD) to break up dependency chain
     @parameter
-    for i in range(BN // width):
-        acc = max(acc, vx[i])
-    return rebind[SIMD[dtype, width]](acc)
+    for i in range(BN // (2 * width)):
+
+        @parameter
+        for w in range(width):
+            comptime j = i * 2 * width + 2 * w
+            res[w] = max_ftz(
+                res[w], rebind[Float32](x[j]), rebind[Float32](x[j + 1])
+            )
+
+
+@always_inline
+fn maximum(x: StaticTuple[Float32, 4]) -> Float32:
+    return max_ftz(max_ftz(x[0], x[1], x[2]), x[3])
+
+
+@always_inline
+fn maximum(x: StaticTuple[Float32, 4], init: Float32) -> Float32:
+    return max_ftz(max_ftz(x[0], x[1], x[2]), x[3], init)
 
 
 @always_inline
 fn sum[
     dtype: DType, BN: Int, //, *, width: Int = 8
 ](x: LocalTensor[dtype, Layout.row_major(BN)]) -> SIMD[dtype, 2]:
-    __comptime_assert BN % width == 0
+    comptime assert BN % width == 0
     vx = x.vectorize[width]()
     acc = vx[0]
 
@@ -1497,11 +1615,11 @@ fn mha_sm100_dispatch[
         LayoutTensor[q_type, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin]
     ],
 ) raises:
-    __comptime_assert (
+    comptime assert (
         config.dtype == KVType.dtype and config.dtype == q_type
     ), "config, kv, and q types must all match for FA3."
     comptime decoding: Bool = _is_decoding[MaxPromptLenType]()
-    __comptime_assert (
+    comptime assert (
         not decoding
     ), "this implementation does not support decoding"
     comptime fa4_config = FA4Config(
@@ -1559,7 +1677,7 @@ fn mha_sm100_dispatch[
         depth = fa4_config.depth,
         BK = fa4_config.padded_depth,
     ](ctx)
-    __comptime_assert BM == 256
+    comptime assert BM == 256
     comptime SchedulerType = TransientScheduler[
         UInt32(BM), UInt32(fa4_config.num_q_heads)
     ]
@@ -2213,7 +2331,7 @@ struct TMAProducerPipeline[dtype: DType, config: FA4Config, is_k: Bool = True](
     fn __init__(out self, mbar: MBarType, smem: Self.SMemType):
         @parameter
         if Self.is_k:
-            __comptime_assert (
+            comptime assert (
                 Self.config.padded_depth % Self.config.num_qk_stages == 0
             ), "padded_depth must be divisible by num_qk_stages"
         self.pipeline = {mbar}
@@ -2230,7 +2348,7 @@ struct TMAProducerPipeline[dtype: DType, config: FA4Config, is_k: Bool = True](
     ):
         @parameter
         if Self.is_k:
-            __comptime_assert (
+            comptime assert (
                 Self.config.padded_depth % Self.config.num_qk_stages == 0
             ), "padded_depth must be divisible by num_qk_stages"
         self.pipeline = pipeline
@@ -2500,7 +2618,7 @@ struct RolePipeline[
         ]()
         return (
             self.producer_mbar_base
-            + self.state.index() * Self.producer_sub_stages
+            + self.state.index() * UInt32(Self.producer_sub_stages)
             + sub_stage_idx
         )
 
@@ -2517,7 +2635,7 @@ struct RolePipeline[
         ]()
         return (
             self.consumer_mbar_base
-            + self.state.index() * Self.consumer_sub_stages
+            + self.state.index() * UInt32(Self.consumer_sub_stages)
             + sub_stage_idx
         )
 
@@ -2685,7 +2803,7 @@ fn apply_mask[
         or MaskStrategy.UPPER_TRIANGULAR in mask_strategy
     ):
         comptime num_batches = BN // 32
-        __comptime_assert (BN % 32) == 0
+        comptime assert (BN % 32) == 0
 
         # when score_row == kv_tile_start_row, 1 is valid
         var n_valid: Int32 = max(1 + score_row - kv_tile_start_row, 0)
@@ -2743,7 +2861,7 @@ fn apply_mask[
                     var val: Float32 = s[i]
                     s[i] = val if in_bound else MASK_VALUE
 
-                var score_col: Int32 = kv_tile_start_row + frag_col
+                var score_col: Int32 = kv_tile_start_row + Int32(frag_col)
                 vs[frag_col_simd] = rebind[vs.element_type](
                     apply_oob_mask[
                         use_score_mod=use_score_mod,
@@ -2873,28 +2991,35 @@ struct FA4MiscMBars[
     fn init(self, *, lane_idx: Int32):
         @parameter
         if Self.size < WARP_SIZE:
-            if lane_idx < Self.size:
+            if lane_idx < Int32(Self.size):
                 self.mbar_base[lane_idx].init(
-                    128 if lane_idx < Self.number_warpgroup_count else 1
+                    Int32(
+                        128 if lane_idx
+                        < Int32(Self.number_warpgroup_count) else 1
+                    )
                 )
         elif Self.size == WARP_SIZE:
             self.mbar_base[lane_idx].init(
-                128 if lane_idx < Self.number_warpgroup_count else 1
+                Int32(
+                    128 if lane_idx < Int32(Self.number_warpgroup_count) else 1
+                )
             )
         else:
-            __comptime_assert Self.number_warpgroup_count <= WARP_SIZE, String(
+            comptime assert Self.number_warpgroup_count <= WARP_SIZE, String(
                 "Number of count=128 barriers = ", Self.number_warpgroup_count
             )
-            __comptime_assert (
+            comptime assert (
                 Self.size - Self.number_warpgroup_count <= WARP_SIZE
             ), String(
                 "Number of count=1 barriers = ",
                 Self.size - Self.number_warpgroup_count,
             )
-            if lane_idx < Self.number_warpgroup_count:
+            if lane_idx < Int32(Self.number_warpgroup_count):
                 self.mbar_base[lane_idx].init(128)
-            if lane_idx < Self.size - Self.number_warpgroup_count:
-                self.mbar_base[Self.number_warpgroup_count + lane_idx].init(1)
+            if lane_idx < Int32(Self.size - Self.number_warpgroup_count):
+                self.mbar_base[
+                    Int32(Self.number_warpgroup_count) + lane_idx
+                ].init(1)
 
     # S pipeline type: 1 producer sub-stage, num_pv_stages consumer sub-stages
     comptime SPipelineProducer = RolePipeline[1, True, 1, Self.num_pv_stages]
@@ -2921,7 +3046,7 @@ struct FA4MiscMBars[
         """Get S consumer for given warp group."""
         return {
             self.mbar_base + Self.S0_producer_offset + wg_idx,
-            self.mbar_base + Self.num_pv_stages * wg_idx,
+            self.mbar_base + UInt32(Self.num_pv_stages) * wg_idx,
         }
 
     @always_inline
@@ -2940,7 +3065,7 @@ struct FA4MiscMBars[
 
     @always_inline
     fn producer_c(self, wg_idx: UInt32) -> ProducerPipeline[1]:
-        base = Self.C0_offset + 2 * wg_idx
+        base = UInt32(Self.C0_offset) + 2 * wg_idx
         return {self.mbar_base + base, self.mbar_base + base + 1}
 
     @always_inline
@@ -3203,9 +3328,9 @@ struct SM100MHA2Q[
             Self.PartitionType,
         ],
     ):
-        __comptime_assert Self.MMA_M == 64 or Self.MMA_M == 128
-        __comptime_assert _is_decoding[Self.MaxSeqLenType]() == False
-        __comptime_assert Self.config.supported(), (
+        comptime assert Self.MMA_M == 64 or Self.MMA_M == 128
+        comptime assert _is_decoding[Self.MaxSeqLenType]() == False
+        comptime assert Self.config.supported(), (
             "depth = "
             + String(Self.config.depth)
             + "\nBN = "
@@ -3217,7 +3342,7 @@ struct SM100MHA2Q[
             + "\nsmem_used = "
             + String(Self.config.smem_used)
         )
-        __comptime_assert (
+        comptime assert (
             not Self.SchedulerType.may_advance
         ), "Persistent kernels not yet supported with FA4"
 
@@ -3232,7 +3357,7 @@ struct SM100MHA2Q[
 
         comptime num_qo = Self.config.num_qo()
         # TODO: We may want to support num_qo>2 for depth=64?
-        __comptime_assert (
+        comptime assert (
             num_qo == 1 or num_qo == 2
         ), "Currently only support num_qo == 1 or 2"
         mbar_base = (
@@ -3255,7 +3380,7 @@ struct SM100MHA2Q[
         # comptime num_reg_correction = 88
         # comptime num_reg_other = 72
 
-        __comptime_assert not Self.PartitionType.do_partition, (
+        comptime assert not Self.PartitionType.do_partition, (
             "Neither partitioning nor decoding are supported by the 2-q"
             " implementation."
         )
@@ -3329,8 +3454,8 @@ struct SM100MHA2Q[
                 mask,
             )
         else:
-            warpgroup_reg_dealloc[num_reg_other]()
             if warp_idx == 13:  # produce
+                warpgroup_reg_dealloc[num_reg_other]()
                 var seq_info: SeqInfo = get_seq_info[Self.BM, Self.num_q_heads](
                     batch_size, max_seq_len, valid_length, partition
                 )
@@ -3361,6 +3486,7 @@ struct SM100MHA2Q[
                 )
 
             elif warp_idx == 12:  # Q @ K', P @ V
+                warpgroup_reg_dealloc[num_reg_other]()
                 var seq_info: SeqInfo = get_seq_info[Self.BM, Self.num_q_heads](
                     batch_size, max_seq_len, valid_length, partition
                 )
@@ -3388,6 +3514,8 @@ struct SM100MHA2Q[
                     pos.num_keys,
                     mask,
                 )
+            else:
+                warpgroup_reg_dealloc[24]()
 
     @staticmethod
     @always_inline
@@ -3554,9 +3682,6 @@ struct SM100MHA2Q[
         sink_weights: Self.SinkType,
     ):
         var tmem_addr: UInt32 = Self.get_tmem_ptr(mbars)[]
-        var correction_smem_arg: SharedMemPointer[
-            Scalar[Self.accum_type]
-        ] = Self.get_correction_smem(mbars)
         var o_smem: SharedMemPointer[
             Scalar[Self.output_type]
         ] = Self.get_q_smem(mbars).bitcast[Scalar[Self.output_type]]()
@@ -3566,9 +3691,10 @@ struct SM100MHA2Q[
         var o_cons_mbar: MBarType = (
             mbars.mbar_base + Self.MiscMBarsType.O_consumer_offset
         )
-        var s_tmem: UInt32 = tmem_addr + Self.config.TMEM_S0
+        var s_tmem: UInt32 = tmem_addr + UInt32(Self.config.TMEM_S0)
 
-        var tid = UInt32(thread_idx.x)
+        # var tid = UInt32(thread_idx.x)
+        var tid = llvm_opaque_tid()
         var row = tid % 128
         var warp_idx: UInt32 = warp.broadcast(tid // 32)
         var warp_group_idx: UInt32 = warp.broadcast(tid // 128)
@@ -3595,7 +3721,7 @@ struct SM100MHA2Q[
 
         var q_head_idx: UInt32 = seq_info.head_idx
         var scale_log2e: Scalar[Self.accum_type] = scale
-        var correction_smem = correction_smem_arg + tid
+        var correction_smem = Self.get_correction_smem(mbars) + tid
 
         @parameter
         if not (Self.use_score_mod or Self.MaskType.apply_log2e_after_mask):
@@ -3642,9 +3768,9 @@ struct SM100MHA2Q[
 
         @parameter
         @always_inline
-        fn load_mask_max[
+        fn load_mask_max_impl[
             *, mask_strategy: MaskStrategy
-        ](kv_row: UInt32) -> Float32:
+        ](kv_row: UInt32) -> StaticTuple[Float32, 4]:
             pipeline_s.wait()
             tcgen05_fence_after()
             # break up into sets of 32
@@ -3660,7 +3786,7 @@ struct SM100MHA2Q[
                 s_tmem + UInt32(first_cols)
             ).load_async()
             mask_row[mask_strategy=mask_strategy](s0, kv_row)
-            vrow_max = maximum[width=8](s0)
+            vrow_max = maximum(s0)
 
             s.ptr.store(s0.ptr.load[width=first_cols]())
             # i = 0
@@ -3758,7 +3884,25 @@ struct SM100MHA2Q[
                     vrow_max = maximum(s2, vrow_max)
                     s.ptr.store(offset1, s2.ptr.load[width=batch_size]())
 
-            return vrow_max.reduce_max()
+            return vrow_max
+
+        @parameter
+        @always_inline
+        fn load_mask_max[
+            *, mask_strategy: MaskStrategy
+        ](kv_row: UInt32) -> Float32:
+            return maximum(
+                load_mask_max_impl[mask_strategy=mask_strategy](kv_row)
+            )
+
+        @parameter
+        @always_inline
+        fn load_mask_max[
+            *, mask_strategy: MaskStrategy
+        ](kv_row: UInt32, old_max: Float32) -> Float32:
+            return maximum(
+                load_mask_max_impl[mask_strategy=mask_strategy](kv_row), old_max
+            )
 
         comptime f32x2 = SIMD[DType.float32, 2]
 
@@ -3767,19 +3911,19 @@ struct SM100MHA2Q[
         fn store_exp(row_max: Float32) -> f32x2:
             comptime exp_simd = 2
             comptime vs_len = Self.config.BN // exp_simd  # 128 // 2 = 64
-            __comptime_assert (vs_len % Self.config.num_pv_stages) == 0
+            comptime assert (vs_len % Self.config.num_pv_stages) == 0
             # comptime num_per_stage = Self.config.BN // Self.config.num_pv_stages
             comptime batch_size = 32 if Self.config.num_pv_stages == 1 else vs_len // Self.config.num_pv_stages
             comptime num_batch_iters = vs_len // batch_size
             comptime remainder = vs_len % batch_size
-            __comptime_assert num_batch_iters > 0
+            comptime assert num_batch_iters > 0
             comptime BatchTileType = TMemTile[
                 Self.qkv_type, Self.config.BM // 2, batch_size * exp_simd
             ]
             comptime RemainderTileType = TMemTile[
                 Self.qkv_type, Self.config.BM // 2, remainder * exp_simd
             ]
-            __comptime_assert (Self.config.BN % exp_simd) == 0
+            comptime assert (Self.config.BN % exp_simd) == 0
 
             vs = s.vectorize[exp_simd]()
             # We batch stores, e.g. use `tcgen_05.st.x32`.
@@ -3799,9 +3943,10 @@ struct SM100MHA2Q[
             var vrow_max: f32x2 = f32x2(row_max)
             var acc: f32x2 = exp2(sub_ftz(rebind[f32x2](vs[0]), vrow_max))
             vs[0] = rebind[vs.element_type](acc)
-            vsi = exp2(sub_ftz(rebind[f32x2](vs[1]), vrow_max))
+            vsi = exp2_emulation(sub_ftz(rebind[f32x2](vs[1]), vrow_max))
             vs[1] = rebind[vs.element_type](vsi)
             acc = add_ftz(acc, vsi)
+            comptime exp2_emulation_freq = 4
 
             @parameter
             for i in range(2, 8):
@@ -3811,22 +3956,37 @@ struct SM100MHA2Q[
 
             @parameter
             for i in range(2, 8):
-                vsi = exp2(rebind[f32x2](vs[i]))
+
+                @parameter
+                if i % exp2_emulation_freq == 0:
+                    vsi = exp2_emulation(rebind[f32x2](vs[i]))
+                else:
+                    vsi = exp2(rebind[f32x2](vs[i]))
                 vs[i] = rebind[vs.element_type](vsi)
                 acc = add_ftz(acc, vsi)
 
             @parameter
             for i in range(8, batch_size // 2):
-                vsi = exp2(sub_ftz(rebind[f32x2](vs[i]), vrow_max))
+                diff = sub_ftz(rebind[f32x2](vs[i]), vrow_max)
+
+                @parameter
+                if i % exp2_emulation_freq == 0:
+                    vsi = exp2_emulation(diff)
+                else:
+                    vsi = exp2(diff)
                 vs[i] = rebind[vs.element_type](vsi)
                 acc = add_ftz(acc, vsi)
 
             # at this point, we need 32 fewer fp32 registers but 16 more u32
             @parameter
             for i in range(batch_size // 2, batch_size):
-                vs[i] = rebind[vs.element_type](
-                    exp2(sub_ftz(rebind[f32x2](vs[i]), vrow_max))
-                )
+                diff = sub_ftz(rebind[f32x2](vs[i]), vrow_max)
+
+                @parameter
+                if i % exp2_emulation_freq == 0:
+                    vs[i] = rebind[vs.element_type](exp2_emulation(diff))
+                else:
+                    vs[i] = rebind[vs.element_type](exp2(diff))
 
             BatchTileType(p_tmem).store(
                 LocalTensor[
@@ -3840,18 +4000,20 @@ struct SM100MHA2Q[
 
                 @parameter
                 if Self.config.num_pv_stages > 1:
-                    __comptime_assert (
-                        Self.config.num_pv_stages == num_batch_iters
-                    )
+                    comptime assert Self.config.num_pv_stages == num_batch_iters
                     tcgen05_store_wait()
                     tcgen05_fence_before()
                     pipeline_s.release_no_step[b - 1]()
 
                 @parameter
                 for i in range(offset, offset + batch_size):
-                    vs[i] = rebind[vs.element_type](
-                        exp2(sub_ftz(rebind[f32x2](vs[i]), vrow_max))
-                    )
+                    diff = sub_ftz(rebind[f32x2](vs[i]), vrow_max)
+
+                    @parameter
+                    if i % exp2_emulation_freq == 0:
+                        vs[i] = rebind[vs.element_type](exp2_emulation(diff))
+                    else:
+                        vs[i] = rebind[vs.element_type](exp2(diff))
 
                 comptime el_offset = offset * exp_simd
                 comptime tmem_offset = (
@@ -3869,9 +4031,13 @@ struct SM100MHA2Q[
 
                 @parameter
                 for i in range(offset, offset + remainder):
-                    vs[i] = rebind[vs.element_type](
-                        exp2(sub_ftz(rebind[f32x2](vs[i]), vrow_max))
-                    )
+                    diff = sub_ftz(rebind[f32x2](vs[i]), vrow_max)
+
+                    @parameter
+                    if i % exp2_emulation_freq == 0:
+                        vs[i] = rebind[vs.element_type](exp2_emulation(diff))
+                    else:
+                        vs[i] = rebind[vs.element_type](exp2(diff))
 
                 comptime el_offset = offset * exp_simd
                 comptime tmem_offset = (
@@ -3886,6 +4052,7 @@ struct SM100MHA2Q[
             tcgen05_store_wait()
             tcgen05_fence_before()
             pipeline_s.release[Self.config.num_pv_stages - 1]()
+            pipeline_c.acquire()
             # now we can sum the remaining elements of `acc`
             var acc0: f32x2 = rebind[f32x2](vs[batch_size // 2])
             var acc1: f32x2 = rebind[f32x2](vs[batch_size // 2 + 1])
@@ -3925,8 +4092,8 @@ struct SM100MHA2Q[
             for i in range(1, num_sets):
                 mask_iters[i] = mask_ends[i] - mask_ends[i - 1]
 
-        __comptime_assert num_sets >= 1 and num_sets <= 3
-        __comptime_assert (
+        comptime assert num_sets >= 1 and num_sets <= 3
+        comptime assert (
             num_sets == 1 or mask_sets[0] != TileMaskStatus.UNKNOWN_MASK
         )
 
@@ -4010,8 +4177,7 @@ struct SM100MHA2Q[
                     old_max = row_max
                     var new_row_max: Float32 = load_mask_max[
                         mask_strategy=mask_strategy
-                    ](kv_row)
-                    new_row_max = max(old_max, new_row_max)
+                    ](kv_row, old_max)
                     diff = sub_ftz(old_max, new_row_max)
                     var correction: Float32
 
@@ -4027,7 +4193,6 @@ struct SM100MHA2Q[
                     else:
                         row_max = new_row_max
                         correction = exp2(diff)
-                    pipeline_c.acquire()
                     correction_smem[] = correction
                     pipeline_c.commit()
                     # update s->p
@@ -4049,15 +4214,12 @@ struct SM100MHA2Q[
                     new_row_max = load_mask_max[
                         mask_strategy = MaskStrategy.COMPUTED
                         | MaskStrategy.OUT_OF_BOUNDS
-                    ](kv_row)
+                    ](kv_row, old_max)
                 else:
                     new_row_max = load_mask_max[
                         mask_strategy = MaskStrategy.OUT_OF_BOUNDS
-                    ](kv_row)
-                new_row_max = max(old_max, new_row_max)
+                    ](kv_row, old_max)
                 diff = sub_ftz(old_max, new_row_max)
-                if thread_idx.x % 128 == 0:
-                    print(diff)
                 var correction: Float32
 
                 @parameter
@@ -4072,7 +4234,6 @@ struct SM100MHA2Q[
                 else:
                     row_max = new_row_max
                     correction = exp2(diff)
-                pipeline_c.acquire()
                 correction_smem[] = correction
                 pipeline_c.commit()
                 # update s->p
@@ -4087,9 +4248,7 @@ struct SM100MHA2Q[
             + warp_group_idx * UInt32(Self.config.padded_depth)
         )
         # wait on the o_pipeline producer
-        __comptime_assert (
-            size_of[Self.output_type]() == size_of[Self.qkv_type]()
-        )
+        comptime assert size_of[Self.output_type]() == size_of[Self.qkv_type]()
         if num_output_rows > 0:
             o_prod_mbar[warp_group_idx].wait(o_phase)  # consumer wait
             tcgen05_fence_after()  # example 1
@@ -4124,7 +4283,7 @@ struct SM100MHA2Q[
         num_keys: UInt32,
         mask: Self.MaskType,
     ):
-        __comptime_assert size_of[Self.accum_type]() == 4
+        comptime assert size_of[Self.accum_type]() == 4
 
         var tmem_addr: UInt32 = Self.get_tmem_ptr(mbars)[]
         o0_tmem = tmem_addr + UInt32(Self.config.TMEM_O0)
@@ -4145,14 +4304,12 @@ struct SM100MHA2Q[
         )
 
         comptime batch_size = 16 if Self.config.depth % 16 == 0 else 8
-        __comptime_assert Self.config.depth % batch_size == 0
+        comptime assert Self.config.depth % batch_size == 0
         # output is BM x depth
         comptime load_iters = Self.config.depth // (2 * batch_size)
         comptime load_remainder = Self.config.depth % (2 * batch_size)
-        __comptime_assert load_iters > 1
-        __comptime_assert (load_remainder == batch_size) or (
-            load_remainder == 0
-        )
+        comptime assert load_iters > 1
+        comptime assert (load_remainder == batch_size) or (load_remainder == 0)
         var correction_smem_0 = correction_smem_arg + UInt32(thread_idx.x) % 128
         var correction_smem_1 = correction_smem_0 + (Self.BM // 2)
 
@@ -4168,11 +4325,9 @@ struct SM100MHA2Q[
                 if i == 0:
                     pipeline_c0.wait()
                     c_scalar = correction_smem_0[0]
-                    pipeline_c0.release()
                 else:
                     pipeline_c1.wait()
                     c_scalar = correction_smem_1[0]
-                    pipeline_c1.release()
 
                 change = _vote_nvidia_helper(c_scalar < 1.0) != 0
                 pipeline_o.wait()
@@ -4258,6 +4413,12 @@ struct SM100MHA2Q[
                     tcgen05_fence_before()
                 pipeline_o.release()
 
+                @parameter
+                if i == 0:
+                    pipeline_c0.release()
+                else:
+                    pipeline_c1.release()
+
     @staticmethod
     @always_inline
     fn load(
@@ -4312,7 +4473,7 @@ struct SM100MHA2Q[
             Scalar[Self.KVLUTType.dtype]
         ] = Self.get_q_smem(mbars)
         comptime q_elements = Self.HalfBM * Self.config.BK0
-        __comptime_assert q_elements == QType.layout.size()
+        comptime assert q_elements == QType.layout.size()
         comptime q_bytes = size_of[Self.qkv_type]() * q_elements
         comptime qk_bytes = pipeline_k.bytes + q_bytes
         var k_smem = q_smem + Self.config.BM * Self.config.padded_depth

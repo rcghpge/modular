@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -12,13 +12,14 @@
 # ===----------------------------------------------------------------------=== #
 """Request types for MAX API."""
 
-from .base import Request, RequestID, RequestType
+from .base import DUMMY_REQUEST_ID, Request, RequestID, RequestType
 from .open_responses import (
     AllowedToolChoice,
     AssistantMessage,
     CreateResponseBody,
     DeveloperMessage,
     Error,
+    FastAPIRequestProtocol,
     FunctionCall,
     FunctionCallOutput,
     FunctionCallStatus,
@@ -44,6 +45,7 @@ from .open_responses import (
     Message,
     MessageRole,
     MessageStatus,
+    OpenResponsesRequest,
     OutputContent,
     OutputTextContent,
     OutputTokensDetails,
@@ -75,11 +77,13 @@ from .open_responses import (
 )
 
 __all__ = [
+    "DUMMY_REQUEST_ID",
     "AllowedToolChoice",
     "AssistantMessage",
     "CreateResponseBody",
     "DeveloperMessage",
     "Error",
+    "FastAPIRequestProtocol",
     "FunctionCall",
     "FunctionCallOutput",
     "FunctionCallStatus",
@@ -105,6 +109,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "MessageStatus",
+    "OpenResponsesRequest",
     "OutputContent",
     "OutputTextContent",
     "OutputTokensDetails",

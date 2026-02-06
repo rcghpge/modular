@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -21,7 +21,7 @@ from python import Python
 
 from collections.dict import OwnedKwargsDict
 from os import abort
-from sys.ffi import _Global
+from ffi import _Global
 
 from ._cpython import (
     CPython,
@@ -81,7 +81,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
         except e:
             abort[prefix="ERROR:"](String(e))
 
-    fn __init__(out self, ref [StaticConstantOrigin]cpython: CPython):
+    fn __init__(out self, ref[StaticConstantOrigin] cpython: CPython):
         """Construct a `Python` instance from an existing reference
         to the lower-level singleton `CPython` instance.
 
@@ -93,7 +93,7 @@ struct Python(Defaultable, ImplicitlyCopyable):
         ).unsafe_origin_cast[StaticConstantOrigin]()
 
     @always_inline
-    fn cpython(self) -> ref [StaticConstantOrigin] CPython:
+    fn cpython(self) -> ref[StaticConstantOrigin] CPython:
         """Handle to the low-level C API of the CPython interpreter present in
         the current process.
 

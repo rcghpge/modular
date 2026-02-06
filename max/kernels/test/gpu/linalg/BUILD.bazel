@@ -19,6 +19,7 @@ _GROUPED_BLOCK_SCALED_GEMM_B200_TESTS = [
 ]
 
 _EXTRA_CONSTRAINTS = {
+    "test_amd_matmul_asm.mojo": ["//:amd_gpu"],
     "test_async_copy_wgmma.mojo": ["//:h100_gpu"],
     "test_dual_gemm.mojo": ["//:nvidia_gpu"],  # FIXME: KERN-1377
     "test_gemm_kernel.mojo": ["//:nvidia_gpu"],  # FIXME: KERN-1377
@@ -121,6 +122,7 @@ _FILECHECK_TESTS = [
 _B200_SMOKE_TESTS = [
     "test_matmul_sm100_smoke.mojo",
     "test_matmul_sm100_blockwise_fp8_smoke.mojo",
+    "test_tma_im2col_unit.mojo",
 ]
 
 _B200_TESTS = [

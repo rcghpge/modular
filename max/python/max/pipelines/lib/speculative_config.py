@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -30,6 +30,7 @@ class SpeculativeMethod(str, Enum):
 
     STANDALONE = "standalone"
     EAGLE = "eagle"
+    MTP = "mtp"
 
 
 class SpeculativeConfig(ConfigFileModel):
@@ -55,6 +56,10 @@ class SpeculativeConfig(ConfigFileModel):
     def is_standalone(self) -> bool:
         """Whether the speculative method is a standalone model"""
         return self.speculative_method == SpeculativeMethod.STANDALONE
+
+    def is_mtp(self) -> bool:
+        """Whether the speculative method is MTP"""
+        return self.speculative_method == SpeculativeMethod.MTP
 
     @classmethod
     def _get_enum_mapping_impl(cls) -> Mapping[str, type[enum.Enum]]:

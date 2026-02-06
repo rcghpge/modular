@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 from math import align_down, ceildiv
-from collections import OptionalReg
 from sys import (
     align_of,
     env_get_bool,
@@ -65,8 +64,8 @@ from ._multistage_gemm_gpu import (
 from .amd import gemm_kernel_amd
 from .sm80.dispatch import create_matmul_configs_ampere
 from .sm90.dispatch import matmul_dispatch_sm90
-from .sm100_structured.dispatch import matmul_dispatch_sm100
-from .sm100_structured.matmul import matmul_sm100_fallback
+from .sm100_structured.default.dispatch import matmul_dispatch_sm100
+from .sm100_structured.default.matmul import matmul_sm100_fallback
 
 comptime logger = Logger()
 
@@ -267,6 +266,27 @@ fn _amdgpu_matmul_config_from_block_shape[
     var num_warps: UInt = 1
     var num_warp_k_partitions: UInt = 1
 
+    # TODO(KERN-2432): Merge these configurations into the below logic.
+    if block_m == 16 and a_type.is_float8() and transpose_b:
+        if block_n == 32:
+            return MatmulConfig[a_type, b_type, c_type, transpose_b](
+                block_tile_shape=Index(16, 32, 256),
+                warp_tile_shape=Index(16, 32, 256),
+                mma_shape=_amdgpu_get_mma_shape[a_type, transpose_b](),
+                num_pipeline_stages=1,
+                num_warp_k_partitions=4,
+                pdl_level=pdl_level,
+            )
+        if block_n == 64:
+            return MatmulConfig[a_type, b_type, c_type, transpose_b](
+                block_tile_shape=Index(16, 64, 1024),
+                warp_tile_shape=Index(16, 16, 1024),
+                mma_shape=_amdgpu_get_mma_shape[a_type, transpose_b](),
+                num_pipeline_stages=1,
+                num_warp_k_partitions=1,
+                pdl_level=pdl_level,
+            )
+
     if block_m <= 32 and block_n <= 32:
         # Attempt to increase the number of warp_k partitions to improve processor
         # utilization. A single warp needs to read two block_k buffers, so double
@@ -376,9 +396,7 @@ fn _matmul_gpu[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    config: OptionalReg[
-        MatmulConfig[a_type, b_type, c_type, transpose_b]
-    ] = None,
+    config: Optional[MatmulConfig[a_type, b_type, c_type, transpose_b]] = None,
     pdl_level: PDLLevel = PDLLevel(),
     register_based_epilogue: Bool = True,
 ](

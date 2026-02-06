@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -49,6 +49,7 @@ from max.serve.scheduler.di_dispatchers import DecodeDispatcherClientV2
 
 from .base import SchedulerProgress
 from .batch_constructor import TextBatchConstructor
+from .batch_constructor.text_batch_constructor import BatchSchedulingStrategy
 from .config import TokenGenerationSchedulerConfig
 from .utils import SchedulerLogger, get_cancelled_reqs
 
@@ -105,6 +106,7 @@ class DecodeScheduler(Scheduler):
             scheduler_config=scheduler_config,
             pipeline=pipeline,
             kv_cache=kv_cache,
+            batch_scheduling_strategy=BatchSchedulingStrategy.DECODE_FIRST,
         )
         self.scheduler_logger = SchedulerLogger()
         # None corresponds to the default destination address.
@@ -327,13 +329,7 @@ class DecodeScheduler(Scheduler):
         assert len(inputs.batches) > 0
         responses = self.pipeline.execute(inputs)
 
-        pruned_ids = (
-            self.batch_constructor.advance_requests_and_collect_invalid_ids(
-                inputs.batches
-            )
-        )
-        for request_id in pruned_ids:
-            del responses[request_id]
+        self.batch_constructor.advance_requests(inputs)
 
         # Release terminated requests
         num_terminated_requests = 0

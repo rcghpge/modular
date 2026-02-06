@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -21,7 +21,9 @@ from bit import next_power_of_two
 from gpu import MAX_THREADS_PER_BLOCK_METADATA, global_idx
 from gpu.host import DeviceContext, get_gpu_target
 from gpu.host.info import is_cpu
-from layout import UNKNOWN_VALUE, Layout, LayoutTensor, RuntimeLayout
+from layout._coord import Coord, Idx
+from layout._layout import row_major
+from layout._tile_tensor import TileTensor
 from runtime.tracing import Trace, TraceLevel, get_safe_task_id
 
 from utils.index import IndexList, StaticTuple
@@ -31,9 +33,9 @@ fn _argsort_cpu[
     *,
     ascending: Bool = True,
 ](
-    indices: LayoutTensor[mut=True, address_space = AddressSpace.GENERIC, ...],
-    input: LayoutTensor,
-) raises:
+    indices: TileTensor[mut=True, address_space = AddressSpace.GENERIC, ...],
+    input: TileTensor,
+) raises where (input.rank == 1):
     """
     Performs argsort on CPU.
 
@@ -56,21 +58,21 @@ fn _argsort_cpu[
 
     elementwise[
         fill_indices_iota, simd_width_of[indices.dtype](), target="cpu"
-    ](indices.size())
+    ](indices.numel())
 
     @parameter
     fn cmp_fn(a: Scalar[indices.dtype], b: Scalar[indices.dtype]) -> Bool:
         @parameter
         if ascending:
-            return input[Int(a)] < input[Int(b)]
+            return input[a] < input[b]
         else:
-            return input[Int(a)] > input[Int(b)]
+            return input[a] > input[b]
 
     sort[cmp_fn](
         Span[
             Scalar[indices.dtype],
             indices.origin,
-        ](ptr=indices.ptr, length=indices.size())
+        ](ptr=indices.ptr, length=indices.numel())
     )
 
 
@@ -98,10 +100,10 @@ fn _argsort_gpu_impl[
     *,
     ascending: Bool = True,
 ](
-    indices: LayoutTensor[mut=True, ...],
-    input: LayoutTensor,
+    indices: TileTensor[mut=True, ...],
+    input: TileTensor[mut=True, ...],
     ctx: DeviceContext,
-) raises:
+) raises where (input.rank == 1 and indices.rank == 1):
     """
     Implements GPU argsort using bitonic sort algorithm.
 
@@ -114,7 +116,7 @@ fn _argsort_gpu_impl[
         ctx: Device context for GPU execution.
     """
     # Create a device buffer to store a copy of the input data
-    var n = indices.size()
+    var n = indices.numel()
 
     debug_assert(n.is_power_of_two(), "n must be a power of two")
 
@@ -125,14 +127,9 @@ fn _argsort_gpu_impl[
     @__llvm_metadata(
         MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](BLOCK_SIZE)
     )
-    fn bitonic_sort_step[
-        indices_dtype: DType,
-        input_dtype: DType,
-        indices_layout: Layout,
-        input_layout: Layout,
-    ](
-        indices: LayoutTensor[indices_dtype, indices_layout, MutAnyOrigin],
-        input: LayoutTensor[input_dtype, input_layout, MutAnyOrigin],
+    fn bitonic_sort_step(
+        indices: TileTensor[indices.dtype, indices.LayoutType, indices.origin],
+        input: TileTensor[input.dtype, input.LayoutType, input.origin],
         n: Int,
         step: Int,
         stage: Int,
@@ -176,9 +173,7 @@ fn _argsort_gpu_impl[
         var j = k // 2
         while j > 0:
             # Launch GPU kernel for each stage of the bitonic sort
-            comptime kernel = bitonic_sort_step[
-                indices.dtype, input.dtype, indices.layout, input.layout
-            ]
+            comptime kernel = bitonic_sort_step
             ctx.enqueue_function[kernel, kernel](
                 indices,
                 input,
@@ -196,10 +191,10 @@ fn _argsort_gpu[
     *,
     ascending: Bool = True,
 ](
-    indices: LayoutTensor[mut=True, ...],
-    input: LayoutTensor,
+    indices: TileTensor[mut=True, ...],
+    input: TileTensor[mut=True, ...],
     ctx: DeviceContext,
-) raises:
+) raises where (indices.rank == 1 and input.rank == 1):
     """
     Performs argsort on GPU with padding to power-of-two size if needed.
 
@@ -212,7 +207,7 @@ fn _argsort_gpu[
         ctx: Device context for GPU execution.
     """
     # Create a device buffer to store a copy of the input data
-    var n = indices.size()
+    var n = indices.numel()
 
     if n.is_power_of_two():
         # Initialize indices with iota.
@@ -243,25 +238,16 @@ fn _argsort_gpu[
     var padded_input_buffer = ctx.enqueue_create_buffer[input.dtype](
         pow_2_length
     )
-    var padded_input = LayoutTensor[
-        mut=True, input.dtype, Layout.row_major(UNKNOWN_VALUE)
-    ](
-        padded_input_buffer,
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
-            IndexList[1](pow_2_length)
-        ),
+    var padded_input = TileTensor(
+        padded_input_buffer, row_major(Idx(pow_2_length))
     )
 
     var padded_indices_buffer = ctx.enqueue_create_buffer[indices.dtype](
         pow_2_length
     )
-    var padded_indices = LayoutTensor[
-        mut=True, indices.dtype, Layout.row_major(UNKNOWN_VALUE)
-    ](
+    var padded_indices = TileTensor(
         padded_indices_buffer,
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
-            IndexList[1](pow_2_length)
-        ),
+        row_major(Idx(pow_2_length)),
     )
 
     # Initialize indices with sequential values and copy input data to device
@@ -275,12 +261,13 @@ fn _argsort_gpu[
             padded_indices.ptr.store(
                 i, iota[padded_indices.dtype, width](Scalar[indices.dtype](i))
             )
-            padded_input.ptr.store[alignment = padded_input.alignment](
-                i, input.ptr.load[width=width](i)
-            )
+            padded_input.ptr.store[
+                alignment = simd_width_of[padded_input.dtype]()
+            ](i, input.ptr.load[width=width](i))
             return
 
         # otherwise we pad with a sentinel value and the max/min value for the type.
+        comptime UNKNOWN_VALUE = -1
         padded_indices.ptr.store(
             i, SIMD[padded_indices.dtype, width](UNKNOWN_VALUE)
         )
@@ -322,7 +309,7 @@ fn _argsort_gpu[
     _ = padded_indices_buffer^
 
 
-fn _validate_argsort(input: LayoutTensor, output: LayoutTensor) raises:
+fn _validate_argsort(input: TileTensor, output: TileTensor) raises:
     """
     Validates input and output buffers for argsort operation.
 
@@ -334,19 +321,7 @@ fn _validate_argsort(input: LayoutTensor, output: LayoutTensor) raises:
         Error if buffers don't meet requirements for argsort.
     """
 
-    @parameter
-    if output.rank != 1:
-        raise "output must be a 1D tensor"
-
-    @parameter
-    if input.rank != 1:
-        raise "input must be a 1D tensor"
-
-    @parameter
-    if not output.dtype.is_integral():
-        raise "output must be an integer type"
-
-    if output.size() != input.size():
+    if output.numel() != input.numel():
         raise "output and input must have the same length"
 
 
@@ -355,8 +330,10 @@ fn argsort[
     ascending: Bool = True,
     target: StaticString = "cpu",
 ](
-    output: LayoutTensor[mut=True, ...], input: LayoutTensor, ctx: DeviceContext
-) raises:
+    output: TileTensor[mut=True, address_space = AddressSpace.GENERIC, ...],
+    input: TileTensor[mut=True, ...],
+    ctx: DeviceContext,
+) raises where (input.rank == 1 and output.rank == 1):
     """
     Performs argsort on input buffer, storing indices in output buffer.
 
@@ -377,16 +354,19 @@ fn argsort[
 
         @parameter
         if is_cpu[target]():
-            return _argsort_cpu[ascending=ascending](
-                output.address_space_cast[AddressSpace.GENERIC](), input
-            )
+            return _argsort_cpu[ascending=ascending](output, input)
         else:
             return _argsort_gpu[ascending=ascending](output, input, ctx)
 
 
 fn argsort[
     ascending: Bool = True
-](output: LayoutTensor[mut=True, ...], input: LayoutTensor) raises:
+](
+    output: TileTensor[mut=True, address_space = AddressSpace.GENERIC, ...],
+    input: TileTensor,
+) raises where (
+    input.rank == 1 and output.rank == 1 and output.dtype.is_integral()
+):
     """
     CPU-only version of argsort.
 
@@ -399,6 +379,4 @@ fn argsort[
     """
     with Trace[TraceLevel.OP]("argsort"):
         _validate_argsort(input, output)
-        _argsort_cpu[ascending=ascending](
-            output.address_space_cast[AddressSpace.GENERIC](), input
-        )
+        _argsort_cpu[ascending=ascending](output, input)

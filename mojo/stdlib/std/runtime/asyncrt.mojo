@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -14,7 +14,7 @@
 
 from os import abort
 from os.atomic import Atomic
-from sys import external_call
+from ffi import external_call
 
 from builtin.coroutine import AnyCoroutine, _coro_resume_fn, _suspend_async
 from gpu.host import DeviceContext
@@ -213,7 +213,7 @@ struct Task[type: ImplicitlyDestructible, origins: OriginSet]:
         )
         self._handle._set_result_slot(UnsafePointer(to=self._result))
 
-    fn get(self) -> ref [self._result] Self.type:
+    fn get(self) -> ref[self._result] Self.type:
         """Get the task's result value. Calling this on an incomplete task is
         undefined behavior.
 
@@ -231,7 +231,7 @@ struct Task[type: ImplicitlyDestructible, origins: OriginSet]:
         self._handle^.force_destroy()
 
     @always_inline
-    fn __await__(self) -> ref [self.get()] Self.type:
+    fn __await__(self) -> ref[self.get()] Self.type:
         """Suspend the current async function until the task completes and its
         result becomes available. This function must be force inlined into the
         calling async function.
@@ -254,7 +254,7 @@ struct Task[type: ImplicitlyDestructible, origins: OriginSet]:
         _suspend_async[await_body]()
         return self.get()
 
-    fn wait(self) -> ref [self.get()] Self.type:
+    fn wait(self) -> ref[self.get()] Self.type:
         """Block the current thread until the future value becomes available.
 
         This method is used in synchronous code to wait for an asynchronous task

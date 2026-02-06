@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -189,6 +189,11 @@ def test_pinned_zeros() -> None:
     assert tensor.pinned
     assert tensor[0, 0].item() == 0
     assert tensor[1, 0].item() == 0
+
+    if accelerator_api() == "hip":
+        pytest.skip(
+            "FIXME SERVOPT-947: __setitem__ / __getitem__ is buggy on HIP."
+        )
 
     tensor[1, 0] = 42
     assert tensor[1, 0].item() == 42

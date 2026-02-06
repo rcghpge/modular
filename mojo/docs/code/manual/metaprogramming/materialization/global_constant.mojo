@@ -12,12 +12,22 @@
 # ===----------------------------------------------------------------------=== #
 
 from builtin.globals import global_constant
+from testing import assert_equal
 
 
 fn use_lookup(idx: Int) -> Int64:
-    comptime numbers = InlineArray[Int64, 10](
-        1, 3, 14, 34, 63, 101, 148, 204, 269, 343
-    )
+    comptime numbers: InlineArray[Int64, 10] = [
+        1,
+        3,
+        14,
+        34,
+        63,
+        101,
+        148,
+        204,
+        269,
+        343,
+    ]
     ref lookup_table = global_constant[numbers]()
     if idx < len(lookup_table):
         return lookup_table[idx]
@@ -26,4 +36,5 @@ fn use_lookup(idx: Int) -> Int64:
 
 
 def main():
-    print(use_lookup(3))
+    var x = use_lookup(3)
+    assert_equal(x, 34)

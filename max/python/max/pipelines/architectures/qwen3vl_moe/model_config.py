@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -302,6 +302,16 @@ class Qwen3VLConfig(ArchConfigWithKVCache):
             huggingface_config.text_config.quantization_config = (
                 huggingface_config.quantization_config
             )
+
+        # For VLM models, tie_word_embeddings on the top-level config determines
+        # whether lm_head.weight exists in the checkpoint. The text_config may
+        # have a different value (e.g., Qwen3-VL-4B-FP8 has top-level=false but
+        # text_config=true). Use top-level value to match actual checkpoint.
+        if hasattr(huggingface_config, "tie_word_embeddings"):
+            huggingface_config.text_config.tie_word_embeddings = (
+                huggingface_config.tie_word_embeddings
+            )
+
         llm_config = Llama3Config.initialize_from_config(
             pipeline_config, text_config
         )

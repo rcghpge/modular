@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -89,7 +89,7 @@ struct StopIteration(TrivialRegisterType, Writable):
         writer.write("StopIteration")
 
 
-trait Iterator(Movable):
+trait Iterator(ImplicitlyDestructible, Movable):
     """The `Iterator` trait describes a type that can be used as an
     iterator, e.g. in a `for` loop.
     """
@@ -716,7 +716,7 @@ fn map[
     ResultType: Copyable,
     //,
     function: fn(var IterableType.IteratorType[origin].Element) -> ResultType,
-](ref [origin]iterable: IterableType) -> _MapIterator[
+](ref[origin] iterable: IterableType) -> _MapIterator[
     OutputType=ResultType, function=function
 ]:
     """Returns an iterator that applies `function` to each element of the input

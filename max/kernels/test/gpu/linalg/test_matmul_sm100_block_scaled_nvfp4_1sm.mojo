@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -26,7 +26,7 @@ comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from internal_utils import assert_almost_equal
 from internal_utils._utils import ValOrDim, dynamic, static
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from linalg.matmul.gpu.sm100_structured.block_scaled_matmul import (
+from linalg.matmul.gpu.sm100_structured.block_scaled.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
 )
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig

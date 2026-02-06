@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -24,11 +24,14 @@ Spec: https://www.openresponses.org/reference
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from max.interfaces.provider_options import ProviderOptions
 from pydantic import BaseModel, ConfigDict, Field
+
+from .base import Request, RequestID
 
 # ============================================================================
 # Section 1: Enumerations
@@ -1047,8 +1050,8 @@ class CreateResponseBody(BaseModel):
         description=(
             "Provider-specific options for MAX platform and modalities. "
             "Structure: 'max' for universal MAX options (target_endpoint, etc.), "
-            "and modality-specific fields like 'pixel' for vision pipelines. "
-            "Example: {'max': {'target_endpoint': 'instance-123'}, 'pixel': {...}}"
+            "and modality-specific fields like 'image' for image generation or 'video' for video generation. "
+            "Example: {'max': {'target_endpoint': 'instance-123'}, 'image': {'width': 1024, 'height': 768}}"
         ),
     )
 
@@ -1220,3 +1223,75 @@ class ResponseResource(BaseModel):
 # - ToolChoice
 # - ResponseFormatParam
 # - ResponseFormat
+
+
+# ============================================================================
+# Section 11: OpenResponses Request Container
+# ============================================================================
+
+
+class _RequestState(Protocol):
+    """Protocol for request state containing request_id."""
+
+    request_id: str
+
+
+class FastAPIRequestProtocol(Protocol):
+    """Minimal protocol for FastAPI/Starlette Request objects.
+
+    This protocol defines the minimal interface needed from a FastAPI Request
+    without requiring the fastapi dependency in the interfaces library.
+    """
+
+    state: _RequestState
+
+    async def body(self) -> bytes:
+        """Return the request body as bytes."""
+        ...
+
+
+@dataclass(frozen=True)
+class OpenResponsesRequest(Request):
+    """General request container for OpenResponses API requests.
+
+    This class wraps a CreateResponseBody and adheres to the Request schema.
+    All request fields are accessed directly from the body.
+    """
+
+    body: CreateResponseBody = field()
+    """The complete OpenResponses request body."""
+
+    @classmethod
+    async def from_fastapi_request(
+        cls,
+        request: FastAPIRequestProtocol,
+    ) -> OpenResponsesRequest:
+        """Create an OpenResponsesRequest from a FastAPI/Starlette Request.
+
+        Extracts the request_id from request.state.request_id and parses the
+        request body as a CreateResponseBody.
+
+        Args:
+            request: A request object with state.request_id and body() method.
+                Compatible with FastAPI/Starlette Request objects.
+
+        Returns:
+            An OpenResponsesRequest instance.
+
+        Raises:
+            ValueError: If request.state.request_id is not set.
+            pydantic.ValidationError: If the request body is invalid.
+        """
+        if not hasattr(request.state, "request_id"):
+            raise ValueError(
+                "request.state.request_id not found. "
+                "Ensure the request ID middleware is properly configured."
+            )
+
+        request_id = RequestID(value=request.state.request_id)
+        body = CreateResponseBody.model_validate_json(await request.body())
+
+        return cls(
+            request_id=request_id,
+            body=body,
+        )

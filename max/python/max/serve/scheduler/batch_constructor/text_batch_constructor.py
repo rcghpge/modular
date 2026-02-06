@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -138,6 +138,62 @@ class PreemptionReason(str, Enum):
 
             case PreemptionReason.KV_CACHE_MEMORY:
                 return "Preempted a request due to lack of KV pages. This can affect the end-to-end performance. Consider increasing device-memory-utilization via `--device-memory-utilization` to provide more KV cache memory."
+
+
+class BatchSchedulingStrategy(str, Enum):
+    """Strategy for prioritizing CE (prefill) vs TG (decode) batch construction.
+
+    This enum controls how replicas prioritize between context encoding (CE/prefill)
+    and token generation (TG/decode) requests when constructing batches. The strategy
+    can either enforce a global priority across all replicas or allow each replica to
+    independently determine priority based on its local queue state.
+
+    The default behavior (None/unset) corresponds to PER_REPLICA mode, where each
+    replica independently decides priority based on its queue state and the
+    enable_in_flight_batching configuration setting.
+    """
+
+    PREFILL_FIRST = "prefill_first"
+    """Always prioritize CE (context encoding/prefill) requests.
+
+    When this strategy is set, all replicas will prioritize building CE batches
+    before processing any TG requests. This maximizes prompt throughput and
+    minimizes time-to-first-token at the cost of potentially higher inter-token
+    latency for ongoing generations.
+    """
+
+    DECODE_FIRST = "decode_first"
+    """Always prioritize TG (token generation/decode) requests.
+
+    When this strategy is set, all replicas will prioritize building TG batches
+    and only process CE requests when no TG work is available. This minimizes
+    inter-token latency for active generations at the cost of potentially higher
+    time-to-first-token for new requests.
+    """
+
+    BALANCED = "balanced"
+    """Adaptively prioritize based on relative queue sizes across replicas.
+
+    When this strategy is set, the scheduler considers the global state across
+    all replicas to determine priority. If the majority of pending work is CE,
+    prioritize CE; if the majority is TG, prioritize TG. This provides a middle
+    ground between PREFILL_FIRST and DECODE_FIRST strategies.
+    """
+
+    PER_REPLICA = "per_replica"
+    """Each replica independently manages its own batching priority (default).
+
+    This is the default behavior when no strategy is explicitly set. Each replica
+    determines its own priority based on its local queue state and the
+    enable_in_flight_batching configuration:
+
+    - If enable_in_flight_batching=False: prioritize CE when CE queue is non-empty
+    - If enable_in_flight_batching=True: prioritize TG when TG queue is non-empty
+
+    This mode provides maximum flexibility and allows replicas to adapt to their
+    individual workload characteristics, which is particularly useful in
+    load-balanced deployments where request patterns may vary across replicas.
+    """
 
 
 class TextBatchConstructor:
@@ -345,10 +401,12 @@ class TextBatchConstructor:
             TextGenerationInputs[TextContext], TextGenerationOutput
         ],
         kv_cache: PagedKVCacheManager,
+        batch_scheduling_strategy: BatchSchedulingStrategy = BatchSchedulingStrategy.PER_REPLICA,
     ) -> None:
         self.scheduler_config = scheduler_config
         self.pipeline = pipeline
         self.kv_cache = kv_cache
+        self.batch_scheduling_strategy = batch_scheduling_strategy
 
         self._lora_manager: LoRAManager | None = LoRAManager.get_lora_manager(
             pipeline
@@ -448,29 +506,21 @@ class TextBatchConstructor:
         else:
             replica.tg_reqs[ctx.request_id] = ctx
 
-    def advance_requests_and_collect_invalid_ids(
-        self, executed_batches: list[list[TextContext]]
-    ) -> list[RequestID]:
-        """Advances request state based on executed CE batches and returns invalid IDs.
+    def advance_requests(
+        self, inputs: TextGenerationInputs[TextContext]
+    ) -> None:
+        """Advances request state based on executed CE batches.
 
         This method updates per-replica queues by moving executed context encoding (CE)
         requests into the text generation (TG) queues. If the last request in a batch
         is chunked and still requires additional CE work, it is moved back to the CE
-        queue for that replica, and its request ID is returned so upstream callers can
-        remove any partial responses for that request.
+        queue for that replica.
 
         Args:
-            executed_batches: A list of per-replica context batches that have just
-                been executed by CE.
-
-        Returns:
-            A list of request IDs that should be treated as invalid by upstream
-            consumers (for example, to be removed from the responses queue) because
-            they represent chunked requests that must be re-processed by CE.
+            inputs: the inputs for the batch.
         """
-        chunked_request_ids: list[RequestID] = []
         for per_replica_batch, replica in zip(
-            executed_batches, self.replicas, strict=True
+            inputs.batches, self.replicas, strict=True
         ):
             # It is possible that the batch is empty for a replica.
             if len(per_replica_batch) == 0:
@@ -486,10 +536,6 @@ class TextBatchConstructor:
                 del replica.tg_reqs[last_request.request_id]
                 replica.ce_reqs[last_request.request_id] = last_request
                 replica.ce_reqs.move_to_end(last_request.request_id, last=False)
-
-                chunked_request_ids.append(last_request.request_id)
-
-        return chunked_request_ids
 
     def contains(self, request_id: RequestID) -> bool:
         """Checks if a request is in the batch constructor for any replica."""
@@ -846,8 +892,17 @@ class TextBatchConstructor:
             batch.num_steps = max_num_steps
 
     @traced
-    def _construct_replica_batch(self, replica_idx: int) -> ReplicaBatch:
-        """Constructs a batch for a single replica."""
+    def _construct_replica_batch(
+        self, replica_idx: int, priority_override: RequestType | None = None
+    ) -> ReplicaBatch:
+        """Constructs a batch for a single replica.
+
+        Args:
+            replica_idx: The index of the replica to construct a batch for.
+            priority_override: Optional RequestType to override the priority
+                identified by _identify_priority. If None, priority is determined
+                automatically based on queue state and scheduler configuration.
+        """
 
         # Initialize batch
         batch = ReplicaBatch(
@@ -856,11 +911,18 @@ class TextBatchConstructor:
             token_budget=self._create_new_token_budget(),
         )
 
-        match self._identify_priority(replica_idx):
+        # Use override if provided, otherwise identify priority automatically
+        priority = (
+            priority_override
+            if priority_override is not None
+            else self._identify_priority(replica_idx)
+        )
+
+        match priority:
             case RequestType.CE:
                 self._add_ce_requests(batch, replica_idx)
 
-                if len(batch) == 0:
+                if len(batch) == 0 and priority_override is None:
                     self._add_tg_requests(batch, replica_idx)
 
             case RequestType.TG:
@@ -869,6 +931,7 @@ class TextBatchConstructor:
                 if (
                     self.scheduler_config.enable_in_flight_batching
                     and len(batch) > 0
+                    and priority_override is None
                 ):
                     self._add_ce_requests(batch, replica_idx)
 
@@ -880,8 +943,43 @@ class TextBatchConstructor:
     def construct_batch(self) -> TextGenerationInputs[TextContext]:
         """Constructs Pipeline Inputs which includes a batch for each replica."""
 
+        priority_override = None
+        replica_priorities: set[RequestType] | list[RequestType]
+        match self.batch_scheduling_strategy:
+            case BatchSchedulingStrategy.DECODE_FIRST:
+                replica_priorities = set(
+                    self._identify_priority(idx)
+                    for idx in range(self.num_replicas)
+                )
+                if RequestType.TG in replica_priorities:
+                    priority_override = RequestType.TG
+            case BatchSchedulingStrategy.PREFILL_FIRST:
+                replica_priorities = set(
+                    self._identify_priority(idx)
+                    for idx in range(self.num_replicas)
+                )
+                if RequestType.CE in replica_priorities:
+                    priority_override = RequestType.CE
+            case BatchSchedulingStrategy.BALANCED:
+                replica_priorities = list(
+                    self._identify_priority(idx)
+                    for idx in range(self.num_replicas)
+                )
+
+                # Count occurrences of each priority type
+                ce_count = replica_priorities.count(RequestType.CE)
+                tg_count = replica_priorities.count(RequestType.TG)
+
+                # Set priority to the majority case, defaulting to TG if tied
+                if ce_count > tg_count:
+                    priority_override = RequestType.CE
+                else:
+                    priority_override = RequestType.TG
+
         batches_per_replica = [
-            self._construct_replica_batch(replica_idx)
+            self._construct_replica_batch(
+                replica_idx, priority_override=priority_override
+            )
             for replica_idx in range(self.num_replicas)
         ]
 

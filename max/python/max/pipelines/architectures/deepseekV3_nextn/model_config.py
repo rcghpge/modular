@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -51,7 +51,7 @@ class DeepseekV3NextNConfig(DeepseekV3Config):
         data_parallel_degree = pipeline_config.model.data_parallel_degree
         if len(devices) != data_parallel_degree:
             raise ValueError(
-                "Number of devices must match data parallel degree"
+                f"Number of devices {len(devices)} must match data parallel degree: {data_parallel_degree}"
             )
         return KVCacheParams(
             dtype=cache_dtype,

@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from max.interfaces import (
@@ -28,11 +29,16 @@ from max.interfaces import (
 from max.interfaces.queue import drain_queue
 from max.kv_cache import PagedKVCacheManager
 from max.pipelines.core import TextAndVisionContext, TextContext
-from max.pipelines.lib import PipelineConfig, TextGenerationPipeline
+from max.pipelines.lib import (
+    OverlapTextGenerationPipeline,
+    PipelineConfig,
+    TextGenerationPipeline,
+)
 from max.profiler import Tracer, traced
 
 from .base import SchedulerProgress
 from .batch_constructor import TextBatchConstructor
+from .batch_constructor.text_batch_constructor import BatchSchedulingStrategy
 from .config import TokenGenerationSchedulerConfig
 from .utils import SchedulerLogger, get_cancelled_reqs
 
@@ -62,10 +68,24 @@ class TokenGenerationScheduler(Scheduler):
         self.response_queue = response_queue
         self.cancel_queue = cancel_queue
 
+        # Parse batch scheduling strategy from environment variable
+        batch_strategy = BatchSchedulingStrategy.PER_REPLICA
+        env_strategy = os.getenv("MAX_SERVE_BATCH_PRIORITY")
+        if env_strategy:
+            try:
+                batch_strategy = BatchSchedulingStrategy(env_strategy.lower())
+            except ValueError:
+                logger.warning(
+                    f"Invalid MAX_SERVE_BATCH_PRIORITY value '{env_strategy}'. "
+                    f"Valid values are: {', '.join([s.value for s in BatchSchedulingStrategy])}. "
+                    f"Using default: {BatchSchedulingStrategy.PER_REPLICA.value}"
+                )
+
         self.batch_constructor = TextBatchConstructor(
             scheduler_config=scheduler_config,
             pipeline=pipeline,
             kv_cache=kv_cache,
+            batch_scheduling_strategy=batch_strategy,
         )
         self.scheduler_logger = SchedulerLogger()
         self.support_empty_batches = support_empty_batches
@@ -113,8 +133,12 @@ class TokenGenerationScheduler(Scheduler):
         t1 = time.monotonic()
         batch_creation_time_s = t1 - t0
 
-        # If the batch is empty, skip
-        if not inputs and not self.support_empty_batches:
+        # Skip if there is no work to do.
+        has_pending_outputs = (
+            isinstance(self.pipeline, OverlapTextGenerationPipeline)
+            and self.pipeline.has_pending_outputs()
+        )
+        if not (inputs or self.support_empty_batches or has_pending_outputs):
             return SchedulerProgress.NO_PROGRESS
 
         # Schedule the batch
@@ -175,15 +199,18 @@ class TokenGenerationScheduler(Scheduler):
 
             return len(batch_request_ids)
 
+        # Filter out all responses for requests that are already released.
+        # We can get a response for a request that is already released due to
+        # the quirk of overlap scheduling where the pipeline may produce an extra
+        # token after EOS.
+        responses = {
+            req_id: response
+            for req_id, response in responses.items()
+            if self.batch_constructor.contains(req_id)
+        }
+
         # Advance the requests and collect the invalid request IDs
-        for (
-            request_id
-        ) in self.batch_constructor.advance_requests_and_collect_invalid_ids(
-            inputs.batches
-        ):
-            # The only scenario where the request ID should not be in the responses dictionary, is if the pipeline
-            # errored out, this should not happen.
-            del responses[request_id]
+        self.batch_constructor.advance_requests(inputs)
 
         # Release terminated requests from the batch
         num_terminated_requests = 0

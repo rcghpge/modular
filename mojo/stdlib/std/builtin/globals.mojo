@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -19,7 +19,7 @@ compile-time constants without materializing entire data structures in memory.
 
 fn global_constant[
     T: Copyable & ImplicitlyDestructible, //, value: T
-]() -> ref [StaticConstantOrigin] T:
+]() -> ref[StaticConstantOrigin] T:
     """Creates a reference to a compile-time constant value stored in static memory.
 
     This function stores the compile-time constant in the binary's read-only data
@@ -48,7 +48,7 @@ fn global_constant[
     from builtin.globals import global_constant
 
     # Create a reference to a constant array and access elements
-    comptime lookup_table = InlineArray[Int, 4](1, 2, 3, 4)
+    comptime lookup_table: InlineArray[Int, 4] = [1, 2, 3, 4]
     var element = global_constant[lookup_table]()[2]  # Access without materializing entire array
     print(element)  # Prints: 3
 
@@ -56,12 +56,12 @@ fn global_constant[
     fn compute(x: Int) -> Int:
         return x * 2 + 1
 
-    comptime data = InlineArray[Int, 3](1, compute(5), 100)
+    comptime data: InlineArray[Int, 3] = [1, compute(5), 100]
     ref data_ref = global_constant[data]()
     print(data_ref[0], data_ref[1], data_ref[2])  # Prints: 1 11 100
     ```
     """
-    __comptime_assert T.__copyinit__is_trivial and T.__del__is_trivial, (
+    comptime assert T.__copyinit__is_trivial and T.__del__is_trivial, (
         "global_constant requires a type with trivial copy and destroy"
         " semantics. Types with heap allocations like Dict, List, or String"
         " are not supported because their internal pointers would be"

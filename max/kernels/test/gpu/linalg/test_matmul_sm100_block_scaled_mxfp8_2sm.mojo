@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -26,7 +26,7 @@ from internal_utils import assert_almost_equal
 from random import rand
 from internal_utils._utils import ValOrDim, dynamic, static
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from linalg.matmul.gpu.sm100_structured.block_scaled_matmul import (
+from linalg.matmul.gpu.sm100_structured.block_scaled.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
 )
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
@@ -367,7 +367,7 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
         ctx,
     )
 
-    __comptime_assert a_type != DType.float8_e4m3fn or transpose_b, (
+    comptime assert a_type != DType.float8_e4m3fn or transpose_b, (
         "Testing is only supported for transposed_b==True when"
         " a_type==float8_e4m3fn. Add the non-transposed case if needed."
     )

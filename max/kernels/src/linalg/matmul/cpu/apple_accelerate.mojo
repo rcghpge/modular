@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -16,8 +16,8 @@ from math import fma
 from memory import alloc
 from os import abort
 from sys import CompilationTarget, simd_width_of
-from sys.ffi import _get_dylib_function as _ffi_get_dylib_function
-from sys.ffi import _Global, OwnedDLHandle
+from ffi import _get_dylib_function as _ffi_get_dylib_function
+from ffi import _Global, OwnedDLHandle
 
 from algorithm import elementwise, vectorize
 from algorithm.functional import (
@@ -97,7 +97,7 @@ fn _init_dylib() -> OwnedDLHandle:
 fn _get_dylib_function[
     func_name: StaticString, result_type: __TypeOfAllTypes
 ]() raises -> result_type:
-    __comptime_assert (
+    comptime assert (
         CompilationTarget.is_macos()
     ), "operating system must be macOS"
     return _ffi_get_dylib_function[
@@ -292,7 +292,7 @@ fn apple_gemv[
     @__copy_capture(c, a, b, K)
     @parameter
     fn process_rows(start_row: Int, end_row: Int):
-        for n in range(start_row, end_row):
+        for var n in range(start_row, end_row):
             var acc_vector = SIMD[c.type, simd_width]()
             var acc_scalar = Scalar[c.type]()
 

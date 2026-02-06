@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -633,7 +633,7 @@ struct IntTuple(
         """
         # FIXME: massively inefficient
         self = Self()
-        for elem in iterable:
+        for var elem in iterable:
             var z0, z1 = rebind_var[Tuple[IntTuple, IntTuple]](elem^)
             var tup = IntTuple()
             tup.append(z0)
@@ -1260,7 +1260,7 @@ struct IntTuple(
             return self._store[offset + 1]
 
     @always_inline("nodebug")
-    fn tuple(ref self) -> ref [self] Self:
+    fn tuple(ref self) -> ref[self] Self:
         """
         Returns a reference to this `IntTuple` as a tuple.
 

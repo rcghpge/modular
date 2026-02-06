@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -50,8 +50,10 @@ from linalg.fp4_utils import (
     MXFP8_SF_VECTOR_SIZE,
 )
 from linalg.utils import elementwise_compute_lambda_type
-from linalg.matmul.gpu.sm100_structured.config import BlockScaledMatmulConfig
-from linalg.matmul.gpu.sm100_structured.grouped_block_scaled_matmul import (
+from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
+    BlockScaledMatmulConfig,
+)
+from linalg.matmul.gpu.sm100_structured.grouped_block_scaled.grouped_block_scaled_matmul import (
     grouped_block_scaled_matmul,
 )
 

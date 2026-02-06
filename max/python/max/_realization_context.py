@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -72,13 +72,13 @@ _SEED: Tensor | None = None
 _MLIR_CONTEXT: mlir.Context | None = None
 
 # Environment variable to control interpreter usage
-_USE_INTERPRETER_ENV_VAR = "MAX_USE_INTERPRETER"
+_USE_INTERPRETER_ENV_VAR = "MAX_USE_EAGER_INTERPRETER"
 
 
 def _default_use_interpreter() -> bool:
     """Get the default value for use_interpreter from environment.
 
-    Checks the MAX_USE_INTERPRETER environment variable. Set to "1" or "true"
+    Checks the MAX_USE_EAGER_INTERPRETER environment variable. Set to "1" or "true"
     (case-insensitive) to enable the interpreter by default.
 
     Returns:
@@ -244,7 +244,7 @@ class EagerRealizationContext(RealizationContext):
             # Lazy import to avoid circular dependency
             from ._interpreter import MOInterpreter
 
-            interp = MOInterpreter(devices=_session().devices)
+            interp = MOInterpreter()
             inputs = [self.sources[input._mlir_value] for input in graph.inputs]
             results = interp.execute(
                 graph,

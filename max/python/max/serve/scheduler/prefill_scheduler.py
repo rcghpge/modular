@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright (c) 2025, Modular Inc. All rights reserved.
+# Copyright (c) 2026, Modular Inc. All rights reserved.
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions:
 # https://llvm.org/LICENSE.txt
@@ -44,6 +44,7 @@ from max.serve.worker_interface.zmq_queue import ClientIdentity
 
 from .base import SchedulerProgress
 from .batch_constructor import TextBatchConstructor
+from .batch_constructor.text_batch_constructor import BatchSchedulingStrategy
 from .config import TokenGenerationSchedulerConfig
 from .di_dispatchers import PrefillDispatcherServerV2
 from .utils import SchedulerLogger
@@ -99,6 +100,7 @@ class PrefillScheduler(Scheduler):
             scheduler_config=scheduler_config,
             pipeline=pipeline,
             kv_cache=kv_cache,
+            batch_scheduling_strategy=BatchSchedulingStrategy.PREFILL_FIRST,
         )
         self.scheduler_logger = SchedulerLogger()
         self.dispatcher = dispatcher
@@ -247,13 +249,7 @@ class PrefillScheduler(Scheduler):
         assert len(inputs.batches) > 0
         responses = self.pipeline.execute(inputs)
 
-        pruned_ids = (
-            self.batch_constructor.advance_requests_and_collect_invalid_ids(
-                inputs.batches
-            )
-        )
-        for request_id in pruned_ids:
-            del responses[request_id]
+        self.batch_constructor.advance_requests(inputs)
 
         # Send fully encoded requests to decode queue.
         for replica_idx, replica in enumerate(self.batch_constructor.replicas):
