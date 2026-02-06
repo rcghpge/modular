@@ -34,3 +34,9 @@ jobs:
           # skips: "B101,B607"        # comma-separated test IDs
           # ini: ".bandit"            # config file path
           # targets: "."              # scan path (default: .)
+
+      - name: Upload SARIF 
+        if: always()     
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
