@@ -142,6 +142,7 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   HasParent<"ModuleOp">,
   IsolatedFromAbove, SingleBlockImplicitTerminator<"OutputOp">,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
   RegionKindInterface, HasOnlyGraphRegion,
   // needed to leverage KGEN parameter infra
   DeclInterface,
@@ -257,8 +258,8 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 def MO_CallOp : MO_ControlOp<"call", [
   CallOpInterface,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
   HasParent<"MO::GraphOp">,
   MO_ExecutesOnHost
@@ -866,8 +867,7 @@ def MO_ConstantScalarOp : MO_TensorOp<"constant.scalar", [
 // For ops where each output depends only on the corresponding indices in the inputs
 class MO_ElementWiseOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits #
-     [Pure, MO_SameOperandsAndResultShape, MO_ElementWiseLike, MO_SingleDevice,
-      DeclareOpInterfaceMethods<MO_ParamDeclaration>]>
+     [Pure, MO_SameOperandsAndResultShape, MO_ElementWiseLike, MO_SingleDevice]>
 {
   let results = (outs MO_Tensor:$result);
 }
@@ -908,8 +908,7 @@ class MO_ElementWiseBinaryMonoTypeOp<string name, list<Trait> traits = []>
 
 class MO_ComparisonOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits # [Pure, MO_SameOperandsElementType,
-                            MO_SameOperandsAndResultShape, MO_SingleDevice,
-                            DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+                            MO_SameOperandsAndResultShape, MO_SingleDevice]> {
   let results = (outs MO_BooleanMask:$result);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -929,7 +928,7 @@ class MO_ComparisonBinaryOp<string name, list<Trait> traits = []>
 class MO_LogicalBinaryOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits # [
   Commutative, Pure, MO_SameOperandsAndResultType, MO_ElementWiseBinary,
-  MO_SingleDevice, DeclareOpInterfaceMethods<MO_ParamDeclaration>
+  MO_SingleDevice
 ]> {
   let arguments = (ins MO_BooleanMask:$input_x, MO_BooleanMask:$input_y);
   let results = (outs MO_BooleanMask:$result);
@@ -1213,6 +1212,7 @@ def MO_AtanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"atanh"> {
 
 
 def MO_CumSumOp : MO_TensorOp<"cumsum", [
+  DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   MO_HostOnly,
 ]> {
@@ -1577,7 +1577,6 @@ def MO_XorOp : MO_LogicalBinaryOp<"xor"> {
 def MO_SelectOp : MO_TensorOp<"select", [
   Pure,
   MO_SameOperandsAndResultShape,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   MO_SingleDevice
 ]>{
@@ -1605,6 +1604,7 @@ def MO_SelectOp : MO_TensorOp<"select", [
 }
 
 def MO_SliceOp : MO_TensorOp<"slice", [
+  MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["start", "stop", "step"]>
@@ -1665,6 +1665,7 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 }
 
 def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
+  MO_DefaultParameterization,
   MO_SingleDeviceWithHostOperands<["start", "stop", "step"]>,
   MO_ViewLike,
 ]> {
@@ -1761,8 +1762,8 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
     : MO_TensorOp<name, traits # [Pure,
                                   AllDTypesMatch<["input", "result"]>,
                                   AllShapeAttrsMatch<["input", "result"]>,
-                                  MO_SingleDeviceWithHostOperands<["axis"]>,
-                                  DeclareOpInterfaceMethods<MO_ParamDeclaration>]> {
+                                  MO_SameFirstArgumentOutputShapesParameterization,
+                                  MO_SingleDeviceWithHostOperands<["axis"]>]> {
   let arguments = (ins MO_Tensor:$input, MO_RankedScalarIndexTensor:$axis);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
@@ -1950,6 +1951,7 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
 
 def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
@@ -2014,6 +2016,7 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
 
 def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
@@ -2078,6 +2081,7 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
 
 def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
@@ -2141,6 +2145,7 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
 
 def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["filter_shape", "strides", "dilations", "paddings"]>,
 ]>{
@@ -2204,6 +2209,7 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
 
 def MO_ConvOp : MO_TensorOp<"conv", [
   MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["strides", "dilations", "paddings", "num_groups"]>,
 ]>{
@@ -2300,6 +2306,7 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
   MO_ViewLike,
   MO_SlidingWindow,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["strides", "dilations", "paddings", "output_paddings"]>,
 ]>{
@@ -2400,7 +2407,7 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
 
 class MO_ShapeModifierOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<mnemonic,
-    traits # [MO_SameFirstOperandAndResultsElementType]
+    traits # [DeclareOpInterfaceMethods<MO_DefaultParameterization>, MO_SameFirstOperandAndResultsElementType]
 > {
   let arguments = (ins
     MO_Tensor:$input,
@@ -2539,6 +2546,7 @@ def MO_MergeDimOp : MO_TensorOp<"merge_dim", [
 def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
   MO_ViewLike,
   MO_PreservedDuringKernelLowering,
+  DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ExecutesOnHost
@@ -2665,7 +2673,7 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
 }
 
 def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_ExecutesOnHost
 ]> {
   let summary = "Shape operation";
@@ -2704,6 +2712,7 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
 
 def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   Commutative,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   MO_SingleDevice
@@ -2889,6 +2898,7 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
 }
 
 def MO_ConcatOp : MO_TensorOp<"concat", [
+  DeclareOpInterfaceMethods<MO_Parameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   MO_SingleDeviceWithHostOperands<["axis"]>,
@@ -2943,6 +2953,7 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 }
 
 def MO_SplitOp : MO_TensorOp<"split", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["splitSizes", "axis"]>,
 ]> {
@@ -2996,6 +3007,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 }
 
 def MO_TransposeOp : MO_TensorOp<"transpose", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["perm"]>
 ]> {
@@ -3037,6 +3049,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 }
 
 def MO_TileOp : MO_TensorOp<"tile", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_HostOnly
 ]> {
@@ -3195,6 +3208,7 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
 //===----------------------------------------------------------------------===//
 
 def MO_GatherOp : MO_TensorOp<"gather", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDeviceWithHostOperands<["axis"]>
@@ -3256,6 +3270,7 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum", [MO_HostOnly]> {
 }
 
 def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDevice
 ]> {
@@ -3686,8 +3701,7 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 //===----------------------------------------------------------------------===//
 
 def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
-    [DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-     MO_HostOnly]> {
+    [DeclareOpInterfaceMethods<MO_DefaultParameterization>, MO_HostOnly]> {
   let summary = "Non-max suppression operation";
   let description = [{
    Filters out boxes that have high intersection-over-union (IOU).
@@ -3725,7 +3739,7 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression",
 //===----------------------------------------------------------------------===//
 
 def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_HostOnly
 ]> {
   let summary = "Nonzero-value indices operation";
@@ -3833,6 +3847,7 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
 //===----------------------------------------------------------------------===//
 
 def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<["shape", "mean", "variance", "seed"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["mean", "variance"]>,
@@ -3879,6 +3894,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 //===----------------------------------------------------------------------===//
 
 def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<["shape", "lowerBound", "upperBound", "seed"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["lowerBound", "upperBound", "result"]>,
@@ -3925,6 +3941,7 @@ def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
 
 def MO_RangeOp : MO_TensorOp<"range", [
   MO_SameOperandsAndResultElementType,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<["start", "limit", "step"]>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
@@ -3985,7 +4002,8 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
 
 def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
-  [DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
    MO_HostOnly
 ]> {
   let summary = "Linear resize operation";
@@ -4013,7 +4031,8 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear",
 
 
 def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
-  [DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
    MO_HostOnly
 ]> {
   let summary = "Nearest-neighbor resize operation";
@@ -4058,7 +4077,8 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest",
 
 
 def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic",
-  [DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
+  [DeclareOpInterfaceMethods<MO_DefaultParameterization>,
+   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
    MO_SingleDeviceWithHostOperands<["size"]>
 ]> {
   let summary = "Bicubic resize operation";
@@ -4096,6 +4116,7 @@ def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic",
 //===----------------------------------------------------------------------===//
 
 def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_HostOnly
@@ -4150,7 +4171,8 @@ class MO_DotBase<string name, list<Trait> traits = []> :
     MO_TensorOp<name, traits # [
     Pure,
     MO_MatmulLike,
-      DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     MO_SingleDevice
 ]> {
   let description = [{
@@ -4193,6 +4215,7 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
 def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   Pure,
   MO_MatmulLike,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_SingleDevice,
 ]> {
@@ -4245,7 +4268,8 @@ class MO_LinalgOp<string mnemonic, list<Trait> traits = []>
 
 // TODO: Use an AllElementTypesMatch<["input", "result"]> trait for MO_Tensor.
 def MO_BandPartOp : MO_LinalgOp<"band_part", [
-      DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+    DeclareOpInterfaceMethods<MO_Parameterization>,
+    DeclareOpInterfaceMethods<MO_ParamDeclaration>,
     MO_SingleDeviceWithHostOperands<["num_lower", "num_upper", "exclude"]>
     ]> {
   let summary = "Matrix band part operation";
@@ -4386,7 +4410,7 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
 //===----------------------------------------------------------------------===//
 
 def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<["epsilon"]>
 ]> {
   let summary = "Layer normalization operation";
@@ -4419,6 +4443,7 @@ def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
 //===----------------------------------------------------------------------===//
 def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
   MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_PreservedDuringKernelLowering,
   MO_ExecutesOnHost
 ]> {
@@ -4449,6 +4474,7 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
 
 def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<[], ["input"]>,
   MO_PreservedDuringKernelLowering
 ]> {
@@ -4476,6 +4502,7 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
 
 def MO_DebugTensorUnsafePrintOp : MO_TensorOp<"debug.tensor.unsafe.print", [
   MemoryEffects<[MemWrite]>,
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   MO_SingleDeviceWithHostOperands<[], ["input"]>,
   MO_PreservedDuringKernelLowering
 ]> {
@@ -4509,7 +4536,8 @@ def MO_DebugTensorUnsafePrintOp : MO_TensorOp<"debug.tensor.unsafe.print", [
 class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<
       mnemonic, [
-              DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+        DeclareOpInterfaceMethods<MO_Parameterization>,
+        DeclareOpInterfaceMethods<MO_ParamDeclaration>,
         DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
         MO_SingleDeviceWithHostOperands<["k", "axis", "sorted"]>
       ] # traits> {
@@ -4582,9 +4610,9 @@ def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
 }
 
 def MO_CustomOp : MO_TensorOp<"custom", [
+  DeclareOpInterfaceMethods<MO_DefaultParameterization>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   DeclareOpInterfaceMethods<MO_ConditionallyInPlaceInterface>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_ExplicitDevice,
 ]> {
@@ -4924,7 +4952,6 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
 }
 
 def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   MO_SingleDeviceWithHostOperands<
     /*hostOperands*/["start", "stop", "step"],
     /*deviceOperands*/["inBuffer", "slice"]>,

@@ -135,6 +135,12 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     /// Returns a clone of type with given device annotation.
     TensorType cloneWith(DeviceRefAttr device) const;
 
+    /// Returns clone with a shape of unknown rank.
+    TensorType cloneWithUnknownRank() const;
+
+    /// Returns clone with a shape of known rank, but unknown dims
+    TensorType cloneWithUnknownDims(int64_t rank) const;
+
     /// Checks if the tensor is statically ranked.
     bool hasRank() const;
 

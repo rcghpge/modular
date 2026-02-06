@@ -17,12 +17,16 @@ include "GenericML/GraphCompiler/MODialect/MOInterfaces.td"
 // Interfaces
 //===----------------------------------------------------------------------===//
 
-def RMO_TensorOpInterface : OpInterface<"RMOOp", [MO_TensorOpInterface, MO_ParamDeclaration]> {
+def RMO_TensorOpInterface : OpInterface<"RMOOp", [MO_TensorOpInterface, MO_DefaultParameterization]> {
   let description = [{
     Interface for easy pattern matching on all RMO Ops.
 
     Each RMO op needs to have a parent `mo.graph_op`. This is needed to
     maintain unique shape parameters.
+
+    Each RMO op also has a method to resolve unknown parameters. This is done
+    by desugaring `?` in the shape of results. We reuse
+    MO_DefaultParameterization interface to do this.
   }];
   let cppNamespace = "::M::RMO";
   let verify = [{ return verifyRMOOp(cast<RMOOp>($_op)); }];

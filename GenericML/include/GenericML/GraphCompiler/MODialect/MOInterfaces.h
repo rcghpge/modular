@@ -34,6 +34,7 @@ namespace M::MO {
 class ElementWiseBinary;
 class MatmulLike;
 class ParamDeclarationInterface;
+class ParameterizationInterface;
 class Reduction;
 class ScatterLike;
 class ScatterNdLike;
@@ -185,6 +186,12 @@ LogicalResult verifySingleDevice(Operation *op,
 DeviceRefAttr getFirstResultDevice(Operation *op);
 
 LogicalResult verifyExplicitDevice(Operation *op);
+LogicalResult defaultResolveUnknownParameters(ParameterizationInterface op,
+                                              mlir::RewriterBase &rewriter);
+LogicalResult resolveSameOperandsAndResultShapeUnknownParameters(
+    ParameterizationInterface op, mlir::RewriterBase &rewriter);
+LogicalResult resolveSameFirstOperandAndResultShapeUnknownParameters(
+    ParameterizationInterface op, mlir::RewriterBase &rewriter);
 
 ShapeMaterializeResult
 materializeReductionShapeDefs(Reduction op, ArrayRef<TypedAttr> inputAttrs);
