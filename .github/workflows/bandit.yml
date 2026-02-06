@@ -1,9 +1,9 @@
+# Bandit is a security linter designed to find common security issues in Python code.
+# The results of the scan will be found under the Security tab of your repository.
+# https://github.com/PyCQA/bandit-action is Apache v2.0 licensed, by PyCQA
+
 name: Bandit
-  #
-  # Bandit is a security linter designed to find common security issues in Python code.
-  # The results of the scan will be found under the Security tab of your repository.
-  # https://github.com/PyCQA/bandit-action is Apache v2.0 licensed, by PyCQA
-  #
+
 on:
   push:
     branches: [ "main" ]
@@ -24,12 +24,13 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Bandit Scan
-        continue-on-error: true  # Equivalent to exit_zero: true
+        continue-on-error: true
         uses: PyCQA/bandit-action@v1.0.1
-        with:
-          # Uncomment settings as needed
-          # severity: "MEDIUM"      # or HIGH
-          # confidence: "MEDIUM"    # or HIGH
-          # exclude: ".venv,tests"  # comma-separated globs
-          # skips: "B101,B607"     # comma-separated test IDs
-          # ini: ".bandit"         # config file path
+        # with:
+          # Valid inputs only - uncomment to enable
+          # severity: "MEDIUM"        # {all, high, medium, low}
+          # confidence: "MEDIUM"      # {all, high, medium, low}
+          # exclude: ".venv,tests"    # comma-separated globs
+          # skips: "B101,B607"        # comma-separated test IDs
+          # ini: ".bandit"            # config file path
+          # targets: "."              # scan path (default: .)
