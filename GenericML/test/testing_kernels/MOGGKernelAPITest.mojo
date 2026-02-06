@@ -76,8 +76,7 @@ struct OpaqueToCustomScalarSI32RegTrivial:
         return MyCustomScalarRegTrivialSI32(x[0])
 
 
-@register_passable
-struct MyCustomScalarRegSI32(ImplicitlyCopyable):
+struct MyCustomScalarRegSI32(ImplicitlyCopyable, RegisterType):
     var val: Int32
 
     @implicit
@@ -91,8 +90,7 @@ struct MyCustomScalarRegSI32(ImplicitlyCopyable):
 
 # It is intentional there are no methods which consume this.
 # It is here to support some level of type checking.
-@register_passable
-struct MyCustomScalarRegF32(ImplicitlyCopyable):
+struct MyCustomScalarRegF32(ImplicitlyCopyable, RegisterType):
     var val: Float32
 
     @implicit
@@ -833,8 +831,7 @@ struct BasicTarget:
         print("hello from kernel on", target)
 
 
-@register_passable
-struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable):
+struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable, RegisterType):
     var val: Scalar[Self.dtype]
 
     @implicit
@@ -1078,8 +1075,7 @@ struct CustomOpWithStaticStringParams:
 
 
 @fieldwise_init
-@register_passable
-struct TensorWrapper:
+struct TensorWrapper(RegisterType):
     var buffer: NDBuffer[DType.float32, 2, MutAnyOrigin]
 
 
@@ -1198,8 +1194,7 @@ struct InplaceNoOutFunc:
 
 
 @fieldwise_init
-@register_passable
-struct SIMDPair[S0: Int, S1: Int]:
+struct SIMDPair[S0: Int, S1: Int](RegisterType):
     var x: SIMD[DType.int32, Self.S0]
     var y: SIMD[DType.int32, Self.S1]
 
