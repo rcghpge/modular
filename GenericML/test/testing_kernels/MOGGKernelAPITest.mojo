@@ -58,7 +58,7 @@ fn export():
 # ===-----------------------------------------------------------------------===#
 
 
-struct MyCustomScalarRegTrivialSI32(TrivialRegisterType):
+struct MyCustomScalarRegTrivialSI32(TrivialRegisterPassable):
     var val: Int32
 
     @implicit
