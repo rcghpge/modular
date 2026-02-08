@@ -56,6 +56,10 @@ HIP_FUNC(hipFreeAsync, Result, hipDeviceptr_t, hipStream_t)
 HIP_FUNC(hipMalloc, Result, hipDeviceptr_t *, size_t)
 HIP_FUNC(hipFree, Result, hipDeviceptr_t)
 
+HIP_FUNC(hipDeviceGetDefaultMemPool, Result, hipMemPool_t *, int)
+HIP_FUNC(hipMemPoolSetAccess, Result, hipMemPool_t, const hipMemAccessDesc *,
+         size_t)
+
 HIP_FUNC(hipMemcpyHtoDAsync, Result, hipDeviceptr_t, const void *, size_t,
          hipStream_t)
 HIP_FUNC(hipMemcpyDtoHAsync, Result, void *, hipDeviceptr_t, size_t,

@@ -29,6 +29,29 @@ using hipFunction_t = struct ihipModuleSymbol_t *;
 using hipModule_t = struct ihipModule_t *;
 using hipStream_t = struct ihipStream_t *;
 using hipEvent_t = struct ihipEvent_t *;
+using hipMemPool_t = struct ihipMemPoolHandle_t *;
+
+// Memory pool access types (mirroring CUDA's CUmemAccess* types).
+enum class hipMemAccessFlags {
+  hipMemAccessFlagsProtNone = 0x0,
+  hipMemAccessFlagsProtRead = 0x1,
+  hipMemAccessFlagsProtReadWrite = 0x3,
+};
+
+enum class hipMemLocationType {
+  hipMemLocationTypeInvalid = 0x0,
+  hipMemLocationTypeDevice = 0x1,
+};
+
+using hipMemLocation = struct hipMemLocation_st {
+  hipMemLocationType type;
+  int id;
+};
+
+using hipMemAccessDesc = struct hipMemAccessDesc_st {
+  hipMemLocation location;
+  hipMemAccessFlags flags;
+};
 
 // HSA Runtime types (for getting device architecture info).
 using hsaStatus_t = uint32_t;

@@ -343,9 +343,16 @@ ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
       return formatHipError(__FILE__, __LINE__, __FUNCTION__, res);
   }
 
-  // TODO: GEX-2583
-  // Allow access to the peer's stream-ordered allocation pool?
-  // CUDA does this, but HIP does not.
+  // Also allow access to the peer's stream-ordered allocation pool.
+  hipMemPool_t pool;
+  HIP_CHECK_ERR(
+      driver_.hipDeviceGetDefaultMemPool(&pool, peerHipDev.hipDevice()));
+
+  hipMemAccessDesc desc{};
+  desc.location.type = hipMemLocationType::hipMemLocationTypeDevice;
+  desc.location.id = id();
+  desc.flags = hipMemAccessFlags::hipMemAccessFlagsProtReadWrite;
+  HIP_CHECK_ERR(driver_.hipMemPoolSetAccess(pool, &desc, /*count=*/1));
 
   return success();
 }
@@ -1366,6 +1373,21 @@ HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
   HIP_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipDeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
+
+  // Also "enable peer access" for stream-ordered allocations.
+  // Do so by allowing this device to access the peer's current memory pool.
+  // NOTE: this only enables access to allocations from the peer's current
+  // memory pool, so other memory pools won't be accessible.
+  hipMemPool_t pool;
+  HIP_CHECK_ERR(
+      driver_.hipDeviceGetDefaultMemPool(&pool, peerDevice->hipDevice()));
+
+  hipMemAccessDesc desc{};
+  desc.location.type = hipMemLocationType::hipMemLocationTypeDevice;
+  desc.location.id = device().id();
+  desc.flags = hipMemAccessFlags::hipMemAccessFlagsProtReadWrite;
+  HIP_CHECK_ERR(driver_.hipMemPoolSetAccess(pool, &desc, /*count=*/1));
+
   return success();
 }
 
