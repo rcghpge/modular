@@ -263,7 +263,6 @@ public:
                         size_t srcByteSize) const;
   ErrorOrSuccess copyTo(void *dst) const;
 
-  ErrorOrSuccess copyFrom(const DeviceBuffer &src) const;
   ErrorOrSuccess copyFrom(const void *src) const;
 
   ErrorOrSuccess reassignOwnershipTo(const DeviceContext &ctx) const;

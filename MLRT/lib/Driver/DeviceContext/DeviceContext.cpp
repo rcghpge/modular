@@ -458,12 +458,6 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) const {
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceBuffer::copyFrom(const DeviceBuffer &src) const {
-  const DeviceBuffer &dst = *this;
-  return dst.context().enqueueCopyDeviceToDevice(dst, src);
-}
-
-MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::copyFrom(const void *src) const {
   const DeviceBuffer &dst = *this;
   return dst.context().enqueueCopyToDevice(dst, src);
