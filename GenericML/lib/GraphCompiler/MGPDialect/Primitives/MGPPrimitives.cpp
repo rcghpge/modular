@@ -7,7 +7,6 @@
 #include "GenericML/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.h"
 #include "GenericML/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
 #include "GenericML/Support/CompiledKernelsContext.h"
-#include "GenericML/Support/HostDeviceSpecs.h"
 #include "GenericML/Support/List.h"
 #include "KGEN/Support/Configuration.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
