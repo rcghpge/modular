@@ -45,6 +45,7 @@ from gpu.sync import named_barrier, named_barrier_arrive, syncwarp
 from gpu.host.nvidia.tma import TMADescriptor, TensorMapSwizzle
 from sys import inlined_assembly
 from layout import Layout, LayoutTensor
+from ..structured_kernels.tile_types import lt_to_tt
 from layout.tma_async import (
     SharedMemBarrier,
     TMATensorTile,
@@ -111,7 +112,7 @@ comptime NUM_TENSORMAPS = 5
 
 
 @fieldwise_init
-struct GroupedTensormapSmem(TrivialRegisterType):
+struct GroupedTensormapSmem(TrivialRegisterPassable):
     """Shared memory pointers for tensormap descriptors.
 
     Points to 5 TMA descriptors (128 bytes each) in SMEM for dynamic updates:
@@ -178,7 +179,7 @@ struct GroupedTensormapSmem(TrivialRegisterType):
 
 
 @fieldwise_init
-struct GroupedTensormapManager(TrivialRegisterType):
+struct GroupedTensormapManager(TrivialRegisterPassable):
     """Manages tensormap SMEM state and updates for grouped GEMM.
 
     Handles the 4-step CuTe DSL update pattern:
@@ -952,23 +953,23 @@ struct GroupedBlockScaledMatmulKernel[
         device_tma_sfb: Self.TMATensorTileArraySFB,
         device_tma_c: Self.TMATensorTileArrayC,
         # Per-group pointer arrays (uint64 addresses)
-        group_a_ptrs: LayoutTensor[
+        group_a_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_b_ptrs: LayoutTensor[
+        group_b_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_c_ptrs: LayoutTensor[
+        group_c_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_sfa_ptrs: LayoutTensor[
+        group_sfa_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_sfb_ptrs: LayoutTensor[
+        group_sfb_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
         # Per-group problem sizes: (num_groups, 4) with [M, N, K, L]
-        problem_sizes: LayoutTensor[
+        problem_sizes_lt: LayoutTensor[
             DType.int32, Self.ProblemSizesLayout, MutAnyOrigin
         ],
         # Number of active groups
@@ -980,6 +981,22 @@ struct GroupedBlockScaledMatmulKernel[
         tensormap updates at group boundaries.
         """
         Self.validate_config()
+
+        # Convert kernel args to TileTensor (available for future internal use)
+        var group_a_ptrs_tt = lt_to_tt(group_a_ptrs_lt)
+        var group_b_ptrs_tt = lt_to_tt(group_b_ptrs_lt)
+        var group_c_ptrs_tt = lt_to_tt(group_c_ptrs_lt)
+        var group_sfa_ptrs_tt = lt_to_tt(group_sfa_ptrs_lt)
+        var group_sfb_ptrs_tt = lt_to_tt(group_sfb_ptrs_lt)
+        var problem_sizes_tt = lt_to_tt(problem_sizes_lt)
+
+        # Use original LayoutTensors for internal methods
+        var group_a_ptrs = group_a_ptrs_lt
+        var group_b_ptrs = group_b_ptrs_lt
+        var group_c_ptrs = group_c_ptrs_lt
+        var group_sfa_ptrs = group_sfa_ptrs_lt
+        var group_sfb_ptrs = group_sfb_ptrs_lt
+        var problem_sizes = problem_sizes_lt
 
         # ===== Shared Memory Setup =====
         ref smem = external_memory[
@@ -996,9 +1013,9 @@ struct GroupedBlockScaledMatmulKernel[
         var sfb_tiles = smem.sfb_tiles()
 
         # Get typed barrier arrays
-        var input_barriers = smem.input_barriers()
-        var accum_barriers = smem.accum_barriers()
-        var tmem_addr_storage = smem.tmem_addr().ptr
+        var input_barriers = smem.pipelines.input_barriers()
+        var accum_barriers = smem.pipelines.accum_barriers()
+        var tmem_addr_storage = smem.pipelines.tmem_addr().ptr
 
         # Create input pipeline with tile payload
         var tile_payload = Self.TilePayload(
@@ -1044,7 +1061,7 @@ struct GroupedBlockScaledMatmulKernel[
             )
 
             # Initialize TMEM deallocation barrier
-            smem.tmem_dealloc().ptr[].init(
+            smem.pipelines.tmem_dealloc().ptr[].init(
                 Int32(Self.EPILOGUE_THREADS * Self.cta_group)
             )
 
@@ -1160,13 +1177,13 @@ struct GroupedBlockScaledMatmulKernel[
             # Barrier sync with TMA warp - signal init complete
             Self.TensormapAbInitBarrier.sync()
 
-            var tmem = Self.Tmem.allocate(smem.tmem_addr())
+            var tmem = Self.Tmem.allocate(smem.pipelines.tmem_addr())
             var mma_ctx = Self.MmaCtx(
                 tmem,
                 Self.OutputPipeline(
                     accum_barriers, tmem, UInt16(ctx.mma_complete_mask)
                 ),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             var tmem_region = Self.TmemRegion(tmem)
@@ -1229,13 +1246,13 @@ struct GroupedBlockScaledMatmulKernel[
 
             Self.MmaEpilogueSync.wait()
 
-            var tmem = Self.Tmem.from_shared(smem.tmem_addr())
+            var tmem = Self.Tmem.from_shared(smem.pipelines.tmem_addr())
             var epi_ctx = Self.EpilogueCtx(
                 tmem,
                 Self.OutputPipeline(
                     accum_barriers, tmem, UInt16(ctx.mma_complete_mask)
                 ),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             with epi_ctx:
@@ -1496,23 +1513,23 @@ struct GroupedBlockScaledMatmulKernel[
         device_tma_sfb: Self.TMATensorTileArraySFB,
         device_tma_c: Self.TMATensorTileArrayC,
         # Per-group pointer arrays (uint64 addresses)
-        group_a_ptrs: LayoutTensor[
+        group_a_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_b_ptrs: LayoutTensor[
+        group_b_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_c_ptrs: LayoutTensor[
+        group_c_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_sfa_ptrs: LayoutTensor[
+        group_sfa_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
-        group_sfb_ptrs: LayoutTensor[
+        group_sfb_ptrs_lt: LayoutTensor[
             DType.uint64, Self.GroupPtrLayout, MutAnyOrigin
         ],
         # Per-group problem sizes: (num_groups, 4) with [M, N, K, L]
-        problem_sizes: LayoutTensor[
+        problem_sizes_lt: LayoutTensor[
             DType.int32, Self.ProblemSizesLayout, MutAnyOrigin
         ],
         # Number of active groups
@@ -1532,6 +1549,22 @@ struct GroupedBlockScaledMatmulKernel[
         """
         Self.validate_config()
 
+        # Convert kernel args to TileTensor
+        var group_a_ptrs_tt = lt_to_tt(group_a_ptrs_lt)
+        var group_b_ptrs_tt = lt_to_tt(group_b_ptrs_lt)
+        var group_c_ptrs_tt = lt_to_tt(group_c_ptrs_lt)
+        var group_sfa_ptrs_tt = lt_to_tt(group_sfa_ptrs_lt)
+        var group_sfb_ptrs_tt = lt_to_tt(group_sfb_ptrs_lt)
+        var problem_sizes_tt = lt_to_tt(problem_sizes_lt)
+
+        # Use original LayoutTensors for internal methods
+        var group_a_ptrs = group_a_ptrs_lt
+        var group_b_ptrs = group_b_ptrs_lt
+        var group_c_ptrs = group_c_ptrs_lt
+        var group_sfa_ptrs = group_sfa_ptrs_lt
+        var group_sfb_ptrs = group_sfb_ptrs_lt
+        var problem_sizes = problem_sizes_lt
+
         # ===== Shared Memory Setup =====
         ref smem = external_memory[
             Scalar[DType.uint8],
@@ -1547,13 +1580,13 @@ struct GroupedBlockScaledMatmulKernel[
         var sfb_tiles = smem.sfb_tiles()
 
         # Get typed barrier arrays
-        var input_barriers = smem.input_barriers()
-        var accum_barriers = smem.accum_barriers()
-        var clc_full = smem.clc_mbars_full()
-        var clc_empty = smem.clc_mbars_empty()
-        var clc_throttle = smem.clc_throttle_mbars()
-        var clc_response = smem.clc_response()
-        var tmem_addr_storage = smem.tmem_addr().ptr
+        var input_barriers = smem.pipelines.input_barriers()
+        var accum_barriers = smem.pipelines.accum_barriers()
+        var clc_full = smem.pipelines.clc_full()
+        var clc_empty = smem.pipelines.clc_empty()
+        var clc_throttle = smem.pipelines.clc_throttle()
+        var clc_response = smem.pipelines.clc_response()
+        var tmem_addr_storage = smem.pipelines.tmem_addr().ptr
 
         # Create input pipeline with tile payload
         var tile_payload = Self.TilePayload(
@@ -1616,7 +1649,9 @@ struct GroupedBlockScaledMatmulKernel[
                 )
 
             # Initialize TMEM deallocation barrier (for cta_group=2)
-            smem.tmem_dealloc().ptr[].init(Int32(Self.EPILOGUE_THREADS * 2))
+            smem.pipelines.tmem_dealloc().ptr[].init(
+                Int32(Self.EPILOGUE_THREADS * 2)
+            )
 
         fence_mbarrier_init()
         cluster_sync()
@@ -1768,13 +1803,13 @@ struct GroupedBlockScaledMatmulKernel[
             # Barrier sync with TMA warp
             Self.TensormapAbInitBarrier.sync()
 
-            var tmem = Self.Tmem.allocate(smem.tmem_addr())
+            var tmem = Self.Tmem.allocate(smem.pipelines.tmem_addr())
             var mma_ctx = Self.MmaCtx(
                 tmem,
                 Self.OutputPipeline(
                     accum_barriers, tmem, UInt16(ctx.mma_complete_mask)
                 ),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             var tmem_region = Self.TmemRegion(tmem)
@@ -1855,13 +1890,13 @@ struct GroupedBlockScaledMatmulKernel[
 
             Self.MmaEpilogueSync.wait()
 
-            var tmem = Self.Tmem.from_shared(smem.tmem_addr())
+            var tmem = Self.Tmem.from_shared(smem.pipelines.tmem_addr())
             var epi_ctx = Self.EpilogueCtx(
                 tmem,
                 Self.OutputPipeline(
                     accum_barriers, tmem, UInt16(ctx.mma_complete_mask)
                 ),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             # Create work iterator for epilogue (uses simple advance, not CLC)

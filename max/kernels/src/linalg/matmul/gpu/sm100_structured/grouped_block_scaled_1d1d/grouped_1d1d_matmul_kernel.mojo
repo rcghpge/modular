@@ -46,6 +46,7 @@ from gpu.primitives.cluster import (
 from gpu.sync import named_barrier, syncwarp
 from gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import Layout, LayoutTensor
+from ..structured_kernels.tile_types import lt_to_tt, lt_to_tt_1d
 from layout.tma_async import SharedMemBarrier, TMATensorTile
 from layout.tensor_core_async import (
     tile_layout_k_major,
@@ -89,7 +90,7 @@ from ..structured_kernels.output_writer import TileWriter
 # =============================================================================
 
 
-struct WarpRole1D1D(TrivialRegisterType):
+struct WarpRole1D1D(TrivialRegisterPassable):
     """Warp role for 1D-1D kernel with 3-warp specialization.
 
     Thread layout (192 threads total) - matches original kernel:
@@ -439,20 +440,22 @@ struct Grouped1D1DMatmulKernel[
             Self.sfb_dtype, Self.sfb_layout, Self.sfb_desc_layout
         ],
         # Offset tensors for 1D-1D addressing
-        a_offsets: LayoutTensor[
+        a_offsets_lt: LayoutTensor[
             DType.uint32, Self.offsets_layout, MutAnyOrigin
         ],
-        a_scale_offsets: LayoutTensor[
+        a_scale_offsets_lt: LayoutTensor[
             DType.uint32, Self.a_scale_offsets_layout, MutAnyOrigin
         ],
-        expert_ids: LayoutTensor[
+        expert_ids_lt: LayoutTensor[
             DType.int32, Self.expert_ids_layout, MutAnyOrigin
         ],
-        expert_scales: LayoutTensor[
+        expert_scales_lt: LayoutTensor[
             DType.float32, Self.expert_scales_layout, MutAnyOrigin
         ],
         # C tensor for bounds-checked stores (full tensor layout)
-        c_device: LayoutTensor[Self.c_type, Self.c_device_layout, MutAnyOrigin],
+        c_device_lt: LayoutTensor[
+            Self.c_type, Self.c_device_layout, MutAnyOrigin
+        ],
         # Number of active experts
         num_active_experts: Int,
         # K dimension for iteration
@@ -463,6 +466,13 @@ struct Grouped1D1DMatmulKernel[
         Uses grid-constant TMAs with offset-based addressing for 1D-1D layout.
         """
         Self.validate_config()
+
+        # Convert kernel args to TileTensor
+        var a_offsets = lt_to_tt_1d(a_offsets_lt)
+        var a_scale_offsets = lt_to_tt_1d(a_scale_offsets_lt)
+        var expert_ids = lt_to_tt_1d(expert_ids_lt)
+        var expert_scales = lt_to_tt_1d(expert_scales_lt)
+        var c_device = lt_to_tt(c_device_lt)
 
         # ===== Shared Memory Setup =====
         ref smem = external_memory[
@@ -479,9 +489,9 @@ struct Grouped1D1DMatmulKernel[
         var sfb_tiles = smem.sfb_tiles()
 
         # Get typed barrier arrays
-        var input_barriers = smem.input_barriers()
-        var accum_barriers = smem.accum_barriers()
-        var tmem_addr_storage = smem.tmem_addr().ptr
+        var input_barriers = smem.pipelines.input_barriers()
+        var accum_barriers = smem.pipelines.accum_barriers()
+        var tmem_addr_storage = smem.pipelines.tmem_addr().ptr
 
         # Create input pipeline with tile payload
         var tile_payload = Self.TilePayload(
@@ -543,7 +553,7 @@ struct Grouped1D1DMatmulKernel[
             )
 
             # Initialize TMEM deallocation barrier
-            smem.tmem_dealloc().ptr[].init(
+            smem.pipelines.tmem_dealloc().ptr[].init(
                 Int32(WarpRole1D1D.NUM_EPILOGUE_THREADS * Self.cta_group)
             )
 
@@ -554,7 +564,7 @@ struct Grouped1D1DMatmulKernel[
 
         # ===== Work Iterator Setup =====
         var work_iter = Self.WorkIterator(
-            num_active_experts, a_offsets, expert_ids, expert_scales
+            num_active_experts, a_offsets_lt, expert_ids_lt, expert_scales_lt
         )
 
         # ===== TMA LOAD WARP =====
@@ -581,7 +591,7 @@ struct Grouped1D1DMatmulKernel[
                                 tiles,
                                 peer_cta_coord,
                                 ctx,
-                                a_scale_offsets,
+                                a_scale_offsets_lt,
                                 UInt32(k_tile),
                                 elect_one_cta,
                             )
@@ -595,11 +605,11 @@ struct Grouped1D1DMatmulKernel[
 
         # ===== MMA WARP =====
         if WarpRole1D1D.is_mma():
-            var tmem = Self.Tmem.allocate(smem.tmem_addr())
+            var tmem = Self.Tmem.allocate(smem.pipelines.tmem_addr())
             var mma_ctx = Self.MmaCtx(
                 tmem,
                 Self.OutputPipeline(accum_barriers, tmem, mma_complete_mask),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             var tmem_region = Self.TmemRegion(tmem)
@@ -641,11 +651,11 @@ struct Grouped1D1DMatmulKernel[
         if WarpRole1D1D.is_epilogue():
             Self.MmaEpilogueSync.wait()
 
-            var tmem = Self.Tmem.from_shared(smem.tmem_addr())
+            var tmem = Self.Tmem.from_shared(smem.pipelines.tmem_addr())
             var epi_ctx = Self.EpilogueCtx(
                 tmem,
                 Self.OutputPipeline(accum_barriers, tmem, mma_complete_mask),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             with epi_ctx:
@@ -660,7 +670,7 @@ struct Grouped1D1DMatmulKernel[
                         Self.epilogue(
                             c_tiles,
                             c_tma_op,
-                            c_device,
+                            c_device_lt,
                             output_stage,
                             ctx,
                         )

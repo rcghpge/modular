@@ -20,7 +20,7 @@ This module contains the default SM100 matmul kernel implementation:
 
 Shared components (WarpRole, KernelContext) are in kernel_common.mojo.
 Output pipeline (TileWriter, copy_accum_to_gmem) is in output_writer.mojo.
-Low-level epilogue components (TMAStoreExecutor, etc.) are in tile_writer.mojo.
+Low-level epilogue components (TMAStoreExecutor, etc.) are in epilogue_components.mojo.
 
 The kernel implements a warp-specialized architecture:
 - Scheduler warp: CLC-based tile scheduling
@@ -59,6 +59,7 @@ from gpu.primitives.grid_controls import (
 from gpu.sync import syncwarp
 from gpu.compute.arch.tcgen05 import *
 from layout import Layout, LayoutTensor, RuntimeLayout
+from ..structured_kernels.tile_types import lt_to_tt
 from layout.int_tuple import IntTuple
 from layout.swizzle import Swizzle
 from layout.tensor_core_async import (
@@ -98,6 +99,8 @@ from ..structured_kernels.pipeline_storage import (
     TmemDeallocStorage,
     StandardTileStorage,
     OutputTileStorage,
+    SmemPipelineBundle,
+    SmemLayouts,
 )
 from ..structured_kernels.tmem import TmemAllocation, TmemTensor
 from ..structured_kernels.warp_context import (
@@ -109,7 +112,7 @@ from ..structured_kernels.tile_scheduler import TileScheduler
 from ..structured_kernels.tile_scheduler_splitk import (
     TileScheduler as TileSchedulerSplitK,
 )
-from ..structured_kernels.tile_writer import EpilogueConfig
+from ..structured_kernels.epilogue_components import EpilogueConfig
 from linalg.structuring import (
     SMemPtr,
     SMemTile,
@@ -176,17 +179,21 @@ struct B200MatmulSmem[
     comptime num_clc_pipeline_stages: Int = Self.config.num_clc_pipeline_stages
 
     # ========== Layout Definitions ==========
-    comptime a_smem_layout = tile_layout_k_major[
-        Self.a_type, Self.BM, Self.BK, swizzle_mode = Self.config.a_swizzle
-    ]()
-
-    comptime b_smem_layout = tile_layout_k_major[
-        Self.b_type, Self.BN, Self.BK, swizzle_mode = Self.config.b_swizzle
-    ]() if Self.transpose_b else tile_layout_mn_major[
-        Self.b_type, Self.BN, Self.BK, swizzle_mode = Self.config.b_swizzle
-    ]()
-
-    comptime c_smem_layout = Layout.row_major(Self.OutputM, Self.OutputN)
+    comptime Layouts = SmemLayouts[
+        Self.a_type,
+        Self.b_type,
+        Self.BM,
+        Self.BN,
+        Self.BK,
+        Self.OutputM,
+        Self.OutputN,
+        Self.config.a_swizzle,
+        Self.config.b_swizzle,
+        Self.transpose_b,
+    ]
+    comptime a_smem_layout = Self.Layouts.a_smem_layout
+    comptime b_smem_layout = Self.Layouts.b_smem_layout
+    comptime c_smem_layout = Self.Layouts.c_smem_layout
 
     # ========== Tile Storage (Single Source of Truth) ==========
     # Input tiles: A and B matrices
@@ -212,10 +219,10 @@ struct B200MatmulSmem[
     ]
 
     # Re-export tile array types for external use
-    # Re-export tile array types (all TileTensor-based now)
+    # Re-export tile array types
     comptime ATileArray = Self.InputTiles.ATileArray
     comptime BTileArray = Self.InputTiles.BTileArray
-    comptime CTileArray = Self.OutputTiles.CTileArray  # TileTensor-based
+    comptime CTileArray = Self.OutputTiles.CTileArray
 
     # ========== Tile Storage Fields ==========
     var input_tiles: Self.InputTiles
@@ -232,12 +239,13 @@ struct B200MatmulSmem[
 
     @always_inline
     fn c_tiles(ref[AddressSpace.SHARED] self) -> Self.CTileArray:
-        return self.output_tiles.c_tiles_tt()
+        return self.output_tiles.c_tiles()
 
-    # ========== Pipeline Storage (Embedded) ==========
-    # Each pipeline owns its barrier storage - instantiated here in SMEM
-    comptime InputPipeline = InputPipelineStorage[
+    # ========== Pipeline Storage (Composed Bundle) ==========
+    comptime Pipelines = SmemPipelineBundle[
         Self.num_group_pipeline_stages,
+        Self.num_accum_pipeline_stages,
+        Self.num_clc_pipeline_stages,
         StandardTilePayload[
             Self.a_type,
             Self.b_type,
@@ -250,59 +258,7 @@ struct B200MatmulSmem[
             Self.num_pipeline_stages,
         ],
     ]
-    comptime OutputPipeline = OutputPipelineStorage[
-        Self.num_accum_pipeline_stages
-    ]
-    comptime ClcPipeline = ClcPipelineStorage[Self.num_clc_pipeline_stages]
-    comptime TmemDeallocPipeline = TmemDeallocStorage
-
-    # Storage fields - embedded in SMEM
-    var input_pipeline: Self.InputPipeline
-    var output_pipeline: Self.OutputPipeline
-    var clc_pipeline: Self.ClcPipeline
-    var tmem_dealloc_pipeline: Self.TmemDeallocPipeline
-
-    # ========== Type Aliases (for init_barriers signature) ==========
-    comptime InputBarriers = Self.InputPipeline.BarrierArray
-    comptime AccumBarriers = Self.OutputPipeline.BarrierArray
-    comptime ClcBarriers = Self.ClcPipeline.BarrierArray
-    comptime ClcThrottleBarriers = Self.ClcPipeline.ThrottleArray
-    comptime ClcResponse = Self.ClcPipeline.ResponseArray
-    comptime TmemDealloc = Self.TmemDeallocPipeline.BarrierArray
-    comptime TmemAddr = Self.TmemDeallocPipeline.AddrArray
-
-    # ========== Barrier Accessors (Delegated to Pipelines) ==========
-    @always_inline
-    fn input_barriers(ref[AddressSpace.SHARED] self) -> Self.InputBarriers:
-        return self.input_pipeline.barriers.barriers()
-
-    @always_inline
-    fn accum_barriers(ref[AddressSpace.SHARED] self) -> Self.AccumBarriers:
-        return self.output_pipeline.barriers.barriers()
-
-    @always_inline
-    fn clc_full(ref[AddressSpace.SHARED] self) -> Self.ClcBarriers:
-        return self.clc_pipeline.full()
-
-    @always_inline
-    fn clc_empty(ref[AddressSpace.SHARED] self) -> Self.ClcBarriers:
-        return self.clc_pipeline.empty()
-
-    @always_inline
-    fn clc_throttle(ref[AddressSpace.SHARED] self) -> Self.ClcThrottleBarriers:
-        return self.clc_pipeline.throttle()
-
-    @always_inline
-    fn clc_response(ref[AddressSpace.SHARED] self) -> Self.ClcResponse:
-        return self.clc_pipeline.response()
-
-    @always_inline
-    fn tmem_dealloc(ref[AddressSpace.SHARED] self) -> Self.TmemDealloc:
-        return self.tmem_dealloc_pipeline.barrier()
-
-    @always_inline
-    fn tmem_addr(ref[AddressSpace.SHARED] self) -> Self.TmemAddr:
-        return self.tmem_dealloc_pipeline.addr()
+    var pipelines: Self.Pipelines
 
     # ========== Size Calculations ==========
 
@@ -504,21 +460,6 @@ struct BlackwellMatmulSM100Kernel[
         Self.config.k_group_size,
     ]
 
-    # ========== LayoutTensor Types for Boundary Conversion ==========
-    # Used for TMA/MMA ops - 128B alignment required for shared memory
-    comptime ATileLT = LayoutTensor[
-        Self.a_type,
-        Self.SmemType.a_smem_layout,
-        address_space = AddressSpace.SHARED,
-        alignment=128,
-    ]
-    comptime BTileLT = LayoutTensor[
-        Self.b_type,
-        Self.SmemType.b_smem_layout,
-        address_space = AddressSpace.SHARED,
-        alignment=128,
-    ]
-
     # ========== Tile Loader Types ==========
     # Loaders wrapping TMA operations. Orchestration is in kernel.
     # Origins inferred from constructor Pointer arguments.
@@ -671,12 +612,12 @@ struct BlackwellMatmulSM100Kernel[
         a_tma_op: TMATensorTile[Self.a_type, Self.a_layout, Self.a_desc_layout],
         b_tma_op: TMATensorTile[Self.b_type, Self.b_layout, Self.b_desc_layout],
         c_tma_op: TMATensorTile[Self.c_type, Self.c_layout, Self.c_desc_layout],
-        input_barriers: Self.SmemType.InputBarriers,
-        accum_barriers: Self.SmemType.AccumBarriers,
-        clc_throttle: Self.SmemType.ClcThrottleBarriers,
-        clc_full: Self.SmemType.ClcBarriers,
-        clc_empty: Self.SmemType.ClcBarriers,
-        tmem_dealloc: Self.SmemType.TmemDealloc,
+        input_barriers: Self.SmemType.Pipelines.InputBarriers,
+        accum_barriers: Self.SmemType.Pipelines.AccumBarriers,
+        clc_throttle: Self.SmemType.Pipelines.ClcThrottleBarriers,
+        clc_full: Self.SmemType.Pipelines.ClcBarriers,
+        clc_empty: Self.SmemType.Pipelines.ClcBarriers,
+        tmem_dealloc: Self.SmemType.Pipelines.TmemDealloc,
     ):
         """Initialize barriers and prefetch TMA descriptors. Called by elect_one_warp && elect_one_thread.
         """
@@ -912,11 +853,11 @@ struct BlackwellMatmulSM100Kernel[
         # Create input pipeline for TMA→MMA synchronization (with payload)
         var tile_payload = Self.TilePayload(smem.a_tiles(), smem.b_tiles())
         var input_pipeline = Self.InputTilePipeline(
-            smem.input_barriers(), tile_payload
+            smem.pipelines.input_barriers(), tile_payload
         )
 
         # Create kernel context with election vars, CTA coords, and masks
-        var ctx = Self.Context(smem.tmem_addr())
+        var ctx = Self.Context(smem.pipelines.tmem_addr())
 
         # Initialize all barriers (only elect_one_warp && elect_one_thread)
         Self.init_barriers(
@@ -924,12 +865,12 @@ struct BlackwellMatmulSM100Kernel[
             a_tma_op,
             b_tma_op,
             c_tma_op,
-            smem.input_barriers(),
-            smem.accum_barriers(),
-            smem.clc_throttle(),
-            smem.clc_full(),
-            smem.clc_empty(),
-            smem.tmem_dealloc(),
+            smem.pipelines.input_barriers(),
+            smem.pipelines.accum_barriers(),
+            smem.pipelines.clc_throttle(),
+            smem.pipelines.clc_full(),
+            smem.pipelines.clc_empty(),
+            smem.pipelines.tmem_dealloc(),
         )
 
         var mma_op = Self.MmaOp()
@@ -937,10 +878,10 @@ struct BlackwellMatmulSM100Kernel[
         # Scheduler owns CLC throttle pipeline internally
         var scheduler = Self.Scheduler(
             cluster_dim,
-            smem.clc_response(),
-            smem.clc_full(),
-            smem.clc_empty(),
-            smem.clc_throttle(),
+            smem.pipelines.clc_response(),
+            smem.pipelines.clc_full(),
+            smem.pipelines.clc_empty(),
+            smem.pipelines.clc_throttle(),
         )
 
         # Per-warp work iterator - owns work_info, pipeline state, and throttle
@@ -1019,15 +960,15 @@ struct BlackwellMatmulSM100Kernel[
 
         if WarpRole.is_mma():
             with MatmulProfilerType[2](workspace, 0):
-                var tmem = Self.Tmem.allocate(smem.tmem_addr())
+                var tmem = Self.Tmem.allocate(smem.pipelines.tmem_addr())
                 var mma_ctx = Self.MmaCtx(
                     tmem,
                     Self.OutputPipeline(
-                        smem.accum_barriers(),
+                        smem.pipelines.accum_barriers(),
                         tmem,
                         UInt16(ctx.mma_complete_mask),
                     ),
-                    Self.TmemDealloc(smem.tmem_dealloc()),
+                    Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
                 )
 
                 with mma_ctx:  # TMEM lifecycle
@@ -1058,13 +999,15 @@ struct BlackwellMatmulSM100Kernel[
         if WarpRole.is_epilogue():
             Self.EpilogueCtx.Sync.wait()  # wait for MMA to publish TMEM addr
 
-            var tmem = Self.Tmem.from_shared(smem.tmem_addr())
+            var tmem = Self.Tmem.from_shared(smem.pipelines.tmem_addr())
             var epi_ctx = Self.EpilogueCtx(
                 tmem,
                 Self.OutputPipeline(
-                    smem.accum_barriers(), tmem, UInt16(ctx.mma_complete_mask)
+                    smem.pipelines.accum_barriers(),
+                    tmem,
+                    UInt16(ctx.mma_complete_mask),
                 ),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             var tile_writer = Self.TileWriterType(Pointer(to=c_tma_op))
@@ -1098,7 +1041,7 @@ struct BlackwellMatmulSM100Kernel[
         a_tma_op: TMATensorTile[Self.a_type, Self.a_layout, Self.a_desc_layout],
         b_tma_op: TMATensorTile[Self.b_type, Self.b_layout, Self.b_desc_layout],
         c_tma_op: TMATensorTile[Self.c_type, Self.c_layout, Self.c_desc_layout],
-        reduction_tensor: LayoutTensor[
+        reduction_tensor_lt: LayoutTensor[
             Self.config.accum_type, reduction_layout, MutAnyOrigin
         ],
         lock_ptr: UnsafePointer[UInt8],
@@ -1115,13 +1058,16 @@ struct BlackwellMatmulSM100Kernel[
             a_tma_op: TMA descriptor for matrix A.
             b_tma_op: TMA descriptor for matrix B.
             c_tma_op: TMA descriptor for matrix C.
-            reduction_tensor: Workspace for partial results from each split.
+            reduction_tensor_lt: Workspace for partial results from each split.
             lock_ptr: Synchronization locks for reduction coordination.
             cluster_dim: Cluster dimensions.
             mnk: Problem dimensions (M, N, K).
             workspace: Workspace buffer for profiling/scheduling.
         """
         Self.validate_constraints()
+
+        # Convert kernel arg to TileTensor
+        var reduction_tensor = lt_to_tt(reduction_tensor_lt)
 
         # Access shared memory via bitcast
         ref smem = external_memory[
@@ -1133,11 +1079,11 @@ struct BlackwellMatmulSM100Kernel[
         # Create input pipeline for TMA→MMA synchronization (with payload)
         var tile_payload = Self.TilePayload(smem.a_tiles(), smem.b_tiles())
         var input_pipeline = Self.InputTilePipeline(
-            smem.input_barriers(), tile_payload
+            smem.pipelines.input_barriers(), tile_payload
         )
 
         # Create kernel context with election vars, CTA coords, and masks
-        var ctx = Self.Context(smem.tmem_addr())
+        var ctx = Self.Context(smem.pipelines.tmem_addr())
 
         # Initialize all barriers (only elect_one_warp && elect_one_thread)
         Self.init_barriers(
@@ -1145,12 +1091,12 @@ struct BlackwellMatmulSM100Kernel[
             a_tma_op,
             b_tma_op,
             c_tma_op,
-            smem.input_barriers(),
-            smem.accum_barriers(),
-            smem.clc_throttle(),
-            smem.clc_full(),
-            smem.clc_empty(),
-            smem.tmem_dealloc(),
+            smem.pipelines.input_barriers(),
+            smem.pipelines.accum_barriers(),
+            smem.pipelines.clc_throttle(),
+            smem.pipelines.clc_full(),
+            smem.pipelines.clc_empty(),
+            smem.pipelines.tmem_dealloc(),
         )
 
         var mma_op = MmaOpSM100_SS[
@@ -1182,10 +1128,10 @@ struct BlackwellMatmulSM100Kernel[
         ](
             cluster_dim,
             mnk,
-            smem.clc_response(),
-            smem.clc_full(),
-            smem.clc_empty(),
-            smem.clc_throttle(),
+            smem.pipelines.clc_response(),
+            smem.pipelines.clc_full(),
+            smem.pipelines.clc_empty(),
+            smem.pipelines.clc_throttle(),
             lock_ptr,
         )
 
@@ -1252,15 +1198,15 @@ struct BlackwellMatmulSM100Kernel[
 
         if WarpRole.is_mma():
             with MatmulProfilerType[2](workspace, 0):
-                var tmem = Self.Tmem.allocate(smem.tmem_addr())
+                var tmem = Self.Tmem.allocate(smem.pipelines.tmem_addr())
                 var mma_ctx = Self.MmaCtx(
                     tmem,
                     Self.OutputPipeline(
-                        smem.accum_barriers(),
+                        smem.pipelines.accum_barriers(),
                         tmem,
                         UInt16(ctx.mma_complete_mask),
                     ),
-                    Self.TmemDealloc(smem.tmem_dealloc()),
+                    Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
                 )
 
                 with mma_ctx:  # TMEM lifecycle
@@ -1289,13 +1235,15 @@ struct BlackwellMatmulSM100Kernel[
         if WarpRole.is_epilogue():
             Self.EpilogueCtx.Sync.wait()  # wait for MMA to publish TMEM addr
 
-            var tmem = Self.Tmem.from_shared(smem.tmem_addr())
+            var tmem = Self.Tmem.from_shared(smem.pipelines.tmem_addr())
             var epi_ctx = Self.EpilogueCtx(
                 tmem,
                 Self.OutputPipeline(
-                    smem.accum_barriers(), tmem, UInt16(ctx.mma_complete_mask)
+                    smem.pipelines.accum_barriers(),
+                    tmem,
+                    UInt16(ctx.mma_complete_mask),
                 ),
-                Self.TmemDealloc(smem.tmem_dealloc()),
+                Self.TmemDealloc(smem.pipelines.tmem_dealloc()),
             )
 
             var tile_writer = Self.TileWriterType(Pointer(to=c_tma_op))
@@ -1311,7 +1259,7 @@ struct BlackwellMatmulSM100Kernel[
                                     smem.c_tiles(),
                                     output_stage,
                                     scheduler,
-                                    reduction_tensor,
+                                    reduction_tensor_lt,
                                     current,
                                     (mnk[0], mnk[1]),
                                     ctx.elect_one_warp,
@@ -1418,7 +1366,7 @@ struct BlackwellMatmulSM100FallbackKernel[
     fn run(
         a_tma_op: TMATensorTile[Self.a_type, Self.a_layout, Self.a_desc_layout],
         b_tma_op: TMATensorTile[Self.b_type, Self.b_layout, Self.b_desc_layout],
-        c: LayoutTensor[Self.c_type, Self.c_layout, MutAnyOrigin],
+        c_lt: LayoutTensor[Self.c_type, Self.c_layout, MutAnyOrigin],
         num_iters: UInt,
     ):
         """Run the fallback matmul kernel.
@@ -1426,10 +1374,15 @@ struct BlackwellMatmulSM100FallbackKernel[
         Args:
             a_tma_op: TMA descriptor for matrix A.
             b_tma_op: TMA descriptor for matrix B.
-            c: Output tensor C (LayoutTensor, not TMA).
+            c_lt: Output tensor C (LayoutTensor, not TMA).
             num_iters: Number of K-dimension iterations.
         """
         Self.validate_constraints()
+
+        # Convert kernel arg to TileTensor
+        var c_tt = lt_to_tt(c_lt)
+        # Reconstruct LayoutTensor for internal operations (uses LT-specific APIs)
+        var c = c_lt
 
         # Setup shared memory for A and B tiles
         var a_smem = rebind[SMemPtr[Scalar[Self.a_type]]](

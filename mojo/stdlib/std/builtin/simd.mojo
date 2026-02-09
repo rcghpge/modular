@@ -269,8 +269,7 @@ fn _has_native_f8_support() -> Bool:
 
 
 @fieldwise_init
-@register_passable
-struct FastMathFlag(Equatable, ImplicitlyCopyable):
+struct FastMathFlag(Equatable, ImplicitlyCopyable, RegisterPassable):
     """Flags for controlling fast-math optimizations in floating-point operations.
 
     FastMathFlag provides compile-time controls for various floating-point math
@@ -384,7 +383,7 @@ struct SIMD[dtype: DType, size: Int](
     Roundable,
     Sized,
     Stringable,
-    TrivialRegisterType,
+    TrivialRegisterPassable,
     Truncable,
     Writable,
 ):
@@ -1923,29 +1922,28 @@ struct SIMD[dtype: DType, size: Int](
         """
         return Self(mlir_value=__mlir_op.`pop.abs`(self._mlir_value))
 
-    @always_inline("nodebug")
+    @always_inline("builtin")
     fn __round__(self) -> Self:
         """Performs elementwise rounding on the elements of a SIMD vector.
 
-        This rounding goes to the nearest integer with ties away from zero.
+        This rounding goes to the nearest integer with ties towards the nearest
+        even value ("banker's rounding"). This is the default rounding mode for
+        binary floating point in the IEEE 754 Standard for Floating Point
+        Arithmetic.
 
         Returns:
             The elementwise rounded value of this SIMD vector.
         """
-
-        @parameter
-        if Self.dtype.is_integral() or Self.dtype == DType.bool:
-            return self
-
-        return llvm_intrinsic["llvm.roundeven", Self, has_side_effect=False](
-            self
-        )
+        return Self(mlir_value=__mlir_op.`pop.round`(self._mlir_value))
 
     @always_inline("nodebug")
     fn __round__(self, ndigits: Int) -> Self:
         """Performs elementwise rounding on the elements of a SIMD vector.
 
-        This rounding goes to the nearest integer with ties away from zero.
+        This rounding goes to the nearest integer with ties towards the nearest
+        even value ("banker's rounding"). This is the default rounding mode for
+        binary floating point in the IEEE 754 Standard for Floating Point
+        Arithmetic.
 
         Args:
             ndigits: The number of digits to round to.

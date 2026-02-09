@@ -385,7 +385,7 @@ struct Variadic:
 
 
 @fieldwise_init
-struct _VariadicListIter[type: TrivialRegisterType](
+struct _VariadicListIter[type: TrivialRegisterPassable](
     ImplicitlyCopyable, Iterable, Iterator
 ):
     """Const Iterator for VariadicList.
@@ -419,8 +419,8 @@ struct _VariadicListIter[type: TrivialRegisterType](
         return (len, {len})
 
 
-struct VariadicList[type: TrivialRegisterType](
-    Iterable, Sized, TrivialRegisterType
+struct VariadicList[type: TrivialRegisterPassable](
+    Iterable, Sized, TrivialRegisterPassable
 ):
     """A utility class to access homogeneous variadic function arguments.
 
@@ -750,7 +750,6 @@ struct VariadicListMem[
 # ===-----------------------------------------------------------------------===#
 
 
-@register_passable
 struct VariadicPack[
     elt_is_mutable: Bool,
     origin: Origin[mut=elt_is_mutable],
@@ -758,7 +757,7 @@ struct VariadicPack[
     is_owned: Bool,
     element_trait: type_of(AnyType),
     *element_types: element_trait,
-](Sized):
+](RegisterPassable, Sized):
     """A utility class to access heterogeneous variadic function arguments.
 
     `VariadicPack` is used when you need to accept variadic arguments where each

@@ -31,6 +31,10 @@ _EXTRA_CONSTRAINTS = {
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_score_mod_mha.mojo": ["//:nvidia_gpu"],  # FIXME: KERN-1377
+    "test_rms_norm_fused_fp8.mojo": select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),  # FIXME: PRDT-506
     "test_rms_norm_fused_residual_add.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -153,10 +157,8 @@ _FILECHECK_TESTS = [
             "//conditions:default": src not in [
                 "test_layer_norm.mojo",
                 "test_topk_gpu_fi.mojo",  # Extreme register pressure, even simplified assertions cause issues
-                "test_score_mod_mha.mojo",  # KERN-2339: accessing idx=4 in dimension of size 4
                 "test_mha_chunked_causal_mask.mojo",  # KERN-2339: bounds check reveals kernel bug
-                "test_mha_causal_mask.mojo",  # KERN-2339: bounds check reveals kernel bug
-                "test_mla.mojo",  # KERN-2339: bounds check reveals kernel bug
+                "test_mla.mojo",  # KERN-2339: bounds check reveals kernel bug; fails on H100
                 "test_flash_attention.mojo",  # KERN-2339: bounds check reveals kernel bug
                 "test_flash_attention_amd.mojo",  # MSTDL-2240: stack frame size exceeds limit with assertions
             ],
