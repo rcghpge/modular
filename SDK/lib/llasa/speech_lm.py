@@ -58,7 +58,9 @@ class SpeechLM:
             pipeline_config, task=PipelineTask.TEXT_GENERATION
         )
 
-        assert isinstance(self.pipeline, pipelines.TextGenerationPipeline)
+        assert isinstance(
+            self.pipeline, pipelines.TextGenerationPipelineInterface
+        )
         self.text_pipeline = self.pipeline  # Type hint for linter
 
         # Get the KV cache manager for resource management
