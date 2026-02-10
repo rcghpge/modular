@@ -23,6 +23,7 @@
 #include <numeric>
 
 using namespace M;
+using namespace M::MO;
 using namespace M::MGP;
 
 static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
@@ -856,9 +857,34 @@ SmallVector<Value> MOOpLoweringState::getLoweredOperands() {
   return loweredOperands;
 }
 
+/// Returns operands whose chains need to be waited on before launching the op.
+/// For ops with internal device barriers (e.g., collective operations), only
+/// same-device operands are returned, as cross-device synchronization is
+/// handled internally by the operation.
+static SmallVector<Value> getOperandsForGuardChain(Operation *op) {
+  // For mogg.kernel ops, check the hasDeviceBarrier attribute which is set
+  // during mo-to-mogg lowering based on whether the original op has the
+  // MO_DeviceBarrier trait.
+  if (auto kernelOp = dyn_cast<MOGG::KernelOp>(op)) {
+    if (kernelOp.getHasDeviceBarrier()) {
+      DeviceRefAttr opDevice = kernelOp.getExecutionDevice();
+      SmallVector<Value> localOperands;
+      for (Value operand : op->getOperands()) {
+        DeviceRefAttr operandDevice = getDeviceOrDefaultAny(operand.getType());
+        // Only include operands on the same device or the host.
+        if (operandDevice == opDevice || operandDevice == getHostDevice(op))
+          localOperands.push_back(operand);
+      }
+      return localOperands;
+    }
+  }
+  // Default: return all operands
+  return SmallVector<Value>(op->getOperands());
+}
+
 Value MOOpLoweringState::getGuardChain(Value chain) {
   SmallVector<Value> inputChains;
-  for (Value operand : opBeingLowered->getOperands()) {
+  for (Value operand : getOperandsForGuardChain(opBeingLowered)) {
     if (Value c = loweringState.getChainGuardingValueOrNull(operand))
       inputChains.push_back(c);
   }

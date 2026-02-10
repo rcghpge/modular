@@ -553,6 +553,11 @@ ErrorOr<DictionaryAttr> MOGGExpKernelBuilder::forwardParameters() {
     if (isa<M::DeviceRefAttr>(param.getValue()))
       continue;
 
+    // Skip hasDeviceBarrier - it's consumed when building the kernel op to set
+    // the kernel's hasDeviceBarrier property (see buildKernelOpImpl).
+    if (isa<mlir::UnitAttr>(param.getValue()))
+      continue;
+
     // Using `CustomOp` for the parameter name but could have use anything.
     if (param.getName() ==
         MO::CustomOp::getOutputParamDeclsAttrName(customOpOperationName)) {
@@ -702,6 +707,12 @@ ErrorOr<KernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
     kernelOp.setHasReadEffect(
         memEffectOp.hasEffect<mlir::MemoryEffects::Read>());
   }
+
+  // If the original op has internal device barriers (e.g., collective ops),
+  // propagate this to the kernel so lowering only waits for same-device chains.
+  if (moOp->hasAttr("hasDeviceBarrier"))
+    kernelOp.setHasDeviceBarrier(true);
+
   SmallVector<Type> dpsReturns;
   for (auto [idx, val] : operandMapping.resultMapping)
     if (val.isDpsOutput())
