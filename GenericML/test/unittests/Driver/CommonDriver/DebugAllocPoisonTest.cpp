@@ -29,7 +29,7 @@ class DebugAllocPoisonTest : public ::testing::Test {
 protected:
   static ErrorOr<RCRef<Device>> makeGPU() {
     Status status;
-    Device *dev = M_createAcceleratorDevice(0, -1, &status);
+    Device *dev = M_createAcceleratorDevice(0, &status);
     if (status.errorOr.isError())
       return status.errorOr.takeError();
     return M::takeRCRef(dev);

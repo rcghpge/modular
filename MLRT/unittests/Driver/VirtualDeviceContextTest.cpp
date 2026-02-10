@@ -43,8 +43,8 @@ TEST_F(VirtualDeviceContextTest, DeviceCreation) {
   // Test creating virtual devices with different IDs
   VirtualDeviceRef device0 =
       VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
-  VirtualDeviceRef device1 = VirtualDeviceRef::create(
-      1, "VirtualGPU-1", createCompilationDevice(), 8LL * 1024 * 1024 * 1024);
+  VirtualDeviceRef device1 =
+      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
 
   EXPECT_EQ(device0->id(), 0);
   EXPECT_EQ(device1->id(), 1);
@@ -79,26 +79,13 @@ TEST_F(VirtualDeviceContextTest, PeerAccess) {
 }
 
 TEST_F(VirtualDeviceContextTest, MemoryInfo) {
-  VirtualDeviceRef device = VirtualDeviceRef::create(
-      0, "VirtualGPU", createCompilationDevice(), 16LL * 1024 * 1024 * 1024);
-
-  ASSIGN_NO_ERR(Device::MemInfo, memInfo, device->getMemoryInfo());
-  EXPECT_GT(memInfo.total, 0);
-  EXPECT_EQ(memInfo.free, memInfo.total);
-  EXPECT_EQ(memInfo.total, 16LL * 1024 * 1024 * 1024);
-}
-
-TEST_F(VirtualDeviceContextTest, MemoryInfoDefaultLimit) {
   VirtualDeviceRef device =
       VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
 
-  // Virtual device without explicit memory limit should return default (80GB)
   ASSIGN_NO_ERR(Device::MemInfo, memInfo, device->getMemoryInfo());
-
-  // Should return positive values
+  // Virtual device returns simulated memory info (192GB, typical for B200)
   EXPECT_GT(memInfo.total, 0);
-  EXPECT_GT(memInfo.free, 0);
-  // Default should be 192GB (typical for B200)
+  EXPECT_EQ(memInfo.free, memInfo.total);
   EXPECT_EQ(memInfo.total, 192LL * 1024 * 1024 * 1024);
 }
 

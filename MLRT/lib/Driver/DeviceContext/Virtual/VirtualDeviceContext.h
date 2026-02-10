@@ -47,8 +47,7 @@ using VirtualDeviceStreamRef = RCRef<const VirtualDeviceStream>;
 class VirtualDevice : public Device {
 public:
   VirtualDevice(int id, std::string name,
-                std::unique_ptr<CompilationDevice> compilationDevice,
-                int64_t deviceMemoryLimit = -1);
+                std::unique_ptr<CompilationDevice> compilationDevice);
   ~VirtualDevice() override;
 
   ErrorOr<int> getApiVersion() const override;
@@ -83,8 +82,6 @@ public:
 private:
   // Compilation device used for code generation (e.g., PTX→CUBIN)
   std::unique_ptr<CompilationDevice> compilationDevice_;
-  // Simulated device memory limit
-  int64_t deviceMemoryLimit_;
 };
 
 /// Virtual Device Stream for compile-only mode.

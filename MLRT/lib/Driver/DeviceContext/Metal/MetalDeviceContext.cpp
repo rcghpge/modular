@@ -83,9 +83,9 @@ static ErrorOr<int> getComputeCapability(StringRef name) {
 //
 MetalDevice::MetalDevice(int id, NS::SharedPtr<MTL::Device> device,
                          std::string name, Device::MemInfo memInfo,
-                         size_t allocAlignment, int64_t deviceMemoryLimit)
-    : Device(api, name, id, memInfo, allocAlignment, deviceMemoryLimit),
-      device_(device), memInfo_(memInfo), driverVersion_([]() -> std::string {
+                         size_t allocAlignment)
+    : Device(api, name, id, memInfo, allocAlignment), device_(device),
+      memInfo_(memInfo), driverVersion_([]() -> std::string {
         // Metal drivers ship with macOS, Darwin release is the driver version
         struct utsname systemInfo;
         uname(&systemInfo);
@@ -406,8 +406,7 @@ const MetalDevice &MetalDevice::cast(const Device &device) {
   return static_cast<const MetalDevice &>(device);
 }
 
-ErrorOr<const MetalDevice &> MetalDevice::get(int id,
-                                              int64_t deviceMemoryLimit) {
+ErrorOr<const MetalDevice &> MetalDevice::get(int id) {
   if (id != 0)
     RETURN_ERROR("Apple Metal device only supports id == 0.");
 
@@ -434,8 +433,8 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id,
 
     size_t allocAlignment = 64;
 
-    metalDeviceInstance = RCRef<MetalDevice>::create(
-        id, device, name, memInfo, allocAlignment, deviceMemoryLimit);
+    metalDeviceInstance =
+        RCRef<MetalDevice>::create(id, device, name, memInfo, allocAlignment);
   }
 
   return *metalDeviceInstance;

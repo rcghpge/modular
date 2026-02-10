@@ -51,7 +51,7 @@ public:
   using DeviceList = std::vector<HIPDevice *>;
   HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
             std::string name, std::string arch, MemInfo memInfo,
-            size_t allocAlignment, int64_t deviceMemoryLimit = -1);
+            size_t allocAlignment);
   ~HIPDevice() override;
 
   ErrorOr<const char *> getArchName() const override;
@@ -91,7 +91,7 @@ public:
   static const HIPDevice &cast(const Device &device);
   static const HIPDevice *verified_cast(const Device *device);
 
-  static ErrorOr<const HIPDevice &> get(int id, int64_t deviceMemoryLimit = -1);
+  static ErrorOr<const HIPDevice &> get(int id);
 
 private:
   // We only support HIP architectures sm_80 and above.

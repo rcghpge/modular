@@ -231,10 +231,8 @@ CUDADevice::CUDADevice(const CUDADriver &driver, int id,
                        nvmlDevice_t nvmlDevice, CUdevice cudaDevice,
                        CUcontext context, std::string name,
                        int computeCapabilityMajor, int computeCapabilityMinor,
-                       Device::MemInfo memInfo, size_t allocAlignment,
-                       int64_t deviceMemoryLimit)
-    : Device(api, std::move(name), id, memInfo, allocAlignment,
-             deviceMemoryLimit),
+                       Device::MemInfo memInfo, size_t allocAlignment)
+    : Device(api, std::move(name), id, memInfo, allocAlignment),
       driver_(driver), cudaDevice_(cudaDevice), nvmlDevice_(nvmlDevice),
       context_(context), computeCapability_(cudaCCMonolithic(
                              computeCapabilityMajor, computeCapabilityMinor)),
@@ -525,7 +523,7 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 }
 
-ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
+ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
   static std::mutex mu;
@@ -596,7 +594,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id, int64_t deviceMemoryLimit) {
         nvmlDevice, &computeCapabilityMajor, &computeCapabilityMinor));
     device = new CUDADevice(driver, id, nvmlDevice, cuDevice, cuContext, name,
                             computeCapabilityMajor, computeCapabilityMinor,
-                            memInfo, alignment, deviceMemoryLimit);
+                            memInfo, alignment);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;

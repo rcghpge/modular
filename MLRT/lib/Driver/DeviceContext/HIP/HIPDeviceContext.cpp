@@ -219,9 +219,9 @@ gethipDeviceAttribute(Device::Attribute attr) {
 
 HIPDevice::HIPDevice(const HIPDriver &driver, int id, hipDevice_t device,
                      std::string name, std::string arch, MemInfo memInfo,
-                     size_t allocAlignment, int64_t deviceMemoryLimit)
-    : Device(api, name, id, memInfo, allocAlignment, deviceMemoryLimit),
-      arch_(arch), driver_(driver), device_(device) {}
+                     size_t allocAlignment)
+    : Device(api, name, id, memInfo, allocAlignment), arch_(arch),
+      driver_(driver), device_(device) {}
 
 HIPDevice::~HIPDevice() {
   // Destroy the function map before destroying other device structures.
@@ -656,7 +656,7 @@ const HIPDevice *HIPDevice::verified_cast(const Device *device) {
   return static_cast<const HIPDevice *>(device);
 }
 
-ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
+ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
   static std::mutex mu;
@@ -714,7 +714,7 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id, int64_t deviceMemoryLimit) {
       name = "AMD: " + *errArch;
 
     device = new HIPDevice(driver, id, hipDevice, name, *errArch, memInfo,
-                           alignment, deviceMemoryLimit);
+                           alignment);
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;

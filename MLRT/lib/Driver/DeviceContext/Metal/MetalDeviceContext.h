@@ -55,8 +55,7 @@ public:
   };
 
   MetalDevice(int id, NS::SharedPtr<MTL::Device> device, std::string name,
-              Device::MemInfo memInfo, size_t allocAlignment,
-              int64_t deviceMemoryLimit = -1);
+              Device::MemInfo memInfo, size_t allocAlignment);
 
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
@@ -82,8 +81,7 @@ public:
   static ErrorOr<Device::MemInfo> getMemInfo(MTL::Device *metalDev = nullptr);
 
   static const MetalDevice &cast(const Device &device);
-  static ErrorOr<const MetalDevice &> get(int id,
-                                          int64_t deviceMemoryLimit = -1);
+  static ErrorOr<const MetalDevice &> get(int id);
   static ErrorOr<int> numberOfGPUs();
 
   static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);

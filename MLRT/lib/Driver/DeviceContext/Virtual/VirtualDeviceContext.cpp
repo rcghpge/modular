@@ -26,12 +26,10 @@ namespace M::Driver {
 
 VirtualDevice::VirtualDevice(
     int id, std::string name,
-    std::unique_ptr<CompilationDevice> compilationDevice,
-    int64_t deviceMemoryLimit)
+    std::unique_ptr<CompilationDevice> compilationDevice)
     : Device(compilationDevice->api(), std::move(name), id, Device::MemInfo(),
-             M::kPreferredMemoryAlignment, deviceMemoryLimit),
-      compilationDevice_(std::move(compilationDevice)),
-      deviceMemoryLimit_(deviceMemoryLimit) {
+             M::kPreferredMemoryAlignment),
+      compilationDevice_(std::move(compilationDevice)) {
   assert(compilationDevice_ &&
          "VirtualDevice requires a non-null compilation device");
 }
@@ -91,17 +89,10 @@ ErrorOrSuccess VirtualDevice::chunkFree(void *ptr, bool isHost) const {
 }
 
 ErrorOr<Device::MemInfo> VirtualDevice::getMemoryInfo() const {
-  // Return simulated memory info
+  // Return simulated memory info (192GB, typical for B200)
   Device::MemInfo info;
-  if (deviceMemoryLimit_ > 0) {
-    // Use explicitly specified limit
-    info.free = deviceMemoryLimit_;
-    info.total = deviceMemoryLimit_;
-  } else {
-    // Return a reasonable default (192GB, typical for B200)
-    info.free = 192ULL * 1024 * 1024 * 1024;
-    info.total = 192ULL * 1024 * 1024 * 1024;
-  }
+  info.free = 192ULL * 1024 * 1024 * 1024;
+  info.total = 192ULL * 1024 * 1024 * 1024;
   return info;
 }
 

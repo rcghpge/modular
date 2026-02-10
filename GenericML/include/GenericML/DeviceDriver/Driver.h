@@ -194,11 +194,8 @@ mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
 } // namespace GenericML
 } // namespace M
 
-/// `deviceMemoryLimit` is the maximum amount of memory in bytes that can be
-// allocated on the device. If it is -1, the device will apply defaults.
 MODULAR_DRIVER_EXPORT M::GenericML::Driver::Device *
-M_createAcceleratorDevice(ssize_t gpuID, int64_t deviceMemoryLimit,
-                          M::GenericML::Driver::Status *status);
+M_createAcceleratorDevice(ssize_t gpuID, M::GenericML::Driver::Status *status);
 
 MODULAR_DRIVER_EXPORT M::GenericML::Driver::Device *
 M_createCPUDevice(ssize_t numaId, M::GenericML::Driver::Status *status);
