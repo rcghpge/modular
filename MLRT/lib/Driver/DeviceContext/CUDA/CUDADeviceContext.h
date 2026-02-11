@@ -105,7 +105,7 @@ public:
   static ErrorOr<int> numberOfGPUs();
   static ErrorOr<const CUDADevice &> get(int id);
 
-  ErrorOr<CUevent> eventCachePop() const;
+  ErrorOr<CUevent> eventCachePop(bool useCache = true) const;
   void eventCachePush(CUevent event) const;
 
 private:

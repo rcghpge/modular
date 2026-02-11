@@ -614,8 +614,8 @@ void CUDADevice::eventCacheClear() const {
   }
 }
 
-ErrorOr<CUevent> CUDADevice::eventCachePop() const {
-  {
+ErrorOr<CUevent> CUDADevice::eventCachePop(bool useCache) const {
+  if (useCache) {
     std::lock_guard<std::mutex> lock(mu_);
     if (!eventCache_.empty()) {
       CUevent result = std::move(eventCache_.back());
@@ -623,6 +623,7 @@ ErrorOr<CUevent> CUDADevice::eventCachePop() const {
       return result;
     }
   }
+
   CUevent event;
   CUDA_CHECK_ERR(cudaDriver().cuEventCreate(
       &event,
@@ -797,7 +798,11 @@ CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event,
 CUDADeviceEvent::~CUDADeviceEvent() {
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV(cudaDevice);
-  cudaDevice.eventCachePush(event_);
+  if (recordedDuringCapture_) {
+    cudaDevice.cudaDriver().cuEventDestroy(event_);
+  } else {
+    cudaDevice.eventCachePush(event_);
+  }
 }
 
 ErrorOrSuccess CUDADeviceEvent::synchronize() const {
@@ -885,9 +890,12 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
 
 ErrorOr<DeviceEventRef> CUDADeviceStream::enqueueEvent() const {
   const auto &cudaDevice = CUDADevice::cast(this->device());
-  DEFINE_OR_RETURN_ERROR(CUevent, event, cudaDevice.eventCachePop());
   const bool recordedDuringCapture =
-      isStreamCapturing(cudaDevice.cudaDriver(), stream_);
+      ::isStreamCapturing(cudaDevice.cudaDriver(), stream_);
+
+  DEFINE_OR_RETURN_ERROR(
+      CUevent, event,
+      cudaDevice.eventCachePop(/*useCache=*/!recordedDuringCapture));
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuEventRecord(event, stream_));
   return CUDADeviceEventRef::create(cudaDevice, event, recordedDuringCapture);
 }
@@ -1514,9 +1522,11 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
-  DEFINE_OR_RETURN_ERROR(CUevent, event,
-                         CUDADevice::cast(device()).eventCachePop());
   const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
+
+  DEFINE_OR_RETURN_ERROR(CUevent, event,
+                         CUDADevice::cast(device()).eventCachePop(
+                             /*useCache=*/!recordedDuringCapture));
   CUDA_CHECK_ERR(driver_.cuEventRecord(event, stream_));
   return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event,
                                     recordedDuringCapture);
@@ -1535,12 +1545,15 @@ ErrorOr<DeviceEventRef>
 CUDADeviceContext::eventCreate(unsigned int flags) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);
 
+  const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
+
   CUDA_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
   CUevent event;
   CUDA_CHECK_ERR(driver_.cuEventCreate(&event, flags));
-  return CUDADeviceEventRef::create(CUDADevice::cast(this->device()), event,
-                                    /*recordedDuringCapture=*/false);
+  return CUDADeviceEventRef::create(
+      CUDADevice::cast(this->device()), event,
+      /*recordedDuringCapture=*/recordedDuringCapture);
 }
 
 ErrorOrSuccess
