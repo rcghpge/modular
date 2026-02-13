@@ -427,7 +427,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::disableAutoSync() const {
   if (manualEvent_)
     RETURN_ERROR("Buffer synchronization already disabled");
 
-  DEFINE_OR_RETURN_ERROR(auto, event, context_->eventCreate(0));
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, context_->eventCreate(0));
   manualEvent_ = std::move(event);
 
   return success();

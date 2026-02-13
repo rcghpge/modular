@@ -23,7 +23,7 @@
 /// Otherwise, define a new variable with the extracted value.
 /// Usage: DEFINE_OR_RETURN_ERROR(CUevent, event, cudaDevice.eventCachePop());
 #define DEFINE_OR_RETURN_ERROR(type, var, expr)                                \
-  auto _err_or_##var = (expr);                                                 \
+  ErrorOr<type> _err_or_##var = (expr);                                        \
   if (_err_or_##var.isError()) {                                               \
     return M::Driver::DeviceContext::formatError(                              \
         __FILE__, __LINE__, __FUNCTION__, _err_or_##var.getError());           \

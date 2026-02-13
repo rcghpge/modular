@@ -249,10 +249,8 @@ ErrorOrSuccess HIPDevice::isCompatible() const {
   return Error("MAX with GPUs is only supported on Linux based systems.");
 #endif
 
-  ErrorOr<int> compute = computeCapability();
-  if (compute.isError())
-    return compute.takeError();
-  if (*compute < MIN_COMPUTE_CAPABILITY) {
+  DEFINE_OR_RETURN_ERROR(int, computeCapability, computeCapability());
+  if (computeCapability < MIN_COMPUTE_CAPABILITY) {
     RETURN_ERROR("MAX only supports HIP architectures " +
                  TWINE(MIN_COMPUTE_CAPABILITY) + " or higher");
   }
@@ -359,12 +357,10 @@ ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
 
 ErrorOr<int> HIPDevice::getAttribute(Attribute attr) const {
   HIP_WITH_DEV_ERR(*this);
-  ErrorOr<hipDeviceAttribute_t> errorOrAttr = gethipDeviceAttribute(attr);
-  if (errorOrAttr.isError())
-    return errorOrAttr.takeError();
+  DEFINE_OR_RETURN_ERROR(hipDeviceAttribute_t, attrValue,
+                         gethipDeviceAttribute(attr));
   int value = 0;
-  HIP_CHECK_ERR(
-      driver_.hipDeviceGetAttribute(&value, *errorOrAttr, hipDevice()));
+  HIP_CHECK_ERR(driver_.hipDeviceGetAttribute(&value, attrValue, hipDevice()));
   return value;
 }
 
@@ -410,10 +406,7 @@ ErrorOr<std::string> HIPDevice::getArchName(hipDevice_t device) {
   // `hipDeviceAttributeComputeCapabilityMajor` and
   // `hipDeviceAttributeComputeCapabilityMinor`, but lack the last digit.
 
-  ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
-  if (errDriver.isError())
-    return errDriver.takeError();
-  const HIPDriver &driver = *errDriver;
+  DEFINE_OR_RETURN_ERROR(const HIPDriver &, driver, HIPDriver::get());
 
   // Initialize HSA runtime if available.
   if (driver.HsaInit() != HSA_STATUS_SUCCESS)
@@ -561,12 +554,9 @@ ErrorOr<DeviceContextRef> HIPDevice::createContext() const {
 
 ErrorOr<int> HIPDevice::numberOfGPUs() {
   static ErrorOr<int> errOrCount = []() -> ErrorOr<int> {
-    ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
-    if (errDriver.isError())
-      return errDriver.takeError();
-
+    DEFINE_OR_RETURN_ERROR(const HIPDriver &, driver, HIPDriver::get());
     int result;
-    HIP_CHECK_ERR((*errDriver).hipGetDeviceCount(&result));
+    HIP_CHECK_ERR(driver.hipGetDeviceCount(&result));
     return result;
   }();
 
@@ -662,11 +652,8 @@ ErrorOr<const HIPDevice &> HIPDevice::get(int id) {
   static std::mutex mu;
   static DeviceList *devices = nullptr;
   static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
-    ErrorOr<int> errOrCount = numberOfGPUs();
-    if (errOrCount.isError()) {
-      return errOrCount.takeError();
-    }
-    devices = new DeviceList(*errOrCount, nullptr);
+    DEFINE_OR_RETURN_ERROR(int, count, numberOfGPUs());
+    devices = new DeviceList(count, nullptr);
     return success();
   }();
 

@@ -108,16 +108,8 @@ static ErrorOr<size_t> getSystemValue(int name) {
 
 ErrorOr<Device::MemInfo> MetalDevice::getMemInfo(MTL::Device *metalDev) {
   Device::MemInfo info;
-  ErrorOr<size_t> numPages = getSystemValue(_SC_PHYS_PAGES);
-  if (numPages.isError())
-    return numPages.takeError();
-
-  ErrorOr<size_t> pageSize = getSystemValue(_SC_PAGE_SIZE);
-  if (pageSize.isError())
-    return pageSize.takeError();
-
-  size_t pages = numPages.takeValue();
-  size_t size = pageSize.takeValue();
+  DEFINE_OR_RETURN_ERROR(size_t, pages, getSystemValue(_SC_PHYS_PAGES));
+  DEFINE_OR_RETURN_ERROR(size_t, size, getSystemValue(_SC_PAGE_SIZE));
 
   rusage usage;
   if (-1 == getrusage(RUSAGE_SELF, &usage))
@@ -425,10 +417,9 @@ ErrorOr<const MetalDevice &> MetalDevice::get(int id) {
     Device::MemInfo memInfo;
     bool useMemoryManager = false;
     if (useMemoryManager) {
-      ErrorOr<Device::MemInfo> memInfoOrError = getMemInfo(device.get());
-      if (memInfoOrError.isError())
-        RETURN_ERROR("Failed to get memory info from system.");
-      memInfo = memInfoOrError.takeValue();
+      DEFINE_OR_RETURN_ERROR(Device::MemInfo, memInfoResult,
+                             getMemInfo(device.get()));
+      memInfo = memInfoResult;
     }
 
     size_t allocAlignment = 64;
@@ -996,10 +987,7 @@ ErrorOrSuccess MetalDeviceContext::synchronize() const {
   ensureThreadlocalAutoreleasePoolExists();
 
   // Check for any pending errors first, similar to CUDA's behavior
-  ErrorOrSuccess pendingErr = checkPendingError();
-  if (pendingErr.isError()) {
-    return pendingErr.takeError();
-  }
+  RETURN_IF_ERROR(checkPendingError());
 
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
@@ -1051,10 +1039,7 @@ MetalDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
 
   // For Metal, we need to wait for the event's command buffer to complete
   // before continuing with subsequent operations on our command queue
-  ErrorOrSuccess syncResult = metalEvent.synchronize();
-  if (syncResult.isError()) {
-    return syncResult.takeError();
-  }
+  RETURN_IF_ERROR(metalEvent.synchronize());
 
   return success();
 }
@@ -1086,12 +1071,7 @@ MetalDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
 }
 
 ErrorOr<Device::MemInfo> MetalDeviceContext::getDeviceMemoryInfo() const {
-
-  ErrorOrSuccess syncResult = synchronize();
-  if (syncResult.isError()) {
-    return syncResult.takeError();
-  }
-
+  RETURN_IF_ERROR(synchronize());
   return device().getMemoryInfo();
 }
 
@@ -1273,10 +1253,8 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
     RETURN_ERROR("Failed to create Metal device.");
   std::string name = device->name()->cString(NS::UTF8StringEncoding);
 
-  auto ccOrErr = getComputeCapability(name);
-  if (ccOrErr.isError())
-    return ccOrErr.takeError();
-  return std::to_string(*ccOrErr);
+  DEFINE_OR_RETURN_ERROR(int, cc, getComputeCapability(name));
+  return std::to_string(cc);
 }
 
 //

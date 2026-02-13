@@ -266,15 +266,9 @@ ErrorOr<DriverVersion &> CUDADevice::getDriverVersion() const {
   // Initialize the driver version once on first call of this method
   // or remember the error.
   static ErrorOr<std::string> errOrVersion = []() -> ErrorOr<std::string> {
-    ErrorOr<const NVML &> errOrNVML = NVML::get();
-    if (errOrNVML.isError()) {
-      return errOrNVML.takeError();
-    }
-    ErrorOr<std::string> errOrVersion = errOrNVML->GetDriverVersion();
-    if (errOrVersion.isError()) {
-      return errOrVersion.takeError();
-    }
-    return *errOrVersion;
+    DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
+    DEFINE_OR_RETURN_ERROR(std::string, version, nvml.GetDriverVersion());
+    return version;
   }();
 
   // Propagate the error if getting the version produced an error.
@@ -357,22 +351,16 @@ ErrorOrSuccess CUDADevice::enablePeerAccess(const Device &peer) const {
   CUDA_WITH_DEV_ERR(*this);
 
   const CUDADevice &peerCudaDev = CUDADevice::cast(peer);
-  ErrorOr<CUcontext> peerCtxOr = peerCudaDev.cudaContext();
-  if (peerCtxOr.isError())
-    return peerCtxOr.takeError();
-
-  ErrorOr<bool> canAccessOr = canAccess(peerCudaDev);
-  if (canAccessOr.isError())
-    return canAccessOr.takeError();
-  if (!*canAccessOr) {
-    return Error("Cannot enable peer access from GPU " + Twine(id()) +
+  DEFINE_OR_RETURN_ERROR(CUcontext, peerCtx, peerCudaDev.cudaContext());
+  DEFINE_OR_RETURN_ERROR(bool, canAccess, canAccess(peerCudaDev));
+  if (!canAccess) {
+    RETURN_ERROR("Cannot enable peer access from GPU " + Twine(id()) +
                  " to GPU " + Twine(peer.id()) +
                  ": hardware does not support P2P access");
   }
 
   // Tolerate "already enabled" as success to keep idempotent.
-  CUDADriver::Result res =
-      driver_.cuCtxEnablePeerAccess(*peerCtxOr, /*flags=*/0);
+  CUDADriver::Result res = driver_.cuCtxEnablePeerAccess(peerCtx, /*flags=*/0);
   if (res != CUDADriver::SUCCESS) {
     const char *name = nullptr;
     driver_.cuGetErrorName(res, &name);
@@ -401,16 +389,14 @@ ErrorOr<int> CUDADevice::getAttribute(Attribute attr) const {
 }
 
 ErrorOr<std::string> CUDADevice::getPciBusId() const {
-  ErrorOr<const NVML &> driverOrError = NVML::get();
-  if (driverOrError.isError())
-    return driverOrError.takeError();
+  DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
 
   nvmlDevice_t device;
-  if (driverOrError->nvmlDeviceGetHandleByIndex(id(), &device) != NVML::SUCCESS)
+  if (nvml.nvmlDeviceGetHandleByIndex(id(), &device) != NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get device index");
 
   nvmlPciInfo_t pciInfo;
-  if (driverOrError->nvmlDeviceGetPciInfo_v3(device, &pciInfo) != NVML::SUCCESS)
+  if (nvml.nvmlDeviceGetPciInfo_v3(device, &pciInfo) != NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get PCI info");
   return std::string(pciInfo.busId);
 }
@@ -425,29 +411,25 @@ ErrorOr<bool> CUDADevice::supportsMulticast() const {
 }
 
 ErrorOr<DeviceContextRef> CUDADevice::createContext() const {
-  ErrorOr<CUcontext> context = cudaContext();
-  if (context.isError())
-    return context.takeError();
+  DEFINE_OR_RETURN_ERROR(CUcontext, context, cudaContext());
 
   // For the remainder of this method we use the context scope to ensure that
   // the context is properly removed when an error happens or then at the
   // return.
-  CUDAContextScope withCtx(*context, this->cudaDriver());
+  CUDAContextScope withCtx(context, this->cudaDriver());
 
   CUstream stream;
   CUDA_CHECK_ERR(this->cudaDriver().cuStreamCreate(&stream, 0));
 
-  return CUDADeviceContextRef::create(*this, *context, stream);
+  return CUDADeviceContextRef::create(*this, context, stream);
 }
 
 ErrorOr<int> CUDADevice::numberOfGPUs() {
   static ErrorOr<unsigned int> errOrCount = []() -> ErrorOr<int> {
-    ErrorOr<const NVML &> errDriver = NVML::get();
-    if (errDriver.isError())
-      return errDriver.takeError();
+    DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
 
     unsigned int result;
-    if (errDriver->nvmlDeviceGetCount_v2(&result) != NVML::SUCCESS)
+    if (nvml.nvmlDeviceGetCount_v2(&result) != NVML::SUCCESS)
       RETURN_ERROR("NVML: Unable to get device count");
     return result;
   }();
@@ -529,11 +511,8 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
   static std::mutex mu;
   static DeviceList *devices = nullptr;
   static const ErrorOrSuccess err = [&]() -> ErrorOrSuccess {
-    ErrorOr<int> errOrCount = numberOfGPUs();
-    if (errOrCount.isError()) {
-      return errOrCount.takeError();
-    }
-    devices = new DeviceList(*errOrCount, nullptr);
+    DEFINE_OR_RETURN_ERROR(int, count, numberOfGPUs());
+    devices = new DeviceList(count, nullptr);
     return success();
   }();
 
@@ -550,19 +529,16 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
   std::lock_guard<std::mutex> lock(mu);
   CUDADevice *device = (*devices)[id];
   if (device == nullptr) {
-    ErrorOr<const NVML &> errNVML = NVML::get();
-    if (errNVML.isError())
-      RETURN_ERROR(llvm::Twine("NVML initialization failed: ") +
-                   errNVML.getError());
+    DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
+
     nvmlDevice_t nvmlDevice;
-    NVML_CHECK_ERR(errNVML->nvmlDeviceGetHandleByIndex(id, &nvmlDevice));
+    NVML_CHECK_ERR(nvml.nvmlDeviceGetHandleByIndex(id, &nvmlDevice));
 
     char name[256];
-    NVML_CHECK_ERR(errNVML->nvmlDeviceGetName(nvmlDevice, name, sizeof(name)));
+    NVML_CHECK_ERR(nvml.nvmlDeviceGetName(nvmlDevice, name, sizeof(name)));
 
     nvmlMemory_t nvmlMemInfo;
-    if (errNVML->nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo) !=
-        NVML::SUCCESS)
+    if (nvml.nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo) != NVML::SUCCESS)
       RETURN_ERROR("NVML: Unable to get memory info");
     Device::MemInfo memInfo;
     memInfo.free = nvmlMemInfo.free;
@@ -570,12 +546,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
 
     // Some info is available only via CUDA. Ideally, we will use only NVML,
     // and not CUDA in CUDADevice.
-    ErrorOr<const CUDADriver &> errDriver = CUDADriver::get();
-    if (errDriver) {
-      RETURN_ERROR(llvm::Twine("CUDA Driver initialization failed: ") +
-                   errDriver.getError());
-    }
-    const CUDADriver &driver = *errDriver;
+    DEFINE_OR_RETURN_ERROR(const CUDADriver &, driver, CUDADriver::get());
     int alignment;
     CUdevice cuDevice;
     CUcontext cuContext;
@@ -590,7 +561,7 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
     CUDA_CHECK_ERR(driver.cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
 
     int computeCapabilityMajor, computeCapabilityMinor;
-    NVML_CHECK_ERR(errNVML->nvmlDeviceGetCudaComputeCapability(
+    NVML_CHECK_ERR(nvml.nvmlDeviceGetCudaComputeCapability(
         nvmlDevice, &computeCapabilityMajor, &computeCapabilityMinor));
     device = new CUDADevice(driver, id, nvmlDevice, cuDevice, cuContext, name,
                             computeCapabilityMajor, computeCapabilityMinor,
@@ -1705,16 +1676,14 @@ CUDADeviceContext::verified_cast(const DeviceContext *ctx) {
 }
 
 ErrorOr<std::string> CUDADevice::getFirstArchName() {
-  ErrorOr<const NVML &> nvml = NVML::get();
-  if (nvml.isError())
-    return nvml.takeError();
+  DEFINE_OR_RETURN_ERROR(const NVML &, nvml, NVML::get());
 
   nvmlDevice_t device;
-  if (nvml->nvmlDeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
+  if (nvml.nvmlDeviceGetHandleByIndex(0, &device) != NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get device index");
 
   int major, minor;
-  if (nvml->nvmlDeviceGetCudaComputeCapability(device, &major, &minor) !=
+  if (nvml.nvmlDeviceGetCudaComputeCapability(device, &major, &minor) !=
       NVML::SUCCESS)
     RETURN_ERROR("NVML: Unable to get compute capability");
 
