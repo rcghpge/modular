@@ -71,10 +71,6 @@ public:
 
   static Result NVPTXCompilerGetInfoLog(::nvPTXCompilerHandle compiler,
                                         char *infoLog);
-
-private:
-  // Enable in-depth logging at build time.
-  static constexpr bool do_call_log = false;
 };
 
 } // namespace M::Driver

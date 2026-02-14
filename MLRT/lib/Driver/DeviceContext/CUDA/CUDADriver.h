@@ -14,10 +14,10 @@
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
 #include "Support/Profiling/Tracy.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <sstream>
-#include <stddef.h>
 #include <thread>
 
 namespace M::Driver {
@@ -315,16 +315,18 @@ using CUmulticastObjectProp = struct CUmulticastObjectProp_st {
   unsigned long long flags;
 };
 
-#define CUDA_DRIVER_CALL_LOG_IMPL(class_name)                                  \
-  if (do_call_log) {                                                           \
-    /* Make sure we emit a single entry per log call. */                       \
-    std::ostringstream buffer;                                                 \
-    buffer << "THR-" << std::this_thread::get_id() << ": " << class_name       \
-           << "::" << __FUNCTION__ << "\n";                                    \
-    llvm::errs() << buffer.str();                                              \
-  }
+/// Check if CUDA API logging is enabled at runtime via MLRT_CUDA_DEBUG env var.
+inline bool isCUDADebugLoggingEnabled() {
+  static const bool enabled =
+      llvm::sys::Process::GetEnv("MLRT_CUDA_DEBUG").has_value();
+  return enabled;
+}
 
-#define CUDA_DRIVER_CALL_LOG() CUDA_DRIVER_CALL_LOG_IMPL("CUDADriver")
+/// Runtime logging macro for CUDA driver API calls.
+#define CUDA_DRIVER_CALL_LOG()                                                 \
+  if (isCUDADebugLoggingEnabled()) {                                           \
+    llvm::errs() << "[CUDA] " << __FUNCTION__ << "\n";                         \
+  }
 
 class CUDADriver {
 
@@ -334,13 +336,23 @@ public:
     NOT_READY = 600,
   };
 
-// Define wrapper member function.
+// Define wrapper member function with comprehensive logging.
+// The macro generates a wrapper that:
+// 1. Logs entry with function name when MLRT_CUDA_DEBUG is set
+// 2. Adds Tracy profiling zone
+// 3. Calls the actual CUDA driver function
+// 4. Logs exit with result code when MLRT_CUDA_DEBUG is set
 #define CUDA_FUNC(name, ret, ...)                                              \
   ret name(EXPAND_PARAMS(__VA_ARGS__)) const {                                 \
     CUDA_DRIVER_CALL_LOG();                                                    \
     TRACY_ZONE_SCOPED_NC(#name, TRACY_COLOR_GREEN);                            \
-    return name##_(EXPAND_ARGS(__VA_ARGS__));                                  \
+    ret result = name##_(EXPAND_ARGS(__VA_ARGS__));                            \
+    if (isCUDADebugLoggingEnabled()) {                                         \
+      llvm::errs() << "[CUDA] " << #name << " -> " << result << "\n";          \
+    }                                                                          \
+    return result;                                                             \
   }
+
 #include "CUDADriver.inc"
 #undef CUDA_FUNC
 
@@ -365,9 +377,6 @@ public:
   ~CUDADriver() = default;
 
 private:
-  // Enable in-depth logging at build time.
-  static constexpr bool do_call_log = false;
-
   // Shared library name for the CUDA driver.
   static const char lib_name[];
 
@@ -393,8 +402,6 @@ private:
 
   static ErrorOr<std::unique_ptr<CUDADriver>> allocAndInitDriver();
 };
-
-#undef CUDA_DRIVER_CALL_LOG
 
 } // namespace M::Driver
 

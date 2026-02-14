@@ -15,8 +15,9 @@
 #include "Support/Preprocessor.h"
 #include "Support/Profiling/Tracy.h"
 
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
-#include <sstream>
+
 #include <thread>
 
 #define NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE 32
@@ -26,13 +27,17 @@ namespace M::Driver {
 
 using nvmlDevice_t = struct nvmlDevice_st *;
 
+/// Check if NVML API logging is enabled at runtime via MLRT_CUDA_DEBUG env var.
+inline bool isNVMLDebugLoggingEnabled() {
+  static const bool enabled =
+      llvm::sys::Process::GetEnv("MLRT_CUDA_DEBUG").has_value();
+  return enabled;
+}
+
+/// Runtime logging macro for NVML API calls.
 #define CUDA_NVML_CALL_LOG()                                                   \
-  if (doCallLog) {                                                             \
-    /* Make sure we emit a single entry per log call. */                       \
-    std::ostringstream buffer;                                                 \
-    buffer << "THR-" << std::this_thread::get_id()                             \
-           << ": NVML::" << __FUNCTION__ << "\n";                              \
-    llvm::errs() << buffer.str();                                              \
+  if (isNVMLDebugLoggingEnabled()) {                                           \
+    llvm::errs() << "[NVML] " << __FUNCTION__ << "\n";                         \
   }
 
 struct nvmlPciInfo_t {
@@ -61,19 +66,27 @@ public:
 
   ErrorOr<std::string> GetDriverVersion() const;
 
-// Define wrapper member function.
+// Define wrapper member function with runtime logging.
 #define NVML_FUNC(name, ret, ...)                                              \
   ret name(EXPAND_PARAMS(__VA_ARGS__)) const {                                 \
     CUDA_NVML_CALL_LOG();                                                      \
     TRACY_ZONE_SCOPED_NC(#name, TRACY_COLOR_GREEN);                            \
-    return name##_(EXPAND_ARGS(__VA_ARGS__));                                  \
+    ret result = name##_(EXPAND_ARGS(__VA_ARGS__));                            \
+    if (isNVMLDebugLoggingEnabled()) {                                         \
+      llvm::errs() << "[NVML] " << #name << " -> " << result << "\n";          \
+    }                                                                          \
+    return result;                                                             \
   }
 
 #define NVML_FUNC_NO_PARAMS(name, ret)                                         \
   ret name() const {                                                           \
     CUDA_NVML_CALL_LOG();                                                      \
     TRACY_ZONE_SCOPED_NC(#name, TRACY_COLOR_GREEN);                            \
-    return name##_();                                                          \
+    ret result = name##_();                                                    \
+    if (isNVMLDebugLoggingEnabled()) {                                         \
+      llvm::errs() << "[NVML] " << #name << " -> " << result << "\n";          \
+    }                                                                          \
+    return result;                                                             \
   }
 #include "NVML.inc"
 #undef NVML_FUNC_NO_PARAMS
@@ -82,9 +95,6 @@ public:
   static ErrorOr<const NVML &> get();
 
 private:
-  // Enable in-depth logging at build time.
-  static constexpr bool doCallLog = false;
-
   static ErrorOr<const NVML &> allocAndInitNVML();
   static const char lib_name[];
 

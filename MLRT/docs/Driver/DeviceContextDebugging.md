@@ -69,6 +69,23 @@ max/kernels/test/gpu/device_context/test_function_error_sync_mode.mojo:29:37 fai
 The `MODULAR_DEVICE_CONTEXT_SYNC_MODE` works in both standalone Mojo code as
 well as code run from MAX Graphs.
 
+## CUDA Driver API Logging
+
+Set `MLRT_CUDA_DEBUG=1` to log all CUDA driver API calls:
+
+```bash
+MLRT_CUDA_DEBUG=1 ./your_program
+```
+
+Example output:
+
+```text
+[CUDA] cuMemcpyHtoDAsync_v2
+[CUDA] cuMemcpyHtoDAsync_v2 -> 0
+[CUDA] cuLaunchKernel
+[CUDA] cuLaunchKernel -> 0
+```
+
 ## Limitations
 
 - When used to debug MAX Graphs, errors are reported in terms of the Mojo source
