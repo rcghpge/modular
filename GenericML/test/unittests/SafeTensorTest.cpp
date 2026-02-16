@@ -50,7 +50,7 @@ TEST(SafeTensor, CanReadMetadata) {
       "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
       device);
 
-  auto safeTensorOr = SafeTensor::get(device, buffer, {});
+  auto safeTensorOr = SafeTensor::get(device, buffer);
   ASSERT_FALSE(safeTensorOr.isError()) << safeTensorOr.getError();
 
   ASSERT_EQ(toString(safeTensorOr->getMetadata()), "{\"foo\":\"bar\"}");
@@ -64,7 +64,7 @@ TEST(SafeTensor, CanReadTensorInfo) {
       "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
       device);
 
-  auto safeTensorOr = SafeTensor::get(device, buffer, {});
+  auto safeTensorOr = SafeTensor::get(device, buffer);
   ASSERT_FALSE(safeTensorOr.isError()) << safeTensorOr.getError();
 
   // llvm::outs() << "metadata = " << safeTensor.getMetadata() << "\n";
@@ -85,7 +85,7 @@ TEST(SafeTensor, HeaderTooSmall) {
   auto device = makeCPU();
   auto buffer = getDeserializedBuffer("", device);
 
-  auto safeTensorOr = SafeTensor::get(device, buffer, {});
+  auto safeTensorOr = SafeTensor::get(device, buffer);
   ASSERT_TRUE(safeTensorOr.isError()) << safeTensorOr.getError();
   ASSERT_STREQ(safeTensorOr.getError(), "file is too small to be a safetensor");
 }
@@ -98,7 +98,7 @@ TEST(SafeTensor, HeaderTooLarge) {
       "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
       device);
 
-  auto safeTensorOr = SafeTensor::get(device, buffer, {});
+  auto safeTensorOr = SafeTensor::get(device, buffer);
   ASSERT_TRUE(safeTensorOr.isError()) << safeTensorOr.getError();
   ASSERT_STREQ(safeTensorOr.getError(),
                "header length is greater than the max header size");

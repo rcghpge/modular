@@ -387,7 +387,7 @@ ExecutableModel::executeWithDeviceMemoryInputs(
   inputValues.reserve(inputs.size());
   for (GenericML::Driver::DeviceMemory *memory : inputs) {
     ErrorOr<GenericML::Driver::DeviceMemory *> viewOrErr =
-        memory->createViewOn(*memory->getDevice());
+        memory->createView(memory->getSpec());
     if (viewOrErr.isError())
       return viewOrErr.takeError();
     GenericML::Driver::DeviceMemory *view = viewOrErr.takeValue();

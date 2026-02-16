@@ -58,8 +58,7 @@ ErrorOr<DeviceMemory *> M::GenericML::Driver::constructDeviceMemoryFromTensor(
   AsyncRT::await(storageRef);
 
   auto destructor = [context = std::move(context),
-                     storageRef = storageRef.copy()](
-                        void *ptr, const TensorSpec &spec) mutable {
+                     storageRef = storageRef.copy()](void *ptr) mutable {
     // When the last reference goes out of scope, the data will be deallocated.
     (void)storageRef;
 

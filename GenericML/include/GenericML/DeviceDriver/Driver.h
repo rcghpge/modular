@@ -38,11 +38,6 @@ struct DeviceMemory {
   /// Relinquishes ownership of the underlying data, and returns the pointer.
   void *release() { return buf->releasePtr(); }
 
-  void setDestructorFn(
-      llvm::unique_function<void(void *, const TensorSpec &spec)> destructor) {
-    destructorFn = std::move(destructor);
-  }
-
   /// Underlying raw buffer on-device. Does not release ownership.
   M::Driver::DeviceBufferRef getBuffer() const {
     return M::Driver::DeviceBufferRef::copy(buf.getPointer());
@@ -54,7 +49,6 @@ struct DeviceMemory {
 
   size_t bytecount() const { return buf->byteSize(); }
 
-  ~DeviceMemory();
   DeviceMemory(const DeviceMemory &) = delete;
   DeviceMemory &operator=(const DeviceMemory &) = delete;
   DeviceMemory(DeviceMemory &&) = delete;
@@ -79,6 +73,14 @@ struct DeviceMemory {
 
   ErrorOr<DeviceMemory *> createViewOn(Device &device) const;
 
+  /// Create a view of this memory with a different TensorSpec and optional
+  /// offset.
+  ///
+  /// This view is a new DeviceMemory object that is backed by the same
+  /// underlying memory.
+  ErrorOr<DeviceMemory *> createView(const TensorSpec &spec,
+                                     size_t offset = 0) const;
+
   /// Sets the contents of the device memory to the provided value.
   ErrorOrSuccess memset(int value);
 
@@ -86,8 +88,6 @@ protected:
   RCRef<Device> device;
   M::Driver::DeviceBufferRef buf;
   M::TensorSpec spec;
-  std::optional<llvm::unique_function<void(void *, const TensorSpec &spec)>>
-      destructorFn = std::nullopt;
 };
 
 struct Device : M::ReferenceCounted<Device> {
@@ -109,15 +109,11 @@ struct Device : M::ReferenceCounted<Device> {
                                              bool hostAlloc = false);
 
   /// Takes ownership of `data` in a DeviceMemory object.
-  /// DeviceMemory contains a RCRef of the underlying Device.
-  DeviceMemory *createDeviceMemory(void *data, const TensorSpec &spec);
-
-  /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device. The data
   /// will be destroyed by the given destructor
-  DeviceMemory *createDeviceMemory(
-      void *data, const TensorSpec &spec,
-      llvm::unique_function<void(void *, const TensorSpec &)> destructor);
+  DeviceMemory *
+  createDeviceMemory(void *data, const TensorSpec &spec,
+                     llvm::unique_function<void(void *)> destructor);
 
   virtual ~Device() = default;
 
@@ -154,10 +150,9 @@ struct Device : M::ReferenceCounted<Device> {
   /// Returns whether or not the device is compatible with MAX.
   ErrorOrSuccess isCompatible() const;
 
-  /// On CPUs, memory maps the given file, returns a handle to the memmap'ed
-  /// file. On GPUs, direct transfers the data to the GPU (TODO: unimplemented)
-  ErrorOr<std::pair<M::Driver::DeviceBufferRef,
-                    std::optional<llvm::sys::fs::mapped_file_region>>>
+  /// On CPUs, memory maps the given file. On GPUs, direct transfers the data to
+  /// the GPU (TODO: unimplemented)
+  ErrorOr<M::Driver::DeviceBufferRef>
   memmapFile(const std::filesystem::path &filename);
 
 protected:

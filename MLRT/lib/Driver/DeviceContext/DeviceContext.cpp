@@ -377,6 +377,12 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
     // Parent owns the memory.
     return;
   }
+  // Call custom destructor if set.
+  if (destructorFn_) {
+    (*destructorFn_)(ptr_);
+    ptr_ = nullptr;
+    return;
+  }
   // Release the GPU memory now or enqueue an event based release for host
   // memory. Host memory can only be released once the stream of execution on
   // the corresponding device has completed all currently pending events.
@@ -439,6 +445,11 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::markAsReady() const {
         "Invalid use of markAsReady on buffer not with auto-sync enabled");
 
   return this->context().enqueueEvent(*manualEvent_);
+}
+
+void DeviceBuffer::setDestructorFn(
+    llvm::unique_function<void(void *)> destructor) const {
+  destructorFn_ = std::move(destructor);
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(
@@ -1057,25 +1068,25 @@ DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
 }
 
 MODULAR_CXX_EXPORT
-ErrorOr<std::pair<Driver::DeviceBufferRef,
-                  std::optional<llvm::sys::fs::mapped_file_region>>>
+ErrorOr<Driver::DeviceBufferRef>
 DeviceContext::memmapFile(const std::filesystem::path &filename) const {
   auto result = this->memmapFileImpl(filename);
   if (result.isError())
     return result.takeError();
   auto [ptr, size, mmap] = result.takeValue();
 
-  return std::pair{
-      // Some oddities here:
-      // This doesn't own memory, but it seems that functionality is deprecated?
-      // Even if we allocate on the host, this fails further up the stack (SDK)
-      // if we set isHost=true, since it gets treated as pinned memory (goes
-      // down some other code path).
-      RCRef<Driver::DeviceBuffer>::take(
-          new Driver::DeviceBuffer(*this, ptr, size, /*isHost*/ false,
-                                   /*owning*/ false)),
-      std::optional{std::move(mmap)},
-  };
+  auto buffer = RCRef<Driver::DeviceBuffer>::take(
+      new Driver::DeviceBuffer(*this, ptr, size, /*isHost*/ false,
+                               /*owning*/ true));
+
+  // Set destructor on the buffer to keep the mmap alive.
+  if (mmap) {
+    buffer->setDestructorFn(
+        [mmap = std::make_shared<llvm::sys::fs::mapped_file_region>(
+             std::move(*mmap))](void *) { (void)mmap; });
+  }
+
+  return buffer;
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>

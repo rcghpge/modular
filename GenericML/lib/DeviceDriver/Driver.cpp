@@ -26,13 +26,6 @@ using namespace M;
     return VAR##OrErr.takeError();                                             \
   auto VAR = VAR##OrErr.takeValue()
 
-MODULAR_DRIVER_EXPORT DeviceMemory::~DeviceMemory() {
-  if (buf->ptr() != nullptr && destructorFn) {
-    (*destructorFn)(buf->ptr(), getSpec());
-    buf->releasePtr();
-  }
-}
-
 MODULAR_DRIVER_EXPORT ErrorOrSuccess
 DeviceMemory::copyTo(DeviceMemory &dst) const {
   return this->buf->copyTo(*dst.buf);
@@ -48,6 +41,23 @@ DeviceMemory::createViewOn(Device &device) const {
       return err.takeError();
   }
   return new DeviceMemory(M::copyRCRef(&device), newBuf, spec);
+}
+
+MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
+DeviceMemory::createView(const TensorSpec &spec, size_t offset) const {
+  size_t byteOffset = this->spec.getEltType().getSizeInBytes(offset);
+  if (spec.getSizeInBytes() > (this->spec.getSizeInBytes() - byteOffset))
+    RETURN_ERROR("Can't create a view larger than the initial buffer");
+
+  // If the requested view is offsetted or has a different size, create a
+  // sub-buffer
+  if (byteOffset || spec.getSizeInBytes() != this->spec.getSizeInBytes()) {
+    ASSIGN_OR_RETURN(newBuf,
+                     buf->createSubBuffer(byteOffset, spec.getSizeInBytes()));
+    return new DeviceMemory(device, newBuf, spec);
+  }
+
+  return new DeviceMemory(device, buf, spec);
 }
 
 MODULAR_DRIVER_EXPORT ErrorOrSuccess DeviceMemory::memset(int value) {
@@ -100,8 +110,7 @@ MODULAR_DRIVER_EXPORT ErrorOrSuccess Device::isCompatible() const {
 }
 
 MODULAR_DRIVER_EXPORT
-ErrorOr<std::pair<M::Driver::DeviceBufferRef,
-                  std::optional<llvm::sys::fs::mapped_file_region>>>
+ErrorOr<M::Driver::DeviceBufferRef>
 Device::memmapFile(const std::filesystem::path &filename) {
   return ctx->memmapFile(filename);
 }
@@ -190,18 +199,13 @@ Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
 }
 
 MODULAR_DRIVER_EXPORT DeviceMemory *
-Device::createDeviceMemory(void *data, const TensorSpec &spec) {
+Device::createDeviceMemory(void *data, const TensorSpec &spec,
+                           llvm::unique_function<void(void *)> destructor) {
   auto buf =
       ctx->createBufferOwning(data, spec.getSizeInBytes(), /*owning=*/true);
+  // Set the destructor on the underlying DeviceBuffer
+  buf->setDestructorFn(std::move(destructor));
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
-}
-
-MODULAR_DRIVER_EXPORT DeviceMemory *Device::createDeviceMemory(
-    void *data, const TensorSpec &spec,
-    llvm::unique_function<void(void *, const TensorSpec &)> destructor) {
-  auto deviceMemory = createDeviceMemory(data, spec);
-  deviceMemory->setDestructorFn(std::move(destructor));
-  return deviceMemory;
 }
 
 ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>

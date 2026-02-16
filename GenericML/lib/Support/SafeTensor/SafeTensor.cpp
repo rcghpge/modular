@@ -141,10 +141,8 @@ llvm::json::Value SafeTensor::TensorInfo::toJSON() const {
 //===----------------------------------------------------------------------===//
 
 /// Load and parse a SafeTensor file from the given data.
-ErrorOr<SafeTensor>
-SafeTensor::get(RCRef<M::GenericML::Driver::Device> device,
-                M::Driver::DeviceBufferRef parentBuffer,
-                std::optional<llvm::sys::fs::mapped_file_region> mmap) {
+ErrorOr<SafeTensor> SafeTensor::get(RCRef<M::GenericML::Driver::Device> device,
+                                    M::Driver::DeviceBufferRef parentBuffer) {
   // Get the buffer size.
   size_t bufferSize = parentBuffer->byteSize();
 
@@ -215,13 +213,8 @@ SafeTensor::get(RCRef<M::GenericML::Driver::Device> device,
       return Error(Twine("duplicate tensor name: ") + key.str());
   }
 
-  SafeTensor result(headerLength, std::move(device), std::move(parentBuffer),
+  return SafeTensor(headerLength, std::move(device), std::move(parentBuffer),
                     std::move(metadata), std::move(tensorInfo));
-  if (mmap)
-    result.mmap =
-        std::make_shared<llvm::sys::fs::mapped_file_region>(std::move(*mmap));
-
-  return result;
 }
 
 /// Load and parse a SafeTensor file from the given path.
@@ -236,8 +229,7 @@ SafeTensor::get(const std::filesystem::path &path,
   if (result)
     return result.takeError();
 
-  return get(std::move(device), std::move(result->first),
-             std::move(result->second));
+  return get(std::move(device), std::move(*result));
 }
 
 ErrorOr<SafeTensor::TensorInfo>
@@ -257,16 +249,9 @@ SafeTensor::getTensorMemory(const TensorInfo &info) const {
       8 + headerLength + info.offsets.first, info.getSizeInBytes());
   assert(!subBuffer.isError() &&
          "sub-buffer dimensions should already have been validated");
-  auto result = std::make_shared<M::GenericML::Driver::DeviceMemory>(
+
+  return std::make_shared<M::GenericML::Driver::DeviceMemory>(
       device, std::move(*subBuffer), TensorSpec{info.shape, info.dtype});
-
-  // If the memory is memmap'ed, shared ownership of the RAII memmap object
-  // with the new tensor so it can outlive this object.
-  if (mmap)
-    result->setDestructorFn(
-        [mmap = mmap](void *, const TensorSpec &) { (void)mmap; });
-
-  return result;
 }
 
 //===----------------------------------------------------------------------===//

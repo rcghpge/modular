@@ -47,10 +47,8 @@ struct MODULAR_CXX_EXPORT SafeTensor {
   };
 
   /// Loads and parses a SafeTensor file from the given data.
-  static ErrorOr<SafeTensor>
-  get(RCRef<M::GenericML::Driver::Device> device,
-      M::Driver::DeviceBufferRef data,
-      std::optional<llvm::sys::fs::mapped_file_region> mmap);
+  static ErrorOr<SafeTensor> get(RCRef<M::GenericML::Driver::Device> device,
+                                 M::Driver::DeviceBufferRef data);
 
   /// Loads and parses a SafeTensor file from the given path.
   static ErrorOr<SafeTensor> get(const std::filesystem::path &path,
@@ -90,9 +88,6 @@ private:
   RCRef<M::GenericML::Driver::Device> device;
   // Parent buffer for all subbuffers created.
   M::Driver::DeviceBufferRef parentBuffer;
-  // Holds a memmap RAII object if this SafeTensor object is backed by memmap'd
-  // storage. This gets shared with any tensors created from it.
-  std::optional<std::shared_ptr<llvm::sys::fs::mapped_file_region>> mmap;
   llvm::json::Object metadata;
   llvm::DenseMap<std::string, TensorInfo> tensorInfo;
 };
