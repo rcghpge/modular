@@ -97,9 +97,6 @@ struct Device : M::ReferenceCounted<Device> {
 
   llvm::StringRef getString() const { return deviceDescription; }
 
-  /// Allocates `bytes` bytes on the device.
-  ErrorOr<void *> allocateData(size_t bytes);
-
   const DeviceSpec &getDeviceSpec() const { return deviceSpecification; }
 
   /// Allocates `bytes` bytes of memory on the device

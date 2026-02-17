@@ -115,13 +115,6 @@ Device::memmapFile(const std::filesystem::path &filename) {
   return ctx->memmapFile(filename);
 }
 
-MODULAR_DRIVER_EXPORT ErrorOr<void *> Device::allocateData(size_t bytes) {
-  ASSIGN_OR_RETURN(buf, ctx->enqueueCreateBuffer(bytes));
-  // TODO change return type to DeviceBufferRef instead of returning naked void
-  // pointer.
-  return buf->releasePtr();
-}
-
 MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
 Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
   ASSIGN_OR_RETURN(buf, hostAlloc
