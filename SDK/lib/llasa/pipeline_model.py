@@ -34,7 +34,6 @@ from max.pipelines.lib import (
     ModelInputs,
     ModelOutputs,
     PipelineModel,
-    SupportedEncoding,
 )
 from max.profiler import Tracer, traced
 from transformers.models.auto.configuration_auto import AutoConfig
@@ -97,7 +96,6 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
         pipeline_config: PipelineConfig,
         session: InferenceSession,
         huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -110,7 +108,6 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
             pipeline_config: Pipeline configuration
             session: Inference session
             huggingface_config: HuggingFace model configuration
-            encoding: Model encoding
             devices: List of devices
             kv_cache_config: KV cache configuration
             weights: Model weights
@@ -127,7 +124,6 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
             pipeline_config,
             session,
             huggingface_config,
-            encoding,
             devices,
             kv_cache_config,
             weights,
