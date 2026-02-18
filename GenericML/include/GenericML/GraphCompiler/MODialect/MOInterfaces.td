@@ -154,20 +154,6 @@ def MO_ControlOpInterface : OpInterface<"MOControlOpInterface"> {
   let cppNamespace = "::M::MO";
 }
 
-def MO_Parameterization
-    : MO_TensorOpInterfaceBase<"ParameterizationInterface"> {
-  let description = [{
-    Interface to be implemented by ops that support resolving unknown shape and
-    dimension parameters in their tensors.
-  }];
-
-  let methods = [
-    InterfaceMethod<"Rewrites the IR to resolve unknown shapes and dims.",
-      "LogicalResult", "resolveUnknownParameters",
-      (ins "mlir::RewriterBase &":$rewriter)>,
-  ];
-}
-
 def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
   [MemoryEffectsOpInterface, ParamOpInterface]> {
   let description = [{
@@ -449,63 +435,6 @@ def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
   let verify = [{ return Impl::verifyScatterNdLike(cast<ScatterNdLike>($_op)); }];
 }
 
-def MO_DefaultParameterization : MO_TensorOpInterfaceBase<
-  "DefaultParameterization", [MO_Parameterization, MO_ParamDeclaration]
-> {
-  let description = [{
-    Interface providing a default (naive) parameterization that is appropriate
-    for ops without strict invariants on arguments and results (e.g. shape
-    and/or dimension equalities). The interface can only handle ops with a
-    single result, and ignores all arguments/results that are not MO tensors.
-  }];
-
-  let extraTraitClassDeclaration = [{
-    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-      auto paramInterface =
-        llvm::cast<ParameterizationInterface>(this->getOperation());
-      return Impl::defaultResolveUnknownParameters(paramInterface, rewriter);
-    }
-  }];
-}
-
-def MO_SameInputOutputShapesParameterization : MO_TensorOpInterfaceBase<
-  "SameInputOutputShapesParameterization",
-  [MO_Parameterization, MO_ParamDeclaration]
-> {
-  let description = [{
-    Interface providing a default parameterization for ops that should have the
-    same input and output shapes.
-  }];
-
-  let extraTraitClassDeclaration = [{
-    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-      auto paramInterface =
-        llvm::cast<ParameterizationInterface>(this->getOperation());
-      return Impl::resolveSameOperandsAndResultShapeUnknownParameters(
-        paramInterface, rewriter);
-    }
-  }];
-}
-
-def MO_SameFirstArgumentOutputShapesParameterization : MO_TensorOpInterfaceBase<
-  "SameFirstArgumentOutputShapesParameterization",
-  [MO_Parameterization, MO_ParamDeclaration]
-> {
-  let description = [{
-    Interface providing a default parameterization for ops that should have the
-    same output shape as the first operand.
-  }];
-
-  let extraTraitClassDeclaration = [{
-    LogicalResult resolveUnknownParameters(mlir::RewriterBase &rewriter) {
-      auto paramInterface =
-        llvm::cast<ParameterizationInterface>(this->getOperation());
-      return Impl::resolveSameFirstOperandAndResultShapeUnknownParameters(
-        paramInterface, rewriter);
-    }
-  }];
-}
-
 def MO_PadLike : MO_TensorOpInterfaceBase<"PadLike", [MO_ParamDeclaration]> {
   let description = [{
     Interface for modeling pad operations.
@@ -593,7 +522,7 @@ def MO_ExplicitDevice : MO_OpTrait<"MOExplicitDevice">;
 
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
-  MO_SameInputOutputShapesParameterization
+  MO_ParamDeclaration
 ]>;
 
 /// Verify invariants we expect about operations working with !mo.buffer.
@@ -609,15 +538,13 @@ def MO_SameOperandsAndResultShapeAttr :
     MO_OpTrait<"MOSameOperandsAndResultShapeAttr">;
 
 def MO_SameOperandsAndResultShape: TraitList<[
-  MO_SameOperandsAndResultShapeAttr,
-  MO_SameInputOutputShapesParameterization
+  MO_SameOperandsAndResultShapeAttr
 ]>;
 
 /// All traits that reduction ops should have.
 def MO_ReductionTraits: TraitList<[
   MO_Reduction,
   MO_ShapeMaterialization,
-  MO_DefaultParameterization,
   MO_OpTrait<"ReductionShapeMaterialization">,
 ]>;
 
@@ -625,14 +552,12 @@ def MO_ReductionTraits: TraitList<[
 def MO_ScatterLikeTraits: TraitList<[
   MO_ScatterLike,
   MO_ShapeMaterialization,
-  MO_DefaultParameterization,
   MO_OpTrait<"ScatterLikeShapeMaterialization">,
 ]>;
 
 /// All traits that ScatterND-like ops should have.
 def MO_ScatterNdLikeTraits: TraitList<[
   MO_ScatterNdLike,
-  MO_DefaultParameterization,
   MO_OpTrait<"ScatterNdLikeShapeMaterialization">,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>;
@@ -660,7 +585,6 @@ def MO_SameFirstOperandAndResultsElementType :
 
 def MO_PadLikeTraits: TraitList<[
   MO_PadLike,
-  MO_DefaultParameterization,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>;
 

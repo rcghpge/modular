@@ -107,18 +107,6 @@ def PropagateShapes : Pass<"mo-propagate-shapes", "GraphOp"> {
   }];
 }
 
-def ResolveUnknownParameters : Pass<"mo-resolve-unknown-parameters", "ModuleOp"> {
-  let summary = "Resolves unknown tensor shape and dimension parameters.";
-  let description = [{
-    This pass parameterizes `mo` ops that can be parameterized. This involves 2
-    things:
-    1. replacing unknown shape and dimension parameters (i.e. `?`) in `!mo.tensor`
-    instances with parameter references.
-    2. letting newly parameterized ops declare their new parameters that appear
-    in their results.
-  }];
-}
-
 def SymbolicOptimization : Pass<"mo-symbolic-optimize", "GraphOp"> {
   let summary = "Optimize the graph using symbolic reasoning.";
   let description = [{

@@ -585,20 +585,6 @@ TensorType TensorType::cloneWith(DeviceRefAttr deviceRef) const {
   return TensorType::get(getShapeAttr(), getDtype(), deviceRef, getMetadata());
 }
 
-TensorType TensorType::cloneWithUnknownRank() const {
-  return TensorType::get(KGEN::UnknownAttr::get(ShapeType::get(getContext())),
-                         getDtype(), getDeviceRef(), getMetadata());
-}
-
-TensorType TensorType::cloneWithUnknownDims(int64_t rank) const {
-  auto dimType = MOSH::ShapeAttr::getDimType(getContext());
-
-  SmallVector<TypedAttr> shapes(rank, KGEN::UnknownAttr::get(dimType));
-  return TensorType::get(
-      MOSH::ShapeAttr::get(shapes, ShapeType::get(getContext())), getDtype(),
-      getDeviceRef(), getMetadata());
-}
-
 bool TensorType::hasRank() const {
   // Rank is only known if we have a concrete attribute
   return !isa<KGEN::ParamDeclRefAttr>(getShapeAttr());
