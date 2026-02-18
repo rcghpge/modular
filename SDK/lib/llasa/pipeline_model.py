@@ -194,8 +194,10 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
         """Calculate the maximum sequence length for the pipeline model."""
         assert isinstance(pipeline_config, AudioGenerationConfig)
         llasa_config = LlasaConfig(**pipeline_config.audio_decoder_config)
-        if pipeline_config.max_length:
-            return min(llasa_config.max_length, pipeline_config.max_length)
+        if pipeline_config.model.max_length:
+            return min(
+                llasa_config.max_length, pipeline_config.model.max_length
+            )
         else:
             return llasa_config.max_length
 
@@ -256,7 +258,7 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
             for req_id, context in speech_lm_requests.items()
         }
 
-        max_length = self.speech_lm_pipeline._pipeline_config.max_length
+        max_length = self.speech_lm_pipeline._pipeline_config.model.max_length
         assert max_length
         num_tokens = max(tokens_to_generate.values())
         if current_lengths:
