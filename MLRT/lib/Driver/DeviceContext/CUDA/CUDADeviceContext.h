@@ -249,6 +249,9 @@ public:
   ErrorOrSuccess beginCapture() const override;
   ErrorOr<DeviceGraphRef> endCapture() const override;
 
+  void beginLaunchTrace() const override;
+  std::vector<uint64_t> takeLaunchTrace() const override;
+
   CUstream cudaStream() const;
 
   static const CUDADeviceStream *verified_cast(const DeviceStream *stream);
@@ -272,6 +275,7 @@ public:
   const CUDADriver &cudaDriver() const;
   CUmodule cudaModule() const;
   CUfunction cudaFunction() const;
+  ArrayRef<size_t> paramSizes() const;
 
   static const CUDAModuleFunction *cast(const DeviceFunctionCacheEntry *entry);
 
@@ -279,6 +283,8 @@ private:
   const CUDADriver &driver_;
   const CUmodule module_;
   const CUfunction function_;
+  mutable std::once_flag paramSizesOnce_;
+  mutable std::vector<size_t> paramSizes_;
 };
 
 class CUDADeviceFunction : public DeviceFunction {

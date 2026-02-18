@@ -237,4 +237,226 @@ TEST_F(GraphCaptureTest, CaptureOnDefaultStream) {
   EXPECT_NO_ERR(graph->replay());
 }
 
+// Test: debugVerifyReplay succeeds when execution matches captured graph.
+TEST_F(GraphCaptureTest, DebugVerifyReplaySuccess) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *outPtr = bufOut->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+  void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                  (void *)&length};
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  auto execute = [&]() -> ErrorOrSuccess {
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Capture the execution
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, execute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify that replaying the same execution matches the captured graph
+  EXPECT_NO_ERR(captured->debugVerifyReplay(execute));
+}
+
+// Test: debugVerifyReplay detects when execution differs from captured graph.
+TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsMismatch) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *outPtr = bufOut->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+  void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                  (void *)&length};
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture with one kernel launch
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify with TWO kernel launches (should mismatch)
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    auto err1 = stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+    if (err1.isError())
+      return err1;
+
+    // Second launch (creates a mismatch)
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Should detect the mismatch
+  EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
+// Test: debugVerifyReplay detects different grid dimensions.
+TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsDifferentGridDim) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *outPtr = bufOut->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+  void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                  (void *)&length};
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture with one grid dimension
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify with different grid dimension
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim * 2, /*gridY=*/1, /*gridZ=*/1, // Different grid!
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Should detect the mismatch in launch parameters
+  EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
+// Test: debugVerifyReplay handles execution failure gracefully.
+TEST_F(GraphCaptureTest, DebugVerifyReplayWithExecutionFailure) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  // Capture an empty graph
+  auto captureExecute = [&]() -> ErrorOrSuccess { return success(); };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify with an execution that fails
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    return M::Error("Simulated execution failure");
+  };
+
+  // Should propagate the execution error
+  EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
+// Test: debugVerifyReplay handles empty graph (no operations).
+TEST_F(GraphCaptureTest, DebugVerifyReplayEmptyGraph) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  // Capture and verify empty execution
+  auto emptyExecute = [&]() -> ErrorOrSuccess { return success(); };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, emptyExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify empty execution should succeed
+  EXPECT_NO_ERR(captured->debugVerifyReplay(emptyExecute));
+}
+
 } // namespace

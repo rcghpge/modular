@@ -80,6 +80,10 @@ public:
   /// Replay a previously captured graph for these inputs.
   ErrorOrSuccess replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
+  /// Execute eagerly and compare launch trace against captured graph
+  ErrorOrSuccess
+  debugVerifyReplay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+
   ExecutableModel(const ExecutableModel &) = delete;
   ExecutableModel &operator=(const ExecutableModel &) = delete;
 

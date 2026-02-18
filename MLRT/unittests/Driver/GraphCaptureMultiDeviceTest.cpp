@@ -180,4 +180,433 @@ TEST_F(GraphCaptureMultiDeviceTest, MultiDeviceGraphSupport) {
   EXPECT_NO_ERR(captured->replay());
 }
 
+// Test: debugVerifyReplay succeeds when multi-device execution matches captured
+// graphs.
+TEST_F(GraphCaptureMultiDeviceTest, DebugVerifyReplayMultiDeviceSuccess) {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  ASSERT_GE(numDevices, 2);
+
+  llvm::SmallVector<DeviceContextRef> contexts;
+  llvm::SmallVector<DeviceStreamRef> streams;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                  DeviceContext::create(Device::cudaAPI, /*id=*/id));
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+    contexts.push_back(std::move(ctx));
+    streams.push_back(std::move(stream));
+  }
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
+                                             vecAddPtx));
+    deviceFuncs.push_back(std::move(deviceFunc));
+  }
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+
+  llvm::SmallVector<
+      std::tuple<DeviceBufferRef, DeviceBufferRef, DeviceBufferRef>>
+      kernelArgs;
+
+  for (auto id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+
+    kernelArgs.push_back(
+        {std::move(bufOut), std::move(bufIn0), std::move(bufIn1)});
+  }
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  auto execute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+    }
+    return success();
+  };
+
+  // Capture execution on all devices
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture(streams, execute);
+  EXPECT_FALSE(captured.isError());
+  EXPECT_EQ(captured->numGraphs(), numDevices);
+
+  // Verify that the same execution matches all captured graphs
+  EXPECT_NO_ERR(captured->debugVerifyReplay(execute));
+}
+
+// Test: debugVerifyReplay detects mismatch on one device in multi-device setup.
+TEST_F(GraphCaptureMultiDeviceTest,
+       DebugVerifyReplayMultiDeviceDetectsMismatch) {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  ASSERT_GE(numDevices, 2);
+
+  llvm::SmallVector<DeviceContextRef> contexts;
+  llvm::SmallVector<DeviceStreamRef> streams;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                  DeviceContext::create(Device::cudaAPI, /*id=*/id));
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+    contexts.push_back(std::move(ctx));
+    streams.push_back(std::move(stream));
+  }
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
+                                             vecAddPtx));
+    deviceFuncs.push_back(std::move(deviceFunc));
+  }
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+
+  llvm::SmallVector<
+      std::tuple<DeviceBufferRef, DeviceBufferRef, DeviceBufferRef>>
+      kernelArgs;
+
+  for (auto id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+
+    kernelArgs.push_back(
+        {std::move(bufOut), std::move(bufIn0), std::move(bufIn1)});
+  }
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture: execute once on each device
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+    }
+    return success();
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture(streams, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify: execute TWICE on the first device (creates mismatch on device 0)
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+
+      // Extra launch on first device only (creates mismatch)
+      if (id == 0) {
+        auto err2 = streams[id]->enqueueFunctionExecDirect(
+            *deviceFuncs[id],
+            /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+            /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+            /*sharedMemBytes=*/0,
+            /*attrs=*/nullptr, /*numAttrs=*/0, args);
+        if (err2.isError())
+          return err2.takeError();
+      }
+    }
+    return success();
+  };
+
+  // Should detect mismatch on device 0
+  EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
+// Test: debugVerifyReplay detects different grid dimensions on one device.
+TEST_F(GraphCaptureMultiDeviceTest,
+       DebugVerifyReplayMultiDeviceDetectsDifferentGridDim) {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  ASSERT_GE(numDevices, 2);
+
+  llvm::SmallVector<DeviceContextRef> contexts;
+  llvm::SmallVector<DeviceStreamRef> streams;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                  DeviceContext::create(Device::cudaAPI, /*id=*/id));
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+    contexts.push_back(std::move(ctx));
+    streams.push_back(std::move(stream));
+  }
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
+                                             vecAddPtx));
+    deviceFuncs.push_back(std::move(deviceFunc));
+  }
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+
+  llvm::SmallVector<
+      std::tuple<DeviceBufferRef, DeviceBufferRef, DeviceBufferRef>>
+      kernelArgs;
+
+  for (auto id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+
+    kernelArgs.push_back(
+        {std::move(bufOut), std::move(bufIn0), std::move(bufIn1)});
+  }
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture: standard grid dimensions on all devices
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+    }
+    return success();
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture(streams, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify: different grid dimension on the last device
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      // Use different grid dimensions on last device
+      uint32_t useGridDim = (id == numDevices - 1) ? gridDim * 2 : gridDim;
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/useGridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+    }
+    return success();
+  };
+
+  // Should detect parameter mismatch on last device
+  EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
+// Test: debugVerifyReplay detects when execution is missing on one device.
+TEST_F(GraphCaptureMultiDeviceTest,
+       DebugVerifyReplayMultiDeviceMissingExecution) {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  ASSERT_GE(numDevices, 2);
+
+  llvm::SmallVector<DeviceContextRef> contexts;
+  llvm::SmallVector<DeviceStreamRef> streams;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                  DeviceContext::create(Device::cudaAPI, /*id=*/id));
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+    contexts.push_back(std::move(ctx));
+    streams.push_back(std::move(stream));
+  }
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
+                                             vecAddPtx));
+    deviceFuncs.push_back(std::move(deviceFunc));
+  }
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+
+  llvm::SmallVector<
+      std::tuple<DeviceBufferRef, DeviceBufferRef, DeviceBufferRef>>
+      kernelArgs;
+
+  for (auto id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+
+    kernelArgs.push_back(
+        {std::move(bufOut), std::move(bufIn0), std::move(bufIn1)});
+  }
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture: execute on all devices
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+    }
+    return success();
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture(streams, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify: skip execution on the last device (trace will be empty)
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices - 1)) { // Skip last device
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      auto err = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (err.isError())
+        return err.takeError();
+    }
+    return success();
+  };
+
+  // Should detect missing execution on last device
+  EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
 } // namespace

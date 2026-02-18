@@ -396,10 +396,8 @@ ExecutableModel::executeWithDeviceMemoryInputs(
   }
 
   SmallVector<AnyAsyncValueRef> results = execute(inputValues);
-  AsyncRT::await(results);
-  for (AnyAsyncValueRef &result : results)
-    if (result.isError())
-      return result.getDiagnostic().getMessage().copy();
+  if (auto err = AsyncRT::awaitOrError(results))
+    return err.takeError();
 
   return results;
 }
@@ -454,6 +452,26 @@ ExecutableModel::replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   // device), we launch all graphs in a single replay call.
   const Driver::DeviceGraphCollection &graphs = it->second;
   return graphs.replay();
+}
+
+ErrorOrSuccess ExecutableModel::debugVerifyReplay(
+    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  // Use same key computation as capture/replay
+  uint64_t key = computeInputKey(inputs);
+
+  // Look up captured graph
+  auto it = capturedGraphs.find(key);
+  if (it == capturedGraphs.end())
+    return Error("No captured graph for these inputs");
+
+  // Verify using the graph collection's debugVerifyReplay
+  const Driver::DeviceGraphCollection &graphs = it->second;
+  return graphs.debugVerifyReplay([&]() -> ErrorOrSuccess {
+    auto result = executeWithDeviceMemoryInputs(inputs);
+    if (result.isError())
+      return result.takeError();
+    return success();
+  });
 }
 
 AnyAsyncValueRef

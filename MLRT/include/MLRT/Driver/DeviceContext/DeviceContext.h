@@ -363,6 +363,12 @@ public:
   /// Replay the graph collection by launching all graphs.
   ErrorOrSuccess replay() const;
 
+  /// Execute eagerly and compare launch trace against captured graphs.
+  /// For each device graph, this runs the execute callback and verifies
+  /// that the resulting trace matches the captured graph.
+  ErrorOrSuccess
+  debugVerifyReplay(llvm::function_ref<ErrorOrSuccess()> execute) const;
+
   /// The number of graphs in the collection.
   int64_t numGraphs() const;
 
@@ -398,24 +404,42 @@ public:
   /// Set the stream associated with the device graph.
   void setStream(DeviceStreamRef stream);
 
+  /// Set the launch trace recorded for the device graph.
+  void setLaunchTrace(std::vector<uint64_t> baselineLaunchTrace);
+
+  /// Get the baseline launch trace for this graph.
+  ArrayRef<uint64_t> baselineLaunchTrace() const {
+    return baselineLaunchTrace_;
+  }
+
+  /// Check if this graph has a baseline launch trace.
+  bool hasBaselineLaunchTrace() const { return hasBaselineLaunchTrace_; }
+
+  /// Get the capture stream for this graph.
+  const DeviceStream *captureStream() const {
+    return captureStream_.getPointer();
+  }
+
+  /// Get a reference to the capture stream for this graph.
+  DeviceStreamRef captureStreamRef() const {
+    return DeviceStreamRef::copy(captureStream_.getPointer());
+  }
+
+  /// Check if this graph has a capture stream.
+  bool hasCaptureStream() const {
+    return captureStream_.getPointer() != nullptr;
+  }
+
 protected:
   explicit DeviceGraph(const Device &device, DeviceStreamRef captureStream = {})
       : device_(DeviceRef::copy(&device)),
         captureStream_(std::move(captureStream)) {}
 
-  const DeviceStream *captureStream() const {
-    return captureStream_.getPointer();
-  }
-  DeviceStreamRef captureStreamRef() const {
-    return DeviceStreamRef::copy(captureStream_.getPointer());
-  }
-  bool hasCaptureStream() const {
-    return captureStream_.getPointer() != nullptr;
-  }
-
 private:
   DeviceRef device_;
   DeviceStreamRef captureStream_;
+  bool hasBaselineLaunchTrace_ = false;
+  std::vector<uint64_t> baselineLaunchTrace_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -451,6 +475,12 @@ public:
   /// End capture and return the captured graph.
   /// Returns error if not capturing or capture was invalidated.
   virtual ErrorOr<DeviceGraphRef> endCapture() const;
+
+  /// Begin recording a device launch trace. Default is a no-op.
+  virtual void beginLaunchTrace() const;
+
+  /// Take and clear the current device launch trace. Default is empty.
+  virtual std::vector<uint64_t> takeLaunchTrace() const;
 
 protected:
   explicit DeviceStream(const DeviceContext &context);

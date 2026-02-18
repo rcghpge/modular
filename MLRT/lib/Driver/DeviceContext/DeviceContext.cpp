@@ -612,7 +612,15 @@ public:
   beginCapture(const DeviceStreamRef &stream) {
     if (auto err = stream->beginCapture())
       return err.takeError();
+    stream->beginLaunchTrace();
     return DeviceGraphCaptureContext(stream);
+  }
+
+  static DeviceGraphCaptureContext beginTrace(const DeviceStreamRef &stream) {
+    stream->beginLaunchTrace();
+    DeviceGraphCaptureContext ctx(stream);
+    ctx.isCapture = false;
+    return ctx;
   }
 
   /// End capture and return the resulting device graph.
@@ -620,17 +628,30 @@ public:
     ErrorOr<DeviceGraphRef> result = stream->endCapture();
 
     if (result.isError()) {
+      (void)stream->takeLaunchTrace();
       stream.reset();
       return result.takeError();
     }
 
+    // Take trace BEFORE moving stream (otherwise stream is null after move)
+    std::vector<uint64_t> trace = stream->takeLaunchTrace();
     result.get()->setStream(std::move(stream));
+    result.get()->setLaunchTrace(std::move(trace));
+    return result;
+  }
+
+  std::vector<uint64_t> endTrace() {
+    auto result = stream->takeLaunchTrace();
+    stream.reset();
     return result;
   }
 
   ~DeviceGraphCaptureContext() {
-    if (stream)
-      (void)stream->endCapture();
+    if (stream) {
+      if (isCapture)
+        (void)stream->endCapture();
+      (void)stream->takeLaunchTrace();
+    }
   }
 
 private:
@@ -638,7 +659,59 @@ private:
 
   /// The stream on which capture is occurring (can be nullptr).
   DeviceStreamRef stream;
+
+  /// Are we performing a capture or just tracing execution?
+  bool isCapture = true;
 };
+
+ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
+    llvm::function_ref<ErrorOrSuccess()> execute) const {
+  // Step 1: Validate graphs and begin tracing on all streams
+  SmallVector<DeviceGraphCaptureContext> traceContexts;
+  for (const DeviceGraphRef &graph : graphs) {
+    if (!graph->hasCaptureStream())
+      RETURN_ERROR("No capture stream stored for graph");
+    if (!graph->hasBaselineLaunchTrace())
+      RETURN_ERROR("No baseline launch trace for graph");
+
+    traceContexts.push_back(
+        DeviceGraphCaptureContext::beginTrace(graph->captureStreamRef()));
+  }
+
+  // Step 2: Execute once for all devices
+  ErrorOrSuccess execResult = execute();
+
+  if (execResult.isError())
+    return execResult.takeError();
+
+  // Step 3: Extract traces and compare to baseline for each graph
+  for (size_t graphIdx : llvm::seq(graphs.size())) {
+    std::vector<uint64_t> currentTrace = traceContexts[graphIdx].endTrace();
+
+    // Step 4: Compare with baseline
+    ArrayRef<uint64_t> baseline = graphs[graphIdx]->baselineLaunchTrace();
+    if (currentTrace.size() != baseline.size()) {
+      return Error(Twine("Graph ") + Twine(graphIdx) +
+                   " launch trace size mismatch: expected " +
+                   Twine(baseline.size()) + " operations, got " +
+                   Twine(currentTrace.size()));
+    }
+
+    for (size_t i = 0; i < currentTrace.size(); ++i) {
+      if (currentTrace[i] != baseline[i]) {
+        return Error(Twine("Graph ") + Twine(graphIdx) +
+                     " launch trace mismatch at operation " + Twine(i) +
+                     ": expected hash " + Twine(baseline[i]) + ", got " +
+                     Twine(currentTrace[i]));
+      }
+    }
+  }
+
+  if (execResult.isError())
+    return execResult.takeError();
+
+  return success();
+}
 
 //
 // ===== DeviceGraph ===== //
@@ -681,6 +754,11 @@ void DeviceGraph::setStream(DeviceStreamRef stream) {
   captureStream_ = std::move(stream);
 }
 
+void DeviceGraph::setLaunchTrace(std::vector<uint64_t> baselineLaunchTrace) {
+  baselineLaunchTrace_ = std::move(baselineLaunchTrace);
+  hasBaselineLaunchTrace_ = true;
+}
+
 //
 // ===== DeviceStream ===== //
 //
@@ -696,6 +774,10 @@ ErrorOrSuccess DeviceStream::beginCapture() const {
 ErrorOr<DeviceGraphRef> DeviceStream::endCapture() const {
   RETURN_ERROR("graph capture not supported on this device");
 }
+
+void DeviceStream::beginLaunchTrace() const {}
+
+std::vector<uint64_t> DeviceStream::takeLaunchTrace() const { return {}; }
 
 //
 // ===== DeviceFunction ===== //
