@@ -60,14 +60,14 @@ ErrorOr<DeviceMemory *> M::GenericML::Driver::constructDeviceMemoryFromTensor(
   auto destructor = [context = std::move(context),
                      storageRef = storageRef.copy()](void *ptr) mutable {
     // When the last reference goes out of scope, the data will be deallocated.
-    (void)storageRef;
+    storageRef.reset();
 
     // When graph deallocates CPU memory it is done through AsyncRT Runtime. So
     // we need to keep runtime alive until the usage of output is complete.
     // During `mojo run` this happens automatically since `mojo` maintains
     // context. However for `mojo build` we need to make sure of that.
     // TODO: Ideally this should be done by graph and not driver.
-    (void)context;
+    context.reset();
   };
 
   void *outputData = bufferRef.getBuffer();
