@@ -309,11 +309,6 @@ VirtualDeviceContext::stopTimer(const DeviceTimer &timer) const {
   RETURN_ERROR("VirtualDevice does not support timers");
 }
 
-ErrorOrSuccess
-VirtualDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  return success();
-}
-
 ErrorOr<Device::MemInfo> VirtualDeviceContext::getDeviceMemoryInfo() const {
   return VirtualDevice::cast(device()).getMemoryInfo();
 }

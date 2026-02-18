@@ -107,18 +107,6 @@ TEST_F(VirtualDeviceContextTest, Synchronization) {
   EXPECT_NO_ERR(ctx->synchronize());
 }
 
-TEST_F(VirtualDeviceContextTest, PeerAccessContext) {
-  VirtualDeviceRef device0 =
-      VirtualDeviceRef::create(0, "VirtualGPU-0", createCompilationDevice());
-  VirtualDeviceRef device1 =
-      VirtualDeviceRef::create(1, "VirtualGPU-1", createCompilationDevice());
-  ASSIGN_NO_ERR(DeviceContextRef, ctx0, device0->createContext());
-  ASSIGN_NO_ERR(DeviceContextRef, ctx1, device1->createContext());
-
-  // Enabling peer access should succeed (no-op)
-  EXPECT_NO_ERR(ctx0->enablePeerAccess(*ctx1));
-}
-
 TEST_F(VirtualDeviceContextTest, CastOperations) {
   VirtualDeviceRef device =
       VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());

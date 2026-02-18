@@ -159,8 +159,6 @@ public:
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
 
-  ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
-
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
   static const CpuDeviceContext &cast(const DeviceContext &ctx);

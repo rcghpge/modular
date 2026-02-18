@@ -641,8 +641,6 @@ public:
   virtual ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const = 0;
 
-  virtual ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const = 0;
-
   ErrorOr<Device::MemInfo> getMemoryInfo() const;
 
   virtual ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(

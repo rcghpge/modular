@@ -409,12 +409,6 @@ CpuDeviceContext::stopTimer(const DeviceTimer &timer) const {
          CpuDeviceTimer::cast(timer).cpu_start();
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  // TODO(iposva): Verify that peer is a CpuDeviceContext.
-  return success();
-}
-
 ErrorOr<Device::MemInfo> CpuDeviceContext::getDeviceMemoryInfo() const {
   return device().getMemoryInfo();
 }

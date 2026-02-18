@@ -390,9 +390,6 @@ public:
   ErrorOr<std::chrono::nanoseconds>
   stopTimer(const DeviceTimer &timer) const override;
 
-  /// Makes all allocations on `peer` accessible from this context.
-  ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
-
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
   const CUDADriver &cudaDriver() const;

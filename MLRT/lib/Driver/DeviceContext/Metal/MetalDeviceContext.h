@@ -163,9 +163,6 @@ public:
   // Memory info
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
-  // Peer access
-  ErrorOrSuccess enablePeerAccess(const DeviceContext &peer) const override;
-
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
       int *numBlocks, const DeviceFunction &func, int blockSize,
       size_t dynamicSharedMemSize) const override;

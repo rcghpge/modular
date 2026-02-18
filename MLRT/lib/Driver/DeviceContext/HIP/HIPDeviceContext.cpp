@@ -1345,39 +1345,6 @@ HIPDeviceContext::stopTimer(const DeviceTimer &timer) const {
   return std::chrono::nanoseconds(static_cast<int64_t>(nanos));
 }
 
-ErrorOrSuccess
-HIPDeviceContext::enablePeerAccess(const DeviceContext &peer) const {
-  if (device().id() == peer.device().id()) {
-    // Enabling peer access to self is not allowed.
-    RETURN_ERROR("Cannot enable peer access to self");
-  }
-
-  const HIPDevice *peerDevice = HIPDevice::verified_cast(&peer.device());
-  if (peerDevice == nullptr) {
-    RETURN_ERROR("Peer is not a HIP device");
-  }
-
-  HIP_WITH_CTX_ERR(*this);
-  POLL_PENDING_EVENTS(*this);
-  HIP_CHECK_ERR(driver_.hipDeviceEnablePeerAccess(peerDevice->hipDevice(), 0));
-
-  // Also "enable peer access" for stream-ordered allocations.
-  // Do so by allowing this device to access the peer's current memory pool.
-  // NOTE: this only enables access to allocations from the peer's current
-  // memory pool, so other memory pools won't be accessible.
-  hipMemPool_t pool;
-  HIP_CHECK_ERR(
-      driver_.hipDeviceGetDefaultMemPool(&pool, peerDevice->hipDevice()));
-
-  hipMemAccessDesc desc{};
-  desc.location.type = hipMemLocationType::hipMemLocationTypeDevice;
-  desc.location.id = device().id();
-  desc.flags = hipMemAccessFlags::hipMemAccessFlagsProtReadWrite;
-  HIP_CHECK_ERR(driver_.hipMemPoolSetAccess(pool, &desc, /*count=*/1));
-
-  return success();
-}
-
 ErrorOr<Device::MemInfo> HIPDeviceContext::getDeviceMemoryInfo() const {
   HIP_WITH_CTX(*this);
   // To get more accurate memory stats, ensure that at least all pending memory
