@@ -276,7 +276,8 @@ static uint64_t hashMemsetTrace(size_t byteSize, uint64_t value,
 #define MAYBE_SYNC(ctx)                                                        \
   do {                                                                         \
     const CUDADeviceContext &cuda_ctx = (ctx);                                 \
-    if (cuda_ctx.syncMode()) {                                                 \
+    if (cuda_ctx.syncMode() &&                                                 \
+        !isStreamCapturing(cuda_ctx.cudaDriver(), cuda_ctx.cudaStream())) {    \
       CUDA_CHECK_ERR(                                                          \
           cuda_ctx.cudaDriver().cuStreamSynchronize(cuda_ctx.cudaStream()));   \
     }                                                                          \

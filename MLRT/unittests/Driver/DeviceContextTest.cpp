@@ -7,6 +7,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
+#include "ScopedEnvVar.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -21,52 +22,7 @@
 using namespace M::Driver;
 using M::ErrorOr;
 
-extern char **environ;
-
 namespace {
-
-// RAII wrapper for environment variable management.
-class ScopedEnvVar {
-public:
-  ScopedEnvVar(llvm::StringRef name, llvm::StringRef value) : varName(name) {
-    originalValue = nullptr;
-
-    // Attempt to save the existing variable if it exists.
-    for (char **it = environ; *it != nullptr; ++it) {
-      auto str = llvm::StringRef(*it);
-      auto [prefix, _] = str.split('=');
-
-      if (prefix == name) {
-        originalValue = *it;
-        break;
-      }
-    }
-
-    // Set the new value
-    newVar = std::string(name) + "=" + std::string(value);
-    putenv(newVar.data());
-  }
-
-  ~ScopedEnvVar() {
-    // Restore the original value or unset if it didn't exist
-    if (originalValue) {
-      putenv(originalValue);
-    } else {
-      unsetenv(varName.c_str());
-    }
-  }
-
-  // Disable copy and move.
-  ScopedEnvVar(const ScopedEnvVar &) = delete;
-  ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
-  ScopedEnvVar(ScopedEnvVar &&) = delete;
-  ScopedEnvVar &operator=(ScopedEnvVar &&) = delete;
-
-private:
-  std::string varName;
-  std::string newVar;
-  char *originalValue;
-};
 
 TEST(DeviceContextTest, Smoke) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));

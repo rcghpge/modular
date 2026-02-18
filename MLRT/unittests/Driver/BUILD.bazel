@@ -53,10 +53,15 @@ modular_cc_test(
 modular_cc_test(
     name = "DeviceContextTest",
     size = "small",
-    srcs = ["DeviceContextTest.cpp"],
+    srcs = [
+        "DeviceContextTest.cpp",
+        "ScopedEnvVar.h",
+    ],
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -153,7 +158,10 @@ modular_cc_test(
 modular_cc_test(
     name = "GraphCaptureTest",
     size = "small",
-    srcs = ["GraphCaptureTest.cpp"],
+    srcs = [
+        "GraphCaptureTest.cpp",
+        "ScopedEnvVar.h",
+    ],
     exec_properties = {
         # Measured peak GPU memory: ~628 MB, set to 2x for safety margin.
         "test.resources:gpu-memory": "1.3",
@@ -163,6 +171,7 @@ modular_cc_test(
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
         "@llvm-project//llvm:Support",
     ],
 )

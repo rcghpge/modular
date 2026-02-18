@@ -6,6 +6,7 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
+#include "ScopedEnvVar.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -554,6 +555,68 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayHandlesReorderedExecution) {
   // Should succeed since traces are permutations of each other (same
   // operations, different order)
   EXPECT_NO_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
+// Test: Graph capture and replay works correctly with sync mode enabled.
+TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
+  // Set MODULAR_DEVICE_CONTEXT_SYNC_MODE=true before creating context
+  ScopedEnvVar env("MODULAR_DEVICE_CONTEXT_SYNC_MODE", "true");
+
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+
+  // Verify that sync mode is enabled
+  EXPECT_TRUE(ctx->syncMode());
+
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *outPtr = bufOut->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+  void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                  (void *)&length};
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+        return stream->enqueueFunctionExecDirect(
+            *deviceFunc,
+            /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+            /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+            /*sharedMemBytes=*/0,
+            /*attrs=*/nullptr, /*numAttrs=*/0, args);
+      });
+
+  // Successfully ran the capture process with sync mode enabled.
+  EXPECT_FALSE(captured.isError());
+
+  // One graph was produced.
+  EXPECT_EQ(captured->numGraphs(), 1);
+
+  // The graph can be replayed multiple times with sync mode enabled.
+  EXPECT_NO_ERR(captured->replay());
+  EXPECT_NO_ERR(captured->replay());
+  EXPECT_NO_ERR(captured->replay());
 }
 
 } // namespace
