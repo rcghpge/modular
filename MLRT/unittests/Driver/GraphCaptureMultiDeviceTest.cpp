@@ -609,4 +609,144 @@ TEST_F(GraphCaptureMultiDeviceTest,
   EXPECT_ERR(captured->debugVerifyReplay(verifyExecute));
 }
 
+// Test: debugVerifyReplay handles reordered execution on multiple devices.
+// Simulates AsyncRT non-deterministic scheduling across multiple GPUs.
+TEST_F(GraphCaptureMultiDeviceTest,
+       DebugVerifyReplayHandlesReorderedExecution) {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  ASSERT_GE(numDevices, 2);
+
+  llvm::SmallVector<DeviceContextRef> contexts;
+  llvm::SmallVector<DeviceStreamRef> streams;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                  DeviceContext::create(Device::cudaAPI, /*id=*/id));
+    ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+    contexts.push_back(std::move(ctx));
+    streams.push_back(std::move(stream));
+  }
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
+
+  for (int id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
+                                             vecAddPtx));
+    deviceFuncs.push_back(std::move(deviceFunc));
+  }
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+
+  llvm::SmallVector<
+      std::tuple<DeviceBufferRef, DeviceBufferRef, DeviceBufferRef>>
+      kernelArgs;
+
+  for (auto id : llvm::seq(numDevices)) {
+    ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+    ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                  contexts[id]->enqueueCreateBuffer(length * elemSize));
+
+    kernelArgs.push_back(
+        {std::move(bufOut), std::move(bufIn0), std::move(bufIn1)});
+  }
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture: Each device launches two kernels (A with full grid, B with half
+  // grid)
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      // Kernel A: full grid
+      auto errA = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (errA.isError())
+        return errA.takeError();
+
+      // Kernel B: half grid (different hash from A)
+      auto errB = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim / 2, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (errB.isError())
+        return errB.takeError();
+    }
+
+    return success();
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture(streams, captureExecute);
+  EXPECT_FALSE(captured.isError());
+  EXPECT_EQ(captured->numGraphs(), numDevices);
+
+  // Verify: Each device launches kernels in reverse order (B then A)
+  // This simulates AsyncRT non-deterministic scheduling
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    for (auto id : llvm::seq(numDevices)) {
+      void *outPtr = std::get<0>(kernelArgs[id])->ptr();
+      void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
+      void *bufIn1 = std::get<2>(kernelArgs[id])->ptr();
+
+      void *args[] = {(void *)&outPtr, (void *)&bufIn0, (void *)&bufIn1,
+                      (void *)&length};
+
+      // Kernel B first: half grid
+      auto errB = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim / 2, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (errB.isError())
+        return errB.takeError();
+
+      // Kernel A second: full grid
+      auto errA = streams[id]->enqueueFunctionExecDirect(
+          *deviceFuncs[id],
+          /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+          /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+          /*sharedMemBytes=*/0,
+          /*attrs=*/nullptr, /*numAttrs=*/0, args);
+
+      if (errA.isError())
+        return errA.takeError();
+    }
+
+    return success();
+  };
+
+  // Should succeed: traces are permutations (same kernels, different order on
+  // each device)
+  EXPECT_NO_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
 } // namespace

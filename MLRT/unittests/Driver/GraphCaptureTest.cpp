@@ -459,4 +459,101 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayEmptyGraph) {
   EXPECT_NO_ERR(captured->debugVerifyReplay(emptyExecute));
 }
 
+// Test: debugVerifyReplay handles different execution order (simulates AsyncRT
+// non-determinism). Verifies that traces are checked as permutations, not exact
+// order matches.
+TEST_F(GraphCaptureTest, DebugVerifyReplayHandlesReorderedExecution) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut2,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *out1Ptr = bufOut1->ptr();
+  void *out2Ptr = bufOut2->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  // Capture: Execute kernel A with gridDim, then kernel B with gridDim/2
+  // Use different grid dimensions so kernels have different hashes
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    // Kernel A: bufOut1 = bufIn0 + bufIn1 (full grid)
+    void *argsA[] = {(void *)&out1Ptr, (void *)&in0Ptr, (void *)&in1Ptr,
+                     (void *)&length};
+    auto errA = stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, argsA);
+    if (errA.isError())
+      return errA;
+
+    // Kernel B: bufOut2 = bufIn0 + bufIn1 (half grid)
+    void *argsB[] = {(void *)&out2Ptr, (void *)&in0Ptr, (void *)&in1Ptr,
+                     (void *)&length};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim / 2, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, argsB);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify: Execute kernel B then kernel A (different order)
+  // This simulates AsyncRT non-deterministic scheduling
+  auto verifyExecute = [&]() -> ErrorOrSuccess {
+    // Kernel B first (half grid)
+    void *argsB[] = {(void *)&out2Ptr, (void *)&in0Ptr, (void *)&in1Ptr,
+                     (void *)&length};
+    auto errB = stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim / 2, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, argsB);
+    if (errB.isError())
+      return errB;
+
+    // Kernel A second (full grid)
+    void *argsA[] = {(void *)&out1Ptr, (void *)&in0Ptr, (void *)&in1Ptr,
+                     (void *)&length};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, argsA);
+  };
+
+  // Should succeed since traces are permutations of each other (same
+  // operations, different order)
+  EXPECT_NO_ERR(captured->debugVerifyReplay(verifyExecute));
+}
+
 } // namespace

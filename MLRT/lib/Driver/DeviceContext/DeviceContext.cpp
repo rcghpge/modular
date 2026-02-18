@@ -24,10 +24,13 @@
 #include "Support/SymbolExport.h"
 #include "Virtual/VirtualDeviceContext.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Process.h"
+
+#include <algorithm>
 
 #include <atomic>
 #include <cstdio>
@@ -688,7 +691,8 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
   for (size_t graphIdx : llvm::seq(graphs.size())) {
     std::vector<uint64_t> currentTrace = traceContexts[graphIdx].endTrace();
 
-    // Step 4: Compare with baseline
+    // Step 4: Compare with baseline (as sorted permutations to handle
+    // non-deterministic execution order)
     ArrayRef<uint64_t> baseline = graphs[graphIdx]->baselineLaunchTrace();
     if (currentTrace.size() != baseline.size()) {
       return Error(Twine("Graph ") + Twine(graphIdx) +
@@ -697,13 +701,23 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
                    Twine(currentTrace.size()));
     }
 
-    for (size_t i = 0; i < currentTrace.size(); ++i) {
-      if (currentTrace[i] != baseline[i]) {
-        return Error(Twine("Graph ") + Twine(graphIdx) +
-                     " launch trace mismatch at operation " + Twine(i) +
-                     ": expected hash " + Twine(baseline[i]) + ", got " +
-                     Twine(currentTrace[i]));
-      }
+    // Sort both traces to check if they are permutations of each other
+    // This handles non-deterministic execution order from AsyncRT
+    std::vector<uint64_t> sortedBaseline(baseline.begin(), baseline.end());
+    llvm::sort(currentTrace);
+    llvm::sort(sortedBaseline);
+
+    // Compare sorted traces using std::mismatch to find first difference
+    auto mismatch = std::mismatch(currentTrace.begin(), currentTrace.end(),
+                                  sortedBaseline.begin(), sortedBaseline.end());
+    if (mismatch.first != currentTrace.end()) {
+      size_t mismatchPos = std::distance(currentTrace.begin(), mismatch.first);
+      return Error(Twine("Graph ") + Twine(graphIdx) +
+                   " launch trace mismatch: traces are not permutations of "
+                   "each other. " +
+                   "At sorted position " + Twine(mismatchPos) +
+                   ": expected hash " + Twine(*mismatch.second) + ", got " +
+                   Twine(*mismatch.first));
     }
   }
 
