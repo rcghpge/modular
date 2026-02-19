@@ -47,11 +47,13 @@ class SpeechLM:
             device_specs = [driver.DeviceSpec(id=0, device_type="gpu")]
 
         pipeline_config = pipelines.PipelineConfig(
-            device_specs=device_specs,
-            quantization_encoding=pipelines.SupportedEncoding[encoding],
-            model_path=config.llama_model_path,
-            max_length=config.max_length,
-            trust_remote_code=True,
+            model=pipelines.MAXModelConfig(
+                device_specs=device_specs,
+                quantization_encoding=pipelines.SupportedEncoding[encoding],
+                model_path=config.llama_model_path,
+                trust_remote_code=True,
+                max_length=config.max_length,
+            ),
         )
 
         self.tokenizer, self.pipeline = pipelines.PIPELINE_REGISTRY.retrieve(
