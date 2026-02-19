@@ -70,7 +70,7 @@ the method in a C++ module like MOOps.cpp.
 
 ## Implementing an Interface Method via a Trait
 
-Finally, let’s try to achieve the goals stated above. We want to to define a method
+Finally, let’s try to achieve the goals stated above. We want to define a method
 on a trait, attach that trait to an operation that also has an interface, and have
 the interface method use the implementation provided by the trait.
 

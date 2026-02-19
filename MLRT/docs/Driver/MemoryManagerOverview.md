@@ -269,7 +269,7 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   debugging features from the following:
   - `uninitialized-poison`: enable filling buffers with type-aware poison
     values to aid detection of uninitialized data, qNaN for floating-point
-    buffers (or `0xFF` if LLVM unaware of the FP type) and and `0xCD` for other
+    buffers (or `0xFF` if LLVM unaware of the FP type) and `0xCD` for other
     buffer types
   - `out-of-bounds`: enable redzone out-of-bounds write checks see below for
     additional configuration options

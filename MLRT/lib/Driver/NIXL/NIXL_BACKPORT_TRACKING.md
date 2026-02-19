@@ -762,7 +762,7 @@ error handling.
 | 79efad4 | 2025-06-13 | NIXL: set env vars for best EFA performance | **Port** | ✅ Completed | UCX configuration for EFA |
 | 62c8513 | 2025-06-15 | Python: Fixed bad cast OBJ_SEG cast in nixl_bindings.cpp | Skip | - | Python bindings |
 | e6be699 | 2025-06-15 | Reduce log verbosity in AWS test waiting loops | Skip | - | CI/test infrastructure |
-| 44dcca7 | 2025-06-16 | build: Add wheel-base to pass the the wheel building platform | Skip | - | Build infrastructure |
+| 44dcca7 | 2025-06-16 | build: Add wheel-base to pass the wheel building platform | Skip | - | Build infrastructure |
 
 ### Commits to Port
 
@@ -827,7 +827,7 @@ error handling.
 
 | Hash | Date | Description | Relevance | Status | Notes |
 |------|------|-------------|-----------|---------|-------|
-| 44dcca7 | 2025-06-16 | build: Add wheel-base to pass the the wheel building platform | Skip | - | Build script changes only |
+| 44dcca7 | 2025-06-16 | build: Add wheel-base to pass the wheel building platform | Skip | - | Build script changes only |
 | 3fad69c | 2025-06-17 | nixlbench: Add GPUNETIO debs to dockerfile | Skip | - | Benchmarking Dockerfile only |
 | 191d607 | 2025-06-17 | contrib: Remove the lib.real from the LD_LIBRARY path | Skip | - | Dockerfile changes only |
 | 5721827 | 2025-06-17 | Use NIXL logging macros consistently | Skip | - | Already ported in Week 7 |
