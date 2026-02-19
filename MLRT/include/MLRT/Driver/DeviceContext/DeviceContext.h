@@ -33,6 +33,38 @@
 
 namespace M::Driver {
 
+/// Metadata for a kernel launch entry in the trace.
+struct KernelLaunchMetadata {
+  /// The name of the kernel launched.
+  llvm::StringRef kernelName;
+
+  /// The hash value recorded during tracing.
+  uint64_t hash = 0;
+
+  /// Default constructor
+  KernelLaunchMetadata() = default;
+
+  /// Constructor from kernel name and hash
+  KernelLaunchMetadata(StringRef name, uint64_t hashValue)
+      : kernelName(name), hash(hashValue) {}
+
+  /// Comparison operator: sort by kernel name first, then by hash
+  bool operator<(const KernelLaunchMetadata &other) const {
+    if (kernelName != other.kernelName)
+      return kernelName < other.kernelName;
+    return hash < other.hash;
+  }
+
+  /// Equality operator for verification
+  bool operator==(const KernelLaunchMetadata &other) const {
+    return kernelName == other.kernelName && hash == other.hash;
+  }
+
+  bool operator!=(const KernelLaunchMetadata &other) const {
+    return !(*this == other);
+  }
+};
+
 class MemoryManager;
 class MemoryManagerFreeList;
 class Device;
@@ -405,10 +437,10 @@ public:
   void setStream(DeviceStreamRef stream);
 
   /// Set the launch trace recorded for the device graph.
-  void setLaunchTrace(std::vector<uint64_t> baselineLaunchTrace);
+  void setLaunchTrace(std::vector<KernelLaunchMetadata> baselineLaunchTrace);
 
   /// Get the baseline launch trace for this graph.
-  ArrayRef<uint64_t> baselineLaunchTrace() const {
+  ArrayRef<KernelLaunchMetadata> baselineLaunchTrace() const {
     return baselineLaunchTrace_;
   }
 
@@ -439,7 +471,7 @@ private:
   DeviceRef device_;
   DeviceStreamRef captureStream_;
   bool hasBaselineLaunchTrace_ = false;
-  std::vector<uint64_t> baselineLaunchTrace_;
+  std::vector<KernelLaunchMetadata> baselineLaunchTrace_;
 };
 
 class DeviceStream : public ReferenceCounted<DeviceStream> {
@@ -480,7 +512,7 @@ public:
   virtual void beginLaunchTrace() const;
 
   /// Take and clear the current device launch trace. Default is empty.
-  virtual std::vector<uint64_t> takeLaunchTrace() const;
+  virtual std::vector<KernelLaunchMetadata> takeLaunchTrace() const;
 
 protected:
   explicit DeviceStream(const DeviceContext &context);

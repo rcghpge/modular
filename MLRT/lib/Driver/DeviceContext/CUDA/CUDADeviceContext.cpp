@@ -57,7 +57,7 @@ namespace {
 // Per-stream launch trace collection state.
 struct LaunchTraceState {
   bool enabled = false;
-  std::vector<uint64_t> entries;
+  std::vector<KernelLaunchMetadata> entries;
 };
 
 // Global registry keyed by CUstream for launch-trace capture.
@@ -125,13 +125,14 @@ static bool isLaunchTraceEnabled(CUstream stream) {
   return it != registry.states.end() && it->second.enabled;
 }
 
-static void appendLaunchTraceDigest(CUstream stream, uint64_t digest) {
+static void appendLaunchTraceEntry(CUstream stream,
+                                   const KernelLaunchMetadata &metadata) {
   LaunchTraceRegistry &registry = launchTraceRegistry();
   std::lock_guard<std::mutex> lock(registry.mu);
   auto it = registry.states.find(stream);
   if (it == registry.states.end() || !it->second.enabled)
     return;
-  it->second.entries.push_back(digest);
+  it->second.entries.push_back(metadata);
 }
 
 // Hash kernel launch WITHOUT memory pointers - only deterministic params.
@@ -188,7 +189,9 @@ static void recordLaunchTrace(const CUDAModuleFunction &moduleFunc,
     }
   }
 
-  appendLaunchTraceDigest(stream, hasher.hash());
+  // Create metadata with kernel name and computed hash
+  KernelLaunchMetadata metadata(moduleFunc.name(), hasher.hash());
+  appendLaunchTraceEntry(stream, metadata);
 }
 
 // Hash memcpy WITHOUT pointer addresses - only size and direction
@@ -1146,7 +1149,7 @@ void CUDADeviceStream::beginLaunchTrace() const {
   state.entries.clear();
 }
 
-std::vector<uint64_t> CUDADeviceStream::takeLaunchTrace() const {
+std::vector<KernelLaunchMetadata> CUDADeviceStream::takeLaunchTrace() const {
   auto &registry = launchTraceRegistry();
   std::lock_guard<std::mutex> lock(registry.mu);
   auto it = registry.states.find(stream_);
@@ -1154,7 +1157,7 @@ std::vector<uint64_t> CUDADeviceStream::takeLaunchTrace() const {
     return {};
 
   it->second.enabled = false;
-  std::vector<uint64_t> result = std::move(it->second.entries);
+  std::vector<KernelLaunchMetadata> result = std::move(it->second.entries);
   it->second.entries.clear();
   return result;
 }
@@ -1376,8 +1379,10 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
 
   CUDA_CHECK_ERR(driver_.cuMemcpyHtoDAsync_v2(dst, src, byteSize, stream_));
   if (isLaunchTraceEnabled(stream_)) {
-    appendLaunchTraceDigest(
-        stream_, hashMemcpyTrace(LaunchTraceKind::kMemcpyHtoD, byteSize));
+    KernelLaunchMetadata metadata(
+        "cuMemcpyHtoD",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyHtoD, byteSize));
+    appendLaunchTraceEntry(stream_, metadata);
   }
   MAYBE_SYNC(*this);
   return success();
@@ -1393,8 +1398,10 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
   CUDA_CHECK_ERR(driver_.cuMemcpyDtoHAsync_v2(dst, const_cast<void *>(src),
                                               byteSize, stream_));
   if (isLaunchTraceEnabled(stream_)) {
-    appendLaunchTraceDigest(
-        stream_, hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoH, byteSize));
+    KernelLaunchMetadata metadata(
+        "cuMemcpyDtoH",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoH, byteSize));
+    appendLaunchTraceEntry(stream_, metadata);
   }
   MAYBE_SYNC(*this);
   return success();
@@ -1449,8 +1456,10 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
         driver_.cuMemcpyDtoDAsync_v2(dstPtr, srcPtr, dstByteSize, stream_));
   }
   if (isLaunchTraceEnabled(stream_)) {
-    appendLaunchTraceDigest(
-        stream_, hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, dstByteSize));
+    KernelLaunchMetadata metadata(
+        "cuMemcpyDtoD",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, dstByteSize));
+    appendLaunchTraceEntry(stream_, metadata);
   }
 
   MAYBE_SYNC(*this);
@@ -1504,7 +1513,9 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
     }
   }
   if (isLaunchTraceEnabled(stream_)) {
-    appendLaunchTraceDigest(stream_, hashMemsetTrace(byteSize, val, valSize));
+    KernelLaunchMetadata metadata("cuMemset",
+                                  hashMemsetTrace(byteSize, val, valSize));
+    appendLaunchTraceEntry(stream_, metadata);
   }
 
   MAYBE_SYNC(*this);

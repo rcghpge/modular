@@ -250,7 +250,7 @@ public:
   ErrorOr<DeviceGraphRef> endCapture() const override;
 
   void beginLaunchTrace() const override;
-  std::vector<uint64_t> takeLaunchTrace() const override;
+  std::vector<KernelLaunchMetadata> takeLaunchTrace() const override;
 
   CUstream cudaStream() const;
 

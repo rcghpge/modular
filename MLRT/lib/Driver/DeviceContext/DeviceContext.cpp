@@ -29,6 +29,7 @@
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
 
@@ -637,13 +638,13 @@ public:
     }
 
     // Take trace BEFORE moving stream (otherwise stream is null after move)
-    std::vector<uint64_t> trace = stream->takeLaunchTrace();
+    std::vector<KernelLaunchMetadata> trace = stream->takeLaunchTrace();
     result.get()->setStream(std::move(stream));
     result.get()->setLaunchTrace(std::move(trace));
     return result;
   }
 
-  std::vector<uint64_t> endTrace() {
+  std::vector<KernelLaunchMetadata> endTrace() {
     auto result = stream->takeLaunchTrace();
     stream.reset();
     return result;
@@ -667,6 +668,84 @@ private:
   bool isCapture = true;
 };
 
+/// Result of comparing two launch traces.
+struct LaunchTraceDiff {
+  /// Operations in baseline but missing from current trace, with counts.
+  std::map<KernelLaunchMetadata, int> missingOps;
+
+  /// Operations in current trace but not in baseline, with counts.
+  std::map<KernelLaunchMetadata, int> unexpectedOps;
+
+  /// Returns true if the traces match (no differences).
+  bool empty() const { return missingOps.empty() && unexpectedOps.empty(); }
+
+  /// Format a detailed error message describing the differences.
+  std::string formatErrorMessage(size_t graphIdx) const {
+    std::string errorMsg;
+    llvm::raw_string_ostream os(errorMsg);
+
+    os << "Graph " << graphIdx << " launch trace mismatch:\n";
+
+    if (!missingOps.empty()) {
+      os << "  Missing operations (in baseline but not in current):\n";
+      for (const auto &[op, count] : missingOps) {
+        os << "    - " << op.kernelName << " (hash: " << op.hash
+           << ") [count: " << count << "]\n";
+      }
+    }
+
+    if (!unexpectedOps.empty()) {
+      os << "  Unexpected operations (in current but not in baseline):\n";
+      for (const auto &[op, count] : unexpectedOps) {
+        os << "    - " << op.kernelName << " (hash: " << op.hash
+           << ") [count: " << count << "]\n";
+      }
+    }
+
+    return os.str();
+  }
+};
+
+/// Compute the difference between two launch traces.
+/// Counts occurrences of each operation and reports differences in counts.
+static LaunchTraceDiff
+computeLaunchTraceDiff(ArrayRef<KernelLaunchMetadata> currentTrace,
+                       ArrayRef<KernelLaunchMetadata> baseline) {
+  LaunchTraceDiff diff;
+
+  // Count occurrences in baseline
+  std::map<KernelLaunchMetadata, int> baselineCounts;
+  for (const auto &op : baseline) {
+    baselineCounts[op]++;
+  }
+
+  // Count occurrences in current
+  std::map<KernelLaunchMetadata, int> currentCounts;
+  for (const auto &op : currentTrace) {
+    currentCounts[op]++;
+  }
+
+  // Find operations with different counts
+  // First, check for operations in baseline that are missing or fewer in
+  // current
+  for (const auto &[op, count] : baselineCounts) {
+    auto it = currentCounts.find(op);
+    int currentCount = (it != currentCounts.end()) ? it->second : 0;
+    if (currentCount < count)
+      diff.missingOps[op] = count - currentCount;
+  }
+
+  // Then, check for operations in current that exceed baseline
+  for (const auto &[op, count] : currentCounts) {
+    auto it = baselineCounts.find(op);
+    int baselineCount = (it != baselineCounts.end()) ? it->second : 0;
+    if (count > baselineCount)
+      diff.unexpectedOps[op] = count - baselineCount;
+  }
+
+  return diff;
+}
+
 ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
     llvm::function_ref<ErrorOrSuccess()> execute) const {
   // Step 1: Validate graphs and begin tracing on all streams
@@ -689,35 +768,20 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
 
   // Step 3: Extract traces and compare to baseline for each graph
   for (size_t graphIdx : llvm::seq(graphs.size())) {
-    std::vector<uint64_t> currentTrace = traceContexts[graphIdx].endTrace();
+    std::vector<KernelLaunchMetadata> currentTrace =
+        traceContexts[graphIdx].endTrace();
 
     // Step 4: Compare with baseline (as sorted permutations to handle
     // non-deterministic execution order)
-    ArrayRef<uint64_t> baseline = graphs[graphIdx]->baselineLaunchTrace();
-    if (currentTrace.size() != baseline.size()) {
-      return Error(Twine("Graph ") + Twine(graphIdx) +
-                   " launch trace size mismatch: expected " +
-                   Twine(baseline.size()) + " operations, got " +
-                   Twine(currentTrace.size()));
-    }
+    ArrayRef<KernelLaunchMetadata> baseline =
+        graphs[graphIdx]->baselineLaunchTrace();
 
-    // Sort both traces to check if they are permutations of each other
-    // This handles non-deterministic execution order from AsyncRT
-    std::vector<uint64_t> sortedBaseline(baseline.begin(), baseline.end());
-    llvm::sort(currentTrace);
-    llvm::sort(sortedBaseline);
+    // Compute the diff between current trace and baseline
+    LaunchTraceDiff diff = computeLaunchTraceDiff(currentTrace, baseline);
 
-    // Compare sorted traces using std::mismatch to find first difference
-    auto mismatch = std::mismatch(currentTrace.begin(), currentTrace.end(),
-                                  sortedBaseline.begin(), sortedBaseline.end());
-    if (mismatch.first != currentTrace.end()) {
-      size_t mismatchPos = std::distance(currentTrace.begin(), mismatch.first);
-      return Error(Twine("Graph ") + Twine(graphIdx) +
-                   " launch trace mismatch: traces are not permutations of "
-                   "each other. " +
-                   "At sorted position " + Twine(mismatchPos) +
-                   ": expected hash " + Twine(*mismatch.second) + ", got " +
-                   Twine(*mismatch.first));
+    // If there are any differences, report them
+    if (!diff.empty()) {
+      return Error(diff.formatErrorMessage(graphIdx));
     }
   }
 
@@ -768,7 +832,8 @@ void DeviceGraph::setStream(DeviceStreamRef stream) {
   captureStream_ = std::move(stream);
 }
 
-void DeviceGraph::setLaunchTrace(std::vector<uint64_t> baselineLaunchTrace) {
+void DeviceGraph::setLaunchTrace(
+    std::vector<KernelLaunchMetadata> baselineLaunchTrace) {
   baselineLaunchTrace_ = std::move(baselineLaunchTrace);
   hasBaselineLaunchTrace_ = true;
 }
@@ -791,7 +856,9 @@ ErrorOr<DeviceGraphRef> DeviceStream::endCapture() const {
 
 void DeviceStream::beginLaunchTrace() const {}
 
-std::vector<uint64_t> DeviceStream::takeLaunchTrace() const { return {}; }
+std::vector<KernelLaunchMetadata> DeviceStream::takeLaunchTrace() const {
+  return {};
+}
 
 //
 // ===== DeviceFunction ===== //
