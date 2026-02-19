@@ -835,6 +835,12 @@ DeviceFunction::SignatureBuilder::addUInt64() {
 }
 
 MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
+DeviceFunction::SignatureBuilder::addUInt32() {
+  types_.push_back(UINT32);
+  return *this;
+}
+
+MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
 DeviceFunction::SignatureBuilder::addBuffer() {
   types_.push_back(BUFFER);
   return *this;

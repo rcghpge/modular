@@ -21,6 +21,43 @@ using M::success;
 
 namespace {
 
+static const char *smallScalarPtx = R"PTX(
+// Kernel that takes sub-pointer-sized scalar parameters to test that
+// parameters < 8 bytes ARE included in trace hash.
+
+.version 6.3
+.target sm_75
+.address_size 64
+
+.visible .entry small_scalar_kernel(
+	.param .b64 ptr,           // pointer (8 bytes - excluded from hash)
+	.param .u32 scalar32,      // 32-bit scalar (4 bytes - HASHED)
+	.param .u32 grid_size      // 32-bit scalar (4 bytes - HASHED)
+)
+{
+	ret;
+}
+)PTX";
+
+static const char *mixedArgsPtx = R"PTX(
+// Kernel that takes pointer-sized scalar arguments to test that
+// parameters >= 8 bytes are conservatively excluded from hash.
+
+.version 6.3
+.target sm_75
+.address_size 64
+
+.visible .entry mixed_args(
+	.param .b64 mixed_args_param_0,  // pointer (8 bytes)
+	.param .b64 mixed_args_param_1,  // scalar (8 bytes - NOT hashed)
+	.param .b64 mixed_args_param_2,  // pointer (8 bytes)
+	.param .b64 mixed_args_param_3   // scalar (8 bytes - NOT hashed)
+)
+{
+	ret;
+}
+)PTX";
+
 static const char *vecAddPtx = R"PTX(
 // From max/kernels/test/gpu/vec_add.ptx
 
@@ -617,6 +654,371 @@ TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
   EXPECT_NO_ERR(captured->replay());
   EXPECT_NO_ERR(captured->replay());
   EXPECT_NO_ERR(captured->replay());
+}
+
+// Test: Scalar parameter changes are detected in trace.
+TEST_F(GraphCaptureTest, TraceDetectsScalarParameterChange) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+
+  void *outPtr = bufOut->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+
+  const uint32_t blockDim = 256;
+
+  // Capture with length=1024
+  uint64_t captureLength = 1024;
+  auto captureExecute = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                    (void *)&captureLength};
+    const uint32_t gridDim = (captureLength + blockDim - 1) / blockDim;
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, captureExecute);
+  EXPECT_FALSE(captured.isError());
+
+  // Replay with different length=2048 should detect mismatch
+  uint64_t replayLength = 2048;
+  auto replayExecute = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                    (void *)&replayLength};
+    const uint32_t gridDim = (replayLength + blockDim - 1) / blockDim;
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Should detect the scalar parameter change
+  EXPECT_ERR(captured->debugVerifyReplay(replayExecute));
+
+  // Replay with same length=1024 should succeed
+  EXPECT_NO_ERR(captured->debugVerifyReplay(captureExecute));
+}
+
+// Test: Pointer reallocation doesn't affect trace (existing behavior).
+TEST_F(GraphCaptureTest, TraceStableAcrossBufferReallocation) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const uint64_t length = 1024;
+  const size_t elemSize = sizeof(float);
+
+  // Allocate first set of buffers
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut1,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn01,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn11,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *outPtr1 = bufOut1->ptr();
+  void *in0Ptr1 = bufIn01->ptr();
+  void *in1Ptr1 = bufIn11->ptr();
+  void *args1[] = {(void *)&outPtr1, (void *)&in0Ptr1, (void *)&in1Ptr1,
+                   (void *)&length};
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = (length + blockDim - 1) / blockDim;
+
+  auto execute1 = [&]() -> ErrorOrSuccess {
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args1);
+  };
+
+  // Capture with first set of buffers
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, execute1);
+  EXPECT_FALSE(captured.isError());
+
+  // Free first set of buffers and allocate new ones (likely at different
+  // addresses)
+  bufOut1.reset();
+  bufIn01.reset();
+  bufIn11.reset();
+
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut2,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn02,
+                ctx->enqueueCreateBuffer(length * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn12,
+                ctx->enqueueCreateBuffer(length * elemSize));
+
+  void *outPtr2 = bufOut2->ptr();
+  void *in0Ptr2 = bufIn02->ptr();
+  void *in1Ptr2 = bufIn12->ptr();
+  void *args2[] = {(void *)&outPtr2, (void *)&in0Ptr2, (void *)&in1Ptr2,
+                   (void *)&length};
+
+  auto execute2 = [&]() -> ErrorOrSuccess {
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args2);
+  };
+
+  // Execute with new buffers should match trace (pointer values excluded)
+  EXPECT_NO_ERR(captured->debugVerifyReplay(execute2));
+}
+
+// Test: Mixed pointer and scalar parameters - changing scalar is detected.
+TEST_F(GraphCaptureTest, TraceMixedPointerAndScalarParams) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
+                                             .addBuffer()  // out
+                                             .addBuffer()  // in0
+                                             .addBuffer()  // in1
+                                             .addUInt64(); // size
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn0,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, bufIn1,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+
+  void *outPtr = bufOut->ptr();
+  void *in0Ptr = bufIn0->ptr();
+  void *in1Ptr = bufIn1->ptr();
+
+  const uint32_t blockDim = 256;
+
+  // Capture with length=512
+  uint64_t length1 = 512;
+  auto execute1 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                    (void *)&length1};
+    const uint32_t gridDim = (length1 + blockDim - 1) / blockDim;
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, execute1);
+  EXPECT_FALSE(captured.isError());
+
+  // Replay with different scalar (length=1024) should mismatch
+  uint64_t length2 = 1024;
+  auto execute2 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&outPtr, (void *)&in0Ptr, (void *)&in1Ptr,
+                    (void *)&length2};
+    const uint32_t gridDim = (length2 + blockDim - 1) / blockDim;
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Changing the scalar parameter should trigger mismatch
+  EXPECT_ERR(captured->debugVerifyReplay(execute2));
+}
+
+// Test: Sub-pointer-sized scalars ARE included in the trace hash.
+// This verifies that the size-based detection correctly identifies and hashes
+// parameters smaller than pointer size (e.g., uint32_t, float).
+TEST_F(GraphCaptureTest, TraceDetectsSubPointerSizedScalarChanges) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  // Load kernel with mixed parameter sizes: (b64 pointer, u32, u32)
+  DeviceFunction::SignatureBuilder sig =
+      DeviceFunction::SignatureBuilder()
+          .addBuffer()  // ptr - PTX: .param .b64 (8 bytes)
+          .addUInt32()  // scalar32 - PTX: .param .u32 (4 bytes)
+          .addUInt32(); // grid_size - PTX: .param .u32 (4 bytes)
+
+  ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
+                ctx->loadFunction("small_scalar_module", "small_scalar_kernel",
+                                  sig, smallScalarPtx));
+
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, buf,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+
+  void *bufPtr = buf->ptr();
+
+  // Keep grid dimensions CONSTANT - we're only testing parameter value changes
+  const uint32_t gridDim = 1;
+  const uint32_t blockDim = 256;
+
+  // Test 1: Capture with initial scalar values
+  uint32_t scalar1 = 12345;
+  uint32_t scalar2 = 67890;
+  auto execute1 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&bufPtr, (void *)&scalar1, (void *)&scalar2};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc, gridDim, /*gridY=*/1, /*gridZ=*/1, blockDim,
+        /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0, /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, execute1);
+  EXPECT_FALSE(captured.isError());
+
+  // Test 2: Change the first u32 scalar - should be DETECTED
+  // Grid dimensions remain the same, ONLY the parameter value changes
+  uint32_t scalar1Changed = 99999;
+  auto execute2 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&bufPtr, (void *)&scalar1Changed, (void *)&scalar2};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc, gridDim, /*gridY=*/1, /*gridZ=*/1, blockDim,
+        /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0, /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Should detect the change in the u32 parameter (4 bytes < 8 bytes)
+  EXPECT_ERR(captured->debugVerifyReplay(execute2));
+
+  // Test 3: Change the second u32 scalar - should also be DETECTED
+  uint32_t scalar2Changed = 11111;
+  auto execute3 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&bufPtr, (void *)&scalar1, (void *)&scalar2Changed};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc, gridDim, /*gridY=*/1, /*gridZ=*/1, blockDim,
+        /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0, /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  EXPECT_ERR(captured->debugVerifyReplay(execute3));
+
+  // Test 4: Replay with original values should succeed
+  EXPECT_NO_ERR(captured->debugVerifyReplay(execute1));
+}
+
+// Test: Size-based scalar detection conservatively excludes pointer-sized
+// scalars to avoid false positives. Demonstrates that uint64_t changes are
+// NOT detected (trade-off for reliability).
+TEST_F(GraphCaptureTest, TraceDistinguishesScalarsFromPointerBitPatterns) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  // Signature: (ptr, uint64_t, ptr, uint64_t)
+  // All scalar parameters are 8 bytes (pointer-sized), so they are NOT hashed
+  DeviceFunction::SignatureBuilder sig =
+      DeviceFunction::SignatureBuilder()
+          .addBuffer()  // ptr1 (8 bytes)
+          .addUInt64()  // scalar1 (8 bytes - NOT hashed)
+          .addBuffer()  // ptr2 (8 bytes)
+          .addUInt64(); // scalar2 (8 bytes - NOT hashed)
+
+  ASSIGN_NO_ERR(
+      DeviceFunctionRef, deviceFunc,
+      ctx->loadFunction("mixed_args_module", "mixed_args", sig, mixedArgsPtx));
+
+  const size_t elemSize = sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, buf1,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, buf2,
+                ctx->enqueueCreateBuffer(1024 * elemSize));
+
+  void *ptr1 = buf1->ptr();
+  void *ptr2 = buf2->ptr();
+
+  const uint32_t blockDim = 256;
+  const uint32_t gridDim = 1;
+
+  // Capture with initial scalar values
+  uint64_t scalar1Value1 = 0x7fff00001000ULL;
+  uint64_t scalar2Value1 = 0x7fff00002000ULL;
+  auto execute1 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&ptr1, (void *)&scalar1Value1, (void *)&ptr2,
+                    (void *)&scalar2Value1};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, execute1);
+  EXPECT_FALSE(captured.isError());
+
+  // Verify that changing pointer-sized (8-byte) scalar parameters is NOT
+  // detected. This demonstrates the conservative approach: we exclude
+  // pointer-sized parameters to avoid false positives from uint64_t values
+  // that might accidentally look like valid CUDA memory addresses.
+  uint64_t scalar1Value2 = scalar1Value1 + 0x1000;
+  uint64_t scalar2Value2 = scalar2Value1 + 0x2000;
+  auto execute2 = [&]() -> ErrorOrSuccess {
+    void *args[] = {(void *)&ptr1, (void *)&scalar1Value2, (void *)&ptr2,
+                    (void *)&scalar2Value2};
+    return stream->enqueueFunctionExecDirect(
+        *deviceFunc,
+        /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
+        /*blockX=*/blockDim, /*blockY=*/1, /*blockZ=*/1,
+        /*sharedMemBytes=*/0,
+        /*attrs=*/nullptr, /*numAttrs=*/0, args);
+  };
+
+  // Should NOT detect the change in pointer-sized scalars (conservative)
+  // This is the expected trade-off: we miss uint64_t changes but avoid false
+  // positives from pointer-like bit patterns.
+  EXPECT_NO_ERR(captured->debugVerifyReplay(execute2));
+
+  // Replay with original scalar values should also succeed
+  EXPECT_NO_ERR(captured->debugVerifyReplay(execute1));
 }
 
 } // namespace

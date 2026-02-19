@@ -523,6 +523,7 @@ public:
   ~SignatureBuilder() = default;
 
   SignatureBuilder &addUInt64();
+  SignatureBuilder &addUInt32();
   SignatureBuilder &addBuffer();
 
 private:

@@ -40,14 +40,19 @@ namespace {
 // Launch-trace capture is a lightweight, deterministic fingerprint of GPU
 // work submitted to a stream. We record a compact hash per kernel launch that
 // encodes the function, grid/block dimensions, shared memory size, launch
-// attributes, and parameter sizes (NOT pointer values to avoid memory
-// instability). We also tag memcpy/memset submissions so replay verification
-// can detect changes in data movement. This lets us compare a replayed
-// execution against a known-good baseline without relying on memory addresses.
+// attributes, parameter sizes, and sub-pointer-sized parameter values.
 //
-// Memory buffer pointers are excluded from hashes to avoid
-// false positives when the CUDA memory manager allocates at different
-// addresses.
+// We use a size-based approach to identify scalar parameters:
+// - Parameters < 8 bytes (pointer size): Definitely scalars, included in hash
+// - Parameters >= 8 bytes: Could be pointers excluded
+//
+// This conservative strategy reliably detects changes to common kernel
+// parameters (int32_t dimensions, float constants, uint32_t flags) while
+// avoiding false positives from pointer-sized scalars that might accidentally
+// contain valid CUDA memory addresses.
+//
+// Memory buffer pointers are excluded from hashes to avoid false positives
+// when the CUDA memory manager allocates at different addresses.
 
 // Per-stream launch trace collection state.
 struct LaunchTraceState {
@@ -130,8 +135,8 @@ static void appendLaunchTraceDigest(CUstream stream, uint64_t digest) {
 }
 
 // Hash kernel launch WITHOUT memory pointers - only deterministic params.
-// Excludes memory buffer addresses to avoid false positives
-// when the CUDA memory manager allocates at different addresses.
+// Includes sub-pointer-sized parameter values (dimensions, flags, constants)
+// but excludes pointer-sized parameters to avoid ambiguity.
 static void recordLaunchTrace(const CUDAModuleFunction &moduleFunc,
                               uint32_t gridX, uint32_t gridY, uint32_t gridZ,
                               uint32_t blockX, uint32_t blockY, uint32_t blockZ,
@@ -160,12 +165,26 @@ static void recordLaunchTrace(const CUDAModuleFunction &moduleFunc,
                  sizeof(CUlaunchAttribute) * numAttrs);
   }
 
-  // Hash parameter SIZES, not pointer values.
-  // This makes traces stable across memory reallocations.
+  // Hash parameter SIZES and sub-pointer-sized VALUES.
+  // Conservative approach: only hash parameters smaller than pointer size.
+  // This reliably detects changes in int32_t, float, uint32_t dimensions/flags
+  // while avoiding false positives from pointer-sized scalars.
   if (args) {
     ArrayRef<size_t> paramSizes = moduleFunc.paramSizes();
-    for (size_t size : paramSizes) {
+    constexpr size_t kPointerSize = sizeof(void *); // 8 bytes on 64-bit
+
+    for (size_t paramIdx : llvm::seq(paramSizes.size())) {
+      size_t size = paramSizes[paramIdx];
+
+      // Always hash the size
       hasher.write(reinterpret_cast<const char *>(&size), sizeof(size));
+
+      const void *paramPtr = args[paramIdx];
+
+      // Hash values for parameters smaller than pointer size (definitely
+      // scalars)
+      if (size < kPointerSize)
+        hasher.write(reinterpret_cast<const char *>(paramPtr), size);
     }
   }
 
