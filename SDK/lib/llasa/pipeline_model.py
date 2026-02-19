@@ -95,7 +95,6 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
         self,
         pipeline_config: PipelineConfig,
         session: InferenceSession,
-        huggingface_config: AutoConfig,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -107,7 +106,6 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
         Args:
             pipeline_config: Pipeline configuration
             session: Inference session
-            huggingface_config: HuggingFace model configuration
             devices: List of devices
             kv_cache_config: KV cache configuration
             weights: Model weights
@@ -123,7 +121,6 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
         super().__init__(
             pipeline_config,
             session,
-            huggingface_config,
             devices,
             kv_cache_config,
             weights,
