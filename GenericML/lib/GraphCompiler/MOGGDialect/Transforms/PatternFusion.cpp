@@ -2737,6 +2737,103 @@ struct RMSNormFusedResidualAddPattern
   }
 };
 
+struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::CustomOp> {
+  DeviceRefAttr targetDevice;
+  RMSNormFusedQuantizeDynamicScaledFP8Pattern(MLIRContext *ctx,
+                                              DeviceRefAttr targetDevice)
+      : DeviceAwareRewritePattern(ctx, 3), targetDevice(targetDevice) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::CustomOp op,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    if (op.getSymbol() != "mo.quantize_dynamic_scaled_float8")
+      return rewriter.notifyMatchFailure(op, "not a quantize operation");
+    if (op.getOperands().size() != 2)
+      return rewriter.notifyMatchFailure(op,
+                                         "unexpected quantize operand count");
+
+    DeviceRefAttr device = getTargetDevice(op, targetDevice);
+    if (!device || device.getLabel() != M::kGPULabel)
+      return rewriter.notifyMatchFailure(op, "fused op requires GPU");
+
+    TensorValue input = dyn_cast<TensorValue>(op.getOperand(0));
+    if (!input.hasOneUse())
+      return rewriter.notifyMatchFailure(op, "input has multiple uses");
+
+    auto inputOp = input.getDefiningOp<MO::CustomOp>();
+    if (!inputOp)
+      return rewriter.notifyMatchFailure(op, "input not from custom operation");
+    if (inputOp.getSymbol() != "rms_norm")
+      return rewriter.notifyMatchFailure(op, "input not a rms_norm operation");
+    if (inputOp.getOperands().size() != 4)
+      return rewriter.notifyMatchFailure(op,
+                                         "unexpected rms_norm operand count");
+
+    TensorType inputTy = input.getType();
+    if (!inputTy.hasRank())
+      return rewriter.notifyMatchFailure(op, "missing input rank");
+    size_t rank = inputTy.getRank();
+    if (rank == 0)
+      return rewriter.notifyMatchFailure(op, "unexpected input rank");
+
+    DictionaryAttr opParams = op.getParameters();
+    if (opParams.size() != 1)
+      return rewriter.notifyMatchFailure(op,
+                                         "missing or unexpected parameters");
+
+    Attribute groupSizeAttr = opParams.get("group_size_or_per_token");
+    if (!groupSizeAttr)
+      return rewriter.notifyMatchFailure(op, "missing group_size_or_per_token");
+    if (auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr)) {
+      // Verify that the token size matches the inner dimension of the input
+      // operand.
+      int64_t groupSize = groupSizeIntAttr.getInt();
+      if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
+        return rewriter.notifyMatchFailure(op,
+                                           "tokenwise quantization required");
+    } else {
+      return rewriter.notifyMatchFailure(op,
+                                         "wrong group_size_or_per_token type");
+    }
+
+    DictionaryAttr inputOpParams = inputOp.getParameters();
+    if (!inputOpParams.empty()) {
+      if (inputOpParams.size() > 1)
+        return rewriter.notifyMatchFailure(op, "unexpected parameters");
+      Attribute multiplyBeforeCastAttr =
+          inputOpParams.get("multiply_before_cast");
+      if (!multiplyBeforeCastAttr)
+        return rewriter.notifyMatchFailure(op, "missing multiply_before_cast");
+      if (auto boolAttr = dyn_cast<BoolAttr>(multiplyBeforeCastAttr)) {
+        if (!boolAttr.getValue()) {
+          return rewriter.notifyMatchFailure(op,
+                                             "multiply_before_cast required");
+        }
+      } else {
+        return rewriter.notifyMatchFailure(op,
+                                           "wrong multiply_before_cast type");
+      }
+    }
+
+    SmallVector<Value> fusedOperands = {
+        inputOp.getOperand(0), // rms_norm.input
+        inputOp.getOperand(1), // rms_norm.gamma
+        inputOp.getOperand(2), // rms_norm.epsilon
+        inputOp.getOperand(3), // rms_norm.weight_offset
+        op.getOperand(1),      // quantize.scale_ub
+    };
+
+    rewriter.replaceOpWithNewOp<MO::CustomOp>(
+        op, op.getResultTypes(), fusedOperands,
+        StringAttr::get(getContext(),
+                        "rms_norm_fused_quantize_dynamic_scaled_fp8"),
+        op.getDevice());
+
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
@@ -2761,8 +2858,9 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
                  ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                  LayerNormPattern, RMSNormFusedResidualAddPattern>(ctx);
 
-    patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern>(
-        ctx, targetDeviceRef);
+    patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
+                 RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,
+                                                              targetDeviceRef);
 
     if (enableMHAPattern.getValue()) {
       patterns.add<MultiHeadAttentionPattern>(
