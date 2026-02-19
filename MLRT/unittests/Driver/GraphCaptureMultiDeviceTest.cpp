@@ -105,19 +105,13 @@ TEST_F(GraphCaptureMultiDeviceTest, MultiDeviceGraphSupport) {
     streams.push_back(std::move(stream));
   }
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
 
   // Setup each device function.
   for (int id : llvm::seq(numDevices)) {
-    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
-                                             vecAddPtx));
+    ASSIGN_NO_ERR(
+        DeviceFunctionRef, deviceFunc,
+        contexts[id]->loadFunction("vec_add_module", "vec_add", vecAddPtx));
     deviceFuncs.push_back(std::move(deviceFunc));
   }
 
@@ -198,18 +192,12 @@ TEST_F(GraphCaptureMultiDeviceTest, DebugVerifyReplayMultiDeviceSuccess) {
     streams.push_back(std::move(stream));
   }
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
 
   for (int id : llvm::seq(numDevices)) {
-    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
-                                             vecAddPtx));
+    ASSIGN_NO_ERR(
+        DeviceFunctionRef, deviceFunc,
+        contexts[id]->loadFunction("vec_add_module", "vec_add", vecAddPtx));
     deviceFuncs.push_back(std::move(deviceFunc));
   }
 
@@ -285,18 +273,12 @@ TEST_F(GraphCaptureMultiDeviceTest,
     streams.push_back(std::move(stream));
   }
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
 
   for (int id : llvm::seq(numDevices)) {
-    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
-                                             vecAddPtx));
+    ASSIGN_NO_ERR(
+        DeviceFunctionRef, deviceFunc,
+        contexts[id]->loadFunction("vec_add_module", "vec_add", vecAddPtx));
     deviceFuncs.push_back(std::move(deviceFunc));
   }
 
@@ -406,18 +388,12 @@ TEST_F(GraphCaptureMultiDeviceTest,
     streams.push_back(std::move(stream));
   }
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
 
   for (int id : llvm::seq(numDevices)) {
-    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
-                                             vecAddPtx));
+    ASSIGN_NO_ERR(
+        DeviceFunctionRef, deviceFunc,
+        contexts[id]->loadFunction("vec_add_module", "vec_add", vecAddPtx));
     deviceFuncs.push_back(std::move(deviceFunc));
   }
 
@@ -518,18 +494,12 @@ TEST_F(GraphCaptureMultiDeviceTest,
     streams.push_back(std::move(stream));
   }
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
 
   for (int id : llvm::seq(numDevices)) {
-    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
-                                             vecAddPtx));
+    ASSIGN_NO_ERR(
+        DeviceFunctionRef, deviceFunc,
+        contexts[id]->loadFunction("vec_add_module", "vec_add", vecAddPtx));
     deviceFuncs.push_back(std::move(deviceFunc));
   }
 
@@ -628,18 +598,12 @@ TEST_F(GraphCaptureMultiDeviceTest,
     streams.push_back(std::move(stream));
   }
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   llvm::SmallVector<DeviceFunctionRef> deviceFuncs;
 
   for (int id : llvm::seq(numDevices)) {
-    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                  contexts[id]->loadFunction("vec_add_module", "vec_add", sig,
-                                             vecAddPtx));
+    ASSIGN_NO_ERR(
+        DeviceFunctionRef, deviceFunc,
+        contexts[id]->loadFunction("vec_add_module", "vec_add", vecAddPtx));
     deviceFuncs.push_back(std::move(deviceFunc));
   }
 

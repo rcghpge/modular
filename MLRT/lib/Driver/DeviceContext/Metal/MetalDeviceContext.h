@@ -127,10 +127,9 @@ public:
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef>
-  loadFunction(StringRef moduleName, StringRef functionName,
-               const DeviceFunction::SignatureBuilder &signature,
-               StringRef code, int32_t maxDynamicSharedBytes,
-               StringRef debugLevel, int32_t optimizationLevel) const override;
+  loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
+               int32_t maxDynamicSharedBytes, StringRef debugLevel,
+               int32_t optimizationLevel) const override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
@@ -231,8 +230,8 @@ class MetalDeviceFunction : public DeviceFunction {
 public:
   MetalDeviceFunction(const MetalDeviceContext &context, StringRef moduleName,
                       StringRef functionName,
-                      const DeviceFunction::SignatureBuilder &signature,
-                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState);
+                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
+                      size_t argumentCount);
 
   const std::string &name() const override;
 
@@ -240,6 +239,8 @@ public:
                                      size_t byteSize) const override;
 
   ErrorOr<int32_t> getAttribute(int32_t code) const override;
+
+  size_t argumentCount() const override;
 
   MTL::ComputePipelineState *getPipelineState() const {
     return pipelineState_.get();
@@ -250,6 +251,7 @@ public:
 private:
   std::string name_;
   NS::SharedPtr<MTL::ComputePipelineState> pipelineState_;
+  size_t argumentCount_;
 };
 
 } // namespace M::Driver

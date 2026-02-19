@@ -1198,11 +1198,9 @@ CUDAModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
 }
 
 // ===== CUDADeviceFunction ===== //
-CUDADeviceFunction::CUDADeviceFunction(
-    const CUDADeviceContext &context,
-    const DeviceFunction::SignatureBuilder &signature,
-    CUDAModuleFunctionRef modFunc)
-    : DeviceFunction(context, signature), moduleFunction_(std::move(modFunc)) {}
+CUDADeviceFunction::CUDADeviceFunction(const CUDADeviceContext &context,
+                                       CUDAModuleFunctionRef modFunc)
+    : DeviceFunction(context), moduleFunction_(std::move(modFunc)) {}
 CUDADeviceFunction::~CUDADeviceFunction() {}
 
 ErrorOrSuccess CUDADeviceFunction::cudaCallKernelDirect(
@@ -1561,11 +1559,11 @@ setupCompilationOptions(StringRef debugLevel, int32_t optimizationLevel) {
   return std::make_pair(optionKind, optionValues);
 }
 
-ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
-    StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, StringRef code,
-    int32_t maxDynamicSharedBytes, StringRef debugLevel,
-    int32_t optimizationLevel) const {
+ErrorOr<DeviceFunctionRef>
+CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
+                                StringRef code, int32_t maxDynamicSharedBytes,
+                                StringRef debugLevel,
+                                int32_t optimizationLevel) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   DeviceFunctionCacheEntryRef entry =
       device().findInFunctionCache(Device::FunctionCacheKey(
@@ -1574,8 +1572,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
   if (entry.getPointer() != nullptr) {
     CUDAModuleFunctionRef moduleFunc =
         CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release()));
-    return CUDADeviceFunctionRef::create(*this, signature,
-                                         std::move(moduleFunc));
+    return CUDADeviceFunctionRef::create(*this, std::move(moduleFunc));
   }
 
   if (logLoadFunction_) {
@@ -1625,7 +1622,7 @@ ErrorOr<DeviceFunctionRef> CUDADeviceContext::loadFunction(
           optimizationLevel, maxDynamicSharedBytes),
       *moduleFunc);
   result = CUDADeviceFunctionRef::create(
-      *this, signature,
+      *this,
       CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release())));
   return result;
 }

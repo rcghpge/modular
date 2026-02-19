@@ -750,11 +750,11 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   return success();
 }
 
-ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
-    StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, StringRef code,
-    int32_t maxDynamicSharedBytes, StringRef debugLevel,
-    int32_t optimizationLevel) const {
+ErrorOr<DeviceFunctionRef>
+MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
+                                 StringRef code, int32_t maxDynamicSharedBytes,
+                                 StringRef debugLevel,
+                                 int32_t optimizationLevel) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
@@ -846,35 +846,16 @@ ErrorOr<DeviceFunctionRef> MetalDeviceContext::loadFunction(
   if (!pipelineState)
     RETURN_ERROR("Failed to create compute pipeline state (no error returned)");
 
-  // Build a proper signature from reflection if needed
-  DeviceFunction::SignatureBuilder reflectedSignature;
-  bool useReflectedSignature = false;
+  if (!reflection)
+    RETURN_ERROR("Failed to extract pipeline argument information");
 
-  // Check if we need to use reflection (when signature is empty from Mojo)
-  if (reflection) {
-    // Get the arguments from reflection
-    NS::Array *arguments = reflection->arguments();
-    if (arguments && arguments->count() > 0) {
-      uint32_t argCount = arguments->count();
-
-      for (uint32_t i = 0; i < argCount; ++i) {
-        MTL::Argument *arg = static_cast<MTL::Argument *>(arguments->object(i));
-        if (arg->type() == MTL::ArgumentTypeBuffer) {
-          reflectedSignature.addBuffer();
-        } else {
-          reflectedSignature.addUInt64();
-        }
-      }
-      useReflectedSignature = true;
-    }
-  }
+  // Extract argument count from reflection, defaulting to 0 if unavailable
+  NS::Array *arguments = reflection->arguments();
+  size_t argCount = arguments ? arguments->count() : 0;
 
   // Create and return a MetalDeviceFunction
-  // Use reflected signature if we built one, otherwise use the provided
-  // signature
   MetalDeviceFunctionRef func = MetalDeviceFunctionRef::create(
-      *this, moduleName, functionName,
-      useReflectedSignature ? reflectedSignature : signature, pipelineState);
+      *this, moduleName, functionName, pipelineState, argCount);
 
   return func;
 }
@@ -1309,10 +1290,13 @@ const MetalDeviceTimer &MetalDeviceTimer::cast(const DeviceTimer &timer) {
 
 MetalDeviceFunction::MetalDeviceFunction(
     const MetalDeviceContext &context, StringRef moduleName,
-    StringRef functionName, const DeviceFunction::SignatureBuilder &signature,
-    NS::SharedPtr<MTL::ComputePipelineState> pipelineState)
-    : DeviceFunction(context, signature), name_(functionName.str()),
-      pipelineState_(pipelineState) {}
+    StringRef functionName,
+    NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
+    size_t argumentCount)
+    : DeviceFunction(context), name_(functionName.str()),
+      pipelineState_(pipelineState), argumentCount_(argumentCount) {}
+
+size_t MetalDeviceFunction::argumentCount() const { return argumentCount_; }
 
 const std::string &MetalDeviceFunction::name() const { return name_; }
 

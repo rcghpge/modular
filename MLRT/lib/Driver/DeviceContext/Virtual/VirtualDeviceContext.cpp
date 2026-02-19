@@ -221,8 +221,7 @@ ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(void *dst,
 }
 
 ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(
-    StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, StringRef code,
+    StringRef moduleName, StringRef functionName, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
     int32_t optimizationLevel) const {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::loadFunction",

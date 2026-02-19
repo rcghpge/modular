@@ -179,7 +179,6 @@ private:
 class HIPDeviceFunction : public DeviceFunction {
 public:
   HIPDeviceFunction(const HIPDeviceContext &context,
-                    const DeviceFunction::SignatureBuilder &signature,
                     HIPModuleFunctionRef modFunc);
   ~HIPDeviceFunction() override;
 
@@ -247,10 +246,9 @@ public:
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef>
-  loadFunction(StringRef moduleName, StringRef functionName,
-               const DeviceFunction::SignatureBuilder &signature,
-               StringRef code, int32_t maxDynamicSharedBytes,
-               StringRef debugLevel, int32_t optimizationLevel) const override;
+  loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
+               int32_t maxDynamicSharedBytes, StringRef debugLevel,
+               int32_t optimizationLevel) const override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,

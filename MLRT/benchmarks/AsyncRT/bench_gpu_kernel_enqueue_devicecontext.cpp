@@ -68,13 +68,9 @@ int minimalKernelEnqueue() {
   // Print device information
   llvm::errs() << "Device: " << ctx->device().name() << "\n";
 
-  // Define kernel signature (one buffer argument)
-  M::Driver::DeviceFunction::SignatureBuilder sig =
-      M::Driver::DeviceFunction::SignatureBuilder().addBuffer();
-
   // Load the PTX kernel
   M::ErrorOr<M::Driver::DeviceFunctionRef> funcOrErr =
-      ctx->loadFunction("small_kernel_module", "small_kernel", sig, kernelPTX);
+      ctx->loadFunction("small_kernel_module", "small_kernel", kernelPTX);
   if (M::failed(funcOrErr)) {
     llvm::errs() << "Failed to load kernel function: " << funcOrErr.getError()
                  << "\n";

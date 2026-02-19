@@ -210,14 +210,8 @@ TEST_F(GraphCaptureTest, CaptureProducesGraphs) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -281,14 +275,8 @@ TEST_F(GraphCaptureTest, DebugVerifyReplaySuccess) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -332,14 +320,8 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsMismatch) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -403,14 +385,8 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsDifferentGridDim) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -505,14 +481,8 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayHandlesReorderedExecution) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -607,14 +577,8 @@ TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
 
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -662,14 +626,8 @@ TEST_F(GraphCaptureTest, TraceDetectsScalarParameterChange) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const size_t elemSize = sizeof(float);
   ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
@@ -730,14 +688,8 @@ TEST_F(GraphCaptureTest, TraceStableAcrossBufferReallocation) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -811,14 +763,8 @@ TEST_F(GraphCaptureTest, TraceMixedPointerAndScalarParams) {
                 DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()  // out
-                                             .addBuffer()  // in0
-                                             .addBuffer()  // in1
-                                             .addUInt64(); // size
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
   const size_t elemSize = sizeof(float);
   ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
@@ -879,15 +825,9 @@ TEST_F(GraphCaptureTest, TraceDetectsSubPointerSizedScalarChanges) {
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   // Load kernel with mixed parameter sizes: (b64 pointer, u32, u32)
-  DeviceFunction::SignatureBuilder sig =
-      DeviceFunction::SignatureBuilder()
-          .addBuffer()  // ptr - PTX: .param .b64 (8 bytes)
-          .addUInt32()  // scalar32 - PTX: .param .u32 (4 bytes)
-          .addUInt32(); // grid_size - PTX: .param .u32 (4 bytes)
-
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
                 ctx->loadFunction("small_scalar_module", "small_scalar_kernel",
-                                  sig, smallScalarPtx));
+                                  smallScalarPtx));
 
   const size_t elemSize = sizeof(float);
   ASSIGN_NO_ERR(DeviceBufferRef, buf,
@@ -954,16 +894,9 @@ TEST_F(GraphCaptureTest, TraceDistinguishesScalarsFromPointerBitPatterns) {
 
   // Signature: (ptr, uint64_t, ptr, uint64_t)
   // All scalar parameters are 8 bytes (pointer-sized), so they are NOT hashed
-  DeviceFunction::SignatureBuilder sig =
-      DeviceFunction::SignatureBuilder()
-          .addBuffer()  // ptr1 (8 bytes)
-          .addUInt64()  // scalar1 (8 bytes - NOT hashed)
-          .addBuffer()  // ptr2 (8 bytes)
-          .addUInt64(); // scalar2 (8 bytes - NOT hashed)
-
   ASSIGN_NO_ERR(
       DeviceFunctionRef, deviceFunc,
-      ctx->loadFunction("mixed_args_module", "mixed_args", sig, mixedArgsPtx));
+      ctx->loadFunction("mixed_args_module", "mixed_args", mixedArgsPtx));
 
   const size_t elemSize = sizeof(float);
   ASSIGN_NO_ERR(DeviceBufferRef, buf1,

@@ -796,54 +796,15 @@ std::vector<uint64_t> DeviceStream::takeLaunchTrace() const { return {}; }
 //
 // ===== DeviceFunction ===== //
 //
-enum DeviceFunction::ArgumentType : uint8_t {
-  UNSET = 0, // This entry must be zero and first.
-  UINT8,
-  UINT16,
-  UINT32,
-  UINT64,
-  INT8,
-  INT16,
-  INT32,
-  INT64,
-  FP4,
-  FP8,
-  FP16,
-  FP32,
-  FP64,
-  BUFFER,
-  NUM_ENTRIES_ // This entry must be last.
-};
-
-DeviceFunction::DeviceFunction(
-    const DeviceContext &context,
-    const DeviceFunction::SignatureBuilder &signature)
-    : context_(DeviceContextRef::copy(&context)), signature_(signature.types_) {
-}
+DeviceFunction::DeviceFunction(const DeviceContext &context)
+    : context_(DeviceContextRef::copy(&context)) {}
 
 const DeviceContext &DeviceFunction::context() const { return *context_; }
 
-size_t DeviceFunction::argumentCount() const { return signature_.size(); }
-
-//
-// ===== DeviceFunction::SignatureBuilder ===== //
-//
-MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
-DeviceFunction::SignatureBuilder::addUInt64() {
-  types_.push_back(UINT64);
-  return *this;
-}
-
-MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
-DeviceFunction::SignatureBuilder::addUInt32() {
-  types_.push_back(UINT32);
-  return *this;
-}
-
-MODULAR_CXX_EXPORT DeviceFunction::SignatureBuilder &
-DeviceFunction::SignatureBuilder::addBuffer() {
-  types_.push_back(BUFFER);
-  return *this;
+size_t DeviceFunction::argumentCount() const {
+  // Default implementation returns 0 (unknown argument count).
+  // Device-specific implementations may override this.
+  return 0;
 }
 
 //

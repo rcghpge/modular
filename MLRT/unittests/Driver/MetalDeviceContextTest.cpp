@@ -158,14 +158,8 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   ASSERT_FALSE(metalSource.empty()) << "Failed to get Metal shader source";
 
   // Load the function from MSL source code
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addUInt64();
-
   ErrorOr<DeviceFunctionRef> libFunctionOr =
-      ctx_->loadFunction("vec_add_module", "vec_add_msl", sig, metalSource);
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", metalSource);
   ASSERT_FALSE(libFunctionOr.isError())
       << "Failed to load Metal function: " << libFunctionOr.getError();
   DeviceFunctionRef libFunction = libFunctionOr.takeValue();
@@ -264,14 +258,8 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
   ASSERT_FALSE(metalSource.empty()) << "Failed to get Metal shader source";
 
   // Load the function from MSL source code
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addUInt64();
-
   ErrorOr<DeviceFunctionRef> libFunctionOr =
-      ctx_->loadFunction("vec_add_module", "vec_add_msl", sig, metalSource);
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", metalSource);
   ASSERT_FALSE(libFunctionOr.isError())
       << "Failed to load Metal function: " << libFunctionOr.getError();
   DeviceFunctionRef libFunction = libFunctionOr.takeValue();
@@ -373,14 +361,8 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
   ASSERT_FALSE(metalSource.empty()) << "Failed to get Metal shader source";
 
   // Load the function from MSL source code
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addUInt64();
-
   ErrorOr<DeviceFunctionRef> libFunctionOr =
-      ctx_->loadFunction("vec_add_module", "vec_add_msl", sig, metalSource);
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", metalSource);
   ASSERT_FALSE(libFunctionOr.isError())
       << "Failed to load Metal function: " << libFunctionOr.getError();
   DeviceFunctionRef libFunction = libFunctionOr.takeValue();
@@ -515,14 +497,8 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
   ASSERT_FALSE(metalSource.empty()) << "Failed to get Metal shader source";
 
   // Load the function from MSL source code
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addUInt64();
-
   ErrorOr<DeviceFunctionRef> libFunctionOr =
-      ctx_->loadFunction("vec_add_module", "vec_add_msl", sig, metalSource);
+      ctx_->loadFunction("vec_add_module", "vec_add_msl", metalSource);
   ASSERT_FALSE(libFunctionOr.isError())
       << "Failed to load Metal function: " << libFunctionOr.getError();
   DeviceFunctionRef libFunction = libFunctionOr.takeValue();

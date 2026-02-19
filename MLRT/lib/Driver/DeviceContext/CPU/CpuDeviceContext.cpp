@@ -318,11 +318,11 @@ CpuDeviceContext::memmapFileImpl(const std::filesystem::path &filename) const {
   };
 }
 
-ErrorOr<DeviceFunctionRef> CpuDeviceContext::loadFunction(
-    StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, StringRef code,
-    int32_t maxDynamicSharedBytes, StringRef debugLevel,
-    int32_t optimizationLevel) const {
+ErrorOr<DeviceFunctionRef>
+CpuDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
+                               StringRef code, int32_t maxDynamicSharedBytes,
+                               StringRef debugLevel,
+                               int32_t optimizationLevel) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
   RETURN_ERROR("Unimplemented");

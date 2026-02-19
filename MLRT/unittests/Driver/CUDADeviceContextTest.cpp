@@ -125,14 +125,8 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
 
   {
     std::cerr << "Compiling vecAddPtx...\n";
-    DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                               .addBuffer()
-                                               .addBuffer()
-                                               .addBuffer()
-                                               .addUInt64();
-    ASSIGN_NO_ERR(
-        DeviceFunctionRef, deviceFunction,
-        ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+    ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunction,
+                  ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 
     // One reference count from ctx and one from deviceFunction.
     EXPECT_EQ(ctx->getNumReferences(), 2);
@@ -193,9 +187,8 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
 
     // Check cache hit.
     {
-      ASSIGN_NO_ERR(
-          DeviceFunctionRef, deviceFunction2,
-          ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+      ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunction2,
+                    ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
       EXPECT_TRUE(deviceFunction2);
 
       // A cache hit will point to the same backing store for the function (e.g.
@@ -344,11 +337,9 @@ $L__BB0_2:
     EXPECT_NO_ERR(srcPtr->copyFrom(checkData));
     EXPECT_NO_ERR(srcCtx->enqueueCopyToDevice(*srcBuf, srcPtr->ptr()));
 
-    DeviceFunction::SignatureBuilder sig =
-        DeviceFunction::SignatureBuilder().addBuffer().addBuffer().addUInt64();
     ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunction,
                   srcCtx->loadFunction("my_module", "_Z15p2pMemcpyKernelPfS_m",
-                                       sig, p2pCopyPtx));
+                                       p2pCopyPtx));
     EXPECT_TRUE(deviceFunction);
 
     constexpr uint32_t blockDim = 256;
@@ -577,21 +568,13 @@ $L__BB0_2:
 
   const DeviceContext &ctx0 = *contexts[0];
 
-  ASSIGN_NO_ERR(DeviceFunctionRef, splatFun,
-                ctx0.loadFunction("my_module", "_Z15p2pMemSplatKernelPfS_m",
-                                  DeviceFunction::SignatureBuilder()
-                                      .addBuffer()
-                                      .addBuffer()
-                                      .addUInt64(),
-                                  splatPtx));
+  ASSIGN_NO_ERR(
+      DeviceFunctionRef, splatFun,
+      ctx0.loadFunction("my_module", "_Z15p2pMemSplatKernelPfS_m", splatPtx));
 
-  ASSIGN_NO_ERR(DeviceFunctionRef, mapFun,
-                ctx0.loadFunction("my_module", "_Z15p2pMemMapKernelPfS_m",
-                                  DeviceFunction::SignatureBuilder()
-                                      .addBuffer()
-                                      .addBuffer()
-                                      .addUInt64(),
-                                  mapPtx));
+  ASSIGN_NO_ERR(
+      DeviceFunctionRef, mapFun,
+      ctx0.loadFunction("my_module", "_Z15p2pMemMapKernelPfS_m", mapPtx));
 
   constexpr uint32_t blockDim = 16;
   const size_t numElems = 256;
@@ -632,13 +615,9 @@ $L__BB0_2:
       EXPECT_NO_ERR(hostBuf->copyTo(*devBuf));
       ASSIGN_NO_ERR(DeviceBufferRef, mapBuf, multiBuf->unicastBufferFor(ctx));
 
-      ASSIGN_NO_ERR(DeviceFunctionRef, copyFun,
-                    ctx.loadFunction("my_module", "_Z15p2pMemcpyKernelPfS_m",
-                                     DeviceFunction::SignatureBuilder()
-                                         .addBuffer()
-                                         .addBuffer()
-                                         .addUInt64(),
-                                     copyPtx));
+      ASSIGN_NO_ERR(
+          DeviceFunctionRef, copyFun,
+          ctx.loadFunction("my_module", "_Z15p2pMemcpyKernelPfS_m", copyPtx));
 
       void *mapPtr = mapBuf->ptr();
       void *devPtr = devBuf->ptr();

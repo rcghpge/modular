@@ -492,9 +492,6 @@ private:
 
 class DeviceFunction : public ReferenceCounted<DeviceFunction> {
 public:
-  enum ArgumentType : uint8_t;
-  class SignatureBuilder;
-
   virtual ~DeviceFunction() = default;
 
   const DeviceContext &context() const;
@@ -506,30 +503,15 @@ public:
 
   virtual ErrorOr<int32_t> getAttribute(int32_t code) const = 0;
 
-  size_t argumentCount() const;
+  // Returns the number of arguments for this function. Default implementation
+  // returns 0 (unknown). Device-specific implementations may override this.
+  virtual size_t argumentCount() const;
 
 protected:
-  DeviceFunction(const DeviceContext &context,
-                 const DeviceFunction::SignatureBuilder &signature);
+  explicit DeviceFunction(const DeviceContext &context);
 
 private:
   DeviceContextRef context_;
-  std::vector<ArgumentType> signature_;
-};
-
-class DeviceFunction::SignatureBuilder {
-public:
-  SignatureBuilder() = default;
-  ~SignatureBuilder() = default;
-
-  SignatureBuilder &addUInt64();
-  SignatureBuilder &addUInt32();
-  SignatureBuilder &addBuffer();
-
-private:
-  friend class DeviceFunction;
-
-  std::vector<ArgumentType> types_;
 };
 
 class DeviceTimer : public ReferenceCounted<DeviceTimer> {
@@ -607,10 +589,8 @@ public:
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>
-  loadFunction(StringRef moduleName, StringRef functionName,
-               const DeviceFunction::SignatureBuilder &signature,
-               StringRef code, int32_t maxDynamicSharedBytes = -1,
-               StringRef debugLevel = "",
+  loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
+               int32_t maxDynamicSharedBytes = -1, StringRef debugLevel = "",
                int32_t optimizationLevel = -1) const = 0;
   virtual ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,

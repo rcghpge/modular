@@ -389,8 +389,7 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunction(
     size_t dataLen, int32_t maxDynamicSharedBytes, const char *debugLevel,
     int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_loadFunction", TRACY_COLOR_GRAY);
-  DeviceFunction::SignatureBuilder sig;
-  return checkRef(result, ctx->loadFunction(moduleName, functionName, sig,
+  return checkRef(result, ctx->loadFunction(moduleName, functionName,
                                             StringRef(data, dataLen),
                                             maxDynamicSharedBytes, debugLevel,
                                             optimizationLevel));

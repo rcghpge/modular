@@ -858,11 +858,9 @@ HIPModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
 }
 
 // ===== HIPDeviceFunction ===== //
-HIPDeviceFunction::HIPDeviceFunction(
-    const HIPDeviceContext &context,
-    const DeviceFunction::SignatureBuilder &signature,
-    HIPModuleFunctionRef modFunc)
-    : DeviceFunction(context, signature), moduleFunction_(std::move(modFunc)) {}
+HIPDeviceFunction::HIPDeviceFunction(const HIPDeviceContext &context,
+                                     HIPModuleFunctionRef modFunc)
+    : DeviceFunction(context), moduleFunction_(std::move(modFunc)) {}
 
 HIPDeviceFunction::~HIPDeviceFunction() {}
 
@@ -1139,11 +1137,11 @@ HIPDeviceContext::memmapFileImpl(const std::filesystem::path &filename) const {
   return Error("Unimplemented for HIP devices");
 }
 
-ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
-    StringRef moduleName, StringRef functionName,
-    const DeviceFunction::SignatureBuilder &signature, StringRef code,
-    int32_t maxDynamicSharedBytes, StringRef debugLevel,
-    int32_t optimizationLevel) const {
+ErrorOr<DeviceFunctionRef>
+HIPDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
+                               StringRef code, int32_t maxDynamicSharedBytes,
+                               StringRef debugLevel,
+                               int32_t optimizationLevel) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   DeviceFunctionCacheEntryRef entry =
       device().findInFunctionCache(Device::FunctionCacheKey(
@@ -1152,8 +1150,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
   if (entry.getPointer() != nullptr) {
     HIPModuleFunctionRef moduleFunc =
         HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release()));
-    return HIPDeviceFunctionRef::create(*this, signature,
-                                        std::move(moduleFunc));
+    return HIPDeviceFunctionRef::create(*this, std::move(moduleFunc));
   }
 
   // TODO(iposva): Remove once not needed for debugging.
@@ -1184,7 +1181,7 @@ ErrorOr<DeviceFunctionRef> HIPDeviceContext::loadFunction(
           optimizationLevel, maxDynamicSharedBytes),
       *moduleFunc);
   result = HIPDeviceFunctionRef::create(
-      *this, signature,
+      *this,
       HIPModuleFunctionRef::take(HIPModuleFunction::cast(entry.release())));
   return result;
 }

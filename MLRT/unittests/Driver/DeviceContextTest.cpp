@@ -364,13 +364,8 @@ $L__BB0_2:
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
 
   std::cerr << "Compiling vecAddPtx...\n";
-  DeviceFunction::SignatureBuilder sig = DeviceFunction::SignatureBuilder()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addBuffer()
-                                             .addUInt64();
   // Expecting for an error to be set in the case of CPU device context.
-  EXPECT_ERR(ctx->loadFunction("vec_add_module", "vec_add", sig, vecAddPtx));
+  EXPECT_ERR(ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
 }
 
 TEST(DeviceContextTest, Timers) {
