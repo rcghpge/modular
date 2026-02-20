@@ -679,6 +679,12 @@ struct LaunchTraceDiff {
   /// Returns true if the traces match (no differences).
   bool empty() const { return missingOps.empty() && unexpectedOps.empty(); }
 
+  /// Format detailed information about a single operation
+  static void formatOperation(llvm::raw_ostream &os,
+                              const KernelLaunchMetadata &op, int count) {
+    os << op.format(count);
+  }
+
   /// Format a detailed error message describing the differences.
   std::string formatErrorMessage(size_t graphIdx) const {
     std::string errorMsg;
@@ -689,16 +695,14 @@ struct LaunchTraceDiff {
     if (!missingOps.empty()) {
       os << "  Missing operations (in baseline but not in current):\n";
       for (const auto &[op, count] : missingOps) {
-        os << "    - " << op.kernelName << " (hash: " << op.hash
-           << ") [count: " << count << "]\n";
+        formatOperation(os, op, count);
       }
     }
 
     if (!unexpectedOps.empty()) {
       os << "  Unexpected operations (in current but not in baseline):\n";
       for (const auto &[op, count] : unexpectedOps) {
-        os << "    - " << op.kernelName << " (hash: " << op.hash
-           << ") [count: " << count << "]\n";
+        formatOperation(os, op, count);
       }
     }
 
@@ -713,17 +717,18 @@ computeLaunchTraceDiff(ArrayRef<KernelLaunchMetadata> currentTrace,
                        ArrayRef<KernelLaunchMetadata> baseline) {
   LaunchTraceDiff diff;
 
+  // Using std::map to ensure ordering.
+  // KernelLaunchMetadata orders based on kernel name.
+
   // Count occurrences in baseline
   std::map<KernelLaunchMetadata, int> baselineCounts;
-  for (const auto &op : baseline) {
+  for (const KernelLaunchMetadata &op : baseline)
     baselineCounts[op]++;
-  }
 
   // Count occurrences in current
   std::map<KernelLaunchMetadata, int> currentCounts;
-  for (const auto &op : currentTrace) {
+  for (const KernelLaunchMetadata &op : currentTrace)
     currentCounts[op]++;
-  }
 
   // Find operations with different counts
   // First, check for operations in baseline that are missing or fewer in
@@ -1517,4 +1522,52 @@ ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
   RETURN_ERROR("enablePeerAccess not implemented for this device API" +
                Twine(peer.api()));
 }
+
+std::string KernelLaunchMetadata::format(int count) const {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+
+  os << "    - " << kernelName << " (hash: " << semanticHash << ")";
+
+  // Show operation-specific details based on kind
+  switch (kind) {
+  case OperationKind::KernelLaunch:
+    os << "\n        Grid: (" << gridX << ", " << gridY << ", " << gridZ
+       << "), Block: (" << blockX << ", " << blockY << ", " << blockZ << ")";
+    if (sharedMemBytes > 0)
+      os << ", Shared: " << sharedMemBytes << " bytes";
+    if (numAttrs > 0)
+      os << ", Attrs: " << numAttrs;
+    break;
+
+  case OperationKind::Memcpy:
+    os << "\n        Kind: ";
+    switch (memcpyKind) {
+    case MemcpyKind::HtoD:
+      os << "Host-to-Device";
+      break;
+    case MemcpyKind::DtoH:
+      os << "Device-to-Host";
+      break;
+    case MemcpyKind::DtoD:
+      os << "Device-to-Device";
+      break;
+    case MemcpyKind::None:
+      os << "Unknown";
+      break;
+    }
+    os << ", Size: " << memcpyByteSize << " bytes";
+    break;
+
+  case OperationKind::Memset:
+    os << "\n        Size: " << memsetByteSize << " bytes, Value: "
+       << llvm::format_hex(memsetValue, memsetValueSize * 2)
+       << " (valSize: " << memsetValueSize << ")";
+    break;
+  }
+
+  os << " [count: " << count << "]\n";
+  return os.str();
+}
+
 } // namespace M::Driver

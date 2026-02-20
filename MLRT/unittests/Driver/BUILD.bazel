@@ -85,6 +85,19 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "TraceMetadataTest",
+    size = "small",
+    srcs = ["TraceMetadataTest.cpp"],
+    local_defines = ["MODULAR_TESTING"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContext",
+        "//MLRT:Driver/DeviceContextImpl",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
     name = "GPUDeviceContextTest",
     size = "small",
     srcs = ["GPUDeviceContextTest.cpp"],

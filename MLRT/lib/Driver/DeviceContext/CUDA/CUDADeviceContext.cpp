@@ -189,8 +189,12 @@ static void recordLaunchTrace(const CUDAModuleFunction &moduleFunc,
     }
   }
 
-  // Create metadata with kernel name and computed hash
-  KernelLaunchMetadata metadata(moduleFunc.name(), hasher.hash());
+  // Create metadata with kernel name, hash, and launch parameters
+  // Note: streamIndex is set to 0 for now (could be enhanced to track actual
+  // stream index in multi-stream captures)
+  KernelLaunchMetadata metadata(moduleFunc.name(), hasher.hash(), gridX, gridY,
+                                gridZ, blockX, blockY, blockZ, sharedMemBytes,
+                                numAttrs, /*streamIndex=*/0);
   appendLaunchTraceEntry(stream, metadata);
 }
 
@@ -1393,8 +1397,8 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
   CUDA_CHECK_ERR(driver_.cuMemcpyHtoDAsync_v2(dst, src, byteSize, stream_));
   if (isLaunchTraceEnabled(stream_)) {
     KernelLaunchMetadata metadata(
-        "cuMemcpyHtoD",
-        hashMemcpyTrace(LaunchTraceKind::kMemcpyHtoD, byteSize));
+        "cuMemcpyHtoD", hashMemcpyTrace(LaunchTraceKind::kMemcpyHtoD, byteSize),
+        KernelLaunchMetadata::MemcpyKind::HtoD, byteSize);
     appendLaunchTraceEntry(stream_, metadata);
   }
   MAYBE_SYNC(*this);
@@ -1412,8 +1416,8 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
                                               byteSize, stream_));
   if (isLaunchTraceEnabled(stream_)) {
     KernelLaunchMetadata metadata(
-        "cuMemcpyDtoH",
-        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoH, byteSize));
+        "cuMemcpyDtoH", hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoH, byteSize),
+        KernelLaunchMetadata::MemcpyKind::DtoH, byteSize);
     appendLaunchTraceEntry(stream_, metadata);
   }
   MAYBE_SYNC(*this);
@@ -1471,7 +1475,8 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   if (isLaunchTraceEnabled(stream_)) {
     KernelLaunchMetadata metadata(
         "cuMemcpyDtoD",
-        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, dstByteSize));
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, dstByteSize),
+        KernelLaunchMetadata::MemcpyKind::DtoD, dstByteSize);
     appendLaunchTraceEntry(stream_, metadata);
   }
 
@@ -1527,7 +1532,8 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   }
   if (isLaunchTraceEnabled(stream_)) {
     KernelLaunchMetadata metadata("cuMemset",
-                                  hashMemsetTrace(byteSize, val, valSize));
+                                  hashMemsetTrace(byteSize, val, valSize),
+                                  byteSize, val, valSize);
     appendLaunchTraceEntry(stream_, metadata);
   }
 

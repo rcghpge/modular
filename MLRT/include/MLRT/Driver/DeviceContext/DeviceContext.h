@@ -33,36 +33,94 @@
 
 namespace M::Driver {
 
-/// Metadata for a kernel launch entry in the trace.
+/// Metadata for a trace entry (kernel launch, memcpy, or memset).
 struct KernelLaunchMetadata {
-  /// The name of the kernel launched.
-  llvm::StringRef kernelName;
+  /// Type of operation that produced this trace entry
+  enum class OperationKind : uint8_t {
+    KernelLaunch,
+    Memcpy,
+    Memset,
+  };
+
+  /// Memcpy direction/kind
+  enum class MemcpyKind : uint8_t { None = 0, HtoD, DtoH, DtoD };
+
+  /// The kind of operation this metadata represents
+  OperationKind kind = OperationKind::KernelLaunch;
+
+  /// The name of the operation (kernel name, "cuMemcpyHtoD", "cuMemset", etc.)
+  std::string kernelName;
 
   /// The hash value recorded during tracing.
-  uint64_t hash = 0;
+  uint64_t semanticHash = 0;
+
+  // ===== Kernel launch fields (only set for kernel launches) =====
+  uint32_t gridX = 0, gridY = 0, gridZ = 0;
+  uint32_t blockX = 0, blockY = 0, blockZ = 0;
+  uint32_t sharedMemBytes = 0;
+  uint32_t numAttrs = 0;
+  uint32_t streamIndex = 0;
+
+  // ===== Memcpy fields (only set for memcpy operations) =====
+  MemcpyKind memcpyKind = MemcpyKind::None;
+  size_t memcpyByteSize = 0;
+
+  // ===== Memset fields (only set for memset operations) =====
+  size_t memsetByteSize = 0;
+  uint64_t memsetValue = 0;
+  size_t memsetValueSize = 0;
 
   /// Default constructor
   KernelLaunchMetadata() = default;
 
-  /// Constructor from kernel name and hash
+  /// Constructor for simple operation (just name and hash)
   KernelLaunchMetadata(StringRef name, uint64_t hashValue)
-      : kernelName(name), hash(hashValue) {}
+      : kind(OperationKind::KernelLaunch), kernelName(name.str()),
+        semanticHash(hashValue) {}
+
+  /// Constructor for kernel launch with full metadata
+  KernelLaunchMetadata(StringRef name, uint64_t hashValue, uint32_t gridX,
+                       uint32_t gridY, uint32_t gridZ, uint32_t blockX,
+                       uint32_t blockY, uint32_t blockZ,
+                       uint32_t sharedMemBytes, uint32_t numAttrs,
+                       uint32_t streamIndex)
+      : kind(OperationKind::KernelLaunch), kernelName(name.str()),
+        semanticHash(hashValue), gridX(gridX), gridY(gridY), gridZ(gridZ),
+        blockX(blockX), blockY(blockY), blockZ(blockZ),
+        sharedMemBytes(sharedMemBytes), numAttrs(numAttrs),
+        streamIndex(streamIndex) {}
+
+  /// Constructor for memcpy operation
+  KernelLaunchMetadata(StringRef name, uint64_t hashValue, MemcpyKind memcpy,
+                       size_t byteSize)
+      : kind(OperationKind::Memcpy), kernelName(name.str()),
+        semanticHash(hashValue), memcpyKind(memcpy), memcpyByteSize(byteSize) {}
+
+  /// Constructor for memset operation
+  KernelLaunchMetadata(StringRef name, uint64_t hashValue, size_t byteSize,
+                       uint64_t value, size_t valSize)
+      : kind(OperationKind::Memset), kernelName(name.str()),
+        semanticHash(hashValue), memsetByteSize(byteSize), memsetValue(value),
+        memsetValueSize(valSize) {}
 
   /// Comparison operator: sort by kernel name first, then by hash
   bool operator<(const KernelLaunchMetadata &other) const {
     if (kernelName != other.kernelName)
       return kernelName < other.kernelName;
-    return hash < other.hash;
+    return semanticHash < other.semanticHash;
   }
 
   /// Equality operator for verification
   bool operator==(const KernelLaunchMetadata &other) const {
-    return kernelName == other.kernelName && hash == other.hash;
+    return kernelName == other.kernelName && semanticHash == other.semanticHash;
   }
 
   bool operator!=(const KernelLaunchMetadata &other) const {
     return !(*this == other);
   }
+
+  /// Format this trace entry as a human-readable string
+  std::string format(int count = 1) const;
 };
 
 class MemoryManager;
