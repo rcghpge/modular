@@ -1050,8 +1050,13 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       &ptr, wrappedSize,
       // If allocating for host just forward that.
       (mode == Device::AllocMode::HOST) ? Device::AllocMode::HOST
-      // Ensure that all allocations are sync when using a memory manager.
-      : (memoryManager_.chunkSize_ != 0) ? Device::AllocMode::SYNC
+      // Use async allocation to match the async free in memFree(). Using sync
+      // allocation (cuMemAlloc) with async free (cuMemFreeAsync) causes a
+      // memory leak because they operate on different memory pools - the sync
+      // pool and the stream-ordered pool respectively. Freed memory never
+      // becomes available for subsequent sync allocations, exhausting GPU
+      // memory.
+      : (memoryManager_.chunkSize_ != 0) ? Device::AllocMode::ASYNC
                                          : mode);
   if (err.isError()) {
     if (memoryManager_.doLog_) {
