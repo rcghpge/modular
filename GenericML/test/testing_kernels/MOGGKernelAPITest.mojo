@@ -251,8 +251,7 @@ fn _matmul[
                 var b_val = b.load[1](IndexList[2](l, j)).cast[c.dtype]()
                 c_val += a_val * b_val
 
-            @parameter
-            if elementwise_lambda_fn:
+            comptime if elementwise_lambda_fn:
                 comptime func = elementwise_lambda_fn.value()
                 func(IndexList[2](i, j), c_val)
             else:
@@ -521,8 +520,7 @@ struct VariadicInputToOutput:
         bias: InputTensor[dtype=dtype, rank=1],
         input: InputVariadicTensors[dtype, rank=1, size=size],
     ):
-        @parameter
-        for i in range(size):
+        comptime for i in range(size):
             for j in range(input[i].size()):
                 output[i][j] = input[i][j]
             output[i][0] += bias[0]
@@ -586,8 +584,7 @@ struct VariadicAdd:
         fn func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
             var acc = SIMD[dtype, width](0)
 
-            @parameter
-            for i in range(inputs.size):
+            comptime for i in range(inputs.size):
                 acc += inputs[i]._fused_load[width](idx)
 
             return acc
@@ -1163,8 +1160,7 @@ struct MySquareComputeOutFusion:
         print("has_compute_lambda =", has_compute_lambda)
         print("has_store_lambda =", has_store_lambda)
 
-        @parameter
-        if has_compute_lambda:
+        comptime if has_compute_lambda:
             outp[0] = outp._fused_compute_output_lambda[width=1](
                 IndexList[1](0), res
             )
@@ -1256,8 +1252,7 @@ struct UniqueParameters:
         lookup_table: InputTensor[dtype = DType.uint32, rank=2],
         max_lengths: InputTensor[dtype = DType.uint32, rank=2],
     ) -> MyCustomScalarRegTrivialSI32:
-        @parameter
-        if page_size:
+        comptime if page_size:
             return MyCustomScalarRegTrivialSI32(0)
         else:
             return MyCustomScalarRegTrivialSI32(1)
