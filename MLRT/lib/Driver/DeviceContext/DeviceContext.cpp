@@ -1225,6 +1225,15 @@ DeviceContext::create(StringRef api, int id) {
   if (device.isError()) {
     return device.takeError();
   }
+
+  // Check device compatibility before creating the context. This ensures clear
+  // error messages for incompatible drivers or hardware, matching the behavior
+  // of the Python Accelerator() constructor.
+  ErrorOrSuccess compatible = (*device)->isCompatible();
+  if (compatible.isError()) {
+    return compatible.takeError();
+  }
+
   return (*device)->createContext();
 }
 
@@ -1236,6 +1245,11 @@ DeviceContext::getOrCreate(StringRef api, int id) {
   ErrorOr<DeviceRef> errDev = Device::create(api, id);
   if (errDev.isError())
     return errDev.takeError();
+
+  // Check device compatibility before creating the context.
+  ErrorOrSuccess compatible = (*errDev)->isCompatible();
+  if (compatible.isError())
+    return compatible.takeError();
 
   // Create the cache key in such a way that for example an `api` of "gpu" and
   // "cuda" are equivalent on an CUDA based system.

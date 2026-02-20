@@ -30,6 +30,14 @@ TEST(DeviceContextTest, Smoke) {
   EXPECT_EQ(ctx->device().name(), Device::cpuAPI);
 }
 
+TEST(DeviceContextTest, CPUDeviceContextCreateSucceeds) {
+  // CPU devices should pass isCompatible() (returns success()).
+  // This verifies the isCompatible() check in DeviceContext::create()
+  // doesn't break non-GPU devices.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+  EXPECT_NE(ctx.getPointer(), nullptr);
+}
+
 TEST(DeviceContextTest, CreationFailure) {
   EXPECT_ERR_MSG(DeviceContext::create(Device::cpuAPI, 1),
                  "Device(api: cpu, id: 1) is not available");

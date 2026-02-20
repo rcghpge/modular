@@ -83,6 +83,20 @@ TEST_F(GPUDeviceContextTest, MAXCompatibility) {
   EXPECT_NO_ERR(dev->isCompatible());
 }
 
+TEST_F(GPUDeviceContextTest, DeviceContextCreateCallsIsCompatible) {
+  // DeviceContext::create() now calls isCompatible() before creating context.
+  // On a compatible GPU, this should succeed.
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+  EXPECT_NE(ctx.getPointer(), nullptr);
+}
+
+TEST_F(GPUDeviceContextTest, DeviceContextGetOrCreateCallsIsCompatible) {
+  // DeviceContext::getOrCreate() now also calls isCompatible().
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::getOrCreate(Device::gpuAPI));
+  EXPECT_NE(ctx.getPointer(), nullptr);
+}
+
 TEST_F(GPUDeviceContextTest, DefaultContext) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx0, DeviceContext::create(Device::gpuAPI));
   ASSIGN_NO_ERR(DeviceContextRef, ctx1,
