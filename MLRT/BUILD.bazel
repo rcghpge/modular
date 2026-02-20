@@ -648,6 +648,22 @@ modular_cc_library(
 )
 
 modular_cc_library(
+    name = "DriverHAL",
+    srcs = glob([
+        "lib/Driver/HAL/*.cpp",
+        "lib/Driver/HAL/*.hpp",
+    ]),
+    hdrs = glob(["include/MLRT/Driver/HAL/*.hpp"]),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//SDK:HAL",
+        "//Support:Base",
+    ],
+    alwayslink = True,
+)
+
+modular_cc_library(
     name = "Driver/NIXL",
     hdrs = glob(
         [
