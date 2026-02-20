@@ -1,7 +1,0 @@
-M_DRIVER_HAL_SYMBOL(status_message)
-M_DRIVER_HAL_SYMBOL(initialize)
-M_DRIVER_HAL_SYMBOL(finalize)
-M_DRIVER_HAL_SYMBOL(device_count)
-M_DRIVER_HAL_SYMBOL(device_get)
-M_DRIVER_HAL_SYMBOL(device_create_context)
-M_DRIVER_HAL_SYMBOL(device_destroy_context)
