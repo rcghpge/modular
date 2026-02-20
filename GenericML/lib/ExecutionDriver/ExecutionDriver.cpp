@@ -159,7 +159,6 @@ convertResultsToGenericValues(const ExecutableModel *model,
     ASSERT_STREAM(result.isReady(), << "tensor result should be ready");
     if (result.isError() || result.isType<Tensor>())
       continue;
-    result = model->convertToGenericValue(std::move(result));
     await(result);
   }
 }

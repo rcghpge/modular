@@ -474,28 +474,6 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
   });
 }
 
-AnyAsyncValueRef
-ExecutableModel::convertToSpecificValue(AnyAsyncValueRef genericValue) const {
-  return genericValue;
-}
-
-AnyAsyncValueRef
-ExecutableModel::convertToGenericTensor(AnyAsyncValueRef unknownTensor) const {
-  return unknownTensor;
-}
-
-AnyAsyncValueRef
-ExecutableModel::convertToGenericValue(AnyAsyncValueRef unknownValue) const {
-  AnyAsyncValueRef tensor = convertToGenericTensor(std::move(unknownValue));
-
-  if (!tensor.isError())
-    return tensor;
-
-  return AnyAsyncValueRef::createError(
-      tensor.getRuntime(),
-      {"cannot convert unknown value", getModel()->getLocation().copy()});
-}
-
 ErrorOrSuccess ExecutableModel::printValue(raw_ostream &os,
                                            AnyAsyncValueRef const &value,
                                            ResultOutputStyle style,

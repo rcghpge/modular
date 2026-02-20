@@ -63,9 +63,6 @@ public:
   SmallVector<AnyAsyncValueRef>
   execute(MutableArrayRef<AnyAsyncValueRef> args) const;
 
-  AnyAsyncValueRef convertToSpecificValue(AnyAsyncValueRef genericValue) const;
-  AnyAsyncValueRef convertToGenericTensor(AnyAsyncValueRef unknownTensor) const;
-  AnyAsyncValueRef convertToGenericValue(AnyAsyncValueRef unknownValue) const;
   ErrorOrSuccess printValue(raw_ostream &os, AnyAsyncValueRef const &value,
                             ResultOutputStyle style, unsigned precision) const;
   ErrorOrSuccess processResultForBinaryOutput(const AnyAsyncValueRef &result,
