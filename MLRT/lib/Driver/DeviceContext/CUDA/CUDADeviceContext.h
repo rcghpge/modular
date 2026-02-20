@@ -111,27 +111,20 @@ public:
 private:
   void eventCacheClear() const;
 
-  // We only support CUDA architectures sm_60 and above.
-  static constexpr int MIN_COMPUTE_CAPABILITY = 60;
+  // CUDA 13 only supports Turing (sm_75) architectures and later.
+  static constexpr int MIN_COMPUTE_CAPABILITY = 75;
 
-  // We only support CUDA 12.5 and NVIDIA driver 555 and above.
-  // We should support CUDA 12.0 and later, but some users reported problems
-  // with NVIDIA drivers earlier than 555. We don't have a good way to check the
-  // NVIDIA driver version, but we can check the CUDA version.
+  // We require CUDA 13 and NVIDIA driver 580 or above.
+  // CUDA 13 raised the minimum driver requirement to 580 and dropped
+  // support for pre-Turing hardware.
   //
-  // It is a bit difficult to find the mapping of NVIDIA driver version to CUDA
-  // version. This table is the best I can find:
+  // NVIDIA driver to CUDA version mapping:
   // https://docs.nvidia.com/deploy/cuda-compatibility/index.html#use-the-right-compat-package
   //
-  // So following this table, we assume that CUDA 12.5 corresponds to NVIDIA
-  // driver 555.
-  //
-  // On AWS and GCP, the CUDA driver version is 12.4 and the NVIDIA driver
-  // version is 550 by default. Since we want to easily deploy our cluster
-  // product on those cloud providers, we use CUDA 12.4 and NVIDIA driver 550
-  // as the minimum version.
-  static constexpr int MIN_CUDA_DRIVER_VERSION = 12040;
-  static constexpr int MIN_NVIDIA_DRIVER_VERSION = 550;
+  // Users on older drivers or hardware can set MODULAR_NVPTX_COMPILER_PATH
+  // to use an external ptxas binary instead of the bundled libnvptxcompiler.
+  static constexpr int MIN_CUDA_DRIVER_VERSION = 13000;
+  static constexpr int MIN_NVIDIA_DRIVER_VERSION = 580;
 
   const CUDADriver &driver_;
   const CUdevice cudaDevice_;

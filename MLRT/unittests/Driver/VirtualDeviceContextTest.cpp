@@ -255,4 +255,29 @@ TEST_F(VirtualDeviceContextTest, CompileFunctionDefaultPath) {
 #endif
 }
 
+#if MODULAR_LINUX
+TEST_F(VirtualDeviceContextTest, ApiVersionIsCUDA13OrLater) {
+  auto device = createCompilationDevice("sm_80");
+  ASSERT_NE(device, nullptr);
+  ASSIGN_NO_ERR(int, apiVersion, device->getApiVersion());
+  EXPECT_GE(apiVersion, 13000);
+}
+
+TEST_F(VirtualDeviceContextTest, CompileForTuringArchitecture) {
+  auto device = createCompilationDevice("sm_75");
+  ASSERT_NE(device, nullptr);
+  ASSIGN_NO_ERR(M::BufferRef, cubin,
+                device->compileFunction(vecAddPtx, "", 3, "sm_75"));
+  EXPECT_GT(cubin->getBufferSize(), 0u);
+}
+
+TEST_F(VirtualDeviceContextTest, CompileForHopperArchitecture) {
+  auto device = createCompilationDevice("sm_90");
+  ASSERT_NE(device, nullptr);
+  ASSIGN_NO_ERR(M::BufferRef, cubin,
+                device->compileFunction(vecAddPtx, "", 3, "sm_90"));
+  EXPECT_GT(cubin->getBufferSize(), 0u);
+}
+#endif // MODULAR_LINUX
+
 } // namespace M::Driver

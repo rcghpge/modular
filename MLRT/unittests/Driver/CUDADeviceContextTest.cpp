@@ -731,4 +731,12 @@ TEST_F(CUDADeviceContextTest, NVMLGetPciInfo) {
   EXPECT_LE(pciInfo.device, 31u);
 }
 
+TEST_F(CUDADeviceContextTest, CUDA13DriverVersion) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, 0));
+  ASSIGN_NO_ERR(int, apiVersion, ctx->device().getApiVersion());
+  EXPECT_GE(apiVersion, 13000)
+      << "Expected CUDA 13+ API version after libnvptxcompiler upgrade";
+}
+
 } // namespace

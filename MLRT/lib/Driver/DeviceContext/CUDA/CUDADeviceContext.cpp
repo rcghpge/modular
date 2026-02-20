@@ -454,9 +454,12 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
 
   if (computeCapability_ < MIN_COMPUTE_CAPABILITY) {
     RETURN_ERROR(
-        "MAX only supports CUDA Pascal architectures or higher.\nIf you "
-        "need to use older hardware, set MODULAR_NVPTX_COMPILER_PATH to "
-        "the path of a compatible ptxas binary to bypass this check.");
+        "MAX only supports NVIDIA Turing (sm_75) architectures or higher. "
+        "Your GPU has compute capability " +
+        llvm::Twine(computeCapability_) +
+        ". For older hardware, set MODULAR_NVPTX_COMPILER_PATH to use an "
+        "external ptxas binary.\nFor more information, see "
+        "https://modul.ar/gpu-requirements.");
   }
 
   int driverVersion = 0;
@@ -469,10 +472,9 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
         apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
         ". The driver version MAX detected is: " +
         apiVersionToString(driverVersion) +
-        ".\nIf you need to use an older driver, set "
-        "MODULAR_NVPTX_COMPILER_PATH to the path of a compatible ptxas "
-        "binary to bypass this check."
-        "\nFor more information, see https://modul.ar/gpu-requirements.");
+        ". For older drivers, set MODULAR_NVPTX_COMPILER_PATH to use an "
+        "external ptxas binary.\nFor more information, see "
+        "https://modul.ar/gpu-requirements.");
   }
 
   return success();
