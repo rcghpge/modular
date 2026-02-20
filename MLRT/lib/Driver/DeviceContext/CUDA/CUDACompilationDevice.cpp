@@ -122,6 +122,7 @@ ErrorOr<const char *> CUDACompilationDevice::getArchName() const {
   return targetArch().c_str();
 }
 
+#if MODULAR_LINUX
 // Compile PTX to CUBIN by invoking an external ptxas binary.
 // This is used when MODULAR_NVPTX_COMPILER_PATH is set, allowing users on
 // older NVIDIA drivers or hardware to bypass our bundled libnvptxcompiler.
@@ -208,6 +209,7 @@ compilePTXToCUBINViaPTXAS(StringRef ptxasCompilerPath, StringRef ptx,
 
   return M::Buffer::get((*cubinBuf)->getBuffer());
 }
+#endif // MODULAR_LINUX
 
 ErrorOr<M::BufferRef>
 CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
