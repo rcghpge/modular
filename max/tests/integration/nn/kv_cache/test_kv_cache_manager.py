@@ -19,7 +19,7 @@ from max.engine import InferenceSession
 from max.graph import DeviceRef
 from max.interfaces import RequestID
 from max.kv_cache import PagedKVCacheManager
-from max.nn.legacy.kv_cache import KVCacheParams, KVCacheStrategy
+from max.nn.legacy.kv_cache import KVCacheParams
 from test_common.context_utils import create_text_context
 
 
@@ -34,7 +34,7 @@ async def test_step() -> None:
         n_kv_heads=8,
         head_dim=128,
         num_layers=num_layers,
-        cache_strategy=KVCacheStrategy.PAGED,
+        cache_strategy="paged",
         page_size=128,
         devices=[DeviceRef.from_device(device)],
     )
@@ -90,7 +90,7 @@ async def test_claim_and_release() -> None:
         n_kv_heads=8,
         head_dim=128,
         num_layers=10,
-        cache_strategy=KVCacheStrategy.PAGED,
+        cache_strategy="paged",
         page_size=128,
         devices=[DeviceRef.CPU()],
     )
@@ -146,7 +146,7 @@ async def test_fetch_paged() -> None:
         n_kv_heads=1,
         head_dim=16,
         num_layers=10,
-        cache_strategy=KVCacheStrategy.PAGED,
+        cache_strategy="paged",
         page_size=128,
         devices=[DeviceRef.CPU()],
     )
@@ -170,3 +170,33 @@ async def test_fetch_paged() -> None:
     kv_collection = kv_manager.get_runtime_inputs([contexts[:3]])[0]
 
     assert kv_collection is not None
+
+
+@pytest.mark.asyncio
+async def test_reserve_claims_and_releases() -> None:
+    device = CPU()
+    params = KVCacheParams(
+        dtype=DType.float32,
+        n_kv_heads=1,
+        head_dim=16,
+        num_layers=10,
+        cache_strategy="paged",
+        page_size=128,
+        devices=[DeviceRef.CPU()],
+    )
+
+    kv_manager = PagedKVCacheManager(
+        params=params,
+        session=InferenceSession(devices=[device]),
+        total_num_pages=8,
+    )
+    contexts = [
+        create_text_context(np.zeros(1, dtype=np.int64)) for _ in range(2)
+    ]
+
+    with kv_manager.reserve(contexts, replica_idx=0, num_steps=1):
+        for context in contexts:
+            assert kv_manager.contains(context.request_id, replica_idx=0)
+
+    for context in contexts:
+        assert not kv_manager.contains(context.request_id, replica_idx=0)

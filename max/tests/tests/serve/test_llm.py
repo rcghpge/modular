@@ -126,7 +126,7 @@ def app(
         tokenizer=MockTokenizer(),
     )
     app = fastapi_app(
-        Settings(api_types=[APIType.OPENAI], MAX_SERVE_USE_HEARTBEAT=False),
+        Settings(api_types=[APIType.OPENAI], use_heartbeat=False),
         serving_settings,
     )
     yield app
@@ -251,9 +251,9 @@ async def test_ttft_recorded_once_per_chunk() -> None:
 
     async def mock_stream(
         request_id: str, context: Any
-    ) -> AsyncGenerator[TextGenerationOutput, None]:
+    ) -> AsyncGenerator[list[TextGenerationOutput], None]:
         for response in scheduler_responses:
-            yield response
+            yield [response]
 
     # Mock context returned by tokenizer
     # Create mock tokens with proper __len__ and active_length

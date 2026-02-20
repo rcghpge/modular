@@ -13,10 +13,8 @@
 
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextAndVisionContext
 from max.pipelines.lib import (
-    RopeType,
     SupportedArchitecture,
     SupportedEncoding,
     TextAndVisionTokenizer,
@@ -43,15 +41,15 @@ gemma3_multimodal_arch = SupportedArchitecture(
     example_repo_ids=example_repo_ids,
     default_encoding=SupportedEncoding.bfloat16,
     supported_encodings={
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
-        SupportedEncoding.float8_e4m3fn: [KVCacheStrategy.PAGED],
+        SupportedEncoding.bfloat16: ["paged"],
+        SupportedEncoding.float8_e4m3fn: ["paged"],
     },
     pipeline_model=Gemma3_MultiModalModel,
     task=PipelineTask.TEXT_GENERATION,
     tokenizer=TextAndVisionTokenizer,
     default_weights_format=WeightsFormat.safetensors,
     multi_gpu_supported=True,
-    rope_type=RopeType.normal,
+    rope_type="normal",
     required_arguments={
         "enable_prefix_caching": False,
         "enable_chunked_prefill": False,

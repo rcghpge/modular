@@ -17,6 +17,7 @@ import logging
 import math
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Any, cast
 
 import numpy as np
@@ -47,7 +48,6 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
     PipelineModel,
-    SupportedEncoding,
 )
 from transformers.models.auto.configuration_auto import AutoConfig
 
@@ -158,6 +158,7 @@ class _VisionStacker:
         np.copyto(out[sl], np.asarray(images[sl], dtype=images[0].dtype))
 
 
+@dataclass
 class Idefics3Inputs(ModelInputs):
     """A class representing inputs for the Idefics3 model."""
 
@@ -167,31 +168,15 @@ class Idefics3Inputs(ModelInputs):
     input_row_offsets: Buffer
     """Tensor containing the offsets for each row in the ragged input sequence."""
 
+    return_n_logits: Buffer
+    """Number of logits to return, used by speculative decoding for example."""
+
     # Vision inputs
     pixel_values: Buffer | None = None
     """Pixel values for vision inputs."""
 
     image_token_indices: Buffer | None = None
     """Pre-computed indices of image tokens in the input sequence."""
-
-    return_n_logits: Buffer
-    """Number of logits to return, used by speculative decoding for example."""
-
-    def __init__(
-        self,
-        input_ids: Buffer,
-        input_row_offsets: Buffer,
-        return_n_logits: Buffer,
-        pixel_values: Buffer | None = None,
-        kv_cache_inputs: KVCacheInputs | None = None,
-        image_token_indices: Buffer | None = None,
-    ) -> None:
-        self.input_ids = input_ids
-        self.input_row_offsets = input_row_offsets
-        self.return_n_logits = return_n_logits
-        self.pixel_values = pixel_values
-        self.kv_cache_inputs = kv_cache_inputs
-        self.image_token_indices = image_token_indices
 
     @property
     def has_vision_inputs(self) -> bool:
@@ -216,7 +201,6 @@ class Idefics3Model(PipelineModel[TextAndVisionContext], KVCacheMixin):
         pipeline_config: PipelineConfig,
         session: InferenceSession,
         huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -227,7 +211,6 @@ class Idefics3Model(PipelineModel[TextAndVisionContext], KVCacheMixin):
             pipeline_config,
             session,
             huggingface_config,
-            encoding,
             devices,
             kv_cache_config,
             weights,
@@ -246,7 +229,7 @@ class Idefics3Model(PipelineModel[TextAndVisionContext], KVCacheMixin):
         pipeline_config: PipelineConfig, huggingface_config: AutoConfig
     ) -> int:
         """Calculates the maximum sequence length for the Idefics3 model."""
-        max_seq_len = pipeline_config.max_length
+        max_seq_len = pipeline_config.model.max_length
         if max_seq_len:
             return max_seq_len
 

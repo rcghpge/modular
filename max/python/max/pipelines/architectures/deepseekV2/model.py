@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 import numpy as np
@@ -42,7 +43,6 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
     PipelineModel,
-    SupportedEncoding,
     upper_bounded_default,
 )
 from max.pipelines.lib.log_probabilities import (
@@ -58,6 +58,7 @@ from .model_config import DeepseekV2Config
 logger = logging.getLogger("max.pipelines")
 
 
+@dataclass
 class DeepseekV2Inputs(ModelInputs):
     """A class representing inputs for the DeepseekV2 model.
 
@@ -71,27 +72,8 @@ class DeepseekV2Inputs(ModelInputs):
     input_row_offsets: Buffer
     signal_buffers: list[Buffer]
     """Device buffers used for synchronization in communication collectives."""
-    return_n_logits: Buffer
 
-    def __init__(
-        self,
-        tokens: Buffer,
-        input_row_offsets: Buffer,
-        signal_buffers: list[Buffer],
-        kv_cache_inputs: KVCacheInputs | None = None,
-        return_n_logits: Buffer | None = None,
-    ) -> None:
-        self.tokens = tokens
-        self.input_row_offsets = input_row_offsets
-        self.signal_buffers = signal_buffers
-        self.kv_cache_inputs = kv_cache_inputs
-        if return_n_logits is None:
-            # Provide a default value if none is provided
-            self.return_n_logits = Buffer.from_numpy(
-                np.array([1], dtype=np.int64)
-            ).to(tokens.device)
-        else:
-            self.return_n_logits = return_n_logits
+    return_n_logits: Buffer = field(kw_only=True)
 
 
 class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
@@ -100,7 +82,6 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
         pipeline_config: PipelineConfig,
         session: InferenceSession,
         huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -115,7 +96,6 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
             pipeline_config,
             session,
             huggingface_config,
-            encoding,
             devices,
             kv_cache_config,
             weights,
@@ -230,12 +210,12 @@ class DeepseekV2Model(PipelineModel[TextContext], KVCacheMixin):
         try:
             return upper_bounded_default(
                 upper_bound=huggingface_config.max_position_embeddings,
-                default=pipeline_config.max_length,
+                default=pipeline_config.model.max_length,
             )
         except ValueError as e:
             raise ValueError(
                 "Unable to infer max_length for DeepseekV2, the provided "
-                f"max_length ({pipeline_config.max_length}) exceeds the "
+                f"max_length ({pipeline_config.model.max_length}) exceeds the "
                 f"model's max_seq_len "
                 f"({huggingface_config.max_position_embeddings})."
             ) from e

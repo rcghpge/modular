@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from max.driver import Buffer, Device
@@ -27,7 +28,6 @@ from max.pipelines.lib import (
     ModelInputs,
     PipelineConfig,
     PipelineModel,
-    SupportedEncoding,
 )
 from transformers import AutoConfig
 
@@ -36,6 +36,7 @@ from .graph import build_graph
 logger = logging.getLogger("max.pipelines")
 
 
+@dataclass
 class WhisperInputs(ModelInputs):
     """A class representing inputs for the Whisper model.
 
@@ -62,7 +63,6 @@ class Whisper(PipelineModel[Any]):
         pipeline_config: PipelineConfig,
         session: InferenceSession,
         huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -73,7 +73,6 @@ class Whisper(PipelineModel[Any]):
             pipeline_config,
             session,
             huggingface_config,
-            encoding,
             devices,
             kv_cache_config,
             weights,
@@ -96,7 +95,7 @@ class Whisper(PipelineModel[Any]):
         graph = build_graph(
             state_dict,
             self.huggingface_config,
-            self.encoding.dtype,
+            self.dtype,
             DeviceRef.from_device(self.devices[0]),
         )
         timer.mark_build_complete()

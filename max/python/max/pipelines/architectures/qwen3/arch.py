@@ -13,16 +13,14 @@
 
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
-    RopeType,
     SupportedArchitecture,
     SupportedEncoding,
     TextTokenizer,
 )
 
-from ..llama3 import weight_adapters
+from ..llama3_legacy import weight_adapters
 from .model import Qwen3Model
 from .model_config import Qwen3Config
 from .weight_adapters import convert_qwen3_moe_state_dict
@@ -34,17 +32,13 @@ qwen3_arch = SupportedArchitecture(
     default_weights_format=WeightsFormat.safetensors,
     default_encoding=SupportedEncoding.bfloat16,
     supported_encodings={
-        SupportedEncoding.bfloat16: [
-            KVCacheStrategy.PAGED,
-        ],
-        SupportedEncoding.float32: [
-            KVCacheStrategy.PAGED,
-        ],
+        SupportedEncoding.bfloat16: ["paged"],
+        SupportedEncoding.float32: ["paged"],
     },
     pipeline_model=Qwen3Model,
     tokenizer=TextTokenizer,
     context_type=TextContext,
-    rope_type=RopeType.normal,
+    rope_type="normal",
     weight_adapters={
         WeightsFormat.safetensors: weight_adapters.convert_safetensor_state_dict,
     },
@@ -61,17 +55,13 @@ qwen3_moe_arch = SupportedArchitecture(
     default_weights_format=WeightsFormat.safetensors,
     default_encoding=SupportedEncoding.bfloat16,
     supported_encodings={
-        SupportedEncoding.bfloat16: [
-            KVCacheStrategy.PAGED,
-        ],
-        SupportedEncoding.float32: [
-            KVCacheStrategy.PAGED,
-        ],
+        SupportedEncoding.bfloat16: ["paged"],
+        SupportedEncoding.float32: ["paged"],
     },
     pipeline_model=Qwen3Model,
     tokenizer=TextTokenizer,
     context_type=TextContext,
-    rope_type=RopeType.normal,
+    rope_type="normal",
     weight_adapters={
         WeightsFormat.safetensors: convert_qwen3_moe_state_dict,
     },

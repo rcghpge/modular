@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -33,6 +34,7 @@ from max.nn.legacy.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
     PagedCacheValues,
+    uses_opaque,
 )
 from max.nn.legacy.layer import Module
 from max.nn.legacy.transformer import ReturnLogits
@@ -45,7 +47,6 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
     PipelineModel,
-    SupportedEncoding,
     upper_bounded_default,
 )
 from max.profiler import traced
@@ -58,6 +59,7 @@ from .model_config import MistralConfig
 logger = logging.getLogger("max.pipelines")
 
 
+@dataclass
 class MistralInputs(ModelInputs):
     """A class representing inputs for the Mistral model.
 
@@ -73,20 +75,6 @@ class MistralInputs(ModelInputs):
     """Device buffers used for synchronization in communication collectives."""
     return_n_logits: Buffer
 
-    def __init__(
-        self,
-        input_tokens: Buffer,
-        input_row_offsets: Buffer,
-        signal_buffers: list[Buffer],
-        return_n_logits: Buffer,
-        kv_cache_inputs: KVCacheInputs | None = None,
-    ) -> None:
-        self.input_tokens = input_tokens
-        self.input_row_offsets = input_row_offsets
-        self.signal_buffers = signal_buffers
-        self.return_n_logits = return_n_logits
-        self.kv_cache_inputs = kv_cache_inputs
-
 
 class MistralModel(PipelineModel[TextContext], KVCacheMixin):
     model: Model
@@ -100,7 +88,6 @@ class MistralModel(PipelineModel[TextContext], KVCacheMixin):
         pipeline_config: PipelineConfig,
         session: InferenceSession,
         huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -112,7 +99,6 @@ class MistralModel(PipelineModel[TextContext], KVCacheMixin):
             pipeline_config,
             session,
             huggingface_config,
-            encoding,
             devices,
             kv_cache_config,
             weights,
@@ -165,7 +151,7 @@ class MistralModel(PipelineModel[TextContext], KVCacheMixin):
 
         context_batch = replica_batches[0]
 
-        if not self.kv_cache_config.cache_strategy.uses_opaque():
+        if not uses_opaque(self.kv_cache_config.cache_strategy):
             # TODO(MODELS-407): Consider deleting the padded path entirely.
             raise ValueError("Mistral unsupported for padded token batches")
 
@@ -200,7 +186,7 @@ class MistralModel(PipelineModel[TextContext], KVCacheMixin):
     ) -> MistralInputs:
         assert isinstance(prev_model_inputs, MistralInputs)
 
-        if not self.kv_cache_config.cache_strategy.uses_opaque():
+        if not uses_opaque(self.kv_cache_config.cache_strategy):
             # TODO(MODELS-407): Consider deleting the padded path entirely.
             raise ValueError("multistep unsupported for padded token batches")
 
@@ -239,12 +225,12 @@ class MistralModel(PipelineModel[TextContext], KVCacheMixin):
         try:
             return upper_bounded_default(
                 upper_bound=huggingface_config.max_position_embeddings,
-                default=pipeline_config.max_length,
+                default=pipeline_config.model.max_length,
             )
         except ValueError as e:
             raise ValueError(
                 "Unable to infer max_length for Mistral, the provided "
-                f"max_length ({pipeline_config.max_length}) exceeds the "
+                f"max_length ({pipeline_config.model.max_length}) exceeds the "
                 f"model's max_position_embeddings "
                 f"({huggingface_config.max_position_embeddings})."
             ) from e

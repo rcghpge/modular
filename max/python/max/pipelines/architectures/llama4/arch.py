@@ -14,12 +14,10 @@
 
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextContext
 
 # TODO(bduke): Replace with actual Llama4 model once implemented.
 from max.pipelines.lib import (
-    RopeType,
     SupportedArchitecture,
     SupportedEncoding,
     TextTokenizer,
@@ -39,7 +37,7 @@ llama4_arch = SupportedArchitecture(
     ],
     default_encoding=SupportedEncoding.bfloat16,
     supported_encodings={
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
+        SupportedEncoding.bfloat16: ["paged"],
     },
     pipeline_model=Llama4Model,
     task=PipelineTask.TEXT_GENERATION,
@@ -48,7 +46,7 @@ llama4_arch = SupportedArchitecture(
     default_weights_format=WeightsFormat.safetensors,
     multi_gpu_supported=True,
     # NOTE: Llama 4 interleaves RoPE and NoPE (no positional encodings).
-    rope_type=RopeType.normal,
+    rope_type="normal",
     weight_adapters={
         WeightsFormat.safetensors: weight_adapters.convert_safetensor_state_dict,
     },

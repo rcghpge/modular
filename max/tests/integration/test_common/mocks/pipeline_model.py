@@ -26,7 +26,6 @@ from max.kv_cache import PagedKVCacheManager
 from max.nn.legacy.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
-    KVCacheStrategy,
 )
 from max.nn.legacy.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.core import TextContext
@@ -37,9 +36,7 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
     PipelineModel,
-    SupportedEncoding,
 )
-from max.pipelines.lib.graph_capture import DeviceGraphExecutor
 from transformers import AutoConfig
 
 
@@ -63,7 +60,6 @@ class MockPipelineModel(PipelineModel):
         pipeline_config: PipelineConfig,
         session: InferenceSession,
         huggingface_config: AutoConfig,
-        encoding: SupportedEncoding,
         kv_cache_config: KVCacheConfig,
         weights: Weights,
         devices: list[Device] = [],  # noqa: B006
@@ -75,7 +71,6 @@ class MockPipelineModel(PipelineModel):
         self.huggingface_config = huggingface_config
         self.vocab_size = pipeline_config.vocab_size  # type: ignore
         self.eos_token = pipeline_config.eos_token  # type: ignore
-        self.encoding = encoding
         self.kv_cache_config = kv_cache_config
         self.weights = weights
         self.adapter = adapter
@@ -88,7 +83,7 @@ class MockPipelineModel(PipelineModel):
             self.devices = devices
 
         # This is required to smuggle these parameters in.
-        self.max_length = pipeline_config.max_length
+        self.max_length = pipeline_config.model.max_length
         self.kv_manager = MagicMock(spec=PagedKVCacheManager)
 
         # These mypy ignores, are needed to smuggle in these settings without
@@ -101,7 +96,7 @@ class MockPipelineModel(PipelineModel):
             LoRAManager(
                 config=self.pipeline_config.lora,
                 base_model_path=pipeline_config.model.model_path,
-                base_dtype=self.encoding.dtype,
+                base_dtype=self.dtype,
                 n_heads=huggingface_config.num_attention_heads,
                 n_kv_heads=huggingface_config.num_key_value_heads,
                 head_dim=huggingface_config.head_dim,
@@ -111,20 +106,14 @@ class MockPipelineModel(PipelineModel):
             and self.pipeline_config.lora.enable_lora
             else None
         )
-        self._device_graph_capture_enabled = (
-            pipeline_config.device_graph_capture
-        )
-        self._device_graph_executor = DeviceGraphExecutor(
-            self._execution_trace_inputs
-        )
 
     @classmethod
     def calculate_max_seq_len(
         cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
     ) -> int:
         MAX_LENGTH = 1200
-        if pipeline_config.max_length:
-            return min(MAX_LENGTH, pipeline_config.max_length)
+        if pipeline_config.model.max_length:
+            return min(MAX_LENGTH, pipeline_config.model.max_length)
 
         return MAX_LENGTH
 
@@ -143,7 +132,7 @@ class MockPipelineModel(PipelineModel):
             head_dim=1,
             num_layers=1,
             enable_prefix_caching=False,
-            cache_strategy=KVCacheStrategy.PAGED,
+            cache_strategy="paged",
             devices=devices,
             data_parallel_degree=pipeline_config.model.data_parallel_degree,
         )

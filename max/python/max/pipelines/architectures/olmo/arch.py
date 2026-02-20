@@ -13,16 +13,14 @@
 
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
-    RopeType,
     SupportedArchitecture,
     SupportedEncoding,
     TextTokenizer,
 )
 
-from ..llama3 import weight_adapters
+from ..llama3_legacy import weight_adapters
 from .model import OlmoModel
 from .model_config import OlmoConfig
 
@@ -33,13 +31,13 @@ olmo_arch = SupportedArchitecture(
     default_weights_format=WeightsFormat.gguf,
     default_encoding=SupportedEncoding.float32,
     supported_encodings={
-        SupportedEncoding.float32: [KVCacheStrategy.PAGED],
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
+        SupportedEncoding.float32: ["paged"],
+        SupportedEncoding.bfloat16: ["paged"],
     },
     pipeline_model=OlmoModel,
     tokenizer=TextTokenizer,
     context_type=TextContext,
-    rope_type=RopeType.normal,
+    rope_type="normal",
     weight_adapters={
         WeightsFormat.safetensors: weight_adapters.convert_safetensor_state_dict,
         WeightsFormat.gguf: weight_adapters.convert_gguf_state_dict,

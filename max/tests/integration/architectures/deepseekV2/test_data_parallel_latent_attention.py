@@ -27,7 +27,6 @@ from max.nn.legacy.attention.multi_latent_attention import (
 )
 from max.nn.legacy.kv_cache import (
     KVCacheParams,
-    KVCacheStrategy,
     PagedCacheValues,
 )
 from max.nn.legacy.rotary_embedding import (
@@ -79,7 +78,7 @@ def generate_latent_attention_max_outputs_dp(
         n_kv_heads=1,
         head_dim=576,
         num_layers=config.num_hidden_layers,
-        cache_strategy=KVCacheStrategy.PAGED,
+        cache_strategy="paged",
         devices=[DeviceRef.GPU()],
         page_size=128,
         is_mla=True,
@@ -202,6 +201,7 @@ def generate_latent_attention_max_outputs_dp(
     return torch_output[None, :, :]
 
 
+@pytest.mark.skip("MODELS-1039: times out on B200")
 @pytest.mark.skipif(
     accelerator_api() == "hip", reason="MLA kernel only supports Nvidia GPUs"
 )
@@ -221,6 +221,7 @@ def test_data_parallel_latent_attention_prefill_matches_single(
     torch.testing.assert_close(single, dp, rtol=5e-4, atol=5e-4)
 
 
+@pytest.mark.skip("MODELS-1039: times out on B200")
 @pytest.mark.skipif(
     accelerator_api() == "hip", reason="MLA kernel only supports Nvidia GPUs"
 )

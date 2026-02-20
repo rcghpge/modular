@@ -13,16 +13,14 @@
 
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
-    RopeType,
     SupportedArchitecture,
     SupportedEncoding,
     TextTokenizer,
 )
 
-from ..llama3.model_config import Llama3Config
+from ..llama3_legacy.model_config import Llama3Config
 from . import weight_adapters
 from .model import EagleLlama3Model
 
@@ -33,13 +31,13 @@ eagle_llama_arch = SupportedArchitecture(
     ],
     default_encoding=SupportedEncoding.bfloat16,
     supported_encodings={
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
-        SupportedEncoding.float32: [KVCacheStrategy.PAGED],
+        SupportedEncoding.bfloat16: ["paged"],
+        SupportedEncoding.float32: ["paged"],
     },
     pipeline_model=EagleLlama3Model,
     context_type=TextContext,
     tokenizer=TextTokenizer,
-    rope_type=RopeType.normal,
+    rope_type="normal",
     default_weights_format=WeightsFormat.safetensors,
     multi_gpu_supported=False,
     weight_adapters={

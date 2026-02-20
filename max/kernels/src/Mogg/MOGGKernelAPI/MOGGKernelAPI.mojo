@@ -199,6 +199,7 @@ from nn.kv_cache_ragged import (
     k_matmul_ragged_paged_scale,
     kv_cache_2m_iadd_dispatch,
     kv_cache_store_ragged,
+    kv_cache_store_padded,
     kv_matmul_ragged_paged,
     unfused_qkv_matmul_ragged_paged_gguf_quantized,
 )
@@ -218,6 +219,7 @@ from nn.normalization import (
     group_norm,
     layer_norm,
     rms_norm,
+    rms_norm_fused_fp8,
     rms_norm_fused_residual_add,
 )
 from nn.pad import pad_constant, pad_reflect, pad_repeat, pad_shape
@@ -414,6 +416,7 @@ struct Range:
         dtype: DType,
         target: StaticString,
         _trace_name: StaticString,
+        use_blocking_impl: Bool = False,
     ](
         output: FusedOutputTensor[dtype=dtype, rank=1],
         start: Scalar[dtype],
@@ -432,6 +435,7 @@ struct Range:
             func,
             target=target,
             _trace_name=_trace_name,
+            use_blocking_impl=use_blocking_impl,
         ](output, ctx)
 
     @staticmethod
@@ -2156,6 +2160,7 @@ struct Slice:
         static_steps: DimList,
         dtype: DType,
         rank: Int,
+        use_blocking_impl: Bool = False,
     ](
         output: OutputTensor[dtype=dtype, rank=rank],
         input: InputTensor[dtype=dtype, rank=rank],
@@ -2171,6 +2176,7 @@ struct Slice:
         view_copy_impl[
             _trace_name=_trace_name,
             target=target,
+            use_blocking_impl=use_blocking_impl,
         ](output, view_tensor, ctx)
 
     @staticmethod
@@ -3576,6 +3582,69 @@ struct RMSNorm:
         return input.shape()
 
 
+@compiler.register("rms_norm_fused_quantize_dynamic_scaled_fp8")
+struct RMSNormFusedQuantizeDynamicScaledFP8:
+    @staticmethod
+    fn execute[
+        input_dtype: DType,
+        output_dtype: DType,
+        scale_dtype: DType,
+        rank: Int,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=output_dtype, rank=rank],
+        scales: OutputTensor[dtype=scale_dtype, rank=rank],
+        input: FusedInputTensor[dtype=input_dtype, rank=rank],
+        gamma: InputTensor[dtype=input_dtype, rank=1],
+        epsilon: Scalar[dtype=input_dtype],
+        weight_offset: Scalar[dtype=input_dtype],
+        scale_ub: Float32,
+        ctx: DeviceContextPtr,
+    ) capturing raises:
+        if output.shape() != input.shape():
+            raise Error("Input and output buffers are not same shape")
+
+        @parameter
+        @always_inline
+        fn input_fn[
+            width: Int, _rank: Int
+        ](coords: IndexList[_rank]) -> SIMD[input_dtype, width]:
+            return input._lambda_load[width=width, element_alignment=width](
+                rebind[IndexList[input.rank]](coords)
+            )
+
+        rms_norm_fused_fp8[
+            input_dtype,
+            output_dtype,
+            scale_dtype,
+            rank,
+            input_fn,
+            target=target,
+        ](
+            input.shape(),
+            managed_tensor_slice_to_ndbuffer(output),
+            gamma.to_tile_tensor[DType.int64](),
+            epsilon,
+            weight_offset,
+            ctx,
+            scale_ub,
+            managed_tensor_slice_to_ndbuffer(scales),
+        )
+
+    @staticmethod
+    fn shape[
+        input_dtype: DType,
+        rank: Int,
+    ](
+        input: InputTensor[dtype=input_dtype, rank=rank],
+        gamma: InputTensor[dtype=input_dtype, rank=1],
+        epsilon: Scalar[dtype=input_dtype],
+        weight_offset: Scalar[dtype=input_dtype],
+        scale_ub: Float32,
+    ) -> IndexList[rank]:
+        return input.shape()
+
+
 @compiler.register("group_norm")
 struct GroupNorm:
     @staticmethod
@@ -3863,6 +3932,7 @@ struct BatchMatmul:
         rank: Int,
         transpose_b: Bool,
         target: StaticString,
+        single_thread_blocking_override: Bool = False,
     ](
         c: _FusedComputeOutputTensor[rank=rank],
         a: InputTensor[rank=rank],
@@ -3904,7 +3974,7 @@ struct BatchMatmul:
                 batched_matmul_elementwise_epilogue_type
             ](output_fn) if lambdas_have_fusion else None,
             saturated_vnni=False,
-            single_thread_blocking_override=False,
+            single_thread_blocking_override=single_thread_blocking_override,
             target=target,
         ](c_buffer, a_buffer, b_buffer, context=ctx)
 
@@ -5324,7 +5394,7 @@ struct PaddedFlashAttentionGPU:
         var v_buffer = v.to_layout_tensor()
 
         comptime valid_length_t = LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
         ]
         _valid_length = rebind[valid_length_t](valid_length.to_layout_tensor())
 
@@ -5399,7 +5469,7 @@ struct RaggedFlashAttentionGPU:
         var v_buffer = v.to_layout_tensor()
 
         comptime input_row_offsets_t = LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
         ]
         _input_row_offsets = rebind[input_row_offsets_t](
             input_row_offsets.to_layout_tensor()
@@ -6053,7 +6123,7 @@ struct QMatmulGPURepackGPTQ_b4_g128_desc_act:
                     RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
                         perm_idx_lt.runtime_layout.shape.value.canonicalize()
                     ),
-                ),
+                ).get_immutable(),
                 ctx=ctx,
             )
 
@@ -6153,7 +6223,7 @@ fn generic_fused_qkv_matmul_kv_cache_bshd_paged_kernel_api[
     kv_collection: PagedKVCacheCollection[dtype, ...],
     layer_idx: UInt32,
     valid_lengths: LayoutTensor[
-        DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
     ],
     output: ManagedTensorSlice[dtype=dtype, rank=3],
     ctx: DeviceContextPtr,
@@ -6203,7 +6273,7 @@ struct Struct_fused_qkv_matmul_padded_paged:
             kv_collection,
             layer_idx,
             LayoutTensor[
-                DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+                DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
             ](
                 valid_lengths_lt.ptr,
                 RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
@@ -6775,7 +6845,7 @@ struct Struct_rope_ragged_paged[interleaved: Bool]:
         start_pos: InputTensor[dtype = DType.uint32, rank=1],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2],
         ctx: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         @always_inline
         @parameter
         fn description_fn() -> String:
@@ -6887,7 +6957,7 @@ struct Struct_mha_padded_paged:
             kv_collection,
             layer_idx,
             LayoutTensor[
-                DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+                DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
             ](
                 valid_lengths_lt.ptr,
                 RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
@@ -6938,7 +7008,9 @@ struct Struct_mha_ragged_paged:
             q.to_layout_tensor(),
             rebind[
                 LayoutTensor[
-                    DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+                    DType.uint32,
+                    Layout.row_major(UNKNOWN_VALUE),
+                    ImmutAnyOrigin,
                 ]
             ](input_row_offsets.to_layout_tensor()),
             kv_collection,
@@ -6989,7 +7061,9 @@ struct Struct_mha_ragged_paged_sink_weights:
             q.to_layout_tensor(),
             rebind[
                 LayoutTensor[
-                    DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+                    DType.uint32,
+                    Layout.row_major(UNKNOWN_VALUE),
+                    ImmutAnyOrigin,
                 ]
             ](input_row_offsets.to_layout_tensor()),
             kv_collection,
@@ -7766,27 +7840,18 @@ struct Struct_grouped_matmul_dynamic_scaled_nvfp4:
         if num_active_experts == 0:
             return
         cuda_ctx = context.get_device_context()
-        var c_layout_tensor = c.to_layout_tensor()
-        var a_layout_tensor = a.to_layout_tensor()
-        var b_layout_tensor = b.to_layout_tensor()
-        var a_scales_layout_tensor = a_scales.to_layout_tensor()
-        var b_scales_layout_tensor = b_scales.to_layout_tensor()
-        var expert_start_indices_layout_tensor = (
-            expert_start_indices.to_layout_tensor()
-        )
-        var a_scale_offsets_layout_tensor = a_scale_offsets.to_layout_tensor()
-        var expert_ids_layout_tensor = expert_ids.to_layout_tensor()
-        var expert_scales_layout_tensor = expert_scales.to_layout_tensor()
+        # Convert ManagedTensorSlice directly to TileTensor, bypassing
+        # LayoutTensor entirely.
         grouped_matmul_dynamic_scaled_nvfp4[transpose_b=True, target=target](
-            c_layout_tensor,
-            a_layout_tensor,
-            b_layout_tensor,
-            a_scales_layout_tensor,
-            b_scales_layout_tensor,
-            expert_start_indices_layout_tensor,
-            a_scale_offsets_layout_tensor,
-            expert_ids_layout_tensor,
-            expert_scales_layout_tensor,
+            c.to_tile_tensor[DType.int64](),
+            a.to_tile_tensor[DType.int64](),
+            b.to_tile_tensor[DType.int64](),
+            a_scales.to_tile_tensor[DType.int64](),
+            b_scales.to_tile_tensor[DType.int64](),
+            expert_start_indices.to_tile_tensor[DType.int64](),
+            a_scale_offsets.to_tile_tensor[DType.int64](),
+            expert_ids.to_tile_tensor[DType.int64](),
+            expert_scales.to_tile_tensor[DType.int64](),
             Int(num_active_experts),
             cuda_ctx,
         )
@@ -8029,7 +8094,7 @@ struct Struct_kv_cache_store_paged:
         max_lengths: InputTensor[dtype = DType.uint32, rank=2],
         layer_idx: UInt32,
         context: DeviceContextPtr,
-    ) raises:
+    ) capturing raises:
         var paged_kv_collection = generic_get_paged_cache(
             kv_blocks,
             cache_lengths,
@@ -8052,6 +8117,7 @@ struct Struct_kv_cache_store_paged:
             cuda_ctx = context.get_device_context()
 
         @parameter
+        @always_inline
         fn input_fn[
             width: Int, alignment: Int
         ](idx: IndexList[3]) capturing -> SIMD[dtype, width]:
@@ -8061,12 +8127,66 @@ struct Struct_kv_cache_store_paged:
                 idx,
             )
 
-        kv_cache_store_ragged[
-            cache_t=KVCacheT, input_fn=input_fn, target=target
-        ](
+        kv_cache_store_ragged[input_fn=input_fn, target=target](
             cache,
             inputs.shape(),
             input_row_offsets.to_layout_tensor(),
+            cuda_ctx,
+        )
+
+
+@compiler.register("mo.kv_cache.store.paged.padded")
+struct Struct_kv_cache_store_padded:
+    @always_inline
+    @staticmethod
+    fn execute[
+        dtype: DType, target: StaticString, key_or_value: Int
+    ](
+        inputs: FusedInputTensor[dtype=dtype, rank=4],
+        kv_blocks: MutableInputTensor[dtype=dtype, rank=6],
+        cache_lengths: InputTensor[dtype = DType.uint32, rank=1],
+        kv_lookup_table: InputTensor[dtype = DType.uint32, rank=2],
+        valid_lengths: InputTensor[dtype = DType.uint32, rank=1],
+        max_lengths: InputTensor[dtype = DType.uint32, rank=2],
+        layer_idx: UInt32,
+        context: DeviceContextPtr,
+    ) capturing raises:
+        var paged_kv_collection = generic_get_paged_cache(
+            kv_blocks,
+            cache_lengths,
+            kv_lookup_table,
+            max_lengths,
+        )
+        comptime KVCacheT = paged_kv_collection.CacheType
+        var cache: KVCacheT
+
+        @parameter
+        if key_or_value == 0:
+            cache = paged_kv_collection.get_key_cache(Int(layer_idx))
+        else:
+            cache = paged_kv_collection.get_value_cache(Int(layer_idx))
+
+        var cuda_ctx: Optional[DeviceContext] = None
+
+        @parameter
+        if is_gpu[target]():
+            cuda_ctx = context.get_device_context()
+
+        @parameter
+        @always_inline
+        fn input_fn[
+            width: Int, alignment: Int
+        ](idx: IndexList[4]) capturing -> SIMD[dtype, width]:
+            return inputs._lambda_load[
+                width=width, element_alignment=alignment
+            ](
+                idx,
+            )
+
+        kv_cache_store_padded[input_fn=input_fn, target=target](
+            cache,
+            inputs.shape(),
+            valid_lengths.to_layout_tensor(),
             cuda_ctx,
         )
 

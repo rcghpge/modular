@@ -664,27 +664,16 @@ struct String(
         self = String(StringSlice(unsafe_from_utf8_ptr=unsafe_from_utf8_ptr))
 
     @always_inline("nodebug")
-    fn __moveinit__(out self, deinit other: Self):
-        """Move initialize the string from another string.
-
-        Args:
-            other: The string to move.
-        """
-        self._ptr_or_data = other._ptr_or_data
-        self._len_or_data = other._len_or_data
-        self._capacity_or_data = other._capacity_or_data
-
-    @always_inline("nodebug")
-    fn __copyinit__(out self, other: Self):
+    fn __copyinit__(out self, copy: Self):
         """Copy initialize the string from another string.
 
         Args:
-            other: The string to copy.
+            copy: The string to copy.
         """
         # Keep inline strings inline, and static strings static.
-        self._ptr_or_data = other._ptr_or_data
-        self._len_or_data = other._len_or_data
-        self._capacity_or_data = other._capacity_or_data
+        self._ptr_or_data = copy._ptr_or_data
+        self._len_or_data = copy._len_or_data
+        self._capacity_or_data = copy._capacity_or_data
 
         # Increment the refcount if it has a mutable buffer.
         self._add_ref()
@@ -2628,7 +2617,7 @@ fn _calc_initial_buffer_size_int64(n0: UInt64) -> Int:
 
 
 fn _calc_initial_buffer_size(n0: Int) -> Int:
-    var sign = 0 if n0 > 0 else 1
+    var sign = 0 if n0 >= 0 else 1
 
     # Add 1 for the terminator
     return sign + n0._decimal_digit_count() + 1
@@ -2642,7 +2631,7 @@ fn _calc_initial_buffer_size[dtype: DType](n0: Scalar[dtype]) -> Int:
     @parameter
     if dtype.is_integral():
         var n = abs(n0)
-        var sign = 0 if n0 > 0 else 1
+        var sign = 0 if n0 >= 0 else 1
 
         @parameter
         if is_32bit() or bit_width_of[dtype]() <= 32:

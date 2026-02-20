@@ -1608,14 +1608,14 @@ fn mha_sm100_dispatch[
     scale: Float32,
     kv_input_row_offsets: OptionalReg[
         LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
         ]
     ],
     batch_size_arg: Int,
     partition: PartitionType,
     ctx: DeviceContext,
     sink_weights: OptionalReg[
-        LayoutTensor[q_type, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin]
+        LayoutTensor[q_type, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
     ],
 ) raises:
     comptime assert (
@@ -1816,7 +1816,7 @@ fn _mha_sm100_kv_input_row_offset_dispatch[
     valid_length: UnsafePointer[UInt32],
     kv_input_row_offsets: OptionalReg[
         LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
+            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
         ]
     ],
     sink_weights: SinkType,
@@ -2277,18 +2277,6 @@ struct TMADestination[dtype: DType, layout: Layout](TrivialRegisterPassable):
     ):
         self.mbar = mbar
         self.smem = smem
-
-    @always_inline
-    fn split_smem[
-        first: Layout, second: Layout
-    ](self) -> Tuple[
-        SharedMemLT[Self.dtype, first], SharedMemLT[Self.dtype, second]
-    ]:
-        comptime first_size = first.size()
-        return {
-            SharedMemLT[Self.dtype, first](self.smem.ptr),
-            SharedMemLT[Self.dtype, second](self.smem.ptr + first_size),
-        }
 
 
 struct TMAProducerPipeline[dtype: DType, config: FA4Config, is_k: Bool = True](

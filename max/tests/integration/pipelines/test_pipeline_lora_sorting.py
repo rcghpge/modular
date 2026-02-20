@@ -35,7 +35,6 @@ from max.nn.legacy.kv_cache import (
     KVCacheInputs,
     KVCacheInputsSequence,
     KVCacheParams,
-    KVCacheStrategy,
 )
 from max.pipelines.core import TextContext, TTSContext
 from max.pipelines.lib import (
@@ -137,7 +136,7 @@ class MockPipelineModel(PipelineModel[ContextT]):
             head_dim=1,
             num_layers=1,
             enable_prefix_caching=False,
-            cache_strategy=KVCacheStrategy.PAGED,
+            cache_strategy="paged",
             devices=[DeviceRef.from_device(d) for d in devices],
         )
 
@@ -303,7 +302,7 @@ def create_pipeline_with_lora(
         lora_manager=lora_manager
     )
 
-    mock_config = PipelineConfig.model_construct(max_length=512)
+    mock_config = PipelineConfig.model_construct()
     mock_config.model.quantization_encoding = SupportedEncoding.float32
     mock_config.sampling = SamplingConfig()
     mock_config.sampling.enable_structured_output = False
