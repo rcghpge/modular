@@ -25,4 +25,6 @@ struct InvalidOwnedArgConvention:
     fn execute[
         target: StaticString, dtype: DType, rank: Int
     ](output: OutputTensor[dtype=dtype, rank=rank]):
-        constrained[False, "oops"]()  # expected-error {{call expansion failed}}
+        comptime assert (
+            False
+        ), "oops"  # expected-error {{call expansion failed}}
