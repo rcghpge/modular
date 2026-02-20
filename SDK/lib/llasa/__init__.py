@@ -10,7 +10,6 @@ from max.pipelines.core import TTSContext
 from max.pipelines.lib import (
     PIPELINE_REGISTRY,
     SupportedArchitecture,
-    SupportedEncoding,
 )
 
 from .config import LlasaConfig
@@ -21,10 +20,10 @@ llasa_arch = SupportedArchitecture(
     name="LlasaDecoder",
     task=PipelineTask.AUDIO_GENERATION,
     example_repo_ids=["HKUSTAudio/Llasa-8B"],
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
-        SupportedEncoding.bfloat16: ["paged"],
-        SupportedEncoding.float32: ["paged"],
+        "bfloat16": ["paged"],
+        "float32": ["paged"],
     },
     pipeline_model=LlasaPipelineModel,
     default_weights_format=WeightsFormat.safetensors,

@@ -31,7 +31,7 @@ class SpeechLM:
         self,
         config: LlasaConfig,
         device_specs: list[driver.DeviceSpec] | None = None,
-        encoding: str = "bfloat16",
+        encoding: pipelines.SupportedEncoding = "bfloat16",
     ) -> None:
         """Initialize the speech language model.
 
@@ -49,7 +49,7 @@ class SpeechLM:
         pipeline_config = pipelines.PipelineConfig(
             model=pipelines.MAXModelConfig(
                 device_specs=device_specs,
-                quantization_encoding=pipelines.SupportedEncoding[encoding],
+                quantization_encoding=encoding,
                 model_path=config.llama_model_path,
                 trust_remote_code=True,
                 max_length=config.max_length,

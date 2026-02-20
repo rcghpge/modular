@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import numpy as np
-from max import driver
+from max import driver, pipelines
 
 from .config import LlasaConfig
 from .speech_lm import SpeechLM
@@ -28,7 +28,7 @@ class LlasaTTS:
         self,
         config: LlasaConfig,
         device_specs: list[driver.DeviceSpec] | None = None,
-        encoding: str = "bfloat16",
+        encoding: pipelines.SupportedEncoding = "bfloat16",
     ) -> None:
         """Initialize the Llasa TTS pipeline.
 
