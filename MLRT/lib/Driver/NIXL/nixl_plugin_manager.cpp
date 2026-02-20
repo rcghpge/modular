@@ -126,7 +126,10 @@ nixlPluginManager::nixlPluginManager() {
   //
   // Exactly one of these UCX plugin files should be loaded. Loading both of
   // them will cause issues.
-  void *dlLibMlx5 = dlopen("libmlx5.so", RTLD_NOW | RTLD_GLOBAL);
+  //
+  // Use the versioned soname; systems with rdma-core installed without -dev
+  // packages only ship libmlx5.so.1, not the unversioned symlink.
+  void *dlLibMlx5 = dlopen("libmlx5.so.1", RTLD_NOW | RTLD_GLOBAL);
 
   // CUDA Driver + NVML is needed for CUDA.
   void *dlLibCuda = dlopen("libcuda.so.1", RTLD_NOW | RTLD_GLOBAL);
