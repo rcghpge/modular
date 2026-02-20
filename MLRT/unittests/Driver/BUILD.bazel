@@ -68,7 +68,10 @@ modular_cc_test(
 modular_cc_test(
     name = "VirtualDeviceContextTest",
     size = "small",
-    srcs = ["VirtualDeviceContextTest.cpp"],
+    srcs = [
+        "ScopedEnvVar.h",
+        "VirtualDeviceContextTest.cpp",
+    ],
     target_compatible_with = select({
         "@platforms//os:macos": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -76,6 +79,8 @@ modular_cc_test(
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
     ],
 )
 

@@ -441,8 +441,18 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
   return Error("MAX with GPUs is only supported on Linux based systems.");
 #endif
 
+  // When MODULAR_NVPTX_COMPILER_PATH is set, the user is explicitly opting
+  // into a fallback compilation path for older drivers or hardware. Skip the
+  // minimum version checks since the whole point of the fallback is to bypass
+  // our bundled libnvptxcompiler's requirements.
+  if (llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_PATH"))
+    return success();
+
   if (computeCapability_ < MIN_COMPUTE_CAPABILITY) {
-    RETURN_ERROR("MAX only supports CUDA Pascal architectures or higher");
+    RETURN_ERROR(
+        "MAX only supports CUDA Pascal architectures or higher.\nIf you "
+        "need to use older hardware, set MODULAR_NVPTX_COMPILER_PATH to "
+        "the path of a compatible ptxas binary to bypass this check.");
   }
 
   int driverVersion = 0;
@@ -455,7 +465,10 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
         apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
         ". The driver version MAX detected is: " +
         apiVersionToString(driverVersion) +
-        ".\nFor more information, see https://modul.ar/gpu-requirements.");
+        ".\nIf you need to use an older driver, set "
+        "MODULAR_NVPTX_COMPILER_PATH to the path of a compatible ptxas "
+        "binary to bypass this check."
+        "\nFor more information, see https://modul.ar/gpu-requirements.");
   }
 
   return success();

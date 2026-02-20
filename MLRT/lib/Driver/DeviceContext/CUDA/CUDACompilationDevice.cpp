@@ -17,7 +17,11 @@
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FileUtilities.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <memory>
@@ -118,6 +122,93 @@ ErrorOr<const char *> CUDACompilationDevice::getArchName() const {
   return targetArch().c_str();
 }
 
+// Compile PTX to CUBIN by invoking an external ptxas binary.
+// This is used when MODULAR_NVPTX_COMPILER_PATH is set, allowing users on
+// older NVIDIA drivers or hardware to bypass our bundled libnvptxcompiler.
+//
+// Adapted from:
+// https://github.com/llvm/llvm-project/blob/cf5aa559a8b69/mlir/lib/Target/LLVM/NVVM/Target.cpp#L346
+static ErrorOr<M::BufferRef>
+compilePTXToCUBINViaPTXAS(StringRef ptxasCompilerPath, StringRef ptx,
+                          StringRef gpuName,
+                          ArrayRef<std::string> nvptxOptions) {
+  if (!llvm::sys::fs::is_regular_file(ptxasCompilerPath))
+    return Error("MODULAR_NVPTX_COMPILER_PATH points to '" + ptxasCompilerPath +
+                 "' which does not exist or is not a file");
+
+  if (!llvm::sys::fs::can_execute(ptxasCompilerPath))
+    return Error("MODULAR_NVPTX_COMPILER_PATH points to '" + ptxasCompilerPath +
+                 "' which is not executable");
+
+  // Create temp files for PTX input, CUBIN output, and log output.
+  llvm::SmallString<128> ptxPath, cubinPath, logPath;
+  if (auto ec = llvm::sys::fs::createTemporaryFile("mojo", "ptx", ptxPath))
+    return Error("Failed to create temporary PTX file: " + ec.message());
+  llvm::FileRemover ptxRemover(ptxPath);
+
+  if (auto ec = llvm::sys::fs::createTemporaryFile("mojo", "cubin", cubinPath))
+    return Error("Failed to create temporary CUBIN file: " + ec.message());
+  llvm::FileRemover cubinRemover(cubinPath);
+
+  if (auto ec = llvm::sys::fs::createTemporaryFile("mojo", "log", logPath))
+    return Error("Failed to create temporary log file: " + ec.message());
+  llvm::FileRemover logRemover(logPath);
+
+  // Write PTX to the temp file.
+  {
+    std::error_code ec;
+    llvm::raw_fd_ostream ptxStream(ptxPath, ec);
+    if (ec)
+      return Error("Failed to write PTX to temporary file: " + ec.message());
+    ptxStream << ptx;
+    if (ptxStream.has_error())
+      return Error("Failed to write PTX to temporary file: " +
+                   ptxPath.str().str());
+    ptxStream.flush();
+  }
+
+  // Build ptxas command line. Translate nvptxcompiler options to ptxas flags.
+  SmallVector<StringRef, 12> ptxasArgs(
+      {ptxasCompilerPath, ptxPath, "-o", cubinPath});
+  for (const auto &opt : nvptxOptions)
+    ptxasArgs.push_back(opt);
+
+  // Redirect stdout and stderr to the log file.
+  std::optional<StringRef> redirects[] = {
+      std::nullopt,
+      logPath,
+      logPath,
+  };
+
+  std::string errMsg;
+  int exitCode = llvm::sys::ExecuteAndWait(ptxasCompilerPath, ptxasArgs,
+                                           /*Env=*/std::nullopt,
+                                           /*Redirects=*/redirects,
+                                           /*SecondsToWait=*/0,
+                                           /*MemoryLimit=*/0,
+                                           /*ErrMsg=*/&errMsg);
+
+  if (exitCode != 0) {
+    // Try to read the log for a useful error message.
+    auto logBuf = llvm::MemoryBuffer::getFile(logPath);
+    if (logBuf && !(*logBuf)->getBuffer().empty())
+      return Error("ptxas compilation failed. Log:\n" +
+                   (*logBuf)->getBuffer().str());
+    if (!errMsg.empty())
+      return Error("ptxas compilation failed: " + errMsg);
+    return Error("ptxas compilation failed with exit code " +
+                 std::to_string(exitCode));
+  }
+
+  // Read the resulting CUBIN.
+  auto cubinBuf = llvm::MemoryBuffer::getFile(cubinPath);
+  if (!cubinBuf)
+    return Error("Failed to read compiled CUBIN from " + cubinPath.str().str() +
+                 ": " + cubinBuf.getError().message());
+
+  return M::Buffer::get((*cubinBuf)->getBuffer());
+}
+
 ErrorOr<M::BufferRef>
 CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
                                        int32_t optimizationLevel,
@@ -129,6 +220,14 @@ CUDACompilationDevice::compileFunction(StringRef ptx, StringRef debugLevel,
 
   auto options = CUDACompilationDevice::setupCompilationOptionsNVPTXCompiler(
       debugLevel, optimizationLevel, gpuName);
+
+  // If MODULAR_NVPTX_COMPILER_PATH is set, use an external ptxas binary
+  // instead of the bundled libnvptxcompiler. This allows users on older NVIDIA
+  // drivers or pre-Turing hardware to still compile GPU code.
+  if (auto ptxasPath =
+          llvm::sys::Process::GetEnv("MODULAR_NVPTX_COMPILER_PATH")) {
+    return compilePTXToCUBINViaPTXAS(*ptxasPath, ptx, gpuName, options);
+  }
 
   // NOTE: NVPTX compiler is a standalone library that doesn't require a CUDA
   // context or GPU to be present. This allows compilation in environments
