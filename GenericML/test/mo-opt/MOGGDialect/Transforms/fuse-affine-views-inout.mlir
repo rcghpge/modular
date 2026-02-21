@@ -12,8 +12,8 @@
 // CHECK: mogg.output %[[ADD]], %[[INSERT_IDX]] : f32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]], {{.*}}
-// CHECK: } {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true
-// CHECK-SAME: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"}
+// CHECK: } fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.add_singleton_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
+// CHECK-SAME: hasReadEffect = false, hasWriteEffect = false, isAsync = true
 // CHECK: mo.output %[[KERNEL_OUT]] : !mo.tensor<[1, seq_len, 4096], f32>
 
 mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>, %arg2: !mo.tensor<[1, seq_len, 4096], f32>) ->  !mo.tensor<[1, seq_len, 4096], f32> {
@@ -36,8 +36,8 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], si32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: %[[CONCRETIZE:.*]] = mogg.tensor.fused(%[[BIND]], %[[SCRATCH]]) : (!mo.tensor<[seq_len, 4096], f32>, !mo.tensor<[seq_len, 4096], f32>) -> !mo.tensor<[seq_len, 4096], f32>
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%[[ARG0]], %[[ARG1]], {{.*}}
-// CHECK: } {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true
-// CHECK-SAME: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.cast:{{[0-9]+}}"}
+// CHECK: } fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.add_singleton_dim:{{[0-9]+}}), mo.cast:{{[0-9]+}}, operandIndices=[0])
+// CHECK-SAME: hasReadEffect = false, hasWriteEffect = false, isAsync = true
 // CHECK: mo.output %[[KERNEL_OUT]] : !mo.tensor<[1, seq_len, 4096], si32>
 
 mo.graph @mixed_precision<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) ->  !mo.tensor<[1, seq_len, 4096], si32> {

@@ -3,9 +3,7 @@
 // CHECK-LABEL: @while_op
 // CHECK: } execute
 // CHECK-NEXT: grt.while
-// CHECK: summary = "mo.greater
 // CHECK: } do {
-// CHECK: summary = "mo.add
 
 mo.graph @while_op(%x: !mo.tensor<[], f32>, %arg0: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>) {
    %res = mo.while (%x as %xi: !mo.tensor<[], f32>) {

@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "Support/MDialect/MDialect.h"
 
 #include "KGEN/KGENDialect/KGENAttrs.h"
@@ -29,6 +30,7 @@ using namespace MOGG;
 //===----------------------------------------------------------------------===//
 
 void MOGGDialect::initialize() {
+  registerAttributes();
   registerTypes();
   registerOperations();
 }

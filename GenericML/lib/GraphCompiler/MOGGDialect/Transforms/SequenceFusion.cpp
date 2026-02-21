@@ -147,8 +147,8 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
       builder, loc, fusedRegionOutputTypes, fusedRegionOperands.getArrayRef(),
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, operandSemantics),
-      /*summary=*/
-      MOGG::getSummaryString(toFuse, MOGG::FusionType::SOFT),
+      /*fusionInfo=*/
+      MOGG::createFusionInfo<MOGG::FusionSequenceAttr>(ctx, toFuse),
       /*isAsync=*/BoolAttr::get(ctx, isAsync),
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
       canFuseIntoOther, canBeFusedInto, canDuplicate, isStructuredKernel);

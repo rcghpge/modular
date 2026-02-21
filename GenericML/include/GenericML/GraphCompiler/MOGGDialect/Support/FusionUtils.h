@@ -6,25 +6,58 @@
 #ifndef GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
 #define GENERICML_GRAPH_COMPILER_MOGGSUPPORT_FUSIONUTILS_H
 
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "Support/AssertStream.h"
 
 using namespace M;
 
 namespace M::MOGG {
 
-enum class FusionType {
-  SOFT, // e.g. simply combine invocations into a single execution unit
-  HARD  // e.g. use lambda fusion interface
-};
+//===----------------------------------------------------------------------===//
+// FusionInfo helper functions
+//===----------------------------------------------------------------------===//
 
-/// Returns a compact, human readable 'summary' of op, which can be used
-/// at runtime for debugging and profiling.
-StringAttr getSummaryString(Operation *op);
+FusionLeafAttr createFusionLeaf(Operation *op);
 
-/// Returns a compact, human readable 'summary' of the combination of ops.
-// `fusionType` is used to help formatting to differentiate between soft and
-// hard fusion.
-StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType);
+template <typename GroupAttr>
+FusionInfoAttr createFusionInfo(MLIRContext *ctx, ArrayRef<Operation *> ops,
+                                ArrayRef<uint32_t> operandIndices = {}) {
+
+  auto getFusionInfo = [](Operation *op) -> Attribute {
+    if (auto info = op->getAttrOfType<FusionInfoAttr>("fusionInfo"))
+      return info.getRoot();
+    return createFusionLeaf(op);
+  };
+
+  SmallVector<Attribute> children;
+  SmallVector<uint32_t> mergedIndices(operandIndices.begin(),
+                                      operandIndices.end());
+  for (auto *op : ops) {
+    Attribute child = getFusionInfo(op);
+    // Flatten fusion info in cases where multiple same type fusions were
+    // applied sequentially.
+    // E.g. Elementwise(a, Elementwise(b, c)) -> Elementwise(a, b, c)
+    if (auto sameGroup = dyn_cast<GroupAttr>(child)) {
+      children.append(sameGroup.getChildren().begin(),
+                      sameGroup.getChildren().end());
+      if constexpr (std::is_same_v<GroupAttr, FusionEpilogueAttr> ||
+                    std::is_same_v<GroupAttr, FusionPrologueAttr>) {
+        auto inner = sameGroup.getOperandIndices();
+        mergedIndices.append(inner.begin(), inner.end());
+      }
+      continue;
+    }
+    children.push_back(child);
+  }
+
+  if constexpr (std::is_same_v<GroupAttr, FusionEpilogueAttr> ||
+                std::is_same_v<GroupAttr, FusionPrologueAttr>)
+    return FusionInfoAttr::get(ctx,
+                               GroupAttr::get(ctx, children, mergedIndices));
+  else
+    return FusionInfoAttr::get(ctx, GroupAttr::get(ctx, children));
+}
 
 /// Fuse small constant inputs to `kernel` into the kernel, and erase the
 /// original constant op if it has no remaining users.

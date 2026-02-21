@@ -225,8 +225,8 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     srcTerm.erase();
     srcOutputPlaceholders->erase();
 
-    kernel.setSummaryAttr(
-        getSummaryString({viewProducer, kernel}, FusionType::HARD));
+    kernel.setFusionInfoAttr(createFusionInfo<FusionViewAttr>(
+        kernel->getContext(), {viewProducer, kernel}));
   }
 
   void runOnOperation() override {

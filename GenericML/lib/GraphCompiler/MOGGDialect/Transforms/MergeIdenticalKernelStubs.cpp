@@ -74,13 +74,13 @@ struct KernelStubOpEquivalenceInfo
         rhs == getTombstoneKey() || rhs == getEmptyKey())
       return false;
 
-    // Check if properties are equivalent modulo sym_name and summary
+    // Check if properties are equivalent modulo sym_name and fusionInfo
     // attributes.
     auto lhsProperties = lhs.op.getProperties();
     auto rhsProperties = rhs.op.getProperties();
 
     lhsProperties.sym_name = rhsProperties.sym_name = {};
-    lhsProperties.summary = rhsProperties.summary = {};
+    lhsProperties.fusionInfo = rhsProperties.fusionInfo = {};
 
     if (lhsProperties != rhsProperties)
       return false;
@@ -120,7 +120,7 @@ static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
 
   auto properties = stubOp.getProperties();
   properties.sym_name = {};
-  properties.summary = {};
+  properties.fusionInfo = {};
 
   stubOp->getName().hashOpProperties(mlir::OpaqueProperties(&properties));
 

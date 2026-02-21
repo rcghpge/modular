@@ -91,7 +91,7 @@ mo.graph @checkBasicFusionBehavior<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg
 
 // CHECK-LABEL: @checkBasicFusionBehavior
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.matmul:{{.*}}+mo.relu:{{.*}}"
+// CHECK: fusionInfo = Prologue(mo.matmul:{{.*}}, mo.relu:{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel
 
@@ -103,7 +103,7 @@ mo.graph @checkNoFuseInputInterfaceDisabled<N, M, K>(%arg0: !mo.tensor<[M, K], f
 
 // CHECK-LABEL: @checkNoFuseInputInterfaceDisabled
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.matmul:{{.*}}+mo.relu:{{.*}}"
+// CHECK: fusionInfo = Prologue(mo.matmul:{{.*}}, mo.relu:{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel
 
@@ -126,7 +126,7 @@ mo.graph @checkNoFuseNoElementwiseAttr<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, 
 
 // CHECK-LABEL: @checkNoFuseNoElementwiseAttr
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.matmul:{{.*}}+mo.relu:{{.*}}"
+// CHECK: fusionInfo = Prologue(mo.matmul:{{.*}}, mo.relu:{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel
 
@@ -138,7 +138,7 @@ mo.graph @fused_mixed_precision_gpu_device(%arg0: !mo.tensor<[2, 2], f16>, %arg1
 
 // CHECK-LABEL: @fused_mixed_precision_gpu_device
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.matmul:{{.*}}+mo.cast:{{.*}}"
+// CHECK: fusionInfo = Prologue(mo.matmul:{{.*}}, mo.cast:{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel
 
@@ -150,6 +150,6 @@ mo.graph @nofuse_mixed_precision_mixed_device(%arg0: !mo.tensor<[2, 2], f16>, %a
 
 // CHECK-LABEL: @nofuse_mixed_precision_mixed_device
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.matmul:{{.*}}+mo.cast:{{.*}}"
+// CHECK: fusionInfo = Prologue(mo.matmul:{{.*}}, mo.cast:{{.*}})
 // CHECK: mo.output
 // CHECK-NOT: mogg.kernel

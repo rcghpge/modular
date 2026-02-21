@@ -14,6 +14,7 @@
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GenericML/GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
@@ -102,7 +103,8 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
       builder, loc, op->getResultTypes(), op->getOperands(),
       KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
       InOutSignatureAttr::get(builder.getContext(), operandSemantics),
-      MOGG::getSummaryString(op),           // summary
+      MOGG::FusionInfoAttr::get(builder.getContext(),
+                                MOGG::createFusionLeaf(op)),
       builder.getBoolAttr(isAsync(op)),     // isAsync
       constResources,                       // constantResources
       builder.getBoolAttr(canFuseOp(op)),   // canFuseIntoOther

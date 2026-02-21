@@ -564,7 +564,7 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // value of certain things like IOKind.
   auto functionType = TypeAttr::get(FunctionType::get(ctx, {}, {}));
   kernelStub = MOGG::KernelStubOp::create(
-      builder, loc, stubName, functionType, moggKernelOp.getSummaryAttr(),
+      builder, loc, stubName, functionType, moggKernelOp.getFusionInfoAttr(),
       moggKernelOp.getIsAsyncAttr(), ArrayAttr::get(ctx, {}),
       MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG));
   kernelStub.getBody().takeBody(moggKernelOp.getExecBody());
@@ -633,15 +633,14 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
       moggKernelOp.getOutputParamDeclsAttr(),
       InOutSignatureAttr::get(ctx,
                               operandsMapping.getMGPRegionOperandsSemantics()),
-      moggKernelOp.getSummaryAttr(), // summary
-      moggKernelOp.getIsAsyncAttr(), // isAsync
-      ArrayAttr::get(ctx, {}),       // KernelOp has no constant resources
+      moggKernelOp.getFusionInfoAttr(), // fusionInfo
+      moggKernelOp.getIsAsyncAttr(),    // isAsync
+      ArrayAttr::get(ctx, {}),          // KernelOp has no constant resources
       // Sequence fuse GPU launching to reduce primitive launch overhead.
       BoolAttr::get(ctx, !MO::isOnHost(moggKernelOp)), // canFuseIntoOther
       BoolAttr::get(ctx, true),                        // canBeFusedInto
       BoolAttr::get(ctx, false),                       // canDuplicate
-      BoolAttr::get(ctx, true)                         // isStructuredKernel
-  );
+      BoolAttr::get(ctx, true));                       // isStructuredKernel
   mgpRegion.setDeviceRef(device);
   kernelStub.setDeviceRef(device);
 

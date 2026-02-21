@@ -8,8 +8,7 @@
 // CHECK-NEXT: mo.chain.create
 // CHECK-NEXT: mogg.kernel
 // CHECK-NEXT: mogg.call.execute["mutable_test_op"]
-// CHECK-NEXT: summary = "custom__mutable_test_op
-// CHECK-NEXT: mo.output
+// CHECK: mo.output
 mo.graph @supports_scalars(%b: !bt) -> !bt {
   %c = mo.chain.create()
 

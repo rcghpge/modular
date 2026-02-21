@@ -8,7 +8,7 @@
 // DAG because the order things are printed in the middle of the pipeline is
 // not predictable.
 // CHECK-IR-DAG: mo.graph @simple_add_singleton_dim_rank3_insert1_middle
-// CHECK-IR-DAG: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"
+// CHECK-IR-DAG: fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.add_singleton_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 
 // CHECK-LABEL: 'simple_add_singleton_dim_rank3_insert1_middle' returned tensor<2x1x3xf32>
 // CHECK-SAME: 1.100000e+01, 1.200000e+01, 1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01
@@ -21,7 +21,7 @@ mo.graph @simple_add_singleton_dim_rank3_insert1_middle(%arg0: !mo.tensor<[2, 10
 }
 
 // CHECK-IR-DAG: mo.graph @simple_add_singleton_dim_rank3_insert1_start
-// CHECK-IR-DAG: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"
+// CHECK-IR-DAG: fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.add_singleton_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 
 // CHECK-LABEL: 'simple_add_singleton_dim_rank3_insert1_start' returned tensor<1x2x3xf32>
 // CHECK-SAME: 1.100000e+01, 1.200000e+01, 1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01
@@ -34,7 +34,7 @@ mo.graph @simple_add_singleton_dim_rank3_insert1_start(%arg0: !mo.tensor<[2, 10]
 }
 
 // CHECK-IR-DAG: mo.graph @simple_add_singleton_dim_rank3_insert1_end
-// CHECK-IR-DAG: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"
+// CHECK-IR-DAG: fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.add_singleton_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 
 // CHECK-LABEL: 'simple_add_singleton_dim_rank3_insert1_end' returned tensor<2x3x1xf32>
 // CHECK-SAME: 1.100000e+01, 1.200000e+01, 1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01

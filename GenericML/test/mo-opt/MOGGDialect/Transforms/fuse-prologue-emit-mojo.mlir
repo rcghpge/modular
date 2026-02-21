@@ -11,7 +11,7 @@
 // CHECK:       }: (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64>
 // CHECK:       mogg.as_scalar
 // CHECK:       mogg.call.execute["mo.softmax"] inputs({{.*}}, {{.*}}, {{.*}} : !mo.tensor<[2, 3], f64>, !mo.scalar<si64>, !mogg.context) outputs({{.*}} : !mo.tensor<[2, 3], f64>)
-// CHECK:       summary = "mo.add{{.*}}+mo.cast{{.*}}+mo.softmax{{.*}}"
+// CHECK:       fusionInfo = Epilogue(Elementwise(mo.add:{{.*}}, mo.cast:{{.*}}), mo.softmax:{{.*}})
 
 mo.graph @softmax(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[], si64>) -> (!mo.tensor<[2, 3], f64>) {
   %add = mo.add(%arg0, %arg0) : !mo.tensor<[2, 3], f32>
@@ -38,7 +38,7 @@ mo.graph @softmax(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[], si64>) -
 // CHECK:       }: (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2, 3], f32>
 // CHECK:       mogg.as_scalar
 // CHECK:       mogg.call.execute["mo.gather"] inputs({{.*}}, {{.*}}, {{.*}}, {{.*}} : !mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>, !mo.scalar<si64>, !mogg.context) outputs({{.*}} : !mo.tensor<[2, 2, 3], f32>)
-// CHECK:       summary = "mo.add{{.*}}+mo.gather{{.*}}"
+// CHECK:       fusionInfo = Epilogue(mo.add:{{.*}}, mo.gather:{{.*}}, operandIndices=[1])
 
 mo.graph @gather(%arg0: !mo.tensor<[3, 3], f32>, %arg1: !mo.tensor<[2, 2], si32>, %arg2: !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[2, 2, 3], f32>) {
   %axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>

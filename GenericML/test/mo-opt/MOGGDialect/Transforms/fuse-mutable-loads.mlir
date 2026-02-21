@@ -22,7 +22,6 @@ mo.graph @single_add_buffer_lhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: [[out:%.*]]:2 = mogg.kernel([[rhs]]: !mo.tensor<[10, 10], f32>, [[buffer]]: !mo.buffer<[10, 10], f32>) chain([[ch0]])
 // CHECK: [[tr:%.*]] = mogg.output_placeholders
 // CHECK: mogg.kernel([[buffer]]: !mo.buffer<[10, 10], f32>, [[out]]#0: !mo.tensor<[10, 10], f32>) chain([[out]]#1)
-// CHECK: summary = "mo.mutable.store
 mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   %outTensor, %outChain = mo.mutable.load(%buffer, %0) : (!mo.buffer<[10, 10], f32>, !mo.chain) -> (!mo.tensor<[10, 10], f32>, !mo.chain)
@@ -36,7 +35,6 @@ mo.graph @single_add_buffer_rhs(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.te
 // CHECK: [[ch0:%.*]] = mo.chain.create([[buffer]])
 // CHECK: [[out:%.*]]:2 = mogg.kernel([[rhs]]: !mo.tensor<[10, 10], f32>, [[buffer]]: !mo.buffer<[10, 10], f32>) chain([[ch0]])
 // CHECK: mogg.kernel([[buffer]]: !mo.buffer<[10, 10], f32>, [[out]]#0: !mo.tensor<[10, 10], f32>) chain([[out]]#1)
-// CHECK: summary = "mo.mutable.store
 mo.graph @multiple_chain_users(%buffer: !mo.buffer<[10, 10], f32>, %rhs: !mo.tensor<[10, 10], f32>) {
   %0 = mo.chain.create(%buffer) : !mo.buffer<[10, 10], f32>
   mo.chain.create(%0) : !mo.chain

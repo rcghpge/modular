@@ -7,8 +7,8 @@
 
 // CHECK-LABEL: mo.graph @exclusive_path(
 // CHECK-NOT: mo.mutable.load(
-// CHECK: {{summary = "mo\.mutable\.load:[0-9]+\+custom__sampler.apply_penalties}}
-// CHECK: {{summary = "mo\.mutable\.load:[0-9]+\+custom__sampler.apply_penalties}}
+// CHECK: {{fusionInfo = MutableLoad\(mo\.mutable\.load:[0-9]+, custom__sampler\.apply_penalties}}
+// CHECK: {{fusionInfo = MutableLoad\(mo\.mutable\.load:[0-9]+, custom__sampler\.apply_penalties}}
 mo.graph @exclusive_path(%arg0: !mo.buffer<[7, 5], f32>, %arg1: !mo.buffer<[3, 2], si32>, %arg2: !mo.tensor<[11], ui32>, %arg3: !mo.tensor<[7], f32>, %arg4: !mo.tensor<[7], f32>) -> (!mo.tensor<[7, 5], f32>, !mo.chain) {
   %2 = mo.chain.create()
   %outTensor, %outChain = mo.mutable.load(%arg1, %2) : (!mo.buffer<[3, 2], si32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)

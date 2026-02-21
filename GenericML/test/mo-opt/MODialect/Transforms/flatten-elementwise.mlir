@@ -15,7 +15,7 @@
 
 // CHECK-MOGG-LABEL: mo.graph @binary_elemwise_with_parameter
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: summary = "mo.static.reshape:{{.*}}+mo.static.reshape:{{.*}}+mo.relu:{{.*}}+mo.add:{{.*}}"
+// CHECK-MOGG: fusionInfo = View(mo.static.reshape:{{.*}}, mo.static.reshape:{{.*}}, Elementwise(mo.relu:{{.*}}, mo.add:{{.*}}))
 mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, %arg1 : !mo.tensor<[2,2,P1,5], f32>) -> !mo.tensor<[P1,4,5], f32> {
     %0 = mo.relu(%arg0) : !mo.tensor<[P1,4,5], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[P1,4,5], f32> -> !mo.tensor<[2,2,P1,5], f32>
@@ -30,11 +30,10 @@ mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, 
 
 // CHECK-MOGG-LABEL: mo.graph @with_non_elemwise
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: summary = "{{.*}}+mo.relu:{{.*}}+mo.add:{{.*}}"
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise(mo.relu:{{.*}}, mo.add:{{.*}}))
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: summary = "{{.*}}+mo.softmax:{{.*}}"
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: summary = "{{.*}}+mo.relu:{{.*}}+mo.add:{{.*}}"
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise(mo.relu:{{.*}}, mo.add:{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel
 mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb, %arg2: !tax) -> !tta {
     %0 = mo.relu(%arg0) : !tta
@@ -110,7 +109,7 @@ mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
 
 // CHECK-MOGG-LABEL: mo.graph @with_cast
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: summary = "{{.*}}+mo.cast:{{.*}}+mo.relu:{{.*}}+mo.cast:{{.*}}"
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise(mo.cast:{{.*}}, mo.relu:{{.*}}, mo.cast:{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel
 mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f64> {
     %0 = mo.cast(%arg0) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f16>
@@ -126,7 +125,7 @@ mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f
 
 // CHECK-MOGG-LABEL: mo.graph @with_pow
 // CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: summary = "{{.*}}+mo.pow:{{.*}}+mo.relu:{{.*}}"
+// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise(mo.pow:{{.*}}, mo.relu:{{.*}}))
 // CHECK-MOGG-NOT: mogg.kernel
 mo.graph @with_pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) -> !mo.tensor<[3,2], f32> {
     %0 = mo.pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) : !mo.tensor<[3,2], f32>

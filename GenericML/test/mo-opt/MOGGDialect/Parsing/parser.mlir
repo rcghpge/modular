@@ -19,6 +19,6 @@ mo.graph @basicMatmul<N, M, K>(%arg0: !mo.tensor<[M, K], f32>, %arg1: !mo.tensor
     }: (!mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>
     %3 = mogg.device_context_placeholder {device = #M.device_ref<"cpu", 0>} : !mogg.context
     mogg.call.execute["mo.matmul"] inputs(%arg0, %arg1, %3 : !mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32, {layout = #mo.layout<KN>}>, !mogg.context) outputs(%2 : !mo.tensor<[M, N], f32>) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
-  } {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[]>, summary = "mo.matmul:4"}
+  } fusionInfo = mo.matmul:4 {allocIndices = [], device = #M.device_ref<"cpu", 0>, hasReadEffect = false, hasWriteEffect = false, isAsync = true, outputParamDecls = #kgen<param.decls[]>}
   mo.output %0 : !mo.tensor<[M, N], f32>
 }

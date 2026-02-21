@@ -17,6 +17,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "Support/AssertStream.h"
 #include "Support/DeviceSpecs.h"
@@ -75,10 +76,11 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
+  auto fi = oldKernel.getFusionInfoAttr();
   auto newExecuteOp = MGP::ExecuteGenericOp::create(
       builder, oldKernel.getLoc(), resultTypes, context,
       oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
-      oldKernel.getSummary(), oldKernel.getIsAsync(),
+      StringAttr::get(ctx, fi ? fi.toString() : ""), oldKernel.getIsAsync(),
       oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))

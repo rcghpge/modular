@@ -7,6 +7,7 @@
 #include "GenericML/GraphCompiler/Interfaces/EmitMojoState.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/LITDialect/LITOps.h"
@@ -610,34 +611,13 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
   return ret;
 }
 
-// Returns the trace name attribute, or none if summary is not set.
-static MojoValue getTraceNameValue(StringAttr summaryAttr) {
+// Returns the trace name from fusionInfo, or empty string if not set.
+static MojoValue getTraceNameValue(FusionInfoAttr fusionInfo) {
   // GEX-979: pass in trace description for fused kernel without
   // invalidating cache.
-  if (!summaryAttr)
+  if (!fusionInfo)
     return MojoValue("").quote();
-
-  // The summary string might contain some loc info (line number).
-  // Eg: "mo.add:42".
-  // If there is no loc info just return the original name.
-  if (!summaryAttr.getValue().contains(':')) {
-    return MojoValue(summaryAttr.getValue()).quote();
-  }
-
-  StringRef summary = summaryAttr.getValue();
-  size_t len = summary.size();
-  std::string res;
-  for (size_t i = 0; i < len; ++i) {
-    if (summary[i] == ':' && i + 1 < len && isdigit(summary[i + 1])) {
-      // Find a loc info, ignore all digits.
-      while (i + 1 < len && isdigit(summary[i + 1]))
-        ++i;
-    } else {
-      res.push_back(summary[i]);
-    }
-  }
-
-  return MojoValue(res).quote();
+  return MojoValue(fusionInfo.toString()).quote();
 }
 
 static MojoValue getLambasHaveFusionValue(mlir::Operation *kernelCallOp) {
@@ -709,7 +689,7 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
   if (paramName == KGEN::MOGGPreElab::kMOGGTraceNameParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
-    return getTraceNameValue(kernelStubOp.getSummaryAttr());
+    return getTraceNameValue(kernelStubOp.getFusionInfoAttr());
   }
   if (paramName == KGEN::MOGGPreElab::kMOGGLambdasHaveFusionParameterName)
     return getLambasHaveFusionValue(callOp);

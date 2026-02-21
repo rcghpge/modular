@@ -1138,6 +1138,16 @@ bool KernelStubOp::isThrows() {
 }
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
+  auto emitFusionInfoComment = [&] {
+    if (auto fi = getFusionInfoAttr();
+        fi && !isa<FusionLeafAttr>(fi.getRoot())) {
+      state.builder.comment("FusionInfo:");
+      std::string tree = fi.toPrettyTree();
+      for (auto line : llvm::split(tree, '\n'))
+        state.builder.comment(("  " + line).str());
+    }
+  };
+
   // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
   // GenericCompiledRegionOp which has that implicit void** ABI.
   if (getAbi() == ABIKind::MOGG) {
@@ -1174,6 +1184,9 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
         /*returnType=*/mojoReturnType, /*exported=*/false,
         /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
           state.currentFunctionBody = functionBody;
+
+          emitFusionInfoComment();
+
           for (auto &&[mlirArg, mojoArg] :
                llvm::zip(getBody().getArguments(), functionBody.arguments)) {
             state.setMojoValueFor(mlirArg, mojoArg);
@@ -1213,6 +1226,9 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
               "pointer to a list of inputs and outputs. The second is a "
               "pointer "
               "to a runtime context.");
+
+          emitFusionInfoComment();
+
           auto runtimeArgument = functionBody.arguments.front();
           auto &kernelBody = getBody().front();
           // The order of arguments in runtimeArgument:
@@ -1264,8 +1280,8 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
 
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
-static StringRef kernelStubOpdisallowedAttrNames[] = {
-    "name", "returnType", "sym_name", "function_type"};
+static StringRef kernelStubOpDisallowedAttrNames[] = {
+    "name", "returnType", "sym_name", "function_type", "fusionInfo"};
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
@@ -1286,6 +1302,13 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
                      TypeAttr::get(FunctionType::get(parser.getContext(),
                                                      argTypes, resTypes)));
 
+  // Parse optional fusionInfo before attr-dict.
+  FusionInfoAttr fusionInfo;
+  if (parseFusionInfo(parser, fusionInfo))
+    return failure();
+  if (fusionInfo)
+    state.addAttribute("fusionInfo", fusionInfo);
+
   // If function attributes are present, parse them.
   NamedAttrList parsedAttributes;
   llvm::SMLoc attributeDictLocation = parser.getCurrentLocation();
@@ -1294,7 +1317,7 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
 
   // Disallow attributes that are inferred from elsewhere in the attribute
   // dictionary.
-  for (StringRef disallowed : kernelStubOpdisallowedAttrNames) {
+  for (StringRef disallowed : kernelStubOpDisallowedAttrNames) {
     if (parsedAttributes.get(disallowed))
       return parser.emitError(attributeDictLocation, "'")
              << disallowed
@@ -1315,8 +1338,9 @@ void KernelStubOp::print(OpAsmPrinter &p) {
   p << " ";
   printRegionArguments(p, getFunctionType().getResults(),
                        getBody().getArguments());
+  printFusionInfo(p, *this, getFusionInfoAttr());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
-                                     kernelStubOpdisallowedAttrNames);
+                                     kernelStubOpDisallowedAttrNames);
   p << " ";
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 }
@@ -1550,8 +1574,17 @@ ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &state) {
 
   if (parseParenOperandListWithShadowing(parser, state, argInfo, true) ||
       parseOptionalChain() || parser.parseArrowTypeList(state.types) ||
-      parseRegion(parser, argInfo, *state.addRegion(), true) ||
-      parser.parseOptionalAttrDict(state.attributes))
+      parseRegion(parser, argInfo, *state.addRegion(), true))
+    return failure();
+
+  // Parse optional fusionInfo before attr-dict.
+  FusionInfoAttr fusionInfo;
+  if (parseFusionInfo(parser, fusionInfo))
+    return failure();
+  if (fusionInfo)
+    state.addAttribute("fusionInfo", fusionInfo);
+
+  if (parser.parseOptionalAttrDict(state.attributes))
     return failure();
 
   state.addAttribute(
@@ -1578,18 +1611,21 @@ void KernelOp::print(OpAsmPrinter &p) {
   p.printArrowTypeList(getResultTypes());
   p << ' ';
   printRegion(p, getInputs(), getExecBody(), /*isIsolatedFromAbove=*/true);
-  p.printOptionalAttrDict(getOperation()->getAttrs(), {"operandSegmentSizes"});
+  printFusionInfo(p, *this, getFusionInfoAttr());
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          {"operandSegmentSizes", "fusionInfo"});
 }
 
 void KernelOp::build(OpBuilder &builder, OperationState &state,
-                     TypeRange results, ValueRange operands, StringAttr summary,
-                     BoolAttr isAsync, DeviceRefAttr device,
+                     TypeRange results, ValueRange operands,
+                     FusionInfoAttr fusionInfo, BoolAttr isAsync,
+                     DeviceRefAttr device,
                      ArrayRef<ParamDeclAttr> outputParamDecls,
                      ArrayAttr allocIndices, bool hasReadEffect,
                      bool hasWriteEffect) {
   state.addOperands(operands);
-  if (summary)
-    state.addAttribute(getSummaryAttrName(state.name), summary);
+  if (fusionInfo)
+    state.addAttribute(getFusionInfoAttrName(state.name), fusionInfo);
 
   if (isAsync)
     state.addAttribute(getIsAsyncAttrName(state.name), isAsync);

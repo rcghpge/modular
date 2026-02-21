@@ -14,6 +14,7 @@
 include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGEnums.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGInterfaces.td"
+include "GenericML/GraphCompiler/MOGGDialect/MOGGAttrs.td"
 include "GenericML/GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
 include "GenericML/GraphCompiler/MODialect/MOTypes.td"
@@ -359,7 +360,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, Index]>>:$inputs,
     Optional<MO_Chain>:$chain,
     MO_ParamDecls:$outputParamDecls,
-    DefaultValuedOptionalAttr<StrAttr, "">:$summary,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
     DefaultValuedOptionalAttr<ArrayAttr, "{}">:$allocIndices,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
@@ -440,7 +441,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     OpBuilder<(ins
       "TypeRange":$results,
       "ValueRange":$operands,
-      "StringAttr":$summary,
+      "FusionInfoAttr":$fusionInfo,
       "BoolAttr":$isAsync,
       "DeviceRefAttr":$device,
       CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls,
@@ -587,7 +588,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     Variadic<AnyType>:$operands,
     MO_ParamDecls:$outputParamDecls,
     M_InOutSignatureAttr:$inOutSignature,
-    OptionalAttr<StrAttr>:$summary,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
     OptionalAttr<BoolAttr>:$isAsync,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
@@ -601,7 +602,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
   let hasVerifier = 1;
 
   let assemblyFormat = [{
-    custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) attr-dict
+    custom<Kernel>($operands, type($operands), type($results), $body, $outputParamDecls) custom<FusionInfo>($fusionInfo) attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1265,11 +1266,15 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
                        FlatSymbolRefAttr:$calleeSymbol,
                        ArrayAttr:$usedParams,
                        MO_ParamDecls:$outputParamDecls,
-                       StrAttr:$summary,
+                       OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
                        BoolAttr:$isAsync,
                        ArrayAttr:$constantResources
                        );
   let results = (outs Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    $calleeSymbol `(` $operands `)` custom<FusionInfo>($fusionInfo) attr-dict `:` functional-type($operands, $results)
+  }];
 }
 
 def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
@@ -1287,7 +1292,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   }];
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
-                       OptionalAttr<StrAttr>:$summary,
+                       OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
                        OptionalAttr<BoolAttr>:$isAsync,
                        DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
                        MOGG_ABIKind:$abi,

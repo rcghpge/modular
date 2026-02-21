@@ -106,14 +106,13 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 
   builder.setInsertionPointAfter(kernelOp);
 
-  auto newSummaryString =
-      MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
-
   auto newKernelOp = MOGG::KernelOp::create(
       builder, kernelOp->getLoc(),
       /*results=*/newResults,
       /*operands=*/newOperandList,
-      /*summary=*/newSummaryString,
+      /*fusionInfo=*/
+      MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
+          kernelOp->getContext(), {loadOp, kernelOp}),
       /*isAsync=*/kernelOp.getIsAsyncAttr(),
       /*device*/ kernelOp.getExecutionDevice(),
       /*outputParamDecls=*/kernelOp.getOutputParamDeclsAttr(),
@@ -199,7 +198,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
 //   %t, %outCh = mo.mutable.load(buf, %inCh)   // %outCh becomes dead
 //   %merged = mo.chain.create(%other, %inCh)   // %outCh → %inCh
 //   %result = mogg.kernel(buf, ..., %merged)  // fused!
-//     {summary = "mo.mutable.load+custom__..."}
+//     fusionInfo = MutableLoad(...)
 //
 // Requires: %outCh and %merged have single use (exclusivity constraint).
 static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
@@ -329,9 +328,9 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
     kernelOp.setChain(loadOp.getInChain());
   }
 
-  auto newSummaryString =
-      MOGG::getSummaryString({loadOp, kernelOp}, MOGG::FusionType::HARD);
-  kernelOp.setSummary(newSummaryString);
+  kernelOp.setFusionInfoAttr(
+      MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
+          kernelOp->getContext(), {loadOp, kernelOp}));
 
   loadOp.erase();
 }

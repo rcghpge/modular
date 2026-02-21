@@ -693,13 +693,15 @@ ErrorOr<KernelOp> MOGGExpKernelBuilder::buildKernelOpImpl(
     outputParamDecls = shapeFuncOp.getOutputParamDecls();
   }
 
-  auto kernelOp = KernelOp::create(builder, loc,
-                                   /*results=*/moOp->getResultTypes(),
-                                   /*operands=*/moOp->getOperands(),
-                                   /*summary=*/getSummaryString(moOp),
-                                   /*isAsync=*/builder.getBoolAttr(isAsync),
-                                   /*device=*/getDevice(),
-                                   /*outputParamDecls=*/outputParamDecls);
+  auto kernelOp = KernelOp::create(
+      builder, loc,
+      /*results=*/moOp->getResultTypes(),
+      /*operands=*/moOp->getOperands(),
+      /*fusionInfo=*/
+      FusionInfoAttr::get(moOp->getContext(), createFusionLeaf(moOp)),
+      /*isAsync=*/builder.getBoolAttr(isAsync),
+      /*device=*/getDevice(),
+      /*outputParamDecls=*/outputParamDecls);
   builder.setInsertionPointToStart(&kernelOp.getExecBody().front());
   if (auto memEffectOp = dyn_cast<mlir::MemoryEffectOpInterface>(moOp)) {
     kernelOp.setHasWriteEffect(

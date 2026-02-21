@@ -151,9 +151,9 @@ struct FuseAffineViewsPass
   void fuseViewOpDim(MOGG::KernelOp kernel, ViewOp viewOp, Value result) {
     fuseViewOpDimKGEN(kernel, viewOp, result);
 
-    // construct the new summary string
     SmallVector<Operation *> ops{kernel, viewOp};
-    kernel.setSummary(getSummaryString(ops, FusionType::HARD));
+    kernel.setFusionInfoAttr(
+        createFusionInfo<FusionAffineAttr>(kernel->getContext(), ops));
   }
 
   void runOnOperation() override {

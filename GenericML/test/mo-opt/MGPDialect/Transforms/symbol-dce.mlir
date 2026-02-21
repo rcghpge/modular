@@ -1,17 +1,17 @@
 // RUN: mo-opt -symbol-dce
 
-mogg.kernel.stub @callee_1()
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = "callee_1"} {
+mogg.kernel.stub @callee_1() fusionInfo = callee_1
+  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.output
 }
 
-mogg.kernel.stub @callee_2()
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = "callee_2"} {
+mogg.kernel.stub @callee_2() fusionInfo = callee_2
+  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.output
 }
 
-mogg.kernel.stub @caller()
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true, summary = "caller"} {
+mogg.kernel.stub @caller() fusionInfo = caller
+  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.call.stub @callee_1
   mogg.call.stub @callee_2
   mogg.output

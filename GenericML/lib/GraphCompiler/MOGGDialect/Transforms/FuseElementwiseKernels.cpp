@@ -115,9 +115,8 @@ static std::optional<SmallVector<int>> getFusionIndices(KernelOp src,
                                                         KernelOp dst) {
   LLVM_DEBUG({
     llvm::dbgs() << "Examining fusion indices between experimental kernels:\n";
-    llvm::dbgs() << "  Source: " << src.getSummaryAttr().getValue() << " at ";
-    llvm::dbgs() << "\n  Destination: " << dst.getSummaryAttr().getValue()
-                 << " at ";
+    llvm::dbgs() << "  Source: " << src.getFusionInfoAttr().toString();
+    llvm::dbgs() << "\n  Destination: " << dst.getFusionInfoAttr().toString();
     llvm::dbgs() << "\n";
   });
 
@@ -248,7 +247,8 @@ static void fuseKernelsIntoLastKernel(ArrayRef<Operation *> subgraph) {
       fuseAndReplaceOperandWith(dst, kernelOperandIdx, src);
     }
 
-    dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
+    dst.setFusionInfoAttr(
+        createFusionInfo<FusionElementwiseAttr>(src->getContext(), {src, dst}));
     dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
     dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
   }

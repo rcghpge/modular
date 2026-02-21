@@ -43,8 +43,9 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
               StringAttr::get(kernelOp->getContext(),
                               llvm::formatv("region_{}", stubNumber++).str());
           auto stubOp = MOGG::KernelStubOp::create(
-              builder, loc, stubName, functionType, kernelOp.getSummaryAttr(),
-              kernelOp.getIsAsyncAttr(), kernelOp.getConstantResourcesAttr(),
+              builder, loc, stubName, functionType,
+              kernelOp.getFusionInfoAttr(), kernelOp.getIsAsyncAttr(),
+              kernelOp.getConstantResourcesAttr(),
               MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP));
           stubOp.getBody().takeBody(kernelOp.getBody());
           DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
@@ -59,7 +60,7 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
               /*usedParams=*/builder.getArrayAttr({}),
               /*outputParamDecls=*/
               KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
-              /*summary=*/stubOp.getSummaryAttr(),
+              /*fusionInfo=*/stubOp.getFusionInfoAttr(),
               /*isAsync=*/stubOp.getIsAsyncAttr(),
               /*constantResources=*/stubOp.getConstantResources());
           callOp.setDeviceRef(stubOp.getExecutionDevice());

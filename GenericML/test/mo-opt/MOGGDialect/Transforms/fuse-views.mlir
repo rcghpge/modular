@@ -2,7 +2,7 @@
 
 // Expect a kernel with 3 bcasts, 2 for index, 1 for updates
 // CHECK-LABEL: mo.graph @advanced_indexing_setitem
-// CHECK: summary = "mo.static.reshape:{{[0-9]+}}+mo.static.broadcast_to:{{[0-9]+}}+mo.static.broadcast_to:{{[0-9]+}}+mo.static.broadcast_to:{{[0-9]+}}+custom__advanced_indexing_setitem:{{[0-9]+}}"
+// CHECK: fusionInfo = View(mo.static.reshape:{{[0-9]+}}, mo.static.broadcast_to:{{[0-9]+}}, mo.static.broadcast_to:{{[0-9]+}}, mo.static.broadcast_to:{{[0-9]+}}, custom__advanced_indexing_setitem:{{[0-9]+}})
 mo.graph @advanced_indexing_setitem() -> !mo.tensor<[2, 3, 4, 5], si32> {
   %start = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
   %stop = mo.constant {value = #M.dense_array<120> : tensor<1xsi32>} : !mo.tensor<[], si32>
@@ -34,7 +34,7 @@ mo.graph @advanced_indexing_setitem() -> !mo.tensor<[2, 3, 4, 5], si32> {
 
 // CHECK-LABEL: @forced_view_fusion
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.slice:{{[0-9]+}}+mo.matmul:{{[0-9]+}}"
+// CHECK: fusionInfo = View(mo.slice:{{[0-9]+}}, mo.matmul:{{[0-9]+}})
 // CHECK-NOT: mogg.kernel
 mo.graph @forced_view_fusion(%input: !mo.tensor<[10, 2], si32>) -> (!mo.tensor<[2, 2], si32>) {
 	%start = mo.constant {value = #M.dense_array<8, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>

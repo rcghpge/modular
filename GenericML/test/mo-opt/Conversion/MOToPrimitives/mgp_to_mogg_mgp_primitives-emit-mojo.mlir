@@ -78,7 +78,7 @@ mgp.model @mgp_device_profile : mof devices [#M.device_ref<"cpu", 0>, #M.device_
 // CHECK: mogg.generic.compiled.region
 // CHECK: mgp.buffer.to_bool
 // CHECK: mogg.output
-// CHECK: isAsync = false, summary = "mgp.buffer.to_bool:{{[0-9]+}}"
+// CHECK: isAsync = false
 mgp.model @mgp_buffer_to_bool : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -168,7 +168,7 @@ mgp.model @mgp_host_to_device : mof devices [#M.device_ref<"cpu", 0>, #M.device_
 // CHECK: mgp.sync
 // CHECK-NEXT: %[[OUT:.*]] = mogg.async.ready
 // CHECK: mogg.output %[[OUT]] : !mef.chain
-// CHECK: isAsync = true, summary = "mgp.sync:{{[0-9]+}}"
+// CHECK: isAsync = true
 mgp.model @mgp_sync : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2

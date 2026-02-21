@@ -4,11 +4,11 @@
 // This runs a heuristic check that all operations are fused together (and so affine fusion works).
 // RUN: cat %t.debug_ir.mlir | FileCheck %s --check-prefix=CHECK-IR
 
-// The kernel summary string should reflect an accurate fusion record.
+// The kernel fusionInfo should reflect an accurate fusion record.
 // DAG because the order things are printed in the middle of the pipeline is
 // not predictable.
 // CHECK-IR-DAG: mo.graph @crazy_views
-// CHE CK-IR-DAG: summary = "mo.matmul:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.split_dim:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.merge_dim:{{[0-9]+}}+mo.add_singleton_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"
+// CHE CK-IR-DAG: fusionInfo = Epilogue({{.*}}mo.matmul{{.*}}mo.add{{.*}})
 
 // CHECK-LABEL: 'crazy_views' returned tensor<1x1x8x1x4x1xf32>
 // CHECK-SAME: 1.100000e+01, 1.200000e+01, 1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01, 1.700000e+01, 1.800000e+01

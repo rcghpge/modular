@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mo-to-mgp="constant-fold=false" --split-input-file -o /dev/null --mlir-print-ir-after=mogg-fuse-prologues-epilogues 2>&1 | FileCheck %s
 
 // CHECK-LABEL: mo.graph @conv_merge_dim_rank3_merge_1
-// CHECK-DAG: summary = "mo.conv:{{[0-9]+}}+mo.merge_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"
+// CHECK-DAG: fusionInfo = Prologue(Affine(mo.conv:{{[0-9]+}}, mo.merge_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 mo.graph @conv_merge_dim_rank3_merge_1(%input : !mo.tensor<[1, 2, 2, 3], f32>) -> (!mo.tensor<[1, 4, 3], f32>) {
     %bias = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.,  2.,  3.,  4.,  5.,  6.,  7.,  8.,  9., 10., 11., 12.> : tensor<12xf32>} : () -> !mo.tensor<[1, 4, 3], f32>
     %st = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
@@ -21,7 +21,7 @@ mo.graph @conv_merge_dim_rank3_merge_1(%input : !mo.tensor<[1, 2, 2, 3], f32>) -
 // -----
 
 // CHECK-LABEL: mo.graph @conv_merge_dim_rank3_merge_2
-// CHECK-DAG: summary = "mo.conv:{{[0-9]+}}+mo.merge_dim:{{[0-9]+}}+mo.add:{{[0-9]+}}"
+// CHECK-DAG: fusionInfo = Prologue(Affine(mo.conv:{{[0-9]+}}, mo.merge_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 mo.graph @conv_merge_dim_rank3_merge_2(%input : !mo.tensor<[1, 2, 2, 3], f32>) -> (!mo.tensor<[1, 2, 6], f32>) {
     %bias = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.,  2.,  3.,  4.,  5.,  6.,  7.,  8.,  9., 10., 11., 12.> : tensor<12xf32>} : () -> !mo.tensor<[1, 2, 6], f32>
     %st = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>

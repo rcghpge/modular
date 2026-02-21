@@ -6,7 +6,7 @@
 // CHECK-IR-LABEL: @elementwise_opaque_fusion
 // CHECK-IR: mogg.kernel
 // CHECK-IR: mogg.kernel
-// CHECK-IR: summary = "mo.add:{{[0-9]+}}+custom__fused_write_to_tensor_wrapper:{{[0-9]+}}"
+// CHECK-IR: fusionInfo = Elementwise({{.*}}mo.add{{.*}}custom__fused_write_to_tensor_wrapper{{.*}})
 // CHECK-IR: mogg.kernel
 
 

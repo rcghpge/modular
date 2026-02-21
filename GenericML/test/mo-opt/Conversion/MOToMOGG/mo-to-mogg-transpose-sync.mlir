@@ -13,7 +13,6 @@ mo.graph @transpose_sync_cpu(%arg0: !mo.tensor<[4, 3], f32>) -> (!mo.tensor<[3, 
 // CHECK: %[[KERNEL_OUT:.*]] = mogg.kernel(
 // CHECK: mogg.call.view["mo.transpose"]
 // CHECK: isAsync = false
-// CHECK: summary = "mo.transpose
 // CHECK: mo.output %[[KERNEL_OUT]] : !mo.tensor<[3, 4], f32>
 
 mo.graph @transpose_sync_gpu(%arg0: !mo.tensor<[4, 3], f32, gpu:0>) -> (!mo.tensor<[3, 4], f32, gpu:0>) {
@@ -27,4 +26,3 @@ mo.graph @transpose_sync_gpu(%arg0: !mo.tensor<[4, 3], f32, gpu:0>) -> (!mo.tens
 // CHECK: mogg.call.view["mo.transpose"]
 // CHECK: device = #M.device_ref<"gpu", 0>
 // CHECK: isAsync = false
-// CHECK: summary = "mo.transpose

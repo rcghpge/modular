@@ -6,7 +6,7 @@
 // CHECK-IR-LABEL: @matmul_opaque_fusion
 // CHECK-IR: mogg.kernel
 // CHECK-IR: mogg.kernel
-// CHECK-IR: summary = "mo.matmul:{{[0-9]+}}+custom__fused_write_to_tensor_wrapper:{{[0-9]+}}"
+// CHECK-IR: fusionInfo = Epilogue({{.*}}mo.matmul{{.*}}custom__fused_write_to_tensor_wrapper{{.*}})
 // CHECK-IR: mogg.kernel
 
 

@@ -53,9 +53,12 @@ def MOGGDialect : Dialect {
 
   let cppNamespace = "::M::MOGG";
   let dependentDialects = ["::M::MO::MODialect", "::M::DebugInfo::DebugInfoDialect"];
+  let useDefaultAttributePrinterParser = 1;
 
   let extraClassDeclaration = [{
   private:
+    /// Register all dialect attributes.
+    void registerAttributes();
     /// Register all dialect ops.
     void registerOperations();
     /// Register all dialect types.

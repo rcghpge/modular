@@ -2,13 +2,10 @@
 
 // No kernels get fused
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.distributed.allreduce.sum
 // CHECK: mo.transfer
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.distributed.allgather
 // CHECK: mogg.concat
 // CHECK: mogg.kernel
-// CHECK: summary = "mo.add
 
 mo.graph @fn(%arg0: !mo.tensor<[5, 64], bf16, gpu:0>, %arg1: !mo.tensor<[5, 64], bf16, gpu:1>, %arg2: !mo.tensor<[2, 64], bf16, gpu:0>, %arg3: !mo.tensor<[3, 64], bf16, gpu:0>, %arg4: !mo.buffer<[537919488], ui8, gpu:0>, %arg5: !mo.buffer<[537919488], ui8, gpu:1>) -> !mo.tensor<[5, 64], bf16, gpu:1> {
   %0 = mo.chain.create()

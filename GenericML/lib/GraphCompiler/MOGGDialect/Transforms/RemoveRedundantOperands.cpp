@@ -34,7 +34,7 @@ buildRegionOpWithResultType(OpBuilder &builder,
   auto newKernel = MOGG::GenericCompiledRegionOp::create(
       builder, regionOp->getLoc(), resultTypes, regionOp.getOperands(),
       regionOp.getOutputParamDeclsAttr(), regionOp.getInOutSignatureAttr(),
-      regionOp.getSummaryAttr(),           // summary
+      regionOp.getFusionInfoAttr(),        // fusionInfo
       regionOp.getIsAsyncAttr(),           // isAsync
       regionOp.getConstantResourcesAttr(), // constantResources
       regionOp.getCanFuseIntoOtherAttr(),  // canFuseIntoOther

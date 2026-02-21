@@ -6,7 +6,7 @@
 
 // The matmul_allreduce should be fused with the add operations
 // CHECK-LABEL: mef.callable @matmul_allreduce_with_epilogue$exec
-// CHECK: mo.distributed.matmul_allreduce{{.*}}+mo.add
+// CHECK: Prologue({{.*}}mo.distributed.matmul_allreduce, mo.add{{.*}})
 // CHECK: mef.output
 mo.graph @matmul_allreduce_with_epilogue<total_seq_len>(
   %input0: !mo.tensor<[total_seq_len, 7168], bf16, gpu:0>,
@@ -71,7 +71,7 @@ mo.graph @matmul_allreduce_with_epilogue<total_seq_len>(
 
 // The allreduce.sum should be fused with the add operation
 // CHECK-LABEL: mef.callable @allreduce_sum_with_epilogue$exec
-// CHECK: mo.distributed.allreduce.sum{{.*}}+mo.add
+// CHECK: Prologue(mo.distributed.allreduce.sum, mo.add, operandIndices=[0])
 // CHECK: mef.output
 mo.graph @allreduce_sum_with_epilogue(
   %input0: !mo.tensor<[5, 64], bf16, gpu:0>,

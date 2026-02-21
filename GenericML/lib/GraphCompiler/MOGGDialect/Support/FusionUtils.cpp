@@ -22,15 +22,8 @@
 
 namespace M::MOGG {
 
-StringAttr getSummaryString(Operation *op) {
-  if (auto kernelOp = dyn_cast<MOGG::KernelOp>(op)) {
-    if (auto summaryAttr = kernelOp.getSummaryAttr())
-      return summaryAttr;
-  } else if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
-    if (auto summaryAttr = kernelOp.getSummaryAttr())
-      return summaryAttr;
-  }
-
+// FusionInfo helper
+FusionLeafAttr createFusionLeaf(Operation *op) {
   std::string name;
   if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op)) {
     name = "shapeof(";
@@ -57,40 +50,13 @@ StringAttr getSummaryString(Operation *op) {
     name = op->getName().getIdentifier().getValue();
   }
 
-  if (auto fileLineLoc = dyn_cast<mlir::FileLineColLoc>(op->getLoc())) {
-    if (fileLineLoc.getLine() > 0) {
-      name += ":";
-      name += std::to_string(fileLineLoc.getLine());
-    }
-  }
+  uint32_t lineNumber = 0;
+  if (auto fileLineLoc = dyn_cast<mlir::FileLineColLoc>(op->getLoc()))
+    if (fileLineLoc.getLine() > 0)
+      lineNumber = fileLineLoc.getLine();
 
-  return StringAttr::get(op->getContext(), name);
-}
-
-StringAttr getSummaryString(ArrayRef<Operation *> ops, FusionType fusionType) {
-  if (ops.empty())
-    return StringAttr::get(ops.front()->getContext(), "");
-
-  if (ops.size() == 1)
-    return getSummaryString(ops.front());
-
-  std::string str;
-  llvm::raw_string_ostream os(str);
-  if (fusionType == FusionType::HARD) {
-    llvm::interleave(
-        ops, os,
-        [&os](Operation *op) { os << getSummaryString(op).getValue(); }, "+");
-  } else {
-    ASSERT_STREAM(fusionType == FusionType::SOFT,
-                  << "Expected soft fusion by default");
-    for (auto [i, op] : llvm::enumerate(ops)) {
-      os << "(" << getSummaryString(op).getValue() << ")";
-
-      if (i != ops.size() - 1)
-        os << "_";
-    }
-  }
-  return StringAttr::get(ops.front()->getContext(), str);
+  auto ctx = op->getContext();
+  return FusionLeafAttr::get(ctx, StringAttr::get(ctx, name), lineNumber);
 }
 
 // The max number of elements in a constant that we will allow to be fused into

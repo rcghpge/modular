@@ -191,7 +191,8 @@ struct FuseProloguesEpilogues
                          MOGG::KernelTerminator>(elementwiseLambda,
                                                  src.getOps());
 
-        dst.setSummaryAttr(getSummaryString({src, dst}, FusionType::HARD));
+        dst.setFusionInfoAttr(createFusionInfo<FusionEpilogueAttr>(
+            dst->getContext(), {src, dst}, {static_cast<uint32_t>(fusionIdx)}));
         // Delete the src because it is no longer needed.
         src->erase();
       }
@@ -410,7 +411,8 @@ struct FuseProloguesEpilogues
                          MOGG::KernelTerminator>(outputLambda, src.getOps());
 
         src->replaceAllUsesWith(ValueRange{dstOutput});
-        dst.setSummaryAttr(getSummaryString({dst, src}, FusionType::HARD));
+        dst.setFusionInfoAttr(createFusionInfo<FusionPrologueAttr>(
+            dst->getContext(), {dst, src}, {static_cast<uint32_t>(fusionIdx)}));
 
         dst.setHasReadEffect(dst.getHasReadEffect() || src.getHasReadEffect());
         dst.setHasWriteEffect(dst.getHasWriteEffect() ||

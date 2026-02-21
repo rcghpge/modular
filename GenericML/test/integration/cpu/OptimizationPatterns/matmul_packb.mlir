@@ -19,7 +19,7 @@ mo.graph @matmul_packb_static(%x: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[4000,
   %shape = mo.constant {value = #M.dense_array<4000, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %act2 = mo.reshape(%act, %shape) : (!mo.tensor<[2000, 2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[4000, 2], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
-  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul:{{.*}}"
+  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
   %1 = mo.matmul(%act2, %w) : (!mo.tensor<[4000, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[4000, 2], f32>
   mo.output %1 : !mo.tensor<[4000, 2], f32>
 }
@@ -36,7 +36,7 @@ mo.graph @matmul_packb<D0>(%x: !mo.tensor<[D0, 2], f32>) -> (!mo.tensor<[D0, 2],
   // CHECK-IR: mo.matmul({{.*}}, %[[PACKED_WEIGHTS]]) : (!mo.tensor<[D0, 2], f32>
   %w = mo.constant {value = #M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
-  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul:{{.*}}"
+  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
   %1 = mo.matmul(%x, %w) : (!mo.tensor<[D0, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[D0, 2], f32>
   mo.output %1 : !mo.tensor<[D0, 2], f32>
 }
@@ -55,7 +55,7 @@ mo.graph @matmul_transposed_packb<D0>(%x: !mo.tensor<[D0, 2], f32>) -> (!mo.tens
   %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
   %0 = mo.transpose(%w, %axes) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 3], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
-  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul:{{.*}}"
+  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
   %1 = mo.matmul(%x, %0) : (!mo.tensor<[D0, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[D0, 3], f32>
   mo.output %1 : !mo.tensor<[D0, 3], f32>
 }
@@ -76,7 +76,7 @@ mo.graph @matmul_pack_reshaped<D0>(%x: !mo.tensor<[D0, 2], f32>) -> (!mo.tensor<
   %w_rs = mo.static.reshape(%w_t) : !mo.tensor<[1, 2, 3, 1], f32> -> !mo.tensor<[2, 3], f32>
   %1 = mo.matmul(%x, %w_rs) : (!mo.tensor<[D0, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[D0, 3], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
-  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul:{{.*}}"
+  // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
   mo.output %1 : !mo.tensor<[D0, 3], f32>
 }
 
