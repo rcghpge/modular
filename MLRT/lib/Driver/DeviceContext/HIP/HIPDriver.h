@@ -30,6 +30,54 @@ using hipModule_t = struct ihipModule_t *;
 using hipStream_t = struct ihipStream_t *;
 using hipEvent_t = struct ihipEvent_t *;
 using hipMemPool_t = struct ihipMemPoolHandle_t *;
+using hipGraph_t = struct ihipGraph_t *;
+using hipGraphExec_t = struct hipGraphExec *;
+using hipGraphNode_t = struct hipGraphNode *;
+
+// COPIED FROM hip_runtime_api.h
+
+enum class hipStreamCaptureMode {
+  hipStreamCaptureModeGlobal = 0,
+  hipStreamCaptureModeThreadLocal,
+  hipStreamCaptureModeRelaxed
+};
+
+enum class hipStreamCaptureStatus {
+  hipStreamCaptureStatusNone = 0,    ///< Stream is not capturing
+  hipStreamCaptureStatusActive,      ///< Stream is actively capturing
+  hipStreamCaptureStatusInvalidated  ///< Stream is part of a capture sequence that has been
+                                     ///< invalidated, but not terminated
+};
+
+enum class hipGraphInstantiateFlags {
+  hipGraphInstantiateFlagAutoFreeOnLaunch =
+      1,  ///< Automatically free memory allocated in a graph before relaunching.
+  hipGraphInstantiateFlagUpload = 2,  ///< Automatically upload the graph after instantiation.
+  hipGraphInstantiateFlagDeviceLaunch =
+      4,  ///< Instantiate the graph to be launched from the device.
+  hipGraphInstantiateFlagUseNodePriority =
+      8,  ///< Run the graph using the per-node priority attributes rather than the priority of the
+          ///< stream it is launched into.
+};
+
+enum class hipGraphDebugDotFlags {
+  hipGraphDebugDotFlagsVerbose =
+      1 << 0, /**< Output all debug data as if every debug flag is enabled */
+  hipGraphDebugDotFlagsKernelNodeParams = 1 << 2, /**< Adds hipKernelNodeParams to output */
+  hipGraphDebugDotFlagsMemcpyNodeParams = 1 << 3, /**< Adds hipMemcpy3DParms to output */
+  hipGraphDebugDotFlagsMemsetNodeParams = 1 << 4, /**< Adds hipMemsetParams to output */
+  hipGraphDebugDotFlagsHostNodeParams = 1 << 5,   /**< Adds hipHostNodeParams to output */
+  hipGraphDebugDotFlagsEventNodeParams =
+      1 << 6, /**< Adds hipEvent_t handle from record and wait nodes to output */
+  hipGraphDebugDotFlagsExtSemasSignalNodeParams =
+      1 << 7, /**< Adds hipExternalSemaphoreSignalNodeParams values to output */
+  hipGraphDebugDotFlagsExtSemasWaitNodeParams =
+      1 << 8, /**< Adds hipExternalSemaphoreWaitNodeParams to output */
+  hipGraphDebugDotFlagsKernelNodeAttributes =
+      1 << 9, /**< Adds hipKernelNodeAttrID values to output */
+  hipGraphDebugDotFlagsHandles =
+      1 << 10 /**< Adds node handles and every kernel function handle to output */
+};
 
 // Memory pool access types (mirroring CUDA's CUmemAccess* types).
 enum class hipMemAccessFlags {

@@ -31,6 +31,7 @@ class HIPDeviceContext;
 class HIPDeviceEvent;
 class HIPDeviceFunction;
 class HIPDeviceFunctionArguments;
+class HIPDeviceGraph;
 class HIPDeviceStream;
 class HIPDeviceTimer;
 class HIPModuleFunction;
@@ -40,6 +41,7 @@ using HIPDeviceContextRef = RCRef<const HIPDeviceContext>;
 using HIPDeviceEventRef = RCRef<const HIPDeviceEvent>;
 using HIPDeviceFunctionRef = RCRef<const HIPDeviceFunction>;
 using HIPDeviceFunctionArgumentsRef = RCRef<const HIPDeviceFunctionArguments>;
+using HIPDeviceGraphRef = RCRef<HIPDeviceGraph>;
 using HIPDeviceStreamRef = RCRef<const HIPDeviceStream>;
 using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
 using HIPModuleFunctionRef = RCRef<const HIPModuleFunction>;
@@ -124,6 +126,24 @@ private:
   hipEvent_t event_;
 };
 
+class HIPDeviceGraph : public DeviceGraph {
+public:
+  HIPDeviceGraph(const HIPDevice &device, hipGraphExec_t exec,
+                 DeviceStreamRef stream = {})
+      : DeviceGraph(device, std::move(stream)), exec_(exec) {}
+
+  ~HIPDeviceGraph() override;
+
+  /// Replay using the stored stream (set during capture).
+  ErrorOrSuccess replay() const override;
+
+  /// Check if this graph has a stored stream for replay.
+  bool hasStream() const { return hasCaptureStream(); }
+
+private:
+  hipGraphExec_t exec_;
+};
+
 class HIPDeviceStream : public DeviceStream {
 public:
   HIPDeviceStream(const HIPDeviceContext &ctx, hipStream_t stream,
@@ -149,13 +169,21 @@ public:
 
   void *ptr() const override;
 
+  ErrorOrSuccess beginCapture() const override;
+  ErrorOr<DeviceGraphRef> endCapture() const override;
+
   hipStream_t hipStream() const;
 
   static const HIPDeviceStream *verified_cast(const DeviceStream *stream);
 
 private:
+  /// Query the current HIP stream capture status.
+  hipStreamCaptureStatus getCaptureStatus() const;
+
   hipStream_t stream_;
   bool isOwner_;
+
+  StringRef logGraphCapture_ = {};
 };
 
 class HIPModuleFunction : public DeviceFunctionCacheEntry {

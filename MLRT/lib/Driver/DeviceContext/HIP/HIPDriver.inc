@@ -48,6 +48,18 @@ HIP_FUNC(hipDeviceGetStreamPriorityRange, Result, int *, int *)
 HIP_FUNC(hipStreamDestroy, Result, hipStream_t)
 HIP_FUNC(hipStreamSynchronize, Result, hipStream_t)
 HIP_FUNC(hipStreamWaitEvent, Result, hipStream_t, hipEvent_t, unsigned int)
+HIP_FUNC(hipStreamBeginCapture, Result, hipStream_t, hipStreamCaptureMode)
+HIP_FUNC(hipStreamEndCapture, Result, hipStream_t, hipGraph_t *)
+HIP_FUNC(hipStreamIsCapturing, Result, hipStream_t, hipStreamCaptureStatus *)
+
+HIP_FUNC(hipGraphInstantiate, Result, hipGraphExec_t *, hipGraph_t, hipGraphNode_t *,
+          char *, size_t)
+HIP_FUNC(hipGraphInstantiateWithFlags, Result, hipGraphExec_t *, hipGraph_t,
+          unsigned long long)
+HIP_FUNC(hipGraphDestroy, Result, hipGraph_t)
+HIP_FUNC(hipGraphExecDestroy, Result, hipGraphExec_t)
+HIP_FUNC(hipGraphLaunch, Result, hipGraphExec_t, hipStream_t)
+HIP_FUNC(hipGraphDebugDotPrint, Result, hipGraph_t, const char *, unsigned int)
 
 HIP_FUNC(hipHostMalloc, Result, void **, size_t, unsigned int)
 HIP_FUNC(hipHostFree, Result, void *)

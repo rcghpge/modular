@@ -1001,7 +1001,7 @@ ErrorOrSuccess CUDADeviceGraph::replay() const {
 CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &ctx,
                                    CUstream stream, bool isOwner)
     : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {
-  logCudaGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
+  logGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
 }
 
 CUDADeviceStream::~CUDADeviceStream() {
@@ -1127,7 +1127,7 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
   if (!graph)
     RETURN_ERROR("cuStreamEndCapture returned null graph");
 
-  if (logCudaGraphCapture_ != "") {
+  if (logGraphCapture_ != "") {
     static std::atomic<int32_t> graphCaptureCount = 0;
 
     int32_t currentId = graphCaptureCount.fetch_add(1);
@@ -1136,7 +1136,7 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
     // The DOT file can be visualized with Graphviz tools (e.g., dot -Tpng).
     // Set MODULAR_CUDA_GRAPH_DOT_PATH to customize the output path.
     std::string outputPath =
-        llvm::formatv("{}/cuda_graph_{}.dot", logCudaGraphCapture_, currentId)
+        llvm::formatv("{}/cuda_graph_{}.dot", logGraphCapture_, currentId)
             .str();
     cudaDevice.cudaDriver().cuGraphDebugDotPrint(
         graph, outputPath.c_str(),

@@ -250,13 +250,13 @@ public:
   static const CUDADeviceStream *verified_cast(const DeviceStream *stream);
 
 private:
-  /// Query the current CUDA stream capture status.
+  /// Query the current stream capture status.
   CUstreamCaptureStatus getCaptureStatus() const;
 
   CUstream stream_;
   bool isOwner_;
 
-  StringRef logCudaGraphCapture_ = {};
+  StringRef logGraphCapture_ = {};
 };
 
 class CUDAModuleFunction : public DeviceFunctionCacheEntry {

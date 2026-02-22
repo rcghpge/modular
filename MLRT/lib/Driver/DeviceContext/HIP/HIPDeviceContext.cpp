@@ -17,6 +17,7 @@
 #include "Support/ErrorOr.h"
 #include "Support/Profiling/Tracy.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Process.h"
 
@@ -749,10 +750,34 @@ const HIPDeviceEvent &HIPDeviceEvent::cast(const DeviceEvent &event) {
   return static_cast<const HIPDeviceEvent &>(event);
 }
 
+// ===== HIPDeviceGraph ===== //
+HIPDeviceGraph::~HIPDeviceGraph() {
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  HIP_WITH_DEV(hipDevice);
+  if (exec_) {
+    HIP_CHECK(hipDevice.hipDriver().hipGraphExecDestroy(exec_));
+  }
+}
+
+ErrorOrSuccess HIPDeviceGraph::replay() const {
+  if (!hasStream())
+    RETURN_ERROR("cannot replay HIP graph: no stream stored during capture");
+  const auto *hipStream = HIPDeviceStream::verified_cast(captureStream());
+  if (!hipStream)
+    RETURN_ERROR("cannot replay HIP graph: stored stream is not a HIP stream");
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIP_CHECK_ERR(
+      hipDevice.hipDriver().hipGraphLaunch(exec_, hipStream->hipStream()));
+  return success();
+}
+
 // ===== HIPDeviceStream ===== //
 HIPDeviceStream::HIPDeviceStream(const HIPDeviceContext &ctx,
                                  hipStream_t stream, bool isOwner)
-    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {}
+    : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {
+  logGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
+}
 
 HIPDeviceStream::~HIPDeviceStream() {
   if (isOwner_) {
@@ -835,6 +860,77 @@ HIPDeviceStream::verified_cast(const DeviceStream *stream) {
     return nullptr;
   }
   return static_cast<const HIPDeviceStream *>(stream);
+}
+
+hipStreamCaptureStatus HIPDeviceStream::getCaptureStatus() const {
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  hipStreamCaptureStatus status =
+      hipStreamCaptureStatus::hipStreamCaptureStatusNone;
+  hipDevice.hipDriver().hipStreamIsCapturing(stream_, &status);
+  return status;
+}
+
+ErrorOrSuccess HIPDeviceStream::beginCapture() const {
+  hipStreamCaptureStatus status = getCaptureStatus();
+  if (status == hipStreamCaptureStatus::hipStreamCaptureStatusActive)
+    RETURN_ERROR("stream is already capturing");
+  if (status == hipStreamCaptureStatus::hipStreamCaptureStatusInvalidated)
+    RETURN_ERROR("stream capture was invalidated");
+
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamBeginCapture(
+      stream_, hipStreamCaptureMode::hipStreamCaptureModeRelaxed));
+  return success();
+}
+
+ErrorOr<DeviceGraphRef> HIPDeviceStream::endCapture() const {
+  hipStreamCaptureStatus status = getCaptureStatus();
+  if (status == hipStreamCaptureStatus::hipStreamCaptureStatusNone)
+    RETURN_ERROR("stream is not capturing");
+  if (status == hipStreamCaptureStatus::hipStreamCaptureStatusInvalidated)
+    RETURN_ERROR("stream capture was invalidated");
+
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  HIP_WITH_DEV_ERR(hipDevice);
+
+  hipGraph_t graph = nullptr;
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamEndCapture(stream_, &graph));
+
+  if (!graph)
+    RETURN_ERROR("hipStreamEndCapture returned null graph");
+
+  if (logGraphCapture_ != "") {
+    static std::atomic<int32_t> graphCaptureCount = 0;
+
+    int32_t currentId = graphCaptureCount.fetch_add(1);
+    // Debug: print graph to DOT file for visualization.
+    // This is only enabled at compile time for debugging purposes.
+    // The DOT file can be visualized with Graphviz tools (e.g., dot -Tpng).
+    // Set MODULAR_CUDA_GRAPH_DOT_PATH to customize the output path.
+    std::string outputPath =
+        llvm::formatv("{}/hip_graph_{}.dot", logGraphCapture_, currentId).str();
+    hipDevice.hipDriver().hipGraphDebugDotPrint(
+        graph, outputPath.c_str(),
+        static_cast<unsigned>(
+            hipGraphDebugDotFlags::hipGraphDebugDotFlagsVerbose));
+  }
+
+  hipGraphExec_t exec = nullptr;
+  HIPDriver::Result res = hipDevice.hipDriver().hipGraphInstantiateWithFlags(
+      &exec, graph,
+      M::to_underlying(
+          hipGraphInstantiateFlags::hipGraphInstantiateFlagAutoFreeOnLaunch));
+  if (res != HIPDriver::SUCCESS) {
+    // Clean up graph on failure.
+    hipDevice.hipDriver().hipGraphDestroy(graph);
+    RETURN_ERROR("failed to instantiate HIP graph");
+  }
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipGraphDestroy(graph));
+
+  // Store the stream for replay/verification.
+  return HIPDeviceGraphRef::create(hipDevice, exec,
+                                   DeviceStreamRef::copy(this));
 }
 
 // ===== HIPModuleFunction ===== //
