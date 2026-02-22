@@ -5,16 +5,21 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
+#include "tools/cpp/runfiles/runfiles.h"
 
 #include "gtest/gtest.h"
 
+#include "llvm/Support/MemoryBuffer.h"
+
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
 
 using namespace M::Driver;
+using bazel::tools::cpp::runfiles::Runfiles;
 using M::ErrorOr;
 using M::ErrorOrSuccess;
 using M::success;
@@ -124,11 +129,80 @@ $L__BB0_2:
 }
 )PTX";
 
+static Runfiles *getRunfiles() {
+  static std::unique_ptr<Runfiles> runfiles = [] {
+    std::string error;
+    auto result = std::unique_ptr<Runfiles>(Runfiles::CreateForTest(&error));
+    if (!result)
+      ADD_FAILURE() << "Failed to create runfiles: " << error;
+    return result;
+  }();
+  return runfiles.get();
+}
+
+static ErrorOr<std::string> loadHIPCodeObject(std::string_view stem,
+                                              const Device &device) {
+  if (device.api() != Device::hipAPI)
+    RETURN_ERROR("loadHIPCodeObject only supports HIP devices");
+
+  DEFINE_OR_RETURN_ERROR(const char *, archName, device.getArchName());
+  std::string_view arch(archName);
+
+  if (arch.size() < 6 || arch.substr(0, 6) != "gfx950")
+    RETURN_ERROR("Unsupported HIP arch for GraphCaptureTest: " +
+                 std::string(arch));
+
+  constexpr std::string_view archTag = "gfx950";
+
+  Runfiles *runfiles = getRunfiles();
+  if (!runfiles)
+    RETURN_ERROR("Runfiles not available");
+
+  // Dig around under the runfiles for the HSA code object (sorry).
+  std::string runfilePath = "_main/MLRT/unittests/Driver/graph_capture_";
+  runfilePath.append(stem.data(), stem.size());
+  runfilePath.push_back('_');
+  runfilePath.append(archTag.data(), archTag.size());
+  runfilePath.append(".hsaco");
+  std::string codeObjectPath = runfiles->Rlocation(runfilePath);
+  if (codeObjectPath.empty())
+    RETURN_ERROR("Failed to locate runfile: " + runfilePath);
+
+  auto bufferOrErr = llvm::MemoryBuffer::getFile(codeObjectPath);
+  if (!bufferOrErr)
+    RETURN_ERROR("Failed to open code object: " + codeObjectPath);
+
+  return (*bufferOrErr)->getBuffer().str();
+}
+
+static ErrorOr<DeviceFunctionRef>
+loadKernelForActiveAPI(const DeviceContext &ctx, std::string_view moduleName,
+                       std::string_view functionName, std::string_view cudaPtx,
+                       std::string_view hipCodeStem) {
+  std::string moduleNameStr(moduleName);
+  std::string functionNameStr(functionName);
+
+  if (ctx.device().api() == Device::cudaAPI)
+    return ctx.loadFunction(moduleNameStr, functionNameStr,
+                            std::string(cudaPtx));
+  if (ctx.device().api() == Device::hipAPI) {
+    DEFINE_OR_RETURN_ERROR(std::string, hsacoData,
+                           loadHIPCodeObject(hipCodeStem, ctx.device()));
+    return ctx.loadFunction(moduleNameStr, functionNameStr, hsacoData);
+  }
+
+  RETURN_ERROR("GraphCaptureTest requires CUDA or HIP backend");
+}
+
+static bool supportsLaunchTraceVerification(const DeviceContext &ctx) {
+  return ctx.device().api() == Device::cudaAPI;
+}
+
 class GraphCaptureTest : public ::testing::Test {};
 
 TEST_F(GraphCaptureTest, BeginAndEndCapture) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   EXPECT_NO_ERR(stream->beginCapture());
@@ -138,7 +212,7 @@ TEST_F(GraphCaptureTest, BeginAndEndCapture) {
 
 TEST_F(GraphCaptureTest, DoubleBeginCaptureErrors) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   EXPECT_NO_ERR(stream->beginCapture());
@@ -150,7 +224,7 @@ TEST_F(GraphCaptureTest, DoubleBeginCaptureErrors) {
 
 TEST_F(GraphCaptureTest, EndCaptureWithoutBeginErrors) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   EXPECT_ERR(stream->endCapture());
@@ -158,7 +232,7 @@ TEST_F(GraphCaptureTest, EndCaptureWithoutBeginErrors) {
 
 TEST_F(GraphCaptureTest, CaptureAndReplayEmpty) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   EXPECT_NO_ERR(stream->beginCapture());
@@ -170,7 +244,7 @@ TEST_F(GraphCaptureTest, CaptureAndReplayEmpty) {
 
 TEST_F(GraphCaptureTest, ReplayMultipleTimes) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   EXPECT_NO_ERR(stream->beginCapture());
@@ -192,26 +266,27 @@ TEST_F(GraphCaptureTest, CPUDeviceReturnsNotSupported) {
 }
 
 TEST_F(GraphCaptureTest, ReplayOnCPUStreamErrors) {
-  ASSIGN_NO_ERR(DeviceContextRef, cudaCtx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
-  const auto &cudaDevice = CUDADevice::cast(cudaCtx->device());
+  ASSIGN_NO_ERR(DeviceContextRef, gpuCtx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, gpuStream, gpuCtx->createStream());
   ASSIGN_NO_ERR(DeviceContextRef, cpuCtx,
                 DeviceContext::create(Device::cpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, cpuStream, cpuCtx->stream());
 
-  DeviceGraphRef graph =
-      CUDADeviceGraphRef::create(cudaDevice, /*exec=*/nullptr,
-                                 DeviceStreamRef::copy(cpuStream.getPointer()));
+  EXPECT_NO_ERR(gpuStream->beginCapture());
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, gpuStream->endCapture());
+  graph->setStream(DeviceStreamRef::copy(cpuStream.getPointer()));
   EXPECT_ERR(graph->replay());
 }
 
 TEST_F(GraphCaptureTest, CaptureProducesGraphs) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -256,7 +331,7 @@ TEST_F(GraphCaptureTest, CaptureProducesGraphs) {
 // device graph capture in the engine API).
 TEST_F(GraphCaptureTest, CaptureOnDefaultStream) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
 
   // Get the default stream.
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
@@ -272,11 +347,12 @@ TEST_F(GraphCaptureTest, CaptureOnDefaultStream) {
 // Test: debugVerifyReplay succeeds when execution matches captured graph.
 TEST_F(GraphCaptureTest, DebugVerifyReplaySuccess) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -317,11 +393,14 @@ TEST_F(GraphCaptureTest, DebugVerifyReplaySuccess) {
 // Test: debugVerifyReplay detects when execution differs from captured graph.
 TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsMismatch) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -382,11 +461,14 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsMismatch) {
 // Test: debugVerifyReplay detects different grid dimensions.
 TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsDifferentGridDim) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -437,7 +519,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsDifferentGridDim) {
 // Test: debugVerifyReplay handles execution failure gracefully.
 TEST_F(GraphCaptureTest, DebugVerifyReplayWithExecutionFailure) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   // Capture an empty graph
@@ -459,7 +541,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayWithExecutionFailure) {
 // Test: debugVerifyReplay handles empty graph (no operations).
 TEST_F(GraphCaptureTest, DebugVerifyReplayEmptyGraph) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   // Capture and verify empty execution
@@ -478,11 +560,14 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayEmptyGraph) {
 // order matches.
 TEST_F(GraphCaptureTest, DebugVerifyReplayHandlesReorderedExecution) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -570,7 +655,7 @@ TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
   ScopedEnvVar env("MODULAR_DEVICE_CONTEXT_SYNC_MODE", "true");
 
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
 
   // Verify that sync mode is enabled
   EXPECT_TRUE(ctx->syncMode());
@@ -578,7 +663,8 @@ TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -623,11 +709,14 @@ TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
 // Test: Scalar parameter changes are detected in trace.
 TEST_F(GraphCaptureTest, TraceDetectsScalarParameterChange) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const size_t elemSize = sizeof(float);
   ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
@@ -685,11 +774,14 @@ TEST_F(GraphCaptureTest, TraceDetectsScalarParameterChange) {
 // Test: Pointer reallocation doesn't affect trace (existing behavior).
 TEST_F(GraphCaptureTest, TraceStableAcrossBufferReallocation) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const uint64_t length = 1024;
   const size_t elemSize = sizeof(float);
@@ -760,11 +852,14 @@ TEST_F(GraphCaptureTest, TraceStableAcrossBufferReallocation) {
 // Test: Mixed pointer and scalar parameters - changing scalar is detected.
 TEST_F(GraphCaptureTest, TraceMixedPointerAndScalarParams) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   ASSIGN_NO_ERR(DeviceFunctionRef, deviceFunc,
-                ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx));
+                loadKernelForActiveAPI(*ctx, "vec_add_module", "vec_add",
+                                       vecAddPtx, "vec_add"));
 
   const size_t elemSize = sizeof(float);
   ASSIGN_NO_ERR(DeviceBufferRef, bufOut,
@@ -821,7 +916,9 @@ TEST_F(GraphCaptureTest, TraceMixedPointerAndScalarParams) {
 // parameters smaller than pointer size (e.g., uint32_t, float).
 TEST_F(GraphCaptureTest, TraceDetectsSubPointerSizedScalarChanges) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   // Load kernel with mixed parameter sizes: (b64 pointer, u32, u32)
@@ -889,7 +986,9 @@ TEST_F(GraphCaptureTest, TraceDetectsSubPointerSizedScalarChanges) {
 // NOT detected (trade-off for reliability).
 TEST_F(GraphCaptureTest, TraceDistinguishesScalarsFromPointerBitPatterns) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  if (!supportsLaunchTraceVerification(*ctx))
+    GTEST_SKIP() << "Launch trace verification is currently CUDA-only";
   ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
 
   // Signature: (ptr, uint64_t, ptr, uint64_t)
