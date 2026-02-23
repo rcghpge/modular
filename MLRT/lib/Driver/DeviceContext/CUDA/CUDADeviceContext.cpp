@@ -1175,9 +1175,8 @@ std::vector<KernelLaunchMetadata> CUDADeviceStream::takeLaunchTrace() const {
   if (it == registry.states.end())
     return {};
 
-  it->second.enabled = false;
   std::vector<KernelLaunchMetadata> result = std::move(it->second.entries);
-  it->second.entries.clear();
+  registry.states.erase(it);
   return result;
 }
 

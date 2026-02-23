@@ -26,10 +26,15 @@
 
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <stddef.h>
 #include <string>
 #include <vector>
+
+namespace llvm::json {
+class Value;
+}
 
 namespace M::Driver {
 
@@ -121,6 +126,27 @@ struct KernelLaunchMetadata {
 
   /// Format this trace entry as a human-readable string
   std::string format(int count = 1) const;
+
+  /// Format this trace entry as JSON object
+  llvm::json::Value formatJSON() const;
+};
+
+/// Result of comparing two launch traces.
+struct LaunchTraceDiff {
+  /// Operations in baseline but missing from current trace, with counts.
+  std::map<KernelLaunchMetadata, int> missingOps;
+
+  /// Operations in current trace but not in baseline, with counts.
+  std::map<KernelLaunchMetadata, int> unexpectedOps;
+
+  /// Returns true if the traces match (no differences).
+  bool empty() const { return missingOps.empty() && unexpectedOps.empty(); }
+
+  /// Format a detailed error message describing the differences.
+  std::string formatErrorMessage(size_t graphIdx) const;
+
+  /// Format as JSON object
+  llvm::json::Value formatJSON(size_t graphIdx) const;
 };
 
 class MemoryManager;

@@ -28,6 +28,8 @@
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -668,47 +670,57 @@ private:
   bool isCapture = true;
 };
 
-/// Result of comparing two launch traces.
-struct LaunchTraceDiff {
-  /// Operations in baseline but missing from current trace, with counts.
-  std::map<KernelLaunchMetadata, int> missingOps;
+std::string LaunchTraceDiff::formatErrorMessage(size_t graphIdx) const {
+  std::string errorMsg;
+  llvm::raw_string_ostream os(errorMsg);
 
-  /// Operations in current trace but not in baseline, with counts.
-  std::map<KernelLaunchMetadata, int> unexpectedOps;
+  os << "Graph " << graphIdx << " launch trace mismatch:\n";
 
-  /// Returns true if the traces match (no differences).
-  bool empty() const { return missingOps.empty() && unexpectedOps.empty(); }
-
-  /// Format detailed information about a single operation
-  static void formatOperation(llvm::raw_ostream &os,
-                              const KernelLaunchMetadata &op, int count) {
-    os << op.format(count);
+  if (!missingOps.empty()) {
+    os << "  Missing operations (in baseline but not in current):\n";
+    for (const auto &[op, count] : missingOps) {
+      os << op.format(count);
+    }
   }
 
-  /// Format a detailed error message describing the differences.
-  std::string formatErrorMessage(size_t graphIdx) const {
-    std::string errorMsg;
-    llvm::raw_string_ostream os(errorMsg);
-
-    os << "Graph " << graphIdx << " launch trace mismatch:\n";
-
-    if (!missingOps.empty()) {
-      os << "  Missing operations (in baseline but not in current):\n";
-      for (const auto &[op, count] : missingOps) {
-        formatOperation(os, op, count);
-      }
+  if (!unexpectedOps.empty()) {
+    os << "  Unexpected operations (in current but not in baseline):\n";
+    for (const auto &[op, count] : unexpectedOps) {
+      os << op.format(count);
     }
-
-    if (!unexpectedOps.empty()) {
-      os << "  Unexpected operations (in current but not in baseline):\n";
-      for (const auto &[op, count] : unexpectedOps) {
-        formatOperation(os, op, count);
-      }
-    }
-
-    return os.str();
   }
-};
+
+  return os.str();
+}
+
+llvm::json::Value LaunchTraceDiff::formatJSON(size_t graphIdx) const {
+  llvm::json::Object json;
+
+  json["graphIdx"] = static_cast<int64_t>(graphIdx);
+  json["hasMismatch"] = !empty();
+
+  // Format missing operations
+  llvm::json::Array missingArray;
+  for (const auto &[op, count] : missingOps) {
+    llvm::json::Object opJson;
+    opJson["operation"] = op.formatJSON();
+    opJson["count"] = count;
+    missingArray.push_back(std::move(opJson));
+  }
+  json["missingOps"] = std::move(missingArray);
+
+  // Format unexpected operations
+  llvm::json::Array unexpectedArray;
+  for (const auto &[op, count] : unexpectedOps) {
+    llvm::json::Object opJson;
+    opJson["operation"] = op.formatJSON();
+    opJson["count"] = count;
+    unexpectedArray.push_back(std::move(opJson));
+  }
+  json["unexpectedOps"] = std::move(unexpectedArray);
+
+  return llvm::json::Value(std::move(json));
+}
 
 /// Compute the difference between two launch traces.
 /// Counts occurrences of each operation and reports differences in counts.
@@ -1568,6 +1580,82 @@ std::string KernelLaunchMetadata::format(int count) const {
 
   os << " [count: " << count << "]\n";
   return os.str();
+}
+
+llvm::json::Value KernelLaunchMetadata::formatJSON() const {
+  llvm::json::Object json;
+
+  // Add common fields
+  json["kernelName"] = kernelName;
+  json["semanticHash"] = static_cast<int64_t>(semanticHash);
+
+  // Add operation kind as a string
+  switch (kind) {
+  case OperationKind::KernelLaunch:
+    json["kind"] = "KernelLaunch";
+    break;
+  case OperationKind::Memcpy:
+    json["kind"] = "Memcpy";
+    break;
+  case OperationKind::Memset:
+    json["kind"] = "Memset";
+    break;
+  }
+
+  // Add operation-specific fields
+  switch (kind) {
+  case OperationKind::KernelLaunch: {
+    llvm::json::Object grid;
+    grid["x"] = gridX;
+    grid["y"] = gridY;
+    grid["z"] = gridZ;
+    json["grid"] = std::move(grid);
+
+    llvm::json::Object block;
+    block["x"] = blockX;
+    block["y"] = blockY;
+    block["z"] = blockZ;
+    json["block"] = std::move(block);
+
+    json["sharedMemBytes"] = sharedMemBytes;
+    json["numAttrs"] = numAttrs;
+    json["streamIndex"] = streamIndex;
+    break;
+  }
+
+  case OperationKind::Memcpy: {
+    // Convert MemcpyKind to string
+    switch (memcpyKind) {
+    case MemcpyKind::HtoD:
+      json["memcpyKind"] = "HtoD";
+      break;
+    case MemcpyKind::DtoH:
+      json["memcpyKind"] = "DtoH";
+      break;
+    case MemcpyKind::DtoD:
+      json["memcpyKind"] = "DtoD";
+      break;
+    case MemcpyKind::None:
+      json["memcpyKind"] = "None";
+      break;
+    }
+    json["byteSize"] = static_cast<int64_t>(memcpyByteSize);
+    break;
+  }
+
+  case OperationKind::Memset: {
+    json["byteSize"] = static_cast<int64_t>(memsetByteSize);
+    // Format value as hex string for clarity
+    std::string hexValue;
+    llvm::raw_string_ostream hexStream(hexValue);
+    hexStream << llvm::format_hex(memsetValue, memsetValueSize * 2);
+    json["value"] = hexStream.str();
+    json["valueSize"] = static_cast<int64_t>(memsetValueSize);
+    break;
+  }
+  }
+
+  return llvm::json::Value(std::move(json));
 }
 
 } // namespace M::Driver

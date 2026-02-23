@@ -6,6 +6,8 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 
+#include "llvm/Support/JSON.h"
+#include "llvm/Support/raw_ostream.h"
 #include "gtest/gtest.h"
 
 #include <string>
@@ -13,6 +15,14 @@
 using namespace M::Driver;
 
 namespace {
+
+// Helper function to convert JSON value to string
+static std::string jsonToString(const llvm::json::Value &json) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << json;
+  return os.str();
+}
 
 // Test fixture for trace metadata formatting tests
 class TraceMetadataTest : public ::testing::Test {};
@@ -326,5 +336,218 @@ TEST_F(TraceMetadataTest, FormatWithDifferentCounts) {
 //     <formatted operation entries>
 //   Unexpected operations (in current but not in baseline):
 //     <formatted operation entries>
+
+// ===== JSON Formatting Tests =====
+
+// Test: JSON format for kernel launch
+TEST_F(TraceMetadataTest, FormatJSONKernelLaunch) {
+  KernelLaunchMetadata metadata("vec_add", /*hashValue=*/0x1234567890abcdefULL,
+                                /*gridX=*/4, /*gridY=*/1, /*gridZ=*/1,
+                                /*blockX=*/256, /*blockY=*/1, /*blockZ=*/1,
+                                /*sharedMemBytes=*/1024, /*numAttrs=*/2,
+                                /*streamIndex=*/0);
+
+  std::string json = jsonToString(metadata.formatJSON());
+
+  // Verify key fields are present in JSON
+  EXPECT_NE(json.find("\"kernelName\":\"vec_add\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"KernelLaunch\""), std::string::npos);
+  EXPECT_NE(json.find("\"semanticHash\""), std::string::npos);
+  EXPECT_NE(json.find("\"grid\""), std::string::npos);
+  EXPECT_NE(json.find("\"block\""), std::string::npos);
+  EXPECT_NE(json.find("\"sharedMemBytes\":1024"), std::string::npos);
+  EXPECT_NE(json.find("\"numAttrs\":2"), std::string::npos);
+}
+
+// Test: JSON format for memcpy HtoD
+TEST_F(TraceMetadataTest, FormatJSONMemcpyHtoD) {
+  KernelLaunchMetadata metadata(
+      "cuMemcpyHtoD", /*hashValue=*/0x1111111111111111ULL,
+      KernelLaunchMetadata::MemcpyKind::HtoD, /*byteSize=*/4096);
+
+  std::string json = jsonToString(metadata.formatJSON());
+
+  EXPECT_NE(json.find("\"kernelName\":\"cuMemcpyHtoD\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memcpy\""), std::string::npos);
+  EXPECT_NE(json.find("\"memcpyKind\":\"HtoD\""), std::string::npos);
+  EXPECT_NE(json.find("\"byteSize\":4096"), std::string::npos);
+}
+
+// Test: JSON format for memcpy DtoH
+TEST_F(TraceMetadataTest, FormatJSONMemcpyDtoH) {
+  KernelLaunchMetadata metadata(
+      "cuMemcpyDtoH", /*hashValue=*/0x2222222222222222ULL,
+      KernelLaunchMetadata::MemcpyKind::DtoH, /*byteSize=*/8192);
+
+  std::string json = jsonToString(metadata.formatJSON());
+
+  EXPECT_NE(json.find("\"kernelName\":\"cuMemcpyDtoH\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memcpy\""), std::string::npos);
+  EXPECT_NE(json.find("\"memcpyKind\":\"DtoH\""), std::string::npos);
+  EXPECT_NE(json.find("\"byteSize\":8192"), std::string::npos);
+}
+
+// Test: JSON format for memcpy DtoD
+TEST_F(TraceMetadataTest, FormatJSONMemcpyDtoD) {
+  KernelLaunchMetadata metadata(
+      "cuMemcpyDtoD", /*hashValue=*/0x3333333333333333ULL,
+      KernelLaunchMetadata::MemcpyKind::DtoD, /*byteSize=*/16384);
+
+  std::string json = jsonToString(metadata.formatJSON());
+
+  EXPECT_NE(json.find("\"kernelName\":\"cuMemcpyDtoD\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memcpy\""), std::string::npos);
+  EXPECT_NE(json.find("\"memcpyKind\":\"DtoD\""), std::string::npos);
+  EXPECT_NE(json.find("\"byteSize\":16384"), std::string::npos);
+}
+
+// Test: JSON format for memset with zero value
+TEST_F(TraceMetadataTest, FormatJSONMemsetZero) {
+  KernelLaunchMetadata metadata("cuMemset",
+                                /*hashValue=*/0x4444444444444444ULL,
+                                /*byteSize=*/8192,
+                                /*value=*/0x00000000ULL, /*valSize=*/4);
+
+  std::string json = jsonToString(metadata.formatJSON());
+
+  EXPECT_NE(json.find("\"kernelName\":\"cuMemset\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memset\""), std::string::npos);
+  EXPECT_NE(json.find("\"byteSize\":8192"), std::string::npos);
+  EXPECT_NE(json.find("\"value\":\"0x"),
+            std::string::npos); // Check for hex format
+  EXPECT_NE(json.find("\"valueSize\":4"), std::string::npos);
+}
+
+// Test: JSON format for memset with non-zero value
+TEST_F(TraceMetadataTest, FormatJSONMemsetNonZero) {
+  KernelLaunchMetadata metadata("cuMemset",
+                                /*hashValue=*/0x5555555555555555ULL,
+                                /*byteSize=*/4096,
+                                /*value=*/0xdeadbeefULL, /*valSize=*/4);
+
+  std::string json = jsonToString(metadata.formatJSON());
+
+  EXPECT_NE(json.find("\"kernelName\":\"cuMemset\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memset\""), std::string::npos);
+  EXPECT_NE(json.find("\"byteSize\":4096"), std::string::npos);
+  EXPECT_NE(json.find("\"value\":\"0xdeadbeef\""), std::string::npos);
+  EXPECT_NE(json.find("\"valueSize\":4"), std::string::npos);
+}
+
+// ===== LaunchTraceDiff JSON Formatting Tests =====
+
+// Test: Empty LaunchTraceDiff (no mismatch)
+TEST_F(TraceMetadataTest, LaunchTraceDiffJSONEmpty) {
+  LaunchTraceDiff diff;
+
+  EXPECT_TRUE(diff.empty());
+
+  std::string json = jsonToString(diff.formatJSON(0));
+
+  EXPECT_NE(json.find("\"graphIdx\":0"), std::string::npos);
+  EXPECT_NE(json.find("\"hasMismatch\":false"), std::string::npos);
+  EXPECT_NE(json.find("\"missingOps\":[]"), std::string::npos);
+  EXPECT_NE(json.find("\"unexpectedOps\":[]"), std::string::npos);
+}
+
+// Test: LaunchTraceDiff with missing operations only
+TEST_F(TraceMetadataTest, LaunchTraceDiffJSONMissingOps) {
+  LaunchTraceDiff diff;
+
+  // Add missing operations
+  KernelLaunchMetadata op1("vec_add", 0x1111111111111111ULL, 4, 1, 1, 256, 1, 1,
+                           0, 0, 0);
+  KernelLaunchMetadata op2("cuMemcpyHtoD", 0x2222222222222222ULL,
+                           KernelLaunchMetadata::MemcpyKind::HtoD, 4096);
+
+  diff.missingOps[op1] = 2;
+  diff.missingOps[op2] = 1;
+
+  EXPECT_FALSE(diff.empty());
+
+  std::string json = jsonToString(diff.formatJSON(1));
+
+  EXPECT_NE(json.find("\"graphIdx\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"hasMismatch\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"missingOps\""), std::string::npos);
+  EXPECT_NE(json.find("\"vec_add\""), std::string::npos);
+  EXPECT_NE(json.find("\"cuMemcpyHtoD\""), std::string::npos);
+  EXPECT_NE(json.find("\"count\":2"), std::string::npos);
+  EXPECT_NE(json.find("\"count\":1"), std::string::npos);
+}
+
+// Test: LaunchTraceDiff with unexpected operations only
+TEST_F(TraceMetadataTest, LaunchTraceDiffJSONUnexpectedOps) {
+  LaunchTraceDiff diff;
+
+  // Add unexpected operations
+  KernelLaunchMetadata op1("matmul_kernel", 0x3333333333333333ULL, 8, 8, 1, 16,
+                           16, 1, 49152, 2, 0);
+  KernelLaunchMetadata op2("cuMemset", 0x4444444444444444ULL, 8192,
+                           0xdeadbeefULL, 4);
+
+  diff.unexpectedOps[op1] = 1;
+  diff.unexpectedOps[op2] = 3;
+
+  EXPECT_FALSE(diff.empty());
+
+  std::string json = jsonToString(diff.formatJSON(2));
+
+  EXPECT_NE(json.find("\"graphIdx\":2"), std::string::npos);
+  EXPECT_NE(json.find("\"hasMismatch\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"unexpectedOps\""), std::string::npos);
+  EXPECT_NE(json.find("\"matmul_kernel\""), std::string::npos);
+  EXPECT_NE(json.find("\"cuMemset\""), std::string::npos);
+  EXPECT_NE(json.find("\"count\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"count\":3"), std::string::npos);
+}
+
+// Test: LaunchTraceDiff with both missing and unexpected operations
+TEST_F(TraceMetadataTest, LaunchTraceDiffJSONBoth) {
+  LaunchTraceDiff diff;
+
+  // Add missing operations
+  KernelLaunchMetadata missing("vec_add", 0x1111111111111111ULL, 4, 1, 1, 256,
+                               1, 1, 0, 0, 0);
+  diff.missingOps[missing] = 1;
+
+  // Add unexpected operations
+  KernelLaunchMetadata unexpected("vec_mul", 0x2222222222222222ULL, 8, 1, 1,
+                                  128, 1, 1, 0, 0, 0);
+  diff.unexpectedOps[unexpected] = 2;
+
+  EXPECT_FALSE(diff.empty());
+
+  std::string json = jsonToString(diff.formatJSON(3));
+
+  EXPECT_NE(json.find("\"graphIdx\":3"), std::string::npos);
+  EXPECT_NE(json.find("\"hasMismatch\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"missingOps\""), std::string::npos);
+  EXPECT_NE(json.find("\"unexpectedOps\""), std::string::npos);
+  EXPECT_NE(json.find("\"vec_add\""), std::string::npos);
+  EXPECT_NE(json.find("\"vec_mul\""), std::string::npos);
+}
+
+// Test: LaunchTraceDiff with multiple operation types
+TEST_F(TraceMetadataTest, LaunchTraceDiffJSONMultipleTypes) {
+  LaunchTraceDiff diff;
+
+  // Add different operation types
+  KernelLaunchMetadata kernel("kernel", 0x1111ULL, 1, 1, 1, 1, 1, 1, 0, 0, 0);
+  KernelLaunchMetadata memcpy("cuMemcpy", 0x2222ULL,
+                              KernelLaunchMetadata::MemcpyKind::DtoH, 1024);
+  KernelLaunchMetadata memset("cuMemset", 0x3333ULL, 512, 0xFFULL, 1);
+
+  diff.missingOps[kernel] = 1;
+  diff.unexpectedOps[memcpy] = 1;
+  diff.unexpectedOps[memset] = 1;
+
+  std::string json = jsonToString(diff.formatJSON(0));
+
+  // Check all operation kinds are represented
+  EXPECT_NE(json.find("\"kind\":\"KernelLaunch\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memcpy\""), std::string::npos);
+  EXPECT_NE(json.find("\"kind\":\"Memset\""), std::string::npos);
+}
 
 } // namespace
