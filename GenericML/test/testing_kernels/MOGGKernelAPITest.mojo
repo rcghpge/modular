@@ -701,10 +701,9 @@ struct OpThatAlwaysFailsConstraint:
         out_tensor: OutputTensor[dtype=dtype, rank=rank],
         in_tensor: InputTensor[dtype=dtype, rank=rank],
     ):
-        constrained[
-            1 == 2,
-            "Expected constraint failure for error message testing",
-        ]()
+        comptime assert (
+            1 == 2
+        ), "Expected constraint failure for error message testing"
 
 
 @compiler.register("mo.test.return_error")
