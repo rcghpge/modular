@@ -5045,10 +5045,7 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     MO_Chain:$inChain,
-    M_DeviceRefAttr:$device,
-    // If present, indicates this op has internal device barriers (e.g., for
-    // collective operations). Only same-device operand chains are needed.
-    UnitAttr:$hasDeviceBarrier
+    M_DeviceRefAttr:$device
   );
   let results = (outs
     MO_Tensor:$output,

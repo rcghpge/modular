@@ -364,10 +364,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
     DefaultValuedOptionalAttr<ArrayAttr, "{}">:$allocIndices,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
-    // If true, indicates this kernel wraps an op with internal device barriers
-    // (e.g., collective operations). Only same-device operand chains are needed.
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasDeviceBarrier
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
 
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain, MOGG_ShapeFuncResult]>>:$results);

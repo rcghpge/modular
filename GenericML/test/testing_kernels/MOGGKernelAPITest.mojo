@@ -1255,35 +1255,3 @@ struct UniqueParameters:
             return MyCustomScalarRegTrivialSI32(0)
         else:
             return MyCustomScalarRegTrivialSI32(1)
-
-
-# Imposter collective operation for testing hasDeviceBarrier attribute propagation.
-# This kernel mimics collective ops like AllReduce: takes inputs from multiple devices
-# and produces an output. The actual "reduction" is a no-op - just copies input_local.
-@compiler.register("imposter_collective")
-struct ImposterCollective:
-    @staticmethod
-    fn execute[
-        target: StaticString, dtype: DType, rank: Int
-    ](
-        output: OutputTensor[dtype=dtype, rank=rank],
-        input_local: InputTensor[dtype=dtype, rank=rank],
-        input_remote: InputTensor[dtype=dtype, rank=rank],
-    ) raises:
-        # In a real collective, we'd combine input_local and input_remote.
-        # For testing, we just copy input_local to output.
-        @parameter
-        @always_inline
-        fn func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
-            return input_local.load[width](idx)
-
-        foreach[func](output)
-
-    @staticmethod
-    fn shape[
-        dtype: DType, rank: Int
-    ](
-        input_local: InputTensor[dtype=dtype, rank=rank],
-        input_remote: InputTensor[dtype=dtype, rank=rank],
-    ) -> IndexList[rank]:
-        return input_local.shape()
