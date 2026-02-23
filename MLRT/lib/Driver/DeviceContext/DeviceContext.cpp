@@ -383,7 +383,7 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   }
   // Call custom destructor if set.
   if (destructorFn_) {
-    (*destructorFn_)(ptr_);
+    (*destructorFn_)();
     ptr_ = nullptr;
     return;
   }
@@ -452,7 +452,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::markAsReady() const {
 }
 
 void DeviceBuffer::setDestructorFn(
-    llvm::unique_function<void(void *)> destructor) const {
+    llvm::unique_function<void()> destructor) const {
   destructorFn_ = std::move(destructor);
 }
 
@@ -1218,7 +1218,7 @@ DeviceContext::memmapFile(const std::filesystem::path &filename) const {
   if (mmap) {
     buffer->setDestructorFn(
         [mmap = std::make_shared<llvm::sys::fs::mapped_file_region>(
-             std::move(*mmap))](void *) { (void)mmap; });
+             std::move(*mmap))]() { (void)mmap; });
   }
 
   return buffer;

@@ -364,7 +364,7 @@ public:
   ErrorOrSuccess disableAutoSync() const;
   ErrorOrSuccess markAsReady() const;
 
-  void setDestructorFn(llvm::unique_function<void(void *)> destructor) const;
+  void setDestructorFn(llvm::unique_function<void()> destructor) const;
 
 private:
   friend class DeviceContext;
@@ -377,7 +377,7 @@ private:
   bool isHost_;
   // TODO: Remove the V1 compatibility.
   mutable bool owning_ = true;
-  mutable std::optional<llvm::unique_function<void(void *)>> destructorFn_ =
+  mutable std::optional<llvm::unique_function<void()>> destructorFn_ =
       std::nullopt;
 
   DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,

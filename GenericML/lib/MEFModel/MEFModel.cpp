@@ -451,7 +451,7 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
       if (const AnyAsyncValueRef *storageRef =
               tensor->getBufferRef().getMemStorageHandleRef()) {
         if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
-          (*buffer)->setDestructorFn([](void *) {});
+          (*buffer)->setDestructorFn([]() {});
       }
     }
   }

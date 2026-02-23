@@ -108,9 +108,8 @@ struct Device : M::ReferenceCounted<Device> {
   /// Takes ownership of `data` in a DeviceMemory object.
   /// DeviceMemory contains a RCRef of the underlying Device. The data
   /// will be destroyed by the given destructor
-  DeviceMemory *
-  createDeviceMemory(void *data, const TensorSpec &spec,
-                     llvm::unique_function<void(void *)> destructor);
+  DeviceMemory *createDeviceMemory(void *data, const TensorSpec &spec,
+                                   llvm::unique_function<void()> destructor);
 
   virtual ~Device() = default;
 

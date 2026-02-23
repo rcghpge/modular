@@ -193,7 +193,7 @@ Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
 
 MODULAR_DRIVER_EXPORT DeviceMemory *
 Device::createDeviceMemory(void *data, const TensorSpec &spec,
-                           llvm::unique_function<void(void *)> destructor) {
+                           llvm::unique_function<void()> destructor) {
   auto buf =
       ctx->createBufferOwning(data, spec.getSizeInBytes(), /*owning=*/true);
   // Set the destructor on the underlying DeviceBuffer
