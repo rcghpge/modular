@@ -244,7 +244,10 @@ modular_cc_test(
         # Measured peak GPU memory: ~628 MB, set to 2x for safety margin.
         "test.resources:gpu-memory": "1.3",
     },
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": ["//:has_gpu"],
+    }),
     tags = ["gpu"],
     deps = [
         ":TestUtils",
