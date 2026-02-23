@@ -69,17 +69,23 @@ public:
                                               const std::string &outputName,
                                               ProcessedResults &results) const;
 
-  /// Capture a device graph for the given inputs. The graph is keyed by input
-  /// shapes and dtypes so later replay/debug verification can reuse it.
+  /// Capture a device graph for the given caller-provided key.
+  ///
+  /// The caller controls key selection and must provide unique keys for
+  /// distinct input signatures. Input-signature safety checks are enforced at
+  /// capture/replay time.
   ErrorOr<SmallVector<AnyAsyncValueRef>>
-  capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+  capture(uint64_t graphKey,
+          ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
-  /// Replay a previously captured graph for these inputs.
-  ErrorOrSuccess replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+  /// Replay a previously captured graph for this key and these inputs.
+  ErrorOrSuccess replay(uint64_t graphKey,
+                        ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
-  /// Execute eagerly and compare launch trace against captured graph
+  /// Execute eagerly and compare launch trace against captured graph for key.
   ErrorOrSuccess
-  debugVerifyReplay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
+  debugVerifyReplay(uint64_t graphKey,
+                    ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
   ExecutableModel(const ExecutableModel &) = delete;
   ExecutableModel &operator=(const ExecutableModel &) = delete;
@@ -102,9 +108,19 @@ private:
   AnyAsyncValueRef weightsRegistry;
   SmallVector<AnyAsyncValueRef> extraArgs;
 
-  /// Cached device graphs keyed by input signature
-  /// (memory address + shape + dtype).
-  llvm::DenseMap<uint64_t, Driver::DeviceGraphCollection> capturedGraphs;
+  struct CapturedGraphEntry {
+    Driver::DeviceGraphCollection graphs;
+    // Capture-time input fingerprint (addresses + shapes + dtypes).
+    // This is intentionally distinct from graphKey and is used only as a
+    // safety guard to reject unsafe graphKey reuse.
+    uint64_t inputSignature = 0;
+  };
+
+  /// Cached device graphs keyed by caller-provided graph key.
+  ///
+  /// graphKey selects the graph entry. inputSignature validates that the
+  /// selected entry is replayed with a compatible input-buffer signature.
+  llvm::DenseMap<uint64_t, CapturedGraphEntry> capturedGraphs;
 };
 
 //===----------------------------------------------------------------------===//

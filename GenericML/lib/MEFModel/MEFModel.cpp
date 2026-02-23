@@ -332,9 +332,12 @@ ErrorOrSuccess ExecutableModel::waitForModelSetup() {
   return success();
 }
 
-// Compute a stable key from input shapes and dtypes using xxhash. This is used
-// to look up captured graphs and ensures we only replay graphs for matching
-// signatures.
+// Compute a stable input-signature hash (memory address + shape + dtype).
+// This is used as a safety check to ensure a caller-provided graph key is not
+// reused across incompatible input signatures.
+//
+// NOTE: This signature is not used as the captured-graph lookup key. Graph
+// lookup is keyed only by caller-provided graphKey.
 static uint64_t
 computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   raw_xxhash64_stream hasher;
@@ -353,6 +356,22 @@ computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
     hasher.write(reinterpret_cast<const char *>(&dtype), sizeof(dtype));
   }
   return hasher.hash();
+}
+
+static ErrorOrSuccess validateCapturedGraphEntrySafety(
+    uint64_t graphKey, uint64_t expectedInputSignature,
+    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  // Validate that the graph selected by graphKey is replayed with the same
+  // input-buffer signature it was captured with.
+  uint64_t actualInputSignature = computeInputKey(inputs);
+  if (actualInputSignature == expectedInputSignature)
+    return success();
+
+  return Error(Twine("Unsafe graph key reuse for key ") + Twine(graphKey) +
+               ": expected input signature " + Twine(expectedInputSignature) +
+               ", got " + Twine(actualInputSignature) +
+               ". Use distinct caller-provided keys for distinct input "
+               "buffer/signature configurations.");
 }
 
 // Return all CUDA streams from the model's device contexts. This keeps
@@ -403,14 +422,20 @@ ExecutableModel::executeWithDeviceMemoryInputs(
 }
 
 ErrorOr<SmallVector<AnyAsyncValueRef>>
-ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  uint64_t key = computeInputKey(inputs);
+ExecutableModel::capture(uint64_t graphKey,
+                         ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  // Capture-time signature used only for graphKey safety validation.
+  uint64_t inputSignature = computeInputKey(inputs);
 
-  if (auto it = capturedGraphs.find(key); it != capturedGraphs.end()) {
-    const Driver::DeviceGraphCollection &graph = it->second;
-    if (graph.numGraphs() == 0)
+  if (auto it = capturedGraphs.find(graphKey); it != capturedGraphs.end()) {
+    if (auto err = validateCapturedGraphEntrySafety(
+            graphKey, it->second.inputSignature, inputs))
+      return err.takeError();
+
+    const Driver::DeviceGraphCollection &graphs = it->second.graphs;
+    if (graphs.numGraphs() == 0)
       return Error("no device graphs associated with an existing capture");
-    return graph.getOutputs();
+    return graphs.getOutputs();
   }
 
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
@@ -462,35 +487,40 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   Driver::DeviceGraphCollection graphs = graphOrErr.takeValue();
   graphs.setOutputs(graphResults);
 
-  capturedGraphs.try_emplace(key, std::move(graphs));
+  capturedGraphs.try_emplace(
+      graphKey, CapturedGraphEntry{std::move(graphs), inputSignature});
   return graphResults;
 }
 
 ErrorOrSuccess
-ExecutableModel::replay(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  uint64_t key = computeInputKey(inputs);
-  auto it = capturedGraphs.find(key);
+ExecutableModel::replay(uint64_t graphKey,
+                        ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  auto it = capturedGraphs.find(graphKey);
   if (it == capturedGraphs.end())
-    return Error("No captured graph for these inputs");
+    return Error(Twine("No captured graph for key: ") + Twine(graphKey));
+
+  if (auto err = validateCapturedGraphEntrySafety(
+          graphKey, it->second.inputSignature, inputs))
+    return err;
 
   // A forward pass of the model may correspond to multiple graphs (one per
   // device), we launch all graphs in a single replay call.
-  const Driver::DeviceGraphCollection &graphs = it->second;
+  const Driver::DeviceGraphCollection &graphs = it->second.graphs;
   return graphs.replay();
 }
 
 ErrorOrSuccess ExecutableModel::debugVerifyReplay(
-    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  // Use same key computation as capture/replay
-  uint64_t key = computeInputKey(inputs);
-
-  // Look up captured graph
-  auto it = capturedGraphs.find(key);
+    uint64_t graphKey, ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  auto it = capturedGraphs.find(graphKey);
   if (it == capturedGraphs.end())
-    return Error("No captured graph for these inputs");
+    return Error(Twine("No captured graph for key: ") + Twine(graphKey));
+
+  if (auto err = validateCapturedGraphEntrySafety(
+          graphKey, it->second.inputSignature, inputs))
+    return err;
 
   // Verify using the graph collection's debugVerifyReplay
-  const Driver::DeviceGraphCollection &graphs = it->second;
+  const Driver::DeviceGraphCollection &graphs = it->second.graphs;
   return graphs.debugVerifyReplay([&]() -> ErrorOrSuccess {
     auto result = executeWithDeviceMemoryInputs(inputs);
     if (result.isError())
