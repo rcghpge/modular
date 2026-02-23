@@ -434,6 +434,31 @@ ExecutableModel::capture(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   if (graphOrErr.isError())
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
 
+  // Await the error, but don't propagate yet.
+  // We want to ensure all output device buffers are relinquished,
+  // even if an error was present.
+  ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
+
+  // Set no-op destructors on captured output buffers. During graph capture,
+  // output buffers become part of the captured CUDA graph and their lifetime
+  // is managed by the DeviceGraph itself. Setting no-op destructors prevents
+  // premature deallocation - the graph will handle cleanup when destroyed.
+  for (const AnyAsyncValueRef &result : graphResults) {
+    if (result.isError())
+      continue;
+
+    if (auto *tensor = dyn_cast<Tensor>(result)) {
+      if (const AnyAsyncValueRef *storageRef =
+              tensor->getBufferRef().getMemStorageHandleRef()) {
+        if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
+          (*buffer)->setDestructorFn([](void *) {});
+      }
+    }
+  }
+
+  if (err.isError())
+    return err.takeError();
+
   Driver::DeviceGraphCollection graphs = graphOrErr.takeValue();
   graphs.setOutputs(graphResults);
 
