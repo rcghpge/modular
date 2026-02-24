@@ -1157,15 +1157,35 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
         static_cast<unsigned>(CUgraphDotFlags::Verbose));
   }
 
+  // Prepare instantiation parameters with enhanced error reporting
+  CUDA_GRAPH_INSTANTIATE_PARAMS params = {
+      .flags =
+          M::to_underlying(CUgraphInstantiateFlags::
+                               CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH),
+      .hUploadStream = nullptr, // No upload stream needed
+      .hErrNode_out = nullptr,  // CUDA will write error node here if failure
+      .result_out = CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS
+      // CUDA will write detailed result here
+  };
+
   CUgraphExec exec = nullptr;
-  CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiateWithFlags(
-      &exec, graph,
-      M::to_underlying(CUgraphInstantiateFlags::
-                           CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH));
+  CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiateWithParams(
+      &exec, graph, &params);
   if (res != CUDADriver::SUCCESS) {
-    // Clean up graph on failure.
+    // Clean up graph on failure with enhanced error reporting
     cudaDevice.cudaDriver().cuGraphDestroy(graph);
-    RETURN_ERROR("failed to instantiate CUDA graph");
+
+    std::string errorMsg = "failed to instantiate CUDA graph";
+    if (params.result_out !=
+        CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS) {
+      errorMsg += ": ";
+      errorMsg += toString(params.result_out);
+    }
+    if (params.hErrNode_out != nullptr) {
+      errorMsg +=
+          " at node " + llvm::formatv("{0}", (void *)params.hErrNode_out).str();
+    }
+    RETURN_ERROR(errorMsg);
   }
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuGraphDestroy(graph));
 

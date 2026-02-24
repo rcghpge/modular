@@ -89,6 +89,43 @@ enum class CUgraphInstantiateFlags : unsigned long long {
   CUDA_GRAPH_INSTANTIATE_FLAG_USE_NODE_PRIORITY = 8,
 };
 
+// Result codes from cuGraphInstantiateWithParams
+enum class CUgraphInstantiateResult {
+  CUDA_GRAPH_INSTANTIATE_SUCCESS = 0,
+  CUDA_GRAPH_INSTANTIATE_ERROR = 1,
+  CUDA_GRAPH_INSTANTIATE_INVALID_STRUCTURE = 2,
+  CUDA_GRAPH_INSTANTIATE_NODE_OPERATION_NOT_SUPPORTED = 3,
+  CUDA_GRAPH_INSTANTIATE_MULTIPLE_CTXS_NOT_SUPPORTED = 4,
+};
+
+/// Convert CUgraphInstantiateResult to a human-readable string.
+inline llvm::StringLiteral toString(CUgraphInstantiateResult result) {
+  switch (result) {
+  case CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS:
+    return "success";
+  case CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_ERROR:
+    return "generic error";
+  case CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_INVALID_STRUCTURE:
+    return "invalid structure";
+  case CUgraphInstantiateResult::
+      CUDA_GRAPH_INSTANTIATE_NODE_OPERATION_NOT_SUPPORTED:
+    return "node operation not supported";
+  case CUgraphInstantiateResult::
+      CUDA_GRAPH_INSTANTIATE_MULTIPLE_CTXS_NOT_SUPPORTED:
+    return "multiple contexts not supported";
+  }
+  return "unknown result";
+}
+
+// Parameters structure for cuGraphInstantiateWithParams
+// This matches CUDA_GRAPH_INSTANTIATE_PARAMS from cuda.h
+struct CUDA_GRAPH_INSTANTIATE_PARAMS {
+  uint64_t flags;           // Instantiation flags (CUgraphInstantiateFlags)
+  CUstream hUploadStream;   // Upload stream (can be nullptr)
+  CUgraphNode hErrNode_out; // Output: node that caused error
+  CUgraphInstantiateResult result_out; // Output: detailed error result
+};
+
 enum class CUgraphDotFlags : unsigned int {
   None = 0,
   Verbose = 0x01, // 1: Output all debug data
