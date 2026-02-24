@@ -66,11 +66,7 @@ class SpeechLM:
         self.text_pipeline = self.pipeline  # Type hint for linter
 
         # Get the KV cache manager for resource management
-        self.kv_cache_manager = (
-            self.text_pipeline.kv_managers[0]
-            if self.text_pipeline.kv_managers
-            else None
-        )
+        self.kv_cache_manager = self.text_pipeline.kv_manager
 
     async def generate_speech_tokens(
         self, text: str, max_tokens: int | None = None

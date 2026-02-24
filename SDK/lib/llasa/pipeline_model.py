@@ -145,7 +145,7 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
         assert isinstance(speech_tokenizer, TextTokenizer)
         self.speech_tokenizer = speech_tokenizer
         self.speech_lm_pipeline = speech_lm_pipeline
-        self.kv_manager = self.speech_lm_pipeline._pipeline_model.kv_manager
+        self.kv_manager = self.speech_lm_pipeline._kv_manager
 
         self.session = self.speech_lm_pipeline.session
         self.devices = devices
