@@ -515,10 +515,6 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
   if (it == capturedGraphs.end())
     return Error(Twine("No captured graph for key: ") + Twine(graphKey));
 
-  if (auto err = validateCapturedGraphEntrySafety(
-          graphKey, it->second.inputSignature, inputs))
-    return err;
-
   // Verify using the graph collection's debugVerifyReplay
   const Driver::DeviceGraphCollection &graphs = it->second.graphs;
   return graphs.debugVerifyReplay([&]() -> ErrorOrSuccess {
