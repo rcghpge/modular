@@ -581,6 +581,10 @@ MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
   return *device_;
 }
 
+ErrorOr<float> DeviceEvent::elapsedTime(const DeviceEvent &end) const {
+  RETURN_ERROR("event elapsed time is not supported on this device");
+}
+
 //
 // ===== DeviceGraphCollection ===== //
 //

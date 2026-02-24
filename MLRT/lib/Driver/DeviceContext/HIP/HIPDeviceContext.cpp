@@ -744,6 +744,16 @@ ErrorOr<bool> HIPDeviceEvent::isReady() const {
   return Error("Not Reachable.");
 }
 
+ErrorOr<float> HIPDeviceEvent::elapsedTime(const DeviceEvent &end) const {
+  const auto &hipEnd = HIPDeviceEvent::cast(end);
+  const auto &hipDevice = HIPDevice::cast(device());
+  HIP_WITH_DEV_ERR(hipDevice);
+  float millis;
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipEventElapsedTime(&millis, event_,
+                                                          hipEnd.hipEvent()));
+  return millis;
+}
+
 hipEvent_t HIPDeviceEvent::hipEvent() const { return event_; }
 
 const HIPDeviceEvent &HIPDeviceEvent::cast(const DeviceEvent &event) {
@@ -1374,9 +1384,13 @@ ErrorOrSuccess HIPDeviceContext::enqueueEvent(const DeviceEvent &event) const {
   return success();
 }
 
-ErrorOr<DeviceEventRef>
-HIPDeviceContext::eventCreate(unsigned int flags) const {
+ErrorOr<DeviceEventRef> HIPDeviceContext::eventCreate(bool enableTiming) const {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
+
+  // hipEventDisableTiming = 0x2, hipEventDefault = 0x0
+  constexpr unsigned int kHipEventDefault = 0x0;
+  constexpr unsigned int kHipEventDisableTiming = 0x2;
+  unsigned int flags = enableTiming ? kHipEventDefault : kHipEventDisableTiming;
 
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);

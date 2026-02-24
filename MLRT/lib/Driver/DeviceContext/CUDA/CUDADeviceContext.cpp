@@ -926,14 +926,18 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
 
 // ===== CUDADeviceEvent ===== //
 CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event,
-                                 bool recordedDuringCapture)
+                                 bool recordedDuringCapture, bool enableTiming)
     : DeviceEvent(device), event_(event),
-      recordedDuringCapture_(recordedDuringCapture) {}
+      recordedDuringCapture_(recordedDuringCapture),
+      enableTiming_(enableTiming) {}
 
 CUDADeviceEvent::~CUDADeviceEvent() {
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV(cudaDevice);
-  if (recordedDuringCapture_) {
+  if (recordedDuringCapture_ || enableTiming_) {
+    // Timing-enabled events have different flags than cached events,
+    // so they must not be returned to the non-timing event cache.
+    // Events recorded during capture also bypass the cache.
     cudaDevice.cudaDriver().cuEventDestroy(event_);
   } else {
     cudaDevice.eventCachePush(event_);
@@ -966,6 +970,16 @@ ErrorOr<bool> CUDADeviceEvent::isReady() const {
   // complains if not returning a value.
   llvm_unreachable("Not Reachable");
   return Error("Not Reachable.");
+}
+
+ErrorOr<float> CUDADeviceEvent::elapsedTime(const DeviceEvent &end) const {
+  const auto &cudaEnd = CUDADeviceEvent::cast(end);
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  float millis;
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuEventElapsedTime(
+      &millis, event_, cudaEnd.cudaEvent()));
+  return millis;
 }
 
 CUevent CUDADeviceEvent::cudaEvent() const { return event_; }
@@ -1745,10 +1759,14 @@ ErrorOrSuccess CUDADeviceContext::enqueueEvent(const DeviceEvent &event) const {
 }
 
 ErrorOr<DeviceEventRef>
-CUDADeviceContext::eventCreate(unsigned int flags) const {
+CUDADeviceContext::eventCreate(bool enableTiming) const {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);
 
   const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
+  unsigned int flags =
+      enableTiming
+          ? static_cast<unsigned int>(CUevent_flags::CU_EVENT_DEFAULT)
+          : static_cast<unsigned int>(CUevent_flags::CU_EVENT_DISABLE_TIMING);
 
   CUDA_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
@@ -1756,7 +1774,8 @@ CUDADeviceContext::eventCreate(unsigned int flags) const {
   CUDA_CHECK_ERR(driver_.cuEventCreate(&event, flags));
   return CUDADeviceEventRef::create(
       CUDADevice::cast(this->device()), event,
-      /*recordedDuringCapture=*/recordedDuringCapture);
+      /*recordedDuringCapture=*/recordedDuringCapture,
+      /*enableTiming=*/enableTiming);
 }
 
 ErrorOrSuccess

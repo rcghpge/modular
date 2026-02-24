@@ -375,8 +375,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) const {
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOr<DeviceEventRef>
-CpuDeviceContext::eventCreate(unsigned int flags) const {
+ErrorOr<DeviceEventRef> CpuDeviceContext::eventCreate(bool enableTiming) const {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented");
 }

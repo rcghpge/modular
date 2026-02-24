@@ -285,7 +285,7 @@ VirtualDeviceContext::enqueueEvent(const DeviceEvent &event) const {
 }
 
 ErrorOr<DeviceEventRef>
-VirtualDeviceContext::eventCreate(unsigned int flags) const {
+VirtualDeviceContext::eventCreate(bool enableTiming) const {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 

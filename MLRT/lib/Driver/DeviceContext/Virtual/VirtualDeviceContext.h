@@ -164,7 +164,7 @@ public:
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
   ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
 

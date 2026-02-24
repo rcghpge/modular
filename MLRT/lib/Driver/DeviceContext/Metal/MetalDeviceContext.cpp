@@ -1004,7 +1004,7 @@ MetalDeviceContext::enqueueEvent(const DeviceEvent &event) const {
 }
 
 ErrorOr<DeviceEventRef>
-MetalDeviceContext::eventCreate(unsigned int flags) const {
+MetalDeviceContext::eventCreate(bool enableTiming) const {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented for Metal devices");
 }

@@ -180,12 +180,14 @@ private:
 class CUDADeviceEvent : public DeviceEvent {
 public:
   CUDADeviceEvent(const CUDADevice &device, CUevent event,
-                  bool recordedDuringCapture);
+                  bool recordedDuringCapture, bool enableTiming = false);
   ~CUDADeviceEvent() override;
 
   ErrorOrSuccess synchronize() const override;
 
   ErrorOr<bool> isReady() const override;
+
+  ErrorOr<float> elapsedTime(const DeviceEvent &end) const override;
 
   CUevent cudaEvent() const;
 
@@ -194,6 +196,7 @@ public:
 private:
   CUevent event_;
   bool recordedDuringCapture_;
+  bool enableTiming_;
 };
 
 class CUDADeviceGraph : public DeviceGraph {
@@ -373,7 +376,7 @@ public:
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
   ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
 

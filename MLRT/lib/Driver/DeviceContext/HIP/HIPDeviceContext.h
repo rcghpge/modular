@@ -118,6 +118,8 @@ public:
 
   ErrorOr<bool> isReady() const override;
 
+  ErrorOr<float> elapsedTime(const DeviceEvent &end) const override;
+
   hipEvent_t hipEvent() const;
 
   static const HIPDeviceEvent &cast(const DeviceEvent &event);
@@ -296,7 +298,7 @@ public:
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
   ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(unsigned int flags) const override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
   ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
 
