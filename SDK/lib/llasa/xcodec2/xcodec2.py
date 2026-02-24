@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import max.nn as nn
 import numpy as np
 from max.driver import Buffer
 from max.dtype import DType
 from max.engine.api import InferenceSession
 from max.graph import Graph, TensorType, TensorValue, ops
-from max.nn import legacy as nn
 
 from .config import XCodec2Config
 from .istft import ISTFTHead

@@ -18,8 +18,8 @@ from max.engine import InferenceSession, Model
 from max.graph.weights import Weights, WeightsAdapter
 from max.interfaces import AudioGenerationOutput, GenerationStatus, PipelineTask
 from max.interfaces.request import RequestID
-from max.nn.legacy import ReturnLogits
-from max.nn.legacy.kv_cache import KVCacheInputs
+from max.nn import ReturnLogits
+from max.nn.kv_cache import KVCacheInputs
 from max.pipelines import (
     PIPELINE_REGISTRY,
     AudioGenerationConfig,

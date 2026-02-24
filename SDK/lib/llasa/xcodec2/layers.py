@@ -8,9 +8,9 @@
 
 from __future__ import annotations
 
+import max.nn as nn
 from max.dtype import DType
 from max.graph import DeviceRef, TensorValue, ops
-from max.nn import legacy as nn
 
 
 class ResnetBlock(nn.Module):

@@ -8,11 +8,11 @@
 
 from __future__ import annotations
 
+import max.nn as nn
 from max.dtype import DType
 from max.graph import DeviceRef, TensorValue, ops
-from max.nn import legacy as nn
-from max.nn.legacy.attention import MHAMaskVariant
-from max.nn.legacy.kernels import flash_attention_gpu
+from max.nn.attention import MHAMaskVariant
+from max.nn.kernels import flash_attention_gpu
 
 
 class MLP(nn.Module):
