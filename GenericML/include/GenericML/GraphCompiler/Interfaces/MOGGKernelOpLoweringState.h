@@ -131,8 +131,33 @@ public:
   MOGGKernelOpLoweringState(Operation *op,
                             MGP::MOGraphLoweringState &loweringState);
 
-  // Lower an KernelOp to MOGG.
+  // Lower a KernelOp to MOGG.
   LogicalResult lowerKernelOp(MOGG::KernelOp moggKernelOp);
+
+  // Info about tensor operands used during kernel lowering.
+  struct TensorOperandInfos {
+    Value stubValue;   // Tensor value inside the KernelStub
+    size_t operandIdx; // Argument index for the OperandsMapping.
+    bool isOutput;
+  };
+
+protected:
+  /// Build a ManagedTensorSlice object corresponding to the KernelStubOp
+  /// argument `stubArgument` from the buffer pointer `bufferValue`.
+  Value buildMojoIOTensorObject(Value bufferValue,
+                                const TensorOperandInfos &tensorInfos);
+
+  LogicalResult findExtraKernelArguments(
+      Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters);
+
+  void findExtraKernelStubOnlyArguments();
+
+  // Lower all kernel stub ops to be compatible with the MGP region.
+  // This includes device context, bind lambda, constants, etc.
+  void lowerKernelStub();
+
+  // Keep track all inputs / output / scratchpad operands;
+  SmallVector<TensorOperandInfos> tensorOperandInfos;
 
 private:
   mlir::Operation *moggOp;
@@ -158,32 +183,11 @@ private:
   // This is a list of all the outputs of the kernel but lowered to MGP.
   SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
 
-  struct TensorOperandInfos {
-    Value stubValue;   // Tensor value inside the KernelStub
-    size_t operandIdx; // Argument index for the OperandsMapping.
-    bool isOutput;
-  };
+  // Lower the DeviceContextPlaceholderOp to be compatible with the MGP region.
+  void
+  lowerDeviceContextPlaceholder(MOGG::DeviceContextPlaceholderOp moggContext);
 
-  // Keep track all inputs / output / scratchpad operands;
-  SmallVector<TensorOperandInfos> tensorOperandInfos;
-
-  /// Build a ManagedTensorSlice object corresponding to the KernelStubOp
-  /// argument `stubArgument` from the buffer pointer `bufferValue`.
-  Value buildMojoIOTensorObject(Value bufferValue,
-                                const TensorOperandInfos &tensorInfos);
-
-  // Look for extra arguments that must be passed from the mgp.model to the
-  // mgp.region and / or the kernel stub. These includes dynamic dimensions,
-  // extra buffers and device context objects.
-  LogicalResult findExtraKernelArguments(
-      Value chainValue, ArrayRef<KGEN::ParamDeclRefAttr> usedKernelParameters);
-
-  // Look for extra arguments that must be passed only to the KernelStub.
-  // These includes mo.contant buffer objects.
-  // They must be setup after the MGP region is built
-  void findExtraKernelStubOnlyArguments();
-
-  // Lower the BimdLambdaOp to be compatible with the MGP region.
+  // Lower the BindLambdaOp to be compatible with the MGP region.
   void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
 
   // Lower the ConstantOp to be compatible with the MGP region.
@@ -200,9 +204,6 @@ private:
   // This is needed for ops like OutputPlaceholder that are replaced with a
   // kernel argument.
   void lowerKernelOpWithOperandsMapping(Operation *op);
-
-  // Lower all kernel stubs ops to be compatible with the MGP region.
-  void lowerKernelStub();
 };
 
 } // namespace M::MGP
