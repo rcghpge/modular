@@ -465,13 +465,17 @@ ErrorOrSuccess CUDADevice::isCompatible() const {
   int driverVersion = 0;
   CUDA_CHECK_ERR(driver_.cuDriverGetVersion(&driverVersion));
   if (driverVersion < MIN_CUDA_DRIVER_VERSION) {
+    std::string detectedVersion = "CUDA " + apiVersionToString(driverVersion);
+    auto errOrDriverVersion = getDriverVersion();
+    if (!errOrDriverVersion.isError())
+      detectedVersion =
+          errOrDriverVersion->toString() + " (" + detectedVersion + ")";
     RETURN_ERROR(
         "MAX doesn't support your current NVIDIA GPU driver. MAX "
         "requires a minimum driver version of " +
         llvm::Twine(MIN_NVIDIA_DRIVER_VERSION) + " and CUDA version " +
         apiVersionToString(MIN_CUDA_DRIVER_VERSION) +
-        ". The driver version MAX detected is: " +
-        apiVersionToString(driverVersion) +
+        ". Your driver version is " + detectedVersion +
         ". For older drivers, set MODULAR_NVPTX_COMPILER_PATH to use an "
         "external ptxas binary.\nFor more information, see "
         "https://modul.ar/gpu-requirements.");
