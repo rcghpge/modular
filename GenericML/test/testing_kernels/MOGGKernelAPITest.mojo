@@ -1088,11 +1088,6 @@ struct ToTensorWrapper:
                 spec.dtype,
                 spec.rank,
                 _,
-                spec.shape,
-                spec.strides,
-                alignment2 = spec.alignment,
-                address_space = spec.address_space,
-                exclusive = spec.exclusive,
             ](ptr, tensor.shape(), tensor._runtime_strides)
         )
 
