@@ -1486,13 +1486,9 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
   assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dstByteSize);
   if (srcCtx.cudaStream() != dstCtx.cudaStream()) {
-    if (src.manualEvent())
-      RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*src.manualEvent()));
-    else {
-      // Ensure that we are waiting for the source data to be ready.
-      DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
-      RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
-    }
+    // Ensure that we are waiting for the source data to be ready.
+    DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, srcCtx.enqueueEvent());
+    RETURN_IF_ERROR(dstCtx.enqueueWaitForEvent(*srcEvent));
 
     if (srcCtx.cudaContext() != dstCtx.cudaContext()) {
       CUDA_CHECK_ERR(driver_.cuMemcpyPeerAsync(dstPtr, dstCtx.context_, srcPtr,

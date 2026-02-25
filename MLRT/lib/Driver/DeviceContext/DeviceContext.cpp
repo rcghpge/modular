@@ -417,10 +417,6 @@ const DeviceBuffer *DeviceBuffer::parent() const {
   return parent_.getPointer();
 }
 
-const DeviceEvent *DeviceBuffer::manualEvent() const {
-  return manualEvent_.getPointer();
-}
-
 MODULAR_CXX_EXPORT void *DeviceBuffer::ptr() const { return ptr_; }
 
 // TODO: Remove the V1 compatibility.
@@ -434,24 +430,6 @@ MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() const {
 MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
-
-MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::disableAutoSync() const {
-  if (manualEvent_)
-    RETURN_ERROR("Buffer synchronization already disabled");
-
-  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, context_->eventCreate(0));
-  manualEvent_ = std::move(event);
-
-  return success();
-}
-
-MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::markAsReady() const {
-  if (!manualEvent_)
-    RETURN_ERROR(
-        "Invalid use of markAsReady on buffer not with auto-sync enabled");
-
-  return this->context().enqueueEvent(*manualEvent_);
-}
 
 void DeviceBuffer::setDestructorFn(
     llvm::unique_function<void()> destructor) const {
@@ -507,24 +485,16 @@ MODULAR_CXX_EXPORT ErrorOrSuccess
 DeviceBuffer::synchronize(void *external_stream) const {
   // Regular synchronization
   if (!external_stream) {
-    if (manualEvent_)
-      return manualEvent_->synchronize();
-    else
-      return context_->synchronize();
+    return context_->synchronize();
   }
 
   // Synchronization with an external stream
   DEFINE_OR_RETURN_ERROR(DeviceStreamRef, extStream,
                          context_->createExternalStream(external_stream));
-  if (manualEvent_)
-    // Enqueue a wait for the manual event on the external stream
-    RETURN_IF_ERROR(extStream->enqueueWaitForEvent(*manualEvent_));
-  else {
-    // Create an event on the buffer's stream
-    DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, context_->enqueueEvent());
-    // Enqueue a wait for the event on the external stream
-    RETURN_IF_ERROR(extStream->enqueueWaitForEvent(*event));
-  }
+  // Create an event on the buffer's stream
+  DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, context_->enqueueEvent());
+  // Enqueue a wait for the event on the external stream
+  RETURN_IF_ERROR(extStream->enqueueWaitForEvent(*event));
 
   return success();
 }
