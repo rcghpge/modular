@@ -393,8 +393,8 @@ static ErrorOrSuccess validateCapturedGraphEntrySafety(
                "buffer/signature configurations.");
 }
 
-// Return all CUDA streams from the model's device contexts. This keeps
-// capture/replay tied to the same runtime devices as execution.
+// Return all graph-capture-capable streams from the model's device contexts.
+// This keeps capture/replay tied to the same runtime devices as execution.
 static ErrorOr<SmallVector<Driver::DeviceStreamRef>>
 captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
   if (auto err = AsyncRT::awaitOrError(extraArgs))
@@ -404,8 +404,11 @@ captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
   for (const AnyAsyncValueRef &arg : extraArgs) {
     M::RCRef<const M::Driver::DeviceContext> *context =
         dyn_cast<Driver::DeviceContextRef>(arg);
-    if (!context ||
-        context->getPointer()->device().api() != Driver::Device::cudaAPI)
+    if (!context)
+      continue;
+
+    Driver::Device::API api = context->getPointer()->device().api();
+    if (api != Driver::Device::cudaAPI && api != Driver::Device::hipAPI)
       continue;
 
     ErrorOr<Driver::DeviceStreamRef> streamOr = context->getPointer()->stream();
