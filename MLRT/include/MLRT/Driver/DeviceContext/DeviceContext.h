@@ -392,6 +392,8 @@ public:
 
   void setDestructorFn(llvm::unique_function<void()> destructor) const;
 
+  void setOwning(bool owning) const;
+
 private:
   friend class DeviceContext;
 
@@ -478,7 +480,7 @@ public:
 
   /// Get the output async values for the graph collection. These correspond
   /// to the outputs of the MEF model, not any particular DeviceGraph.
-  SmallVector<AsyncRT::AnyAsyncValueRef> getOutputs() const;
+  ArrayRef<AsyncRT::AnyAsyncValueRef> getOutputs() const;
 
   /// Replay the graph collection by launching all graphs.
   ErrorOrSuccess replay() const;

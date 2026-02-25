@@ -11,6 +11,7 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/ADT/Sequence.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 #include <cstddef>
@@ -1051,6 +1052,79 @@ TEST_F(GraphCaptureTest, TraceDistinguishesScalarsFromPointerBitPatterns) {
 
   // Replay with original scalar values should also succeed
   EXPECT_NO_ERR(captured->debugVerifyReplay(execute1));
+}
+
+// Test: Loop that captures graphs with unfreed allocations.
+// This test is designed to detect memory leaks in the graph capture/replay
+// system. It intentionally allocates memory during capture without freeing it,
+// then replays the captured graph repeatedly.
+TEST_F(GraphCaptureTest, LoopWithUnfreedAllocationNoReplay) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  const size_t allocSize = 100ULL * 1024 * 1024; // 100 MB per iteration
+  const size_t maxIterations = 1024;
+
+  for (auto _ : llvm::seq(maxIterations)) {
+    DeviceBufferRef saved = {};
+
+    // Capture a graph that allocates memory without freeing it
+    ErrorOr<DeviceGraphCollection> captured =
+        DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+          // Allocate a buffer inside the capture
+          DEFINE_OR_RETURN_ERROR(DeviceBufferRef, buf,
+                                 ctx->enqueueCreateBuffer(allocSize));
+          // Move the buffer to a location outside the capture.
+          // This is equivalent to how outputs of a MO graph are handled, and
+          // it will result in the buffer not being free'd within the captured
+          // graph.
+          saved = std::move(buf);
+
+          return success();
+        });
+
+    EXPECT_FALSE(captured.isError());
+    EXPECT_NO_ERR(ctx->synchronize());
+  }
+}
+
+// Test: Loop that captures graphs with unfreed allocations.
+// This test is designed to detect memory leaks in the graph capture/replay
+// system. It intentionally allocates memory during capture without freeing it,
+// then replays the captured graph repeatedly.
+TEST_F(GraphCaptureTest, LoopWithUnfreedAllocationReplay) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  const size_t allocSize = 100ULL * 1024 * 1024; // 100 MB per iteration
+  const size_t maxIterations = 1000;
+
+  for (auto _ : llvm::seq(maxIterations)) {
+    DeviceBufferRef saved = {};
+
+    // Capture a graph that allocates memory without freeing it
+    ErrorOr<DeviceGraphCollection> captured =
+        DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+          // Allocate a buffer inside the capture
+          DEFINE_OR_RETURN_ERROR(DeviceBufferRef, buf,
+                                 ctx->enqueueCreateBuffer(allocSize));
+          // Move the buffer to a location outside the capture.
+          // This is equivalent to how outputs of a MO graph are handled, and
+          // it will result in the buffer not being free'd within the captured
+          // graph.
+          saved = std::move(buf);
+
+          return success();
+        });
+
+    ASSERT_FALSE(captured.isError());
+
+    // Replay the captured graph
+    EXPECT_NO_ERR(captured->replay());
+    EXPECT_NO_ERR(ctx->synchronize());
+  }
 }
 
 } // namespace

@@ -458,6 +458,8 @@ void DeviceBuffer::setDestructorFn(
   destructorFn_ = std::move(destructor);
 }
 
+void DeviceBuffer::setOwning(bool owning) const { owning_ = owning; }
+
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(
     const DeviceBuffer &dst, size_t srcByteOffset, size_t srcByteSize) const {
   const DeviceBuffer &src = *this;
@@ -588,15 +590,15 @@ ErrorOr<float> DeviceEvent::elapsedTime(const DeviceEvent &end) const {
 //
 // ===== DeviceGraphCollection ===== //
 //
+
 void DeviceGraphCollection::setOutputs(
     ArrayRef<AsyncRT::AnyAsyncValueRef> values) {
   ASSERT_STREAM(outputs.empty(), "DeviceGraphCollection already has values");
   outputs = llvm::map_to_vector(values, [](auto &ref) { return ref.copy(); });
 }
 
-SmallVector<AsyncRT::AnyAsyncValueRef>
-DeviceGraphCollection::getOutputs() const {
-  return llvm::map_to_vector(outputs, [](auto &ref) { return ref.copy(); });
+ArrayRef<AsyncRT::AnyAsyncValueRef> DeviceGraphCollection::getOutputs() const {
+  return outputs;
 }
 
 ErrorOrSuccess DeviceGraphCollection::replay() const {
@@ -1155,13 +1157,13 @@ DeviceContext::createHostBuffer(size_t byteSize) const {
 MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createBufferOwning(
     void *ptr, size_t byteSize, bool owning) const {
   return DeviceBufferRef::take(
-      new DeviceBuffer(*this, ptr, byteSize, /* isHost = */ false, owning));
+      new DeviceBuffer(*this, ptr, byteSize, /*isHost=*/false, owning));
 }
 
 MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createHostBufferOwning(
     void *ptr, size_t byteSize, bool owning) const {
   return DeviceBufferRef::take(
-      new DeviceBuffer(*this, ptr, byteSize, /* isHost = */ true, owning));
+      new DeviceBuffer(*this, ptr, byteSize, /*isHost=*/true, owning));
 }
 
 ErrorOr<DeviceBufferRef>
@@ -1174,6 +1176,16 @@ DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
   if (isGraphCapturing()) {
     if (ErrorOrSuccess err = memAlloc(&ptr, byteSize, mode))
       return err.takeError();
+
+    auto result = DeviceBufferRef::take(new DeviceBuffer(
+        *this, ptr, byteSize, mode == Device::AllocMode::HOST));
+
+    result->setDestructorFn([ptr, mode, ctx = DeviceContextRef::copy(this)]() {
+      RECORD_PENDING_ERROR(
+          *ctx, ctx->memFree(ptr, /*isHost=*/mode == Device::AllocMode::HOST));
+    });
+
+    return result;
   } else {
     // Allocate from the correct memory manager.
     ErrorOr<void *> errPtr =
@@ -1227,7 +1239,7 @@ DeviceContext::memmapFile(const std::filesystem::path &filename) const {
   auto [ptr, size, mmap] = result.takeValue();
 
   auto buffer = RCRef<Driver::DeviceBuffer>::take(
-      new Driver::DeviceBuffer(*this, ptr, size, /*isHost*/ false,
+      new Driver::DeviceBuffer(*this, ptr, size, /*isHost=*/false,
                                /*owning*/ true));
 
   // Set destructor on the buffer to keep the mmap alive.

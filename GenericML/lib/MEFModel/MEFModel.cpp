@@ -59,6 +59,25 @@ getNamesAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
   return result;
 }
 
+/// Set the owning flag on all DeviceBuffers found in the given async value
+/// references. This is used to control whether buffers are freed when their
+/// reference count reaches zero.
+static void setOwningOnDeviceBuffers(ArrayRef<AsyncRT::AnyAsyncValueRef> refs,
+                                     bool owning) {
+  for (const AsyncRT::AnyAsyncValueRef &result : refs) {
+    if (result.isError())
+      continue;
+
+    if (auto *tensor = dyn_cast<Tensor>(result)) {
+      if (const AsyncRT::AnyAsyncValueRef *storageRef =
+              tensor->getBufferRef().getMemStorageHandleRef()) {
+        if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
+          (*buffer)->setOwning(owning);
+      }
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Model
 //===----------------------------------------------------------------------===//
@@ -435,7 +454,9 @@ ExecutableModel::capture(uint64_t graphKey,
     const Driver::DeviceGraphCollection &graphs = it->second.graphs;
     if (graphs.numGraphs() == 0)
       return Error("no device graphs associated with an existing capture");
-    return graphs.getOutputs();
+
+    return llvm::map_to_vector(graphs.getOutputs(),
+                               [](auto &val) { return val.copy(); });
   }
 
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
@@ -464,22 +485,10 @@ ExecutableModel::capture(uint64_t graphKey,
   // even if an error was present.
   ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
 
-  // Set no-op destructors on captured output buffers. During graph capture,
-  // output buffers become part of the captured CUDA graph and their lifetime
-  // is managed by the DeviceGraph itself. Setting no-op destructors prevents
-  // premature deallocation - the graph will handle cleanup when destroyed.
-  for (const AnyAsyncValueRef &result : graphResults) {
-    if (result.isError())
-      continue;
-
-    if (auto *tensor = dyn_cast<Tensor>(result)) {
-      if (const AnyAsyncValueRef *storageRef =
-              tensor->getBufferRef().getMemStorageHandleRef()) {
-        if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
-          (*buffer)->setDestructorFn([]() {});
-      }
-    }
-  }
+  // Mark output buffers as non-owning. During graph capture, output buffers
+  // become part of the captured CUDA graph and their lifetime is managed by
+  // the DeviceGraph itself. This prevents premature deallocation.
+  setOwningOnDeviceBuffers(graphResults, /*owning=*/false);
 
   if (err.isError())
     return err.takeError();
@@ -506,7 +515,15 @@ ExecutableModel::replay(uint64_t graphKey,
   // A forward pass of the model may correspond to multiple graphs (one per
   // device), we launch all graphs in a single replay call.
   const Driver::DeviceGraphCollection &graphs = it->second.graphs;
-  return graphs.replay();
+
+  if (ErrorOrSuccess err = graphs.replay())
+    return err.takeError();
+
+  // Mark output buffers as owning again after replay. The graph has completed
+  // execution and the buffers should now be managed normally.
+  setOwningOnDeviceBuffers(graphs.getOutputs(), /*owning=*/true);
+
+  return success();
 }
 
 ErrorOrSuccess ExecutableModel::debugVerifyReplay(
