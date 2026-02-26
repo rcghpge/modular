@@ -209,6 +209,26 @@ TEST_F(VirtualDeviceContextTest, CastOperations) {
   EXPECT_EQ(nullCast, nullptr);
 }
 
+TEST_F(VirtualDeviceContextTest, EnqueueCreateBufferDoesNotCrash) {
+  // Allocating a buffer on a VirtualDeviceContext must not crash.
+  // This used to SIGSEGV because allocBuffer called isGraphCapturing()
+  // which incorrectly cast VirtualDeviceContext to CUDADeviceContext
+  // (GEX-3265).
+  setVirtualDeviceCount(1);
+  setVirtualDeviceAPI("cuda");
+  setVirtualDeviceTargetArch("sm_90a");
+
+  ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI, 0));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  // A zero-byte buffer should succeed (special-cased before isGraphCapturing).
+  ASSIGN_NO_ERR(DeviceBufferRef, buf0, ctx->enqueueCreateBuffer(0));
+  EXPECT_EQ(buf0->byteSize(), 0u);
+
+  // Clean up
+  setVirtualDeviceCount(0);
+}
+
 TEST_F(VirtualDeviceContextTest, MultipleVirtualDevices) {
   // Test creating multiple virtual devices and contexts
   VirtualDeviceRef device0 =

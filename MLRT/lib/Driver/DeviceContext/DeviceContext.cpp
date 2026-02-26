@@ -1360,6 +1360,12 @@ void DeviceContext::decSyncMode() const {
 }
 
 bool DeviceContext::isGraphCapturing() const {
+  // Virtual devices don't support graph capture - they have no real CUDA
+  // stream. We must check this before trying to cast to CUDADeviceContext,
+  // since the cast would be invalid for VirtualDeviceContext.
+  if (isVirtualDeviceMode())
+    return false;
+
   if (device().api() == Device::cudaAPI) {
     const auto &cudaCtx = CUDADeviceContext::cast(*this);
     CUstreamCaptureStatus status =
