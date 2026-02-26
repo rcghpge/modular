@@ -36,7 +36,7 @@ using std::endl;
     }                                                                          \
   } while (0)
 
-class CUDADriverPluginTest : public ::testing::Test {
+class DriverPluginTest : public ::testing::Test {
 protected:
   void SetUp() override {
     const char *pluginSpec = std::getenv("MODULAR_DRIVER_PLUGINS");
@@ -55,13 +55,15 @@ protected:
 #define M_DRIVER_HAL_SYMBOL(name)                                              \
   name = (M_driver_##name##_func_ptr_t)dlsym(                                  \
       soHandle, ("M_driver_" + std::string(#name)).c_str());                   \
-  ASSERT_TRUE(name != nullptr);
+  ASSERT_TRUE(name != nullptr) << "Failed to resolve M_driver_" #name;
 
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
     DO_TEST(initialize());
   }
   void TearDown() override {
+    if (soHandle == nullptr)
+      return;
     DO_TEST(finalize());
 #define M_DRIVER_HAL_SYMBOL(name) name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
@@ -75,7 +77,7 @@ protected:
 #undef M_DRIVER_HAL_SYMBOL
 };
 
-TEST_F(CUDADriverPluginTest, DeviceCount) {
+TEST_F(DriverPluginTest, DeviceCount) {
   int64_t deviceCount = 0;
   M_driver_status_t status = this->device_count(&deviceCount);
   EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS);
@@ -83,7 +85,7 @@ TEST_F(CUDADriverPluginTest, DeviceCount) {
   EXPECT_GT(deviceCount, 0);
 }
 
-TEST_F(CUDADriverPluginTest, DeviceGet) {
+TEST_F(DriverPluginTest, DeviceGet) {
   int64_t deviceCount = 0;
   RUN(device_count(&deviceCount));
   for (int64_t i = 0; i < deviceCount; i++) {
@@ -94,7 +96,7 @@ TEST_F(CUDADriverPluginTest, DeviceGet) {
   }
 }
 
-TEST_F(CUDADriverPluginTest, DeviceContext) {
+TEST_F(DriverPluginTest, DeviceContext) {
   int64_t deviceCount = 0;
   RUN(device_count(&deviceCount));
   std::vector<M_driver_context_t> contexts;

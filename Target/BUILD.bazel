@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_test")
+load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_library", "modular_cc_test")
 
 # gazelle:default_visibility //MLRT:__subpackages__
 
@@ -27,10 +27,21 @@ modular_cc_binary(
     ],
 )
 
+modular_cc_library(
+    name = "DriverPluginTests",
+    testonly = True,
+    srcs = ["test/Plugin.cpp"],
+    copts = ["-Wno-global-constructors"],
+    deps = [
+        "//SDK:HAL",
+        "@llvm-project//third-party/unittest:gtest",
+    ],
+    alwayslink = True,
+)
+
 modular_cc_test(
     name = "CUDAPluginTest",
     size = "small",
-    srcs = ["test/CUDA/Plugin.cpp"],
     data = [":CUDAPlugin.so"],
     env = {
         "MODULAR_DRIVER_PLUGINS": "$(location :CUDAPlugin.so)",
@@ -39,6 +50,6 @@ modular_cc_test(
     tags = ["gpu"],
     visibility = ["//visibility:private"],
     deps = [
-        "//SDK:HAL",
+        ":DriverPluginTests",
     ],
 )
