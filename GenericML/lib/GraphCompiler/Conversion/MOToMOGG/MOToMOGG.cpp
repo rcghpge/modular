@@ -148,8 +148,8 @@ lowerOpToMOGG(Operation *op, OpBuilder &insertPoint,
   // Done to match expected behavior of non-extensibility api
   forceSync = forceSync || forceTrivial;
 
-  MOGG::MOGGExpKernelBuilder builder(op, insertPoint, forceSync,
-                                     mojoLibraryAnalysis);
+  MOGG::MOGGKernelBuilder builder(op, insertPoint, forceSync,
+                                  mojoLibraryAnalysis);
 
   auto kernelOrErr = builder.lowerToKernel();
   return kernelOrErr;

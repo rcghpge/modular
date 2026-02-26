@@ -200,7 +200,7 @@ management, views and list ops (controlled by
 semantics or custom lowerings and survive until `MOToPrimitives` later in the
 pipeline.
 
-For eligible ops, a `MOGGExpKernelBuilder` controls the kernel selection. The
+For eligible ops, a `MOGGKernelBuilder` controls the kernel selection. The
 selection is performed by a Mojo kernel adaptor and consists of two steps:
 
 1. Map the op to a kernel name + function label under which the kernel is

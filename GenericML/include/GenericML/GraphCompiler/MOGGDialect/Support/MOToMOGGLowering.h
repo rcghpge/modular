@@ -43,10 +43,10 @@ class MojoLibraryAnalysis;
 
 /// A helper class which translates MO operations to MOGG Kernels with KGEN
 /// inlined.
-class MOGGExpKernelBuilder {
+class MOGGKernelBuilder {
 public:
-  MOGGExpKernelBuilder(Operation *op, OpBuilder &insertPoint, bool forceSync,
-                       MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis);
+  MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint, bool forceSync,
+                    MOGG::MojoLibraryAnalysis &mojoLibraryAnalysis);
 
   /// Main entry point for building most other kernels.
   /// TODO: unroll and factor common components to helpers.
