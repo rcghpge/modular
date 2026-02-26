@@ -358,7 +358,7 @@ class LlasaPipelineModel(PipelineModel[TTSContext]):
                 ]
             else:
                 tokens_to_generate[batch_id] = (
-                    self.pipeline_config.max_num_steps or 100
+                    self.pipeline_config.runtime.max_num_steps or 100
                 )
 
         generated_token_counts = self.generate_speech_tokens(
