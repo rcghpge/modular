@@ -60,27 +60,3 @@ mo.graph @sequenced_print(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch2 = mo.debug.tensor.print(%ch1, %arg0) {label = "label2"} : !mo.tensor<[4, 5], f32>
   mo.output
 }
-
-// CHECK-LABEL: mgp.model @unsafe_print
-// CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
-// CHECK: %[[ARG:[^:]*]]: !mgp.tensor<4x5xf32>)
-// CHECK: %[[BUF:.*]] = mgp.tensor.extract.buffer %[[ARG]]
-// CHECK: %[[SPEC:.*]] = mgp.tensor.extract.tensor_spec %[[ARG]]
-// CHECK: %[[CH1:.*]] = mgp.debug.tensor.print %{{.*}}, %[[BUF]], %[[SPEC]], "label"
-
-mo.graph @unsafe_print(%arg0: !mo.tensor<[4, 5], f32>) {
-  mo.debug.tensor.unsafe.print(%arg0) {label = "label"} : !mo.tensor<[4, 5], f32>
-  mo.output
-}
-
-// CHECK-LABEL: mgp.model @unsafe_print_chained
-
-// CHECK: %[[CHAIN:.*]] = mogg.generic.compiled.region
-// CHECK: %[[JOINED_CH:.*]] = grt.chain.create (%[[CHAIN]]
-// CHECK: gp.debug.tensor.print %[[JOINED_CH]]
-
-mo.graph @unsafe_print_chained(%arg0: !mo.tensor<[4, 5], f32>) {
-  %0 = mo.relu(%arg0): !mo.tensor<[4, 5], f32>
-  mo.debug.tensor.unsafe.print(%0) {label = "label"} : !mo.tensor<[4, 5], f32>
-  mo.output
-}

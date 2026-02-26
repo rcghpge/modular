@@ -31,17 +31,3 @@ mo.graph @print(%a : !mo.tensor<[4], f32, gpu:0>) -> (!mo.tensor<[4], f32, gpu:0
   mo.debug.tensor.print(%ch1, %b) { device = #M.device_ref<"gpu", 0> } : !mo.tensor<[4], f32, gpu:0>
   mo.output %a : !mo.tensor<[4], f32, gpu:0>
 }
-
-
-// CHECK-LABEL: --- Running 'unsafe_print':
-// CHECK-NEXT: Tensor(4xf32, TensorBufferRef(0x
-// CHECK-NEXT: Tensor(4xf32, TensorBufferRef(0x
-// CHECK-NEXT: 'unsafe_print' returned tensor({{\[}}[1.0000, 1.0000, 1.0000, 1.0000]], dtype=f32, shape=[4])
-
-mo.graph @unsafe_print(%a : !mo.tensor<[4], f32, gpu:0>) -> (!mo.tensor<[4], f32, gpu:0>)
-{
-  %b = mo.constant {value = #M.dense_array<0.0, 1.0, 2.0, 3.0> : tensor<4xf32> } : !mo.tensor<[4], f32, gpu:0>
-  mo.debug.tensor.unsafe.print(%a) { device = #M.device_ref<"gpu", 0> } : !mo.tensor<[4], f32, gpu:0>
-  mo.debug.tensor.unsafe.print(%b) { device = #M.device_ref<"gpu", 0> } : !mo.tensor<[4], f32, gpu:0>
-  mo.output %a : !mo.tensor<[4], f32, gpu:0>
-}

@@ -4494,37 +4494,6 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   }];
 }
 
-def MO_DebugTensorUnsafePrintOp : MO_TensorOp<"debug.tensor.unsafe.print", [
-  MemoryEffects<[MemWrite]>,
-  MO_SingleDeviceWithHostOperands<[], ["input"]>,
-  MO_PreservedDuringKernelLowering
-]> {
-  let summary = "Printing operation";
-  let description = [{
-    Deprecated use mo.debug.tensor.print instead to ensure proper sequencing
-    of print operations.
-
-    This is just kept around due to the Mojo Graph API not supporting chains at
-    the time of writing.
-
-    Prints a debug representation of argument input. If a label attribute
-    is supplied the tensor contents is printed with that label. Otherwise
-    just the tensor metadata is printed. For debugging and testing only.
-
-    Example:
-    ```mlir
-      %arg: !mo.tensor<[5], f32>
-      mo.debug.tensor.print(%arg) {label = "label"} : !mo.tensor<[5], f32>
-    ```
-  }];
-
-  let arguments = (ins MO_Tensor: $input,
-                   DefaultValuedAttr<StrAttr, "\"\"">: $label);
-  let assemblyFormat = [{
-    `(` $input `)` attr-dict `:` qualified(type($input))
-  }];
-}
-
 // Class for top-k/bottom-k operators
 class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<
