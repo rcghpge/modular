@@ -377,3 +377,23 @@ modular_cc_test(
         "@llvm-project//llvm:Support",
     ],
 )
+
+modular_cc_test(
+    name = "HALTest",
+    size = "small",
+    srcs = ["HALTest.cpp"],
+    data = ["//Target:CUDAPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "CUDA@$(location //Target:CUDAPlugin.so)",
+    },
+    gpu_constraints = ["//:nvidia_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "//:nvidia_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:DriverHAL",
+    ],
+)

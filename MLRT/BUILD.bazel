@@ -648,6 +648,27 @@ modular_cc_library(
 )
 
 modular_cc_library(
+    name = "DriverHAL",
+    srcs = glob([
+        "lib/Driver/HAL/*.cpp",
+        "lib/Driver/HAL/*.h",
+    ]),
+    hdrs = glob(["include/MLRT/Driver/HAL/*.h"]),
+    includes = ["include"],
+    target_compatible_with = select({
+        "//:nvidia_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//SDK:HAL",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+modular_cc_library(
     name = "Driver/NIXL",
     hdrs = glob(
         [

@@ -1,3 +1,4 @@
+load("//bazel:api.bzl", "modular_cc_library")
 load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 
 # gazelle:default_visibility //SDK:consumers
@@ -25,4 +26,19 @@ alias(
     name = "pipelines",
     actual = "//max",
     tags = [TOP_LEVEL_TAG],
+)
+
+modular_cc_library(
+    name = "HAL",
+    hdrs = glob([
+        "include/HAL/*.h",
+    ]) + [
+        "include/HAL/M_driver_hal_symbols.inc",
+    ],
+    includes = ["include"],
+    # Avoid C++ style checks for pure C
+    tags = ["no-clang-tidy-headers"],
+    visibility = [
+        "//visibility:public",
+    ],
 )
