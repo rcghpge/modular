@@ -54,10 +54,17 @@ public:
 
 private:
   DeviceRefAttr getDevice() const {
-    // GEX-2278 If this is a multi-device op, we can't return a single device.
-    // Existing code expects the default host device in this case.
-    if (moOp->hasTrait<MO::MOMultiDevice>()) {
-      return getHostDevice();
+    // For multi-device ops, use the first execution device rather than
+    // falling back to host.  Downstream code (e.g. isGpuKernel checks in
+    // BindLambdaOp::emitMojo) uses the kernel's device label to decide
+    // whether GPU-safe pointer decomposition and @__copy_capture are needed.
+    // Returning "host" here would skip those paths even though the kernel's
+    // output lambdas ultimately execute inside GPU sub-kernels.
+    // TODO: Store all the devices here, see GEX-2278
+    if (auto hasDevice = dyn_cast<MO::MOHasDeviceInterface>(moOp)) {
+      auto devices = hasDevice.getExecutionDevices();
+      if (!devices.empty())
+        return devices.front();
     }
 
     return MO::getDeviceOrDefaultAny(moOp);
