@@ -53,3 +53,38 @@ modular_cc_test(
         ":DriverPluginTests",
     ],
 )
+
+modular_cc_binary(
+    name = "MetalPlugin.so",
+    srcs = glob([
+        "lib/Metal/*.cpp",
+        "lib/Metal/*.h",
+    ]),
+    linkshared = True,
+    linkstatic = False,
+    target_compatible_with = select({
+        "//:apple_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//SDK:HAL",
+        "//Support:Base",
+        "@metal-cpp//:metal-cpp",
+    ],
+)
+
+modular_cc_test(
+    name = "MetalPluginTest",
+    size = "small",
+    data = [":MetalPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "$(location :MetalPlugin.so)",
+        "OBJC_DEBUG_MISSING_POOLS": "YES",
+    },
+    gpu_constraints = ["//:apple_gpu"],
+    tags = ["gpu"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":DriverPluginTests",
+    ],
+)
