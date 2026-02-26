@@ -613,6 +613,13 @@ static bool isLITStaticStringType(Type ty) {
   return true;
 }
 
+static StringAttr maybeDemangleName(StringAttr name) {
+  StringRef demangled = KGEN::LIT::demangleParameterName(name);
+  if (demangled != name)
+    return StringAttr::get(name.getContext(), demangled);
+  return name;
+}
+
 static ErrorOrSuccess
 validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
                                MO::CustomOp customOp) {
@@ -652,12 +659,13 @@ validateCustomOpParametersImpl(const MojoLibraryAnalysis &libraryAnalysis,
     // Use llvm::zip to handle potential size mismatch gracefully - zip stops
     // at the shorter of the two ranges, matching original behavior.
     for (auto [param, value] : llvm::zip(inputParams, parameterTypeNames))
-      paramDecls[param.getName()] = {param, dyn_cast<StringAttr>(value)};
+      paramDecls[maybeDemangleName(param.getName())] = {
+          param, dyn_cast<StringAttr>(value)};
   } else {
     // If parameterTypeNames is not available, populate paramDecls with the
     // parameter declarations (without type names).
     for (auto param : inputParams)
-      paramDecls[param.getName()] = {param, nullptr};
+      paramDecls[maybeDemangleName(param.getName())] = {param, nullptr};
   }
 
   for (const NamedAttribute &namedAttr : customOp.getParameters()) {
