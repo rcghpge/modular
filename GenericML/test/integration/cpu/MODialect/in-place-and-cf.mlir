@@ -15,7 +15,7 @@
 !bt = !mo.buffer<[2, 2], f32>
 !condt = !mo.tensor<[], bool>
 !c = !mo.chain
-mo.graph @basic_if_tb(%buf: !bt, %true: !condt) -> (!bt)
+mo.graph @basic_if_tb(%buf: !bt, %true: !condt) -> (!bt, !c)
 {
   %ch0 = mo.chain.create()
   %vbuf, %ch1 = mo.mutable.load(%buf, %ch0) : (!bt, !c) -> (!tt, !c)
@@ -30,13 +30,13 @@ mo.graph @basic_if_tb(%buf: !bt, %true: !condt) -> (!bt)
     mo.yield %ch2_0 : !c
   }
 
-  mo.output %buf : !bt
+  mo.output %buf, %och : !bt, !c
 }
 
 // CHECK-LABEL: --- Running 'basic_if_fb':
 // CHECK{LITERAL}: 'basic_if_fb' returned tensor([[-1.0000, -1.0000],
 // CHECK{LITERAL}: [-1.0000, -1.0000]], dtype=f32, shape=[2,2])
-mo.graph @basic_if_fb(%buf: !bt, %true: !condt) -> (!bt)
+mo.graph @basic_if_fb(%buf: !bt, %true: !condt) -> (!bt, !c)
 {
   %false = mo.xor(%true, %true) : !condt
 
@@ -53,13 +53,13 @@ mo.graph @basic_if_fb(%buf: !bt, %true: !condt) -> (!bt)
     mo.yield %ch2_0 : !c
   }
 
-  mo.output %buf : !bt
+  mo.output %buf, %och : !bt, !c
 }
 
 // CHECK-LABEL: --- Running 'basic_while':
 // CHECK{LITERAL}: 'basic_while' returned tensor([[8.0000, 8.0000],
 // CHECK{LITERAL}: [8.0000, 8.0000]], dtype=f32, shape=[2,2])
-mo.graph @basic_while(%buf: !bt) -> (!bt) {
+mo.graph @basic_while(%buf: !bt) -> (!bt, !c) {
    %ch0 = mo.chain.create()
 
    %x = mo.constant {value = #M.dense_array<1.0, 1.0> : tensor<2xf32> } : !mo.tensor<[2], f32>
@@ -90,5 +90,5 @@ mo.graph @basic_while(%buf: !bt) -> (!bt) {
    %res = mo.add(%tensor, %tensor) : !tt
    %ch2 = mo.mutable.store(%buf, %res, %ch1) : (!bt, !tt, !c) -> (!c)
 
-   mo.output %buf : !bt
+   mo.output %buf, %ch2 : !bt, !c
 }

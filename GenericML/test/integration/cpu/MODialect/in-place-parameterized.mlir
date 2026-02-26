@@ -12,7 +12,7 @@
 // CHECK{LITERAL}: [1.0000, 1.0000, 1.0000, 1.0000],
 // CHECK{LITERAL}: [-2.0000, 1.0000, -2.0000, 1.0000],
 // CHECK{LITERAL}: [1.0000, 1.0000, 1.0000, 1.0000]], dtype=f32, shape=[4,4])
-mo.graph @parameterized<d0, d1, d2, d3>(%arg0: !mo.buffer<[d0, d1], f32>, %arg1: !mo.tensor<[d2, d3], f32>) -> !mo.buffer<[d0, d1], f32> {
+mo.graph @parameterized<d0, d1, d2, d3>(%arg0: !mo.buffer<[d0, d1], f32>, %arg1: !mo.tensor<[d2, d3], f32>) -> (!mo.buffer<[d0, d1], f32>, !mo.chain) {
   %0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %1 = mo.constant {value = #M.dense_array<4, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %2 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -22,5 +22,5 @@ mo.graph @parameterized<d0, d1, d2, d3>(%arg0: !mo.buffer<[d0, d1], f32>, %arg1:
   %5 = mo.add(%4, %arg1) : !mo.tensor<[d2, d3], f32>
   %6 = mo.negative(%5) : !mo.tensor<[d2, d3], f32>
   %7 = mo.mutable.store.slice(%arg0, %6, %0, %1, %2, %outChain) : (!mo.buffer<[d0, d1], f32>, !mo.tensor<[d2, d3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.chain) -> !mo.chain
-  mo.output %arg0 : !mo.buffer<[d0, d1], f32>
+  mo.output %arg0, %7 : !mo.buffer<[d0, d1], f32>, !mo.chain
 }

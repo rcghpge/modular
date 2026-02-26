@@ -19,7 +19,7 @@
 // CHECK-LABEL: --- Running 'basic_add':
 // CHECK{LITERAL}: 'basic_add' returned tensor([[2.0000, 2.0000],
 // CHECK{LITERAL}: [2.0000, 2.0000]], dtype=f32, shape=[2,2])
-mo.graph @basic_add(%buf: !bt, %rhs: !tt) -> !bt
+mo.graph @basic_add(%buf: !bt, %rhs: !tt) -> (!bt, !c)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -27,13 +27,13 @@ mo.graph @basic_add(%buf: !bt, %rhs: !tt) -> !bt
   %res = mo.add(%vbuf, %rhs) : !tt
   %ch2 = mo.mutable.store(%buf, %res, %ch1) : (!bt, !tt, !c) -> (!c)
 
-  mo.output %buf : !bt
+  mo.output %buf, %ch2 : !bt, !c
 }
 
 // CHECK-LABEL: --- Running 'sequenced_adds':
 // CHECK{LITERAL}: 'sequenced_adds' returned tensor([[3.0000, 3.0000],
 // CHECK{LITERAL}: [3.0000, 3.0000]], dtype=f32, shape=[2,2])
-mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> !bt
+mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> (!bt, !c)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -45,13 +45,13 @@ mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> !bt
   %res2 = mo.add(%vbuf2, %rhs) : !tt
   %ch4 = mo.mutable.store(%buf, %res2, %ch3) : (!bt, !tt, !c) -> (!c)
 
-  mo.output %buf : !bt
+  mo.output %buf, %ch4 : !bt, !c
 }
 
 // CHECK-LABEL: --- Running 'add_relu':
 // CHECK{LITERAL}: 'add_relu' returned tensor([[3.0000, 0.0000],
 // CHECK{LITERAL}: [4.0000, 0.0000]], dtype=f32, shape=[2,2])
-mo.graph @add_relu(%buf: !bt) -> !bt
+mo.graph @add_relu(%buf: !bt) -> (!bt, !c)
 {
   %init_val = mo.constant {value = #M.dense_array<2.0, -2.0, 3.0, -4.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
 
@@ -65,13 +65,13 @@ mo.graph @add_relu(%buf: !bt) -> !bt
   %res2 = mo.relu(%vbuf2) : !tt
   %ch4 = mo.mutable.store(%buf, %res2, %ch3) : (!bt, !tt, !c) -> (!c)
 
-  mo.output %buf : !bt
+  mo.output %buf, %ch4 : !bt, !c
 }
 
 // CHECK-LABEL: --- Running 'add_neg':
 // CHECK{LITERAL}: 'add_neg' returned tensor([[-2.0000, -2.0000],
 // CHECK{LITERAL}: [-2.0000, -2.0000]], dtype=f32, shape=[2,2])
-mo.graph @add_neg(%buf: !bt, %rhs: !tt) -> !bt
+mo.graph @add_neg(%buf: !bt, %rhs: !tt) -> (!bt, !c)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -82,7 +82,7 @@ mo.graph @add_neg(%buf: !bt, %rhs: !tt) -> !bt
   %res2 = mo.negative(%res1) : !tt
   %ch4 = mo.mutable.store(%buf, %res2, %ch2) : (!bt, !tt, !c) -> (!c)
 
-  mo.output %buf : !bt
+  mo.output %buf, %ch4 : !bt, !c
 }
 
 // CHECK-LABEL: --- Running 'load_value_multiple_uses':
@@ -90,7 +90,7 @@ mo.graph @add_neg(%buf: !bt, %rhs: !tt) -> !bt
 // CHECK{LITERAL}: [3.0000, 3.0000]], dtype=f32, shape=[2,2])
 // CHECK{LITERAL}: , tensor([[-1.0000, -1.0000],
 // CHECK{LITERAL}: [-1.0000, -1.0000]], dtype=f32, shape=[2,2])
-mo.graph @load_value_multiple_uses(%buf: !bt, %rhs: !tt) -> (!bt, !tt)
+mo.graph @load_value_multiple_uses(%buf: !bt, %rhs: !tt) -> (!bt, !tt, !c)
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
@@ -104,5 +104,5 @@ mo.graph @load_value_multiple_uses(%buf: !bt, %rhs: !tt) -> (!bt, !tt)
 
   %r1 = mo.negative(%vbuf) : !tt
 
-  mo.output %buf, %r1 : !bt, !tt
+  mo.output %buf, %r1, %ch4 : !bt, !tt, !c
 }
