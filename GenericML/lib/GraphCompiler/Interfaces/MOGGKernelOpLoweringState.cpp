@@ -157,6 +157,75 @@ MOGGKernelOpLoweringState::MOGGKernelOpLoweringState(
       opLoweringState(loweringState, op), builder(opLoweringState.builder),
       device(MO::getDeviceOrDefaultAny(op)) {}
 
+FailureOr<KernelStubInfo>
+MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
+                                            StringRef stubNamePrefix) {
+  mlir::MLIRContext *ctx = kernelOp.getContext();
+  auto loc = kernelOp.getLoc();
+
+  // Find output and scratch placeholders before taking the body
+  MOGG::OutputPlaceholdersOp outputPlaceholdersOp = nullptr;
+  MOGG::ScratchPlaceholdersOp scratchPlaceholdersOp = nullptr;
+  kernelOp.walk([&](Operation *op) {
+    if (auto outputOp = dyn_cast<MOGG::OutputPlaceholdersOp>(op))
+      outputPlaceholdersOp = outputOp;
+    else if (auto scratchOp = dyn_cast<MOGG::ScratchPlaceholdersOp>(op))
+      scratchPlaceholdersOp = scratchOp;
+  });
+
+  // Save the number of kernel inputs before we modify the body
+  size_t numKernelInputs = kernelOp.getInputs().size();
+
+  // Create a unique stub name
+  static int stubCounter = 0;
+  auto stubName = StringAttr::get(
+      ctx, llvm::formatv("{}_{}", stubNamePrefix, stubCounter++).str());
+
+  // Create the stub outside of the model op to ensure it is properly registered
+  // into the SymbolTable of the ModuleOp.
+  auto insertionPoint = builder.saveInsertionPoint();
+  builder.setInsertionPointToStart(loweringState.getModelOp()->getBlock());
+
+  // First, we create a () -> () function type because we don't yet set the
+  // value of certain things like IOKind.
+  auto functionType = TypeAttr::get(FunctionType::get(ctx, {}, {}));
+  kernelStub = MOGG::KernelStubOp::create(
+      builder, loc, stubName, functionType, kernelOp.getFusionInfoAttr(),
+      kernelOp.getIsAsyncAttr(), ArrayAttr::get(ctx, {}),
+      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG));
+  kernelStub.getBody().takeBody(kernelOp.getExecBody());
+  kernelStub.setDeviceRef(device);
+
+  builder.restoreInsertionPoint(insertionPoint);
+
+  return KernelStubInfo{kernelStub, stubName, numKernelInputs,
+                        outputPlaceholdersOp, scratchPlaceholdersOp};
+}
+
+void MOGGKernelOpLoweringState::setupInputOperandsMapping(
+    Value chain, ArrayRef<Value> loweredInputOperands) {
+  // 1. Add the chain with the input signature. (Only pass it to the region, not
+  // the stub)
+  operandsMapping.addOperand(chain, /*isMGPRegionOperand=*/true,
+                             /*isKernelStubOperand=*/false,
+                             /*sig=*/InOutSignatureAttr::kIn);
+
+  // 2. Add the inputs with the input or mutable input signature.
+  for (auto &&[origOperand, loweredInputOperand] : llvm::zip_first(
+           kernelStub.getBody().getArguments(), loweredInputOperands)) {
+    auto sig = isa<MO::BufferType>(origOperand.getType())
+                   ? InOutSignatureAttr::kMut
+                   : InOutSignatureAttr::kIn;
+    operandsMapping.addOperand(loweredInputOperand, /*isMGPRegionOperand=*/true,
+                               /*isKernelStubOperand=*/true, sig);
+    if (MO::dynCastFromTensorLike(origOperand.getType()))
+      tensorOperandInfos.push_back(
+          TensorOperandInfos{.stubValue = origOperand,
+                             .operandIdx = operandsMapping.getNumOperands() - 1,
+                             .isOutput = false});
+  }
+}
+
 Value MOGGKernelOpLoweringState::buildMojoIOTensorObject(
     Value bufferValue, const TensorOperandInfos &tensorInfos) {
   mlir::MLIRContext *ctx = moggOp->getContext();
@@ -519,11 +588,6 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   SmallVector<KGEN::ParamDeclRefAttr> usedKernelParameters =
       M::MOGG::getKernelUsedParameters(moggKernelOp);
 
-  // Outline the kernel into a stub by creating the op and taking the body of
-  // the kernel op we are lowering. Output and scratch placeholders are part of
-  // the MGP memory management analysis which means they will come from the
-  // outside.
-
   // If the kernel returns opaque types, they must be part of the stub's
   // signature.
   uint64_t resultTypeIndex;
@@ -541,12 +605,6 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     return failure();
   }
 
-  // Create the stub op at the top of the module.
-  /// TODO: Find a better way of naming stubs. This is not thread safe.
-  static int stubCounter = 0;
-  auto stubName =
-      StringAttr::get(ctx, llvm::formatv("stub_{}", stubCounter++).str());
-
   // Determine the return type for the stub
   Type stubReturnType = nullptr;
   auto terminator = moggKernelOp.getTerminator();
@@ -556,19 +614,12 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
     stubReturnType = regOutput;
   }
 
-  // Create the stub outside of the model op to ensure it is properly registered
-  // into the SymbolTable of the ModuleOp.
-  auto insertionPoint = builder.saveInsertionPoint();
-  builder.setInsertionPointToStart(loweringState.getModelOp()->getBlock());
-  // First, we create a () -> () function type because we don't yet set the
-  // value of certain things like IOKind.
-  auto functionType = TypeAttr::get(FunctionType::get(ctx, {}, {}));
-  kernelStub = MOGG::KernelStubOp::create(
-      builder, loc, stubName, functionType, moggKernelOp.getFusionInfoAttr(),
-      moggKernelOp.getIsAsyncAttr(), ArrayAttr::get(ctx, {}),
-      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG));
-  kernelStub.getBody().takeBody(moggKernelOp.getExecBody());
-  builder.restoreInsertionPoint(insertionPoint);
+  // Create the stub by outlining the kernel body.
+  auto stubInfoOr = createKernelStub(moggKernelOp, "stub");
+  if (failed(stubInfoOr))
+    return failure();
+  auto stubInfo = *stubInfoOr;
+  StringAttr stubName = stubInfo.stubName;
 
   // This is a list of input operands in MGP but without the chain.
   auto maybeInChain = moggKernelOp.maybeGetInChain();
@@ -580,27 +631,8 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   }
   chain = opLoweringState.getGuardChain(chain);
 
-  // 1. Add the chain with the input signature. (Only pass it to the region, not
-  // the stub)
-  operandsMapping.addOperand(chain, /*isMGPRegionOperand=*/true,
-                             /*isKernelStubOperand=*/false,
-                             /*sig=*/InOutSignatureAttr::kIn);
-
-  // 2. Add the inputs with the input or mutable input signature.
-  // Use zip_first because we removed the original chain from the list.
-  for (auto &&[origOperand, loweredInputOperand] : llvm::zip_first(
-           kernelStub.getBody().getArguments(), loweredInputOperands)) {
-    auto sig = isa<MO::BufferType>(origOperand.getType())
-                   ? InOutSignatureAttr::kMut
-                   : InOutSignatureAttr::kIn;
-    operandsMapping.addOperand(loweredInputOperand, /*isMGPRegionOperand=*/true,
-                               /*isKernelStubOperand=*/true, sig);
-    if (MO::dynCastFromTensorLike(origOperand.getType()))
-      tensorOperandInfos.push_back(
-          TensorOperandInfos{.stubValue = origOperand,
-                             .operandIdx = operandsMapping.getNumOperands() - 1,
-                             .isOutput = false});
-  }
+  // Set up operands mapping for the chain and inputs.
+  setupInputOperandsMapping(chain, loweredInputOperands);
 
   // 3. Pass and map all other kernel arguments (dynamic dimensions, device
   // context, etc).
@@ -642,7 +674,6 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
       BoolAttr::get(ctx, false),                       // canDuplicate
       BoolAttr::get(ctx, true));                       // isStructuredKernel
   mgpRegion.setDeviceRef(device);
-  kernelStub.setDeviceRef(device);
 
   // Add a body to the created operation and mirror its operands with block
   // arguments.

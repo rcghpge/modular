@@ -124,6 +124,15 @@ public:
   void setupKernelStubArgs(Block *kernelStubBody);
 };
 
+/// Information about a kernel stub created during lowering.
+struct KernelStubInfo {
+  MOGG::KernelStubOp stub;
+  StringAttr stubName;
+  size_t numKernelInputs;
+  MOGG::OutputPlaceholdersOp outputPlaceholdersOp;
+  MOGG::ScratchPlaceholdersOp scratchPlaceholdersOp;
+};
+
 // This class holds the state and methods needed to lower MOGG kernels to MGP
 class MOGGKernelOpLoweringState {
 
@@ -142,6 +151,16 @@ public:
   };
 
 protected:
+  // Create a kernel stub from a KernelOp, outlining its body.
+  // Returns info about the created stub including placeholder ops.
+  FailureOr<KernelStubInfo> createKernelStub(MOGG::KernelOp kernelOp,
+                                             StringRef stubNamePrefix);
+
+  // Set up the operands mapping for kernel inputs (chain + tensor inputs).
+  // Populates operandsMapping and tensorOperandInfos for the inputs.
+  void setupInputOperandsMapping(Value chain,
+                                 ArrayRef<Value> loweredInputOperands);
+
   /// Build a ManagedTensorSlice object corresponding to the KernelStubOp
   /// argument `stubArgument` from the buffer pointer `bufferValue`.
   Value buildMojoIOTensorObject(Value bufferValue,
