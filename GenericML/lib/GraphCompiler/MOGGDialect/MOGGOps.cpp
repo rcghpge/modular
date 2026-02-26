@@ -1139,8 +1139,7 @@ bool KernelStubOp::isThrows() {
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
   auto emitFusionInfoComment = [&] {
-    if (auto fi = getFusionInfoAttr();
-        fi && !isa<FusionLeafAttr>(fi.getRoot())) {
+    if (auto fi = getFusionInfoAttr(); fi) {
       state.builder.comment("FusionInfo:");
       std::string tree = fi.toPrettyTree();
       for (auto line : llvm::split(tree, '\n'))
