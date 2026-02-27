@@ -29,7 +29,7 @@ from max.interfaces import (
     TextGenerationRequest,
     TokenBuffer,
 )
-from max.nn.legacy.kv_cache import (
+from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParams,
     KVCacheQuantizationConfig,
@@ -39,14 +39,12 @@ from max.pipelines import (
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
-    PipelineModel,
     SupportedArchitecture,
-    SupportedEncoding,
     TextContext,
     TextTokenizer,
     upper_bounded_default,
 )
-from max.pipelines.lib import KVCacheMixin
+from max.pipelines.lib import PipelineModelWithKVCache
 from max.pipelines.lib.interfaces import ArchConfigWithAttentionKVCache
 from transformers import AutoConfig
 
@@ -59,7 +57,7 @@ class DummyModelInputs(ModelInputs):
     input4: Buffer | None = None
 
 
-class DummyPipelineModel(PipelineModel, KVCacheMixin):
+class DummyPipelineModel(PipelineModelWithKVCache):
     """A pipeline model with setup, input preparation and execution methods."""
 
     def execute(
@@ -199,7 +197,8 @@ class DummyPipelineModel(PipelineModel, KVCacheMixin):
         session: InferenceSession,
     ) -> Model:
         """Provided a PipelineConfig and InferenceSession, build and load the model graph."""
-        kv_inputs = self.kv_params.get_symbolic_inputs()[0]
+        assert hasattr(self, "kv_params")
+        kv_inputs = self.kv_params.get_symbolic_inputs().flatten()
         with Graph(
             "dummy",
             input_types=[
@@ -350,16 +349,16 @@ DUMMY_LLAMA_ARCH = SupportedArchitecture(
         "modularai/Llama-3.1-8B-Instruct-GGUF",
         "trl-internal-testing/tiny-random-LlamaForCausalLM",
     ],
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
-        SupportedEncoding.gptq: ["paged"],
+        "gptq": ["paged"],
         # q4_k intentionally left out to test a valid SupportedEncoding but not
         # supported by the model (supported_encoding).
-        SupportedEncoding.q4_0: ["paged"],
-        SupportedEncoding.q6_k: ["paged"],
-        SupportedEncoding.float32: ["paged"],
-        SupportedEncoding.bfloat16: ["paged"],
-        SupportedEncoding.float8_e4m3fn: ["paged"],
+        "q4_0": ["paged"],
+        "q6_k": ["paged"],
+        "float32": ["paged"],
+        "bfloat16": ["paged"],
+        "float8_e4m3fn": ["paged"],
     },
     pipeline_model=DummyLlamaPipelineModel,
     tokenizer=DummyTextTokenizer,
@@ -377,11 +376,11 @@ DUMMY_LLAMA_GPTQ_ARCH = SupportedArchitecture(
         "jakiAJK/DeepSeek-R1-Distill-Llama-8B_GPTQ-int4",
         "modularai/Llama-3.1-8B-Instruct-GGUF",
     ],
-    default_encoding=SupportedEncoding.float32,
+    default_encoding="float32",
     supported_encodings={
-        SupportedEncoding.gptq: ["paged"],
-        SupportedEncoding.float32: ["paged"],
-        SupportedEncoding.bfloat16: ["paged"],
+        "gptq": ["paged"],
+        "float32": ["paged"],
+        "bfloat16": ["paged"],
     },
     pipeline_model=DummyLlamaPipelineModel,
     tokenizer=DummyTextTokenizer,
@@ -409,9 +408,9 @@ DUMMY_GEMMA_ARCH = SupportedArchitecture(
         # "google/gemma-3-27b-it",
         # "google/gemma-3-27b-pt",
     ],
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
-        SupportedEncoding.bfloat16: ["paged"],
+        "bfloat16": ["paged"],
     },
     pipeline_model=DummyPipelineModel,
     tokenizer=DummyTextTokenizer,

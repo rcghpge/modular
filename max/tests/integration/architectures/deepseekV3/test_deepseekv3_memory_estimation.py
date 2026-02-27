@@ -24,12 +24,13 @@ MAX_SEND_TOKENS_PER_RANK = 128
 NUM_RANKS = 8
 
 
-def mock_pipeline_config(pipeline_role: PipelineRole) -> NonCallableMock:
+def mock_pipeline_config(
+    pipeline_role: PipelineRole,
+    quantization_encoding: SupportedEncoding = "float8_e4m3fn",
+) -> NonCallableMock:
     pipeline_config = NonCallableMock(spec=PipelineConfig)
     pipeline_config.model = MagicMock()
-    pipeline_config.model.quantization_encoding = (
-        SupportedEncoding.float8_e4m3fn
-    )
+    pipeline_config.model.quantization_encoding = quantization_encoding
     pipeline_config.model.kv_cache.cache_dtype = DType.bfloat16
     pipeline_config.model.data_parallel_degree = NUM_RANKS
     pipeline_config.model.device_specs = [
@@ -110,6 +111,13 @@ def test_deepseekv3_memory_estimation_exact() -> None:
     )
     assert mem == 561279664128
 
+    # Also check model with different quantization encoding
+    pipeline_config = mock_pipeline_config("decode_only", "float4_e2m1fnx2")
+    mem = deepseek_model.estimate_activation_memory(
+        pipeline_config, huggingface_config
+    )
+    assert mem == 16315711488
+
 
 def mock_weights_pipeline_config(
     n_gpus: int, ep_size: int, dp_degree: int
@@ -120,9 +128,7 @@ def mock_weights_pipeline_config(
 
     pipeline_config = NonCallableMock(spec=PipelineConfig)
     pipeline_config.model = MagicMock()
-    pipeline_config.model.quantization_encoding = (
-        SupportedEncoding.float8_e4m3fn
-    )
+    pipeline_config.model.quantization_encoding = "float8_e4m3fn"
     pipeline_config.model.data_parallel_degree = dp_degree
     pipeline_config.model.device_specs = [
         NonCallableMock(spec=DeviceSpec) for _ in range(n_gpus)

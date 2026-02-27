@@ -101,7 +101,7 @@ fn quantize_dynamic_scaled_fp4fp8[
     ctx: DeviceContext,
     output: LayoutTensor[out_dtype, output_layout, MutAnyOrigin],
     scales: LayoutTensor[scales_dtype, scales_layout, MutAnyOrigin],
-    input: LayoutTensor[in_dtype, input_layout, MutAnyOrigin],
+    input: LayoutTensor[in_dtype, input_layout, ImmutAnyOrigin],
     num_cols: Int,
     num_cols_padded: Int,
     tensor_sf: Float32 = 1.0,  # tensor-wise scale factor
@@ -128,8 +128,7 @@ fn quantize_dynamic_scaled_fp4fp8[
 
     comptime N = input_layout.shape[1].value()
 
-    @parameter
-    if SF_VECTOR_SIZE == MXFP8_SF_VECTOR_SIZE:
+    comptime if SF_VECTOR_SIZE == MXFP8_SF_VECTOR_SIZE:
         comptime assert N % SF_VECTOR_SIZE == 0, "N must be a multiple of 32"
     else:
         comptime assert (
@@ -196,7 +195,7 @@ fn quantize_dynamic_scaled_fp4fp8_kernel[
 ](
     output: LayoutTensor[out_dtype, output_layout, MutAnyOrigin],
     scales: LayoutTensor[scales_dtype, scales_layout, MutAnyOrigin],
-    input: LayoutTensor[in_dtype, input_layout, MutAnyOrigin],
+    input: LayoutTensor[in_dtype, input_layout, ImmutAnyOrigin],
     num_cols: Int,
     num_cols_padded: Int,
     tensor_sf: Float32,
@@ -277,8 +276,7 @@ fn quantize_dynamic_scaled_fp4fp8_kernel[
                         # find the maximum value among all 16 elements (two threads for 16)
                         thread_max = max(shuffle_xor(thread_max, 1), thread_max)
 
-                        @parameter
-                        if NUM_THREADS_PER_SF == 4:
+                        comptime if NUM_THREADS_PER_SF == 4:
                             thread_max = max(
                                 shuffle_xor(thread_max, 2), thread_max
                             )
@@ -322,8 +320,7 @@ fn quantize_dynamic_scaled_fp4fp8_kernel[
 
                         var output_vector: SIMD[out_dtype, OUTPUT_WIDTH]
 
-                        @parameter
-                        if out_dtype == DType.uint8:
+                        comptime if out_dtype == DType.uint8:
                             output_vector = bitcast[out_dtype, OUTPUT_WIDTH](
                                 cast_fp32_to_fp4e2m1(input_f32)
                             )
@@ -350,7 +347,9 @@ fn block_scales_interleave_fp4[
     num_max_threads: Int = 1024,
 ](
     ctx: DeviceContext,
-    input_scales: LayoutTensor[scales_dtype, input_scales_layout, MutAnyOrigin],
+    input_scales: LayoutTensor[
+        scales_dtype, input_scales_layout, ImmutAnyOrigin
+    ],
     output_scales: LayoutTensor[
         scales_dtype, output_scales_layout, MutAnyOrigin
     ],
@@ -403,7 +402,9 @@ fn block_scales_interleave_fp4_kernel[
     SF_VECTOR_SIZE: Int = 16,
     num_max_threads: Int = 1024,
 ](
-    input_scales: LayoutTensor[scales_dtype, input_scales_layout, MutAnyOrigin],
+    input_scales: LayoutTensor[
+        scales_dtype, input_scales_layout, ImmutAnyOrigin
+    ],
     output_scales: LayoutTensor[
         scales_dtype, output_scales_layout, MutAnyOrigin
     ],
@@ -620,8 +621,7 @@ fn naive_block_scaled_matmul_kernel[
             b_scales, Int(col_idx), k
         )
 
-        @parameter
-        if scaling_kind == UMMAKind.KIND_MXF4NVF4:
+        comptime if scaling_kind == UMMAKind.KIND_MXF4NVF4:
             # each uint8 element has two Float4-E2M1 values,
             var a_val_fp16x2 = cast_f4e2m1x2_to_fp16x2(
                 rebind[UInt8](a[row_idx, k // K_STEPS])
@@ -630,8 +630,7 @@ fn naive_block_scaled_matmul_kernel[
                 rebind[UInt8](b[col_idx, k // K_STEPS])
             ).cast[accum_type]()
 
-            @parameter
-            for k_idx in range(K_STEPS):
+            comptime for k_idx in range(K_STEPS):
                 var a_val = rebind[Scalar[accum_type]](a_val_fp16x2[k_idx])
                 var b_val = rebind[Scalar[accum_type]](b_val_fp16x2[k_idx])
                 var a_scale_val = abs(
@@ -658,8 +657,7 @@ fn naive_block_scaled_matmul_kernel[
 
     accum *= alpha.cast[accum_type]()
 
-    @parameter
-    if elementwise_lambda_fn:
+    comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
         elementwise_lambda[c_type, 1](
             Index(row_idx, col_idx), accum.cast[c_type]()
@@ -679,7 +677,7 @@ fn quantize_dynamic_block_scaled[
 ](
     output_device: NDBuffer[mut=True, out_dtype, 2, MutAnyOrigin, _],
     scales_device: NDBuffer[mut=True, scales_dtype, 5, MutAnyOrigin, _],
-    input_device: NDBuffer[in_dtype, 2, MutAnyOrigin, _],
+    input_device: NDBuffer[in_dtype, 2, ImmutAnyOrigin, _],
     tensor_sf: Float32,  # tensor-wise scale factor
     ctx: DeviceContext,
 ) raises:
@@ -725,8 +723,7 @@ fn quantize_dynamic_block_scaled[
 
     comptime static_N = input_layout.shape[1].value()
 
-    @parameter
-    if is_fp4:
+    comptime if is_fp4:
         comptime assert (
             output_layout.shape[1].value() == input_layout.shape[1].value() // 2
         ), (
@@ -734,8 +731,7 @@ fn quantize_dynamic_block_scaled[
             " element (uint8) is 2 fp4-e2m1fn values)"
         )
 
-    @parameter
-    if is_fp4 and static_N % 32 == 0:
+    comptime if is_fp4 and static_N % 32 == 0:
         quantize_dynamic_scaled_fp4_async[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
             ctx,
             output_tensor,
@@ -770,7 +766,7 @@ fn block_scales_interleave[
     target: StaticString = "cpu",
 ](
     output_scales_device: NDBuffer[mut=True, scales_dtype, 5, MutAnyOrigin, _],
-    input_scales_device: NDBuffer[scales_dtype, 2, MutAnyOrigin, _],
+    input_scales_device: NDBuffer[scales_dtype, 2, ImmutAnyOrigin, _],
     ctx: DeviceContext,
 ) raises:
     comptime assert (
@@ -894,9 +890,7 @@ fn quantize_dynamic_scaled_async_fp4_kernel[
     var local_row_idx = Int(thread_idx.x)
 
     if thread_idx.x == 0:
-
-        @parameter
-        for idx in range(NUM_PIPELINES_STAGES):
+        comptime for idx in range(NUM_PIPELINES_STAGES):
             tma_mbar[idx].init()
 
     var tma_phase = SIMD[DType.uint32, Int(NUM_PIPELINES_STAGES)](0)
@@ -911,8 +905,7 @@ fn quantize_dynamic_scaled_async_fp4_kernel[
         if thread_idx.x >= 128:
             warpgroup_reg_dealloc[24]()
 
-            @parameter
-            for iter_idx in range(NUM_PIPELINES_STAGES):
+            comptime for iter_idx in range(NUM_PIPELINES_STAGES):
                 var smem_tile = input_smem.next(iter_idx)[]
 
                 if lane_id() == 0:
@@ -932,21 +925,20 @@ fn quantize_dynamic_scaled_async_fp4_kernel[
         else:
             var scale_factors = SIMD[scales_dtype, SF_ATOM_K]()
 
-            @parameter
-            for iter_idx in range(NUM_PIPELINES_STAGES):
+            comptime for iter_idx in range(NUM_PIPELINES_STAGES):
                 var smem_tile = input_smem.next(iter_idx)[]
 
                 tma_mbar[iter_idx].wait(tma_phase[Int(iter_idx)])
                 var quantized_elements = SIMD[DType.uint32, 8]()
 
-                @parameter
-                for group_idx in range(STAGE_GROUP_SIZE // SF_VECTOR_SIZE):
+                comptime for group_idx in range(
+                    STAGE_GROUP_SIZE // SF_VECTOR_SIZE
+                ):
                     var group_elements = SIMD[
                         input_dtype, Int(SF_VECTOR_SIZE)
                     ]()
 
-                    @parameter
-                    for col_idx in range(SF_VECTOR_SIZE // 8):
+                    comptime for col_idx in range(SF_VECTOR_SIZE // 8):
                         var swizzle_offset = (
                             local_row_idx * Int(STAGE_GROUP_SIZE)
                             + Int(group_idx * SF_VECTOR_SIZE)
@@ -987,8 +979,7 @@ fn quantize_dynamic_scaled_async_fp4_kernel[
                             * recip(tensor_sf)
                         )
 
-                    @parameter
-                    for slice_idx in range(2):
+                    comptime for slice_idx in range(2):
                         var slice_elements = group_elements.slice[
                             8, offset = slice_idx * 8
                         ]()
@@ -998,8 +989,7 @@ fn quantize_dynamic_scaled_async_fp4_kernel[
                             slice_elements.cast[DType.float32]() * output_scale
                         )
 
-                @parameter
-                for idx in range(2):
+                comptime for idx in range(2):
                     var slice_elements = quantized_elements.slice[
                         4, offset = idx * 4
                     ]()
@@ -1069,7 +1059,7 @@ fn quantize_dynamic_scaled_fp4_async[
     ctx: DeviceContext,
     output_tensor: LayoutTensor[output_dtype, output_layout, MutAnyOrigin],
     scales_tensor: LayoutTensor[scales_dtype, scales_layout, MutAnyOrigin],
-    input_tensor: LayoutTensor[input_dtype, input_layout, MutAnyOrigin],
+    input_tensor: LayoutTensor[input_dtype, input_layout, ImmutAnyOrigin],
     tensor_sf: Float32 = 1.0,  # tensor-wise scale factor
 ) raises:
     comptime assert (
@@ -1224,10 +1214,10 @@ fn block_scaled_matmul[
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c_device: NDBuffer[mut=True, c_type, 2, MutAnyOrigin, _],
-    a_device: NDBuffer[a_type, 2, MutAnyOrigin, _],
-    b_device: NDBuffer[b_type, 2, MutAnyOrigin, _],
-    a_scales_device: NDBuffer[scales_dtype, 5, MutAnyOrigin, _],
-    b_scales_device: NDBuffer[scales_dtype, 5, MutAnyOrigin, _],
+    a_device: NDBuffer[a_type, 2, ImmutAnyOrigin, _],
+    b_device: NDBuffer[b_type, 2, ImmutAnyOrigin, _],
+    a_scales_device: NDBuffer[scales_dtype, 5, ImmutAnyOrigin, _],
+    b_scales_device: NDBuffer[scales_dtype, 5, ImmutAnyOrigin, _],
     tensor_sf: Float32,
     ctx: DeviceContext,
 ) raises:
@@ -1297,8 +1287,34 @@ fn block_scaled_matmul[
         "]",
     )
 
-    @parameter
-    if env_get_bool["ENABLE_EXPERIMENTAL_SM100_BLOCK_SCALED_MATMUL", False]():
+    comptime static_N = c.layout.shape[1].value()
+    comptime static_K = a.layout.shape[1].value()
+    comptime static_NK = Index(static_N, static_K)
+
+    comptime DeepSeek_NK = [
+        Index(7168, 16384),
+        # Index(4096, 7168),
+        # Index(7168, 2048),
+    ]
+
+    comptime if static_NK in DeepSeek_NK:
+        if m == 1:
+            var status = heuristic_and_outliers_dispatch[
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                transpose_b=transpose_b,
+                elementwise_lambda_fn=elementwise_lambda_fn,
+                pdl_level = PDLLevel(1),
+            ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
+
+            if status == DISPATCH_HIT:
+                logger.info("Executing SM100 Block Scaled matmul kernel")
+                return
+            else:
+                raise Error("Heuristic and outliers dispatch failed")
+
+    comptime if env_get_bool[
+        "ENABLE_EXPERIMENTAL_SM100_BLOCK_SCALED_MATMUL", False
+    ]():
         var status = heuristic_and_outliers_dispatch[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
@@ -1399,8 +1415,7 @@ fn block_scaled_matmul_with_epilogue[
     if m == 0 or n == 0:
         return
 
-    @parameter
-    if not elementwise_lambda_fn:
+    comptime if not elementwise_lambda_fn:
         if not c.ptr:
             raise "c must be allocated!"
 

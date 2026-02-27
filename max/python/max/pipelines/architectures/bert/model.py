@@ -26,8 +26,8 @@ import numpy as np
 from max.driver import Buffer, Device
 from max.engine import InferenceSession, Model
 from max.graph.weights import Weights, WeightsAdapter
-from max.nn.legacy.kv_cache import KVCacheInputs
-from max.nn.legacy.transformer import ReturnLogits
+from max.nn.kv_cache import KVCacheInputs
+from max.nn.transformer import ReturnLogits
 from max.pipelines.core import TextContext
 from max.pipelines.dataprocessing import collate_batch
 from max.pipelines.lib import (
@@ -57,7 +57,6 @@ class BertPipelineModel(PipelineModel[TextContext]):
         self,
         pipeline_config: PipelineConfig,
         session: InferenceSession,
-        huggingface_config: AutoConfig,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -67,7 +66,6 @@ class BertPipelineModel(PipelineModel[TextContext]):
         super().__init__(
             pipeline_config,
             session,
-            huggingface_config,
             devices,
             kv_cache_config,
             weights,

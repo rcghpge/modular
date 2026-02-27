@@ -25,13 +25,13 @@ from max.engine import InferenceSession
 from max.graph import DeviceRef
 from max.graph.weights import SafetensorWeights
 from max.kv_cache.paged_kv_cache import PagedKVCacheManager
-from max.nn.legacy.kv_cache import (
+from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheInputsSequence,
     KVCacheParams,
 )
-from max.pipelines.architectures.llama3_legacy.model import Llama3Inputs
-from max.pipelines.lib import ModelOutputs, SupportedEncoding
+from max.pipelines.architectures.llama3.model import Llama3Inputs
+from max.pipelines.lib import ModelOutputs
 from test_common.context_utils import create_text_context
 from test_common.mocks import DummyPipelineConfig
 from transformers import LlamaForCausalLM
@@ -86,7 +86,7 @@ def make_pipeline_config(
             model_path=LLAMA_3_1_HF_REPO_ID,
             max_batch_size=max_batch_size,
             max_length=hf_config.max_position_embeddings,
-            quantization_encoding=SupportedEncoding.bfloat16,
+            quantization_encoding="bfloat16",
             kv_cache_strategy="paged",
             device_specs=device_specs,
         )
@@ -128,6 +128,7 @@ def make_kv_inputs(hf_config: LlamaConfig) -> Callable[..., KVCacheInputs]:
             params=kv_params,
             total_num_pages=total_num_pages,
             session=session,
+            max_batch_size=pipeline_config.max_batch_size or 1,
         )
 
         contexts = []
@@ -139,7 +140,7 @@ def make_kv_inputs(hf_config: LlamaConfig) -> Callable[..., KVCacheInputs]:
             contexts.append(ctx)
             batches.append([ctx])
 
-        runtime_inputs = kv_manager.get_runtime_inputs(batches)
+        runtime_inputs = kv_manager.runtime_inputs(batches)
         kv_inputs: KVCacheInputs
         if len(device_refs) > 1:
             kv_inputs = KVCacheInputsSequence(kv_cache_inputs=runtime_inputs)

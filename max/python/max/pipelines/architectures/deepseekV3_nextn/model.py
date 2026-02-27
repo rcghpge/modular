@@ -26,9 +26,9 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph
 from max.graph.weights import WeightData, Weights, WeightsAdapter
-from max.nn.legacy.comm.ep import EPCommInitializer
-from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParams
-from max.nn.legacy.transformer import ReturnHiddenStates, ReturnLogits
+from max.nn.comm.ep import EPCommInitializer
+from max.nn.kv_cache import KVCacheInputs, KVCacheParams
+from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
@@ -37,6 +37,7 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
 )
+from max.pipelines.lib.config.config_enums import supported_encoding_dtype
 from max.pipelines.lib.utils import compute_data_parallel_splits
 from max.support.algorithm import flatten2d
 from max.support.human_readable_formatter import to_human_readable_bytes
@@ -72,7 +73,6 @@ class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
         self,
         pipeline_config: PipelineConfig,
         session: InferenceSession,
-        huggingface_config: AutoConfig,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -87,7 +87,6 @@ class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
         super().__init__(
             pipeline_config,
             session,
-            huggingface_config,
             devices,
             kv_cache_config,
             weights,
@@ -148,7 +147,7 @@ class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
         )
         encoding = draft_model_config.quantization_encoding
         assert encoding is not None
-        dtype_bytes = encoding.dtype.size_in_bytes
+        dtype_bytes = supported_encoding_dtype(encoding).size_in_bytes
         config = draft_model_config.huggingface_config
         assert config is not None
         n_gpus_per_node = len(draft_model_config.device_specs)

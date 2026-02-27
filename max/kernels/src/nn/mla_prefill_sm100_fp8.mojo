@@ -129,8 +129,7 @@ struct TMAtoCvtPipeline[
 
     @always_inline
     fn init(self):
-        @parameter
-        for i in range(Self.num_kv_stages):
+        comptime for i in range(Self.num_kv_stages):
             self.consumer_mbars[i].init(Int32(Self.num_consumer))
             self.producer_mbars[i].init(Int32(Self.num_producer))
 
@@ -184,8 +183,7 @@ struct CvtToMMAPipline[
 
     @always_inline
     fn init(self):
-        @parameter
-        for i in range(Self.num_stages):
+        comptime for i in range(Self.num_stages):
             self.producer_mbars[i].init(Int32(Self.num_producer))
             self.consumer_mbars[i].init(Int32(Self.num_consumer))
 
@@ -223,9 +221,10 @@ struct CvtToMMAPipline[
 
 
 @always_inline
-fn cvt_block_fp8_to_bf16[
+fn cvt_block_fp8_to_bf16_with_scale[
     input_type: DType,
     output_type: DType,
+    KRopeType: MHAOperand,
     //,
     swizzle_fp8: Swizzle,
     swizzle_bf16: Swizzle,
@@ -236,12 +235,15 @@ fn cvt_block_fp8_to_bf16[
     mut output: LayoutTensor[
         output_type, _, MutAnyOrigin, address_space = AddressSpace.SHARED, ...
     ],
+    k_rope_lut: KRopeType,
+    seq_info: SeqInfo,
+    kv_start_row: UInt32,
+    num_keys: UInt32,
     tid: UInt32,
 ):
-    constrained[
-        input_type == DType.float8_e4m3fn and output_type == DType.bfloat16,
-        "Only support float8_e4m3fn to bfloat16 conversion",
-    ]()
+    comptime assert (
+        input_type == DType.float8_e4m3fn and output_type == DType.bfloat16
+    ), "Only support float8_e4m3fn to bfloat16 conversion"
 
     comptime num_regs = input.layout.size() // WARP_SIZE
     comptime row_stride = type_of(input).stride[0]()
@@ -251,8 +253,7 @@ fn cvt_block_fp8_to_bf16[
 
     var fp8_regs = SIMD[input_type, num_regs](0)
 
-    @parameter
-    for i in range(num_regs // 4):
+    comptime for i in range(num_regs // 4):
         var row = UInt32(i * 2) + t_row
         var col = t_col * 4
         var elem_offset = row * UInt32(row_stride) + col
@@ -262,13 +263,33 @@ fn cvt_block_fp8_to_bf16[
     # make sure all the fp8_regs are loaded
     named_barrier[64](6)
 
-    @parameter
-    for i in range(num_regs // 4):
+    comptime for i in range(num_regs // 4):
         var row = UInt32(i * 2) + t_row
         var col = t_col * 4
         var elem_offset = row * UInt32(row_stride) + col
-        var fp16x4 = fp8_regs.slice[4, offset = i * 4]().cast[output_type]()
-        (output.ptr + Int(swizzle_bf16(elem_offset))).store[width=4](fp16x4)
+
+        comptime if KRopeType.quantization_enabled:
+            var tok_idx = kv_start_row + row
+            if tok_idx < num_keys:
+                scale = k_rope_lut.load_scale[width=1](
+                    batch_idx=Int(seq_info.prompt_idx),
+                    start_tok_idx=Int(tok_idx),
+                    head_idx=0,
+                    head_dim_idx=576 - 64,
+                )
+            else:
+                scale = SIMD[KRopeType.scale_dtype, 1](1)
+
+            var fp32x4 = fp8_regs.slice[4, offset = i * 4]().cast[
+                KRopeType.scale_dtype
+            ]()
+            fp32x4 = fp32x4 * scale
+            (output.ptr + Int(swizzle_bf16(elem_offset))).store[width=4](
+                fp32x4.cast[output_type]()
+            )
+        else:
+            var fp16x4 = fp8_regs.slice[4, offset = i * 4]().cast[output_type]()
+            (output.ptr + Int(swizzle_bf16(elem_offset))).store[width=4](fp16x4)
 
 
 @fieldwise_init
@@ -439,7 +460,10 @@ struct SM100MLA[
             Int32(Self.config.num_threads)
         )
     )
-    fn mla_prefill_kernel(
+    @__llvm_metadata(`nvvm.minctasm`=Int(1))
+    fn mla_prefill_kernel[
+        blockwise_scale: Int = 0,
+    ](
         q_tma_op: QTMATile[
             Self.KVLUTType.dtype,
             Self.config.swizzle_mode,
@@ -610,7 +634,7 @@ struct SM100MLA[
 
             var pos: MLAPositionSummary = MLAPositionSummary.create[
                 _ndbuffer_mha_operand = Self._ndbuffer_mha_operand,
-            ](kv_lut, k_rope_lut, seq_info)
+            ](k_rope_lut, seq_info)
 
             Self.softmax(
                 ptr_tmem_addr[0],
@@ -639,7 +663,7 @@ struct SM100MLA[
                 return
             var pos: MLAPositionSummary = MLAPositionSummary.create[
                 _ndbuffer_mha_operand = Self._ndbuffer_mha_operand,
-            ](kv_lut, k_rope_lut, seq_info)
+            ](k_rope_lut, seq_info)
             Self.correction(
                 ptr_tmem_addr[0],
                 misc_mbars,
@@ -658,7 +682,7 @@ struct SM100MLA[
                 return
             var pos: MLAPositionSummary = MLAPositionSummary.create[
                 _ndbuffer_mha_operand = Self._ndbuffer_mha_operand,
-            ](kv_lut, k_rope_lut, seq_info)
+            ](k_rope_lut, seq_info)
 
             Self.load(
                 misc_mbars,
@@ -691,7 +715,7 @@ struct SM100MLA[
                 return
             var pos: MLAPositionSummary = MLAPositionSummary.create[
                 _ndbuffer_mha_operand = Self._ndbuffer_mha_operand,
-            ](kv_lut, k_rope_lut, seq_info)
+            ](k_rope_lut, seq_info)
             Self.mma(
                 ptr_tmem_addr[0],
                 misc_mbars,
@@ -713,7 +737,7 @@ struct SM100MLA[
 
             var pos: MLAPositionSummary = MLAPositionSummary.create[
                 _ndbuffer_mha_operand = Self._ndbuffer_mha_operand,
-            ](kv_lut, k_rope_lut, seq_info)
+            ](k_rope_lut, seq_info)
 
             var iter_count: UInt32 = (
                 mask.last_masked_set_end[Self.BM, Self.BN, Self.page_size](
@@ -730,7 +754,10 @@ struct SM100MLA[
                 iter_count,
                 tma_to_cvt_pipeline,
                 cvt_to_mma_pipeline,
+                k_rope_lut,
                 kv_mem_ptr,
+                seq_info,
+                pos.num_keys,
                 local_thread_idx,
             )
 
@@ -773,12 +800,10 @@ struct SM100MLA[
         while iter_count != 0:
             iter_count -= 1
 
-            @parameter
-            for i in range(2):
+            comptime for i in range(2):
                 var c_scalar: Scalar[Self.accum_type]
 
-                @parameter
-                if i == 0:
+                comptime if i == 0:
                     pipeline_c0.wait()
                     c_scalar = correction_smem_0[0]
                     pipeline_c0.release()
@@ -797,8 +822,7 @@ struct SM100MLA[
 
                     var o_tmem: UInt32
 
-                    @parameter
-                    if i == 0:
+                    comptime if i == 0:
                         o_tmem = o0_tmem
                     else:
                         o_tmem = o1_tmem
@@ -814,8 +838,7 @@ struct SM100MLA[
                         width=batch_size,
                     ](o_tmem)
 
-                    @parameter
-                    for b in range(load_iters):
+                    comptime for b in range(load_iters):
                         tcgen05_load_wait()  # ob0 loaded
                         # BN=64 or BN=80, load_iters=2
                         # b=0
@@ -845,8 +868,7 @@ struct SM100MLA[
                         ](o_tmem + UInt32(b0_offset0), o_b0 * c_scalar)
                         tcgen05_load_wait()  # ob1 loaded
 
-                        @parameter
-                        if b0_offset1 + batch_size <= Self.kv_depth:
+                        comptime if b0_offset1 + batch_size <= Self.kv_depth:
                             o_b0 = tcgen05_ld[  # 0b0 start
                                 datapaths=32,
                                 bits=32,
@@ -862,8 +884,7 @@ struct SM100MLA[
                             pack=False,
                         ](o_tmem + UInt32(b1_offset), o_b1 * c_scalar)
 
-                    @parameter
-                    if load_remainder > 0:
+                    comptime if load_remainder > 0:
                         tcgen05_load_wait()  # ob1 loaded
                         comptime offset = 2 * batch_size * load_iters
                         tcgen05_st[  # 0b0*c_scalar store
@@ -905,8 +926,7 @@ struct SM100MLA[
 
         var warp_group_idx: UInt32 = warp_idx // 4
 
-        @parameter
-        if Self.config.split_m:
+        comptime if Self.config.split_m:
             # split-M: second S is (+16 rows) in st-matrix space
             s_tmem += (16 << 16) * warp_group_idx
         else:
@@ -930,8 +950,9 @@ struct SM100MLA[
         var scale_log2e: Scalar[Self.accum_type] = scale
         var correction_smem = correction_smem_arg + tid
 
-        @parameter
-        if not (Self.use_score_mod or Self.MaskType.apply_log2e_after_mask):
+        comptime if not (
+            Self.use_score_mod or Self.MaskType.apply_log2e_after_mask
+        ):
             scale_log2e *= log2e
 
         @parameter
@@ -1000,16 +1021,14 @@ struct SM100MLA[
             s.ptr.store(s0v)
             comptime cols = Self.config.BN - first_cols + batch_size
 
-            @parameter
-            for i in range(cols // (2 * batch_size)):
+            comptime for i in range(cols // (2 * batch_size)):
                 comptime offset0 = first_cols + batch_size * (2 * i)
                 comptime offset1 = first_cols + batch_size * (2 * i + 1)
                 comptime offset2 = first_cols + batch_size * (2 * i + 2)
 
                 tcgen05_load_wait()
 
-                @parameter
-                if offset1 >= Self.config.BN:
+                comptime if offset1 >= Self.config.BN:
                     mask_row[mask_strategy=mask_strategy](
                         s1, kv_row + UInt32(offset0)
                     )
@@ -1032,8 +1051,7 @@ struct SM100MLA[
                     s.ptr.store(offset0, s1v)
                     tcgen05_load_wait()
 
-                    @parameter
-                    if offset2 < Self.config.BN:
+                    comptime if offset2 < Self.config.BN:
                         s1 = TMemTile[Self.accum_type, BM, batch_size](
                             s_tmem + UInt32(offset2)
                         ).load_async()
@@ -1058,15 +1076,13 @@ struct SM100MLA[
         comptime num_sets = len(mask_sets)
         var mask_iters: StaticTuple[UInt32, num_sets] = {}
 
-        @parameter
-        if mask_sets[0] != TileMaskStatus.UNKNOWN_MASK:
+        comptime if mask_sets[0] != TileMaskStatus.UNKNOWN_MASK:
             mask_ends = mask.masked_set_ends[
                 BM = Self.BM, BN = Self.BN, page_size = Self.page_size
             ](score_row, num_keys)
             mask_iters[0] = mask_ends[0]
 
-            @parameter
-            for i in range(1, num_sets):
+            comptime for i in range(1, num_sets):
                 mask_iters[i] = mask_ends[i] - mask_ends[i - 1]
 
         comptime assert num_sets >= 1 and num_sets <= 3
@@ -1074,8 +1090,7 @@ struct SM100MLA[
             num_sets == 1 or mask_sets[0] != TileMaskStatus.UNKNOWN_MASK
         )
 
-        @parameter
-        if num_sets == 1:
+        comptime if num_sets == 1:
             row_max = load_mask_max[mask_strategy = mask_strategies[0]](kv_row)
             mask_iters[0] -= 1
         else:
@@ -1086,9 +1101,7 @@ struct SM100MLA[
                 )
                 mask_iters[0] -= 1
             else:
-
-                @parameter
-                if num_sets == 2:
+                comptime if num_sets == 2:
                     row_max = load_mask_max[mask_strategy = mask_strategies[1]](
                         kv_row
                     )
@@ -1143,54 +1156,48 @@ struct SM100MLA[
             var acc: AccType = exp2(rebind[AccType](vs[0]) - row_max)
             vs[0] = rebind[vs.ElementType](acc)
 
-            @parameter
-            for i in range(1, batch_size // 2):
+            comptime for i in range(1, batch_size // 2):
                 vsi = exp2(rebind[AccType](vs[i]) - row_max)
                 vs[i] = rebind[vs.ElementType](vsi)
                 acc += vsi
 
             # at this point, we need 32 fewer fp32 registers but 16 more u32
-            @parameter
-            for i in range(batch_size // 2, batch_size):
+            comptime for i in range(batch_size // 2, batch_size):
                 vs[i] = exp2(vs[i] - row_max)
 
-            BatchTileType(p_tmem).store(
+            BatchTileType(p_tmem).store_async(
                 LocalTensor[
                     Self.accum_type, row_major[batch_size * exp_simd]()
                 ](s.ptr, row_major[batch_size * exp_simd]())
             )
 
-            @parameter
-            for b in range(1, num_batch_iters):
+            comptime for b in range(1, num_batch_iters):
                 comptime offset = batch_size * b
 
-                @parameter
-                for i in range(offset, offset + batch_size):
+                comptime for i in range(offset, offset + batch_size):
                     vs[i] = exp2(vs[i] - row_max)
 
                 comptime el_offset = offset * exp_simd
                 comptime tmem_offset = (
                     el_offset * size_of[Self.qkv_type]()
                 ) // size_of[Self.accum_type]()
-                BatchTileType(p_tmem + UInt32(tmem_offset)).store(
+                BatchTileType(p_tmem + UInt32(tmem_offset)).store_async(
                     LocalTensor[
                         Self.accum_type, row_major[batch_size * exp_simd]()
                     ](s.ptr + el_offset, row_major[batch_size * exp_simd]())
                 )
 
-            @parameter
-            if remainder > 0:
+            comptime if remainder > 0:
                 comptime offset = batch_size * num_batch_iters
 
-                @parameter
-                for i in range(offset, offset + remainder):
+                comptime for i in range(offset, offset + remainder):
                     vs[i] = exp2(vs[i] - row_max)
 
                 comptime el_offset = offset * exp_simd
                 comptime tmem_offset = (
                     el_offset * size_of[Self.qkv_type]()
                 ) // size_of[Self.accum_type]()
-                RemainderTileType(p_tmem + UInt32(tmem_offset)).store(
+                RemainderTileType(p_tmem + UInt32(tmem_offset)).store_async(
                     LocalTensor[
                         Self.accum_type, row_major[remainder * exp_simd]()
                     ](s.ptr + el_offset, row_major[remainder * exp_simd]())
@@ -1204,8 +1211,7 @@ struct SM100MLA[
             acc1 = vs[batch_size // 2 + 1]
             acc2 = vs[batch_size // 2 + 2] + vs[batch_size // 2 + 3]
 
-            @parameter
-            for i in range(batch_size // 2 + 4, vs_len, 4):
+            comptime for i in range(batch_size // 2 + 4, vs_len, 4):
                 acc += rebind[AccType](vs[i])
                 acc0 += vs[i + 1]
                 acc1 += vs[i + 2]
@@ -1222,11 +1228,8 @@ struct SM100MLA[
 
         # TODO: add ordering barriers to prevent overlap
         # between the two softmax warpgroups
-        @parameter
-        if mask_sets[0] != TileMaskStatus.UNKNOWN_MASK:
-
-            @parameter
-            for i in range(num_sets):
+        comptime if mask_sets[0] != TileMaskStatus.UNKNOWN_MASK:
+            comptime for i in range(num_sets):
                 comptime mask_status = mask_sets[i]
                 comptime mask_strategy = mask_strategies[i]
                 var iters: UInt32
@@ -1252,8 +1255,7 @@ struct SM100MLA[
                     diff = sub_ftz(old_max, new_row_max)
                     var correction: Float32
 
-                    @parameter
-                    if rescale_threshold < 0:
+                    comptime if rescale_threshold < 0:
                         # old_max - new_row_max < -8
                         # 8 < new_row_max - old_max
                         if _vote_nvidia_helper(diff < rescale_threshold) != 0:
@@ -1296,8 +1298,7 @@ struct SM100MLA[
                 diff = sub_ftz(old_max, new_row_max)
                 var correction: Float32
 
-                @parameter
-                if rescale_threshold < 0:
+                comptime if rescale_threshold < 0:
                     # old_max - new_row_max < -8
                     # 8 < new_row_max - old_max
                     if _vote_nvidia_helper(diff < rescale_threshold) != 0:
@@ -1394,8 +1395,7 @@ struct SM100MLA[
         # 24 25 26 27
         # 28 29 30 31
         # lane 0 needs to get
-        @parameter
-        for i in range(num_rows):
+        comptime for i in range(num_rows):
             # lane // 4, lane // 4 + 8, lane // 4 + 16, lane // 4 + 24
             inv_row_sums[i] = warp.shuffle_idx(
                 inv_row_sum, lane_row + UInt32(8 * i)
@@ -1405,14 +1405,12 @@ struct SM100MLA[
         tcgen05_fence_before()
         _ = consumer_mbar[].arrive()
 
-        @parameter
-        for i in range(num_rows):
+        comptime for i in range(num_rows):
             irs = o.element_type(
                 rebind[Scalar[Self.accum_type]](inv_row_sums[i])
             )
 
-            @parameter
-            for j in range(o.layout[1].size()):
+            comptime for j in range(o.layout[1].size()):
                 o[i, j] *= irs
 
         comptime swizzle = make_swizzle[
@@ -1433,14 +1431,12 @@ struct SM100MLA[
         )
         o_smem = o_smem_arg + local_warp_idx * swizzle_block_size
 
-        @parameter
-        for i in range(2):
+        comptime for i in range(2):
             comptime datapath_offset: UInt32 = UInt32(
                 16 * i * swizzle_granularity
             )
 
-            @parameter
-            for j in range(iters):
+            comptime for j in range(iters):
                 comptime ofs = i * ST.frag_size + j * (ST.frag_size // iters)
                 comptime reg_layout = row_major[1, ST.frag_size // iters]()
                 var rows_of_o_frags = _LocalTT[Self.accum_type, reg_layout](
@@ -1671,8 +1667,7 @@ struct SM100MLA[
             iter_count -= 1
             kv_row += UInt32(Self.config.BN)
 
-            @parameter
-            if check_mask:
+            comptime if check_mask:
                 if (
                     Self.mask_status(mask, score_row, kv_row)
                     == TileMaskStatus.FULL_MASK
@@ -1741,12 +1736,17 @@ struct SM100MLA[
         mut iter_count: UInt32,
         mut tma_to_cvt_pipeline: TMAtoCvtPipeline,
         mut cvt_to_mma_pipeline: CvtToMMAPipline,
+        k_rope: Self.KRopeType,
         kv_mem_ptr: SharedMemPointer[Scalar[Self.KVLUTType.dtype]],
+        seq_info: SeqInfo,
+        num_keys: UInt32,
         local_thread_idx: UInt32,
     ):
         var k_rope_smem_ptr = kv_mem_ptr + Self.config.BN * Self.kv_depth
         var local_warp_idx = local_thread_idx // UInt32(WARP_SIZE)
         var local_lane_idx = local_thread_idx % UInt32(WARP_SIZE)
+
+        var kv_start_tok: UInt32 = 0
 
         comptime swizzle_fp8 = make_swizzle[
             Self.KRopeType.dtype, TensorMapSwizzle.SWIZZLE_64B
@@ -1779,22 +1779,39 @@ struct SM100MLA[
 
         tma_to_cvt_pipeline.consumer_wait()
 
-        cvt_block_fp8_to_bf16[
+        cvt_block_fp8_to_bf16_with_scale[
             swizzle_fp8=swizzle_fp8,
             swizzle_bf16=swizzle_bf16,
-        ](k_rope_tile_fp8, k_rope_tile_bf16, local_lane_idx)
+        ](
+            k_rope_tile_fp8,
+            k_rope_tile_bf16,
+            k_rope,
+            seq_info,
+            kv_start_tok + UInt32(Self.BN // 2) * local_warp_idx,
+            num_keys,
+            local_lane_idx,
+        )
 
         tma_to_cvt_pipeline.step()
         cvt_to_mma_pipeline.producer_commit()
 
         while iter_count != 0:
             iter_count -= 1
+            kv_start_tok += UInt32(Self.BN)
             tma_to_cvt_pipeline.consumer_wait()
 
-            cvt_block_fp8_to_bf16[
+            cvt_block_fp8_to_bf16_with_scale[
                 swizzle_fp8=swizzle_fp8,
                 swizzle_bf16=swizzle_bf16,
-            ](k_rope_tile_fp8, k_rope_tile_bf16, local_lane_idx)
+            ](
+                k_rope_tile_fp8,
+                k_rope_tile_bf16,
+                k_rope,
+                seq_info,
+                kv_start_tok + UInt32(Self.BN // 2) * local_warp_idx,
+                num_keys,
+                local_lane_idx,
+            )
 
             fence_async_view_proxy()
 
@@ -1974,6 +1991,7 @@ fn mla_sm100_prefill_fp8[
     cache_depth: Int,
     use_score_mod: Bool,
     _ndbuffer_mha_operand: Bool,
+    blockwise_scale: Int = 0,
 ](
     output: LayoutTensor[
         output_type, address_space = AddressSpace.GENERIC, ...
@@ -2063,6 +2081,7 @@ fn mla_sm100_prefill_fp8[
         cache_depth=cache_depth,
         use_score_mod=use_score_mod,
         _ndbuffer_mha_operand=_ndbuffer_mha_operand,
+        blockwise_scale=blockwise_scale,
     ](
         ragged_tma_store,
         q_tma_op,
@@ -2096,6 +2115,7 @@ fn _mla_prefill_sm100_valid_length_dispatch[
     cache_depth: Int,
     use_score_mod: Bool,
     _ndbuffer_mha_operand: Bool,
+    blockwise_scale: Int = 0,
 ](
     ragged_tma_store: RaggedTMA3DTile[
         output_type,
@@ -2173,7 +2193,7 @@ fn _mla_prefill_sm100_valid_length_dispatch[
         _ndbuffer_mha_operand,
     ]
 
-    comptime kernel = SM100MLAType.mla_prefill_kernel
+    comptime kernel = SM100MLAType.mla_prefill_kernel[blockwise_scale]
 
     comptime out_depth = SM100MLAType.kv_depth
 

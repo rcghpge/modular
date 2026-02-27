@@ -98,7 +98,7 @@ convention = "google"
 "max/python/max/entrypoints/**/*" = ["D"]
 "max/python/max/kv_cache/connectors/**/*" = ["D"]
 "max/python/max/mlir/**/*" = ["D"]
-"max/python/max/nn/legacy/**/*" = ["D"]
+"max/python/max/nn/**/*" = ["D"]
 "max/python/max/pipelines/architectures/**/*" = ["D"]
 "max/python/max/pipelines/pipelines.py" = ["D"]
 "max/python/max/serve/**/*" = ["D"]
@@ -139,6 +139,10 @@ follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = "absl.*"
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "lmcache.*"
 follow_imports = "skip"
 
 [[tool.mypy.overrides]]

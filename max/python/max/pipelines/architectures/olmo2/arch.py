@@ -16,17 +16,16 @@ from max.interfaces import PipelineTask
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     SupportedArchitecture,
-    SupportedEncoding,
     TextTokenizer,
 )
 
-from ..llama3_legacy import weight_adapters as llama3_weight_adapters
+from ..llama3 import weight_adapters as llama3_weight_adapters
 from . import weight_adapters
 from .model import Olmo2Model
 from .model_config import Olmo2Config
 
 olmo2_arch = SupportedArchitecture(
-    name="Olmo2ForCausalLM_Legacy",
+    name="Olmo2ForCausalLM",
     task=PipelineTask.TEXT_GENERATION,
     example_repo_ids=[
         "allenai/OLMo-2-0425-1B-Instruct",
@@ -36,10 +35,10 @@ olmo2_arch = SupportedArchitecture(
         "allenai/OLMo-2-1124-7B-GGUF",
     ],
     default_weights_format=WeightsFormat.safetensors,
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
-        SupportedEncoding.bfloat16: ["paged"],
-        SupportedEncoding.float32: ["paged"],
+        "bfloat16": ["paged"],
+        "float32": ["paged"],
     },
     pipeline_model=Olmo2Model,
     tokenizer=TextTokenizer,

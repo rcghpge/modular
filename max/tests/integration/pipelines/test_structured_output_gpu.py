@@ -28,7 +28,6 @@ from max.interfaces import (
 )
 from max.pipelines import (
     PipelineConfig,
-    SupportedEncoding,
     TextGenerationPipeline,
 )
 from max.pipelines.core import TextContext
@@ -48,7 +47,7 @@ def test_smollm_with_structured_output_gpu(
     pipeline_config = PipelineConfig(
         model=MAXModelConfig(
             model_path="HuggingFaceTB/SmolLM2-135M-Instruct",
-            quantization_encoding=SupportedEncoding.bfloat16,
+            quantization_encoding="bfloat16",
             device_specs=[DeviceSpec.accelerator()],
             huggingface_model_revision=revision,
             max_length=8192,
@@ -110,17 +109,15 @@ def test_smollm_with_structured_output_gpu(
     # union without some force.  So we cast it off.  This is bad, ideally we
     # wouldn't have to do this, but we boxed ourselves in here.
     pipeline = cast(TextGenerationPipeline[TextContext], pipeline)
-    kv_managers = pipeline.kv_managers
-    for kv_manager in kv_managers:
-        kv_manager.claim(context.request_id, replica_idx=0)
+    kv_manager = pipeline.kv_manager
+    kv_manager.claim(context.request_id, replica_idx=0)
 
     tokens = []
     while True:
         inputs: TextGenerationInputs[TextContext] = TextGenerationInputs(
             batches=[[context]], num_steps=1
         )
-        for kv_manager in kv_managers:
-            kv_manager.alloc(context, replica_idx=0, num_steps=1)
+        kv_manager.alloc(context, replica_idx=0, num_steps=1)
         response = pipeline.execute(inputs)
 
         for token in response[request_id].tokens:

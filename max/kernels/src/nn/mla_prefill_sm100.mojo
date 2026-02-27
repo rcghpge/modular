@@ -43,6 +43,7 @@ fn mla_sm100_prefill[
     cache_depth: Int,
     use_score_mod: Bool,
     _ndbuffer_mha_operand: Bool,
+    blockwise_scale: Int = 0,
 ](
     output: LayoutTensor[
         output_type, address_space = AddressSpace.GENERIC, ...
@@ -61,8 +62,10 @@ fn mla_sm100_prefill[
     batch_size: Int,
     ctx: DeviceContext,
 ) raises:
-    @parameter
-    if KRopeType.dtype == DType.bfloat16:
+    comptime if KRopeType.dtype == DType.bfloat16:
+        comptime assert (
+            blockwise_scale == 0
+        ), "blockwise_scale is not supported for bfloat16"
         mla_sm100_prefill_bf16[
             config=config,
             group = Int(group),
@@ -92,6 +95,7 @@ fn mla_sm100_prefill[
             cache_depth=cache_depth,
             use_score_mod=use_score_mod,
             _ndbuffer_mha_operand=_ndbuffer_mha_operand,
+            blockwise_scale=blockwise_scale,
         ](
             output,
             q,

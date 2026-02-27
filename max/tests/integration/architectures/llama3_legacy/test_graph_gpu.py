@@ -20,8 +20,8 @@ from max.driver import Device, load_devices, scan_available_devices
 from max.engine import InferenceSession
 from max.graph import DeviceRef
 from max.graph.weights import SafetensorWeights
-from max.nn.legacy.kv_cache import KVCacheInputs
-from max.pipelines.architectures.llama3_legacy.model import (
+from max.nn.kv_cache import KVCacheInputs
+from max.pipelines.architectures.llama3.model import (
     Llama3Inputs,
     Llama3Model,
 )
@@ -51,7 +51,6 @@ def test_build_compile_and_execute_llama3_graph(
     model = Llama3Model(
         pipeline_config=pipeline_config,
         session=session,
-        huggingface_config=hf_config,
         devices=devices,
         kv_cache_config=pipeline_config.model.kv_cache,
         weights=weights,

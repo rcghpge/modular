@@ -27,12 +27,12 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph, ops
 from max.graph.weights import WeightData, Weights, WeightsAdapter
-from max.nn.legacy.embedding import Embedding
-from max.nn.legacy.kv_cache import KVCacheInputs
-from max.nn.legacy.linear import MLP, Linear
-from max.nn.legacy.norm import RMSNorm
-from max.nn.legacy.rotary_embedding import Llama3RotaryEmbedding
-from max.nn.legacy.transformer import ReturnHiddenStates, ReturnLogits
+from max.nn.embedding import Embedding
+from max.nn.kv_cache import KVCacheInputs
+from max.nn.linear import MLP, Linear
+from max.nn.norm import RMSNorm
+from max.nn.rotary_embedding import Llama3RotaryEmbedding
+from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     CompilationTimer,
@@ -95,7 +95,6 @@ class Qwen3EmbeddingModel(PipelineModel[TextContext]):
         self,
         pipeline_config: PipelineConfig,
         session: InferenceSession,
-        huggingface_config: AutoConfig,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -107,14 +106,14 @@ class Qwen3EmbeddingModel(PipelineModel[TextContext]):
         Args:
             pipeline_config: Pipeline configuration
             session: Inference session
-            huggingface_config: HuggingFace model configuration
             devices: List of devices
+            kv_cache_config: KV cache configuration
             weights: Model weights
             adapter: Optional weight adapter
+            return_logits: Return logits mode
         """
         self.pipeline_config = pipeline_config
         self.session = session
-        self.huggingface_config = huggingface_config
         self.devices = devices
 
         # Build and compile graph
@@ -304,7 +303,7 @@ class Qwen3EmbeddingModel(PipelineModel[TextContext]):
             # Extract hidden states
             hidden_states = outputs[0]
 
-            if self.pipeline_config.pool_embeddings:
+            if self.pipeline_config.model.pool_embeddings:
                 # Apply last token pooling
                 embeddings = last_token_pool(
                     hidden_states, input_row_offsets.tensor

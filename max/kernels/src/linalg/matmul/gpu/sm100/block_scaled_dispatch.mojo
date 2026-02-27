@@ -91,10 +91,10 @@ fn heuristic_and_outliers_dispatch[
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: LayoutTensor[c_type, c_layout, MutAnyOrigin],
-    a: LayoutTensor[a_type, a_layout, MutAnyOrigin],
-    b: LayoutTensor[b_type, b_layout, MutAnyOrigin],
-    a_scales: LayoutTensor[scales_dtype, sfa_layout, MutAnyOrigin],
-    b_scales: LayoutTensor[scales_dtype, sfb_layout, MutAnyOrigin],
+    a: LayoutTensor[a_type, a_layout, ImmutAnyOrigin],
+    b: LayoutTensor[b_type, b_layout, ImmutAnyOrigin],
+    a_scales: LayoutTensor[scales_dtype, sfa_layout, ImmutAnyOrigin],
+    b_scales: LayoutTensor[scales_dtype, sfb_layout, ImmutAnyOrigin],
     tensor_sf: Float32,
     ctx: DeviceContext,
 ) raises -> Int:
@@ -159,8 +159,7 @@ fn heuristic_and_outliers_dispatch[
 
     comptime outlier_configs = outliers.find[rule]()
 
-    @parameter
-    for tuning_config in outlier_configs:
+    comptime for tuning_config in outlier_configs:
         if m >= tuning_config.M and m < tuning_config.M_end:
             comptime matmul_config = BlockScaledMatmulConfig[
                 a_type, b_type, c_type, scales_dtype, scales_dtype, transpose_b
@@ -208,8 +207,7 @@ fn heuristic_and_outliers_dispatch[
         a_type, b_type, c_type, scales_dtype, scales_dtype, transpose_b
     ](m, static_N, static_K)
 
-    @parameter
-    for config in configs:
+    comptime for config in configs:
         if config_runtime == config:
             logger.info("Using heuristic config: ", config)
             _block_scaled_matmul_with_epilogue[
@@ -250,10 +248,10 @@ fn _block_scaled_matmul_with_epilogue[
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: LayoutTensor[c_type, c_layout, MutAnyOrigin],
-    a: LayoutTensor[a_type, a_layout, MutAnyOrigin],
-    b: LayoutTensor[b_type, b_layout, MutAnyOrigin],
-    a_scales: LayoutTensor[scales_dtype, sfa_layout, MutAnyOrigin],
-    b_scales: LayoutTensor[scales_dtype, sfb_layout, MutAnyOrigin],
+    a: LayoutTensor[a_type, a_layout, ImmutAnyOrigin],
+    b: LayoutTensor[b_type, b_layout, ImmutAnyOrigin],
+    a_scales: LayoutTensor[scales_dtype, sfa_layout, ImmutAnyOrigin],
+    b_scales: LayoutTensor[scales_dtype, sfb_layout, ImmutAnyOrigin],
     tensor_sf: Float32,
     ctx: DeviceContext,
 ) raises:
@@ -268,8 +266,7 @@ fn _block_scaled_matmul_with_epilogue[
     if m == 0 or n == 0:
         return
 
-    @parameter
-    if not elementwise_lambda_fn:
+    comptime if not elementwise_lambda_fn:
         if not c.ptr:
             raise "c must be allocated!"
 
@@ -411,8 +408,7 @@ fn _vendor_blas_block_scaled_matmul_with_epilogue[
     if m == 0 or n == 0:
         return
 
-    @parameter
-    if not elementwise_lambda_fn:
+    comptime if not elementwise_lambda_fn:
         if not c.ptr:
             raise "c must be allocated!"
 

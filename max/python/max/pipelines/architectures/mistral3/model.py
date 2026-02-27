@@ -18,8 +18,8 @@ from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef
 from max.graph.weights import Weights, WeightsAdapter
-from max.nn.legacy.kv_cache import KVCacheParams
-from max.nn.legacy.transformer import ReturnLogits
+from max.nn.kv_cache import KVCacheParams
+from max.nn.transformer import ReturnLogits
 from max.pipelines.lib import KVCacheConfig, PipelineConfig
 from transformers import AutoConfig
 
@@ -33,7 +33,6 @@ class Mistral3Model(MistralModel):
         self,
         pipeline_config: PipelineConfig,
         session: InferenceSession,
-        huggingface_config: AutoConfig,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -43,13 +42,11 @@ class Mistral3Model(MistralModel):
         super().__init__(
             pipeline_config,
             session,
-            huggingface_config,
             devices,
             kv_cache_config,
             weights,
             adapter,
             return_logits,
-            text_huggingface_config=huggingface_config.text_config,
         )
 
     @classmethod

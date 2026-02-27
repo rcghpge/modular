@@ -25,25 +25,24 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, Graph, TensorType, Value
 from max.graph.weights import Weights, WeightsAdapter
-from max.nn.legacy.comm import Signals
-from max.nn.legacy.kv_cache import (
+from max.nn.comm import Signals
+from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheInputsSequence,
     KVCacheParams,
     PagedCacheValues,
     RaggedKVCacheInputs,
 )
-from max.nn.legacy.transformer import ReturnLogits
+from max.nn.transformer import ReturnLogits
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
     CompilationTimer,
     KVCacheConfig,
-    KVCacheMixin,
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
-    PipelineModel,
+    PipelineModelWithKVCache,
 )
 from transformers import AutoConfig
 
@@ -76,7 +75,7 @@ class Llama4Inputs(ModelInputs):
 
 
 class Llama4Model(
-    AlwaysSignalBuffersMixin, PipelineModel[TextContext], KVCacheMixin
+    AlwaysSignalBuffersMixin, PipelineModelWithKVCache[TextContext]
 ):
     """A Llama 4 pipeline model for text generation.
 
@@ -92,7 +91,6 @@ class Llama4Model(
         self,
         pipeline_config: PipelineConfig,
         session: InferenceSession,
-        huggingface_config: AutoConfig,
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
@@ -103,8 +101,6 @@ class Llama4Model(
         Args:
             pipeline_config: The configuration settings for the entire pipeline.
             session: The MAX Engine inference session managing the runtime.
-            huggingface_config: The configuration loaded from HuggingFace
-                (:obj:`transformers.AutoConfig`).
             devices: A list of MAX Engine devices (:obj:`max.driver.Device`) to
                 run the model on.
             kv_cache_config: Configuration settings for the Key-Value cache
@@ -118,7 +114,6 @@ class Llama4Model(
         super().__init__(
             pipeline_config,
             session,
-            huggingface_config,
             devices,
             kv_cache_config,
             weights,
@@ -259,9 +254,7 @@ class Llama4Model(
             devices=(DeviceRef(d.label, d.id) for d in self.devices)
         )
         kv_cache_args = self.kv_params.get_symbolic_inputs()
-        flattened_kv_types = [
-            kv_type for sublist in kv_cache_args for kv_type in sublist
-        ]
+        flattened_kv_types = kv_cache_args.flatten()
         with Graph(
             getattr(self.huggingface_config, "model_type", "Llama4"),
             input_types=[

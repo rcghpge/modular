@@ -14,6 +14,10 @@
 
 Provides common functions for FP8 scale computation and quantization
 used across fused normalization kernels and standalone quantization kernels.
+
+NOTE: comm/allreduce_rmsnorm_fp8.mojo inlines copies of these functions
+to avoid a circular dependency (linalg depends on comm). If you change
+the logic here, update that copy too. See KERN-2477.
 """
 
 from math import clamp
@@ -87,8 +91,7 @@ fn fp8_quantize[
     comptime assert out_dtype.is_float8(), "out_dtype must be float8"
     var result = values * scale_recip
 
-    @parameter
-    if use_clamp:
+    comptime if use_clamp:
         comptime min_val = SIMD[values.dtype, values.size](
             min_finite[out_dtype]()
         )
