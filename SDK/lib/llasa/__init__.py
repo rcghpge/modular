@@ -7,10 +7,7 @@
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
 from max.pipelines.core import TTSContext
-from max.pipelines.lib import (
-    PIPELINE_REGISTRY,
-    SupportedArchitecture,
-)
+from max.pipelines.lib import PIPELINE_REGISTRY, SupportedArchitecture
 
 from .config import LlasaConfig
 from .pipeline_model import LlasaPipelineModel
@@ -22,8 +19,8 @@ llasa_arch = SupportedArchitecture(
     example_repo_ids=["HKUSTAudio/Llasa-8B"],
     default_encoding="bfloat16",
     supported_encodings={
-        "bfloat16": ["paged"],
-        "float32": ["paged"],
+        "bfloat16",
+        "float32",
     },
     pipeline_model=LlasaPipelineModel,
     default_weights_format=WeightsFormat.safetensors,
