@@ -429,6 +429,7 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   // Write the MAX Graph MEF cache key:
   // - The pass pipeline as a list of pass names.
   // - Graph compiler options that affect lowering and export.
+  // - Mojo compilation defines (e.g. LOGGING_LEVEL, ASSERT_LEVEL).
   // - The model IR, by writing the ModuleOp.
   //   This does NOT include the model weights
   // - The graph compiler version string
@@ -439,6 +440,11 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
 
   if (auto result = M::MOGG::graphCompilerCacheKey(*keyBuf, mlirCtx))
     return result.takeError();
+
+  // Include mojo compilation defines (LOGGING_LEVEL, ASSERT_LEVEL, etc.)
+  // in the cache key so that changing them invalidates the cache.
+  if (auto *compileCtx = maxContext->get<KGEN::CompilationContext>())
+    compileCtx->print(*keyBuf);
 
   // We include the binary contents of any extra kernel mojo packages provided.
   // These paths have already been validated by MOToMGP pass pipeline.
@@ -608,6 +614,11 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
   WriteableBufferRef keyBuffer =
       makeCacheKey(std::move(file), mofLoweringOptions, moToMgpOptions,
                    graphCompilerOptions);
+
+  // Include mojo compilation defines (LOGGING_LEVEL, ASSERT_LEVEL, etc.)
+  // in the cache key so that changing them invalidates the cache.
+  if (auto *compCtx = impl->maxContext->get<KGEN::CompilationContext>())
+    compCtx->print(*keyBuffer);
 
   return M::cacheMEFTransform("mof", loweringTransform, std::move(keyBuffer));
 }
