@@ -429,4 +429,13 @@ def HoistConstantSubgraphsIntoParent : Pass<"mo-hoist-constant-subgraphs-into-pa
   }];
 }
 
+def RemoveUnusedOps : Pass<"remove-unused-ops", "GraphOp"> {
+  let summary = "Remove unused (dead) MO operations from the graph";
+  let description = [{
+    Some MO ops have no uses but can't be erased by CSE because of their memory effects.
+    In practice the chains def / use of those ops already encode the dependencies.
+    If the output chain of such an op is unused, that means it can be removed.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD

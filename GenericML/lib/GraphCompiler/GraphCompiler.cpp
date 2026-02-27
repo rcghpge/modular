@@ -258,6 +258,7 @@ void M::MO::buildMoToMgpPipeline(
 
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
+  pm.addPass(MO::createRemoveUnusedOps());
 
   pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
                                 libraryAnalysis));
