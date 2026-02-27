@@ -56,7 +56,7 @@ modular_cc_library(
 
 modular_cc_test(
     name = "GPUMemoryManagerTest",
-    size = "small",
+    size = "medium",
     srcs = [
         "GPUMemoryManagerTest.cpp",
         "ScopedEnvVar.h",
@@ -340,7 +340,7 @@ modular_cc_test(
 
 modular_cc_test(
     name = "NixlTestUcx",
-    size = "small",
+    size = "medium",
     srcs = ["NixlTestUcx.cpp"],
     gpu_constraints = [
         "//:has_gpu",
