@@ -2981,6 +2981,13 @@ LogicalResult ReduceScatterSumOp::verify() {
   int64_t ngpus = inputs.size();
   int64_t rank = firstInputType.getRank();
 
+  // Resolve scatter axis (negative indexing supported).
+  int64_t axis = normalizeAxis(getAxis(), rank);
+
+  if (axis < 0 || axis >= rank)
+    return emitError(
+        llvm::formatv("axis {0} out of bounds for rank {1}", getAxis(), rank));
+
   // Get device index from device attribute
   int64_t deviceIdx = deviceAttr.getId();
 
@@ -2993,8 +3000,7 @@ LogicalResult ReduceScatterSumOp::verify() {
         mlir::ShapedType::isDynamic(outputDim))
       continue;
 
-    // TODO(KERN-2337): Support scatter axis other than -1.
-    if (i == rank - 1) {
+    if (i == axis) {
       // Scatter axis: verify partitioned size
       int64_t base = inputDim / ngpus;
       int64_t remainder = inputDim % ngpus;
