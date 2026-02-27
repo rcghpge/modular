@@ -59,11 +59,6 @@ ErrorOr<bool> VirtualDevice::canAccess(const Device &peer) const {
   return false;
 }
 
-ErrorOrSuccess VirtualDevice::enablePeerAccess(const Device &peer) const {
-  // Virtual devices don't support peer access
-  RETURN_ERROR("VirtualDevice does not support peer access");
-}
-
 ErrorOr<int> VirtualDevice::getAttribute(Attribute attr) const {
   RETURN_ERROR("VirtualDevice does not support getAttribute");
 }

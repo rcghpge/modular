@@ -323,14 +323,16 @@ ErrorOr<bool> HIPDevice::canAccess(const Device &peer) const {
   return canAccess == 1;
 }
 
-ErrorOrSuccess HIPDevice::enablePeerAccess(const Device &peer) const {
-  const HIPDevice &peerHipDev = HIPDevice::cast(peer);
-  if (id() == peerHipDev.id()) {
-    // Enabling peer access to self is not allowed.
-    RETURN_ERROR("Cannot enable peer access to self");
-  }
-
+ErrorOrSuccess HIPDevice::enablePeerAccessImpl(const Device &peer) const {
   HIP_WITH_DEV_ERR(*this);
+
+  const HIPDevice &peerHipDev = HIPDevice::cast(peer);
+  DEFINE_OR_RETURN_ERROR(bool, canAccessPeer, canAccess(peerHipDev));
+  if (!canAccessPeer) {
+    RETURN_ERROR("Cannot enable peer access from GPU " + Twine(id()) +
+                 " to GPU " + Twine(peer.id()) +
+                 ": hardware does not support P2P access");
+  }
 
   // Tolerate "already enabled" as success to keep idempotent.
   HIPDriver::Result res =

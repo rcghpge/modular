@@ -70,7 +70,7 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
 
   // Enable peer access between this device and the peer device.
-  ErrorOrSuccess enablePeerAccess(const Device &peer) const override;
+  ErrorOrSuccess enablePeerAccessImpl(const Device &peer) const override;
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 

@@ -15,9 +15,9 @@
 #include "NVML.h"
 #include "Support/HashUtils.h"
 #include "Support/Profiling/Tracy.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Process.h"
-
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -534,13 +534,13 @@ ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   return canAccessPeer && isNativeAtomicSupported;
 }
 
-ErrorOrSuccess CUDADevice::enablePeerAccess(const Device &peer) const {
+ErrorOrSuccess CUDADevice::enablePeerAccessImpl(const Device &peer) const {
   CUDA_WITH_DEV_ERR(*this);
 
   const CUDADevice &peerCudaDev = CUDADevice::cast(peer);
   DEFINE_OR_RETURN_ERROR(CUcontext, peerCtx, peerCudaDev.cudaContext());
-  DEFINE_OR_RETURN_ERROR(bool, canAccess, canAccess(peerCudaDev));
-  if (!canAccess) {
+  DEFINE_OR_RETURN_ERROR(bool, canAccessPeer, canAccess(peerCudaDev));
+  if (!canAccessPeer) {
     RETURN_ERROR("Cannot enable peer access from GPU " + Twine(id()) +
                  " to GPU " + Twine(peer.id()) +
                  ": hardware does not support P2P access");

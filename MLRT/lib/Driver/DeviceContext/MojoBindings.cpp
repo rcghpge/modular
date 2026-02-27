@@ -560,32 +560,14 @@ AsyncRT_DeviceContext_enablePeerAccess(const DeviceContext *ctx,
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_enableAllPeerAccess() {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_enableAllPeerAccess",
                        TRACY_COLOR_GRAY);
-  int numDevices = Device::numberOfDevices(Device::gpuAPI);
-  if (numDevices <= 1)
-    return nullptr;
+  return checkSuccess(Device::enableAllPeerAccess());
+}
 
-  SmallVector<DeviceRef> devices;
-  devices.reserve(numDevices);
-  for (int id = 0; id < numDevices; ++id) {
-    ErrorOr<DeviceRef> devOr = Device::create(Device::gpuAPI, id);
-    if (devOr)
-      return raiseError(devOr.getError());
-    devices.emplace_back(std::move(devOr.get()));
-  }
-
-  for (int i : llvm::seq(0, numDevices)) {
-    for (int j : llvm::seq(i + 1, numDevices)) {
-      // i -> j
-      if (ErrorOrSuccess errOr = devices[i]->enablePeerAccess(*devices[j]))
-        return raiseError(errOr.getError());
-
-      // j -> i
-      if (ErrorOrSuccess errOr = devices[j]->enablePeerAccess(*devices[i]))
-        return raiseError(errOr.getError());
-    }
-  }
-
-  return nullptr;
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_allPeerAccessEnabled(bool *result) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_allPeerAccessEnabled",
+                       TRACY_COLOR_GRAY);
+  return checkVal(result, false, Device::allPeerAccessEnabled());
 }
 
 MODULAR_EXPORT const char *

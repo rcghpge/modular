@@ -18,8 +18,6 @@
 #include "Support/LLVMForwardDecls.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
-#include "llvm/ADT/StringMap.h"
-
 #include <chrono>
 #include <cstdint>
 #include <mutex>
@@ -55,7 +53,6 @@ public:
   static constexpr API api = Device::cudaAPI;
 
   using DeviceList = std::vector<CUDADevice *>;
-
   CUDADevice(const CUDADriver &driver, int id, nvmlDevice_t nvmlDevice,
              CUdevice cudaDevice, CUcontext context, std::string name,
              int computeCapabilityMajor, int computeCapabilityMinor,
@@ -75,7 +72,7 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
 
   // Enable peer access between this device and the peer device.
-  ErrorOrSuccess enablePeerAccess(const Device &peer) const override;
+  ErrorOrSuccess enablePeerAccessImpl(const Device &peer) const override;
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 

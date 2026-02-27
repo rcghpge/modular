@@ -1523,8 +1523,27 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
 }
 
 ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
-  RETURN_ERROR("enablePeerAccess not implemented for this device API" +
-               Twine(peer.api()));
+  // Call device-specific implementation.
+  ErrorOrSuccess result = enablePeerAccessImpl(peer);
+  // If successful, set the bitvector to indicate that the peer is accessible.
+  if (!result.isError()) {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto setBit = [&](int deviceId) {
+      auto id = static_cast<unsigned int>(deviceId);
+      if (canAccessPeer_.size() <= id)
+        canAccessPeer_.resize(id + 1);
+      canAccessPeer_.set(id);
+    };
+    // Set peer bit.
+    setBit(peer.id());
+    // Set self bit so we can use all() to check if all peers are enabled.
+    setBit(id());
+  }
+  return result;
+}
+
+ErrorOrSuccess Device::enablePeerAccessImpl(const Device &peer) const {
+  RETURN_ERROR("Peer access not implemented");
 }
 
 std::string KernelLaunchMetadata::format(int count) const {
@@ -1648,6 +1667,45 @@ llvm::json::Value KernelLaunchMetadata::formatJSON() const {
   }
 
   return llvm::json::Value(std::move(json));
+}
+
+ErrorOrSuccess Device::enableAllPeerAccess() {
+  int numDevices = Device::numberOfDevices(Device::gpuAPI);
+  if (numDevices <= 1)
+    return success();
+
+  SmallVector<DeviceRef> devices;
+  devices.reserve(numDevices);
+  for (int id = 0; id < numDevices; ++id) {
+    DEFINE_OR_RETURN_ERROR(DeviceRef, device,
+                           Device::create(Device::gpuAPI, id));
+    devices.emplace_back(std::move(device));
+  }
+
+  for (int i = 0; i < numDevices; i++) {
+    for (int j = i + 1; j < numDevices; j++) {
+      // i -> j
+      RETURN_IF_ERROR(devices[i]->enablePeerAccess(*devices[j]));
+      // j -> i
+      RETURN_IF_ERROR(devices[j]->enablePeerAccess(*devices[i]));
+    }
+  }
+
+  return success();
+}
+
+ErrorOr<bool> Device::allPeerAccessEnabled() {
+  int numDevices = Device::numberOfDevices(Device::gpuAPI);
+  if (numDevices < 2)
+    return false;
+  for (int i : llvm::seq(0, numDevices)) {
+    DEFINE_OR_RETURN_ERROR(DeviceRef, device,
+                           Device::create(Device::gpuAPI, i));
+    std::lock_guard<std::mutex> lock(device->mu_);
+    if (device->canAccessPeer_.empty() || !device->canAccessPeer_.all())
+      return false;
+  }
+  return true;
 }
 
 } // namespace M::Driver

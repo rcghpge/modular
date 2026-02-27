@@ -20,6 +20,7 @@
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVectorExtras.h"
@@ -275,7 +276,7 @@ public:
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
 
   // Enable peer access between devices.
-  virtual ErrorOrSuccess enablePeerAccess(const Device &peer) const;
+  ErrorOrSuccess enablePeerAccess(const Device &peer) const;
 
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
@@ -301,6 +302,10 @@ public:
 
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
+  // Enables bidirectional peer access for all devices.
+  static ErrorOrSuccess enableAllPeerAccess();
+  // Returns true if bidirectional peer access is enabled for all devices.
+  static ErrorOr<bool> allPeerAccessEnabled();
 
   static ErrorOr<DeviceRef> create(StringRef api, int id = 0);
 
@@ -338,6 +343,9 @@ public:
 protected:
   Device(API api, std::string name, int id, MemInfo memInfo, size_t alignment);
 
+  // Enable peer access between devices.
+  virtual ErrorOrSuccess enablePeerAccessImpl(const Device &peer) const;
+
 private:
   std::string name_;
   int id_;
@@ -351,6 +359,8 @@ private:
   // The function cache holds the lower-level function references which do not
   // contain a device context reference to avoid reference counting cycles.
   mutable DenseMap<FunctionCacheKey, DeviceFunctionCacheEntryRef> funcMap_;
+  // Tracks whether P2P access is enabled to other devices.
+  mutable llvm::BitVector canAccessPeer_;
 };
 
 class DeviceBuffer final : public ReferenceCounted<DeviceBuffer> {
