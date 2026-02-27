@@ -17,23 +17,29 @@ extern "C" {
 /**
  * Perform initialization activities prior to using other functions in this API.
  *
+ * @param driver (out) The driver.
+ *
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_initialize(void);
+M_driver_status_t M_driver_create(M_driver_driver_t *driver);
 
-typedef M_driver_status_t (*M_driver_initialize_func_ptr_t)(void);
+typedef M_driver_status_t (*M_driver_create_func_ptr_t)(
+    M_driver_driver_t *driver);
 
 /**
  * Perform shutdown activities after using all other functions in this API,
  * except for M_driver_status_message().
  *
+ * @param driver (in) The driver to destroy.
+ *
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_finalize(void);
+M_driver_status_t M_driver_destroy(M_driver_driver_t driver);
 
-typedef M_driver_status_t (*M_driver_finalize_func_ptr_t)(void);
+typedef M_driver_status_t (*M_driver_destroy_func_ptr_t)(
+    M_driver_driver_t driver);
 
 /**
  * Retrieve an integer-valued property.

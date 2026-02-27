@@ -10,22 +10,16 @@
 
 using namespace M::Target::Metal;
 
-std::unique_ptr<Driver> &Driver::get() {
-  static std::unique_ptr<Driver> driver{};
-  return driver;
-}
-
-extern "C" M_driver_status_t M_driver_initialize(void) {
+Driver *Driver::create() {
   auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  NS::SharedPtr<NS::Array> mDevices = NS::TransferPtr(MTL::CopyAllDevices());
-  if (!mDevices) {
-    return M_DRIVER_STATUS_NO_DEVICES;
-  }
 
-  auto &driver = Driver::get();
-  if (!driver) {
-    driver = std::make_unique<Driver>();
-  }
+  auto driver = std::make_unique<Driver>();
+  if (!driver)
+    return nullptr;
+
+  NS::SharedPtr<NS::Array> mDevices = NS::TransferPtr(MTL::CopyAllDevices());
+  if (!mDevices)
+    return nullptr;
 
   driver->devices.reserve(mDevices->count());
   for (NS::UInteger i = 0; i < mDevices->count(); i++) {
@@ -33,11 +27,21 @@ extern "C" M_driver_status_t M_driver_initialize(void) {
         static_cast<MTL::Device *>(mDevices->object(i)));
   }
 
+  return driver.release();
+}
+
+void Driver::destroy(Driver *driver) { delete driver; }
+
+extern "C" M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
+  Driver *driver = Driver::create();
+  if (!driver)
+    return M_DRIVER_STATUS_NO_DEVICES;
+  *outDriver = driver->cast();
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-extern "C" M_driver_status_t M_driver_finalize(void) {
-  Driver::get().reset(nullptr);
+extern "C" M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
+  Driver::destroy(Driver::from(handle));
   return M_DRIVER_STATUS_SUCCESS;
 }
 

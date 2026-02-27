@@ -16,7 +16,13 @@ namespace M::Target::Metal {
 struct Device;
 
 struct Driver {
-  static std::unique_ptr<Driver> &get();
+  [[nodiscard]] static Driver *create();
+  static void destroy(Driver *driver);
+
+  M_driver_driver_t cast() { return reinterpret_cast<M_driver_driver_t>(this); }
+  static Driver *from(M_driver_driver_t handle) {
+    return reinterpret_cast<Driver *>(handle);
+  }
 
   static void ensureThreadlocalAutoreleasePoolExists() {
     thread_local NS::SharedPtr<NS::AutoreleasePool> autoreleasePool;

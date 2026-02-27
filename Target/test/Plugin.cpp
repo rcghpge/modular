@@ -59,12 +59,12 @@ protected:
 
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
-    DO_TEST(initialize());
+    DO_TEST(create(&driver));
   }
   void TearDown() override {
     if (soHandle == nullptr)
       return;
-    DO_TEST(finalize());
+    DO_TEST(destroy(driver));
 #define M_DRIVER_HAL_SYMBOL(name) name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
@@ -75,11 +75,12 @@ protected:
 #define M_DRIVER_HAL_SYMBOL(name) M_driver_##name##_func_ptr_t name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
+  M_driver_driver_t driver = 0;
 };
 
 TEST_F(DriverPluginTest, DeviceCount) {
   int64_t deviceCount = 0;
-  M_driver_status_t status = this->device_count(&deviceCount);
+  M_driver_status_t status = this->device_count(driver, &deviceCount);
   EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS);
   cerr << "Device count: " << deviceCount << endl;
   EXPECT_GT(deviceCount, 0);
@@ -87,10 +88,10 @@ TEST_F(DriverPluginTest, DeviceCount) {
 
 TEST_F(DriverPluginTest, DeviceGet) {
   int64_t deviceCount = 0;
-  RUN(device_count(&deviceCount));
+  RUN(device_count(driver, &deviceCount));
   for (int64_t i = 0; i < deviceCount; i++) {
     M_driver_device_t device;
-    M_driver_status_t status = this->device_get(i, &device);
+    M_driver_status_t status = this->device_get(driver, i, &device);
     EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS);
     cerr << "Got device 0x" << std::hex << device << endl;
   }
@@ -98,19 +99,19 @@ TEST_F(DriverPluginTest, DeviceGet) {
 
 TEST_F(DriverPluginTest, DeviceContext) {
   int64_t deviceCount = 0;
-  RUN(device_count(&deviceCount));
+  RUN(device_count(driver, &deviceCount));
   std::vector<M_driver_context_t> contexts;
   for (int64_t i = 0; i < deviceCount; i++) {
     M_driver_device_t device = 0x0ULL;
-    RUN(device_get(i, &device));
+    RUN(device_get(driver, i, &device));
     M_driver_context_t context = 0x0ULL;
-    DO_TEST(device_create_context(device, &context));
+    DO_TEST(device_create_context(driver, device, &context));
     cerr << "Created context for device 0x" << std::hex << device << ": 0x"
          << context << endl;
     contexts.push_back(context);
   }
   for (int64_t i = deviceCount - 1; i >= 0; i--) {
-    DO_TEST(device_destroy_context(contexts[i]));
+    DO_TEST(device_destroy_context(driver, contexts[i]));
     cerr << "Destroyed context 0x" << contexts[i] << endl;
   }
 }

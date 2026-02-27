@@ -16,6 +16,7 @@
  * Common type definitions.
  */
 typedef int64_t M_driver_status_t;
+typedef uint64_t M_driver_driver_t;
 typedef uint64_t M_driver_device_t;
 typedef uint64_t M_driver_context_t;
 

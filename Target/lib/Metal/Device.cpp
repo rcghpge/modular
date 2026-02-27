@@ -14,22 +14,24 @@
 using namespace llvm;
 using namespace M::Target::Metal;
 
-extern "C" M_driver_status_t M_driver_device_count(int64_t *count) {
+extern "C" M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
+                                                   int64_t *count) {
   assert(count && "count must not be null");
-  if (!Driver::get() || Driver::get()->devices.size() == 0)
+  if (!Driver::from(driver) || Driver::from(driver)->devices.size() == 0)
     return M_DRIVER_STATUS_NO_DEVICES;
-  *count = Driver::get()->devices.size();
+  *count = Driver::from(driver)->devices.size();
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-extern "C" M_driver_status_t M_driver_device_get(int64_t id,
+extern "C" M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
+                                                 int64_t id,
                                                  M_driver_device_t *device) {
   assert(device && "device must not be null");
-  if (!Driver::get() || Driver::get()->devices.size() == 0)
+  if (!Driver::from(driver) || Driver::from(driver)->devices.size() == 0)
     return M_DRIVER_STATUS_NO_DEVICES;
-  if (id < 0 || size_t(id) >= Driver::get()->devices.size())
+  if (id < 0 || size_t(id) >= Driver::from(driver)->devices.size())
     return M_DRIVER_STATUS_BAD_DEVICE;
-  *device = Driver::get()->devices[id].cast();
+  *device = Driver::from(driver)->devices[id].cast();
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -40,7 +42,8 @@ extern "C" M_driver_status_t M_driver_device_property(M_driver_device_t device,
 }
 
 extern "C" M_driver_status_t
-M_driver_device_create_context(M_driver_device_t device,
+M_driver_device_create_context([[maybe_unused]] M_driver_driver_t driver,
+                               M_driver_device_t device,
                                M_driver_context_t *context) {
   assert(context && "context must not be null");
   *context = Context::create(Device::from(device))->cast();
@@ -48,7 +51,8 @@ M_driver_device_create_context(M_driver_device_t device,
 }
 
 extern "C" M_driver_status_t
-M_driver_device_destroy_context(M_driver_context_t context) {
+M_driver_device_destroy_context([[maybe_unused]] M_driver_driver_t driver,
+                                M_driver_context_t context) {
   Context::destroy(Context::from(context));
   return M_DRIVER_STATUS_SUCCESS;
 }

@@ -85,12 +85,12 @@ ErrorOrSuccess DriverImpl::setup(llvm::StringRef pluginSpec) {
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
 
-  CALL_M_DRIVER("initialize driver plugin", this, initialize());
+  CALL_M_DRIVER("initialize driver plugin", this, create(&handle));
 
   // Pre-size data structures for subsequent lazy initialization.
   int64_t numDevices = 0;
   CALL_M_DRIVER("get device count during driver implementation setup", this,
-                device_count(&numDevices));
+                device_count(handle, &numDevices));
   devices.resize(numDevices);
   return success();
 }
@@ -121,7 +121,8 @@ Driver::~Driver() {
   assert(impl_ != nullptr);
   // Ignore return value from API call,which is disallowed in DTORs.
   [[maybe_unused]] auto _ = [&]() {
-    CALL_M_DRIVER("finalize driver plugin", impl_, finalize());
+    CALL_M_DRIVER("finalize driver plugin", impl_,
+                  destroy(static_cast<DriverImpl *>(impl_)->handle));
     return Error("_");
   }();
   delete static_cast<DriverImpl *>(impl_);
@@ -141,7 +142,9 @@ ErrorOr<llvm::StringRef> Driver::pluginPath() const {
 ErrorOr<int64_t> Driver::deviceCount() const {
   assert(impl_ != nullptr);
   int64_t numDevices = 0;
-  CALL_M_DRIVER("get device count", impl_, device_count(&numDevices));
+  CALL_M_DRIVER(
+      "get device count", impl_,
+      device_count(static_cast<DriverImpl *>(impl_)->handle, &numDevices));
   return numDevices;
 }
 
@@ -160,7 +163,7 @@ ErrorOr<DeviceRef> Driver::device(int64_t id) {
   if (!impl->devices[id]) {
     M_driver_device_t deviceHandle = 0xDEADBEEFFEEDFACEuLL;
     CALL_M_DRIVER("get device #" + std::to_string(id), impl_,
-                  device_get(id, &deviceHandle));
+                  device_get(impl->handle, id, &deviceHandle));
 
     DeviceImpl *deviceImpl = nullptr;
     RETURN_IF_FAILED(deviceImpl = new (std::nothrow) DeviceImpl,

@@ -38,6 +38,7 @@ struct DriverImpl {
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
 
+  M_driver_driver_t handle;
   std::vector<DeviceRef> devices;
 };
 

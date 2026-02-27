@@ -24,9 +24,11 @@ extern "C" {
  * @return The status code.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_device_count(int64_t *count);
+M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
+                                        int64_t *count);
 
-typedef M_driver_status_t (*M_driver_device_count_func_ptr_t)(int64_t *count);
+typedef M_driver_status_t (*M_driver_device_count_func_ptr_t)(
+    M_driver_driver_t driver, int64_t *count);
 
 /**
  * Retrieve a device by its ID.
@@ -40,11 +42,12 @@ typedef M_driver_status_t (*M_driver_device_count_func_ptr_t)(int64_t *count);
            cannot be accessed for any reason.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_device_get(int64_t device_id,
+M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
+                                      int64_t device_id,
                                       M_driver_device_t *device);
 
 typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
-    int64_t device_id, M_driver_device_t *device);
+    M_driver_driver_t driver, int64_t device_id, M_driver_device_t *device);
 
 /**
  * Retrieve an integer-valued property of a device, as 64-bit integer.
@@ -68,31 +71,36 @@ typedef M_driver_status_t (*M_driver_device_property_func_ptr_t)(
 /**
  * Create a context for a device, for use with other functions in this API.
  *
+ * @param driver (in) The driver instance.
  * @param device (in) The device to create the context for.
  * @param context (out) The context.
  * @return Standard Status Protocol orM_DRIVER_STATUS_BAD_DEVICE if the device
  *         is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_device_create_context(M_driver_device_t device,
+M_driver_status_t M_driver_device_create_context(M_driver_driver_t driver,
+                                                 M_driver_device_t device,
                                                  M_driver_context_t *context);
 
 typedef M_driver_status_t (*M_driver_device_create_context_func_ptr_t)(
-    M_driver_device_t device, M_driver_context_t *context);
+    M_driver_driver_t driver, M_driver_device_t device,
+    M_driver_context_t *context);
 
 /**
  * Destroy an active context for a device.
  *
+ * @param driver (in) The driver instance.
  * @param context (in) The context to destroy.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         `context` is not a valid handle, or if the context was previously
  *         destroyed.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_device_destroy_context(M_driver_context_t context);
+M_driver_status_t M_driver_device_destroy_context(M_driver_driver_t driver,
+                                                  M_driver_context_t context);
 
 typedef M_driver_status_t (*M_driver_device_destroy_context_func_ptr_t)(
-    M_driver_context_t context);
+    M_driver_driver_t driver, M_driver_context_t context);
 
 #ifdef __cplusplus
 }
