@@ -1,5 +1,3 @@
-// TODO(GEX-2883): Test too slow on ASAN
-// UNSUPPORTED: asan
 // RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=true fuse-jit-kernels=true" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 

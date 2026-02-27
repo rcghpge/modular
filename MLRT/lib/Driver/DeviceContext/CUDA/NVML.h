@@ -18,6 +18,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
 #include <thread>
 
 #define NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE 32
@@ -95,7 +96,7 @@ public:
   static ErrorOr<const NVML &> get();
 
 private:
-  static ErrorOr<const NVML &> allocAndInitNVML();
+  static ErrorOr<std::unique_ptr<NVML>> allocAndInitNVML();
   static const char lib_name[];
 
 #define NVML_FUNC(name, ret, ...)                                              \

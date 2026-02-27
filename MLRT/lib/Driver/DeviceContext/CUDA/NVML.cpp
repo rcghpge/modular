@@ -22,7 +22,7 @@ const char nvmlLibName[] = "libnvidia-ml.so.1";
 const char nvmlLibName[] = "";
 #endif
 
-ErrorOr<const NVML &> NVML::allocAndInitNVML() {
+ErrorOr<std::unique_ptr<NVML>> NVML::allocAndInitNVML() {
   // Attempt to open the NVML shared library.
   void *nvmlLib = dlopen(nvmlLibName, RTLD_NOW);
   if (nvmlLib == nullptr) {
@@ -32,7 +32,7 @@ ErrorOr<const NVML &> NVML::allocAndInitNVML() {
     return Error(llvm::Twine("Failed to open library \"") + nvmlLibName + "\"");
   }
 
-  NVML *nvml = new NVML();
+  auto nvml = std::make_unique<NVML>();
 
 #define NVML_FUNC(name, ...)                                                   \
   nvml->name##_ = reinterpret_cast<t##name *>(dlsym(nvmlLib, #name));          \
@@ -58,7 +58,7 @@ ErrorOr<const NVML &> NVML::allocAndInitNVML() {
                  std::to_string(result));
   }
 
-  return *nvml;
+  return nvml;
 }
 
 NVML::~NVML() { nvmlShutdown(); }
@@ -81,12 +81,12 @@ ErrorOr<std::string> NVML::GetDriverVersion() const {
 }
 
 ErrorOr<const NVML &> NVML::get() {
-  static const ErrorOr<const NVML &> errOrNVML = allocAndInitNVML();
+  static ErrorOr<std::unique_ptr<NVML>> errOrNVML = allocAndInitNVML();
 
   if (errOrNVML) {
     return Error(errOrNVML.getError());
   }
-  return errOrNVML.get();
+  return *errOrNVML.get();
 }
 
 } // namespace M::Driver
