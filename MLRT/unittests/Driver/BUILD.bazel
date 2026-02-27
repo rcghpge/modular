@@ -382,16 +382,24 @@ modular_cc_test(
     name = "HALTest",
     size = "small",
     srcs = ["HALTest.cpp"],
-    data = ["//Target:CUDAPlugin.so"],
-    env = {
-        "MODULAR_DRIVER_PLUGINS": "CUDA@$(location //Target:CUDAPlugin.so)",
-    },
-    gpu_constraints = ["//:nvidia_gpu"],
-    tags = ["gpu"],
-    target_compatible_with = select({
-        "//:nvidia_gpu": [],
+    data = select({
+        "//:nvidia_gpu": ["//Target:CUDAPlugin.so"],
+        "//:apple_gpu": ["//Target:MetalPlugin.so"],
+    }),
+    env = select({
+        "//:nvidia_gpu": {
+            "MODULAR_DRIVER_PLUGINS": "CUDA@$(location //Target:CUDAPlugin.so)",
+        },
+        "//:apple_gpu": {
+            "MODULAR_DRIVER_PLUGINS": "Metal@$(location //Target:MetalPlugin.so)",
+        },
+    }),
+    gpu_constraints = select({
+        "//:nvidia_gpu": ["//:nvidia_gpu"],
+        "//:apple_gpu": ["//:apple_gpu"],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    tags = ["gpu"],
     deps = [
         ":TestUtils",
         "//MLRT:DriverHAL",
