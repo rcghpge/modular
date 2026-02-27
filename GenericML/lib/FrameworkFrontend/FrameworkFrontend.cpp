@@ -433,10 +433,15 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   // - The model IR, by writing the ModuleOp.
   //   This does NOT include the model weights
   // - The graph compiler version string
+  // - Mojo compile-time defines (e.g. -Dflag=True / _set_mojo_define), which
+  //   affect kernel selection and must invalidate the cache when changed.
   WriteableBufferRef keyBuf = WriteableBuffer::get();
   mofLoweringOptions.print(*keyBuf);
   moToMgpOptions.print(*keyBuf);
   getMOToMGPPipelineKey(*keyBuf, mlirCtx, moToMgpOptions);
+
+  if (auto *compilationCtx = maxContext->get<KGEN::CompilationContext>())
+    compilationCtx->print(*keyBuf);
 
   if (auto result = M::MOGG::graphCompilerCacheKey(*keyBuf, mlirCtx))
     return result.takeError();
