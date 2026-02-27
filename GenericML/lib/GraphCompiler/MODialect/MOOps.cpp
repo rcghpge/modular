@@ -1012,9 +1012,13 @@ WhileConditionOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
 ArrayRef<ParamDeclAttr> ParallelOp::getInputParams() { return {}; }
 SmallVector<ParamDeclAttr> ParallelOp::getAllParams() { return {}; }
 
-/// Custom assembly format: mo.parallel %arg in (%a, %b, ... : type) { ... }
-/// Multiple inputs map to a single block argument that processes each in
-/// parallel.
+/// Custom assembly format supports two syntaxes:
+/// 1. Shared type: mo.parallel %arg in (%a, %b : type) { ... }
+/// 2. Individual types: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
+///
+/// When using individual types, all inputs must have the same base type
+/// (shape, dtype) but may differ in device ID. All inputs must have the
+/// same device label.
 ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   Region *bodyRegion = result.addRegion();
 
@@ -1027,21 +1031,68 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseKeyword("in"))
     return failure();
 
-  // Parse the operand list: (%a, %b, ... : type)
+  if (parser.parseLParen())
+    return failure();
+
   SmallVector<OpAsmParser::UnresolvedOperand> operands;
-  Type operandType;
-  if (parser.parseLParen() ||
-      parser.parseOperandList(operands, OpAsmParser::Delimiter::None) ||
-      parser.parseColon() || parser.parseType(operandType) ||
-      parser.parseRParen())
+  SmallVector<Type> operandTypes;
+
+  // Parse first operand
+  OpAsmParser::UnresolvedOperand firstOperand;
+  if (parser.parseOperand(firstOperand))
+    return failure();
+  operands.push_back(firstOperand);
+
+  // Check if first operand has individual type (`:` follows)
+  // or if we're in shared type mode (`,` or `)` follows)
+  if (succeeded(parser.parseOptionalColon())) {
+    // Individual type mode: %a : type_a, %b : type_b, ...
+    Type firstType;
+    if (parser.parseType(firstType))
+      return failure();
+    operandTypes.push_back(firstType);
+
+    // Parse remaining operands with individual types
+    while (succeeded(parser.parseOptionalComma())) {
+      OpAsmParser::UnresolvedOperand operand;
+      Type type;
+      if (parser.parseOperand(operand) || parser.parseColon() ||
+          parser.parseType(type))
+        return failure();
+      operands.push_back(operand);
+      operandTypes.push_back(type);
+    }
+  } else {
+    // Shared type mode: %a, %b, ... : type
+    // Parse remaining operands
+    while (succeeded(parser.parseOptionalComma())) {
+      OpAsmParser::UnresolvedOperand operand;
+      if (parser.parseOperand(operand))
+        return failure();
+      operands.push_back(operand);
+    }
+
+    // Parse the shared type
+    Type sharedType;
+    if (parser.parseColon() || parser.parseType(sharedType))
+      return failure();
+
+    // All operands have the same type
+    for (size_t i = 0; i < operands.size(); ++i)
+      operandTypes.push_back(sharedType);
+  }
+
+  if (parser.parseRParen())
     return failure();
 
-  // Resolve all operands to the same type
-  if (parser.resolveOperands(operands, operandType, result.operands))
-    return failure();
+  // Resolve operands with their respective types
+  for (size_t i = 0; i < operands.size(); ++i) {
+    if (parser.resolveOperand(operands[i], operandTypes[i], result.operands))
+      return failure();
+  }
 
-  // Set block argument type
-  blockArg.type = operandType;
+  // Set block argument type to the first operand's type (representative)
+  blockArg.type = operandTypes[0];
 
   // Parse optional attribute dictionary
   if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
@@ -1052,17 +1103,16 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
                          /*enableNameShadowing=*/false))
     return failure();
 
-  // Result types: one result per input, all with the same type as the yield.
-  // The yield type must match the block argument type for this op.
-  // We infer result types from input count - each input produces one result.
-  for (size_t i = 0; i < operands.size(); ++i)
-    result.types.push_back(operandType);
+  // Result types: each result has the same type as its corresponding input
+  for (Type type : operandTypes)
+    result.types.push_back(type);
 
   return success();
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
-  // Print: mo.parallel %arg in (%a, %b, ... : type) { ... }
+  // Print: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
+  // Or if all types are identical: mo.parallel %arg in (%a, %b : type) { ... }
   Block &body = getBodyRegion().front();
   assert(body.getNumArguments() == 1 &&
          "ParallelOp body must have exactly one argument");
@@ -1071,9 +1121,26 @@ void ParallelOp::print(OpAsmPrinter &p) {
   p.printRegionArgument(body.getArgument(0), /*argAttrs=*/{},
                         /*omitType=*/true);
   p << " in (";
-  llvm::interleaveComma(getInputs(), p,
-                        [&](Value input) { p.printOperand(input); });
-  p << " : " << body.getArgument(0).getType() << ")";
+
+  // Check if all input types are identical
+  auto inputs = getInputs();
+  bool allTypesIdentical = llvm::all_of(inputs, [&](Value input) {
+    return input.getType() == inputs[0].getType();
+  });
+
+  if (allTypesIdentical) {
+    // Use compact syntax: (%a, %b : type)
+    llvm::interleaveComma(inputs, p,
+                          [&](Value input) { p.printOperand(input); });
+    p << " : " << inputs[0].getType();
+  } else {
+    // Use individual type syntax: (%a : type_a, %b : type_b)
+    llvm::interleaveComma(inputs, p, [&](Value input) {
+      p.printOperand(input);
+      p << " : " << input.getType();
+    });
+  }
+  p << ")";
 
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p << ' ';
@@ -1111,12 +1178,25 @@ LogicalResult ParallelOp::verify() {
 
   Type blockArgType = body.getArgument(0).getType();
 
-  // Verify all input types match the block argument type.
+  // Verify all input types are compatible with the block argument type.
+  // Inputs may have different device IDs but must have the same shape, dtype,
+  // metadata, and device label.
   for (auto [idx, input] : llvm::enumerate(getInputs())) {
-    if (input.getType() != blockArgType)
+    Type inputType = input.getType();
+    if (inputType == blockArgType)
+      continue;
+    auto inputTensor = dyn_cast<TensorType>(inputType);
+    auto blockArgTensor = dyn_cast<TensorType>(blockArgType);
+    if (!inputTensor || !blockArgTensor ||
+        inputTensor.getShapeAttr() != blockArgTensor.getShapeAttr() ||
+        inputTensor.getDtype() != blockArgTensor.getDtype() ||
+        inputTensor.getMetadata() != blockArgTensor.getMetadata() ||
+        inputTensor.getDeviceRef().getLabel() !=
+            blockArgTensor.getDeviceRef().getLabel())
       return emitOpError("input #")
-             << idx << " type '" << input.getType()
-             << "' does not match block argument type '" << blockArgType << "'";
+             << idx << " type '" << inputType
+             << "' is not compatible with block argument type '" << blockArgType
+             << "'";
   }
 
   // Verify yield has exactly one operand.
@@ -1125,13 +1205,21 @@ LogicalResult ParallelOp::verify() {
     return emitOpError("yield must have exactly one operand, got ")
            << yieldOp.getNumOperands();
 
-  // Verify all result types match the yield type.
+  // Verify yield type matches the block argument type.
   Type yieldType = yieldOp.getOperand(0).getType();
+  if (yieldType != blockArgType)
+    return emitOpError("yield type '")
+           << yieldType << "' does not match block argument type '"
+           << blockArgType << "'";
+
+  // Verify each result type matches its corresponding input type.
+  auto inputs = getInputs();
   for (auto [idx, result] : llvm::enumerate(getResults())) {
-    if (result.getType() != yieldType)
+    if (result.getType() != inputs[idx].getType())
       return emitOpError("result #")
              << idx << " type '" << result.getType()
-             << "' does not match yield type '" << yieldType << "'";
+             << "' does not match corresponding input type '"
+             << inputs[idx].getType() << "'";
   }
 
   return success();
