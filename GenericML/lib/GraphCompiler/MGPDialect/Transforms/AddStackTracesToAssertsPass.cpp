@@ -63,13 +63,31 @@ struct AddStackTracesToAssertsPass
     // issue in upstream MLIR, we're not sure. For the time being, manually
     // replace the OpaqueLoc with its fallback to avoid this issue. See GEX-1435
     // for more details.
-    result = getOperation()->walk([](Operation *op) {
+    //
+    // Before stripping OpaqueLoc, encode any Python stack traces as FusedLoc
+    // metadata so they survive to MEF emission and can be included in runtime
+    // error messages. See GEX-2678.
+    result = getOperation()->walk([&ctx](Operation *op) {
       Location loc = op->getLoc();
       auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
       if (!opaqueLoc)
         return WalkResult::advance();
 
-      op->setLoc(opaqueLoc.getFallbackLocation());
+      // Encode source notes (e.g., Python stack traces) as FusedLoc
+      // metadata before the OpaqueLoc is stripped. This way the source
+      // notes travel with the location and are automatically preserved
+      // by downstream lowering passes. See GEX-2678.
+      Location fallback = opaqueLoc.getFallbackLocation();
+      if (auto pythonFrame = RMO::PythonFrameAttr::fromOpaque(opaqueLoc)) {
+        char *stackTrace = pythonFrame.stack_trace();
+        if (stackTrace && *stackTrace) {
+          op->setLoc(mlir::FusedLoc::get(ctx, {fallback},
+                                         StringAttr::get(ctx, stackTrace)));
+          return WalkResult::advance();
+        }
+      }
+
+      op->setLoc(fallback);
       return WalkResult::advance();
     });
 

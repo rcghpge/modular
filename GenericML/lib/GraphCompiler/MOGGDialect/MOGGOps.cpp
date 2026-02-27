@@ -2830,10 +2830,66 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
            << " return values";
   }
 
-  // Emit only one call for this specific output pointer
-  state.builder.call(
-      moggAsyncErrorFunc, {},
-      {state.mojoReturnValues[outputIndex], state.getMojoValueFor(getError())});
+  // Collect Python stack trace metadata from the op's location tree. Source
+  // notes are encoded as StringAttr metadata on FusedLoc nodes (set by
+  // AddStackTracesToAssertsPass). When ops are fused, the location becomes a
+  // FusedLoc tree where each original op may carry its own source note. We
+  // collect all unique notes and emit them together. See GEX-2678.
+  SmallVector<MojoValue> args = {state.mojoReturnValues[outputIndex],
+                                 state.getMojoValueFor(getError())};
+  SmallVector<StringRef, 4> notesList;
+  {
+    llvm::SmallSet<StringRef, 4> seen;
+    SmallVector<Location, 8> worklist = {getLoc()};
+    while (!worklist.empty()) {
+      Location loc = worklist.pop_back_val();
+      auto fusedLoc = dyn_cast<mlir::FusedLoc>(loc);
+      if (!fusedLoc)
+        continue;
+      if (auto notes = dyn_cast_or_null<StringAttr>(fusedLoc.getMetadata())) {
+        StringRef val = notes.getValue();
+        if (!val.empty() && seen.insert(val).second)
+          notesList.push_back(val);
+      }
+      for (Location subLoc : fusedLoc.getLocations())
+        worklist.push_back(subLoc);
+    }
+  }
+
+  if (!notesList.empty()) {
+    std::string notesStr;
+    llvm::raw_string_ostream os(notesStr);
+
+    for (auto note : notesList)
+      os << note << '\n';
+
+    // If multiple ops were fused, append the fusion tree so users can see
+    // which ops were combined.
+    if (notesList.size() > 1) {
+      auto kernelStub = tryOp->getParentOfType<MOGG::KernelStubOp>();
+      if (kernelStub) {
+        if (auto fi = kernelStub.getFusionInfoAttr()) {
+          os << "\nNote: these operations were fused into a single kernel.\n"
+             << "The source traceback for each fused op is above.\n";
+          std::string tree = fi.toPrettyTree();
+          for (auto line : llvm::split(tree, '\n'))
+            os << "  " << line << '\n';
+        }
+      }
+    }
+
+    // Use a triple-quoted Mojo string literal to avoid escaping issues.
+    // MojoValue::quote() uses printAsMojoStringLiteral which escapes '"' as
+    // \22 — not a valid Mojo escape sequence. Triple-quoted strings handle
+    // embedded double quotes without escaping.
+    std::string tripleQuoted =
+        llvm::formatv("\"\"\"\n{}\"\"\"", notesStr).str();
+    MojoValue notesLiteral(std::move(tripleQuoted));
+    MojoValue notesString = state.builder.var(
+        MojoValue(HardcodedMojoSymbols::struct_String)({}, {notesLiteral}));
+    args.push_back(notesString);
+  }
+  state.builder.call(moggAsyncErrorFunc, {}, args);
 
   return success();
 }

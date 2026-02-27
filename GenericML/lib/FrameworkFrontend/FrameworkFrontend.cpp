@@ -477,6 +477,13 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     *keyBuf << (*bufferOr)->getBuffer();
   }
 
+  // Include MODULAR_MAX_DEBUG in the cache key so that builds with source
+  // notes (Python stack traces in error messages) are cached separately from
+  // builds without. Since locations are stripped below, the debug flag won't
+  // otherwise affect the key, causing stale cache hits. See GEX-2678.
+  if (auto debugEnv = llvm::sys::Process::GetEnv("MODULAR_MAX_DEBUG"))
+    *keyBuf << "MODULAR_MAX_DEBUG=1";
+
   // We specifically use a version of the module without location information
   // for caching. Otherwise, python refactors that don't change the module would
   // invalidate the cache.
