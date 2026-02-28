@@ -5,7 +5,7 @@
 // CHECK: fn stub_0({{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}OutputTensor[dtype = DType.int32, rank = 1]{{.*}}) raises:
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}.shape(), {{.*}}.shape(), {{.*}}.shape())
-// CHECK: comptime {{.*}} = StaticTuple[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec)
+// CHECK: comptime {{.*}} = InlineArray[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec, __list_literal__ = ())
 // CHECK: var {{.*}} = VariadicTensors[io_spec = {{.*}}.io_spec, static_specs = {{.*}}]({{.*}}, {{.*}})
 // CHECK: MOGGKernelAPI.Concat.execute[target = "cpu"]({{.*}}, {{.*}}, {{.*}}, {{.*}})
 

@@ -45,6 +45,7 @@ constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
 constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
 constexpr StringLiteral struct_StaticTuple = "StaticTuple";
+constexpr StringLiteral struct_InlineArray = "InlineArray";
 constexpr StringLiteral struct_MoggAsyncPackHelper =
     "MOGGPrimitives.MoggAsyncPackHelper";
 
