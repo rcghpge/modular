@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <unistd.h>
 #include <vector>
 
 using namespace M;
@@ -725,11 +726,33 @@ ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
     NVML_CHECK_ERR(nvml.nvmlDeviceGetName(nvmlDevice, name, sizeof(name)));
 
     nvmlMemory_t nvmlMemInfo;
-    if (nvml.nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo) != NVML::SUCCESS)
-      RETURN_ERROR("NVML: Unable to get memory info");
+    auto nvmlMemResult = nvml.nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo);
+
     Device::MemInfo memInfo;
-    memInfo.free = nvmlMemInfo.free;
-    memInfo.total = nvmlMemInfo.total;
+    if (nvmlMemResult == NVML::SUCCESS) {
+      memInfo.free = nvmlMemInfo.free;
+      memInfo.total = nvmlMemInfo.total;
+    } else if (nvmlMemResult == NVML::NOT_SUPPORTED) {
+      // On unified memory systems (e.g. NVIDIA Grace Blackwell GB10), NVML
+      // cannot report discrete GPU memory. Fall back to system memory info
+      // since CPU and GPU share the same physical memory.
+      long pages = sysconf(_SC_PHYS_PAGES);
+      long pageSize = sysconf(_SC_PAGE_SIZE);
+#if MODULAR_LINUX
+      long availPages = sysconf(_SC_AVPHYS_PAGES);
+#else
+      long availPages = pages;
+#endif
+      if (pages < 0 || pageSize < 0 || availPages < 0)
+        RETURN_ERROR("NVML: Unable to get memory info on unified memory "
+                     "system: sysconf failed");
+      memInfo.total =
+          static_cast<size_t>(pages) * static_cast<size_t>(pageSize);
+      memInfo.free =
+          static_cast<size_t>(availPages) * static_cast<size_t>(pageSize);
+    } else {
+      RETURN_ERROR("NVML: Unable to get memory info");
+    }
 
     // Some info is available only via CUDA. Ideally, we will use only NVML,
     // and not CUDA in CUDADevice.

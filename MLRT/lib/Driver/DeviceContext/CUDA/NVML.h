@@ -61,6 +61,7 @@ class NVML {
 public:
   enum Result : unsigned int {
     SUCCESS = 0,
+    NOT_SUPPORTED = 3,
   };
 
   ~NVML();
