@@ -30,11 +30,11 @@ class MetalDeviceTimer;
 class MetalDeviceFunction;
 class MetalDeviceFunctionArguments;
 
-using MetalDeviceRef = RCRef<const MetalDevice>;
-using MetalDeviceContextRef = RCRef<const MetalDeviceContext>;
-using MetalDeviceEventRef = RCRef<const MetalDeviceEvent>;
-using MetalDeviceTimerRef = RCRef<const MetalDeviceTimer>;
-using MetalDeviceFunctionRef = RCRef<const MetalDeviceFunction>;
+using MetalDeviceRef = RCRef<MetalDevice>;
+using MetalDeviceContextRef = RCRef<MetalDeviceContext>;
+using MetalDeviceEventRef = RCRef<MetalDeviceEvent>;
+using MetalDeviceTimerRef = RCRef<MetalDeviceTimer>;
+using MetalDeviceFunctionRef = RCRef<MetalDeviceFunction>;
 
 class MetalDevice : public Device {
 public:
@@ -69,19 +69,19 @@ public:
 
   int deviceCount() const override;
 
-  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
-                            bool isHost) const override;
-  ErrorOrSuccess chunkFree(void *ptr, bool isHost) const override;
+  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;
+  ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
   ErrorOr<void *> getCurrentDriverContext() const override;
-  ErrorOrSuccess setCurrentDriverContext(void *ctx) const override;
-  ErrorOr<DeviceContextRef> createContext() const override;
+  ErrorOrSuccess setCurrentDriverContext(void *ctx) override;
+  ErrorOr<DeviceContextRef> createContext() override;
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   static ErrorOr<Device::MemInfo> getMemInfo(MTL::Device *metalDev = nullptr);
 
   static const MetalDevice &cast(const Device &device);
-  static ErrorOr<const MetalDevice &> get(int id);
+  static MetalDevice &cast(Device &device);
+  static ErrorOr<MetalDevice &> get(int id);
   static ErrorOr<int> numberOfGPUs();
 
   static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);
@@ -110,61 +110,59 @@ private:
 
 class MetalDeviceContext : public DeviceContext {
 public:
-  MetalDeviceContext(const MetalDevice &device,
+  MetalDeviceContext(MetalDevice &device,
                      NS::SharedPtr<MTL::CommandQueue> commandQueue);
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
-                                       size_t byteSize) const override;
-  ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst, const DeviceBuffer &src,
-                             size_t srcByteOffset,
-                             size_t srcByteSize) const override;
+                                       size_t byteSize) override;
+  ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
+                             size_t srcByteOffset, size_t srcByteSize) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
-                                  size_t valSize) const override;
+                                  size_t valSize) override;
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
                int32_t maxDynamicSharedBytes, StringRef debugLevel,
-               int32_t optimizationLevel) const override;
+               int32_t optimizationLevel) override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
-      const size_t *argSizes = nullptr) const override;
+      const size_t *argSizes = nullptr) override;
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> createStream(int priority = 0) const override;
+  ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) const override;
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
+                                     int *greatestPriority) override;
+  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
   // Event management
-  ErrorOr<DeviceEventRef> enqueueEvent() const override;
-  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
+  ErrorOr<DeviceEventRef> enqueueEvent() override;
+  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
 
   // Timer management
-  ErrorOr<DeviceTimerRef> startTimer() const override;
+  ErrorOr<DeviceTimerRef> startTimer() override;
   ErrorOr<std::chrono::nanoseconds>
-  stopTimer(const DeviceTimer &timer) const override;
+  stopTimer(const DeviceTimer &timer) override;
 
   // Memory info
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, const DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) const override;
+      int *numBlocks, DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) override;
 
   // File mapping
   ErrorOr<std::tuple<void *, size_t,
@@ -190,8 +188,8 @@ private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
   // Memory allocation
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                          Device::AllocMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
+                          Device::AllocMode mode) override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
   // Helper methods for buffer management
   bool isMetalBuffer(const void *ptr) const;
   MTL::Buffer *getMetalBuffer(const void *ptr) const;
@@ -201,12 +199,13 @@ private:
 
 class MetalDeviceEvent : public DeviceEvent {
 public:
-  MetalDeviceEvent(const MetalDevice &device, MTL::CommandBuffer *buffer);
+  MetalDeviceEvent(MetalDevice &device, MTL::CommandBuffer *buffer);
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
   ErrorOr<bool> isReady() const override;
 
   static const MetalDeviceEvent &cast(const DeviceEvent &event);
+  static MetalDeviceEvent &cast(DeviceEvent &event);
 
 private:
   NS::SharedPtr<MTL::CommandBuffer> cmdBuffer_;
@@ -214,7 +213,7 @@ private:
 
 class MetalDeviceTimer : public DeviceTimer {
 public:
-  MetalDeviceTimer(const MetalDeviceContext &context,
+  MetalDeviceTimer(MetalDeviceContext &context,
                    std::chrono::time_point<std::chrono::steady_clock> start);
   ~MetalDeviceTimer() override = default;
 
@@ -228,7 +227,7 @@ private:
 
 class MetalDeviceFunction : public DeviceFunction {
 public:
-  MetalDeviceFunction(const MetalDeviceContext &context, StringRef moduleName,
+  MetalDeviceFunction(MetalDeviceContext &context, StringRef moduleName,
                       StringRef functionName,
                       NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
                       size_t argumentCount);
@@ -236,9 +235,9 @@ public:
   const std::string &name() const override;
 
   ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
 
-  ErrorOr<int32_t> getAttribute(int32_t code) const override;
+  ErrorOr<int32_t> getAttribute(int32_t code) override;
 
   size_t argumentCount() const override;
 
@@ -262,8 +261,8 @@ namespace M::Driver {
 // Stub declarations for non-macOS platforms
 class MetalDevice;
 class MetalDeviceContext;
-using MetalDeviceRef = RCRef<const MetalDevice>;
-using MetalDeviceContextRef = RCRef<const MetalDeviceContext>;
+using MetalDeviceRef = RCRef<MetalDevice>;
+using MetalDeviceContextRef = RCRef<MetalDeviceContext>;
 } // namespace M::Driver
 
 #endif // MODULAR_MACOS

@@ -177,7 +177,7 @@ static ErrorOr<std::string> loadHIPCodeObject(std::string_view stem,
 }
 
 static ErrorOr<DeviceFunctionRef>
-loadKernelForActiveAPI(const DeviceContext &ctx, std::string_view moduleName,
+loadKernelForActiveAPI(DeviceContext &ctx, std::string_view moduleName,
                        std::string_view functionName, std::string_view cudaPtx,
                        std::string_view hipCodeStem) {
   std::string moduleNameStr(moduleName);

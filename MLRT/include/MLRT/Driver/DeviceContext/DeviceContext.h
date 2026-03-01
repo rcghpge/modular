@@ -163,16 +163,16 @@ class DeviceMulticastBuffer;
 class DeviceStream;
 class DeviceTimer;
 
-using DeviceRef = RCRef<const Device>;
+using DeviceRef = RCRef<Device>;
 using DeviceFunctionCacheEntryRef = RCRef<const DeviceFunctionCacheEntry>;
-using DeviceBufferRef = RCRef<const DeviceBuffer>;
-using DeviceContextRef = RCRef<const DeviceContext>;
-using DeviceEventRef = RCRef<const DeviceEvent>;
-using DeviceFunctionRef = RCRef<const DeviceFunction>;
+using DeviceBufferRef = RCRef<DeviceBuffer>;
+using DeviceContextRef = RCRef<DeviceContext>;
+using DeviceEventRef = RCRef<DeviceEvent>;
+using DeviceFunctionRef = RCRef<DeviceFunction>;
 using DeviceGraphRef = RCRef<DeviceGraph>;
-using DeviceMulticastBufferRef = RCRef<const DeviceMulticastBuffer>;
-using DeviceStreamRef = RCRef<const DeviceStream>;
-using DeviceTimerRef = RCRef<const DeviceTimer>;
+using DeviceMulticastBufferRef = RCRef<DeviceMulticastBuffer>;
+using DeviceStreamRef = RCRef<DeviceStream>;
+using DeviceTimerRef = RCRef<DeviceTimer>;
 
 size_t getPreferredAlignment(std::string label);
 
@@ -276,7 +276,7 @@ public:
   virtual ErrorOr<bool> canAccess(const Device &peer) const = 0;
 
   // Enable peer access between devices.
-  ErrorOrSuccess enablePeerAccess(const Device &peer) const;
+  ErrorOrSuccess enablePeerAccess(const Device &peer);
 
   virtual ErrorOr<int> getAttribute(Attribute attr) const = 0;
 
@@ -293,12 +293,12 @@ public:
   // MemoryManager.
   // REQUIRES: byteSize > 0
   virtual ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
-                                    bool isHost) const = 0;
-  virtual ErrorOrSuccess chunkFree(void *ptr, bool isHost) const = 0;
+                                    bool isHost) = 0;
+  virtual ErrorOrSuccess chunkFree(void *ptr, bool isHost) = 0;
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
-  virtual ErrorOr<DeviceContextRef> createContext() const = 0;
+  virtual ErrorOr<DeviceContextRef> createContext() = 0;
 
   static int numberOfDevices(StringRef api);
   static size_t preferredAlignment(StringRef api);
@@ -334,17 +334,17 @@ public:
   findInFunctionCache(const FunctionCacheKey &key) const;
   DeviceFunctionCacheEntryRef
   insertInFunctionCache(const FunctionCacheKey &key,
-                        const DeviceFunctionCacheEntry &entry) const;
+                        const DeviceFunctionCacheEntry &entry);
   void clearFunctionCache() const;
 
   virtual ErrorOr<void *> getCurrentDriverContext() const = 0;
-  virtual ErrorOrSuccess setCurrentDriverContext(void *ctx) const = 0;
+  virtual ErrorOrSuccess setCurrentDriverContext(void *ctx) = 0;
 
 protected:
   Device(API api, std::string name, int id, MemInfo memInfo, size_t alignment);
 
   // Enable peer access between devices.
-  virtual ErrorOrSuccess enablePeerAccessImpl(const Device &peer) const;
+  virtual ErrorOrSuccess enablePeerAccessImpl(const Device &peer);
 
 private:
   std::string name_;
@@ -367,59 +367,57 @@ class DeviceBuffer final : public ReferenceCounted<DeviceBuffer> {
 public:
   ~DeviceBuffer();
 
+  DeviceContext &context();
   const DeviceContext &context() const;
   const DeviceBuffer *parent() const;
 
   // Returns the raw device pointer, which is not safe to access on the host
   void *ptr() const;
   // TODO: Remove the V1 compatibility.
-  void *releasePtr() const;
+  void *releasePtr();
 
   size_t byteSize() const;
 
   bool isHost() const;
 
-  inline ErrorOrSuccess copyTo(const DeviceBuffer &dst) const {
+  inline ErrorOrSuccess copyTo(DeviceBuffer &dst) {
     return copyTo(dst, 0, dst.byteSize());
   }
-  ErrorOrSuccess copyTo(const DeviceBuffer &dst, size_t srcByteOffset,
-                        size_t srcByteSize) const;
-  ErrorOrSuccess copyTo(void *dst) const;
+  ErrorOrSuccess copyTo(DeviceBuffer &dst, size_t srcByteOffset,
+                        size_t srcByteSize);
+  ErrorOrSuccess copyTo(void *dst);
 
-  ErrorOrSuccess copyFrom(const void *src) const;
+  ErrorOrSuccess copyFrom(const void *src);
 
-  ErrorOrSuccess reassignOwnershipTo(const DeviceContext &ctx) const;
+  ErrorOrSuccess reassignOwnershipTo(DeviceContext &ctx);
 
-  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset,
-                                           size_t byteSize) const;
+  ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset, size_t byteSize);
 
   // Either do a blocking synchronize or setup events with an external stream.
-  ErrorOrSuccess synchronize(void *external_stream = nullptr) const;
+  ErrorOrSuccess synchronize(void *external_stream = nullptr);
 
-  void setDestructorFn(llvm::unique_function<void()> destructor) const;
+  void setDestructorFn(llvm::unique_function<void()> destructor);
 
-  void setOwning(bool owning) const;
+  void setOwning(bool owning);
 
 private:
   friend class DeviceContext;
 
-  mutable DeviceContextRef context_;
+  DeviceContextRef context_;
   DeviceBufferRef parent_;
-  mutable void *ptr_;
+  void *ptr_;
   size_t byteSize_;
   bool isHost_;
   // TODO: Remove the V1 compatibility.
-  mutable bool owning_ = true;
-  mutable std::optional<llvm::unique_function<void()>> destructorFn_ =
-      std::nullopt;
+  bool owning_ = true;
+  std::optional<llvm::unique_function<void()>> destructorFn_ = std::nullopt;
 
-  DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,
-               bool isHost);
-  DeviceBuffer(const DeviceContext &context, const DeviceBuffer &parent,
-               void *ptr, size_t byteSize, bool isHost);
+  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize, bool isHost);
+  DeviceBuffer(DeviceContext &context, DeviceBuffer &parent, void *ptr,
+               size_t byteSize, bool isHost);
   // TODO: Remove the V1 compatibility.
-  DeviceBuffer(const DeviceContext &context, void *ptr, size_t byteSize,
-               bool isHost, bool owning);
+  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize, bool isHost,
+               bool owning);
 };
 
 class DeviceMulticastBuffer : public ReferenceCounted<DeviceMulticastBuffer> {
@@ -427,9 +425,9 @@ public:
   virtual ~DeviceMulticastBuffer();
 
   virtual ErrorOr<DeviceBufferRef>
-  multicastBuffer(const DeviceContext &ctx) const = 0;
+  multicastBuffer(DeviceContext &ctx) const = 0;
   virtual ErrorOr<DeviceBufferRef>
-  unicastBufferFor(const DeviceContext &ctx) const = 0;
+  unicastBufferFor(DeviceContext &ctx) const = 0;
 
   size_t byteSize() const;
 
@@ -448,9 +446,9 @@ private:
 class DeviceEvent : public ReferenceCounted<DeviceEvent> {
 public:
   virtual ~DeviceEvent() = default;
-  const Device &device() const;
+  Device &device() const;
 
-  virtual ErrorOrSuccess synchronize() const = 0;
+  virtual ErrorOrSuccess synchronize() = 0;
 
   virtual ErrorOr<bool> isReady() const = 0;
 
@@ -459,7 +457,7 @@ public:
   virtual ErrorOr<float> elapsedTime(const DeviceEvent &end) const;
 
 protected:
-  explicit DeviceEvent(const Device &device);
+  explicit DeviceEvent(Device &device);
 
 private:
   DeviceRef device_;
@@ -518,7 +516,7 @@ private:
 class DeviceGraph : public ReferenceCounted<DeviceGraph> {
 public:
   virtual ~DeviceGraph() = default;
-  const Device &device() const { return *device_; }
+  Device &device() const { return *device_; }
 
   /// Capture a graph and baseline launch trace by executing a callback.
   static ErrorOr<DeviceGraphCollection>
@@ -558,7 +556,7 @@ public:
   }
 
 protected:
-  explicit DeviceGraph(const Device &device, DeviceStreamRef captureStream = {})
+  explicit DeviceGraph(Device &device, DeviceStreamRef captureStream = {})
       : device_(DeviceRef::copy(&device)),
         captureStream_(std::move(captureStream)) {}
 
@@ -572,9 +570,9 @@ private:
 class DeviceStream : public ReferenceCounted<DeviceStream> {
 public:
   virtual ~DeviceStream() = default;
-  const Device &device() const;
+  Device &device() const;
 
-  virtual ErrorOrSuccess synchronize() const = 0;
+  virtual ErrorOrSuccess synchronize() = 0;
 
   virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
 
@@ -601,7 +599,7 @@ public:
 
   /// End capture and return the captured graph.
   /// Returns error if not capturing or capture was invalidated.
-  virtual ErrorOr<DeviceGraphRef> endCapture() const;
+  virtual ErrorOr<DeviceGraphRef> endCapture();
 
   /// Begin recording a device launch trace. Default is a no-op.
   virtual void beginLaunchTrace() const;
@@ -610,7 +608,8 @@ public:
   virtual std::vector<KernelLaunchMetadata> takeLaunchTrace() const;
 
 protected:
-  explicit DeviceStream(const DeviceContext &context);
+  explicit DeviceStream(DeviceContext &context);
+  DeviceContext &context_() { return *ctx_; }
   const DeviceContext &context_() const { return *ctx_; }
 
 private:
@@ -621,21 +620,22 @@ class DeviceFunction : public ReferenceCounted<DeviceFunction> {
 public:
   virtual ~DeviceFunction() = default;
 
+  DeviceContext &context();
   const DeviceContext &context() const;
 
   virtual const std::string &name() const = 0;
 
   virtual ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
-                                             size_t byteSize) const = 0;
+                                             size_t byteSize) = 0;
 
-  virtual ErrorOr<int32_t> getAttribute(int32_t code) const = 0;
+  virtual ErrorOr<int32_t> getAttribute(int32_t code) = 0;
 
   // Returns the number of arguments for this function. Default implementation
   // returns 0 (unknown). Device-specific implementations may override this.
   virtual size_t argumentCount() const;
 
 protected:
-  explicit DeviceFunction(const DeviceContext &context);
+  explicit DeviceFunction(DeviceContext &context);
 
 private:
   DeviceContextRef context_;
@@ -648,7 +648,7 @@ public:
   const DeviceContext &context() const;
 
 protected:
-  explicit DeviceTimer(const DeviceContext &context);
+  explicit DeviceTimer(DeviceContext &context);
 
 private:
   DeviceContextRef context_;
@@ -658,102 +658,99 @@ class DeviceContext : public ReferenceCounted<DeviceContext> {
 public:
   virtual ~DeviceContext();
 
-  const Device &device() const;
+  Device &device() const;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize) const;
+  ErrorOr<DeviceBufferRef> enqueueCreateBuffer(size_t byteSize);
 
   // Host memory allocation.
-  ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize) const;
+  ErrorOr<DeviceBufferRef> createHostBuffer(size_t byteSize);
 
   // TODO: Remove the V1 compatibility.
-  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize,
-                                     bool owning) const;
+  DeviceBufferRef createBufferOwning(void *ptr, size_t byteSize, bool owning);
   DeviceBufferRef createHostBufferOwning(void *ptr, size_t byteSize,
-                                         bool owning) const;
+                                         bool owning);
 
   // DeviceBuffer copies.
   virtual ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
-                                             size_t byteSize) const = 0;
+                                             size_t byteSize) = 0;
   inline ErrorOrSuccess enqueueCopyToDevice(const DeviceBuffer &dst,
-                                            const void *src) const {
+                                            const void *src) {
     if (dst.context().device().api() != device().api())
       RETURN_ERROR("API mismatch between buffer and context");
     return enqueueCopyToDevice(dst.ptr(), src, dst.byteSize());
   }
 
   virtual ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
-                                               size_t byteSize) const = 0;
+                                               size_t byteSize) = 0;
   inline ErrorOrSuccess enqueueCopyFromDevice(void *dst,
-                                              const DeviceBuffer &src) const {
+                                              const DeviceBuffer &src) {
     if (src.context().device().api() != device().api())
       RETURN_ERROR("API mismatch between buffer and context");
     return enqueueCopyFromDevice(dst, src.ptr(), src.byteSize());
   }
 
-  inline ErrorOrSuccess
-  enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                            const DeviceBuffer &src) const {
+  inline ErrorOrSuccess enqueueCopyDeviceToDevice(DeviceBuffer &dst,
+                                                  DeviceBuffer &src) {
     return enqueueCopyDeviceToDevice(dst, src, 0, src.byteSize());
   }
-  ErrorOrSuccess enqueueCopyDeviceToDevice(const DeviceBuffer &dst,
-                                           const DeviceBuffer &src,
+  ErrorOrSuccess enqueueCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,
                                            size_t srcByteOffset,
-                                           size_t srcByteSize) const;
+                                           size_t srcByteSize);
 
   virtual ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize,
-                                          uint64_t val,
-                                          size_t valSize) const = 0;
+                                          uint64_t val, size_t valSize) = 0;
   inline ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
-                                         size_t valSize) const {
+                                         size_t valSize) {
     if (dst.context().device().api() != device().api())
       RETURN_ERROR("API mismatch between buffer and context");
     return enqueueSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
   }
 
   ErrorOr<Driver::DeviceBufferRef>
-  memmapFile(const std::filesystem::path &filename) const;
+  memmapFile(const std::filesystem::path &filename);
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
                int32_t maxDynamicSharedBytes = -1, StringRef debugLevel = "",
-               int32_t optimizationLevel = -1) const = 0;
+               int32_t optimizationLevel = -1) = 0;
   virtual ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
-      const size_t *argSizes = nullptr) const = 0;
+      const size_t *argSizes = nullptr) = 0;
 
   // Synchronize asynchronous operations.
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                             int *greatestPriority) const = 0;
-  virtual ErrorOr<DeviceStreamRef> createStream(int priority = 0) const = 0;
+                                             int *greatestPriority) = 0;
+  virtual ErrorOr<DeviceStreamRef> createStream(int priority = 0) = 0;
 
   virtual ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const = 0;
+  createExternalStream(void *externalStream) = 0;
 
-  virtual ErrorOrSuccess synchronize() const = 0;
+  virtual ErrorOrSuccess synchronize() = 0;
 
-  virtual ErrorOr<DeviceEventRef> enqueueEvent() const = 0;
-  virtual ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const = 0;
-  virtual ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const = 0;
-  virtual ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const = 0;
-  virtual ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const = 0;
-  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const {
+  virtual ErrorOr<DeviceEventRef> enqueueEvent() = 0;
+  virtual ErrorOrSuccess enqueueEvent(const DeviceEvent &event) = 0;
+  virtual ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) = 0;
+  virtual ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) = 0;
+  virtual ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) = 0;
+  ErrorOrSuccess enqueueWaitForEvent(DeviceEvent &event) {
     return enqueueWaitFor(event);
   }
 
-  virtual ErrorOr<DeviceTimerRef> startTimer() const = 0;
+  virtual ErrorOr<DeviceTimerRef> startTimer() = 0;
   virtual ErrorOr<std::chrono::nanoseconds>
-  stopTimer(const DeviceTimer &timer) const = 0;
+  stopTimer(const DeviceTimer &timer) = 0;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const;
 
-  virtual ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, const DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) const = 0;
+  virtual ErrorOrSuccess
+  occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks,
+                                            DeviceFunction &func, int blockSize,
+                                            size_t dynamicSharedMemSize) = 0;
 
   ErrorOrSuccess setAsCurrent() const;
 
@@ -787,21 +784,21 @@ public:
   // Error helpers.
   static Error formatError(const char *file, int line, const char *func,
                            const llvm::Twine &msg);
-  ErrorOrSuccess checkPendingError() const;
+  ErrorOrSuccess checkPendingError();
 
   // Enqueue event handlers.
-  ErrorOrSuccess enqueueEventHandler(std::function<void()> handler) const;
+  ErrorOrSuccess enqueueEventHandler(std::function<void()> handler);
   // Poll event handlers when events are ready.
-  ErrorOrSuccess pollPendingEvents() const;
+  ErrorOrSuccess pollPendingEvents();
 
   // Debugging helpers.
   bool syncMode() const;
-  void incSyncMode() const;
-  void decSyncMode() const;
+  void incSyncMode();
+  void decSyncMode();
   bool isDebugAllocatorEnabled(StringRef name) const;
 
 protected:
-  explicit DeviceContext(const Device &device);
+  explicit DeviceContext(Device &device);
 
   // Device-specific memory information (raw hardware memory)
   virtual ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const = 0;
@@ -809,14 +806,13 @@ protected:
   // Low-level uncached allocation of memory.
   // REQUIRES: byteSize > 0
   virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                                  Device::AllocMode mode) const = 0;
-  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) const = 0;
+                                  Device::AllocMode mode) = 0;
+  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) = 0;
 
   // Low-level copies.
-  virtual ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst,
-                                     const DeviceBuffer &src,
+  virtual ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
                                      size_t srcByteOffset,
-                                     size_t srcByteSize) const = 0;
+                                     size_t srcByteSize) = 0;
 
   using MMapFileImplResult =
       ErrorOr<std::tuple<void *, size_t,
@@ -827,7 +823,7 @@ protected:
 
   virtual void *driverContext() const = 0;
 
-  void setPendingError(Error err) const;
+  void setPendingError(Error err);
 
 private:
   friend class MemoryManagerFreeList;
@@ -844,23 +840,23 @@ private:
   std::unique_ptr<MemoryManagerFreeList> freeList_;
   std::unique_ptr<MemoryManagerFreeList> hostFreeList_;
 
-  mutable std::atomic<int> syncMode_ = {0};
+  std::atomic<int> syncMode_ = {0};
 
   // hasPendingError_ indicates whether pendingError_ should be checked.
   // Since pendingError_ is protected by a lock we set an atomic value that can
   // be quickly checked without fully acquiring a mutex lock. Raising errors
   // across threads is inherently racing, so we are fine with possibly
   // missing an update to hasPendingError_ from a different thread.
-  mutable std::atomic<int> hasPendingError_ = {0};
-  mutable std::mutex pendingErrorMutex_;
-  mutable ErrorOrSuccess pendingError_;
+  std::atomic<int> hasPendingError_ = {0};
+  std::mutex pendingErrorMutex_;
+  ErrorOrSuccess pendingError_;
 
   // hasPendingWork_ indicates whether pendingWork_ should be checked.
   // pendingWorkMutex_ protects pendingEvents_ and pendingEventsLast_.
-  mutable std::atomic<int> hasPendingWork_ = {0};
-  mutable std::mutex pendingWorkMutex_;
-  mutable PendingEventHandler *pendingEvents_ = nullptr;
-  mutable PendingEventHandler *pendingEventsLast_ = nullptr;
+  std::atomic<int> hasPendingWork_ = {0};
+  std::mutex pendingWorkMutex_;
+  PendingEventHandler *pendingEvents_ = nullptr;
+  PendingEventHandler *pendingEventsLast_ = nullptr;
 
   // Explicitly mark copy and assignment as unsupported.
   DeviceContext(const DeviceContext &other) = delete;
@@ -869,10 +865,9 @@ private:
   DeviceContext &operator=(DeviceContext &&other) = delete;
 
   // DeviceBuffer allocation.
-  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize,
-                                       Device::AllocMode mode) const;
+  ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize, Device::AllocMode mode);
 
-  void setPendingEventHandler(PendingEventHandler *h) const;
+  void setPendingEventHandler(PendingEventHandler *h);
 
   // Is the current execution stream for the device running in graph capture
   // mode?

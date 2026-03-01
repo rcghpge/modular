@@ -567,9 +567,9 @@ TEST_F(GPUDeviceContextTest, MultiContextCopies) {
   }
 
   for (int srcDeviceId = 0; srcDeviceId < numDevices + 2; ++srcDeviceId) {
-    const DeviceContext *srcCtx = contexts[srcDeviceId].getPointer();
+    DeviceContext *srcCtx = contexts[srcDeviceId].getPointer();
     for (int dstDeviceId = 0; dstDeviceId < numDevices + 2; ++dstDeviceId) {
-      const DeviceContext *dstCtx = contexts[dstDeviceId].getPointer();
+      DeviceContext *dstCtx = contexts[dstDeviceId].getPointer();
 
       std::cerr << "Copying from contexts[" << srcDeviceId << "] to contexts["
                 << dstDeviceId << "].\n";

@@ -36,14 +36,14 @@ class HIPDeviceStream;
 class HIPDeviceTimer;
 class HIPModuleFunction;
 
-using HIPDeviceRef = RCRef<const HIPDevice>;
-using HIPDeviceContextRef = RCRef<const HIPDeviceContext>;
-using HIPDeviceEventRef = RCRef<const HIPDeviceEvent>;
-using HIPDeviceFunctionRef = RCRef<const HIPDeviceFunction>;
+using HIPDeviceRef = RCRef<HIPDevice>;
+using HIPDeviceContextRef = RCRef<HIPDeviceContext>;
+using HIPDeviceEventRef = RCRef<HIPDeviceEvent>;
+using HIPDeviceFunctionRef = RCRef<HIPDeviceFunction>;
 using HIPDeviceFunctionArgumentsRef = RCRef<const HIPDeviceFunctionArguments>;
 using HIPDeviceGraphRef = RCRef<HIPDeviceGraph>;
-using HIPDeviceStreamRef = RCRef<const HIPDeviceStream>;
-using HIPDeviceTimerRef = RCRef<const HIPDeviceTimer>;
+using HIPDeviceStreamRef = RCRef<HIPDeviceStream>;
+using HIPDeviceTimerRef = RCRef<HIPDeviceTimer>;
 using HIPModuleFunctionRef = RCRef<const HIPModuleFunction>;
 
 class HIPDevice : public Device {
@@ -70,7 +70,7 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
 
   // Enable peer access between this device and the peer device.
-  ErrorOrSuccess enablePeerAccessImpl(const Device &peer) const override;
+  ErrorOrSuccess enablePeerAccessImpl(const Device &peer) override;
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
@@ -79,21 +79,21 @@ public:
   static ErrorOr<int> numberOfGPUs();
   int deviceCount() const override;
 
-  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
-                            bool isHost) const override;
-  ErrorOrSuccess chunkFree(void *ptr, bool isHost) const override;
+  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;
+  ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   ErrorOr<void *> getCurrentDriverContext() const override;
-  ErrorOrSuccess setCurrentDriverContext(void *ctx) const override;
+  ErrorOrSuccess setCurrentDriverContext(void *ctx) override;
 
-  ErrorOr<DeviceContextRef> createContext() const override;
+  ErrorOr<DeviceContextRef> createContext() override;
 
   static const HIPDevice &cast(const Device &device);
+  static HIPDevice &cast(Device &device);
   static const HIPDevice *verified_cast(const Device *device);
 
-  static ErrorOr<const HIPDevice &> get(int id);
+  static ErrorOr<HIPDevice &> get(int id);
 
 private:
   // We only support HIP architectures sm_80 and above.
@@ -111,10 +111,10 @@ private:
 
 class HIPDeviceEvent : public DeviceEvent {
 public:
-  HIPDeviceEvent(const HIPDevice &device, hipEvent_t event);
+  HIPDeviceEvent(HIPDevice &device, hipEvent_t event);
   ~HIPDeviceEvent() override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
   ErrorOr<bool> isReady() const override;
 
@@ -130,7 +130,7 @@ private:
 
 class HIPDeviceGraph : public DeviceGraph {
 public:
-  HIPDeviceGraph(const HIPDevice &device, hipGraphExec_t exec,
+  HIPDeviceGraph(HIPDevice &device, hipGraphExec_t exec,
                  DeviceStreamRef stream = {})
       : DeviceGraph(device, std::move(stream)), exec_(exec) {}
 
@@ -148,11 +148,11 @@ private:
 
 class HIPDeviceStream : public DeviceStream {
 public:
-  HIPDeviceStream(const HIPDeviceContext &ctx, hipStream_t stream,
+  HIPDeviceStream(HIPDeviceContext &ctx, hipStream_t stream,
                   bool isOwner = true);
   ~HIPDeviceStream() override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
 
@@ -172,7 +172,7 @@ public:
   void *ptr() const override;
 
   ErrorOrSuccess beginCapture() const override;
-  ErrorOr<DeviceGraphRef> endCapture() const override;
+  ErrorOr<DeviceGraphRef> endCapture() override;
 
   hipStream_t hipStream() const;
 
@@ -208,16 +208,15 @@ private:
 
 class HIPDeviceFunction : public DeviceFunction {
 public:
-  HIPDeviceFunction(const HIPDeviceContext &context,
-                    HIPModuleFunctionRef modFunc);
+  HIPDeviceFunction(HIPDeviceContext &context, HIPModuleFunctionRef modFunc);
   ~HIPDeviceFunction() override;
 
   const std::string &name() const override;
 
   ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
 
-  ErrorOr<int32_t> getAttribute(int32_t code) const override;
+  ErrorOr<int32_t> getAttribute(int32_t code) override;
 
   ErrorOrSuccess hipCallKernelDirect(uint32_t gridX, uint32_t gridY,
                                      uint32_t gridZ, uint32_t blockX,
@@ -225,11 +224,12 @@ public:
                                      uint32_t sharedMemBytes, void **args,
                                      hipStream_t stream) const;
 
+  static HIPDeviceFunction &cast(DeviceFunction &func);
   static const HIPDeviceFunction &cast(const DeviceFunction &func);
 
   ErrorOrSuccess
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
-                                            size_t dynamicSharedMemSize) const;
+                                            size_t dynamicSharedMemSize);
 
   hipModule_t hipModule() const;
 
@@ -243,8 +243,7 @@ private:
 
 class HIPDeviceTimer : public DeviceTimer {
 public:
-  HIPDeviceTimer(const HIPDeviceContext &context, hipEvent_t start,
-                 hipEvent_t stop);
+  HIPDeviceTimer(HIPDeviceContext &context, hipEvent_t start, hipEvent_t stop);
   ~HIPDeviceTimer() override;
 
   hipEvent_t hipStartEvent() const;
@@ -259,63 +258,62 @@ private:
 
 class HIPDeviceContext : public DeviceContext {
 public:
-  HIPDeviceContext(const HIPDevice &device, hipStream_t stream);
+  HIPDeviceContext(HIPDevice &device, hipStream_t stream);
   ~HIPDeviceContext() override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
-                                       size_t byteSize) const override;
-  ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst, const DeviceBuffer &src,
-                             size_t srcByteOffset,
-                             size_t srcByteSize) const override;
+                                       size_t byteSize) override;
+  ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
+                             size_t srcByteOffset, size_t srcByteSize) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
-                                  size_t valSize) const override;
+                                  size_t valSize) override;
 
   // DeviceFunction loading and execution.
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
                int32_t maxDynamicSharedBytes, StringRef debugLevel,
-               int32_t optimizationLevel) const override;
+               int32_t optimizationLevel) override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
-      const size_t *argSizes = nullptr) const override;
+      const size_t *argSizes = nullptr) override;
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) const override;
-  ErrorOr<DeviceStreamRef> createStream(int priority = 0) const override;
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
+                                     int *greatestPriority) override;
+  ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
+  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
-  ErrorOr<DeviceEventRef> enqueueEvent() const override;
-  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
+  ErrorOr<DeviceEventRef> enqueueEvent() override;
+  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
 
-  ErrorOr<DeviceTimerRef> startTimer() const override;
+  ErrorOr<DeviceTimerRef> startTimer() override;
   ErrorOr<std::chrono::nanoseconds>
-  stopTimer(const DeviceTimer &timer) const override;
+  stopTimer(const DeviceTimer &timer) override;
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, const DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) const override;
+      int *numBlocks, DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;
   hipStream_t hipStream() const;
 
+  static HIPDeviceContext &cast(DeviceContext &ctx);
   static const HIPDeviceContext &cast(const DeviceContext &ctx);
   static const HIPDeviceContext *verified_cast(const DeviceContext *ctx);
 
@@ -332,8 +330,8 @@ private:
   hipStream_t stream_;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                          Device::AllocMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
+                          Device::AllocMode mode) override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
 
   void *driverContext() const override;
 

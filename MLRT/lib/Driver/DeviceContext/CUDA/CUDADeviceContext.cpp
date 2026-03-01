@@ -535,7 +535,7 @@ ErrorOr<bool> CUDADevice::canAccess(const Device &peer) const {
   return canAccessPeer && isNativeAtomicSupported;
 }
 
-ErrorOrSuccess CUDADevice::enablePeerAccessImpl(const Device &peer) const {
+ErrorOrSuccess CUDADevice::enablePeerAccessImpl(const Device &peer) {
   CUDA_WITH_DEV_ERR(*this);
 
   const CUDADevice &peerCudaDev = CUDADevice::cast(peer);
@@ -598,7 +598,7 @@ ErrorOr<bool> CUDADevice::supportsMulticast() const {
   return multicastSupported != 0;
 }
 
-ErrorOr<DeviceContextRef> CUDADevice::createContext() const {
+ErrorOr<DeviceContextRef> CUDADevice::createContext() {
   DEFINE_OR_RETURN_ERROR(CUcontext, context, cudaContext());
 
   // For the remainder of this method we use the context scope to ensure that
@@ -633,7 +633,8 @@ ErrorOr<int> CUDADevice::numberOfGPUs() {
       llvm::sys::Process::GetEnv("CUDA_VISIBLE_DEVICES");
   if (envOr) {
     // Assuming responsible users
-    // https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/environment-variables.html
+    // https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/
+    // environment-variables.html
     int const numCommas =
         envOr->size() == 0 ? -1 : StringRef(*envOr).count(',');
     numGPUs = std::min(numGPUs, numCommas + 1);
@@ -651,7 +652,7 @@ int CUDADevice::deviceCount() const {
 }
 
 ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize,
-                                      bool isHost) const {
+                                      bool isHost) {
   assert(byteSize != 0);
   CUDA_WITH_DEV_ERR(*this);
   if (isHost) {
@@ -662,7 +663,7 @@ ErrorOrSuccess CUDADevice::chunkAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CUDADevice::chunkFree(void *ptr, bool isHost) const {
+ErrorOrSuccess CUDADevice::chunkFree(void *ptr, bool isHost) {
   CUDA_WITH_DEV_ERR(*this);
   if (isHost) {
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
@@ -684,7 +685,7 @@ ErrorOr<void *> CUDADevice::getCurrentDriverContext() const {
   CUDA_CHECK_ERR(driver_.cuCtxGetCurrent(&result));
   return result;
 }
-ErrorOrSuccess CUDADevice::setCurrentDriverContext(void *ctx) const {
+ErrorOrSuccess CUDADevice::setCurrentDriverContext(void *ctx) {
   CUDA_CHECK_ERR(driver_.cuCtxSetCurrent(reinterpret_cast<CUcontext>(ctx)));
   return success();
 }
@@ -693,7 +694,11 @@ const CUDADevice &CUDADevice::cast(const Device &device) {
   return static_cast<const CUDADevice &>(device);
 }
 
-ErrorOr<const CUDADevice &> CUDADevice::get(int id) {
+CUDADevice &CUDADevice::cast(Device &device) {
+  return static_cast<CUDADevice &>(device);
+}
+
+ErrorOr<CUDADevice &> CUDADevice::get(int id) {
   // On first call initialize devices and err. devices is only set if there was
   // no error during setup.
   static std::mutex mu;
@@ -842,13 +847,13 @@ CUDADeviceMulticastBuffer::~CUDADeviceMulticastBuffer() {
 }
 
 ErrorOr<DeviceBufferRef>
-CUDADeviceMulticastBuffer::multicastBuffer(const DeviceContext &ctx) const {
+CUDADeviceMulticastBuffer::multicastBuffer(DeviceContext &ctx) const {
   return ctx.createBufferOwning(multicastPtr_, byteSize(),
                                 /* owning = */ false);
 }
 
 ErrorOr<DeviceBufferRef>
-CUDADeviceMulticastBuffer::unicastBufferFor(const DeviceContext &ctx) const {
+CUDADeviceMulticastBuffer::unicastBufferFor(DeviceContext &ctx) const {
   CUdevice dev = CUDADevice::cast(ctx.device()).cudaDevice();
   for (const auto &it : unicastBuffers_) {
     if (it.device_ == dev) {
@@ -971,7 +976,7 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
 }
 
 // ===== CUDADeviceEvent ===== //
-CUDADeviceEvent::CUDADeviceEvent(const CUDADevice &device, CUevent event,
+CUDADeviceEvent::CUDADeviceEvent(CUDADevice &device, CUevent event,
                                  bool recordedDuringCapture, bool enableTiming)
     : DeviceEvent(device), event_(event),
       recordedDuringCapture_(recordedDuringCapture),
@@ -990,7 +995,7 @@ CUDADeviceEvent::~CUDADeviceEvent() {
   }
 }
 
-ErrorOrSuccess CUDADeviceEvent::synchronize() const {
+ErrorOrSuccess CUDADeviceEvent::synchronize() {
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV_ERR(cudaDevice);
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuEventSynchronize(event_));
@@ -1058,8 +1063,8 @@ ErrorOrSuccess CUDADeviceGraph::replay() const {
 }
 
 // ===== CUDADeviceStream ===== //
-CUDADeviceStream::CUDADeviceStream(const CUDADeviceContext &ctx,
-                                   CUstream stream, bool isOwner)
+CUDADeviceStream::CUDADeviceStream(CUDADeviceContext &ctx, CUstream stream,
+                                   bool isOwner)
     : DeviceStream(ctx), stream_(stream), isOwner_(isOwner) {
   logGraphCapture_ = DeviceContext::configAsString("log_graph_capture", "");
 }
@@ -1074,7 +1079,7 @@ CUDADeviceStream::~CUDADeviceStream() {
   isOwner_ = false;
 }
 
-ErrorOrSuccess CUDADeviceStream::synchronize() const {
+ErrorOrSuccess CUDADeviceStream::synchronize() {
   const auto &cudaDevice = CUDADevice::cast(this->device());
 
   CUDA_WITH_DEV_ERR(cudaDevice);
@@ -1084,7 +1089,7 @@ ErrorOrSuccess CUDADeviceStream::synchronize() const {
 }
 
 ErrorOr<DeviceEventRef> CUDADeviceStream::enqueueEvent() const {
-  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDADevice &cudaDevice = CUDADevice::cast(this->device());
   const bool recordedDuringCapture =
       ::isStreamCapturing(cudaDevice.cudaDriver(), stream_);
 
@@ -1171,14 +1176,14 @@ ErrorOrSuccess CUDADeviceStream::beginCapture() const {
   return success();
 }
 
-ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
+ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() {
   CUstreamCaptureStatus status = getCaptureStatus();
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE)
     RETURN_ERROR("stream is not capturing");
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_INVALIDATED)
     RETURN_ERROR("stream capture was invalidated");
 
-  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDADevice &cudaDevice = CUDADevice::cast(this->device());
   CUDA_WITH_DEV_ERR(cudaDevice);
 
   CUgraph graph = nullptr;
@@ -1236,8 +1241,9 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() const {
   CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuGraphDestroy(graph));
 
   // Store the stream for replay/verification.
-  return CUDADeviceGraphRef::create(cudaDevice, exec,
-                                    DeviceStreamRef::copy(this));
+  return CUDADeviceGraphRef::create(
+      cudaDevice, exec,
+      DeviceStreamRef::copy(static_cast<DeviceStream *>(this)));
 }
 
 void CUDADeviceStream::beginLaunchTrace() const {
@@ -1289,7 +1295,7 @@ CUDAModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
 }
 
 // ===== CUDADeviceFunction ===== //
-CUDADeviceFunction::CUDADeviceFunction(const CUDADeviceContext &context,
+CUDADeviceFunction::CUDADeviceFunction(CUDADeviceContext &context,
                                        CUDAModuleFunctionRef modFunc)
     : DeviceFunction(context), moduleFunction_(std::move(modFunc)) {}
 CUDADeviceFunction::~CUDADeviceFunction() {}
@@ -1346,7 +1352,7 @@ const std::string &CUDADeviceFunction::name() const {
 
 ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
                                                        const void *data,
-                                                       size_t byteSize) const {
+                                                       size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceFunction::copyToNamedConstant",
                        TRACY_COLOR_PURPLE);
   CUdeviceptr devicePtr;
@@ -1365,7 +1371,7 @@ ErrorOrSuccess CUDADeviceFunction::copyToNamedConstant(const char *name,
   return success();
 }
 
-ErrorOr<int32_t> CUDADeviceFunction::getAttribute(int32_t code) const {
+ErrorOr<int32_t> CUDADeviceFunction::getAttribute(int32_t code) {
   int32_t result;
   CUDA_CHECK_ERR(moduleFunction_->cudaDriver().cuFuncGetAttribute(
       &result, static_cast<CUfunction_attribute>(code),
@@ -1381,9 +1387,13 @@ const CUDADeviceFunction &CUDADeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const CUDADeviceFunction &>(func);
 }
 
+CUDADeviceFunction &CUDADeviceFunction::cast(DeviceFunction &func) {
+  return static_cast<CUDADeviceFunction &>(func);
+}
+
 ErrorOrSuccess CUDADeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, int blockSize, size_t dynamicSharedMemSize) const {
-  const auto &cudaContext = CUDADeviceContext::cast(context());
+    int *numBlocks, int blockSize, size_t dynamicSharedMemSize) {
+  auto &cudaContext = CUDADeviceContext::cast(context());
   CUDA_WITH_CTX_ERR(cudaContext);
   CUDA_CHECK_ERR(
       moduleFunction_->cudaDriver().cuOccupancyMaxActiveBlocksPerMultiprocessor(
@@ -1393,8 +1403,8 @@ ErrorOrSuccess CUDADeviceFunction::occupancyMaxActiveBlocksPerMultiprocessor(
 }
 
 // ===== CUDADeviceTimer ===== //
-CUDADeviceTimer::CUDADeviceTimer(const CUDADeviceContext &context,
-                                 CUevent start, CUevent stop)
+CUDADeviceTimer::CUDADeviceTimer(CUDADeviceContext &context, CUevent start,
+                                 CUevent stop)
     : DeviceTimer(context), start_(start), stop_(stop) {}
 
 CUDADeviceTimer::~CUDADeviceTimer() {
@@ -1412,8 +1422,8 @@ const CUDADeviceTimer &CUDADeviceTimer::cast(const DeviceTimer &timer) {
 }
 
 // ===== CUDADeviceContext ===== //
-CUDADeviceContext::CUDADeviceContext(const CUDADevice &device,
-                                     CUcontext context, CUstream stream)
+CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
+                                     CUstream stream)
     : DeviceContext(device), driver_(device.cudaDriver()), context_(context),
       stream_(stream) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
@@ -1431,7 +1441,7 @@ CUDADeviceContext::~CUDADeviceContext() {
 }
 
 ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                           Device::AllocMode mode) const {
+                                           Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memAlloc", TRACY_COLOR_PURPLE);
 
   assert(byteSize != 0);
@@ -1457,7 +1467,7 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) const {
+ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
@@ -1475,7 +1485,7 @@ void *CUDADeviceContext::driverContext() const { return cudaContext(); }
 
 ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
                                                       const void *src,
-                                                      size_t byteSize) const {
+                                                      size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
   CUDA_WITH_CTX_ERR(*this);
@@ -1494,7 +1504,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyToDevice(void *dst,
 
 ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
                                                         const void *src,
-                                                        size_t byteSize) const {
+                                                        size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
   CUDA_WITH_CTX_ERR(*this);
@@ -1512,18 +1522,18 @@ ErrorOrSuccess CUDADeviceContext::enqueueCopyFromDevice(void *dst,
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                              const DeviceBuffer &src,
+ErrorOrSuccess CUDADeviceContext::memCopyDtoD(DeviceBuffer &dst,
+                                              DeviceBuffer &src,
                                               size_t srcByteOffset,
-                                              size_t srcByteSize) const {
+                                              size_t srcByteSize) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   CHECK_IS_CUDA_ERR(src.context().device());
   CHECK_IS_CUDA_ERR(dst.context().device());
   CUDA_WITH_CTX_ERR(*this);
 
-  const auto &srcCtx = CUDADeviceContext::cast(src.context());
-  const auto &dstCtx = CUDADeviceContext::cast(dst.context());
+  auto &srcCtx = CUDADeviceContext::cast(src.context());
+  auto &dstCtx = CUDADeviceContext::cast(dst.context());
 
   if (this->context_ != dstCtx.context_) {
     RETURN_ERROR("device context does not match context of dst");
@@ -1571,7 +1581,7 @@ ErrorOrSuccess CUDADeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 
 ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                    uint64_t val,
-                                                   size_t valSize) const {
+                                                   size_t valSize) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
 
@@ -1679,7 +1689,7 @@ ErrorOr<DeviceFunctionRef>
 CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
                                 StringRef code, int32_t maxDynamicSharedBytes,
                                 StringRef debugLevel,
-                                int32_t optimizationLevel) const {
+                                int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   DeviceFunctionCacheEntryRef entry =
       device().findInFunctionCache(Device::FunctionCacheKey(
@@ -1746,7 +1756,7 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
 
@@ -1759,20 +1769,23 @@ ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::stream() const {
-  // Do not destroy the wrapped stream_ in DTOR as it is owned by this Context.
-  return this->createExternalStream(reinterpret_cast<void *>(stream_));
+  // This function is const only for the duration of its execution;
+  // `this` is non-const downstream so cast in order to provide
+  // mutable reference to the new stream object.
+  return CUDADeviceStreamRef::create(const_cast<CUDADeviceContext &>(*this),
+                                     reinterpret_cast<CUstream>(stream_),
+                                     /*isOwner=*/false);
 }
 
-ErrorOrSuccess
-CUDADeviceContext::streamPriorityRange(int *leastPriority,
-                                       int *greatestPriority) const {
+ErrorOrSuccess CUDADeviceContext::streamPriorityRange(int *leastPriority,
+                                                      int *greatestPriority) {
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(
       driver_.cuCtxGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
 }
 
-ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) const {
+ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) {
   // Default priority is 0 (lowest); compatible with CUDA specs.
 
   // CUDA blocking streams are a legacy feature; interpretation of "blocking"
@@ -1789,13 +1802,13 @@ ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) const {
 }
 
 ErrorOr<DeviceStreamRef>
-CUDADeviceContext::createExternalStream(void *externalStream) const {
+CUDADeviceContext::createExternalStream(void *externalStream) {
   return CUDADeviceStreamRef::create(*this,
                                      reinterpret_cast<CUstream>(externalStream),
                                      /*isOwner=*/false);
 }
 
-ErrorOrSuccess CUDADeviceContext::synchronize() const {
+ErrorOrSuccess CUDADeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::synchronize", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
@@ -1806,7 +1819,7 @@ ErrorOrSuccess CUDADeviceContext::synchronize() const {
   return success();
 }
 
-ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
+ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
@@ -1820,7 +1833,7 @@ ErrorOr<DeviceEventRef> CUDADeviceContext::enqueueEvent() const {
                                     recordedDuringCapture);
 }
 
-ErrorOrSuccess CUDADeviceContext::enqueueEvent(const DeviceEvent &event) const {
+ErrorOrSuccess CUDADeviceContext::enqueueEvent(const DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
@@ -1829,8 +1842,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueEvent(const DeviceEvent &event) const {
   return success();
 }
 
-ErrorOr<DeviceEventRef>
-CUDADeviceContext::eventCreate(bool enableTiming) const {
+ErrorOr<DeviceEventRef> CUDADeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::eventCreate", TRACY_COLOR_PURPLE);
 
   const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
@@ -1849,8 +1861,7 @@ CUDADeviceContext::eventCreate(bool enableTiming) const {
       /*enableTiming=*/enableTiming);
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+ErrorOrSuccess CUDADeviceContext::enqueueWaitFor(DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
 
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
@@ -1860,8 +1871,7 @@ CUDADeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   return success();
 }
 
-ErrorOrSuccess
-CUDADeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+ErrorOrSuccess CUDADeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
 
   DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, ctx.enqueueEvent());
@@ -1869,7 +1879,7 @@ CUDADeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   return success();
 }
 
-ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
+ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() {
   CUevent start;
   CUevent stop;
 
@@ -1886,7 +1896,7 @@ ErrorOr<DeviceTimerRef> CUDADeviceContext::startTimer() const {
 }
 
 ErrorOr<std::chrono::nanoseconds>
-CUDADeviceContext::stopTimer(const DeviceTimer &timer) const {
+CUDADeviceContext::stopTimer(const DeviceTimer &timer) {
   const auto &cudaTimer = CUDADeviceTimer::cast(timer);
 
   CUDA_WITH_CTX_ERR(*this);
@@ -1913,9 +1923,9 @@ ErrorOr<Device::MemInfo> CUDADeviceContext::getDeviceMemoryInfo() const {
 }
 
 ErrorOrSuccess CUDADeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, const DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) const {
-  const auto &cudaFunc = CUDADeviceFunction::cast(func);
+    int *numBlocks, DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) {
+  auto &cudaFunc = CUDADeviceFunction::cast(func);
   CUDA_WITH_CTX_ERR(*this);
   return cudaFunc.occupancyMaxActiveBlocksPerMultiprocessor(
       numBlocks, blockSize, dynamicSharedMemSize);
@@ -1933,7 +1943,7 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeTiled(
     const uint64_t *globalStrides, const uint32_t *boxDim,
     const uint32_t *elementStrides, CUtensorMapInterleave interleave,
     CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
-    CUtensorMapFloatOOBfill oobFill) const {
+    CUtensorMapFloatOOBfill oobFill) {
   CHECK_IS_CUDA_ERR(globalAddress.context().device());
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.cuTensorMapEncodeTiled(
@@ -1950,7 +1960,7 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeIm2col(
     const int *pixelBoxUpperCorner, uint32_t channelsPerPixel,
     uint32_t pixelsPerColumn, const uint32_t *elementStrides,
     CUtensorMapInterleave interleave, CUtensorMapSwizzle swizzle,
-    CUtensorMapL2promotion l2Promotion, CUtensorMapFloatOOBfill oobFill) const {
+    CUtensorMapL2promotion l2Promotion, CUtensorMapFloatOOBfill oobFill) {
   CHECK_IS_CUDA_ERR(globalAddress.context().device());
   CUDA_WITH_CTX_ERR(*this);
   CUDA_CHECK_ERR(driver_.cuTensorMapEncodeIm2col(
@@ -1963,6 +1973,10 @@ ErrorOrSuccess CUDADeviceContext::cudaTensorMapEncodeIm2col(
 
 const CUDADeviceContext &CUDADeviceContext::cast(const DeviceContext &ctx) {
   return static_cast<const CUDADeviceContext &>(ctx);
+}
+
+CUDADeviceContext &CUDADeviceContext::cast(DeviceContext &ctx) {
+  return static_cast<CUDADeviceContext &>(ctx);
 }
 
 const CUDADeviceContext *

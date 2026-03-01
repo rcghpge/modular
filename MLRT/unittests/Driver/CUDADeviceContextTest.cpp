@@ -566,7 +566,7 @@ $L__BB0_2:
     contexts.push_back(std::move(ctx));
   }
 
-  const DeviceContext &ctx0 = *contexts[0];
+  DeviceContext &ctx0 = *contexts[0];
 
   ASSIGN_NO_ERR(
       DeviceFunctionRef, splatFun,
@@ -604,7 +604,7 @@ $L__BB0_2:
   {
     std::cerr << "Using unicast buffers on each device.\n";
     for (int i = 0; i < numDevices; ++i) {
-      const DeviceContext &ctx = *contexts[i];
+      DeviceContext &ctx = *contexts[i];
       ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx.createHostBuffer(allocLen));
       float *hostPtr = static_cast<float *>(hostBuf->ptr());
       EXPECT_NE(hostPtr, nullptr);
@@ -694,7 +694,7 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(ctx0.synchronize());
     for (int i = 0; i < numDevices; ++i) {
-      const DeviceContext &ctx = *contexts[i];
+      DeviceContext &ctx = *contexts[i];
       bzero(hostPtr, allocLen); // Reset the memory used to validate.
       ASSIGN_NO_ERR(DeviceBufferRef, uniBuf, multiBuf->unicastBufferFor(ctx));
       EXPECT_NO_ERR(uniBuf->copyTo(*hostBuf));

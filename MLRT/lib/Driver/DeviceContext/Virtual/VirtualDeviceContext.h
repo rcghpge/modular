@@ -34,9 +34,9 @@ class VirtualDevice;
 class VirtualDeviceContext;
 class VirtualDeviceStream;
 
-using VirtualDeviceRef = RCRef<const VirtualDevice>;
-using VirtualDeviceContextRef = RCRef<const VirtualDeviceContext>;
-using VirtualDeviceStreamRef = RCRef<const VirtualDeviceStream>;
+using VirtualDeviceRef = RCRef<VirtualDevice>;
+using VirtualDeviceContextRef = RCRef<VirtualDeviceContext>;
+using VirtualDeviceStreamRef = RCRef<VirtualDeviceStream>;
 
 /// Virtual Device for compile-only mode.
 ///
@@ -64,16 +64,15 @@ public:
 
   int deviceCount() const override;
 
-  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
-                            bool isHost) const override;
-  ErrorOrSuccess chunkFree(void *ptr, bool isHost) const override;
+  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;
+  ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   ErrorOr<void *> getCurrentDriverContext() const override;
-  ErrorOrSuccess setCurrentDriverContext(void *ctx) const override;
+  ErrorOrSuccess setCurrentDriverContext(void *ctx) override;
 
-  ErrorOr<DeviceContextRef> createContext() const override;
+  ErrorOr<DeviceContextRef> createContext() override;
 
   static const VirtualDevice &cast(const Device &device);
 
@@ -85,10 +84,10 @@ private:
 /// Virtual Device Stream for compile-only mode.
 class VirtualDeviceStream : public DeviceStream {
 public:
-  explicit VirtualDeviceStream(const VirtualDeviceContext &ctx);
+  explicit VirtualDeviceStream(VirtualDeviceContext &ctx);
   ~VirtualDeviceStream() override = default;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
 
@@ -123,66 +122,64 @@ public:
 /// which can compile code without requiring GPU hardware.
 class VirtualDeviceContext : public DeviceContext {
 public:
-  explicit VirtualDeviceContext(const VirtualDevice &device);
+  explicit VirtualDeviceContext(VirtualDevice &device);
   ~VirtualDeviceContext() override;
 
   // DeviceBuffer copies - not implemented for virtual context
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
-                                       size_t byteSize) const override;
-  ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst, const DeviceBuffer &src,
-                             size_t srcByteOffset,
-                             size_t srcByteSize) const override;
+                                       size_t byteSize) override;
+  ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
+                             size_t srcByteOffset, size_t srcByteSize) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
-                                  size_t valSize) const override;
+                                  size_t valSize) override;
 
   // DeviceFunction compiling - minimal implementation
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
                int32_t maxDynamicSharedBytes, StringRef debugLevel,
-               int32_t optimizationLevel) const override;
+               int32_t optimizationLevel) override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
-      const size_t *argSizes = nullptr) const override;
+      const size_t *argSizes = nullptr) override;
 
   // Synchronize asynchronous operations - no-ops
   ErrorOr<DeviceStreamRef> stream() const override;
-  ErrorOr<DeviceStreamRef> createStream(int priority) const override;
+  ErrorOr<DeviceStreamRef> createStream(int priority) override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) const override;
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
+                                     int *greatestPriority) override;
+  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
-  ErrorOr<DeviceEventRef> enqueueEvent() const override;
-  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
+  ErrorOr<DeviceEventRef> enqueueEvent() override;
+  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
 
-  ErrorOr<DeviceTimerRef> startTimer() const override;
+  ErrorOr<DeviceTimerRef> startTimer() override;
   ErrorOr<std::chrono::nanoseconds>
-  stopTimer(const DeviceTimer &timer) const override;
+  stopTimer(const DeviceTimer &timer) override;
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, const DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) const override;
+      int *numBlocks, DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) override;
 
   static const VirtualDeviceContext &cast(const DeviceContext &ctx);
   static const VirtualDeviceContext *verified_cast(const DeviceContext *ctx);
 
 private:
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                          Device::AllocMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
+                          Device::AllocMode mode) override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
 
   void *driverContext() const override;
 

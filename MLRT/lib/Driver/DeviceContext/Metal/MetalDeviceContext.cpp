@@ -156,7 +156,8 @@ ErrorOr<bool> MetalDevice::canAccess(const Device &peer) const { return false; }
 ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   // Constants pulled from the Metal feature set tables available in
   // PDF/Numbers spreadsheet at:
-  // https://developer.apple.com/documentation/metal/detecting-gpu-features-and-metal-software-versions
+  // https://developer.apple.com/documentation/metal/
+  // detecting-gpu-features-and-metal-software-versions
   //
   // The families we care about:
   // - M1 -> Apple7
@@ -307,7 +308,7 @@ ErrorOr<std::string> MetalDevice::getPciBusId() const {
 int MetalDevice::deviceCount() const { return 1; }
 
 ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
-                                       bool isHost) const {
+                                       bool isHost) {
   assert(byteSize != 0);
 
   ensureThreadlocalAutoreleasePoolExists();
@@ -339,7 +340,7 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess MetalDevice::chunkFree(void *ptr, bool isHost) const {
+ErrorOrSuccess MetalDevice::chunkFree(void *ptr, bool isHost) {
   if (ptr == nullptr)
     return success();
 
@@ -362,11 +363,11 @@ ErrorOr<void *> MetalDevice::getCurrentDriverContext() const {
   RETURN_ERROR("Metal not supported");
 }
 
-ErrorOrSuccess MetalDevice::setCurrentDriverContext(void *ctx) const {
+ErrorOrSuccess MetalDevice::setCurrentDriverContext(void *ctx) {
   RETURN_ERROR("Metal not supported");
 }
 
-ErrorOr<DeviceContextRef> MetalDevice::createContext() const {
+ErrorOr<DeviceContextRef> MetalDevice::createContext() {
   ensureThreadlocalAutoreleasePoolExists();
 
   NS::SharedPtr<MTL::CommandQueue> commandQueue =
@@ -377,20 +378,19 @@ ErrorOr<DeviceContextRef> MetalDevice::createContext() const {
   return MetalDeviceContextRef::create(*this, commandQueue);
 }
 
-ErrorOr<DeviceStreamRef> MetalDeviceContext::createStream(int priority) const {
+ErrorOr<DeviceStreamRef> MetalDeviceContext::createStream(int priority) {
   RETURN_ERROR("Unimplemented for Metal devices");
 }
 
-ErrorOrSuccess
-MetalDeviceContext::streamPriorityRange(int *leastPriority,
-                                        int *greatestPriority) const {
+ErrorOrSuccess MetalDeviceContext::streamPriorityRange(int *leastPriority,
+                                                       int *greatestPriority) {
   *leastPriority = 0;
   *greatestPriority = 0;
   return success();
 }
 
 ErrorOr<DeviceStreamRef>
-MetalDeviceContext::createExternalStream(void *externalStream) const {
+MetalDeviceContext::createExternalStream(void *externalStream) {
   RETURN_ERROR("Metal not supported");
 }
 
@@ -398,7 +398,11 @@ const MetalDevice &MetalDevice::cast(const Device &device) {
   return static_cast<const MetalDevice &>(device);
 }
 
-ErrorOr<const MetalDevice &> MetalDevice::get(int id) {
+MetalDevice &MetalDevice::cast(Device &device) {
+  return static_cast<MetalDevice &>(device);
+}
+
+ErrorOr<MetalDevice &> MetalDevice::get(int id) {
   if (id != 0)
     RETURN_ERROR("Apple Metal device only supports id == 0.");
 
@@ -493,12 +497,12 @@ MetalDevice::getTrackedBuffers() const {
 //
 
 MetalDeviceContext::MetalDeviceContext(
-    const MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
-    : DeviceContext(device), commandQueue_(commandQueue) {}
+    MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
+    : DeviceContext(device), commandQueue_(std::move(commandQueue)) {}
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
                                                        const void *src,
-                                                       size_t byteSize) const {
+                                                       size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
 
@@ -586,9 +590,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
   return success();
 }
 
-ErrorOrSuccess
-MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
-                                          size_t byteSize) const {
+ErrorOrSuccess MetalDeviceContext::enqueueCopyFromDevice(void *dst,
+                                                         const void *src,
+                                                         size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
 
@@ -647,10 +651,10 @@ MetalDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
   return success();
 }
 
-ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                               const DeviceBuffer &src,
+ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
+                                               DeviceBuffer &src,
                                                size_t srcByteOffset,
-                                               size_t srcByteSize) const {
+                                               size_t srcByteSize) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
 
   // 1) Basic validation
@@ -681,7 +685,7 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 
 ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                     uint64_t val,
-                                                    size_t valSize) const {
+                                                    size_t valSize) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
 
@@ -754,7 +758,7 @@ ErrorOr<DeviceFunctionRef>
 MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
                                  StringRef code, int32_t maxDynamicSharedBytes,
                                  StringRef debugLevel,
-                                 int32_t optimizationLevel) const {
+                                 int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
@@ -863,8 +867,7 @@ MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
 ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void * /*attrs*/, uint32_t numAttrs, void **args,
-    const size_t *argSizes) const {
+    void * /*attrs*/, uint32_t numAttrs, void **args, const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
 
@@ -962,7 +965,7 @@ ErrorOr<DeviceStreamRef> MetalDeviceContext::stream() const {
   RETURN_ERROR("Metal stream not implemented");
 }
 
-ErrorOrSuccess MetalDeviceContext::synchronize() const {
+ErrorOrSuccess MetalDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize", TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
@@ -982,7 +985,7 @@ ErrorOrSuccess MetalDeviceContext::synchronize() const {
   return success();
 }
 
-ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
+ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
@@ -997,26 +1000,23 @@ ErrorOr<DeviceEventRef> MetalDeviceContext::enqueueEvent() const {
   return MetalDeviceEventRef::create(MetalDevice::cast(device()), cmdBuffer);
 }
 
-ErrorOrSuccess
-MetalDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+ErrorOrSuccess MetalDeviceContext::enqueueEvent(const DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented for Metal devices");
 }
 
-ErrorOr<DeviceEventRef>
-MetalDeviceContext::eventCreate(bool enableTiming) const {
+ErrorOr<DeviceEventRef> MetalDeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented for Metal devices");
 }
 
-ErrorOrSuccess
-MetalDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+ErrorOrSuccess MetalDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
                        TRACY_COLOR_PURPLE);
 
   // This is a synchronous implementation of the enqueueWaitFor().
   // Cast to MetalDeviceEvent to get the command buffer
-  const MetalDeviceEvent &metalEvent = MetalDeviceEvent::cast(event);
+  MetalDeviceEvent &metalEvent = MetalDeviceEvent::cast(event);
 
   // For Metal, we need to wait for the event's command buffer to complete
   // before continuing with subsequent operations on our command queue
@@ -1025,8 +1025,7 @@ MetalDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
   return success();
 }
 
-ErrorOrSuccess
-MetalDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+ErrorOrSuccess MetalDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueWaitFor",
                        TRACY_COLOR_PURPLE);
 
@@ -1036,29 +1035,28 @@ MetalDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
   return ctx.synchronize();
 }
 
-ErrorOr<DeviceTimerRef> MetalDeviceContext::startTimer() const {
+ErrorOr<DeviceTimerRef> MetalDeviceContext::startTimer() {
   return MetalDeviceTimerRef::create(*this, std::chrono::steady_clock::now());
 }
 
 ErrorOr<std::chrono::nanoseconds>
-MetalDeviceContext::stopTimer(const DeviceTimer &timer) const {
+MetalDeviceContext::stopTimer(const DeviceTimer &timer) {
   return std::chrono::steady_clock::now() -
          MetalDeviceTimer::cast(timer).cpu_start();
 }
 
 ErrorOr<Device::MemInfo> MetalDeviceContext::getDeviceMemoryInfo() const {
-  RETURN_IF_ERROR(synchronize());
   return device().getMemoryInfo();
 }
 
 ErrorOrSuccess MetalDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, const DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) const {
+    int *numBlocks, DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) {
   RETURN_ERROR("Unimplemented for Metal devices");
 }
 
 ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                            Device::AllocMode mode) const {
+                                            Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
 
   ensureThreadlocalAutoreleasePoolExists();
@@ -1122,7 +1120,7 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
   }
 }
 
-ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, bool isHost) const {
+ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   if (ptr == nullptr)
@@ -1238,14 +1236,14 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
 // ===== MetalDeviceEvent ===== //
 //
 
-MetalDeviceEvent::MetalDeviceEvent(const MetalDevice &device,
+MetalDeviceEvent::MetalDeviceEvent(MetalDevice &device,
                                    MTL::CommandBuffer *cmdBuffer)
     : DeviceEvent(device), cmdBuffer_(NS::TransferPtr(cmdBuffer)) {
   if (cmdBuffer_)
     cmdBuffer_->retain(); // Take ownership of autoreleased MTL::CommandBuffer
 }
 
-ErrorOrSuccess MetalDeviceEvent::synchronize() const {
+ErrorOrSuccess MetalDeviceEvent::synchronize() {
   if (!cmdBuffer_)
     RETURN_ERROR("MetalDeviceEvent: null command buffer");
   cmdBuffer_->waitUntilCompleted();
@@ -1264,13 +1262,17 @@ const MetalDeviceEvent &MetalDeviceEvent::cast(const DeviceEvent &event) {
   return static_cast<const MetalDeviceEvent &>(event);
 }
 
+MetalDeviceEvent &MetalDeviceEvent::cast(DeviceEvent &event) {
+  return static_cast<MetalDeviceEvent &>(event);
+}
+
 //
 //
 // ===== MetalDeviceTimer ===== //
 //
 
 MetalDeviceTimer::MetalDeviceTimer(
-    const MetalDeviceContext &context,
+    MetalDeviceContext &context,
     std::chrono::time_point<std::chrono::steady_clock> start)
     : DeviceTimer(context), start_(start) {}
 
@@ -1289,8 +1291,7 @@ const MetalDeviceTimer &MetalDeviceTimer::cast(const DeviceTimer &timer) {
 //
 
 MetalDeviceFunction::MetalDeviceFunction(
-    const MetalDeviceContext &context, StringRef moduleName,
-    StringRef functionName,
+    MetalDeviceContext &context, StringRef moduleName, StringRef functionName,
     NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
     size_t argumentCount)
     : DeviceFunction(context), name_(functionName.str()),
@@ -1302,14 +1303,14 @@ const std::string &MetalDeviceFunction::name() const { return name_; }
 
 ErrorOrSuccess MetalDeviceFunction::copyToNamedConstant(const char *name,
                                                         const void *data,
-                                                        size_t byteSize) const {
+                                                        size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceFunction::copyToNamedConstant",
                        TRACY_COLOR_PURPLE);
   // Metal doesn't support named constants in the same way as CUDA/HIP
   RETURN_ERROR("Named constants not supported in Metal");
 }
 
-ErrorOr<int32_t> MetalDeviceFunction::getAttribute(int32_t code) const {
+ErrorOr<int32_t> MetalDeviceFunction::getAttribute(int32_t code) {
   // Metal doesn't support the same attributes as CUDA/HIP
   RETURN_ERROR("Attributes not supported in Metal");
 }

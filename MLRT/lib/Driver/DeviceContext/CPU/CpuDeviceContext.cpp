@@ -69,7 +69,7 @@ ErrorOr<std::string> CpuDevice::getPciBusId() const {
   RETURN_ERROR("PCI bus address not available for CPU devices");
 }
 
-ErrorOr<DeviceContextRef> CpuDevice::createContext() const {
+ErrorOr<DeviceContextRef> CpuDevice::createContext() {
   return CpuDeviceContextRef::create(*this);
 }
 
@@ -78,14 +78,13 @@ int CpuDevice::deviceCount() const {
   return 1;
 }
 
-ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize,
-                                     bool isHost) const {
+ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize, bool isHost) {
   assert(byteSize != 0);
   *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
   return success();
 }
 
-ErrorOrSuccess CpuDevice::chunkFree(void *ptr, bool isHost) const {
+ErrorOrSuccess CpuDevice::chunkFree(void *ptr, bool isHost) {
   M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
   return success();
 }
@@ -131,7 +130,7 @@ ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
 }
 
 ErrorOr<void *> CpuDevice::getCurrentDriverContext() const { return nullptr; }
-ErrorOrSuccess CpuDevice::setCurrentDriverContext(void *ctx) const {
+ErrorOrSuccess CpuDevice::setCurrentDriverContext(void *ctx) {
   // Not tracking a context for CPU.
   return success();
 }
@@ -140,7 +139,7 @@ const CpuDevice &CpuDevice::cast(const Device &device) {
   return static_cast<const CpuDevice &>(device);
 }
 
-ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
+ErrorOr<CpuDevice &> CpuDevice::get(int id) {
   if (id != 0) {
     RETURN_ERROR("CPU device only supports id == 0.");
   }
@@ -150,10 +149,9 @@ ErrorOr<const CpuDevice &> CpuDevice::get(int id) {
 }
 
 // ===== CpuDeviceStream ===== //
-CpuDeviceStream::CpuDeviceStream(const CpuDeviceContext &ctx)
-    : DeviceStream(ctx) {}
+CpuDeviceStream::CpuDeviceStream(CpuDeviceContext &ctx) : DeviceStream(ctx) {}
 
-ErrorOrSuccess CpuDeviceStream::synchronize() const { return success(); }
+ErrorOrSuccess CpuDeviceStream::synchronize() { return success(); }
 
 ErrorOr<DeviceEventRef> CpuDeviceStream::enqueueEvent() const {
   RETURN_ERROR("Unimplemented");
@@ -184,7 +182,7 @@ void *CpuDeviceStream::ptr() const { return nullptr; }
 
 // ===== CpuDeviceTimer ===== //
 CpuDeviceTimer::CpuDeviceTimer(
-    const CpuDeviceContext &context,
+    CpuDeviceContext &context,
     std::chrono::time_point<std::chrono::steady_clock> start)
     : DeviceTimer(context), start_(start) {}
 
@@ -200,11 +198,10 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 //
 // ===== CpuDeviceContext === //
 //
-CpuDeviceContext::CpuDeviceContext(const CpuDevice &device)
-    : DeviceContext(device) {}
+CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {}
 
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                          Device::AllocMode mode) const {
+                                          Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(byteSize != 0);
   *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
@@ -214,7 +211,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
+ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
   M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
   return success();
@@ -223,7 +220,7 @@ ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) const {
 void *CpuDeviceContext::driverContext() const { return nullptr; }
 
 ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
-                                                     size_t byteSize) const {
+                                                     size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
   memcpy(dst, src, byteSize);
@@ -232,17 +229,17 @@ ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
 
 ErrorOrSuccess CpuDeviceContext::enqueueCopyFromDevice(void *dst,
                                                        const void *src,
-                                                       size_t byteSize) const {
+                                                       size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
   memcpy(dst, src, byteSize);
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                             const DeviceBuffer &src,
+ErrorOrSuccess CpuDeviceContext::memCopyDtoD(DeviceBuffer &dst,
+                                             DeviceBuffer &src,
                                              size_t srcByteOffset,
-                                             size_t srcByteSize) const {
+                                             size_t srcByteSize) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   CHECK_IS_CPU_ERR(src.context().device());
   CHECK_IS_CPU_ERR(dst.context().device());
@@ -256,7 +253,7 @@ ErrorOrSuccess CpuDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 
 ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                   uint64_t val,
-                                                  size_t valSize) const {
+                                                  size_t valSize) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
 
@@ -322,7 +319,7 @@ ErrorOr<DeviceFunctionRef>
 CpuDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
                                StringRef code, int32_t maxDynamicSharedBytes,
                                StringRef debugLevel,
-                               int32_t optimizationLevel) const {
+                               int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::loadFunction", TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
   RETURN_ERROR("Unimplemented");
@@ -331,7 +328,7 @@ CpuDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
 ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
   // Currently not implemented. Maybe never to be implemented.
@@ -339,71 +336,71 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
-  return CpuDeviceStreamRef::create(*this);
+  // This function is const only for the duration of its execution;
+  // `this` is non-const downstream so cast in order to provide
+  // mutable reference to the new stream object.
+  return CpuDeviceStreamRef::create(const_cast<CpuDeviceContext &>(*this));
 }
 
-ErrorOr<DeviceStreamRef> CpuDeviceContext::createStream(int priority) const {
+ErrorOr<DeviceStreamRef> CpuDeviceContext::createStream(int priority) {
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOrSuccess
-CpuDeviceContext::streamPriorityRange(int *leastPriority,
-                                      int *greatestPriority) const {
+ErrorOrSuccess CpuDeviceContext::streamPriorityRange(int *leastPriority,
+                                                     int *greatestPriority) {
   *leastPriority = 0;
   *greatestPriority = 0;
   return success();
 }
 
 ErrorOr<DeviceStreamRef>
-CpuDeviceContext::createExternalStream(void *externalStream) const {
+CpuDeviceContext::createExternalStream(void *externalStream) {
   return CpuDeviceStreamRef::create(*this);
 }
 
-ErrorOrSuccess CpuDeviceContext::synchronize() const {
+ErrorOrSuccess CpuDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   // Currently we do not schedule asynchronous work.
   return success();
 }
 
-ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() const {
+ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOr<DeviceEventRef> CpuDeviceContext::eventCreate(bool enableTiming) const {
+ErrorOr<DeviceEventRef> CpuDeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOrSuccess
-CpuDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
   RETURN_ERROR("Unimplemented");
 }
 
 ErrorOrSuccess CpuDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, const DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) const {
+    int *numBlocks, DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) {
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() const {
+ErrorOr<DeviceTimerRef> CpuDeviceContext::startTimer() {
   return CpuDeviceTimerRef::create(*this, std::chrono::steady_clock::now());
 }
 
 ErrorOr<std::chrono::nanoseconds>
-CpuDeviceContext::stopTimer(const DeviceTimer &timer) const {
+CpuDeviceContext::stopTimer(const DeviceTimer &timer) {
   return std::chrono::steady_clock::now() -
          CpuDeviceTimer::cast(timer).cpu_start();
 }

@@ -402,7 +402,7 @@ captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
 
   SmallVector<Driver::DeviceStreamRef> results;
   for (const AnyAsyncValueRef &arg : extraArgs) {
-    M::RCRef<const M::Driver::DeviceContext> *context =
+    M::RCRef<M::Driver::DeviceContext> *context =
         dyn_cast<Driver::DeviceContextRef>(arg);
     if (!context)
       continue;

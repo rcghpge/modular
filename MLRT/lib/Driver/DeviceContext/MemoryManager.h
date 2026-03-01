@@ -69,18 +69,18 @@ public:
   // `memoryLimit` (bytes) is the maximum memory limit for the memory manager.
   // If -1, then the memory manager will use the default memory limit.
   // Note that MEMORY_MANAGER_SIZE_LIMIT environment variable overrides this.
-  static MemoryManager *onDevice(const Device &device, Device::MemInfo memInfo,
+  static MemoryManager *onDevice(Device &device, Device::MemInfo memInfo,
                                  size_t alignment, int64_t memoryLimit = -1);
-  static MemoryManager *onHost(const Device &device, size_t alignment);
+  static MemoryManager *onHost(Device &device, size_t alignment);
 
 private:
   friend class Chunk;
   friend class MemoryManagerFreeList;
 
-  MemoryManager(const Device &device, size_t maxSize, size_t chunkSize,
+  MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
                 size_t alignment, bool isHost, bool useOnlyMemoryManagerMode);
 
-  const Device &device() const;
+  Device &device() const;
 
   void selfCheck() const;
 
@@ -109,7 +109,7 @@ private:
   // maxCacheSize_.
   void growChunkSizeTo(size_t newChunkSize);
 
-  const Device &device_;
+  Device &device_;
 
   // This memory manager is managing "pinned" host memory.
   const bool isHost_;
@@ -157,8 +157,7 @@ private:
 
 class MemoryManagerFreeList {
 public:
-  MemoryManagerFreeList(const DeviceContext *context,
-                        MemoryManager &memoryManager,
+  MemoryManagerFreeList(DeviceContext *context, MemoryManager &memoryManager,
                         MemoryManagerFreeList *parent);
   ~MemoryManagerFreeList();
 
@@ -191,6 +190,7 @@ private:
   void selfCheck() const;
   bool contains(MemoryManager::Desc *desc) const;
 
+  DeviceContext *context();
   const DeviceContext *context() const;
 
   MemoryManager::Desc *allocateDesc(size_t size);
@@ -210,7 +210,7 @@ private:
   ErrorOrSuccess validateRedzones(void *wrappedPtr, const RedzoneInfo &size);
   void printRedzone(const uint8_t *dataPtr, const uint8_t *displayPtr);
 
-  const DeviceContext *ctx_;
+  DeviceContext *ctx_;
 
   MemoryManager &memoryManager_;
   MemoryManagerFreeList *parent_;

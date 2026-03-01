@@ -37,16 +37,16 @@ class CUDADeviceMulticastBuffer;
 class CUDADeviceStream;
 class CUDADeviceTimer;
 
-using CUDADeviceRef = RCRef<const CUDADevice>;
-using CUDADeviceContextRef = RCRef<const CUDADeviceContext>;
-using CUDADeviceEventRef = RCRef<const CUDADeviceEvent>;
+using CUDADeviceRef = RCRef<CUDADevice>;
+using CUDADeviceContextRef = RCRef<CUDADeviceContext>;
+using CUDADeviceEventRef = RCRef<CUDADeviceEvent>;
 using CUDADeviceGraphRef = RCRef<CUDADeviceGraph>;
 using CUDAModuleFunctionRef = RCRef<const CUDAModuleFunction>;
-using CUDADeviceFunctionRef = RCRef<const CUDADeviceFunction>;
+using CUDADeviceFunctionRef = RCRef<CUDADeviceFunction>;
 using CUDADeviceFunctionArgumentsRef = RCRef<const CUDADeviceFunctionArguments>;
-using CUDADeviceMulticastBufferRef = RCRef<const CUDADeviceMulticastBuffer>;
-using CUDADeviceStreamRef = RCRef<const CUDADeviceStream>;
-using CUDADeviceTimerRef = RCRef<const CUDADeviceTimer>;
+using CUDADeviceMulticastBufferRef = RCRef<CUDADeviceMulticastBuffer>;
+using CUDADeviceStreamRef = RCRef<CUDADeviceStream>;
+using CUDADeviceTimerRef = RCRef<CUDADeviceTimer>;
 
 class CUDADevice : public Device {
 public:
@@ -72,7 +72,7 @@ public:
   ErrorOr<bool> canAccess(const Device &peer) const override;
 
   // Enable peer access between this device and the peer device.
-  ErrorOrSuccess enablePeerAccessImpl(const Device &peer) const override;
+  ErrorOrSuccess enablePeerAccessImpl(const Device &peer) override;
 
   ErrorOr<int> getAttribute(Attribute attr) const override;
 
@@ -82,25 +82,25 @@ public:
 
   int deviceCount() const override;
 
-  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize,
-                            bool isHost) const override;
-  ErrorOrSuccess chunkFree(void *ptr, bool isHost) const override;
+  ErrorOrSuccess chunkAlloc(void **ptr, size_t byteSize, bool isHost) override;
+  ErrorOrSuccess chunkFree(void *ptr, bool isHost) override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
   ErrorOr<void *> getCurrentDriverContext() const override;
-  ErrorOrSuccess setCurrentDriverContext(void *ctx) const override;
+  ErrorOrSuccess setCurrentDriverContext(void *ctx) override;
 
-  ErrorOr<DeviceContextRef> createContext() const override;
+  ErrorOr<DeviceContextRef> createContext() override;
 
   ErrorOr<const char *> getArchName() const override;
 
   static const CUDADevice &cast(const Device &device);
+  static CUDADevice &cast(Device &device);
 
   static ErrorOr<std::string> getFirstArchName();
 
   static ErrorOr<int> numberOfGPUs();
-  static ErrorOr<const CUDADevice &> get(int id);
+  static ErrorOr<CUDADevice &> get(int id);
 
   ErrorOr<CUevent> eventCachePop(bool useCache = true) const;
   void eventCachePush(CUevent event) const;
@@ -116,7 +116,8 @@ private:
   // support for pre-Turing hardware.
   //
   // NVIDIA driver to CUDA version mapping:
-  // https://docs.nvidia.com/deploy/cuda-compatibility/index.html#use-the-right-compat-package
+  // https://docs.nvidia.com/deploy/cuda-compatibility/index.html#
+  // use-the-right-compat-package
   //
   // Users on older drivers or hardware can set MODULAR_NVPTX_COMPILER_PATH
   // to use an external ptxas binary instead of the bundled libnvptxcompiler.
@@ -156,10 +157,8 @@ public:
 
   ~CUDADeviceMulticastBuffer() override;
 
-  ErrorOr<DeviceBufferRef>
-  multicastBuffer(const DeviceContext &ctx) const override;
-  ErrorOr<DeviceBufferRef>
-  unicastBufferFor(const DeviceContext &ctx) const override;
+  ErrorOr<DeviceBufferRef> multicastBuffer(DeviceContext &ctx) const override;
+  ErrorOr<DeviceBufferRef> unicastBufferFor(DeviceContext &ctx) const override;
 
   size_t numberOfDevices() const override;
 
@@ -176,11 +175,11 @@ private:
 
 class CUDADeviceEvent : public DeviceEvent {
 public:
-  CUDADeviceEvent(const CUDADevice &device, CUevent event,
-                  bool recordedDuringCapture, bool enableTiming = false);
+  CUDADeviceEvent(CUDADevice &device, CUevent event, bool recordedDuringCapture,
+                  bool enableTiming = false);
   ~CUDADeviceEvent() override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
   ErrorOr<bool> isReady() const override;
 
@@ -198,7 +197,7 @@ private:
 
 class CUDADeviceGraph : public DeviceGraph {
 public:
-  CUDADeviceGraph(const CUDADevice &device, CUgraphExec exec,
+  CUDADeviceGraph(CUDADevice &device, CUgraphExec exec,
                   DeviceStreamRef stream = {})
       : DeviceGraph(device, std::move(stream)), exec_(exec) {}
 
@@ -216,11 +215,11 @@ private:
 
 class CUDADeviceStream : public DeviceStream {
 public:
-  CUDADeviceStream(const CUDADeviceContext &ctx, CUstream stream,
+  CUDADeviceStream(CUDADeviceContext &ctx, CUstream stream,
                    bool isOwner = true);
   ~CUDADeviceStream();
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
 
@@ -240,7 +239,7 @@ public:
   void *ptr() const override;
 
   ErrorOrSuccess beginCapture() const override;
-  ErrorOr<DeviceGraphRef> endCapture() const override;
+  ErrorOr<DeviceGraphRef> endCapture() override;
 
   void beginLaunchTrace() const override;
   std::vector<KernelLaunchMetadata> takeLaunchTrace() const override;
@@ -282,16 +281,15 @@ private:
 
 class CUDADeviceFunction : public DeviceFunction {
 public:
-  CUDADeviceFunction(const CUDADeviceContext &context,
-                     CUDAModuleFunctionRef modFunc);
+  CUDADeviceFunction(CUDADeviceContext &context, CUDAModuleFunctionRef modFunc);
   ~CUDADeviceFunction() override;
 
   const std::string &name() const override;
 
   ErrorOrSuccess copyToNamedConstant(const char *name, const void *data,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
 
-  ErrorOr<int32_t> getAttribute(int32_t code) const override;
+  ErrorOr<int32_t> getAttribute(int32_t code) override;
 
   ErrorOrSuccess
   cudaCallKernelDirect(uint32_t gridX, uint32_t gridY, uint32_t gridZ,
@@ -301,11 +299,12 @@ public:
 
   ErrorOrSuccess
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
-                                            size_t dynamicSharedMemSize) const;
+                                            size_t dynamicSharedMemSize);
 
   CUmodule cudaModule() const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
+  static CUDADeviceFunction &cast(DeviceFunction &func);
 
 private:
   // The moduleFunction_ holds the CUDA specific implementation. Methods on
@@ -317,8 +316,7 @@ private:
 
 class CUDADeviceTimer : public DeviceTimer {
 public:
-  CUDADeviceTimer(const CUDADeviceContext &context, CUevent start,
-                  CUevent stop);
+  CUDADeviceTimer(CUDADeviceContext &context, CUevent start, CUevent stop);
   ~CUDADeviceTimer() override;
 
   CUevent cudaStartEvent() const;
@@ -333,53 +331,50 @@ private:
 
 class CUDADeviceContext : public DeviceContext {
 public:
-  CUDADeviceContext(const CUDADevice &device, CUcontext context,
-                    CUstream stream);
+  CUDADeviceContext(CUDADevice &device, CUcontext context, CUstream stream);
   ~CUDADeviceContext() override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
-                                     size_t byteSize) const override;
+                                     size_t byteSize) override;
   ErrorOrSuccess enqueueCopyFromDevice(void *dst, const void *src,
-                                       size_t byteSize) const override;
-  ErrorOrSuccess memCopyDtoD(const DeviceBuffer &dst, const DeviceBuffer &src,
-                             size_t srcByteOffset,
-                             size_t srcByteSize) const override;
+                                       size_t byteSize) override;
+  ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
+                             size_t srcByteOffset, size_t srcByteSize) override;
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
-                                  size_t valSize) const override;
+                                  size_t valSize) override;
 
   // DeviceFunction loading.
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,
                int32_t maxDynamicSharedBytes, StringRef debugLevel,
-               int32_t optimizationLevel) const override;
+               int32_t optimizationLevel) override;
 
   ErrorOrSuccess enqueueFunctionExecDirect(
       const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
       uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
-      const size_t *argSizes = nullptr) const override;
+      const size_t *argSizes = nullptr) override;
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
   ErrorOrSuccess streamPriorityRange(int *leastPriority,
-                                     int *greatestPriority) const override;
-  ErrorOr<DeviceStreamRef> createStream(int priority = 0) const override;
-  ErrorOr<DeviceStreamRef>
-  createExternalStream(void *externalStream) const override;
+                                     int *greatestPriority) override;
+  ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
+  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
 
-  ErrorOrSuccess synchronize() const override;
+  ErrorOrSuccess synchronize() override;
 
-  ErrorOr<DeviceEventRef> enqueueEvent() const override;
-  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) const override;
-  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceEvent &event) const override;
-  ErrorOrSuccess enqueueWaitFor(const DeviceContext &ctx) const override;
+  ErrorOr<DeviceEventRef> enqueueEvent() override;
+  ErrorOrSuccess enqueueEvent(const DeviceEvent &event) override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceEvent &event) override;
+  ErrorOrSuccess enqueueWaitFor(DeviceContext &ctx) override;
 
-  ErrorOr<DeviceTimerRef> startTimer() const override;
+  ErrorOr<DeviceTimerRef> startTimer() override;
   ErrorOr<std::chrono::nanoseconds>
-  stopTimer(const DeviceTimer &timer) const override;
+  stopTimer(const DeviceTimer &timer) override;
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
@@ -388,8 +383,8 @@ public:
   CUstream cudaStream() const;
 
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
-      int *numBlocks, const DeviceFunction &func, int blockSize,
-      size_t dynamicSharedMemSize) const override;
+      int *numBlocks, DeviceFunction &func, int blockSize,
+      size_t dynamicSharedMemSize) override;
 
   ErrorOrSuccess cudaTensorMapEncodeTiled(
       void *tensorMap, CUtensorMapDataType tensorDataType, uint32_t tensorRank,
@@ -397,7 +392,7 @@ public:
       const uint64_t *globalStrides, const uint32_t *boxDim,
       const uint32_t *elementStrides, CUtensorMapInterleave interleave,
       CUtensorMapSwizzle swizzle, CUtensorMapL2promotion l2Promotion,
-      CUtensorMapFloatOOBfill oobFill) const;
+      CUtensorMapFloatOOBfill oobFill);
 
   /// Create a TMA descriptor for im2col transformation.
   /// Used for implicit GEMM convolution where the TMA hardware performs
@@ -409,10 +404,10 @@ public:
       const int *pixelBoxUpperCorner, uint32_t channelsPerPixel,
       uint32_t pixelsPerColumn, const uint32_t *elementStrides,
       CUtensorMapInterleave interleave, CUtensorMapSwizzle swizzle,
-      CUtensorMapL2promotion l2Promotion,
-      CUtensorMapFloatOOBfill oobFill) const;
+      CUtensorMapL2promotion l2Promotion, CUtensorMapFloatOOBfill oobFill);
 
   static const CUDADeviceContext &cast(const DeviceContext &ctx);
+  static CUDADeviceContext &cast(DeviceContext &ctx);
   static const CUDADeviceContext *verified_cast(const DeviceContext *ctx);
 
 private:
@@ -429,8 +424,8 @@ private:
   bool logVerbose_ = false;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
-                          Device::AllocMode mode) const override;
-  ErrorOrSuccess memFree(void *ptr, bool isHost) const override;
+                          Device::AllocMode mode) override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
 
   void *driverContext() const override;
 

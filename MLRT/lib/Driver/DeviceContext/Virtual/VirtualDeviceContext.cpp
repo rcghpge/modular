@@ -73,12 +73,12 @@ int VirtualDevice::deviceCount() const {
 }
 
 ErrorOrSuccess VirtualDevice::chunkAlloc(void **ptr, size_t byteSize,
-                                         bool isHost) const {
+                                         bool isHost) {
   assert(false && "VirtualDevice::chunkAlloc not implemented");
   RETURN_ERROR("VirtualDevice does not support memory allocation");
 }
 
-ErrorOrSuccess VirtualDevice::chunkFree(void *ptr, bool isHost) const {
+ErrorOrSuccess VirtualDevice::chunkFree(void *ptr, bool isHost) {
   assert(false && "VirtualDevice::chunkFree not implemented");
   RETURN_ERROR("VirtualDevice does not support memory deallocation");
 }
@@ -96,12 +96,12 @@ ErrorOr<void *> VirtualDevice::getCurrentDriverContext() const {
   RETURN_ERROR("VirtualDevice does not have a driver context");
 }
 
-ErrorOrSuccess VirtualDevice::setCurrentDriverContext(void *ctx) const {
+ErrorOrSuccess VirtualDevice::setCurrentDriverContext(void *ctx) {
   assert(false && "VirtualDevice::setCurrentDriverContext not implemented");
   RETURN_ERROR("VirtualDevice does not support setting driver context");
 }
 
-ErrorOr<DeviceContextRef> VirtualDevice::createContext() const {
+ErrorOr<DeviceContextRef> VirtualDevice::createContext() {
   // Create a virtual context that uses the compilation device
   return VirtualDeviceContextRef::create(*this);
 }
@@ -116,10 +116,10 @@ const VirtualDevice &VirtualDevice::cast(const Device &device) {
 // VirtualDeviceStream
 //===----------------------------------------------------------------------===//
 
-VirtualDeviceStream::VirtualDeviceStream(const VirtualDeviceContext &ctx)
+VirtualDeviceStream::VirtualDeviceStream(VirtualDeviceContext &ctx)
     : DeviceStream(ctx) {}
 
-ErrorOrSuccess VirtualDeviceStream::synchronize() const {
+ErrorOrSuccess VirtualDeviceStream::synchronize() {
   // No-op for virtual devices
   return success();
 }
@@ -172,23 +172,23 @@ VirtualDeviceStream::verified_cast(const DeviceStream *stream) {
 // VirtualDeviceContext
 //===----------------------------------------------------------------------===//
 
-VirtualDeviceContext::VirtualDeviceContext(const VirtualDevice &device)
+VirtualDeviceContext::VirtualDeviceContext(VirtualDevice &device)
     : DeviceContext(device) {}
 
 VirtualDeviceContext::~VirtualDeviceContext() = default;
 
-ErrorOrSuccess
-VirtualDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
-                                          size_t byteSize) const {
+ErrorOrSuccess VirtualDeviceContext::enqueueCopyToDevice(void *dst,
+                                                         const void *src,
+                                                         size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::enqueueCopyToDevice not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
-ErrorOrSuccess
-VirtualDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
-                                            size_t byteSize) const {
+ErrorOrSuccess VirtualDeviceContext::enqueueCopyFromDevice(void *dst,
+                                                           const void *src,
+                                                           size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
   assert(false &&
@@ -196,10 +196,10 @@ VirtualDeviceContext::enqueueCopyFromDevice(void *dst, const void *src,
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
-ErrorOrSuccess VirtualDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
-                                                 const DeviceBuffer &src,
+ErrorOrSuccess VirtualDeviceContext::memCopyDtoD(DeviceBuffer &dst,
+                                                 DeviceBuffer &src,
                                                  size_t srcByteOffset,
-                                                 size_t srcByteSize) const {
+                                                 size_t srcByteSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memCopyDtoD not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
@@ -208,7 +208,7 @@ ErrorOrSuccess VirtualDeviceContext::memCopyDtoD(const DeviceBuffer &dst,
 ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(void *dst,
                                                       size_t byteSize,
                                                       uint64_t val,
-                                                      size_t valSize) const {
+                                                      size_t valSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::enqueueSetMemory not implemented");
@@ -218,7 +218,7 @@ ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(void *dst,
 ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(
     StringRef moduleName, StringRef functionName, StringRef code,
     int32_t maxDynamicSharedBytes, StringRef debugLevel,
-    int32_t optimizationLevel) const {
+    int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::loadFunction",
                        TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::loadFunction not implemented");
@@ -228,7 +228,7 @@ ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(
 ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) const {
+    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
   assert(false &&
@@ -238,18 +238,21 @@ ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
 
 ErrorOr<DeviceStreamRef> VirtualDeviceContext::stream() const {
   // Return a virtual stream for compile-only mode
-  return VirtualDeviceStreamRef::create(*this);
+  // This function is const only for the duration of its execution;
+  // `this` is non-const downstream so cast in order to provide
+  // mutable reference to the new stream object.
+  return VirtualDeviceStreamRef::create(
+      const_cast<VirtualDeviceContext &>(*this));
 }
 
-ErrorOr<DeviceStreamRef>
-VirtualDeviceContext::createStream(int priority) const {
+ErrorOr<DeviceStreamRef> VirtualDeviceContext::createStream(int priority) {
   // Return a virtual stream for compile-only mode (ignore priority)
   return VirtualDeviceStreamRef::create(*this);
 }
 
 ErrorOrSuccess
 VirtualDeviceContext::streamPriorityRange(int *leastPriority,
-                                          int *greatestPriority) const {
+                                          int *greatestPriority) {
   // Virtual devices support a single priority level
   if (leastPriority)
     *leastPriority = 0;
@@ -259,47 +262,43 @@ VirtualDeviceContext::streamPriorityRange(int *leastPriority,
 }
 
 ErrorOr<DeviceStreamRef>
-VirtualDeviceContext::createExternalStream(void *externalStream) const {
+VirtualDeviceContext::createExternalStream(void *externalStream) {
   assert(false && "VirtualDeviceContext::createExternalStream not implemented");
   RETURN_ERROR("VirtualDevice does not support external streams");
 }
 
-ErrorOrSuccess VirtualDeviceContext::synchronize() const {
+ErrorOrSuccess VirtualDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   // No-op for virtual devices
   return success();
 }
 
-ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() const {
+ErrorOr<DeviceEventRef> VirtualDeviceContext::enqueueEvent() {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 
-ErrorOrSuccess
-VirtualDeviceContext::enqueueEvent(const DeviceEvent &event) const {
+ErrorOrSuccess VirtualDeviceContext::enqueueEvent(const DeviceEvent &event) {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 
-ErrorOr<DeviceEventRef>
-VirtualDeviceContext::eventCreate(bool enableTiming) const {
+ErrorOr<DeviceEventRef> VirtualDeviceContext::eventCreate(bool enableTiming) {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 
-ErrorOrSuccess
-VirtualDeviceContext::enqueueWaitFor(const DeviceEvent &event) const {
+ErrorOrSuccess VirtualDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 
-ErrorOrSuccess
-VirtualDeviceContext::enqueueWaitFor(const DeviceContext &ctx) const {
+ErrorOrSuccess VirtualDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   RETURN_ERROR("VirtualDevice does not support events");
 }
 
-ErrorOr<DeviceTimerRef> VirtualDeviceContext::startTimer() const {
+ErrorOr<DeviceTimerRef> VirtualDeviceContext::startTimer() {
   RETURN_ERROR("VirtualDevice does not support timers");
 }
 
 ErrorOr<std::chrono::nanoseconds>
-VirtualDeviceContext::stopTimer(const DeviceTimer &timer) const {
+VirtualDeviceContext::stopTimer(const DeviceTimer &timer) {
   RETURN_ERROR("VirtualDevice does not support timers");
 }
 
@@ -308,8 +307,8 @@ ErrorOr<Device::MemInfo> VirtualDeviceContext::getDeviceMemoryInfo() const {
 }
 
 ErrorOrSuccess VirtualDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
-    int *numBlocks, const DeviceFunction &func, int blockSize,
-    size_t dynamicSharedMemSize) const {
+    int *numBlocks, DeviceFunction &func, int blockSize,
+    size_t dynamicSharedMemSize) {
   assert(false &&
          "VirtualDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor "
          "not implemented");
@@ -331,13 +330,13 @@ VirtualDeviceContext::verified_cast(const DeviceContext *ctx) {
 }
 
 ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,
-                                              Device::AllocMode mode) const {
+                                              Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memAlloc not implemented");
   RETURN_ERROR("VirtualDevice does not support memory allocation");
 }
 
-ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr, bool isHost) const {
+ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memFree", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memFree not implemented");
   RETURN_ERROR("VirtualDevice does not support memory deallocation");

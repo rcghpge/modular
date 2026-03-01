@@ -362,7 +362,7 @@ void MemoryManager::Chunk::selfCheck() const {
 #undef SELF_CHECK
 }
 
-MemoryManagerFreeList::MemoryManagerFreeList(const DeviceContext *context,
+MemoryManagerFreeList::MemoryManagerFreeList(DeviceContext *context,
                                              MemoryManager &memoryManager,
                                              MemoryManagerFreeList *parent)
     : ctx_(context), memoryManager_(memoryManager), parent_(parent) {
@@ -384,6 +384,10 @@ MemoryManagerFreeList::MemoryManagerFreeList(const DeviceContext *context,
     }
   }
 }
+
+DeviceContext *MemoryManagerFreeList::context() { return ctx_; }
+
+const DeviceContext *MemoryManagerFreeList::context() const { return ctx_; }
 
 MemoryManagerFreeList::~MemoryManagerFreeList() { flushToParent(); }
 
@@ -627,8 +631,8 @@ void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
   }
 }
 
-MemoryManager::MemoryManager(const Device &device, size_t maxSize,
-                             size_t chunkSize, size_t alignment, bool isHost,
+MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
+                             size_t alignment, bool isHost,
                              bool useOnlyMemoryManagerMode)
     : device_(device), isHost_(isHost),
       useOnlyMemoryManagerMode_(useOnlyMemoryManagerMode),
@@ -730,7 +734,7 @@ bool MemoryManager::allocateChunk() {
   return true;
 }
 
-const Device &MemoryManager::device() const { return device_; }
+Device &MemoryManager::device() const { return device_; }
 
 void MemoryManager::selfCheck() const {
   if (!doSelfCheck_ || chunks_ == nullptr) {
@@ -1363,8 +1367,7 @@ void MemoryManagerFreeList::freeDesc(MemoryManager::Desc *desc) {
   }
 }
 
-MemoryManager *MemoryManager::onDevice(const Device &device,
-                                       Device::MemInfo memInfo,
+MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
                                        size_t alignment, int64_t memoryLimit) {
   // Do not use memory manager if memory manager has been disabled by the
   // calling code (empty memInfo).
@@ -1447,7 +1450,7 @@ MemoryManager *MemoryManager::onDevice(const Device &device,
   }
   return result;
 }
-MemoryManager *MemoryManager::onHost(const Device &device, size_t alignment) {
+MemoryManager *MemoryManager::onHost(Device &device, size_t alignment) {
 
   size_t maxCacheSize = llvm::alignToPowerOf2(
       DeviceContext::configAsInt("host_memory_manager_size", 16 * GB),

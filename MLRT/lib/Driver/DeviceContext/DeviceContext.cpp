@@ -109,7 +109,7 @@ MODULAR_CXX_EXPORT std::string getVirtualDeviceTargetArch() {
 
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)
     : prevCtx_(nullptr), err_(success()) {
-  const Device &dev = ctx.device();
+  Device &dev = ctx.device();
   ErrorOr<void *> errOrCtx = dev.getCurrentDriverContext();
   if (errOrCtx.isError()) {
     err_ = errOrCtx.takeError();
@@ -253,8 +253,9 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
       return compilationDevice.takeError();
 
     // Create VirtualDevice with the compilation device
-    return VirtualDeviceRef::create(id, "VirtualGPU-" + std::to_string(id),
-                                    std::move(*compilationDevice));
+    VirtualDeviceRef vref = VirtualDeviceRef::create(
+        id, "VirtualGPU-" + std::to_string(id), std::move(*compilationDevice));
+    return DeviceRef::copy(vref.getPointer());
   }
 
   // Only zero and positive values are allowed as device ids.
@@ -274,7 +275,7 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   // TODO(iposva): Implement dynamic registration mechanism.
   std::string cudaError;
   if ((api == gpuAPI) || (api == cudaAPI)) {
-    ErrorOr<const Device &> device = CUDADevice::get(id);
+    ErrorOr<CUDADevice &> device = CUDADevice::get(id);
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
     } else if (api == cudaAPI)
@@ -284,7 +285,7 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
 
   std::string hipError;
   if ((api == gpuAPI) || (api == hipAPI)) {
-    ErrorOr<const Device &> device = HIPDevice::get(id);
+    ErrorOr<HIPDevice &> device = HIPDevice::get(id);
     if (!device.isError()) {
       // This disables full buffering when piping to a file if running
       // on AMD GPU. Without setting this `FileCheck` will have CPU
@@ -301,7 +302,7 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   if ((api == gpuAPI) || (api == metalAPI)) {
 #if MODULAR_MACOS
 
-    ErrorOr<const MetalDevice &> device = MetalDevice::get(id);
+    ErrorOr<MetalDevice &> device = MetalDevice::get(id);
     if (!device.isError()) {
       return DeviceRef::copy(&device.get());
     } else if (api == metalAPI)
@@ -311,7 +312,7 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
   }
 
   if (api == cpuAPI) {
-    ErrorOr<const CpuDevice &> device = CpuDevice::get(id);
+    ErrorOr<CpuDevice &> device = CpuDevice::get(id);
     if (device.isError())
       return device.takeError();
     return DeviceRef::copy(&device.get());
@@ -335,7 +336,7 @@ Device::findInFunctionCache(const FunctionCacheKey &key) const {
 
 DeviceFunctionCacheEntryRef
 Device::insertInFunctionCache(const FunctionCacheKey &key,
-                              const DeviceFunctionCacheEntry &entry) const {
+                              const DeviceFunctionCacheEntry &entry) {
   TRACY_ZONE_SCOPED_NC("Device::insertInFunctionCache", TRACY_COLOR_PURPLE);
   {
     std::scoped_lock<std::mutex> lock(mu_);
@@ -356,19 +357,18 @@ void Device::clearFunctionCache() const {
 //
 // ===== DeviceBuffer ===== //
 //
-DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
-                           size_t byteSize, bool isHost)
+DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
+                           bool isHost)
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
       byteSize_(byteSize), isHost_(isHost) {}
-DeviceBuffer::DeviceBuffer(const DeviceContext &context,
-                           const DeviceBuffer &parent, void *ptr,
-                           size_t byteSize, bool isHost)
+DeviceBuffer::DeviceBuffer(DeviceContext &context, DeviceBuffer &parent,
+                           void *ptr, size_t byteSize, bool isHost)
     : context_(DeviceContextRef::copy(&context)),
       parent_(DeviceBufferRef::copy(&parent)), ptr_(ptr), byteSize_(byteSize),
       isHost_(isHost) {}
 // TODO: Remove the V1 compatibility.
-DeviceBuffer::DeviceBuffer(const DeviceContext &context, void *ptr,
-                           size_t byteSize, bool isHost, bool owning)
+DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
+                           bool isHost, bool owning)
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
       byteSize_(byteSize), isHost_(isHost), owning_(owning) {}
 
@@ -392,7 +392,7 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   // Release the GPU memory now or enqueue an event based release for host
   // memory. Host memory can only be released once the stream of execution on
   // the corresponding device has completed all currently pending events.
-  const DeviceContext &ctx = context();
+  DeviceContext &ctx = context();
   // DEBUGGING AID
   // RECORD_PENDING_ERROR(ctx, ctx.enqueueSetMemory(*this, 0xf3, 1));
   // \DEBUGGING AID
@@ -409,6 +409,8 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   }
 }
 
+MODULAR_CXX_EXPORT DeviceContext &DeviceBuffer::context() { return *context_; }
+
 MODULAR_CXX_EXPORT const DeviceContext &DeviceBuffer::context() const {
   return *context_;
 }
@@ -420,7 +422,7 @@ const DeviceBuffer *DeviceBuffer::parent() const {
 MODULAR_CXX_EXPORT void *DeviceBuffer::ptr() const { return ptr_; }
 
 // TODO: Remove the V1 compatibility.
-MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() const {
+MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() {
   auto tmp = ptr_;
   ptr_ = nullptr;
   owning_ = false;
@@ -431,33 +433,32 @@ MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
 
-void DeviceBuffer::setDestructorFn(
-    llvm::unique_function<void()> destructor) const {
+void DeviceBuffer::setDestructorFn(llvm::unique_function<void()> destructor) {
   destructorFn_ = std::move(destructor);
 }
 
-void DeviceBuffer::setOwning(bool owning) const { owning_ = owning; }
+void DeviceBuffer::setOwning(bool owning) { owning_ = owning; }
 
-MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(
-    const DeviceBuffer &dst, size_t srcByteOffset, size_t srcByteSize) const {
-  const DeviceBuffer &src = *this;
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(DeviceBuffer &dst,
+                                                       size_t srcByteOffset,
+                                                       size_t srcByteSize) {
+  DeviceBuffer &src = *this;
   return dst.context().enqueueCopyDeviceToDevice(dst, src, srcByteOffset,
                                                  srcByteSize);
 }
 
-MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) const {
-  const DeviceBuffer &src = *this;
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(void *dst) {
+  DeviceBuffer &src = *this;
   return src.context().enqueueCopyFromDevice(dst, src);
 }
 
-MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceBuffer::copyFrom(const void *src) const {
-  const DeviceBuffer &dst = *this;
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyFrom(const void *src) {
+  DeviceBuffer &dst = *this;
   return dst.context().enqueueCopyToDevice(dst, src);
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
+DeviceBuffer::reassignOwnershipTo(DeviceContext &ctx) {
   if ((context().device().api() != ctx.device().api()) ||
       (context().device().id() != ctx.device().id())) {
     RETURN_ERROR("cannot reassign a buffer between different devices");
@@ -470,7 +471,7 @@ DeviceBuffer::reassignOwnershipTo(const DeviceContext &ctx) const {
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
-DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
+DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) {
   char *origPtr = static_cast<char *>(this->ptr());
   size_t origByteSize = this->byteSize();
 
@@ -482,7 +483,7 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) const {
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceBuffer::synchronize(void *external_stream) const {
+DeviceBuffer::synchronize(void *external_stream) {
   // Regular synchronization
   if (!external_stream) {
     return context_->synchronize();
@@ -546,12 +547,9 @@ DeviceMulticastBuffer::allocate(const std::vector<DeviceContextRef> &contexts,
 //
 // ===== DeviceEvent ===== //
 //
-DeviceEvent::DeviceEvent(const Device &device)
-    : device_(DeviceRef::copy(&device)) {}
+DeviceEvent::DeviceEvent(Device &device) : device_(DeviceRef::copy(&device)) {}
 
-MODULAR_CXX_EXPORT const Device &DeviceEvent::device() const {
-  return *device_;
-}
+MODULAR_CXX_EXPORT Device &DeviceEvent::device() const { return *device_; }
 
 ErrorOr<float> DeviceEvent::elapsedTime(const DeviceEvent &end) const {
   RETURN_ERROR("event elapsed time is not supported on this device");
@@ -834,16 +832,16 @@ void DeviceGraph::setLaunchTrace(
 //
 // ===== DeviceStream ===== //
 //
-DeviceStream::DeviceStream(const DeviceContext &context)
+DeviceStream::DeviceStream(DeviceContext &context)
     : ctx_(DeviceContextRef::copy(&context)) {}
 
-const Device &DeviceStream::device() const { return ctx_->device(); }
+Device &DeviceStream::device() const { return ctx_->device(); }
 
 ErrorOrSuccess DeviceStream::beginCapture() const {
   RETURN_ERROR("graph capture not supported on this device");
 }
 
-ErrorOr<DeviceGraphRef> DeviceStream::endCapture() const {
+ErrorOr<DeviceGraphRef> DeviceStream::endCapture() {
   RETURN_ERROR("graph capture not supported on this device");
 }
 
@@ -856,8 +854,10 @@ std::vector<KernelLaunchMetadata> DeviceStream::takeLaunchTrace() const {
 //
 // ===== DeviceFunction ===== //
 //
-DeviceFunction::DeviceFunction(const DeviceContext &context)
+DeviceFunction::DeviceFunction(DeviceContext &context)
     : context_(DeviceContextRef::copy(&context)) {}
+
+DeviceContext &DeviceFunction::context() { return *context_; }
 
 const DeviceContext &DeviceFunction::context() const { return *context_; }
 
@@ -870,7 +870,7 @@ size_t DeviceFunction::argumentCount() const {
 //
 // ===== DeviceTimer ===== //
 //
-DeviceTimer::DeviceTimer(const DeviceContext &context)
+DeviceTimer::DeviceTimer(DeviceContext &context)
     : context_(DeviceContextRef::copy(&context)) {}
 
 const DeviceContext &DeviceTimer::context() const { return *context_; }
@@ -885,7 +885,7 @@ static std::mutex &getGlobalMutex() {
   return mu;
 }
 
-DeviceContext::DeviceContext(const Device &device)
+DeviceContext::DeviceContext(Device &device)
     : device_(DeviceRef::copy(&device)),
       freeList_(std::make_unique<MemoryManagerFreeList>(
           this, device.memoryManager(), device.memoryManager().freeList())),
@@ -902,9 +902,7 @@ DeviceContext::~DeviceContext() {
   // Key function for vtable generation.
 }
 
-MODULAR_CXX_EXPORT const Device &DeviceContext::device() const {
-  return *device_;
-}
+MODULAR_CXX_EXPORT Device &DeviceContext::device() const { return *device_; }
 
 ErrorOrSuccess DeviceContext::setAsCurrent() const {
   // If this context is already bound, the driver context is already set.
@@ -960,7 +958,7 @@ DeviceContext::getMemoryInfo() const {
   return getDeviceMemoryInfo();
 }
 
-void DeviceContext::setPendingError(Error err) const {
+void DeviceContext::setPendingError(Error err) {
   {
     std::lock_guard<std::mutex> lock(pendingErrorMutex_);
     // Do not overwrite an already pending error.
@@ -1000,7 +998,7 @@ private:
   std::function<void()> handler_;
 };
 
-void DeviceContext::setPendingEventHandler(PendingEventHandler *h) const {
+void DeviceContext::setPendingEventHandler(PendingEventHandler *h) {
   {
     std::lock_guard<std::mutex> lock(pendingWorkMutex_);
     if (pendingEventsLast_ != nullptr) {
@@ -1018,7 +1016,7 @@ void DeviceContext::setPendingEventHandler(PendingEventHandler *h) const {
   hasPendingWork_.store(1, std::memory_order_release);
 }
 
-ErrorOrSuccess DeviceContext::checkPendingError() const {
+ErrorOrSuccess DeviceContext::checkPendingError() {
   TRACY_ZONE_SCOPED_NC("DeviceContext::checkPendingError", TRACY_COLOR_PURPLE);
 
   // Quickly check if we should check for a pending error.
@@ -1045,7 +1043,7 @@ ErrorOrSuccess DeviceContext::checkPendingError() const {
   }
 }
 
-ErrorOrSuccess DeviceContext::pollPendingEvents() const {
+ErrorOrSuccess DeviceContext::pollPendingEvents() {
   TRACY_ZONE_SCOPED_NC("DeviceContext::pollPendingEvents", TRACY_COLOR_PURPLE);
 
   // During graph capture, events aren't executing - they're graph nodes.
@@ -1111,33 +1109,33 @@ ErrorOrSuccess DeviceContext::pollPendingEvents() const {
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
-DeviceContext::enqueueCreateBuffer(size_t byteSize) const {
+DeviceContext::enqueueCreateBuffer(size_t byteSize) {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, /*owning=*/true);
   return allocBuffer(byteSize, Device::AllocMode::ASYNC);
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>
-DeviceContext::createHostBuffer(size_t byteSize) const {
+DeviceContext::createHostBuffer(size_t byteSize) {
   if (byteSize == 0)
     return this->createBufferOwning(nullptr, 0, true);
   return allocBuffer(byteSize, Device::AllocMode::HOST);
 }
 
-MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createBufferOwning(
-    void *ptr, size_t byteSize, bool owning) const {
+MODULAR_CXX_EXPORT DeviceBufferRef
+DeviceContext::createBufferOwning(void *ptr, size_t byteSize, bool owning) {
   return DeviceBufferRef::take(
       new DeviceBuffer(*this, ptr, byteSize, /*isHost=*/false, owning));
 }
 
-MODULAR_CXX_EXPORT DeviceBufferRef DeviceContext::createHostBufferOwning(
-    void *ptr, size_t byteSize, bool owning) const {
+MODULAR_CXX_EXPORT DeviceBufferRef
+DeviceContext::createHostBufferOwning(void *ptr, size_t byteSize, bool owning) {
   return DeviceBufferRef::take(
       new DeviceBuffer(*this, ptr, byteSize, /*isHost=*/true, owning));
 }
 
-ErrorOr<DeviceBufferRef>
-DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
+ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
+                                                    Device::AllocMode mode) {
   assert(byteSize != 0);
   void *ptr = nullptr;
 
@@ -1171,8 +1169,8 @@ DeviceContext::allocBuffer(size_t byteSize, Device::AllocMode mode) const {
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
-    const DeviceBuffer &dst, const DeviceBuffer &src, size_t srcByteOffset,
-    size_t srcByteSize) const {
+    DeviceBuffer &dst, DeviceBuffer &src, size_t srcByteOffset,
+    size_t srcByteSize) {
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
   if ((srcByteOffset + srcByteSize) < dst.byteSize())
@@ -1192,7 +1190,7 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
+DeviceContext::enqueueEventHandler(std::function<void()> handler) {
   DEFINE_OR_RETURN_ERROR(DeviceEventRef, event, this->enqueueEvent());
   PendingEventHandler *eventHandler = new PendingEventHandler(
       DeviceContextRef::copy(this), std::move(event), std::move(handler));
@@ -1202,7 +1200,7 @@ DeviceContext::enqueueEventHandler(std::function<void()> handler) const {
 
 MODULAR_CXX_EXPORT
 ErrorOr<Driver::DeviceBufferRef>
-DeviceContext::memmapFile(const std::filesystem::path &filename) const {
+DeviceContext::memmapFile(const std::filesystem::path &filename) {
   auto result = this->memmapFileImpl(filename);
   if (result.isError())
     return result.takeError();
@@ -1243,7 +1241,7 @@ DeviceContext::create(StringRef api, int id) {
 MODULAR_CXX_EXPORT ErrorOr<DeviceContextRef>
 DeviceContext::getOrCreate(StringRef api, int id) {
   static std::mutex mu;
-  static llvm::StringMap<const DeviceContext *> contextMap;
+  static llvm::StringMap<DeviceContext *> contextMap;
 
   ErrorOr<DeviceRef> errDev = Device::create(api, id);
   if (errDev.isError())
@@ -1261,14 +1259,14 @@ DeviceContext::getOrCreate(StringRef api, int id) {
     std::lock_guard<std::mutex> lock(mu);
     auto iter = contextMap.find(cacheKey);
     if (iter != contextMap.end()) {
-      const DeviceContext *cachedCtx = iter->second;
+      DeviceContext *cachedCtx = iter->second;
       return DeviceContextRef::copy(cachedCtx);
     }
     ErrorOr<DeviceContextRef> errCtx = (*errDev)->createContext();
     if (errCtx.isError())
       return errCtx.takeError();
 
-    const DeviceContext *ctx = errCtx.takeValue().release();
+    DeviceContext *ctx = errCtx.takeValue().release();
     contextMap.insert({cacheKey, ctx});
     return DeviceContextRef::copy(ctx);
   }
@@ -1331,7 +1329,7 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
   }
   if (api == cpuAPI) {
     // For CPU we go back to the device to get the number of supported devices.
-    ErrorOr<const CpuDevice &> device = CpuDevice::get(0);
+    ErrorOr<CpuDevice &> device = CpuDevice::get(0);
     if (!device.isError())
       return device->deviceCount();
   }
@@ -1352,10 +1350,10 @@ MemoryManager &Device::hostMemoryManager() const {
 bool DeviceContext::syncMode() const {
   return syncMode_.load(std::memory_order_relaxed) > 0;
 }
-void DeviceContext::incSyncMode() const {
+void DeviceContext::incSyncMode() {
   syncMode_.fetch_add(1, std::memory_order_relaxed);
 }
-void DeviceContext::decSyncMode() const {
+void DeviceContext::decSyncMode() {
   syncMode_.fetch_add(-1, std::memory_order_relaxed);
 }
 
@@ -1522,7 +1520,7 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
   return version_;
 }
 
-ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
+ErrorOrSuccess Device::enablePeerAccess(const Device &peer) {
   // Call device-specific implementation.
   ErrorOrSuccess result = enablePeerAccessImpl(peer);
   // If successful, set the bitvector to indicate that the peer is accessible.
@@ -1542,7 +1540,7 @@ ErrorOrSuccess Device::enablePeerAccess(const Device &peer) const {
   return result;
 }
 
-ErrorOrSuccess Device::enablePeerAccessImpl(const Device &peer) const {
+ErrorOrSuccess Device::enablePeerAccessImpl(const Device &peer) {
   RETURN_ERROR("Peer access not implemented");
 }
 
