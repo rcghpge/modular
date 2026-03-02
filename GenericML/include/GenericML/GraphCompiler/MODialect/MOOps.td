@@ -5131,6 +5131,47 @@ def MO_MatmulAllReduceOp : MO_DistributedOp<"distributed.matmul_allreduce", [
   );
 }
 
+def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_add_rms_norm_quant_fp8", [
+  MO_ExplicitDevice
+]> {
+  let summary = "Fused AllreduceSum + Add + RMSNorm + Quant across N devices for a single device.";
+  let description = [{
+    Allreduce takes in inputs each coming from a different device with
+    the same shape as the final output and performs a sum reduction
+    across the devices. This op instance executes on a specific device
+    (specified by the device attribute) and produces the output for that device.
+
+    Multiple instances of this op are created (one per device) to enable
+    multi-threaded execution.
+
+    This op also applies a residual (add), then RMSNorm and dynamic FP8 quantization to the output of AllReduce.
+    It returns both the quantized output value and the quantization scale.
+    It also returns the intermediate output of the residual (add) op.
+  }];
+  // let hasVerifier = 1;
+  // Variadic allreduce has a folder since it can take 1 input.
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Tensor:$residual,
+    MO_Tensor:$gamma,
+    MO_RankedScalarFloatTensor:$epsilon,
+    MO_RankedScalarFloatTensor: $weightOffset,
+    MO_RankedScalarFloatTensor: $scaleUb,
+    MO_Chain:$inChain,
+    M_DeviceRefAttr:$device
+  );
+  let results = (outs
+    MO_Tensor:$output,
+    MO_Tensor:$outScale,
+    MO_Tensor:$outResidual,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//

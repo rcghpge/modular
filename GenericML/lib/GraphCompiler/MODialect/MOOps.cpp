@@ -3166,6 +3166,18 @@ void MatmulAllReduceOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// AllReduceAddRMSNormQuantFP8Op
+//===----------------------------------------------------------------------===//
+
+void AllReduceAddRMSNormQuantFP8Op::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

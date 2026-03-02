@@ -2761,12 +2761,12 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     if (!input.hasOneUse())
       return rewriter.notifyMatchFailure(op, "input has multiple uses");
 
-    auto inputOp = input.getDefiningOp<MO::CustomOp>();
-    if (!inputOp)
+    auto rmsNormOp = input.getDefiningOp<MO::CustomOp>();
+    if (!rmsNormOp)
       return rewriter.notifyMatchFailure(op, "input not from custom operation");
-    if (inputOp.getSymbol() != "rms_norm")
+    if (rmsNormOp.getSymbol() != "rms_norm")
       return rewriter.notifyMatchFailure(op, "input not a rms_norm operation");
-    if (inputOp.getOperands().size() != 4)
+    if (rmsNormOp.getOperands().size() != 4)
       return rewriter.notifyMatchFailure(op,
                                          "unexpected rms_norm operand count");
 
@@ -2797,12 +2797,12 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
                                          "wrong group_size_or_per_token type");
     }
 
-    DictionaryAttr inputOpParams = inputOp.getParameters();
-    if (!inputOpParams.empty()) {
-      if (inputOpParams.size() > 1)
+    DictionaryAttr rmsNormOpParams = rmsNormOp.getParameters();
+    if (!rmsNormOpParams.empty()) {
+      if (rmsNormOpParams.size() > 1)
         return rewriter.notifyMatchFailure(op, "unexpected parameters");
       Attribute multiplyBeforeCastAttr =
-          inputOpParams.get("multiply_before_cast");
+          rmsNormOpParams.get("multiply_before_cast");
       if (!multiplyBeforeCastAttr)
         return rewriter.notifyMatchFailure(op, "missing multiply_before_cast");
       if (auto boolAttr = dyn_cast<BoolAttr>(multiplyBeforeCastAttr)) {
@@ -2816,12 +2816,17 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
       }
     }
 
+    // Try to also fuse the op with an AllReduce if possible.
+    if (mlir::succeeded(tryMatchWithAllReduce(op, rmsNormOp, rewriter)))
+      return success();
+
+    // Otherwhise only fuse the RMSNorm + Quant.
     SmallVector<Value> fusedOperands = {
-        inputOp.getOperand(0), // rms_norm.input
-        inputOp.getOperand(1), // rms_norm.gamma
-        inputOp.getOperand(2), // rms_norm.epsilon
-        inputOp.getOperand(3), // rms_norm.weight_offset
-        op.getOperand(1),      // quantize.scale_ub
+        rmsNormOp.getOperand(0), // rms_norm.input
+        rmsNormOp.getOperand(1), // rms_norm.gamma
+        rmsNormOp.getOperand(2), // rms_norm.epsilon
+        rmsNormOp.getOperand(3), // rms_norm.weight_offset
+        op.getOperand(1),        // quantize.scale_ub
     };
 
     rewriter.replaceOpWithNewOp<MO::CustomOp>(
@@ -2831,6 +2836,57 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
         op.getDevice());
 
     return mlir::success();
+  }
+
+  LogicalResult tryMatchWithAllReduce(MO::CustomOp op, MO::CustomOp rmsNormOp,
+                                      MO::DeviceAwareRewriter &rewriter) const {
+    // Let's try and detect the addOp (for the residual).
+    Value normInput = rmsNormOp->getOperand(0);
+    auto residualOp = normInput.getDefiningOp<MO::AddOp>();
+    if (!residualOp)
+      return rewriter.notifyMatchFailure(op, "not a add operation");
+
+    // One of the operands of the add must be an AllReduce (and the other
+    // operand is the residual).
+    Value residualValue;
+    MO::AllReduceSumOp allReduceOp;
+    if ((allReduceOp =
+             residualOp.getLhsInput().getDefiningOp<MO::AllReduceSumOp>()))
+      residualValue = residualOp.getRhsInput();
+    else if ((allReduceOp =
+                  residualOp.getRhsInput().getDefiningOp<MO::AllReduceSumOp>()))
+      residualValue = residualOp.getLhsInput();
+    else
+      return rewriter.notifyMatchFailure(op, "not a AllReduceSum operation");
+
+    auto allReduceFusedOp = rewriter.create<MO::AllReduceAddRMSNormQuantFP8Op>(
+        op->getLoc(),
+        /*output=*/op->getResultTypes()[0],
+        /*outScale=*/op.getResultTypes()[1],
+        /*outResidual=*/residualOp.getResult().getType(),
+        /*outChain=*/allReduceOp.getOutChain().getType(),
+        /*inputs=*/allReduceOp.getInputs(),
+        /*signalBuffers=*/allReduceOp.getSignalBuffers(),
+        /*residual=*/residualValue,
+        /*gamma=*/rmsNormOp.getOperand(1),
+        /*epsilon=*/rmsNormOp.getOperand(2),
+        /*weightOffset=*/rmsNormOp.getOperand(3),
+        /*scaleUb=*/op.getOperand(1),
+        /*inChain=*/allReduceOp.getInChain(),
+        /*device=*/allReduceOp.getDevice());
+
+    // Replace the output chain of AllReduce and the intermediate residual with
+    // the outputs of the FusedAllReduce.
+    rewriter.replaceAllUsesExcept(residualOp.getResult(),
+                                  allReduceFusedOp.getOutResidual(), rmsNormOp);
+    rewriter.replaceAllUsesWith(allReduceOp.getOutChain(),
+                                allReduceFusedOp.getOutChain());
+
+    // Finally replace the quantize op with the fused op outputs.
+    rewriter.replaceOp(
+        op, {allReduceFusedOp.getOutput(), allReduceFusedOp.getOutScale()});
+
+    return success();
   }
 };
 
