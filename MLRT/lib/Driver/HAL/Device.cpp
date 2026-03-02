@@ -3,7 +3,9 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+
 #include "MLRT/Driver/HAL/Device.h"
+#include "ContextImpl.h"
 #include "DeviceImpl.h"
 #include "MLRT/Driver/HAL/Context.h"
 
@@ -26,7 +28,15 @@ ErrorOr<int64_t> Device::id() const {
 }
 
 ErrorOr<ContextRef> Device::createContext() const {
-  return Error("Not implemented");
+  ContextImpl *impl = new (std::nothrow) ContextImpl;
+  if (impl == nullptr)
+    return Error("Failed to allocate memory for Context implementation");
+  Context *context = new (std::nothrow) Context(impl);
+  if (context == nullptr) {
+    delete impl;
+    return Error("Failed to allocate memory for Context object");
+  }
+  return ContextRef::take(context);
 }
 
 } // namespace M::Driver::HAL

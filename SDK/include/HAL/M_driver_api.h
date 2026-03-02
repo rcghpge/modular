@@ -8,6 +8,7 @@
 #define M_DRIVER_API_H
 
 #include "M_driver_common.h"
+#include "M_driver_context.h"
 #include "M_driver_device.h"
 #include "M_driver_driver.h"
 

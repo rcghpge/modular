@@ -3,6 +3,7 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
+
 #include "gmock/gmock.h"
 
 #include "MLRT/Driver/HAL/Context.h"
@@ -72,6 +73,16 @@ TEST_F(DriverHALTest, DeviceGet) {
          << endl;
     ASSERT_EQ(name.str(), "Device #" + std::to_string(id));
   }
+}
 
-  //   ErrorOr<ContextRef> context = device->createContext();
+TEST_F(DriverHALTest, DeviceCreateContext) {
+  ASSIGN_NO_ERR(int64_t, deviceCount, driver_->deviceCount());
+  for (int64_t i = 0; i < deviceCount; i++) {
+    ErrorOr<DeviceRef> deviceOr = driver_->device(i);
+    ASSERT_TRUE(!deviceOr.isError());
+    DeviceRef device = deviceOr.takeValue();
+    ErrorOr<ContextRef> contextOr = device->createContext();
+    ASSERT_TRUE(!contextOr.isError());
+    ContextRef context = contextOr.takeValue();
+  }
 }

@@ -107,7 +107,7 @@ ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
   ErrorOrSuccess status = impl->setup(pluginSpec);
   if (status.isError()) {
     delete impl;
-    return Error("Failed to load driver plugin: " + pluginSpec.str());
+    return status.takeError();
   }
   Driver *driver = new (std::nothrow) Driver((void *)impl);
   if (driver == nullptr) {

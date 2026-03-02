@@ -84,9 +84,9 @@ M_driver_device_property([[maybe_unused]] M_driver_device_t device,
   return M_DRIVER_STATUS_UNIMPLEMENTED;
 }
 
-M_driver_status_t M_driver_device_create_context(M_driver_driver_t driver,
-                                                 M_driver_device_t device,
-                                                 M_driver_context_t *context) {
+M_driver_status_t M_driver_context_create(M_driver_driver_t driver,
+                                          M_driver_device_t device,
+                                          M_driver_context_t *context) {
   Driver *state = Driver::from(driver);
   CUdevice cudaDevice = *paranoid_reinterpret_pointer_cast<CUdevice *>(&device);
   CUcontext cudaContext = nullptr;
@@ -102,8 +102,8 @@ M_driver_status_t M_driver_device_create_context(M_driver_driver_t driver,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_device_destroy_context(M_driver_driver_t driver,
-                                                  M_driver_context_t context) {
+M_driver_status_t M_driver_context_destroy(M_driver_driver_t driver,
+                                           M_driver_context_t context) {
   Driver *state = Driver::from(driver);
   if (static_cast<size_t>(context) >= state->cudaContexts.size() ||
       !state->cudaContextsValid[context]) {

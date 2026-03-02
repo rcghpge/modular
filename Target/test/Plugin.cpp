@@ -105,13 +105,13 @@ TEST_F(DriverPluginTest, DeviceContext) {
     M_driver_device_t device = 0x0ULL;
     RUN(device_get(driver, i, &device));
     M_driver_context_t context = 0x0ULL;
-    DO_TEST(device_create_context(driver, device, &context));
+    DO_TEST(context_create(driver, device, &context));
     cerr << "Created context for device 0x" << std::hex << device << ": 0x"
          << context << endl;
     contexts.push_back(context);
   }
   for (int64_t i = deviceCount - 1; i >= 0; i--) {
-    DO_TEST(device_destroy_context(driver, contexts[i]));
+    DO_TEST(context_destroy(driver, contexts[i]));
     cerr << "Destroyed context 0x" << contexts[i] << endl;
   }
 }
