@@ -155,14 +155,21 @@ MOGGKernelBuilder::MOGGKernelBuilder(
   // - TransposeOp is always sync
   //   TODO(GEX-2569): make async after enforcing high water mark
   // - LayoutTransformOp is sync on CPU
+  // - AllReduceSumOp is sync: it manages its own cross-device parallelism
+  //   internally (via TaskGroup) and must complete before the graph runtime
+  //   proceeds.
   //
-  // All GPU ops are async to ensure that the primitives are non-blocking (see
-  // KeyConceptsInGraphRT.md).
-  // Note that `cuModuleLoadDataEx` and sync kernel launch can block in general.
-  // Rely on sequence fusion to amortize the associated primitive launch
-  // overhead, instead of synchronous primitive execution.
+  // All other GPU ops are async to ensure that the primitives are
+  // non-blocking (see KeyConceptsInGraphRT.md).
+  // Note that `cuModuleLoadDataEx` and sync kernel launch can block in
+  // general. Rely on sequence fusion to amortize the associated primitive
+  // launch overhead, instead of synchronous primitive execution.
   bool isSyncRequired = forceSync || isa<MO::TransposeOp>(op) ||
-                        (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op));
+                        (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
+                        // FIXME: Migrate all collective ops to work this way,
+                        // then we can say:
+                        // isa<MO::MOMultiDevice>(op)
+                        isa<MO::AllReduceSumOp>(op);
   isAsync = !isSyncRequired;
 
   // Get ready for building ops.
