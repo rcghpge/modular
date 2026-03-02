@@ -55,6 +55,49 @@ modular_cc_test(
 )
 
 modular_cc_binary(
+    # avoids the `lib` prefix; plugins are not traditional libs
+    name = "HIPPlugin.so",
+    srcs = glob(
+        [
+            "lib/HIP/*.cpp",
+            "lib/HIP/*.h",
+        ],
+        allow_empty = False,
+    ),
+    linkopts = ["-ldl"],
+    linkshared = True,
+    linkstatic = False,
+    target_compatible_with = select({
+        "//:amd_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//SDK:HAL",
+        "@hip_include//:hip_headers",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "HIPPluginTest",
+    size = "small",
+    data = [":HIPPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "$(location :HIPPlugin.so)",
+    },
+    gpu_constraints = ["//:amd_gpu"],
+    # run manually for now, as this isn't quite up to full impl coverage
+    tags = [
+        "gpu",
+        "manual",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":DriverPluginTests",
+    ],
+)
+
+modular_cc_binary(
     name = "MetalPlugin.so",
     srcs = glob([
         "lib/Metal/*.cpp",
