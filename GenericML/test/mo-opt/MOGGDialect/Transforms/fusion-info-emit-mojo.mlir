@@ -2,7 +2,7 @@
 
 // Test that toPrettyTree() fusion info tree comments appear in emitted Mojo.
 // CHECK:      # FusionInfo:
-// CHECK-NEXT: #   Prologue (operandIndices=[0])
+// CHECK-NEXT: #   Epilogue (operandIndices=[0])
 // CHECK-NEXT: #       ├── mo.matmul:{{[0-9]+}}
 // CHECK-NEXT: #       └── View
 // CHECK-NEXT: #           ├── mo.static.broadcast_to:{{[0-9]+}}

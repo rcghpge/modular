@@ -8,7 +8,7 @@
 // DAG because the order things are printed in the middle of the pipeline is
 // not predictable.
 // CHECK-IR-DAG: mo.graph @simple_split_dim_rank3_split_0
-// CHECK-IR-DAG: fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.split_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
+// CHECK-IR-DAG: fusionInfo = Epilogue(Affine(mo.matmul:{{[0-9]+}}, mo.split_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 
 // CHECK-LABEL: 'simple_split_dim_rank3_split_0' returned tensor<2x2x8xf32>
 // CHECK-SAME: 1.100000e+01, 1.200000e+01, 1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01, 1.700000e+01, 1.800000e+01
@@ -26,7 +26,7 @@ mo.graph @simple_split_dim_rank3_split_0(%arg0: !mo.tensor<[4, 10], f32>, %arg1:
 }
 
 // CHECK-IR-DAG: mo.graph @simple_split_dim_rank3_split_1
-// CHECK-IR-DAG: fusionInfo = Prologue(Affine(mo.matmul:{{[0-9]+}}, mo.split_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
+// CHECK-IR-DAG: fusionInfo = Epilogue(Affine(mo.matmul:{{[0-9]+}}, mo.split_dim:{{[0-9]+}}), mo.add:{{[0-9]+}}, operandIndices=[0])
 
 // CHECK-LABEL: 'simple_split_dim_rank3_split_1' returned tensor<4x2x4xf32>
 // CHECK-SAME: 1.100000e+01, 1.200000e+01, 1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01, 1.700000e+01, 1.800000e+01

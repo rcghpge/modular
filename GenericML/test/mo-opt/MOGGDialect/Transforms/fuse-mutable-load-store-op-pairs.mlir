@@ -88,7 +88,7 @@ mo.graph @store_to_fuse_has_sibling(%arg0: !mo.buffer<[10, 10], f32>, %arg1: !mo
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load(%arg0, [[ch0]])
 // CHECK: [[ch1:%.*]] = mogg.kernel{{.*}}chain([[outChain]])
-// CHECK: fusionInfo = Prologue(mo.matmul:{{[0-9]+}}, Elementwise(mo.add:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}), operandIndices=[0])
+// CHECK: fusionInfo = Epilogue(mo.matmul:{{[0-9]+}}, Elementwise(mo.add:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}), operandIndices=[0])
 mo.graph @load_matmul_add_store(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[4, 4], f32>, %arg2: !mo.tensor<[4, 4], f32>) -> !mo.buffer<[4, 4], f32> {
   %ch0 = mo.chain.create()
 
@@ -104,10 +104,10 @@ mo.graph @load_matmul_add_store(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tenso
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[outTensor1:%.*]], [[outChain1:%.*]] = mo.mutable.load(%arg0, [[ch0]])
 // CHECK: [[ch1:%.*]] = mogg.kernel{{.*}}chain([[outChain1]])
-// CHECK: fusionInfo = Prologue(mo.matmul:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0])
+// CHECK: fusionInfo = Epilogue(mo.matmul:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0])
 // CHECK: [[outTensor2:%.*]], [[outChain2:%.*]] = mo.mutable.load(%arg0, [[ch1]])
 // CHECK: [[ch2:%.*]] = mogg.kernel{{.*}}chain([[outChain2]])
-// CHECK: fusionInfo = Prologue(mo.matmul:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0])
+// CHECK: fusionInfo = Epilogue(mo.matmul:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0])
 mo.graph @load_matmul_store_twice(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[4, 4], f32>, %arg2: !mo.tensor<[4, 4], f32>) -> !mo.buffer<[4, 4], f32> {
   %ch0 = mo.chain.create()
 
@@ -128,7 +128,7 @@ mo.graph @load_matmul_store_twice(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.ten
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load(%arg0, [[ch0]])
 // CHECK: [[ch1:%.*]] = mogg.kernel{{.*}}chain([[outChain]])
-// CHECK: fusionInfo = Prologue(mo.layer_norm:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0])
+// CHECK: fusionInfo = Epilogue(mo.layer_norm:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0])
 mo.graph @write_layer_norm_store_same_buffer(%buf: !mo.buffer<[3, 2], f32>, %gamma: !mo.tensor<[2], f32>, %beta: !mo.tensor<[2], f32>, %eps: !mo.tensor<[], f32>) -> !mo.buffer<[3, 2], f32>
 {
   %ch0 = mo.chain.create()
@@ -144,7 +144,7 @@ mo.graph @write_layer_norm_store_same_buffer(%buf: !mo.buffer<[3, 2], f32>, %gam
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[ch1:%.*]] = mo.chain.create([[ch2:%.*]], [[ch0]])
 // CHECK: [[ch2]] = mogg.kernel{{.*}}chain([[ch1]])
-// CHECK: fusionInfo = MutableLoad(mo.mutable.load:{{[0-9]+}}, Prologue(mo.layer_norm:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0]))
+// CHECK: fusionInfo = MutableLoad(mo.mutable.load:{{[0-9]+}}, Epilogue(mo.layer_norm:{{[0-9]+}}, mo.mutable.store:{{[0-9]+}}, operandIndices=[0]))
 mo.graph @write_layer_norm_store_different_buffers(%src_buf: !mo.buffer<[3, 2], f32>, %dst_buf: !mo.buffer<[3, 2], f32>, %gamma: !mo.tensor<[2], f32>, %beta: !mo.tensor<[2], f32>, %eps: !mo.tensor<[], f32>) -> !mo.buffer<[3, 2], f32>
 {
   %ch0 = mo.chain.create()
