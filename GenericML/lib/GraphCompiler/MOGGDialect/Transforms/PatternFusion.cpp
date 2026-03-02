@@ -2873,7 +2873,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
         /*weightOffset=*/rmsNormOp.getOperand(3),
         /*scaleUb=*/op.getOperand(1),
         /*inChain=*/allReduceOp.getInChain(),
-        /*device=*/allReduceOp.getDevice());
+        /*device=*/op.getDevice());
 
     // Replace the output chain of AllReduce and the intermediate residual with
     // the outputs of the FusedAllReduce.

@@ -5018,29 +5018,25 @@ class MO_DistributedOp<string name, list<Trait> traits = []> : MO_TensorOp<name,
 }
 
 def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
-  MO_ExplicitDevice
+  MO_MultiDevice,
+  AllTypesMatch<["inputs", "outputs"]>
 ]> {
-  let summary = "Allreduce sum across N devices for a single device.";
+  let summary = "Allreduce sum across N devices.";
   let description = [{
     Allreduce takes in inputs each coming from a different device with
     the same shape as the final output and performs a sum reduction
-    across the devices. This op instance executes on a specific device
-    (specified by the device attribute) and produces the output for that device.
+    across the devices.
 
-    Multiple instances of this op are created (one per device) to enable
-    multi-threaded execution.
   }];
   let hasVerifier = 1;
-  // Variadic allreduce has a folder since it can take 1 input.
   let hasFolder = 1;
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
-    MO_Chain:$inChain,
-    M_DeviceRefAttr:$device
+    MO_Chain:$inChain
   );
   let results = (outs
-    MO_Tensor:$output,
+    Variadic<MO_Tensor>:$outputs,
     MO_Chain:$outChain
   );
   let assemblyFormat = [{

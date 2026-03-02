@@ -2989,6 +2989,9 @@ LogicalResult AllReduceSumOp::verify() {
     return emitError("allreduce requires at least one input");
 
   // Verify that all inputs have the same shape and element type.
+  // Inputs intentionally differ in device (one per GPU), so we can't use
+  // AllTypesMatch here. Output-input type matching (including device) and
+  // signal buffer count are handled by TableGen traits.
   auto firstInputType = getInputTensor(0).getType();
   for (size_t i = 1; i < inputs.size(); ++i) {
     auto inputType = getInputTensor(i).getType();
@@ -2997,23 +3000,6 @@ LogicalResult AllReduceSumOp::verify() {
     if (inputType.getElementType() != firstInputType.getElementType())
       return emitError("all inputs must have the same element type");
   }
-
-  // Verify that output type matches input type (shape and element type).
-  auto outputType = getOutput().getType();
-  if (outputType.getTypedShapeAttr() != firstInputType.getTypedShapeAttr())
-    return emitError("output shape must match input shape");
-  if (outputType.getElementType() != firstInputType.getElementType())
-    return emitError("output element type must match input element type");
-
-  // Verify that the device attribute matches the output device.
-  auto deviceAttr = getDeviceAttr();
-  auto outputDevice = outputType.getDeviceRef();
-  if (outputDevice && deviceAttr != outputDevice)
-    return emitError("device attribute must match output device");
-
-  // Verify signal buffers match input count
-  if (getSignalBuffers().size() != inputs.size())
-    return emitError("number of signal buffers must match number of inputs");
 
   return success();
 }
