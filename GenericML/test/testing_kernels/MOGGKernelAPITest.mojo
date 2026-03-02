@@ -3,17 +3,17 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
-from collections import Optional
-from collections.string import StaticString
-from math import iota
-from ffi import external_call
-from sys.info import simd_width_of
+from std.collections import Optional
+from std.collections.string import StaticString
+from std.math import iota
+from std.ffi import external_call
+from std.sys.info import simd_width_of
 
 import compiler_internal as compiler
 from buffer import NDBuffer
 from buffer.dimlist import DimList
 from compiler_internal import StaticTensorSpec
-from runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
+from std.runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
 from tensor import (
     InputTensor,
     InputVariadicTensors,
@@ -41,7 +41,7 @@ from tensor.managed_tensor_slice import (
     _MutableInputTensor as MutableInputTensor,
 )
 
-from utils import IndexList, StaticTuple
+from std.utils import IndexList, StaticTuple
 
 
 # TODO(MOCO-1413): remove this need to keep imported exported funcs alive.

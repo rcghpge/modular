@@ -6,8 +6,8 @@
 
 import compiler_internal as compiler
 from tensor import OutputTensor
-from collections.string.string_slice import _get_kgen_string
-from collections.string import StaticString
+from std.collections.string.string_slice import _get_kgen_string
+from std.collections.string import StaticString
 
 
 # Custom version of constrained so we get the note in this file.
