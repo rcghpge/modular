@@ -5071,6 +5071,32 @@ def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
 }
 
 
+def MO_DistributedScatterOp : MO_DistributedOp<"distributed.scatter", [
+  MO_MultiDevice,
+]> {
+  let summary = "Scatter different chunks from root GPU to device groups.";
+  let description = [{
+    Scatter takes in ngpus input tensors (one per GPU, padded from dp_size
+    distinct chunks) all residing on the root device, and distributes each
+    to the corresponding GPU's output. The root attribute identifies which
+    device holds the source data.
+  }];
+  let hasVerifier = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain,
+    I64Attr:$root
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
   MO_HasDeviceInterface,
   MO_MultiDevice,

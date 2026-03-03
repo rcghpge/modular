@@ -3013,6 +3013,46 @@ void AllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedScatterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DistributedScatterOp::verify() {
+  auto inputs = getInputs();
+  if (inputs.empty())
+    return emitError("scatter requires at least one input");
+
+  auto outputs = getOutputs();
+  if (outputs.size() != inputs.size())
+    return emitError("number of outputs must match number of inputs");
+
+  if (getSignalBuffers().size() != inputs.size())
+    return emitError("number of signal buffers must match number of inputs");
+
+  // Verify all inputs have the same element type.
+  auto firstInputType = getInputTensor(0).getType();
+  for (size_t i = 1; i < inputs.size(); ++i) {
+    auto inputType = getInputTensor(i).getType();
+    if (inputType.getElementType() != firstInputType.getElementType())
+      return emitError("all inputs must have the same element type");
+  }
+
+  // Verify root is in range.
+  int64_t root = getRoot();
+  if (root < 0 || root >= static_cast<int64_t>(inputs.size()))
+    return emitError("root must be in range [0, ngpus)");
+
+  return success();
+}
+
+void DistributedScatterOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceScatterSumOp
 //===----------------------------------------------------------------------===//
 
