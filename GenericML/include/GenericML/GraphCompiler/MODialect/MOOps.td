@@ -5045,30 +5045,24 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
 }
 
 def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
-  MO_ExplicitDevice
+  MO_MultiDevice
 ]> {
-  let summary = "ReduceScatter sum across N devices for a single device.";
+  let summary = "ReduceScatter sum across N devices.";
   let description = [{
     ReduceScatter takes in inputs each coming from a different device, and
     partitions the reduction such that each device receives a disjoint subset
-    of the result. This op instance executes on a specific device (specified by
-    the device attribute) and produces the output for that device.
-
-    Multiple instances of this op are created (one per device) to enable
-    multi-threaded execution.
+    of the result.
   }];
   let hasVerifier = 1;
-  // Variadic ReduceScatter has a folder since it can take 1 input.
   let hasFolder = 1;
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     MO_Chain:$inChain,
-    M_DeviceRefAttr:$device,
     DefaultValuedAttr<I64Attr, "-1">:$axis
   );
   let results = (outs
-    MO_Tensor:$output,
+    Variadic<MO_Tensor>:$outputs,
     MO_Chain:$outChain
   );
   let assemblyFormat = [{

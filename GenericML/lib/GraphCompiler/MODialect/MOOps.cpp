@@ -3023,6 +3023,9 @@ LogicalResult ReduceScatterSumOp::verify() {
     return emitError("reducescatter requires at least one input");
 
   // Verify that all inputs have the same shape and element type.
+  // Inputs intentionally differ in device (one per GPU), so we can't use
+  // AllTypesMatch here. Output shape validation and signal buffer count
+  // are handled below.
   auto firstInputType = getInputTensor(0).getType();
   for (size_t i = 1; i < inputs.size(); ++i) {
     auto inputType = getInputTensor(i).getType();
@@ -3032,26 +3035,16 @@ LogicalResult ReduceScatterSumOp::verify() {
       return emitError("all inputs must have the same element type");
   }
 
-  // Verify that output element type matches input element type.
-  auto outputType = getOutput().getType();
-  if (outputType.getElementType() != firstInputType.getElementType())
-    return emitError("output element type must match input element type");
+  // Verify output count matches input count.
+  auto outputs = getOutputs();
+  if (outputs.size() != inputs.size())
+    return emitError("number of outputs must match number of inputs");
 
-  // Verify that the device attribute matches the output device.
-  auto deviceAttr = getDeviceAttr();
-  auto outputDevice = outputType.getDeviceRef();
-  if (outputDevice && deviceAttr != outputDevice)
-    return emitError("device attribute must match output device");
-
-  // Verify signal buffers match input count
+  // Verify signal buffers match input count.
   if (getSignalBuffers().size() != inputs.size())
     return emitError("number of signal buffers must match number of inputs");
 
-  // Verify output shape is correct for reducescatter.
-  // The scatter axis dimension is divided among GPUs.
-  if (firstInputType.getRank() != outputType.getRank())
-    return emitError("output rank must match input rank");
-
+  // Verify each output's shape is correct for reducescatter.
   int64_t ngpus = inputs.size();
   int64_t rank = firstInputType.getRank();
 
@@ -3062,36 +3055,42 @@ LogicalResult ReduceScatterSumOp::verify() {
     return emitError(
         llvm::formatv("axis {0} out of bounds for rank {1}", getAxis(), rank));
 
-  // Get device index from device attribute
-  int64_t deviceIdx = deviceAttr.getId();
+  for (int64_t devIdx = 0, e = outputs.size(); devIdx < e; ++devIdx) {
+    auto outputType = getOutputTensor(devIdx).getType();
 
-  for (int64_t i = 0; i < rank; ++i) {
-    int64_t inputDim = firstInputType.getIntDim(i);
-    int64_t outputDim = outputType.getIntDim(i);
+    if (outputType.getElementType() != firstInputType.getElementType())
+      return emitError("output element type must match input element type");
 
-    // Skip dynamic dimensions
-    if (mlir::ShapedType::isDynamic(inputDim) ||
-        mlir::ShapedType::isDynamic(outputDim))
-      continue;
+    if (static_cast<int64_t>(outputType.getRank()) != rank)
+      return emitError("output rank must match input rank");
 
-    if (i == axis) {
-      // Scatter axis: verify partitioned size
-      int64_t base = inputDim / ngpus;
-      int64_t remainder = inputDim % ngpus;
-      // Lower-ranked GPUs get one extra element
-      int64_t expectedSize = base + (deviceIdx < remainder ? 1 : 0);
+    for (int64_t i = 0; i < rank; ++i) {
+      int64_t inputDim = firstInputType.getIntDim(i);
+      int64_t outputDim = outputType.getIntDim(i);
 
-      if (outputDim != expectedSize)
-        return emitError(llvm::formatv(
-            "output dimension {0} should be {1} for device {2} "
-            "(input dim {3} / {4} GPUs), but got {5}",
-            i, expectedSize, deviceIdx, inputDim, ngpus, outputDim));
-    } else {
-      // Non-scatter axes: must match exactly
-      if (outputDim != inputDim)
-        return emitError(
-            llvm::formatv("output dimension {0} must match input ({1} vs {2})",
-                          i, inputDim, outputDim));
+      // Skip dynamic dimensions
+      if (mlir::ShapedType::isDynamic(inputDim) ||
+          mlir::ShapedType::isDynamic(outputDim))
+        continue;
+
+      if (i == axis) {
+        // Scatter axis: verify partitioned size
+        int64_t base = inputDim / ngpus;
+        int64_t remainder = inputDim % ngpus;
+        int64_t expectedSize = base + (devIdx < remainder ? 1 : 0);
+
+        if (outputDim != expectedSize)
+          return emitError(llvm::formatv(
+              "output dimension {0} should be {1} for device {2} "
+              "(input dim {3} / {4} GPUs), but got {5}",
+              i, expectedSize, devIdx, inputDim, ngpus, outputDim));
+      } else {
+        // Non-scatter axes: must match exactly
+        if (outputDim != inputDim)
+          return emitError(llvm::formatv(
+              "output dimension {0} must match input ({1} vs {2})", i, inputDim,
+              outputDim));
+      }
     }
   }
 

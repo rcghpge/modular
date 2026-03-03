@@ -283,8 +283,8 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
 LogicalResult ReduceScatterSumOp::fold(FoldAdaptor adaptor,
                                        SmallVectorImpl<OpFoldResult> &results) {
   // If the reduce-scatter has 1 input, return the input (identity op).
-  if (getInputs().size() == 1 &&
-      getInputs()[0].getType() == getOutput().getType()) {
+  if (getInputs().size() == 1 && getOutputs().size() == 1 &&
+      getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
     results.push_back(getInChain());
     return success();

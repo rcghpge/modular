@@ -6,14 +6,14 @@ mo.graph @reducescatter_mismatched_shapes(
     %arg1: !mo.tensor<[4, 3], f32, gpu:1>,
     %sig0: !mo.buffer<[537919488], ui8, gpu:0>,
     %sig1: !mo.buffer<[537919488], ui8, gpu:1>)
-    -> (!mo.tensor<[3, 3], f32, gpu:0>) {
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>) {
   %chain_in = mo.chain.create()
   // expected-error@+1 {{all inputs must have the same shape}}
-  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+  %0:3 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) :
     (!mo.tensor<[6, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:1>,
      !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.chain)
-    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.chain)
-  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:0>
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>
 }
 
 // -----
@@ -24,14 +24,14 @@ mo.graph @reducescatter_mismatched_dtypes(
     %arg1: !mo.tensor<[6, 3], f16, gpu:1>,
     %sig0: !mo.buffer<[537919488], ui8, gpu:0>,
     %sig1: !mo.buffer<[537919488], ui8, gpu:1>)
-    -> (!mo.tensor<[3, 3], f32, gpu:0>) {
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>) {
   %chain_in = mo.chain.create()
   // expected-error@+1 {{all inputs must have the same element type}}
-  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+  %0:3 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) :
     (!mo.tensor<[6, 3], f32, gpu:0>, !mo.tensor<[6, 3], f16, gpu:1>,
      !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.chain)
-    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.chain)
-  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:0>
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>
 }
 
 // -----
@@ -114,7 +114,7 @@ mo.graph @allgather_two_devices(
 // -----
 
 // Test reducescatter with wrong output size on scatter axis (axis -1)
-// Input [3, 6] with 3 GPUs should give [3, 2] output, not [3, 3]
+// Input [3, 6] with 3 GPUs should give [3, 2] per device, not [3, 3]
 mo.graph @reducescatter_wrong_scatter_dim(
     %arg0: !mo.tensor<[3, 6], f32, gpu:0>,
     %arg1: !mo.tensor<[3, 6], f32, gpu:1>,
@@ -122,14 +122,14 @@ mo.graph @reducescatter_wrong_scatter_dim(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>,
     %sig2: !mo.buffer<[1], ui8, gpu:2>)
-    -> (!mo.tensor<[3, 3], f32, gpu:0>) {
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>) {
   %chain_in = mo.chain.create()
   // expected-error@+1 {{output dimension 1 should be 2 for device 0 (input dim 6 / 3 GPUs), but got 3}}
-  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %arg2, %sig0, %sig1, %sig2, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+  %0:4 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %arg2, %sig0, %sig1, %sig2, %chain_in) :
     (!mo.tensor<[3, 6], f32, gpu:0>, !mo.tensor<[3, 6], f32, gpu:1>, !mo.tensor<[3, 6], f32, gpu:2>,
      !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.buffer<[1], ui8, gpu:2>, !mo.chain)
-    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.chain)
-  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:0>
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>, !mo.chain)
+  mo.output %0#0, %0#1, %0#2 : !mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>
 }
 
 // -----
@@ -141,14 +141,14 @@ mo.graph @reducescatter_wrong_non_scatter_dim(
     %arg1: !mo.tensor<[3, 6], f32, gpu:1>,
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>)
-    -> (!mo.tensor<[4, 3], f32, gpu:0>) {
+    -> (!mo.tensor<[4, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>) {
   %chain_in = mo.chain.create()
   // expected-error@+1 {{output dimension 0 must match input (3 vs 4)}}
-  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+  %0:3 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) :
     (!mo.tensor<[3, 6], f32, gpu:0>, !mo.tensor<[3, 6], f32, gpu:1>,
      !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
-    -> (!mo.tensor<[4, 3], f32, gpu:0>, !mo.chain)
-  mo.output %0#0 : !mo.tensor<[4, 3], f32, gpu:0>
+    -> (!mo.tensor<[4, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[4, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>
 }
 
 // -----
@@ -159,14 +159,14 @@ mo.graph @reducescatter_wrong_rank(
     %arg1: !mo.tensor<[3, 6], f32, gpu:1>,
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>)
-    -> (!mo.tensor<[3], f32, gpu:0>) {
+    -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>) {
   %chain_in = mo.chain.create()
   // expected-error@+1 {{output rank must match input rank}}
-  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) {device = #M.device_ref<"gpu", 0>} :
+  %0:3 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %sig0, %sig1, %chain_in) :
     (!mo.tensor<[3, 6], f32, gpu:0>, !mo.tensor<[3, 6], f32, gpu:1>,
      !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
-    -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
-  mo.output %0#0 : !mo.tensor<[3], f32, gpu:0>
+    -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>
 }
 
 // -----
@@ -181,12 +181,12 @@ mo.graph @reducescatter_ragged_wrong_size(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>,
     %sig2: !mo.buffer<[1], ui8, gpu:2>)
-    -> (!mo.tensor<[3, 3], f32, gpu:1>) {
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>) {
   %chain_in = mo.chain.create()
   // expected-error@+1 {{output dimension 1 should be 2 for device 1 (input dim 7 / 3 GPUs), but got 3}}
-  %0:2 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %arg2, %sig0, %sig1, %sig2, %chain_in) {device = #M.device_ref<"gpu", 1>} :
+  %0:4 = "mo.distributed.reducescatter.sum"(%arg0, %arg1, %arg2, %sig0, %sig1, %sig2, %chain_in) :
     (!mo.tensor<[3, 7], f32, gpu:0>, !mo.tensor<[3, 7], f32, gpu:1>, !mo.tensor<[3, 7], f32, gpu:2>,
      !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.buffer<[1], ui8, gpu:2>, !mo.chain)
-    -> (!mo.tensor<[3, 3], f32, gpu:1>, !mo.chain)
-  mo.output %0#0 : !mo.tensor<[3, 3], f32, gpu:1>
+    -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>, !mo.chain)
+  mo.output %0#0, %0#1, %0#2 : !mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>
 }
