@@ -1246,3 +1246,20 @@ struct UniqueParameters:
             return MyCustomScalarRegTrivialSI32(0)
         else:
             return MyCustomScalarRegTrivialSI32(1)
+
+
+@compiler.register("shape_func_with_mutable")
+struct ShapeFuncWithMutable:
+    @staticmethod
+    fn execute(
+        output: OutputTensor[rank=2],
+        x: MutableInputTensor[dtype = output.dtype, rank=2],
+    ):
+        x[0, 0] = 2.0
+        output[0, 0] = 1.0
+
+    @staticmethod
+    fn shape(
+        x: InputTensor[rank=2],
+    ) -> IndexList[2]:
+        return x.shape()

@@ -78,7 +78,19 @@ LogicalResult verifyShapeFunctionInputsMatchExecuteFunction(
     if (!execArgOpt.has_value() || !shapeArgOpt.has_value())
       break;
 
-    if (*execArgOpt != *shapeArgOpt) {
+    auto isCompatibleArgs = [&]() {
+      // Arguments of the shape / exec function must have the same type.
+      if (*execArgOpt == *shapeArgOpt)
+        return true;
+
+      // One exception is Mutable tensors: Since shape functions can't mutate
+      // their input, the shape operand must be an InputTensorType.
+      return execArgOpt->isMutableTensorType() &&
+             (shapeArgOpt->isTensorType() &&
+              !shapeArgOpt->isMutableTensorType());
+    };
+
+    if (!isCompatibleArgs()) {
       return adaptor.executeFunction->mojoCode
                  ->getParentOfType<LIT::StructDeclOp>()
                  .emitError()

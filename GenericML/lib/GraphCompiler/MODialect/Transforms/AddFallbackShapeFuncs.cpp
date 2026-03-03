@@ -491,12 +491,39 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
   // Mark all inputs by default.
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
+  // If any of the operands is a buffer, we must load it and update the chain.
+  Value currentChain = nullptr;
+  MO::MutableLoadOp firstLoadOp = nullptr;
+  if (!operands.empty() && isa<MO::ChainType>(operands.back().getType())) {
+    currentChain = operands.back();
+    operands.pop_back();
+  }
+
+  for (Value &operand : operands) {
+    auto bufferTy = dyn_cast<MO::BufferType>(operand.getType());
+    if (!bufferTy)
+      continue;
+
+    // Replace the buffer with the loaded tensor and update the chain.
+    auto bufferLoadOp = MO::MutableLoadOp::create(
+        builder, op.getLoc(), bufferTy.toTensorType(), currentChain.getType(),
+        operand, currentChain);
+    if (!firstLoadOp)
+      firstLoadOp = bufferLoadOp;
+    operand = bufferLoadOp.getOutTensor();
+    currentChain = bufferLoadOp.getOutChain();
+  }
+
   SmallVector<int32_t> dataDepInputIdxs(operands.size());
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
 
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     SmallVector<std::pair<StringRef, Attribute>> kgenParams;
     kgenParams.emplace_back("output_idx", builder.getIndexAttr(idx));
+
+    // Shape functions are only needed for the tensor outputs.
+    if (!isa<MO::TensorType>(res.getType()))
+      continue;
 
     // Add other bespoke kgen params declared by the custom operator if they are
     // needed
@@ -509,6 +536,11 @@ Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
                      /*kgenParams=*/kgenParams,
                      /*dataDepInputIdxs=*/dataDepInputIdxs);
   }
+
+  // Replace the input chain of the custom op with the final chain after loading
+  // all buffers.
+  if (currentChain)
+    op->getOperands().back().replaceAllUsesExcept(currentChain, firstLoadOp);
 
   return success();
 }
