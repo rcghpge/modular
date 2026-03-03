@@ -337,7 +337,7 @@ pseudo-register that is conceptually used by primitives that take no arguments.
 
 The result registers specify the register values to return, and must align with
 the invokable result types from the [`INVOKABLES_INDEX`
-section](#INVOKABLES_INDEX-section).
+section](#invokables_index-section).
 
 ***Rationale***
 
@@ -501,6 +501,6 @@ The `MLIRTYPE_MD` section is an optional section which is not needed for MEF
 execution, but allows `MEF2MLIR` conversion to regenerate the correct types for
 invokable arguments and the result types of primitives. This section
 contains a list of VBR encoded indexes into the
-[`MLIRTYPE_STRINGS_MD` section](#TYPE_STRINGS_MD-section), and is encoded in
+[`MLIRTYPE_STRINGS_MD` section](#mlirtype_strings_md-section), and is encoded in
 the same order as the invokable table. Each invokable has a list of argument
 types and a type for each primitive result.
