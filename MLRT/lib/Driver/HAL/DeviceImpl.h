@@ -12,8 +12,11 @@
 
 namespace M::Driver::HAL {
 
+struct DriverImpl;
+
 struct DeviceImpl {
-  DeviceImpl() { reset(); }
+  DeviceImpl(DriverImpl *driver, M_driver_device_t handle)
+      : driver(driver), handle(handle) {}
   ~DeviceImpl() { reset(); }
 
   void reset() {
@@ -22,6 +25,7 @@ struct DeviceImpl {
     id = -1;
   }
 
+  DriverImpl *driver;
   M_driver_device_t handle;
   std::string name;
   int64_t id;

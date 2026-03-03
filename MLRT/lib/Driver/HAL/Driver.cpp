@@ -20,7 +20,7 @@ using M::Error;
 #define RETURN_IF_FAILED(expr, message)                                        \
   do {                                                                         \
     if (!(expr)) {                                                             \
-      std::string const &soPath = static_cast<DriverImpl *>(impl)->soPath;     \
+      std::string const &soPath = impl->soPath;                                \
       return Error(message + llvm::Twine(" for driver plugin ") + soPath);     \
     }                                                                          \
   } while (false)
@@ -28,7 +28,7 @@ using M::Error;
 // Helper macro - frequently used pattern
 #define CALL_M_DRIVER(action, obj, method_call)                                \
   do {                                                                         \
-    auto _impl = static_cast<DriverImpl *>(obj);                               \
+    auto _impl = obj;                                                          \
     M_driver_status_t status = _impl->method_call;                             \
     if (status != M_DRIVER_STATUS_SUCCESS) {                                   \
       const char *errorMessage = nullptr;                                      \
@@ -109,7 +109,7 @@ ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
     delete impl;
     return status.takeError();
   }
-  Driver *driver = new (std::nothrow) Driver((void *)impl);
+  Driver *driver = new (std::nothrow) Driver(impl);
   if (driver == nullptr) {
     delete impl;
     return Error("Failed to allocate memory for Driver object");
@@ -118,41 +118,38 @@ ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
 }
 
 Driver::~Driver() {
-  assert(impl_ != nullptr);
+  assert(impl != nullptr);
   // Ignore return value from API call,which is disallowed in DTORs.
   [[maybe_unused]] auto _ = [&]() {
-    CALL_M_DRIVER("finalize driver plugin", impl_,
-                  destroy(static_cast<DriverImpl *>(impl_)->handle));
+    CALL_M_DRIVER("finalize driver plugin", impl, destroy(impl->handle));
     return Error("_");
   }();
-  delete static_cast<DriverImpl *>(impl_);
-  impl_ = nullptr;
+  delete static_cast<DriverImpl *>(impl);
+  impl = nullptr;
 }
 
 ErrorOr<llvm::StringRef> Driver::name() const {
-  assert(impl_ != nullptr);
-  return static_cast<DriverImpl *>(impl_)->name;
+  assert(impl != nullptr);
+  return impl->name;
 }
 
 ErrorOr<llvm::StringRef> Driver::pluginPath() const {
-  assert(impl_ != nullptr);
-  return static_cast<DriverImpl *>(impl_)->soPath;
+  assert(impl != nullptr);
+  return impl->soPath;
 }
 
 ErrorOr<int64_t> Driver::deviceCount() const {
-  assert(impl_ != nullptr);
+  assert(impl != nullptr);
   int64_t numDevices = 0;
-  CALL_M_DRIVER(
-      "get device count", impl_,
-      device_count(static_cast<DriverImpl *>(impl_)->handle, &numDevices));
+  CALL_M_DRIVER("get device count", impl,
+                device_count(impl->handle, &numDevices));
   return numDevices;
 }
 
 ErrorOr<DeviceRef> Driver::device(int64_t id) {
   // Validate input
-  assert(impl_ != nullptr);
+  assert(impl != nullptr);
 
-  auto impl = static_cast<DriverImpl *>(impl_);
   if (id < 0 || id >= int64_t(impl->devices.size())) {
     return Error("Invalid device ID - " + llvm::Twine(id) +
                  " - is out of range [0, " + llvm::Twine(impl->devices.size()) +
@@ -162,18 +159,19 @@ ErrorOr<DeviceRef> Driver::device(int64_t id) {
   // Lazy initialization
   if (!impl->devices[id]) {
     M_driver_device_t deviceHandle = 0xDEADBEEFFEEDFACEuLL;
-    CALL_M_DRIVER("get device #" + std::to_string(id), impl_,
+    CALL_M_DRIVER("get device #" + std::to_string(id), impl,
                   device_get(impl->handle, id, &deviceHandle));
 
     DeviceImpl *deviceImpl = nullptr;
-    RETURN_IF_FAILED(deviceImpl = new (std::nothrow) DeviceImpl,
+    RETURN_IF_FAILED(deviceImpl =
+                         new (std::nothrow) DeviceImpl(impl, deviceHandle),
                      "Failed to allocate memory for Device implementation");
     deviceImpl->handle = deviceHandle;
     deviceImpl->id = id;
     deviceImpl->name = "Device #" + std::to_string(id);
 
     Device *device = nullptr;
-    RETURN_IF_FAILED(device = new (std::nothrow) Device((void *)deviceImpl),
+    RETURN_IF_FAILED(device = new (std::nothrow) Device(deviceImpl),
                      "Failed to allocate memory for Device object");
     impl->devices[id] = DeviceRef::take(device);
   }

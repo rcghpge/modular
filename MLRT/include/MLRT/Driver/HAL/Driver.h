@@ -17,12 +17,15 @@
 #include "Support/ReferenceCounted.h"
 
 namespace M::Driver::HAL {
+struct DriverImpl;
 
 class Driver;
 using DriverRef = RCRef<Driver>;
 
 class Device;
 using DeviceRef = RCRef<Device>;
+
+class Context;
 
 class Driver : public ReferenceCounted<Driver> {
 public:
@@ -46,9 +49,9 @@ public:
   ErrorOr<DeviceRef> device(int64_t id);
 
 private:
-  void *impl_;
+  explicit Driver(DriverImpl *impl) : impl(impl) {}
 
-  explicit Driver(void *impl) : impl_(impl) {}
+  DriverImpl *impl;
 };
 
 } // namespace M::Driver::HAL

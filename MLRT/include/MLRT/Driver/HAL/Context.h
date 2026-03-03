@@ -18,6 +18,8 @@
 
 namespace M::Driver::HAL {
 
+struct ContextImpl;
+
 class Context : public ReferenceCounted<Context> {
 public:
   ~Context();
@@ -26,10 +28,11 @@ public:
   DeviceRef device() const;
 
 private:
-  friend class Device;
-  explicit Context(void *impl) : impl_(impl) {}
+  explicit Context(ContextImpl *impl) : impl(impl) {}
 
-  void *impl_;
+  ContextImpl *impl;
+
+  friend class Device;
 };
 
 using ContextRef = RCRef<Context>;

@@ -8,12 +8,16 @@
 
 namespace M::Driver::HAL {
 
+struct DeviceImpl;
+
 struct ContextImpl {
-  ContextImpl() { reset(); }
+  ContextImpl(DeviceImpl *device, M_driver_context_t handle)
+      : device(device), handle(handle) {}
   ~ContextImpl() { reset(); }
 
   void reset() { handle = 0xDEADBEEFFEEDFACEuLL; }
 
+  DeviceImpl *device;
   M_driver_context_t handle;
 };
 
