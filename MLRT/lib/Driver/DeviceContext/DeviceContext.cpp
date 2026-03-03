@@ -51,6 +51,11 @@ static thread_local const DeviceContext *currentlyBoundContext = nullptr;
 // will return this count. Using atomic for thread-safe access.
 static std::atomic<int> g_virtualDeviceCount{0};
 
+// Fast-path flag for allPeerAccessEnabled(). Set to non-zero when all
+// peer access is confirmed enabled, avoiding the need to re-query
+// every device on subsequent calls.
+static std::atomic<bool> g_allPeerAccessEnabled{false};
+
 MODULAR_CXX_EXPORT void setVirtualDeviceCount(int count) {
   g_virtualDeviceCount = count;
 }
@@ -1689,10 +1694,14 @@ ErrorOrSuccess Device::enableAllPeerAccess() {
     }
   }
 
+  g_allPeerAccessEnabled = true;
   return success();
 }
 
 ErrorOr<bool> Device::allPeerAccessEnabled() {
+  if (g_allPeerAccessEnabled.load(std::memory_order_relaxed))
+    return true;
+
   int numDevices = Device::numberOfDevices(Device::gpuAPI);
   if (numDevices < 2)
     return false;
@@ -1703,6 +1712,8 @@ ErrorOr<bool> Device::allPeerAccessEnabled() {
     if (device->canAccessPeer_.empty() || !device->canAccessPeer_.all())
       return false;
   }
+
+  g_allPeerAccessEnabled.store(true, std::memory_order_relaxed);
   return true;
 }
 
