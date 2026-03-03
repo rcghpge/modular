@@ -7,6 +7,7 @@
 #include "Driver.h"
 #include "Common.h"
 #include "HAL/M_driver_driver.h"
+#include "llvm/ADT/StringRef.h"
 
 using namespace M::Target::Metal;
 
@@ -45,9 +46,13 @@ extern "C" M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-extern "C" M_driver_status_t M_driver_property(const char *property_name,
-                                               void *value) {
-  (void)property_name;
-  (void)value;
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+extern "C" M_driver_status_t
+M_driver_property([[maybe_unused]] M_driver_driver_t handle,
+                  const char *property_name, void *value) {
+  StringRef name(property_name);
+  if (name == M_DRIVER_PROPERTY_API)
+    *static_cast<const char **>(value) = "Metal";
+  else
+    return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+  return M_DRIVER_STATUS_SUCCESS;
 }

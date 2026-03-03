@@ -179,4 +179,11 @@ ErrorOr<DeviceRef> Driver::device(int64_t id) {
   return DeviceRef::copy(impl->devices[id].getPointer());
 }
 
+ErrorOr<StringRef> Driver::property(const char *name) {
+  const char *value;
+  CALL_M_DRIVER("get driver property", impl,
+                property(impl->handle, name, &value));
+  return value;
+}
+
 } // namespace M::Driver::HAL

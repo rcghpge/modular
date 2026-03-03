@@ -48,6 +48,8 @@ public:
   /// The ID must be in the range [0, `deviceCount()`-1].
   ErrorOr<DeviceRef> device(int64_t id);
 
+  ErrorOr<StringRef> property(const char *name);
+
 private:
   explicit Driver(DriverImpl *impl) : impl(impl) {}
 

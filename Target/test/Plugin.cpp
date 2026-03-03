@@ -78,6 +78,14 @@ protected:
   M_driver_driver_t driver = 0;
 };
 
+TEST_F(DriverPluginTest, DriverPropertyAPI) {
+  const char *api = nullptr;
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->property(driver, M_DRIVER_PROPERTY_API, &api));
+  ASSERT_NE(nullptr, api);
+  std::cerr << api << "\n";
+}
+
 TEST_F(DriverPluginTest, DeviceCount) {
   int64_t deviceCount = 0;
   M_driver_status_t status = this->device_count(driver, &deviceCount);

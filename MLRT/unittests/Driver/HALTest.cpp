@@ -75,6 +75,13 @@ TEST_F(DriverHALTest, DeviceGet) {
   }
 }
 
+TEST_F(DriverHALTest, PropertyApi) {
+  ErrorOr<llvm::StringRef> apiOr = driver_->property("api");
+  ASSERT_FALSE(apiOr.isError()) << apiOr.getError();
+  ASSERT_NE(0, apiOr->size());
+  std::cerr << apiOr->str() << "\n";
+}
+
 TEST_F(DriverHALTest, DeviceCreateContext) {
   ASSIGN_NO_ERR(int64_t, deviceCount, driver_->deviceCount());
   for (int64_t i = 0; i < deviceCount; i++) {

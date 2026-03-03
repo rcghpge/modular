@@ -42,6 +42,11 @@ typedef M_driver_status_t (*M_driver_destroy_func_ptr_t)(
     M_driver_driver_t driver);
 
 /**
+ * Common driver properties
+ */
+#define M_DRIVER_PROPERTY_API "api"
+
+/**
  * Retrieve an integer-valued property.
  *
  * @param property_name (in) The name of the property as a null-terminated
@@ -52,10 +57,11 @@ typedef M_driver_status_t (*M_driver_destroy_func_ptr_t)(
  * - M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME if the property name is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_property(const char *property_name, void *value);
+M_driver_status_t M_driver_property(M_driver_driver_t handle,
+                                    const char *property_name, void *value);
 
 typedef M_driver_status_t (*M_driver_property_func_ptr_t)(
-    const char *property_name, void *value);
+    M_driver_driver_t handle, const char *property_name, void *value);
 
 #ifdef __cplusplus
 }

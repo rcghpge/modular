@@ -7,6 +7,7 @@
 #include "Driver.h"
 #include "Error.h"
 #include "HAL/M_driver_api.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace M::Target::CUDA {
 
@@ -66,8 +67,12 @@ M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
   return status;
 }
 
-M_driver_status_t M_driver_property(const char *property_name, void *value) {
-  (void)property_name;
-  (void)value;
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+M_driver_status_t M_driver_property([[maybe_unused]] M_driver_driver_t handle,
+                                    const char *property_name, void *value) {
+  llvm::StringRef name(property_name);
+  if (name == M_DRIVER_PROPERTY_API)
+    *static_cast<const char **>(value) = "CUDA";
+  else
+    return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+  return M_DRIVER_STATUS_SUCCESS;
 }
