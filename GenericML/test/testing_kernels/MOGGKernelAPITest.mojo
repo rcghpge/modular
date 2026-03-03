@@ -21,8 +21,6 @@ from tensor import (
     OutputTensor,
     OutputVariadicTensors,
     _FusedComputeOutputTensor,
-    _input_fusion_hook_impl,
-    _output_fusion_hook_impl,
     foreach,
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
@@ -49,8 +47,6 @@ from std.utils import IndexList, StaticTuple
 fn export():
     comptime _simd_load_from_managed_tensor_slice = simd_load_from_managed_tensor_slice
     comptime _simd_store_into_managed_tensor_slice = simd_store_into_managed_tensor_slice
-    comptime __input_fusion_hook_impl = _input_fusion_hook_impl
-    comptime __output_fusion_hook_impl = _output_fusion_hook_impl
 
 
 # ===-----------------------------------------------------------------------===#
