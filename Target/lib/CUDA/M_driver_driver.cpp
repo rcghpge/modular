@@ -8,16 +8,11 @@
 #include "Error.h"
 #include "HAL/M_driver_api.h"
 
-#include "cuda.h"
+namespace M::Target::CUDA {
 
-#include <memory>
-
-Driver *Driver::create() {
-  CUresult result = cuInit(0);
-  if (result != CUDA_SUCCESS)
-    return nullptr;
-  auto driver = std::make_unique<Driver>();
-  return driver.release();
+Driver::~Driver() {
+  rawCuda.unload();
+  rawNvml.unload();
 }
 
 M_driver_status_t Driver::destroy(Driver *driver) {
@@ -35,10 +30,33 @@ M_driver_status_t Driver::destroy(Driver *driver) {
   return result;
 }
 
+} // namespace M::Target::CUDA
+
+using namespace M::Target::CUDA;
+
 M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
-  Driver *driver = Driver::create();
-  if (!driver)
+  auto nvml = NVML::load();
+  if (!nvml)
     return M_DRIVER_STATUS_UNKNOWN_ERROR;
+
+  if (nvml->nvmlInit_v2() != NVML_SUCCESS) {
+    nvml->unload();
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  }
+
+  auto cuda = CUDALoader::load();
+  if (!cuda) {
+    nvml->unload();
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  }
+
+  if (cuda->cuInit(0) != CUDA_SUCCESS) {
+    cuda->unload();
+    nvml->unload();
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  }
+
+  auto *driver = new Driver(std::move(*cuda), std::move(*nvml));
   *outDriver = driver->cast();
   return M_DRIVER_STATUS_SUCCESS;
 }
