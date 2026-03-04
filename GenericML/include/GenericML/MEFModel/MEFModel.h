@@ -71,8 +71,8 @@ public:
 
   /// Capture a device graph collection for per-device caller-provided keys.
   ///
-  /// ``graphKeys`` may provide one key (broadcast to all capture streams) or
-  /// one key per graph-capture stream (typically one per participating
+  /// ``graphKeys`` may provide one key (broadcast to all capture devices) or
+  /// one key per graph-capture device (typically one per participating
   /// device).
   ErrorOr<SmallVector<AnyAsyncValueRef>>
   capture(ArrayRef<uint64_t> graphKeys,
@@ -99,13 +99,13 @@ private:
                   SmallVector<AnyAsyncValueRef> &&extraArgs,
                   const class Model *model, Runtime &runtime);
 
-  struct CapturedPerStreamGraphEntry;
+  struct CapturedPerDeviceGraphEntry;
 
   ErrorOr<SmallVector<AnyAsyncValueRef>> executeWithDeviceMemoryInputs(
       ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const;
 
   ErrorOrSuccess
-  validateCapturedPerStreamEntries(ArrayRef<uint64_t> graphKeys,
+  validateCapturedPerDeviceEntries(ArrayRef<uint64_t> graphKeys,
                                    ArrayRef<uint64_t> inputSignatures) const;
 
   const class Model *model;
@@ -115,22 +115,22 @@ private:
   AnyAsyncValueRef weightsRegistry;
   SmallVector<AnyAsyncValueRef> extraArgs;
 
-  struct CapturedPerStreamGraphEntry {
+  struct CapturedPerDeviceGraphEntry {
     Driver::DeviceGraphRef graph;
-    // Capture-time stream-local input fingerprint
+    // Capture-time device-local input fingerprint
     // (input index + address + shape + dtype for non-host buffers on the
-    // stream's runtime device). This is intentionally distinct from graphKey
+    // device's runtime stream). This is intentionally distinct from graphKey
     // and is used only as a safety guard to reject unsafe graphKey reuse.
     uint64_t inputSignature = 0;
 
     // Captured model outputs for this stream/key. Keeping a copy per stream
-    // keeps replay ownership handling simple when replaying mixed key vectors.
+    // keeps replay ownership handling simple when replaying per-device keys.
     SmallVector<AnyAsyncValueRef> outputs;
   };
 
-  /// Per-stream captured graphs keyed by caller-provided scalar graph key.
-  SmallVector<llvm::DenseMap<uint64_t, CapturedPerStreamGraphEntry>>
-      perStreamGraphs;
+  /// Per-device captured graphs keyed by caller-provided scalar graph key.
+  SmallVector<llvm::DenseMap<uint64_t, CapturedPerDeviceGraphEntry>>
+      perDeviceGraphs;
 };
 
 //===----------------------------------------------------------------------===//
