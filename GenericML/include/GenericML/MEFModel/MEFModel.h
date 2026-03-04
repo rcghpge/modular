@@ -69,22 +69,23 @@ public:
                                               const std::string &outputName,
                                               ProcessedResults &results) const;
 
-  /// Capture a device graph for the given caller-provided key.
+  /// Capture a device graph collection for per-device caller-provided keys.
   ///
-  /// The caller controls key selection and must provide unique keys for
-  /// distinct input signatures. Input-signature safety checks are enforced at
-  /// capture/replay time.
+  /// ``graphKeys`` may provide one key (broadcast to all capture streams) or
+  /// one key per graph-capture stream (typically one per participating
+  /// device).
   ErrorOr<SmallVector<AnyAsyncValueRef>>
-  capture(uint64_t graphKey,
+  capture(ArrayRef<uint64_t> graphKeys,
           ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
-  /// Replay a previously captured graph for this key and these inputs.
-  ErrorOrSuccess replay(uint64_t graphKey,
+  /// Replay a previously captured graph collection for per-device keys.
+  ErrorOrSuccess replay(ArrayRef<uint64_t> graphKeys,
                         ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
-  /// Execute eagerly and compare launch trace against captured graph for key.
+  /// Execute eagerly and compare launch trace against captured graph collection
+  /// for per-device keys.
   ErrorOrSuccess
-  debugVerifyReplay(uint64_t graphKey,
+  debugVerifyReplay(ArrayRef<uint64_t> graphKeys,
                     ArrayRef<GenericML::Driver::DeviceMemory *> inputs);
 
   ExecutableModel(const ExecutableModel &) = delete;
@@ -98,8 +99,14 @@ private:
                   SmallVector<AnyAsyncValueRef> &&extraArgs,
                   const class Model *model, Runtime &runtime);
 
+  struct CapturedPerStreamGraphEntry;
+
   ErrorOr<SmallVector<AnyAsyncValueRef>> executeWithDeviceMemoryInputs(
       ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const;
+
+  ErrorOrSuccess
+  validateCapturedPerStreamEntries(ArrayRef<uint64_t> graphKeys,
+                                   ArrayRef<uint64_t> inputSignatures) const;
 
   const class Model *model;
   Runtime &runtime;
@@ -108,19 +115,22 @@ private:
   AnyAsyncValueRef weightsRegistry;
   SmallVector<AnyAsyncValueRef> extraArgs;
 
-  struct CapturedGraphEntry {
-    Driver::DeviceGraphCollection graphs;
-    // Capture-time input fingerprint (addresses + shapes + dtypes).
-    // This is intentionally distinct from graphKey and is used only as a
-    // safety guard to reject unsafe graphKey reuse.
+  struct CapturedPerStreamGraphEntry {
+    Driver::DeviceGraphRef graph;
+    // Capture-time stream-local input fingerprint
+    // (input index + address + shape + dtype for non-host buffers on the
+    // stream's runtime device). This is intentionally distinct from graphKey
+    // and is used only as a safety guard to reject unsafe graphKey reuse.
     uint64_t inputSignature = 0;
+
+    // Captured model outputs for this stream/key. Keeping a copy per stream
+    // keeps replay ownership handling simple when replaying mixed key vectors.
+    SmallVector<AnyAsyncValueRef> outputs;
   };
 
-  /// Cached device graphs keyed by caller-provided graph key.
-  ///
-  /// graphKey selects the graph entry. inputSignature validates that the
-  /// selected entry is replayed with a compatible input-buffer signature.
-  llvm::DenseMap<uint64_t, CapturedGraphEntry> capturedGraphs;
+  /// Per-stream captured graphs keyed by caller-provided scalar graph key.
+  SmallVector<llvm::DenseMap<uint64_t, CapturedPerStreamGraphEntry>>
+      perStreamGraphs;
 };
 
 //===----------------------------------------------------------------------===//

@@ -351,18 +351,37 @@ ErrorOrSuccess ExecutableModel::waitForModelSetup() {
   return success();
 }
 
-// Compute a stable input-signature hash (memory address + shape + dtype).
-// This is used as a safety check to ensure a caller-provided graph key is not
-// reused across incompatible input signatures.
+// Compute a stable stream-local input-signature hash
+// (input index + memory address + shape + dtype).
 //
-// NOTE: This signature is not used as the captured-graph lookup key. Graph
-// lookup is keyed only by caller-provided graphKey.
+// Only non-host inputs resident on the same runtime device as the stream are
+// included. This keeps per-stream safety checks compatible with replay that
+// mixes stream keys from different capture sessions.
 static uint64_t
-computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+computeInputKeyForStream(ArrayRef<GenericML::Driver::DeviceMemory *> inputs,
+                         const Driver::Device &streamDevice) {
   raw_xxhash64_stream hasher;
-  for (const GenericML::Driver::DeviceMemory *memory : inputs) {
+
+  uint64_t streamDeviceId = static_cast<uint64_t>(streamDevice.id());
+  hasher.write(reinterpret_cast<const char *>(&streamDeviceId),
+               sizeof(streamDeviceId));
+
+  for (size_t inputIndex = 0; inputIndex < inputs.size(); ++inputIndex) {
+    const GenericML::Driver::DeviceMemory *memory = inputs[inputIndex];
+    if (memory->isHost())
+      continue;
+
+    const Driver::Device &inputDevice = memory->getBuffer()->context().device();
+    if (inputDevice.id() != streamDevice.id() ||
+        inputDevice.api() != streamDevice.api())
+      continue;
+
+    uint64_t stableInputIndex = static_cast<uint64_t>(inputIndex);
+    hasher.write(reinterpret_cast<const char *>(&stableInputIndex),
+                 sizeof(stableInputIndex));
+
     void *bufferAddress = memory->getBuffer().getPointer()->ptr();
-    hasher.write(reinterpret_cast<char *>(&bufferAddress),
+    hasher.write(reinterpret_cast<const char *>(&bufferAddress),
                  sizeof(bufferAddress));
 
     const TensorSpec &spec = memory->getSpec();
@@ -377,20 +396,60 @@ computeInputKey(ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
   return hasher.hash();
 }
 
-static ErrorOrSuccess validateCapturedGraphEntrySafety(
-    uint64_t graphKey, uint64_t expectedInputSignature,
-    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  // Validate that the graph selected by graphKey is replayed with the same
-  // input-buffer signature it was captured with.
-  uint64_t actualInputSignature = computeInputKey(inputs);
-  if (actualInputSignature == expectedInputSignature)
-    return success();
+static SmallVector<uint64_t> computePerStreamInputSignatures(
+    ArrayRef<GenericML::Driver::DeviceMemory *> inputs,
+    ArrayRef<Driver::DeviceStreamRef> streams) {
+  SmallVector<uint64_t> signatures;
+  signatures.reserve(streams.size());
+  for (const Driver::DeviceStreamRef &stream : streams)
+    signatures.push_back(computeInputKeyForStream(inputs, stream->device()));
+  return signatures;
+}
 
-  return Error(Twine("Unsafe graph key reuse for key ") + Twine(graphKey) +
-               ": expected input signature " + Twine(expectedInputSignature) +
-               ", got " + Twine(actualInputSignature) +
-               ". Use distinct caller-provided keys for distinct input "
-               "buffer/signature configurations.");
+static std::string graphKeysToString(ArrayRef<uint64_t> graphKeys);
+
+static ErrorOr<SmallVector<uint64_t>>
+normalizeGraphKeysForStreams(ArrayRef<uint64_t> graphKeys, size_t streamCount,
+                             StringRef operationName) {
+  if (streamCount == 0)
+    return Error("No graph-capture streams available for this model");
+
+  if (graphKeys.empty())
+    return Error(Twine("graph keys must not be empty for ") + operationName);
+
+  if (graphKeys.size() == 1 && streamCount > 1)
+    return SmallVector<uint64_t>(streamCount, graphKeys.front());
+
+  if (graphKeys.size() != streamCount) {
+    std::string keysString = graphKeysToString(graphKeys);
+    return Error(Twine("per-device graph key count mismatch for ") +
+                 operationName + ": got " + Twine(graphKeys.size()) + " keys " +
+                 keysString + ", expected " + Twine(streamCount));
+  }
+
+  if (streamCount > 1) {
+    uint64_t firstKey = graphKeys.front();
+    for (size_t i = 1; i < graphKeys.size(); ++i) {
+      if (graphKeys[i] == firstKey)
+        continue;
+
+      std::string keysString = graphKeysToString(graphKeys);
+      return Error(Twine("mixed per-stream graph keys are not supported for ") +
+                   operationName + ": got " + keysString +
+                   ". Provide a single key or identical keys per stream.");
+    }
+  }
+
+  return SmallVector<uint64_t>(graphKeys.begin(), graphKeys.end());
+}
+
+static std::string graphKeysToString(ArrayRef<uint64_t> graphKeys) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  os << "[";
+  llvm::interleaveComma(graphKeys, os);
+  os << "]";
+  return os.str();
 }
 
 // Return all graph-capture-capable streams from the model's device contexts.
@@ -444,29 +503,46 @@ ExecutableModel::executeWithDeviceMemoryInputs(
 }
 
 ErrorOr<SmallVector<AnyAsyncValueRef>>
-ExecutableModel::capture(uint64_t graphKey,
+ExecutableModel::capture(ArrayRef<uint64_t> graphKeys,
                          ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  // Capture-time signature used only for graphKey safety validation.
-  uint64_t inputSignature = computeInputKey(inputs);
-
-  if (auto it = capturedGraphs.find(graphKey); it != capturedGraphs.end()) {
-    if (auto err = validateCapturedGraphEntrySafety(
-            graphKey, it->second.inputSignature, inputs))
-      return err.takeError();
-
-    const Driver::DeviceGraphCollection &graphs = it->second.graphs;
-    if (graphs.numGraphs() == 0)
-      return Error("no device graphs associated with an existing capture");
-
-    return llvm::map_to_vector(graphs.getOutputs(),
-                               [](auto &val) { return val.copy(); });
-  }
-
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
       captureStreams(extraArgs);
 
   if (streamsOr.isError())
     return streamsOr.takeError();
+
+  const size_t streamCount = streamsOr->size();
+
+  ErrorOr<SmallVector<uint64_t>> normalizedKeysOr =
+      normalizeGraphKeysForStreams(graphKeys, streamCount, "capture");
+  if (normalizedKeysOr.isError())
+    return normalizedKeysOr.takeError();
+  ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
+
+  if (perStreamGraphs.empty())
+    perStreamGraphs.resize(streamCount);
+  else if (perStreamGraphs.size() != streamCount)
+    return Error(Twine("capture stream count changed from ") +
+                 Twine(perStreamGraphs.size()) + " to " + Twine(streamCount));
+
+  bool anyStreamHit = false;
+  for (size_t streamIdx = 0; streamIdx < streamCount; ++streamIdx) {
+    if (perStreamGraphs[streamIdx].contains(normalizedKeys[streamIdx])) {
+      anyStreamHit = true;
+      break;
+    }
+  }
+
+  if (anyStreamHit) {
+    std::string keysString = graphKeysToString(normalizedKeys);
+    return Error(Twine("Graph keys already captured for capture: ") +
+                 keysString + ". Use replay() for existing keys.");
+  }
+
+  // Capture-time signatures used only for per-stream graph-key safety
+  // validation.
+  SmallVector<uint64_t> inputSignatures =
+      computePerStreamInputSignatures(inputs, *streamsOr);
 
   SmallVector<AnyAsyncValueRef> graphResults;
 
@@ -499,44 +575,138 @@ ExecutableModel::capture(uint64_t graphKey,
   Driver::DeviceGraphCollection graphs = graphOrErr.takeValue();
   graphs.setOutputs(graphResults);
 
-  capturedGraphs.try_emplace(
-      graphKey, CapturedGraphEntry{std::move(graphs), inputSignature});
+  ArrayRef<Driver::DeviceGraphRef> capturedGraphs = graphs.getGraphs();
+  if (capturedGraphs.size() != streamCount) {
+    return Error(Twine("captured graph count mismatch: expected ") +
+                 Twine(streamCount) + ", got " + Twine(capturedGraphs.size()));
+  }
+
+  for (size_t streamIdx = 0; streamIdx < streamCount; ++streamIdx) {
+    CapturedPerStreamGraphEntry entry;
+    entry.graph = capturedGraphs[streamIdx].copy();
+    entry.inputSignature = inputSignatures[streamIdx];
+    entry.outputs = llvm::map_to_vector(
+        graphResults, [](const AnyAsyncValueRef &val) { return val.copy(); });
+    perStreamGraphs[streamIdx].try_emplace(normalizedKeys[streamIdx],
+                                           std::move(entry));
+  }
+
   return graphResults;
 }
 
+ErrorOrSuccess ExecutableModel::validateCapturedPerStreamEntries(
+    ArrayRef<uint64_t> graphKeys, ArrayRef<uint64_t> inputSignatures) const {
+  if (perStreamGraphs.size() != graphKeys.size()) {
+    return Error(Twine("capture stream count changed from ") +
+                 Twine(perStreamGraphs.size()) + " to " +
+                 Twine(graphKeys.size()));
+  }
+
+  if (inputSignatures.size() != graphKeys.size()) {
+    return Error(Twine("input signature count mismatch: expected ") +
+                 Twine(graphKeys.size()) + ", got " +
+                 Twine(inputSignatures.size()));
+  }
+
+  for (size_t streamIdx = 0; streamIdx < graphKeys.size(); ++streamIdx) {
+    const auto &streamMap = perStreamGraphs[streamIdx];
+    auto it = streamMap.find(graphKeys[streamIdx]);
+    if (it == streamMap.end()) {
+      return Error(Twine("No captured graph for stream ") + Twine(streamIdx) +
+                   " key " + Twine(graphKeys[streamIdx]));
+    }
+
+    if (it->second.inputSignature != inputSignatures[streamIdx]) {
+      return Error(Twine("Unsafe graph key reuse on stream ") +
+                   Twine(streamIdx) + " for key " +
+                   Twine(graphKeys[streamIdx]) + ": expected input signature " +
+                   Twine(it->second.inputSignature) + ", got " +
+                   Twine(inputSignatures[streamIdx]) +
+                   ". Use distinct caller-provided keys for distinct input "
+                   "buffer/signature configurations.");
+    }
+  }
+
+  return success();
+}
+
 ErrorOrSuccess
-ExecutableModel::replay(uint64_t graphKey,
+ExecutableModel::replay(ArrayRef<uint64_t> graphKeys,
                         ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  auto it = capturedGraphs.find(graphKey);
-  if (it == capturedGraphs.end())
-    return Error(Twine("No captured graph for key: ") + Twine(graphKey));
+  ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
+      captureStreams(extraArgs);
 
-  if (auto err = validateCapturedGraphEntrySafety(
-          graphKey, it->second.inputSignature, inputs))
-    return err;
+  if (streamsOr.isError())
+    return streamsOr.takeError();
 
-  // A forward pass of the model may correspond to multiple graphs (one per
-  // device), we launch all graphs in a single replay call.
-  const Driver::DeviceGraphCollection &graphs = it->second.graphs;
+  ErrorOr<SmallVector<uint64_t>> normalizedKeysOr =
+      normalizeGraphKeysForStreams(graphKeys, streamsOr->size(), "replay");
+  if (normalizedKeysOr.isError())
+    return normalizedKeysOr.takeError();
+  ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
 
-  if (ErrorOrSuccess err = graphs.replay())
+  SmallVector<uint64_t> inputSignatures =
+      computePerStreamInputSignatures(inputs, *streamsOr);
+
+  if (ErrorOrSuccess err =
+          validateCapturedPerStreamEntries(normalizedKeys, inputSignatures))
     return err.takeError();
 
-  // Mark output buffers as owning again after replay. The graph has completed
-  // execution and the buffers should now be managed normally.
-  setOwningOnDeviceBuffers(graphs.getOutputs(), /*owning=*/true);
+  for (size_t streamIdx = 0; streamIdx < normalizedKeys.size(); ++streamIdx) {
+    const auto &streamMap = perStreamGraphs[streamIdx];
+    auto it = streamMap.find(normalizedKeys[streamIdx]);
+    ASSERT_STREAM(it != streamMap.end(), "expected captured graph entry");
+
+    const CapturedPerStreamGraphEntry &entry = it->second;
+    if (ErrorOrSuccess err = entry.graph->replay())
+      return err.takeError();
+  }
+
+  if (!normalizedKeys.empty()) {
+    const auto &streamMap = perStreamGraphs.front();
+    auto it = streamMap.find(normalizedKeys.front());
+    ASSERT_STREAM(it != streamMap.end(), "expected captured graph entry");
+
+    setOwningOnDeviceBuffers(it->second.outputs, /*owning=*/true);
+  }
 
   return success();
 }
 
 ErrorOrSuccess ExecutableModel::debugVerifyReplay(
-    uint64_t graphKey, ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
-  auto it = capturedGraphs.find(graphKey);
-  if (it == capturedGraphs.end())
-    return Error(Twine("No captured graph for key: ") + Twine(graphKey));
+    ArrayRef<uint64_t> graphKeys,
+    ArrayRef<GenericML::Driver::DeviceMemory *> inputs) {
+  ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
+      captureStreams(extraArgs);
 
-  // Verify using the graph collection's debugVerifyReplay
-  const Driver::DeviceGraphCollection &graphs = it->second.graphs;
+  if (streamsOr.isError())
+    return streamsOr.takeError();
+
+  ErrorOr<SmallVector<uint64_t>> normalizedKeysOr =
+      normalizeGraphKeysForStreams(graphKeys, streamsOr->size(),
+                                   "debug verify replay");
+  if (normalizedKeysOr.isError())
+    return normalizedKeysOr.takeError();
+  ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
+
+  SmallVector<uint64_t> inputSignatures =
+      computePerStreamInputSignatures(inputs, *streamsOr);
+
+  if (ErrorOrSuccess err =
+          validateCapturedPerStreamEntries(normalizedKeys, inputSignatures))
+    return err.takeError();
+
+  SmallVector<Driver::DeviceGraphRef> selectedGraphs;
+  selectedGraphs.reserve(normalizedKeys.size());
+  for (size_t streamIdx = 0; streamIdx < normalizedKeys.size(); ++streamIdx) {
+    const auto &streamMap = perStreamGraphs[streamIdx];
+    auto it = streamMap.find(normalizedKeys[streamIdx]);
+    ASSERT_STREAM(it != streamMap.end(), "expected captured graph entry");
+
+    selectedGraphs.push_back(it->second.graph.copy());
+  }
+
+  Driver::DeviceGraphCollection graphs(std::move(selectedGraphs));
   return graphs.debugVerifyReplay([&]() -> ErrorOrSuccess {
     auto result = executeWithDeviceMemoryInputs(inputs);
     if (result.isError())

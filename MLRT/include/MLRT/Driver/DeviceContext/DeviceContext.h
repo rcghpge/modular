@@ -497,6 +497,9 @@ public:
   /// The number of graphs in the collection.
   int64_t numGraphs() const;
 
+  /// Get captured device graphs in stream-capture order.
+  ArrayRef<DeviceGraphRef> getGraphs() const { return graphs; }
+
 private:
   /// A DeviceGraphCollection holds the set of captured device graphs which
   /// correspond to a single capture session of a MAX graph. There will be
