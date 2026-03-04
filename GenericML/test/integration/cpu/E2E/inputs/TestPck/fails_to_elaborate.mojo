@@ -14,8 +14,8 @@ from std.collections.string import StaticString
 @always_inline("nodebug")
 fn constrained[cond: Bool, msg: StaticString]():
     __mlir_op.`kgen.param.assert`[
-        cond = cond.__mlir_i1__(),
-        message = _get_kgen_string[msg](),
+        cond=cond.__mlir_i1__(),
+        message=_get_kgen_string[msg](),
     ]()  # expected-note {{constraint failed}}
 
 
