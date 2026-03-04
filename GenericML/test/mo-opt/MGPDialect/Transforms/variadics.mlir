@@ -2,7 +2,7 @@
 
 // Test that mo.concat with variadic inputs properly generates VariadicTensors in the emitted Mojo code
 
-// CHECK: fn stub_0({{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}InputTensor[dtype = DType.int32, rank = 1], {{.*}}OutputTensor[dtype = DType.int32, rank = 1]{{.*}}) raises:
+// CHECK: fn stub_0({{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}InputTensor[dtype = DType.int32, rank = 1, ...], {{.*}}OutputTensor[dtype = DType.int32, rank = 1, ...]{{.*}}) raises:
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}.shape(), {{.*}}.shape(), {{.*}}.shape())
 // CHECK: comptime {{.*}} = InlineArray[size = 3]({{.*}}.static_spec, {{.*}}.static_spec, {{.*}}.static_spec, __list_literal__ = ())

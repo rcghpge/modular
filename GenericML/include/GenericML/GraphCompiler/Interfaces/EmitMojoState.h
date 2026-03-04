@@ -303,8 +303,8 @@ public:
     if (rank == 0)
       rank = 1;
     auto dtype = mlirDTypeToMojoType(tensorType.getDtype()).text;
-    return llvm::formatv("{}[dtype = {}, rank = {}]", tensorTypeName, dtype,
-                         rank)
+    return llvm::formatv("{}[dtype = {}, rank = {}, ...]", tensorTypeName,
+                         dtype, rank)
         .str();
   }
 

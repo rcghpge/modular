@@ -67,7 +67,7 @@ struct MyCustomScalarRegTrivialSI32(TrivialRegisterPassable):
 struct OpaqueToCustomScalarSI32RegTrivial:
     @staticmethod
     fn execute(
-        x: InputTensor[dtype = DType.int32, rank=1]
+        x: InputTensor[dtype = DType.int32, rank=1, ...]
     ) -> MyCustomScalarRegTrivialSI32:
         return MyCustomScalarRegTrivialSI32(x[0])
 
@@ -102,7 +102,7 @@ struct MyCustomScalarRegF32(ImplicitlyCopyable, RegisterPassable):
 struct OpaqueToCustomScalarSI32Reg:
     @staticmethod
     fn execute(
-        x: InputTensor[dtype = DType.int32, rank=1]
+        x: InputTensor[dtype = DType.int32, rank=1, ...]
     ) -> MyCustomScalarRegSI32:
         return MyCustomScalarRegSI32(x[0])
 
@@ -115,7 +115,7 @@ struct OpaqueAddToTensorSI32Reg:
     fn execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype = DType.int32, rank=1],
+        outp: OutputTensor[dtype = DType.int32, rank=1, ...],
         x: MyCustomScalarRegSI32,
         y: MyCustomScalarRegSI32,
     ):
@@ -128,7 +128,7 @@ struct OpaqueAddToTensorF32:
     fn execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype = DType.float32, rank=1],
+        outp: OutputTensor[dtype = DType.float32, rank=1, ...],
         x: MyCustomScalarRegF32,
         y: MyCustomScalarRegF32,
     ):
@@ -156,7 +156,7 @@ struct MyCustomScalarSI32(ImplicitlyCopyable):
 struct OpaqueToCustomScalarSI32:
     @staticmethod
     fn execute(
-        x: InputTensor[dtype = DType.int32, rank=1]
+        x: InputTensor[dtype = DType.int32, rank=1, ...]
     ) -> MyCustomScalarSI32:
         return MyCustomScalarSI32(x[0])
 
@@ -169,7 +169,7 @@ struct OpaqueAddToTensorSI32:
     fn execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype = DType.int32, rank=1],
+        outp: OutputTensor[dtype = DType.int32, rank=1, ...],
         x: MyCustomScalarSI32,
         y: MyCustomScalarSI32,
     ):
@@ -182,7 +182,7 @@ struct OpaqueAddToTensorSI32Raises:
     fn execute[
         target: StaticString,
     ](
-        outp: OutputTensor[dtype = DType.int32, rank=1],
+        outp: OutputTensor[dtype = DType.int32, rank=1, ...],
         x: MyCustomScalarSI32,
         y: MyCustomScalarSI32,
     ) raises:
@@ -231,7 +231,7 @@ fn _matmul[
         ](IndexList[2], SIMD[dtype, width]) capturing -> None
     ] = None,
 ](
-    c: ManagedTensorSlice[mut=True],
+    c: ManagedTensorSlice[mut=True, ...],
     a: ManagedTensorSlice,
     b: ManagedTensorSlice,
 ) raises:
@@ -512,9 +512,9 @@ struct VariadicInputToOutput:
         size: Int,
         target: StaticString,
     ](
-        output: OutputVariadicTensors[dtype, rank=1, size=size],
-        bias: InputTensor[dtype=dtype, rank=1],
-        input: InputVariadicTensors[dtype, rank=1, size=size],
+        output: OutputVariadicTensors[dtype, rank=1, size=size, ...],
+        bias: InputTensor[dtype=dtype, rank=1, ...],
+        input: InputVariadicTensors[dtype, rank=1, size=size, ...],
     ):
         comptime for i in range(size):
             for j in range(input[i].size()):
@@ -531,11 +531,11 @@ struct AddBiasToDouble:
         rank: Int,
         dtype: DType,
     ](
-        output1: OutputTensor[dtype=dtype, rank=rank],
-        output2: OutputTensor[dtype=dtype, rank=rank],
-        input1: InputTensor[dtype=dtype, rank=rank],
-        input2: InputTensor[dtype=dtype, rank=rank],
-        bias: InputTensor[dtype=dtype, rank=rank],
+        output1: OutputTensor[dtype=dtype, rank=rank, ...],
+        output2: OutputTensor[dtype=dtype, rank=rank, ...],
+        input1: InputTensor[dtype=dtype, rank=rank, ...],
+        input2: InputTensor[dtype=dtype, rank=rank, ...],
+        bias: InputTensor[dtype=dtype, rank=rank, ...],
     ):
         output1[0] = input1[0] + bias[0]
         output2[0] = input2[0] + bias[0]
@@ -546,7 +546,7 @@ struct BasicInplace:
     @staticmethod
     fn execute[
         dtype: DType,
-    ](input: MutableInputTensor[dtype=dtype, rank=2]):
+    ](input: MutableInputTensor[dtype=dtype, rank=2, ...]):
         x = input[0, 0]
         x += 1
         input[0, 0] = x
@@ -558,7 +558,7 @@ struct BasicInplaceRaises:
     @staticmethod
     fn execute[
         dtype: DType,
-    ](input: MutableInputTensor[dtype=dtype, rank=2]) raises:
+    ](input: MutableInputTensor[dtype=dtype, rank=2, ...]) raises:
         x = input[0, 0]
         x += 1
         input[0, 0] = x
@@ -572,7 +572,7 @@ struct VariadicAdd:
         rank: Int,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank],
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
         inputs: FusedInputVariadicTensors[dtype, rank, ...],
     ) capturing raises:
         @parameter
@@ -594,7 +594,7 @@ struct Transpose2DOp:
     @staticmethod
     fn build_view[
         dtype: DType,
-    ](x: InputTensor[dtype=dtype, rank=2]) -> StaticTuple[IndexList[2], 2]:
+    ](x: InputTensor[dtype=dtype, rank=2, ...]) -> StaticTuple[IndexList[2], 2]:
         var new_stride = IndexList[2]()
         var new_shape = IndexList[2]()
         new_stride[0] = x._runtime_strides[1]
@@ -613,7 +613,7 @@ struct Transpose2DOp:
     fn update_input_view[
         dtype: DType, //, output_static_shape: DimList
     ](
-        input: InputTensor[dtype=dtype, rank=2],
+        input: InputTensor[dtype=dtype, rank=2, ...],
         out result: InputTensor[
             static_spec = input.static_spec.with_layout[2](
                 output_static_shape,
@@ -632,8 +632,8 @@ struct Transpose2DOp:
         target: StaticString,
         dtype: DType,
     ](
-        z: OutputTensor[dtype=dtype, rank=2],
-        x: InputTensor[dtype=dtype, rank=2],
+        z: OutputTensor[dtype=dtype, rank=2, ...],
+        x: InputTensor[dtype=dtype, rank=2, ...],
         ctx: DeviceContextPtr,
     ) raises:
         var x_view = Self.update_input_view[z._static_shape](x)
@@ -694,8 +694,8 @@ struct OpThatAlwaysFailsConstraint:
     fn execute[
         dtype: DType, rank: Int
     ](
-        out_tensor: OutputTensor[dtype=dtype, rank=rank],
-        in_tensor: InputTensor[dtype=dtype, rank=rank],
+        out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
+        in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
     ):
         comptime assert (
             1 == 2
@@ -708,8 +708,8 @@ struct OpThatAlwaysRaises:
     fn execute[
         dtype: DType, rank: Int
     ](
-        out_tensor: OutputTensor[dtype=dtype, rank=rank],
-        in_tensor: InputTensor[dtype=dtype, rank=rank],
+        out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
+        in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
     ) raises:
         out_tensor[0] = in_tensor[0]
         raise Error("This is an error")
@@ -721,8 +721,8 @@ struct MONNXAbsOverload:
     fn execute[
         dtype: DType, rank: Int
     ](
-        out_tensor: OutputTensor[dtype=dtype, rank=rank],
-        in_tensor: InputTensor[dtype=dtype, rank=rank],
+        out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
+        in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
     ) raises:
         @parameter
         @always_inline
@@ -739,8 +739,8 @@ struct MTorchAbsOverload:
     fn execute[
         dtype: DType, rank: Int
     ](
-        out_tensor: OutputTensor[dtype=dtype, rank=rank],
-        in_tensor: InputTensor[dtype=dtype, rank=rank],
+        out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
+        in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
     ) raises:
         @parameter
         @always_inline
@@ -761,8 +761,8 @@ struct OpWithCustomParams:
         custom_str: StaticString,
         custom_dtype: DType,
     ](
-        out_tensor: OutputTensor[dtype=dtype, rank=rank],
-        in_tensor: InputTensor[dtype=dtype, rank=rank],
+        out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
+        in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
     ) raises:
         out_tensor[0] = in_tensor[0]
         print("custom_int =", custom_int)
@@ -791,8 +791,8 @@ struct SupportsScalarKernel:
     fn execute[
         dtype: DType
     ](
-        outp: OutputTensor[dtype=dtype, rank=1],
-        x: InputTensor[dtype=dtype, rank=1],
+        outp: OutputTensor[dtype=dtype, rank=1, ...],
+        x: InputTensor[dtype=dtype, rank=1, ...],
         y: Scalar[dtype],
     ) raises:
         print("datatype is", dtype)
@@ -840,7 +840,7 @@ struct BuffToMyCustomScalarReg:
     @staticmethod
     fn execute[
         target: StaticString
-    ](x: InputTensor[dtype = DType.int32, rank=1]) -> MyCustomScalarReg[
+    ](x: InputTensor[dtype = DType.int32, rank=1, ...]) -> MyCustomScalarReg[
         DType.int32
     ]:
         return MyCustomScalarReg(x[0])
@@ -852,7 +852,7 @@ struct CustomScalarRegToBuff:
     fn execute[
         target: StaticString
     ](
-        input: OutputTensor[dtype = DType.int32, rank=1],
+        input: OutputTensor[dtype = DType.int32, rank=1, ...],
         x: MyCustomScalarReg[DType.int32],
     ):
         input[0] = x.val
@@ -864,15 +864,15 @@ struct TestCustomOp:
     fn execute[
         target: StaticString, dtype: DType, rank: Int
     ](
-        output: OutputTensor[dtype=dtype, rank=rank],
-        input: InputTensor[dtype=dtype, rank=rank],
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        input: InputTensor[dtype=dtype, rank=rank, ...],
     ):
         print("World!")
 
     @staticmethod
     fn shape[
         dtype: DType, rank: Int
-    ](input: InputTensor[dtype=dtype, rank=rank]) -> IndexList[rank]:
+    ](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
         print("Hello")
         return input.shape()
 
@@ -991,8 +991,8 @@ struct TestSameRankDtype:
     fn execute[
         dtype: DType, rank: Int
     ](
-        output: OutputTensor[dtype=dtype, rank=rank],
-        input: InputTensor[dtype=dtype, rank=rank],
+        output: OutputTensor[dtype=dtype, rank=rank, ...],
+        input: InputTensor[dtype=dtype, rank=rank, ...],
     ):
         output[0] = input[0]
 
@@ -1003,8 +1003,8 @@ struct TestFixRank:
     fn execute[
         dtype: DType
     ](
-        output: OutputTensor[dtype=dtype, rank=2],
-        input: InputTensor[dtype=dtype, rank=2],
+        output: OutputTensor[dtype=dtype, rank=2, ...],
+        input: InputTensor[dtype=dtype, rank=2, ...],
     ):
         output[0] = input[0]
 
@@ -1015,7 +1015,7 @@ struct TestSIMDInputSize1:
     fn execute[
         dtype: DType
     ](
-        output: OutputTensor[dtype=dtype, rank=2],
+        output: OutputTensor[dtype=dtype, rank=2, ...],
         input: SIMD[dtype=dtype, size=1],
     ):
         output[0] = input[0]
@@ -1026,7 +1026,10 @@ struct TestSIMDInput:
     @staticmethod
     fn execute[
         dtype: DType
-    ](output: OutputTensor[dtype=dtype, rank=2], input: SIMD[dtype=dtype],):
+    ](
+        output: OutputTensor[dtype=dtype, rank=2, ...],
+        input: SIMD[dtype=dtype, ...],
+    ):
         output[0] = input[0]
 
 
@@ -1036,7 +1039,7 @@ struct TestSIMDInputSize2:
     fn execute[
         dtype: DType
     ](
-        output: OutputTensor[dtype=dtype, rank=2],
+        output: OutputTensor[dtype=dtype, rank=2, ...],
         input: SIMD[dtype=dtype, size=2],
     ):
         output[0] = input[0]
@@ -1076,7 +1079,7 @@ struct ToTensorWrapper:
     @always_inline
     @staticmethod
     fn execute[
-        spec: StaticTensorSpec[dtype = DType.float32, rank=2], //
+        spec: StaticTensorSpec[dtype = DType.float32, rank=2, ...], //
     ](tensor: InputTensor[static_spec=spec],) -> TensorWrapper:
         var ptr = tensor._ptr.address_space_cast[spec.address_space]()
         return TensorWrapper(
@@ -1106,7 +1109,7 @@ struct MutableStore:
         _trace_name: StaticString,
     ](
         tw: TensorWrapper,
-        tensor: FusedInputTensor[dtype = DType.float32, rank=2],
+        tensor: FusedInputTensor[dtype = DType.float32, rank=2, ...],
         ctx: DeviceContextPtr,
     ) capturing raises:
         @parameter
@@ -1141,8 +1144,8 @@ struct MySquareComputeOutFusion:
     fn execute[
         dtype: DType
     ](
-        outp: _FusedComputeOutputTensor[dtype=dtype, rank=1],
-        input: InputTensor[dtype=dtype, rank=1],
+        outp: _FusedComputeOutputTensor[dtype=dtype, rank=1, ...],
+        input: InputTensor[dtype=dtype, rank=1, ...],
     ) capturing:
         var res = input[0] * input[0]
         comptime has_compute_lambda = outp.static_spec.out_compute_lambda is not None
@@ -1166,7 +1169,7 @@ struct InplaceNoOutFunc:
     @staticmethod
     fn execute(
         output: MutableInputTensor,
-        input: FusedInputTensor[dtype = output.dtype, rank = output.rank],
+        input: FusedInputTensor[dtype = output.dtype, rank = output.rank, ...],
     ) capturing raises:
         @parameter
         @always_inline
@@ -1200,7 +1203,8 @@ struct ParameterizedOpaqueType:
     fn execute[
         P0: Int
     ](
-        output: OutputTensor[dtype = DType.int32, rank=1], x: SIMDPair[P0, _]
+        output: OutputTensor[dtype = DType.int32, rank=1, ...],
+        x: SIMDPair[P0, _],
     ) capturing:
         output.store(IndexList[1](0), x.x)
         output.store(IndexList[1](P0), x.y)
@@ -1218,7 +1222,7 @@ struct KernelWithDefaultParameter:
         rank_defaulted: Int = 128,
         rank_derived_from_other: Int = rank + 1,
         rank_derived_from_derived: Int = rank_derived_from_other + 1,
-    ](x: OutputTensor[dtype = DType.int32, rank=1], y: InputTensor):
+    ](x: OutputTensor[dtype = DType.int32, rank=1, ...], y: InputTensor):
         print("rank =", rank)
         print("rank_defaulted =", rank_defaulted)
         print("rank_derived_from_other =", rank_derived_from_other)
@@ -1237,10 +1241,10 @@ struct UniqueParameters:
         page_size: Int,
         target: StaticString,
     ](
-        blocks: InputTensor[dtype=dtype, rank=6],
-        cache_lengths: InputTensor[dtype = DType.uint32, rank=1],
-        lookup_table: InputTensor[dtype = DType.uint32, rank=2],
-        max_lengths: InputTensor[dtype = DType.uint32, rank=2],
+        blocks: InputTensor[dtype=dtype, rank=6, ...],
+        cache_lengths: InputTensor[dtype = DType.uint32, rank=1, ...],
+        lookup_table: InputTensor[dtype = DType.uint32, rank=2, ...],
+        max_lengths: InputTensor[dtype = DType.uint32, rank=2, ...],
     ) -> MyCustomScalarRegTrivialSI32:
         comptime if page_size:
             return MyCustomScalarRegTrivialSI32(0)
@@ -1252,14 +1256,14 @@ struct UniqueParameters:
 struct ShapeFuncWithMutable:
     @staticmethod
     fn execute(
-        output: OutputTensor[rank=2],
-        x: MutableInputTensor[dtype = output.dtype, rank=2],
+        output: OutputTensor[rank=2, ...],
+        x: MutableInputTensor[dtype = output.dtype, rank=2, ...],
     ):
         x[0, 0] = 2.0
         output[0, 0] = 1.0
 
     @staticmethod
     fn shape(
-        x: InputTensor[rank=2],
+        x: InputTensor[rank=2, ...],
     ) -> IndexList[2]:
         return x.shape()

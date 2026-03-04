@@ -24,7 +24,7 @@ struct InvalidOwnedArgConvention:
     @staticmethod
     fn execute[
         target: StaticString, dtype: DType, rank: Int
-    ](output: OutputTensor[dtype=dtype, rank=rank]):
+    ](output: OutputTensor[dtype=dtype, rank=rank, ...]):
         comptime assert (
             False
         ), "oops"  # expected-error {{call expansion failed}}
