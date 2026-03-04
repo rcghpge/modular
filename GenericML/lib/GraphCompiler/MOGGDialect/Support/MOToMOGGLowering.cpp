@@ -167,7 +167,8 @@ MOGGKernelBuilder::MOGGKernelBuilder(
   bool isSyncRequired = forceSync || isa<MO::TransposeOp>(op) ||
                         (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
                         isa<MO::AllReduceSumOp>(op) ||
-                        isa<MO::ReduceScatterSumOp>(op);
+                        isa<MO::ReduceScatterSumOp>(op) ||
+                        isa<MO::DistributedBroadcastOp>(op);
   isAsync = !isSyncRequired;
 
   // Get ready for building ops.

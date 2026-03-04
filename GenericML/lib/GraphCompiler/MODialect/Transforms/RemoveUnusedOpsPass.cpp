@@ -29,7 +29,9 @@ static bool isUnusedOp(Operation *op) {
          !isa<MO::InvokeShapeFuncOp>(op) && op->use_empty();
 }
 
-static bool isSafeToErase(Operation *op) { return isa<MO::AllReduceSumOp>(op); }
+static bool isSafeToErase(Operation *op) {
+  return isa<MO::AllReduceSumOp, MO::DistributedBroadcastOp>(op);
+}
 
 struct EraseDeadOpPattern : RewritePattern {
   EraseDeadOpPattern(MLIRContext *context)

@@ -3191,6 +3191,53 @@ void MatmulAllReduceOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedBroadcastOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DistributedBroadcastOp::verify() {
+  auto outputs = getOutputs();
+  auto signalBuffers = getSignalBuffers();
+
+  if (signalBuffers.empty())
+    return emitError("broadcast requires at least one signal buffer");
+
+  // Number of outputs must match number of signal buffers.
+  if (outputs.size() != signalBuffers.size())
+    return emitError(
+        llvm::formatv("number of outputs must match number of signal buffers. "
+                      "Expected {0} outputs but got {1}",
+                      signalBuffers.size(), outputs.size()));
+
+  // Root must be in range.
+  int64_t root = getRoot();
+  int64_t numDevices = signalBuffers.size();
+  if (root < 0 || root >= numDevices)
+    return emitError(llvm::formatv(
+        "root index {0} out of range for {1} devices", root, numDevices));
+
+  // All outputs must have the same shape and element type as the input.
+  auto inputType = cast<TensorType>(getInput().getType());
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    auto outputType = getOutputTensor(i).getType();
+    if (outputType.getTypedShapeAttr() != inputType.getTypedShapeAttr())
+      return emitError("all outputs must have the same shape as the input");
+    if (outputType.getElementType() != inputType.getElementType())
+      return emitError(
+          "all outputs must have the same element type as the input");
+  }
+
+  return success();
+}
+
+void DistributedBroadcastOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange signalBuffers = getSignalBuffersMutable();
+
+  for (auto &sig : signalBuffers)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // AllReduceAddRMSNormQuantFP8Op
 //===----------------------------------------------------------------------===//
 

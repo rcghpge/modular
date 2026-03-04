@@ -5188,6 +5188,40 @@ def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_a
   }];
 }
 
+// Broadcast differs from other MO_DistributedOp subclasses: it has a single
+// input tensor (from root) rather than one input per device, so it uses
+// MO_MultiDeviceFrom<"outputs"> to infer execution devices from the variadic
+// outputs rather than the default inputs.
+def MO_DistributedBroadcastOp : MO_Op<"distributed.broadcast", [
+  MO_TensorOpInterface,
+  MO_HasDeviceInterface,
+  MO_MultiDeviceFrom<"outputs">,
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+]> {
+  let summary = "Broadcast from root device to all participating devices.";
+  let description = [{
+    Broadcast takes a single input tensor from the root device and replicates
+    it to all participating devices. The root device is identified by the
+    `root` attribute (0-indexed position in the signal buffer list).
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+  let arguments = (ins
+    MO_Tensor:$input,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$root
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//

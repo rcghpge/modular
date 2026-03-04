@@ -309,6 +309,22 @@ LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedBroadcastOp
+//===----------------------------------------------------------------------===//
+LogicalResult
+DistributedBroadcastOp::fold(FoldAdaptor adaptor,
+                             SmallVectorImpl<OpFoldResult> &results) {
+  // Single device broadcast: return the input as-is.
+  if (getOutputs().size() == 1 &&
+      getInput().getType() == getOutputs()[0].getType()) {
+    results.push_back(getInput());
+    results.push_back(getInChain());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {

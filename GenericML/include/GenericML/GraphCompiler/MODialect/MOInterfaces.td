@@ -510,7 +510,20 @@ class MO_SingleDeviceWithHostOperands<list<string> hostOperandNames = [],
 def MO_SingleDevice : MO_SingleDeviceWithHostOperands<>;
 
 // Marks an op that executes on multiple devices.
-def MO_MultiDevice : MO_OpTrait<"MOMultiDevice">;
+// The deviceSourceName parameter names the ODS operand or result whose per-value
+// device refs determine the execution devices (e.g. "inputs" or "outputs").
+class MO_MultiDeviceFrom<string deviceSourceName>
+  : MO_OpTrait<"MOMultiDevice">
+{
+  let extraConcreteClassDeclaration = [{
+    mlir::ValueRange getDeviceSourceValues() {
+      return get}] # snakeCaseToCamelCase<deviceSourceName>.ret # [{();
+    }
+  }];
+}
+
+// Default: infer execution devices from the variadic inputs.
+def MO_MultiDevice : MO_MultiDeviceFrom<"inputs">;
 
 // Marks an op that stores a deviceRef attribute to indicate where it will
 // execute, in contrast to the other device traits which do not require a

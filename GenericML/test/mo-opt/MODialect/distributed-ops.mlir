@@ -50,6 +50,24 @@ mo.graph @reduce_scatter_sum_dynamic(%in0: !mo.tensor<[3, ?], f32, gpu:0>, %in1:
   mo.output %out#0, %out#1 : !mo.tensor<[3, ?], f32, gpu:0>, !mo.tensor<[3, ?], f32, gpu:1>
 }
 
+// CHECK-LABEL: mo.graph @broadcast
+// CHECK: (%[[IN:.*]]: !mo.tensor<[2, 3], f32, gpu:0>, %[[SIG0:.*]]: !mo.buffer<[1], ui8, gpu:0>, %[[SIG1:.*]]: !mo.buffer<[1], ui8, gpu:1>
+mo.graph @broadcast(%in: !mo.tensor<[2, 3], f32, gpu:0>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %sig1: !mo.buffer<[1], ui8, gpu:1>) -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>) {
+  %ch = mo.chain.create()
+  // CHECK: mo.distributed.broadcast(%[[IN]], %[[SIG0]], %[[SIG1]], {{.*}}) : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain) -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  %out:2, %outChain = mo.distributed.broadcast(%in, %sig0, %sig1, %ch) : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain) -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  mo.output %out#0, %out#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>
+}
+
+// CHECK-LABEL: mo.graph @broadcast_folds
+// CHECK: (%[[IN:.*]]: !mo.tensor<[2, 17], f32, gpu:0>, %[[SIG0:.*]]: !mo.buffer<[1], ui8, gpu:0>, %[[CH:.*]]: !mo.chain)
+mo.graph @broadcast_folds(%in: !mo.tensor<[2, 17], f32, gpu:0>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %ch: !mo.chain) -> (!mo.tensor<[2, 17], f32, gpu:0>, !mo.chain) {
+  // CHECK-NOT: mo.distributed.broadcast
+  // CHECK: mo.output %[[IN]], %[[CH]]
+  %out, %outChain = mo.distributed.broadcast(%in, %sig0, %ch) : (!mo.tensor<[2, 17], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain) -> (!mo.tensor<[2, 17], f32, gpu:0>, !mo.chain)
+  mo.output %out, %outChain : !mo.tensor<[2, 17], f32, gpu:0>, !mo.chain
+}
+
 // CHECK-LABEL: mo.graph @reduce_scatter_folds
 // CHECK: (%[[IN0:.*]]: !mo.tensor<[2, 17], f32, gpu:0>, %[[SIG0:.*]]: !mo.buffer<[1], ui8, gpu:0>, %[[CH:.*]]: !mo.chain)
 mo.graph @reduce_scatter_folds(%in0: !mo.tensor<[2, 17], f32, gpu:0>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %ch: !mo.chain) -> (!mo.tensor<[2, 17], f32, gpu:0>, !mo.chain) {

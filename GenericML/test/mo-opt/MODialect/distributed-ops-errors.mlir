@@ -190,3 +190,67 @@ mo.graph @reducescatter_ragged_wrong_size(
     -> (!mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>, !mo.chain)
   mo.output %0#0, %0#1, %0#2 : !mo.tensor<[3, 3], f32, gpu:0>, !mo.tensor<[3, 3], f32, gpu:1>, !mo.tensor<[3, 2], f32, gpu:2>
 }
+
+// -----
+
+// Test broadcast with root index out of range
+mo.graph @broadcast_root_out_of_range(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>) {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{root index 5 out of range for 2 devices}}
+  %0:3 = "mo.distributed.broadcast"(%in, %sig0, %sig1, %ch) {root = 5 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>
+}
+
+// -----
+
+// Test broadcast with output/signal buffer count mismatch
+mo.graph @broadcast_count_mismatch(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>) {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{number of outputs must match number of signal buffers. Expected 2 outputs but got 1}}
+  %0:2 = "mo.distributed.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[2, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test broadcast with output shape mismatch
+mo.graph @broadcast_shape_mismatch(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:1>) {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{all outputs must have the same shape as the input}}
+  %0:3 = "mo.distributed.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:1>
+}
+
+// -----
+
+// Test broadcast with output element type mismatch
+mo.graph @broadcast_dtype_mismatch(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>) {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{all outputs must have the same element type as the input}}
+  %0:3 = "mo.distributed.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>
+}

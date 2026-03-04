@@ -291,8 +291,8 @@ private:
 public:
   llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
     return llvm::to_vector(
-        llvm::map_range(getConcreteOp().getInputs(), [](Value input) {
-          return cast<MOHasDeviceTypeInterface>(input.getType()).getDeviceRef();
+        llvm::map_range(getConcreteOp().getDeviceSourceValues(), [](Value v) {
+          return cast<MOHasDeviceTypeInterface>(v.getType()).getDeviceRef();
         }));
   }
 };
