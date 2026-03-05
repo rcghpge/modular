@@ -115,6 +115,7 @@ modular_cc_library(
         ":Support",
         "//MLRT:GraphRT/MLIRToMEF",
         "//Support:Base",
+        "//Support:CacheLog",
         "//Support:Context",
     ],
 )
