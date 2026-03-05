@@ -162,7 +162,7 @@ class SpeechLM:
             if self.kv_cache_manager is not None:
                 self.kv_cache_manager.alloc(context, replica_idx=0, num_steps=1)
 
-            inputs: TextGenerationInputs = TextGenerationInputs(
+            inputs: TextGenerationInputs = TextGenerationInputs(  # type: ignore[type-arg]
                 batches=[batch], num_steps=1
             )
             output = self.text_pipeline.execute(inputs)
