@@ -78,6 +78,76 @@ static void setOwningOnDeviceBuffers(ArrayRef<AsyncRT::AnyAsyncValueRef> refs,
   }
 }
 
+static const Driver::Device *
+getDeviceForTensorResult(const AsyncRT::AnyAsyncValueRef &result) {
+  if (auto *tensor = dyn_cast<Tensor>(result)) {
+    if (const AsyncRT::AnyAsyncValueRef *storageRef =
+            tensor->getBufferRef().getMemStorageHandleRef()) {
+      if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
+        return &(*buffer)->context().device();
+    }
+  }
+  return nullptr;
+}
+
+static ErrorOr<SmallVector<AnyAsyncValueRef>> selectReplayOutputsForDevices(
+    ArrayRef<uint64_t> selectedCaptureIds,
+    ArrayRef<Driver::DeviceStreamRef> replayDevices,
+    const llvm::DenseMap<uint64_t, SmallVector<AnyAsyncValueRef>>
+        &captureOutputsById) {
+  // Build the output handle set that corresponds to the exact per-device
+  // graph selection used for this replay call.
+  //
+  // Captured outputs are stored once per capture id, but replay can select
+  // different capture ids per device key (for example in data parallel replay).
+  // Therefore, choose each output slot from the capture id associated with
+  // that output's device, then mark owning on the resulting composed output set
+  // after replay.
+  if (selectedCaptureIds.empty())
+    return SmallVector<AnyAsyncValueRef>{};
+
+  auto firstOutputsIt = captureOutputsById.find(selectedCaptureIds.front());
+  if (firstOutputsIt == captureOutputsById.end()) {
+    return Error(Twine("Missing captured outputs for capture id ") +
+                 Twine(selectedCaptureIds.front()));
+  }
+
+  ArrayRef<AnyAsyncValueRef> defaultOutputs = firstOutputsIt->second;
+  SmallVector<AnyAsyncValueRef> replayOutputs;
+  replayOutputs.reserve(defaultOutputs.size());
+
+  for (size_t outputIdx = 0; outputIdx < defaultOutputs.size(); ++outputIdx) {
+    uint64_t outputCaptureId = selectedCaptureIds.front();
+
+    if (const Driver::Device *outputDevice =
+            getDeviceForTensorResult(defaultOutputs[outputIdx])) {
+      for (size_t deviceIdx = 0; deviceIdx < replayDevices.size();
+           ++deviceIdx) {
+        const Driver::Device &replayDevice = replayDevices[deviceIdx]->device();
+        if (replayDevice.id() == outputDevice->id() &&
+            replayDevice.api() == outputDevice->api()) {
+          outputCaptureId = selectedCaptureIds[deviceIdx];
+          break;
+        }
+      }
+    }
+
+    auto outputsIt = captureOutputsById.find(outputCaptureId);
+    if (outputsIt == captureOutputsById.end())
+      return Error(Twine("Missing captured outputs for capture id ") +
+                   Twine(outputCaptureId));
+
+    ArrayRef<AnyAsyncValueRef> outputs = outputsIt->second;
+    if (outputs.size() != defaultOutputs.size())
+      return Error(Twine("Captured output count mismatch for capture id ") +
+                   Twine(outputCaptureId));
+
+    replayOutputs.push_back(outputs[outputIdx].copy());
+  }
+
+  return replayOutputs;
+}
+
 //===----------------------------------------------------------------------===//
 // Model
 //===----------------------------------------------------------------------===//
@@ -425,19 +495,6 @@ normalizeGraphKeysForDevices(ArrayRef<uint64_t> graphKeys, size_t deviceCount,
                  keysString + ", expected " + Twine(deviceCount));
   }
 
-  if (deviceCount > 1) {
-    uint64_t firstKey = graphKeys.front();
-    for (size_t i = 1; i < graphKeys.size(); ++i) {
-      if (graphKeys[i] == firstKey)
-        continue;
-
-      std::string keysString = graphKeysToString(graphKeys);
-      return Error(Twine("mixed per-device graph keys are not supported for ") +
-                   operationName + ": got " + keysString +
-                   ". Provide a single key or identical keys per device.");
-    }
-  }
-
   return SmallVector<uint64_t>(graphKeys.begin(), graphKeys.end());
 }
 
@@ -579,12 +636,18 @@ ExecutableModel::capture(ArrayRef<uint64_t> graphKeys,
                  Twine(deviceCount) + ", got " + Twine(capturedGraphs.size()));
   }
 
+  uint64_t captureId = nextCaptureId++;
+  captureOutputsById.try_emplace(
+      captureId,
+      llvm::map_to_vector(graphResults, [](const AnyAsyncValueRef &val) {
+        return val.copy();
+      }));
+
   for (size_t deviceIdx = 0; deviceIdx < deviceCount; ++deviceIdx) {
     CapturedPerDeviceGraphEntry entry;
     entry.graph = capturedGraphs[deviceIdx].copy();
     entry.inputSignature = inputSignatures[deviceIdx];
-    entry.outputs = llvm::map_to_vector(
-        graphResults, [](const AnyAsyncValueRef &val) { return val.copy(); });
+    entry.captureId = captureId;
     perDeviceGraphs[deviceIdx].try_emplace(normalizedKeys[deviceIdx],
                                            std::move(entry));
   }
@@ -650,23 +713,27 @@ ExecutableModel::replay(ArrayRef<uint64_t> graphKeys,
           validateCapturedPerDeviceEntries(normalizedKeys, inputSignatures))
     return err.takeError();
 
+  SmallVector<uint64_t> selectedCaptureIds;
+  selectedCaptureIds.reserve(normalizedKeys.size());
+
   for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx) {
     const auto &deviceMap = perDeviceGraphs[deviceIdx];
     auto it = deviceMap.find(normalizedKeys[deviceIdx]);
     ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
 
     const CapturedPerDeviceGraphEntry &entry = it->second;
+    selectedCaptureIds.push_back(entry.captureId);
     if (ErrorOrSuccess err = entry.graph->replay())
       return err.takeError();
   }
 
-  for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx) {
-    const auto &deviceMap = perDeviceGraphs[deviceIdx];
-    auto it = deviceMap.find(normalizedKeys[deviceIdx]);
-    ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
+  ErrorOr<SmallVector<AnyAsyncValueRef>> replayOutputsOr =
+      selectReplayOutputsForDevices(selectedCaptureIds, *streamsOr,
+                                    captureOutputsById);
+  if (replayOutputsOr.isError())
+    return replayOutputsOr.takeError();
 
-    setOwningOnDeviceBuffers(it->second.outputs, /*owning=*/true);
-  }
+  setOwningOnDeviceBuffers(*replayOutputsOr, /*owning=*/true);
 
   return success();
 }

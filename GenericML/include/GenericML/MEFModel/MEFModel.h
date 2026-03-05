@@ -123,14 +123,19 @@ private:
     // and is used only as a safety guard to reject unsafe graphKey reuse.
     uint64_t inputSignature = 0;
 
-    // Captured model outputs for this stream/key. Keeping a copy per stream
-    // keeps replay ownership handling simple when replaying per-device keys.
-    SmallVector<AnyAsyncValueRef> outputs;
+    // Internal id for the capture invocation that produced this graph.
+    uint64_t captureId = 0;
   };
 
   /// Per-device captured graphs keyed by caller-provided scalar graph key.
   SmallVector<llvm::DenseMap<uint64_t, CapturedPerDeviceGraphEntry>>
       perDeviceGraphs;
+
+  /// Captured model outputs keyed by internal capture invocation id.
+  llvm::DenseMap<uint64_t, SmallVector<AnyAsyncValueRef>> captureOutputsById;
+
+  /// Monotonic id assigned to each successful capture invocation.
+  uint64_t nextCaptureId = 1;
 };
 
 //===----------------------------------------------------------------------===//
