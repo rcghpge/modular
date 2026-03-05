@@ -10,6 +10,7 @@
 #include "HAL/M_driver_common.h"
 
 #include "CUDALoader.h"
+#include "Device.h"
 #include "NVML.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -39,8 +40,9 @@ public:
   CUDALoader &cuda() { return rawCuda; }
   NVML &nvml() { return rawNvml; }
 
-  llvm::SmallVector<CUcontext> cudaContexts{};
-  llvm::SmallVector<bool> cudaContextsValid{};
+  llvm::SmallVector<Device> devices;
+
+  Device *findDevice(CUdevice id);
 };
 
 } // namespace M::Target::CUDA

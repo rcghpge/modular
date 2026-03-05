@@ -39,13 +39,6 @@ inline ToPtr paranoid_reinterpret_pointer_cast(FromPtr from) {
       return status;                                                           \
   } while (0)
 
-#define CUDA_CHECK(stmt, errorCode)                                            \
-  do {                                                                         \
-    CUresult result = (stmt);                                                  \
-    if (result != CUDA_SUCCESS)                                                \
-      return errorCode;                                                        \
-  } while (0)
-
 M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                         int64_t *count) {
   Driver *state = Driver::from(driver);
@@ -58,22 +51,24 @@ M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
 
 M_driver_status_t M_driver_device_get(M_driver_driver_t driver, int64_t id,
                                       M_driver_device_t *device) {
-  static_assert(sizeof(CUdevice) <= sizeof(M_driver_device_t),
-                "Mismatch in device-handle size");
-
   Driver *state = Driver::from(driver);
 
-  int64_t deviceCount = 0;
+  int64_t deviceCount{};
   QUICK_RETURN_IF_ERROR(M_driver_device_count(driver, &deviceCount));
   if (id < 0 || id >= deviceCount)
     return M_DRIVER_STATUS_BAD_DEVICE;
 
-  CUdevice cudaDevice = 0;
-  CUresult result = state->cuda().cuDeviceGet(&cudaDevice, id);
-  if (result != CUDA_SUCCESS)
-    return M_DRIVER_STATUS_BAD_DEVICE;
+  CUdevice cudaDevice{};
+  CUDA_CHECK(state->cuda().cuDeviceGet(&cudaDevice, id),
+             M_DRIVER_STATUS_BAD_DEVICE);
 
-  *paranoid_reinterpret_pointer_cast<CUdevice *>(device) = cudaDevice;
+  Device *dev = state->findDevice(cudaDevice);
+  if (!dev) {
+    state->devices.emplace_back(cudaDevice);
+    dev = &state->devices.back();
+  }
+
+  *device = dev->cast();
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -88,40 +83,26 @@ M_driver_status_t M_driver_context_create(M_driver_driver_t driver,
                                           M_driver_device_t device,
                                           M_driver_context_t *context) {
   Driver *state = Driver::from(driver);
+  Device &dev = Device::from(device);
 
-  CUdevice cudaDevice = *paranoid_reinterpret_pointer_cast<CUdevice *>(&device);
-  CUcontext cudaContext = nullptr;
-  if (state->cudaContexts.empty())
-    CUDA_CHECK(state->cuda().cuDevicePrimaryCtxRetain(&cudaContext, cudaDevice),
-               M_DRIVER_STATUS_BAD_DEVICE);
-  else
-    CUDA_CHECK(state->cuda().cuCtxCreate(&cudaContext, nullptr, 0, cudaDevice),
-               M_DRIVER_STATUS_BAD_DEVICE);
-  state->cudaContexts.push_back(cudaContext);
-  state->cudaContextsValid.push_back(true);
-  *context = state->cudaContexts.size() - 1;
+  CUcontext primaryCtx;
+  CUDA_CHECK(state->cuda().cuDevicePrimaryCtxRetain(&primaryCtx, dev.deviceId),
+             M_DRIVER_STATUS_BAD_DEVICE);
+
+  *context = reinterpret_cast<M_driver_context_t>(primaryCtx);
+
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_context_destroy(M_driver_driver_t driver,
                                            M_driver_context_t context) {
   Driver *state = Driver::from(driver);
-  if (static_cast<size_t>(context) >= state->cudaContexts.size() ||
-      !state->cudaContextsValid[context]) {
-    return M_DRIVER_STATUS_BAD_CONTEXT;
-  }
-  CUcontext cudaContext = state->cudaContexts[context];
-  if (static_cast<size_t>(context) == 0) {
-    // Primary context. Don't destroy, just release (ref count).
-    CUdevice cudaDevice = 0;
-    CUDA_CHECK(state->cuda().cuCtxGetDevice_v2(&cudaDevice, cudaContext),
-               M_DRIVER_STATUS_BAD_CONTEXT);
-    CUDA_CHECK(state->cuda().cuDevicePrimaryCtxRelease(cudaDevice),
-               M_DRIVER_STATUS_BAD_CONTEXT);
-  } else {
-    CUDA_CHECK(state->cuda().cuCtxDestroy(cudaContext),
-               M_DRIVER_STATUS_BAD_CONTEXT);
-  }
-  state->cudaContextsValid[context] = false;
+  auto primaryCtx = reinterpret_cast<CUcontext>(context);
+
+  CUdevice device;
+  CUDA_CHECK(state->cuda().cuCtxGetDevice_v2(&device, primaryCtx),
+             M_DRIVER_STATUS_BAD_DEVICE);
+  CUDA_CHECK(state->cuda().cuDevicePrimaryCtxRelease(device),
+             M_DRIVER_STATUS_BAD_CONTEXT);
   return M_DRIVER_STATUS_SUCCESS;
 }
