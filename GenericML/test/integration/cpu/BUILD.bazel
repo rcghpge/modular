@@ -65,24 +65,3 @@ lit_tests(
     tools = _COMMON_TOOLS,
     deps = _COMMON_DEPS,
 )
-
-lit_tests(
-    name = "tests-gpu",
-    size = "enormous",
-    srcs = glob(["**/*-gpu.mlir"]),
-    custom_substitutions = {
-        "%kernel_api_test_lib": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
-        "%kernel_api_test_pkg": "$(rlocationpath //GenericML/test/testing_kernels:MOGGKernelAPITest)",
-        "mo-opt": "$(rlocationpath //GenericML/tools/mo-opt)",
-        "mojo": "$(rlocationpath //KGEN/tools/mojo)",
-        "mojo-lldb": "$(rlocationpath //KGEN:mojo-lldb)",
-        "mt": "$(rlocationpath //GenericML/tools/mt)",
-    },
-    data = [
-        "//GenericML/test/testing_kernels:MOGGKernelAPITest",
-    ],
-    gpu_constraints = ["//:has_gpu"],
-    mojo_deps = _COMMON_MOJO_DEPS,
-    tags = ["gpu"],
-    tools = _COMMON_TOOLS,
-)
