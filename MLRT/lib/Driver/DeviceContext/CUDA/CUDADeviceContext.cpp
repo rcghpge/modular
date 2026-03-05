@@ -15,6 +15,7 @@
 #include "NVML.h"
 #include "Support/HashUtils.h"
 #include "Support/Profiling/Tracy.h"
+#include "Support/Profiling/TracyCuda.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Process.h"
@@ -1428,6 +1429,9 @@ CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
       stream_(stream) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
   logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
+
+  // Initialize Tracy CUDA profiling context if not already initialized.
+  M::initTracyCuda();
 }
 
 CUDADeviceContext::~CUDADeviceContext() {
