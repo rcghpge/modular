@@ -9,25 +9,19 @@
 #include "HAL/M_driver_api.h"
 #include "llvm/ADT/StringRef.h"
 
-#include <optional>
-
 M_driver_status_t M_driver_create(M_driver_driver_t *driver) {
-  std::optional<HIPApi> api = HIPApi::load();
-  if (!api)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  DriverResult<M_driver_driver_t> res = M_driver_driver::create();
+  if (!res)
+    return res.error();
 
-  if (api->hipInit(0) != hipSuccess) {
-    // dropping api automatically unloads
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
-  }
-
-  *driver = (new Driver(std::move(*api)))->cast();
+  *driver = *res;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
-  delete Driver::from_as_ptr(handle);
-  return M_DRIVER_STATUS_SUCCESS;
+  if (handle == nullptr)
+    return M_DRIVER_STATUS_BAD_HANDLE;
+  return M_driver_driver::destroy(handle);
 }
 
 M_driver_status_t M_driver_property([[maybe_unused]] M_driver_driver_t handle,

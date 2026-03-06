@@ -76,6 +76,7 @@ modular_cc_binary(
         "//SDK:HAL",
         "@hip_include//:hip_headers",
         "@llvm-project//llvm:Support",
+        "@tl_expected",
     ],
 )
 

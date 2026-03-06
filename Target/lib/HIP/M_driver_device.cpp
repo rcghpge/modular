@@ -8,26 +8,36 @@
 #include "Driver.h"
 #include "Error.h"
 #include "HAL/M_driver_api.h"
+#include "HAL/M_driver_common.h"
 
 M_driver_status_t M_driver_device_count(M_driver_driver_t handle,
                                         int64_t *count) {
-  return Driver::from(handle).deviceCount(*count);
+  if (handle == nullptr)
+    return M_DRIVER_STATUS_BAD_HANDLE;
+  DriverResult<int64_t> result = handle->deviceCount();
+  if (!result)
+    return result.error();
+  *count = *result;
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
                                       int64_t device_id,
                                       M_driver_device_t *device) {
-  (void)driver;
-  (void)device_id;
-  (void)device;
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+  if (driver == nullptr)
+    return M_DRIVER_STATUS_BAD_HANDLE;
+  DriverResult<M_driver_device_t> result =
+      M_driver_device::create(*driver, device_id);
+  if (!result)
+    return result.error();
+  *device = *result;
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_device_property(M_driver_device_t device,
                                            const char *property_name,
                                            void *value) {
-  (void)device;
-  (void)property_name;
-  (void)value;
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+  if (device == nullptr)
+    return M_DRIVER_STATUS_BAD_HANDLE;
+  return device->property(property_name, value);
 }

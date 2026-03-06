@@ -7,44 +7,28 @@
 #ifndef TARGET_LIB_HIP_DRIVER_H
 #define TARGET_LIB_HIP_DRIVER_H
 
-#include "HAL/M_driver_common.h"
-
+#include "Error.h"
 #include "HIPApi.h"
 
-#include <cassert>
-
-class Driver {
+struct M_driver_driver {
 private:
   HIPApi rawHipApi;
 
 public:
-  M_driver_driver_t cast() { return reinterpret_cast<M_driver_driver_t>(this); }
+  [[nodiscard]] static DriverResult<M_driver_driver_t> create();
 
-  static Driver &from(M_driver_driver_t handle) {
-    auto driverPtr = Driver::from_as_ptr(handle);
-    return *driverPtr;
+  static M_driver_status_t destroy(M_driver_driver_t driver) {
+    delete driver;
+    return M_DRIVER_STATUS_SUCCESS;
   }
 
-  static Driver *from_as_ptr(M_driver_driver_t handle) {
-    Driver *driverPtr = reinterpret_cast<Driver *>(handle);
-    assert(driverPtr != nullptr);
+  M_driver_driver(HIPApi &&rawHipApi) : rawHipApi(std::move(rawHipApi)) {}
 
-    return driverPtr;
-  }
-
-  Driver(HIPApi &&rawHipApi) : rawHipApi(std::move(rawHipApi)) {}
-
-  ~Driver() { rawHipApi.unload(); }
+  ~M_driver_driver() { rawHipApi.unload(); }
 
   HIPApi &hip() { return rawHipApi; }
 
-  M_driver_status_t deviceCount(int64_t &count) {
-    int countAsInt = 0;
-    if (rawHipApi.hipGetDeviceCount(&countAsInt) != hipSuccess)
-      return M_DRIVER_STATUS_NO_DEVICES;
-    count = static_cast<int64_t>(countAsInt);
-    return M_DRIVER_STATUS_SUCCESS;
-  }
+  DriverResult<int64_t> deviceCount();
 };
 
 #endif // TARGET_LIB_HIP_DRIVER_H

@@ -13,10 +13,10 @@
 #ifndef HIPAPI_H
 #define HIPAPI_H
 
+#include "Error.h"
 #include "hip/hip_runtime_api.h"
 
 #include <dlfcn.h>
-#include <optional>
 #include <stdio.h>
 
 // Add a `HIP_FN(<fn_name>)` for each fn to dynamically link and
@@ -24,7 +24,10 @@
 // so no additional work needs to be done to keep types in sync.
 #define HIP_FORALL_FUNCTIONS(HIP_FN)                                           \
   HIP_FN(hipInit)                                                              \
-  HIP_FN(hipGetDeviceCount)
+  HIP_FN(hipGetDeviceCount)                                                    \
+  HIP_FN(hipDeviceGet)                                                         \
+  HIP_FN(hipDeviceReset)                                                       \
+  HIP_FN(hipSetDevice)
 
 struct HIPApi {
   // dlopen handle to loaded libamdhip64.so.
@@ -45,13 +48,13 @@ struct HIPApi {
   HIPApi() = default;
 
   /// Try to dlopen libamdhip64.so and resolve all symbols.
-  /// Returns a HIPApi on success, or std::nullopt on failure.
-  static std::optional<HIPApi> load() {
+  /// Returns a HIPApi on success, or an error status on failure.
+  static DriverResult<HIPApi> load() {
     void *lib = dlopen("libamdhip64.so", RTLD_NOW | RTLD_GLOBAL);
     if (!lib) {
       fprintf(stderr, "HIPPlugin: dlopen(libamdhip64.so) failed: %s\n",
               dlerror());
-      return std::nullopt;
+      return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
     }
 
     auto api = HIPApi();
@@ -62,7 +65,7 @@ struct HIPApi {
   if (!api.name) {                                                             \
     fprintf(stderr, "HIPPlugin: dlsym(%s) failed: %s\n", #name, dlerror());    \
     api.unload();                                                              \
-    return std::nullopt;                                                       \
+    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);                      \
   }
 
     HIP_FORALL_FUNCTIONS(LOAD_SYM)

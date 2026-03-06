@@ -7,11 +7,11 @@
 #ifndef M_DRIVER_COMMON_H
 #define M_DRIVER_COMMON_H
 
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include <stdint.h>
 
 #define M_DRIVER_API_EXPORT __attribute__((visibility("default")))
 #define M_DRIVER_API_LOCAL __attribute__((visibility("hidden")))
