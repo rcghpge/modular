@@ -12,9 +12,12 @@
 #ifndef MLRT_DRIVER_HAL_DRIVER_H
 #define MLRT_DRIVER_HAL_DRIVER_H
 
-#include "Support/ForwardDecls.h"
-#include "Support/LLVMForwardDecls.h"
+#include "HAL/M_driver_api.h"
+#include "MLRT/Driver/HAL/Device.h"
 #include "Support/ReferenceCounted.h"
+#include "llvm/ADT/SmallVector.h"
+
+#include <string>
 
 namespace M::Driver::HAL {
 struct DriverImpl;
@@ -22,10 +25,8 @@ struct DriverImpl;
 class Driver;
 using DriverRef = RCRef<Driver>;
 
-class Device;
-using DeviceRef = RCRef<Device>;
-
 class Context;
+class Buffer;
 
 class Driver : public ReferenceCounted<Driver> {
 public:
@@ -38,8 +39,8 @@ public:
 
   ~Driver();
 
-  ErrorOr<llvm::StringRef> name() const;
-  ErrorOr<llvm::StringRef> pluginPath() const;
+  ErrorOr<StringRef> name() const;
+  ErrorOr<StringRef> pluginPath() const;
 
   /// Retrieve the number of devices supported by this driver.
   ErrorOr<int64_t> deviceCount() const;
@@ -51,9 +52,30 @@ public:
   ErrorOr<StringRef> property(const char *name);
 
 private:
-  explicit Driver(DriverImpl *impl) : impl(impl) {}
+  explicit Driver() {}
 
-  DriverImpl *impl;
+  /// Helper to construct Error(getStatusMessage(status)) more easily.
+  StringRef getStatusMessage(M_driver_status_t status);
+
+  /// To avoid naming conllisions the plugin symbols are defined within the
+  /// Plugin struct along with other plugin specific info.
+  struct Plugin {
+    std::string name;
+    std::string soPath;
+    void *soHandle = nullptr;
+
+#define M_DRIVER_HAL_SYMBOL(name) M_driver_##name##_func_ptr_t name = nullptr;
+#include "HAL/M_driver_hal_symbols.inc"
+#undef M_DRIVER_HAL_SYMBOL
+
+  } plugin;
+
+  M_driver_driver_t handle;
+  SmallVector<DeviceRef, 8> devices;
+
+  friend Device;
+  friend Context;
+  friend Buffer;
 };
 
 } // namespace M::Driver::HAL

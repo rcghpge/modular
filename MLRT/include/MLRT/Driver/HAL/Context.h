@@ -13,6 +13,7 @@
 #define MLRT_DRIVER_HAL_CONTEXT_H
 
 #include "Buffer.h"
+#include "HAL/M_driver_api.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
@@ -34,11 +35,14 @@ public:
   ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
 
 private:
-  explicit Context(ContextImpl *impl) : impl(impl) {}
+  explicit Context(Device *device, M_driver_context_t handle)
+      : device_(device), handle(handle) {}
 
-  ContextImpl *impl;
+  Device *device_;
+  M_driver_context_t handle;
 
   friend class Device;
+  friend class Buffer;
 };
 
 using ContextRef = RCRef<Context>;

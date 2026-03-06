@@ -13,6 +13,7 @@
 #define MLRT_DRIVER_HAL_BUFFER_H
 
 #include "Support/ReferenceCounted.h"
+
 namespace M::Driver::HAL {
 
 class Context;
@@ -30,9 +31,11 @@ public:
   ~Buffer();
 
 private:
-  explicit Buffer(BufferImpl *impl) : impl(impl) {}
+  explicit Buffer(Context *context, void *memory)
+      : context(context), memory(memory) {}
 
-  BufferImpl *impl;
+  Context *context;
+  void *memory;
 
   friend Context;
 };

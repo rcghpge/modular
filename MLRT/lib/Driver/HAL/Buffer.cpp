@@ -5,10 +5,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/HAL/Buffer.h"
-#include "BufferImpl.h"
+#include "MLRT/Driver/HAL/Context.h"
+#include "MLRT/Driver/HAL/Driver.h"
 
 namespace M::Driver::HAL {
 
-Buffer::~Buffer() { delete impl; }
+Buffer::~Buffer() {
+  context->device_->driver->plugin.memory_free(context->handle, memory);
+}
 
 } // namespace M::Driver::HAL
