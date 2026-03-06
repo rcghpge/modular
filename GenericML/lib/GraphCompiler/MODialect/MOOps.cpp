@@ -1149,6 +1149,37 @@ void ParallelOp::print(OpAsmPrinter &p) {
   p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
 }
 
+/// Helper to check if two types match ignoring device ID (only label must
+/// match). For non-tensor types, requires exact match.
+static bool typesMatchIgnoringDeviceId(Type a, Type b) {
+  auto tensorA = dyn_cast<TensorType>(a);
+  auto tensorB = dyn_cast<TensorType>(b);
+
+  // If either is not a tensor, require exact match.
+  if (!tensorA || !tensorB)
+    return a == b;
+
+  // Both are tensors - check shape and dtype match.
+  if (tensorA.getShapeAttr() != tensorB.getShapeAttr() ||
+      tensorA.getDtype() != tensorB.getDtype())
+    return false;
+
+  // Check device labels match (IDs can differ).
+  DeviceRefAttr deviceA = tensorA.getDeviceRef();
+  DeviceRefAttr deviceB = tensorB.getDeviceRef();
+
+  // If both have no device, they match.
+  if (!deviceA && !deviceB)
+    return true;
+
+  // If only one has a device, they don't match.
+  if (!deviceA || !deviceB)
+    return false;
+
+  // Both have devices - labels must match.
+  return deviceA.getLabel() == deviceB.getLabel();
+}
+
 SmallVector<ChainValue> ParallelOp::getInChains() {
   return getChainValues(getOperands());
 }
@@ -1169,6 +1200,10 @@ SmallVector<OpOperand *> ParallelOp::getInChainsMutable() {
 }
 
 LogicalResult ParallelOp::verify() {
+  auto inputs = getInputs();
+  if (inputs.empty())
+    return emitOpError("requires at least one input");
+
   Block &body = getBodyRegion().front();
 
   // Verify the block has exactly one argument.
@@ -1178,25 +1213,14 @@ LogicalResult ParallelOp::verify() {
 
   Type blockArgType = body.getArgument(0).getType();
 
-  // Verify all input types are compatible with the block argument type.
-  // Inputs may have different device IDs but must have the same shape, dtype,
-  // metadata, and device label.
-  for (auto [idx, input] : llvm::enumerate(getInputs())) {
-    Type inputType = input.getType();
-    if (inputType == blockArgType)
-      continue;
-    auto inputTensor = dyn_cast<TensorType>(inputType);
-    auto blockArgTensor = dyn_cast<TensorType>(blockArgType);
-    if (!inputTensor || !blockArgTensor ||
-        inputTensor.getShapeAttr() != blockArgTensor.getShapeAttr() ||
-        inputTensor.getDtype() != blockArgTensor.getDtype() ||
-        inputTensor.getMetadata() != blockArgTensor.getMetadata() ||
-        inputTensor.getDeviceRef().getLabel() !=
-            blockArgTensor.getDeviceRef().getLabel())
+  // Verify all input types match the block argument type.
+  // Device IDs may differ, but device labels must match.
+  for (auto [idx, input] : llvm::enumerate(inputs)) {
+    if (!typesMatchIgnoringDeviceId(input.getType(), blockArgType))
       return emitOpError("input #")
-             << idx << " type '" << inputType
-             << "' is not compatible with block argument type '" << blockArgType
-             << "'";
+             << idx << " type '" << input.getType()
+             << "' does not match block argument type '" << blockArgType
+             << "' (shape, dtype, and device label must match)";
   }
 
   // Verify yield has exactly one operand.
@@ -1205,21 +1229,21 @@ LogicalResult ParallelOp::verify() {
     return emitOpError("yield must have exactly one operand, got ")
            << yieldOp.getNumOperands();
 
-  // Verify yield type matches the block argument type.
+  // Verify all result types match the yield type.
+  // Device IDs may differ, but device labels must match.
   Type yieldType = yieldOp.getOperand(0).getType();
   if (yieldType != blockArgType)
     return emitOpError("yield type '")
            << yieldType << "' does not match block argument type '"
            << blockArgType << "'";
 
-  // Verify each result type matches its corresponding input type.
-  auto inputs = getInputs();
+  // Verify each result type matches the yield type.
   for (auto [idx, result] : llvm::enumerate(getResults())) {
-    if (result.getType() != inputs[idx].getType())
+    if (!typesMatchIgnoringDeviceId(result.getType(), yieldType))
       return emitOpError("result #")
              << idx << " type '" << result.getType()
-             << "' does not match corresponding input type '"
-             << inputs[idx].getType() << "'";
+             << "' does not match yield type '" << yieldType
+             << "' (shape, dtype, and device label must match)";
   }
 
   return success();
