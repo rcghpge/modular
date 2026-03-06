@@ -161,6 +161,14 @@ struct EmitMojoState {
   /// These are used to resolve opaque type names to fully qualified names.
   SmallVector<std::string> customKernelPackages;
 
+  /// Tracks the emitted Mojo variable names for each TaskHandle value.
+  /// Populated by CallStubAsyncOp::emitMojo, consumed by AsyncJoinOp::emitMojo.
+  struct TaskHandleInfo {
+    MojoValue task;  // The Task variable from create_task()
+    MojoValue error; // The Optional[Error] variable
+  };
+  llvm::DenseMap<Value, TaskHandleInfo> taskHandleInfos;
+
   /// Keep track of the mojo arguments / parameters for the current function
   /// being lowered.
   FunctionBody currentFunctionBody;

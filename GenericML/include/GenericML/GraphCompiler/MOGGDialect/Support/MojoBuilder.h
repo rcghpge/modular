@@ -200,10 +200,11 @@ public:
   /// returned object is a RAII guard that will recover the original indentation
   /// level when it goes out of scope.
   /// Returns the parameter name for the newly defined lambda.
+  /// When isAsync is true, emits `async fn` instead of `fn`.
   MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                    ArrayRef<NamedMojoDef> arguments,
                    std::optional<MojoValue> returnType, bool isInline,
-                   bool isParameter,
+                   bool isParameter, bool isAsync,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
 
   /// Creates a lambda with explicit copy captures for GPU. The copyCaptures

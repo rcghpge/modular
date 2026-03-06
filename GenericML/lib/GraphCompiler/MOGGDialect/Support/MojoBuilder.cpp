@@ -149,7 +149,7 @@ MojoValue
 MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                     ArrayRef<NamedMojoDef> arguments,
                     std::optional<MojoValue> returnType, bool isInline,
-                    bool isParameter,
+                    bool isParameter, bool isAsync,
                     std::function<void(const FunctionBody &)> &&lambdaBody) {
   MojoValue lambdaParam = newVar(lambdaName.str());
   FunctionBody body;
@@ -158,7 +158,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
     statement("@parameter");
   if (isInline)
     statement("@always_inline");
-  statement("fn ", lambdaParam,
+  statement(isAsync ? "async fn " : "fn ", lambdaParam,
             funcDefBase(parameters, arguments, returnType, false, body));
 
   MojoBuilderScopeGuard guard(this);

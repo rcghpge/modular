@@ -9,7 +9,7 @@ mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
 
 mo.graph @too_few_args() -> () {
   mogg.kernel () -> () {
-    // expected-error@below{{Callee expected 1 arguments but got 0}}
+    // expected-error@below{{Kernel stub 'stub_0' expects 1 arguments, but got 0}}
     mogg.call.stub @stub_0
     mogg.call.execute["foo"]
   } {device = #M.device_ref<"cpu", 0>}
@@ -26,7 +26,7 @@ mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
 mo.graph @too_many_args() -> () {
   mogg.kernel () -> () {
     %0:2 = mogg.output_placeholders : !mo.tensor<[], f32>, !mo.tensor<[], f32>
-    // expected-error@below{{Callee expected 1 arguments but got 2}}
+    // expected-error@below{{Kernel stub 'stub_0' expects 1 arguments, but got 2}}
     mogg.call.stub @stub_0 %0#0, %0#1 : !mo.tensor<[], f32>, !mo.tensor<[], f32>
     mogg.call.execute["foo"]
   } {device = #M.device_ref<"cpu", 0>}
@@ -43,7 +43,7 @@ mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
 mo.graph @mismatching_args() -> () {
   mogg.kernel () -> () {
     %0 = mogg.output_placeholders : !mo.tensor<[], f64>
-    // expected-error@below{{Callee argument at position 0 expected to be !mo.tensor<[], f32> but got !mo.tensor<[], f64>}}
+    // expected-error@below{{Kernel stub 'stub_0' expects argument 0 to have type !mo.tensor<[], f32>, but got !mo.tensor<[], f64>}}
     mogg.call.stub @stub_0 %0 : !mo.tensor<[], f64>
     mogg.call.execute["foo"]
   } {device = #M.device_ref<"cpu", 0>}

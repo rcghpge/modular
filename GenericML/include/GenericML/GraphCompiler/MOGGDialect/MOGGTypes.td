@@ -91,6 +91,15 @@ def MOGG_Context : MOGG_Type<"Context", "context"> {
   }];
 }
 
+def MOGG_TaskHandle : MOGG_Type<"TaskHandle", "task_handle"> {
+  let summary = "Handle to an asynchronously dispatched task";
+  let description = [{
+    Represents a Mojo-native async task dispatched via `create_task`.
+    In emitted Mojo code, this maps to a `(Task, Optional[Error])` pair.
+    Used by `mogg.call.stub.async` (produces) and `mogg.async.join` (consumes).
+  }];
+}
+
 def MOGG_Error : MOGG_Type<"Error", "error"> {
   let summary = "A type mapping onto a mojo error";
   let description = [{

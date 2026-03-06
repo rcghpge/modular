@@ -784,10 +784,10 @@ LogicalResult BindLambdaOp::emitMojo(EmitMojoState &state) {
         lambdaName, copyCaptures, lambdaParams, lambdaArguments, returnType,
         /*isInline=*/true, /*isParameter=*/true, std::move(lambdaBodyFunc));
   } else {
-    lambdaParam =
-        state.builder.lambda(lambdaName, lambdaParams, lambdaArguments,
-                             returnType, /*isInline=*/true,
-                             /*isParameter=*/true, std::move(lambdaBodyFunc));
+    lambdaParam = state.builder.lambda(
+        lambdaName, lambdaParams, lambdaArguments, returnType,
+        /*isInline=*/true,
+        /*isParameter=*/true, /*isAsync=*/false, std::move(lambdaBodyFunc));
   }
 
   if (errOccurred)
@@ -2159,6 +2159,48 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// Shared verification for CallStubOp / CallStubAsyncOp
+//===----------------------------------------------------------------------===//
+
+static FailureOr<KernelStubOp>
+verifyKernelStubCall(Operation *op, SymbolTableCollection &symbolTable,
+                     FlatSymbolRefAttr calleeSymbol,
+                     TypeRange callerOperandTypes) {
+  auto calleeFunc =
+      symbolTable.lookupNearestSymbolFrom<KernelStubOp>(op, calleeSymbol);
+  if (!calleeFunc) {
+    return op->emitError(llvm::formatv("There is no kernel stub named '{}'",
+                                       calleeSymbol.getValue()));
+  }
+
+  auto calleeArgumentTypes = calleeFunc.getArgumentTypes();
+
+  if (callerOperandTypes.size() != calleeArgumentTypes.size()) {
+    return op->emitError(
+        llvm::formatv("Kernel stub '{0}' expects {1} arguments, but got {2}",
+                      calleeSymbol.getValue(), calleeArgumentTypes.size(),
+                      callerOperandTypes.size()));
+  }
+
+  for (auto [i, calleeArgType, callerOperandType] :
+       llvm::enumerate(calleeArgumentTypes, callerOperandTypes)) {
+    if (calleeArgType == callerOperandType)
+      continue;
+
+    if (isa<MOGG::ContextType>(calleeArgType) &&
+        isa<MGP::DeviceContextType>(callerOperandType))
+      continue;
+
+    return op->emitError(llvm::formatv(
+        "Kernel stub '{0}' expects argument {1} to have type {2}, but got "
+        "{3}",
+        calleeSymbol.getValue(), i, calleeArgType, callerOperandType));
+  }
+
+  return calleeFunc;
+}
+
+//===----------------------------------------------------------------------===//
 // CallStubOp
 //===----------------------------------------------------------------------===//
 
@@ -2168,38 +2210,12 @@ KernelStubOp CallStubOp::getCallee() {
 }
 
 LogicalResult CallStubOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  auto calleeFunc = symbolTable.lookupNearestSymbolFrom<KernelStubOp>(
-      *this, getCalleeSymbol());
-  if (!calleeFunc) {
-    return emitError(
-        llvm::formatv("There is no kernel stub named '{}'", getName()));
-  }
+  auto calleeFunc = verifyKernelStubCall(*this, symbolTable, getCalleeSymbol(),
+                                         getOperandTypes());
+  if (failed(calleeFunc))
+    return failure();
 
-  auto calleeArgumentTypes = calleeFunc.getArgumentTypes();
-  auto callerOperandTypes = getOperandTypes();
-
-  if (calleeArgumentTypes.size() != callerOperandTypes.size()) {
-    return emitError(llvm::formatv("Callee expected {} arguments but got {}",
-                                   calleeArgumentTypes.size(),
-                                   callerOperandTypes.size()));
-  }
-
-  for (uint64_t i = 0; i < calleeArgumentTypes.size(); ++i) {
-    if (calleeArgumentTypes[i] == callerOperandTypes[i])
-      continue;
-
-    if (isa<MOGG::ContextType>(calleeArgumentTypes[i]) &&
-        isa<MGP::DeviceContextType>(callerOperandTypes[i])) {
-      continue;
-    }
-
-    return emitError(llvm::formatv(
-        "Callee argument at position {} expected to be {} but got {}", i,
-        stringifyMLIRObject(calleeArgumentTypes[i]),
-        stringifyMLIRObject(callerOperandTypes[i])));
-  }
-
-  if (calleeFunc.getAbi() != ABIKind::MOGG)
+  if (calleeFunc->getAbi() != ABIKind::MOGG)
     return emitError("Call site should be in the MOGG ABI");
 
   return success();
@@ -2219,6 +2235,58 @@ LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   }
   state.builder.newline();
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CallStubAsyncOp
+//===----------------------------------------------------------------------===//
+
+KernelStubOp CallStubAsyncOp::getCallee() {
+  mlir::SymbolTable symTable(getOperation()->getParentOfType<ModuleOp>());
+  return dyn_cast_or_null<KernelStubOp>(symTable.lookup(getName()));
+}
+
+LogicalResult
+CallStubAsyncOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifyKernelStubCall(*this, symbolTable, getCalleeSymbol(),
+                              getOperandTypes());
+}
+
+LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
+  state.builder.newline();
+
+  // 1. Create error slot: var error_N = Optional[Error]()
+  MojoValue errorVar =
+      state.builder.var(MojoValue("Optional[Error]()"), /*cache=*/false);
+
+  // 2. Create async wrapper closure that calls the stub
+  SmallVector<MojoValue> stubArgs = state.getMojoValuesFor(getOperands());
+  MojoValue stubFunc(getCallee().getSymNameAttr().str());
+
+  MojoValue wrapper = state.builder.lambda(
+      "wrapper", /*parameters=*/{}, /*arguments=*/{},
+      /*returnType=*/MojoValue("None"),
+      /*isInline=*/true, /*isParameter=*/true, /*isAsync=*/true,
+      [&](const FunctionBody &) {
+        state.builder
+            .try_([&]() {
+              state.builder.call(stubFunc, /*parameters=*/{}, stubArgs);
+            })
+            .except([&](const MojoValue &errVar) {
+              state.builder.assign(errorVar, MojoValue(errVar.text + "^"));
+            });
+      });
+
+  // 3. Launch the task: var task_N = asyncrt.create_task(wrapper_N())
+  MojoValue taskVar =
+      state.builder.var(MojoValue("asyncrt.create_task")({}, {wrapper({}, {})}),
+                        /*cache=*/false);
+
+  // 4. Record task handle info for AsyncJoinOp to consume
+  state.taskHandleInfos[getTaskHandle()] = {taskVar, errorVar};
+
+  state.builder.newline();
   return success();
 }
 
@@ -2245,6 +2313,33 @@ LogicalResult AsyncReadyOp::emitMojo(EmitMojoState &state) {
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   state.builder.call(moggAsyncReadyFunc, {},
                      state.mojoReturnValues[*resultIndexOr]);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncJoinOp
+//===----------------------------------------------------------------------===//
+
+bool AsyncJoinOp::isThrows() { return true; }
+
+LogicalResult AsyncJoinOp::emitMojo(EmitMojoState &state) {
+  // Wait for all tasks to complete before checking any errors.
+  for (Value taskHandle : getTaskHandles()) {
+    auto it = state.taskHandleInfos.find(taskHandle);
+    if (it == state.taskHandleInfos.end())
+      return emitOpError("missing TaskHandleInfo for operand");
+    state.builder.keepAlive(it->second.task.get("wait")({}, {}));
+  }
+
+  auto checkErrorFunc =
+      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
+          "mogg.async.check_task_error"));
+
+  for (Value taskHandle : getTaskHandles()) {
+    auto &info = state.taskHandleInfos[taskHandle];
+    state.builder.call(checkErrorFunc, {}, {info.error});
+  }
 
   return success();
 }

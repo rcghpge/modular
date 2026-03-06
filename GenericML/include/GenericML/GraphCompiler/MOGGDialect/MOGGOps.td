@@ -187,6 +187,28 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [
   }];
 }
 
+def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>
+]> {
+  let summary = "Calls into an outlined stub asynchronously";
+  let description = [{
+    Dispatches an async call to an outlined kernel stub using Mojo-native
+    `create_task`. Returns a TaskHandle representing the running task and
+    its error slot.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$name, Variadic<AnyType>:$inputs);
+  let results = (outs MOGG_TaskHandle:$task_handle);
+  let assemblyFormat = "$name (`(` $inputs^ `:` type($inputs) `)`)? `->` type(results) attr-dict";
+
+  let extraClassDeclaration = [{
+    KernelStubOp getCallee();
+    FlatSymbolRefAttr getCalleeSymbol() {
+      return getNameAttr();
+    }
+  }];
+}
+
 def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
     DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
     DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
@@ -1362,6 +1384,29 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   }];
 }
 
+def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
+]> {
+  let arguments = (ins Variadic<MOGG_TaskHandle>:$task_handles);
+
+  let summary = "Waits for async task handles and raises on error";
+  let description = [{
+    Waits for all task handles to complete (via Task.wait()), then checks
+    for errors. If any task failed, raises the first error.
+
+    This is a synchronization-only op with no results. Use a separate
+    `mogg.async.ready` to produce the output chain for `mogg.output`.
+
+    Example:
+    ```mlir
+    mogg.async.join(%t0, %t1) : (!mogg.task_handle, !mogg.task_handle)
+    ```
+  }];
+
+  let assemblyFormat = [{
+    `(` $task_handles `)` attr-dict `:` `(` type($task_handles) `)`
+  }];
+}
 /// TODO(GEX-2434): Wrap kernel body arguments in a mogg.async<T> to fully model
 /// the fact that they are not values but pointers that must be unpacked.
 def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
