@@ -4,6 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef MLRT_DRIVER_HAL_CONTEXTIMPL_H
+#define MLRT_DRIVER_HAL_CONTEXTIMPL_H
+
 #include "HAL/M_driver_api.h"
 
 namespace M::Driver::HAL {
@@ -22,3 +25,5 @@ struct ContextImpl {
 };
 
 } // namespace M::Driver::HAL
+
+#endif // MLRT_DRIVER_HAL_CONTEXTIMPL_H

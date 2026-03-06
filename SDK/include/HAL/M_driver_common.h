@@ -7,11 +7,11 @@
 #ifndef M_DRIVER_COMMON_H
 #define M_DRIVER_COMMON_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <stdint.h>
 
 #define M_DRIVER_API_EXPORT __attribute__((visibility("default")))
 #define M_DRIVER_API_LOCAL __attribute__((visibility("hidden")))
@@ -36,6 +36,8 @@ typedef struct M_driver_context *M_driver_context_t;
 #define M_DRIVER_STATUS_NO_DEVICES ((M_driver_status_t)(-4))
 #define M_DRIVER_STATUS_BAD_DEVICE ((M_driver_status_t)(-5))
 #define M_DRIVER_STATUS_BAD_CONTEXT ((M_driver_status_t)(-6))
+#define M_DRIVER_STATUS_BAD_MEMORY ((M_driver_status_t)(-7))
+#define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-8))
 
 /**
  * Retrieve human-readable status message corresponding to a status code.

@@ -9,8 +9,8 @@
 
 #include <stdint.h>
 
-#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-7))
-#define M_DRIVER_NUM_ERRORS 8
+#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-9))
+#define M_DRIVER_NUM_ERRORS 10
 
 extern const char *statusMessages[M_DRIVER_NUM_ERRORS];
 

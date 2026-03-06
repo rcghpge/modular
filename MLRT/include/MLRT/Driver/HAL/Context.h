@@ -12,11 +12,15 @@
 #ifndef MLRT_DRIVER_HAL_CONTEXT_H
 #define MLRT_DRIVER_HAL_CONTEXT_H
 
-#include "Device.h"
-#include "Support/LLVMForwardDecls.h"
+#include "Buffer.h"
+#include "Support/ErrorOr.h"
+#include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
 namespace M::Driver::HAL {
+
+class Device;
+using DeviceRef = RCRef<Device>;
 
 struct ContextImpl;
 
@@ -26,6 +30,8 @@ public:
 
   /// Retrieve the device for this context.
   DeviceRef device() const;
+
+  ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
 
 private:
   explicit Context(ContextImpl *impl) : impl(impl) {}

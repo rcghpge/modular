@@ -11,6 +11,7 @@
 #include "M_driver_context.h"
 #include "M_driver_device.h"
 #include "M_driver_driver.h"
+#include "M_driver_memory.h"
 
 /**
  * Standard status protocol

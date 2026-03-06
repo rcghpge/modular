@@ -23,17 +23,37 @@ using std::endl;
 #define RUN(stmt)                                                              \
   do {                                                                         \
     M_driver_status_t status = (this->stmt);                                   \
-    EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS);                                \
+    ASSERT_EQ(status, M_DRIVER_STATUS_SUCCESS);                                \
   } while (0)
 
 #define DO_TEST(stmt)                                                          \
   do {                                                                         \
     M_driver_status_t status = (this->stmt);                                   \
-    if (status != M_DRIVER_STATUS_SUCCESS) {                                   \
-      const char *errorMessage = nullptr;                                      \
-      (void)this->status_message(status, &errorMessage);                       \
-      ASSERT_EQ(status, M_DRIVER_STATUS_SUCCESS) << errorMessage;              \
-    }                                                                          \
+    if (status != M_DRIVER_STATUS_SUCCESS)                                     \
+      ASSERT_EQ(status, M_DRIVER_STATUS_SUCCESS) << getStatusMessage(status);  \
+  } while (0)
+
+// The ASSERT_SUCCESS helper macro should be used when calling driver entry
+// points when the expected result is M_DRIVER_STATUS_SUCCESS and execution
+// should NOT continue if the call fails. This is should be preferred over
+// EXPECT_SUCCESS by default.
+#define ASSERT_SUCCESS(EXPR)                                                   \
+  do {                                                                         \
+    M_driver_status_t status = (EXPR);                                         \
+    if (status != M_DRIVER_STATUS_SUCCESS)                                     \
+      ASSERT_EQ(status, M_DRIVER_STATUS_SUCCESS) << getStatusMessage(status);  \
+  } while (0)
+
+// The EXPECT_SUCCESS helper macro should be used when calling driver entry
+// points when the expected result is M_DRIVER_STATUS_SUCCESS and test
+// execution should continue if the call fails. Only use instead of
+// ASSERT_SUCCESS if there is resource cleanup or other processing required
+// after the calling the driver entrypoint.
+#define EXPECT_SUCCESS(EXPR)                                                   \
+  do {                                                                         \
+    M_driver_status_t status = (EXPR);                                         \
+    if (status != M_DRIVER_STATUS_SUCCESS)                                     \
+      EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS) << getStatusMessage(status);  \
   } while (0)
 
 class DriverPluginTest : public ::testing::Test {
@@ -60,7 +80,13 @@ protected:
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
     DO_TEST(create(&driver));
+
+    const char *apiStr = nullptr;
+    M_driver_status_t status = property(driver, M_DRIVER_PROPERTY_API, &apiStr);
+    if (status == M_DRIVER_STATUS_SUCCESS && apiStr)
+      api = apiStr;
   }
+
   void TearDown() override {
     if (soHandle == nullptr)
       return;
@@ -71,11 +97,19 @@ protected:
     dlclose(soHandle);
   }
 
+  const char *getStatusMessage(M_driver_status_t status) {
+    const char *errorMessage = nullptr;
+    (void)this->status_message(status, &errorMessage);
+    return errorMessage;
+  }
+
   void *soHandle = nullptr;
 #define M_DRIVER_HAL_SYMBOL(name) M_driver_##name##_func_ptr_t name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
   M_driver_driver_t driver = nullptr;
+
+  llvm::StringRef api;
 };
 
 TEST_F(DriverPluginTest, DriverPropertyAPI) {
@@ -107,7 +141,8 @@ TEST_F(DriverPluginTest, DeviceGet) {
 
 TEST_F(DriverPluginTest, DeviceContext) {
   int64_t deviceCount = 0;
-  RUN(device_count(driver, &deviceCount));
+  EXPECT_SUCCESS(device_count(driver, &deviceCount));
+  ASSERT_GT(deviceCount, 0);
   std::vector<M_driver_context_t> contexts;
   for (int64_t i = 0; i < deviceCount; i++) {
     M_driver_device_t device = nullptr;
@@ -121,5 +156,66 @@ TEST_F(DriverPluginTest, DeviceContext) {
   for (int64_t i = deviceCount - 1; i >= 0; i--) {
     DO_TEST(context_destroy(driver, contexts[i]));
     cerr << "Destroyed context 0x" << contexts[i] << endl;
+  }
+}
+
+class DriverPluginContextTest : public DriverPluginTest {
+public:
+  void SetUp() override {
+    DriverPluginTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    int64_t deviceCount = 0;
+    ASSERT_SUCCESS(device_count(driver, &deviceCount));
+    for (int64_t i = 0; i < deviceCount; i++) {
+      M_driver_device_t device = nullptr;
+      EXPECT_SUCCESS(device_get(driver, i, &device));
+      M_driver_context_t context = nullptr;
+      ASSERT_SUCCESS(context_create(driver, device, &context));
+      contexts.push_back(context);
+    }
+  }
+
+  void TearDown() override {
+    for (M_driver_context_t context : contexts) {
+      EXPECT_SUCCESS(context_destroy(driver, context));
+    }
+    DriverPluginTest::TearDown();
+  }
+
+  std::vector<M_driver_context_t> contexts;
+};
+
+TEST_F(DriverPluginContextTest, MemoryHost) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t context : contexts) {
+    void *memory;
+    ASSERT_SUCCESS(
+        memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 128, &memory));
+    ASSERT_SUCCESS(memory_free(context, memory));
+  }
+}
+
+TEST_F(DriverPluginContextTest, MemorySync) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t context : contexts) {
+    void *memory;
+    ASSERT_SUCCESS(
+        memory_alloc(context, M_DRIVER_ALLOC_MODE_SYNC, 128, &memory));
+    ASSERT_SUCCESS(memory_free(context, memory));
+  }
+}
+
+TEST_F(DriverPluginContextTest, MemoryAsync) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t context : contexts) {
+    void *memory;
+    ASSERT_SUCCESS(
+        memory_alloc(context, M_DRIVER_ALLOC_MODE_ASYNC, 128, &memory));
+    ASSERT_SUCCESS(memory_free(context, memory));
   }
 }

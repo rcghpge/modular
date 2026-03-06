@@ -36,11 +36,15 @@ protected:
     ErrorOr<DriverRef> driverOr = Driver::create(soPath);
     ASSERT_TRUE(!driverOr.isError()) << driverOr.getError();
     driver_ = driverOr.takeValue();
+    auto apiOr = driver_->property("api");
+    if (!apiOr.isError())
+      api = *apiOr;
   }
 
   void TearDown() override { driver_.reset(); }
 
   DriverRef driver_;
+  llvm::StringRef api;
 };
 
 TEST_F(DriverHALTest, SignOfLife) {
@@ -56,12 +60,27 @@ TEST_F(DriverHALTest, DeviceCount) {
   ASSERT_GT(deviceCount, 0);
 }
 
-TEST_F(DriverHALTest, DeviceGet) {
-  ASSIGN_NO_ERR(int64_t, deviceCount, driver_->deviceCount());
-  for (int64_t i = 0; i < deviceCount; i++) {
-    ErrorOr<DeviceRef> deviceOr = driver_->device(i);
-    ASSERT_TRUE(!deviceOr.isError());
-    DeviceRef device = deviceOr.takeValue();
+class DriverHALDeviceTest : public DriverHALTest {
+protected:
+  void SetUp() override {
+    DriverHALTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    ASSIGN_NO_ERR(int64_t, deviceCount, driver_->deviceCount());
+    for (int64_t i = 0; i < deviceCount; i++) {
+      ErrorOr<DeviceRef> deviceOr = driver_->device(i);
+      ASSERT_TRUE(!deviceOr.isError());
+      devices_.push_back(deviceOr.takeValue());
+    }
+  }
+
+  std::vector<DeviceRef> devices_;
+};
+
+TEST_F(DriverHALDeviceTest, DeviceGet) {
+  for (size_t i = 0; i < devices_.size(); i++) {
+    DeviceRef &device = devices_[i];
     ErrorOr<int64_t> idOr = device->id();
     ASSERT_TRUE(!idOr.isError());
     int64_t id = idOr.takeValue();
@@ -82,14 +101,62 @@ TEST_F(DriverHALTest, PropertyApi) {
   std::cerr << apiOr->str() << "\n";
 }
 
-TEST_F(DriverHALTest, DeviceCreateContext) {
-  ASSIGN_NO_ERR(int64_t, deviceCount, driver_->deviceCount());
-  for (int64_t i = 0; i < deviceCount; i++) {
-    ErrorOr<DeviceRef> deviceOr = driver_->device(i);
-    ASSERT_TRUE(!deviceOr.isError());
-    DeviceRef device = deviceOr.takeValue();
+TEST_F(DriverHALDeviceTest, DeviceCreateContext) {
+  for (DeviceRef &device : devices_) {
     ErrorOr<ContextRef> contextOr = device->createContext();
-    ASSERT_TRUE(!contextOr.isError());
+    ASSERT_TRUE(!contextOr.isError()) << contextOr.getError();
     ContextRef context = contextOr.takeValue();
+  }
+}
+
+class DriverHALContextTest : public DriverHALDeviceTest {
+protected:
+  void SetUp() override {
+    DriverHALDeviceTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    for (DeviceRef &device : devices_) {
+      ErrorOr<ContextRef> contextOr = device->createContext();
+      ASSERT_TRUE(!contextOr.isError()) << contextOr.getError();
+      contexts.push_back(contextOr.takeValue());
+    }
+  }
+
+  void TearDown() override {
+    contexts.clear();
+    DriverHALDeviceTest::TearDown();
+  }
+
+  std::vector<ContextRef> contexts;
+};
+
+TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ErrorOr<BufferRef> bufferOr =
+        context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::HOST);
+    ASSERT_FALSE(bufferOr.isError());
+  }
+}
+
+TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ErrorOr<BufferRef> bufferOr =
+        context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::SYNC);
+    ASSERT_FALSE(bufferOr.isError());
+  }
+}
+
+TEST_F(DriverHALContextTest, ContextAllocBufferASYNC) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ErrorOr<BufferRef> bufferOr =
+        context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::ASYNC);
+    ASSERT_FALSE(bufferOr.isError());
   }
 }
