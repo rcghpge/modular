@@ -132,7 +132,7 @@ protected:
 };
 
 TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =
@@ -142,7 +142,7 @@ TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
 }
 
 TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =
@@ -152,7 +152,7 @@ TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
 }
 
 TEST_F(DriverHALContextTest, ContextAllocBufferASYNC) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =

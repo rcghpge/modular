@@ -188,7 +188,7 @@ public:
 };
 
 TEST_F(DriverPluginContextTest, MemoryHost) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory;
@@ -199,7 +199,7 @@ TEST_F(DriverPluginContextTest, MemoryHost) {
 }
 
 TEST_F(DriverPluginContextTest, MemorySync) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory;
@@ -210,7 +210,7 @@ TEST_F(DriverPluginContextTest, MemorySync) {
 }
 
 TEST_F(DriverPluginContextTest, MemoryAsync) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory;
