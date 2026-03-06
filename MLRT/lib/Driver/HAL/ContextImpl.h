@@ -15,7 +15,7 @@ struct ContextImpl {
       : device(device), handle(handle) {}
   ~ContextImpl() { reset(); }
 
-  void reset() { handle = 0xDEADBEEFFEEDFACEuLL; }
+  void reset() { handle = nullptr; }
 
   DeviceImpl *device;
   M_driver_context_t handle;

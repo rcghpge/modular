@@ -9,12 +9,10 @@
 #include "HAL/M_driver_driver.h"
 #include "llvm/ADT/StringRef.h"
 
-using namespace M::Target::Metal;
-
-Driver *Driver::create() {
+M_driver_driver_t M_driver_driver::create() {
   auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-  auto driver = std::make_unique<Driver>();
+  auto driver = std::make_unique<M_driver_driver>();
   if (!driver)
     return nullptr;
 
@@ -31,18 +29,18 @@ Driver *Driver::create() {
   return driver.release();
 }
 
-void Driver::destroy(Driver *driver) { delete driver; }
+void M_driver_driver::destroy(M_driver_driver *driver) { delete driver; }
 
 extern "C" M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
-  Driver *driver = Driver::create();
+  M_driver_driver *driver = M_driver_driver::create();
   if (!driver)
     return M_DRIVER_STATUS_NO_DEVICES;
-  *outDriver = driver->cast();
+  *outDriver = driver;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 extern "C" M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
-  Driver::destroy(Driver::from(handle));
+  M_driver_driver::destroy(handle);
   return M_DRIVER_STATUS_SUCCESS;
 }
 

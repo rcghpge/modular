@@ -12,14 +12,13 @@
 #include <cassert>
 
 using namespace llvm;
-using namespace M::Target::Metal;
 
 extern "C" M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                                    int64_t *count) {
   assert(count && "count must not be null");
-  if (!Driver::from(driver) || Driver::from(driver)->devices.size() == 0)
+  if (!driver || driver->devices.size() == 0)
     return M_DRIVER_STATUS_NO_DEVICES;
-  *count = Driver::from(driver)->devices.size();
+  *count = driver->devices.size();
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -27,11 +26,11 @@ extern "C" M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
                                                  int64_t id,
                                                  M_driver_device_t *device) {
   assert(device && "device must not be null");
-  if (!Driver::from(driver) || Driver::from(driver)->devices.size() == 0)
+  if (!driver || driver->devices.size() == 0)
     return M_DRIVER_STATUS_NO_DEVICES;
-  if (id < 0 || size_t(id) >= Driver::from(driver)->devices.size())
+  if (id < 0 || size_t(id) >= driver->devices.size())
     return M_DRIVER_STATUS_BAD_DEVICE;
-  *device = Driver::from(driver)->devices[id].cast();
+  *device = &driver->devices[id];
   return M_DRIVER_STATUS_SUCCESS;
 }
 

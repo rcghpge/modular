@@ -20,7 +20,7 @@ struct DeviceImpl {
   ~DeviceImpl() { reset(); }
 
   void reset() {
-    handle = 0xDEADBEEFFEEDFACEuLL;
+    handle = nullptr;
     name = "(no device)";
     id = -1;
   }

@@ -9,24 +9,13 @@
 
 #include "HAL/M_driver_common.h"
 
-namespace M::Target::Metal {
-struct Device;
+struct M_driver_context {
+  explicit M_driver_context(M_driver_device_t device) : device(device) {}
 
-struct Context {
-  explicit Context(Device *device) : device(device) {}
+  [[nodiscard]] static M_driver_context_t create(M_driver_device_t device);
+  static void destroy(M_driver_context_t context);
 
-  [[nodiscard]] static Context *create(Device *device);
-  static void destroy(Context *context);
-
-  M_driver_context_t cast() {
-    return reinterpret_cast<M_driver_context_t>(this);
-  }
-  static Context *from(M_driver_context_t handle) {
-    return reinterpret_cast<Context *>(handle);
-  }
-
-  Device *device;
+  M_driver_device_t device;
 };
-} // namespace M::Target::Metal
 
 #endif // TARGET_LIB_METAL_CONTEXT_H

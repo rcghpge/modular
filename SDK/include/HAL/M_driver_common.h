@@ -7,6 +7,10 @@
 #ifndef M_DRIVER_COMMON_H
 #define M_DRIVER_COMMON_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 
 #define M_DRIVER_API_EXPORT __attribute__((visibility("default")))
@@ -16,9 +20,9 @@
  * Common type definitions.
  */
 typedef int64_t M_driver_status_t;
-typedef uint64_t M_driver_driver_t;
-typedef uint64_t M_driver_device_t;
-typedef uint64_t M_driver_context_t;
+typedef struct M_driver_driver *M_driver_driver_t;
+typedef struct M_driver_device *M_driver_device_t;
+typedef struct M_driver_context *M_driver_context_t;
 
 /**
  * Common status codes.
@@ -32,10 +36,6 @@ typedef uint64_t M_driver_context_t;
 #define M_DRIVER_STATUS_NO_DEVICES ((M_driver_status_t)(-4))
 #define M_DRIVER_STATUS_BAD_DEVICE ((M_driver_status_t)(-5))
 #define M_DRIVER_STATUS_BAD_CONTEXT ((M_driver_status_t)(-6))
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /**
  * Retrieve human-readable status message corresponding to a status code.

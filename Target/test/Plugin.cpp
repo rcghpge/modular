@@ -75,7 +75,7 @@ protected:
 #define M_DRIVER_HAL_SYMBOL(name) M_driver_##name##_func_ptr_t name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
-  M_driver_driver_t driver = 0;
+  M_driver_driver_t driver = nullptr;
 };
 
 TEST_F(DriverPluginTest, DriverPropertyAPI) {
@@ -110,9 +110,9 @@ TEST_F(DriverPluginTest, DeviceContext) {
   RUN(device_count(driver, &deviceCount));
   std::vector<M_driver_context_t> contexts;
   for (int64_t i = 0; i < deviceCount; i++) {
-    M_driver_device_t device = 0x0ULL;
+    M_driver_device_t device = nullptr;
     RUN(device_get(driver, i, &device));
-    M_driver_context_t context = 0x0ULL;
+    M_driver_context_t context = nullptr;
     DO_TEST(context_create(driver, device, &context));
     cerr << "Created context for device 0x" << std::hex << device << ": 0x"
          << context << endl;

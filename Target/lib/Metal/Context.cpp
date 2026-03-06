@@ -10,23 +10,23 @@
 
 #include <cassert>
 
-using namespace M::Target::Metal;
+M_driver_context_t M_driver_context::create(M_driver_device_t device) {
+  return new M_driver_context(device);
+}
 
-Context *Context::create(Device *device) { return new Context(device); }
-
-void Context::destroy(Context *context) { delete context; }
+void M_driver_context::destroy(M_driver_context_t context) { delete context; }
 
 extern "C" M_driver_status_t
 M_driver_context_create([[maybe_unused]] M_driver_driver_t driver,
                         M_driver_device_t device, M_driver_context_t *context) {
   assert(context && "context must not be null");
-  *context = Context::create(Device::from(device))->cast();
+  *context = M_driver_context::create(device);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 extern "C" M_driver_status_t
 M_driver_context_destroy([[maybe_unused]] M_driver_driver_t driver,
                          M_driver_context_t context) {
-  Context::destroy(Context::from(context));
+  M_driver_context::destroy(context);
   return M_DRIVER_STATUS_SUCCESS;
 }

@@ -158,7 +158,7 @@ ErrorOr<DeviceRef> Driver::device(int64_t id) {
 
   // Lazy initialization
   if (!impl->devices[id]) {
-    M_driver_device_t deviceHandle = 0xDEADBEEFFEEDFACEuLL;
+    M_driver_device_t deviceHandle = nullptr;
     CALL_M_DRIVER("get device #" + std::to_string(id), impl,
                   device_get(impl->handle, id, &deviceHandle));
 
