@@ -10,41 +10,34 @@
 #include "HAL/M_driver_common.h"
 
 #include "CUDALoader.h"
+#include "Context.h"
 #include "Device.h"
 #include "NVML.h"
 
 #include "llvm/ADT/SmallVector.h"
 
-namespace M::Target::CUDA {
+using M::Target::CUDA::CUDALoader;
+using M::Target::CUDA::NVML;
 
-class Driver {
+struct M_driver_driver {
   CUDALoader rawCuda;
   NVML rawNvml;
 
-public:
-  Driver(CUDALoader &&cuda, NVML &&nvml)
+  M_driver_driver(CUDALoader &&cuda, NVML &&nvml)
       : rawCuda(std::move(cuda)), rawNvml(std::move(nvml)) {}
-  ~Driver();
+  ~M_driver_driver();
 
-  Driver(const Driver &) = delete;
-  Driver &operator=(const Driver &) = delete;
+  M_driver_driver(const M_driver_driver &) = delete;
+  M_driver_driver &operator=(const M_driver_driver &) = delete;
 
-  static M_driver_status_t destroy(Driver *driver);
-
-  M_driver_driver_t cast() { return reinterpret_cast<M_driver_driver_t>(this); }
-
-  static Driver *from(M_driver_driver_t handle) {
-    return reinterpret_cast<Driver *>(handle);
-  }
+  static M_driver_status_t destroy(M_driver_driver_t driver);
 
   CUDALoader &cuda() { return rawCuda; }
   NVML &nvml() { return rawNvml; }
 
-  llvm::SmallVector<Device> devices;
+  llvm::SmallVector<M_driver_device> devices;
 
-  Device *findDevice(CUdevice id);
+  M_driver_device *findDevice(CUdevice id);
 };
-
-} // namespace M::Target::CUDA
 
 #endif // TARGET_LIB_CUDA_DRIVER_H

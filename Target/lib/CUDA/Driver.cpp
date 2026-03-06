@@ -9,29 +9,23 @@
 #include "HAL/M_driver_api.h"
 #include "llvm/ADT/StringRef.h"
 
-namespace M::Target::CUDA {
-
-Driver::~Driver() {
+M_driver_driver::~M_driver_driver() {
   rawCuda.unload();
   rawNvml.unload();
 }
 
-M_driver_status_t Driver::destroy(Driver *driver) {
+M_driver_status_t M_driver_driver::destroy(M_driver_driver_t driver) {
   delete driver;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-Device *Driver::findDevice(CUdevice id) {
+M_driver_device *M_driver_driver::findDevice(CUdevice id) {
   for (auto &dev : devices) {
     if (dev.deviceId == id)
       return &dev;
   }
   return nullptr;
 }
-
-} // namespace M::Target::CUDA
-
-using namespace M::Target::CUDA;
 
 M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
   auto nvml = NVML::load();
@@ -55,7 +49,7 @@ M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
     return M_DRIVER_STATUS_UNKNOWN_ERROR;
   }
 
-  auto *driver = new Driver(std::move(*cuda), std::move(*nvml));
+  auto *driver = new M_driver_driver(std::move(*cuda), std::move(*nvml));
 
   // Reserve upfront so Device pointers (used as handles) stay stable.
   unsigned int deviceCount = 0;
@@ -65,13 +59,12 @@ M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
   }
   driver->devices.reserve(deviceCount);
 
-  *outDriver = driver->cast();
+  *outDriver = driver;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
-  M_driver_status_t status = Driver::destroy(Driver::from(handle));
-  return status;
+  return M_driver_driver::destroy(handle);
 }
 
 M_driver_status_t M_driver_property([[maybe_unused]] M_driver_driver_t handle,

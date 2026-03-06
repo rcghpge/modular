@@ -22,6 +22,20 @@
       return errorCode;                                                        \
   } while (false)
 
+#define RETURN_IF_ERROR(stmt, error)                                           \
+  do {                                                                         \
+    M_driver_status_t status = (stmt);                                         \
+    if (status != M_DRIVER_STATUS_SUCCESS)                                     \
+      return error;                                                            \
+  } while (0)
+
+#define QUICK_RETURN_IF_ERROR(stmt)                                            \
+  do {                                                                         \
+    M_driver_status_t status = (stmt);                                         \
+    if (status != M_DRIVER_STATUS_SUCCESS)                                     \
+      return status;                                                           \
+  } while (0)
+
 extern const char *statusMessages[M_DRIVER_NUM_ERRORS];
 
 #endif /* ERROR_H */
