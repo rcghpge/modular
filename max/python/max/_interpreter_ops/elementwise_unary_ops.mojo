@@ -19,15 +19,15 @@ Cos, Erf, Trunc), unary boolean ops (Not), and unary predicate ops (IsNan,
 IsInf).
 """
 
-from os import abort
-from python import PythonObject
-from python.bindings import PythonModuleBuilder
-from sys.info import has_accelerator, simd_width_of
+from std.os import abort
+from std.python import PythonObject
+from std.python.bindings import PythonModuleBuilder
+from std.sys.info import has_accelerator, simd_width_of
 
-from algorithm.functional import elementwise, IndexList
-from memory import OpaquePointer
-from reflection import get_base_type_name
-from runtime.asyncrt import DeviceContextPtr
+from std.algorithm.functional import elementwise, IndexList
+from std.memory import OpaquePointer
+from std.reflection import get_base_type_name
+from std.runtime.asyncrt import DeviceContextPtr
 from tensor import ElementwiseUnaryOp, ElementwiseUnaryMixedOp
 from MOGGKernelAPI.MOGGKernelAPI import (
     Negative,
@@ -166,9 +166,7 @@ fn PyInit_elementwise_unary_ops() -> PythonObject:
 
         return b.finalize()
     except e:
-        abort(
-            String("failed to create elementwise unary op bindings module: ", e)
-        )
+        abort(t"failed to create elementwise unary op bindings module: {e}")
 
 
 # =============================================================================
@@ -441,7 +439,7 @@ fn unary_elementwise_op[
     if not ctx:
         # TODO(MXF-108): Remove use_blocking_impl=True
         elementwise[
-            func, simd_width = simd_width_of[dtype](), use_blocking_impl=True
+            func, simd_width=simd_width_of[dtype](), use_blocking_impl=True
         ](IndexList[1](size))
     else:
         # GPU execution - check GPU availability and op/dtype support
@@ -501,7 +499,7 @@ fn unary_mixed_op[
     if not ctx:
         # TODO(MXF-108): Remove use_blocking_impl=True
         elementwise[
-            func, simd_width = simd_width_of[dtype](), use_blocking_impl=True
+            func, simd_width=simd_width_of[dtype](), use_blocking_impl=True
         ](IndexList[1](size))
     else:
         # GPU execution - check GPU availability and op/dtype support

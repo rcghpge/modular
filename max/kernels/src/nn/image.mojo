@@ -11,11 +11,16 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from layout._coord import Coord, Idx, coord
-from layout._layout import TensorLayout, row_major
-from layout._tile_tensor import TileTensor
+from layout import (
+    Coord,
+    Idx,
+    TileTensor,
+    coord,
+    row_major,
+)
+from layout.tile_layout import TensorLayout
 
-from utils.index import IndexList
+from std.utils.index import IndexList
 
 
 # Padding handling method.
@@ -94,7 +99,7 @@ struct ImageData[
     fn to_static_layout[
         new_static_image_layout: Image2DLayout
     ](self) -> ImageData[
-        LayoutType = Self.LayoutType,
+        LayoutType=Self.LayoutType,
         Self.dtype,
         new_static_image_layout,
         Self.origin,
@@ -107,7 +112,7 @@ struct ImageData[
         """
         comptime assert Self.static_image_layout == Image2DLayout.UNKNOWN
         return ImageData[
-            LayoutType = Self.LayoutType,
+            LayoutType=Self.LayoutType,
             Self.dtype,
             new_static_image_layout,
         ](self.data)
@@ -287,7 +292,7 @@ struct ImageShape(TrivialRegisterPassable):
     fn __init__[
         dtype: DType,
         image_layout: Image2DLayout,
-    ](out self, image_data: ImageData[dtype, image_layout]):
+    ](out self, image_data: ImageData[dtype, image_layout, ...]):
         """Constructor of an ImageShape instance from an ImageData.
 
         Args:

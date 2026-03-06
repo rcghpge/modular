@@ -106,14 +106,18 @@ def _load_hf_repo_lock() -> dict[str, str]:
     return db
 
 
-def test_single_request(model: str, task: str) -> None:
+def test_single_request(model: str, task: str, disable_timeouts: bool) -> None:
     is_vision = task == VISION_TASK
     m = [IMAGE_PROMPT if is_vision else TEXT_PROMPT]
 
+    # Initial req can be slow for huge models
+    connect_timeout, read_timeout = (
+        (None, None) if disable_timeouts else (30, 180)
+    )
     r = requests.post(
         URL,
         json={"model": model, "messages": m, "max_tokens": 8},
-        timeout=(30, 180),  # Initial req can be slow for huge models
+        timeout=(connect_timeout, read_timeout),
     )
     r.raise_for_status()
     resp = r.json()["choices"][0]["message"]["content"]
@@ -138,6 +142,45 @@ def get_gpu_name_and_count() -> tuple[str, int]:
             return "N/A", 0
 
 
+VLLM_MAX_MODEL_LEN_CAP = 16384
+
+
+@cache
+def _get_hf_max_model_len(model: str) -> int | None:
+    """Fetch max_position_embeddings from the model's HuggingFace config.json."""
+    revision = _load_hf_repo_lock().get(model)
+    # Use pinned revision if available, otherwise default branch
+    ref = revision or "main"
+    url = f"https://huggingface.co/{model}/resolve/{ref}/config.json"
+    headers = {}
+    hf_token = os.getenv("HF_TOKEN")
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        r.raise_for_status()
+        config = r.json()
+        max_pos = config.get("max_position_embeddings")
+        if max_pos is not None:
+            return int(max_pos)
+        # Some models nest this under text_config (e.g. VLMs)
+        text_config = config.get("text_config", {})
+        max_pos = text_config.get("max_position_embeddings")
+        if max_pos is not None:
+            return int(max_pos)
+    except Exception as e:
+        logger.warning(f"Could not fetch config.json for {model}: {e}")
+    return None
+
+
+def _vllm_max_model_len(model: str) -> int:
+    """Return the --max-model-len value for vLLM, capped to the model's native limit."""
+    native = _get_hf_max_model_len(model)
+    if native is not None:
+        return min(VLLM_MAX_MODEL_LEN_CAP, native)
+    return VLLM_MAX_MODEL_LEN_CAP
+
+
 def server_is_ready() -> bool:
     health_url = "http://127.0.0.1:8000/health"
     try:
@@ -156,7 +199,8 @@ def get_server_cmd(
     sglang_backend = "triton" if "b200" in gpu_model.lower() else "fa3"
     SGLANG = f"sglang.launch_server --attention-backend {sglang_backend} --mem-fraction-static 0.8"
     # limit-mm-per-prompt.video is for InternVL3 on B200
-    VLLM = "vllm.entrypoints.openai.api_server --max-model-len 16384 --limit-mm-per-prompt.video 0"
+    max_model_len = _vllm_max_model_len(model)
+    VLLM = f"vllm.entrypoints.openai.api_server --max-model-len {max_model_len} --limit-mm-per-prompt.video 0"
     MAX = "max.entrypoints.pipelines serve"
 
     is_huge_model = is_deepseek(model)
@@ -222,7 +266,12 @@ def safe_model_name(model: str) -> str:
 
 
 def call_eval(
-    model: str, task: str, *, max_concurrent: int, num_questions: int
+    model: str,
+    task: str,
+    *,
+    max_concurrent: int,
+    num_questions: int,
+    disable_timeouts: bool,
 ) -> tuple[EvalResults, EvalSamples]:
     extra_gen_kwargs = ""
     is_reasoning_model = any(
@@ -247,6 +296,15 @@ def call_eval(
 
     interpreter = sys.executable if _inside_bazel() else ".venv-eval/bin/python"
 
+    model_args: dict[str, str] = {
+        "model": model,
+        "base_url": URL,
+        "num_concurrent": str(max_concurrent),
+        "max_retries": "1",
+    }
+    if disable_timeouts:
+        model_args["timeout"] = "86400"
+
     include_path = str(Path(__file__).parent.resolve() / "tasks")
     with TemporaryDirectory() as tempdir:
         eval_cmd = [
@@ -254,7 +312,7 @@ def call_eval(
             f"--tasks={task}",
             "--model=local-chat-completions",
             "--log_samples",
-            f"--model_args=model={model},base_url={URL},num_concurrent={max_concurrent},max_retries=1",
+            f"--model_args={','.join(f'{k}={v}' for k, v in model_args.items())}",
             "--apply_chat_template",
             f"--output_path={tempdir}",
             f"--limit={num_questions}",
@@ -266,7 +324,7 @@ def call_eval(
 
         args = [interpreter, "-m", *eval_cmd]
         logger.info(f"Running eval with:\n {' '.join(args)}")
-        check_call(args, timeout=600)
+        check_call(args, timeout=None if disable_timeouts else 600)
 
         return parse_eval_results(Path(tempdir))
 
@@ -487,6 +545,12 @@ def write_results(
         '"--device-graph-capture --max-batch-size=16"'
     ),
 )
+@click.option(
+    "--disable-timeouts",
+    is_flag=True,
+    default=False,
+    help="Disable all timeouts. Useful when debugging hangs.",
+)
 def smoke_test(
     hf_model_path: str,
     framework: str,
@@ -496,6 +560,7 @@ def smoke_test(
     max_concurrent: int,
     num_questions: int,
     serve_extra_args: str,
+    disable_timeouts: bool,
 ) -> None:
     """
     Example usage: ./bazelw run smoke-test -- meta-llama/llama-3.2-1b-instruct
@@ -550,9 +615,12 @@ def smoke_test(
     logger.info(f"Starting server with command:\n {' '.join(cmd)}")
     results = []
     all_samples = []
-    timeout = 900
-    if is_deepseek(model):
+    if disable_timeouts:
+        timeout = sys.maxsize
+    elif is_deepseek(model):
         timeout = 1800
+    else:
+        timeout = 900
 
     server_process, startup_time = start_server(cmd, timeout)
     try:
@@ -560,12 +628,13 @@ def smoke_test(
         write_github_output("startup_time", f"{startup_time:.2f}")
 
         for task in tasks:
-            test_single_request(model, task)
+            test_single_request(model, task, disable_timeouts=disable_timeouts)
             result, samples = call_eval(
                 model,
                 task,
                 max_concurrent=max_concurrent,
                 num_questions=num_questions,
+                disable_timeouts=disable_timeouts,
             )
             if print_responses:
                 print_samples(samples, print_cot)

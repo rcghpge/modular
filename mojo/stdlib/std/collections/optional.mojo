@@ -32,14 +32,14 @@ print(d)  # prints 2
 ```
 """
 
-from os import abort
+from std.os import abort
 
-from utils import Variant
+from std.utils import Variant
 
-from builtin.constrained import _constrained_conforms_to
-from builtin.device_passable import DevicePassable
-from compile import get_type_name
-from format._utils import FormatStruct, TypeNames, write_to, write_repr_to
+from std.builtin.constrained import _constrained_conforms_to
+from std.builtin.device_passable import DevicePassable
+from std.compile import get_type_name
+from std.format._utils import FormatStruct, TypeNames, write_to, write_repr_to
 
 
 # TODO(27780): NoneType can't currently conform to traits
@@ -454,7 +454,7 @@ struct Optional[T: Movable](
         _constrained_conforms_to[
             conforms_to(Self.T, Writable),
             Parent=Self,
-            Element = Self.T,
+            Element=Self.T,
             ParentConformsTo="Writable",
         ]()
 
@@ -732,7 +732,7 @@ struct OptionalReg[T: __TypeOfAllTypes](
         Returns:
             A string representation of the type, e.g. `OptionalReg[Int]`.
         """
-        return String("OptionalReg[", get_type_name[Self.T](), "]")
+        return t"OptionalReg[{get_type_name[Self.T]()}]"
 
     # ===-------------------------------------------------------------------===#
     # Life cycle methods
@@ -752,7 +752,7 @@ struct OptionalReg[T: __TypeOfAllTypes](
             value: The value.
         """
         self._value = __mlir_op.`kgen.variant.create`[
-            _type = Self._mlir_type, index = Int(0)._mlir_value
+            _type=Self._mlir_type, index=Int(0)._mlir_value
         ](value)
 
     # TODO(MSTDL-715):
@@ -778,7 +778,7 @@ struct OptionalReg[T: __TypeOfAllTypes](
             value: The None value.
         """
         self._value = __mlir_op.`kgen.variant.create`[
-            _type = Self._mlir_type, index = Int(1)._mlir_value
+            _type=Self._mlir_type, index=Int(1)._mlir_value
         ](__mlir_attr.false)
 
     # ===-------------------------------------------------------------------===#
@@ -835,7 +835,7 @@ struct OptionalReg[T: __TypeOfAllTypes](
         Returns:
             True if the optional has a value and False otherwise.
         """
-        return __mlir_op.`kgen.variant.is`[index = Int(0)._mlir_value](
+        return __mlir_op.`kgen.variant.is`[index=Int(0)._mlir_value](
             self._value
         )
 
@@ -850,7 +850,7 @@ struct OptionalReg[T: __TypeOfAllTypes](
         Returns:
             The contained value.
         """
-        return __mlir_op.`kgen.variant.get`[index = Int(0)._mlir_value](
+        return __mlir_op.`kgen.variant.get`[index=Int(0)._mlir_value](
             self._value
         )
 

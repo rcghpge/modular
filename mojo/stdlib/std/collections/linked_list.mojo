@@ -19,11 +19,11 @@ traversal. The implementation includes iterator support for forward and reverse
 traversal.
 """
 
-from collections._index_normalization import normalize_index
-import format._utils as fmt
-from os import abort
+from std.collections._index_normalization import normalize_index
+import std.format._utils as fmt
+from std.os import abort
 
-from builtin.constrained import _constrained_conforms_to
+from std.builtin.constrained import _constrained_conforms_to
 
 
 struct Node[
@@ -202,10 +202,8 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
         """
         self = Self(elements=elements^)
 
-    fn __init__(
-        out self, *, var elements: VariadicListMem[Self.ElementType, _]
-    ):
-        """Construct a list from a `VariadicListMem`.
+    fn __init__(out self, *, var elements: VariadicList[Self.ElementType, _]):
+        """Construct a list from a `VariadicList`.
 
         Args:
             elements: The elements to add to the list.
@@ -811,7 +809,7 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
         Args:
             writer: The writer to write the list to.
         """
-        self._write_self_to[f = fmt.write_to[Self.ElementType]](writer)
+        self._write_self_to[f=fmt.write_to[Self.ElementType]](writer)
 
     fn write_repr_to(self, mut writer: Some[Writer]):
         """Write the repr representation of this LinkedList to a Writer.
@@ -825,7 +823,7 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
 
         @parameter
         fn write_fields(mut w: Some[Writer]):
-            self._write_self_to[f = fmt.write_repr_to[Self.ElementType]](w)
+            self._write_self_to[f=fmt.write_repr_to[Self.ElementType]](w)
 
         fmt.FormatStruct(writer, "LinkedList").params(
             fmt.TypeNames[Self.ElementType](),

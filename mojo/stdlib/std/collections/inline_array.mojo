@@ -32,16 +32,16 @@ var filled = InlineArray[Int, 5](fill=42)
 ```
 """
 
-import math
-from collections._index_normalization import normalize_index
+import std.math
+from std.collections._index_normalization import normalize_index
 
-from builtin.device_passable import DevicePassable
-from builtin.rebind import downcast
-from builtin.constrained import _constrained_conforms_to
-from builtin.repr import repr
-from compile import get_type_name
-import format._utils as fmt
-from memory import UnsafeMaybeUninit
+from std.builtin.device_passable import DevicePassable
+from std.builtin.rebind import downcast
+from std.builtin.constrained import _constrained_conforms_to
+from std.builtin.repr import repr
+from std.compile import get_type_name
+import std.format._utils as fmt
+from std.memory import UnsafeMaybeUninit
 
 # ===-----------------------------------------------------------------------===#
 # Array
@@ -361,7 +361,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
     ](
         out self,
         *,
-        var storage: VariadicListMem[
+        var storage: VariadicList[
             elt_is_mutable=True, origin=origin, Self.ElementType, is_owned=True
         ],
     ):
@@ -445,7 +445,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
         _constrained_conforms_to[
             conforms_to(Self.ElementType, ImplicitlyDestructible),
             Parent=Self,
-            Element = Self.ElementType,
+            Element=Self.ElementType,
             ParentConformsTo="ImplicitlyDestructible",
         ]()
         comptime TDestructible = downcast[
@@ -718,7 +718,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
         Args:
             writer: The object to write to.
         """
-        self._write_self_to[f = fmt.write_to[Self.ElementType]](writer)
+        self._write_self_to[f=fmt.write_to[Self.ElementType]](writer)
 
     fn write_repr_to(self, mut writer: Some[Writer]):
         """Writes the repr representation of this InlineArray to a Writer.
@@ -732,7 +732,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
 
         @parameter
         fn write_fields(mut w: Some[Writer]):
-            self._write_self_to[f = fmt.write_repr_to[Self.ElementType]](w)
+            self._write_self_to[f=fmt.write_repr_to[Self.ElementType]](w)
 
         fmt.FormatStruct(writer, "InlineArray").params(
             fmt.TypeNames[Self.ElementType](),

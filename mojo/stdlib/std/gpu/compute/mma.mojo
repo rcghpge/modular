@@ -13,11 +13,11 @@
 """This module includes utilities for working with the
 warp-matrix-matrix-multiplication (wmma) instructions."""
 
-from collections import InlineArray
-from collections.string.string_slice import _get_kgen_string
-from sys import _RegisterPackType, is_nvidia_gpu, llvm_intrinsic, size_of
-from sys._assembly import inlined_assembly
-from sys.info import (
+from std.collections import InlineArray
+from std.collections.string.string_slice import _get_kgen_string
+from std.sys import _RegisterPackType, is_nvidia_gpu, llvm_intrinsic, size_of
+from std.sys._assembly import inlined_assembly
+from std.sys.info import (
     CompilationTarget,
     _cdna_4_or_newer,
     _is_amd_rdna,
@@ -26,19 +26,19 @@ from sys.info import (
     is_amd_gpu,
 )
 
-from gpu._utils import (
+from std.gpu._utils import (
     array_to_llvm_struct,
     dtype_to_llvm_type,
     llvm_struct_to_array,
     llvm_struct_to_simd,
     simd_to_llvm_struct,
 )
-from gpu.host.nvidia.tma import TensorMapSwizzle
-from gpu.compute.mma_operand_descriptor import MMAOperandDescriptor
-from memory import bitcast
+from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from std.gpu.compute.mma_operand_descriptor import MMAOperandDescriptor
+from std.memory import bitcast
 
-from utils import StaticTuple
-from utils.index import Index
+from std.utils import StaticTuple
+from std.utils.index import Index
 
 # Import architecture-specific MMA implementations
 from .arch.mma_nvidia import _mma_nvidia
@@ -224,7 +224,7 @@ fn mma[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
         _mma_amd[block_size](d, a, b, c)
     else:
         return CompilationTarget.unsupported_target_error[
-            operation = __get_current_function_name()
+            operation=__get_current_function_name()
         ]()
 
 
@@ -265,7 +265,7 @@ fn ld_matrix[
     Example:
 
         ```mojo
-        from gpu.compute.mma import ld_matrix
+        from std.gpu.compute.mma import ld_matrix
 
         # Load 8x8 matrix of float16 values
         var data = ld_matrix[DType.float16, 8](ptr)
@@ -354,7 +354,7 @@ fn st_matrix[
     dtype: DType, //, simd_width: Int, *, transpose: Bool = False
 ](
     ptr: UnsafePointer[
-        mut=True, Scalar[dtype], address_space = AddressSpace.SHARED
+        mut=True, Scalar[dtype], _, address_space=AddressSpace.SHARED
     ],
     d: SIMD[DType.float32, simd_width],
 ):
@@ -506,7 +506,7 @@ struct WGMMADescriptor[dtype: DType](
     ](
         smem_ptr: UnsafePointer[
             Scalar[Self.dtype],
-            address_space = AddressSpace.SHARED,
+            address_space=AddressSpace.SHARED,
             ...,
         ],
     ) -> Self:
@@ -704,10 +704,10 @@ fn wgmma_async[
         " scale in values."
     )
 
-    var desc_a_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
+    var desc_a_value = __mlir_op.`pop.cast_to_builtin`[_type=__mlir_type.i64](
         mat_a_desc.desc._mlir_value
     )
-    var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
+    var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type=__mlir_type.i64](
         mat_b_desc.desc._mlir_value
     )
 
@@ -721,16 +721,16 @@ fn wgmma_async[
     var llvmst = array_to_llvm_struct[c_dtype, width](c_reg)
     # TODO: Simplify with parametric alias
     var llvmres = __mlir_op.`nvvm.wgmma.mma_async`[
-        shape = _get_shape[m, n, k](),
-        typeA = _dtype_to_nvvm_wgmma_type[a_type](),
-        typeB = _dtype_to_nvvm_wgmma_type[b_type](),
+        shape=_get_shape[m, n, k](),
+        typeA=_dtype_to_nvvm_wgmma_type[a_type](),
+        typeB=_dtype_to_nvvm_wgmma_type[b_type](),
         typeD=type_d_value,
-        scaleD = _to_nvvm_scale_out[scale_d](),
-        scaleA = _to_nvvm_scale_in[scale_a](),
-        scaleB = _to_nvvm_scale_in[scale_b](),
-        layoutA = _to_nvvm_layout[layout_a](),
-        layoutB = _to_nvvm_layout[layout_b](),
-        _type = __mlir_type[
+        scaleD=_to_nvvm_scale_out[scale_d](),
+        scaleA=_to_nvvm_scale_in[scale_a](),
+        scaleB=_to_nvvm_scale_in[scale_b](),
+        layoutA=_to_nvvm_layout[layout_a](),
+        layoutB=_to_nvvm_layout[layout_b](),
+        _type=__mlir_type[
             `!llvm.struct<(`,
             __mlir_type[
                 `!kgen.variadic_splat<`,
@@ -832,10 +832,10 @@ fn wgmma_async[
         " scale in values."
     )
 
-    var desc_a_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
+    var desc_a_value = __mlir_op.`pop.cast_to_builtin`[_type=__mlir_type.i64](
         mat_a_desc.desc._mlir_value
     )
-    var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
+    var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type=__mlir_type.i64](
         mat_b_desc.desc._mlir_value
     )
 
@@ -848,16 +848,16 @@ fn wgmma_async[
     var llvmst = simd_to_llvm_struct[c_dtype, width](c_reg)
     # TODO: Simplify with parametric alias
     var llvmres = __mlir_op.`nvvm.wgmma.mma_async`[
-        shape = _get_shape[m, n, k](),
-        typeA = _dtype_to_nvvm_wgmma_type[a_type](),
-        typeB = _dtype_to_nvvm_wgmma_type[b_type](),
+        shape=_get_shape[m, n, k](),
+        typeA=_dtype_to_nvvm_wgmma_type[a_type](),
+        typeB=_dtype_to_nvvm_wgmma_type[b_type](),
         typeD=type_d_value,
-        scaleD = _to_nvvm_scale_out[scale_d](),
-        scaleA = _to_nvvm_scale_in[scale_a](),
-        scaleB = _to_nvvm_scale_in[scale_b](),
-        layoutA = _to_nvvm_layout[layout_a](),
-        layoutB = _to_nvvm_layout[layout_b](),
-        _type = __mlir_type[
+        scaleD=_to_nvvm_scale_out[scale_d](),
+        scaleA=_to_nvvm_scale_in[scale_a](),
+        scaleB=_to_nvvm_scale_in[scale_b](),
+        layoutA=_to_nvvm_layout[layout_a](),
+        layoutB=_to_nvvm_layout[layout_b](),
+        _type=__mlir_type[
             `!llvm.struct<(`,
             __mlir_type[
                 `!kgen.variadic_splat<`,
@@ -960,7 +960,7 @@ fn wgmma_async[
         layout_b == "row" and b_type == DType.bfloat16
     )
 
-    var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type = __mlir_type.i64](
+    var desc_b_value = __mlir_op.`pop.cast_to_builtin`[_type=__mlir_type.i64](
         mat_b_desc.desc._mlir_value
     )
     comptime trans_b = 1 if layout_b == "row" else 0

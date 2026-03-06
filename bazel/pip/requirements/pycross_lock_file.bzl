@@ -40,6 +40,7 @@ PINS = {
     "apache-tvm-ffi": "apache-tvm-ffi@0.1.3",
     "asgiref": "asgiref@3.8.1",
     "async-asgi-testclient": "async-asgi-testclient@1.4.11",
+    "av": "av@14.2.0",
     "boto3": "boto3@1.40.61",
     "click": "click@8.1.7",
     "codeowners": "codeowners@0.8.0",
@@ -57,6 +58,7 @@ PINS = {
     "filelock": "filelock@3.16.1",
     "fire": "fire@0.7.0",
     "flashinfer-cubin": "flashinfer-cubin@0.6.1",
+    "flashinfer-python": "flashinfer-python@0.5.3",
     "flask": "flask@3.0.3",
     "gguf": "gguf@0.17.1",
     "google-auth": "google-auth@2.48.0",
@@ -144,6 +146,7 @@ PINS = {
     "sentencepiece": "sentencepiece@0.2.1",
     "setuptools": "setuptools@80.9.0",
     "simpy": "simpy@4.1.1",
+    "slack-sdk": "slack-sdk@3.40.1",
     "soundfile": "soundfile@0.12.1",
     "sphinx": "sphinx@7.4.7",
     "sqlalchemy": "sqlalchemy@2.0.44",
@@ -154,6 +157,7 @@ PINS = {
     "taskgroup": "taskgroup@0.2.2",
     "termcolor": "termcolor@2.5.0",
     "threadpoolctl": "threadpoolctl@3.5.0",
+    "tiktoken": "tiktoken@0.12.0",
     "timm": "timm@1.0.15",
     "tokenicer": "tokenicer@0.0.4",
     "tomli": "tomli@2.0.1",
@@ -1654,27 +1658,8 @@ def targets():
     )
 
     _cuda_bindings_13_0_3_deps = [
-    ] + select({
-        ":_env_python_3.10_x86_64-unknown-linux-gnu": [
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.11_x86_64-unknown-linux-gnu": [
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.12_x86_64-unknown-linux-gnu": [
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.13_x86_64-unknown-linux-gnu": [
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu": [
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded": [
-            ":cuda-pathfinder@1.3.2",
-        ],
-        "//conditions:default": [],
-    })
+        ":cuda-pathfinder@1.3.2",
+    ]
 
     native.alias(
         name = "_wheel_cuda-bindings@13.0.3",
@@ -1713,33 +1698,9 @@ def targets():
     )
 
     _cuda_python_13_0_3_deps = [
-    ] + select({
-        ":_env_python_3.10_x86_64-unknown-linux-gnu": [
-            ":cuda-bindings@13.0.3",
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.11_x86_64-unknown-linux-gnu": [
-            ":cuda-bindings@13.0.3",
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.12_x86_64-unknown-linux-gnu": [
-            ":cuda-bindings@13.0.3",
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.13_x86_64-unknown-linux-gnu": [
-            ":cuda-bindings@13.0.3",
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu": [
-            ":cuda-bindings@13.0.3",
-            ":cuda-pathfinder@1.3.2",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded": [
-            ":cuda-bindings@13.0.3",
-            ":cuda-pathfinder@1.3.2",
-        ],
-        "//conditions:default": [],
-    })
+        ":cuda-bindings@13.0.3",
+        ":cuda-pathfinder@1.3.2",
+    ]
 
     native.alias(
         name = "_wheel_cuda-python@13.0.3",
@@ -2461,76 +2422,20 @@ def targets():
     )
 
     _flashinfer_python_0_5_3_deps = [
+        ":apache-tvm-ffi@0.1.3",
+        ":click@8.1.7",
+        ":einops@0.8.0",
+        ":ninja@1.13.0",
         ":numpy@multiple",
+        ":nvidia-cudnn-frontend@1.16.0",
+        ":nvidia-cutlass-dsl@4.3.0",
+        ":nvidia-ml-py@12.560.30",
+        ":packaging@25.0",
+        ":requests@2.32.3",
+        ":tabulate@0.9.0",
         ":torch@multiple",
-    ] + select({
-        ":_env_python_3.11_x86_64-unknown-linux-gnu": [
-            ":apache-tvm-ffi@0.1.3",
-            ":click@8.1.7",
-            ":einops@0.8.0",
-            ":ninja@1.13.0",
-            ":nvidia-cudnn-frontend@1.16.0",
-            ":nvidia-cutlass-dsl@4.3.0",
-            ":nvidia-ml-py@12.560.30",
-            ":packaging@25.0",
-            ":requests@2.32.3",
-            ":tabulate@0.9.0",
-            ":tqdm@4.66.5",
-        ],
-        ":_env_python_3.12_x86_64-unknown-linux-gnu": [
-            ":apache-tvm-ffi@0.1.3",
-            ":click@8.1.7",
-            ":einops@0.8.0",
-            ":ninja@1.13.0",
-            ":nvidia-cudnn-frontend@1.16.0",
-            ":nvidia-cutlass-dsl@4.3.0",
-            ":nvidia-ml-py@12.560.30",
-            ":packaging@25.0",
-            ":requests@2.32.3",
-            ":tabulate@0.9.0",
-            ":tqdm@4.66.5",
-        ],
-        ":_env_python_3.13_x86_64-unknown-linux-gnu": [
-            ":apache-tvm-ffi@0.1.3",
-            ":click@8.1.7",
-            ":einops@0.8.0",
-            ":ninja@1.13.0",
-            ":nvidia-cudnn-frontend@1.16.0",
-            ":nvidia-cutlass-dsl@4.3.0",
-            ":nvidia-ml-py@12.560.30",
-            ":packaging@25.0",
-            ":requests@2.32.3",
-            ":tabulate@0.9.0",
-            ":tqdm@4.66.5",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu": [
-            ":apache-tvm-ffi@0.1.3",
-            ":click@8.1.7",
-            ":einops@0.8.0",
-            ":ninja@1.13.0",
-            ":nvidia-cudnn-frontend@1.16.0",
-            ":nvidia-cutlass-dsl@4.3.0",
-            ":nvidia-ml-py@12.560.30",
-            ":packaging@25.0",
-            ":requests@2.32.3",
-            ":tabulate@0.9.0",
-            ":tqdm@4.66.5",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded": [
-            ":apache-tvm-ffi@0.1.3",
-            ":click@8.1.7",
-            ":einops@0.8.0",
-            ":ninja@1.13.0",
-            ":nvidia-cudnn-frontend@1.16.0",
-            ":nvidia-cutlass-dsl@4.3.0",
-            ":nvidia-ml-py@12.560.30",
-            ":packaging@25.0",
-            ":requests@2.32.3",
-            ":tabulate@0.9.0",
-            ":tqdm@4.66.5",
-        ],
-        "//conditions:default": [],
-    })
+        ":tqdm@4.66.5",
+    ]
 
     native.alias(
         name = "_wheel_flashinfer-python@0.5.3",
@@ -6263,34 +6168,10 @@ def targets():
     )
 
     _nvidia_cutlass_dsl_4_3_0_deps = [
+        ":cuda-python@13.0.3",
         ":numpy@multiple",
-    ] + select({
-        ":_env_python_3.10_x86_64-unknown-linux-gnu": [
-            ":cuda-python@13.0.3",
-            ":typing-extensions@4.15.0",
-        ],
-        ":_env_python_3.11_x86_64-unknown-linux-gnu": [
-            ":cuda-python@13.0.3",
-            ":typing-extensions@4.15.0",
-        ],
-        ":_env_python_3.12_x86_64-unknown-linux-gnu": [
-            ":cuda-python@13.0.3",
-            ":typing-extensions@4.15.0",
-        ],
-        ":_env_python_3.13_x86_64-unknown-linux-gnu": [
-            ":cuda-python@13.0.3",
-            ":typing-extensions@4.15.0",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu": [
-            ":cuda-python@13.0.3",
-            ":typing-extensions@4.15.0",
-        ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded": [
-            ":cuda-python@13.0.3",
-            ":typing-extensions@4.15.0",
-        ],
-        "//conditions:default": [],
-    })
+        ":typing-extensions@4.15.0",
+    ]
 
     native.alias(
         name = "_wheel_nvidia-cutlass-dsl@4.3.0",
@@ -9054,6 +8935,17 @@ def targets():
         name = "six@1.16.0",
         wheel = ":_wheel_six@1.16.0",
         testonly = "six" in _TESTONLY_DEPS,
+    )
+
+    native.alias(
+        name = "_wheel_slack-sdk@3.40.1",
+        actual = "@pycross_lock_file_wheel_slack_sdk_3.40.1_py2.py3_none_any//file",
+    )
+
+    pycross_wheel_library(
+        name = "slack-sdk@3.40.1",
+        wheel = ":_wheel_slack-sdk@3.40.1",
+        testonly = "slack-sdk" in _TESTONLY_DEPS,
     )
 
     native.alias(
@@ -26401,6 +26293,16 @@ def repositories():
         ],
         sha256 = "8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254",
         downloaded_file_path = "six-1.16.0-py2.py3-none-any.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_slack_sdk_3.40.1_py2.py3_none_any",
+        urls = [
+            "https://files.pythonhosted.org/packages/6e/e1/bb81f93c9f403e3b573c429dd4838ec9b44e4ef35f3b0759eb49557ab6e3/slack_sdk-3.40.1-py2.py3-none-any.whl",
+        ],
+        sha256 = "cd8902252979aa248092b0d77f3a9ea3cc605bc5d53663ad728e892e26e14a65",
+        downloaded_file_path = "slack_sdk-3.40.1-py2.py3-none-any.whl",
     )
 
     maybe(

@@ -16,11 +16,10 @@ Graph-based API:
     >>> from max.nn import Linear, AttentionWithRope
     >>> from max.nn.kv_cache import KVCacheParams
 
-Eager tensor API (module_v3):
-    >>> from max.nn.module_v3 import Module, Linear, Embedding
+Eager tensor API:
+    >>> from max.experimental.nn import Module, Linear, Embedding
 """
 
-from . import module_v3
 from .attention import (
     AttentionWithRope,
     DistributedAttentionImpl,
@@ -48,29 +47,16 @@ from .float8_config import (
 from .identity import Identity
 from .kv_cache import (
     KVCacheInputs,
-    KVCacheInputsSequence,
     KVCacheMetrics,
     KVCacheParams,
-    KVCacheStrategy,
     PagedCacheValues,
-    RaggedKVCacheInputs,
     build_max_lengths_tensor,
 )
 from .layer import Layer, LayerList, Module, Shardable
-from .linear import (
-    MLP,
-    ColumnParallelLinear,
-    GPTQLinear,
-    Linear,
-)
+from .linear import MLP, ColumnParallelLinear, GPTQLinear, Linear
 from .lora import AttentionWithRopeAndLoRA, LinearLoRA, SupportsLoRA
 from .moe import MoE, MoEGate, MoEQuantized
-from .norm import (
-    ConstantLayerNorm,
-    GroupNorm,
-    LayerNorm,
-    RMSNorm,
-)
+from .norm import ConstantLayerNorm, GroupNorm, LayerNorm, RMSNorm
 from .rotary_embedding import (
     DynamicRotaryEmbedding,
     LinearScalingParams,
@@ -86,6 +72,7 @@ from .sampling import (
     MinPSampler,
     RejectionSampler,
     RejectionSamplerWithResiduals,
+    TypicalAcceptanceSampler,
 )
 from .sequential import Sequential
 from .transformer import (
@@ -124,10 +111,8 @@ __all__ = [
     "GroupNorm",
     "Identity",
     "KVCacheInputs",
-    "KVCacheInputsSequence",
     "KVCacheMetrics",
     "KVCacheParams",
-    "KVCacheStrategy",
     "LatentAttentionWithRope",
     "Layer",
     "LayerList",
@@ -148,7 +133,6 @@ __all__ = [
     "PagedCacheValues",
     "RMSNorm",
     "RaggedAttention",
-    "RaggedKVCacheInputs",
     "RejectionSampler",
     "RejectionSamplerWithResiduals",
     "ReturnHiddenStates",
@@ -162,13 +146,13 @@ __all__ = [
     "TensorParallelLatentAttentionWithRope",
     "Transformer",
     "TransformerBlock",
+    "TypicalAcceptanceSampler",
     "VocabParallelEmbedding",
     "WeightNormConvTranspose1d",
     "YarnRotaryEmbedding",
     "YarnScalingParams",
     "build_max_lengths_tensor",
     "clamp",
-    "module_v3",
     "split_batch",
     "split_batch_replicated",
 ]

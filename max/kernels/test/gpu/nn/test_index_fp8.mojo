@@ -11,13 +11,13 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from gpu.host import DeviceContext
+from std.gpu.host import DeviceContext
 from nn.index_fp8 import fp8_index, fp8_index_naive
-from random import rand
+from std.random import rand
 from layout import Layout, RuntimeLayout, UNKNOWN_VALUE
 from layout.layout_tensor import LayoutTensor
-from utils.index import Index
-from testing import assert_almost_equal
+from std.utils.index import Index
+from std.testing import assert_almost_equal
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 
@@ -215,7 +215,7 @@ fn test_index_fp8[
     o_ptr.free()
 
 
-def main():
+def main() raises:
     with DeviceContext() as ctx:
         test_index_fp8[num_heads=128, depth=128](2, 128, 128, ctx)
         test_index_fp8[num_heads=128, depth=128](2, 32, 32, ctx)
@@ -225,3 +225,12 @@ def main():
         test_index_fp8[num_heads=128, depth=128](4, 722, 722, ctx)
         test_index_fp8[num_heads=128, depth=128](5, 32, 64, ctx)
         test_index_fp8[num_heads=128, depth=128](2, 128, 256, ctx)
+
+        test_index_fp8[num_heads=64, depth=128](2, 128, 128, ctx)
+        test_index_fp8[num_heads=64, depth=128](2, 32, 32, ctx)
+        test_index_fp8[num_heads=64, depth=128](4, 200, 200, ctx)
+        test_index_fp8[num_heads=64, depth=128](1, 501, 501, ctx)
+        test_index_fp8[num_heads=64, depth=128](3, 600, 600, ctx)
+        test_index_fp8[num_heads=64, depth=128](4, 722, 722, ctx)
+        test_index_fp8[num_heads=64, depth=128](5, 32, 64, ctx)
+        test_index_fp8[num_heads=64, depth=128](2, 128, 256, ctx)

@@ -25,12 +25,12 @@ type results in undefined behavior, just like in C. Prefer `Variant` for safe,
 type-checked sum types.
 """
 
-from builtin.rebind import downcast
-from builtin.variadics import Variadic
-from format._utils import FormatStruct, Named, TypeNames
-from memory import UnsafePointer
-from sys import align_of, size_of
-from sys.intrinsics import _type_is_eq
+from std.builtin.rebind import downcast
+from std.builtin.variadics import Variadic
+from std.format._utils import FormatStruct, Named, TypeNames
+from std.memory import UnsafePointer
+from std.sys import align_of, size_of
+from std.sys.intrinsics import _type_is_eq
 
 
 # ===----------------------------------------------------------------------=== #
@@ -138,7 +138,7 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
     Example:
 
     ```mojo
-    from ffi import UnsafeUnion
+    from std.ffi import UnsafeUnion
 
     # Define a union that can hold Int32 or Float32
     comptime IntOrFloat = UnsafeUnion[Int32, Float32]
@@ -260,7 +260,7 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         ](), "type is not a union element type"
         var ptr = UnsafePointer(to=self._storage).address
         var typed_ptr = __mlir_op.`pop.union.bitcast`[
-            _type = UnsafePointer[T, origin_of(self)]._mlir_type,
+            _type=UnsafePointer[T, origin_of(self)]._mlir_type,
         ](ptr)
         return typed_ptr
 
@@ -423,4 +423,4 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
 
         Returns True if found, False otherwise.
         """
-        return Variadic.contains[type=T, element_types = Self.Ts]
+        return Variadic.contains[type=T, element_types=Self.Ts]

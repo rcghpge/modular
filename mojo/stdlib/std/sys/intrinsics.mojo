@@ -15,14 +15,14 @@
 You can import these APIs from the `sys` package. For example:
 
 ```mojo
-from sys import PrefetchLocality
+from std.sys import PrefetchLocality
 ```
 """
 
-import math
-from collections.string.string_slice import _get_kgen_string
-from sys import is_compile_time
-from sys.info import _is_sm_9x_or_newer, is_gpu
+import std.math
+from std.collections.string.string_slice import _get_kgen_string
+from std.sys import is_compile_time
+from std.sys.info import _is_sm_9x_or_newer, is_gpu
 
 
 from ._assembly import inlined_assembly
@@ -65,7 +65,7 @@ fn llvm_intrinsic[
         __mlir_op.`pop.call_llvm_intrinsic`[
             intrin=intrin_kgen_string,
             _type=None,
-            hasSideEffects = has_side_effect._mlir_value,
+            hasSideEffects=has_side_effect._mlir_value,
         ](loaded_pack)
         return rebind[type](None)
 
@@ -73,7 +73,7 @@ fn llvm_intrinsic[
         return __mlir_op.`pop.call_llvm_intrinsic`[
             intrin=intrin_kgen_string,
             _type=type,
-            hasSideEffects = has_side_effect._mlir_value,
+            hasSideEffects=has_side_effect._mlir_value,
         ](loaded_pack)
 
 
@@ -822,7 +822,7 @@ struct _RegisterPackType[*a: TrivialRegisterPassable](TrivialRegisterPassable):
         Returns:
             The tuple element at the requested index.
         """
-        return __mlir_op.`kgen.pack.extract`[index = i.__mlir_index__()](
+        return __mlir_op.`kgen.pack.extract`[index=i.__mlir_index__()](
             self._mlir_value
         )
 
@@ -921,7 +921,7 @@ fn assume(val: Bool):
 @always_inline
 fn implicitarg_ptr(
     out result: UnsafePointer[
-        UInt8, MutExternalOrigin, address_space = AddressSpace.CONSTANT
+        UInt8, MutExternalOrigin, address_space=AddressSpace.CONSTANT
     ]
 ):
     """

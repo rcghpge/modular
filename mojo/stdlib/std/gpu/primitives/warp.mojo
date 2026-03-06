@@ -31,7 +31,7 @@ implementations of the core operations. It supports various data types including
 integers, floats, and half-precision floats, with SIMD vectorization.
 """
 
-from sys import (
+from std.sys import (
     CompilationTarget,
     bit_width_of,
     is_amd_gpu,
@@ -41,15 +41,15 @@ from sys import (
     size_of,
     _RegisterPackType,
 )
-from sys._assembly import inlined_assembly
-from sys.info import _is_sm_100x_or_newer, _cdna_4_or_newer
+from std.sys._assembly import inlined_assembly
+from std.sys.info import _is_sm_100x_or_newer, _cdna_4_or_newer
 
-from bit import log2_floor
-from math.math import max as _max, min as _min
-from gpu import lane_id
-from gpu.intrinsics import permlane_shuffle
-from gpu.globals import WARP_SIZE
-from memory import bitcast
+from std.bit import log2_floor
+from std.math.math import max as _max, min as _min
+from std.gpu import lane_id
+from std.gpu.intrinsics import permlane_shuffle
+from std.gpu.globals import WARP_SIZE
+from std.memory import bitcast
 
 from ..compute.tensor_ops import tc_reduce
 
@@ -436,7 +436,7 @@ fn shuffle_idx[
     Example:
 
         ```mojo
-            from gpu import shuffle_idx
+            from std.gpu import shuffle_idx
 
             val = SIMD[DType.float32, 16](1.0)
 
@@ -495,7 +495,7 @@ fn shuffle_idx[
     Example:
 
         ```mojo
-            from gpu import shuffle_idx
+            from std.gpu import shuffle_idx
 
             # Only broadcast to first 16 lanes
             var mask = 0xFFFF  # 16 ones
@@ -507,7 +507,7 @@ fn shuffle_idx[
     comptime if is_nvidia_gpu():
         return _shuffle[
             "idx",
-            WIDTH_MASK = Int32(_WIDTH_MASK),
+            WIDTH_MASK=Int32(_WIDTH_MASK),
         ](mask, val, offset)
     elif is_amd_gpu():
         return _shuffle_idx_amd(mask, val, offset)
@@ -518,7 +518,7 @@ fn shuffle_idx[
     else:
         return CompilationTarget.unsupported_target_error[
             SIMD[dtype, simd_width],
-            operation = __get_current_function_name(),
+            operation=__get_current_function_name(),
         ]()
 
 
@@ -614,7 +614,7 @@ fn shuffle_up[
     else:
         return CompilationTarget.unsupported_target_error[
             SIMD[dtype, simd_width],
-            operation = __get_current_function_name(),
+            operation=__get_current_function_name(),
         ]()
 
 
@@ -703,7 +703,7 @@ fn shuffle_down[
     """
 
     comptime if is_nvidia_gpu():
-        return _shuffle["down", WIDTH_MASK = Int32(_WIDTH_MASK)](
+        return _shuffle["down", WIDTH_MASK=Int32(_WIDTH_MASK)](
             mask, val, offset
         )
     elif is_amd_gpu():
@@ -715,7 +715,7 @@ fn shuffle_down[
     else:
         return CompilationTarget.unsupported_target_error[
             SIMD[dtype, simd_width],
-            operation = __get_current_function_name(),
+            operation=__get_current_function_name(),
         ]()
 
 
@@ -795,7 +795,7 @@ fn shuffle_xor[
     Example:
 
         ```mojo
-            from gpu import shuffle_xor
+            from std.gpu import shuffle_xor
 
             # Exchange values between even-numbered threads 4 lanes apart
             mask = 0xAAAAAAAA  # Even threads only
@@ -805,7 +805,7 @@ fn shuffle_xor[
     """
 
     comptime if is_nvidia_gpu():
-        return _shuffle["bfly", WIDTH_MASK = Int32(_WIDTH_MASK)](
+        return _shuffle["bfly", WIDTH_MASK=Int32(_WIDTH_MASK)](
             mask, val, offset
         )
     elif is_amd_gpu():
@@ -817,7 +817,7 @@ fn shuffle_xor[
     else:
         return CompilationTarget.unsupported_target_error[
             SIMD[dtype, simd_width],
-            operation = __get_current_function_name(),
+            operation=__get_current_function_name(),
         ]()
 
 
@@ -863,7 +863,7 @@ fn lane_group_reduce[
     Example:
 
         ```mojo
-            from gpu import lane_group_reduce, shuffle_down
+            from std.gpu import lane_group_reduce, shuffle_down
 
             # Compute sum across 16 threads using shuffle down
             @parameter
@@ -916,7 +916,7 @@ fn reduce[
     Example:
 
     ```mojo
-        from gpu import reduce, shuffle_down
+        from std.gpu import reduce, shuffle_down
 
         # Compute warp-wide sum using shuffle down
         @parameter
@@ -1117,7 +1117,11 @@ fn prefix_sum[
 
 @always_inline("nodebug")
 fn _has_redux_f32_support[dtype: DType, simd_width: Int]() -> Bool:
-    return _is_sm_100x_or_newer() and dtype == DType.float32 and simd_width == 1
+    return (
+        (is_nvidia_gpu["sm_100a"]() or is_nvidia_gpu["sm_101a"]())
+        and dtype == DType.float32
+        and simd_width == 1
+    )
 
 
 @always_inline("nodebug")
@@ -1126,7 +1130,7 @@ fn _redux_f32_max_min[direction: StaticString](val: SIMD) -> type_of(val):
     return inlined_assembly[
         instruction + " $0, $1, $2;",
         type_of(val),
-        constraints="=r,r,i",
+        constraints="=f,f,i",
         has_side_effect=True,
     ](val, Int32(_FULL_MASK))
 
@@ -1435,5 +1439,5 @@ fn vote[ret_type: DType](val: Bool) -> Scalar[ret_type]:
         return _vote_amd_helper[ret_type](val)
     else:
         return CompilationTarget.unsupported_target_error[
-            Scalar[ret_type], operation = __get_current_function_name()
+            Scalar[ret_type], operation=__get_current_function_name()
         ]()

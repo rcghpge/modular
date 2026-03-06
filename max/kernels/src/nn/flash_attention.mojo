@@ -11,15 +11,15 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections import OptionalReg
-from math import align_down, align_up, ceildiv, exp
+from std.collections import OptionalReg
+from std.math import align_down, align_up, ceildiv, exp
 
-from os import abort
-from sys import align_of, simd_width_of
-from sys.info import CompilationTarget
+from std.os import abort
+from std.sys import align_of, simd_width_of
+from std.sys.info import CompilationTarget
 
-from algorithm import sync_parallelize, tile, vectorize
-from algorithm.reduction import (
+from std.algorithm import sync_parallelize, tile, vectorize
+from std.algorithm.reduction import (
     _simd_max,
     _simd_max_elementwise,
     _simd_sum,
@@ -36,55 +36,43 @@ from linalg.matmul.cpu.apple_accelerate import (
 )
 from linalg.transpose import transpose_inplace
 from linalg.utils import partition_work
-from memory import memset_zero, stack_allocation
+from std.memory import memset_zero, stack_allocation
 from nn.mha_mask import MHAMask
-from runtime.asyncrt import parallelism_level
-from runtime.tracing import Trace, TraceLevel, trace_arg
+from std.runtime.asyncrt import parallelism_level
+from std.runtime.tracing import Trace, TraceLevel, trace_arg
 
-from utils import Index, IndexList
+from std.utils import Index, IndexList
 
 
+@fieldwise_init
 struct _MatmulConfig:
-    var col_sizes: VariadicList[Int]
-    var row_sizes: VariadicList[Int]
-    var gemv_sizes: VariadicList[Int]
-    var pack_sizes: VariadicList[Int]
-
-    fn __init__(
-        out self,
-        *,
-        col_sizes: VariadicList[Int],
-        row_sizes: VariadicList[Int],
-        gemv_sizes: VariadicList[Int],
-        pack_sizes: VariadicList[Int],
-    ):
-        self.col_sizes = col_sizes
-        self.row_sizes = row_sizes
-        self.gemv_sizes = gemv_sizes
-        self.pack_sizes = pack_sizes
+    var col_sizes: List[Int]
+    var row_sizes: List[Int]
+    var gemv_sizes: List[Int]
+    var pack_sizes: List[Int]
 
     @staticmethod
     fn _get_config() -> _MatmulConfig:
         comptime if CompilationTarget.has_neon():
             return _MatmulConfig(
-                col_sizes=VariadicList[Int](4, 3, 2, 1),
-                row_sizes=VariadicList[Int](6, 4, 1),
-                gemv_sizes=VariadicList[Int](32, 4, 1),
-                pack_sizes=VariadicList[Int](32, 8, 4, 1),
+                col_sizes=[4, 3, 2, 1],
+                row_sizes=[6, 4, 1],
+                gemv_sizes=[32, 4, 1],
+                pack_sizes=[32, 8, 4, 1],
             )
         elif CompilationTarget.has_avx512f():
             return _MatmulConfig(
-                col_sizes=VariadicList[Int](4, 3, 2, 1),
-                row_sizes=VariadicList[Int](6, 4, 1),
-                gemv_sizes=VariadicList[Int](64, 16, 4, 1),
-                pack_sizes=VariadicList[Int](64, 16, 8, 4, 1),
+                col_sizes=[4, 3, 2, 1],
+                row_sizes=[6, 4, 1],
+                gemv_sizes=[64, 16, 4, 1],
+                pack_sizes=[64, 16, 8, 4, 1],
             )
         else:
             return _MatmulConfig(
-                col_sizes=VariadicList[Int](3, 2, 1),
-                row_sizes=VariadicList[Int](4, 1),
-                gemv_sizes=VariadicList[Int](64, 16, 4, 1),
-                pack_sizes=VariadicList[Int](64, 16, 8, 4, 1),
+                col_sizes=[3, 2, 1],
+                row_sizes=[4, 1],
+                gemv_sizes=[64, 16, 4, 1],
+                pack_sizes=[64, 16, 8, 4, 1],
             )
 
 
@@ -101,9 +89,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         tile_m: Int, tile_n: Int
     ](
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype]],
+        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        b_ptr: UnsafePointer[Scalar[Self.dtype]],
+        b_ptr: UnsafePointer[Scalar[Self.dtype], _],
         b_stride: Int,
         mut c_tile: _Accumulator[Self.dtype, tile_m, tile_n, Self.simd_width],
     ):
@@ -124,7 +112,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
             comptime for k in range(lane_count):
                 comptime for n in range(tile_n):
-                    var b_data = bk_ptr.load[width = Self.simd_width](
+                    var b_data = bk_ptr.load[width=Self.simd_width](
                         n * Self.simd_width
                     )
 
@@ -133,7 +121,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
                 bk_ptr += b_stride
 
-        tile[loop_body, VariadicList[Int](Self.simd_width, 1)](0, K)
+        tile[loop_body, [Self.simd_width, 1]](0, K)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = ak_ptr
         _ = bk_ptr
@@ -144,9 +132,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         tile_m: Int, tile_n: Int
     ](
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype]],
+        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        b_ptr: UnsafePointer[Scalar[Self.dtype]],
+        b_ptr: UnsafePointer[Scalar[Self.dtype], _],
         b_stride: Int,
         mut c_tile: _Accumulator[Self.dtype, tile_m, tile_n, Self.simd_width],
     ):
@@ -162,7 +150,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
             comptime for k in range(unroll_factor):
                 comptime for n in range(tile_n):
-                    b_tile[n] = bk_ptr.load[width = Self.simd_width](
+                    b_tile[n] = bk_ptr.load[width=Self.simd_width](
                         n * Self.simd_width
                     )
 
@@ -175,7 +163,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 ak_ptr += 1
                 bk_ptr += b_stride
 
-        tile[loop_body, VariadicList[Int](2, 1)](0, K)
+        tile[loop_body, [2, 1]](0, K)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = ak_ptr
         _ = bk_ptr
@@ -186,9 +174,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         M: Int,
         N: Int,
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype]],
+        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        b_ptr: UnsafePointer[Scalar[Self.dtype]],
+        b_ptr: UnsafePointer[Scalar[Self.dtype], _],
         c_ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
         c_stride: Int,
         accumulate: Bool = False,
@@ -259,7 +247,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         # SIMD width has not been observed to improve performance and causes
         # code size to unnecessarily increase.
         comptime transpose_width = 4
-        comptime tile_sizes = VariadicList[Int](transpose_width, 1)
+        comptime tile_sizes = [transpose_width, 1]
 
         comptime layout = Layout.row_major(transpose_width, transpose_width)
         var transpose_stack = InlineArray[Scalar[Self.dtype], layout.size()](
@@ -342,7 +330,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
     ](
         N: Int,
         dynamic_k: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype]],
+        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         c_ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
     ):
         var K = static_k if static_k != UNKNOWN_VALUE else dynamic_k
@@ -403,7 +391,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
             cn_ptr += tile_n
 
-        tile[process_cols, VariadicList[Int](4, 1)](0, N)
+        tile[process_cols, [4, 1]](0, N)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = K
         _ = cn_ptr
@@ -415,7 +403,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
     ](
         N: Int,
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype]],
+        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         c_ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
         accumulate: Bool = False,
     ):
@@ -451,7 +439,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         M: Int,
         N: Int,
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype]],
+        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         a_stride: Int,
         packed_ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
         c_ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
@@ -735,12 +723,12 @@ struct _FlashAttention[
             var qk_block_ptr = stack_allocation[
                 Self._config.block_m * Self._config.qk_block_n,
                 Self.dtype,
-                alignment = align_of[SIMD[Self.dtype, Self.simd_width]](),
+                alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
             ]()
             var o_block_ptr = stack_allocation[
                 Self._config.block_m * Self._config.o_block_n,
                 Self.dtype,
-                alignment = align_of[SIMD[Self.dtype, Self.simd_width]](),
+                alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
             ]()
             comptime layout = Layout.row_major(Self._config.block_m)
             var max_vals_stack = InlineArray[
@@ -838,7 +826,7 @@ struct _FlashAttention[
                         Self._matmul._matmul[
                             input_k_2d_fn,
                             transpose_b=True,
-                            static_k = Self._depth_static_dim,
+                            static_k=Self._depth_static_dim,
                         ](
                             count_m,
                             kv_seq_cnt,
@@ -951,12 +939,12 @@ fn _flash_attention[
         IndexList[mask_rank]
     ) capturing -> SIMD[dtype, simd_width],
 ](
-    q: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
+    q: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
     k_shape: IndexList[rank],
     v_shape: IndexList[rank],
     mask_shape: IndexList[mask_rank],
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     scale: Float32,
     sink_weights: OptionalReg[
@@ -1051,12 +1039,12 @@ fn flash_attention[
         IndexList[mask_rank]
     ) capturing -> SIMD[dtype, simd_width],
 ](
-    q: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
+    q: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
     k_shape: IndexList[rank],
     v_shape: IndexList[rank],
     mask_shape: IndexList[mask_rank],
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     scale: Float32,
     sink_weights: OptionalReg[
@@ -1095,7 +1083,7 @@ fn flash_attention_split_kv[
         IndexList[mask_rank]
     ) capturing -> SIMD[dtype, simd_width],
 ](
-    q: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
+    q: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
     k_shape: IndexList[rank],
     v_shape: IndexList[rank],
     # {k,v}_cache_shape are rank + 1 because reshape in MO IR prevents fusion.
@@ -1103,7 +1091,7 @@ fn flash_attention_split_kv[
     v_cache_shape: IndexList[rank + 1],
     mask_shape: IndexList[mask_rank],
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     scale: Float32,
 ) raises:
@@ -1140,7 +1128,7 @@ fn flash_attention_split_kv[
             )
         )
 
-    with Trace[TraceLevel.OP, target = StaticString("cpu")](
+    with Trace[TraceLevel.OP, target=StaticString("cpu")](
         "flash_attention_split_kv",
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
     ):
@@ -1234,14 +1222,12 @@ fn _flash_attention_kv_cache[
     ) capturing -> SIMD[dtype, simd_width],
     mask_rank: Int,
 ](
-    q: LayoutTensor[
-        mut=False, dtype, address_space = AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
     k: cache_t,
     v: cache_t,
     scale: Float32,
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
@@ -1382,17 +1368,15 @@ fn _flash_attention_kv_cache[
 fn flash_attention_kv_cache[
     dtype: DType, cache_t: KVCacheT, //
 ](
-    q: LayoutTensor[
-        mut=False, dtype, address_space = AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
     k: cache_t,
     v: cache_t,
     mask: LayoutTensor[
-        mut=False, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=False, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     scale: Float32,
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
@@ -1420,15 +1404,13 @@ fn flash_attention_kv_cache[
     mask_t: MHAMask,
     //,
 ](
-    q: LayoutTensor[
-        mut=False, dtype, address_space = AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
     k: cache_t,
     v: cache_t,
     mask: mask_t,
     scale: Float32,
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     sink_weights: OptionalReg[
         LayoutTensor[
@@ -1460,21 +1442,19 @@ fn flash_attention_kv_cache[
     mask_t: MHAMask,
     //,
 ](
-    q: LayoutTensor[
-        mut=False, dtype, address_space = AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
     q_input_row_offsets: LayoutTensor[
-        mut=False, DType.uint32, address_space = AddressSpace.GENERIC, ...
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
     ],
     kv_input_row_offsets: LayoutTensor[
-        mut=False, DType.uint32, address_space = AddressSpace.GENERIC, ...
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
     ],
     k: cache_t,
     v: cache_t,
     mask: mask_t,
     scale: Float32,
     output: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]

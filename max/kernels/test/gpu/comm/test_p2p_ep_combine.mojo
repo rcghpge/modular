@@ -11,11 +11,11 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections import OptionalReg
+from std.collections import OptionalReg
 
-from io.io import _printf
-from random import randint, randn, seed
-from sys import (
+from std.io.io import _printf
+from std.random import randint, randn, seed
+from std.sys import (
     align_of,
     has_nvidia_gpu_accelerator,
     has_amd_gpu_accelerator,
@@ -23,8 +23,8 @@ from sys import (
     size_of,
 )
 
-from algorithm import sync_parallelize
-from benchmark import (
+from std.algorithm import sync_parallelize
+from std.benchmark import (
     Bench,
     BenchConfig,
     Bencher,
@@ -35,7 +35,7 @@ from benchmark import (
     ThroughputMeasure,
 )
 from comm.sync import enable_p2p
-from gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from std.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from layout import UNKNOWN_VALUE, Layout, LayoutTensor
 from layout.runtime_layout import RuntimeLayout
 from shmem.ep_comm import (
@@ -47,8 +47,8 @@ from shmem.ep_comm import (
     dispatch_wait_kernel,
     dispatch_async_kernel,
 )
-from testing import assert_equal
-from utils import IndexList
+from std.testing import assert_equal
+from std.utils import IndexList
 
 
 fn legalize_topk_ids[
@@ -87,7 +87,7 @@ fn test_combine[
         SIMD[DType.uint8, gpu_simd_width], target=gpu_target
     ]()
     comptime token_fmt_type = BF16TokenFormat[
-        output_layout = Layout(), hidden_size, top_k, gpu_alignment
+        output_layout=Layout(), hidden_size, top_k, gpu_alignment
     ]
     comptime msg_bytes = token_fmt_type.msg_size()
     comptime combine_msg_bytes = size_of[input_type]() * hidden_size
@@ -664,7 +664,7 @@ fn test_combine[
         host_input_tokens_list[dev_idx].free()
 
 
-def main():
+def main() raises:
     comptime test_gpu_counts = (2, 4, 8)
 
     if enable_p2p():
@@ -693,7 +693,7 @@ def main():
             test_combine[
                 hidden_size=7168,
                 top_k=8,
-                n_experts = num_gpus * n_local_experts,
+                n_experts=num_gpus * n_local_experts,
                 n_ranks=num_gpus,
                 n_slots=1,
                 n_tokens_per_rank=128,

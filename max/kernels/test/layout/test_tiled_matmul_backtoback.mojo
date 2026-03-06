@@ -11,23 +11,23 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from math import fma, isclose
-from os import abort
-from random import rand
-from sys import CompilationTarget, argv, simd_width_of, size_of
+from std.math import fma, isclose
+from std.os import abort
+from std.random import rand
+from std.sys import CompilationTarget, argv, simd_width_of, size_of
 
-import benchmark
-from algorithm.functional import vectorize
+import std.benchmark
+from std.algorithm.functional import vectorize
 from layout import Layout, RuntimeLayout
 from layout.int_tuple import IntTuple, size
 from layout.layout import expand_modes_alike, flatten
 from layout.layout_tensor import LayoutTensor
-from memory import LegacyUnsafePointer, stack_allocation
+from std.memory import LegacyUnsafePointer, stack_allocation
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-from testing import assert_false
+from std.testing import assert_false
 
-from utils import StaticTuple
+from std.utils import StaticTuple
 
 
 fn matmul_naive[
@@ -132,7 +132,7 @@ fn matmul_ukern[
 
                 comptime for m in range(mr):
                     var Abroadcast: SIMD[elt, width] = SIMD[elt, width](
-                        Atmp.load[width=1, alignment = size_of[elt]()](
+                        Atmp.load[width=1, alignment=size_of[elt]()](
                             m * Astride
                         )
                     )
@@ -390,7 +390,7 @@ fn vectorize_flat[
         vectorize[
             vf,
             simd_width,
-            unroll_factor = min(size // simd_width, unroll_factor),
+            unroll_factor=min(size // simd_width, unroll_factor),
         ](size)
     else:
         # we find the maximum min stride, subset, and loop over it.

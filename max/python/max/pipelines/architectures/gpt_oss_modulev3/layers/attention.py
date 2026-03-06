@@ -20,21 +20,21 @@ import math
 from max.driver import CPU
 from max.dtype import DType
 from max.experimental import functional as F
+from max.experimental.nn import Linear, Module
+from max.experimental.nn.common_layers.functional_kernels import (
+    flash_attention_ragged,
+    fused_qk_ragged_rope,
+    fused_qkv_ragged_matmul,
+)
+from max.experimental.nn.common_layers.rotary_embedding import (
+    YarnRotaryEmbedding,
+)
 from max.experimental.tensor import Tensor
 from max.nn.attention import MHAMaskVariant
 from max.nn.kv_cache import (
     KVCacheParams,
     PagedCacheValues,
-    uses_opaque,
 )
-from max.nn.module_v3 import Linear, Module
-
-from ...common_layers.functional_kernels import (
-    flash_attention_ragged,
-    fused_qk_ragged_rope,
-    fused_qkv_ragged_matmul,
-)
-from ...common_layers.rotary_embedding import YarnRotaryEmbedding
 
 
 class GptOssAttention(Module[..., Tensor]):
@@ -96,12 +96,6 @@ class GptOssAttention(Module[..., Tensor]):
 
         # Initialize sinks parameter for each attention head
         self.sinks = Tensor.zeros([num_attention_heads])
-
-        if not uses_opaque(self.kv_params.cache_strategy):
-            raise ValueError(
-                f"{self.kv_params.cache_strategy} cache strategy, not supported"
-                " in Attention layer."
-            )
 
         self.q_weight_dim = self.kv_params.head_dim * num_attention_heads
         self.kv_weight_dim = self.kv_params.head_dim * num_key_value_heads

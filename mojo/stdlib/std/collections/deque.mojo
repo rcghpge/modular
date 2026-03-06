@@ -17,14 +17,14 @@ You can import these APIs from the `collections` package.
 Examples:
 
 ```mojo
-from collections import Deque
+from std.collections import Deque
 ```
 """
 
 
-from bit import next_power_of_two
-from builtin.constrained import _constrained_conforms_to
-import format._utils as fmt
+from std.bit import next_power_of_two
+from std.builtin.constrained import _constrained_conforms_to
+import std.format._utils as fmt
 
 # ===-----------------------------------------------------------------------===#
 # Deque
@@ -157,9 +157,7 @@ struct Deque[ElementType: Copyable & ImplicitlyDestructible](
         """
         self = Self(elements=values^)
 
-    fn __init__(
-        out self, *, var elements: VariadicListMem[Self.ElementType, _]
-    ):
+    fn __init__(out self, *, var elements: VariadicList[Self.ElementType, _]):
         """Constructs a deque from the given values.
 
         Args:
@@ -427,7 +425,7 @@ struct Deque[ElementType: Copyable & ImplicitlyDestructible](
         Args:
             writer: The object to write to.
         """
-        self._write_self_to[f = fmt.write_to[Self.ElementType]](writer)
+        self._write_self_to[f=fmt.write_to[Self.ElementType]](writer)
 
     @no_inline
     fn write_repr_to(self, mut writer: Some[Writer]):
@@ -442,7 +440,7 @@ struct Deque[ElementType: Copyable & ImplicitlyDestructible](
 
         @parameter
         fn write_fields(mut w: Some[Writer]):
-            self._write_self_to[f = fmt.write_repr_to[Self.ElementType]](w)
+            self._write_self_to[f=fmt.write_repr_to[Self.ElementType]](w)
 
         fmt.FormatStruct(writer, "Deque").params(
             fmt.TypeNames[Self.ElementType](),

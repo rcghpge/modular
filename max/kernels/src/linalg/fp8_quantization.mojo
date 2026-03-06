@@ -11,49 +11,54 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections.string.string_slice import get_static_string
-from math import ceildiv
-from sys import simd_width_of, has_nvidia_gpu_accelerator
-from sys import align_of, size_of
-import gpu.primitives.block
-from algorithm.functional import _elementwise_impl_gpu
+from std.collections.string.string_slice import get_static_string
+from std.math import ceildiv
+from std.sys import simd_width_of, has_nvidia_gpu_accelerator
+from std.sys import align_of, size_of
+import std.gpu.primitives.block
+from std.algorithm.functional import _elementwise_impl_gpu
 from buffer import Dim, NDBuffer
 from buffer.dimlist import DimList
-from gpu import (
+from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
     block_idx,
     global_idx,
     thread_idx,
 )
-from gpu.primitives.grid_controls import PDL, pdl_launch_attributes
-from gpu.host import DeviceContext, get_gpu_target
-from gpu.host.info import B200, H100
-from layout import IntTuple, Layout, LayoutTensor
+from std.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
+from std.gpu.host import DeviceContext, get_gpu_target
+from std.gpu.host.info import B200, H100
+from layout import (
+    IntTuple,
+    Layout,
+    LayoutTensor,
+    TileTensor,
+    coord_to_index_list,
+)
+from layout.tile_layout import RowMajorLayout, row_major as tt_row_major
+from layout.coord import RuntimeInt
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from layout._coord import coord_to_index_list
-from layout._tile_tensor import TileTensor
-from logger import Logger
-from memory import LegacyUnsafePointer, bitcast
+from std.logger import Logger
+from std.memory import LegacyUnsafePointer, bitcast
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-from runtime.tracing import Trace, TraceLevel, trace_arg
+from std.runtime.tracing import Trace, TraceLevel, trace_arg
 from std.bit import log2_floor
-from algorithm import elementwise
-from utils.index import Index, IndexList, StaticTuple
-from utils.numerics import get_accum_type, max_finite, min_finite
+from std.algorithm import elementwise
+from std.utils.index import Index, IndexList, StaticTuple
+from std.utils.numerics import get_accum_type, max_finite, min_finite
 
 from .matmul import matmul
 from .matmul.gpu.sm100_structured.blockwise_fp8.blockwise_fp8_matmul import (
     blockwise_fp8_matmul,
 )
-from .matmul.gpu.sm100_structured.structured_kernels.tile_types import lt_to_tt
 from .utils import elementwise_epilogue_type
 from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
     MatmulConfig,
 )
 from .fp8_utils import compute_dynamic_fp8_scale, fp8_quantize
-
+from std.gpu.primitives.grid_controls import PDLLevel
 
 comptime logger = Logger()
 
@@ -101,11 +106,11 @@ fn quantize_static_scaled_fp8[
         )
 
     comptime target_simd_width = simd_width_of[
-        in_dtype, target = get_gpu_target()
+        in_dtype, target=get_gpu_target()
     ]()
 
     _elementwise_impl_gpu[
-        func=scaled_fp8_quant, simd_width = UInt(target_simd_width)
+        func=scaled_fp8_quant, simd_width=UInt(target_simd_width)
     ](IndexList[2](in_buffer.dim[0](), in_buffer.dim[1]()), context)
 
 
@@ -125,6 +130,7 @@ fn quantize_dynamic_scaled_fp8[
     ) capturing -> SIMD[in_dtype, width],
     group_size_or_per_token: Int,
     num_cols: Int,
+    pdl_level: PDLLevel = PDLLevel(),
 ](
     scaled_output: NDBuffer[mut=True, out_dtype, 2, _],
     scales: NDBuffer[mut=True, scales_dtype, 2, _],
@@ -159,7 +165,7 @@ fn quantize_dynamic_scaled_fp8[
         group_size % simd_width == 0
     ), "group size must be multiple of simd size"
 
-    with Trace[TraceLevel.OP, target = StaticString("gpu")](
+    with Trace[TraceLevel.OP, target=StaticString("gpu")](
         "quantize_dynamic_scaled_fp8",
         task_id=Int(ctx.id()),
     ):
@@ -182,7 +188,7 @@ fn quantize_dynamic_scaled_fp8[
             scale_ub.cast[scales_dtype](),
             grid_dim=(num_rows, num_cols // group_size, 1),
             block_dim=num_threads,
-            attributes=pdl_launch_attributes(),
+            attributes=pdl_launch_attributes(pdl_level),
         )
 
 
@@ -278,6 +284,7 @@ fn batched_quantize_dynamic_scaled_fp8[
     ) capturing -> SIMD[in_dtype, width],
     group_size_or_per_token: Int,
     num_cols: Int,
+    pdl_level: PDLLevel = PDLLevel(),
 ](
     scaled_output: NDBuffer[mut=True, out_dtype, 3, _],
     scales: NDBuffer[mut=True, scales_dtype, 3, _],
@@ -327,7 +334,7 @@ fn batched_quantize_dynamic_scaled_fp8[
         scale_ub.cast[scales_dtype](),
         grid_dim=(num_rows, num_cols // group_size, batch_size),
         block_dim=num_threads,
-        attributes=pdl_launch_attributes(),
+        attributes=pdl_launch_attributes(pdl_level),
     )
 
 
@@ -416,14 +423,14 @@ fn matmul_dynamic_scaled_fp8[
     transpose_b: Bool = False,
     target: StaticString = "cpu",
 ](
-    c: TileTensor[mut=True, c_type, address_space = AddressSpace.GENERIC, ...],
-    a: TileTensor[a_type, address_space = AddressSpace.GENERIC, ...],
-    b: TileTensor[b_type, address_space = AddressSpace.GENERIC, ...],
+    c: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
+    a: TileTensor[a_type, address_space=AddressSpace.GENERIC, ...],
+    b: TileTensor[b_type, address_space=AddressSpace.GENERIC, ...],
     a_scales: TileTensor[
-        a_scales_type, address_space = AddressSpace.GENERIC, ...
+        a_scales_type, address_space=AddressSpace.GENERIC, ...
     ],
     b_scales: TileTensor[
-        b_scales_type, address_space = AddressSpace.GENERIC, ...
+        b_scales_type, address_space=AddressSpace.GENERIC, ...
     ],
     ctx: DeviceContext,
 ) raises:
@@ -686,7 +693,7 @@ fn matmul_dynamic_scaled_fp8[
 
         blockwise_scaled_fp8_with_epilogue[
             transpose_b=transpose_b,
-            scales_granularity_mnk = IndexList[3](
+            scales_granularity_mnk=IndexList[3](
                 m_scale_granularity,
                 n_scale_granularity,
                 k_scale_granularity,
@@ -716,20 +723,14 @@ fn naive_blockwise_scaled_fp8_matmul[
     accum_type: DType = get_accum_type[c_type](),
     scales_granularity_mnk: Optional[IndexList[3]] = None,
 ](
-    c: LayoutTensor[
-        mut=True, c_type, address_space = AddressSpace.GENERIC, ...
-    ],
-    a: LayoutTensor[
-        mut=False, a_type, address_space = AddressSpace.GENERIC, ...
-    ],
-    b: LayoutTensor[
-        mut=False, b_type, address_space = AddressSpace.GENERIC, ...
-    ],
+    c: LayoutTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
+    a: LayoutTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
+    b: LayoutTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
     a_scales: LayoutTensor[
-        mut=False, a_scales_type, address_space = AddressSpace.GENERIC, ...
+        mut=False, a_scales_type, address_space=AddressSpace.GENERIC, ...
     ],
     b_scales: LayoutTensor[
-        mut=False, b_scales_type, address_space = AddressSpace.GENERIC, ...
+        mut=False, b_scales_type, address_space=AddressSpace.GENERIC, ...
     ],
     ctx: DeviceContext,
 ) raises:
@@ -1235,22 +1236,22 @@ fn naive_blockwise_scaled_fp8_grouped_matmul_kernel[
         var b_expert_ptr = b.ptr + expert * N * K
         for k in range(K):
             var a_val = rebind[Scalar[a_type]](a_row_ptr[k]).cast[accum_type]()
-            var a_scale = rebind[Scalar[accum_type]](
+            var a_scale = rebind[Scalar[a_scales_type]](
                 a_scales[
                     k // Int(MAT_A_ROWS_SCALE_SIZE),
                     m_global // Int(MAT_A_COLS_SCALE_SIZE),
                 ]
-            )
+            ).cast[accum_type]()
             var b_val = rebind[Scalar[b_type]](b_expert_ptr[n * K + k]).cast[
                 accum_type
             ]()
-            var b_scale = rebind[Scalar[accum_type]](
+            var b_scale = rebind[Scalar[b_scales_type]](
                 b_scales[
                     UInt(expert),
                     n // Int(MAT_B_ROWS_SCALE_SIZE),
                     k // Int(MAT_B_COLS_SCALE_SIZE),
                 ]
-            )
+            ).cast[accum_type]()
             accum += a_val * b_val * a_scale * b_scale
 
     comptime if elementwise_lambda_fn:
@@ -1308,11 +1309,11 @@ fn convert_e4m3fn_to_e4m3fnuz(
         output_buffer.store(idx, output_vec)
 
     comptime target_simd_width = simd_width_of[
-        DType.float8_e4m3fn, target = get_gpu_target()
+        DType.float8_e4m3fn, target=get_gpu_target()
     ]()
 
     _elementwise_impl_gpu[
-        func=convert_kernel, simd_width = UInt(target_simd_width)
+        func=convert_kernel, simd_width=UInt(target_simd_width)
     ](IndexList[2](input_buffer.dim[0](), input_buffer.dim[1]()), context)
 
 
@@ -1334,20 +1335,20 @@ fn blockwise_scaled_fp8_with_epilogue[
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: LayoutTensor[
-        mut=True, c_type, _, _, address_space = AddressSpace.GENERIC, ...
+        mut=True, c_type, _, _, address_space=AddressSpace.GENERIC, ...
     ],
     a: LayoutTensor[
-        mut=False, a_type, _, _, address_space = AddressSpace.GENERIC, ...
+        mut=False, a_type, _, _, address_space=AddressSpace.GENERIC, ...
     ],
     b: LayoutTensor[
-        mut=False, b_type, _, _, address_space = AddressSpace.GENERIC, ...
+        mut=False, b_type, _, _, address_space=AddressSpace.GENERIC, ...
     ],
     a_scales: LayoutTensor[
         mut=False,
         a_scales_type,
         _,
         _,
-        address_space = AddressSpace.GENERIC,
+        address_space=AddressSpace.GENERIC,
         ...,
     ],
     b_scales: LayoutTensor[
@@ -1355,7 +1356,7 @@ fn blockwise_scaled_fp8_with_epilogue[
         b_scales_type,
         _,
         _,
-        address_space = AddressSpace.GENERIC,
+        address_space=AddressSpace.GENERIC,
         ...,
     ],
     ctx: DeviceContext,
@@ -1365,6 +1366,39 @@ fn blockwise_scaled_fp8_with_epilogue[
     kernel and dispatch a separate epilogue kernel to apply the elementwise
     operations. For non B200 GPUs, we use the naive blockwise scaled fp8 matmul which support normal epilogue natively.
     """
+
+    # Helper to convert 2D LayoutTensor to TileTensor. Needed because
+    # this function still accepts LayoutTensor parameters (called from
+    # kv_cache_ragged.mojo). Will be removed when all callers migrate.
+    @always_inline
+    fn _to_tt[
+        dtype: DType,
+    ](lt: LayoutTensor[dtype, _, ...]) -> TileTensor[
+        dtype,
+        RowMajorLayout[RuntimeInt[DType.int64], RuntimeInt[DType.int64]],
+        lt.origin,
+    ]:
+        # Scoped import: the module-level `UnsafePointer` alias is
+        # `LegacyUnsafePointer` (1 positional param), but TileTensor.ptr
+        # needs stdlib `UnsafePointer` (2 positional params).
+        from std.memory import UnsafePointer as _StdPtr
+
+        var layout = tt_row_major(
+            (
+                RuntimeInt(Scalar[DType.int64](lt.dim(0))),
+                RuntimeInt(Scalar[DType.int64](lt.dim(1))),
+            )
+        )
+        return TileTensor[
+            dtype,
+            RowMajorLayout[RuntimeInt[DType.int64], RuntimeInt[DType.int64]],
+            lt.origin,
+        ](
+            ptr=_StdPtr[Scalar[dtype], lt.origin](
+                unsafe_from_address=Int(lt.ptr)
+            ),
+            layout=layout,
+        )
 
     # 1D/2D (1x128)x(128x128) blockwise scaling
     comptime if (
@@ -1399,11 +1433,11 @@ fn blockwise_scaled_fp8_with_epilogue[
                 b_scales_type=b_scales_type,
                 config=matmul_config,
             ](
-                lt_to_tt(c),
-                lt_to_tt(a),
-                lt_to_tt(b),
-                lt_to_tt(a_scales),
-                lt_to_tt(b_scales),
+                _to_tt(c),
+                _to_tt(a),
+                _to_tt(b),
+                _to_tt(a_scales),
+                _to_tt(b_scales),
                 ctx,
             )
         else:
@@ -1415,7 +1449,7 @@ fn blockwise_scaled_fp8_with_epilogue[
                 and ctx.default_device_info.compute >= B200.compute
             )
             comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
-                simd_width_of[c_type, target = get_gpu_target()]()
+                simd_width_of[c_type, target=get_gpu_target()]()
             )
 
             @parameter
@@ -1441,11 +1475,11 @@ fn blockwise_scaled_fp8_with_epilogue[
                     b_scales_type=b_scales_type,
                     config=matmul_config,
                 ](
-                    lt_to_tt(c),
-                    lt_to_tt(a),
-                    lt_to_tt(b),
-                    lt_to_tt(a_scales),
-                    lt_to_tt(b_scales),
+                    _to_tt(c),
+                    _to_tt(a),
+                    _to_tt(b),
+                    _to_tt(a_scales),
+                    _to_tt(b_scales),
                     ctx,
                 )
                 elementwise[epilogue_wrapper, simd_size, target="gpu"](

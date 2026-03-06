@@ -22,9 +22,9 @@ This module defines two traits that define the roles of the different structs
 - `KVCollectionT`: Defines the interface for a pair of caches (keys and values).
 """
 
-from math import align_up
-from gpu.host import DeviceContext
-from gpu.host.nvidia.tma import TensorMapSwizzle
+from std.math import align_up
+from std.gpu.host import DeviceContext
+from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import UNKNOWN_VALUE, Layout, LayoutTensor, IntTuple
 from layout.runtime_layout import RuntimeLayout
 from layout.tma_async import (
@@ -33,12 +33,12 @@ from layout.tma_async import (
     RaggedTMA3DTile,
 )
 
-from memory import LegacyUnsafePointer
-from collections import OptionalReg
-from utils import Index, IndexList
-from sys import size_of
-from builtin.device_passable import DevicePassable
-from math import ceildiv
+from std.memory import LegacyUnsafePointer
+from std.collections import OptionalReg
+from std.utils import Index, IndexList
+from std.sys import size_of
+from std.builtin.device_passable import DevicePassable
+from std.math import ceildiv
 
 
 @always_inline
@@ -605,7 +605,7 @@ struct ContinuousBatchingKVCache[
         var rows = UInt32(total_blocks - 1) * self._stride() + UInt32(
             self.blocks.dim[1]()
         )
-        tma = type_of(tma).create[depth = Int(Self.kv_params.head_size)](
+        tma = type_of(tma).create[depth=Int(Self.kv_params.head_size)](
             ctx,
             self.blocks.ptr,
             rows=Int(rows),
@@ -900,7 +900,7 @@ struct PagedKVCache[
         var rows = UInt32(total_blocks - 1) * self._stride() + UInt32(
             Self.page_size
         )
-        tma = type_of(tma).create[depth = Int(Self.kv_params.head_size)](
+        tma = type_of(tma).create[depth=Int(Self.kv_params.head_size)](
             ctx,
             self.blocks.ptr,
             rows=Int(rows),
@@ -1159,8 +1159,7 @@ struct PagedKVCache[
         """Returns the base pointer to the scales tensor, or null if scales
         are not set."""
 
-        @parameter
-        if Self.quantization_enabled:
+        comptime if Self.quantization_enabled:
             return self.scales.value().ptr
         return UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]()
 

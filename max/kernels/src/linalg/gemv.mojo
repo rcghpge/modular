@@ -10,15 +10,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from collections import Optional
-from math import align_up, ceildiv
-from sys import simd_width_of
+from std.collections import Optional
+from std.math import align_up, ceildiv
+from std.sys import simd_width_of
 
-import gpu.primitives.warp as warp
-from algorithm.reduction import _reduce_generator
+import std.gpu.primitives.warp as warp
+from std.algorithm.reduction import _reduce_generator
 from buffer import NDBuffer
 from buffer.dimlist import Dim, DimList
-from gpu import (
+from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
     barrier,
@@ -29,14 +29,14 @@ from gpu import (
     thread_idx,
     warp_id,
 )
-from gpu.host import (
+from std.gpu.host import (
     DeviceAttribute,
     DeviceBuffer,
     DeviceContext,
     get_gpu_target,
 )
-from gpu.memory import load
-from gpu.primitives.grid_controls import (
+from std.gpu.memory import load
+from std.gpu.primitives.grid_controls import (
     PDLLevel,
     pdl_launch_attributes,
     launch_dependent_grids,
@@ -52,15 +52,15 @@ from layout import (
     RuntimeTuple,
 )
 from layout._ndbuffer_stub import from_ndbuffer_row_major
-from logger import Logger
-from memory import LegacyUnsafePointer, stack_allocation
+from std.logger import Logger
+from std.memory import LegacyUnsafePointer, stack_allocation
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 
-from utils import IndexList
-from utils.index import Index
-from utils.numerics import get_accum_type
-from utils.static_tuple import StaticTuple
+from std.utils import IndexList
+from std.utils.index import Index
+from std.utils.numerics import get_accum_type
+from std.utils.static_tuple import StaticTuple
 
 from .matmul.gpu import matmul_kernel_naive
 from .utils import GemmShape, elementwise_epilogue_type
@@ -69,7 +69,7 @@ comptime logger = Logger()
 
 
 @fieldwise_init
-struct GEMVAlgorithm(ImplicitlyCopyable, Stringable, Writable):
+struct GEMVAlgorithm(ImplicitlyCopyable, Writable):
     var _value: Int
 
     comptime GEMV_KERNEL = Self(0)
@@ -91,6 +91,7 @@ struct GEMVAlgorithm(ImplicitlyCopyable, Stringable, Writable):
     fn __isnot__(self, other: Self) -> Bool:
         return self != other
 
+    @deprecated("Stringable is deprecated. Use Writable instead.")
     fn __str__(self) -> String:
         """Returns the string representation of this algorithm.
 
@@ -110,7 +111,7 @@ struct GEMVAlgorithm(ImplicitlyCopyable, Stringable, Writable):
         elif self is Self.MATMUL_NAIVE:
             return "MATMUL_NAIVE"
         else:
-            return String("UNKNOWN_GEMV_ALGORITHM(", self._value, ")")
+            return t"UNKNOWN_GEMV_ALGORITHM({self._value})"
 
     fn write_to(self, mut writer: Some[Writer]):
         writer.write(String(self))
@@ -295,7 +296,7 @@ fn gemv_split_k[
         b_type,
         Layout.row_major(tile_n, simd_width),
         MutAnyOrigin,
-        address_space = AddressSpace.LOCAL,
+        address_space=AddressSpace.LOCAL,
     ].stack_allocation()
     # these are the partial accumlations for each thread this a matrix of values
     # since each thread will process a tile_m x tile_n partials of the output vector
@@ -304,7 +305,7 @@ fn gemv_split_k[
             s_type,
             Layout.row_major(tile_m, tile_n),
             MutAnyOrigin,
-            address_space = AddressSpace.LOCAL,
+            address_space=AddressSpace.LOCAL,
         ]
         .stack_allocation()
         .fill(0)
@@ -369,7 +370,7 @@ fn gemv_split_k[
         s_type,
         Layout.row_major(1, tile_m * tile_n * k_warp_num),
         MutAnyOrigin,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
     ].stack_allocation()
 
     # Each warp sums across its threads and stages results in shared memory.
@@ -438,7 +439,7 @@ fn gevm_kernel[
     var x_shared = stack_allocation[
         tile_size,
         s_type,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
     ]()
 
     comptime if pdl_level > PDLLevel.OFF:
@@ -489,7 +490,7 @@ fn gemv_gpu_dispatch[
     var k = shape.K
 
     comptime WARPS_PER_BLOCK = 1024 // WARP_SIZE
-    comptime simd_width = simd_width_of[a.type, target = get_gpu_target()]()
+    comptime simd_width = simd_width_of[a.type, target=get_gpu_target()]()
 
     var c_tensor = from_ndbuffer_row_major(c)
     var b_tensor = from_ndbuffer_row_major(b)
@@ -548,7 +549,7 @@ fn gemv_gpu_dispatch[
                     c_tensor.layout,
                     a_tensor.layout,
                     b_tensor.layout,
-                    simd_width = UInt(simd_width),
+                    simd_width=UInt(simd_width),
                     transpose_b=False,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                     pdl_level=pdl_level,
@@ -590,7 +591,7 @@ fn gemv_gpu_dispatch[
                     b.type,
                     b_layout_template,
                     MutAnyOrigin,
-                    address_space = aligned_b.address_space,
+                    address_space=aligned_b.address_space,
                 ](aligned_b, b_runtime_layout)
 
                 comptime kernel = gemv_kernel_vector[
@@ -600,7 +601,7 @@ fn gemv_gpu_dispatch[
                     c_tensor.layout,
                     a_tensor.layout,
                     b_layout_template,
-                    simd_width = UInt(simd_width),
+                    simd_width=UInt(simd_width),
                     transpose_b=transpose_b,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                     pdl_level=pdl_level,
@@ -624,7 +625,7 @@ fn gemv_gpu_dispatch[
                 c_tensor.layout,
                 b_tensor.layout,
                 a_tensor.layout,
-                simd_width = UInt(simd_width),
+                simd_width=UInt(simd_width),
                 transpose_b=transpose_b,
                 elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
@@ -692,7 +693,7 @@ fn gemv_gpu_dispatch[
             c.type,
             a.type,
             b.type,
-            tile_size = WARP_SIZE * WARPS_PER_BLOCK,
+            tile_size=WARP_SIZE * WARPS_PER_BLOCK,
             elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
         ]
@@ -766,7 +767,7 @@ fn gemv_gpu[
     var m = shape.M
     var n = shape.N
     var k = shape.K
-    comptime simd_width = simd_width_of[a.type, target = get_gpu_target()]()
+    comptime simd_width = simd_width_of[a.type, target=get_gpu_target()]()
 
     comptime has_M = c.shape.has_value[0]()
     comptime has_N = c.shape.has_value[1]()
@@ -876,7 +877,7 @@ fn gemv[
         input_fn,
         output_fn,
         reduce_impl,
-        single_thread_blocking_override = not parallelize,
+        single_thread_blocking_override=not parallelize,
     ](
         Index(M, K),
         init=Scalar[c_type](0),

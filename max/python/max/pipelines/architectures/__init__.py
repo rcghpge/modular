@@ -42,7 +42,7 @@ def register_all_models() -> None:
     from .exaone import exaone_arch
     from .exaone_modulev3 import exaone_modulev3_arch
     from .flux1 import flux1_arch
-    from .flux2 import flux2_arch
+    from .flux2 import flux2_arch, flux2_klein_arch
     from .gemma3 import gemma3_arch
     from .gemma3multimodal import gemma3_multimodal_arch
     from .gpt_oss import gpt_oss_arch
@@ -51,6 +51,7 @@ def register_all_models() -> None:
     from .granite_modulev3 import granite_modulev3_arch
     from .idefics3 import idefics3_arch
     from .internvl import internvl_arch
+    from .kimik2_5 import kimik2_5_arch
     from .llama3 import llama_arch
     from .llama3_modulev3 import llama_modulev3_arch
     from .llama4 import llama4_arch
@@ -80,6 +81,7 @@ def register_all_models() -> None:
         eagle_llama_arch,
         flux1_arch,
         flux2_arch,
+        flux2_klein_arch,
         gemma3_arch,
         gemma3_multimodal_arch,
         granite_arch,
@@ -88,6 +90,7 @@ def register_all_models() -> None:
         gpt_oss_modulev3_arch,
         internvl_arch,
         idefics3_arch,
+        kimik2_5_arch,
         llama_arch,
         llama_modulev3_arch,
         llama4_arch,

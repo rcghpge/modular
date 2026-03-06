@@ -11,28 +11,28 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from hashlib import default_comp_time_hasher
-from math import align_up
-from memory import bitcast
-from sys import argv, size_of
+from std.hashlib import default_comp_time_hasher
+from std.math import align_up
+from std.memory import bitcast
+from std.sys import argv, size_of
 
 import linalg.matmul.vendor.blas as vendor_blas
 from buffer.dimlist import DimList
-from gpu import WARP_SIZE, barrier
-from gpu.primitives.cluster import (
+from std.gpu import WARP_SIZE, barrier
+from std.gpu.primitives.cluster import (
     block_rank_in_cluster,
     cluster_sync,
     elect_one_sync,
 )
-from gpu.host import DeviceContext, FuncAttribute
-from gpu.host.nvidia.tma import TensorMapSwizzle
-from gpu import block_id_in_cluster, block_idx, lane_id, thread_idx, warp_id
-from gpu.memory import fence_async_view_proxy, external_memory
-from gpu.compute.mma import st_matrix
-from gpu.compute.arch.mma_nvidia_sm100 import *
-from gpu.compute.arch.tcgen05 import *
+from std.gpu.host import DeviceContext, FuncAttribute
+from std.gpu.host.nvidia.tma import TensorMapSwizzle
+from std.gpu import block_id_in_cluster, block_idx, lane_id, thread_idx, warp_id
+from std.gpu.memory import fence_async_view_proxy, external_memory
+from std.gpu.compute.mma import st_matrix
+from std.gpu.compute.arch.mma_nvidia_sm100 import *
+from std.gpu.compute.arch.tcgen05 import *
 from internal_utils import assert_almost_equal
-from memory import LegacyUnsafePointer
+from std.memory import LegacyUnsafePointer
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from layout import (
@@ -53,14 +53,15 @@ from layout.tensor_core_async import (
 from layout.tma_async import (
     SharedMemBarrier,
     TMATensorTile,
+    _idx_product,
     create_tensor_tile,
     create_tma_tile,
 )
 from linalg.arch.sm100 import MmaOpSM100_SS
 
-from utils.index import Index, IndexList
-from utils.numerics import get_accum_type
-from utils.static_tuple import StaticTuple
+from std.utils.index import Index, IndexList
+from std.utils.numerics import get_accum_type
+from std.utils.static_tuple import StaticTuple
 
 
 fn is_benchmark() -> Bool:
@@ -78,12 +79,15 @@ fn kernel_5[
     a_type: DType,
     b_type: DType,
     c_type: DType,
-    a_layout: Layout,
-    b_layout: Layout,
-    c_layout: Layout,  # must pass mma_m by mma_n as this layout, since that's how much each output has to be
-    a_desc_layout: Layout,
-    b_desc_layout: Layout,
-    c_desc_layout: Layout,
+    a_tma_rank: Int,
+    b_tma_rank: Int,
+    c_tma_rank: Int,
+    a_tile_shape: IndexList[a_tma_rank],
+    b_tile_shape: IndexList[b_tma_rank],
+    c_tile_shape: IndexList[c_tma_rank],
+    a_desc_shape: IndexList[a_tma_rank],
+    b_desc_shape: IndexList[b_tma_rank],
+    c_desc_shape: IndexList[c_tma_rank],
     block_tile_shape: IndexList[3],
     mma_shape: IndexList[3],
     transpose_b: Bool = True,
@@ -93,9 +97,9 @@ fn kernel_5[
     c_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     cta_group: Int = 1,
 ](
-    a_tma_op: TMATensorTile[a_type, a_layout, a_desc_layout],
-    b_tma_op: TMATensorTile[b_type, b_layout, b_desc_layout],
-    c_tma_op: TMATensorTile[c_type, c_layout, c_desc_layout],
+    a_tma_op: TMATensorTile[a_type, a_tma_rank, a_tile_shape, a_desc_shape],
+    b_tma_op: TMATensorTile[b_type, b_tma_rank, b_tile_shape, b_desc_shape],
+    c_tma_op: TMATensorTile[c_type, c_tma_rank, c_tile_shape, c_desc_shape],
     num_iters: Int,
 ):
     comptime BM = block_tile_shape[0]
@@ -111,11 +115,11 @@ fn kernel_5[
     comptime CLUSTER_M = Int(cluster_shape[0])
     comptime CLUSTER_N = Int(cluster_shape[1])
 
-    comptime TMA_BN = c_layout.shape[1].value()
-    comptime a_tma_load_size = a_desc_layout.size()
-    comptime b_tma_load_size = b_desc_layout.size()
-    comptime a_tma_rows = a_desc_layout.shape[0].value()
-    comptime b_tma_rows = b_desc_layout.shape[0].value()
+    comptime TMA_BN = c_tile_shape[1]
+    comptime a_tma_load_size = _idx_product[a_tma_rank, a_desc_shape]()
+    comptime b_tma_load_size = _idx_product[b_tma_rank, b_desc_shape]()
+    comptime a_tma_rows = a_desc_shape[0]
+    comptime b_tma_rows = b_desc_shape[0]
     comptime c_smem_layout = Layout.row_major(BM, MMA_N)
 
     comptime a_smem_layout = tile_layout_k_major[
@@ -139,26 +143,26 @@ fn kernel_5[
         a_type,
         sub_a_smem_layout,
         MutAnyOrigin,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
         alignment=128,
     ]
     comptime sub_b_smem_tile_t = LayoutTensor[
         b_type,
         sub_b_smem_layout,
         MutAnyOrigin,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
         alignment=128,
     ]
     comptime c_smem_tile_t = LayoutTensor[
         c_type,
         c_smem_layout,
         MutAnyOrigin,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
         alignment=128,
     ]
 
     var smem = external_memory[
-        UInt8, address_space = AddressSpace.SHARED, alignment=8
+        UInt8, address_space=AddressSpace.SHARED, alignment=8
     ]()
 
     comptime a_smem_bytes = a_smem_layout.size() * size_of[a_type]()
@@ -179,7 +183,7 @@ fn kernel_5[
         a_type,
         a_smem_layout,
         MutAnyOrigin,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
         alignment=128,
     ](a_smem)
 
@@ -187,7 +191,7 @@ fn kernel_5[
         b_type,
         b_smem_layout,
         MutAnyOrigin,
-        address_space = AddressSpace.SHARED,
+        address_space=AddressSpace.SHARED,
         alignment=128,
     ](b_smem)
 
@@ -271,7 +275,7 @@ fn kernel_5[
         mma_shape,
         accum_type=accum_type,
         cta_group=cta_group,
-        cluster_shape = Index(
+        cluster_shape=Index(
             cluster_shape[0], cluster_shape[1], cluster_shape[2]
         ),
         a_swizzle=a_swizzle,
@@ -279,18 +283,18 @@ fn kernel_5[
         transpose_b=transpose_b,
     ]()
 
-    for i in range(num_iters):
+    for i in range(Int(num_iters)):
         if elect_one_warp and elect_one_thread:
             if elect_one_cta:
                 tma_mbar[0].expect_bytes(Int32(expected_bytes))
 
-            var a_gmem_slice_coord = peer_cta_coord[2] * UInt(
-                a_tma_rows
-            ) + block_idx.x * UInt(BM)
+            var a_gmem_slice_coord = (
+                Int(peer_cta_coord[2]) * a_tma_rows + Int(block_idx.x) * BM
+            )
             var b_gmem_slice_coord = (
-                peer_cta_coord[1] * UInt(b_tma_rows)
-                + peer_cta_coord[0] * UInt(BN)
-                + block_idx.y * UInt(MMA_N)
+                Int(peer_cta_coord[1]) * b_tma_rows
+                + Int(peer_cta_coord[0]) * BN
+                + Int(block_idx.y) * MMA_N
             )
 
             comptime for j in range(BK // 64):
@@ -313,14 +317,14 @@ fn kernel_5[
                 a_tma_op.async_multicast_load[cta_group](
                     a_smem_slice,
                     tma_mbar[0],
-                    (UInt(i * BK + k), a_gmem_slice_coord),
+                    (i * BK + k, a_gmem_slice_coord),
                     a_multicast_mask,
                 )
 
                 b_tma_op.async_multicast_load[cta_group](
                     b_smem_slice,
                     tma_mbar[0],
-                    (UInt(i * BK + k), b_gmem_slice_coord),
+                    (i * BK + k, b_gmem_slice_coord),
                     b_multicast_mask,
                 )
 
@@ -351,19 +355,19 @@ fn kernel_5[
     var c_frag_upper = tcgen05_ld[
         datapaths=16,
         bits=256,
-        repeat = BN // 8 if MMA_M == 128 else MMA_N // 8,
+        repeat=BN // 8 if MMA_M == 128 else MMA_N // 8,
         dtype=accum_type,
         pack=False,
-        width = c_frag.size // 2,
+        width=c_frag.size // 2,
     ](tmem_addr | UInt32((warp_id() * 32) << 16))
 
     var c_frag_lower = tcgen05_ld[
         datapaths=16,
         bits=256,
-        repeat = BN // 8 if MMA_M == 128 else MMA_N // 8,
+        repeat=BN // 8 if MMA_M == 128 else MMA_N // 8,
         dtype=accum_type,
         pack=False,
-        width = c_frag.size // 2,
+        width=c_frag.size // 2,
     ](tmem_addr | UInt32((warp_id() * 32 + 16) << 16))
     tcgen05_load_wait()
 
@@ -377,8 +381,8 @@ fn kernel_5[
 
     var st_matrix_rt_layout = RuntimeLayout[
         st_matrix_n_layout[c_type, TMA_BN, num_m_mmas, 1](),
-        element_type = DType.int32,
-        linear_idx_type = DType.int32,
+        element_type=DType.int32,
+        linear_idx_type=DType.int32,
     ]()
 
     comptime st_matrix_swizzle = make_swizzle[c_type, c_swizzle]()
@@ -405,10 +409,10 @@ fn kernel_5[
 
         comptime for i in range(TMA_BN // 16):
             var d_reg_upper = c_frag_upper.slice[
-                8, offset = (i + tma_n * (TMA_BN // 16)) * 8
+                8, offset=(i + tma_n * (TMA_BN // 16)) * 8
             ]().cast[DType.bfloat16]()
             var d_reg_lower = c_frag_lower.slice[
-                8, offset = (i + tma_n * (TMA_BN // 16)) * 8
+                8, offset=(i + tma_n * (TMA_BN // 16)) * 8
             ]().cast[DType.bfloat16]()
 
             var st_matrix_args = RuntimeTuple[
@@ -442,18 +446,18 @@ fn kernel_5[
     # UMMA (tensor memory) → registers → shared memory → global memory
     #           c_frag                   c_smem_tile      c_tma_op
     if elect_one_warp and thread_idx.x < UInt(NUM_TMA_TILES):
-        var row_start = block_idx.x * UInt(BM)
+        var row_start = Int(block_idx.x) * BM
 
-        var col_start = block_idx.y * UInt(MMA_N) + thread_idx.x * UInt(TMA_BN)
+        var col_start = Int(block_idx.y) * MMA_N + Int(thread_idx.x) * TMA_BN
 
         fence_async_view_proxy()
         var c_smem_offset = c_smem_tile.ptr + BM * TMA_BN * Int(thread_idx.x)
 
         var c_tma_tile = LayoutTensor[
             c_type,
-            c_layout,
+            Layout.row_major(c_tile_shape[0], c_tile_shape[1]),
             MutAnyOrigin,
-            address_space = AddressSpace.SHARED,
+            address_space=AddressSpace.SHARED,
             alignment=128,
         ](c_smem_offset)
 
@@ -530,12 +534,15 @@ fn blackwell_kernel_5[
         a_type,
         b_type,
         c_type,
-        type_of(a_tma_op).layout,
-        type_of(b_tma_op).layout,
-        type_of(c_tma_op).layout,
-        type_of(a_tma_op).desc_layout,
-        type_of(b_tma_op).desc_layout,
-        type_of(c_tma_op).desc_layout,
+        type_of(a_tma_op).rank,
+        type_of(b_tma_op).rank,
+        type_of(c_tma_op).rank,
+        type_of(a_tma_op).tile_shape,
+        type_of(b_tma_op).tile_shape,
+        type_of(c_tma_op).tile_shape,
+        type_of(a_tma_op).desc_shape,
+        type_of(b_tma_op).desc_shape,
+        type_of(c_tma_op).desc_shape,
         block_tile_shape,
         umma_shape,
         transpose_b=transpose_b,
@@ -579,7 +586,7 @@ def test_blackwell_kernel_5[
     M: Int = 4096,
     N: Int = 4096,
     K: Int = 4096,
-](ctx: DeviceContext):
+](ctx: DeviceContext) raises:
     print(
         "mma_"
         + "s"
@@ -786,10 +793,10 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
             DType.bfloat16,
             block_tile_shape,
             umma_shape,
-            cluster_shape = StaticTuple[Int32, 3](2, 1, 1),
-            a_swizzle = TensorMapSwizzle.SWIZZLE_128B,
-            b_swizzle = TensorMapSwizzle.SWIZZLE_128B,
-            c_swizzle = TensorMapSwizzle.SWIZZLE_128B,
+            cluster_shape=StaticTuple[Int32, 3](2, 1, 1),
+            a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+            b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+            c_swizzle=TensorMapSwizzle.SWIZZLE_128B,
             benchmark=True,
             M=4096,
             N=2560,
@@ -797,7 +804,7 @@ fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
         ](ctx)
 
 
-def main():
+def main() raises:
     with DeviceContext() as ctx:
         if is_benchmark():
             # Run the benchmark
@@ -814,10 +821,10 @@ def main():
             DType.bfloat16,
             block_tile_shape,
             umma_shape,
-            cluster_shape = StaticTuple[Int32, 3](2, 1, 1),
-            a_swizzle = TensorMapSwizzle.SWIZZLE_128B,
-            b_swizzle = TensorMapSwizzle.SWIZZLE_128B,
-            c_swizzle = TensorMapSwizzle.SWIZZLE_128B,
+            cluster_shape=StaticTuple[Int32, 3](2, 1, 1),
+            a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+            b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+            c_swizzle=TensorMapSwizzle.SWIZZLE_128B,
             M=4096,
             N=4096,
             K=4096,

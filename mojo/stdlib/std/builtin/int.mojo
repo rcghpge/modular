@@ -15,27 +15,27 @@
 These are Mojo built-ins, so you don't need to import them.
 """
 
-from collections.interval import IntervalElement
-from collections.string.string import (
+from std.collections.interval import IntervalElement
+from std.collections.string.string import (
     _calc_initial_buffer_size_int32,
     _calc_initial_buffer_size_int64,
 )
-from hashlib.hasher import Hasher
-from math import Ceilable, CeilDivable, Floorable, Truncable
-from sys.info import is_32bit
-from sys.info import bit_width_of
+from std.hashlib.hasher import Hasher
+from std.math import Ceilable, CeilDivable, Floorable, Truncable
+from std.sys.info import is_32bit
+from std.sys.info import bit_width_of
 
-from builtin.device_passable import DevicePassable
-from math import Absable, DivModable, Powable
-from python import (
+from std.builtin.device_passable import DevicePassable
+from std.math import Absable, DivModable, Powable
+from std.python import (
     ConvertibleFromPython,
     ConvertibleToPython,
     Python,
     PythonObject,
 )
 
-from utils._select import _select_register_value as select
-from utils._visualizers import lldb_formatter_wrapping_type
+from std.utils._select import _select_register_value as select
+from std.utils._visualizers import lldb_formatter_wrapping_type
 
 # ===----------------------------------------------------------------------=== #
 #  Indexer
@@ -164,6 +164,11 @@ trait IntableRaising:
         ...
 
 
+trait _FromInt:
+    fn __init__(out self, *, from_int: Int):
+        ...
+
+
 @lldb_formatter_wrapping_type
 struct Int(
     Absable,
@@ -188,6 +193,7 @@ struct Int(
     TrivialRegisterPassable,
     Truncable,
     Writable,
+    _FromInt,
 ):
     """This type represents an integer value."""
 
@@ -259,7 +265,7 @@ struct Int(
             value: The init value.
         """
         self._mlir_value = __mlir_op.`pop.cast_to_builtin`[
-            _type = __mlir_type.index
+            _type=__mlir_type.index
         ](value)
 
     @always_inline("builtin")
@@ -299,6 +305,11 @@ struct Int(
         """
         self = value.__int__()
 
+    @doc_private
+    @always_inline("nodebug")
+    fn __init__(out self, *, from_int: Int):
+        self = from_int
+
     # ===------------------------------------------------------------------=== #
     # Operator dunders
     # ===------------------------------------------------------------------=== #
@@ -314,7 +325,7 @@ struct Int(
             True if this Int is less-than the RHS Int and False otherwise.
         """
         return __mlir_op.`index.cmp`[
-            pred = __mlir_attr.`#index<cmp_predicate slt>`
+            pred=__mlir_attr.`#index<cmp_predicate slt>`
         ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
@@ -329,7 +340,7 @@ struct Int(
             otherwise.
         """
         return __mlir_op.`index.cmp`[
-            pred = __mlir_attr.`#index<cmp_predicate sle>`
+            pred=__mlir_attr.`#index<cmp_predicate sle>`
         ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
@@ -343,7 +354,7 @@ struct Int(
             True if this Int is equal to the RHS Int and False otherwise.
         """
         return __mlir_op.`index.cmp`[
-            pred = __mlir_attr.`#index<cmp_predicate eq>`
+            pred=__mlir_attr.`#index<cmp_predicate eq>`
         ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
@@ -357,7 +368,7 @@ struct Int(
             True if this Int is non-equal to the RHS Int and False otherwise.
         """
         return __mlir_op.`index.cmp`[
-            pred = __mlir_attr.`#index<cmp_predicate ne>`
+            pred=__mlir_attr.`#index<cmp_predicate ne>`
         ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
@@ -371,7 +382,7 @@ struct Int(
             True if this Int is greater than the RHS Int and False otherwise.
         """
         return __mlir_op.`index.cmp`[
-            pred = __mlir_attr.`#index<cmp_predicate sgt>`
+            pred=__mlir_attr.`#index<cmp_predicate sgt>`
         ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
@@ -386,7 +397,7 @@ struct Int(
             otherwise.
         """
         return __mlir_op.`index.cmp`[
-            pred = __mlir_attr.`#index<cmp_predicate sge>`
+            pred=__mlir_attr.`#index<cmp_predicate sge>`
         ](self._mlir_value, rhs._mlir_value)
 
     @always_inline("builtin")
@@ -540,8 +551,14 @@ struct Int(
             The value of `self` raised to the power of `exp`.
         """
         if exp < 0:
-            # Not defined for Integers, this should raise an
-            # exception.
+            if self == 1:
+                return 1
+            if self == -1:
+                # (-1) ** n is 1 for even n, -1 for odd n.
+                return 1 if (-exp) & 1 == 0 else -1
+            # For |base| > 1, this is the integer truncation of
+            # 1 / base^|exp|. Note: 0 ** negative is mathematically
+            # undefined, but we return 0 here for now.
             return 0
         var res: Int = 1
         var x = self

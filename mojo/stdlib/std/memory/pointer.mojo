@@ -15,11 +15,11 @@
 You can import these APIs from the `memory` package. For example:
 
 ```mojo
-from memory import Pointer
+from std.memory import Pointer
 ```
 """
 
-from format._utils import FormatStruct, Named, TypeNames
+from std.format._utils import FormatStruct, Named, TypeNames
 
 # ===-----------------------------------------------------------------------===#
 # AddressSpace
@@ -244,7 +244,7 @@ struct Pointer[
         out self: Pointer[
             other.type,
             ImmutOrigin(other.origin),
-            address_space = other.address_space,
+            address_space=other.address_space,
         ],
     ):
         """Implicitly cast the mutable origin of self to an immutable one.
@@ -369,10 +369,10 @@ struct Pointer[
     ](
         self,
         out result: Pointer[
-            mut = Self.mut & other_type.origin.mut,
-            type = Self.type,
-            origin = origin_of(Self.origin, other_type.origin),
-            address_space = Self.address_space,
+            mut=Self.mut & other_type.origin.mut,
+            type=Self.type,
+            origin=origin_of(Self.origin, other_type.origin),
+            address_space=Self.address_space,
         ],
     ):
         """Returns a pointer merged with the specified `other_type`.

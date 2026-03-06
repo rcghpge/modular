@@ -11,14 +11,14 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from memory import LegacyUnsafePointer
+from std.memory import LegacyUnsafePointer
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-from collections import Optional
-from math import exp, isclose
-from random import rand, seed
+from std.collections import Optional
+from std.math import exp, isclose
+from std.random import rand, seed
 
-from collections import Optional
+from std.collections import Optional
 from layout import (
     Layout,
     LayoutTensor,
@@ -29,52 +29,52 @@ from layout import (
 )
 from nn.flash_attention import flash_attention, flash_attention_split_kv
 from nn.mha_mask import NullMask
-from testing import assert_equal
+from std.testing import assert_equal
 
-from utils import IndexList
-from utils.index import Index
+from std.utils import IndexList
+from std.utils.index import Index
 
 
 def reference_attention_bshd[
     dtype: DType
 ](
-    q_nd: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
-    k_nd: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
-    v_nd: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
-    mask_nd: LayoutTensor[dtype, address_space = AddressSpace.GENERIC, ...],
+    q_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
+    k_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
+    v_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
+    mask_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
     output_nd: LayoutTensor[
-        mut=True, dtype, address_space = AddressSpace.GENERIC, ...
+        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
     ],
     scale: Float32,
-):
+) raises:
     comptime assert dtype.is_floating_point(), "dtype must be floating point"
     comptime layout_4d = Layout.row_major[4]()
 
     fn reshape_4d(
         buf: LayoutTensor[dtype, ...]
     ) -> LayoutTensor[
-        dtype, layout_4d, buf.origin, address_space = buf.address_space
+        dtype, layout_4d, buf.origin, address_space=buf.address_space
     ]:
         var shape = buf.runtime_layout.shape.value.canonicalize()
         var num_heads = shape[buf.rank - 2] if buf.rank == 4 else 1
         var shape_4d = Index(shape[0], shape[1], num_heads, shape[buf.rank - 1])
-        return LayoutTensor[
-            dtype, layout_4d, address_space = buf.address_space
-        ](buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d))
+        return LayoutTensor[dtype, layout_4d, address_space=buf.address_space](
+            buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d)
+        )
 
     fn reshape_mask_4d(
         buf: LayoutTensor[dtype, ...]
     ) -> LayoutTensor[
-        dtype, layout_4d, buf.origin, address_space = buf.address_space
+        dtype, layout_4d, buf.origin, address_space=buf.address_space
     ]:
         var shape = buf.runtime_layout.shape.value.canonicalize()
         var num_heads = shape[1] if buf.rank == 4 else 1
         var shape_4d = Index(
             shape[0], num_heads, shape[buf.rank - 2], shape[buf.rank - 1]
         )
-        return LayoutTensor[
-            dtype, layout_4d, address_space = buf.address_space
-        ](buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d))
+        return LayoutTensor[dtype, layout_4d, address_space=buf.address_space](
+            buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d)
+        )
 
     var q_4d = reshape_4d(q_nd)
     var k_4d = reshape_4d(k_nd)
@@ -175,10 +175,10 @@ def reference_attention_bshd_with_sinks[
     k_nd: LayoutTensor[dtype, ...],
     v_nd: LayoutTensor[dtype, ...],
     mask_nd: LayoutTensor[dtype, ...],
-    sink_weights_nd: LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE)],
+    sink_weights_nd: LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), _],
     output_nd: LayoutTensor[mut=True, dtype, ...],
     scale: Float32,
-):
+) raises:
     """Reference implementation of attention with sink weights."""
     comptime assert dtype.is_floating_point(), "dtype must be floating point"
 
@@ -187,28 +187,28 @@ def reference_attention_bshd_with_sinks[
     fn reshape_4d(
         buf: LayoutTensor[dtype, ...]
     ) -> LayoutTensor[
-        dtype, layout_4d, buf.origin, address_space = buf.address_space
+        dtype, layout_4d, buf.origin, address_space=buf.address_space
     ]:
         var shape = buf.runtime_layout.shape.value.canonicalize()
         var num_heads = shape[buf.rank - 2] if buf.rank == 4 else 1
         var shape_4d = Index(shape[0], shape[1], num_heads, shape[buf.rank - 1])
-        return LayoutTensor[
-            dtype, layout_4d, address_space = buf.address_space
-        ](buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d))
+        return LayoutTensor[dtype, layout_4d, address_space=buf.address_space](
+            buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d)
+        )
 
     fn reshape_mask_4d(
         buf: LayoutTensor[dtype, ...]
     ) -> LayoutTensor[
-        dtype, layout_4d, buf.origin, address_space = buf.address_space
+        dtype, layout_4d, buf.origin, address_space=buf.address_space
     ]:
         var shape = buf.runtime_layout.shape.value.canonicalize()
         var num_heads = shape[1] if buf.rank == 4 else 1
         var shape_4d = Index(
             shape[0], num_heads, shape[buf.rank - 2], shape[buf.rank - 1]
         )
-        return LayoutTensor[
-            dtype, layout_4d, address_space = buf.address_space
-        ](buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d))
+        return LayoutTensor[dtype, layout_4d, address_space=buf.address_space](
+            buf.ptr, RuntimeLayout[layout_4d].row_major(shape_4d)
+        )
 
     var q_4d = reshape_4d(q_nd)
     var k_4d = reshape_4d(k_nd)
@@ -378,7 +378,7 @@ def verify_output[
     output: LayoutTensor[dtype, ...],
     ref_output: LayoutTensor[dtype, ...],
     cfg: TestCaseConfig[batch_rank],
-) -> None:
+) raises -> None:
     """Compares `output` and `ref_output` elementwise, printing up to 5 mismatches.
     """
     var mismatches = 0
@@ -418,7 +418,7 @@ def build_ndbuffer[
     rank: Int,
     *,
     static_shape: IndexList[rank] = IndexList[rank](fill=UNKNOWN_VALUE),
-](shape: IndexList[rank]) -> LayoutTensor[
+](shape: IndexList[rank]) raises -> LayoutTensor[
     dtype, Layout.row_major(static_shape), MutAnyOrigin
 ]:
     var ptr = UnsafePointer[Scalar[dtype]].alloc(shape.flattened_length())
@@ -435,7 +435,7 @@ def test_case[
     output_static_shape: IndexList[batch_rank + 2] = IndexList[batch_rank + 2](
         fill=UNKNOWN_VALUE
     ),
-](cfg: TestCaseConfig[batch_rank]):
+](cfg: TestCaseConfig[batch_rank]) raises:
     seed(42)
 
     # Allocate the QKV tensors.
@@ -505,7 +505,7 @@ def test_case[
     ref_output.ptr.free()
 
 
-def test_flash_attention[dtype: DType]():
+def test_flash_attention[dtype: DType]() raises:
     test_case[dtype](
         TestCaseConfig(
             batch_dims=Index(1, 8),
@@ -549,7 +549,7 @@ def test_flash_attention[dtype: DType]():
     test_case[
         dtype,
         batch_rank=1,
-        output_static_shape = IndexList[3](UNKNOWN_VALUE, UNKNOWN_VALUE, 128),
+        output_static_shape=IndexList[3](UNKNOWN_VALUE, UNKNOWN_VALUE, 128),
     ](
         TestCaseConfig(
             batch_dims=Index(1),
@@ -563,7 +563,7 @@ def test_flash_attention[dtype: DType]():
     test_case[
         dtype,
         batch_rank=1,
-        output_static_shape = IndexList[3](UNKNOWN_VALUE, UNKNOWN_VALUE, 160),
+        output_static_shape=IndexList[3](UNKNOWN_VALUE, UNKNOWN_VALUE, 160),
     ](
         TestCaseConfig(
             batch_dims=Index(1),
@@ -577,7 +577,7 @@ def test_flash_attention[dtype: DType]():
     test_case[
         dtype,
         batch_rank=1,
-        output_static_shape = IndexList[3](UNKNOWN_VALUE, UNKNOWN_VALUE, 300),
+        output_static_shape=IndexList[3](UNKNOWN_VALUE, UNKNOWN_VALUE, 300),
     ](
         TestCaseConfig(
             batch_dims=Index(1),
@@ -596,7 +596,7 @@ def test_case_split_kv[
     output_static_shape: IndexList[batch_rank + 2] = IndexList[batch_rank + 2](
         fill=UNKNOWN_VALUE
     ),
-](cfg: TestCaseConfig[batch_rank]):
+](cfg: TestCaseConfig[batch_rank]) raises:
     # For now only allow Q.shape = [B, S, H, D].
     comptime assert batch_rank == 2
 
@@ -677,12 +677,12 @@ def test_case_split_kv[
         cfg.seq_len, cfg.depth_dim
     )
     var kv_past_shape = cfg.build_shape[
-        shape_rank = cfg.kv_cache_rank, is_kv=True
+        shape_rank=cfg.kv_cache_rank, is_kv=True
     ](cfg.prev_seq_len(), cfg.depth_dim)
 
     flash_attention_split_kv[
         dtype=dtype,
-        rank = batch_rank + 2,
+        rank=batch_rank + 2,
         input_k_fn,
         input_v_fn,
         input_k_cache_fn,
@@ -714,7 +714,7 @@ def test_case_split_kv[
     ref_output.ptr.free()
 
 
-def test_flash_attention_split_kv[dtype: DType]():
+def test_flash_attention_split_kv[dtype: DType]() raises:
     for kv_seq_len in range(1, 128):
         test_case_split_kv[dtype](
             TestCaseConfig(
@@ -768,7 +768,7 @@ def test_flash_attention_split_kv[dtype: DType]():
     )
 
 
-def test_flash_attention_with_sinks[dtype: DType]():
+def test_flash_attention_with_sinks[dtype: DType]() raises:
     """Test flash attention with and without sink weights."""
     print("Testing flash attention with sink weights...")
 
@@ -880,7 +880,7 @@ def test_flash_attention_with_sinks[dtype: DType]():
         k,
         v,
         mask,
-        LayoutTensor[sink_weights.dtype, Layout.row_major(UNKNOWN_VALUE)](
+        LayoutTensor[sink_weights.dtype, Layout.row_major(UNKNOWN_VALUE), _](
             sink_weights.ptr,
             RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
                 sink_weights.runtime_layout.shape.value
@@ -899,7 +899,7 @@ def test_flash_attention_with_sinks[dtype: DType]():
         output_with_sinks,
         scale,
         sink_weights=LayoutTensor[
-            sink_weights.dtype, Layout.row_major(UNKNOWN_VALUE)
+            sink_weights.dtype, Layout.row_major(UNKNOWN_VALUE), _
         ](
             sink_weights.ptr.as_immutable(),
             RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
@@ -949,7 +949,7 @@ def test_flash_attention_with_sinks[dtype: DType]():
     ref_output_with_sinks.ptr.free()
 
 
-def main():
+def main() raises:
     test_flash_attention[DType.float32]()
     test_flash_attention_split_kv[DType.float32]()
     test_flash_attention_with_sinks[DType.float32]()

@@ -12,16 +12,16 @@
 # ===----------------------------------------------------------------------=== #
 """Defines a Variant type."""
 
-from builtin.constrained import _constrained_conforms_to
-from builtin.rebind import downcast
-from builtin.variadics import Variadic
-from format._utils import (
+from std.builtin.constrained import _constrained_conforms_to
+from std.builtin.rebind import downcast
+from std.builtin.variadics import Variadic
+from std.format._utils import (
     FormatStruct,
     TypeNames,
     constrained_conforms_to_writable,
 )
-from os import abort
-from sys.intrinsics import _type_is_eq
+from std.os import abort
+from std.sys.intrinsics import _type_is_eq
 
 # ===----------------------------------------------------------------------=== #
 # Variant
@@ -58,8 +58,8 @@ struct Variant[*Ts: AnyType](ImplicitlyCopyable, Writable):
     Example:
 
     ```mojo
-    from utils import Variant
-    import random
+    from std.utils import Variant
+    import std.random
 
     comptime IntOrString = Variant[Int, String]
 
@@ -326,8 +326,8 @@ struct Variant[*Ts: AnyType](ImplicitlyCopyable, Writable):
         comptime assert idx != Self._sentinel, "not a union element type"
         var ptr = UnsafePointer(to=self._impl).address
         var discr_ptr = __mlir_op.`pop.variant.bitcast`[
-            _type = UnsafePointer[T, origin_of(self)]._mlir_type,
-            index = idx._mlir_value,
+            _type=UnsafePointer[T, origin_of(self)]._mlir_type,
+            index=idx._mlir_value,
         ](ptr)
         return discr_ptr
 
@@ -335,7 +335,7 @@ struct Variant[*Ts: AnyType](ImplicitlyCopyable, Writable):
     fn _get_discr(ref self) -> ref[self] UInt8:
         var ptr = UnsafePointer(to=self._impl).address
         var discr_ptr = __mlir_op.`pop.variant.discr_gep`[
-            _type = __mlir_type.`!kgen.pointer<scalar<ui8>>`
+            _type=__mlir_type.`!kgen.pointer<scalar<ui8>>`
         ](ptr)
         return UnsafePointer[mut=True](discr_ptr).bitcast[UInt8]()[]
 
@@ -505,13 +505,13 @@ struct Variant[*Ts: AnyType](ImplicitlyCopyable, Writable):
         Example:
 
         ```mojo
-        from utils import Variant
+        from std.utils import Variant
 
-        def takes_variant(mut arg: Variant):
+        def takes_variant(mut arg: Variant) raises:
             if arg.is_type_supported[Float64]():
                 arg = Float64(1.5)
 
-        def main():
+        def main() raises:
             var x = Variant[Int, Float64](1)
             takes_variant(x)
             if x.isa[Float64]():

@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import math
+import std.math
 
 from buffer import NDBuffer
 from buffer.dimlist import Dim, DimList
@@ -35,10 +35,10 @@ from layout._ndbuffer_stub import (
     vectorize,
 )
 
-from memory import LegacyUnsafePointer
+from std.memory import LegacyUnsafePointer
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-from utils import Index, IndexList, StaticTuple
+from std.utils import Index, IndexList, StaticTuple
 
 
 fn linspace_fill[
@@ -96,16 +96,15 @@ fn print_element[
 
 fn print_vectorized_buff[
     dtype: DType,
-    rank: Int,
     shape: DimList,
-    element_shape: IndexList[rank],
+    element_shape: IndexList[2],
 ](
-    buff: NDBuffer[dtype, rank, _, shape],
-    element_layout: ElementLayout[rank, element_shape],
+    buff: NDBuffer[dtype, 2, _, shape],
+    element_layout: ElementLayout[2, element_shape],
 ):
     for m in range(buff.dim(0)):
         for n in range(buff.dim(1)):
-            print_element(buff._offset(VariadicList[Int](m, n)), element_layout)
+            print_element(buff._offset(IndexList[2](m, n)), element_layout)
         print("")
 
 
@@ -347,7 +346,7 @@ fn test_distribute():
 
     for th_i in range(4):
         print("----fragments-data[", th_i, "]----")
-        var buff_th_local = distribute[thread_layout = Layout.row_major(2, 2)](
+        var buff_th_local = distribute[thread_layout=Layout.row_major(2, 2)](
             buff, th_i
         )
         print_buff(buff_th_local)
@@ -437,7 +436,7 @@ fn test_tile_and_distribute():
             print_buff(tile_4x4)
             for th_i in range(4):
                 var fragment_2x2 = distribute[
-                    thread_layout = Layout.row_major(2, 2)
+                    thread_layout=Layout.row_major(2, 2)
                 ](
                     tile_4x4,
                     th_i,
@@ -517,7 +516,7 @@ fn test_vectorize_and_distribute():
     # CHECK: [60.0, 61.0, 62.0, 63.0]
     for th_i in range(8):
         var buff_thread_local = distribute[
-            thread_layout = Layout.row_major(4, 2)
+            thread_layout=Layout.row_major(4, 2)
         ](buff_v_1_and_element_layout[0], th_i)
         print("----fragments-data[", th_i, "]----")
         print_vectorized_buff(buff_thread_local, buff_v_1_and_element_layout[1])
@@ -783,7 +782,7 @@ fn test_vectorize_mask():
                 IndexList[2](11, 15), IndexList[2](tile_i, tile_j)
             )
 
-            var vec_mas = _vectorize_mask[sizes= (2, 2)](tile_mas)
+            var vec_mas = _vectorize_mask[sizes=(2, 2)](tile_mas)
             for i in range(2):
                 for j in range(2):
                     var mask = vec_mas.access_mask((i, j))
@@ -813,9 +812,9 @@ fn test_distribute_mask():
     # CHECK: True True False
     # CHECK: False False False
     for th_id in range(4):
-        var dist_mask = _distribute_mask[
-            thread_layout = Layout.row_major(2, 2)
-        ](tile_mask, th_id)
+        var dist_mask = _distribute_mask[thread_layout=Layout.row_major(2, 2)](
+            tile_mask, th_id
+        )
         print("---thread-[", th_id, "]-mask---")
         print_tile_mask[2, 3](dist_mask)
 
@@ -977,7 +976,7 @@ fn test_composed_tile_vectorize_distribute():
             )
             print_tile_mask[BM, BN](tile_mask)
             print("vectorized-access:")
-            var vectorize_mask = _vectorize_mask[sizes= (TM, TN)](tile_mask)
+            var vectorize_mask = _vectorize_mask[sizes=(TM, TN)](tile_mask)
             for i in range(BM // TM):
                 for j in range(BN // TN):
                     var mask = vectorize_mask.access_mask((i, j))
@@ -994,7 +993,7 @@ fn test_composed_tile_vectorize_distribute():
             for th_id in range(4):
                 print("---thread-[", th_id, "]-mask---")
                 var dist_mask = _distribute_mask[
-                    thread_layout = Layout.row_major(2, 2)
+                    thread_layout=Layout.row_major(2, 2)
                 ](vectorize_mask, th_id)
                 print_tile_mask[BM // TM, BN // TN](dist_mask)
 
@@ -1143,7 +1142,7 @@ fn test_composed_tile_vectorize_distribute_small():
             )
             print_tile_mask[BM, BN](tile_mask)
             print("vectorized-access:")
-            var vectorize_mask = _vectorize_mask[sizes= (TM, TN)](tile_mask)
+            var vectorize_mask = _vectorize_mask[sizes=(TM, TN)](tile_mask)
             for i in range(BM // TM):
                 for j in range(BN // TN):
                     var mask = vectorize_mask.access_mask((i, j))
@@ -1160,7 +1159,7 @@ fn test_composed_tile_vectorize_distribute_small():
             for th_id in range(4):
                 print("---thread-[", th_id, "]-mask---")
                 var dist_mask = _distribute_mask[
-                    thread_layout = Layout.row_major(2, 2)
+                    thread_layout=Layout.row_major(2, 2)
                 ](vectorize_mask, th_id)
                 print_tile_mask_with_size[1, 1](dist_mask)
 
@@ -1369,13 +1368,13 @@ fn test_from_ndbuffer_to_layout_tensor():
     comptime type = DType.float32
     comptime ptr = UnsafePointer[Scalar[type]].alloc(64)
     comptime rank = 4
-    comptime shape = DimList(2, 3, 2, 2)
-    var buffer1 = NDBuffer[type, rank, shape=shape](ptr, shape)
+    comptime shape = IndexList[4](2, 3, 2, 2)
+    var buffer1 = NDBuffer[type, rank, shape=DimList(2, 3, 2, 2)](ptr, shape)
     linspace_fill(buffer1)
     var tensor1 = from_ndbuffer_row_major(buffer1)
 
     comptime static_shape = DimList(Dim(), 3, Dim(), 2)
-    comptime dynamic_shape = DimList(2, 3, 2, 2)
+    comptime dynamic_shape = IndexList[4](2, 3, 2, 2)
 
     var buffer2 = NDBuffer[type, rank, shape=static_shape](ptr, dynamic_shape)
     var tensor2 = from_ndbuffer_row_major(buffer2)

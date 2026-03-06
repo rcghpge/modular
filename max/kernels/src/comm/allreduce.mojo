@@ -91,37 +91,35 @@ For the naive allreduce (no P2P) per-device flow and staging details, see the
 `_allreduce_naive_single` docstring in this file.
 """
 
-from collections import InlineArray
-from math import ceildiv
-from sys import align_of, simd_width_of, size_of
+from std.collections import InlineArray
+from std.math import ceildiv
+from std.sys import align_of, simd_width_of, size_of
 
 from buffer import NDBuffer
-from layout._tile_tensor import TileTensor
-from layout._layout import row_major
-from layout._coord import Coord, Idx
-from gpu import (
+from layout import Coord, Idx, TileTensor, row_major
+from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     barrier,
     block_dim,
     global_idx,
     grid_dim,
 )
-from gpu.primitives.grid_controls import (
+from std.gpu.primitives.grid_controls import (
     PDLLevel,
     launch_dependent_grids,
     pdl_launch_attributes,
     wait_on_dependent_grids,
 )
-from gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from std.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 
-from utils import IndexList, StaticTuple
-from utils.numerics import get_accum_type
+from std.utils import IndexList, StaticTuple
+from std.utils.numerics import get_accum_type
 
-from collections.optional import Optional
+from std.collections.optional import Optional
 
 from .reducescatter import (
     ReduceScatterConfig,
-    _reduce_scatter_impl,
+    _reduce_scatter_flat_impl,
     _load_reduce,
     _target_address_space,
 )
@@ -182,7 +180,7 @@ fn _naive_reduce_kernel_with_lambda[
     """Naive reduction kernel with elementwise lambda support."""
     var tid = global_idx.x
     var stride = grid_dim.x * block_dim.x
-    comptime simd_width = simd_width_of[dtype, target = get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
 
     for idx in range(tid, num_elements // simd_width, stride):
         var elem_idx = idx * simd_width
@@ -256,7 +254,7 @@ fn _allreduce_naive_single[
     - Each op instance only writes to its own temporary buffer and its own
       output buffer (`out_r`).
     """
-    comptime simd_width = simd_width_of[dtype, target = get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
     comptime BLOCK_SIZE = 256
     var num_elements = list_of_in_bufs[0].num_elements()
 
@@ -314,7 +312,7 @@ fn _allreduce_naive_single[
         dtype,
         rank,
         width=simd_width,
-        alignment = align_of[SIMD[dtype, simd_width]](),
+        alignment=align_of[SIMD[dtype, simd_width]](),
         output_lambda=output_lambda,
     ]
     ctx.enqueue_function[
@@ -447,7 +445,7 @@ fn _allreduce_2stage_kernel[
             val.cast[dtype](),
         )
 
-    _reduce_scatter_impl[
+    _reduce_scatter_flat_impl[
         ngpus, output_lambda=rs_output_lambda, use_multimem=use_multimem
     ](ptrs, tmp_buff, my_rank, rs_config)
 
@@ -488,7 +486,7 @@ fn _allreduce_2stage_kernel[
     # Ragged tail - max 1 simd vector per gpu, spread work between threads
     if global_tid < ngpus:
         var peer_rank = (my_rank + global_tid) % ngpus
-        if peer_rank < rs_config.remainder:
+        if peer_rank < rs_config.axis_remainder:
             var idx = (
                 rs_config.rank_part(0) - simd_width
             )  # last ragged simd_vector
@@ -544,7 +542,7 @@ fn _allreduce_1stage_kernel[
     Synchronizes using _multi_gpu_barrier before and after reduction.
     """
     comptime accum_type = get_accum_type[dtype]()
-    comptime simd_width = simd_width_of[dtype, target = get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
     comptime alignment = align_of[SIMD[dtype, simd_width]]()
 
     var global_tid = global_idx.x
@@ -622,7 +620,7 @@ fn _allreduce_p2p[
     Launches P2P reduction kernel on the current GPU to perform direct reduction.
     """
     comptime num_buffers = 1 if use_multimem else ngpus
-    comptime simd_width = simd_width_of[dtype, target = get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
     var num_elements = list_of_in_bufs[0].num_elements()
 
     # Do nothing if there are no elements to reduce.
