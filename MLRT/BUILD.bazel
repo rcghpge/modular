@@ -658,6 +658,7 @@ modular_cc_library(
     target_compatible_with = select({
         "//:nvidia_gpu": [],
         "//:apple_gpu": [],
+        "//:amd_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
