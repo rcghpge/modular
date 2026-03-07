@@ -615,10 +615,11 @@ struct Transpose2DOp:
     ](
         input: InputTensor[dtype=dtype, rank=2, ...],
         out result: InputTensor[
-            static_spec=input.static_spec.with_layout[2](
+            static_spec=input.static_spec.with_layout[
+                2,
                 output_static_shape,
                 Self.get_view_strides(input._static_strides),
-            )
+            ]()
         ],
     ):
         var shape_and_strides = Self.build_view(input)
