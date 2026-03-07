@@ -219,3 +219,14 @@ TEST_F(DriverPluginContextTest, MemoryAsync) {
     ASSERT_SUCCESS(memory_free(context, memory));
   }
 }
+
+TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t context : contexts) {
+    M_driver_queue_t queue = nullptr;
+    ASSERT_SUCCESS(queue_create(context, &queue));
+    ASSERT_NE(nullptr, queue);
+    ASSERT_SUCCESS(queue_destroy(context, queue));
+  }
+}

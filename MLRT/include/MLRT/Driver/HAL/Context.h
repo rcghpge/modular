@@ -14,6 +14,7 @@
 
 #include "Buffer.h"
 #include "HAL/M_driver_api.h"
+#include "Queue.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
@@ -33,6 +34,7 @@ public:
   DeviceRef device() const;
 
   ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
+  ErrorOr<QueueRef> createQueue();
 
 private:
   explicit Context(Device *device, M_driver_context_t handle)
@@ -43,6 +45,7 @@ private:
 
   friend class Device;
   friend class Buffer;
+  friend class Queue;
 };
 
 using ContextRef = RCRef<Context>;

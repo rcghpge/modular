@@ -23,6 +23,7 @@ typedef int64_t M_driver_status_t;
 typedef struct M_driver_driver *M_driver_driver_t;
 typedef struct M_driver_device *M_driver_device_t;
 typedef struct M_driver_context *M_driver_context_t;
+typedef struct M_driver_queue *M_driver_queue_t;
 
 /**
  * Common status codes.

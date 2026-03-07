@@ -7,6 +7,7 @@
 #include "MLRT/Driver/HAL/Context.h"
 #include "MLRT/Driver/HAL/Buffer.h"
 #include "MLRT/Driver/HAL/Driver.h"
+#include "MLRT/Driver/HAL/Queue.h"
 
 namespace M::Driver::HAL {
 
@@ -24,6 +25,17 @@ ErrorOr<BufferRef> Context::allocBuffer(size_t byteSize,
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);
+}
+
+ErrorOr<QueueRef> Context::createQueue() {
+  M_driver_queue_t queueHandle = nullptr;
+  if (M_driver_status_t status =
+          device_->driver->plugin.queue_create(handle, &queueHandle))
+    return Error(device_->driver->getStatusMessage(status));
+  std::unique_ptr<Queue> queue(new (std::nothrow) Queue(this, queueHandle));
+  if (!queue)
+    return Error("Failed to allocate memory for Queue object");
+  return QueueRef::take(queue.release());
 }
 
 } // namespace M::Driver::HAL

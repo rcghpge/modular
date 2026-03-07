@@ -45,6 +45,7 @@ private:
   friend class Driver;
   friend class Context;
   friend class Buffer;
+  friend class Queue;
 };
 
 using DeviceRef = RCRef<Device>;

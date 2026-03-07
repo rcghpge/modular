@@ -160,3 +160,12 @@ TEST_F(DriverHALContextTest, ContextAllocBufferASYNC) {
     ASSERT_FALSE(bufferOr.isError());
   }
 }
+
+TEST_F(DriverHALContextTest, Queue) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ErrorOr<QueueRef> queueOr = context->createQueue();
+    ASSERT_FALSE(queueOr.isError());
+  }
+}
