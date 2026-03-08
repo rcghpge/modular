@@ -2735,17 +2735,33 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   // comptime inputSpecInternals =
   //   Variadic.values[var1.static_spec.get_internals(),
   //                   var2.static_spec.get_internals()]
-  // comptime inputSpecs = StaticTensorSpecList[inputSpecInternals]()
+  // comptime inputSpecShapes =
+  //   Variadic.values[var1.static_spec.shape,
+  //                   var2.static_spec.shape]
+  // comptime inputSpecStrides =
+  //   Variadic.values[var1.static_spec.strides,
+  //                   var2.static_spec.strides]
+  // comptime inputSpecs = StaticTensorSpecList[inputSpecInternals,
+  //                   inputSpecShapes, inputSpecStrides]()
   SmallVector<MojoValue> staticSpecInternals;
+  SmallVector<MojoValue> staticSpecShapes;
+  SmallVector<MojoValue> staticSpecStrides;
   for (const auto &reboundInput : inputValues) {
-    staticSpecInternals.push_back(
-        reboundInput.get("static_spec").get("get_internals")());
+    auto inputWithStaticSpec = reboundInput.get("static_spec");
+    staticSpecInternals.push_back(inputWithStaticSpec.get("get_internals")());
+    staticSpecShapes.push_back(inputWithStaticSpec.get("shape"));
+    staticSpecStrides.push_back(inputWithStaticSpec.get("strides"));
   }
   MojoValue inputSpecsInternalsComptime = state.builder.comptime(
       MojoValue("Variadic").get("values")[staticSpecInternals]);
-
-  MojoValue inputSpecsComptime = state.builder.comptime(
-      MojoValue("StaticTensorSpecList")[inputSpecsInternalsComptime]());
+  MojoValue inputSpecsShapesComptime = state.builder.comptime(
+      MojoValue("Variadic").get("values")[staticSpecShapes]);
+  MojoValue inputSpecsStridesComptime = state.builder.comptime(
+      MojoValue("Variadic").get("values")[staticSpecStrides]);
+  MojoValue inputSpecsComptime =
+      state.builder.comptime(MojoValue("StaticTensorSpecList")[{
+          inputSpecsInternalsComptime, inputSpecsShapesComptime,
+          inputSpecsStridesComptime}]());
 
   MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
       MojoValue("io_spec").equal(inputValues[0].get("io_spec")),

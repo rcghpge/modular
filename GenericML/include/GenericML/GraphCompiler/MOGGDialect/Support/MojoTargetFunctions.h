@@ -31,8 +31,6 @@ constexpr llvm::StringLiteral LambdasHaveFusion = "lambdas_have_fusion";
 constexpr llvm::StringLiteral DPSTensorCopy =
     "tensor::managed_tensor_slice::view_copy_impl";
 
-constexpr llvm::StringLiteral DPSBuildTensorSpecs = "build_static_tensor_specs";
-
 constexpr llvm::StringLiteral DPSManagedTensorSliceStoreSIMD =
     "simd_store_into_managed_tensor_slice";
 constexpr llvm::StringLiteral DPSManagedTensorSliceLoadSIMD =
