@@ -46,6 +46,7 @@ private:
   friend class Context;
   friend class Buffer;
   friend class Queue;
+  friend class Function;
 };
 
 using DeviceRef = RCRef<Device>;

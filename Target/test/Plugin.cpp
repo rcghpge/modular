@@ -230,3 +230,19 @@ TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
     ASSERT_SUCCESS(queue_destroy(context, queue));
   }
 }
+
+static const char *kTestPTX = ".version 7.0\n"
+                              ".target sm_70\n"
+                              ".address_size 64\n"
+                              ".visible .entry test_kernel() { ret; }\n";
+
+TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+
+  M_driver_function_t func = nullptr;
+  ASSERT_SUCCESS(function_load(driver, contexts[0], kTestPTX, "test_kernel", -1,
+                               nullptr, -1, &func));
+  ASSERT_NE(func, nullptr);
+  EXPECT_SUCCESS(function_unload(driver, contexts[0], func));
+}

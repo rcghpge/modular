@@ -28,6 +28,7 @@ using DriverRef = RCRef<Driver>;
 class Context;
 class Buffer;
 class Queue;
+class Function;
 
 class Driver : public ReferenceCounted<Driver> {
 public:
@@ -78,6 +79,7 @@ private:
   friend Context;
   friend Buffer;
   friend Queue;
+  friend Function;
 };
 
 } // namespace M::Driver::HAL
