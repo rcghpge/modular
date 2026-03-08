@@ -30,12 +30,6 @@ from std.gpu.host.info import is_gpu as _is_gpu
 from layout import LayoutTensor, TileTensor
 from layout.coord import Coord, _DimsToCoordLike
 from layout.tile_layout import Layout as TileLayout
-from std.memory import LegacyUnsafePointer
-
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-comptime OpaquePointer = LegacyUnsafePointer[
-    mut=True, NoneType, origin=MutAnyOrigin
-]
 from register import register_internal
 from std.runtime.asyncrt import DeviceContextPtr
 from std.runtime.tracing import trace_arg
@@ -148,7 +142,7 @@ fn simd_store_into_tensor_pointer[
     simd_width: Int,
     element_alignment: Int = 1,
 ](
-    ptr: UnsafePointer[Scalar[dtype]],
+    ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     shape: IndexList[rank],
     strides: IndexList[rank],
     indices: IndexList[rank],
@@ -196,7 +190,7 @@ fn simd_load_from_tensor_pointer[
     simd_width: Int,
     element_alignment: Int = 1,
 ](
-    ptr: UnsafePointer[Scalar[dtype]],
+    ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     shape: IndexList[rank],
     strides: IndexList[rank],
     indices: IndexList[rank],
@@ -450,13 +444,13 @@ struct ManagedTensorSlice[
     comptime _in_lambda = Self.static_spec.in_lambda
     comptime _out_lambda = Self.static_spec.out_lambda
 
-    var _ptr: UnsafePointer[Scalar[Self.dtype]]
+    var _ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]
     var _spec: RuntimeTensorSpec[Self.dtype, Self.rank]
     var _runtime_strides: IndexList[Self.rank]
 
     fn __init__(
         out self,
-        ptr: UnsafePointer[Scalar[Self.dtype]],
+        ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
         slices: InlineArray[Slice, Self.rank],
         slicer_spec: RuntimeTensorSpec[Self.dtype, Self.rank],
     ):
@@ -506,7 +500,7 @@ struct ManagedTensorSlice[
 
     fn __init__(
         out self,
-        ptr: UnsafePointer[Scalar[Self.dtype]],
+        ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
         shape: IndexList[Self.rank],
     ):
         """Initializes a ManagedTensorSlice from a pointer and shape.
@@ -521,7 +515,7 @@ struct ManagedTensorSlice[
 
     fn __init__(
         out self,
-        ptr: UnsafePointer[Scalar[Self.dtype]],
+        ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
         shape: IndexList[Self.rank],
         strides: IndexList[Self.rank],
     ):
@@ -566,10 +560,9 @@ struct ManagedTensorSlice[
         comptime assert (
             not Self.static_spec.in_lambda
         ), "Direct load on fused tensor is forbidden"
-        debug_assert(
-            len(indices) == Self.rank,
-            "mismatch between requested index and rank",
-        )
+        assert (
+            len(indices) == Self.rank
+        ), "mismatch between requested index and rank"
         return self[IndexList[Self.rank](indices)]
 
     @always_inline
@@ -584,10 +577,9 @@ struct ManagedTensorSlice[
         comptime assert (
             not Self.static_spec.out_lambda
         ), "Direct store on fused tensor is forbidden"
-        debug_assert(
-            len(indices) == Self.rank,
-            "mismatch between requested index and rank",
-        )
+        assert (
+            len(indices) == Self.rank
+        ), "mismatch between requested index and rank"
         self[IndexList[Self.rank](indices)] = val
 
     @always_inline
@@ -715,7 +707,7 @@ struct ManagedTensorSlice[
     @always_inline
     fn unsafe_ptr[
         _dtype: DType = Self.dtype
-    ](self) -> UnsafePointer[Scalar[_dtype]]:
+    ](self) -> UnsafePointer[Scalar[_dtype], MutAnyOrigin]:
         """Get the pointer stored in this tensor slice.
 
         Since this method obtains the pointer stored in this tensor slice, it
@@ -728,7 +720,7 @@ struct ManagedTensorSlice[
         Returns:
             The `UnsafePointer` which contains the data for this tensor slice.
         """
-        return rebind[UnsafePointer[Scalar[_dtype]]](self._ptr)
+        return rebind[UnsafePointer[Scalar[_dtype], MutAnyOrigin]](self._ptr)
 
     @always_inline
     fn load[
@@ -946,7 +938,9 @@ struct ManagedTensorSlice[
         self,
         new_runtime_shape: IndexList[new_rank],
         new_runtime_strides: IndexList[new_rank],
-        offset_ptr: Optional[UnsafePointer[Scalar[Self.dtype]]] = None,
+        offset_ptr: Optional[
+            UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]
+        ] = None,
         out result: ManagedTensorSlice[
             rank=new_rank,
             io_spec=Self.io_spec,
@@ -961,10 +955,9 @@ struct ManagedTensorSlice[
         comptime assert (
             len(new_static_strides) == new_rank
         ), "static strides has incorrect rank"
-        debug_assert(
-            _is_consistent[new_static_shape](new_runtime_shape)
-            and _is_consistent[new_static_strides](new_runtime_strides)
-        )
+        assert _is_consistent[new_static_shape](
+            new_runtime_shape
+        ) and _is_consistent[new_static_strides](new_runtime_strides)
 
         return {
             offset_ptr.or_else(self._ptr),
@@ -1234,7 +1227,9 @@ struct VariadicTensors[
 
     fn __init__(
         out self,
-        ptrs: StaticTuple[UnsafePointer[Scalar[Self.dtype]], Self.size],
+        ptrs: StaticTuple[
+            UnsafePointer[Scalar[Self.dtype], MutAnyOrigin], Self.size
+        ],
         shapes: StaticTuple[IndexList[Self.rank], Self.size],
     ):
         """Initialize the variadic tensor from tuples of pointers and shapes.
@@ -1341,10 +1336,9 @@ fn foreach[
         tensor: The output tensor slice which receives the return values from `func`.
         ctx: The call context (forward this from the custom operation).
     """
-    debug_assert(
-        ctx._handle or is_cpu[target](),
-        "Expecting non-null device ctx for GPU kernels",
-    )
+    assert (
+        ctx._handle or is_cpu[target]()
+    ), "Expecting non-null device ctx for GPU kernels"
 
     @parameter
     @always_inline
@@ -1399,10 +1393,9 @@ fn foreach[
         tensor: The input tensor slice which the consumed values.
         ctx: The call context (forward this from the custom operation).
     """
-    debug_assert(
-        ctx._handle or is_cpu[target](),
-        "Expecting non-null device ctx for GPU kernels",
-    )
+    assert (
+        ctx._handle or is_cpu[target]()
+    ), "Expecting non-null device ctx for GPU kernels"
 
     @parameter
     @always_inline
@@ -1491,7 +1484,7 @@ fn view_copy_impl[
     comptime assert _compatible_with[
         x._static_shape, z._static_shape
     ](), "static shapes not compatible"
-    debug_assert(x.shape() == z.shape(), "runtime shapes not compatible")
+    assert x.shape() == z.shape(), "runtime shapes not compatible"
 
     @parameter
     @always_inline

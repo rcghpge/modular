@@ -38,7 +38,7 @@ from std.gpu.memory import CacheEviction, CacheOperation, Fill, async_copy
 from layout._fillers import BATCH_SIZE
 from layout._utils import make_amd_buffer_resource
 from layout.element import Element, MemoryElement
-from layout.tma_async import _tma_desc_tile_layout
+from layout.tma_async import _tma_desc_tile_shape
 from std.memory import stack_allocation, LegacyUnsafePointer
 
 comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
@@ -1967,10 +1967,7 @@ struct LayoutTensor[
             comptime for arg_idx in range(arg_count):
                 var idx = index_list[arg_idx]
                 var dim_size = self.dim[arg_idx]()
-                debug_assert(
-                    0 <= idx < dim_size,
-                    "LayoutTensor index out of bounds",
-                )
+                assert 0 <= idx < dim_size, "LayoutTensor index out of bounds"
 
         var strides = self.runtime_layout.stride.value
         var offset = Self._get_offset[rank=arg_count](strides, index_list)
@@ -2108,7 +2105,9 @@ struct LayoutTensor[
 
     @always_inline("nodebug")
     fn load[
-        width: Int, load_alignment: Int = Self.alignment
+        width: Int,
+        load_alignment: Int = Self.alignment,
+        non_temporal: Bool = False,
     ](self, m: Int, n: Int) -> SIMD[Self.dtype, width]:
         """Load a SIMD vector from the tensor at the specified 2D coordinates.
 
@@ -2120,6 +2119,9 @@ struct LayoutTensor[
             width: The number of elements to load into the SIMD vector. Should match
                   the target hardware's vector width for optimal performance.
             load_alignment: The alignment to use. Defaults to Self.alignment.
+            non_temporal: If True, issue a non-temporal (streaming) load hint,
+                indicating the data has no temporal locality and should not
+                pollute caches.
 
         Args:
             m: The row index (first dimension).
@@ -2155,22 +2157,20 @@ struct LayoutTensor[
             # runtime layouts (including UNKNOWN_VALUE dimensions)
             var dim0 = self.dim[0]()
             var dim1 = self.dim[1]()
-            debug_assert(
-                0 <= m < dim0,
-                "LayoutTensor load out of bounds",
-            )
-            debug_assert(
-                0 <= n and n + width <= dim1,
-                "LayoutTensor load out of bounds",
-            )
+            assert 0 <= m < dim0, "LayoutTensor load out of bounds"
+            assert (
+                0 <= n and n + width <= dim1
+            ), "LayoutTensor load out of bounds"
 
-        return self.ptr.load[width=width, alignment=load_alignment](
-            self._offset(m, n)
-        )
+        return self.ptr.load[
+            width=width, alignment=load_alignment, non_temporal=non_temporal
+        ](self._offset(m, n))
 
     @always_inline("nodebug")
     fn load[
-        width: Int, load_alignment: Int = Self.alignment
+        width: Int,
+        load_alignment: Int = Self.alignment,
+        non_temporal: Bool = False,
     ](self, coords: IndexList[...]) -> SIMD[Self.dtype, width]:
         """Load a SIMD vector from the tensor at the specified coordinates.
 
@@ -2183,6 +2183,9 @@ struct LayoutTensor[
             width: The number of elements to load into the SIMD vector. Should match
                     the target hardware's vector width for optimal performance.
             load_alignment: The alignment to use. Defaults to Self.alignment.
+            non_temporal: If True, issue a non-temporal (streaming) load hint,
+                indicating the data has no temporal locality and should not
+                pollute caches.
 
         Args:
             coords: The coordinates to index. Must have the same size as the tensor's rank.
@@ -2205,11 +2208,11 @@ struct LayoutTensor[
         - The elements are loaded according to the tensor's stride configuration.
         """
         comptime assert self.rank == coords.size
-        debug_assert(self.runtime_layout.stride.value[self.rank - 1] == 1)
+        assert self.runtime_layout.stride.value[self.rank - 1] == 1
 
-        return self.ptr.load[width=width, alignment=load_alignment](
-            self._offset(coords)
-        )
+        return self.ptr.load[
+            width=width, alignment=load_alignment, non_temporal=non_temporal
+        ](self._offset(coords))
 
     @always_inline
     fn prefetch(self, m: Int, n: Int):
@@ -2477,7 +2480,7 @@ struct LayoutTensor[
         - This operation modifies the tensor's data in-place.
         """
         comptime assert self.rank == coords.size
-        debug_assert(self.runtime_layout.stride.value[self.rank - 1] == 1)
+        assert self.runtime_layout.stride.value[self.rank - 1] == 1
 
         return self.ptr.store[alignment=store_alignment](
             self._offset(coords), val
@@ -6437,15 +6440,16 @@ fn cp_async_k_major[
     comptime src_shape0 = src_layout.shape[0].value()
     comptime src_shape1 = src_layout.shape[1].value()
 
-    comptime desc_layout = _tma_desc_tile_layout[
+    comptime tile_desc_shape = _tma_desc_tile_shape[
         dtype,
         2,
         Index(src_shape0, src_shape1),
         swizzle_mode=TensorMapSwizzle.SWIZZLE_128B,
     ]()
-    comptime desc_shape0 = desc_layout.shape[0].value()
-    comptime desc_shape1 = desc_layout.shape[1].value()
-    comptime desc_size = desc_layout.size()
+    comptime desc_shape0 = tile_desc_shape[0]
+    comptime desc_shape1 = tile_desc_shape[1]
+    comptime desc_size = desc_shape0 * desc_shape1
+    comptime desc_layout = Layout.row_major(desc_shape0, desc_shape1)
 
     comptime assert (
         desc_shape0 == src_shape0
