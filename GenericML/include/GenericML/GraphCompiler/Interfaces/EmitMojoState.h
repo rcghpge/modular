@@ -26,7 +26,6 @@ namespace M::MOGG {
 namespace HardcodedMojoSymbols {
 constexpr StringLiteral struct_IO = "io_spec.IO";
 constexpr StringLiteral struct_IndexList = "IndexList";
-constexpr StringLiteral struct_StaticTensorSpec = "directives.StaticTensorSpec";
 constexpr StringLiteral struct_UnsafePointer = "memory.UnsafePointer";
 constexpr StringLiteral struct_String = "string.String";
 constexpr StringLiteral struct_DeviceContextPtr = "asyncrt.DeviceContextPtr";

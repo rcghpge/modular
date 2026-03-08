@@ -2731,23 +2731,21 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   MojoValue runtimeShapesTuple =
       state.builder.var(inputTupleConstructor({}, runtimeShapes));
 
-  // Create the static specs tuple.
-  // comptime inputSpecs = InlineArray[size=N](
-  //     var1.static_spec, var2.static_spec, ..., varN.static_spec,
-  //     __list_literal__=()
-  // )
-  // FIXME: It would be way nicer to produce:
-  // comptime inputSpecs : InlineArray[StaticTensorSpec[dtype, rank], size=N] =
-  //     [ var1.static_spec, var2.static_spec, ..., varN.static_spec]
-  SmallVector<MojoValue> staticSpecs;
+  // Create the static specs list.
+  // comptime inputSpecInternals =
+  //   Variadic.values[var1.static_spec.get_internals(),
+  //                   var2.static_spec.get_internals()]
+  // comptime inputSpecs = StaticTensorSpecList[inputSpecInternals]()
+  SmallVector<MojoValue> staticSpecInternals;
   for (const auto &reboundInput : inputValues) {
-    staticSpecs.push_back(reboundInput.get("static_spec"));
+    staticSpecInternals.push_back(
+        reboundInput.get("static_spec").get("get_internals")());
   }
-  staticSpecs.push_back(MojoValue("__list_literal__").equal(MojoValue("()")));
-  MojoValue staticSpecsConstructor = MojoValue("InlineArray")[{
-      MojoValue("size").equal(std::to_string(staticSpecs.size() - 1))}];
-  MojoValue staticSpecsValue = staticSpecsConstructor({}, staticSpecs);
-  MojoValue inputSpecsComptime = state.builder.comptime(staticSpecsValue);
+  MojoValue inputSpecsInternalsComptime = state.builder.comptime(
+      MojoValue("Variadic").get("values")[staticSpecInternals]);
+
+  MojoValue inputSpecsComptime = state.builder.comptime(
+      MojoValue("StaticTensorSpecList")[inputSpecsInternalsComptime]());
 
   MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
       MojoValue("io_spec").equal(inputValues[0].get("io_spec")),

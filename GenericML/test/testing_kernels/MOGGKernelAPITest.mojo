@@ -512,9 +512,9 @@ struct VariadicInputToOutput:
         size: Int,
         target: StaticString,
     ](
-        output: OutputVariadicTensors[dtype, rank=1, size=size, ...],
+        output: OutputVariadicTensors[dtype=dtype, rank=1, size=size, ...],
         bias: InputTensor[dtype=dtype, rank=1, ...],
-        input: InputVariadicTensors[dtype, rank=1, size=size, ...],
+        input: InputVariadicTensors[dtype=dtype, rank=1, size=size, ...],
     ):
         comptime for i in range(size):
             for j in range(input[i].size()):
@@ -573,7 +573,7 @@ struct VariadicAdd:
         target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
-        inputs: FusedInputVariadicTensors[dtype, rank, ...],
+        inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
     ) capturing raises:
         @parameter
         @always_inline
@@ -930,8 +930,8 @@ struct VariadicDeviceContext:
         rank: Int,
         target: StaticString = "gpu",
     ](
-        outputs: OutputVariadicTensors[dtype, rank, ...],
-        inputs: InputVariadicTensors[dtype, rank, ...],
+        outputs: OutputVariadicTensors[dtype=dtype, rank=rank, ...],
+        inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
         dev_ctxs: DeviceContextPtrList,
     ) raises:
         for i in range(len(dev_ctxs)):
