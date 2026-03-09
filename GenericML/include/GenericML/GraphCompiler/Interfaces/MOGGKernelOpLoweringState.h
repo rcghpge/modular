@@ -30,7 +30,7 @@ private:
     BlockArgument kernelStubOperand;
     Type kernelStubOperandType;
     std::optional<unsigned> mgpRegionOperandIdx;
-    std::optional<unsigned> kernelperandIdx;
+    std::optional<unsigned> kernelOperandIdx;
   };
 
 private:

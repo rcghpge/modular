@@ -31,7 +31,7 @@ void KernelOperandsMapping::addOperand(Value operandValue,
     mgpRegionOperandSemantics.push_back(sig);
   }
   if (isKernelStubOperand) {
-    operand.kernelperandIdx = kernelStubOperands.size();
+    operand.kernelOperandIdx = kernelStubOperands.size();
     // If the operand is forwarded from the MGP region to the stub, set it to
     // null, it'll be updated later. Otherwise if it's only a stub argument,
     // set it now.
@@ -56,7 +56,7 @@ void KernelOperandsMapping::addOperand(KGEN::ParamDeclRefAttr paramName,
 void KernelOperandsMapping::remapKernelStubOperand(unsigned operandIdx,
                                                    Value newValue) {
   OperandValue &operand = operands[operandIdx];
-  auto kernelStubOperandIdx = operand.kernelperandIdx.value();
+  auto kernelStubOperandIdx = operand.kernelOperandIdx.value();
   kernelStubOperands[kernelStubOperandIdx] = newValue;
 }
 
@@ -116,7 +116,7 @@ void KernelOperandsMapping::setupMGPRegionArgs(Block *mgpRegion) {
         mgpRegion->getArgument(operand.mgpRegionOperandIdx.value());
 
     operand.mgpRegionOperand = blockArg;
-    if (auto stubOperandIdx = operand.kernelperandIdx) {
+    if (auto stubOperandIdx = operand.kernelOperandIdx) {
       kernelStubOperands[*stubOperandIdx] = blockArg;
     }
   }
@@ -128,10 +128,10 @@ void KernelOperandsMapping::setupKernelStubArgs(Block *kernelStubBody) {
   // And all extra other arguments must be added
   // Fix and cleanup the argument
   for (auto &operandInfos : operands) {
-    if (!operandInfos.kernelperandIdx.has_value())
+    if (!operandInfos.kernelOperandIdx.has_value())
       continue;
 
-    unsigned idx = operandInfos.kernelperandIdx.value();
+    unsigned idx = operandInfos.kernelOperandIdx.value();
     Value operand = kernelStubOperands[idx];
     Type operandType = operandInfos.kernelStubOperandType
                            ? operandInfos.kernelStubOperandType
