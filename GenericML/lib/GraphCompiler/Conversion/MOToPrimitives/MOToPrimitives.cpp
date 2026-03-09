@@ -11,6 +11,7 @@
 #include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
+#include "GenericML/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
@@ -216,6 +217,9 @@ public:
 
   /// Lowers mo.call op
   LogicalResult lowerCallGraph(MO::CallOp callOp);
+
+  /// Lowers mo.parallel op
+  LogicalResult lowerParallel(MO::ParallelOp parallelOp);
 
 private:
   /// Lowers a Block
@@ -1827,6 +1831,13 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
+    // Lower mo.parallel by expanding the body for each input.
+    if (auto parallelOp = dyn_cast<MO::ParallelOp>(op)) {
+      if (failed(lowerParallel(parallelOp)))
+        return failure();
+      continue;
+    }
+
     // Lower mo.yield to mef.output trivially.
     if (auto output = dyn_cast<MO::YieldOp>(op)) {
       if (failed(lowerYield(output)))
@@ -1940,6 +1951,13 @@ LogicalResult MOGraphLowering::run() {
   graph.erase();
 
   return success();
+}
+
+LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
+  // Delegate to MOGGKernelOpLoweringState which handles kernel outlining,
+  // stub creation, and async dispatch in a unified manner.
+  MGP::MOGGKernelOpLoweringState state(parallelOp, loweringState);
+  return state.lowerParallelOp(parallelOp);
 }
 
 LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {

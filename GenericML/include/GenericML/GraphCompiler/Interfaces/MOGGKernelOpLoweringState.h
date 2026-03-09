@@ -143,6 +143,17 @@ public:
   // Lower a KernelOp to MOGG.
   LogicalResult lowerKernelOp(MOGG::KernelOp moggKernelOp);
 
+  // Lower a ParallelOp containing a kernel to MOGG with async dispatch.
+  LogicalResult lowerParallelOp(MO::ParallelOp parallelOp);
+
+  // Accessors for subclasses/parallel lowering
+  MGP::MOGraphLoweringState &getGraphLoweringState() { return loweringState; }
+  MGP::MOOpLoweringState &getOpLoweringState() { return opLoweringState; }
+  OpBuilder &getBuilder() { return builder; }
+  KernelOperandsMapping &getOperandsMapping() { return operandsMapping; }
+  MOGG::KernelStubOp getKernelStub() { return kernelStub; }
+  DeviceRefAttr getDevice() { return device; }
+
   // Info about tensor operands used during kernel lowering.
   struct TensorOperandInfos {
     Value stubValue;   // Tensor value inside the KernelStub
