@@ -27,7 +27,6 @@
 #include "gtest/gtest.h"
 
 #include <set>
-#include <vector>
 
 using namespace M::Driver;
 using M::ErrorOr;
@@ -67,26 +66,20 @@ TEST_F(GPUMemoryManagerFallthroughTest, FallthroughAllocReusesSameAddress) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Warmup: one alloc/free cycle to prime the stream-ordered pool.
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, warmupPtr,
-                freeList.allocate(allocSize, mode));
-  EXPECT_NE(warmupPtr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(warmupPtr.ptr, warmupPtr.mode));
+  ASSIGN_NO_ERR(void *, warmupPtr, freeList.allocate(allocSize, mode));
+  EXPECT_NE(warmupPtr, nullptr);
+  EXPECT_NO_ERR(freeList.free(warmupPtr));
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Perform many alloc/free cycles and track unique pointers.
-  std::vector<MemoryManagerFreeList::Allocation> uniqueAllocs;
-  std::set<void *> uniquePointerValues;
+  std::set<void *> uniquePointers;
   const int numCycles = 50;
 
   for (int i = 0; i < numCycles; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(allocSize, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    if (!uniquePointerValues.contains(ptr.ptr)) {
-      uniqueAllocs.push_back(ptr);
-      uniquePointerValues.insert(ptr.ptr);
-    }
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocSize, mode));
+    EXPECT_NE(ptr, nullptr);
+    uniquePointers.insert(ptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
   EXPECT_NO_ERR(ctx->synchronize());
 
@@ -96,9 +89,9 @@ TEST_F(GPUMemoryManagerFallthroughTest, FallthroughAllocReusesSameAddress) {
   //
   // Without the fix (sync alloc + async free), every cycle produces a new
   // address from the default heap, giving ~50 unique pointers.
-  EXPECT_LE(uniqueAllocs.size(), 5u)
+  EXPECT_LE(uniquePointers.size(), 5u)
       << "Expected pointer reuse from stream-ordered memory pool, but got "
-      << uniqueAllocs.size() << " unique pointers across " << numCycles
+      << uniquePointers.size() << " unique pointers across " << numCycles
       << " alloc/free cycles. This suggests the fallthrough path is using "
       << "sync allocation (cuMemAlloc) instead of async allocation "
       << "(cuMemAllocAsync), causing a pool mismatch with the async free "
@@ -122,28 +115,22 @@ TEST_F(GPUMemoryManagerFallthroughTest,
 
   // Warmup all contexts.
   for (auto &ctx : contexts) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  ctx->freeList().allocate(allocSize, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(ctx->freeList().free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, ctx->freeList().allocate(allocSize, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(ctx->freeList().free(ptr));
     EXPECT_NO_ERR(ctx->synchronize());
   }
 
   // Track unique pointers per context.
-  std::vector<std::vector<MemoryManagerFreeList::Allocation>> perContextAllocs(
-      numContexts);
-  std::vector<std::set<void *>> perContextUniquePointerValues(numContexts);
+  std::vector<std::set<void *>> perContextPointers(numContexts);
 
   for (int cycle = 0; cycle < numCyclesPerContext; ++cycle) {
     for (int c = 0; c < numContexts; ++c) {
-      ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
+      ASSIGN_NO_ERR(void *, ptr,
                     contexts[c]->freeList().allocate(allocSize, mode));
-      EXPECT_NE(ptr.ptr, nullptr);
-      if (!perContextUniquePointerValues[c].contains(ptr.ptr)) {
-        perContextAllocs[c].push_back(ptr);
-        perContextUniquePointerValues[c].insert(ptr.ptr);
-      }
-      EXPECT_NO_ERR(contexts[c]->freeList().free(ptr.ptr, ptr.mode));
+      EXPECT_NE(ptr, nullptr);
+      perContextPointers[c].insert(ptr);
+      EXPECT_NO_ERR(contexts[c]->freeList().free(ptr));
     }
   }
 
@@ -153,9 +140,9 @@ TEST_F(GPUMemoryManagerFallthroughTest,
 
   // Each context should show pointer reuse within its own stream.
   for (int c = 0; c < numContexts; ++c) {
-    EXPECT_LE(perContextAllocs[c].size(), 5u)
+    EXPECT_LE(perContextPointers[c].size(), 5u)
         << "Context " << c << ": expected pointer reuse but got "
-        << perContextAllocs[c].size() << " unique pointers across "
+        << perContextPointers[c].size() << " unique pointers across "
         << numCyclesPerContext << " cycles (GEX-2965).";
   }
 }

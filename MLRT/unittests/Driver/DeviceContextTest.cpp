@@ -439,223 +439,173 @@ TEST(DeviceContextTest, MemoryManager) {
   CpuDeviceRef device = CpuDeviceRef::create(memInfo);
   size_t allocAlignment = device->allocationAlignment();
 
-  MemoryManagerFreeList &memMgrFreeList = *device->memoryManager().freeList();
+  MemoryManagerFreeList &bufCache = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, base,
-                memMgrFreeList.allocate(1, mode));
-  char *cacheBase = static_cast<char *>(base.ptr);
-  EXPECT_NO_ERR(memMgrFreeList.free(base.ptr, base.mode));
+  ASSIGN_NO_ERR(void *, base, bufCache.allocate(1, mode));
+  char *cacheBase = static_cast<char *>(base);
+  EXPECT_NO_ERR(bufCache.free(cacheBase));
 
   // Allocation patterns to hit different kinds of allocation blocks and
   // merges. These have been verified to have full coverage by instrumenting
   // various branches.
-  EXPECT_NO_ERR(memMgrFreeList.free(nullptr, mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, a,
-                memMgrFreeList.allocate(15, mode));
-  EXPECT_EQ(a.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, b,
-                memMgrFreeList.allocate(15, mode));
-  EXPECT_EQ(b.ptr, cacheBase + allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(a.ptr, a.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, c,
-                memMgrFreeList.allocate(allocAlignment, mode));
-  EXPECT_EQ(c.ptr, cacheBase);
-  EXPECT_NO_ERR(memMgrFreeList.free(c.ptr, c.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, d,
-                memMgrFreeList.allocate(allocAlignment + 1, mode));
-  EXPECT_EQ(d.ptr, cacheBase + 2 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, e,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(e.ptr, cacheBase);
-  EXPECT_NO_ERR(memMgrFreeList.free(b.ptr, b.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, f,
-                memMgrFreeList.allocate(allocAlignment, mode));
-  EXPECT_EQ(f.ptr, cacheBase + allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(f.ptr, f.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(e.ptr, e.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, g,
-                memMgrFreeList.allocate(2 * allocAlignment, mode));
-  EXPECT_EQ(g.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, h,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(h.ptr, cacheBase + 4 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, i,
-                memMgrFreeList.allocate(150, mode));
-  EXPECT_EQ(i.ptr, cacheBase + 5 * allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(g.ptr, g.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(h.ptr, h.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, j,
-                memMgrFreeList.allocate(2, mode));
-  EXPECT_EQ(j.ptr, cacheBase + 4 * allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(j.ptr, j.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(d.ptr, d.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, k,
-                memMgrFreeList.allocate(150, mode));
-  EXPECT_EQ(k.ptr, cacheBase);
-  EXPECT_NO_ERR(memMgrFreeList.free(i.ptr, i.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(k.ptr, k.mode));
+  EXPECT_NO_ERR(bufCache.free(nullptr));
+  ASSIGN_NO_ERR(void *, a, bufCache.allocate(15, mode));
+  EXPECT_EQ(a, cacheBase);
+  ASSIGN_NO_ERR(void *, b, bufCache.allocate(15, mode));
+  EXPECT_EQ(b, cacheBase + allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(a));
+  ASSIGN_NO_ERR(void *, c, bufCache.allocate(allocAlignment, mode));
+  EXPECT_EQ(c, cacheBase);
+  EXPECT_NO_ERR(bufCache.free(c));
+  ASSIGN_NO_ERR(void *, d, bufCache.allocate(allocAlignment + 1, mode));
+  EXPECT_EQ(d, cacheBase + 2 * allocAlignment);
+  ASSIGN_NO_ERR(void *, e, bufCache.allocate(1, mode));
+  EXPECT_EQ(e, cacheBase);
+  EXPECT_NO_ERR(bufCache.free(b));
+  ASSIGN_NO_ERR(void *, f, bufCache.allocate(allocAlignment, mode));
+  EXPECT_EQ(f, cacheBase + allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(f));
+  EXPECT_NO_ERR(bufCache.free(e));
+  ASSIGN_NO_ERR(void *, g, bufCache.allocate(2 * allocAlignment, mode));
+  EXPECT_EQ(g, cacheBase);
+  ASSIGN_NO_ERR(void *, h, bufCache.allocate(1, mode));
+  EXPECT_EQ(h, cacheBase + 4 * allocAlignment);
+  ASSIGN_NO_ERR(void *, i, bufCache.allocate(150, mode));
+  EXPECT_EQ(i, cacheBase + 5 * allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(g));
+  EXPECT_NO_ERR(bufCache.free(h));
+  ASSIGN_NO_ERR(void *, j, bufCache.allocate(2, mode));
+  EXPECT_EQ(j, cacheBase + 4 * allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(j));
+  EXPECT_NO_ERR(bufCache.free(d));
+  ASSIGN_NO_ERR(void *, k, bufCache.allocate(150, mode));
+  EXPECT_EQ(k, cacheBase);
+  EXPECT_NO_ERR(bufCache.free(i));
+  EXPECT_NO_ERR(bufCache.free(k));
   /* ----- */
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, l,
-                memMgrFreeList.allocate(chunkSize, mode));
-  EXPECT_EQ(l.ptr, cacheBase);
-  EXPECT_NO_ERR(memMgrFreeList.free(l.ptr, l.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, m,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(m.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, n,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(n.ptr, cacheBase + allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, o,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(o.ptr, cacheBase + 2 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, p,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(p.ptr, cacheBase + 3 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, q,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(q.ptr, cacheBase + 4 * allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(o.ptr, o.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(p.ptr, p.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(n.ptr, n.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(m.ptr, m.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(q.ptr, q.mode));
+  ASSIGN_NO_ERR(void *, l, bufCache.allocate(chunkSize, mode));
+  EXPECT_EQ(l, cacheBase);
+  EXPECT_NO_ERR(bufCache.free(l));
+  ASSIGN_NO_ERR(void *, m, bufCache.allocate(1, mode));
+  EXPECT_EQ(m, cacheBase);
+  ASSIGN_NO_ERR(void *, n, bufCache.allocate(1, mode));
+  EXPECT_EQ(n, cacheBase + allocAlignment);
+  ASSIGN_NO_ERR(void *, o, bufCache.allocate(1, mode));
+  EXPECT_EQ(o, cacheBase + 2 * allocAlignment);
+  ASSIGN_NO_ERR(void *, p, bufCache.allocate(1, mode));
+  EXPECT_EQ(p, cacheBase + 3 * allocAlignment);
+  ASSIGN_NO_ERR(void *, q, bufCache.allocate(1, mode));
+  EXPECT_EQ(q, cacheBase + 4 * allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(o));
+  EXPECT_NO_ERR(bufCache.free(p));
+  EXPECT_NO_ERR(bufCache.free(n));
+  EXPECT_NO_ERR(bufCache.free(m));
+  EXPECT_NO_ERR(bufCache.free(q));
   /* ----- */
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, r,
-                memMgrFreeList.allocate(allocAlignment, mode));
-  EXPECT_EQ(r.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, s,
-                memMgrFreeList.allocate(allocAlignment, mode));
-  EXPECT_EQ(s.ptr, cacheBase + allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, t,
-                memMgrFreeList.allocate(2 * allocAlignment, mode));
-  EXPECT_EQ(t.ptr, cacheBase + 2 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, u,
-                memMgrFreeList.allocate(allocAlignment, mode));
-  EXPECT_EQ(u.ptr, cacheBase + 4 * allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(r.ptr, r.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(t.ptr, t.mode));
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, v,
-                memMgrFreeList.allocate(2 * allocAlignment, mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(v.ptr, v.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(u.ptr, u.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(s.ptr, s.mode));
+  ASSIGN_NO_ERR(void *, r, bufCache.allocate(allocAlignment, mode));
+  EXPECT_EQ(r, cacheBase);
+  ASSIGN_NO_ERR(void *, s, bufCache.allocate(allocAlignment, mode));
+  EXPECT_EQ(s, cacheBase + allocAlignment);
+  ASSIGN_NO_ERR(void *, t, bufCache.allocate(2 * allocAlignment, mode));
+  EXPECT_EQ(t, cacheBase + 2 * allocAlignment);
+  ASSIGN_NO_ERR(void *, u, bufCache.allocate(allocAlignment, mode));
+  EXPECT_EQ(u, cacheBase + 4 * allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(r));
+  EXPECT_NO_ERR(bufCache.free(t));
+  ASSIGN_NO_ERR(void *, v, bufCache.allocate(2 * allocAlignment, mode));
+  EXPECT_NO_ERR(bufCache.free(v));
+  EXPECT_NO_ERR(bufCache.free(u));
+  EXPECT_NO_ERR(bufCache.free(s));
   /* ----- */
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, x,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(x.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, y,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(y.ptr, cacheBase + allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, z,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(z.ptr, cacheBase + 2 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, aa,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(aa.ptr, cacheBase + 3 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ab,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ab.ptr, cacheBase + 4 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ac,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ac.ptr, cacheBase + 5 * allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(ac.ptr, ac.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(aa.ptr, aa.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(y.ptr, y.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(z.ptr, z.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(x.ptr, x.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ab.ptr, ab.mode));
+  ASSIGN_NO_ERR(void *, x, bufCache.allocate(1, mode));
+  EXPECT_EQ(x, cacheBase);
+  ASSIGN_NO_ERR(void *, y, bufCache.allocate(1, mode));
+  EXPECT_EQ(y, cacheBase + allocAlignment);
+  ASSIGN_NO_ERR(void *, z, bufCache.allocate(1, mode));
+  EXPECT_EQ(z, cacheBase + 2 * allocAlignment);
+  ASSIGN_NO_ERR(void *, aa, bufCache.allocate(1, mode));
+  EXPECT_EQ(aa, cacheBase + 3 * allocAlignment);
+  ASSIGN_NO_ERR(void *, ab, bufCache.allocate(1, mode));
+  EXPECT_EQ(ab, cacheBase + 4 * allocAlignment);
+  ASSIGN_NO_ERR(void *, ac, bufCache.allocate(1, mode));
+  EXPECT_EQ(ac, cacheBase + 5 * allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(ac));
+  EXPECT_NO_ERR(bufCache.free(aa));
+  EXPECT_NO_ERR(bufCache.free(y));
+  EXPECT_NO_ERR(bufCache.free(z));
+  EXPECT_NO_ERR(bufCache.free(x));
+  EXPECT_NO_ERR(bufCache.free(ab));
   /* ----- */
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ad,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ad.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ae,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ae.ptr, cacheBase + allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, af,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(af.ptr, cacheBase + 2 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ag,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ag.ptr, cacheBase + 3 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ah,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ah.ptr, cacheBase + 4 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ai,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ai.ptr, cacheBase + 5 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, aj,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(aj.ptr, cacheBase + 6 * allocAlignment);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ak,
-                memMgrFreeList.allocate(1, mode));
-  EXPECT_EQ(ak.ptr, cacheBase + 7 * allocAlignment);
-  EXPECT_NO_ERR(memMgrFreeList.free(ak.ptr, ak.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ag.ptr, ag.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ai.ptr, ai.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ae.ptr, ae.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(af.ptr, af.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(aj.ptr, aj.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ah.ptr, ah.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ad.ptr, ad.mode));
+  ASSIGN_NO_ERR(void *, ad, bufCache.allocate(1, mode));
+  EXPECT_EQ(ad, cacheBase);
+  ASSIGN_NO_ERR(void *, ae, bufCache.allocate(1, mode));
+  EXPECT_EQ(ae, cacheBase + allocAlignment);
+  ASSIGN_NO_ERR(void *, af, bufCache.allocate(1, mode));
+  EXPECT_EQ(af, cacheBase + 2 * allocAlignment);
+  ASSIGN_NO_ERR(void *, ag, bufCache.allocate(1, mode));
+  EXPECT_EQ(ag, cacheBase + 3 * allocAlignment);
+  ASSIGN_NO_ERR(void *, ah, bufCache.allocate(1, mode));
+  EXPECT_EQ(ah, cacheBase + 4 * allocAlignment);
+  ASSIGN_NO_ERR(void *, ai, bufCache.allocate(1, mode));
+  EXPECT_EQ(ai, cacheBase + 5 * allocAlignment);
+  ASSIGN_NO_ERR(void *, aj, bufCache.allocate(1, mode));
+  EXPECT_EQ(aj, cacheBase + 6 * allocAlignment);
+  ASSIGN_NO_ERR(void *, ak, bufCache.allocate(1, mode));
+  EXPECT_EQ(ak, cacheBase + 7 * allocAlignment);
+  EXPECT_NO_ERR(bufCache.free(ak));
+  EXPECT_NO_ERR(bufCache.free(ag));
+  EXPECT_NO_ERR(bufCache.free(ai));
+  EXPECT_NO_ERR(bufCache.free(ae));
+  EXPECT_NO_ERR(bufCache.free(af));
+  EXPECT_NO_ERR(bufCache.free(aj));
+  EXPECT_NO_ERR(bufCache.free(ah));
+  EXPECT_NO_ERR(bufCache.free(ad));
 
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, al,
-                memMgrFreeList.allocate(chunkSize - 64, mode));
-  EXPECT_EQ(al.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, am,
-                memMgrFreeList.allocate(chunkSize - 64, mode));
-  EXPECT_NE(am.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, an,
-                memMgrFreeList.allocate(chunkSize - 64, mode));
-  EXPECT_NE(an.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ao,
-                memMgrFreeList.allocate(chunkSize - 64, mode));
-  EXPECT_NE(ao.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ap,
-                memMgrFreeList.allocate(chunkSize - 64, mode));
-  EXPECT_NE(ap.ptr, nullptr);
-  EXPECT_NO_ERR(memMgrFreeList.free(al.ptr, al.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(am.ptr, am.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(an.ptr, an.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(ao.ptr, ao.mode));
-  EXPECT_FALSE(memMgrFreeList.free(ap.ptr, ap.mode));
+  ASSIGN_NO_ERR(void *, al, bufCache.allocate(chunkSize - 64, mode));
+  EXPECT_EQ(al, cacheBase);
+  ASSIGN_NO_ERR(void *, am, bufCache.allocate(chunkSize - 64, mode));
+  EXPECT_NE(am, nullptr);
+  ASSIGN_NO_ERR(void *, an, bufCache.allocate(chunkSize - 64, mode));
+  EXPECT_NE(an, nullptr);
+  ASSIGN_NO_ERR(void *, ao, bufCache.allocate(chunkSize - 64, mode));
+  EXPECT_NE(ao, nullptr);
+  ASSIGN_NO_ERR(void *, ap, bufCache.allocate(chunkSize - 64, mode));
+  EXPECT_NE(ap, nullptr);
+  EXPECT_NO_ERR(bufCache.free(al));
+  EXPECT_NO_ERR(bufCache.free(am));
+  EXPECT_NO_ERR(bufCache.free(an));
+  EXPECT_NO_ERR(bufCache.free(ao));
+  EXPECT_FALSE(bufCache.free(ap));
 
   size_t minBlock = allocAlignment;
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ba,
-                memMgrFreeList.allocate(minBlock, mode));
-  EXPECT_EQ(ba.ptr, cacheBase);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, bb,
-                memMgrFreeList.allocate(4 * minBlock, mode));
-  EXPECT_NE(bb.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, bc,
-                memMgrFreeList.allocate(minBlock, mode));
-  EXPECT_NE(bc.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, bd,
-                memMgrFreeList.allocate(4 * minBlock, mode));
-  EXPECT_NE(bd.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, be,
-                memMgrFreeList.allocate(minBlock, mode));
-  EXPECT_NE(be.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, ba, bufCache.allocate(minBlock, mode));
+  EXPECT_EQ(ba, cacheBase);
+  ASSIGN_NO_ERR(void *, bb, bufCache.allocate(4 * minBlock, mode));
+  EXPECT_NE(bb, nullptr);
+  ASSIGN_NO_ERR(void *, bc, bufCache.allocate(minBlock, mode));
+  EXPECT_NE(bc, nullptr);
+  ASSIGN_NO_ERR(void *, bd, bufCache.allocate(4 * minBlock, mode));
+  EXPECT_NE(bd, nullptr);
+  ASSIGN_NO_ERR(void *, be, bufCache.allocate(minBlock, mode));
+  EXPECT_NE(be, nullptr);
 
-  EXPECT_NO_ERR(memMgrFreeList.free(bd.ptr, bd.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(bb.ptr, bb.mode));
+  EXPECT_NO_ERR(bufCache.free(bd));
+  EXPECT_NO_ERR(bufCache.free(bb));
 
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, bf,
-                memMgrFreeList.allocate(2 * minBlock, mode));
-  EXPECT_NE(bf.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, bg,
-                memMgrFreeList.allocate(3 * minBlock, mode));
-  EXPECT_NE(bg.ptr, nullptr);
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, bh,
-                memMgrFreeList.allocate(4 * minBlock, mode));
-  EXPECT_NE(bh.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, bf, bufCache.allocate(2 * minBlock, mode));
+  EXPECT_NE(bf, nullptr);
+  ASSIGN_NO_ERR(void *, bg, bufCache.allocate(3 * minBlock, mode));
+  EXPECT_NE(bg, nullptr);
+  ASSIGN_NO_ERR(void *, bh, bufCache.allocate(4 * minBlock, mode));
+  EXPECT_NE(bh, nullptr);
 
-  EXPECT_NO_ERR(memMgrFreeList.free(ba.ptr, ba.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(bc.ptr, bc.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(be.ptr, be.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(bf.ptr, bf.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(bg.ptr, bg.mode));
-  EXPECT_NO_ERR(memMgrFreeList.free(bh.ptr, bh.mode));
+  EXPECT_NO_ERR(bufCache.free(ba));
+  EXPECT_NO_ERR(bufCache.free(bc));
+  EXPECT_NO_ERR(bufCache.free(be));
+  EXPECT_NO_ERR(bufCache.free(bf));
+  EXPECT_NO_ERR(bufCache.free(bg));
+  EXPECT_NO_ERR(bufCache.free(bh));
 }
 
 TEST(DeviceContextTest, GetMemoryInfoWithoutMemoryManager) {

@@ -170,19 +170,18 @@ TEST_F(MemoryManagerTest, BasicAllocationAndFree) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Test basic allocation
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr1,
-                freeList.allocate(64, mode));
-  EXPECT_NE(ptr1.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, ptr1, freeList.allocate(64, mode));
+  EXPECT_NE(ptr1, nullptr);
 
   // Test that allocation is properly aligned
-  uintptr_t addr = reinterpret_cast<uintptr_t>(ptr1.ptr);
+  uintptr_t addr = reinterpret_cast<uintptr_t>(ptr1);
   EXPECT_EQ(addr % allocAlignment, 0);
 
   // Test free
-  EXPECT_NO_ERR(freeList.free(ptr1.ptr, ptr1.mode));
+  EXPECT_NO_ERR(freeList.free(ptr1));
 
   // Test free with nullptr (should be safe)
-  EXPECT_NO_ERR(freeList.free(nullptr, mode));
+  EXPECT_NO_ERR(freeList.free(nullptr));
 }
 
 TEST_F(MemoryManagerTest, MultipleAllocations) {
@@ -191,29 +190,28 @@ TEST_F(MemoryManagerTest, MultipleAllocations) {
   size_t allocAlignment = device->allocationAlignment();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Allocate multiple blocks
   for (int i = 0; i < 10; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(64, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(64, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Verify all pointers are different and aligned
   for (size_t i = 0; i < ptrs.size(); ++i) {
-    uintptr_t addr = reinterpret_cast<uintptr_t>(ptrs[i].ptr);
+    uintptr_t addr = reinterpret_cast<uintptr_t>(ptrs[i]);
     EXPECT_EQ(addr % allocAlignment, 0);
 
     for (size_t j = i + 1; j < ptrs.size(); ++j) {
-      EXPECT_NE(ptrs[i].ptr, ptrs[j].ptr);
+      EXPECT_NE(ptrs[i], ptrs[j]);
     }
   }
 
   // Free all blocks
-  for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -224,24 +222,23 @@ TEST_F(MemoryManagerTest, AllocationSizes) {
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   std::vector<size_t> sizes = {1, 15, 64, 128, 256, 512, 1000};
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Test allocations of various sizes
   for (size_t size : sizes) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(size, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(size, mode));
+    EXPECT_NE(ptr, nullptr);
 
     // Verify alignment
-    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr.ptr);
+    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
     EXPECT_EQ(addr % allocAlignment, 0);
 
-    ptrs.push_back(std::move(ptr));
+    ptrs.push_back(ptr);
   }
 
   // Free all allocations
-  for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -255,13 +252,12 @@ TEST_F(MemoryManagerTest, FreeListEmpty) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // After first allocation, free list should not be empty (chunk is allocated)
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                freeList.allocate(64, mode));
+  ASSIGN_NO_ERR(void *, ptr, freeList.allocate(64, mode));
   // Note: The behavior here depends on internal implementation details
   // We just verify the allocation succeeded
-  EXPECT_NE(ptr.ptr, nullptr);
+  EXPECT_NE(ptr, nullptr);
 
-  EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  EXPECT_NO_ERR(freeList.free(ptr));
 }
 
 // Free List Management Tests
@@ -271,21 +267,20 @@ TEST_F(MemoryManagerTest, FreeListSorting) {
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Allocate blocks of various sizes to create fragmentation
   std::vector<size_t> allocSizes = {128, 64, 256, 32, 512};
   for (size_t size : allocSizes) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(size, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    ptrs.push_back(std::move(ptr));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(size, mode));
+    EXPECT_NE(ptr, nullptr);
+    ptrs.push_back(ptr);
   }
 
   // Free some blocks in random order to test sorting
   std::vector<int> freeOrder = {1, 3, 0}; // Free 64, 32, 128 byte blocks
   for (int idx : freeOrder) {
-    EXPECT_NO_ERR(freeList.free(ptrs[idx].ptr, ptrs[idx].mode));
+    EXPECT_NO_ERR(freeList.free(ptrs[idx]));
   }
 
   // The free list should maintain blocks in sorted order
@@ -293,14 +288,13 @@ TEST_F(MemoryManagerTest, FreeListSorting) {
   // that subsequent allocations work correctly
 
   // Request small allocation - should get the 32-byte block
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, small_ptr,
-                freeList.allocate(16, mode));
-  EXPECT_NE(small_ptr.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, small_ptr, freeList.allocate(16, mode));
+  EXPECT_NE(small_ptr, nullptr);
 
   // Free remaining blocks
-  EXPECT_NO_ERR(freeList.free(ptrs[2].ptr, ptrs[2].mode)); // 256-byte block
-  EXPECT_NO_ERR(freeList.free(ptrs[4].ptr, ptrs[4].mode)); // 512-byte block
-  EXPECT_NO_ERR(freeList.free(small_ptr.ptr, small_ptr.mode));
+  EXPECT_NO_ERR(freeList.free(ptrs[2])); // 256-byte block
+  EXPECT_NO_ERR(freeList.free(ptrs[4])); // 512-byte block
+  EXPECT_NO_ERR(freeList.free(small_ptr));
 }
 
 TEST_F(MemoryManagerTest, FreeListMerging) {
@@ -311,37 +305,32 @@ TEST_F(MemoryManagerTest, FreeListMerging) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Allocate several consecutive blocks
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
   for (int i = 0; i < 5; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(allocAlignment, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    ptrs.push_back(std::move(ptr));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocAlignment, mode));
+    EXPECT_NE(ptr, nullptr);
+    ptrs.push_back(ptr);
   }
 
   // Test merging with next block only
-  EXPECT_NO_ERR(freeList.free(ptrs[1].ptr, ptrs[1].mode)); // Free middle block
-  EXPECT_NO_ERR(freeList.free(ptrs[2].ptr,
-                              ptrs[2].mode)); // Free next block - should merge
+  EXPECT_NO_ERR(freeList.free(ptrs[1])); // Free middle block
+  EXPECT_NO_ERR(freeList.free(ptrs[2])); // Free next block - should merge
 
   // Test merging with previous block only
   EXPECT_NO_ERR(freeList.free(
-      ptrs[0].ptr,
-      ptrs[0].mode)); // Free previous block - should merge with merged block
+      ptrs[0])); // Free previous block - should merge with merged block
 
   // Test no merge scenario (isolated block)
-  EXPECT_NO_ERR(
-      freeList.free(ptrs[4].ptr, ptrs[4].mode)); // Free last block - isolated
+  EXPECT_NO_ERR(freeList.free(ptrs[4])); // Free last block - isolated
 
   // Test merging with both previous and next
-  EXPECT_NO_ERR(freeList.free(
-      ptrs[3].ptr, ptrs[3].mode)); // Should merge with both neighbors
+  EXPECT_NO_ERR(freeList.free(ptrs[3])); // Should merge with both neighbors
 
   // Verify we can allocate a large block that spans the merged area
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, large_ptr,
+  ASSIGN_NO_ERR(void *, large_ptr,
                 freeList.allocate(5 * allocAlignment - 64, mode));
-  EXPECT_NE(large_ptr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(large_ptr.ptr, large_ptr.mode));
+  EXPECT_NE(large_ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(large_ptr));
 }
 
 TEST_F(MemoryManagerTest, BlockSplittingAndReuse) {
@@ -353,39 +342,36 @@ TEST_F(MemoryManagerTest, BlockSplittingAndReuse) {
 
   // Allocate a large block
   size_t largeSize = 8 * allocAlignment;
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, large_ptr,
-                freeList.allocate(largeSize, mode));
-  EXPECT_NE(large_ptr.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, large_ptr, freeList.allocate(largeSize, mode));
+  EXPECT_NE(large_ptr, nullptr);
 
   // Free the large block
-  EXPECT_NO_ERR(freeList.free(large_ptr.ptr, large_ptr.mode));
+  EXPECT_NO_ERR(freeList.free(large_ptr));
 
   // Allocate smaller blocks that should split the large block
-  std::vector<MemoryManagerFreeList::Allocation> small_ptrs;
+  std::vector<void *> small_ptrs;
   size_t smallSize = allocAlignment;
   for (int i = 0; i < 4; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(smallSize, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(smallSize, mode));
+    EXPECT_NE(ptr, nullptr);
     small_ptrs.push_back(ptr);
   }
 
   // Verify blocks are properly aligned
-  for (MemoryManagerFreeList::Allocation &ptr : small_ptrs) {
-    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr.ptr);
+  for (void *ptr : small_ptrs) {
+    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
     EXPECT_EQ(addr % allocAlignment, 0);
   }
 
   // Free the small blocks
-  for (MemoryManagerFreeList::Allocation &ptr : small_ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : small_ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Should be able to allocate the original large block again
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, new_large_ptr,
-                freeList.allocate(largeSize, mode));
-  EXPECT_NE(new_large_ptr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(new_large_ptr.ptr, new_large_ptr.mode));
+  ASSIGN_NO_ERR(void *, new_large_ptr, freeList.allocate(largeSize, mode));
+  EXPECT_NE(new_large_ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(new_large_ptr));
 }
 
 TEST_F(MemoryManagerTest, MemoryReuse) {
@@ -396,40 +382,36 @@ TEST_F(MemoryManagerTest, MemoryReuse) {
 
   // Allocate and free a block multiple times to verify reuse
   {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(128, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(128, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Allocate the same size - verify reuse is working
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, second_ptr,
-                freeList.allocate(128, mode));
-  EXPECT_NE(second_ptr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(second_ptr.ptr, second_ptr.mode));
+  ASSIGN_NO_ERR(void *, second_ptr, freeList.allocate(128, mode));
+  EXPECT_NE(second_ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(second_ptr));
 
   // Test reuse with different sizes
   std::vector<size_t> sizes = {64, 128, 256, 512};
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   for (size_t size : sizes) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(size, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(size, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Free in reverse order
   for (auto it = ptrs.rbegin(); it != ptrs.rend(); ++it) {
-    EXPECT_NO_ERR(freeList.free(it->ptr, it->mode));
+    EXPECT_NO_ERR(freeList.free(*it));
   }
 
   // Allocate again in same order - verify no memory leaks
   for (size_t size : sizes) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(size, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(size, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -441,37 +423,35 @@ TEST_F(MemoryManagerTest, FragmentationHandling) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Create a fragmentation pattern
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Allocate 10 blocks
   for (int i = 0; i < 10; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(allocAlignment, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocAlignment, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Free every other block to create fragmentation
   for (int i = 1; i < 10; i += 2) {
-    EXPECT_NO_ERR(freeList.free(ptrs[i].ptr, ptrs[i].mode));
+    EXPECT_NO_ERR(freeList.free(ptrs[i]));
   }
 
   // Try to allocate blocks that fit in the gaps
-  std::vector<MemoryManagerFreeList::Allocation> gap_ptrs;
+  std::vector<void *> gap_ptrs;
   for (int i = 0; i < 4; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(allocAlignment / 2, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocAlignment / 2, mode));
+    EXPECT_NE(ptr, nullptr);
     gap_ptrs.push_back(ptr);
   }
 
   // Clean up remaining blocks
   for (int i = 0; i < 10; i += 2) {
-    EXPECT_NO_ERR(freeList.free(ptrs[i].ptr, ptrs[i].mode));
+    EXPECT_NO_ERR(freeList.free(ptrs[i]));
   }
 
-  for (MemoryManagerFreeList::Allocation &ptr : gap_ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : gap_ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -491,10 +471,9 @@ TEST_F(MemoryManagerTest, ConfigurationVariations) {
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
     // Should be able to allocate with different configuration
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(1024, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Test small chunk percentage
@@ -510,10 +489,9 @@ TEST_F(MemoryManagerTest, ConfigurationVariations) {
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
     // Should still work with small chunk size
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(512, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(512, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -522,26 +500,25 @@ TEST_F(MemoryManagerTest, ChunkAllocationBehavior) {
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Allocate many blocks to potentially trigger multiple chunk allocations
   for (int i = 0; i < 50; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(1024, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Verify all allocations are properly aligned
   size_t allocAlignment = device->allocationAlignment();
-  for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr.ptr);
+  for (void *ptr : ptrs) {
+    uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
     EXPECT_EQ(addr % allocAlignment, 0);
   }
 
   // Free all blocks
-  for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -554,22 +531,20 @@ TEST_F(MemoryManagerTest, LargeAllocationHandling) {
   // Try to allocate a very large block that might exceed chunk size
   // This tests the heuristics for chunk size growth
   size_t largeSize = 16 * 1024; // 16KB
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, largePtr,
-                freeList.allocate(largeSize, mode));
-  EXPECT_NE(largePtr.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, large_ptr, freeList.allocate(largeSize, mode));
+  EXPECT_NE(large_ptr, nullptr);
 
   // Verify alignment
   size_t allocAlignment = device->allocationAlignment();
-  uintptr_t addr = reinterpret_cast<uintptr_t>(largePtr.ptr);
+  uintptr_t addr = reinterpret_cast<uintptr_t>(large_ptr);
   EXPECT_EQ(addr % allocAlignment, 0);
 
-  EXPECT_NO_ERR(freeList.free(largePtr.ptr, largePtr.mode));
+  EXPECT_NO_ERR(freeList.free(large_ptr));
 
   // After large allocation, subsequent smaller allocations should still work
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, smallPtr,
-                freeList.allocate(128, mode));
-  EXPECT_NE(smallPtr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(smallPtr.ptr, smallPtr.mode));
+  ASSIGN_NO_ERR(void *, small_ptr, freeList.allocate(128, mode));
+  EXPECT_NE(small_ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(small_ptr));
 }
 
 TEST_F(MemoryManagerTest, AllocationModeHandling) {
@@ -581,10 +556,9 @@ TEST_F(MemoryManagerTest, AllocationModeHandling) {
                                           Device::AllocMode::HOST};
 
   for (Device::AllocMode mode : modes) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(256, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(256, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -597,23 +571,21 @@ TEST_F(MemoryManagerTest, BoundaryConditions) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Test minimum allocation (1 byte)
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, minPtr,
-                freeList.allocate(1, mode));
-  EXPECT_NE(minPtr.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, min_ptr, freeList.allocate(1, mode));
+  EXPECT_NE(min_ptr, nullptr);
 
   // Should still be aligned
   size_t allocAlignment = device->allocationAlignment();
-  uintptr_t addr = reinterpret_cast<uintptr_t>(minPtr.ptr);
+  uintptr_t addr = reinterpret_cast<uintptr_t>(min_ptr);
   EXPECT_EQ(addr % allocAlignment, 0);
 
-  EXPECT_NO_ERR(freeList.free(minPtr.ptr, minPtr.mode));
+  EXPECT_NO_ERR(freeList.free(min_ptr));
 
   // Test large allocation
   size_t largeSize = 64 * 1024; // 64KB
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, largePtr,
-                freeList.allocate(largeSize, mode));
-  EXPECT_NE(largePtr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(largePtr.ptr, largePtr.mode));
+  ASSIGN_NO_ERR(void *, large_ptr, freeList.allocate(largeSize, mode));
+  EXPECT_NE(large_ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(large_ptr));
 }
 
 TEST_F(MemoryManagerTest, MemoryPattern) {
@@ -623,12 +595,11 @@ TEST_F(MemoryManagerTest, MemoryPattern) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Allocate a block and write/read pattern to verify memory is usable
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                freeList.allocate(1024, mode));
-  EXPECT_NE(ptr.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+  EXPECT_NE(ptr, nullptr);
 
   // Write a pattern to the allocated memory
-  uint8_t *bytes = static_cast<uint8_t *>(ptr.ptr);
+  uint8_t *bytes = static_cast<uint8_t *>(ptr);
   for (int i = 0; i < 1024; ++i) {
     bytes[i] = static_cast<uint8_t>(i & 0xFF);
   }
@@ -638,7 +609,7 @@ TEST_F(MemoryManagerTest, MemoryPattern) {
     EXPECT_EQ(bytes[i], static_cast<uint8_t>(i & 0xFF));
   }
 
-  EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  EXPECT_NO_ERR(freeList.free(ptr));
 }
 
 TEST_F(MemoryManagerTest, StressTestAllocation) {
@@ -649,14 +620,13 @@ TEST_F(MemoryManagerTest, StressTestAllocation) {
 
   // Stress test with rapid allocation/deallocation cycles
   for (int cycle = 0; cycle < 10; ++cycle) {
-    std::vector<MemoryManagerFreeList::Allocation> ptrs;
+    std::vector<void *> ptrs;
 
     // Allocate many blocks
     for (int i = 0; i < 20; ++i) {
       size_t size = 64 + (i * 32); // Varying sizes
-      ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                    freeList.allocate(size, mode));
-      EXPECT_NE(ptr.ptr, nullptr);
+      ASSIGN_NO_ERR(void *, ptr, freeList.allocate(size, mode));
+      EXPECT_NE(ptr, nullptr);
       ptrs.push_back(ptr);
     }
 
@@ -664,8 +634,8 @@ TEST_F(MemoryManagerTest, StressTestAllocation) {
     std::random_device rd;
     std::mt19937 g(rd());
     std::shuffle(ptrs.begin(), ptrs.end(), g);
-    for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-      EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    for (void *ptr : ptrs) {
+      EXPECT_NO_ERR(freeList.free(ptr));
     }
   }
 }
@@ -675,15 +645,14 @@ TEST_F(MemoryManagerTest, InvalidOperations) {
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   // Test free with nullptr (should succeed)
-  EXPECT_NO_ERR(freeList.free(nullptr, Device::AllocMode::SYNC));
+  EXPECT_NO_ERR(freeList.free(nullptr));
 
   // Test double free - allocate, free, then free again
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                freeList.allocate(256, mode));
-  EXPECT_NE(ptr.ptr, nullptr);
+  ASSIGN_NO_ERR(void *, ptr, freeList.allocate(256, mode));
+  EXPECT_NE(ptr, nullptr);
 
-  EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode)); // First free should succeed
+  EXPECT_NO_ERR(freeList.free(ptr)); // First free should succeed
 
   // Note: Double free would be undefined behavior, so we skip that test
   // as it may legitimately crash or have unpredictable behavior
@@ -717,10 +686,9 @@ TEST_F(MemoryManagerTest, ConfigurationLimits) {
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
     // Should still work with 100% chunk percentage
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(1024, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -732,23 +700,22 @@ TEST_F(MemoryManagerTest, SelfCheckValidation) {
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Perform operations that should trigger self-check validations
   for (int i = 0; i < 10; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(128 + i * 64, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(128 + i * 64, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Free in various patterns to exercise self-check
   for (int i = 1; i < 10; i += 2) {
-    EXPECT_NO_ERR(freeList.free(ptrs[i].ptr, ptrs[i].mode));
+    EXPECT_NO_ERR(freeList.free(ptrs[i]));
   }
 
   for (int i = 0; i < 10; i += 2) {
-    EXPECT_NO_ERR(freeList.free(ptrs[i].ptr, ptrs[i].mode));
+    EXPECT_NO_ERR(freeList.free(ptrs[i]));
   }
 
   // If self-check was working, we should reach here without assertions
@@ -764,10 +731,9 @@ TEST_F(MemoryManagerTest, LoggingOutput) {
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
     // Perform operations that would generate logs if enabled
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(1024, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Test with logging enabled
@@ -781,10 +747,9 @@ TEST_F(MemoryManagerTest, LoggingOutput) {
     const Device::AllocMode mode = Device::AllocMode::SYNC;
 
     // Operations that should generate log output
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(512, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(512, mode));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_NO_ERR(freeList.free(ptr));
 
     // Note: We can't easily verify log output in unit tests,
     // but we can ensure operations succeed with logging enabled
@@ -798,19 +763,18 @@ TEST_F(MemoryManagerTest, MemoryLeakDetection) {
     MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
     const Device::AllocMode mode = Device::AllocMode::SYNC;
-    std::vector<MemoryManagerFreeList::Allocation> ptrs;
+    std::vector<void *> ptrs;
 
     // Allocate multiple blocks
     for (int i = 0; i < 20; ++i) {
-      ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                    freeList.allocate(256 + i * 32, mode));
-      EXPECT_NE(ptr.ptr, nullptr);
+      ASSIGN_NO_ERR(void *, ptr, freeList.allocate(256 + i * 32, mode));
+      EXPECT_NE(ptr, nullptr);
       ptrs.push_back(ptr);
     }
 
     // Free all blocks to prevent leaks
-    for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-      EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    for (void *ptr : ptrs) {
+      EXPECT_NO_ERR(freeList.free(ptr));
     }
 
     // Device destructor should clean up all chunks when it goes out of scope
@@ -826,33 +790,31 @@ TEST_F(MemoryManagerTest, DescriptorManagement) {
   const Device::AllocMode mode = Device::AllocMode::SYNC;
 
   // Test descriptor allocation and recycling through multiple allocation cycles
-  std::vector<MemoryManagerFreeList::Allocation> cycle1_ptrs;
-  std::vector<MemoryManagerFreeList::Allocation> cycle2_ptrs;
+  std::vector<void *> cycle1_ptrs;
+  std::vector<void *> cycle2_ptrs;
 
   // First allocation cycle
   for (int i = 0; i < 15; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(128, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(128, mode));
+    EXPECT_NE(ptr, nullptr);
     cycle1_ptrs.push_back(ptr);
   }
 
   // Free all from first cycle - should recycle descriptors
-  for (MemoryManagerFreeList::Allocation &ptr : cycle1_ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : cycle1_ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Second allocation cycle - should reuse descriptors
   for (int i = 0; i < 15; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(256, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(256, mode));
+    EXPECT_NE(ptr, nullptr);
     cycle2_ptrs.push_back(ptr);
   }
 
   // Clean up second cycle
-  for (MemoryManagerFreeList::Allocation &ptr : cycle2_ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : cycle2_ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -870,7 +832,7 @@ TEST_F(MemoryManagerTest, MaxSizeHandling) {
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Try to allocate many blocks to approach cache limits
   for (int i = 0; i < 100; ++i) {
@@ -879,14 +841,14 @@ TEST_F(MemoryManagerTest, MaxSizeHandling) {
       // Expected to eventually hit limits or fallback to device allocation
       break;
     }
-    MemoryManagerFreeList::Allocation ptr = result.takeValue();
-    EXPECT_NE(ptr.ptr, nullptr);
+    void *ptr = result.takeValue();
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
   // Clean up allocated blocks
-  for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -913,7 +875,7 @@ TEST_F(MemoryManagerTest, MemoryPressure) {
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> large_ptrs;
+  std::vector<void *> large_ptrs;
 
   // Allocate increasingly large blocks to simulate memory pressure
   for (int i = 1; i <= 10; ++i) {
@@ -925,21 +887,20 @@ TEST_F(MemoryManagerTest, MemoryPressure) {
       break;
     }
 
-    MemoryManagerFreeList::Allocation ptr = result.takeValue();
-    EXPECT_NE(ptr.ptr, nullptr);
+    void *ptr = result.takeValue();
+    EXPECT_NE(ptr, nullptr);
     large_ptrs.push_back(ptr);
   }
 
   // Free large blocks to relieve pressure
-  for (MemoryManagerFreeList::Allocation &ptr : large_ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : large_ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Should be able to allocate normally again after freeing
-  ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, recovery_ptr,
-                freeList.allocate(1024, mode));
-  EXPECT_NE(recovery_ptr.ptr, nullptr);
-  EXPECT_NO_ERR(freeList.free(recovery_ptr.ptr, recovery_ptr.mode));
+  ASSIGN_NO_ERR(void *, recovery_ptr, freeList.allocate(1024, mode));
+  EXPECT_NE(recovery_ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(recovery_ptr));
 }
 
 // Integration Tests
@@ -1073,8 +1034,7 @@ TEST_F(MemoryManagerTest, ConcurrentAllocations) {
   const int allocationsPerThread = 10;
 
   std::vector<std::thread> threads;
-  std::vector<std::vector<MemoryManagerFreeList::Allocation>> threadAllocs(
-      numThreads);
+  std::vector<std::vector<void *>> threadPtrs(numThreads);
   std::atomic<int> successCount{0};
 
   // Launch multiple threads doing concurrent allocations
@@ -1083,9 +1043,9 @@ TEST_F(MemoryManagerTest, ConcurrentAllocations) {
       for (int i = 0; i < allocationsPerThread; ++i) {
         auto result = freeList.allocate(256 + i * 64, mode);
         if (!result.isError()) {
-          MemoryManagerFreeList::Allocation alloc = result.takeValue();
-          if (alloc.ptr != nullptr) {
-            threadAllocs[t].push_back(alloc);
+          void *ptr = result.takeValue();
+          if (ptr != nullptr) {
+            threadPtrs[t].push_back(ptr);
             ++successCount;
           }
         }
@@ -1103,8 +1063,8 @@ TEST_F(MemoryManagerTest, ConcurrentAllocations) {
 
   // Free all allocated blocks
   for (int t = 0; t < numThreads; ++t) {
-    for (MemoryManagerFreeList::Allocation &alloc : threadAllocs[t]) {
-      EXPECT_NO_ERR(freeList.free(alloc.ptr, alloc.mode));
+    for (void *ptr : threadPtrs[t]) {
+      EXPECT_NO_ERR(freeList.free(ptr));
     }
   }
 }
@@ -1117,11 +1077,10 @@ TEST_F(MemoryManagerTest, ConcurrentFrees) {
   const int numBlocks = 20;
 
   // First, allocate blocks sequentially
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
   for (int i = 0; i < numBlocks; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(512, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(512, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
@@ -1133,7 +1092,7 @@ TEST_F(MemoryManagerTest, ConcurrentFrees) {
   for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&, t]() {
       for (int i = t; i < numBlocks; i += numThreads) {
-        auto result = freeList.free(ptrs[i].ptr, ptrs[i].mode);
+        auto result = freeList.free(ptrs[i]);
         if (!result.isError()) {
           ++freeCount;
         }
@@ -1160,35 +1119,35 @@ TEST_F(MemoryManagerTest, MixedConcurrentOperations) {
 
   std::vector<std::thread> threads;
   std::mutex ptrsMutex;
-  std::vector<MemoryManagerFreeList::Allocation> sharedPtrs;
+  std::vector<void *> sharedPtrs;
 
   // Launch threads doing mixed alloc/free operations
   for (int t = 0; t < numThreads; ++t) {
     threads.emplace_back([&]() {
-      std::vector<MemoryManagerFreeList::Allocation> localPtrs;
+      std::vector<void *> localPtrs;
 
       for (int i = 0; i < operationsPerThread; ++i) {
         if (i % 3 == 0 && !localPtrs.empty()) {
           // Free a local pointer
-          MemoryManagerFreeList::Allocation ptr = localPtrs.back();
+          void *ptr = localPtrs.back();
           localPtrs.pop_back();
-          auto freeResult = freeList.free(ptr.ptr, ptr.mode);
+          auto freeResult = freeList.free(ptr);
           (void)freeResult; // Ignore result
         } else if (i % 5 == 0) {
           // Try to get a pointer from shared pool and free it
           std::lock_guard<std::mutex> lock(ptrsMutex);
           if (!sharedPtrs.empty()) {
-            MemoryManagerFreeList::Allocation ptr = sharedPtrs.back();
+            void *ptr = sharedPtrs.back();
             sharedPtrs.pop_back();
-            auto freeResult = freeList.free(ptr.ptr, ptr.mode);
+            auto freeResult = freeList.free(ptr);
             (void)freeResult; // Ignore result
           }
         } else {
           // Allocate new pointer
           auto result = freeList.allocate(128 + (i % 8) * 64, mode);
           if (!result.isError()) {
-            MemoryManagerFreeList::Allocation ptr = result.takeValue();
-            if (ptr.ptr != nullptr) {
+            void *ptr = result.takeValue();
+            if (ptr != nullptr) {
               if (i % 4 == 0) {
                 // Add to shared pool
                 std::lock_guard<std::mutex> lock(ptrsMutex);
@@ -1203,8 +1162,9 @@ TEST_F(MemoryManagerTest, MixedConcurrentOperations) {
       }
 
       // Clean up remaining local pointers
-      for (MemoryManagerFreeList::Allocation &ptr : localPtrs) {
-        [[maybe_unused]] auto freeResult = freeList.free(ptr.ptr, ptr.mode);
+      for (void *ptr : localPtrs) {
+        auto freeResult = freeList.free(ptr);
+        (void)freeResult; // Ignore result
       }
     });
   }
@@ -1215,8 +1175,8 @@ TEST_F(MemoryManagerTest, MixedConcurrentOperations) {
   }
 
   // Clean up any remaining shared pointers
-  for (MemoryManagerFreeList::Allocation &ptr : sharedPtrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : sharedPtrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 }
 
@@ -1235,11 +1195,10 @@ TEST_F(MemoryManagerTest, AllocationSpeed) {
 
   // Measure cached allocation performance
   auto startCached = std::chrono::high_resolution_clock::now();
-  std::vector<MemoryManagerFreeList::Allocation> cachedPtrs;
+  std::vector<void *> cachedPtrs;
 
   for (int i = 0; i < numAllocations; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(allocSize, mode));
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocSize, mode));
     cachedPtrs.push_back(ptr);
   }
 
@@ -1248,8 +1207,8 @@ TEST_F(MemoryManagerTest, AllocationSpeed) {
       endCached - startCached);
 
   // Clean up cached allocations
-  for (MemoryManagerFreeList::Allocation &ptr : cachedPtrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : cachedPtrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Measure direct device allocation performance
@@ -1302,7 +1261,7 @@ TEST_F(MemoryManagerTest, FragmentationMeasurement) {
   };
 
   for (const auto &test : tests) {
-    std::vector<MemoryManagerFreeList::Allocation> ptrs;
+    std::vector<void *> ptrs;
 
     // Allocate according to pattern
     for (size_t size : test.allocSizes) {
@@ -1314,30 +1273,28 @@ TEST_F(MemoryManagerTest, FragmentationMeasurement) {
 
     // Free according to pattern to create fragmentation
     for (int idx : test.freePattern) {
-      if (idx < static_cast<int>(ptrs.size()) && ptrs[idx].ptr != nullptr) {
-        EXPECT_NO_ERR(freeList.free(ptrs[idx].ptr, ptrs[idx].mode));
-        ptrs[idx].ptr = nullptr;
+      if (idx < static_cast<int>(ptrs.size()) && ptrs[idx] != nullptr) {
+        EXPECT_NO_ERR(freeList.free(ptrs[idx]));
+        ptrs[idx] = nullptr;
       }
     }
 
     // Try to allocate a large block that might not fit due to fragmentation
     auto largeResult = freeList.allocate(8192, mode);
     bool largeAllocSucceeded = !largeResult.isError();
-    MemoryManagerFreeList::Allocation largePtr =
-        largeAllocSucceeded ? largeResult.takeValue()
-                            : MemoryManagerFreeList::Allocation();
+    void *largePtr = largeAllocSucceeded ? largeResult.takeValue() : nullptr;
 
     std::cerr << "Fragmentation test '" << test.name << "': Large allocation "
               << (largeAllocSucceeded ? "succeeded" : "failed") << "\n";
 
     // Clean up remaining allocations
-    if (largePtr.ptr != nullptr) {
-      EXPECT_NO_ERR(freeList.free(largePtr.ptr, largePtr.mode));
+    if (largePtr) {
+      EXPECT_NO_ERR(freeList.free(largePtr));
     }
 
-    for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-      if (ptr.ptr != nullptr) {
-        EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    for (void *ptr : ptrs) {
+      if (ptr != nullptr) {
+        EXPECT_NO_ERR(freeList.free(ptr));
       }
     }
   }
@@ -1355,7 +1312,7 @@ TEST_F(MemoryManagerTest, CacheEfficiency) {
 
   int cacheHits = 0;
   int cacheMisses = 0;
-  std::vector<MemoryManagerFreeList::Allocation> activePtrs;
+  std::vector<void *> activePtrs;
   std::mt19937 rng(12345);
 
   // Simulate realistic allocation/free patterns
@@ -1369,7 +1326,7 @@ TEST_F(MemoryManagerTest, CacheEfficiency) {
       auto result = freeList.allocate(size, mode);
 
       if (!result.isError()) {
-        MemoryManagerFreeList::Allocation ptr = result.takeValue();
+        void *ptr = result.takeValue();
         activePtrs.push_back(ptr);
 
         // Heuristic: smaller allocations more likely to be cache hits
@@ -1382,9 +1339,10 @@ TEST_F(MemoryManagerTest, CacheEfficiency) {
     } else if (!activePtrs.empty()) {
       // Free an existing block
       size_t idx = rng() % activePtrs.size();
-      MemoryManagerFreeList::Allocation &ptr = activePtrs[idx];
-      EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+      void *ptr = activePtrs[idx];
       activePtrs.erase(activePtrs.begin() + idx);
+
+      EXPECT_NO_ERR(freeList.free(ptr));
     }
   }
 
@@ -1405,8 +1363,8 @@ TEST_F(MemoryManagerTest, CacheEfficiency) {
   std::cerr << "  Utilization rate: " << (utilizationRate * 100) << "%\n";
 
   // Clean up remaining allocations
-  for (MemoryManagerFreeList::Allocation &ptr : activePtrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : activePtrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Basic sanity checks
@@ -1445,7 +1403,7 @@ TEST_F(MemoryManagerTest, ScalingBehavior) {
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    std::vector<MemoryManagerFreeList::Allocation> ptrs;
+    std::vector<void *> ptrs;
     int successfulOps = 0;
 
     // Perform allocation operations until we hit limits
@@ -1473,8 +1431,8 @@ TEST_F(MemoryManagerTest, ScalingBehavior) {
     std::cerr << "  Ops/second: " << opsPerSecond << "\n";
 
     // Clean up
-    for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-      EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+    for (void *ptr : ptrs) {
+      EXPECT_NO_ERR(freeList.free(ptr));
     }
 
     // Verify we achieved reasonable performance
@@ -1795,13 +1753,12 @@ TEST_F(MemoryManagerTest, GetMemoryInfoAccuracy) {
   size_t initialFree = initialInfo.free;
 
   const Device::AllocMode mode = Device::AllocMode::SYNC;
-  std::vector<MemoryManagerFreeList::Allocation> ptrs;
+  std::vector<void *> ptrs;
 
   // Allocate some blocks
   for (int i = 0; i < 3; ++i) {
-    ASSIGN_NO_ERR(MemoryManagerFreeList::Allocation, ptr,
-                  freeList.allocate(1024, mode));
-    EXPECT_NE(ptr.ptr, nullptr);
+    ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, mode));
+    EXPECT_NE(ptr, nullptr);
     ptrs.push_back(ptr);
   }
 
@@ -1813,8 +1770,8 @@ TEST_F(MemoryManagerTest, GetMemoryInfoAccuracy) {
             initialFree); // Free should decrease or stay same
 
   // Free the blocks
-  for (MemoryManagerFreeList::Allocation &ptr : ptrs) {
-    EXPECT_NO_ERR(freeList.free(ptr.ptr, ptr.mode));
+  for (void *ptr : ptrs) {
+    EXPECT_NO_ERR(freeList.free(ptr));
   }
 
   // Get memory info after freeing

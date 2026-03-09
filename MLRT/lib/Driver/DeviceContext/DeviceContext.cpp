@@ -363,20 +363,19 @@ void Device::clearFunctionCache() const {
 // ===== DeviceBuffer ===== //
 //
 DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
-                           Device::AllocMode allocMode)
+                           bool isHost)
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
-      byteSize_(byteSize), allocMode_(allocMode) {}
+      byteSize_(byteSize), isHost_(isHost) {}
 DeviceBuffer::DeviceBuffer(DeviceContext &context, DeviceBuffer &parent,
-                           void *ptr, size_t byteSize,
-                           Device::AllocMode allocMode)
+                           void *ptr, size_t byteSize, bool isHost)
     : context_(DeviceContextRef::copy(&context)),
       parent_(DeviceBufferRef::copy(&parent)), ptr_(ptr), byteSize_(byteSize),
-      allocMode_(allocMode) {}
+      isHost_(isHost) {}
 // TODO: Remove the V1 compatibility.
 DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
-                           Device::AllocMode allocMode, bool owning)
+                           bool isHost, bool owning)
     : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
-      byteSize_(byteSize), allocMode_(allocMode), owning_(owning) {}
+      byteSize_(byteSize), isHost_(isHost), owning_(owning) {}
 
 MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (!owning_) {
@@ -404,15 +403,14 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   // \DEBUGGING AID
   RECORD_PENDING_ERROR(ctx, ctx.pollPendingEvents());
   if (!isHost()) {
-    RECORD_PENDING_ERROR(ctx, ctx.freeList().free(ptr_, allocMode_));
+    RECORD_PENDING_ERROR(ctx, ctx.freeList().free(ptr_));
   } else {
-    assert(allocMode_ == Device::AllocMode::HOST);
     RECORD_PENDING_ERROR(
-        ctx, ctx.enqueueEventHandler([contextRef = DeviceContextRef::copy(&ctx),
-                                      ptr = ptr_, allocMode = allocMode_]() {
-          RECORD_PENDING_ERROR(*contextRef,
-                               contextRef->hostFreeList().free(ptr, allocMode));
-        }));
+        ctx, ctx.enqueueEventHandler(
+                 [contextRef = DeviceContextRef::copy(&ctx), ptr = ptr_]() {
+                   RECORD_PENDING_ERROR(*contextRef,
+                                        contextRef->hostFreeList().free(ptr));
+                 }));
   }
 }
 
@@ -438,9 +436,7 @@ MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() {
 
 MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
-MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const {
-  return allocMode_ == Device::AllocMode::HOST;
-}
+MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
 
 void DeviceBuffer::setDestructorFn(llvm::unique_function<void()> destructor) {
   destructorFn_ = std::move(destructor);
@@ -488,7 +484,7 @@ DeviceBuffer::createSubBuffer(size_t byteOffset, size_t byteSize) {
     RETURN_ERROR("offset, len and elem_size are out of range");
   }
   return DeviceBufferRef::take(new DeviceBuffer(
-      context(), *this, origPtr + byteOffset, byteSize, allocMode_));
+      context(), *this, origPtr + byteOffset, byteSize, isHost()));
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess
@@ -1134,13 +1130,13 @@ DeviceContext::createHostBuffer(size_t byteSize) {
 MODULAR_CXX_EXPORT DeviceBufferRef
 DeviceContext::createBufferOwning(void *ptr, size_t byteSize, bool owning) {
   return DeviceBufferRef::take(
-      new DeviceBuffer(*this, ptr, byteSize, Device::AllocMode::ASYNC, owning));
+      new DeviceBuffer(*this, ptr, byteSize, /*isHost=*/false, owning));
 }
 
 MODULAR_CXX_EXPORT DeviceBufferRef
 DeviceContext::createHostBufferOwning(void *ptr, size_t byteSize, bool owning) {
   return DeviceBufferRef::take(
-      new DeviceBuffer(*this, ptr, byteSize, Device::AllocMode::HOST, owning));
+      new DeviceBuffer(*this, ptr, byteSize, /*isHost=*/true, owning));
 }
 
 ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
@@ -1154,27 +1150,27 @@ ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
     if (ErrorOrSuccess err = memAlloc(&ptr, byteSize, mode))
       return err.takeError();
 
-    auto result =
-        DeviceBufferRef::take(new DeviceBuffer(*this, ptr, byteSize, mode));
+    auto result = DeviceBufferRef::take(new DeviceBuffer(
+        *this, ptr, byteSize, mode == Device::AllocMode::HOST));
 
     result->setDestructorFn([ptr, mode, ctx = DeviceContextRef::copy(this)]() {
-      RECORD_PENDING_ERROR(*ctx, ctx->memFree(ptr, mode));
+      RECORD_PENDING_ERROR(
+          *ctx, ctx->memFree(ptr, /*isHost=*/mode == Device::AllocMode::HOST));
     });
 
     return result;
   } else {
     // Allocate from the correct memory manager.
-    ErrorOr<MemoryManagerFreeList::Allocation> errPtr =
+    ErrorOr<void *> errPtr =
         ((mode == Device::AllocMode::HOST) ? hostFreeList() : freeList())
             .allocate(byteSize, mode);
     if (errPtr.isError()) {
       return errPtr.takeError();
     }
-    MemoryManagerFreeList::Allocation allocation = errPtr.takeValue();
-    ptr = allocation.ptr;
-    mode = allocation.mode;
+    ptr = errPtr.takeValue();
   }
-  return DeviceBufferRef::take(new DeviceBuffer(*this, ptr, byteSize, mode));
+  return DeviceBufferRef::take(
+      new DeviceBuffer(*this, ptr, byteSize, mode == Device::AllocMode::HOST));
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
@@ -1216,7 +1212,7 @@ DeviceContext::memmapFile(const std::filesystem::path &filename) {
   auto [ptr, size, mmap] = result.takeValue();
 
   auto buffer = RCRef<Driver::DeviceBuffer>::take(
-      new Driver::DeviceBuffer(*this, ptr, size, Device::AllocMode::ASYNC,
+      new Driver::DeviceBuffer(*this, ptr, size, /*isHost=*/false,
                                /*owning*/ true));
 
   // Set destructor on the buffer to keep the mmap alive.

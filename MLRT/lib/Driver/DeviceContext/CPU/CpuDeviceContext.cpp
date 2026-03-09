@@ -211,7 +211,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, Device::AllocMode mode) {
+ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
   M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
   return success();

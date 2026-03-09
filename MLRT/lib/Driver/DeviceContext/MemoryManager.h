@@ -157,12 +157,6 @@ private:
 
 class MemoryManagerFreeList {
 public:
-  struct Allocation {
-    void *ptr = nullptr;
-    size_t size = 0;
-    Device::AllocMode mode;
-  };
-
   MemoryManagerFreeList(DeviceContext *context, MemoryManager &memoryManager,
                         MemoryManagerFreeList *parent);
   ~MemoryManagerFreeList();
@@ -174,8 +168,8 @@ public:
   // cannot be serviced by the `MemoryManager` due to allocation size or cache
   // capacity, then the allocation request gets transparently forwarded to the
   // associated `DeviceContext`.
-  ErrorOr<Allocation> allocate(size_t size, Device::AllocMode mode);
-  ErrorOrSuccess free(void *buf, Device::AllocMode mode);
+  ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
+  ErrorOrSuccess free(void *buf);
 
   bool empty();
 

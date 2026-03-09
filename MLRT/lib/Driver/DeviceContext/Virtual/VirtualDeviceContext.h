@@ -179,7 +179,7 @@ public:
 private:
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;
-  ErrorOrSuccess memFree(void *ptr, Device::AllocMode mode) override;
+  ErrorOrSuccess memFree(void *ptr, bool isHost) override;
 
   void *driverContext() const override;
 
