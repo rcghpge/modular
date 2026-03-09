@@ -22,13 +22,11 @@ extern "C" {
  *         is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_context_create(M_driver_driver_t driver,
-                                          M_driver_device_t device,
+M_driver_status_t M_driver_context_create(M_driver_device_t device,
                                           M_driver_context_t *context);
 
 typedef M_driver_status_t (*M_driver_context_create_func_ptr_t)(
-    M_driver_driver_t driver, M_driver_device_t device,
-    M_driver_context_t *context);
+    M_driver_device_t device, M_driver_context_t *context);
 
 /**
  * Destroy an active context for a device.
@@ -39,11 +37,10 @@ typedef M_driver_status_t (*M_driver_context_create_func_ptr_t)(
  *         destroyed.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_context_destroy(M_driver_driver_t driver,
-                                           M_driver_context_t context);
+M_driver_status_t M_driver_context_destroy(M_driver_context_t context);
 
 typedef M_driver_status_t (*M_driver_context_destroy_func_ptr_t)(
-    M_driver_driver_t driver, M_driver_context_t context);
+    M_driver_context_t context);
 
 #ifdef __cplusplus
 }

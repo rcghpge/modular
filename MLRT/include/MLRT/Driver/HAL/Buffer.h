@@ -18,8 +18,6 @@ namespace M::Driver::HAL {
 
 class Context;
 
-struct BufferImpl;
-
 class Buffer : public ReferenceCounted<Buffer> {
 public:
   enum class AllocMode {

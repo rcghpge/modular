@@ -14,7 +14,7 @@ namespace M::Driver::HAL {
 Context::~Context() {
   // Functions must be unloaded while the context is still valid.
   funcCache.clear();
-  device_->driver->plugin.context_destroy(device_->driver->handle, handle);
+  device_->driver->plugin.context_destroy(handle);
 }
 
 ErrorOr<BufferRef> Context::allocBuffer(size_t byteSize,

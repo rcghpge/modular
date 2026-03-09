@@ -18,8 +18,8 @@ ErrorOr<int64_t> Device::id() const { return id_; }
 
 ErrorOr<ContextRef> Device::createContext() {
   M_driver_context_t contextHandle;
-  if (M_driver_status_t status = driver->plugin.context_create(
-          driver->handle, handle, &contextHandle)) {
+  if (M_driver_status_t status =
+          driver->plugin.context_create(handle, &contextHandle)) {
     return Error(driver->getStatusMessage(status));
   }
   Context *context = new (std::nothrow) Context(this, contextHandle);

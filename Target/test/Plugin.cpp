@@ -148,13 +148,13 @@ TEST_F(DriverPluginTest, DeviceContext) {
     M_driver_device_t device = nullptr;
     RUN(device_get(driver, i, &device));
     M_driver_context_t context = nullptr;
-    DO_TEST(context_create(driver, device, &context));
+    DO_TEST(context_create(device, &context));
     cerr << "Created context for device 0x" << std::hex << device << ": 0x"
          << context << endl;
     contexts.push_back(context);
   }
   for (int64_t i = deviceCount - 1; i >= 0; i--) {
-    DO_TEST(context_destroy(driver, contexts[i]));
+    DO_TEST(context_destroy(contexts[i]));
     cerr << "Destroyed context 0x" << contexts[i] << endl;
   }
 }
@@ -172,14 +172,14 @@ public:
       M_driver_device_t device = nullptr;
       EXPECT_SUCCESS(device_get(driver, i, &device));
       M_driver_context_t context = nullptr;
-      ASSERT_SUCCESS(context_create(driver, device, &context));
+      ASSERT_SUCCESS(context_create(device, &context));
       contexts.push_back(context);
     }
   }
 
   void TearDown() override {
     for (M_driver_context_t context : contexts) {
-      EXPECT_SUCCESS(context_destroy(driver, context));
+      EXPECT_SUCCESS(context_destroy(context));
     }
     DriverPluginTest::TearDown();
   }

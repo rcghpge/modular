@@ -12,7 +12,9 @@ modular_cc_binary(
     srcs = glob([
         "lib/CUDA/*.cpp",
         "lib/CUDA/*.h",
-        "lib/CUDA/*.inc",
+        "lib/CUDA/Loader/*.cpp",
+        "lib/CUDA/Loader/*.h",
+        "lib/CUDA/Loader/*.inc",
     ]),
     linkshared = True,
     linkstatic = False,
@@ -25,6 +27,7 @@ modular_cc_binary(
         "//bazel/third-party:CUDAHeaders",
         "//bazel/third-party:NVMLHeaders",
         "@llvm-project//llvm:Support",
+        "@tl_expected",
     ],
 )
 

@@ -5,9 +5,6 @@
 //===----------------------------------------------------------------------===//
 //
 #include "Driver.h"
-#include "Error.h"
-#include "HAL/M_driver_api.h"
-#include "llvm/ADT/StringRef.h"
 
 M_driver_driver::~M_driver_driver() {
   rawCuda.unload();
@@ -19,60 +16,34 @@ M_driver_status_t M_driver_driver::destroy(M_driver_driver_t driver) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_device *M_driver_driver::findDevice(CUdevice id) {
-  for (auto &dev : devices) {
-    if (dev.deviceId == id)
-      return &dev;
-  }
-  return nullptr;
-}
-
-M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
+DriverResult<M_driver_driver_t> M_driver_driver::create() {
   auto nvml = NVML::load();
   if (!nvml)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
 
   if (nvml->nvmlInit_v2() != NVML_SUCCESS) {
     nvml->unload();
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
   }
 
   auto cuda = CUDALoader::load();
   if (!cuda) {
     nvml->unload();
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
   }
 
   if (cuda->cuInit(0) != CUDA_SUCCESS) {
     cuda->unload();
     nvml->unload();
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
   }
 
-  auto *driver = new M_driver_driver(std::move(*cuda), std::move(*nvml));
-
-  // Reserve upfront so Device pointers (used as handles) stay stable.
-  unsigned int deviceCount = 0;
-  if (driver->nvml().nvmlDeviceGetCount_v2(&deviceCount) != NVML_SUCCESS) {
-    delete driver;
-    return M_DRIVER_STATUS_NO_DEVICES;
-  }
-  driver->devices.reserve(deviceCount);
-
-  *outDriver = driver;
-  return M_DRIVER_STATUS_SUCCESS;
+  return new M_driver_driver(std::move(*cuda), std::move(*nvml));
 }
 
-M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
-  return M_driver_driver::destroy(handle);
-}
-
-M_driver_status_t M_driver_property([[maybe_unused]] M_driver_driver_t handle,
-                                    const char *property_name, void *value) {
-  llvm::StringRef name(property_name);
-  if (name == M_DRIVER_PROPERTY_API)
-    *static_cast<const char **>(value) = "CUDA";
-  else
-    return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
-  return M_DRIVER_STATUS_SUCCESS;
+DriverResult<int64_t> M_driver_driver::deviceCount() {
+  unsigned int nvmlCount = 0;
+  if (rawNvml.nvmlDeviceGetCount_v2(&nvmlCount) != NVML_SUCCESS)
+    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);
+  return static_cast<int64_t>(nvmlCount);
 }
