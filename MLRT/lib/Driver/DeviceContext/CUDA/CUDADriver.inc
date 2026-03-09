@@ -73,6 +73,8 @@ CUDA_FUNC(cuGraphDestroy, Result, CUgraph)
 CUDA_FUNC(cuGraphExecDestroy, Result, CUgraphExec)
 CUDA_FUNC(cuGraphLaunch, Result, CUgraphExec, CUstream)
 CUDA_FUNC(cuGraphDebugDotPrint, Result, CUgraph, const char *, unsigned int)
+CUDA_FUNC(cuDeviceGetGraphMemAttribute, Result, CUdevice, CUgraphMem_attribute,
+          void *)
 
 CUDA_FUNC(cuMemAllocHost_v2, Result, void **, size_t)
 CUDA_FUNC(cuMemFreeHost, Result, void *)

@@ -91,6 +91,12 @@ MODULAR_DRIVER_EXPORT ErrorOr<std::string> Device::getStats() {
   j.object([&] {
     j.attribute("free_memory", info.free);
     j.attribute("total_memory", info.total);
+    auto graphMemResult = ctx->device().getGraphMemoryInfo();
+    if (!graphMemResult.isError()) {
+      auto graphMem = graphMemResult.takeValue();
+      j.attribute("graph_mem_reserved", graphMem.reserved);
+      j.attribute("graph_mem_used", graphMem.used);
+    }
   });
 
   os.flush();

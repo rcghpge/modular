@@ -681,6 +681,21 @@ ErrorOr<Device::MemInfo> CUDADevice::getMemoryInfo() const {
   return memInfo;
 }
 
+ErrorOr<Device::GraphMemInfo> CUDADevice::getGraphMemoryInfo() const {
+  Device::GraphMemInfo info;
+  CUDA_WITH_DEV_ERR(*this);
+  uint64_t reserved = 0, used = 0;
+  CUDA_CHECK_ERR(driver_.cuDeviceGetGraphMemAttribute(
+      cudaDevice_, CUgraphMem_attribute::CU_GRAPH_MEM_ATTR_RESERVED_MEM_CURRENT,
+      &reserved));
+  CUDA_CHECK_ERR(driver_.cuDeviceGetGraphMemAttribute(
+      cudaDevice_, CUgraphMem_attribute::CU_GRAPH_MEM_ATTR_USED_MEM_CURRENT,
+      &used));
+  info.reserved = static_cast<size_t>(reserved);
+  info.used = static_cast<size_t>(used);
+  return info;
+}
+
 ErrorOr<void *> CUDADevice::getCurrentDriverContext() const {
   CUcontext result = nullptr;
   CUDA_CHECK_ERR(driver_.cuCtxGetCurrent(&result));

@@ -87,6 +87,8 @@ public:
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
 
+  ErrorOr<Device::GraphMemInfo> getGraphMemoryInfo() const override;
+
   ErrorOr<void *> getCurrentDriverContext() const override;
   ErrorOrSuccess setCurrentDriverContext(void *ctx) override;
 

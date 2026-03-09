@@ -256,6 +256,11 @@ public:
     size_t free;
   };
 
+  struct GraphMemInfo {
+    size_t reserved = 0; // Physical memory reserved by graph pool
+    size_t used = 0;     // Physical memory actively mapped by graphs
+  };
+
   virtual ~Device();
 
   const std::string &name() const;
@@ -297,6 +302,8 @@ public:
   virtual ErrorOrSuccess chunkFree(void *ptr, bool isHost) = 0;
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
+
+  virtual ErrorOr<Device::GraphMemInfo> getGraphMemoryInfo() const;
 
   virtual ErrorOr<DeviceContextRef> createContext() = 0;
 

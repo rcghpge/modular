@@ -210,6 +210,10 @@ MODULAR_CXX_EXPORT Device::API Device::api() const { return api_; }
 
 ErrorOr<bool> Device::supportsMulticast() const { return false; }
 
+ErrorOr<Device::GraphMemInfo> Device::getGraphMemoryInfo() const {
+  return GraphMemInfo{};
+}
+
 MODULAR_CXX_EXPORT size_t Device::allocationAlignment() const {
   return memoryManager_->allocationAlignment();
 }

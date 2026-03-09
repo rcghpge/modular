@@ -142,6 +142,14 @@ enum class CUgraphDotFlags : unsigned int {
   Handles = 0x400                  // 1024: Internal handles for nodes/kernels
 };
 
+/// Graph memory attribute enum for querying CUDA graph memory pool usage.
+enum class CUgraphMem_attribute {
+  CU_GRAPH_MEM_ATTR_USED_MEM_CURRENT = 0,
+  CU_GRAPH_MEM_ATTR_USED_MEM_HIGH = 1,
+  CU_GRAPH_MEM_ATTR_RESERVED_MEM_CURRENT = 2,
+  CU_GRAPH_MEM_ATTR_RESERVED_MEM_HIGH = 3,
+};
+
 /// Kernel node parameters structure for CUDA graph introspection.
 /// This matches the CUDA_KERNEL_NODE_PARAMS_v2 structure from the CUDA driver.
 struct CUDA_KERNEL_NODE_PARAMS_v2 {
