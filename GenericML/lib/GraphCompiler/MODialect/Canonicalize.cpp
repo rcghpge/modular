@@ -1081,6 +1081,26 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
 }
 
 //===----------------------------------------------------------------------===//
+// ParallelOp
+//===----------------------------------------------------------------------===//
+LogicalResult ParallelOp::canonicalize(ParallelOp op,
+                                       PatternRewriter &rewriter) {
+  Block &body = op.getBodyRegion().front();
+
+  // If the body only contains the yield terminator and the yield simply
+  // passes through the block argument, the parallel op is a no-op.
+  if (!body.without_terminator().empty())
+    return failure();
+
+  auto yieldOp = cast<YieldOp>(body.getTerminator());
+  if (yieldOp.getOperand(0) != body.getArgument(0))
+    return failure();
+
+  rewriter.replaceOp(op, op.getInputs());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
 OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {

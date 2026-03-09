@@ -833,17 +833,18 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   Block &bodyBlock = parallelOp.getBodyRegion().front();
   size_t numLaunches = parallelOp.getInputs().size();
 
-  // 1. Find the kernel in the body
+  // Find the unique kernel in the body. Trivial parallel ops (yield-only)
+  // are folded away during canonicalization, so one must exist here.
   MOGG::KernelOp kernelOp = nullptr;
   for (Operation &op : bodyBlock.without_terminator()) {
     if (auto kernel = dyn_cast<MOGG::KernelOp>(&op)) {
+      // TODO: this is a temporary restriction, we will eventually support
+      // multiple kernels in a parallel op.
       if (kernelOp)
         return parallelOp.emitOpError("body must contain exactly one kernel");
       kernelOp = kernel;
     }
   }
-  if (!kernelOp)
-    return parallelOp.emitOpError("body must contain a kernel");
 
   // Update device from the kernel
   device = MO::getDeviceOrDefaultAny(kernelOp);

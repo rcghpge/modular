@@ -649,6 +649,7 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
   // 1. Shared type: mo.parallel %arg in (%a, %b : type) { ... }
   // 2. Individual types: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
   let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 
