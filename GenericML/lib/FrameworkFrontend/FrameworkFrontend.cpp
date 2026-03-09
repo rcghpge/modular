@@ -330,7 +330,7 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          bool enableMEFMetadata) {
   GraphApiDiagnosticHandler diagnostics(moToMgpPasses.getContext());
   if (failed(moToMgpPasses.run(moduleOp))) {
-    return Error(Twine("Failed to run the MOToMGP pass manager:\n") +
+    return Error(Twine("Graph compilation failed:\n") +
                  diagnostics.formatMessage());
   }
 
@@ -594,7 +594,7 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
 
       GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
       if (failed(lowerMOToMGP(compileCtx.module.get(), moToMgpOptions)))
-        return Error(Twine("unable to lower MO to MGP") +
+        return Error(Twine("Graph compilation failed") +
                      diagnostics.formatMessage());
       writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
                                        impl->getCommonCLOptions(), file.copy());
