@@ -5,21 +5,21 @@
 //
 
 // CHECK-LABEL: @string_create_basic
-func.func @string_create_basic() -> !mgp.opaque<"mojo_string"> {
+func.func @string_create_basic() {
   // CHECK: %{{.*}} = mgp.string.create "hello world" : !mgp.opaque<"mojo_string">
   %str = mgp.string.create "hello world" : !mgp.opaque<"mojo_string">
   mef.output %str : !mgp.opaque<"mojo_string">
 }
 
 // CHECK-LABEL: @string_create_empty
-func.func @string_create_empty() -> !mgp.opaque<"mojo_string"> {
+func.func @string_create_empty() {
   // CHECK: %{{.*}} = mgp.string.create "" : !mgp.opaque<"mojo_string">
   %str = mgp.string.create "" : !mgp.opaque<"mojo_string">
   mef.output %str : !mgp.opaque<"mojo_string">
 }
 
 // CHECK-LABEL: @string_create_special_chars
-func.func @string_create_special_chars() -> !mgp.opaque<"mojo_string"> {
+func.func @string_create_special_chars() {
   // CHECK: %{{.*}} = mgp.string.create "path/to/file.txt" : !mgp.opaque<"mojo_string">
   %str = mgp.string.create "path/to/file.txt" : !mgp.opaque<"mojo_string">
   mef.output %str : !mgp.opaque<"mojo_string">
@@ -41,7 +41,7 @@ mgp.model @string_create_in_model : mof devices [#M.device_ref<"cpu", 0>] init (
 //
 
 // CHECK-LABEL: @string_concat_basic
-func.func @string_concat_basic() -> !mgp.opaque<"mojo_string"> {
+func.func @string_concat_basic() {
   // CHECK: %[[PREFIX:.*]] = mgp.string.create "hello " : !mgp.opaque<"mojo_string">
   %prefix = mgp.string.create "hello " : !mgp.opaque<"mojo_string">
   // CHECK: %[[END:.*]] = mgp.string.create "world" : !mgp.opaque<"mojo_string">
@@ -52,7 +52,7 @@ func.func @string_concat_basic() -> !mgp.opaque<"mojo_string"> {
 }
 
 // CHECK-LABEL: @string_concat_empty_prefix
-func.func @string_concat_empty_prefix() -> !mgp.opaque<"mojo_string"> {
+func.func @string_concat_empty_prefix() {
   // CHECK: %[[PREFIX:.*]] = mgp.string.create "" : !mgp.opaque<"mojo_string">
   %prefix = mgp.string.create "" : !mgp.opaque<"mojo_string">
   // CHECK: %[[END:.*]] = mgp.string.create "world" : !mgp.opaque<"mojo_string">
@@ -63,7 +63,7 @@ func.func @string_concat_empty_prefix() -> !mgp.opaque<"mojo_string"> {
 }
 
 // CHECK-LABEL: @string_concat_empty_end
-func.func @string_concat_empty_end() -> !mgp.opaque<"mojo_string"> {
+func.func @string_concat_empty_end() {
   // CHECK: %[[PREFIX:.*]] = mgp.string.create "hello" : !mgp.opaque<"mojo_string">
   %prefix = mgp.string.create "hello" : !mgp.opaque<"mojo_string">
   // CHECK: %[[END:.*]] = mgp.string.create "" : !mgp.opaque<"mojo_string">
