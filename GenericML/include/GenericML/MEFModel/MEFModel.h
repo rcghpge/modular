@@ -105,6 +105,9 @@ private:
       ArrayRef<GenericML::Driver::DeviceMemory *> inputs) const;
 
   ErrorOrSuccess
+  validateCapturedPerDeviceKeys(ArrayRef<uint64_t> graphKeys) const;
+
+  ErrorOrSuccess
   validateCapturedPerDeviceEntries(ArrayRef<uint64_t> graphKeys,
                                    ArrayRef<uint64_t> inputSignatures) const;
 

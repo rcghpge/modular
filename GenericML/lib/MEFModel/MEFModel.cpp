@@ -655,13 +655,30 @@ ExecutableModel::capture(ArrayRef<uint64_t> graphKeys,
   return graphResults;
 }
 
-ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceEntries(
-    ArrayRef<uint64_t> graphKeys, ArrayRef<uint64_t> inputSignatures) const {
+ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceKeys(
+    ArrayRef<uint64_t> graphKeys) const {
   if (perDeviceGraphs.size() != graphKeys.size()) {
     return Error(Twine("capture device count changed from ") +
                  Twine(perDeviceGraphs.size()) + " to " +
                  Twine(graphKeys.size()));
   }
+
+  for (size_t deviceIdx = 0; deviceIdx < graphKeys.size(); ++deviceIdx) {
+    const auto &deviceMap = perDeviceGraphs[deviceIdx];
+    auto it = deviceMap.find(graphKeys[deviceIdx]);
+    if (it == deviceMap.end()) {
+      return Error(Twine("No captured graph for device ") + Twine(deviceIdx) +
+                   " key " + Twine(graphKeys[deviceIdx]));
+    }
+  }
+
+  return success();
+}
+
+ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceEntries(
+    ArrayRef<uint64_t> graphKeys, ArrayRef<uint64_t> inputSignatures) const {
+  if (ErrorOrSuccess err = validateCapturedPerDeviceKeys(graphKeys))
+    return err.takeError();
 
   if (inputSignatures.size() != graphKeys.size()) {
     return Error(Twine("input signature count mismatch: expected ") +
@@ -672,10 +689,7 @@ ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceEntries(
   for (size_t deviceIdx = 0; deviceIdx < graphKeys.size(); ++deviceIdx) {
     const auto &deviceMap = perDeviceGraphs[deviceIdx];
     auto it = deviceMap.find(graphKeys[deviceIdx]);
-    if (it == deviceMap.end()) {
-      return Error(Twine("No captured graph for device ") + Twine(deviceIdx) +
-                   " key " + Twine(graphKeys[deviceIdx]));
-    }
+    ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
 
     if (it->second.inputSignature != inputSignatures[deviceIdx]) {
       return Error(Twine("Unsafe graph key reuse on device ") +
@@ -754,11 +768,10 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
     return normalizedKeysOr.takeError();
   ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
 
-  SmallVector<uint64_t> inputSignatures =
-      computePerDeviceInputSignatures(inputs, *streamsOr);
-
-  if (ErrorOrSuccess err =
-          validateCapturedPerDeviceEntries(normalizedKeys, inputSignatures))
+  // debugVerifyReplay validates eager launch traces, not replay safety.
+  // Allow non-capture input signatures so runtime-shaped eager executions can
+  // be compared against captured graphs.
+  if (ErrorOrSuccess err = validateCapturedPerDeviceKeys(normalizedKeys))
     return err.takeError();
 
   SmallVector<Driver::DeviceGraphRef> selectedGraphs;
