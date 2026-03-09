@@ -336,7 +336,8 @@ ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,
   RETURN_ERROR("VirtualDevice does not support memory allocation");
 }
 
-ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr,
+                                             Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memFree", TRACY_COLOR_PURPLE);
   assert(false && "VirtualDeviceContext::memFree not implemented");
   RETURN_ERROR("VirtualDevice does not support memory deallocation");

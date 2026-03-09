@@ -1471,16 +1471,21 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   CUDA_WITH_CTX_ERR(*this);
-  if (isHost) {
+  if (mode == Device::AllocMode::HOST) {
     POLL_PENDING_EVENTS(*this);
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
-  } else {
+  } else if (mode == Device::AllocMode::ASYNC) {
     CUDA_CHECK_ERR(driver_.cuMemFreeAsync(ptr, stream_));
     MAYBE_SYNC(*this);
+  } else if (mode == Device::AllocMode::SYNC) {
+    POLL_PENDING_EVENTS(*this);
+    CUDA_CHECK_ERR(driver_.cuMemFree_v2(ptr));
+  } else {
+    RETURN_ERROR("Invalid allocation mode");
   }
   return success();
 }

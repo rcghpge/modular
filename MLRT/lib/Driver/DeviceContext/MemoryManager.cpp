@@ -10,6 +10,7 @@
 
 #include "MemoryManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "Support/StringExtras.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"
@@ -937,9 +938,13 @@ ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
   return wrappedPtr;
 }
 
-ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
-                                                Device::AllocMode mode) {
+ErrorOr<MemoryManagerFreeList::Allocation>
+MemoryManagerFreeList::allocate(size_t size, Device::AllocMode mode) {
   assert(size != 0);
+
+  Allocation allocation;
+  allocation.size = size;
+  allocation.mode = mode; // could be overwritten below
 
   size_t wrappedSize = size;
   if (redzoneEnable_) {
@@ -994,9 +999,13 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     if (desc != nullptr) {
       // Allocation from memory manager was successful, return the value.
       if (redzoneEnable_) {
-        return redzoneFillAndWrap(desc->ptr_, size);
+        DEFINE_OR_RETURN_ERROR(void *, ptr,
+                               redzoneFillAndWrap(desc->ptr_, size));
+        allocation.ptr = ptr; // wrapped pointer, skipping flanking redzones
+      } else {
+        allocation.ptr = desc->ptr_;
       }
-      return desc->ptr_;
+      return allocation;
     }
 
     // If only allowing allocations from the memory manager, raise an error at
@@ -1004,9 +1013,7 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     // information as needed.
     static bool useOnlyMemoryManagerMode =
         memoryManager_.useOnlyMemoryManagerMode_;
-    auto availableCacheSize =
-        memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
-    if (useOnlyMemoryManagerMode && availableCacheSize < wrappedSize) {
+    if (useOnlyMemoryManagerMode) {
       if (memoryManager_.doLog_) {
         memoryManager_.logErr("allocate(" + TWINE(wrappedSize) +
                                   ") - memory_manager_only OOM",
@@ -1039,7 +1046,6 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
   // Allocate straight from device driver if cache was not able to fulfill
   // the request. If the cache is disabled, the we pass on the allocation
   // mode.
-  void *ptr = nullptr;
   if (ctx_ == nullptr) {
     // In the case of the bottom most freelist being consulted for allocation
     // we might not have a DeviceContext associated, so we fail the allocation
@@ -1050,18 +1056,27 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     }
     return Error("memAlloc failed due to missing context");
   }
-  ErrorOrSuccess err = ctx_->memAlloc(
-      &ptr, wrappedSize,
-      // If allocating for host just forward that.
-      (mode == Device::AllocMode::HOST) ? Device::AllocMode::HOST
-      // Use async allocation to match the async free in memFree(). Using sync
-      // allocation (cuMemAlloc) with async free (cuMemFreeAsync) causes a
-      // memory leak because they operate on different memory pools - the sync
-      // pool and the stream-ordered pool respectively. Freed memory never
-      // becomes available for subsequent sync allocations, exhausting GPU
-      // memory.
-      : (memoryManager_.chunkSize_ != 0) ? Device::AllocMode::ASYNC
-                                         : mode);
+
+  // Some cases where we override the allocation mode
+  if (allocation.mode != Device::AllocMode::HOST) {
+    // Force SYNC mode for all device allocations. Note that this means
+    // not only committing device (physical!) memory right here right now,
+    // but also selecting the pool from which to allocate.
+    // Ideally, we should be using async allocation but it commits physical
+    // memory from a different pool. GEX-3330 exposed a problem with the HIP
+    // driver where ASYNC-allocated memory is never freed by the HIP driver
+    // when the program crashes, if P2P is enabled. We decided to use the
+    // SYNC pool for all device-side allocations.
+    // *** IMPORTANT ***: If changing this in future, ensure that
+    // ctx_->memFree() calls also change to match!
+    // NOTE: chunk size is 0 => memory manager is disabled.
+    allocation.mode = (memoryManager_.chunkSize_ == 0)
+                          ? allocation.mode
+                          : Device::AllocMode::SYNC;
+  }
+  void *ptr = nullptr; // wrapped if redzone enabled
+  ErrorOrSuccess err = ctx_->memAlloc(&ptr, wrappedSize, allocation.mode);
+
   if (err.isError()) {
     if (memoryManager_.doLog_) {
       memoryManager_.logErr("allocate_buffer(" + TWINE(size) +
@@ -1076,9 +1091,12 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
   assert(ptr != nullptr);
   if (redzoneEnable_) {
     // Returns pointer to immediately after the end of the underflow redzone
-    return redzoneFillAndWrap(ptr, size);
+    DEFINE_OR_RETURN_ERROR(void *, wrappedPtr, redzoneFillAndWrap(ptr, size));
+    allocation.ptr = wrappedPtr;
+  } else {
+    allocation.ptr = ptr;
   }
-  return ptr;
+  return allocation;
 }
 
 MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
@@ -1265,7 +1283,7 @@ void MemoryManagerFreeList::printRedzone(const uint8_t *dataPtr,
   }
 }
 
-ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
+ErrorOrSuccess MemoryManagerFreeList::free(void *ptr, Device::AllocMode mode) {
   if (ptr == nullptr)
     return success();
 
@@ -1353,7 +1371,7 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
   if (memoryManager_.doLog_) {
     memoryManager_.logErr("free_buffer(" + TWINE_PTR(ptr) + ")");
   }
-  return ctx_->memFree(ptr, memoryManager_.isHost());
+  return ctx_->memFree(ptr, mode);
 }
 
 void MemoryManagerFreeList::freeDesc(MemoryManager::Desc *desc) {

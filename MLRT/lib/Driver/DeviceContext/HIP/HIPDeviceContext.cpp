@@ -1108,16 +1108,21 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
   return success();
 }
 
-ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   HIP_WITH_CTX_ERR(*this);
-  if (isHost) {
+  if (mode == Device::AllocMode::HOST) {
     POLL_PENDING_EVENTS(*this);
     HIP_CHECK_ERR(driver_.hipHostFree(ptr));
-  } else {
+  } else if (mode == Device::AllocMode::ASYNC) {
     HIP_CHECK_ERR(driver_.hipFreeAsync(ptr, stream_));
     MAYBE_SYNC(*this);
+  } else if (mode == Device::AllocMode::SYNC) {
+    POLL_PENDING_EVENTS(*this);
+    HIP_CHECK_ERR(driver_.hipFree(ptr));
+  } else {
+    RETURN_ERROR("Invalid allocation mode");
   }
   return success();
 }

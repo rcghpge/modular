@@ -1120,7 +1120,7 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
   }
 }
 
-ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, bool isHost) {
+ErrorOrSuccess MetalDeviceContext::memFree(void *ptr, Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
   if (ptr == nullptr)

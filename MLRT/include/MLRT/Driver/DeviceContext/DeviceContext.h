@@ -407,17 +407,18 @@ private:
   DeviceBufferRef parent_;
   void *ptr_;
   size_t byteSize_;
-  bool isHost_;
+  Device::AllocMode allocMode_; // memory pool this buffer was allocated from
   // TODO: Remove the V1 compatibility.
   bool owning_ = true;
   std::optional<llvm::unique_function<void()>> destructorFn_ = std::nullopt;
 
-  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize, bool isHost);
+  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
+               Device::AllocMode allocMode);
   DeviceBuffer(DeviceContext &context, DeviceBuffer &parent, void *ptr,
-               size_t byteSize, bool isHost);
+               size_t byteSize, Device::AllocMode allocMode);
   // TODO: Remove the V1 compatibility.
-  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize, bool isHost,
-               bool owning);
+  DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
+               Device::AllocMode allocMode, bool owning);
 };
 
 class DeviceMulticastBuffer : public ReferenceCounted<DeviceMulticastBuffer> {
@@ -810,7 +811,7 @@ protected:
   // REQUIRES: byteSize > 0
   virtual ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                                   Device::AllocMode mode) = 0;
-  virtual ErrorOrSuccess memFree(void *ptr, bool isHost) = 0;
+  virtual ErrorOrSuccess memFree(void *ptr, Device::AllocMode mode) = 0;
 
   // Low-level copies.
   virtual ErrorOrSuccess memCopyDtoD(DeviceBuffer &dst, DeviceBuffer &src,
