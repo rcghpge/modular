@@ -34,7 +34,8 @@ modular_cc_binary(
 modular_cc_library(
     name = "DriverPluginTests",
     testonly = True,
-    srcs = ["test/Plugin.cpp"],
+    srcs = ["test/PluginTest.cpp"],
+    hdrs = ["test/Fixture.h"],
     copts = ["-Wno-global-constructors"],
     deps = [
         "//SDK:HAL",
@@ -46,6 +47,7 @@ modular_cc_library(
 modular_cc_test(
     name = "CUDAPluginTest",
     size = "small",
+    srcs = ["test/CUDAPluginTest.cpp"],
     data = [":CUDAPlugin.so"],
     env = {
         "MODULAR_DRIVER_PLUGINS": "$(location :CUDAPlugin.so)",
