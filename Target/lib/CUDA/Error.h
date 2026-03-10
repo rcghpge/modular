@@ -13,9 +13,9 @@
 #include <stdint.h>
 #include <tl/expected.hpp>
 
-#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-9))
-#define M_DRIVER_STATUS_BAD_HANDLE ((M_driver_status_t)(-10))
-#define M_DRIVER_NUM_ERRORS 11
+#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-10))
+#define M_DRIVER_STATUS_BAD_HANDLE ((M_driver_status_t)(-11))
+#define M_DRIVER_NUM_ERRORS 12
 
 #define CUDA_CHECK(stmt, errorCode)                                            \
   do {                                                                         \

@@ -9,9 +9,9 @@
 
 #include "HAL/M_driver_common.h"
 
-#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-9))
-#define M_DRIVER_STATUS_UNINITIALIZED ((M_driver_status_t)(-10))
-#define M_DRIVER_NUM_ERRORS 11
+#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-10))
+#define M_DRIVER_STATUS_UNINITIALIZED ((M_driver_status_t)(-11))
+#define M_DRIVER_NUM_ERRORS 12
 
 extern const char *status_messages[M_DRIVER_NUM_ERRORS];
 

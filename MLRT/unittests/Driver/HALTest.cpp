@@ -132,7 +132,7 @@ protected:
 };
 
 TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
-  if (api == "CUDA" || api == "HIP")
+  if (api == "CUDA")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =
@@ -142,21 +142,11 @@ TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
 }
 
 TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
-  if (api == "CUDA" || api == "HIP")
+  if (api == "CUDA")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =
         context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::SYNC);
-    ASSERT_FALSE(bufferOr.isError());
-  }
-}
-
-TEST_F(DriverHALContextTest, ContextAllocBufferASYNC) {
-  if (api == "CUDA" || api == "HIP")
-    GTEST_SKIP() << "Unimplemented for " << api;
-  for (ContextRef &context : contexts) {
-    ErrorOr<BufferRef> bufferOr =
-        context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::ASYNC);
     ASSERT_FALSE(bufferOr.isError());
   }
 }

@@ -14,6 +14,9 @@
 #define HIPAPI_H
 
 #include "Error.h"
+// Suppress C++ template overloads for hipMalloc, hipHostMalloc, etc.
+// so that decltype(&::name) resolves unambiguously to the C signatures.
+#define __HIP_DISABLE_CPP_FUNCTIONS__
 #include "hip/hip_runtime_api.h"
 
 #include <dlfcn.h>
@@ -27,7 +30,11 @@
   HIP_FN(hipGetDeviceCount)                                                    \
   HIP_FN(hipDeviceGet)                                                         \
   HIP_FN(hipDeviceReset)                                                       \
-  HIP_FN(hipSetDevice)
+  HIP_FN(hipSetDevice)                                                         \
+  HIP_FN(hipMalloc)                                                            \
+  HIP_FN(hipFree)                                                              \
+  HIP_FN(hipHostMalloc)                                                        \
+  HIP_FN(hipHostFree)
 
 struct HIPApi {
   // dlopen handle to loaded libamdhip64.so.

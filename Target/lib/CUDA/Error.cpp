@@ -16,6 +16,7 @@ const char *statusMessages[M_DRIVER_NUM_ERRORS] = {
     /*6*/ "Bad context",
     /*7*/ "Bad memory",
     /*8*/ "Out of memory",
-    /*9*/ "Unimplemented",
-    /*10*/ "Bad handle",
+    /*9*/ "Invalid argument",
+    /*10*/ "Unimplemented",
+    /*11*/ "Bad handle",
 };

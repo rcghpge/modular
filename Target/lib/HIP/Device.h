@@ -16,6 +16,7 @@ private:
   M_driver_driver &driver;
   int deviceId;
 
+public:
   DriverResult<void> deviceMethodPreamble() {
     hipError_t result = this->driver.hip().hipSetDevice(this->deviceId);
     if (result != hipSuccess) {
@@ -24,8 +25,6 @@ private:
 
     return {};
   }
-
-public:
   [[nodiscard]] static DriverResult<M_driver_device_t>
   create(M_driver_driver &drv, int64_t deviceId);
 

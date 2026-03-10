@@ -40,6 +40,7 @@ typedef struct M_driver_function *M_driver_function_t;
 #define M_DRIVER_STATUS_BAD_CONTEXT ((M_driver_status_t)(-6))
 #define M_DRIVER_STATUS_BAD_MEMORY ((M_driver_status_t)(-7))
 #define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-8))
+#define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-9))
 
 /**
  * Retrieve human-readable status message corresponding to a status code.

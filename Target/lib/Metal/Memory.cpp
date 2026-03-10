@@ -15,7 +15,7 @@ M_driver_status_t M_driver_memory_alloc(M_driver_context_t context,
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (size == 0) {
     *memory = nullptr;
     return M_DRIVER_STATUS_SUCCESS;
