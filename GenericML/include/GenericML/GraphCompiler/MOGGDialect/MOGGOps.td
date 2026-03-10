@@ -648,55 +648,35 @@ def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
   }];
 }
 
-def MOGG_CallOp : MOGG_Op<"call", [
-    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
     DeclareOpInterfaceMethods<EmitsMojoInterface>,
-    DeclareOpInterfaceMethods<KernelTerminatorProvider>
+    DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
+    Pure,
+    HasParent<"MOGG::BindLambdaOp">
   ]> {
-  let summary = "Represents  KGEN function to call";
+  let summary = "Represents a mojo call to an affine remapping function";
   let description = [{
-    This represents a call to a KGEN function. The kernel target will be a
-    function we retrieve from the registered ops. The call can also take an
-    optional list of symbols in the form of `$params`. These are lambdas within
-    this kernel which should be passed as parameters to the KGEN call.
+    This represents a call to a mojo function to remap the indices argument inside a fusion lambda.
+    This op is inserted by the Graph Compiler during FuseAffineViewsPass.
 
     Example:
     ```mlir
-    mogg.call "fake_op" [@test_lambda, @test_lambda2](%input, %output) : !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>
+    mogg.call.affine "insert_index"(%arg) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
     ```
-
-    The above will look up `fake_op` in the mojo op register to find the actual
-    mojo symbol for that function and will compile down to a kgen call to that
-    symbol with the lambda functions passed as parameters.
-
-   ```mlir
-    %0 = mogg.call "simd_load"(%input, %indices) : !mo.tensor<[2, 3], f32>, !mogg.indices -> !mogg.simd<f32>
-   ```
-
-    These calls can operate on tensors, simd values, and indices, and can return
-    any of those types.
   }];
 
   let arguments = (ins
      StrAttr:$mojoKernelTarget,
      Variadic<AnyType>:$operands,
-     OptionalAttr<ArrayAttr>:$params,
-     OptionalAttr<DictionaryAttr>:$kgenParams
+     OptionalAttr<DictionaryAttr>:$params
   );
 
-   let results = (outs Variadic<AnyType>:$results);
+   let results = (outs AnyType:$result);
 
    let assemblyFormat = [{
-     $mojoKernelTarget ($params^)? `(`($operands^)?`)` ($kgenParams^)? attr-dict
-       (`:` type($operands)^)? (`->` type($results)^)?
+     $mojoKernelTarget `(`($operands^)?`)` ($params^)? attr-dict
+       (`:` type($operands)^)? `->` type($result)
    }];
-
-  let extraClassDeclaration = [{
-    /// Changes the value of a given KGEN parameter if it exists. Returns true
-    /// if the parameter exists and the value is now the same as value, false
-    /// if the parameter doesn't exist.
-    bool setKGENParamToValueIfPresent(StringRef name, Attribute value);
-  }];
 }
 
 def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {

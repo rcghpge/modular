@@ -282,46 +282,6 @@ static void printRegionArguments(OpAsmPrinter &p, TypeRange resTypes,
 // MOGG CallOp
 //===----------------------------------------------------------------------===//
 
-void CallOp::getEffects(
-    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-
-  bool hasWriteEffect = true;
-  bool hasReadEffect = true;
-  std::string target = getMojoKernelTargetAttr().str();
-  if (target == "mgp.tensor.extract.tensor_spec" ||
-      target == "mgp.tensor_spec.get_dim" ||
-      target == "builtin.unpack_buffer_ref") {
-    hasWriteEffect = false;
-    hasReadEffect = false;
-  }
-
-  if (hasWriteEffect)
-    effects.emplace_back(mlir::MemoryEffects::Write::get());
-  if (hasReadEffect)
-    effects.emplace_back(mlir::MemoryEffects::Read::get());
-}
-
-bool CallOp::setKGENParamToValueIfPresent(StringRef name, Attribute value) {
-  // Exit out if we don't have the parameter already (we can't add new ones as
-  // the params come from mojo).
-  std::optional<mlir::DictionaryAttr> dict = getKgenParams();
-  if (!dict)
-    return false;
-
-  mlir::NamedAttrList attributes(*dict);
-  // Exit if the parameter doesn't exist in the dictionary attr.
-  if (!attributes.getNamed(name).has_value())
-    return false;
-
-  Attribute oldAttr = attributes.set(name, value);
-
-  // Update the dict if it doesn't already have that value.
-  if (oldAttr != value)
-    setKgenParamsAttr(attributes.getDictionary(getContext()));
-
-  return true;
-}
-
 MojoValue callFunctionNestedInStruct(KGEN::LIT::FnOp function,
                                      EmitMojoState::InferedParameters params,
                                      ArrayRef<MojoValue> operands,
@@ -334,7 +294,7 @@ MojoValue callFunctionNestedInStruct(KGEN::LIT::FnOp function,
   return fullExecuteFunc(params.functionParameters, operands);
 }
 
-LogicalResult CallOp::emitMojo(EmitMojoState &state) {
+LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
   KGEN::LIT::FnOp function =
       state.analysis.getRegisteredLITMojoKernelFor(getMojoKernelTarget());
   auto symbolName = state.getOriginalMojoNameFor(function);
@@ -344,24 +304,16 @@ LogicalResult CallOp::emitMojo(EmitMojoState &state) {
   // Infer the kernel parameters.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     return state.inferDefaultKernelParamValue(*this, paramName,
-                                              getKgenParamsAttr());
+                                              getParamsAttr());
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
     return emitError("Failed to infer all the kernel parameters");
 
-  auto results = getResults();
-  if (results.empty()) {
-    state.builder.call(symbolName, maybeParams->functionParameters,
-                       mojoOperands);
-  } else if (results.size() == 1) {
-    state.setMojoValueFor(results.front(),
-                          state.builder.var(symbolName(
-                              maybeParams->functionParameters, mojoOperands)));
-  } else {
-    return emitError("CallOp with multiple outputs not supported");
-  }
-
+  // Call the function and map its output.
+  state.setMojoValueFor(
+      getResult(), state.builder.var(symbolName(maybeParams->functionParameters,
+                                                mojoOperands)));
   return success();
 }
 
@@ -394,9 +346,9 @@ bool BindLambdaOp::hasAffineViewOperation() {
     return false;
 
   return walk([](mlir::Operation *op) {
-           // MOGG::CallOp is only used inside a lambda to represent an affine
-           // function call
-           if (isa<MOGG::CallOp>(op))
+           // MOGG::CallAffineOp is only used inside a lambda to represent an
+           // affine function call
+           if (isa<MOGG::CallAffineOp>(op))
              return WalkResult::interrupt();
            return WalkResult::advance();
          })

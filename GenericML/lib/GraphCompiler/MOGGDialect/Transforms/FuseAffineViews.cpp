@@ -134,11 +134,10 @@ struct FuseAffineViewsPass
 
     builder.setInsertionPoint(outputOp);
     auto newIndexValue =
-        MOGG::CallOp::create(builder, loc, TypeRange{newIndexValueType},
-                             builder.getStringAttr(funcName), operands,
-                             mlir::ArrayAttr{},
-                             builder.getDictionaryAttr(parameters))
-            .getResult(0);
+        MOGG::CallAffineOp::create(builder, loc, newIndexValueType,
+                                   builder.getStringAttr(funcName), operands,
+                                   builder.getDictionaryAttr(parameters))
+            .getResult();
     outputOp->setOperand(1, newIndexValue);
 
     // Change graph level type of the mogg kernel op and replace the

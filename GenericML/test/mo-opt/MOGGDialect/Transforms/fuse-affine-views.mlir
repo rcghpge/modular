@@ -5,7 +5,7 @@
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
@@ -23,7 +23,7 @@ mo.graph @add_singleton_non_elementwise<seq_len>(%arg0: !mo.tensor<[seq_len, 409
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
@@ -51,7 +51,7 @@ mo.graph @fuse_kernel_in_true_block_of_if_statement<seq_len>(%arg0: !mo.tensor<[
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "insert_index"(%[[INDICES]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
@@ -94,7 +94,7 @@ mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 40
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[N, K, 4096], f32>
 // CHECK-NEXT: %[[NEW_DIM:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "split_dim_indices"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index} : !pop.array<2, index>, !pop.scalar<si64> -> !pop.array<3, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "split_dim_indices"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index} : !pop.array<2, index>, !pop.scalar<si64> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
@@ -133,7 +133,7 @@ mo.graph @gather_custom(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[4], f32>,
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[64], f32>
 // CHECK: %[[SIMD:.*]] = mogg.constant.scalar {value = 8 : si64} : !mo.scalar<si64>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call "merge_dim_indices"(%[[INDICES]], %[[SIMD]]) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<1, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "merge_dim_indices"(%[[INDICES]], %[[SIMD]]) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<1, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<1, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}
