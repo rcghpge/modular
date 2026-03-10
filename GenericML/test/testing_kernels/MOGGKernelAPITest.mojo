@@ -217,10 +217,12 @@ struct Foo:
 @always_inline
 fn toNDBuffer[
     out_dtype: DType, out_rank: Int
-](tensor: ManagedTensorSlice) -> NDBuffer[out_dtype, out_rank, MutAnyOrigin]:
+](tensor: ManagedTensorSlice) -> NDBuffer[
+    rank=out_rank, out_dtype, MutAnyOrigin
+]:
     # TODO(GEX-734): forward other static params automatically
-    return rebind[NDBuffer[out_dtype, out_rank, MutAnyOrigin]](
-        NDBuffer[tensor.dtype, tensor.rank](tensor._ptr, tensor.shape())
+    return rebind[NDBuffer[rank=out_rank, out_dtype, MutAnyOrigin]](
+        NDBuffer[rank=tensor.rank, tensor.dtype](tensor._ptr, tensor.shape())
     )
 
 
@@ -477,9 +479,9 @@ struct MatmulFuseOut:
         comptime c_dtype = c.dtype
 
         # Convert everything to NDBuffer
-        # var c_buffer = toNDBuffer[c_dtype, 2](c)
-        # var a_buffer = toNDBuffer[a_dtype, 2](a)
-        # var b_buffer = toNDBuffer[b_dtype, 2](b)
+        # var c_buffer = toNDBuffer[ rank=2,c_dtype](c)
+        # var a_buffer = toNDBuffer[ rank=2,a_dtype](a)
+        # var b_buffer = toNDBuffer[ rank=2,b_dtype](b)
 
         @parameter
         @always_inline
@@ -1072,7 +1074,7 @@ struct CustomOpWithStaticStringParams:
 
 @fieldwise_init
 struct TensorWrapper(RegisterPassable):
-    var buffer: NDBuffer[DType.float32, 2, MutAnyOrigin]
+    var buffer: NDBuffer[rank=2, DType.float32, MutAnyOrigin]
 
 
 @compiler.register("to_tensor_wrapper")
@@ -1085,8 +1087,8 @@ struct ToTensorWrapper:
         var ptr = tensor._ptr.address_space_cast[spec.address_space]()
         return TensorWrapper(
             NDBuffer[
+                rank=spec.rank,
                 spec.dtype,
-                spec.rank,
                 _,
             ](ptr, tensor.shape(), tensor._runtime_strides)
         )

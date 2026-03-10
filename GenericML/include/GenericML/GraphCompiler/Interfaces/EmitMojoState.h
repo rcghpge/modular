@@ -105,7 +105,7 @@ constexpr StringLiteral comptime_MutAnyOrigin = "MutAnyOrigin";
 // custom type for managing these int8 buffers (probably just some simple
 // vector/string type).
 constexpr StringLiteral comptime_NDBuffer_In_MGP =
-    "NDBuffer[DType.int8, 1, MutAnyOrigin]";
+    "NDBuffer[rank=1, DType.int8, MutAnyOrigin]";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
