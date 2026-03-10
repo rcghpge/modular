@@ -18,10 +18,6 @@ modular_cc_binary(
     ]),
     linkshared = True,
     linkstatic = False,
-    target_compatible_with = select({
-        "//:nvidia_gpu": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         "//SDK:HAL",
         "//bazel/third-party:CUDAHeaders",
@@ -73,10 +69,6 @@ modular_cc_binary(
     linkopts = ["-ldl"],
     linkshared = True,
     linkstatic = False,
-    target_compatible_with = select({
-        "//:amd_gpu": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         "//SDK:HAL",
         "@hip_include//:hip_headers",
@@ -112,10 +104,6 @@ modular_cc_binary(
     ]),
     linkshared = True,
     linkstatic = False,
-    target_compatible_with = select({
-        "//:apple_gpu": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         "//SDK:HAL",
         "//Support:Base",

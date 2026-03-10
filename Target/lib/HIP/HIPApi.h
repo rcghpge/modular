@@ -16,6 +16,9 @@
 #include "Error.h"
 // Suppress C++ template overloads for hipMalloc, hipHostMalloc, etc.
 // so that decltype(&::name) resolves unambiguously to the C signatures.
+// This comes from HIP, so nothing we can do about the fact
+// it conflicts with reserved string space for defs from C++
+// NOLINTNEXTLINE
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 #include "hip/hip_runtime_api.h"
 
@@ -90,5 +93,7 @@ struct HIPApi {
     }
   }
 };
+
+#undef __HIP_DISABLE_CPP_FUNCTIONS__
 
 #endif /* HIPAPI_H */
