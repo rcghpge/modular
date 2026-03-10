@@ -19,6 +19,7 @@
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "Support/ML/DebugPrint.h"
 #include "Support/SymbolExport.h"
 
 using namespace M;
@@ -598,13 +599,12 @@ MGP_RT_DebugTensorPrint(const char *label, size_t labelLen, uint8_t dtype,
     // CPU buffers. The printTensor function will crash for GPU buffers, so this
     // primitive assumes that the buffer is a CPU buffer. I don't see a good way
     // to assert on this condition though.
-    Runtime &runtime = *Runtime::getCurrentRuntimeOrNull();
-
     DebugTensorPrintOptions defaultOptions;
-    DebugTensorPrintOptions *options =
-        runtime.context->get<DebugTensorPrintOptions>();
-    if (!options)
-      options = &defaultOptions;
+    DebugTensorPrintOptions *options = &defaultOptions;
+    if (Runtime *rt = Runtime::getCurrentRuntimeOrNull())
+      if (DebugTensorPrintOptions *opts =
+              rt->getDebugPrintOptionsForExecution())
+        options = opts;
     auto errOr = options->printTensor(buffer.getBuffer(), spec, labelRef);
     if (errOr.isError())
       llvm_unreachable(errOr.getError());

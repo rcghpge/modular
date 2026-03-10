@@ -17,8 +17,11 @@
 #include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/AssertStream.h"
+#include "Support/Context.h"
+#include "Support/ML/DebugPrint.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Process.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -100,6 +103,10 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
   auto runModels = [&, context = maxCtx.copy()](
                        Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
     mofLoweringOptions.setupContext(context);
+    runtime.setDebugPrintOptionsForExecution(
+        context.getPointer()->get<M::DebugTensorPrintOptions>());
+    auto clearRuntimeDebugOpts = llvm::scope_exit(
+        [&runtime]() { runtime.setDebugPrintOptionsForExecution(nullptr); });
     bool hadFailure = false;
     for (const auto &model : models) {
       if (failed(runModel(model.get(), runtime, *driverOptions))) {
@@ -231,6 +238,12 @@ int main(int argc, char **argv) {
   if (auto err = frameworkCtx.setOptions(dylibOptions))
     return options.reportError(err.getError());
   frameworkCtx.setDriverOptions(options);
+
+  // Set current context so that MEF execution during compile and execute can
+  // use mgp.runtime.create and other context-dependent primitives.
+  M::setCurrentMaxContext(contextOr->getPointer());
+  auto clearContextOnExit =
+      llvm::scope_exit([]() { M::setCurrentMaxContext(nullptr); });
 
   for (auto &inputInfo : inputsInfo) {
 

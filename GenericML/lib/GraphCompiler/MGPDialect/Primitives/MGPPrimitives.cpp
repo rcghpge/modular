@@ -21,6 +21,7 @@
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/AssertStream.h"
 #include "Support/Configuration.h"
+#include "Support/Context.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MArchTarget/MArchTarget.h"
 #include "Support/ML/DebugPrint.h"
@@ -770,13 +771,23 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
                         Runtime &runtime) {
   TRACY_ZONE_SCOPED_NC("mgp_runtime_create", TRACY_COLOR_TEAL);
 
+  // Primitives are invoked by the MEF executor with a fixed frame (chain,
+  // state, runtime, etc.); Context is not in the invocation ABI. Callers
+  // (engine, mt, mo-opt) set TLS via setCurrentMaxContext() before running MEF
+  // so we can read it here.
+  Context *ctxPtr = M::getCurrentMaxContext();
+  if (!ctxPtr) {
+    return std::move(outChain).setToError(
+        Error::getStaticString("mgp.runtime.create requires a context"));
+  }
+
   // Establish an execution engine, to be shared amongst all loaded models
   // across all models using this runtime.
   //
   // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
   //               this engine.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
-      runtime.context->createIfMissing<KGEN::ExecutionEngine>(
+      ctxPtr->createIfMissing<KGEN::ExecutionEngine>(
           [&]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
             // Initialize the host target.
             llvm::InitializeNativeTarget();

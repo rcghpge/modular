@@ -23,5 +23,6 @@ modular_cc_binary(
         "//Init",
         "//Support:Context",
         "//Support:Globals",
+        "//Support:ML",
     ],
 )

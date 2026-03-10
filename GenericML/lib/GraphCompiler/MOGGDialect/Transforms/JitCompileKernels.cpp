@@ -312,7 +312,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
   // Parse Mojo text from resources
   ErrorOr<OwningOpRef<ModuleOp>>
-  parseMojoText(MLIRContext *ctx, AsyncRT::Runtime &runtime,
+  parseMojoText(MLIRContext *ctx, ContextRef maxContext,
                 const KGEN::CompilationOptions &opts) {
     auto resourceManager = DenseResourceElementsHandle::getManagerInterface(
         getOperation()->getContext());
@@ -330,7 +330,8 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     // Mojo parsing
     KGEN::LIT::ParserConfig config(ctx, opts);
     mlir::TimingScope ts;
-    auto parsedMojoModule = KGEN::LIT::importMojoFile(runtime, src, config, ts);
+    auto parsedMojoModule =
+        KGEN::LIT::importMojoFile(maxContext, src, config, ts);
     if (!parsedMojoModule)
       return Error("The GC could not parse the generated Mojo code");
 
@@ -480,11 +481,13 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
              << targetInfoAttr.getError();
     }
 
-    AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
+    ContextRef maxContext = loadContext(ctx);
+    auto runtime = maxContext->get<AsyncRT::Runtime>();
+
     auto targetInfo = targetInfoAttr.takeValue();
     auto opts = setupCompilationOptions(targetInfo, kernelLibraryPaths);
 
-    auto parsedMojoModuleOr = parseMojoText(ctx, runtime, opts);
+    auto parsedMojoModuleOr = parseMojoText(ctx, maxContext, opts);
     if (parsedMojoModuleOr.isError()) {
       return module->emitError(
           "The graph compiler could not parse its Mojo generated code");
@@ -517,7 +520,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 
     CompilationState state(ctx, module, std::move(parsedMojoModule),
                            (*objectCompiler).get(), &compiler, targetInfo,
-                           &runtime, opts);
+                           runtime, opts);
 
     auto cachingResultOr = erasePreviouslyCompiledKernels(state);
     if (cachingResultOr.isError()) {
