@@ -607,9 +607,11 @@ struct Transpose2DOp:
         return StaticTuple[IndexList[2], 2](new_shape, new_stride)
 
     @staticmethod
-    fn get_view_strides(input_strides: DimList) -> DimList:
+    fn get_view_strides(
+        input_strides: DimList,
+    ) -> DimList[input_strides.values[1], input_strides.values[0]]:
         # transpose the strides of the input
-        return DimList(input_strides.at[1](), input_strides.at[0]())
+        return {}
 
     @staticmethod
     fn update_input_view[

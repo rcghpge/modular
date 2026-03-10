@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "KGEN/KGENDialect/KGENAttrs.h"
+#include "KGEN/KGENDialect/KGENParameters.h"
 #include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
@@ -515,15 +516,23 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
   DictionaryAttr defaultAttrs = function->getAttrOfType<DictionaryAttr>(
       KGEN::MOGGPreElab::kKernelDefaultParameterAttrName);
 
+  KGEN::ParameterCollector::Analysis analysisCache;
+  KGEN::ParameterCollector collector(analysisCache);
+  SmallVector<KGEN::ParamDeclRefAttr> paramDeclUses;
+  // Any parameters that are used by input types will be inferred from the
+  // values being bound to them.
   if (auto inputParams = function->getAttrOfType<ArrayAttr>(
           KGEN::MOGGPreElab::kKernelValueParameterAttrName)) {
     for (auto inputParam : inputParams) {
       if (auto inputParamDict = dyn_cast<DictionaryAttr>(inputParam))
-        for (auto param : inputParamDict)
-          if (auto funcParamName =
-                  dyn_cast<KGEN::ParamDeclRefAttr>(param.getValue())) {
-            inferByInputs.insert(funcParamName.getName().getValue());
-          }
+        for (auto param : inputParamDict) {
+          bool hasConstExpr = false;
+          collector.collectUsesFromAttr(param.getValue(), paramDeclUses,
+                                        hasConstExpr);
+          while (!paramDeclUses.empty())
+            inferByInputs.insert(
+                paramDeclUses.pop_back_val().getName().getValue());
+        }
     }
   }
 
@@ -562,6 +571,11 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
           isIOSpecType(param.getType()))
         continue;
 
+      // Ignore any autoparams, because they will be inferred from whatever they
+      // are parameterized from.
+      if (paramName.contains("."))
+        continue;
+
       // For parameters that can be inferred from inputs (e.g., from tensor
       // types), we still try to get explicit values first. This is important
       // for opaque types where Mojo can't infer the parameter from type
@@ -582,11 +596,13 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
           // failed. In the latter case we should still emit an error.
           continue;
         }
+
         function.emitError(Twine("Failed to infer kernel parameter `") +
                            paramName + "`: " + maybeVal.getError());
         return maybeVal.takeError();
       }
 
+      // Otherwise we need to explicitly bind it to the provided value.
       inferredParams.push_back(MojoValue(paramName).equal(*maybeVal));
     }
 

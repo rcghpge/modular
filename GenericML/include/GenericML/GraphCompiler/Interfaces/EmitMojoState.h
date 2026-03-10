@@ -339,8 +339,7 @@ public:
     if (dimsAsMojoValues.empty())
       dimsAsMojoValues.push_back(1);
 
-    return MojoValue(HardcodedMojoSymbols::struct_DimList)({},
-                                                           dimsAsMojoValues);
+    return MojoValue(HardcodedMojoSymbols::struct_DimList)[dimsAsMojoValues]();
   }
 
   static MojoValue getStaticShapeAsMojoValue(MO::TensorType type) {

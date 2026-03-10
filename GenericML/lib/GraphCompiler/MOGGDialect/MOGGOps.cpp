@@ -2684,16 +2684,18 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   MojoValue runtimeShapesTuple =
       state.builder.var(inputTupleConstructor({}, runtimeShapes));
 
+  MojoValue rank = inputValues.front().get("static_spec").get("rank");
+
   // Create the static specs list.
   // comptime inputSpecInternals =
   //   Variadic.values[var1.static_spec.get_internals(),
   //                   var2.static_spec.get_internals()]
   // comptime inputSpecShapes =
-  //   Variadic.values[var1.static_spec.shape,
-  //                   var2.static_spec.shape]
+  //   Variadic.values[var1.static_spec.shape.to_index_list[rank](),
+  //                   var2.static_spec.shape.to_index_list[rank]()]
   // comptime inputSpecStrides =
-  //   Variadic.values[var1.static_spec.strides,
-  //                   var2.static_spec.strides]
+  //   Variadic.values[var1.static_spec.strides.to_index_list_noparam(),
+  //                   var2.static_spec.strides.to_index_list_noparam()]
   // comptime inputSpecs = StaticTensorSpecList[inputSpecInternals,
   //                   inputSpecShapes, inputSpecStrides]()
   SmallVector<MojoValue> staticSpecInternals;
@@ -2702,8 +2704,10 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   for (const auto &reboundInput : inputValues) {
     auto inputWithStaticSpec = reboundInput.get("static_spec");
     staticSpecInternals.push_back(inputWithStaticSpec.get("get_internals")());
-    staticSpecShapes.push_back(inputWithStaticSpec.get("shape"));
-    staticSpecStrides.push_back(inputWithStaticSpec.get("strides"));
+    staticSpecShapes.push_back(
+        inputWithStaticSpec.get("shape").get("to_index_list")[rank]());
+    staticSpecStrides.push_back(
+        inputWithStaticSpec.get("strides").get("to_index_list")[rank]());
   }
   MojoValue inputSpecsInternalsComptime = state.builder.comptime(
       MojoValue("Variadic").get("values")[staticSpecInternals]);
