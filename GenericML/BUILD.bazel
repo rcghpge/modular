@@ -1414,6 +1414,7 @@ modular_shared_library(
         ":Support",
         "//MLRT:Core/Tensor",
         "//Support:Base",
+        "//Support:Context",
     ],
 )
 

@@ -15,7 +15,6 @@
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Support/Timing.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/PrettyStackTrace.h"
 
@@ -44,11 +43,6 @@ int main(int argc, char **argv) {
     return 1;
   }
   registerContext(registry, *ctxOr);
-  // Set current context so that passes that run the MEF can use
-  // mgp.runtime.create and other context-dependent primitives.
-  M::setCurrentMaxContext(ctxOr->getPointer());
-  auto clearContextOnExit =
-      llvm::scope_exit([]() { M::setCurrentMaxContext(nullptr); });
 
   static llvm::cl::opt<bool> timeTrace{
       "time-trace",
