@@ -215,25 +215,6 @@ struct RemoveRedundantOperands
           ASSERT_STREAM(toRemove.use_empty(), << toRemove << "has uses");
           continue;
         }
-        // Also erase creation of the chain too (they have already been inserted
-        // when the pass runs after post-abi fusion).
-        for (Operation *user :
-             llvm::make_early_inc_range(toRemove.getUsers())) {
-          if (auto asyncAlloc = dyn_cast<MOGG::PackToAsyncRef>(user)) {
-            for (Operation *op :
-                 llvm::make_early_inc_range(asyncAlloc->getUsers())) {
-              // Must be a deallocation, since we no longer need the chain, they
-              // can be erased too.
-              assert(isa<MOGG::DeallocateAsyncRefOp>(op));
-              op->erase();
-            }
-            asyncAlloc.erase();
-          }
-        }
-        // If this is simple result of a chain.create operation, erase it.
-        auto chainCreate = toRemove.getDefiningOp<MOGG::CreateReadyChainOp>();
-        if (chainCreate)
-          chainCreate->erase();
       }
 
       // Create a new region op but with collapsed result type.

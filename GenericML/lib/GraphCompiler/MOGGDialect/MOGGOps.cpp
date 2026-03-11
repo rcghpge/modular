@@ -66,26 +66,6 @@ static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
 }
 
 //===----------------------------------------------------------------------===//
-// MOGG ToMOGG
-//===----------------------------------------------------------------------===//
-
-LogicalResult ToMOGGOp::canonicalize(ToMOGGOp toMOGG,
-                                     mlir::PatternRewriter &rewriter) {
-  // simply fold %b = mogg.to_mogg(mogg.to_kgen(%a)) to %a, this ensures that
-  // output_placeholder will be directly returned by mogg.output, which is an
-  // implicit pattern exploits by many passes.
-  //
-  // TODO: we should probably make those passes more robust by analyzing data
-  // flow more carefully.
-  if (auto toKGEN = toMOGG.getInput().getDefiningOp<MOGG::ToKGENOp>()) {
-    rewriter.replaceOp(toMOGG, toKGEN.getInput());
-    return success();
-  }
-
-  return failure();
-}
-
-//===----------------------------------------------------------------------===//
 // MOGG ConcatOp
 //===----------------------------------------------------------------------===//
 
@@ -1623,26 +1603,6 @@ OutputPlaceholdersOp KernelOp::getOutputPlaceholder() {
   return *placeholder.begin();
 }
 
-StackAllocateTensorsOp KernelOp::getStackAllocateTensor() {
-  auto stackAlloc = this->getOps<MOGG::StackAllocateTensorsOp>();
-  if (stackAlloc.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(stackAlloc));
-
-  return *stackAlloc.begin();
-}
-
-CreateEmptyTensorsOp KernelOp::getCreateEmptyTensor() {
-  auto createEmpty = this->getOps<MOGG::CreateEmptyTensorsOp>();
-  if (createEmpty.empty())
-    return nullptr;
-
-  assert(llvm::hasSingleElement(createEmpty));
-
-  return *createEmpty.begin();
-}
-
 ScratchPlaceholdersOp KernelOp::getScratchPlaceholder() {
   auto scratch = this->getOps<MOGG::ScratchPlaceholdersOp>();
 
@@ -1814,27 +1774,6 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
 }
 
 //===----------------------------------------------------------------------===//
-// ToTensorFromMGPOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ToTensorFromMGPOp::verify() {
-  auto devBuf = dyn_cast<MGP::DeviceBufferType>(getDataPointer().getType());
-  if (!devBuf)
-    return success();
-
-  // If have access to device buffer, do some sanity checks
-  MO::TensorValue result = getResult();
-  DeviceRefAttr tensorDev = result.getType().getDeviceRef();
-
-  // TODO(GEX-1212): Make sure tensor type has device assignment at this
-  // stage.
-  if (tensorDev && tensorDev != devBuf.getDevice())
-    return emitError() << "Device ref of buffer and tensor do not match";
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // ToMGPFromOpaqueOp
 //===----------------------------------------------------------------------===//
 
@@ -1861,67 +1800,6 @@ OpFoldResult ToMGPFromOpaqueOp::fold(FoldAdaptor adaptor) {
 void AlignmentPlaceholderOp::walkDefinitions(
     function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
   walkDef(getParamDecl(), {});
-}
-
-//===----------------------------------------------------------------------===//
-// ToKGENOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ToKGENOp::verify() {
-  if (auto attr = getTensorIOTypeAttr()) {
-    auto ref = attr.strref();
-
-    bool valid = KGEN::MOGGPreElab::toIOSpec(ref).has_value();
-
-    if (!valid) {
-      return emitError() << "Invalid tensorIOType string attr: " << ref
-                         << " -- expected one of: { "
-                         << KGEN::MOGGPreElab::kInputTensor << ", "
-                         << KGEN::MOGGPreElab::kOutputTensor << ", "
-                         << KGEN::MOGGPreElab::kFusedInputTensor << ", "
-                         << KGEN::MOGGPreElab::kFusedOutputTensor << ", "
-                         << KGEN::MOGGPreElab::kMutableInputTensor << ", "
-                         << KGEN::MOGGPreElab::kFusedComputeOutputTensor
-                         << " }";
-    }
-  }
-
-  return success();
-}
-
-KGEN::ParamDeclRefAttr ToKGENOp::getStaticTensorRefAttr() {
-  StringAttr name = getStaticTensorSpecNameAttr();
-  ASSERT_STREAM(name != nullptr, << "staticTensorSpecName attr is null");
-
-  // ToKGEN should always be in the outermost block of the kernel
-  // And same for the ParamDeclareOp.
-  for (auto declareOp :
-       getOperation()->getBlock()->getOps<KGEN::ParamDeclareOp>()) {
-    if (declareOp.getParamDecl().getName() == name)
-      return KGEN::ParamDeclRefAttr::get(declareOp.getParamDecl());
-  }
-
-  ASSERT_STREAM(false, << "KGEN::ParamDeclareOp not found in kernel body for "
-                          "staticTensorSpec named "
-                       << name);
-  return nullptr;
-}
-
-//===----------------------------------------------------------------------===//
-// StackAllocateTensorsOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult StackAllocateTensorsOp::verify() {
-  auto isCpuTensor = [](Type t) {
-    auto tensor = cast<MO::TensorType>(t);
-    return !tensor.getDeviceRef() ||
-           tensor.getDeviceRef().getLabel() == kCPULabel;
-  };
-
-  if (!llvm::all_of(getResultTypes(), isCpuTensor))
-    return emitError() << "stack allocated tensors must be on the CPU";
-
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2471,81 +2349,6 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
 
   state.setMojoValueFor(outputVal,
                         state.builder.var(mojoSymbolName(parameters, inputs)));
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// InlineConstantBufferOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
-  // Get the raw value.
-  ArrayRef<uint8_t> rawValue;
-  if (auto arrayAttr = dyn_cast<M::ArrayElementsAttr>(getValue())) {
-    rawValue = arrayAttr.getRawData();
-  } else if (auto resourceAttr =
-                 dyn_cast<DenseResourceElementsAttr>(getValue())) {
-    DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
-    mlir::AsmResourceBlob *blob = handle.getBlob();
-    rawValue = blob->getDataAs<uint8_t>();
-  } else {
-    return failure();
-  }
-
-  // We use pop.global_constant to emit inline constant data (as was used in the
-  // older KGEN path)
-  //
-  // Ideally we'd have this wrapped up in a nice function that we could just
-  // invoke on the Mojo side, but I wasn't able to figure out how to
-  // parameterize the raw mlir we're generating with the array size.
-  //
-  // Instead directly invoke pop.global_constant op via the __mlir_op machinery
-  // of Mojo.
-  //
-  static constexpr StringLiteral popArrayStr = "#pop.array<";
-
-  std::string arrayAttrStr;
-  // Multiply by 5 as the worst case since we can have at most 3 digits and the
-  // string ', '
-  arrayAttrStr.reserve(rawValue.size() * 5 + popArrayStr.size());
-  llvm::raw_string_ostream arrayAttrStream(arrayAttrStr);
-
-  // Build up the pop.array constant attribute
-  arrayAttrStream << popArrayStr;
-  llvm::interleave(
-      rawValue, arrayAttrStream,
-      // Cast to 'unsigned' as printing the uint8_t values directly prints them
-      // as chars.
-      [&](uint8_t value) { arrayAttrStream << static_cast<unsigned>(value); },
-      ", ");
-  arrayAttrStream << ">";
-
-  std::string popArrayTypeStr =
-      llvm::formatv("!pop.array<{0}, ui8>", rawValue.size()).str();
-  std::string kgenPtrTypeStr =
-      llvm::formatv("!kgen.pointer<array<{0}, ui8>>", rawValue.size()).str();
-
-  // Emit the __mlir_op.pop.global_constant operation
-  MOGG::MojoValue arrPtr = state.builder.var(MOGG::MojoValue(
-      llvm::formatv(
-          "__mlir_op.`pop.global_constant`[value = __mlir_attr[`{0}`, `: "
-          "{1}`], _type = __mlir_type[`{2}`]]()",
-          arrayAttrStream.str(), popArrayTypeStr, kgenPtrTypeStr)
-          .str()));
-
-  // Create UnsafePointer from the array pointer so we can easily bitcast to
-  // the expected pointer of NoneType.
-  MOGG::MojoValue altPtr =
-      state.builder.var(MOGG::MojoValue("UnsafePointer[MutAnyOrigin]")(
-          {}, {MOGG::MojoValue("value").equal(arrPtr)}));
-
-  // Bitcast to NoneType (expected dtype for the buffers).
-  MOGG::MojoValue opaquePtrVar = state.builder.var(
-      altPtr.get("bitcast")({MOGG::MojoValue("NoneType")}, {}));
-  MOGG::MojoValue mgpBufferConstantFn{
-      MOGG::HardcodedMojoSymbols::func_buffer_constant};
-  state.setMojoValueFor(
-      getResult(), mgpBufferConstantFn({}, {opaquePtrVar, rawValue.size()}));
   return success();
 }
 

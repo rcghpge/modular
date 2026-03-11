@@ -152,7 +152,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
   }
 
   for (Operation &op : kernelOp.getOps()) {
-    if (!isa<MOGG::CreateReadyChainOp, OutputPlaceholdersOp>(op))
+    if (!isa<OutputPlaceholdersOp>(op))
       builder.insert(op.clone(remapper));
   }
 

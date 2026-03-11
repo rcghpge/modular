@@ -495,14 +495,6 @@ MGP_RT_CreateOwnedAsyncPythonMojoValue(void *data, void (*destructorFn)(void *),
   createAsyncMojoValue(data, destructorFn, async, MojoValue::Tag::kPython);
 }
 
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_TransferAsyncRef(AsyncRTWrapper<AnyAsyncValueRef> from,
-                        AsyncRTWrapper<AnyAsyncValueRef> to) {
-  assert(unwrap(to).getPointer() == nullptr);
-  AnyAsyncValueRef &toMove = unwrap(from);
-  new (&unwrap(to)) AnyAsyncValueRef(std::move(toMove));
-}
-
 //===----------------------------------------------------------------------===//
 // Unpacking functions for reading async values
 //===----------------------------------------------------------------------===//

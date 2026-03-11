@@ -213,10 +213,6 @@ private:
   // This is a list of all the outputs of the kernel but lowered to MGP.
   SmallVector<MGP::MOOutputStorage> loweredOutputsStorage;
 
-  // Lower the DeviceContextPlaceholderOp to be compatible with the MGP region.
-  void
-  lowerDeviceContextPlaceholder(MOGG::DeviceContextPlaceholderOp moggContext);
-
   // Lower the BindLambdaOp to be compatible with the MGP region.
   void lowerBindLambdaOp(MOGG::BindLambdaOp bindOp);
 

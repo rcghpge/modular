@@ -13,9 +13,9 @@ mgp.model @extend_lifetimes : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %arg2: !mgp.tensor<2x4xf32>, %arg3: !mgp.tensor<2x4xf32>) -> (!mef.chain) {
- 
+
   %3 = mogg.generic.compiled.region () : ()  -> !mef.chain{
-    %ch = "mogg.create_ready_chain"() : () -> !mef.chain
+    %ch = mogg.async.ready : !mef.chain
     mogg.output %ch : !mef.chain
   } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
 

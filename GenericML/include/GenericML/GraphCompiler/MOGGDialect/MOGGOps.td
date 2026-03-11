@@ -417,14 +417,6 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     /// exist.
     OutputPlaceholdersOp getOutputPlaceholder();
 
-    // Returns the StackAllocateTensorsOp for this operation or null if it
-    // does not exist.
-    StackAllocateTensorsOp getStackAllocateTensor();
-
-    // Returns the CreateEmptyTensorsOp for this operation or null if it does
-    // not exist.
-    CreateEmptyTensorsOp getCreateEmptyTensor();
-
     // Returns the ScratchPlaceholderOp for this operation or null if it does
     // not exist.
     ScratchPlaceholdersOp getScratchPlaceholder();
@@ -679,106 +671,6 @@ def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
    }];
 }
 
-def MOGG_StackAllocateTensorsOp : MOGG_Op<"stack_allocate_tensors", [Pure]> {
-  let results = (outs Variadic<MO_Tensor>:$results);
-
-  let summary = "Allocates statically sized NDBuffers/Tensor on the host's stack.";
-  let description = [{
-    Each result of this op is an NDBuffer/Tensor:
-     - Only statically shaped `!mo.tensor` types are allowed.
-     - The shapes should be 'small' so as to not blow the stack.
-     - The NDBuffer/Tensor will be backed by a stack allocated buffer/tensor
-       on the host stack.
-     - Obviously these NDBuffers/Tensor may only be used for host-side temporaries
-       within the kernel and cannot be returned to the caller.
-
-    Example:
-    ```mlir
-      %tensors:2 = mogg.stack_allocate_tensors : (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], f32>)
-    ```
-  }];
-
-  let hasVerifier = 1;
-
-  let assemblyFormat = [{
-   attr-dict `:` type($results)
-  }];
-}
-
-def MOGG_StackAllocateOpaquesOp : MOGG_Op<"stack_allocate_opaques"> {
-  let results = (outs Variadic<AnyTypeOf<[MO_Opaque, MGP_OpaqueType]>>:$results);
-
-  let summary = "Allocates opaque types on the host's stack.";
-  let description = [{
-    Each result of this op is an opaque object.
-    It represents the outputs of a kernel call.
-    This op does a stack allocation for the outputs of the kernel.
-    The data is uninitialized, and will be filled by the kernel.
-
-    Example:
-    ```mlir
-      %vals:2 = mogg.stack_allocate_opaques : (!mgp.opaque, !mo.opaque<"my_fp">)
-    ```
-  }];
-
-  let assemblyFormat = [{
-   attr-dict `:` type($results)
-  }];
-}
-
-def MOGG_CreateEmptyTensorsOp : MOGG_Op<"empty_tensors", [Pure]> {
-  let results = (outs Variadic<MO_Tensor>:$results);
-
-  let summary = "This creates some tensors which have only shape information but no value";
-  let description = [{
-    These tensors will be created with the correct shape and type but will have
-    no memory allocated. These are a temporary construct to allow shape functions
-    to create null tensors without needing to deal with outputs etc.
-
-    Example:
-    ```mlir
-    %alloc = mogg.create_empty_tensors : !mo.tensor<[2, 3], f32>
-    ```
-    This returns a tensor with an internal memory allocation.
-  }];
-
-  let assemblyFormat = [{
-   attr-dict `:` type($results)
-  }];
-}
-
-def MOGG_BufferBorrowOp : MOGG_Op<"buffer.borrow", [Pure]> {
-  let arguments = (ins AnyType:$buf, AnyType:$borrowee);
-  let results = (outs AnyType:$result);
-  let summary = "Intrinsic to create a buffer but extend lifetime of another";
-  let description = [{
-    Represents a placeholder operation which on lowering to will produce a
-    new buffer which extends a shared lifetime with the other.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
-  }];
-}
-
-def MOGG_ToTensorFromMGPOp : MOGG_Op<"to_tensor_from_mgp", [Pure]> {
-  let arguments = (ins AnyType:$dataPointer, Variadic<Index>:$dims);
-  let results = (outs MO_Tensor:$result);
-  let summary = "Represents the construction of an NDBuffer or Tensor";
-  let description = [{
-    Takes a data pointer and a list of dimensions. Will lower this into a call
-    to NDBuffer or Tensor constructor under the hood.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
-  }];
-
-  let hasVerifier = 1;
-}
-
 def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>
@@ -805,109 +697,6 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   let hasFolder = 1;
 }
 
-def MOGG_MGPToAsyncRefOp : MOGG_Op<"mgp_to_async_ref", [Pure]> {
-  let arguments = (ins AnyType:$input);
-  let results = (outs PointerOf<KGEN_NoneType>:$result);
-  let summary = "A nop just to reconcile type conflict after lower-abi";
-
-  let description = [{
-    A no-op just to reconcile type conflict after lower-abi, the operation will
-    be removed after generic region models async value correctly.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-      functional-type(operands, results)
-  }];
-}
-
-def MOGG_AsyncRefToMGPOp : MOGG_Op<"async_ref_to_mgp", [Pure]> {
-  let arguments = (ins PointerOf<KGEN_NoneType>:$async);
-  let results = (outs AnyType:$mgpResult);
-  let summary = "A nop just to reconcile type conflict after lower-abi";
-
-  let description = [{
-    A no-op just to reconcile type conflict after lower-abi, the operation will
-    be removed after generic region models async value correctly.
-
-    The inverse operation of mogg.mgp_to_async_ref
-  }];
-
-  let assemblyFormat = [{
-    `(` $async `)` attr-dict `:` functional-type($async, $mgpResult)
-  }];
-}
-
-def MOGG_AllocateAsyncRefOp : MOGG_Op<"allocate_async_ref_for", [Pure]> {
-  let arguments = (ins AnyType:$input);
-  let results = (outs PointerOf<KGEN_NoneType>:$result);
-  let summary = "Returns pointer to the async value of the corresponding output";
-
-  let description = [{
-    Each input and output are represented by an async value. This operation
-    allocate an async value explicitly (for output).
-
-    Example:
-
-    ```mlir
-    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
-    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
-    ```
-
-    When the async value is returned, the allocation is folded into a
-    pre-allocated async values from runtime. E.g.,
-
-    ```mlir
-    # Before
-    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
-    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
-    mogg.output %tensor
-
-    # After
-    %async_storage = rt.get_output_async_value_for %tensor: () -> !kgen.pointer<NoneType>
-    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
-    mogg.output %tensor
-    ```
-
-    When the async value is not returned (due to post-abi fusion), a destructor
-    will have to be inserted.
-
-    ```mlir
-    # Before
-    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
-    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
-    %borrowed = mgp.borrows(async_val)
-    mogg.output %borrowed
-
-    # After
-    %async_storage = rt.allocate_async_ref %tensor: () -> !kgen.pointer<NoneType>
-    %async_val = call "builtin.pack_xxx" (%tensor, %async_storage, ...)
-    %borrowed = mgp.borrows(%tensor)
-    call "builtin.destruct_async_val" (%async_val)
-    mogg.output %borrowed
-    ```
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-      functional-type(operands, results)
-  }];
-}
-
-def MOGG_DeallocateAsyncRefOp : MOGG_Op<"deallocate_async_ref"> {
-  let arguments = (ins Variadic<PointerOf<AnyType>>:$asyncRefs);
-  let summary = "Deallocate the async value ref";
-
-  let description = [{
-     Explicitly deallocate the provided AsyncValueRef * (i.e., the argument
-     should be the address of a AnyAsyncRef).
-  }];
-
-  let assemblyFormat = [{
-    `(` $asyncRefs `)` attr-dict `:` qualified(type($asyncRefs))
-  }];
-}
-
 def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   let arguments = (ins
       AnyType:$mojoPointer,
@@ -922,70 +711,6 @@ def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:`
       functional-type(operands, results)
-  }];
-}
-
-def MOGG_PackToAsyncRef : MOGG_Op<"pack_to_async_ref", [Pure]> {
-  let arguments = (ins AnyType:$inputVal,
-                       Optional<MGP_DeviceContextType>:$deviceCtx);
-  let results = (outs PointerOf<KGEN_NoneType>:$resultAsync);
-  let summary = "Pack a KGEN value to a async ref";
-
-  let description = [{
-    Pack a KGEN value to a async ref. I.e,
-
-    ```mlir
-      %async = mogg.pack_to_async_ref(%kgen)
-      // is equivalent to
-      %async = allocate_async_value()
-      mogg.call "builtin.create_xxx_async(%kgen, %async)"
-    ```
-  }];
-
-  let assemblyFormat = [{
-    `(` $inputVal (`,` $deviceCtx^)? `)` attr-dict
-    `:` qualified(type($inputVal)) (`,` qualified(type($deviceCtx))^)?
-  }];
-}
-
-def MOGG_UnpackFromAsyncRef : MOGG_Op<"unpack_from_async_ref", [Pure]> {
-  let arguments = (ins PointerOf<KGEN_NoneType>:$inputAsync);
-  let results = (outs AnyType:$resultVal);
-  let summary = "Unpack a KGEN value from a async ref";
-
-  let description = [{
-    Unpack a KGEN value from a async ref. I.e,
-
-    ```mlir
-      %kgen = mogg.unpack_from_async_ref(%async)
-      // is equivalent to
-      %kgen = mogg.call "builtin.unpack_xxx_async(%async)"
-    ```
-  }];
-
-  let assemblyFormat = [{
-    `(` $inputAsync `)` attr-dict `:` qualified(type($resultVal))
-  }];
-}
-
-def MOGG_TransferAsyncRef : MOGG_Op<"transfer_async_ref", [Pure]> {
-  let arguments = (ins PointerOf<KGEN_NoneType>:$asyncSrc);
-  let results = (outs PointerOf<KGEN_NoneType>:$asyncDst);
-  let summary = "Transfer the ownership of an async ref to a new one.";
-
-  let description = [{
-    Transfer the ownership of an async ref to a new one. I.e,
-
-    ```mlir
-      %dst = mogg.transfer_async_ref(%src)
-      // is equivalent to
-      %async = allocate_async_value()
-      mogg.call "builtin.transfer_async_ref"(%kgen, %async)
-    ```
-  }];
-
-  let assemblyFormat = [{
-    `(` $asyncSrc `)` attr-dict
   }];
 }
 
@@ -1037,18 +762,6 @@ def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
 
 }
 
-def MOGG_AnyAsyncRefPlaceholderOp : MOGG_Op<"any_async_ref_placeholder"> {
-  // Allocate a `void *`, returning a `void **`
-  let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
-  let summary = "Returns a placeholder for holding a AsyncRT::AnyAsyncValueRef";
-  let description = [{
-    This is resolved to an pop.stack_allocation during lowering. The content of
-    the placeholder is initialized to be nullptr.
-  }];
-
-  let assemblyFormat = [{attr-dict}];
-}
-
 def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders", [Pure]> {
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
 
@@ -1094,29 +807,6 @@ def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
   }];
 }
 
-def MOGG_CreateReadyChainOp : MOGG_Op<"create_ready_chain", [
-  Pure,
-  DeclareOpInterfaceMethods<KernelTerminatorProvider>
-]> {
-  let results = (outs AnyType:$result);
-
-  let summary = "Represents a chain output placeholder";
-  let description = [{
-    This is to help resolve any chain dependencies for data-dependent operations
-    and help elide chains during fusion when lowering down to a compiled region.
-
-    This is a special-case to the output placeholders because we remove this much lower
-    in the kgen pipeline compared to the output_placeholders
-
-    Example:
-    ```mlir
-      %out = mogg.create_ready_chain : !mef.chain
-    ```
-    This provides a `%out` SSA value which corresponds to the chain output that kernels
-    want to output.
-  }];
-}
-
 //===----------------------------------------------------------------------===//
 // MOGG Runtime compiled code representation ops.
 //===----------------------------------------------------------------------===//
@@ -1132,61 +822,6 @@ def MOGG_DeviceContextPlaceholderOp: MOGG_Op<"device_context_placeholder", [Pure
   let assemblyFormat = [{
     attr-dict `:` type($results)
   }];
-}
-
-def MOGG_ToKGENOp: MOGG_Op<"to_kgen", [Pure,
-  DeclareOpInterfaceMethods<MOGG_MojoObjectInfosInterface>]> {
-  let summary = "Converts a MOGG value to a KGEN value";
-  let description = [{
-    Converts a mogg/mo value to a kgen value. Includes the shape and optionally,
-    the stride parameter that appears in the kernel.
-  }];
-
-  let arguments = (ins AnyType:$input,
-    OptionalAttr<Builtin_StringAttr>:$staticTensorSpecName,
-    OptionalAttr<DictionaryAttr>:$typeMethodsDict,
-    UnitAttr:$isRegisterType,
-    // Whether something was a pure input, mutable input, or output tensor
-    // Denotes the underlying tensor type for our supported collection types as
-    // well (that is VariadicTensors and lists of tensors)
-    // Value must be one of {"InputTensor", "OutputTensor", "MutableInputTensor"}
-    // TODO: Might want to look into making this a proper enum
-    OptionalAttr<Builtin_StringAttr>:$tensorIOType
-  );
-  let results = (outs AnyType:$results);
-
-  let extraClassDeclaration = [{
-    /// Necessary to implement MojoObjectInfosInterface.
-    Value getKGENMojoValueImpl() { return getResults(); }
-
-    /// Returns the ParamParamDeclRefAttr associated to the staticTensorSpec.
-    /// Or asserts if staticTensorSpecName is null or the definition is not found
-    KGEN::ParamDeclRefAttr getStaticTensorRefAttr();
-  }];
-
-  let hasVerifier = 1;
-}
-
-def MOGG_ToMOGGOp: MOGG_Op<"to_mogg", [Pure,
-  DeclareOpInterfaceMethods<MOGG_MojoObjectInfosInterface>]> {
-  let summary = "Converts a KGEN value to a MOGG value";
-  let description = [{
-    Converts a KGEN value to a MOGG value. This is the converse of to_kgen. It
-    helps do partial lowering of the IR.
-  }];
-
-  let arguments = (ins AnyType:$input,
-    OptionalAttr<DictionaryAttr>:$typeMethodsDict,
-    UnitAttr:$isRegisterType
-  );
-  let results = (outs AnyTypeOf<[MOGG_Simd, MO_Tensor, MOGG_Indices, MOGG_Shape, MO_Opaque]>:$results);
-
-  let extraClassDeclaration = [{
-    /// Necessary to implement MojoObjectInfosInterface.
-    Value getKGENMojoValueImpl() { return getInput(); }
-  }];
-
-  let hasCanonicalizeMethod = 1;
 }
 
 def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [
@@ -1488,27 +1123,6 @@ def MOGG_AsyncPackBorrowOp : MOGG_Op<"async.pack.borrow", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-}
-
-def MOGG_InlineConstantBufferOp : MOGG_Op<"inline_constant_buffer", [
-  Pure,
-  DeclareOpInterfaceMethods<EmitsMojoInterface>
-]> {
-  let summary = "Represents a constant buffer value inlined inside the kernel";
-  let description = [{
-    Takes a the raw elements attrs and returns a buffer (pointer) to the constant.
-  }];
-
-  let arguments = (ins
-    ConfinedAttr<
-      ElementsAttr,
-      [AnyAttrOf<[M_ArrayElementsAttr,
-                  Builtin_DenseResourceElementsAttr,
-                  M_AlignedBytesAttr]>]
-    >:$value);
-  let results = (outs MGP_DeviceBufferType:$result);
-
-  let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
 def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
