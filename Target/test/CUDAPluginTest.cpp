@@ -6,7 +6,7 @@
 
 #include "Fixture.h"
 
-static const char *vecAddPtx = R"PTX(
+static std::string vecAddPtx = R"PTX(
 // From max/kernels/test/gpu/vec_add.ptx
 
 .version 6.3
@@ -81,8 +81,9 @@ $L__BB0_2:
 
 TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
   M_driver_function_t func = nullptr;
-  ASSERT_SUCCESS(function_load(driver, contexts[0], vecAddPtx, "vec_add", -1,
-                               nullptr, -1, &func));
+  ASSERT_SUCCESS(function_load(driver, contexts[0], vecAddPtx.data(),
+                               vecAddPtx.size(), "vec_add", -1, nullptr, -1,
+                               &func));
   ASSERT_NE(func, nullptr);
   EXPECT_SUCCESS(function_unload(driver, contexts[0], func));
 }

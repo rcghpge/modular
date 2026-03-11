@@ -8,11 +8,15 @@
 #define TARGET_LIB_METAL_COMMON_H
 
 #include "HAL/M_driver_common.h"
+#include "tl/expected.hpp"
 
 #define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-10))
 #define M_DRIVER_STATUS_UNINITIALIZED ((M_driver_status_t)(-11))
 #define M_DRIVER_NUM_ERRORS 12
 
 extern const char *status_messages[M_DRIVER_NUM_ERRORS];
+
+template <class T>
+using DriverResult = tl::expected<T, M_driver_status_t>;
 
 #endif // TARGET_LIB_METAL_COMMON_H

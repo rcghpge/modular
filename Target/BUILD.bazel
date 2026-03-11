@@ -108,12 +108,14 @@ modular_cc_binary(
         "//SDK:HAL",
         "//Support:Base",
         "@metal-cpp//:metal-cpp",
+        "@tl_expected",
     ],
 )
 
 modular_cc_test(
     name = "MetalPluginTest",
     size = "small",
+    srcs = ["test/MetalPluginTest.cpp"],
     data = [":MetalPlugin.so"],
     env = {
         "MODULAR_DRIVER_PLUGINS": "$(location :MetalPlugin.so)",

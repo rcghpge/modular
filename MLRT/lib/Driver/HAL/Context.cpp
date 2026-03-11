@@ -56,8 +56,8 @@ Context::loadFunction(llvm::StringRef moduleName, llvm::StringRef functionName,
 
   M_driver_function_t funcHandle = nullptr;
   if (M_driver_status_t status = device_->driver->plugin.function_load(
-          device_->driver->handle, handle, code.data(), functionName.data(),
-          maxDynamicSharedBytes,
+          device_->driver->handle, handle, code.data(), code.size(),
+          functionName.data(), maxDynamicSharedBytes,
           debugLevel.empty() ? nullptr : debugLevel.data(), optimizationLevel,
           &funcHandle))
     return Error(device_->driver->getStatusMessage(status));

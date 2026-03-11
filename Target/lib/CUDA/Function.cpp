@@ -55,7 +55,7 @@ setupCompilationOptions(const char *debugLevel, int32_t optimizationLevel) {
 }
 
 DriverResult<M_driver_function_t>
-M_driver_function::load(M_driver_context &ctx, const void *code,
+M_driver_function::load(M_driver_context &ctx, llvm::StringRef code,
                         const char *function_name,
                         int32_t max_dynamic_shared_bytes,
                         const char *debug_level, int32_t optimization_level) {
@@ -72,7 +72,7 @@ M_driver_function::load(M_driver_context &ctx, const void *code,
   // TODO: Might need equivalent of POLL_PENDING_EVENTS here after queue and
   // events are in place, line 1716 CUDADeviceContext.cpp
   CUDA_CHECK_DR(cuda.cuModuleLoadDataEx(
-                    &module, code, optionKind.size(), optionKind.data(),
+                    &module, code.data(), optionKind.size(), optionKind.data(),
                     reinterpret_cast<void **>(optionValues.data())),
                 M_DRIVER_STATUS_UNKNOWN_ERROR);
 

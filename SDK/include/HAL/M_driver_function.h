@@ -21,6 +21,7 @@ extern "C" {
  * @param driver (in) The driver.
  * @param context (in) The context to load the function into.
  * @param code (in) Pointer to the device code image.
+ * @param code_size (in) Size in bytes of the device code image.
  * @param function_name (in) Null-terminated name of the function to retrieve
  *                     from the loaded module.
  * @param max_dynamic_shared_bytes (in) Maximum dynamic shared memory in bytes
@@ -33,18 +34,17 @@ extern "C" {
  *         context is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t
-M_driver_function_load(M_driver_driver_t driver, M_driver_context_t context,
-                       const void *code, const char *function_name,
-                       int32_t max_dynamic_shared_bytes,
-                       const char *debug_level, int32_t optimization_level,
-                       M_driver_function_t *function);
+M_driver_status_t M_driver_function_load(
+    M_driver_driver_t driver, M_driver_context_t context, const void *code,
+    uint64_t code_size, const char *function_name,
+    int32_t max_dynamic_shared_bytes, const char *debug_level,
+    int32_t optimization_level, M_driver_function_t *function);
 
 typedef M_driver_status_t (*M_driver_function_load_func_ptr_t)(
     M_driver_driver_t driver, M_driver_context_t context, const void *code,
-    const char *function_name, int32_t max_dynamic_shared_bytes,
-    const char *debug_level, int32_t optimization_level,
-    M_driver_function_t *function);
+    uint64_t code_size, const char *function_name,
+    int32_t max_dynamic_shared_bytes, const char *debug_level,
+    int32_t optimization_level, M_driver_function_t *function);
 
 /**
  * Unload a previously loaded function and release associated resources.
