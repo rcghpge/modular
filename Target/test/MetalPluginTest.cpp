@@ -4,7 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../lib/Metal/Common.h"
 #include "Fixture.h"
+
+// Extend test-cases per-plugin beyond the common ones in PluginTest.cpp
 
 static std::string code = R"MSL(
 #include <metal_stdlib>
@@ -22,6 +25,18 @@ kernel void vec_add_msl(
     }
 }
 )MSL";
+
+TEST_F(DriverPluginTest, CustomStatusMessage) {
+  char errorMessage[1024];
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_UNIMPLEMENTED, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_STREQ(errorMessage, "Unimplemented");
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_UNINITIALIZED, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_STREQ(errorMessage, "Uninitialized");
+}
 
 TEST_F(DriverPluginContextTest, FunctionLoad) {
   for (M_driver_context_t context : contexts) {

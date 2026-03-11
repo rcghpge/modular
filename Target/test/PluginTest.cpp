@@ -5,6 +5,37 @@
 //===----------------------------------------------------------------------===//
 
 #include "Fixture.h"
+#include <cstring>
+
+TEST_F(DriverPluginTest, StandardStatusMessage) {
+  char errorMessage[1024];
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_SUCCESS, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_GT(strlen(errorMessage), 0);
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_UNKNOWN_ERROR, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_GT(strlen(errorMessage), 0);
+}
+
+TEST_F(DriverPluginTest, BadStatusCode) {
+  char errorMessage[1024];
+  ASSERT_EQ(M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE,
+            this->status_message(10, errorMessage, sizeof(errorMessage)));
+  ASSERT_EQ(M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE,
+            this->status_message(-M_DRIVER_NUM_STANDARD_STATUS_CODES,
+                                 errorMessage, sizeof(errorMessage)));
+  ASSERT_EQ(M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE,
+            this->status_message(M_DRIVER_STATUS_CUSTOM_CODES_BASE + 1,
+                                 errorMessage, sizeof(errorMessage)));
+  // Conservative number that we expect no plugin to reach or exceed
+  int64_t constexpr assumedNumCustomStatusCodes = 50000;
+  ASSERT_EQ(M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE,
+            this->status_message(M_DRIVER_STATUS_CUSTOM_CODES_BASE -
+                                     assumedNumCustomStatusCodes,
+                                 errorMessage, sizeof(errorMessage)));
+}
 
 TEST_F(DriverPluginTest, DriverPropertyAPI) {
   const char *api = nullptr;

@@ -15,12 +15,11 @@ using M::Error;
 namespace M::Driver::HAL {
 
 StringRef Driver::getStatusMessage(M_driver_status_t status) {
-  if (plugin.status_message) {
-    const char *message = nullptr;
-    plugin.status_message(status, &message);
-    return message;
-  }
-  return "(plugin not loaded)";
+  static thread_local char errorMessage[1024];
+  if (plugin.status_message(status, errorMessage, sizeof(errorMessage)) !=
+      M_DRIVER_STATUS_SUCCESS)
+    return "(problem retrieving status message)";
+  return llvm::StringRef(errorMessage);
 }
 
 ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {

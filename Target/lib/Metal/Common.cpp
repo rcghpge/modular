@@ -5,31 +5,39 @@
 //===----------------------------------------------------------------------===//
 
 #include "Common.h"
+#include "Target/lib/Support/StandardStatus.h"
+#include "Target/lib/Support/Utils.h"
 
-const char *status_messages[M_DRIVER_NUM_ERRORS] = {
-    /*0*/ "Success",
-    /*1*/ "Unknown error",
-    /*2*/ "Argument out of range",
-    /*3*/ "Unknown property name",
-    /*4*/ "No devices",
-    /*5*/ "Bad device",
-    /*6*/ "Bad context",
-    /*7*/ "Bad memory",
-    /*8*/ "Out of memory",
-    /*9*/ "Invalid argument",
-    /*10*/ "Unimplemented",
-    /*11*/ "Uninitialized",
+const char *customStatusMessages[M_DRIVER_NUM_CUSTOM_STATUS_CODES] = {
+    /*-0*/ "Unimplemented",
+    /*-1*/ "Uninitialized",
 };
 
-extern "C" M_driver_status_t M_driver_status_message(M_driver_status_t status,
-                                                     const char **message) {
-  int64_t statusIndex = -status;
-  constexpr int64_t numStatusMessages =
-      sizeof(status_messages) / sizeof(status_messages[0]);
-  if (statusIndex < 0 || statusIndex > numStatusMessages) {
+extern "C" M_driver_status_t
+M_driver_status_message(M_driver_status_t status, char *message_buffer,
+                        int64_t message_buffer_size) {
+  if (message_buffer_size <= 0) {
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
-  } else {
-    *message = status_messages[statusIndex];
+  }
+  if (status > 0) {
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+
+  } else if (status > -M_DRIVER_NUM_STANDARD_STATUS_CODES) {
+    copyStatusMessage(message_buffer, message_buffer_size,
+                      standardStatusMessages[-status]);
     return M_DRIVER_STATUS_SUCCESS;
+
+  } else if (status > M_DRIVER_STATUS_CUSTOM_CODES_BASE) {
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+
+  } else if (status > (M_DRIVER_STATUS_CUSTOM_CODES_BASE -
+                       M_DRIVER_NUM_CUSTOM_STATUS_CODES)) {
+    copyStatusMessage(
+        message_buffer, message_buffer_size,
+        customStatusMessages[-status + M_DRIVER_STATUS_CUSTOM_CODES_BASE]);
+    return M_DRIVER_STATUS_SUCCESS;
+
+  } else {
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
   }
 }

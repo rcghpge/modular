@@ -27,9 +27,21 @@ typedef struct M_driver_queue *M_driver_queue_t;
 typedef struct M_driver_function *M_driver_function_t;
 
 /**
- * Common status codes.
- * Implementations must use negative integers less than the following for
- * errors, and positive integers greater than 0 for warnings.
+ * Returned status-codes from all API functions.
+ *
+ * Implementations are encouraged to use the predefined set below where
+ * possible.
+ *
+ * Implementations may also extend this set by defining additional (custom)
+ * status codes, but must use integers less than or equal to
+ * M_DRIVER_STATUS_CUSTOM_CODES_BASE for errors and strictly greater than 0
+ * for warnings and information.
+ *
+ * Every status code must generate a human-readable message when supplied to
+ * `M_driver_status_message()` (defined below).
+ *
+ * Custom status codes may be ephemeral.
+ * See documentation for M_driver_status_message() for more details.
  */
 #define M_DRIVER_STATUS_SUCCESS ((M_driver_status_t)(0))
 #define M_DRIVER_STATUS_UNKNOWN_ERROR ((M_driver_status_t)(-1))
@@ -41,26 +53,47 @@ typedef struct M_driver_function *M_driver_function_t;
 #define M_DRIVER_STATUS_BAD_MEMORY ((M_driver_status_t)(-7))
 #define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-8))
 #define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-9))
+/* Future standard status codes may be added here. */
+#define M_DRIVER_NUM_STANDARD_STATUS_CODES (10)
+
+#define M_DRIVER_STATUS_CUSTOM_CODES_BASE ((M_driver_status_t)(-65536))
 
 /**
  * Retrieve human-readable status message corresponding to a status code.
  *
  * @param status (in) A status code.
- * @param message (out) The corresponding status message as a null-terminated
- *                string. Must be "Success" for M_DRIVER_SUCCESS, and
- *                "Unknown Error" for M_DRIVER_UNKNOWN_ERROR.
- * @return Standard Status Protocol or M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE if
- *         the input status code does not match any of the above common status
- *         codes or others that the API implementation emits.
- * @note The pointer at `*message` is owned by the callee. The caller must not
- *       free it.
+ * @param message_buffer (inout) A buffer to write the corresponding status
+ *                       message into as a null-terminated string.
+ * @param message_buffer_size (in) The size of the buffer.
+ * @note If the status message is longer than the buffer, the message
+ *       must be truncated to fit into the buffer. In any case, the last
+ *       character must be the null terminator, '\0'.
+ * @note Implementations may support ephemeral status messages: strings bound
+ *       to a custom status code till such time M_driver_status_message() is
+ *       called. At that time, the plugin may discard the string after copying
+ *       it into the buffer and recycle the status code.  Subsequent calls to
+ *       M_driver_status_message() for the same status code will return
+ *       M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE unless the status code has been
+ *       reassigned to a new ephemeral message. Such behavior can be useful
+ *       with dynamically-constructed messages that may contain
+ *       context-specific information.
+ * @return Standard Status Protocol, or
+ *         M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE if `status` does not match any
+ *           of the above common status codes or other persistent ones that the
+ *           implementation maintains, or
+ *         M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE if `message_buffer_size` is
+ *           less than or equal to 0, or
+ *         M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE if `status` is an expired
+ *           (ephemeral) custom status code.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_status_message(M_driver_status_t status,
-                                          const char **message);
+                                          char *message_buffer,
+                                          int64_t message_buffer_size);
 
 typedef M_driver_status_t (*M_driver_status_message_func_ptr_t)(
-    M_driver_status_t status, const char **message);
+    M_driver_status_t status, char *message_buffer,
+    int64_t message_buffer_size);
 
 #ifdef __cplusplus
 }

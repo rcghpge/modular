@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-#ifndef ERROR_H
-#define ERROR_H
+#ifndef TARGET_LIB_CUDA_ERROR_H
+#define TARGET_LIB_CUDA_ERROR_H
 
 #include "HAL/M_driver_common.h"
 
@@ -13,9 +13,11 @@
 #include <stdint.h>
 #include <tl/expected.hpp>
 
-#define M_DRIVER_STATUS_UNIMPLEMENTED ((M_driver_status_t)(-10))
-#define M_DRIVER_STATUS_BAD_HANDLE ((M_driver_status_t)(-11))
-#define M_DRIVER_NUM_ERRORS 12
+#define M_DRIVER_STATUS_UNIMPLEMENTED (M_DRIVER_STATUS_CUSTOM_CODES_BASE - 0)
+#define M_DRIVER_STATUS_BAD_HANDLE (M_DRIVER_STATUS_CUSTOM_CODES_BASE - 1)
+#define M_DRIVER_NUM_CUSTOM_STATUS_CODES 2
+
+extern const char *customStatusMessages[M_DRIVER_NUM_CUSTOM_STATUS_CODES];
 
 #define CUDA_CHECK(stmt, errorCode)                                            \
   do {                                                                         \
@@ -48,6 +50,4 @@
 template <typename T>
 using DriverResult = tl::expected<T, M_driver_status_t>;
 
-extern const char *statusMessages[M_DRIVER_NUM_ERRORS];
-
-#endif /* ERROR_H */
+#endif // TARGET_LIB_CUDA_ERROR_H

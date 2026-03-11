@@ -4,7 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../lib/CUDA/Error.h"
 #include "Fixture.h"
+
+// Extend test-cases per-plugin beyond the common ones in PluginTest.cpp
 
 static std::string vecAddPtx = R"PTX(
 // From max/kernels/test/gpu/vec_add.ptx
@@ -79,11 +82,23 @@ $L__BB0_2:
 }
 )PTX";
 
+TEST_F(DriverPluginTest, CustomStatusMessage) {
+  char errorMessage[1024];
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_UNIMPLEMENTED, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_STREQ(errorMessage, "Unimplemented");
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_BAD_HANDLE, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_STREQ(errorMessage, "Bad handle");
+}
+
 TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
   M_driver_function_t func = nullptr;
-  ASSERT_SUCCESS(function_load(driver, contexts[0], vecAddPtx.data(),
-                               vecAddPtx.size(), "vec_add", -1, nullptr, -1,
-                               &func));
+  ASSERT_SUCCESS(this->function_load(driver, contexts[0], vecAddPtx.data(),
+                                     vecAddPtx.size(), "vec_add", -1, nullptr,
+                                     -1, &func));
   ASSERT_NE(func, nullptr);
-  EXPECT_SUCCESS(function_unload(driver, contexts[0], func));
+  EXPECT_SUCCESS(this->function_unload(driver, contexts[0], func));
 }
