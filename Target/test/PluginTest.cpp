@@ -54,8 +54,6 @@ TEST_F(DriverPluginTest, DeviceContext) {
 }
 
 TEST_F(DriverPluginContextTest, MemoryHost) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory;
     ASSERT_SUCCESS(
@@ -65,8 +63,6 @@ TEST_F(DriverPluginContextTest, MemoryHost) {
 }
 
 TEST_F(DriverPluginContextTest, MemorySync) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory;
     ASSERT_SUCCESS(
@@ -76,8 +72,6 @@ TEST_F(DriverPluginContextTest, MemorySync) {
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocReturnsNonNull) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory = nullptr;
     ASSERT_SUCCESS(
@@ -94,8 +88,6 @@ TEST_F(DriverPluginContextTest, MemoryAllocReturnsNonNull) {
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocZeroSize) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     void *memory = reinterpret_cast<void *>(-1);
     ASSERT_SUCCESS(memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 0, &memory));
@@ -108,15 +100,11 @@ TEST_F(DriverPluginContextTest, MemoryAllocZeroSize) {
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocBadContext) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   EXPECT_EQ(memory_alloc(nullptr, M_DRIVER_ALLOC_MODE_HOST, 128, nullptr),
             M_DRIVER_STATUS_BAD_CONTEXT);
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocNullOut) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     EXPECT_EQ(memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 128, nullptr),
               M_DRIVER_STATUS_INVALID_ARG);
@@ -124,16 +112,12 @@ TEST_F(DriverPluginContextTest, MemoryAllocNullOut) {
 }
 
 TEST_F(DriverPluginContextTest, MemoryFreeNull) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     ASSERT_SUCCESS(memory_free(context, nullptr));
   }
 }
 
 TEST_F(DriverPluginContextTest, MemoryFreeBadContext) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   EXPECT_EQ(memory_free(nullptr, nullptr), M_DRIVER_STATUS_BAD_CONTEXT);
 }
 

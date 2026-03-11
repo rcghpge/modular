@@ -132,8 +132,6 @@ protected:
 };
 
 TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =
         context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::HOST);
@@ -142,8 +140,6 @@ TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
 }
 
 TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
-  if (api == "CUDA")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr =
         context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::SYNC);
