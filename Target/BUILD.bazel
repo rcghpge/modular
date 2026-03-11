@@ -18,6 +18,7 @@ modular_cc_binary(
     ]),
     linkshared = True,
     linkstatic = False,
+    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//SDK:HAL",
         "//bazel/third-party:CUDAHeaders",
