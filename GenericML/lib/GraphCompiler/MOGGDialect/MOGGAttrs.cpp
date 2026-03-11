@@ -232,7 +232,7 @@ ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
 
 void M::MOGG::printFusionInfo(AsmPrinter &p, Operation *op,
                               FusionInfoAttr fusionInfo) {
-  if (fusionInfo && !isa<FusionLeafAttr>(fusionInfo.getRoot()))
+  if (fusionInfo)
     p << " fusionInfo = " << fusionInfo.toString(/*includeLineNumbers=*/true);
 }
 

@@ -382,7 +382,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, Index]>>:$inputs,
     Optional<MO_Chain>:$chain,
     MO_ParamDecls:$outputParamDecls,
-    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
+    MOGG_FusionInfoAttr:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
     DefaultValuedOptionalAttr<ArrayAttr, "{}">:$allocIndices,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,

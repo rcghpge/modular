@@ -1249,11 +1249,12 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   // Disallow attributes that are inferred from elsewhere in the attribute
   // dictionary.
   for (StringRef disallowed : kernelStubOpDisallowedAttrNames) {
-    if (parsedAttributes.get(disallowed))
+    if (parsedAttributes.get(disallowed)) {
       return parser.emitError(attributeDictLocation, "'")
              << disallowed
              << "' is an inferred attribute and should not be specified in the "
                 "explicit attribute dictionary";
+    }
   }
   state.attributes.append(parsedAttributes);
 
@@ -1508,12 +1509,15 @@ ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &state) {
       parseRegion(parser, argInfo, *state.addRegion(), true))
     return failure();
 
-  // Parse optional fusionInfo before attr-dict.
+  // Parse required fusionInfo before attr-dict.
   FusionInfoAttr fusionInfo;
   if (parseFusionInfo(parser, fusionInfo))
     return failure();
-  if (fusionInfo)
-    state.addAttribute("fusionInfo", fusionInfo);
+  if (!fusionInfo) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            "'mogg.kernel' requires a 'fusionInfo' attribute");
+  }
+  state.addAttribute("fusionInfo", fusionInfo);
 
   if (parser.parseOptionalAttrDict(state.attributes))
     return failure();
@@ -1555,8 +1559,7 @@ void KernelOp::build(OpBuilder &builder, OperationState &state,
                      ArrayAttr allocIndices, bool hasReadEffect,
                      bool hasWriteEffect) {
   state.addOperands(operands);
-  if (fusionInfo)
-    state.addAttribute(getFusionInfoAttrName(state.name), fusionInfo);
+  state.addAttribute(getFusionInfoAttrName(state.name), fusionInfo);
 
   if (isAsync)
     state.addAttribute(getIsAsyncAttrName(state.name), isAsync);
