@@ -2816,10 +2816,6 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
       }
     }
 
-    // Try to also fuse the op with an AllReduce if possible.
-    if (mlir::succeeded(tryMatchWithAllReduce(op, rmsNormOp, rewriter)))
-      return success();
-
     // Otherwhise only fuse the RMSNorm + Quant.
     SmallVector<Value> fusedOperands = {
         rmsNormOp.getOperand(0), // rms_norm.input
@@ -2837,56 +2833,196 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
 
     return mlir::success();
   }
+};
 
-  LogicalResult tryMatchWithAllReduce(MO::CustomOp op, MO::CustomOp rmsNormOp,
-                                      MO::DeviceAwareRewriter &rewriter) const {
-    // Let's try and detect the addOp (for the residual).
-    Value normInput = rmsNormOp->getOperand(0);
-    auto residualOp = normInput.getDefiningOp<MO::AddOp>();
-    if (!residualOp)
-      return rewriter.notifyMatchFailure(op, "not a add operation");
+struct FuseAllReduceAddRMSNormQuantFP8PatternMatcher {
+public:
+  FuseAllReduceAddRMSNormQuantFP8PatternMatcher(MO::AllReduceSumOp allReduceOp,
+                                                DeviceRefAttr targetDevice)
+      : allReduceOp(allReduceOp), targetDevice(targetDevice),
+        builder(allReduceOp->getContext()) {}
 
-    // One of the operands of the add must be an AllReduce (and the other
-    // operand is the residual).
-    Value residualValue;
-    MO::AllReduceSumOp allReduceOp;
-    if ((allReduceOp =
-             residualOp.getLhsInput().getDefiningOp<MO::AllReduceSumOp>()))
-      residualValue = residualOp.getRhsInput();
-    else if ((allReduceOp =
-                  residualOp.getRhsInput().getDefiningOp<MO::AllReduceSumOp>()))
-      residualValue = residualOp.getLhsInput();
-    else
-      return rewriter.notifyMatchFailure(op, "not a AllReduceSum operation");
+  void apply() {
+    unsigned devicesCount = allReduceOp.getOutputs().size();
+    // Start from AllReduce outputs to match everything
+    for (Value out : allReduceOp.getOutputs()) {
+      if (!matchFusedAllReducePath(cast<TensorValue>(out)))
+        return;
+    }
+    if (residualOps.size() != devicesCount)
+      return;
 
-    auto allReduceFusedOp = rewriter.create<MO::AllReduceAddRMSNormQuantFP8Op>(
-        op->getLoc(),
-        /*output=*/op->getResultTypes()[0],
-        /*outScale=*/op.getResultTypes()[1],
-        /*outResidual=*/residualOp.getResult().getType(),
+    // Let's build the new op
+    builder.setInsertionPointAfter(allReduceOp);
+
+    // Prepare the operands
+    llvm::SmallVector<Type> outputTypes;
+    llvm::SmallVector<Type> outScaleTypes;
+    llvm::SmallVector<Type> outResidualTypes;
+    llvm::SmallVector<Value> residualOperands;
+    llvm::SmallVector<Value> gammaOperands;
+    llvm::SmallVector<Value> epsilonOperands;
+    llvm::SmallVector<Value> weightOffsetOperands;
+    llvm::SmallVector<Value> scaleUbOperands;
+    for (Value out : allReduceOp.getOutputs()) {
+      DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
+      MO::CustomOp rmsNormOp = rmsNormOps.at(device);
+      MO::CustomOp quantizeOp = quantizeOps.at(device);
+      outputTypes.push_back(quantizeOp->getResultTypes()[0]);
+      outScaleTypes.push_back(quantizeOp->getResultTypes()[1]);
+      outResidualTypes.push_back(residualOps.at(device).getResult().getType());
+      residualOperands.push_back(residualValues.at(device));
+      gammaOperands.push_back(rmsNormOp.getOperand(1));
+      epsilonOperands.push_back(rmsNormOp.getOperand(2));
+      weightOffsetOperands.push_back(rmsNormOp.getOperand(3));
+      scaleUbOperands.push_back(quantizeOp.getOperand(1));
+    }
+
+    // Build the op
+
+    auto allReduceFusedOp = MO::AllReduceAddRMSNormQuantFP8Op::create(
+        builder, allReduceOp.getLoc(),
+        /*output=*/outputTypes,
+        /*outScale=*/outScaleTypes,
+        /*outResidual=*/outResidualTypes,
         /*outChain=*/allReduceOp.getOutChain().getType(),
         /*inputs=*/allReduceOp.getInputs(),
         /*signalBuffers=*/allReduceOp.getSignalBuffers(),
-        /*residual=*/residualValue,
-        /*gamma=*/rmsNormOp.getOperand(1),
-        /*epsilon=*/rmsNormOp.getOperand(2),
-        /*weightOffset=*/rmsNormOp.getOperand(3),
-        /*scaleUb=*/op.getOperand(1),
-        /*inChain=*/allReduceOp.getInChain(),
-        /*device=*/op.getDevice());
+        /*residual=*/residualOperands,
+        /*gamma=*/gammaOperands,
+        /*epsilon=*/epsilonOperands,
+        /*weightOffset=*/weightOffsetOperands,
+        /*scaleUb=*/scaleUbOperands,
+        /*inChain=*/allReduceOp.getInChain());
 
-    // Replace the output chain of AllReduce and the intermediate residual with
-    // the outputs of the FusedAllReduce.
-    rewriter.replaceAllUsesExcept(residualOp.getResult(),
-                                  allReduceFusedOp.getOutResidual(), rmsNormOp);
-    rewriter.replaceAllUsesWith(allReduceOp.getOutChain(),
-                                allReduceFusedOp.getOutChain());
+    // Replace the original outputs with the new op.
+    // Replace the output chain.
+    allReduceOp.getOutChain().replaceAllUsesWith(
+        allReduceFusedOp.getOutChain());
 
-    // Finally replace the quantize op with the fused op outputs.
-    rewriter.replaceOp(
-        op, {allReduceFusedOp.getOutput(), allReduceFusedOp.getOutScale()});
+    for (auto [i, out] : llvm::enumerate(allReduceOp.getOutputs())) {
+      DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
+      MO::AddOp residualOp = residualOps.at(device);
+      MO::CustomOp rmsNormOp = rmsNormOps.at(device);
+      MO::CustomOp quantizeOp = quantizeOps.at(device);
+      // Replace the intermediate result.
+      residualOp.getResult().replaceAllUsesExcept(
+          allReduceFusedOp.getOutResidual()[i], rmsNormOp);
 
-    return success();
+      // Replace the quantized op outputs
+      quantizeOp.getResult(0).replaceAllUsesWith(
+          allReduceFusedOp.getOutput()[i]);
+      quantizeOp.getResult(1).replaceAllUsesWith(
+          allReduceFusedOp.getOutScale()[i]);
+    }
+  }
+
+private:
+  MO::AllReduceSumOp allReduceOp;
+  DeviceRefAttr targetDevice;
+  OpBuilder builder;
+  llvm::DenseMap<DeviceRefAttr, MO::AddOp> residualOps;
+  llvm::DenseMap<DeviceRefAttr, MO::CustomOp> rmsNormOps;
+  llvm::DenseMap<DeviceRefAttr, MO::CustomOp> quantizeOps;
+  llvm::DenseMap<DeviceRefAttr, Value> residualValues;
+
+  bool matchFusedAllReducePath(TensorValue allReduceOut) {
+    DeviceRefAttr device = allReduceOut.getType().getDeviceRef();
+    ASSERT_STREAM(device,
+                  "all reduce outputs must be assigned to a specific device");
+    // Check if we haven't already match the ops of this device.
+    if (residualOps.contains(device))
+      return false;
+
+    MO::AddOp residualOp;
+    MO::CustomOp rmsNormOp;
+    MO::CustomOp quantizeOp;
+    Value residualValue;
+
+    // Match add + custom["rms_norm"] +
+    // custom["mo.quantize_dynamic_scaled_float8"]
+    if (!matchResidualOp(allReduceOut, residualOp, residualValue))
+      return false;
+
+    if (!matchCustomOp(residualOp.getResult(), rmsNormOp, "rms_norm"))
+      return false;
+
+    if (!matchCustomOp(rmsNormOp.getResult(0), quantizeOp,
+                       "mo.quantize_dynamic_scaled_float8"))
+      return false;
+
+    // Verify the quantize op.
+    if (quantizeOp.getOperand(0) != rmsNormOp.getResult(0))
+      return false;
+    TensorType inputTy = allReduceOut.getType();
+    if (!inputTy.hasRank())
+      return false;
+    size_t rank = inputTy.getRank();
+    DictionaryAttr quantizeOpParams = quantizeOp.getParameters();
+    Attribute groupSizeAttr = quantizeOpParams.get("group_size_or_per_token");
+    if (!groupSizeAttr)
+      return false;
+    if (auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr)) {
+      // Verify that the token size matches the inner dimension of the input
+      // operand.
+      int64_t groupSize = groupSizeIntAttr.getInt();
+      if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
+        return false;
+    } else {
+      return false;
+    }
+
+    // Verify the RMSNorm op.
+    if (rmsNormOp.getOperand(0) != residualOp.getResult())
+      return false;
+    DictionaryAttr rmsNormOpParams = rmsNormOp.getParameters();
+    if (Attribute multiplyBeforeCastAttr =
+            rmsNormOpParams.get("multiply_before_cast")) {
+      if (auto boolAttr = dyn_cast<BoolAttr>(multiplyBeforeCastAttr)) {
+        if (!boolAttr.getValue()) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    residualOps[device] = residualOp;
+    rmsNormOps[device] = rmsNormOp;
+    quantizeOps[device] = quantizeOp;
+    residualValues[device] = residualValue;
+    return true;
+  }
+
+  bool matchResidualOp(Value val, MO::AddOp &residualOp, Value &residualValue) {
+    for (Operation *user : val.getUsers()) {
+      auto addOp = dyn_cast<MO::AddOp>(user);
+      // The pattern must match exactly the rhs operand for the AllReduce.
+      // Otherwhise we match suboptimal ops when subgraphs are disabled.
+      // (The Add has two AllReduce operands, and we match with the wrong one).
+      // TODO: This is very brittle, though this should be fixed once we switch
+      // to mo.parallel.
+      if (!addOp || addOp.getRhsInput() != val)
+        continue;
+      residualValue = addOp.getLhsInput();
+      residualOp = addOp;
+      return true;
+    }
+
+    return false;
+  }
+
+  bool matchCustomOp(Value val, MO::CustomOp &customOp,
+                     StringRef customOpName) {
+    for (Operation *user : val.getUsers()) {
+      auto op = dyn_cast<MO::CustomOp>(user);
+      if (!op || op.getSymbol() != customOpName)
+        continue;
+      customOp = op;
+      return true;
+    }
+
+    return false;
   }
 };
 
@@ -2904,6 +3040,17 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
         targetDevice == "" ? nullptr
                            : DeviceRefAttr::get(ctx, targetDevice.getValue(),
                                                 targetDeviceId.getValue());
+
+    // Apply the special pattern to fuse allReduceOps at the begining.
+    llvm::SmallVector<MO::AllReduceSumOp> allReduceOps;
+    getOperation()->walk([&](MO::AllReduceSumOp allReduceSumOp) {
+      allReduceOps.push_back(allReduceSumOp);
+    });
+    for (auto allReduceOp : allReduceOps) {
+      FuseAllReduceAddRMSNormQuantFP8PatternMatcher allReduceFuser(
+          allReduceOp, targetDeviceRef);
+      allReduceFuser.apply();
+    }
 
     PackParamCache cache;
     patterns.add<MatmulConstBPattern>(ctx, cache, targetDeviceRef);

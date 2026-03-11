@@ -5009,7 +5009,8 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
 class MO_DistributedOp<string name, list<Trait> traits = []> : MO_TensorOp<name, [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  MO_SameVariadicOperandSize
+  MO_SameVariadicOperandSize,
+  MO_SameVariadicResultSize
 ] # traits> {
   let arguments = (ins Variadic<MO_Tensor>:$inputs);
   let results   = (outs Variadic<MO_Tensor>:$outputs);
@@ -5123,7 +5124,7 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
 }
 
 def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_add_rms_norm_quant_fp8", [
-  MO_ExplicitDevice
+  MO_MultiDevice
 ]> {
   let summary = "Fused AllreduceSum + Add + RMSNorm + Quant across N devices for a single device.";
   let description = [{
@@ -5132,30 +5133,25 @@ def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_a
     across the devices. This op instance executes on a specific device
     (specified by the device attribute) and produces the output for that device.
 
-    Multiple instances of this op are created (one per device) to enable
-    multi-threaded execution.
-
     This op also applies a residual (add), then RMSNorm and dynamic FP8 quantization to the output of AllReduce.
     It returns both the quantized output value and the quantization scale.
     It also returns the intermediate output of the residual (add) op.
   }];
-  // let hasVerifier = 1;
   // Variadic allreduce has a folder since it can take 1 input.
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
-    MO_Tensor:$residual,
-    MO_Tensor:$gamma,
-    MO_RankedScalarFloatTensor:$epsilon,
-    MO_RankedScalarFloatTensor: $weightOffset,
-    MO_RankedScalarFloatTensor: $scaleUb,
-    MO_Chain:$inChain,
-    M_DeviceRefAttr:$device
+    Variadic<MO_Tensor>:$residual,
+    Variadic<MO_Tensor>:$gamma,
+    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
+    Variadic<MO_RankedScalarFloatTensor>: $weightOffset,
+    Variadic<MO_RankedScalarFloatTensor>: $scaleUb,
+    MO_Chain:$inChain
   );
   let results = (outs
-    MO_Tensor:$output,
-    MO_Tensor:$outScale,
-    MO_Tensor:$outResidual,
+    Variadic<MO_Tensor>:$output,
+    Variadic<MO_Tensor>:$outScale,
+    Variadic<MO_Tensor>:$outResidual,
     MO_Chain:$outChain
   );
   let assemblyFormat = [{

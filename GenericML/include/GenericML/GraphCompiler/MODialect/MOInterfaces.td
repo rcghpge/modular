@@ -650,4 +650,17 @@ def MO_SameVariadicOperandSize: TraitList<[
   SameVariadicOperandSize,
 ]>;
 
+def MO_SameVariadicResultSizeInterface : OpInterface<"SameVariadicResultSizeInterface"> {
+  let description = [{
+    Interface that represent MO Ops that have multiple variadic results, all with the same size.
+    Wrapper around the builtin `SameVariadicResultSize` that can't be checked in C++.
+  }];
+  let cppNamespace = "::M::MO";
+}
+
+def MO_SameVariadicResultSize: TraitList<[
+  MO_SameVariadicResultSizeInterface,
+  SameVariadicResultSize,
+]>;
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOINTERFACES_TD
