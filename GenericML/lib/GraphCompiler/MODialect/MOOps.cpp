@@ -1012,13 +1012,11 @@ WhileConditionOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
 ArrayRef<ParamDeclAttr> ParallelOp::getInputParams() { return {}; }
 SmallVector<ParamDeclAttr> ParallelOp::getAllParams() { return {}; }
 
-/// Custom assembly format supports two syntaxes:
-/// 1. Shared type: mo.parallel %arg in (%a, %b : type) { ... }
-/// 2. Individual types: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
+/// Custom assembly format:
+///   mo.parallel %arg in (%a : type_a, %b : type_b) -> (R1, R2) { ... }
 ///
-/// When using individual types, all inputs must have the same base type
-/// (shape, dtype) but may differ in device ID. All inputs must have the
-/// same device label.
+/// All inputs must have the same base type (shape, dtype) but may differ
+/// in device ID. All inputs must have the same device label.
 ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   Region *bodyRegion = result.addRegion();
 
@@ -1027,125 +1025,77 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseArgument(blockArg, /*allowType=*/false))
     return failure();
 
-  // Parse 'in' keyword
   if (parser.parseKeyword("in"))
     return failure();
 
-  if (parser.parseLParen())
-    return failure();
-
+  // Parse inputs: (%a : type_a, %b : type_b, ...)
   SmallVector<OpAsmParser::UnresolvedOperand> operands;
   SmallVector<Type> operandTypes;
-
-  // Parse first operand
-  OpAsmParser::UnresolvedOperand firstOperand;
-  if (parser.parseOperand(firstOperand))
+  if (parser.parseLParen())
     return failure();
-  operands.push_back(firstOperand);
-
-  // Check if first operand has individual type (`:` follows)
-  // or if we're in shared type mode (`,` or `)` follows)
-  if (succeeded(parser.parseOptionalColon())) {
-    // Individual type mode: %a : type_a, %b : type_b, ...
-    Type firstType;
-    if (parser.parseType(firstType))
+  do {
+    OpAsmParser::UnresolvedOperand operand;
+    Type type;
+    if (parser.parseOperand(operand) || parser.parseColon() ||
+        parser.parseType(type))
       return failure();
-    operandTypes.push_back(firstType);
-
-    // Parse remaining operands with individual types
-    while (succeeded(parser.parseOptionalComma())) {
-      OpAsmParser::UnresolvedOperand operand;
-      Type type;
-      if (parser.parseOperand(operand) || parser.parseColon() ||
-          parser.parseType(type))
-        return failure();
-      operands.push_back(operand);
-      operandTypes.push_back(type);
-    }
-  } else {
-    // Shared type mode: %a, %b, ... : type
-    // Parse remaining operands
-    while (succeeded(parser.parseOptionalComma())) {
-      OpAsmParser::UnresolvedOperand operand;
-      if (parser.parseOperand(operand))
-        return failure();
-      operands.push_back(operand);
-    }
-
-    // Parse the shared type
-    Type sharedType;
-    if (parser.parseColon() || parser.parseType(sharedType))
-      return failure();
-
-    // All operands have the same type
-    for (size_t i = 0; i < operands.size(); ++i)
-      operandTypes.push_back(sharedType);
-  }
-
+    operands.push_back(operand);
+    operandTypes.push_back(type);
+  } while (succeeded(parser.parseOptionalComma()));
   if (parser.parseRParen())
     return failure();
 
-  // Resolve operands with their respective types
-  for (size_t i = 0; i < operands.size(); ++i) {
+  for (size_t i = 0; i < operands.size(); ++i)
     if (parser.resolveOperand(operands[i], operandTypes[i], result.operands))
       return failure();
-  }
 
-  // Set block argument type to the first operand's type (representative)
   blockArg.type = operandTypes[0];
 
-  // Parse optional attribute dictionary
+  // Parse result types: -> (type, type, ...)
+  SmallVector<Type> resultTypes;
+  if (parser.parseArrow() || parser.parseLParen())
+    return failure();
+  do {
+    Type type;
+    if (parser.parseType(type))
+      return failure();
+    resultTypes.push_back(type);
+  } while (succeeded(parser.parseOptionalComma()));
+  if (parser.parseRParen())
+    return failure();
+  result.types.append(resultTypes);
+
   if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
 
-  // Parse the body region with the single block argument
   if (parser.parseRegion(*bodyRegion, {blockArg},
                          /*enableNameShadowing=*/false))
     return failure();
-
-  // Result types: each result has the same type as its corresponding input
-  for (Type type : operandTypes)
-    result.types.push_back(type);
 
   return success();
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
-  // Print: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
-  // Or if all types are identical: mo.parallel %arg in (%a, %b : type) { ... }
   Block &body = getBodyRegion().front();
-  assert(body.getNumArguments() == 1 &&
-         "ParallelOp body must have exactly one argument");
 
   p << ' ';
   p.printRegionArgument(body.getArgument(0), /*argAttrs=*/{},
                         /*omitType=*/true);
+
+  // Print inputs: (%a : type_a, %b : type_b)
   p << " in (";
-
-  // Check if all input types are identical
-  auto inputs = getInputs();
-  bool allTypesIdentical = llvm::all_of(inputs, [&](Value input) {
-    return input.getType() == inputs[0].getType();
+  llvm::interleaveComma(getInputs(), p, [&](Value input) {
+    p.printOperand(input);
+    p << " : " << input.getType();
   });
+  p << ") -> (";
 
-  if (allTypesIdentical) {
-    // Use compact syntax: (%a, %b : type)
-    llvm::interleaveComma(inputs, p,
-                          [&](Value input) { p.printOperand(input); });
-    p << " : " << inputs[0].getType();
-  } else {
-    // Use individual type syntax: (%a : type_a, %b : type_b)
-    llvm::interleaveComma(inputs, p, [&](Value input) {
-      p.printOperand(input);
-      p << " : " << input.getType();
-    });
-  }
+  // Print result types: -> (R1, R2)
+  llvm::interleaveComma(getResultTypes(), p);
   p << ")";
 
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p << ' ';
-
-  // Print region without entry block args (we printed them above)
   p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
 }
 
@@ -1204,46 +1154,41 @@ LogicalResult ParallelOp::verify() {
   if (inputs.empty())
     return emitOpError("requires at least one input");
 
+  if (getNumResults() != inputs.size())
+    return emitOpError("requires the same number of results as inputs, got ")
+           << getNumResults() << " results for " << inputs.size() << " inputs";
+
   Block &body = getBodyRegion().front();
 
-  // Verify the block has exactly one argument.
   if (body.getNumArguments() != 1)
     return emitOpError("body block must have exactly one argument, got ")
            << body.getNumArguments();
 
   Type blockArgType = body.getArgument(0).getType();
 
-  // Verify all input types match the block argument type.
-  // Device IDs may differ, but device labels must match.
+  // Rule 1 & 2: all inputs must have the same type (modulo device ID)
+  // and must match the block argument type.
   for (auto [idx, input] : llvm::enumerate(inputs)) {
     if (!typesMatchIgnoringDeviceId(input.getType(), blockArgType))
       return emitOpError("input #")
-             << idx << " type '" << input.getType()
-             << "' does not match block argument type '" << blockArgType
-             << "' (shape, dtype, and device label must match)";
+             << idx << " type " << input.getType()
+             << " does not match block argument type " << blockArgType
+             << " (shape, dtype, and device label must match)";
   }
 
-  // Verify yield has exactly one operand.
+  // Rule 3 & 4: yield type must match all result types (modulo device ID).
   auto yieldOp = cast<YieldOp>(body.getTerminator());
   if (yieldOp.getNumOperands() != 1)
     return emitOpError("yield must have exactly one operand, got ")
            << yieldOp.getNumOperands();
 
-  // Verify all result types match the yield type.
-  // Device IDs may differ, but device labels must match.
   Type yieldType = yieldOp.getOperand(0).getType();
-  if (yieldType != blockArgType)
-    return emitOpError("yield type '")
-           << yieldType << "' does not match block argument type '"
-           << blockArgType << "'";
-
-  // Verify each result type matches the yield type.
   for (auto [idx, result] : llvm::enumerate(getResults())) {
     if (!typesMatchIgnoringDeviceId(result.getType(), yieldType))
       return emitOpError("result #")
-             << idx << " type '" << result.getType()
-             << "' does not match yield type '" << yieldType
-             << "' (shape, dtype, and device label must match)";
+             << idx << " type " << result.getType()
+             << " does not match yield type " << yieldType
+             << " (shape, dtype, and device label must match)";
   }
 
   return success();
