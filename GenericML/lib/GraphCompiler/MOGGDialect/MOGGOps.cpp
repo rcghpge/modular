@@ -2535,8 +2535,9 @@ LogicalResult InlineConstantBufferOp::emitMojo(EmitMojoState &state) {
 
   // Create UnsafePointer from the array pointer so we can easily bitcast to
   // the expected pointer of NoneType.
-  MOGG::MojoValue altPtr = state.builder.var(MOGG::MojoValue(
-      "LegacyUnsafePointer")({}, {MOGG::MojoValue("value").equal(arrPtr)}));
+  MOGG::MojoValue altPtr =
+      state.builder.var(MOGG::MojoValue("UnsafePointer[MutAnyOrigin]")(
+          {}, {MOGG::MojoValue("value").equal(arrPtr)}));
 
   // Bitcast to NoneType (expected dtype for the buffers).
   MOGG::MojoValue opaquePtrVar = state.builder.var(
