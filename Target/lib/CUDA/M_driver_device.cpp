@@ -9,11 +9,11 @@
 #include "Error.h"
 #include "HAL/M_driver_api.h"
 
-M_driver_status_t M_driver_device_count(M_driver_driver_t handle,
+M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                         int64_t *count) {
-  if (handle == nullptr)
+  if (driver == nullptr)
     return M_DRIVER_STATUS_BAD_HANDLE;
-  DriverResult<int64_t> result = handle->deviceCount();
+  DriverResult<int64_t> result = driver->deviceCount();
   if (!result)
     return result.error();
   *count = *result;

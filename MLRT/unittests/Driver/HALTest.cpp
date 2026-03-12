@@ -155,3 +155,42 @@ TEST_F(DriverHALContextTest, Queue) {
     ASSERT_FALSE(queueOr.isError());
   }
 }
+
+TEST_F(DriverHALContextTest, CreateEvent) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ErrorOr<EventRef> eventOr = context->createEvent();
+    ASSERT_FALSE(eventOr.isError()) << eventOr.getError();
+  }
+}
+
+TEST_F(DriverHALContextTest, CreateTimingEvent) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ErrorOr<EventRef> eventOr = context->createEvent(/*enableTiming=*/true);
+    ASSERT_FALSE(eventOr.isError()) << eventOr.getError();
+  }
+}
+
+TEST_F(DriverHALContextTest, EventSynchronize) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ASSIGN_NO_ERR(EventRef, event, context->createEvent());
+    // Synchronizing an unrecorded event should succeed immediately.
+    EXPECT_NO_ERR(event->synchronize());
+  }
+}
+
+TEST_F(DriverHALContextTest, EventIsReady) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (ContextRef &context : contexts) {
+    ASSIGN_NO_ERR(EventRef, event, context->createEvent());
+    // An unrecorded event should report ready.
+    ASSIGN_NO_ERR(bool, ready, event->isReady());
+    EXPECT_TRUE(ready);
+  }
+}

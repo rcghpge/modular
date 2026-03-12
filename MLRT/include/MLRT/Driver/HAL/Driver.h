@@ -28,6 +28,7 @@ using DriverRef = RCRef<Driver>;
 class Context;
 class Buffer;
 class Queue;
+class Event;
 class Function;
 
 class Driver : public ReferenceCounted<Driver> {
@@ -79,6 +80,7 @@ private:
   friend Context;
   friend Buffer;
   friend Queue;
+  friend Event;
   friend Function;
 };
 

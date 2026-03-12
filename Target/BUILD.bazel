@@ -43,7 +43,7 @@ modular_cc_library(
 
 modular_cc_test(
     name = "CUDAPluginTest",
-    size = "small",
+    size = "medium",
     srcs = [
         "lib/CUDA/Error.h",
         "test/CUDAPluginTest.cpp",

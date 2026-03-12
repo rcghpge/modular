@@ -46,6 +46,7 @@ private:
   friend class Context;
   friend class Buffer;
   friend class Queue;
+  friend class Event;
   friend class Function;
 };
 

@@ -13,6 +13,7 @@
 #define MLRT_DRIVER_HAL_CONTEXT_H
 
 #include "Buffer.h"
+#include "Event.h"
 #include "Function.h"
 #include "HAL/M_driver_api.h"
 #include "Queue.h"
@@ -57,6 +58,10 @@ public:
 
   ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
   ErrorOr<QueueRef> createQueue();
+  ErrorOr<EventRef> createEvent(bool enableTiming = false);
+
+  /// Compute the elapsed time in milliseconds between two events.
+  ErrorOr<float> eventElapsedTime(Event &start, Event &end);
 
   /// Load a named function from device code. Results are cached per-device
   /// to avoid redundant JIT compilation.
@@ -87,6 +92,7 @@ private:
   friend class Buffer;
   friend class Queue;
   friend class Function;
+  friend class Event;
 };
 
 using ContextRef = RCRef<Context>;

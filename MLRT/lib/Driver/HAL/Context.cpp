@@ -7,6 +7,7 @@
 #include "MLRT/Driver/HAL/Context.h"
 #include "MLRT/Driver/HAL/Buffer.h"
 #include "MLRT/Driver/HAL/Driver.h"
+#include "MLRT/Driver/HAL/Event.h"
 #include "MLRT/Driver/HAL/Queue.h"
 
 namespace M::Driver::HAL {
@@ -38,6 +39,29 @@ ErrorOr<QueueRef> Context::createQueue() {
   if (!queue)
     return Error("Failed to allocate memory for Queue object");
   return QueueRef::take(queue.release());
+}
+
+ErrorOr<EventRef> Context::createEvent(bool enableTiming) {
+  M_driver_event_t eventHandle = nullptr;
+  if (M_driver_status_t status = device_->driver->plugin.event_create(
+          handle, &eventHandle, enableTiming))
+    return Error(device_->driver->getStatusMessage(status));
+  std::unique_ptr<Event> event(new (std::nothrow)
+                                   Event(this, eventHandle, enableTiming));
+  if (!event)
+    return Error("Failed to allocate memory for Event object");
+  return EventRef::take(event.release());
+}
+
+ErrorOr<float> Context::eventElapsedTime(Event &start, Event &end) {
+  if (!start.enableTiming || !end.enableTiming)
+    return Error("Both events must be created with timing enabled to "
+                 "compute elapsed time");
+  float elapsed_ms = 0.0f;
+  if (M_driver_status_t status = device_->driver->plugin.event_elapsed_time(
+          handle, start.handle, end.handle, &elapsed_ms))
+    return Error(device_->driver->getStatusMessage(status));
+  return elapsed_ms;
 }
 
 ErrorOr<FunctionRef>

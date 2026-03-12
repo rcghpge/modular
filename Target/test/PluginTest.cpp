@@ -162,3 +162,49 @@ TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
     ASSERT_SUCCESS(queue_destroy(context, queue));
   }
 }
+
+TEST_F(DriverPluginContextTest, EventCreateDestroy) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t ctx : contexts) {
+    M_driver_event_t event = nullptr;
+    ASSERT_SUCCESS(event_create(ctx, &event, /*enableTiming=*/false));
+    ASSERT_NE(event, nullptr);
+    EXPECT_SUCCESS(event_destroy(ctx, event));
+  }
+}
+
+TEST_F(DriverPluginContextTest, EventCreateTimingDestroy) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t ctx : contexts) {
+    M_driver_event_t event = nullptr;
+    ASSERT_SUCCESS(event_create(ctx, &event, /*enableTiming=*/true));
+    ASSERT_NE(event, nullptr);
+    EXPECT_SUCCESS(event_destroy(ctx, event));
+  }
+}
+
+TEST_F(DriverPluginContextTest, EventSynchronize) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t ctx : contexts) {
+    M_driver_event_t event = nullptr;
+    ASSERT_SUCCESS(event_create(ctx, &event, /*enableTiming=*/false));
+    EXPECT_SUCCESS(event_synchronize(ctx, event));
+    EXPECT_SUCCESS(event_destroy(ctx, event));
+  }
+}
+
+TEST_F(DriverPluginContextTest, EventIsReady) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (M_driver_context_t ctx : contexts) {
+    M_driver_event_t event = nullptr;
+    ASSERT_SUCCESS(event_create(ctx, &event, /*enableTiming=*/false));
+    bool isReady = false;
+    EXPECT_SUCCESS(event_is_ready(ctx, event, &isReady));
+    EXPECT_TRUE(isReady);
+    EXPECT_SUCCESS(event_destroy(ctx, event));
+  }
+}
