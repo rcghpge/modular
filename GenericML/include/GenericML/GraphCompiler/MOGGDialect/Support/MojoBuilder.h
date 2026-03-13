@@ -221,6 +221,10 @@ public:
   MojoBuilder &if_(const MojoValue &cond, std::function<void()> &&ifBlock);
   void else_(std::function<void()> &&elseBlock);
 
+  /// Creates a `with` block with the given context manager expression.
+  MojoBuilder &with_(const MojoValue &contextExpr,
+                     std::function<void()> &&body);
+
   /// Creates a variable and assigns the provided value to it. The returned
   /// value is the name of the variable. When cache is enabled, the builder will
   /// re-use a past variable if the values are the same (like CSE). Set it to

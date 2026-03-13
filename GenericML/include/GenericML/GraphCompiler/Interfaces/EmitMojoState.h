@@ -112,9 +112,10 @@ constexpr StringLiteral comptime_NDBuffer_In_MGP =
 /// relying on an `__init__.mojo` file that imports things or hardcoding a
 /// package that could change/be moved around.
 constexpr StringLiteral packagesToImport[] = {
-    "MOGGPrimitives",    "MOGGKernelAPI", "tensor",
-    "compiler_internal", "std.utils",     "std.runtime",
-    "std.memory",        "buffer",        "std.collections"};
+    "MOGGPrimitives",      "MOGGKernelAPI", "tensor",
+    "compiler_internal",   "std.utils",     "std.runtime",
+    "std.runtime.tracing", "std.memory",    "buffer",
+    "std.collections"};
 
 /// TODO(GEX-2488): Find another way to find that a type is an IOSpec without
 /// relying on package / type name.

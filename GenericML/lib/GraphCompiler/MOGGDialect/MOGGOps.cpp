@@ -1065,18 +1065,48 @@ LogicalResult KernelStubOp::verify() {
 }
 
 bool KernelStubOp::isThrows() {
+  // MOGG ABI kernels are always considered raising so that they are emitted
+  // with `raises` and wrapped in a `with Trace[...]` block unconditionally.
+  // Trace.__enter__ is raises, so the surrounding function must be raises.
+  if (getAbi() == ABIKind::MOGG)
+    return true;
   return llvm::any_of(getBodyBlock().getOps<MOGG::EmitsMojoInterface>(),
                       [](auto emitMojoOp) { return emitMojoOp.isThrows(); });
 }
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
   auto emitFusionInfoComment = [&] {
-    if (auto fi = getFusionInfoAttr(); fi) {
+    if (auto fi = getFusionInfoAttr()) {
       state.builder.comment("FusionInfo:");
       std::string tree = fi.toPrettyTree();
       for (auto line : llvm::split(tree, '\n'))
         state.builder.comment(("  " + line).str());
     }
+  };
+
+  // Build the Trace[] context manager expression for instrumentation.
+  // Uses fusion info as the trace name. The target is the device label
+  // (e.g. "cpu"/"gpu"). If a context argument is present, includes
+  // task_id=get_safe_task_id(ctx) for task-level tracing granularity.
+  auto buildTraceContextExpr = [&](MojoValue contextArg) -> MojoValue {
+    std::string deviceLabel = MO::getDeviceOrDefaultAny(*this).getLabel().str();
+    std::string traceName;
+    if (auto fi = getFusionInfoAttr())
+      traceName = fi.toString(/*includeLineNumbers=*/false);
+    else
+      traceName = getSymName().str();
+
+    // Trace[TraceLevel.OP, target=StaticString("device")]("trace name"[,
+    // task_id=...])
+    SmallVector<MojoValue> traceParams = {
+        MojoValue("TraceLevel.OP"),
+        MojoValue("target").equal(
+            MojoValue("StaticString")({}, {MojoValue(deviceLabel).quote()}))};
+    SmallVector<MojoValue> traceOperands = {MojoValue(traceName).quote()};
+    if (!contextArg.text.empty())
+      traceOperands.push_back(MojoValue("task_id").equal(
+          MojoValue("get_safe_task_id")({}, {contextArg})));
+    return MojoValue("Trace")(traceParams, traceOperands);
   };
 
   // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
@@ -1123,12 +1153,49 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
             state.setMojoValueFor(mlirArg, mojoArg);
           }
 
-          errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
-            return state.lowerOpToMojo(&op).failed();
+          // Find the context argument (if present) to include task_id in Trace.
+          MojoValue contextMojoArg;
+          for (auto mlirArg : getBody().getArguments()) {
+            if (isa<MOGG::ContextType>(mlirArg.getType())) {
+              contextMojoArg = state.getMojoValueFor(mlirArg);
+              break;
+            }
+          }
+
+          // Collect all ops in the body now (before any dynamic insertions
+          // from lowerOpToMojo mutate the block).
+          SmallVector<mlir::Operation *> bodyOps;
+          for (auto &op : getOps())
+            bodyOps.push_back(&op);
+
+          // Find the first kernel terminator (CallExecuteOp, CallForeachOp,
+          // CallMaterializeOp). Everything before it is setup (lambdas, tensor
+          // inits, etc.) and must be emitted OUTSIDE the Trace block so that
+          // @parameter captures are not reordered by the Mojo compiler.
+          auto terminatorIt = llvm::find_if(bodyOps, [](mlir::Operation *op) {
+            return isa<MOGG::KernelTerminator>(op);
           });
 
-          if (!errOccurred)
-            state.genAllKeepAliveStatements();
+          for (auto *op : llvm::make_range(bodyOps.begin(), terminatorIt)) {
+            if (state.lowerOpToMojo(op).failed()) {
+              errOccurred = true;
+              break;
+            }
+          }
+
+          // Wrap only the terminator (and keepalives) in the Trace block.
+          if (!errOccurred) {
+            state.builder.with_(buildTraceContextExpr(contextMojoArg), [&]() {
+              for (auto *op : llvm::make_range(terminatorIt, bodyOps.end())) {
+                if (state.lowerOpToMojo(op).failed()) {
+                  errOccurred = true;
+                  break;
+                }
+              }
+              if (!errOccurred)
+                state.genAllKeepAliveStatements();
+            });
+          }
         });
 
     if (errOccurred)
@@ -1145,6 +1212,7 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
         MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
     static const MOGG::MojoValue vOpaquePointer =
         MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
+
     state.builder.fn(
         getSymNameAttr().strref(), {},
         {MOGG::NamedMojoDef("arg",
@@ -1194,10 +1262,12 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
                 std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
           }
 
+          // void** ABI entry-point functions are never `raises`, so we cannot
+          // use `with Trace[...]` here (Trace.__enter__ is raises). Tracing
+          // is handled in the MOGG ABI function this entry point calls.
           errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
             return state.lowerOpToMojo(&op).failed();
           });
-
           if (!errOccurred)
             state.genAllKeepAliveStatements();
         });

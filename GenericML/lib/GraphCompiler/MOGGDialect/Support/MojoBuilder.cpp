@@ -219,6 +219,14 @@ MojoBuilder &MojoBuilder::if_(const MojoValue &cond,
   return *this;
 }
 
+MojoBuilder &MojoBuilder::with_(const MojoValue &contextExpr,
+                                std::function<void()> &&body) {
+  statement("with ", contextExpr, ":");
+  MojoBuilderScopeGuard guard(this);
+  body();
+  return *this;
+}
+
 void MojoBuilder::else_(std::function<void()> &&elseBlock) {
   statement("else:");
   MojoBuilderScopeGuard guard(this);
