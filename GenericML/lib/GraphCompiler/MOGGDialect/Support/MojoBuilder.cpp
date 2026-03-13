@@ -135,7 +135,7 @@ void MojoBuilder::fn(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
 
   if (exported)
     statement("@export");
-  statement("fn ", name,
+  statement("def ", name,
             funcDefBase(parameters, arguments, returnType, raises, body));
 
   // This is necessary to increase indentation and the value cache. The reason
@@ -158,7 +158,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
     statement("@parameter");
   if (isInline)
     statement("@always_inline");
-  statement(isAsync ? "async fn " : "fn ", lambdaParam,
+  statement(isAsync ? "async def " : "def ", lambdaParam,
             funcDefBase(parameters, arguments, returnType, false, body));
 
   MojoBuilderScopeGuard guard(this);
@@ -188,7 +188,7 @@ MojoValue MojoBuilder::lambdaWithCopyCapture(
     statement("@parameter");
   if (isInline)
     statement("@always_inline");
-  statement("fn ", lambdaParam,
+  statement("def ", lambdaParam,
             funcDefBase(parameters, arguments, returnType, false, body));
 
   MojoBuilderScopeGuard guard(this);

@@ -13,7 +13,7 @@ An example can be found in
 @compiler.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         rank: Int,
     ](
@@ -35,7 +35,7 @@ struct BottomK:
         )
 
     @staticmethod
-    fn shape(
+    def shape(
         input: ManagedTensorSlice,
         k: Scalar,
         axis: Scalar,
@@ -69,8 +69,8 @@ to a custom op with symbol “my_cool_op.”
 Right now we have two supported methods (plus one special thing for PT):
 
 ```python
-fn execute():
-fn shape() raises -> IndexList[input.rank]
+def execute():
+def shape() raises -> IndexList[input.rank]
 ```
 
 Execute implements the kernel body, while shape is used by the compiler to
@@ -141,7 +141,7 @@ fully featured as the old API. We support both register and memory-only types.
 @compiler.register("myOp")
 struct MyOp:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         rank: Int,
     ](
@@ -196,7 +196,7 @@ The `ManagedTensorSlice` provides aliases for the commonly accessed compile-time
 information of each tensor.
 
 ```python
-fn execute[
+def execute[
     target: StaticString
 ](
     output: OutputTensor,
@@ -227,7 +227,7 @@ accessing the fusion lambdas when loading or storing to a tensor.
 @compiler.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         rank: Int,
     ](
@@ -255,7 +255,7 @@ the **MutableInputTensor** alias of **ManagedTensorSlice** should be used.
 struct TensorMutatingOperation:
     @always_inline
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, target: StaticString
     ](
         #These are all "inputs" to the graph-api operation
@@ -280,7 +280,7 @@ and things should work as you expect:
 struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
     @always_inline
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, target: StaticString
     ](
         blocks: InputTensor[dtype, 6],
@@ -300,7 +300,7 @@ struct Struct_continuous_batching_kv_cache_collection_h8_d128_bshd:
 struct ReturningTranspose:
     @always_inline
     @staticmethod
-    fn transpose_in_place(
+    def transpose_in_place(
         input: ManagedTensorSlice,
         permutations: ManagedTensorSlice[rank=1],
     ) -> **ManagedTensorSlice[dtype = input.dtype, rank = input.rank]:**
@@ -369,7 +369,7 @@ This maps to:
 @compiler.register("MyOp")
 struct MyOp:
     @staticmethod
-    fn execute(
+    def execute(
      dps0: OutputTensor,
      dps1: OutputTensor,
      in1: InputTensor,
@@ -394,7 +394,7 @@ Say we want to mutate the 2nd input of MyOp the signature would now look like:
 @compiler.register("MyOp")
 struct MyOp:
     @staticmethod
-    fn execute(
+    def execute(
      dps0: OutputTensor,
      dps1: OutputTensor,
      in1: InputTensor,

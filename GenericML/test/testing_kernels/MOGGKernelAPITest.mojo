@@ -44,7 +44,7 @@ from std.utils import IndexList, StaticTuple
 
 # TODO(MOCO-1413): remove this need to keep imported exported funcs alive.
 @export
-fn export():
+def export():
     comptime _simd_load_from_managed_tensor_slice = simd_load_from_managed_tensor_slice
     comptime _simd_store_into_managed_tensor_slice = simd_store_into_managed_tensor_slice
 
@@ -58,7 +58,7 @@ struct MyCustomScalarRegTrivialSI32(TrivialRegisterPassable):
     var val: Int32
 
     @implicit
-    fn __init__(out self, val: Int32):
+    def __init__(out self, val: Int32):
         print("MyCustomScalarRegTrivialSI32.__init__", val)
         self.val = val
 
@@ -66,7 +66,7 @@ struct MyCustomScalarRegTrivialSI32(TrivialRegisterPassable):
 @compiler.register("tensor_to_custom_scalar_si32_reg_trivial")
 struct OpaqueToCustomScalarSI32RegTrivial:
     @staticmethod
-    fn execute(
+    def execute(
         x: InputTensor[dtype=DType.int32, rank=1, ...]
     ) -> MyCustomScalarRegTrivialSI32:
         return MyCustomScalarRegTrivialSI32(x[0])
@@ -76,11 +76,11 @@ struct MyCustomScalarRegSI32(ImplicitlyCopyable, RegisterPassable):
     var val: Int32
 
     @implicit
-    fn __init__(out self, val: Int32):
+    def __init__(out self, val: Int32):
         print("MyCustomScalarRegSI32.__init__", val)
         self.val = val
 
-    fn __del__(deinit self):
+    def __del__(deinit self):
         print("MyCustomScalarRegSI32.__del__", self.val)
 
 
@@ -90,18 +90,18 @@ struct MyCustomScalarRegF32(ImplicitlyCopyable, RegisterPassable):
     var val: Float32
 
     @implicit
-    fn __init__(out self, val: Float32):
+    def __init__(out self, val: Float32):
         print("MyCustomScalarRegF32.__init__", val)
         self.val = val
 
-    fn __del__(deinit self):
+    def __del__(deinit self):
         print("MyCustomScalarRegF32.__del__", self.val)
 
 
 @compiler.register("tensor_to_custom_scalar_si32_reg")
 struct OpaqueToCustomScalarSI32Reg:
     @staticmethod
-    fn execute(
+    def execute(
         x: InputTensor[dtype=DType.int32, rank=1, ...]
     ) -> MyCustomScalarRegSI32:
         return MyCustomScalarRegSI32(x[0])
@@ -112,7 +112,7 @@ struct OpaqueToCustomScalarSI32Reg:
 @compiler.register("opaque_add_to_tensor_si32_reg")
 struct OpaqueAddToTensorSI32Reg:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         outp: OutputTensor[dtype=DType.int32, rank=1, ...],
@@ -125,7 +125,7 @@ struct OpaqueAddToTensorSI32Reg:
 @compiler.register("opaque_add_to_tensor_f32_reg")
 struct OpaqueAddToTensorF32:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         outp: OutputTensor[dtype=DType.float32, rank=1, ...],
@@ -144,18 +144,18 @@ struct MyCustomScalarSI32(ImplicitlyCopyable):
     var val: Int32
 
     @implicit
-    fn __init__(out self, val: Int32):
+    def __init__(out self, val: Int32):
         print("MyCustomScalarSI32.__init__", val)
         self.val = val
 
-    fn __del__(deinit self):
+    def __del__(deinit self):
         print("MyCustomScalarSI32.__del__", self.val)
 
 
 @compiler.register("tensor_to_custom_scalar_si32")
 struct OpaqueToCustomScalarSI32:
     @staticmethod
-    fn execute(
+    def execute(
         x: InputTensor[dtype=DType.int32, rank=1, ...]
     ) -> MyCustomScalarSI32:
         return MyCustomScalarSI32(x[0])
@@ -166,7 +166,7 @@ struct OpaqueToCustomScalarSI32:
 @compiler.register("opaque_add_to_tensor_si32")
 struct OpaqueAddToTensorSI32:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         outp: OutputTensor[dtype=DType.int32, rank=1, ...],
@@ -179,7 +179,7 @@ struct OpaqueAddToTensorSI32:
 @compiler.register("opaque_add_to_tensor_si32_raises")
 struct OpaqueAddToTensorSI32Raises:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         outp: OutputTensor[dtype=DType.int32, rank=1, ...],
@@ -197,12 +197,12 @@ struct OpaqueAddToTensorSI32Raises:
 @compiler.register("imposter_add")
 struct Foo:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](z: OutputTensor, x: InputTensor, y: InputTensor) raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
@@ -210,12 +210,12 @@ struct Foo:
         foreach[func](z)
 
     @staticmethod
-    fn shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
+    def shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
         return x.shape()
 
 
 @always_inline
-fn toNDBuffer[
+def toNDBuffer[
     out_dtype: DType, out_rank: Int
 ](tensor: ManagedTensorSlice) -> NDBuffer[
     rank=out_rank, out_dtype, MutAnyOrigin
@@ -226,7 +226,7 @@ fn toNDBuffer[
     )
 
 
-fn _matmul[
+def _matmul[
     elementwise_lambda_fn: Optional[
         fn[
             dtype: DType, width: Int, *, alignment: Int = 1
@@ -260,7 +260,7 @@ fn _matmul[
 @compiler.register("imposter_matmul")
 struct ImposterMatmul:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         c: OutputTensor,
@@ -271,7 +271,7 @@ struct ImposterMatmul:
         _matmul(c, a, b)
 
     @staticmethod
-    fn shape(
+    def shape(
         a: InputTensor,
         b: InputTensor,
     ) -> IndexList[2]:
@@ -283,7 +283,7 @@ struct ImposterMatmul:
 @compiler.register("print_tensor_spec")
 struct PrintTensorSpecOp:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](outp: OutputTensor, x: InputTensor) raises:
         print("x.shape =", x._static_shape)
@@ -294,7 +294,7 @@ struct PrintTensorSpecOp:
 
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
@@ -302,21 +302,21 @@ struct PrintTensorSpecOp:
         foreach[func](outp)
 
     @staticmethod
-    fn shape(x: InputTensor) -> IndexList[x.rank]:
+    def shape(x: InputTensor) -> IndexList[x.rank]:
         return x.shape()
 
 
 @compiler.register("print_tensor")
 struct PrintTensor:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](outp: OutputTensor, input: InputTensor) raises:
         print(input)
 
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](input.load[width](idx))
@@ -328,7 +328,7 @@ struct PrintTensor:
 @compiler.view_kernel
 struct PrintTensorSpecViewOp:
     @staticmethod
-    fn print_spec(x: InputTensor):
+    def print_spec(x: InputTensor):
         print("x.shape =", x._static_shape)
         print("x.strides =", x._static_strides)
         print("x.alignment =", x.alignment)
@@ -336,19 +336,19 @@ struct PrintTensorSpecViewOp:
         print("x.exclusive =", x.exclusive)
 
     @staticmethod
-    fn update_input_view(input: InputTensor) -> type_of(input):
+    def update_input_view(input: InputTensor) -> type_of(input):
         Self.print_spec(input)
         return input
 
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](outp: OutputTensor, x: InputTensor) raises:
         Self.print_spec(x)
 
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
@@ -356,14 +356,14 @@ struct PrintTensorSpecViewOp:
         foreach[func](outp)
 
     @staticmethod
-    fn shape(x: InputTensor) -> IndexList[x.rank]:
+    def shape(x: InputTensor) -> IndexList[x.rank]:
         return x.shape()
 
 
 @compiler.register("print_tensor_spec_fused")
 struct PrintTensorSpecFusedOp:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](outp: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         print("x.shape =", x._static_shape)
@@ -374,7 +374,7 @@ struct PrintTensorSpecFusedOp:
 
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[outp.rank]) -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x._fused_load[width](idx))
@@ -382,14 +382,14 @@ struct PrintTensorSpecFusedOp:
         foreach[func](outp)
 
     @staticmethod
-    fn shape(x: InputTensor) -> IndexList[x.rank]:
+    def shape(x: InputTensor) -> IndexList[x.rank]:
         return x.shape()
 
 
 @compiler.register("print_output_shape_strides_fused")
 struct PrintOutputShapeStridesFusedOp:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](output: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         print("output._static_shape = ", output._static_shape)
@@ -399,7 +399,7 @@ struct PrintOutputShapeStridesFusedOp:
 
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[output.rank]) -> SIMD[output.dtype, width]:
             return (
@@ -410,14 +410,14 @@ struct PrintOutputShapeStridesFusedOp:
         foreach[func](output)
 
     @staticmethod
-    fn shape(x: InputTensor) -> IndexList[x.rank]:
+    def shape(x: InputTensor) -> IndexList[x.rank]:
         return x.shape()
 
 
 @compiler.register("imposter_add_elementwise")
 struct AddElementwise:
     @staticmethod
-    fn elementwise[
+    def elementwise[
         dtype: DType,
         width: Int,
     ](
@@ -429,12 +429,12 @@ struct AddElementwise:
 @compiler.register("imposter_add_lhs")
 struct AddFuseLHS:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](z: OutputTensor, x: FusedInputTensor, y: InputTensor) capturing raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y.load[width](idx))
@@ -445,14 +445,14 @@ struct AddFuseLHS:
 @compiler.register("imposter_add_fuse_inputs")
 struct AddFuseInputs:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         z: OutputTensor, x: FusedInputTensor, y: FusedInputTensor
     ) capturing raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
@@ -464,7 +464,7 @@ struct AddFuseInputs:
 @compiler.register("matmul_fuse_out")
 struct MatmulFuseOut:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
         lambdas_have_fusion: Bool,
     ](
@@ -485,7 +485,7 @@ struct MatmulFuseOut:
 
         @parameter
         @always_inline
-        fn out_func[
+        def out_func[
             dtype: DType, width: Int, *, alignment: Int = 1
         ](idx: IndexList[2], val: SIMD[dtype, width]):
             c._fused_store(idx, rebind[SIMD[c.dtype, width]](val))
@@ -495,7 +495,7 @@ struct MatmulFuseOut:
         _matmul[elementwise_lambda_fn=out_func](c, a, b)
 
     @staticmethod
-    fn shape(
+    def shape(
         a: InputTensor,
         b: InputTensor,
     ) -> IndexList[2]:
@@ -509,7 +509,7 @@ struct MatmulFuseOut:
 @compiler.register("variadic_input_to_output")
 struct VariadicInputToOutput:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         size: Int,
         target: StaticString,
@@ -529,7 +529,7 @@ struct VariadicInputToOutput:
 @compiler.register("add_bias_to_two_tensors")
 struct AddBiasToDouble:
     @staticmethod
-    fn execute[
+    def execute[
         rank: Int,
         dtype: DType,
     ](
@@ -546,7 +546,7 @@ struct AddBiasToDouble:
 @compiler.register("inplace_increment_elem")
 struct BasicInplace:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
     ](input: MutableInputTensor[dtype=dtype, rank=2, ...]):
         x = input[0, 0]
@@ -558,7 +558,7 @@ struct BasicInplace:
 @compiler.register("inplace_increment_elem_raises")
 struct BasicInplaceRaises:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
     ](input: MutableInputTensor[dtype=dtype, rank=2, ...]) raises:
         x = input[0, 0]
@@ -569,7 +569,7 @@ struct BasicInplaceRaises:
 @compiler.register("variadic_add")
 struct VariadicAdd:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         rank: Int,
         target: StaticString,
@@ -579,7 +579,7 @@ struct VariadicAdd:
     ) capturing raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        def func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
             var acc = SIMD[dtype, width](0)
 
             comptime for i in range(inputs.size):
@@ -594,7 +594,7 @@ struct VariadicAdd:
 @compiler.view_kernel
 struct Transpose2DOp:
     @staticmethod
-    fn build_view[
+    def build_view[
         dtype: DType,
     ](x: InputTensor[dtype=dtype, rank=2, ...]) -> StaticTuple[IndexList[2], 2]:
         var new_stride = IndexList[2]()
@@ -607,14 +607,14 @@ struct Transpose2DOp:
         return StaticTuple[IndexList[2], 2](new_shape, new_stride)
 
     @staticmethod
-    fn get_view_strides(
+    def get_view_strides(
         input_strides: DimList,
     ) -> DimList[input_strides.values[1], input_strides.values[0]]:
         # transpose the strides of the input
         return {}
 
     @staticmethod
-    fn update_input_view[
+    def update_input_view[
         dtype: DType, //, output_static_shape: DimList
     ](
         input: InputTensor[dtype=dtype, rank=2, ...],
@@ -633,7 +633,7 @@ struct Transpose2DOp:
         )
 
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
         dtype: DType,
     ](
@@ -649,12 +649,12 @@ struct Transpose2DOp:
 @compiler.register("print_shape_fused")
 struct ElementwisePrintShape:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](z: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
         print("input.shape =", x._spec.shape)
@@ -663,7 +663,7 @@ struct ElementwisePrintShape:
         foreach[func](z)
 
     @staticmethod
-    fn shape(x: InputTensor) -> IndexList[x.rank]:
+    def shape(x: InputTensor) -> IndexList[x.rank]:
         return x.shape()
 
 
@@ -671,7 +671,7 @@ struct ElementwisePrintShape:
 @compiler.register("custom_op_that_raises")
 struct CustomOpThatRaises:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](z: OutputTensor, x: InputTensor) raises:
         if x.shape()[0] == 10:
@@ -679,13 +679,13 @@ struct CustomOpThatRaises:
 
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: IndexList[z.rank]) -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
         foreach[func](z)
 
     @staticmethod
-    fn shape(x: InputTensor) raises -> IndexList[x.rank]:
+    def shape(x: InputTensor) raises -> IndexList[x.rank]:
         print("Hello")
         var out_shape = x.shape()
         if out_shape[0] == 20:
@@ -696,7 +696,7 @@ struct CustomOpThatRaises:
 @compiler.register("mo.test.failing_constraint")
 struct OpThatAlwaysFailsConstraint:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, rank: Int
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -710,7 +710,7 @@ struct OpThatAlwaysFailsConstraint:
 @compiler.register("mo.test.return_error")
 struct OpThatAlwaysRaises:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, rank: Int
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -723,7 +723,7 @@ struct OpThatAlwaysRaises:
 @compiler.register("monnx.abs_v13")
 struct MONNXAbsOverload:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, rank: Int
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -731,7 +731,7 @@ struct MONNXAbsOverload:
     ) raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        def func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
@@ -741,7 +741,7 @@ struct MONNXAbsOverload:
 @compiler.register("torch.aten.abs")
 struct MTorchAbsOverload:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, rank: Int
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -749,7 +749,7 @@ struct MTorchAbsOverload:
     ) raises:
         @parameter
         @always_inline
-        fn func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        def func[width: Int](idx: IndexList[rank]) -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
@@ -759,7 +759,7 @@ struct MTorchAbsOverload:
 @compiler.register("op_with_custom_params")
 struct OpWithCustomParams:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         rank: Int,
         custom_int: Int,
@@ -778,14 +778,14 @@ struct OpWithCustomParams:
 @compiler.register("mgprt_test_func")
 struct MGPRTTestFunc:
     @staticmethod
-    fn execute(out_tensor: OutputTensor) raises:
+    def execute(out_tensor: OutputTensor) raises:
         external_call["MGP_RT_TEST", NoneType]()
 
 
 @compiler.register("mutable_test_op")
 struct MutableTestOp:
     @staticmethod
-    fn execute(in_place_tensor: MutableInputTensor) raises:
+    def execute(in_place_tensor: MutableInputTensor) raises:
         in_place_tensor._ptr.store(0, 0)
 
 
@@ -793,7 +793,7 @@ struct MutableTestOp:
 @compiler.register("supports_scalar_kernel")
 struct SupportsScalarKernel:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         outp: OutputTensor[dtype=dtype, rank=1, ...],
@@ -807,7 +807,7 @@ struct SupportsScalarKernel:
 @compiler.register("kernel_with_no_target")
 struct KernelWithNoTarget:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         outp: OutputTensor[dtype=dtype, ...],
@@ -819,7 +819,7 @@ struct KernelWithNoTarget:
 @compiler.register("basic_target")
 struct BasicTarget:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, target: StaticString
     ](
         outp: OutputTensor[dtype=dtype, ...],
@@ -832,18 +832,18 @@ struct MyCustomScalarReg[dtype: DType](ImplicitlyCopyable, RegisterPassable):
     var val: Scalar[Self.dtype]
 
     @implicit
-    fn __init__(out self, val: Scalar[Self.dtype]):
+    def __init__(out self, val: Scalar[Self.dtype]):
         print("MyCustomScalarReg.__init__", val)
         self.val = val
 
-    fn __del__(deinit self):
+    def __del__(deinit self):
         print("MyCustomScalarReg.__del__", self.val)
 
 
 @compiler.register("buff_to_my_custom_scalar_reg")
 struct BuffToMyCustomScalarReg:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString
     ](x: InputTensor[dtype=DType.int32, rank=1, ...]) -> MyCustomScalarReg[
         DType.int32
@@ -854,7 +854,7 @@ struct BuffToMyCustomScalarReg:
 @compiler.register("my_custom_scalar_reg_to_buff")
 struct CustomScalarRegToBuff:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString
     ](
         input: OutputTensor[dtype=DType.int32, rank=1, ...],
@@ -866,7 +866,7 @@ struct CustomScalarRegToBuff:
 @compiler.register("test_custom_op")
 struct TestCustomOp:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString, dtype: DType, rank: Int
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -875,7 +875,7 @@ struct TestCustomOp:
         print("World!")
 
     @staticmethod
-    fn shape[
+    def shape[
         dtype: DType, rank: Int
     ](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
         print("Hello")
@@ -885,7 +885,7 @@ struct TestCustomOp:
 @compiler.register("single_device_context")
 struct SingleDeviceContext:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, ...],
@@ -898,7 +898,7 @@ struct SingleDeviceContext:
 @compiler.register("multi_device_context")
 struct MultiDeviceContext:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, ...],
@@ -914,7 +914,7 @@ struct MultiDeviceContext:
 @compiler.register("multi_device_context_dedup")
 struct MultiDeviceContextDedup:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, ...],
@@ -929,7 +929,7 @@ struct MultiDeviceContextDedup:
 @compiler.register("variadic_device_context")
 struct VariadicDeviceContext:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         rank: Int,
         target: StaticString = "gpu",
@@ -946,7 +946,7 @@ struct VariadicDeviceContext:
 @compiler.register("imposter_cast_elementwise")
 struct CastElementwise:
     @staticmethod
-    fn elementwise[
+    def elementwise[
         dtype: DType,
         out_dtype: DType,
         width: Int,
@@ -957,7 +957,7 @@ struct CastElementwise:
 @compiler.register("print_vector_size")
 struct PrintVectorSize:
     @staticmethod
-    fn elementwise[
+    def elementwise[
         dtype: DType,
         width: Int,
     ](x: SIMD[dtype, width], idx: IndexList) -> SIMD[dtype, width]:
@@ -979,7 +979,7 @@ struct PrintVectorSize:
 @compiler.register("tensor_opaque_tensor_kernel")
 struct TensorOpaqueTensorKernel:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
     ](
         output1: OutputTensor,
@@ -993,7 +993,7 @@ struct TensorOpaqueTensorKernel:
 @compiler.register("test_same_rank_dtype")
 struct TestSameRankDtype:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType, rank: Int
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -1005,7 +1005,7 @@ struct TestSameRankDtype:
 @compiler.register("test_fix_rank")
 struct TestFixRank:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
@@ -1017,7 +1017,7 @@ struct TestFixRank:
 @compiler.register("test_simd_input_size_1")
 struct TestSIMDInputSize1:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
@@ -1029,7 +1029,7 @@ struct TestSIMDInputSize1:
 @compiler.register("test_simd_input")
 struct TestSIMDInput:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
@@ -1041,7 +1041,7 @@ struct TestSIMDInput:
 @compiler.register("test_simd_input_size_2")
 struct TestSIMDInputSize2:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
@@ -1053,14 +1053,14 @@ struct TestSIMDInputSize2:
 @compiler.register("custom_op_with_custom_parameter_shape_func")
 struct CustomOpWithCustomParameterShapeFunc:
     @staticmethod
-    fn execute[
+    def execute[
         test_flag: Int
     ](y: FusedOutputTensor, x: FusedInputTensor) capturing raises:
         raise "This should not run!"
 
     @always_inline
     @staticmethod
-    fn shape[
+    def shape[
         test_flag: Int
     ](input_tensor: InputTensor,) -> IndexList[input_tensor.rank]:
         return input_tensor.shape()
@@ -1069,7 +1069,7 @@ struct CustomOpWithCustomParameterShapeFunc:
 @compiler.register("custom_op_with_static_string_params")
 struct CustomOpWithStaticStringParams:
     @staticmethod
-    fn execute[target: StaticString, foo: StaticString]():
+    def execute[target: StaticString, foo: StaticString]():
         print(target)
         print(foo)
 
@@ -1083,7 +1083,7 @@ struct TensorWrapper(RegisterPassable):
 struct ToTensorWrapper:
     @always_inline
     @staticmethod
-    fn execute[
+    def execute[
         spec: StaticTensorSpec[dtype=DType.float32, rank=2, ...], //
     ](tensor: InputTensor[static_spec=spec],) -> TensorWrapper:
         var ptr = tensor._ptr.address_space_cast[spec.address_space]()
@@ -1100,7 +1100,7 @@ struct ToTensorWrapper:
 struct TensorWrapperPrinter:
     @always_inline
     @staticmethod
-    fn execute(
+    def execute(
         tw: TensorWrapper,
     ):
         print(tw.buffer)
@@ -1109,7 +1109,7 @@ struct TensorWrapperPrinter:
 @compiler.register("fused_write_to_tensor_wrapper")
 struct MutableStore:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString,
         _trace_name: StaticString,
     ](
@@ -1119,7 +1119,7 @@ struct MutableStore:
     ) capturing raises:
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[tensor.rank]) -> SIMD[DType.float32, width]:
             return rebind[SIMD[tensor.dtype, width]](
@@ -1128,7 +1128,7 @@ struct MutableStore:
 
         @parameter
         @always_inline
-        fn out_func[width: Int](index: IndexList[tensor.rank]) capturing:
+        def out_func[width: Int](index: IndexList[tensor.rank]) capturing:
             var idx = rebind[IndexList[tensor.rank]](index)
             var val = func[width](idx)
             idx[0] += 1
@@ -1146,7 +1146,7 @@ struct MutableStore:
 @compiler.register("my_square_compute_out_fusion")
 struct MySquareComputeOutFusion:
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType
     ](
         outp: _FusedComputeOutputTensor[dtype=dtype, rank=1, ...],
@@ -1172,13 +1172,13 @@ struct InplaceNoOutFunc:
     # This kernel is meant to test that epilogue fusion will
     # be skipped if the out_func overload of foreach is not used.
     @staticmethod
-    fn execute(
+    def execute(
         output: MutableInputTensor,
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
     ) capturing raises:
         @parameter
         @always_inline
-        fn func[
+        def func[
             width: Int
         ](idx: IndexList[output.rank]) -> SIMD[output.dtype, width]:
             var val = input._fused_load[width](idx)
@@ -1196,7 +1196,7 @@ struct SIMDPair[S0: Int, S1: Int](RegisterPassable):
 @compiler.register("make_simd_pair")
 struct MakeSimdPair:
     @staticmethod
-    fn execute[P0: Int, P1: Int]() -> SIMDPair[P0, P1]:
+    def execute[P0: Int, P1: Int]() -> SIMDPair[P0, P1]:
         return SIMDPair[P0, P1](
             iota[DType.int32, P0](), iota[DType.int32, P1](Int32(P0))
         )
@@ -1205,7 +1205,7 @@ struct MakeSimdPair:
 @compiler.register("kernel_with_parameterized_opaque")
 struct ParameterizedOpaqueType:
     @staticmethod
-    fn execute[
+    def execute[
         P0: Int
     ](
         output: OutputTensor[dtype=DType.int32, rank=1, ...],
@@ -1215,14 +1215,14 @@ struct ParameterizedOpaqueType:
         output.store(IndexList[1](P0), x.y)
 
     @staticmethod
-    fn shape[P0: Int](x: SIMDPair[P0, _]) -> IndexList[1]:
+    def shape[P0: Int](x: SIMDPair[P0, _]) -> IndexList[1]:
         return IndexList[1](x.S0 + x.S1)
 
 
 @compiler.register("kernel_with_default_parameter")
 struct KernelWithDefaultParameter:
     @staticmethod
-    fn execute[
+    def execute[
         rank: Int,
         rank_defaulted: Int = 128,
         rank_derived_from_other: Int = rank + 1,
@@ -1239,7 +1239,7 @@ struct KernelWithDefaultParameter:
 struct UniqueParameters:
     @always_inline
     @staticmethod
-    fn execute[
+    def execute[
         dtype: DType,
         num_heads: Int,
         head_dim: Int,
@@ -1260,7 +1260,7 @@ struct UniqueParameters:
 @compiler.register("shape_func_with_mutable")
 struct ShapeFuncWithMutable:
     @staticmethod
-    fn execute(
+    def execute(
         output: OutputTensor[rank=2, ...],
         x: MutableInputTensor[dtype=output.dtype, rank=2, ...],
     ):
@@ -1268,7 +1268,7 @@ struct ShapeFuncWithMutable:
         output[0, 0] = 1.0
 
     @staticmethod
-    fn shape(
+    def shape(
         x: InputTensor[rank=2, ...],
     ) -> IndexList[2]:
         return x.shape()

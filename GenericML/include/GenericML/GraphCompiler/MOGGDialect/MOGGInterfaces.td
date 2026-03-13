@@ -39,7 +39,7 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
 
     ```mojo
     // mogg.kernel_terminator input(%1, %2) dps_output(%3) -> mo.opaque(...)
-    fn kernel[...]  (
+    def kernel[...]  (
        out : OutputTensor[...] // <- %3
 
        in0 : InputTensor[...]  // <- %1

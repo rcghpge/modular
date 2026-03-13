@@ -12,7 +12,7 @@ from std.collections.string import StaticString
 
 # Custom version of constrained so we get the note in this file.
 @always_inline("nodebug")
-fn constrained[cond: Bool, msg: StaticString]():
+def constrained[cond: Bool, msg: StaticString]():
     __mlir_op.`kgen.param.assert`[
         cond=cond.__mlir_i1__(),
         message=_get_kgen_string[msg](),
@@ -22,7 +22,7 @@ fn constrained[cond: Bool, msg: StaticString]():
 @compiler.register("fails_to_elaborate")
 struct InvalidOwnedArgConvention:
     @staticmethod
-    fn execute[
+    def execute[
         target: StaticString, dtype: DType, rank: Int
     ](output: OutputTensor[dtype=dtype, rank=rank, ...]):
         comptime assert (

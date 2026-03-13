@@ -488,7 +488,7 @@ def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [HasParent<"MOGG::BindLambdaOp">,
 
      It will lowered to a call to
      ```mojo
-     fn simd_load_from_managed_tensor_slice(...)
+     def simd_load_from_managed_tensor_slice(...)
      ```
 
   }];

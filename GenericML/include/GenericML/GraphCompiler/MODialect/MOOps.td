@@ -4613,7 +4613,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 
     ```mojo
       @register_internal("test_custom_op")
-      fn foo(...):
+      def foo(...):
         pass
     ```
 
@@ -4634,7 +4634,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     ```
     ```mojo
       @register_internal("test_custom_op")
-      fn foo(...):
+      def foo(...):
         pass
     ```
   }];

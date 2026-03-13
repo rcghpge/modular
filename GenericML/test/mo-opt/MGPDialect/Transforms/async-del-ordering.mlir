@@ -33,7 +33,7 @@ mo.graph @throwing_add(%0 : !mo.tensor<[4], si32>, %1: !mo.tensor<[4], si32>) ->
 // FileCheck patterns must be in output order (which is reverse of file order).
 // throwing_add appears first in output, non_throwing_cumsum appears second.
 
-// CHECK-LABEL: fn region_1
+// CHECK-LABEL: def region_1
 // CHECK:       try:
 // CHECK:         mogg_async_del
 // CHECK:         mogg_async_ready
@@ -41,6 +41,6 @@ mo.graph @throwing_add(%0 : !mo.tensor<[4], si32>, %1: !mo.tensor<[4], si32>) ->
 // CHECK:         mogg_async_del
 // CHECK:         mogg_async_error
 
-// CHECK-LABEL: fn region_0
+// CHECK-LABEL: def region_0
 // CHECK:       mogg_async_del
 // CHECK:       mogg_async_ready
