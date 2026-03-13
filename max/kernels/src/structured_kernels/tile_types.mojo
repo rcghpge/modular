@@ -35,15 +35,22 @@ from std.gpu.host import DeviceContext
 from std.gpu.memory import AddressSpace
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
-    Layout as LegacyLayout,
+    ComptimeInt,
+    Coord,
+    CoordLike,
+    Idx,
+    IntTuple,
+    LTToTTLayout,
     LayoutTensor,
+    Layout as LegacyLayout,
+    RuntimeInt,
+    TensorLayout,
     TileTensor,
     UNKNOWN_VALUE,
-    row_major,
     lt_to_tt,
+    row_major,
 )
 from buffer import Dim, DimList
-from layout.int_tuple import IntTuple
 from layout.coord import _DimsToCoordLike
 from layout.tma_async import (
     SharedMemBarrier,
@@ -52,14 +59,7 @@ from layout.tma_async import (
     create_tensor_tile,
 )
 from std.builtin.variadics import Variadic
-from layout.coord import (
-    ComptimeInt,
-    Coord,
-    CoordLike,
-    Idx,
-    RuntimeInt,
-)
-from layout.tile_layout import Layout, TensorLayout
+from layout.tile_layout import Layout
 from .smem_types import SMemTileArray as LTSMemTileArray
 from std.utils.index import IndexList
 from std.memory import stack_allocation
@@ -218,6 +218,22 @@ comptime internal_sf_k_major[
 
 
 # ============================================================================
+# sf_tile_dim0/dim1 -- Compute SF tile dimensions from matmul tile parameters
+# ============================================================================
+
+# dim0 for internal_sf_k_major: (BM // SF_MN_GROUP_SIZE) * SF_ATOM_M[0]
+# BM is the M-dimension (or align_up(MMA_N, SF_MN_GROUP_SIZE) for SFB).
+comptime sf_tile_dim0[BM: Int] = (BM // _SF_MN_GROUP_SIZE) * _SF_ATOM_M_0
+
+# dim1 for internal_sf_k_major:
+#   (sf_bk // (SF_ATOM_K * vec_sf_size)) * (SF_ATOM_M[1] * SF_ATOM_K)
+# sf_bk = SF_K_GROUP_SIZE * num_sf_k_tiles (NOT raw BK).
+comptime sf_tile_dim1[sf_bk: Int, vec_sf_size: Int] = (
+    sf_bk // (_SF_ATOM_K * vec_sf_size)
+) * (_SF_ATOM_M_1 * _SF_ATOM_K)
+
+
+# ============================================================================
 # Core TileTensor type for shared memory
 # ============================================================================
 
@@ -245,8 +261,6 @@ Parameters:
     layout: The full layout including swizzle information.
     alignment: Memory alignment (default 128 for shared memory).
 """
-
-from layout.tile_layout import TensorLayout
 
 
 # ============================================================================
@@ -533,65 +547,6 @@ def create_tma_tile[
 # ============================================================================
 # GMEMTile -- TileTensor type for global memory kernel parameters
 # ============================================================================
-
-
-@parameter
-fn _int_to_dim(value: Int) -> Dim:
-    if value != UNKNOWN_VALUE:
-        return Dim(value)
-    return Dim()
-
-
-comptime _LTDims1[it: IntTuple] = DimList(
-    _int_to_dim(it[0].value()),
-)
-comptime _LTDims2[it: IntTuple] = DimList(
-    _int_to_dim(it[0].value()),
-    _int_to_dim(it[1].value()),
-)
-comptime _LTDims3[it: IntTuple] = DimList(
-    _int_to_dim(it[0].value()),
-    _int_to_dim(it[1].value()),
-    _int_to_dim(it[2].value()),
-)
-comptime _LTDims4[it: IntTuple] = DimList(
-    _int_to_dim(it[0].value()),
-    _int_to_dim(it[1].value()),
-    _int_to_dim(it[2].value()),
-    _int_to_dim(it[3].value()),
-)
-comptime _LTDims5[it: IntTuple] = DimList(
-    _int_to_dim(it[0].value()),
-    _int_to_dim(it[1].value()),
-    _int_to_dim(it[2].value()),
-    _int_to_dim(it[3].value()),
-    _int_to_dim(it[4].value()),
-)
-comptime _LTDims6[it: IntTuple] = DimList(
-    _int_to_dim(it[0].value()),
-    _int_to_dim(it[1].value()),
-    _int_to_dim(it[2].value()),
-    _int_to_dim(it[3].value()),
-    _int_to_dim(it[4].value()),
-    _int_to_dim(it[5].value()),
-)
-
-comptime _LTDims[it: IntTuple] = _LTDims1[it] if len(it) == 1 else _LTDims2[
-    it
-] if len(it) == 2 else _LTDims3[it] if len(it) == 3 else _LTDims4[it] if len(
-    it
-) == 4 else _LTDims5[
-    it
-] if len(
-    it
-) == 5 else _LTDims6[
-    it
-]
-
-comptime LTToTTLayout[lt_layout: LegacyLayout] = Layout[
-    shape_types=_DimsToCoordLike[DType.int64, _LTDims[lt_layout.shape]],
-    stride_types=_DimsToCoordLike[DType.int64, _LTDims[lt_layout.stride]],
-]
 
 comptime GMEMTile[
     dtype: DType,

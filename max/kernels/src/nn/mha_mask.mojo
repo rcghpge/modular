@@ -14,10 +14,8 @@
 from std.utils import StaticTuple
 from std.math import iota, ceildiv
 from std.sys import is_nvidia_gpu
-
-from layout import LayoutTensor, Layout, UNKNOWN_VALUE
+from layout import Layout, LayoutTensor, UNKNOWN_VALUE
 from std.collections import OptionalReg
-
 from std.utils.index import IndexList, Index
 from std.builtin.device_passable import DevicePassable
 
@@ -38,14 +36,10 @@ struct MaskName(Writable):
     comptime MATERIALIZED = Self("materialized")
     comptime CHUNKED_CAUSAL = Self("chunked_causal")
 
-    fn __init__(out self, name: String):
+    def __init__(out self, name: String):
         self.name = name
 
-    @deprecated("Stringable is deprecated. Use Writable instead.")
-    fn __str__(self) -> String:
-        return self.name
-
-    fn write_to(self, mut writer: Some[Writer]):
+    def write_to(self, mut writer: Some[Writer]):
         """Writes the mask name.
 
         Args:
@@ -53,13 +47,13 @@ struct MaskName(Writable):
         """
         writer.write_string(self.name)
 
-    fn __eq__(self, rhs: Self) -> Bool:
+    def __eq__(self, rhs: Self) -> Bool:
         return self.name == rhs.name
 
-    fn __eq__(self, rhs: String) -> Bool:
+    def __eq__(self, rhs: String) -> Bool:
         return self.name == rhs
 
-    fn __ne__(self, rhs: Self) -> Bool:
+    def __ne__(self, rhs: Self) -> Bool:
         return self.name != rhs.name
 
 
@@ -93,26 +87,22 @@ struct TileMaskStatus(
     # the predefined trip count information.
     comptime UNKNOWN_MASK = Self(4)
 
-    fn __eq__(self, rhs: Self) -> Bool:
+    def __eq__(self, rhs: Self) -> Bool:
         return self.status == rhs.status
 
-    fn __ne__(self, rhs: Self) -> Bool:
+    def __ne__(self, rhs: Self) -> Bool:
         return self.status != rhs.status
 
-    fn __is__(self, rhs: Self) -> Bool:
+    def __is__(self, rhs: Self) -> Bool:
         return self.status == rhs.status
 
-    @deprecated("Stringable is deprecated. Use Writable instead.")
-    fn __str__(self) -> String:
-        return String.write(self)
-
-    fn __and__(self, rhs: Self) -> Self:
+    def __and__(self, rhs: Self) -> Self:
         return Self(self.status & rhs.status)
 
-    fn __or__(self, rhs: Self) -> Self:
+    def __or__(self, rhs: Self) -> Self:
         return Self(self.status | rhs.status)
 
-    fn write_to(self, mut writer: Some[Writer]):
+    def write_to(self, mut writer: Some[Writer]):
         if self is Self.NO_MASK:
             return writer.write("not masked")
         if self is Self.PARTIAL_MASK:
@@ -147,33 +137,33 @@ struct MaskStrategy(TrivialRegisterPassable):
     """
 
     @always_inline
-    fn __init__(out self, value: Int32):
+    def __init__(out self, value: Int32):
         self._value = value
         self._upper_triangular_window_size = 0
 
     @always_inline
-    fn __init__(out self, value: Int32, window_size: Int32):
+    def __init__(out self, value: Int32, window_size: Int32):
         self._value = value
         self._upper_triangular_window_size = window_size
 
     @always_inline
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
     @always_inline
-    fn __ne__(self, other: Self) -> Bool:
+    def __ne__(self, other: Self) -> Bool:
         return self._value != other._value
 
     @always_inline
-    fn __and__(self, other: Self) -> Self:
+    def __and__(self, other: Self) -> Self:
         return {self._value & other._value}
 
     @always_inline
-    fn __or__(self, other: Self) -> Self:
+    def __or__(self, other: Self) -> Self:
         return {self._value | other._value}
 
     @always_inline
-    fn __contains__(self, other: Self) -> Bool:
+    def __contains__(self, other: Self) -> Bool:
         return (self._value | other._value) == self._value
 
 
@@ -202,7 +192,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
     does not return `FULL_MASK`?
     """
 
-    fn mask[
+    def mask[
         dtype: DType, width: Int, //, *, element_type: DType = DType.uint32
     ](
         self,
@@ -219,7 +209,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         """
         ...
 
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -229,7 +219,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         """Given a tile's index range, return its masking status."""
         ...
 
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         """
@@ -248,7 +238,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         """
         ...
 
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         """
@@ -260,13 +250,13 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         ...
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         """
         The number of blocks that are all partial-masks or not masked.
         """
         ...
 
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -281,7 +271,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         """
         ...
 
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         """
@@ -290,7 +280,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         ...
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         """
@@ -306,7 +296,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         ...
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         """
@@ -316,7 +306,7 @@ trait MHAMask(Copyable, DevicePassable, TrivialRegisterPassable):
         ...
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         ...
 
 
@@ -338,19 +328,19 @@ struct CausalMask(MHAMask, TrivialRegisterPassable):
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "CausalMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "CausalMask"
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType,
         width: Int,
         //,
@@ -379,7 +369,7 @@ struct CausalMask(MHAMask, TrivialRegisterPassable):
         return masked_score_vec
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -422,7 +412,7 @@ struct CausalMask(MHAMask, TrivialRegisterPassable):
         return TileMaskStatus(min_q_lt_max_k + (max_q_lt_min_k << 1))
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         # offset0 is row
@@ -433,7 +423,7 @@ struct CausalMask(MHAMask, TrivialRegisterPassable):
         return 0
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         # Masked off when row < col
@@ -446,17 +436,17 @@ struct CausalMask(MHAMask, TrivialRegisterPassable):
         return ceildiv(min(row + UInt32(BM), num_cols), UInt32(BN))
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         return 2
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return self.total_iters[BM, BN, page_size](row, num_cols)
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -475,13 +465,13 @@ struct CausalMask(MHAMask, TrivialRegisterPassable):
         return {num_unmasked, partial_mask_end}
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         return {TileMaskStatus.NO_MASK, TileMaskStatus.PARTIAL_MASK}
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         return {MaskStrategy.NO_MASK, MaskStrategy.LOWER_TRIANGULAR}
@@ -503,19 +493,19 @@ struct NullMask(MHAMask, TrivialRegisterPassable):
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "NullMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "NullMask"
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType, width: Int, //, *, element_type: DType = DType.uint32
     ](
         self,
@@ -525,7 +515,7 @@ struct NullMask(MHAMask, TrivialRegisterPassable):
         return score_vec
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -536,13 +526,13 @@ struct NullMask(MHAMask, TrivialRegisterPassable):
         return TileMaskStatus.NO_MASK
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         return 0
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         """
@@ -552,17 +542,17 @@ struct NullMask(MHAMask, TrivialRegisterPassable):
         return ceildiv(num_cols, UInt32(BN))
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return self.total_iters[BM, BN, page_size](row, num_cols)
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         return 1
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -570,13 +560,13 @@ struct NullMask(MHAMask, TrivialRegisterPassable):
         return {self.total_iters[BM, BN, page_size](row, num_cols)}
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         return {TileMaskStatus.NO_MASK}
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         return {MaskStrategy.OUT_OF_BOUNDS}
@@ -616,19 +606,19 @@ struct ChunkedMask[local_window_size: Int](MHAMask, TrivialRegisterPassable):
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "ChunkedMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "ChunkedMask[" + String(Self.local_window_size) + "]"
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType,
         width: Int,
         //,
@@ -679,7 +669,7 @@ struct ChunkedMask[local_window_size: Int](MHAMask, TrivialRegisterPassable):
         return SIMD[dtype, width](MASK_VALUE)
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -707,7 +697,7 @@ struct ChunkedMask[local_window_size: Int](MHAMask, TrivialRegisterPassable):
             return TileMaskStatus.FULL_MASK
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         # First column for which `row` is not masked is
@@ -722,7 +712,7 @@ struct ChunkedMask[local_window_size: Int](MHAMask, TrivialRegisterPassable):
             return (col // UInt32(align_to)) * UInt32(align_to)
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         start_col = self.start_column[BM, BN, page_size](row)
@@ -733,17 +723,17 @@ struct ChunkedMask[local_window_size: Int](MHAMask, TrivialRegisterPassable):
         return ceildiv(end_col - start_col, UInt32(BN))
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         return 1  # TODO: 3, for large chunk size
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return self.total_iters[BM, BN, page_size](row, num_cols)
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -751,13 +741,13 @@ struct ChunkedMask[local_window_size: Int](MHAMask, TrivialRegisterPassable):
         return {self.total_iters[BM, BN, page_size](row, num_cols)}
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         return {TileMaskStatus.PARTIAL_MASK}
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         return {MaskStrategy.COMPUTED | MaskStrategy.OUT_OF_BOUNDS}
@@ -798,19 +788,19 @@ struct SlidingWindowCausalMask[window_size: Int](
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "SlidingWindowCausalMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "SlidingWindowCausalMask[" + String(Self.window_size) + "]"
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType,
         width: Int,
         *,
@@ -851,7 +841,7 @@ struct SlidingWindowCausalMask[window_size: Int](
         )
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -917,7 +907,7 @@ struct SlidingWindowCausalMask[window_size: Int](
         return TileMaskStatus.PARTIAL_MASK
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         var col: UInt32 = UInt32(
@@ -935,7 +925,7 @@ struct SlidingWindowCausalMask[window_size: Int](
                 return (col // UInt32(align_to)) * UInt32(align_to)
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         start_col = self.start_column[BM, BN, page_size](row)
@@ -943,14 +933,14 @@ struct SlidingWindowCausalMask[window_size: Int](
         return ceildiv(end_col - start_col, UInt32(BN))
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         if ((Self.window_size) // BN) > ((BM + BN - 2) // BN):
             return 3
         else:
             return 1
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -993,13 +983,13 @@ struct SlidingWindowCausalMask[window_size: Int](
             return {end_tile}
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return self.total_iters[BM, BN, page_size](row, num_cols)
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         comptime if (((Self.window_size) // BN) - ((BM + BN - 2) // BN)) > 0:
@@ -1014,7 +1004,7 @@ struct SlidingWindowCausalMask[window_size: Int](
             }
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         comptime if (((Self.window_size) // BN) - ((BM + BN - 2) // BN)) > 0:
@@ -1044,7 +1034,7 @@ struct SlidingWindowCausalMask[window_size: Int](
 
 
 @always_inline
-fn naively_compute_total_iters[
+def naively_compute_total_iters[
     MaskType: MHAMask, //, BM: Int, BN: Int
 ](mask: MaskType, q_row: UInt32, end: UInt32) -> UInt32:
     var iter_count: UInt32 = 0
@@ -1064,7 +1054,7 @@ fn naively_compute_total_iters[
 
 
 @always_inline
-fn naively_get_first_nonempty_mask_col[
+def naively_get_first_nonempty_mask_col[
     MaskType: MHAMask, //, BM: Int, BN: Int
 ](mask: MaskType, q_row: UInt32) -> UInt32:
     var kv_row: UInt32 = 0
@@ -1079,9 +1069,9 @@ fn naively_get_first_nonempty_mask_col[
     return kv_row
 
 
-struct MaterializedMask[dtype_: DType, layout_: Layout](
-    MHAMask, TrivialRegisterPassable
-):
+struct MaterializedMask[
+    dtype_: DType, layout_: Layout, origin_: Origin[mut=False]
+](MHAMask, TrivialRegisterPassable):
     """Mask that's backed by a materialized tensor."""
 
     comptime apply_log2e_after_mask: Bool = True
@@ -1089,8 +1079,7 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
     comptime mask_safe_out_of_bounds: Bool = False
     comptime check_mask_during_decoding: Bool = True
 
-    comptime MaskType = LayoutTensor[Self.dtype_, Self.layout_, ImmutAnyOrigin]
-    var mask_tensor: Self.MaskType
+    var mask_tensor: LayoutTensor[Self.dtype_, Self.layout_, Self.origin_]
     var start_pos: OptionalReg[
         LayoutTensor[
             DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
@@ -1100,20 +1089,20 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "MaterializedMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "MaterializedMask"
 
-    fn __init__(
+    def __init__(
         out self,
-        mask_tensor: Self.MaskType,
+        mask_tensor: LayoutTensor[Self.dtype_, Self.layout_, Self.origin_],
         start_pos: OptionalReg[
             LayoutTensor[
                 DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
@@ -1131,7 +1120,7 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
         )
 
     @always_inline
-    fn get_start_pos(self, batch_idx: Int) -> Int:
+    def get_start_pos(self, batch_idx: Int) -> Int:
         if self.start_pos:
             return Int(self.start_pos.value()[batch_idx])
         else:
@@ -1141,7 +1130,7 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
             )
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType,
         width: Int,
         //,
@@ -1194,7 +1183,7 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
         return score_vec + retval
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -1206,29 +1195,29 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
         return TileMaskStatus.PARTIAL_MASK
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         return naively_get_first_nonempty_mask_col[BM, BN](self, row)
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return naively_compute_total_iters[BM, BN](self, row, num_cols)
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         return 1
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return ceildiv(num_cols, UInt32(BN))
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -1236,13 +1225,13 @@ struct MaterializedMask[dtype_: DType, layout_: Layout](
         return {self.last_masked_set_end[BM, BN, page_size](row, num_cols)}
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         return {TileMaskStatus.UNKNOWN_MASK}
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         return {MaskStrategy.COMPUTED | MaskStrategy.OUT_OF_BOUNDS}
@@ -1266,19 +1255,19 @@ struct AndMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "AndMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "AndMask[" + Self.T.name() + ", " + Self.S.name() + "]"
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType, width: Int, //, *, element_type: DType = DType.uint32
     ](
         self,
@@ -1297,7 +1286,7 @@ struct AndMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
             )
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -1310,29 +1299,29 @@ struct AndMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
         return lhs_status & rhs_status
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         return naively_get_first_nonempty_mask_col[BM, BN](self, row)
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return naively_compute_total_iters[BM, BN](self, row, num_cols)
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         return 1
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return ceildiv(num_cols, UInt32(BN))
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -1340,13 +1329,13 @@ struct AndMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
         return {self.last_masked_set_end[BM, BN, page_size](row, num_cols)}
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         return {TileMaskStatus.UNKNOWN_MASK}
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         return {MaskStrategy.COMPUTED | MaskStrategy.OUT_OF_BOUNDS}
@@ -1370,19 +1359,19 @@ struct OrMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
 
     comptime device_type: AnyType = Self
 
-    fn _to_device_type(self, target: MutOpaquePointer[_]):
+    def _to_device_type(self, target: MutOpaquePointer[_]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
-    fn get_type_name() -> String:
+    def get_type_name() -> String:
         return "OrMask"
 
     @staticmethod
-    fn name() -> String:
+    def name() -> String:
         return "OrMask[" + Self.T.name() + ", " + Self.S.name() + "]"
 
     @always_inline
-    fn mask[
+    def mask[
         dtype: DType, width: Int, //, *, element_type: DType = DType.uint32
     ](
         self,
@@ -1400,7 +1389,7 @@ struct OrMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
             )
 
     @always_inline
-    fn status[
+    def status[
         *, element_type: DType = DType.uint32
     ](
         self,
@@ -1412,29 +1401,29 @@ struct OrMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
         return lhs_status | rhs_status
 
     @always_inline
-    fn start_column[
+    def start_column[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32) -> UInt32:
         return naively_get_first_nonempty_mask_col[BM, BN](self, row)
 
     @always_inline
-    fn total_iters[
+    def total_iters[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return naively_compute_total_iters[BM, BN](self, row, num_cols)
 
     @staticmethod
-    fn count_nonfull_sets(BM: Int, BN: Int) -> Int:
+    def count_nonfull_sets(BM: Int, BN: Int) -> Int:
         return 1
 
     @always_inline
-    fn last_masked_set_end[
+    def last_masked_set_end[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> UInt32:
         return ceildiv(num_cols, UInt32(BN))
 
     @always_inline
-    fn masked_set_ends[
+    def masked_set_ends[
         BM: Int, BN: Int, page_size: Int
     ](self, row: UInt32, num_cols: UInt32) -> StaticTuple[
         UInt32, Self.count_nonfull_sets(BM, BN)
@@ -1442,13 +1431,13 @@ struct OrMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
         return {self.last_masked_set_end[BM, BN, page_size](row, num_cols)}
 
     @staticmethod
-    fn nonfull_sets[
+    def nonfull_sets[
         BM: Int, BN: Int
     ]() -> StaticTuple[TileMaskStatus, Self.count_nonfull_sets(BM, BN)]:
         return {TileMaskStatus.UNKNOWN_MASK}
 
     @staticmethod
-    fn mask_strategies[
+    def mask_strategies[
         BM: Int, BN: Int
     ]() -> StaticTuple[MaskStrategy, Self.count_nonfull_sets(BM, BN)]:
         return {MaskStrategy.COMPUTED | MaskStrategy.OUT_OF_BOUNDS}
@@ -1460,7 +1449,7 @@ struct OrMask[T: MHAMask, S: MHAMask, //, lhs: T, rhs: S](
 
 
 @always_inline
-fn ChunkedCausalMask[
+def ChunkedCausalMask[
     local_window_size: Int
 ](out res: OrMask[CausalMask(), ChunkedMask[local_window_size]()]):
     """Mask implementing Chunked Causal attention for Llama4 models.

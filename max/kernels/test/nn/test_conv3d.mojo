@@ -15,7 +15,7 @@ from std.math import ceildiv, isclose
 from std.random import rand
 from std.sys.info import simd_width_of
 
-from layout import LayoutTensor, Layout, RuntimeLayout
+from layout import Layout, LayoutTensor, RuntimeLayout
 from nn.conv import (
     ConvDirectNHWC,
     ConvInfoStatic,
@@ -35,7 +35,7 @@ comptime simd_size: Int = simd_width_of[DType.float32]()
 
 
 # CHECK-LABEL: test_conv3d
-fn test[
+def test[
     dtype: DType, filter_packed: Bool
 ](
     N: Int,
@@ -162,9 +162,6 @@ fn test[
             layout_5d,
             layout_6d,
             layout_5d,
-            _,
-            _,
-            _,
             dtype,
             dtype,
             dtype,
@@ -176,9 +173,6 @@ fn test[
             layout_5d,
             layout_5d,
             layout_5d,
-            _,
-            _,
-            _,
             dtype,
             dtype,
             dtype,

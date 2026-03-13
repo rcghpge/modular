@@ -28,9 +28,6 @@ from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
 from layout._fillers import arange as arange, random
 from linalg.matmul.gpu import _matmul_gpu
 from linalg.utils_gpu import MatmulConfig
-from std.memory import LegacyUnsafePointer
-
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from test_utils import ulp_distance
 from std.testing import assert_almost_equal
 
@@ -49,7 +46,7 @@ comptime epilogue_func_type = fn[
 
 @parameter
 @always_inline
-fn epilogue_test_fn[
+def epilogue_test_fn[
     dtype: DType, width: Int, *, alignment: Int = 1
 ](
     idx: IndexList[2],
@@ -70,7 +67,7 @@ fn epilogue_test_fn[
     return val + bias
 
 
-fn select_max_ulp_distance[
+def select_max_ulp_distance[
     lambda_fn: Optional[epilogue_func_type]
 ](max_ulp_distance: Optional[Int]) -> Int:
     if max_ulp_distance:
@@ -81,7 +78,7 @@ fn select_max_ulp_distance[
         return 2
 
 
-fn test[
+def test[
     dtype: DType,
     /,
     *,
@@ -107,11 +104,12 @@ fn test[
 
     print(m, "x", n, "x", k)
 
-    comptime static_a_shape = DimList(to_dim[M], to_dim[K])
-    comptime static_b_shape = DimList(
-        to_dim[N], to_dim[K]
-    ) if transpose_b else DimList(to_dim[K], to_dim[N])
-    comptime static_c_shape = DimList(to_dim[M], to_dim[N])
+    comptime static_a_shape = DimList[to_dim[M], to_dim[K]]()
+    comptime static_b_shape = DimList[
+        to_dim[N] if transpose_b else to_dim[K],
+        to_dim[K] if transpose_b else to_dim[N],
+    ]()
+    comptime static_c_shape = DimList[to_dim[M], to_dim[N]]()
 
     var dynamic_a_shape = IndexList[2](M.or_else(m), K.or_else(k))
     var dynamic_b_shape = IndexList[2](
@@ -136,10 +134,10 @@ fn test[
     )
 
     # Host allocations
-    var a_host_ptr = UnsafePointer[Scalar[dtype]].alloc(a_size)
-    var b_host_ptr = UnsafePointer[Scalar[dtype]].alloc(b_size)
-    var c_host_ptr = UnsafePointer[Scalar[dtype]].alloc(c_size)
-    var c_host_ref_ptr = UnsafePointer[Scalar[dtype]].alloc(c_size)
+    var a_host_ptr = alloc[Scalar[dtype]](a_size)
+    var b_host_ptr = alloc[Scalar[dtype]](b_size)
+    var c_host_ptr = alloc[Scalar[dtype]](c_size)
+    var c_host_ref_ptr = alloc[Scalar[dtype]](c_size)
 
     var a_host = LayoutTensor[dtype, a_layout](
         a_host_ptr,
@@ -164,19 +162,19 @@ fn test[
     var c_device_buffer = ctx.enqueue_create_buffer[dtype](c_size)
     var c_device_ref_buffer = ctx.enqueue_create_buffer[dtype](c_size)
 
-    var a_device = NDBuffer[dtype, 2, _, static_a_shape](
+    var a_device = NDBuffer[rank=2, dtype, _, static_a_shape](
         a_device_buffer.unsafe_ptr(),
         IndexList[2](m, k),
     )
-    var b_device = NDBuffer[dtype, 2, _, static_b_shape](
+    var b_device = NDBuffer[rank=2, dtype, _, static_b_shape](
         b_device_buffer.unsafe_ptr(),
         IndexList[2](n, k) if transpose_b else IndexList[2](k, n),
     )
-    var c_device = NDBuffer[dtype, 2, _, static_c_shape](
+    var c_device = NDBuffer[rank=2, dtype, _, static_c_shape](
         c_device_buffer.unsafe_ptr(),
         IndexList[2](m, n),
     )
-    var c_device_ref = NDBuffer[dtype, 2, _, static_c_shape](
+    var c_device_ref = NDBuffer[rank=2, dtype, _, static_c_shape](
         c_device_ref_buffer.unsafe_ptr(),
         IndexList[2](m, n),
     )
@@ -206,7 +204,7 @@ fn test[
     @parameter
     @always_inline
     @__copy_capture(c_tensor, m, n)
-    fn epilogue_fn[
+    def epilogue_fn[
         _dtype: DType,
         width: Int,
         *,
@@ -262,7 +260,7 @@ fn test[
     @always_inline
     @__copy_capture(c_ref_tensor, m, n)
     @parameter
-    fn func[
+    def func[
         simd_width: Int, rank: Int, alignment: Int = 1
     ](idx0: IndexList[rank]):
         var idx = rebind[IndexList[2]](idx0)

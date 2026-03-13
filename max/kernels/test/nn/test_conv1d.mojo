@@ -36,7 +36,7 @@ comptime simd_size: Int = simd_width_of[DType.float32]()
 
 
 # CHECK-LABEL: test_conv1d
-fn test[
+def test[
     dtype: DType, filter_packed: Bool
 ](
     N: Int,
@@ -141,9 +141,6 @@ fn test[
             layout_3d,
             layout_4d,
             layout_3d,
-            _,
-            _,
-            _,
             dtype,
             dtype,
             dtype,
@@ -155,9 +152,6 @@ fn test[
             layout_3d,
             layout_3d,
             layout_3d,
-            _,
-            _,
-            _,
             dtype,
             dtype,
             dtype,

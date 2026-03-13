@@ -13,12 +13,7 @@
 
 from std.collections import Optional, Dict
 from std.math import align_down, ceildiv
-from std.memory import LegacyUnsafePointer
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-comptime OpaquePointer = LegacyUnsafePointer[
-    mut=True, NoneType, origin=MutAnyOrigin
-]
 
 from std.os import abort
 from std.ffi import _get_global_or_null, external_call
@@ -74,7 +69,15 @@ from buffer.dimlist import Dim, DimList
 from std.gpu.host import DeviceContext
 from std.gpu.host._nvidia_cuda import CUDA
 from std.gpu import block_dim, block_idx, thread_idx
-from layout import Layout, LayoutTensor, RuntimeLayout, IntTuple, UNKNOWN_VALUE
+from layout import (
+    IntTuple,
+    Layout,
+    LayoutTensor,
+    RuntimeLayout,
+    UNKNOWN_VALUE,
+    row_major,
+    stack_allocation as tt_stack_allocation,
+)
 from linalg.accumulate import _Accumulator
 from linalg.utils import partition_work
 from std.runtime.asyncrt import parallelism_level
@@ -109,6 +112,10 @@ from nn.pad_gpu import pad_constant as pad_constant_gpu
 
 @fieldwise_init
 struct Naive2dConvolution[
+    output_origin: Origin[mut=True],
+    input_origin: Origin[mut=False],
+    filter_origin: Origin[mut=False],
+    //,
     output_type: DType,
     input_type: DType,
     filter_type: DType,
@@ -116,9 +123,9 @@ struct Naive2dConvolution[
     """Struct wrapper for naive 2d convolution implementation."""
 
     # Input params.
-    var output: UnsafePointer[Scalar[Self.output_type]]
-    var input: UnsafePointer[Scalar[Self.input_type]]
-    var filter: UnsafePointer[Scalar[Self.filter_type]]
+    var output: UnsafePointer[Scalar[Self.output_type], Self.output_origin]
+    var input: UnsafePointer[Scalar[Self.input_type], Self.input_origin]
+    var filter: UnsafePointer[Scalar[Self.filter_type], Self.filter_origin]
     var pad_d: IndexList[2]
     var pad_h: IndexList[2]
     var pad_w: IndexList[2]
@@ -132,10 +139,10 @@ struct Naive2dConvolution[
     var filter_shape: IndexList[5]  # QRSCF layout.
 
     @staticmethod
-    fn run(
-        output: UnsafePointer[Scalar[Self.output_type]],
-        input: UnsafePointer[Scalar[Self.input_type]],
-        filter: UnsafePointer[Scalar[Self.filter_type]],
+    def run(
+        output: UnsafePointer[Scalar[Self.output_type], Self.output_origin],
+        input: UnsafePointer[Scalar[Self.input_type], Self.input_origin],
+        filter: UnsafePointer[Scalar[Self.filter_type], Self.filter_origin],
         output_shape: IndexList[5],
         input_shape: IndexList[5],
         filter_shape: IndexList[5],
@@ -167,11 +174,11 @@ struct Naive2dConvolution[
         # Run the actual loops and computations.
         naive2d_convolution._outer_loop()
 
-    fn __init__(
+    def __init__(
         out self,
-        output: UnsafePointer[Scalar[Self.output_type]],
-        input: UnsafePointer[Scalar[Self.input_type]],
-        filter: UnsafePointer[Scalar[Self.filter_type]],
+        output: UnsafePointer[Scalar[Self.output_type], Self.output_origin],
+        input: UnsafePointer[Scalar[Self.input_type], Self.input_origin],
+        filter: UnsafePointer[Scalar[Self.filter_type], Self.filter_origin],
         output_shape: IndexList[5],
         input_shape: IndexList[5],
         filter_shape: IndexList[5],
@@ -195,7 +202,7 @@ struct Naive2dConvolution[
         self.dilation = dilation
         self.num_groups = num_groups
 
-    fn _outer_loop(self):
+    def _outer_loop(self):
         """Implementation of the outermost loop of a convolution operator with
         loops covering the iteration space of batch, filter count, height and wi-
         dth dimensions.
@@ -214,7 +221,7 @@ struct Naive2dConvolution[
                             #  ion.
                             self._compute_point(n, do, ho, wo, f)
 
-    fn _compute_point(self, n: Int, do: Int, ho: Int, wo: Int, f: Int):
+    def _compute_point(self, n: Int, do: Int, ho: Int, wo: Int, f: Int):
         """Implementation of the inner loop computation of a conv2d operator
         producing a single scalar value at the given output tensor index.
         """
@@ -292,7 +299,7 @@ struct Naive2dConvolution[
 
 
 @always_inline
-fn _m_to_n_ho_wo_nhwc(m: Int, HO: Int, WO: Int) -> IndexList[3]:
+def _m_to_n_ho_wo_nhwc(m: Int, HO: Int, WO: Int) -> IndexList[3]:
     """Converts post-im2col m dimension index to pre-im2col coordinates on
     (N, Hout, Wout) dimensions.
         Args:
@@ -312,14 +319,14 @@ fn _m_to_n_ho_wo_nhwc(m: Int, HO: Int, WO: Int) -> IndexList[3]:
 
 # Reduce helper when the input channel dimension is partitioned.
 @always_inline
-fn _reduce_output[
+def _reduce_output[
     dtype: DType,
     //,
     simd_size: Int,
     elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
 ](
-    scratch: UnsafePointer[Scalar[dtype]],
-    output: UnsafePointer[Scalar[dtype]],
+    scratch: UnsafePointer[mut=False, Scalar[dtype], _],
+    output: UnsafePointer[mut=True, Scalar[dtype], _],
     N: Int,
     output_space_dims: IndexList,
     F: Int,
@@ -332,12 +339,12 @@ fn _reduce_output[
     # Reduce from the output scratch buffer to the actual output.
     @parameter
     @always_inline
-    fn reduce_task(tid: Int):
+    def reduce_task(tid: Int):
         # Use all threads in reduction.
         var reduce_range = partition_work(tid, num_threads, num_rows, 1)
 
         @always_inline
-        fn sum[width: Int](offset: Int) unified {mut}:
+        def sum[width: Int](offset: Int) unified {mut}:
             var tid_output_offset = reduce_range[0] * F + offset
             var vec = scratch.load[width=width](tid_output_offset)
             # The number of partitions here is typically small.
@@ -370,16 +377,14 @@ fn _reduce_output[
 
 @fieldwise_init
 struct ConvDirectNHWC[
-    input_mut: Bool,
-    filter_mut: Bool,
     conv_attr_rank: Int,
+    input_origin: Origin[mut=False],
+    filter_origin: Origin[mut=False],
+    output_origin: Origin[mut=True],
     //,
     input_layout: Layout,
     filter_layout: Layout,
     output_layout: Layout,
-    input_origin: Origin[mut=input_mut],
-    filter_origin: Origin[mut=filter_mut],
-    output_origin: MutOrigin,
     input_type: DType,
     filter_type: DType,
     output_type: DType,
@@ -425,7 +430,7 @@ struct ConvDirectNHWC[
     ]() and Self.filter_layout.shape.all_known() and Self.filter_packed
 
     @staticmethod
-    fn run(
+    def run(
         output: LayoutTensor[
             Self.output_type, Self.output_layout, Self.output_origin
         ],
@@ -483,14 +488,14 @@ struct ConvDirectNHWC[
         ](num_threads, conv_shape)
         var num_tasks = num_partitions.flattened_length()
 
-        # Wrap the pointer inside LayoutTensor so it can be properly captured by async closure.
-        var output_ptr = output.ptr
+        # Safety: the scratch pointer below will alias the output_ptr, so cast to MutAnyOrigin
+        # here to turn off the check.
+        var output_ptr = output.ptr.unsafe_origin_cast[MutAnyOrigin]()
         var output_size = output.size()
         var scratch_size = num_partitions[1] * output_size
         if num_partitions[1] > 1:
-            output_ptr = UnsafePointer[Scalar[Self.output_type]].alloc(
-                scratch_size
-            )
+            output_ptr = alloc[Scalar[Self.output_type]](scratch_size)
+        # Wrap the pointer inside LayoutTensor so it can be properly captured by async closure.
         var output_scratch = LayoutTensor[
             Self.output_type, Layout.row_major(UNKNOWN_VALUE)
         ](
@@ -505,7 +510,7 @@ struct ConvDirectNHWC[
         )
         @parameter
         @always_inline
-        fn task_func(task_id: Int):
+        def task_func(task_id: Int):
             var partition = get_partition(
                 task_id,
                 num_partitions,
@@ -524,7 +529,7 @@ struct ConvDirectNHWC[
             # TODO: Need to have a more robust way to compute task_id_c
             var task_id_c = (task_id // num_partitions[2]) % num_partitions[1]
             var task_output = LayoutTensor[
-                Self.output_type, Self.output_layout, Self.output_origin
+                Self.output_type, Self.output_layout, AnyOrigin[mut=True]
             ](
                 output_scratch.ptr + task_id_c * output_size,
                 RuntimeLayout[Self.output_layout].row_major(
@@ -536,9 +541,6 @@ struct ConvDirectNHWC[
                 Self.input_layout,
                 Self.filter_layout,
                 Self.output_layout,
-                Self.input_origin,
-                Self.filter_origin,
-                Self.output_origin,
                 Self.input_type,
                 Self.filter_type,
                 Self.output_type,
@@ -578,13 +580,13 @@ struct ConvDirectNHWC[
             # Use sync to work around #12624
             sync_parallelize[task_func](num_tasks)
 
-    fn _batch_group_loop(self):
+    def _batch_group_loop(self):
         """Loop over the batch and group dimensions. The two dimension are
         merged and partitioned for parallelism."""
 
         @always_inline
         @parameter
-        fn body[padded: Bool]():
+        def body[padded: Bool]():
             for ng in range(
                 self.partition.ng_offset,
                 self.partition.ng_offset + self.partition.ng_size,
@@ -595,7 +597,7 @@ struct ConvDirectNHWC[
 
         unswitch[body](self.conv_shape.padded())
 
-    fn _c_tile_loop[padded: Bool](self, n: Int, g: Int, tile_size: Int):
+    def _c_tile_loop[padded: Bool](self, n: Int, g: Int, tile_size: Int):
         """Loop over C tiles."""
 
         # TODO: Extend to 1D/3D.
@@ -609,7 +611,7 @@ struct ConvDirectNHWC[
 
         @always_inline
         @parameter
-        fn c_tile_iteration(c_tile_offset: Int, c_tile_size: Int):
+        def c_tile_iteration(c_tile_offset: Int, c_tile_size: Int):
             # Only apply static shape optimizations to shapes with padding since
             # there is a fast path for pointwise (no padding) conv with strides.
             # Grouped conv logic has not been plumbed into static specialized funcs yet.
@@ -658,7 +660,7 @@ struct ConvDirectNHWC[
                     c_round_by_tile_residual,
                 )
 
-    fn _f_tile_loop[
+    def _f_tile_loop[
         padded: Bool, last_c_tile: Bool
     ](self, n: Int, g: Int, c_tile_offset: Int, c_tile_size: Int):
         """Loop over F tiles."""
@@ -675,7 +677,7 @@ struct ConvDirectNHWC[
 
         @always_inline
         @parameter
-        fn f_tile_iteration[size: Int](f_tile_offset: Int, f_tile_size: Int):
+        def f_tile_iteration[size: Int](f_tile_offset: Int, f_tile_size: Int):
             comptime if not merge_output_space_loops:
                 self.output_space_loop[
                     micro_kernel_height, size // simd_size, False, last_c_tile
@@ -740,13 +742,13 @@ struct ConvDirectNHWC[
                 )
 
     @always_inline
-    fn is_new_c_accum(self, c_idx: Int) -> Bool:
+    def is_new_c_accum(self, c_idx: Int) -> Bool:
         # returns true when processing first C in a group or first C in a C partition
         if self.conv_shape.num_groups > 1:
             return self.conv_shape.c_in_group(c_idx) == 0
         return c_idx == self.partition.c_offset
 
-    fn update_output_tile_no_padding[
+    def update_output_tile_no_padding[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         c_fully_cached: Bool,
@@ -808,7 +810,7 @@ struct ConvDirectNHWC[
                 self.conv_shape.f_per_group() % simd_size,
             )
         var filter_ptr: UnsafePointer[
-            Scalar[Self.filter_type]
+            Scalar[Self.filter_type], Self.filter_origin
         ] = self.filter.ptr
 
         comptime if Self.filter_packed:
@@ -908,7 +910,7 @@ struct ConvDirectNHWC[
                 )
 
     @always_inline
-    fn _init_output_micro_tile[
+    def _init_output_micro_tile[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         simd_size: Int,
@@ -938,14 +940,14 @@ struct ConvDirectNHWC[
                 )
 
     @always_inline
-    fn _load_output_micro_tile[
+    def _load_output_micro_tile[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         simd_size: Int,
         has_residual: Bool,
     ](
         self,
-        output_base: UnsafePointer[Scalar[Self.output_type]],
+        output_base: UnsafePointer[Scalar[Self.output_type], ...],
         output_micro_tile: LayoutTensor[
             mut=True,
             Self.output_type,
@@ -996,7 +998,7 @@ struct ConvDirectNHWC[
                 output_ptr = output_ptr + self.conv_shape.f
 
     @always_inline
-    fn _store_output_micro_tile[
+    def _store_output_micro_tile[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         simd_size: Int,
@@ -1011,7 +1013,7 @@ struct ConvDirectNHWC[
             ),
             _,
         ],
-        output_base: UnsafePointer[Scalar[Self.output_type]],
+        output_base: UnsafePointer[mut=True, Scalar[Self.output_type], ...],
     ):
         """Store a micro tile from the output buffer.
         Parameters:
@@ -1055,7 +1057,7 @@ struct ConvDirectNHWC[
                 output_ptr = output_ptr + self.conv_shape.f
 
     @always_inline
-    fn _accumulate[
+    def _accumulate[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         simd_size: Int,
@@ -1068,8 +1070,8 @@ struct ConvDirectNHWC[
         ],
         input_offset: Int,
         c_tile_size: Int,
-        input: UnsafePointer[Scalar[Self.input_type]],
-        filter: UnsafePointer[Scalar[Self.filter_type]],
+        input: UnsafePointer[Scalar[Self.input_type], ...],
+        filter: UnsafePointer[Scalar[Self.filter_type], ...],
         mut acc: _Accumulator[
             Self.output_type,
             micro_kernel_height,
@@ -1096,7 +1098,7 @@ struct ConvDirectNHWC[
         )
 
     @always_inline
-    fn _accumulate[
+    def _accumulate[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         simd_size: Int,
@@ -1108,8 +1110,8 @@ struct ConvDirectNHWC[
         self,
         c_tile_size: Int,
         input_stride: Int,
-        input_base: UnsafePointer[Scalar[Self.input_type]],
-        filter_base: UnsafePointer[Scalar[Self.filter_type]],
+        input_base: UnsafePointer[Scalar[Self.input_type], ...],
+        filter_base: UnsafePointer[Scalar[Self.filter_type], ...],
         mut acc_in: _Accumulator[
             Self.output_type, micro_kernel_height, micro_kernel_width, simd_size
         ],
@@ -1143,7 +1145,7 @@ struct ConvDirectNHWC[
             F % simd_size,
         )
 
-    fn output_space_flat_loop[
+    def output_space_flat_loop[
         micro_kernel_f_size: Int, has_residual: Bool, last_c_tile: Bool
     ](
         self,
@@ -1159,10 +1161,10 @@ struct ConvDirectNHWC[
 
         @always_inline
         @parameter
-        fn iteration[tile_size: Int](output_flat_coord: Int):
+        def iteration[tile_size: Int](output_flat_coord: Int):
             @always_inline
             @parameter
-            fn body[c_fully_cached: Bool]():
+            def body[c_fully_cached: Bool]():
                 self.update_output_tile_no_padding[
                     tile_size,  # micro kernel height
                     micro_kernel_width,
@@ -1189,7 +1191,7 @@ struct ConvDirectNHWC[
             self.partition.ho_or_howo_offset + self.partition.ho_or_howo_size,
         )
 
-    fn output_space_loop[
+    def output_space_loop[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         has_residual: Bool,
@@ -1209,7 +1211,8 @@ struct ConvDirectNHWC[
         var g = self.conv_shape.f_to_group(f_tile_offset)
 
         # Filter pointer to the current cf tile offset location.
-        var filter_ptr: UnsafePointer[Scalar[Self.filter_type]]
+        # Use ImmutAnyOrigin to detach from self's filter_origin for aliasing.
+        var filter_ptr: UnsafePointer[Scalar[Self.filter_type], ImmutAnyOrigin]
 
         comptime if Self.filter_packed:
             # Move the pointer to the current group's start.
@@ -1265,7 +1268,8 @@ struct ConvDirectNHWC[
                 has_residual,
                 last_c_tile,
             ](
-                output_ptr,
+                # Safety: turn off mutable alliasing pointer check
+                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
                 input_ptr,
                 filter_ptr,
                 n,
@@ -1283,7 +1287,8 @@ struct ConvDirectNHWC[
                 has_residual,
                 last_c_tile,
             ](
-                output_ptr,
+                # Safety: turn off mutable alliasing pointer check
+                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
                 input_ptr,
                 filter_ptr,
                 n,
@@ -1301,7 +1306,8 @@ struct ConvDirectNHWC[
                 has_residual,
                 last_c_tile,
             ](
-                output_ptr,
+                # Safety: turn off mutable alliasing pointer check
+                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
                 input_ptr,
                 filter_ptr,
                 n,
@@ -1313,7 +1319,7 @@ struct ConvDirectNHWC[
                 right_pad_impact_start,
             )
 
-    fn output_space_loop_1d[
+    def output_space_loop_1d[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         has_residual: Bool,
@@ -1323,9 +1329,9 @@ struct ConvDirectNHWC[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[Scalar[output_dt]],
-        input: UnsafePointer[Scalar[input_dt]],
-        filter: UnsafePointer[Scalar[filter_dt]],
+        output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+        input: UnsafePointer[mut=False, Scalar[input_dt], ...],
+        filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
         n: Int,
         first_c_tile_in_group: Bool,
         c_tile_size: Int,
@@ -1346,7 +1352,7 @@ struct ConvDirectNHWC[
 
         @parameter
         @always_inline
-        fn work_fn[height: Int, effected_by_padding: Bool](wo: Int):
+        def work_fn[height: Int, effected_by_padding: Bool](wo: Int):
             conv1d_update_wo_tile[
                 height,
                 micro_kernel_width,
@@ -1386,7 +1392,7 @@ struct ConvDirectNHWC[
         _ = input_base
         _ = output_base
 
-    fn output_space_loop_2d[
+    def output_space_loop_2d[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         has_residual: Bool,
@@ -1396,9 +1402,9 @@ struct ConvDirectNHWC[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[Scalar[output_dt]],
-        input: UnsafePointer[Scalar[input_dt]],
-        filter: UnsafePointer[Scalar[filter_dt]],
+        output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+        input: UnsafePointer[mut=False, Scalar[input_dt], ...],
+        filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
         n: Int,
         first_c_tile_in_group: Bool,
         c_tile_size: Int,
@@ -1430,7 +1436,7 @@ struct ConvDirectNHWC[
 
             @parameter
             @always_inline
-            fn work_fn[height: Int, effected_by_padding: Bool](wo: Int):
+            def work_fn[height: Int, effected_by_padding: Bool](wo: Int):
                 conv2d_update_wo_tile[
                     height,
                     micro_kernel_width,
@@ -1470,7 +1476,7 @@ struct ConvDirectNHWC[
             _ = input_base
             _ = output_base
 
-    fn output_space_loop_3d[
+    def output_space_loop_3d[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         has_residual: Bool,
@@ -1480,9 +1486,9 @@ struct ConvDirectNHWC[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[Scalar[output_dt]],
-        input: UnsafePointer[Scalar[input_dt]],
-        filter: UnsafePointer[Scalar[filter_dt]],
+        output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+        input: UnsafePointer[mut=False, Scalar[input_dt], ...],
+        filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
         n: Int,
         first_c_tile_in_group: Bool,
         c_tile_size: Int,
@@ -1524,7 +1530,7 @@ struct ConvDirectNHWC[
 
                 @parameter
                 @always_inline
-                fn work_fn[height: Int, effected_by_padding: Bool](wo: Int):
+                def work_fn[height: Int, effected_by_padding: Bool](wo: Int):
                     conv3d_update_wo_tile[
                         height,
                         micro_kernel_width,
@@ -1565,7 +1571,7 @@ struct ConvDirectNHWC[
                 _ = input_base
                 _ = output_base
 
-    fn _f_tile_loop_static[
+    def _f_tile_loop_static[
         last_c_tile: Bool
     ](self, n: Int, c_tile_offset: Int, c_tile_size: Int):
         comptime assert Self.conv_attr_rank == Self.input_layout.rank() - 2
@@ -1583,7 +1589,7 @@ struct ConvDirectNHWC[
 
         @always_inline
         @parameter
-        fn f_tile_iteration[size: Int](f_tile_offset: Int, f_tile_size: Int):
+        def f_tile_iteration[size: Int](f_tile_offset: Int, f_tile_size: Int):
             self._h_loop_static[
                 micro_kernel_shape[0],
                 size // simd_size,
@@ -1616,7 +1622,7 @@ struct ConvDirectNHWC[
             ](n, f_round_by_simd, simd_size, c_tile_offset, c_tile_size)
 
     @always_inline
-    fn _h_loop_static[
+    def _h_loop_static[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         has_residual: Bool,
@@ -1647,7 +1653,7 @@ struct ConvDirectNHWC[
         comptime WO = Int(Self.output_layout.shape[2])  # NHWC
         comptime F = Int(Self.output_layout.shape[3])  # NHWC
 
-        var filter_base: UnsafePointer[Scalar[Self.filter_type]]
+        var filter_base: UnsafePointer[Scalar[Self.filter_type], ImmutAnyOrigin]
 
         comptime if Self.filter_packed:
             filter_base = self.filter.ptr + (
@@ -1684,7 +1690,8 @@ struct ConvDirectNHWC[
                 ](
                     input_base,
                     filter_base,
-                    output_base,
+                    # Safety: turn off mutable aliasing pointer check
+                    output_base.unsafe_origin_cast[AnyOrigin[mut=True]](),
                     f_tile_offset,
                     f_tile_size,
                     c_tile_offset,
@@ -1715,7 +1722,8 @@ struct ConvDirectNHWC[
                 ](
                     input_base,
                     filter_base,
-                    output_base,
+                    # Safety: turn off mutable aliasing pointer check
+                    output_base.unsafe_origin_cast[AnyOrigin[mut=True]](),
                     f_tile_offset,
                     f_tile_size,
                     c_tile_offset,
@@ -1733,7 +1741,7 @@ struct ConvDirectNHWC[
                 @__copy_capture(filter_base)
                 @always_inline
                 @parameter
-                fn update_middle[height: Int](wo: Int):
+                def update_middle[height: Int](wo: Int):
                     self._inner_loops_static[
                         height,
                         micro_kernel_width,
@@ -1744,7 +1752,8 @@ struct ConvDirectNHWC[
                     ](
                         input_base,
                         filter_base,
-                        output_base,
+                        # Safety: turn off mutable aliasing pointer check
+                        output_base.unsafe_origin_cast[AnyOrigin[mut=True]](),
                         f_tile_offset,
                         f_tile_size,
                         c_tile_offset,
@@ -1779,7 +1788,8 @@ struct ConvDirectNHWC[
                 ](
                     input_base,
                     filter_base,
-                    output_base,
+                    # Safety: turn off mutable aliasing pointer check
+                    output_base.unsafe_origin_cast[AnyOrigin[mut=True]](),
                     f_tile_offset,
                     f_tile_size,
                     c_tile_offset,
@@ -1790,7 +1800,7 @@ struct ConvDirectNHWC[
                 )
 
     @always_inline
-    fn _inner_loops_static[
+    def _inner_loops_static[
         micro_kernel_height: Int,
         micro_kernel_width: Int,
         padded_left: Bool,
@@ -1800,13 +1810,13 @@ struct ConvDirectNHWC[
     ](
         self,
         input_base: UnsafePointer[
-            Scalar[Self.input_type]
+            mut=False, Scalar[Self.input_type], ...
         ],  # points to (ho, wo) mapped in input
         filter_base: UnsafePointer[
-            Scalar[Self.filter_type]
+            mut=False, Scalar[Self.filter_type], ...
         ],  # point to filter in cf tile
         output_base: UnsafePointer[
-            Scalar[Self.output_type]
+            mut=True, Scalar[Self.output_type], ...
         ],  # point to (ho, wo) in output
         f_tile_offset: Int,
         f_tile_size: Int,
@@ -1876,7 +1886,6 @@ struct ConvDirectNHWC[
 
             var input_ptr = input_base + h_shift * C * W
             var filter_ptr = filter_base + r * S * filter_S_stride
-            var w = wo * conv_attr_dyn.strides()[1] - conv_attr_dyn.pad_left()
 
             comptime for s in range(S):
                 # Adjustment of micro kernel height for left padding
@@ -1959,7 +1968,7 @@ struct ConvDirectNHWC[
 
 
 @always_inline
-fn accumulate_wo_tile_1d[
+def accumulate_wo_tile_1d[
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -1971,10 +1980,10 @@ fn accumulate_wo_tile_1d[
     c_tile_size: Int,
     S: Int,
     mut acc: _Accumulator,
-    input: UnsafePointer[Scalar[input_dt]],
+    input: UnsafePointer[Scalar[input_dt], ...],
     input_stride: Int,
     input_stride_to_nbr: Int,
-    filter: UnsafePointer[Scalar[filter_dt]],
+    filter: UnsafePointer[Scalar[filter_dt], ...],
     filter_stride: Int,
     filter_stride_to_nbr: Int,
     partial_load_filter_size: Int,
@@ -2037,7 +2046,7 @@ fn accumulate_wo_tile_1d[
         )
 
 
-fn conv1d_update_wo_tile[
+def conv1d_update_wo_tile[
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2050,9 +2059,9 @@ fn conv1d_update_wo_tile[
     filter_dt: DType,
     elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
 ](
-    output: UnsafePointer[Scalar[output_dt]],
-    input: UnsafePointer[Scalar[input_dt]],
-    filter: UnsafePointer[Scalar[filter_dt]],
+    output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+    input: UnsafePointer[mut=False, Scalar[input_dt], ...],
+    filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
     first_c_tile: Bool,
     c_tile_size: Int,
     f_tile_offset: Int,
@@ -2148,7 +2157,7 @@ fn conv1d_update_wo_tile[
 
 
 @always_inline
-fn accumulate_wo_tile_2d[
+def accumulate_wo_tile_2d[
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2160,10 +2169,10 @@ fn accumulate_wo_tile_2d[
     c_tile_size: Int,
     RS: IndexList[2],
     mut acc: _Accumulator,
-    input: UnsafePointer[Scalar[input_dt]],
+    input: UnsafePointer[Scalar[input_dt], ...],
     input_stride: Int,
     input_stride_to_nbr: IndexList[2],
-    filter: UnsafePointer[Scalar[filter_dt]],
+    filter: UnsafePointer[Scalar[filter_dt], ...],
     filter_stride: Int,
     filter_stride_to_nbr: IndexList[2],
     partial_load_filter_size: Int,
@@ -2203,7 +2212,7 @@ fn accumulate_wo_tile_2d[
         )
 
 
-fn conv2d_update_wo_tile[
+def conv2d_update_wo_tile[
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2216,9 +2225,9 @@ fn conv2d_update_wo_tile[
     filter_dt: DType,
     elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
 ](
-    output: UnsafePointer[Scalar[output_dt]],
-    input: UnsafePointer[Scalar[input_dt]],
-    filter: UnsafePointer[Scalar[filter_dt]],
+    output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+    input: UnsafePointer[Scalar[input_dt], ...],
+    filter: UnsafePointer[Scalar[filter_dt], ...],
     first_c_tile: Bool,
     c_tile_size: Int,
     f_tile_offset: Int,
@@ -2328,7 +2337,7 @@ fn conv2d_update_wo_tile[
 
 # TODO: Simplify this with a rank parameter + recursion.
 @always_inline
-fn accumulate_wo_tile_3d[
+def accumulate_wo_tile_3d[
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2340,10 +2349,10 @@ fn accumulate_wo_tile_3d[
     c_tile_size: Int,
     QRS: IndexList[3],
     mut acc: _Accumulator,
-    input: UnsafePointer[Scalar[input_dt]],
+    input: UnsafePointer[Scalar[input_dt], ...],
     input_stride: Int,
     input_stride_to_nbr: IndexList[3],
-    filter: UnsafePointer[Scalar[filter_dt]],
+    filter: UnsafePointer[Scalar[filter_dt], ...],
     filter_stride: Int,
     filter_stride_to_nbr: IndexList[3],
     partial_load_filter_size: Int,
@@ -2382,7 +2391,7 @@ fn accumulate_wo_tile_3d[
         )
 
 
-fn conv3d_update_wo_tile[
+def conv3d_update_wo_tile[
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2395,9 +2404,9 @@ fn conv3d_update_wo_tile[
     filter_dt: DType,
     elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
 ](
-    output: UnsafePointer[Scalar[output_dt]],
-    input: UnsafePointer[Scalar[input_dt]],
-    filter: UnsafePointer[Scalar[filter_dt]],
+    output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+    input: UnsafePointer[mut=False, Scalar[input_dt], ...],
+    filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
     first_c_tile: Bool,
     c_tile_size: Int,
     f_tile_offset: Int,
@@ -2508,7 +2517,7 @@ fn conv3d_update_wo_tile[
 
 
 @always_inline
-fn pack_filter_shape_impl[
+def pack_filter_shape_impl[
     filter_type: DType
 ](Q: Int, R: Int, S: Int, C: Int, F: Int, num_groups: Int) -> IndexList[6]:
     """
@@ -2547,7 +2556,7 @@ fn pack_filter_shape_impl[
 
 
 @always_inline
-fn pack_conv_filter_shape[
+def pack_conv_filter_shape[
     single_thread_blocking_override: Bool,
 ](filter: LayoutTensor, num_groups: Int) -> IndexList[filter.rank + 1]:
     """
@@ -2589,7 +2598,7 @@ fn pack_conv_filter_shape[
 
 
 @always_inline
-fn pack_filter_shape[
+def pack_filter_shape[
     filter_type: DType,
     input_shape: DimList,
     filter_shape: DimList,
@@ -2657,10 +2666,12 @@ fn pack_filter_shape[
 
 
 @always_inline
-fn _get_group_filter_base(
+def _get_group_filter_base(
     packed_filter: LayoutTensor, group_idx: Int, f_per_group: Int
 ) -> UnsafePointer[
-    Scalar[packed_filter.dtype], address_space=packed_filter.address_space
+    Scalar[packed_filter.dtype],
+    packed_filter.origin,
+    address_space=packed_filter.address_space,
 ]:
     """Returns the pointer of the input group's start in the packed filter."""
     # Each group is zero padded to
@@ -2691,7 +2702,7 @@ fn _get_group_filter_base(
 
 
 @always_inline
-fn pack_filter(
+def pack_filter(
     filter: LayoutTensor,
     packed_filter: LayoutTensor[mut=True, ...],
     num_groups: Int,
@@ -2720,7 +2731,7 @@ fn pack_filter(
 
 
 @always_inline
-fn pack_filter[
+def pack_filter[
     simd_size: Int,
     micro_kernel_f_size: Int,  # 64
 ](
@@ -2784,7 +2795,7 @@ fn pack_filter[
         @always_inline
         @__copy_capture(group_start, F_per_group, F)
         @parameter
-        fn pack[f_tile_size: Int](f_tile_start: Int):
+        def pack[f_tile_size: Int](f_tile_start: Int):
             var packed_filter_ptr = group_start + f_tile_start * outer_dims_prod
 
             for row in range(outer_dims_prod):
@@ -2836,7 +2847,7 @@ fn pack_filter[
 
 
 @always_inline
-fn conv_shape[
+def conv_shape[
     input_type: DType,
     filter_type: DType,
     strides_type: DType,
@@ -2949,8 +2960,11 @@ fn conv_shape[
     return output_shape
 
 
-fn conv_nhwc_direct[
+def conv_nhwc_direct[
     conv_info_rank: Int,
+    input_origin: Origin[mut=False],
+    filter_origin: Origin[mut=False],
+    output_origin: Origin[mut=True],
     //,
     input_layout: Layout,
     filter_layout: Layout,
@@ -2963,9 +2977,9 @@ fn conv_nhwc_direct[
     lambdas_have_fusion: Bool,
     elementwise_lambda: elementwise_simd_epilogue_type,
 ](
-    input: LayoutTensor[input_type, input_layout, _],
-    filter: LayoutTensor[filter_type, filter_layout, _],
-    output: LayoutTensor[mut=True, output_type, output_layout, _],
+    input: LayoutTensor[input_type, input_layout, input_origin],
+    filter: LayoutTensor[filter_type, filter_layout, filter_origin],
+    output: LayoutTensor[output_type, output_layout, output_origin],
     stride: IndexList[conv_info_rank],
     dilation: IndexList[conv_info_rank],
     pad_d: IndexList[2],
@@ -2983,7 +2997,7 @@ fn conv_nhwc_direct[
 
     @always_inline
     @parameter
-    fn description_fn() -> String:
+    def description_fn() -> String:
         return ";".join(
             Span(
                 [
@@ -3017,13 +3031,13 @@ fn conv_nhwc_direct[
         # The closure updates a row segment of the output.
         @always_inline
         @parameter
-        fn elementwise_epilogue[
+        def elementwise_epilogue[
             rank: Int
         ](coords: IndexList[rank], f_size: Int):
             comptime simd_size = simd_width_of[output_type]()
 
             @always_inline
-            fn body[width: Int](idx: Int) unified {mut}:
+            def body[width: Int](idx: Int) unified {mut}:
                 # Coordinates of the current index.
                 var curr_coords = rebind[IndexList[input.rank]](coords)
                 curr_coords[input.rank - 1] += idx
@@ -3037,9 +3051,6 @@ fn conv_nhwc_direct[
             input_layout,
             filter_layout,
             output_layout,
-            input.origin,
-            filter.origin,
-            output.origin,
             input_type,
             filter_type,
             output_type,
@@ -3061,7 +3072,7 @@ fn conv_nhwc_direct[
 # ===----------------------------------------------------------------------=== #
 
 
-fn conv2d_gpu_naive_nhwc_rscf[
+def conv2d_gpu_naive_nhwc_rscf[
     input_layout: Layout,
     filter_layout: Layout,
     output_layout: Layout,
@@ -3077,6 +3088,7 @@ fn conv2d_gpu_naive_nhwc_rscf[
     stride: IndexList[2],
     dilation: IndexList[2],
     padding: IndexList[2],
+    num_groups: Int,
 ):
     var N = input.dim[0]()
     var H = input.dim[1]()
@@ -3084,9 +3096,11 @@ fn conv2d_gpu_naive_nhwc_rscf[
     var C_in = input.dim[3]()  # channel_in
     var R = filter.dim[0]()
     var S = filter.dim[1]()
+    var C_per_group = filter.dim[2]()  # C_in / num_groups
     var H_out = output.dim[1]()
     var W_out = output.dim[2]()
     var C_out = output.dim[3]()  # channel_out or #F
+    var F_per_group = C_out // num_groups
     var pad_h = padding[0]
     var pad_w = padding[1]
     var stride_h = stride[0]
@@ -3104,15 +3118,19 @@ fn conv2d_gpu_naive_nhwc_rscf[
     for co in range(C_out):
         comptime accum_type = get_accum_type[output_type]()
         var value = Scalar[accum_type](0)
+        var g = co // F_per_group
+        var ci_base = g * C_per_group
         for r in range(R):
             for s in range(S):
                 var h_in = h * UInt(stride_h) - UInt(pad_h) + UInt(r * dil_h)
                 var w_in = w * UInt(stride_w) - UInt(pad_w) + UInt(s * dil_w)
                 if 0 <= Int(h_in) < H and 0 <= Int(w_in) < W:
-                    for ci in range(C_in):
+                    for ci in range(C_per_group):
                         value += (
                             input.load[width=1](
-                                IndexList[4](Int(n), Int(h_in), Int(w_in), ci)
+                                IndexList[4](
+                                    Int(n), Int(h_in), Int(w_in), ci_base + ci
+                                )
                             ).cast[accum_type]()
                             * filter.load[width=1](
                                 IndexList[4](r, s, ci, co)
@@ -3138,45 +3156,55 @@ fn conv2d_gpu_naive_nhwc_rscf[
 
 
 @always_inline
-fn check_cudnn_error(stat: cudnnStatus_t):
+def check_cudnn_error(stat: cudnnStatus_t):
     if stat != cudnnStatus_t.CUDNN_STATUS_SUCCESS:
         print(stat)
 
 
 struct CuDNNConvMeta(ImplicitlyCopyable, RegisterPassable):
-    var ptr_handle: UnsafePointer[cudnnContext]
-    var ptr_input_desc: UnsafePointer[cudnnTensorStruct]
-    var ptr_filter_desc: UnsafePointer[cudnnFilterStruct]
-    var ptr_conv_desc: UnsafePointer[cudnnConvolutionStruct]
-    var ptr_output_desc: UnsafePointer[cudnnTensorStruct]
+    var ptr_handle: UnsafePointer[cudnnContext, AnyOrigin[mut=True]]
+    var ptr_input_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
+    var ptr_filter_desc: UnsafePointer[cudnnFilterStruct, AnyOrigin[mut=True]]
+    var ptr_conv_desc: UnsafePointer[
+        cudnnConvolutionStruct, AnyOrigin[mut=True]
+    ]
+    var ptr_output_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
-    fn __init__(out self) raises:
-        self.ptr_handle = UnsafePointer[cudnnContext]()
+    def __init__(out self) raises:
+        self.ptr_handle = UnsafePointer[cudnnContext, AnyOrigin[mut=True]]()
         check_cudnn_error(cudnnCreate(UnsafePointer(to=self.ptr_handle)))
 
-        self.ptr_input_desc = UnsafePointer[cudnnTensorStruct]()
+        self.ptr_input_desc = UnsafePointer[
+            cudnnTensorStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_input_desc))
         )
 
-        self.ptr_filter_desc = UnsafePointer[cudnnFilterStruct]()
+        self.ptr_filter_desc = UnsafePointer[
+            cudnnFilterStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateFilterDescriptor(UnsafePointer(to=self.ptr_filter_desc))
         )
 
-        self.ptr_conv_desc = UnsafePointer[cudnnConvolutionStruct]()
+        self.ptr_conv_desc = UnsafePointer[
+            cudnnConvolutionStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateConvolutionDescriptor(
                 UnsafePointer(to=self.ptr_conv_desc)
             )
         )
 
-        self.ptr_output_desc = UnsafePointer[cudnnTensorStruct]()
+        self.ptr_output_desc = UnsafePointer[
+            cudnnTensorStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_output_desc))
         )
 
-    fn __del__(deinit self):
+    def __del__(deinit self):
         try:
             check_cudnn_error(
                 cudnnDestroyTensorDescriptor(self.ptr_output_desc)
@@ -3193,7 +3221,9 @@ struct CuDNNConvMeta(ImplicitlyCopyable, RegisterPassable):
             abort(String(e))
 
 
-fn _get_cudnn_meta(ctx: DeviceContext) raises -> UnsafePointer[CuDNNConvMeta]:
+def _get_cudnn_meta(
+    ctx: DeviceContext,
+) raises -> UnsafePointer[CuDNNConvMeta, AnyOrigin[mut=True]]:
     """Get the cuDNN metadata with proper device context management.
 
     If the metadata is not found for this device, create a new one and insert
@@ -3226,7 +3256,7 @@ fn _get_cudnn_meta(ctx: DeviceContext) raises -> UnsafePointer[CuDNNConvMeta]:
         )
         return ptr_meta
 
-    ptr_meta = UnsafePointer[CuDNNConvMeta].alloc(1)
+    ptr_meta = alloc[CuDNNConvMeta](1)
     ptr_meta.init_pointee_move(CuDNNConvMeta())
 
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
@@ -3237,7 +3267,7 @@ fn _get_cudnn_meta(ctx: DeviceContext) raises -> UnsafePointer[CuDNNConvMeta]:
     return ptr_meta
 
 
-fn get_cudnn_dtype[dtype: DType]() raises -> cudnnDataType_t:
+def get_cudnn_dtype[dtype: DType]() raises -> cudnnDataType_t:
     """Map Mojo DType to cuDNN data type.
 
     Support only floating point dtypes for now.
@@ -3254,11 +3284,13 @@ fn get_cudnn_dtype[dtype: DType]() raises -> cudnnDataType_t:
 
 
 struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
-    var ptr_handle: UnsafePointer[cudnnContext]
-    var ptr_input_desc: UnsafePointer[cudnnTensorStruct]
-    var ptr_filter_desc: UnsafePointer[cudnnFilterStruct]
-    var ptr_conv_desc: UnsafePointer[cudnnConvolutionStruct]
-    var ptr_output_desc: UnsafePointer[cudnnTensorStruct]
+    var ptr_handle: UnsafePointer[cudnnContext, AnyOrigin[mut=True]]
+    var ptr_input_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
+    var ptr_filter_desc: UnsafePointer[cudnnFilterStruct, AnyOrigin[mut=True]]
+    var ptr_conv_desc: UnsafePointer[
+        cudnnConvolutionStruct, AnyOrigin[mut=True]
+    ]
+    var ptr_output_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
     # Workspace size cache (actual buffer is allocated per-call via ctx)
     var workspace_size: Int
@@ -3277,28 +3309,36 @@ struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
     var stride: Tuple[Int, Int]
     var dil: Tuple[Int, Int]
 
-    fn __init__(out self) raises:
-        self.ptr_handle = UnsafePointer[cudnnContext]()
+    def __init__(out self) raises:
+        self.ptr_handle = UnsafePointer[cudnnContext, AnyOrigin[mut=True]]()
         check_cudnn_error(cudnnCreate(UnsafePointer(to=self.ptr_handle)))
 
-        self.ptr_input_desc = UnsafePointer[cudnnTensorStruct]()
+        self.ptr_input_desc = UnsafePointer[
+            cudnnTensorStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_input_desc))
         )
 
-        self.ptr_filter_desc = UnsafePointer[cudnnFilterStruct]()
+        self.ptr_filter_desc = UnsafePointer[
+            cudnnFilterStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateFilterDescriptor(UnsafePointer(to=self.ptr_filter_desc))
         )
 
-        self.ptr_conv_desc = UnsafePointer[cudnnConvolutionStruct]()
+        self.ptr_conv_desc = UnsafePointer[
+            cudnnConvolutionStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateConvolutionDescriptor(
                 UnsafePointer(to=self.ptr_conv_desc)
             )
         )
 
-        self.ptr_output_desc = UnsafePointer[cudnnTensorStruct]()
+        self.ptr_output_desc = UnsafePointer[
+            cudnnTensorStruct, AnyOrigin[mut=True]
+        ]()
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_output_desc))
         )
@@ -3318,9 +3358,9 @@ struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
         self.dil = (0, 0)
 
 
-fn _get_cached_cudnn_meta_nhwc_full(
+def _get_cached_cudnn_meta_nhwc_full(
     ctx: DeviceContext,
-) raises -> UnsafePointer[CachedCuDNNMetaNHWCFull]:
+) raises -> UnsafePointer[CachedCuDNNMetaNHWCFull, AnyOrigin[mut=True]]:
     var cache_key = "CUDA_CUDNN_CACHED_META_NHWC_FULL_" + String(ctx.id())
 
     if ptr_meta := _get_global_or_null(cache_key).bitcast[
@@ -3331,7 +3371,7 @@ fn _get_cached_cudnn_meta_nhwc_full(
         )
         return ptr_meta
 
-    var new_ptr_meta = UnsafePointer[CachedCuDNNMetaNHWCFull].alloc(1)
+    var new_ptr_meta = alloc[CachedCuDNNMetaNHWCFull](1)
     new_ptr_meta.init_pointee_move(CachedCuDNNMetaNHWCFull())
 
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
@@ -3346,7 +3386,7 @@ fn _get_cached_cudnn_meta_nhwc_full(
     return new_ptr_meta
 
 
-fn _conv_cudnn[
+def _conv_cudnn[
     input_type: DType,
     filter_type: DType,
     output_type: DType,
@@ -3486,7 +3526,7 @@ fn _conv_cudnn[
         # layout (Int8 enums vs C's 4-byte int enums). We bypass it by
         # allocating a raw 48-byte buffer matching the C ABI layout and
         # reading the algo Int32 at offset 0.
-        var perf_buf = UnsafePointer[UInt8].alloc(48)
+        var perf_buf = alloc[UInt8](48)
         var requested_count: Int16 = 1
         var returned_count: Int16 = 0
 
@@ -3552,22 +3592,22 @@ fn _conv_cudnn[
             ptr_meta[].ptr_handle,
             UnsafePointer(to=alpha).bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
-            rebind[OpaquePointer](input.ptr.bitcast[NoneType]()),
+            input.ptr.bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
-            rebind[OpaquePointer](filter.ptr.bitcast[NoneType]()),
+            filter.ptr.bitcast[NoneType](),
             ptr_meta[].ptr_conv_desc,
             ptr_meta[].best_algo,
             workspace_buffer.unsafe_ptr().bitcast[NoneType](),
             ptr_meta[].workspace_size,
             UnsafePointer(to=beta).bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
-            rebind[OpaquePointer](output.ptr.bitcast[NoneType]()),
+            output.ptr.bitcast[NoneType](),
         )
     )
     _ = workspace_buffer^
 
 
-fn conv_cudnn[
+def conv_cudnn[
     input_type: DType,
     filter_type: DType,
     output_type: DType,
@@ -3588,7 +3628,7 @@ fn conv_cudnn[
         )
 
 
-fn conv_gpu[
+def conv_gpu[
     conv_rank: Int,
     //,
     input_layout: Layout,
@@ -3599,6 +3639,7 @@ fn conv_gpu[
     output_type: DType,
     maybe_epilogue_func: Optional[elementwise_simd_epilogue_type] = None,
     filter_is_fcrs: Bool = False,
+    has_residual: Bool = False,
 ](
     input: LayoutTensor[input_type, input_layout, MutAnyOrigin],
     filter: LayoutTensor[filter_type, filter_layout, MutAnyOrigin],
@@ -3608,6 +3649,10 @@ fn conv_gpu[
     padding: IndexList[2 * conv_rank],
     num_groups: Int,
     ctx: DeviceContext,
+    source_ptr: UnsafePointer[
+        Scalar[output_type], MutAnyOrigin
+    ] = UnsafePointer[Scalar[output_type], MutAnyOrigin](),
+    beta: Float32 = 0.0,
 ) raises:
     comptime assert conv_rank == input.rank - 2
 
@@ -3623,9 +3668,9 @@ fn conv_gpu[
     if has_asymmetric_padding:
         # Pre-pad on GPU so downstream kernels (including cuDNN) can assume symmetric padding.
         comptime full_rank = input_layout.rank()
-        var paddings_tensor = LayoutTensor[
-            DType.int, Layout(2 * full_rank), MutAnyOrigin
-        ].stack_allocation()
+        var paddings_tensor = tt_stack_allocation[dtype=DType.int](
+            row_major[2 * full_rank]()
+        )
 
         comptime for axis in range(full_rank):
             paddings_tensor[2 * axis] = 0
@@ -3689,6 +3734,7 @@ fn conv_gpu[
             output_type,
             maybe_epilogue_func,
             filter_is_fcrs,
+            has_residual,
         ](
             padded_input,
             filter,
@@ -3698,6 +3744,8 @@ fn conv_gpu[
             zero_padding,
             num_groups,
             ctx,
+            source_ptr,
+            beta,
         )
 
         return
@@ -3739,10 +3787,11 @@ fn conv_gpu[
         comptime _is_sm100 = ctx.default_device_info == B200
         comptime _is_supported_dtype = input_type == DType.bfloat16
 
-        comptime if _is_sm100 and _is_supported_dtype and not maybe_epilogue_func:
+        comptime if _is_sm100 and _is_supported_dtype:
             from nn.conv_sm100.dispatch import (
                 dispatch_sm100_conv2d,
             )
+            from linalg.utils import elementwise_epilogue_type
 
             # SM100 dispatch: stride=1, dilation=1, groups=1,
             # and channels aligned to 64 (TMA tile K alignment)
@@ -3759,21 +3808,69 @@ fn conv_gpu[
                 and in_c % 64 == 0
                 and out_c % 128 == 0
             ):
-                dispatch_sm100_conv2d[
-                    input_layout,
-                    filter_layout,
-                    output_layout,
-                    input_type,
-                    filter_type,
-                    output_type,
-                    filter_is_fcrs,
-                ](
-                    input,
-                    filter,
-                    output,
-                    rebind[IndexList[2]](symmetric_padding),
-                    ctx,
-                )
+
+                @parameter
+                @always_inline
+                def _sm100_dispatch[
+                    _epilogue: Optional[elementwise_epilogue_type] = None,
+                ]() raises:
+                    dispatch_sm100_conv2d[
+                        input_layout,
+                        filter_layout,
+                        output_layout,
+                        input_type,
+                        filter_type,
+                        output_type,
+                        filter_is_fcrs,
+                        elementwise_lambda_fn=_epilogue,
+                        has_residual=has_residual,
+                    ](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[2]](symmetric_padding),
+                        ctx,
+                        source_ptr,
+                        beta,
+                    )
+
+                comptime if maybe_epilogue_func:
+                    # Wrap the 4D NHWC epilogue into a 2D GEMM-space
+                    # void epilogue for the SM100 kernel. The kernel
+                    # calls this with (m, n) coords where
+                    # m = batch*H_out*W_out + h*W_out + w, n = channel.
+                    comptime epilogue = maybe_epilogue_func.value()
+                    var out_h = output.dim[1]()
+                    var out_w = output.dim[2]()
+                    var hw = out_h * out_w
+
+                    @parameter
+                    @always_inline
+                    @__copy_capture(hw, out_w)
+                    def sm100_void_epilogue[
+                        _dtype: DType,
+                        _width: Int,
+                        *,
+                        alignment: Int = 1,
+                    ](coords_2d: IndexList[2], val: SIMD[_dtype, _width],):
+                        var m = coords_2d[0]
+                        var n = coords_2d[1]
+                        var batch_idx: Int
+                        var rem: Int
+                        var h_idx: Int
+                        var w_idx: Int
+                        batch_idx, rem = divmod(m, hw)
+                        h_idx, w_idx = divmod(rem, out_w)
+                        epilogue(
+                            IndexList[4](batch_idx, h_idx, w_idx, n),
+                            rebind[SIMD[output_type, _width]](val),
+                        )
+
+                    _sm100_dispatch[
+                        Optional[elementwise_epilogue_type](sm100_void_epilogue)
+                    ]()
+                else:
+                    _sm100_dispatch[]()
                 return
 
         # Fallback paths for non-SM100, unsupported dtypes, or constraints
@@ -3822,7 +3919,7 @@ fn conv_gpu[
                 @parameter
                 @__copy_capture(output_tmp)
                 @always_inline
-                fn epilogue_wrapper[
+                def epilogue_wrapper[
                     _width: Int, _rank: Int, alignment: Int = 1
                 ](coords: IndexList[_rank]):
                     comptime align = align_of[SIMD[output_type, _width]]()
@@ -3881,6 +3978,7 @@ fn conv_gpu[
                 stride,
                 dilation,
                 symmetric_padding,
+                num_groups,
                 grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
                 block_dim=(block_size, block_size),
             )
@@ -3896,12 +3994,13 @@ fn conv_gpu[
             stride,
             dilation,
             symmetric_padding,
+            num_groups,
             grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
             block_dim=(block_size, block_size),
         )
 
 
-fn conv3d_gpu_naive_ndhwc_qrscf[
+def conv3d_gpu_naive_ndhwc_qrscf[
     input_layout: Layout,
     filter_layout: Layout,
     output_layout: Layout,
@@ -3917,6 +4016,7 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
     stride: IndexList[3],
     dilation: IndexList[3],
     padding: IndexList[3],
+    num_groups: Int,
 ):
     var N = input.dim[0]()
     var D = input.dim[1]()  # depth
@@ -3927,11 +4027,13 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
     var Q = filter.dim[0]()
     var R = filter.dim[1]()
     var S = filter.dim[2]()
+    var C_per_group = filter.dim[3]()  # C_in / num_groups
 
     var D_out = output.dim[1]()  # depth
     var H_out = output.dim[2]()
     var W_out = output.dim[3]()
     var C_out = output.dim[4]()  # channel_output
+    var F_per_group = C_out // num_groups
 
     var pad_d = padding[0]
     var pad_h = padding[1]
@@ -3969,6 +4071,8 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
     for co in range(C_out):
         comptime accum_type = get_accum_type[output_type]()
         var value = Scalar[accum_type](0)
+        var g = co // F_per_group
+        var ci_base = g * C_per_group
 
         for q in range(Q):
             for r in range(R):
@@ -3989,12 +4093,13 @@ fn conv3d_gpu_naive_ndhwc_qrscf[
                         - UInt(pad_w)
                     )
 
-                    # check all input bounds bro
                     if 0 <= d_in < D and 0 <= h_in < H and 0 <= w_in < W:
-                        for ci in range(C_in):
+                        for ci in range(C_per_group):
                             value += (
                                 input.load[width=1](
-                                    IndexList[5](Int(n), d_in, h_in, w_in, ci)
+                                    IndexList[5](
+                                        Int(n), d_in, h_in, w_in, ci_base + ci
+                                    )
                                 ).cast[accum_type]()
                                 * filter.load[width=1](
                                     IndexList[5](q, r, s, ci, co)

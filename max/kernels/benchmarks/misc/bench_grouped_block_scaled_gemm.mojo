@@ -25,7 +25,6 @@ Usage:
 """
 
 from std.math import ceildiv
-from std.memory import LegacyUnsafePointer
 from std.sys import get_defined_int, size_of
 from std.time import perf_counter_ns
 
@@ -43,8 +42,7 @@ from std.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 from std.random import rand, seed
 from internal_utils import arg_parse
 from internal_utils._utils import ValOrDim, dynamic, static
-from layout.tile_layout import row_major as tile_row_major
-from layout.tile_tensor import TileTensor
+from layout import TileTensor, row_major as tile_row_major
 
 from std.utils.index import Index, IndexList
 from std.utils.static_tuple import StaticTuple
@@ -65,15 +63,13 @@ from linalg.matmul.gpu.sm100_structured.grouped_block_scaled.grouped_block_scale
     grouped_block_scaled_matmul,
 )
 
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
-
 
 # =============================================================================
 # Benchmark Configuration
 # =============================================================================
 
 
-fn _get_run_name[
+def _get_run_name[
     in_type: DType,
     out_type: DType,
 ](num_groups: Int, m_per_group: Int, n: Int, k: Int, cta_group: Int,) -> String:
@@ -102,7 +98,7 @@ fn _get_run_name[
 # =============================================================================
 
 
-fn bench_grouped_block_scaled_gemm[
+def bench_grouped_block_scaled_gemm[
     a_type: DType,
     b_type: DType,
     c_type: DType,
@@ -169,11 +165,11 @@ fn bench_grouped_block_scaled_gemm[
     )
 
     # Allocate tensors
-    var a_host = UnsafePointer[Scalar[a_type]].alloc(a_size)
-    var b_host = UnsafePointer[Scalar[b_type]].alloc(b_size)
-    var c_host = UnsafePointer[Scalar[c_type]].alloc(c_size)
-    var sfa_host = UnsafePointer[Scalar[scales_dtype]].alloc(a_scales_total)
-    var sfb_host = UnsafePointer[Scalar[scales_dtype]].alloc(b_scales_total)
+    var a_host = alloc[Scalar[a_type]](a_size)
+    var b_host = alloc[Scalar[b_type]](b_size)
+    var c_host = alloc[Scalar[c_type]](c_size)
+    var sfa_host = alloc[Scalar[scales_dtype]](a_scales_total)
+    var sfb_host = alloc[Scalar[scales_dtype]](b_scales_total)
 
     var a_device = ctx.enqueue_create_buffer[a_type](a_size)
     var b_device = ctx.enqueue_create_buffer[b_type](b_size)
@@ -201,33 +197,37 @@ fn bench_grouped_block_scaled_gemm[
     ctx.synchronize()
 
     # Create TileTensors - 3D with batch=1
-    comptime static_a_3d_shape = DimList(1, m.dim, k_array_dim)
-    var a_template_nd = NDBuffer[a_type, 3, _, static_a_3d_shape](
+    comptime static_a_3d_shape = DimList[1, m.dim, k_array_dim]()
+    var a_template_nd = NDBuffer[rank=3, a_type, _, static_a_3d_shape](
         a_device.unsafe_ptr(), IndexList[3](1, M, k_array_val)
     )
-    comptime static_b_3d_shape = DimList(
-        1, n.dim, k_array_dim
-    ) if transpose_b else DimList(1, k_array_dim, n.dim)
-    var b_template_nd = NDBuffer[b_type, 3, _, static_b_3d_shape](
+    comptime static_b_3d_shape = DimList[
+        1,
+        n.dim if transpose_b else k_array_dim,
+        k_array_dim if transpose_b else n.dim,
+    ]()
+    var b_template_nd = NDBuffer[rank=3, b_type, _, static_b_3d_shape](
         b_device.unsafe_ptr(),
         IndexList[3](1, n.value, k_array_val) if transpose_b else IndexList[3](
             1, k_array_val, n.value
         ),
     )
-    comptime static_c_3d_shape = DimList(1, m.dim, n.dim)
-    var c_template_nd = NDBuffer[c_type, 3, _, static_c_3d_shape](
+    comptime static_c_3d_shape = DimList[1, m.dim, n.dim]()
+    var c_template_nd = NDBuffer[rank=3, c_type, _, static_c_3d_shape](
         c_device.unsafe_ptr(), IndexList[3](1, M, n.value)
     )
 
     # Scale factor template tensors - 5D with batch=1 and merged last dims
-    comptime static_a_scales_5d_shape = DimList(
+    comptime static_a_scales_5d_shape = DimList[
         1,
         ceildiv(m.dim, SF_MN_GROUP_SIZE),
         ceildiv(k.dim, SF_VECTOR_SIZE * SF_ATOM_K),
         SF_ATOM_M[0],
         SF_ATOM_M[1] * SF_ATOM_K,
-    )
-    var a_scales_5d_nd = NDBuffer[scales_dtype, 5, _, static_a_scales_5d_shape](
+    ]()
+    var a_scales_5d_nd = NDBuffer[
+        rank=5, scales_dtype, _, static_a_scales_5d_shape
+    ](
         sfa_device.unsafe_ptr(),
         IndexList[5](
             1,
@@ -237,14 +237,16 @@ fn bench_grouped_block_scaled_gemm[
             SF_ATOM_M[1] * SF_ATOM_K,
         ),
     )
-    comptime static_b_scales_5d_shape = DimList(
+    comptime static_b_scales_5d_shape = DimList[
         1,
         ceildiv(n.dim, SF_MN_GROUP_SIZE),
         ceildiv(k.dim, SF_VECTOR_SIZE * SF_ATOM_K),
         SF_ATOM_M[0],
         SF_ATOM_M[1] * SF_ATOM_K,
-    )
-    var b_scales_5d_nd = NDBuffer[scales_dtype, 5, _, static_b_scales_5d_shape](
+    ]()
+    var b_scales_5d_nd = NDBuffer[
+        rank=5, scales_dtype, _, static_b_scales_5d_shape
+    ](
         sfb_device.unsafe_ptr(),
         IndexList[5](
             1,
@@ -262,7 +264,7 @@ fn bench_grouped_block_scaled_gemm[
     var sfb_template = TileTensor(b_scales_5d_nd)
 
     # Setup pointer arrays
-    var problem_sizes_host = UnsafePointer[Int32].alloc(max_groups * 4)
+    var problem_sizes_host = alloc[Int32](max_groups * 4)
     for g in range(max_groups):
         problem_sizes_host[g * 4 + 0] = Int32(M)
         problem_sizes_host[g * 4 + 1] = Int32(n.value)
@@ -274,11 +276,11 @@ fn bench_grouped_block_scaled_gemm[
     )
     ctx.enqueue_copy(problem_sizes_device, problem_sizes_host)
 
-    var a_ptrs_host = UnsafePointer[UInt64].alloc(max_groups)
-    var b_ptrs_host = UnsafePointer[UInt64].alloc(max_groups)
-    var c_ptrs_host = UnsafePointer[UInt64].alloc(max_groups)
-    var sfa_ptrs_host = UnsafePointer[UInt64].alloc(max_groups)
-    var sfb_ptrs_host = UnsafePointer[UInt64].alloc(max_groups)
+    var a_ptrs_host = alloc[UInt64](max_groups)
+    var b_ptrs_host = alloc[UInt64](max_groups)
+    var c_ptrs_host = alloc[UInt64](max_groups)
+    var sfa_ptrs_host = alloc[UInt64](max_groups)
+    var sfb_ptrs_host = alloc[UInt64](max_groups)
 
     for g in range(max_groups):
         a_ptrs_host[g] = UInt64(Int(a_device.unsafe_ptr()))
@@ -357,10 +359,10 @@ fn bench_grouped_block_scaled_gemm[
         total_tiles,
     )
     @always_inline
-    fn bench_func(mut bencher: Bencher):
+    def bench_func(mut bencher: Bencher):
         @parameter
         @always_inline
-        fn kernel_launch(ctx: DeviceContext, iteration: Int) raises:
+        def kernel_launch(ctx: DeviceContext, iteration: Int) raises:
             grouped_block_scaled_matmul[
                 transpose_b=transpose_b,
                 max_groups=max_groups,

@@ -13,9 +13,7 @@
 
 from std.hashlib import default_comp_time_hasher
 from std.math import align_up
-from std.memory import LegacyUnsafePointer, bitcast
-
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
+from std.memory import bitcast
 from std.sys import argv, size_of
 
 import linalg.matmul.vendor.blas as vendor_blas
@@ -39,12 +37,12 @@ from std.gpu.compute.arch.tcgen05 import *
 from internal_utils import assert_almost_equal
 from std.random import rand
 from layout import (
-    UNKNOWN_VALUE,
     IntTuple,
     Layout,
     LayoutTensor,
-    RuntimeTuple,
     RuntimeLayout,
+    RuntimeTuple,
+    UNKNOWN_VALUE,
 )
 from layout._utils import ManagedLayoutTensor
 from layout.layout_tensor import LayoutTensorIter
@@ -70,7 +68,7 @@ from std.utils.numerics import get_accum_type
 from std.utils.static_tuple import StaticTuple
 
 
-fn is_benchmark() -> Bool:
+def is_benchmark() -> Bool:
     for arg in argv():
         if arg == "--benchmark":
             return True
@@ -86,39 +84,39 @@ struct WarpRole(TrivialRegisterPassable):
     comptime Epilogue = Self(3)
 
     @always_inline
-    fn __eq__(self, other: UInt) -> Bool:
+    def __eq__(self, other: UInt) -> Bool:
         return self._role == Int32(other)
 
     @always_inline
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         return self._role == other._role
 
     @always_inline
-    fn __ne__(self, other: Self) -> Bool:
+    def __ne__(self, other: Self) -> Bool:
         return self._role != other._role
 
     @always_inline
-    fn __ge__(self, other: UInt) -> Bool:
+    def __ge__(self, other: UInt) -> Bool:
         return self._role >= Int32(other)
 
     @staticmethod
     @always_inline
-    fn is_main_load() -> Bool:
+    def is_main_load() -> Bool:
         return Self.MainLoad == get_warp_id()
 
     @staticmethod
     @always_inline
-    fn is_mma() -> Bool:
+    def is_mma() -> Bool:
         return Self.Mma == get_warp_id()
 
     @staticmethod
     @always_inline
-    fn is_epilogue() -> Bool:
+    def is_epilogue() -> Bool:
         return Self.Epilogue >= get_warp_id()
 
 
 @always_inline
-fn load_AB[
+def load_AB[
     a_type: DType,
     b_type: DType,
     a_tma_rank: Int,
@@ -155,10 +153,10 @@ fn load_AB[
         circular=False,
     ],
     mma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, address_space=AddressSpace.SHARED, _
     ],
     tma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, address_space=AddressSpace.SHARED, _
     ],
     producer_phase: PipelineState[Int(num_pipeline_stages)],
     peer_cta_coord: Tuple[UInt, UInt, UInt],
@@ -227,7 +225,7 @@ fn load_AB[
 
 
 @always_inline
-fn consumer_main_loop[
+def consumer_main_loop[
     accum_type: DType,
     c_type: DType,
     a_type: DType,
@@ -263,10 +261,10 @@ fn consumer_main_loop[
         circular=False,
     ],
     mma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, address_space=AddressSpace.SHARED, _
     ],
     tma_mbar: UnsafePointer[
-        SharedMemBarrier, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, address_space=AddressSpace.SHARED, _
     ],
     consumer_phase: PipelineState[pipeline_stages],
     mma_op: MmaOpSM100_SS[
@@ -309,7 +307,7 @@ fn consumer_main_loop[
 
 
 @always_inline
-fn store_C[
+def store_C[
     c_type: DType,
     c_smem_layout: Layout,
     c_tma_rank: Int,
@@ -612,7 +610,7 @@ fn store_C[
 @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(c_tma_op, `nvvm.grid_constant`)
-fn kernel_6[
+def kernel_6[
     a_type: DType,
     b_type: DType,
     c_type: DType,
@@ -681,7 +679,11 @@ fn kernel_6[
     ]
 
     base_ptr_smem = rebind[
-        UnsafePointer[Scalar[a_type], address_space=AddressSpace.SHARED]
+        UnsafePointer[
+            Scalar[a_type],
+            address_space=AddressSpace.SHARED,
+            ExternalOrigin[mut=True],
+        ]
     ](
         external_memory[
             Scalar[a_type],
@@ -796,9 +798,10 @@ fn kernel_6[
     var rank_n = block_id_in_cluster.y
 
     # (peer_id, mma_coord_m, mma_coord_n)
+    var peer_cta_quot, peer_cta_rem = divmod(rank_m, UInt(cta_group))
     var peer_cta_coord = (
-        rank_m % UInt(cta_group),
-        rank_m // UInt(cta_group),
+        peer_cta_rem,
+        peer_cta_quot,
         rank_n,
     )  # v,m,n
 
@@ -891,7 +894,7 @@ fn kernel_6[
         )
 
 
-fn blackwell_kernel_6[
+def blackwell_kernel_6[
     c_type: DType,
     c_layout: Layout,
     a_type: DType,
@@ -1053,9 +1056,9 @@ def test_blackwell_kernel_6[
     comptime c_layout = Layout.row_major(M, N)
 
     # Host memory allocation
-    var a_host_ptr = UnsafePointer[Scalar[a_type]].alloc(M * K)
+    var a_host_ptr = alloc[Scalar[a_type]](M * K)
     var a_host = LayoutTensor[a_type, a_layout](a_host_ptr)
-    var b_host_ptr = UnsafePointer[Scalar[b_type]].alloc(N * K)
+    var b_host_ptr = alloc[Scalar[b_type]](N * K)
     var b_host = LayoutTensor[b_type, b_layout](b_host_ptr)
     var c_host_managed = ManagedLayoutTensor[c_type, c_layout](ctx)
     var c_host = c_host_managed.tensor[update=False]()
@@ -1117,7 +1120,7 @@ def test_blackwell_kernel_6[
 
         @always_inline
         @parameter
-        fn run_kernel(ctx: DeviceContext) raises:
+        def run_kernel(ctx: DeviceContext) raises:
             blackwell_kernel_6[
                 transpose_b=transpose_b,
                 umma_shape=mma_shape,
@@ -1181,7 +1184,7 @@ def test_blackwell_kernel_6[
     b_host_ptr.free()
 
 
-fn get_dic_of_shapes(
+def get_dic_of_shapes(
     index: Int, dic_bro: Dict[Int, Tuple[Int, Int, Int], ...]
 ) -> Tuple[Int, Int, Int]:
     try:
@@ -1191,7 +1194,7 @@ fn get_dic_of_shapes(
         return (128, 128, 128)
 
 
-fn make_dic_of_shapes() -> (
+def make_dic_of_shapes() -> (
     Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher]
 ):
     var dic = Dict[Int, Tuple[Int, Int, Int], default_comp_time_hasher]()
@@ -1199,7 +1202,7 @@ fn make_dic_of_shapes() -> (
     return dic^
 
 
-fn benchmark_blackwell_matmul(ctx: DeviceContext) raises:
+def benchmark_blackwell_matmul(ctx: DeviceContext) raises:
     comptime a_type = DType.bfloat16
     comptime b_type = DType.bfloat16
     comptime c_type = DType.bfloat16

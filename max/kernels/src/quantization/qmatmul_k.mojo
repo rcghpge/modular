@@ -16,7 +16,7 @@ from std.sys import CompilationTarget, align_of, simd_width_of, size_of
 from std.sys.intrinsics import llvm_intrinsic
 
 from std.algorithm import sync_parallelize, tile
-from layout import LayoutTensor, Layout, RuntimeLayout, UNKNOWN_VALUE
+from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
 from linalg.accumulate import _Accumulator
 from linalg.arch.cpu.neon_intrinsics import _neon_dotprod_lane
 from linalg.arch.cpu.vnni_intrinsics import (
@@ -1461,11 +1461,11 @@ fn _matmul_Qb_K[
         var task_n_count = block_range[1] * grain_size
 
         var a_packed_ptr = a_packed_base_ptr
-        var b_packed_ptr = b.ptr.bitcast[b_type]().as_unsafe_pointer()
+        var b_packed_ptr = b.ptr.bitcast[b_type]()
 
         for k_block in range(k_blocks):
             var bn_packed_ptr = b_packed_ptr + task_n_start
-            var cn_ptr = c.ptr.as_unsafe_pointer() + task_n_start
+            var cn_ptr = c.ptr + task_n_start
             var accumulate = k_block > 0
 
             # only run epilogue for the last iter of K loop

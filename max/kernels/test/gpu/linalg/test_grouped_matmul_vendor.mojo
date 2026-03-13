@@ -16,16 +16,13 @@ from std.gpu.host import DeviceContext
 from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
 from layout._fillers import random
 from linalg.grouped_matmul import grouped_matmul_vendor, naive_grouped_matmul
-from std.memory import LegacyUnsafePointer
-
-comptime UnsafePointer = LegacyUnsafePointer[mut=True, ...]
 from std.testing import assert_almost_equal
 
 from std.utils import IndexList
 from std.utils.index import Index
 
 
-fn test_vendor[
+def test_vendor[
     in_type: DType,
     out_type: DType,
     num_experts: Int,
@@ -69,15 +66,15 @@ fn test_vendor[
         )
 
     # Define shapes
-    comptime static_a_shape = DimList(Dim(), K)
+    comptime static_a_shape = DimList[Dim(), K]()
     var dynamic_a_shape = IndexList[2](total_num_tokens, K)
     var a_size = total_num_tokens * K
 
-    comptime static_b_shape = DimList(num_experts, N, K)
+    comptime static_b_shape = DimList[num_experts, N, K]()
     var dynamic_b_shape = IndexList[3](num_experts, N, K)
     var b_size = num_experts * N * K
 
-    comptime static_c_shape = DimList(Dim(), N)
+    comptime static_c_shape = DimList[Dim(), N]()
     var dynamic_c_shape = IndexList[2](total_num_tokens, N)
     var c_size = total_num_tokens * N
 
@@ -86,16 +83,12 @@ fn test_vendor[
     comptime c_layout = Layout.row_major(UNKNOWN_VALUE, N)
 
     # Host allocations
-    var a_host_ptr = UnsafePointer[Scalar[a_type]].alloc(a_size)
-    var b_host_ptr = UnsafePointer[Scalar[b_type]].alloc(b_size)
-    var c_host_ptr = UnsafePointer[Scalar[c_type]].alloc(c_size)
-    var c_ref_host_ptr = UnsafePointer[Scalar[c_type]].alloc(c_size)
-    var a_offsets_host_ptr = UnsafePointer[Scalar[DType.uint32]].alloc(
-        num_active_experts + 1
-    )
-    var expert_ids_host_ptr = UnsafePointer[Scalar[DType.int32]].alloc(
-        num_active_experts
-    )
+    var a_host_ptr = alloc[Scalar[a_type]](a_size)
+    var b_host_ptr = alloc[Scalar[b_type]](b_size)
+    var c_host_ptr = alloc[Scalar[c_type]](c_size)
+    var c_ref_host_ptr = alloc[Scalar[c_type]](c_size)
+    var a_offsets_host_ptr = alloc[Scalar[DType.uint32]](num_active_experts + 1)
+    var expert_ids_host_ptr = alloc[Scalar[DType.int32]](num_active_experts)
 
     var a_host = LayoutTensor[a_type, a_layout](
         a_host_ptr,
@@ -115,11 +108,11 @@ fn test_vendor[
     )
 
     # Create host NDBuffers for offsets and expert_ids (needed for function calls)
-    var a_offsets_host = NDBuffer[DType.uint32, 1, MutAnyOrigin](
+    var a_offsets_host = NDBuffer[rank=1, DType.uint32, MutAnyOrigin](
         a_offsets_host_ptr,
         IndexList[1](num_active_experts + 1),
     )
-    var expert_ids_host = NDBuffer[DType.int32, 1, MutAnyOrigin](
+    var expert_ids_host = NDBuffer[rank=1, DType.int32, MutAnyOrigin](
         expert_ids_host_ptr,
         IndexList[1](num_active_experts),
     )
@@ -148,27 +141,27 @@ fn test_vendor[
         num_active_experts
     )
 
-    var a_dev = NDBuffer[a_type, 2, _, static_a_shape](
+    var a_dev = NDBuffer[rank=2, a_type, _, static_a_shape](
         a_dev_buffer.unsafe_ptr(),
         IndexList[2](total_num_tokens, K),
     )
-    var b_dev = NDBuffer[b_type, 3, _, static_b_shape](
+    var b_dev = NDBuffer[rank=3, b_type, _, static_b_shape](
         b_dev_buffer.unsafe_ptr(),
         dynamic_b_shape,
     )
-    var c_dev = NDBuffer[c_type, 2, _, static_c_shape](
+    var c_dev = NDBuffer[rank=2, c_type, _, static_c_shape](
         c_dev_buffer.unsafe_ptr(),
         IndexList[2](total_num_tokens, N),
     )
-    var c_ref_dev = NDBuffer[c_type, 2, _, static_c_shape](
+    var c_ref_dev = NDBuffer[rank=2, c_type, _, static_c_shape](
         c_ref_dev_buffer.unsafe_ptr(),
         IndexList[2](total_num_tokens, N),
     )
-    var a_offsets_dev = NDBuffer[DType.uint32, 1](
+    var a_offsets_dev = NDBuffer[rank=1, DType.uint32](
         a_offsets_dev_buffer.unsafe_ptr(),
         IndexList[1](num_active_experts + 1),
     )
-    var expert_ids_dev = NDBuffer[DType.int32, 1](
+    var expert_ids_dev = NDBuffer[rank=1, DType.int32](
         expert_ids_dev_buffer.unsafe_ptr(),
         IndexList[1](num_active_experts),
     )
@@ -214,7 +207,9 @@ fn test_vendor[
         for n in range(N):
             var expect = c_ref_host[m, n][0]
             var actual = c_host[m, n][0]
-            assert_almost_equal(actual, expect, msg=t"m: {m} n: {n}", rtol=rtol)
+            assert_almost_equal(
+                actual, expect, msg=String(t"m: {m} n: {n}"), rtol=rtol
+            )
 
     print("✓ Vendor grouped matmul test passed")
 
@@ -233,7 +228,7 @@ fn test_vendor[
     _ = expert_ids_dev_buffer^
 
 
-fn test_negative_lora_id_vendor[
+def test_negative_lora_id_vendor[
     in_type: DType,
     out_type: DType,
     num_experts: Int,
@@ -277,15 +272,15 @@ fn test_negative_lora_id_vendor[
         )
 
     # Define shapes
-    comptime static_a_shape = DimList(Dim(), K)
+    comptime static_a_shape = DimList[Dim(), K]()
     var dynamic_a_shape = IndexList[2](total_num_tokens, K)
     var a_size = total_num_tokens * K
 
-    comptime static_b_shape = DimList(num_experts, N, K)
+    comptime static_b_shape = DimList[num_experts, N, K]()
     var dynamic_b_shape = IndexList[3](num_experts, N, K)
     var b_size = num_experts * N * K
 
-    comptime static_c_shape = DimList(Dim(), N)
+    comptime static_c_shape = DimList[Dim(), N]()
     var dynamic_c_shape = IndexList[2](total_num_tokens, N)
     var c_size = total_num_tokens * N
 
@@ -294,15 +289,11 @@ fn test_negative_lora_id_vendor[
     comptime c_layout = Layout.row_major(UNKNOWN_VALUE, N)
 
     # Host allocations
-    var a_host_ptr = UnsafePointer[Scalar[a_type]].alloc(a_size)
-    var b_host_ptr = UnsafePointer[Scalar[b_type]].alloc(b_size)
-    var c_host_ptr = UnsafePointer[Scalar[c_type]].alloc(c_size)
-    var a_offsets_host_ptr = UnsafePointer[Scalar[DType.uint32]].alloc(
-        num_active_experts + 1
-    )
-    var expert_ids_host_ptr = UnsafePointer[Scalar[DType.int32]].alloc(
-        num_active_experts
-    )
+    var a_host_ptr = alloc[Scalar[a_type]](a_size)
+    var b_host_ptr = alloc[Scalar[b_type]](b_size)
+    var c_host_ptr = alloc[Scalar[c_type]](c_size)
+    var a_offsets_host_ptr = alloc[Scalar[DType.uint32]](num_active_experts + 1)
+    var expert_ids_host_ptr = alloc[Scalar[DType.int32]](num_active_experts)
 
     var a_host = LayoutTensor[a_type, a_layout](
         a_host_ptr,
@@ -318,11 +309,11 @@ fn test_negative_lora_id_vendor[
     )
 
     # Create host NDBuffers for offsets and expert_ids (needed for function calls)
-    var a_offsets_host = NDBuffer[DType.uint32, 1, MutAnyOrigin](
+    var a_offsets_host = NDBuffer[rank=1, DType.uint32, MutAnyOrigin](
         a_offsets_host_ptr,
         IndexList[1](num_active_experts + 1),
     )
-    var expert_ids_host = NDBuffer[DType.int32, 1, MutAnyOrigin](
+    var expert_ids_host = NDBuffer[rank=1, DType.int32, MutAnyOrigin](
         expert_ids_host_ptr,
         IndexList[1](num_active_experts),
     )
@@ -350,15 +341,15 @@ fn test_negative_lora_id_vendor[
         num_active_experts
     )
 
-    var a_dev = NDBuffer[a_type, 2, _, static_a_shape](
+    var a_dev = NDBuffer[rank=2, a_type, _, static_a_shape](
         a_dev_buffer.unsafe_ptr(),
         IndexList[2](total_num_tokens, K),
     )
-    var b_dev = NDBuffer[b_type, 3, _, static_b_shape](
+    var b_dev = NDBuffer[rank=3, b_type, _, static_b_shape](
         b_dev_buffer.unsafe_ptr(),
         dynamic_b_shape,
     )
-    var c_dev = NDBuffer[c_type, 2, _, static_c_shape](
+    var c_dev = NDBuffer[rank=2, c_type, _, static_c_shape](
         c_dev_buffer.unsafe_ptr(),
         IndexList[2](total_num_tokens, N),
     )
