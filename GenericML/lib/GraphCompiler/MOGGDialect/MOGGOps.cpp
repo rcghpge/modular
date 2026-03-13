@@ -1105,6 +1105,13 @@ buildNotesString(ArrayRef<StringRef> notesList, FusionInfoAttr fusionInfo,
   constexpr size_t kMaxInlineTraces = 3;
   bool showAllTraces = notesList.size() <= kMaxInlineTraces;
 
+  // Add "Source Traceback:" header only when there are actual Python
+  // tracebacks. Without this guard, fusion-only notes would carry the header
+  // and trick the runtime into thinking a real traceback is present, hiding
+  // the MODULAR_MAX_DEBUG hint from users. See GEX-2678.
+  if (!notesList.empty())
+    os << "Source Traceback:\n";
+
   if (showAllTraces) {
     for (auto note : notesList)
       os << note << '\n';
