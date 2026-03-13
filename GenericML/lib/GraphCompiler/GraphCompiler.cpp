@@ -129,7 +129,7 @@ void M::MO::registerPasses() {
   mlir::registerCSEPass();
   mlir::registerSCCPPass();
   mlir::registerCanonicalizerPass();
-  mlir::registerSymbolDCE();
+  mlir::registerSymbolDCEPass();
   mlir::registerViewOpGraphPass();
 
   KGEN::registerVerifyParametersPass();

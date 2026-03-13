@@ -7,7 +7,7 @@
 // mgp.tensor_spec.create{.dynamic}
 //
 
-func.func @spec_create_mismatched_dims(%dim : index) {
+func.func @spec_create_mismatched_dims(%dim : index) -> !mgp.tensor_spec<?x64x?xf32> {
   // expected-error@+1 {{'mgp.tensor_spec.create' op expected 2 dimension operands to match '!mgp.tensor_spec<?x64x?xf32>', but given 1.}}
   %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<?x64x?xf32>
   mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
@@ -15,7 +15,7 @@ func.func @spec_create_mismatched_dims(%dim : index) {
 
 // -----
 
-func.func @spec_create_bogus_type(%dim : index) {
+func.func @spec_create_bogus_type(%dim : index) -> !mgp.tensor_spec<?x64x?xf32> {
   // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected a !mgp.tensor_spec type.}}
   %0 = mgp.tensor_spec.create %dim : !mgp.tensor<?x64xf32>
   mef.output %0 : !mgp.tensor_spec<?x64x?xf32>
@@ -23,7 +23,7 @@ func.func @spec_create_bogus_type(%dim : index) {
 
 // -----
 
-func.func @spec_create_unknown_elem_type(%dim : index) {
+func.func @spec_create_unknown_elem_type(%dim : index) -> !mgp.tensor_spec<?x64xunk> {
   // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected !mgp.tensor_spec type to have a known element type.}}
   %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<?x64xunk>
   mef.output %0 : !mgp.tensor_spec<?x64xunk>
@@ -31,7 +31,7 @@ func.func @spec_create_unknown_elem_type(%dim : index) {
 
 // -----
 
-func.func @spec_create_dynamic_rank(%dim : index) {
+func.func @spec_create_dynamic_rank(%dim : index) -> !mgp.tensor_spec<*xf32> {
   // expected-error@+1 {{custom op 'mgp.tensor_spec.create' expected !mgp.tensor_spec type to have a statically known rank.}}
   %0 = mgp.tensor_spec.create %dim : !mgp.tensor_spec<*xf32>
   mef.output %0 : !mgp.tensor_spec<*xf32>
@@ -43,7 +43,7 @@ func.func @spec_create_dynamic_rank(%dim : index) {
 // mgp.tensor_spec.get_dim
 //
 
-func.func @spec_get_dim_oob(%spec : !mgp.tensor_spec<?x64x?xf32>) {
+func.func @spec_get_dim_oob(%spec : !mgp.tensor_spec<?x64x?xf32>) -> index {
   // expected-error@+1 {{'mgp.tensor_spec.get_dim' op expected axis 4 to be less than the rank of the tensor spec 3}}
   %dim0 = mgp.tensor_spec.get_dim[4] %spec : !mgp.tensor_spec<?x64x?xf32>
   mef.output %dim0 : index
@@ -51,7 +51,7 @@ func.func @spec_get_dim_oob(%spec : !mgp.tensor_spec<?x64x?xf32>) {
 
 // -----
 
-func.func @spec_get_dim_unranked(%spec : !mgp.tensor_spec<*xf32>) {
+func.func @spec_get_dim_unranked(%spec : !mgp.tensor_spec<*xf32>) -> index {
   // expected-error@+1 {{'mgp.tensor_spec.get_dim' op expected tensor spec to have known rank}}
   %dim0 = mgp.tensor_spec.get_dim[0] %spec : !mgp.tensor_spec<*xf32>
   mef.output %dim0 : index
@@ -191,7 +191,7 @@ mgp.model @guardOpWrongNResults : bogus devices [#M.device_ref<"cpu", 0>] init (
 //
 // mgp.buffer.constant.external
 //
-func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) {
+func.func @buffer_constant_external(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">) -> !mgp.buffer {
   %name = mgp.string.create "foo" : !mgp.opaque<"mojo_string">
   // expected-error@+1 {{invalid alignment 10}}
   %buf = mgp.buffer.constant.external %ch, %weights[%name, 16384, align 10] : !mgp.opaque<"weights_registry">, !mgp.opaque<"mojo_string"> -> !mgp.buffer
@@ -213,7 +213,7 @@ mgp.model @call_target_model subgraph : tf devices [#M.device_ref<"cpu", 0>] ini
   mef.output %ch, %in_tensor : !mef.chain, !mgp.tensor<10xf32>
 }
 
-func.func @call_operand_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<20xf64>) {
+func.func @call_operand_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<20xf64>) -> (!mef.chain, !mgp.tensor<10xf32>) {
                                                                                                                                                                    // ^^^^^^^^^^^^^^^^^^^ Type mismatch
   // expected-error@+1 {{'mgp.call' op operand types '!mef.chain', '!mgp.context', '!mgp.opaque<"weights_registry">', '!mgp.device_context<<"cpu", 0>>', '!mgp.tensor<20xf64>' do not match expected argument types '!mef.chain', '!mgp.context', '!mgp.opaque<"weights_registry">', '!mgp.device_context<<"cpu", 0>>', '!mgp.tensor<10xf32>', 'index' of @call_target_model's execute block.}}
   %ch_res, %res = mgp.call @call_target_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<20xf64>) -> (!mef.chain, !mgp.tensor<10xf32>)
@@ -230,7 +230,7 @@ mgp.model @call_target_model subgraph : tf devices [#M.device_ref<"cpu", 0>] ini
   mef.output %ch, %in_tensor : !mef.chain, !mgp.tensor<10xf32>
 }
 
-func.func @call_result_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) {
+func.func @call_result_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<5xsi32>) {
   // expected-error@+1 {{'mgp.call' op result types '!mef.chain', '!mgp.tensor<5xsi32>' do not match expected result types '!mef.chain', '!mgp.tensor<10xf32>' of @call_target_model's execute block.}}
   %ch_res, %res = mgp.call @call_target_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<5xsi32>)
                                                                                                                                                                                                                   // ^^^^^^^^^^^^^^^^^^^ Type mismatch
@@ -239,7 +239,7 @@ func.func @call_result_type_mismatch(%ch: !mef.chain, %ctx: !mgp.context, %weigh
 
 // -----
 
-func.func @call_symbol_not_found(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) {
+func.func @call_symbol_not_found(%ch: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %input : !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<10xf32>) {
   // expected-error@+1 {{'mgp.call' op failed to find symbol @non_existent_model}}
   %ch_res, %res = mgp.call @non_existent_model(%ch, %ctx, %weights, %cpu, %input) : (!mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.tensor<10xf32>) -> (!mef.chain, !mgp.tensor<10xf32>)
   mef.output %ch_res, %res : !mef.chain, !mgp.tensor<10xf32>
