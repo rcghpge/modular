@@ -120,6 +120,11 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       /*hasReadEffect=*/true,
       /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
 
+  // Merge source locations so that Python stack traces from fused-in ops
+  // survive into AddStackTracesToAssertsPass.
+  newKernelOp->setLoc(mlir::FusedLoc::get(
+      kernelOp->getContext(), {loadOp->getLoc(), kernelOp->getLoc()}));
+
   // Copy over any discardable attributes from the original kernel
   for (auto attr : kernelOp->getDiscardableAttrs())
     newKernelOp->setDiscardableAttr(attr.getName(), attr.getValue());
@@ -331,6 +336,10 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   kernelOp.setFusionInfoAttr(
       MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
           kernelOp->getContext(), {loadOp, kernelOp}));
+  // Merge source locations so that Python stack traces from fused-in ops
+  // survive into AddStackTracesToAssertsPass.
+  kernelOp->setLoc(mlir::FusedLoc::get(kernelOp->getContext(),
+                                       {loadOp->getLoc(), kernelOp->getLoc()}));
 
   loadOp.erase();
 }

@@ -249,6 +249,10 @@ static void fuseKernelsIntoLastKernel(ArrayRef<Operation *> subgraph) {
 
     dst.setFusionInfoAttr(
         createFusionInfo<FusionElementwiseAttr>(src->getContext(), {src, dst}));
+    // Merge source locations so that Python stack traces from fused-in ops
+    // survive into AddStackTracesToAssertsPass.
+    dst->setLoc(
+        mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
     dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
     dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
   }

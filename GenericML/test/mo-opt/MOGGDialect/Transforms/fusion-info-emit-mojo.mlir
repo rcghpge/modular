@@ -1,22 +1,23 @@
 // RUN: mo-opt %s -mo-to-mogg --mogg-simplify-kernel-operands -mogg-fuse-elementwise --canonicalize --cse -mogg-fuse-views --canonicalize --cse -mogg-fuse-prologues-epilogues -mgp-mo-to-primitives -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that toPrettyTree() fusion info tree comments appear in emitted Mojo.
+// The tree shows op names with (file:line) locations and FunctionType signatures.
 // CHECK:      # FusionInfo:
 // CHECK-NEXT: #   Epilogue (operandIndices=[0])
-// CHECK-NEXT: #       ├── mo.matmul:{{[0-9]+}}
+// CHECK-NEXT: #       ├── mo.matmul ({{[^)]+}}) : (!mo.tensor<[20, 30], f32>, !mo.tensor<[30, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #       └── View
-// CHECK-NEXT: #           ├── mo.static.broadcast_to:{{[0-9]+}}
-// CHECK-NEXT: #           ├── mo.static.broadcast_to:{{[0-9]+}}
-// CHECK-NEXT: #           ├── mo.static.broadcast_to:{{[0-9]+}}
+// CHECK-NEXT: #           ├── mo.static.broadcast_to ({{[^)]+}}) : (!mo.tensor<[1, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #           ├── mo.static.broadcast_to ({{[^)]+}}) : (!mo.tensor<[1, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #           ├── mo.static.broadcast_to ({{[^)]+}}) : (!mo.tensor<[1, 40], f32>) -> !mo.tensor<[20, 40], f32>
 // CHECK-NEXT: #           └── Elementwise
-// CHECK-NEXT: #               ├── mo.relu:{{[0-9]+}}
-// CHECK-NEXT: #               ├── mo.add:{{[0-9]+}}
-// CHECK-NEXT: #               ├── mo.tanh:{{[0-9]+}}
-// CHECK-NEXT: #               ├── mo.add:{{[0-9]+}}
-// CHECK-NEXT: #               ├── mo.sqrt:{{[0-9]+}}
-// CHECK-NEXT: #               ├── mo.mul:{{[0-9]+}}
-// CHECK-NEXT: #               ├── mo.cast:{{[0-9]+}}
-// CHECK-NEXT: #               └── mo.cast:{{[0-9]+}}
+// CHECK-NEXT: #               ├── mo.relu ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.add ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>, !mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.tanh ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.add ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>, !mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.sqrt ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.mul ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>, !mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f32>
+// CHECK-NEXT: #               ├── mo.cast ({{[^)]+}}) : (!mo.tensor<[20, 40], f32>) -> !mo.tensor<[20, 40], f16>
+// CHECK-NEXT: #               └── mo.cast ({{[^)]+}}) : (!mo.tensor<[20, 40], f16>) -> !mo.tensor<[20, 40], f32>
 
 mo.graph @big_fusion(
     %A: !mo.tensor<[20, 30], f32>,

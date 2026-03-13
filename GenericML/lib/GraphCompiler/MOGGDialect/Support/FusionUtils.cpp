@@ -50,13 +50,18 @@ FusionLeafAttr createFusionLeaf(Operation *op) {
     name = op->getName().getIdentifier().getValue();
   }
 
-  uint32_t lineNumber = 0;
-  if (auto fileLineLoc = dyn_cast<mlir::FileLineColLoc>(op->getLoc()))
-    if (fileLineLoc.getLine() > 0)
-      lineNumber = fileLineLoc.getLine();
-
+  // Store the op's location directly so the fusion tree carries full
+  // provenance info.
   auto ctx = op->getContext();
-  return FusionLeafAttr::get(ctx, StringAttr::get(ctx, name), lineNumber);
+  LocationAttr loc = op->getLoc();
+
+  // Store the op's full function type signature.
+  TypeAttr signature;
+  auto funcType =
+      FunctionType::get(ctx, op->getOperandTypes(), op->getResultTypes());
+  signature = TypeAttr::get(funcType);
+
+  return FusionLeafAttr::get(ctx, StringAttr::get(ctx, name), loc, signature);
 }
 
 // The max number of elements in a constant that we will allow to be fused into

@@ -9,7 +9,8 @@
 // so only the first test will actually execute in a single test run.
 
 // CHECK-LABEL: --- Running 'range_zero_step_error':
-// CHECK-NEXT: 'range_zero_step_error' returned <error: {{.*}}step must be non-zero{{.*}}>
+// CHECK: 'range_zero_step_error' returned <error:
+// CHECK: {{.*}}step must be non-zero{{.*}}>
 mo.graph @range_zero_step_error(%start_in: !mo.tensor<[], si32>) -> !mo.tensor<[D0], si32> {
   // start_in from input (will be 1), subtract 1 to get 0
   %start = mo.sub(%start_in, %start_in) : !mo.tensor<[], si32>

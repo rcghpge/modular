@@ -1052,6 +1052,86 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// Error context helpers (used by KernelStubOp and AsyncErrorOp)
+//===----------------------------------------------------------------------===//
+
+/// Collect source notes (Python stack traces) from a location tree. Source
+/// notes are StringAttr metadata on FusedLoc nodes, set by
+/// AddStackTracesToAssertsPass.
+static SmallVector<StringRef, 4> collectSourceNotes(Location rootLoc) {
+  SmallVector<StringRef, 4> notes;
+  llvm::SmallSet<StringRef, 4> seen;
+  SmallVector<Location, 8> worklist = {rootLoc};
+  while (!worklist.empty()) {
+    Location loc = worklist.pop_back_val();
+    auto fusedLoc = dyn_cast<mlir::FusedLoc>(loc);
+    if (!fusedLoc)
+      continue;
+    if (auto metadata = dyn_cast_or_null<StringAttr>(fusedLoc.getMetadata())) {
+      StringRef val = metadata.getValue();
+      if (!val.empty() && seen.insert(val).second)
+        notes.push_back(val);
+    }
+    for (Location subLoc : fusedLoc.getLocations())
+      worklist.push_back(subLoc);
+  }
+  return notes;
+}
+
+/// Collect all FusionLeafAttr nodes from a fusion tree using AttrTypeWalker.
+/// Matching is by attribute identity, so same-named ops (e.g. two mo.add)
+/// are disambiguated — only the exact leaves from the crashing sub-kernel
+/// get highlighted.
+static void collectLeaves(Attribute root, llvm::DenseSet<Attribute> &leaves) {
+  mlir::AttrTypeWalker walker;
+  walker.addWalk([&](FusionLeafAttr leaf) { leaves.insert(leaf); });
+  walker.walk(root);
+}
+
+/// Build a human-readable notes string from source notes and optional fusion
+/// info. If \p highlightLeaves is non-empty, those leaf attributes are
+/// highlighted in the fusion tree with "<-- error".
+static std::string
+buildNotesString(ArrayRef<StringRef> notesList, FusionInfoAttr fusionInfo,
+                 const llvm::DenseSet<Attribute> &highlightLeaves = {}) {
+  if (notesList.empty() && !fusionInfo)
+    return "";
+
+  std::string notesStr;
+  llvm::raw_string_ostream os(notesStr);
+
+  // When there are few enough traces, show them all inline; otherwise just
+  // report the count to avoid overwhelming the user.
+  constexpr size_t kMaxInlineTraces = 3;
+  bool showAllTraces = notesList.size() <= kMaxInlineTraces;
+
+  if (showAllTraces) {
+    for (auto note : notesList)
+      os << note << '\n';
+  }
+
+  if (notesList.size() > 1 && fusionInfo) {
+    if (showAllTraces) {
+      os << "\nNote: these operations were fused into a single kernel.\n"
+         << "The source traceback for each fused op is above.\n";
+    } else {
+      os << "Note: " << notesList.size()
+         << " operations were fused into a single kernel.\n"
+         << "The crash occurred in one of the operations below.\n";
+    }
+  }
+
+  if (fusionInfo) {
+    std::string tree = fusionInfo.toPrettyTree(highlightLeaves);
+    os << "Fused ops:\n";
+    for (auto line : llvm::split(tree, '\n'))
+      os << "  " << line << '\n';
+  }
+
+  return notesStr;
+}
+
+//===----------------------------------------------------------------------===//
 // KernelStubOp
 //===----------------------------------------------------------------------===//
 
@@ -1180,25 +1260,44 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
             return isa<MOGG::KernelTerminator>(op);
           });
 
-          for (auto *op : llvm::make_range(bodyOps.begin(), terminatorIt)) {
-            if (state.lowerOpToMojo(op).failed()) {
-              errOccurred = true;
-              break;
-            }
-          }
-
-          // Wrap only the terminator (and keepalives) in the Trace block.
-          if (!errOccurred) {
-            state.builder.with_(buildTraceContextExpr(contextMojoArg), [&]() {
-              for (auto *op : llvm::make_range(terminatorIt, bodyOps.end())) {
-                if (state.lowerOpToMojo(op).failed()) {
-                  errOccurred = true;
-                  break;
-                }
+          auto emitBody = [&]() {
+            for (auto *op : llvm::make_range(bodyOps.begin(), terminatorIt)) {
+              if (state.lowerOpToMojo(op).failed()) {
+                errOccurred = true;
+                break;
               }
-              if (!errOccurred)
-                state.genAllKeepAliveStatements();
-            });
+            }
+
+            // Wrap only the terminator (and keepalives) in the Trace block.
+            if (!errOccurred) {
+              state.builder.with_(buildTraceContextExpr(contextMojoArg), [&]() {
+                for (auto *op : llvm::make_range(terminatorIt, bodyOps.end())) {
+                  if (state.lowerOpToMojo(op).failed()) {
+                    errOccurred = true;
+                    break;
+                  }
+                }
+                if (!errOccurred)
+                  state.genAllKeepAliveStatements();
+              });
+            }
+          };
+
+          // Throwing MOGG stubs self-report by wrapping their body in
+          // try/except and re-raising with a [STUB:<name>] marker prefix.
+          // This lets the outer AsyncErrorOp identify which sub-kernel
+          // crashed and highlight the right ops in the fusion tree.
+          if (isThrows()) {
+            std::string marker = "[STUB:" + getSymNameAttr().str() + "]";
+            state.builder.try_([&]() { emitBody(); })
+                .except([&](const MojoValue &e) {
+                  state.builder.raise(
+                      MojoValue(llvm::formatv("Error(\"{0}\" + String({1}))",
+                                              marker, e.text)
+                                    .str()));
+                });
+          } else {
+            emitBody();
           }
         });
 
@@ -2738,17 +2837,23 @@ LogicalResult YieldOp::emitMojo(EmitMojoState &) { return success(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult TryOp::emitMojo(EmitMojoState &state) {
+  // Throwing CallStubOps self-report by wrapping their body in try/except
+  // and re-raising with a [STUB:<name>] marker prefix (see
+  // KernelStubOp::emitMojo, MOGG ABI path). The outer TryOp here just
+  // emits the try/except structure — no caller-side bookkeeping needed.
+  // AsyncErrorOp::emitMojo detects the marker to identify the crashing
+  // sub-kernel and highlight its ops in the fusion tree.
   bool errOccurred = false;
   state.builder
       .try_([&]() {
-        // Lower try block.
-        errOccurred |=
-            llvm::any_of(getTryRegion().getOps(), [&](mlir::Operation &op) {
-              return state.lowerOpToMojo(&op).failed();
-            });
+        for (auto &op : getTryRegion().getOps()) {
+          if (state.lowerOpToMojo(&op).failed()) {
+            errOccurred = true;
+            return;
+          }
+        }
       })
       .except([&](const MojoValue &e) {
-        // Lower except block.
         state.setMojoValueFor(getExceptRegion().getArgument(0), e);
         errOccurred |=
             llvm::any_of(getExceptRegion().getOps(), [&](mlir::Operation &op) {
@@ -2791,66 +2896,106 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
            << " return values";
   }
 
-  // Collect Python stack trace metadata from the op's location tree. Source
-  // notes are encoded as StringAttr metadata on FusedLoc nodes (set by
-  // AddStackTracesToAssertsPass). When ops are fused, the location becomes a
-  // FusedLoc tree where each original op may carry its own source note. We
-  // collect all unique notes and emit them together. See GEX-2678.
-  SmallVector<MojoValue> args = {state.mojoReturnValues[outputIndex],
-                                 state.getMojoValueFor(getError())};
-  SmallVector<StringRef, 4> notesList;
-  {
-    llvm::SmallSet<StringRef, 4> seen;
-    SmallVector<Location, 8> worklist = {getLoc()};
-    while (!worklist.empty()) {
-      Location loc = worklist.pop_back_val();
-      auto fusedLoc = dyn_cast<mlir::FusedLoc>(loc);
-      if (!fusedLoc)
-        continue;
-      if (auto notes = dyn_cast_or_null<StringAttr>(fusedLoc.getMetadata())) {
-        StringRef val = notes.getValue();
-        if (!val.empty() && seen.insert(val).second)
-          notesList.push_back(val);
-      }
-      for (Location subLoc : fusedLoc.getLocations())
-        worklist.push_back(subLoc);
+  // Collect source notes (Python tracebacks) and fusion info from the parent
+  // kernel. Source notes live on the outer kernel's FusedLoc, set by
+  // AddStackTracesToAssertsPass.
+  auto notesList = collectSourceNotes(getLoc());
+  FusionInfoAttr parentFusionInfo;
+  if (auto kernelStub = tryOp->getParentOfType<MOGG::KernelStubOp>())
+    parentFusionInfo = kernelStub.getFusionInfoAttr();
+
+  // Helper to emit a mogg_async_error call with optional notes string.
+  auto emitErrorCall = [&](StringRef notesStr, const MojoValue &errorVal) {
+    SmallVector<MojoValue> args = {state.mojoReturnValues[outputIndex],
+                                   errorVal};
+    if (!notesStr.empty()) {
+      std::string tripleQuoted =
+          llvm::formatv("\"\"\"\n{}\"\"\"", notesStr).str();
+      MojoValue notesLiteral(std::move(tripleQuoted));
+      MojoValue notesString = state.builder.var(
+          MojoValue(HardcodedMojoSymbols::struct_String)({}, {notesLiteral}));
+      args.push_back(notesString);
     }
-  }
+    state.builder.call(moggAsyncErrorFunc, {}, args);
+  };
 
-  if (!notesList.empty()) {
-    std::string notesStr;
-    llvm::raw_string_ostream os(notesStr);
+  // Collect throwing CallStubOps from the try region. When multiple inner
+  // stubs can throw, each self-reports by re-raising with a [STUB:<name>]
+  // marker prefix (see KernelStubOp::emitMojo, MOGG ABI path). We detect
+  // the marker to highlight the crashing sub-kernel's ops in the fusion tree.
+  SmallVector<CallStubOp> throwingStubs;
+  for (auto &op : tryOp.getTryRegion().getOps())
+    if (auto callStub = dyn_cast<CallStubOp>(&op))
+      if (callStub.isThrows())
+        throwingStubs.push_back(callStub);
 
-    for (auto note : notesList)
-      os << note << '\n';
+  MojoValue errorExpr = state.getMojoValueFor(getError());
 
-    // If multiple ops were fused, append the fusion tree so users can see
-    // which ops were combined.
-    if (notesList.size() > 1) {
-      auto kernelStub = tryOp->getParentOfType<MOGG::KernelStubOp>();
-      if (kernelStub) {
-        if (auto fi = kernelStub.getFusionInfoAttr()) {
-          os << "\nNote: these operations were fused into a single kernel.\n"
-             << "The source traceback for each fused op is above.\n";
-          std::string tree = fi.toPrettyTree();
-          for (auto line : llvm::split(tree, '\n'))
-            os << "  " << line << '\n';
-        }
-      }
+  if (throwingStubs.size() > 1 && parentFusionInfo) {
+    // Multiple throwing stubs (sequence fusion): emit marker-based detection
+    // with per-stub highlighting in the fusion tree.
+    mlir::SymbolTable symTable(tryOp->getParentOfType<ModuleOp>());
+
+    // Convert error to string once for marker inspection.
+    MojoValue errMsgVar = state.builder.var(
+        MojoValue(llvm::formatv("String({0})", errorExpr.text).str()));
+
+    // Emit flat if/elif/else chain for per-stub marker detection.
+    auto emitStubBlock = [&](size_t i) {
+      auto callee = dyn_cast_or_null<KernelStubOp>(
+          symTable.lookup(throwingStubs[i].getName()));
+
+      // Highlight this stub's leaf ops in the full fusion tree.
+      llvm::DenseSet<Attribute> highlightOps;
+      if (callee && callee.getFusionInfoAttr())
+        collectLeaves(callee.getFusionInfoAttr().getRoot(), highlightOps);
+      std::string stubNotes =
+          buildNotesString(notesList, parentFusionInfo, highlightOps);
+
+      std::string marker = "[STUB:" + throwingStubs[i].getName().str() + "]";
+      // Strip the marker prefix from the error message.
+      MojoValue cleanErr = state.builder.var(
+          MojoValue(llvm::formatv("Error({0}.removeprefix(\"{1}\"))",
+                                  errMsgVar.text, marker)
+                        .str()));
+      emitErrorCall(stubNotes, cleanErr);
+    };
+
+    for (size_t i = 0; i < throwingStubs.size(); ++i) {
+      std::string marker = "[STUB:" + throwingStubs[i].getName().str() + "]";
+      auto cond = MojoValue(
+          llvm::formatv("\"{0}\" in {1}", marker, errMsgVar.text).str());
+
+      if (i == 0)
+        state.builder.if_(cond, [&]() { emitStubBlock(i); });
+      else
+        (void)state.builder.elif_(cond, [&]() { emitStubBlock(i); });
     }
+    state.builder.else_([&]() {
+      // Fallback: no marker found, emit generic notes without highlighting.
+      std::string genericNotes = buildNotesString(notesList, parentFusionInfo);
+      emitErrorCall(genericNotes, errorExpr);
+    });
+  } else if (throwingStubs.size() == 1) {
+    // Single throwing stub: strip the marker and emit notes (no highlighting
+    // since all ops are in one sub-kernel).
+    std::string marker = "[STUB:" + throwingStubs[0].getName().str() + "]";
+    std::string notesStr = buildNotesString(notesList, parentFusionInfo);
 
-    // Use a triple-quoted Mojo string literal to avoid escaping issues.
-    // MojoValue::quote() uses printAsMojoStringLiteral which escapes '"' as
-    // \22 — not a valid Mojo escape sequence. Triple-quoted strings handle
-    // embedded double quotes without escaping.
-    std::string tripleQuoted =
-        llvm::formatv("\"\"\"\n{}\"\"\"", notesStr).str();
-    MojoValue notesLiteral(std::move(tripleQuoted));
-    MojoValue notesString = state.builder.var(
-        MojoValue(HardcodedMojoSymbols::struct_String)({}, {notesLiteral}));
-    args.push_back(notesString);
+    // Convert error to string for marker stripping.
+    MojoValue errMsgVar = state.builder.var(
+        MojoValue(llvm::formatv("String({0})", errorExpr.text).str()));
+    MojoValue cleanErr = state.builder.var(
+        MojoValue(llvm::formatv("Error({0}.removeprefix(\"{1}\"))",
+                                errMsgVar.text, marker)
+                      .str()));
+    emitErrorCall(notesStr, cleanErr);
+  } else {
+    // No throwing stubs (e.g. sequence-fused without inner CallStubOps):
+    // emit notes without highlighting.
+    std::string notesStr = buildNotesString(notesList, parentFusionInfo);
+    emitErrorCall(notesStr, errorExpr);
   }
-  state.builder.call(moggAsyncErrorFunc, {}, args);
 
   return success();
 }

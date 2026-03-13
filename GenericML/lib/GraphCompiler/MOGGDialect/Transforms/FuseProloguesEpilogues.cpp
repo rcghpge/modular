@@ -193,6 +193,10 @@ struct FuseProloguesEpilogues
 
         dst.setFusionInfoAttr(createFusionInfo<FusionPrologueAttr>(
             dst->getContext(), {src, dst}, {static_cast<uint32_t>(fusionIdx)}));
+        // Merge source locations so that Python stack traces from fused-in ops
+        // survive into AddStackTracesToAssertsPass.
+        dst->setLoc(mlir::FusedLoc::get(dst->getContext(),
+                                        {src->getLoc(), dst->getLoc()}));
         // Delete the src because it is no longer needed.
         src->erase();
       }
@@ -413,6 +417,10 @@ struct FuseProloguesEpilogues
         src->replaceAllUsesWith(ValueRange{dstOutput});
         dst.setFusionInfoAttr(createFusionInfo<FusionEpilogueAttr>(
             dst->getContext(), {dst, src}, {static_cast<uint32_t>(fusionIdx)}));
+        // Merge source locations so that Python stack traces from fused-in ops
+        // survive into AddStackTracesToAssertsPass.
+        dst->setLoc(mlir::FusedLoc::get(dst->getContext(),
+                                        {dst->getLoc(), src->getLoc()}));
 
         dst.setHasReadEffect(dst.getHasReadEffect() || src.getHasReadEffect());
         dst.setHasWriteEffect(dst.getHasWriteEffect() ||

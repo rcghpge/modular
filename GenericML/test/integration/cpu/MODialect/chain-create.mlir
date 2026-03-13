@@ -19,9 +19,12 @@
 //CHECK-WORKING{LITERAL}: [[4.0000]]]], dtype=f32, shape=[3,2,1,1])
 
 // COM: fail assertions on each possible pair of dimensions
-// CHECK-INNER: 'bmm' returned <error: inner dimension must match>
-// CHECK-1ST: 'bmm' returned <error: 1st batch dimensions must match>
-// CHECK-2ND: 'bmm' returned <error: 2nd batch dimensions must match>
+// CHECK-INNER: 'bmm' returned <error:
+// CHECK-INNER: inner dimension must match>
+// CHECK-1ST: 'bmm' returned <error:
+// CHECK-1ST: 1st batch dimensions must match>
+// CHECK-2ND: 'bmm' returned <error:
+// CHECK-2ND: 2nd batch dimensions must match>
 
 mo.graph @bmm<D1, D2, D3, D4, D5, D6, D7, D8>(%arg0: !mo.tensor<[D1, D2, D3, D4], f32>, %arg1: !mo.tensor<[D5, D6, D7, D8], f32>) -> !mo.tensor<[D1, D2, D3, D8], f32> {
 

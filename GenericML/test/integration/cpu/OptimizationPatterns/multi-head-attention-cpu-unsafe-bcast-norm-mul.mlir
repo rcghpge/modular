@@ -10,7 +10,8 @@
 
 // COM: "|| true" is there because mt --execute will return an error code (like it should), note it doesn't force FileCheck to always work though
 // RUN: (mt --execute %t.mlir --input-shapes=1x1x6x8 --input-shapes=1x1x6x8 --input-shapes=10x1x6x8 --input-shapes="" --input-shapes=10 --model-inputs=ones || true) | FileCheck %s --check-prefix=CHECK-MT-WRONG
-// CHECK-MT-WRONG: 'unsafe_bcast_norm_using_mul' returned <error: MHA Pattern Detected unsafe broadcast. This is of great interest so please report!>
+// CHECK-MT-WRONG: 'unsafe_bcast_norm_using_mul' returned <error:
+// CHECK-MT-WRONG: MHA Pattern Detected unsafe broadcast. This is of great interest so please report!>
 
 mo.graph @unsafe_bcast_norm_using_mul<B, S, KV_S, H, D, BCAST1>(
     %Q_bshd: !mo.tensor<[B, S, H, D], f32>,

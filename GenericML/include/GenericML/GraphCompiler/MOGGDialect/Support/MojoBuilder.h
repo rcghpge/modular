@@ -219,6 +219,8 @@ public:
   void except(std::function<void(const MojoValue &)> &&exceptBlock);
 
   MojoBuilder &if_(const MojoValue &cond, std::function<void()> &&ifBlock);
+  [[nodiscard]] MojoBuilder &elif_(const MojoValue &cond,
+                                   std::function<void()> &&elifBlock);
   void else_(std::function<void()> &&elseBlock);
 
   /// Creates a `with` block with the given context manager expression.
@@ -266,6 +268,9 @@ public:
 
   /// Returns a mojo value
   void returnsValue(const MojoValue &value);
+
+  /// Raises an error value.
+  void raise(const MojoValue &value);
 
   /// Keep the value alive longer `_ = value`
   void keepAlive(const MojoValue &value);

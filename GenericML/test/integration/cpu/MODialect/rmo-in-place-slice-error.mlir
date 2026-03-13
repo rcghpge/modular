@@ -5,7 +5,8 @@
 // COM: with the given start/stop/step of [0,0]/[5,5]/[2,2] we expect a slice shape of 3x3 rather than the specified 5x5 above
 
 // CHECK-LABEL: --- Running 'bad_shape':
-// CHECK: <error: Shape mismatch for mo.mutable.store.slice: expected 'slice' operand to have shape: (3, 3) but got: (5, 5)>
+// CHECK: <error:
+// CHECK: Shape mismatch for mo.mutable.store.slice: expected 'slice' operand to have shape: (3, 3) but got: (5, 5)>
 mo.graph @bad_shape<d0, d1>(%arg0: !mo.buffer<[5, 5], f32>, %arg1: !mo.tensor<[d0, d1], f32>, %arg2: !mo.tensor<[2], si64>) -> (!mo.buffer<[5, 5], f32>, !mo.chain) {
   %0 = mo.chain.create(%arg0) : !mo.buffer<[5, 5], f32>
   %1 = mo.add(%arg2, %arg2) : !mo.tensor<[2], si64>

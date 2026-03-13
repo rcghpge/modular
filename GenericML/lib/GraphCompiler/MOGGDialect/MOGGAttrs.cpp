@@ -51,8 +51,9 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
       .Case<FusionLeafAttr>([&](FusionLeafAttr leaf) {
         os << leaf.getOpName().getValue();
         if (includeLineNumbers)
-          if (uint32_t line = leaf.getLineNumber())
-            os << ':' << line;
+          if (auto fileLoc = dyn_cast_or_null<FileLineColLoc>(leaf.getLoc()))
+            if (fileLoc.getLine() > 0)
+              os << ':' << fileLoc.getLine();
       })
       .Case<FusionSequenceAttr, FusionElementwiseAttr, FusionViewAttr,
             FusionAffineAttr, FusionMutableLoadAttr>([&](auto attr) {
@@ -74,7 +75,10 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
 }
 
 /// Pretty-print a fusion info tree node with tree-drawing connectors.
+/// If \p highlightLeaves is non-empty, leaf nodes whose op name appears in
+/// the set are annotated with " <-- error" in the output.
 void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
+                      const llvm::DenseSet<Attribute> &highlightLeaves,
                       StringRef prefix = "", bool isLast = true) {
   auto emitChildren = [&](auto attr, ArrayRef<Attribute> children,
                           ArrayRef<uint32_t> operandIndices = {}) {
@@ -90,15 +94,38 @@ void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
     for (size_t i = 0; i < children.size(); ++i) {
       bool childIsLast = (i == children.size() - 1);
       os << childPrefix << (childIsLast ? "└── " : "├── ");
-      nodeToPrettyTree(children[i], os, childPrefix, childIsLast);
+      nodeToPrettyTree(children[i], os, highlightLeaves, childPrefix,
+                       childIsLast);
     }
   };
 
   llvm::TypeSwitch<Attribute>(node)
       .Case<FusionLeafAttr>([&](FusionLeafAttr leaf) {
         os << leaf.getOpName().getValue();
-        if (uint32_t line = leaf.getLineNumber())
-          os << ':' << line;
+        if (auto fileLoc = dyn_cast_or_null<FileLineColLoc>(leaf.getLoc())) {
+          StringRef fn = fileLoc.getFilename().getValue();
+          uint32_t line = fileLoc.getLine();
+          if (!fn.empty() && line)
+            os << " (" << fn << ':' << line << ')';
+          else if (line)
+            os << ':' << line;
+        }
+        if (auto sig = leaf.getSignature()) {
+          if (auto funcTy = dyn_cast<FunctionType>(sig.getValue())) {
+            os << " : (";
+            llvm::interleaveComma(funcTy.getInputs(), os);
+            os << ") -> ";
+            if (funcTy.getResults().size() == 1)
+              os << funcTy.getResults()[0];
+            else {
+              os << '(';
+              llvm::interleaveComma(funcTy.getResults(), os);
+              os << ')';
+            }
+          }
+        }
+        if (highlightLeaves.count(leaf))
+          os << "  <-- error";
         os << '\n';
       })
       .Case<FusionSequenceAttr, FusionElementwiseAttr, FusionViewAttr,
@@ -118,10 +145,11 @@ std::string FusionInfoAttr::toString(bool includeLineNumbers) const {
   return result;
 }
 
-std::string FusionInfoAttr::toPrettyTree() const {
+std::string FusionInfoAttr::toPrettyTree(
+    const llvm::DenseSet<Attribute> &highlightLeaves) const {
   std::string result;
   llvm::raw_string_ostream os(result);
-  nodeToPrettyTree(getRoot(), os);
+  nodeToPrettyTree(getRoot(), os, highlightLeaves);
   while (!result.empty() && result.back() == '\n')
     result.pop_back();
   return result;
@@ -186,7 +214,14 @@ Attribute parseNode(AsmParser &p) {
       return {};
   }
 
-  return FusionLeafAttr::get(ctx, StringAttr::get(ctx, opName), lineNumber);
+  // NOTE: The custom textual format does not encode location or signature.
+  // If this parser is ever used to round-trip through textual IR, those
+  // fields will be lost. Currently only used in lit tests.
+  LocationAttr loc;
+  if (lineNumber)
+    loc = FileLineColLoc::get(ctx, "", lineNumber, 0);
+  return FusionLeafAttr::get(ctx, StringAttr::get(ctx, opName), loc,
+                             /*signature=*/{});
 }
 
 /// Parse a parenthesized, comma-separated list of child nodes. Each child is

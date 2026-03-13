@@ -36,11 +36,15 @@ def MOGG_FusionLeafAttr : MOGGAttr<"FusionLeaf", "fusion_leaf"> {
   let summary = "An attribute that represents a single operation info.";
   let description = [{
     This attribute holds information for a single leaf op in a fusion info tree.
+    Stores the op's location directly so the fusion tree carries full provenance
+    info. The FusedLoc on the outer kernel is still maintained separately for
+    compiler debugging purposes.
   }];
 
   let parameters = (ins "mlir::StringAttr":$opName,
-                        OptionalParameter<"uint32_t">:$lineNumber);
-  let assemblyFormat = "`<` $opName (`,` `line` `=` $lineNumber^)? `>`";
+                        OptionalParameter<"mlir::LocationAttr">:$loc,
+                        OptionalParameter<"mlir::TypeAttr">:$signature);
+  let assemblyFormat = "`<` $opName (`,` `loc` `=` $loc^)? (`,` `sig` `=` $signature^)? `>`";
 }
 
 //===----------------------------------------------------------------------===//
@@ -156,7 +160,11 @@ def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
     std::string toString(bool includeLineNumbers = false) const;
 
     /// Return a multi-line, indented tree visualization of the fusion info.
-    std::string toPrettyTree() const;
+    /// If \p highlightLeaves is non-empty, leaf nodes present in the set are
+    /// annotated with "<-- error" in the output. Matching is by attribute
+    /// identity, not by op name, so same-named ops are disambiguated.
+    std::string toPrettyTree(
+        const llvm::DenseSet<mlir::Attribute> &highlightLeaves = {}) const;
   }];
 }
 

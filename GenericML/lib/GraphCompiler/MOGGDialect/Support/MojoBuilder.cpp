@@ -227,6 +227,13 @@ MojoBuilder &MojoBuilder::with_(const MojoValue &contextExpr,
   return *this;
 }
 
+MojoBuilder &MojoBuilder::elif_(const MojoValue &cond,
+                                std::function<void()> &&elifBlock) {
+  statement("elif ", cond, ":");
+  MojoBuilderScopeGuard guard(this);
+  elifBlock();
+  return *this;
+}
 void MojoBuilder::else_(std::function<void()> &&elseBlock) {
   statement("else:");
   MojoBuilderScopeGuard guard(this);
@@ -286,6 +293,8 @@ void MojoBuilder::pass() { statement("pass"); }
 void MojoBuilder::returnsValue(const MojoValue &value) {
   statement("return ", value);
 }
+
+void MojoBuilder::raise(const MojoValue &value) { statement("raise ", value); }
 
 void MojoBuilder::keepAlive(const MojoValue &value) {
   statement("_ = ", value);

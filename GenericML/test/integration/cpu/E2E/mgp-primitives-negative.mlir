@@ -2,7 +2,8 @@
 // RUN: not mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'assert_false'
-// CHECK: <error: the buffer must not contain 0>
+// CHECK: <error:
+// CHECK: the buffer must not contain 0>
 mgp.model @assert_false : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2

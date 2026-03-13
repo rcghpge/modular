@@ -13,6 +13,7 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "llvm/ADT/SmallSet.h"
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
