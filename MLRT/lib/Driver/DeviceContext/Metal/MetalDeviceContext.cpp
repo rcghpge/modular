@@ -890,7 +890,6 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   size_t numArgs = func.argumentCount();
   const MetalDevice &metalDevice = MetalDevice::cast(device());
   MTL::Device *mtlDevice = metalDevice.metalDevice();
-  std::vector<NS::SharedPtr<MTL::Buffer>> newBuffers(numArgs);
 
   // 4) Bind all buffer arguments
   for (uint32_t i = 0; i < numArgs; ++i) {
@@ -905,36 +904,12 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
       RETURN_ERROR("Unknown argument size at index " + std::to_string(i));
     }
 
-    MTL::Buffer *buf = nullptr;
-    if (argSize == sizeof(void *)) {
-      // For simple pointers argument, try to either get a cached MTLBuffer or
-      // just set an argument using given bytes
-      uint64_t *argData = static_cast<uint64_t *>(args[i]);
-      uint64_t originalPtr = argData[0];
-      void *ptrValue = reinterpret_cast<void *>(originalPtr);
-      // FIXME: There's a possible bug here: if the argument is an integer that
-      // has a value of a cached buffer, we will use that buffer instead of
-      // encoding the integer.
-      // That can result to flaky behavior. To address it, we should be able to
-      // distinguish integer vs pointer arguments here.
-      // Because integer arguments are currently converted to pointers (Metal
-      // only accepts its `uint` type by value`), the issue is not likely to
-      // happen.
-      buf = getMetalBuffer(ptrValue);
-      if (buf != nullptr)
-        encoder->setBuffer(buf, 0, i);
-      else
-        encoder->setBytes(args[i], argSize, i);
-    } else {
-      // We have more complex argument, such as pointer to a struct. Allocate
-      // new MTLBuffer and set it.
-      MTL::ResourceOptions options =
-          getResourceOptions(Device::AllocMode::ASYNC);
-      NS::SharedPtr<MTL::Buffer> buf =
-          NS::TransferPtr(mtlDevice->newBuffer(args[i], argSize, options));
-      encoder->setBuffer(buf.get(), 0, i);
-      newBuffers.push_back(buf);
-    }
+    // We have more complex argument, such as pointer to a struct. Allocate
+    // new MTLBuffer and set it.
+    MTL::ResourceOptions options = getResourceOptions(Device::AllocMode::ASYNC);
+    NS::SharedPtr<MTL::Buffer> buf =
+        NS::TransferPtr(mtlDevice->newBuffer(args[i], argSize, options));
+    encoder->setBuffer(buf.get(), 0, i);
   }
 
   // 5) Set resources that might be used by the kernel
