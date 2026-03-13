@@ -5,8 +5,8 @@
 // CHECK:       mogg.output_placeholders : !mo.tensor<[2, 3], f64>
 // CHECK:       mogg.device_context_placeholder
 // CHECK:       mogg.bind ({{.*}}, {{.*}}) input_lambda ({{.*}}: f32, {{.*}}: f32, {{.*}}: !pop.array<2, index>) {
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"] ({{.*}}, {{.*}}) : f32, f32 -> f32
-// CHECK-NEXT:  mogg.call.elementwise["mo.cast"] ({{.*}}) : f32 -> f64
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"] ({{.*}}, {{.*}}) {kernel_param = {}} : f32, f32 -> f32
+// CHECK-NEXT:  mogg.call.elementwise["mo.cast"] ({{.*}}) {kernel_param = {}} : f32 -> f64
 // CHECK-NEXT:  mogg.output {{.*}}, {{.*}} : f64, !pop.array<2, index>
 // CHECK:       }: (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64>
 // CHECK:       mogg.as_scalar
@@ -30,7 +30,7 @@ mo.graph @softmax(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[], si64>) -
 // CHECK:       }: (!mo.tensor<[3, 3], f32>) -> !mo.tensor<[3, 3], f32>
 // CHECK:       mogg.device_context_placeholder
 // CHECK:       mogg.bind ({{.*}}, {{.*}}) input_lambda ({{.*}}: si32, {{.*}}: si32, {{.*}}: !pop.array<2, index>) {
-// CHECK-NEXT:  mogg.call.elementwise["mo.add"] ({{.*}}, {{.*}}) : si32, si32 -> si32
+// CHECK-NEXT:  mogg.call.elementwise["mo.add"] ({{.*}}, {{.*}}) {kernel_param = {}} : si32, si32 -> si32
 // CHECK-NEXT:  mogg.output {{.*}}, {{.*}} : si32, !pop.array<2, index>
 // CHECK:       }: (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], si32>
 // CHECK:       mogg.bind ({{.*}}) output_lambda ({{.*}}: f32, {{.*}}: !pop.array<3, index>) {

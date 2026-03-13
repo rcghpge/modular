@@ -597,8 +597,6 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
           continue;
         }
 
-        function.emitError(Twine("Failed to infer kernel parameter `") +
-                           paramName + "`: " + maybeVal.getError());
         return maybeVal.takeError();
       }
 
@@ -654,7 +652,7 @@ static MojoValue getLambasHaveFusionValue(mlir::Operation *kernelCallOp) {
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
-  auto inferFromMliParam = [](Attribute customParam) -> ErrorOr<MojoValue> {
+  auto inferFromMliParam = [&](Attribute customParam) -> ErrorOr<MojoValue> {
     // Convert it to mojo
     // TODO: Convert custom mlir parameter to the right mojo parameter type is
     // hardcoded here and brittle. Besides the param name, we would also need
@@ -677,7 +675,8 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
         values.push_back(cast<IntegerAttr>(val).getValue().getSExtValue());
       return EmitMojoState::getAsDimListMojoValue(values);
     } else
-      return Error("Unsupported custom param MLIR type");
+      return Error(llvm::formatv("Unsupported custom param MLIR type for `{}`",
+                                 paramName));
   };
 
   // Look at the provided list of kernel parameters first
@@ -710,7 +709,7 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   if (paramName == KGEN::MOGGPreElab::kMOGGLambdasHaveFusionParameterName)
     return getLambasHaveFusionValue(callOp);
 
-  return Error("Failed to infer parameter");
+  return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
 }
 
 MojoValue EmitMojoState::getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,

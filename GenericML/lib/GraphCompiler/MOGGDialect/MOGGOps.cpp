@@ -288,7 +288,8 @@ LogicalResult CallAffineOp::emitMojo(EmitMojoState &state) {
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
-    return emitError("Failed to infer all the kernel parameters");
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   // Call the function and map its output.
   state.setMojoValueFor(
@@ -817,7 +818,8 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
-    return emitError("Failed to infer all the kernel parameters");
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   state.builder.verbatim(callFunctionNestedInStruct(
       function, *maybeParams, {mojoOutput, contextValue}, state));
@@ -865,7 +867,8 @@ LogicalResult CallMaterializeOp::emitMojo(EmitMojoState &state) {
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
-    return emitError("Failed to infer all the kernel parameters");
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
@@ -1022,7 +1025,8 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
-    return emitError("Failed to infer all the kernel parameters");
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   auto prefixSymbolName = state.getOriginalMojoNamePrefixFor(function);
   MojoValue executeFunc("execute");
@@ -2378,7 +2382,8 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
-    return emitError("Failed to infer all the kernel parameters");
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   state.setMojoValueFor(getResult(),
                         state.builder.var(callFunctionNestedInStruct(
@@ -2403,25 +2408,32 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
         "elementwise with outputs size != 1 not supported for EmitMojo");
   Value outputVal = outputs.front();
 
-  // Get the lambda parameters if needed.
+  // Infer the kernel parameters.
   // For ops like mo.cast, where the output dtype differs, we need to explicitly
   // specify the output dtype.
   // TODO(GEX-2535): Avoid hardcoding the parameter name.
-  SmallVector<MojoValue> parameters;
   constexpr StringLiteral simdDtypeParameterName = "dtype";
-  if (auto outDtypeParamName = state.getOriginalResultParamNameFor(
-          function, simdDtypeParameterName)) {
-    ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(outputVal.getType());
-    if (resultTyOr.isError())
-      return emitError("invalid output type can't be converted to mojo dtype");
-    parameters.push_back(
-        outDtypeParamName->equal(state.mlirDTypeToMojoType(*resultTyOr)));
-  }
+  std::optional<StringRef> maybeDtypeParamName =
+      state.getOriginalResultParamNameFor(function, simdDtypeParameterName);
+  auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    if (maybeDtypeParamName.has_value() && paramName == *maybeDtypeParamName) {
+      ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(outputVal.getType());
+      if (resultTyOr.isError())
+        return Error("invalid output type can't be converted to mojo dtype");
+      return state.mlirDTypeToMojoType(*resultTyOr);
+    }
+    return state.inferDefaultKernelParamValue(*this, paramName);
+  };
+  auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
+  if (maybeParams.isError())
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   auto mojoSymbolName = state.getOriginalMojoNameFor(function);
 
-  state.setMojoValueFor(outputVal,
-                        state.builder.var(mojoSymbolName(parameters, inputs)));
+  state.setMojoValueFor(
+      outputVal, state.builder.var(
+                     mojoSymbolName(maybeParams->functionParameters, inputs)));
   return success();
 }
 
@@ -2652,7 +2664,8 @@ LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   };
   auto maybeParams = EmitMojoState::inferKernelParameters(function, inferParam);
   if (maybeParams.isError())
-    return emitError("Failed to infer all the kernel parameters");
+    return emitError() << "Failed to infer all the kernel parameters: "
+                       << maybeParams.takeError();
 
   // Call the shape function and return its value via the kernel terminator.
   MojoValue result = state.builder.var(callFunctionNestedInStruct(

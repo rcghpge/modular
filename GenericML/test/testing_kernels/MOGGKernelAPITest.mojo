@@ -1272,3 +1272,14 @@ struct ShapeFuncWithMutable:
         x: InputTensor[rank=2, ...],
     ) -> IndexList[2]:
         return x.shape()
+
+
+@compiler.register("elemwise_add_with_param")
+struct ElemwiseAddWithParam:
+    @staticmethod
+    def elementwise[
+        dtype: DType,
+        width: Int,
+        bias: Int,
+    ](input: SIMD[dtype, width]) -> SIMD[dtype, width]:
+        return input + Scalar[dtype](bias)

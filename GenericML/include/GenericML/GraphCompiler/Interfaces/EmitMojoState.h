@@ -410,7 +410,7 @@ public:
 
   /// Looks at the named parameters of the output value of the function.
   /// Returns the corresponding parameter name of the function if found.
-  static std::optional<MojoValue>
+  static std::optional<StringRef>
   getOriginalResultParamNameFor(KGEN::LIT::FnOp op, StringRef paramName) {
     auto resultParams = op->getAttrOfType<ArrayAttr>(
         KGEN::MOGGPreElab::kKernelResultParameterAttrName);
@@ -421,7 +421,7 @@ public:
       auto resultParamDict = cast<DictionaryAttr>(resultParam);
       if (auto funcParamName =
               resultParamDict.getAs<KGEN::ParamDeclRefAttr>(paramName))
-        return funcParamName.getName().str();
+        return funcParamName.getName();
     }
 
     return std::nullopt;

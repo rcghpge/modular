@@ -76,6 +76,7 @@ private:
 
   KernelCallInterface
   lowerToElementwiseKernel(KernelOp kernelOp, const OperandMapping &mapping,
+                           DictionaryAttr forwardedParameters,
                            const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor);
 
   ErrorOr<KernelCallInterface>

@@ -270,6 +270,7 @@ void addContextIfPresent(Operation *op, SmallVector<Value> &inputs,
 
 KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
     KernelOp kernelOp, const OperandMapping &mapping,
+    DictionaryAttr forwardedParameters,
     const KGEN::MOGGPreElab::MojoKernelAdaptor &adaptor) {
   auto execBody = &kernelOp.getExecBody().front();
   SmallVector<Value> inputs(execBody->getArguments().begin(),
@@ -337,6 +338,8 @@ KernelCallInterface MOGGKernelBuilder::lowerToElementwiseKernel(
   builder.setInsertionPointToStart(elemwiseBody);
   auto callElementwise = CallElementwiseOp::create(
       builder, loc, resultValTp, adaptor.registeredOpName, outlinedArgs);
+  cast<KernelCallInterface>(callElementwise.getOperation())
+      .setKernelParams(forwardedParameters);
   OutputOp::create(builder, loc, callElementwise->getResults());
   builder.setInsertionPointAfter(bindOp);
 
@@ -730,8 +733,8 @@ ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
     kernelCallingOperation =
         lowerToShapeKernel(kernelOp, operandMapping, adaptor);
   } else if (adaptor.isElementwise()) {
-    kernelCallingOperation =
-        lowerToElementwiseKernel(kernelOp, operandMapping, adaptor);
+    kernelCallingOperation = lowerToElementwiseKernel(
+        kernelOp, operandMapping, *forwardedParametersOr, adaptor);
   } else if (adaptor.executeFunction->isView()) {
     kernelCallingOperation =
         lowerToViewKernel(kernelOp, operandMapping, adaptor);
@@ -743,7 +746,12 @@ ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
   if (kernelCallingOperation.isError())
     return kernelCallingOperation.takeError();
 
-  kernelCallingOperation.get().setKernelParams(*forwardedParametersOr);
+  if (!adaptor.isElementwise()) {
+    // Add the extra infered parameters to the kernel call.
+    // One exception is elementwise, where the parameters aren't on the foreach,
+    // but on the elementwise inside the lambda.
+    kernelCallingOperation.get().setKernelParams(*forwardedParametersOr);
+  }
 
   // TODO(MAXPLAT-224): I am not sure whether this is correct, no idea why we
   // need the attribute: it seems that mo-to-primitive can only handle tensor
