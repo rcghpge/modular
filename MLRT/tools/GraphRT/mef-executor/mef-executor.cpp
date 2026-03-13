@@ -149,19 +149,17 @@ public:
 static LogicalResult
 runTestcases(SmallVectorImpl<GRTTestcase> &testcasesToExecute,
              const MEFExecutorCLOptions &options, MLIRContext *context) {
+  // Create a copy of the runtime options from the MEFExecutorCLOptions options.
+  RuntimeOptions runtimeOptions = options.copy();
+
   // Create our execution context. Note that we limit the scope of this
   // context in order to ensure that the full runtime is torn-down before
   // the mefFile is reset, since there may still be operations outstanding.
-  ErrorOr<ContextRef> ctxOr =
-      Init::createContext("mef-executor", Init::Options());
+  ErrorOr<ContextRef> ctxOr = Init::createContext(
+      "mef-executor", Init::Options().withRuntimeOptions(runtimeOptions));
   if (ctxOr.isError())
     return ctxOr.takeError();
-  auto err = (*ctxOr)->createIfMissing<AsyncRT::Runtime>(
-      [&]() -> ErrorOr<std::unique_ptr<AsyncRT::Runtime>> {
-        return options.createRuntime();
-      });
-  if (err.isError())
-    return err.takeError();
+
   registerContext(*context, *ctxOr);
 
   for (auto &fn : testcasesToExecute) {
