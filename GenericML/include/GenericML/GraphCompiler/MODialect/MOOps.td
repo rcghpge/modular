@@ -602,6 +602,7 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
   SingleBlock,
   DeclInterface,
   SingleBlockImplicitTerminator<"MO::YieldOp">,
+  AttrSizedOperandSegments,
 ]> {
   let summary = "`parallel` region operation";
   let description = [{
@@ -618,6 +619,12 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
     block argument with a layout attribute that the yield does not carry).
     The block argument uses the first input's type as a representative.
 
+    An optional second input group (`extraInputs`) may be provided for
+    additional per-device operands (e.g., signal buffers). When present,
+    extraInputs must have the same length as inputs, and the body block
+    receives an additional argument for the extra input.
+
+    Example with individual types (different device IDs):
     ```mlir
     %res:2 = mo.parallel %arg in (%a : !mo.tensor<[3], f32, gpu:0>,
                                   %b : !mo.tensor<[3], f32, gpu:1>)
@@ -626,9 +633,19 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
       mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
     }
     ```
+
+    Example with extra inputs (tupled per-device operands):
+    ```mlir
+    %res:2 = mo.parallel (%arg, %sig) in
+        ((%a, %sig0) : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
+         (%b, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>)) {
+      %out, %ch = mo.bundled.allreduce.sum(%arg, %sig, %ch_in) : ...
+      mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    }
+    ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs);
+  let arguments = (ins Variadic<AnyType>:$inputs, Variadic<AnyType>:$extraInputs);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
 
@@ -637,9 +654,17 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
     /// implementation in MO.
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
+
+    /// Returns the number of launches (= inputs.size()).
+    size_t getNumLaunches() { return getInputs().size(); }
+
+    /// Returns the number of input groups (1 if no extraInputs, 2 otherwise).
+    size_t getNumInputGroups() { return getExtraInputs().empty() ? 1 : 2; }
   }];
 
-  // mo.parallel %arg in (%a : T1, %b : T2) -> (R1, R2) { ... }
+  // Custom assembly format supports:
+  // 1. Individual types: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
+  // 2. Tupled: mo.parallel (%arg, %sig) in ((%a, %s0) : (t1, t2), ...) { ... }
   let hasCustomAssemblyFormat = 1;
   let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;

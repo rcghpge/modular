@@ -1017,117 +1017,229 @@ SmallVector<ParamDeclAttr> ParallelOp::getAllParams() { return {}; }
 ///
 /// All inputs must have the same base type (shape, dtype) but may differ
 /// in device ID. All inputs must have the same device label.
-ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
-  Region *bodyRegion = result.addRegion();
-
-  // Parse the block argument: %arg
-  OpAsmParser::Argument blockArg;
-  if (parser.parseArgument(blockArg, /*allowType=*/false))
-    return failure();
-
-  if (parser.parseKeyword("in"))
-    return failure();
-
-  // Parse inputs: (%a : type_a, %b : type_b, ...)
-  SmallVector<OpAsmParser::UnresolvedOperand> operands;
-  SmallVector<Type> operandTypes;
-  if (parser.parseLParen())
-    return failure();
+///
+/// Parse a comma-separated list of `operand : type` pairs.
+static ParseResult
+parseTypedOperandList(OpAsmParser &parser,
+                      SmallVectorImpl<OpAsmParser::UnresolvedOperand> &ops,
+                      SmallVectorImpl<Type> &types) {
   do {
     OpAsmParser::UnresolvedOperand operand;
     Type type;
     if (parser.parseOperand(operand) || parser.parseColon() ||
         parser.parseType(type))
       return failure();
-    operands.push_back(operand);
-    operandTypes.push_back(type);
+    ops.push_back(operand);
+    types.push_back(type);
   } while (succeeded(parser.parseOptionalComma()));
-  if (parser.parseRParen())
-    return failure();
+  return success();
+}
 
-  for (size_t i = 0; i < operands.size(); ++i)
-    if (parser.resolveOperand(operands[i], operandTypes[i], result.operands))
-      return failure();
-
-  blockArg.type = operandTypes[0];
-
-  // Parse result types: -> (type, type, ...)
-  SmallVector<Type> resultTypes;
-  if (parser.parseArrow() || parser.parseLParen())
-    return failure();
+/// Parse a comma-separated list of block arguments enclosed in parens:
+///   (%arg0, %arg1)
+/// or a single bare block argument:
+///   %arg0
+static ParseResult
+parseBlockArgs(OpAsmParser &parser,
+               SmallVectorImpl<OpAsmParser::Argument> &blockArgs) {
+  bool parenthesized = succeeded(parser.parseOptionalLParen());
   do {
-    Type type;
-    if (parser.parseType(type))
+    OpAsmParser::Argument arg;
+    if (parser.parseArgument(arg, /*allowType=*/false))
       return failure();
-    resultTypes.push_back(type);
-  } while (succeeded(parser.parseOptionalComma()));
+    blockArgs.push_back(arg);
+  } while (parenthesized && succeeded(parser.parseOptionalComma()));
+  if (parenthesized && parser.parseRParen())
+    return failure();
+  return success();
+}
+
+/// Parse one tupled launch entry: `(%a, %s0) : (type_a, type_s)`
+/// Appends operand i to `groupOps[i]` and type i to `groupTypes[i]`.
+static ParseResult parseTupledLaunch(
+    OpAsmParser &parser, size_t numGroups,
+    MutableArrayRef<SmallVector<OpAsmParser::UnresolvedOperand>> groupOps,
+    MutableArrayRef<SmallVector<Type>> groupTypes) {
+  SmallVector<OpAsmParser::UnresolvedOperand> ops(numGroups);
+  SmallVector<Type> types(numGroups);
+  if (parser.parseLParen())
+    return failure();
+  for (size_t g = 0; g < numGroups; ++g) {
+    if (g > 0 && parser.parseComma())
+      return failure();
+    if (parser.parseOperand(ops[g]))
+      return failure();
+  }
+  if (parser.parseRParen() || parser.parseColon() || parser.parseLParen())
+    return failure();
+  for (size_t g = 0; g < numGroups; ++g) {
+    if (g > 0 && parser.parseComma())
+      return failure();
+    if (parser.parseType(types[g]))
+      return failure();
+  }
   if (parser.parseRParen())
     return failure();
-  result.types.append(resultTypes);
+  for (size_t g = 0; g < numGroups; ++g) {
+    groupOps[g].push_back(ops[g]);
+    groupTypes[g].push_back(types[g]);
+  }
+  return success();
+}
+
+ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
+  Region *bodyRegion = result.addRegion();
+
+  SmallVector<OpAsmParser::Argument> blockArgs;
+  if (failed(parseBlockArgs(parser, blockArgs)))
+    return failure();
+  bool isTupled = blockArgs.size() > 1;
+
+  if (parser.parseKeyword("in") || parser.parseLParen())
+    return failure();
+
+  size_t numGroups = blockArgs.size();
+  SmallVector<SmallVector<OpAsmParser::UnresolvedOperand>> groupOps(numGroups);
+  SmallVector<SmallVector<Type>> groupTypes(numGroups);
+
+  if (isTupled) {
+    if (parseTupledLaunch(parser, numGroups, groupOps, groupTypes))
+      return failure();
+    while (succeeded(parser.parseOptionalComma()))
+      if (parseTupledLaunch(parser, numGroups, groupOps, groupTypes))
+        return failure();
+  } else {
+    if (parseTypedOperandList(parser, groupOps[0], groupTypes[0]))
+      return failure();
+  }
+
+  if (parser.parseRParen())
+    return failure();
+
+  // Resolve operands: inputs first, then extraInputs.
+  for (size_t g = 0; g < numGroups; ++g)
+    for (auto [op, type] : llvm::zip(groupOps[g], groupTypes[g]))
+      if (parser.resolveOperand(op, type, result.operands))
+        return failure();
+
+  size_t numLaunches = groupOps[0].size();
+  result.addAttribute("operandSegmentSizes",
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {static_cast<int32_t>(numLaunches),
+                           static_cast<int32_t>(isTupled ? numLaunches : 0)}));
+
+  for (size_t g = 0; g < numGroups; ++g)
+    blockArgs[g].type = groupTypes[g][0];
+
+  // Result types: explicit `-> (types)` or inferred from primary input types.
+  SmallVector<Type> resultTypes;
+  if (succeeded(parser.parseOptionalArrow())) {
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren,
+                                       [&]() -> ParseResult {
+                                         Type type;
+                                         if (parser.parseType(type))
+                                           return failure();
+                                         resultTypes.push_back(type);
+                                         return success();
+                                       }))
+      return failure();
+  } else {
+    resultTypes.assign(groupTypes[0].begin(), groupTypes[0].end());
+  }
 
   if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
-
-  if (parser.parseRegion(*bodyRegion, {blockArg},
+  if (parser.parseRegion(*bodyRegion, blockArgs,
                          /*enableNameShadowing=*/false))
     return failure();
 
+  result.types.append(resultTypes);
   return success();
 }
 
 void ParallelOp::print(OpAsmPrinter &p) {
   Block &body = getBodyRegion().front();
+  auto inputs = getInputs();
+  auto extraInputs = getExtraInputs();
+  bool hasTuples = !extraInputs.empty();
 
+  // Print block arguments: `%arg` or `(%arg, %sig)`.
   p << ' ';
-  p.printRegionArgument(body.getArgument(0), /*argAttrs=*/{},
-                        /*omitType=*/true);
+  if (hasTuples) {
+    p << '(';
+    llvm::interleaveComma(body.getArguments(), p, [&](BlockArgument arg) {
+      p.printRegionArgument(arg, /*argAttrs=*/{}, /*omitType=*/true);
+    });
+    p << ')';
+  } else {
+    p.printRegionArgument(body.getArgument(0), /*argAttrs=*/{},
+                          /*omitType=*/true);
+  }
 
-  // Print inputs: (%a : type_a, %b : type_b)
+  // Print inputs.
   p << " in (";
-  llvm::interleaveComma(getInputs(), p, [&](Value input) {
-    p.printOperand(input);
-    p << " : " << input.getType();
-  });
+  if (hasTuples) {
+    llvm::interleaveComma(llvm::seq<size_t>(0, inputs.size()), p,
+                          [&](size_t i) {
+                            p << '(';
+                            p.printOperand(inputs[i]);
+                            p << ", ";
+                            p.printOperand(extraInputs[i]);
+                            p << ") : (";
+                            p.printType(inputs[i].getType());
+                            p << ", ";
+                            p.printType(extraInputs[i].getType());
+                            p << ')';
+                          });
+  } else {
+    llvm::interleaveComma(inputs, p, [&](Value input) {
+      p.printOperand(input);
+      p << " : ";
+      p.printType(input.getType());
+    });
+  }
   p << ") -> (";
 
-  // Print result types: -> (R1, R2)
-  llvm::interleaveComma(getResultTypes(), p);
+  llvm::interleaveComma(getResultTypes(), p,
+                        [&](Type type) { p.printType(type); });
   p << ")";
 
-  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
+                                     /*elidedAttrs=*/{"operandSegmentSizes"});
   p << ' ';
   p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
 }
 
-/// Helper to check if two types match ignoring device ID (only label must
-/// match). For non-tensor types, requires exact match.
-static bool typesMatchIgnoringDeviceId(Type a, Type b) {
-  auto tensorA = dyn_cast<TensorType>(a);
-  auto tensorB = dyn_cast<TensorType>(b);
-
-  // If either is not a tensor, require exact match.
-  if (!tensorA || !tensorB)
-    return a == b;
-
-  // Both are tensors - check shape and dtype match.
-  if (tensorA.getShapeAttr() != tensorB.getShapeAttr() ||
-      tensorA.getDtype() != tensorB.getDtype())
-    return false;
-
-  // Check device labels match (IDs can differ).
-  DeviceRefAttr deviceA = tensorA.getDeviceRef();
-  DeviceRefAttr deviceB = tensorB.getDeviceRef();
-
-  // If both have no device, they match.
-  if (!deviceA && !deviceB)
+/// Helper to check if device labels match (IDs can differ).
+static bool deviceLabelsMatch(DeviceRefAttr a, DeviceRefAttr b) {
+  if (!a && !b)
     return true;
-
-  // If only one has a device, they don't match.
-  if (!deviceA || !deviceB)
+  if (!a || !b)
     return false;
+  return a.getLabel() == b.getLabel();
+}
 
-  // Both have devices - labels must match.
-  return deviceA.getLabel() == deviceB.getLabel();
+/// Helper to check if two types match ignoring device ID (only label must
+/// match). Handles both TensorType and BufferType. For other types, requires
+/// exact match.
+static bool typesMatchIgnoringDeviceId(Type a, Type b) {
+  if (auto tensorA = dyn_cast<TensorType>(a)) {
+    auto tensorB = dyn_cast<TensorType>(b);
+    if (!tensorB)
+      return false;
+    return tensorA.getShapeAttr() == tensorB.getShapeAttr() &&
+           tensorA.getDtype() == tensorB.getDtype() &&
+           deviceLabelsMatch(tensorA.getDeviceRef(), tensorB.getDeviceRef());
+  }
+  if (auto bufferA = dyn_cast<BufferType>(a)) {
+    auto bufferB = dyn_cast<BufferType>(b);
+    if (!bufferB)
+      return false;
+    return bufferA.getShapeAttr() == bufferB.getShapeAttr() &&
+           bufferA.getDtype() == bufferB.getDtype() &&
+           deviceLabelsMatch(bufferA.getDeviceRef(), bufferB.getDeviceRef());
+  }
+  return a == b;
 }
 
 SmallVector<ChainValue> ParallelOp::getInChains() {
@@ -1151,6 +1263,8 @@ SmallVector<OpOperand *> ParallelOp::getInChainsMutable() {
 
 LogicalResult ParallelOp::verify() {
   auto inputs = getInputs();
+  auto extraInputs = getExtraInputs();
+
   if (inputs.empty())
     return emitOpError("requires at least one input");
 
@@ -1158,16 +1272,21 @@ LogicalResult ParallelOp::verify() {
     return emitOpError("requires the same number of results as inputs, got ")
            << getNumResults() << " results for " << inputs.size() << " inputs";
 
+  if (!extraInputs.empty() && extraInputs.size() != inputs.size())
+    return emitOpError("extraInputs size (")
+           << extraInputs.size() << ") must match inputs size ("
+           << inputs.size() << ")";
+
+  size_t expectedBlockArgs = extraInputs.empty() ? 1 : 2;
   Block &body = getBodyRegion().front();
 
-  if (body.getNumArguments() != 1)
-    return emitOpError("body block must have exactly one argument, got ")
+  if (body.getNumArguments() != expectedBlockArgs)
+    return emitOpError("body block must have ")
+           << expectedBlockArgs << " argument(s), got "
            << body.getNumArguments();
 
   Type blockArgType = body.getArgument(0).getType();
 
-  // Rule 1 & 2: all inputs must have the same type (modulo device ID)
-  // and must match the block argument type.
   for (auto [idx, input] : llvm::enumerate(inputs)) {
     if (!typesMatchIgnoringDeviceId(input.getType(), blockArgType))
       return emitOpError("input #")
@@ -1176,7 +1295,17 @@ LogicalResult ParallelOp::verify() {
              << " (shape, dtype, and device label must match)";
   }
 
-  // Rule 3 & 4: yield type must match all result types (modulo device ID).
+  if (!extraInputs.empty()) {
+    Type extraBlockArgType = body.getArgument(1).getType();
+    for (auto [idx, extra] : llvm::enumerate(extraInputs)) {
+      if (!typesMatchIgnoringDeviceId(extra.getType(), extraBlockArgType))
+        return emitOpError("extraInput #")
+               << idx << " type '" << extra.getType()
+               << "' does not match block argument type '" << extraBlockArgType
+               << "' (shape, dtype, and device label must match)";
+    }
+  }
+
   auto yieldOp = cast<YieldOp>(body.getTerminator());
   if (yieldOp.getNumOperands() != 1)
     return emitOpError("yield must have exactly one operand, got ")
