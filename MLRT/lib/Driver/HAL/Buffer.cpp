@@ -11,7 +11,7 @@
 namespace M::Driver::HAL {
 
 Buffer::~Buffer() {
-  context->device_->driver->plugin.memory_free(context->handle, memory);
+  context->device->driver->plugin.memory_free(context->handle, memory);
 }
 
 } // namespace M::Driver::HAL

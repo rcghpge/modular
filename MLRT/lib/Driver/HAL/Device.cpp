@@ -12,9 +12,9 @@ namespace M::Driver::HAL {
 
 Device::~Device() {}
 
-ErrorOr<StringRef> Device::name() const { return name_; }
+ErrorOr<StringRef> Device::getName() const { return name; }
 
-ErrorOr<int64_t> Device::id() const { return id_; }
+ErrorOr<int64_t> Device::getId() const { return id; }
 
 ErrorOr<ContextRef> Device::createContext() {
   M_driver_context_t contextHandle;

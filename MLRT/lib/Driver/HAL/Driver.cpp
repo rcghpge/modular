@@ -85,13 +85,13 @@ Driver::~Driver() {
   }
 }
 
-ErrorOr<llvm::StringRef> Driver::name() const { return plugin.name; }
+ErrorOr<llvm::StringRef> Driver::getName() const { return plugin.name; }
 
-ErrorOr<llvm::StringRef> Driver::pluginPath() const { return plugin.soPath; }
+ErrorOr<llvm::StringRef> Driver::getPluginPath() const { return plugin.soPath; }
 
-ErrorOr<int64_t> Driver::deviceCount() const { return devices.size(); }
+ErrorOr<int64_t> Driver::getDeviceCount() const { return devices.size(); }
 
-ErrorOr<DeviceRef> Driver::device(int64_t id) {
+ErrorOr<DeviceRef> Driver::getDevice(int64_t id) {
   // Validate input
   if (id < 0 || id >= int64_t(devices.size()))
     return Error("Invalid device ID - " + llvm::Twine(id) +
@@ -116,7 +116,7 @@ ErrorOr<DeviceRef> Driver::device(int64_t id) {
   return DeviceRef::copy(devices[id].getPointer());
 }
 
-ErrorOr<StringRef> Driver::property(const char *name) {
+ErrorOr<StringRef> Driver::getProperty(const char *name) {
   const char *value;
   if (M_driver_status_t status = plugin.property(handle, name, &value))
     return Error("Failed to get driver property: " + getStatusMessage(status));

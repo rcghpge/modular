@@ -15,15 +15,15 @@ namespace M::Driver::HAL {
 Context::~Context() {
   // Functions must be unloaded while the context is still valid.
   funcCache.clear();
-  device_->driver->plugin.context_destroy(handle);
+  device->driver->plugin.context_destroy(handle);
 }
 
 ErrorOr<BufferRef> Context::allocBuffer(size_t byteSize,
                                         Buffer::AllocMode mode) {
   void *memory;
-  if (M_driver_status_t status = device_->driver->plugin.memory_alloc(
+  if (M_driver_status_t status = device->driver->plugin.memory_alloc(
           handle, static_cast<M_driver_alloc_mode_t>(mode), byteSize, &memory))
-    return Error(device_->driver->getStatusMessage(status));
+    return Error(device->driver->getStatusMessage(status));
   Buffer *buffer = new (std::nothrow) Buffer(this, memory);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
@@ -33,8 +33,8 @@ ErrorOr<BufferRef> Context::allocBuffer(size_t byteSize,
 ErrorOr<QueueRef> Context::createQueue() {
   M_driver_queue_t queueHandle = nullptr;
   if (M_driver_status_t status =
-          device_->driver->plugin.queue_create(handle, &queueHandle))
-    return Error(device_->driver->getStatusMessage(status));
+          device->driver->plugin.queue_create(handle, &queueHandle))
+    return Error(device->driver->getStatusMessage(status));
   std::unique_ptr<Queue> queue(new (std::nothrow) Queue(this, queueHandle));
   if (!queue)
     return Error("Failed to allocate memory for Queue object");
@@ -43,9 +43,9 @@ ErrorOr<QueueRef> Context::createQueue() {
 
 ErrorOr<EventRef> Context::createEvent(bool enableTiming) {
   M_driver_event_t eventHandle = nullptr;
-  if (M_driver_status_t status = device_->driver->plugin.event_create(
+  if (M_driver_status_t status = device->driver->plugin.event_create(
           handle, &eventHandle, enableTiming))
-    return Error(device_->driver->getStatusMessage(status));
+    return Error(device->driver->getStatusMessage(status));
   std::unique_ptr<Event> event(new (std::nothrow)
                                    Event(this, eventHandle, enableTiming));
   if (!event)
@@ -57,11 +57,11 @@ ErrorOr<float> Context::eventElapsedTime(Event &start, Event &end) {
   if (!start.enableTiming || !end.enableTiming)
     return Error("Both events must be created with timing enabled to "
                  "compute elapsed time");
-  float elapsed_ms = 0.0f;
-  if (M_driver_status_t status = device_->driver->plugin.event_elapsed_time(
-          handle, start.handle, end.handle, &elapsed_ms))
-    return Error(device_->driver->getStatusMessage(status));
-  return elapsed_ms;
+  float elapsedMs = 0.0f;
+  if (M_driver_status_t status = device->driver->plugin.event_elapsed_time(
+          handle, start.handle, end.handle, &elapsedMs))
+    return Error(device->driver->getStatusMessage(status));
+  return elapsedMs;
 }
 
 ErrorOr<FunctionRef>
@@ -79,12 +79,12 @@ Context::loadFunction(llvm::StringRef moduleName, llvm::StringRef functionName,
   }
 
   M_driver_function_t funcHandle = nullptr;
-  if (M_driver_status_t status = device_->driver->plugin.function_load(
-          device_->driver->handle, handle, code.data(), code.size(),
+  if (M_driver_status_t status = device->driver->plugin.function_load(
+          device->driver->handle, handle, code.data(), code.size(),
           functionName.data(), maxDynamicSharedBytes,
           debugLevel.empty() ? nullptr : debugLevel.data(), optimizationLevel,
           &funcHandle))
-    return Error(device_->driver->getStatusMessage(status));
+    return Error(device->driver->getStatusMessage(status));
 
   FunctionRef ref = FunctionRef::take(new Function(this, funcHandle));
   {

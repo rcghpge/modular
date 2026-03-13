@@ -11,8 +11,8 @@
 namespace M::Driver::HAL {
 
 Function::~Function() {
-  context->device_->driver->plugin.function_unload(
-      context->device_->driver->handle, context->handle, handle);
+  context->device->driver->plugin.function_unload(
+      context->device->driver->handle, context->handle, handle);
 }
 
 } // namespace M::Driver::HAL

@@ -28,19 +28,20 @@ class Device : public ReferenceCounted<Device> {
 public:
   ~Device();
 
-  ErrorOr<int64_t> id() const;
-  ErrorOr<StringRef> name() const;
+  ErrorOr<int64_t> getId() const;
+  ErrorOr<StringRef> getName() const;
   ErrorOr<ContextRef> createContext();
 
 private:
   explicit Device(Driver *driver, M_driver_device_t handle, int64_t id,
                   std::string name)
-      : driver(driver), handle(handle), id_(id), name_(name) {}
+      : driver(driver), handle(handle), id(id), name(name) {}
 
   Driver *driver;
   M_driver_device_t handle;
-  int64_t id_;
-  std::string name_;
+
+  int64_t id;
+  std::string name;
 
   friend class Driver;
   friend class Context;

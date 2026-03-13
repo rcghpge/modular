@@ -12,7 +12,7 @@
 namespace M::Driver::HAL {
 
 Queue::~Queue() {
-  context->device_->driver->plugin.queue_destroy(context->handle, handle);
+  context->device->driver->plugin.queue_destroy(context->handle, handle);
 }
 
 } // namespace M::Driver::HAL

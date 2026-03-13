@@ -35,25 +35,25 @@ protected:
     }
     ErrorOr<DriverRef> driverOr = Driver::create(soPath);
     ASSERT_TRUE(!driverOr.isError()) << driverOr.getError();
-    driver_ = driverOr.takeValue();
-    auto apiOr = driver_->property("api");
+    driver = driverOr.takeValue();
+    auto apiOr = driver->getProperty("api");
     if (!apiOr.isError())
       api = *apiOr;
   }
 
-  void TearDown() override { driver_.reset(); }
+  void TearDown() override { driver.reset(); }
 
-  DriverRef driver_;
+  DriverRef driver;
   llvm::StringRef api;
 };
 
 TEST_F(DriverHALTest, SignOfLife) {
-  cerr << "Driver plugin name = " << driver_->name()->str() << endl;
-  cerr << "Driver plugin path = " << driver_->pluginPath()->str() << endl;
+  cerr << "Driver plugin name = " << driver->getName()->str() << endl;
+  cerr << "Driver plugin path = " << driver->getPluginPath()->str() << endl;
 }
 
 TEST_F(DriverHALTest, DeviceCount) {
-  ErrorOr<int64_t> deviceCountOr = driver_->deviceCount();
+  ErrorOr<int64_t> deviceCountOr = driver->getDeviceCount();
   ASSERT_TRUE(!deviceCountOr.isError());
   int64_t deviceCount = deviceCountOr.takeValue();
   cerr << "Device count: " << deviceCount << endl;
@@ -67,25 +67,25 @@ protected:
     if (this->HasFatalFailure() || this->IsSkipped())
       return;
 
-    ASSIGN_NO_ERR(int64_t, deviceCount, driver_->deviceCount());
+    ASSIGN_NO_ERR(int64_t, deviceCount, driver->getDeviceCount());
     for (int64_t i = 0; i < deviceCount; i++) {
-      ErrorOr<DeviceRef> deviceOr = driver_->device(i);
+      ErrorOr<DeviceRef> deviceOr = driver->getDevice(i);
       ASSERT_TRUE(!deviceOr.isError());
-      devices_.push_back(deviceOr.takeValue());
+      devices.push_back(deviceOr.takeValue());
     }
   }
 
-  std::vector<DeviceRef> devices_;
+  std::vector<DeviceRef> devices;
 };
 
 TEST_F(DriverHALDeviceTest, DeviceGet) {
-  for (size_t i = 0; i < devices_.size(); i++) {
-    DeviceRef &device = devices_[i];
-    ErrorOr<int64_t> idOr = device->id();
+  for (size_t i = 0; i < devices.size(); i++) {
+    DeviceRef &device = devices[i];
+    ErrorOr<int64_t> idOr = device->getId();
     ASSERT_TRUE(!idOr.isError());
     int64_t id = idOr.takeValue();
     ASSERT_EQ(id, i);
-    ErrorOr<llvm::StringRef> nameOr = device->name();
+    ErrorOr<llvm::StringRef> nameOr = device->getName();
     ASSERT_TRUE(!nameOr.isError());
     llvm::StringRef name = nameOr.takeValue();
     cerr << "Retrieved device named '" << name.str() << "' with ID " << id
@@ -95,14 +95,14 @@ TEST_F(DriverHALDeviceTest, DeviceGet) {
 }
 
 TEST_F(DriverHALTest, PropertyApi) {
-  ErrorOr<llvm::StringRef> apiOr = driver_->property("api");
+  ErrorOr<llvm::StringRef> apiOr = driver->getProperty("api");
   ASSERT_FALSE(apiOr.isError()) << apiOr.getError();
   ASSERT_NE(0, apiOr->size());
   std::cerr << apiOr->str() << "\n";
 }
 
 TEST_F(DriverHALDeviceTest, DeviceCreateContext) {
-  for (DeviceRef &device : devices_) {
+  for (DeviceRef &device : devices) {
     ErrorOr<ContextRef> contextOr = device->createContext();
     ASSERT_TRUE(!contextOr.isError()) << contextOr.getError();
     ContextRef context = contextOr.takeValue();
@@ -116,7 +116,7 @@ protected:
     if (this->HasFatalFailure() || this->IsSkipped())
       return;
 
-    for (DeviceRef &device : devices_) {
+    for (DeviceRef &device : devices) {
       ErrorOr<ContextRef> contextOr = device->createContext();
       ASSERT_TRUE(!contextOr.isError()) << contextOr.getError();
       contexts.push_back(contextOr.takeValue());

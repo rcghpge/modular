@@ -42,17 +42,17 @@ public:
 
   ~Driver();
 
-  ErrorOr<StringRef> name() const;
-  ErrorOr<StringRef> pluginPath() const;
+  ErrorOr<StringRef> getName() const;
+  ErrorOr<StringRef> getPluginPath() const;
 
   /// Retrieve the number of devices supported by this driver.
-  ErrorOr<int64_t> deviceCount() const;
+  ErrorOr<int64_t> getDeviceCount() const;
 
   /// Retrieve a device by its ID.
   /// The ID must be in the range [0, `deviceCount()`-1].
-  ErrorOr<DeviceRef> device(int64_t id);
+  ErrorOr<DeviceRef> getDevice(int64_t id);
 
-  ErrorOr<StringRef> property(const char *name);
+  ErrorOr<StringRef> getProperty(const char *name);
 
 private:
   explicit Driver() {}

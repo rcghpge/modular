@@ -54,7 +54,7 @@ public:
   ~Context();
 
   /// Retrieve the device for this context.
-  DeviceRef device() const;
+  DeviceRef getDevice() const;
 
   ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
   ErrorOr<QueueRef> createQueue();
@@ -80,9 +80,9 @@ public:
 
 private:
   explicit Context(Device *device, M_driver_context_t handle)
-      : device_(device), handle(handle) {}
+      : device(device), handle(handle) {}
 
-  Device *device_;
+  Device *device;
   M_driver_context_t handle;
 
   std::shared_mutex funcCacheMutex;
