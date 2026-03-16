@@ -1,0 +1,64 @@
+// RUN: mo-opt %s --mo-to-mgp=constant-fold=false --mlir-print-ir-after=mgp-mo-to-primitives -o %t.mlir 2> %t.mgp
+// RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
+// RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
+
+
+// Input 1: [[1, 0], [0, -1]]
+// Input 2: [[0, 1], [-1, 0]]
+
+
+// --- Matmul alone on GPU ---
+mo.graph @parallel_gpu_matmul() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+  %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32, gpu:0>,
+                                  %b : !mo.tensor<[2, 2], f32, gpu:0>)
+         -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) {
+    %mm = mo.matmul(%arg0, %arg0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0>
+    mo.yield %mm : !mo.tensor<[2, 2], f32, gpu:0>
+  }
+  %ch0 = mo.chain.create()
+  %r0, %ch1 = mo.transfer[%ch0] %res#0 : !mo.tensor<[2, 2], f32, gpu:0> to <"cpu", 0>
+  %r1, %ch2 = mo.transfer[%ch1] %res#1 : !mo.tensor<[2, 2], f32, gpu:0> to <"cpu", 0>
+  mo.output %r0, %r1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK: 'parallel_gpu_matmul' returned tensor<2x2xf32>
+// CHECK-SAME: [1.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00, 1.{{0*}}e+00]
+// CHECK: , tensor<2x2xf32>
+// CHECK-SAME: [-1.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00, -1.{{0*}}e+00]
+
+
+// --- Matmul + relu on GPU: epilogue fusion ---
+mo.graph @parallel_gpu_matmul_relu() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+  %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32, gpu:0>,
+                                  %b : !mo.tensor<[2, 2], f32, gpu:0>)
+         -> (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) {
+    %mm = mo.matmul(%arg0, %arg0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0>
+    %relu = mo.relu(%mm) : !mo.tensor<[2, 2], f32, gpu:0>
+    mo.yield %relu : !mo.tensor<[2, 2], f32, gpu:0>
+  }
+  %ch0 = mo.chain.create()
+  %r0, %ch1 = mo.transfer[%ch0] %res#0 : !mo.tensor<[2, 2], f32, gpu:0> to <"cpu", 0>
+  %r1, %ch2 = mo.transfer[%ch1] %res#1 : !mo.tensor<[2, 2], f32, gpu:0> to <"cpu", 0>
+  mo.output %r0, %r1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK: 'parallel_gpu_matmul_relu' returned tensor<2x2xf32>
+// CHECK-SAME: [1.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00, 1.{{0*}}e+00]
+// CHECK: , tensor<2x2xf32>
+// CHECK-SAME: [0.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00]
+
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready
+
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready

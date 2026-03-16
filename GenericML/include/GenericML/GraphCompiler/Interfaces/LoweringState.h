@@ -321,6 +321,13 @@ public:
     execute.loweredBufferChains.try_emplace(key, chain);
   }
 
+  /// Overwrite the chain guard for a value that already has one.
+  /// Used when IR restructuring (e.g. region fusion) replaces the original
+  /// chain with a new one.
+  void replaceChainGuard(Value key, Value newChain) {
+    execute.loweredBufferChains[key] = newChain;
+  }
+
   using ParamPlaceholderOp = ParameterLoweringState::PlaceholderOp;
 
   /// Register what runtime SSA value the given graph SSA value is lowered to.

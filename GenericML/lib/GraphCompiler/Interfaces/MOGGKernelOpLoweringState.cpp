@@ -6,6 +6,10 @@
 
 #include "GenericML/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 
+#include "GenericML/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "Support/AssertStream.h"
+#include "mlir/IR/IRMapping.h"
+
 using namespace M;
 using namespace M::MGP;
 
@@ -824,285 +828,194 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   return success();
 }
 
+/// Fuse a set of synchronous compiled regions into one, then convert the
+/// synchronous call stubs to async dispatch with a join barrier.
+///
+/// After this function:
+///   - The fused region contains CallStubAsyncOps, an AsyncJoinOp, and a
+///     single AsyncReadyOp producing the output chain.
+///   - The original regions in `groupRegions` have been erased.
+///   - The fused region is inserted after `groupRegions.back()`.
+static MOGG::GenericCompiledRegionOp
+fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
+                      ArrayRef<Operation *> groupRegions) {
+  MOGG::GenericCompiledRegionOp fusedRegion =
+      MOGG::fuseAndReplaceCompiledRegions(/*allowDuplication=*/false,
+                                          groupRegions);
+
+  // fuseAndReplaceCompiledRegions leaves InOutSignatureAttr empty because it
+  // normally runs after ABI lowering. We call it earlier, so downstream passes
+  // still need a valid signature.
+  SmallVector<InOutSignatureAttr::InOutSemantics> sig(
+      fusedRegion->getNumOperands(), InOutSignatureAttr::kNone);
+  fusedRegion.setInOutSignatureAttr(InOutSignatureAttr::get(ctx, sig));
+
+  // Replace each synchronous mogg.call.stub with mogg.call.stub.async.
+  Block &body = fusedRegion.getBody().front();
+  SmallVector<Value> taskHandles;
+  body.walk([&](MOGG::CallStubOp callStub) {
+    OpBuilder b(ctx);
+    b.setInsertionPoint(callStub);
+    MOGG::CallStubAsyncOp asyncCall = MOGG::CallStubAsyncOp::create(
+        b, callStub.getLoc(), callStub.getName(), callStub.getInputs());
+    taskHandles.push_back(asyncCall.getTaskHandle());
+    callStub.erase();
+  });
+
+  // Insert the join barrier before the output terminator.
+  Operation *outputOp = body.getTerminator();
+  OpBuilder b(ctx);
+  b.setInsertionPoint(outputOp);
+  MOGG::AsyncJoinOp::create(b, loc, taskHandles);
+
+  // Fusion cloned one AsyncReadyOp per original region. The first one (which
+  // fuseAndReplaceCompiledRegions wired into the OutputOp) is the canonical
+  // chain; erase the rest and move the survivor after the join.
+  MOGG::AsyncReadyOp canonical;
+  body.walk([&](MOGG::AsyncReadyOp readyOp) {
+    if (!canonical) {
+      canonical = readyOp;
+      return;
+    }
+    readyOp.getResult().replaceAllUsesWith(canonical.getResult());
+    readyOp.erase();
+  });
+  ASSERT_STREAM(canonical, << "expected at least one AsyncReadyOp in fused "
+                              "parallel region body");
+  canonical->moveBefore(outputOp);
+
+  for (Operation *region : groupRegions)
+    region->erase();
+
+  return fusedRegion;
+}
+
 LogicalResult
 MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   mlir::MLIRContext *ctx = parallelOp->getContext();
   Location loc = parallelOp.getLoc();
 
-  // Get the body and verify structure
   Block &bodyBlock = parallelOp.getBodyRegion().front();
   size_t numLaunches = parallelOp.getInputs().size();
+  Value blockArg = bodyBlock.getArgument(0);
 
-  // Find the unique kernel in the body. Trivial parallel ops (yield-only)
-  // are folded away during canonicalization, so one must exist here.
-  MOGG::KernelOp kernelOp = nullptr;
-  for (Operation &op : bodyBlock.without_terminator()) {
-    if (auto kernel = dyn_cast<MOGG::KernelOp>(&op)) {
-      // TODO: this is a temporary restriction, we will eventually support
-      // multiple kernels in a parallel op.
-      if (kernelOp)
-        return parallelOp.emitOpError("body must contain exactly one kernel");
-      kernelOp = kernel;
+  SmallVector<MOGG::KernelOp> kernelOps;
+  for (Operation &op : bodyBlock.without_terminator())
+    if (auto kernel = dyn_cast<MOGG::KernelOp>(&op))
+      kernelOps.push_back(kernel);
+  if (kernelOps.empty())
+    return parallelOp.emitOpError("body must contain at least one kernel");
+
+  // For each kernel in the body, clone it once per launch, lower each clone
+  // via the standard lowerKernelOp path, then fuse and convert to async.
+  //
+  // Fusion is per kernel group (not across groups) to avoid creating dataflow
+  // cycles: a later group's buffer allocs may depend on the earlier group's
+  // chain output.
+  //
+  // perLaunchCloneResults tracks inter-kernel dependencies: for each original
+  // kernel result in the parallel body, we record the per-launch clone result
+  // so that subsequent kernel clones can resolve their operands via IRMapping.
+  // Clone ops are kept alive until after all kernels are processed because
+  // lookupExecuteLoweredValue needs the clone result SSA values.
+  DenseMap<Value, SmallVector<Value>> perLaunchCloneResults;
+  SmallVector<Operation *> allClones;
+
+  for (MOGG::KernelOp kernelOp : kernelOps) {
+    SmallVector<Operation *> kernelClones;
+    SmallVector<Operation *> groupRegions;
+
+    for (size_t launch = 0; launch < numLaunches; ++launch) {
+      IRMapping mapper;
+      mapper.map(blockArg, parallelOp.getInputs()[launch]);
+      for (auto &[origResult, cloneResults] : perLaunchCloneResults)
+        mapper.map(origResult, cloneResults[launch]);
+
+      OpBuilder cloneBuilder(ctx);
+      cloneBuilder.setInsertionPointAfter(parallelOp);
+      Operation *clonedOp = cloneBuilder.clone(*kernelOp, mapper);
+      auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
+
+      // The parallel body uses the first input's device as a representative.
+      // For launches on other devices, update the clone's device attribute
+      // and result types so that lowerKernelOp uses the correct device
+      // context and allocates output buffers on the right device.
+      Value launchInput = parallelOp.getInputs()[launch];
+      if (auto inputTy = dyn_cast<MO::TensorType>(launchInput.getType())) {
+        DeviceRefAttr launchDevice = inputTy.getDeviceRef();
+        if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
+          clonedKernel.setDeviceRef(launchDevice);
+          clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
+            placeholder.setDeviceAttr(launchDevice);
+          });
+        }
+        for (OpResult result : clonedKernel->getResults()) {
+          if (auto resTy = dyn_cast<MO::TensorType>(result.getType()))
+            if (resTy.getDeviceRef() != launchDevice)
+              result.setType(resTy.cloneWith(launchDevice));
+        }
+      }
+
+      MOGGKernelOpLoweringState perLaunchState(clonedKernel, loweringState);
+      if (failed(perLaunchState.lowerKernelOp(clonedKernel)))
+        return failure();
+
+      groupRegions.push_back(perLaunchState.mgpRegion);
+      kernelClones.push_back(clonedOp);
+    }
+
+    for (auto [idx, origResult] : llvm::enumerate(kernelOp->getResults())) {
+      SmallVector<Value> &cloneResults = perLaunchCloneResults[origResult];
+      for (size_t launch = 0; launch < numLaunches; ++launch)
+        cloneResults.push_back(kernelClones[launch]->getResult(idx));
+    }
+    allClones.append(kernelClones);
+
+    MOGG::GenericCompiledRegionOp fusedRegion =
+        fuseAndConvertToAsync(ctx, loc, groupRegions);
+    Value fusedChain = fusedRegion.getResult(0);
+    loweringState.setCurrentExecuteChain(
+        cast<TypedValue<MEF::ChainType>>(fusedChain));
+
+    // lowerKernelOp registered chain guards against individual compiled region
+    // chains, which fuseAndConvertToAsync just erased. Repoint them to the
+    // fused region's chain so that subsequent kernel groups see valid guards.
+    for (Operation *clone : kernelClones) {
+      for (Value cloneRes : clone->getResults()) {
+        loweringState.replaceChainGuard(cloneRes, fusedChain);
+        Value lowered = loweringState.lookupExecuteLoweredValue(cloneRes);
+        if (lowered)
+          loweringState.replaceChainGuard(lowered, fusedChain);
+      }
     }
   }
 
-  // Update device from the kernel
-  device = MO::getDeviceOrDefaultAny(kernelOp);
-
-  // 2. Create the kernel stub using the shared helper.
-  // First prepare the kernel body by replacing placeholders with block args.
-  Block *kernelBody = &kernelOp.getExecBody().front();
-  auto outputPlaceholdersOp = kernelOp.getOutputPlaceholder();
-  if (outputPlaceholdersOp) {
-    for (auto value : outputPlaceholdersOp.getResults())
-      value.replaceAllUsesWith(kernelBody->addArgument(value.getType(), loc));
-  }
-
-  auto scratchPlaceholdersOp = kernelOp.getScratchPlaceholder();
-  if (scratchPlaceholdersOp) {
-    for (auto value : scratchPlaceholdersOp.getResults())
-      value.replaceAllUsesWith(kernelBody->addArgument(value.getType(), loc));
-  }
-
-  // Save kernel info before we create the stub
-  size_t numKernelInputs = kernelOp.getInputs().size();
-
-  // Create the stub with isAsync=false since async dispatch is handled by
-  // CallStubAsyncOp
-  auto stubInfoOr = createKernelStub(kernelOp, "parallel_stub");
-  if (failed(stubInfoOr))
-    return failure();
-  auto stubInfo = *stubInfoOr;
-  StringAttr stubName = stubInfo.stubName;
-
-  // Override the isAsync attribute to false for parallel dispatch
-  kernelStub.setIsAsyncAttr(builder.getBoolAttr(false));
-
-  // 3. Prepare inputs/outputs for the compiled region
-  auto currentChain =
-      opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
-
-  // Collect operands for the compiled region
-  SmallVector<Value> regionOperands;
-  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-
-  auto addOperand = [&](Value v, InOutSignatureAttr::InOutSemantics sig) {
-    regionOperands.push_back(v);
-    operandSemantics.push_back(sig);
-  };
-
-  // Add the chain
-  addOperand(currentChain, InOutSignatureAttr::kIn);
-
-  // 4. For each launch, collect lowered inputs as buffers
-  for (size_t i = 0; i < numLaunches; ++i) {
-    Value origInput = parallelOp.getInputs()[i];
-    MGP::BufferizedTensor bufferizedInput =
-        opLoweringState.getBufferizedInput(origInput);
-    addOperand(bufferizedInput.buffer, InOutSignatureAttr::kIn);
-  }
-
-  // 5. For each launch, create output buffer allocations
+  // Map parallel op results to the lowered output tensors. The yield operands
+  // identify which kernel results flow out. For each, look up the per-launch
+  // clone result's lowered form (registered by lowerKernelOp → createOutputs).
   auto yieldOp = cast<MO::YieldOp>(bodyBlock.getTerminator());
-  SmallVector<SmallVector<MGP::MOOutputStorage>> perLaunchOutputs(numLaunches);
-
-  // Collect the device for each launch (from its input)
-  SmallVector<DeviceRefAttr> perLaunchDevices;
-  for (size_t i = 0; i < numLaunches; ++i) {
-    Value inputVal = parallelOp.getInputs()[i];
-    auto inputTensorType = dyn_cast<MO::TensorType>(inputVal.getType());
-    DeviceRefAttr inputDevice =
-        inputTensorType ? inputTensorType.getDeviceRef() : device;
-    perLaunchDevices.push_back(inputDevice);
-  }
-
-  for (size_t i = 0; i < numLaunches; ++i) {
-    DeviceRefAttr inputDevice = perLaunchDevices[i];
-
-    for (Value yieldResult : yieldOp.getOperands()) {
-      auto yieldTensorType = dyn_cast<MO::TensorType>(yieldResult.getType());
-      if (!yieldTensorType)
-        continue;
-
-      // Use the input's device for this launch's output
-      MO::TensorType outputType = yieldTensorType;
-      if (inputDevice && inputDevice != yieldTensorType.getDeviceRef()) {
-        outputType = yieldTensorType.cloneWith(inputDevice);
-      }
-
-      auto tensorSpecOr = opLoweringState.createTensorSpec(outputType);
-      if (failed(tensorSpecOr))
-        return failure();
-
-      auto bufOr =
-          opLoweringState.createBuffer(currentChain, *tensorSpecOr, outputType);
-      if (failed(bufOr))
-        return failure();
-
-      perLaunchOutputs[i].push_back(*bufOr);
-      addOperand(bufOr->buffer, InOutSignatureAttr::kOut);
-    }
-  }
-
-  // 6. Add device contexts for each unique device
-  llvm::SmallDenseMap<DeviceRefAttr, size_t> deviceCtxIndices;
-  SmallVector<Value> deviceCtxOperands;
-  for (DeviceRefAttr launchDevice : perLaunchDevices) {
-    if (!deviceCtxIndices.contains(launchDevice)) {
-      deviceCtxIndices[launchDevice] = deviceCtxOperands.size();
-      Value deviceCtx = loweringState.getExecuteDevice(launchDevice);
-      deviceCtxOperands.push_back(deviceCtx);
-      addOperand(deviceCtx, InOutSignatureAttr::kIn);
-    }
-  }
-
-  // 7. Create the GenericCompiledRegionOp
-  SmallVector<Type> resultTypes;
-  resultTypes.push_back(currentChain.getType()); // Output chain
-
-  mgpRegion = MOGG::GenericCompiledRegionOp::create(
-      builder, loc, resultTypes, regionOperands,
-      KGEN::ParamDeclArrayAttr::get(ctx, {}),
-      InOutSignatureAttr::get(ctx, operandSemantics),
-      MOGG::FusionInfoAttr{},     // fusionInfo - not participating in fusion
-      builder.getBoolAttr(false), // isAsync
-      ArrayAttr::get(ctx, {}),    // constantResources
-      builder.getBoolAttr(false), // canFuseIntoOther
-      builder.getBoolAttr(false), // canBeFusedInto
-      builder.getBoolAttr(false), // canDuplicate
-      builder.getBoolAttr(true)   // isStructuredKernel
-  );
-  mgpRegion.setDeviceRef(device);
-
-  // 8. Create the body of the compiled region
-  mgpRegionBody = &mgpRegion.getBody().emplaceBlock();
-  builder.setInsertionPointToStart(mgpRegionBody);
-
-  SmallVector<Location> locs(regionOperands.size(), loc);
-  mgpRegionBody->addArguments(ValueRange(regionOperands).getTypes(), locs);
-
-  // 9. Handle device context placeholders in the stub
-  kernelStub.walk([&](MOGG::DeviceContextPlaceholderOp moggContext) {
-    Value moggContextArg = kernelStub.getBodyBlock().addArgument(
-        moggContext.getType(), moggContext.getLoc());
-    moggContext.replaceAllUsesWith(moggContextArg);
-    moggContext.erase();
-  });
-
-  // 10. Get stub argument info
-  auto stubArgs = kernelStub.getBodyBlock().getArguments();
-
-  // Count how many tensor outputs per launch
-  size_t numOutputsPerLaunch = 0;
-  for (Value yieldResult : yieldOp.getOperands()) {
-    if (isa<MO::TensorType>(yieldResult.getType()))
-      numOutputsPerLaunch++;
-  }
-
-  // 11. Emit async stub calls for each launch
-  size_t inputStartIdx = 1;
-  size_t outputStartIdx = inputStartIdx + numLaunches;
-  size_t deviceCtxStartIdx = regionOperands.size() - deviceCtxOperands.size();
-
-  SmallVector<Value> taskHandles;
-
-  for (size_t launch = 0; launch < numLaunches; ++launch) {
-    SmallVector<Value> stubCallOperands;
-
-    Value inputArg = mgpRegionBody->getArgument(inputStartIdx + launch);
-    size_t outputIdx = outputStartIdx + launch * numOutputsPerLaunch;
-
-    DeviceRefAttr launchDevice = perLaunchDevices[launch];
-    size_t deviceCtxIdx = deviceCtxStartIdx + deviceCtxIndices[launchDevice];
-    Value deviceCtxArg = mgpRegionBody->getArgument(deviceCtxIdx);
-
-    for (auto stubArg : stubArgs) {
-      auto tensorType = MO::dynCastFromTensorLike(stubArg.getType());
-      if (!tensorType) {
-        // Non-tensor argument - this is the device context
-        stubCallOperands.push_back(deviceCtxArg);
-        continue;
-      }
-
-      size_t stubArgIdx = stubArg.getArgNumber();
-      bool isOutput = stubArgIdx >= numKernelInputs;
-
-      Value bufferArg;
-      if (isOutput) {
-        bufferArg = mgpRegionBody->getArgument(outputIdx);
-        outputIdx++;
-      } else {
-        bufferArg = inputArg;
-      }
-
-      // Create TensorInitOp using buildMojoIOTensorObject pattern
-      MO::IOKind io = isOutput ? MO::IOKind::Output : MO::IOKind::Input;
-      auto ioAttr = MO::IOKindAttr::get(ctx, io);
-      auto mutAttr = BoolAttr::get(ctx, isOutput);
-
-      stubArg.setType(tensorType.cloneWith(ioAttr).cloneWithMut(mutAttr));
-
-      auto tensorInitOp = MOGG::TensorInitOp::create(
-          builder, loc, stubArg.getType(), bufferArg,
-          /*dynamicDimensions=*/ArrayRef<Value>{}, mutAttr, ioAttr,
-          /*exclusive=*/builder.getBoolAttr(true));
-
-      stubCallOperands.push_back(tensorInitOp);
-    }
-
-    auto stubCall = MOGG::CallStubAsyncOp::create(
-        builder, loc, SymbolRefAttr::get(stubName), stubCallOperands);
-
-    taskHandles.push_back(stubCall.getTaskHandle());
-  }
-
-  // Update stub function type
-  kernelStub.setFunctionType(FunctionType::get(
-      ctx, kernelStub.getBodyBlock().getArgumentTypes(), TypeRange{}));
-
-  // 12. Synchronize on all task handles, then produce the output chain.
-  MOGG::AsyncJoinOp::create(builder, loc, taskHandles);
-  auto outputChain =
-      MOGG::AsyncReadyOp::create(builder, loc, currentChain.getType())
-          .getOutput();
-
-  // 13. Create output op for the compiled region
-  MOGG::OutputOp::create(builder, loc, outputChain);
-
-  // 15. Erase placeholder ops before calling lowerKernelStub().
-  // We already replaced their uses with block arguments, and lowerKernelStub()
-  // would try to process them through lowerKernelOpWithOperandsMapping() which
-  // would fail since they're not in the operands mapping.
-  if (outputPlaceholdersOp)
-    outputPlaceholdersOp.erase();
-  if (scratchPlaceholdersOp)
-    scratchPlaceholdersOp.erase();
-
-  // 16. Lower the kernel stub ops (bind lambda, constants, get dim, etc.)
-  // Device context placeholders were already handled above (step 9).
-  lowerKernelStub();
-
-  // 17. Apply MOGG ABI lowering
-  mlir::BitVector unpackAll(mgpRegionBody->getNumArguments(), true);
-  mlir::BitVector packAll(mgpRegion.getNumResults(), true);
-  packAll.reset(0); // Don't replace the chain output
-  loweringState.lowerMOGGABI(mgpRegion, unpackAll, packAll);
-
-  // 18. Map the parallel op results to the output tensors
-  builder.setInsertionPointAfter(mgpRegion);
-  Value outChain = mgpRegion.getResult(0);
-
   size_t resultIdx = 0;
-  for (size_t launch = 0; launch < numLaunches; ++launch) {
-    for (auto &outputStorage : perLaunchOutputs[launch]) {
-      Value origResult = parallelOp.getResult(resultIdx++);
-      opLoweringState.createOutputTensor(
-          origResult, outChain, outputStorage.buffer, outputStorage.tensorSpec);
+  for (Value yieldOperand : yieldOp.getOperands()) {
+    if (!isa<MO::TensorType>(yieldOperand.getType()))
+      continue;
+    SmallVector<Value> &cloneResults = perLaunchCloneResults[yieldOperand];
+    for (size_t launch = 0; launch < numLaunches; ++launch) {
+      Value parallelResult = parallelOp.getResult(resultIdx++);
+      Value cloneRes = cloneResults[launch];
+      Value loweredTensor = loweringState.lookupExecuteLoweredValue(cloneRes);
+      Value guardChain = loweringState.getChainGuardingValueOrNull(cloneRes);
+      if (guardChain)
+        loweringState.emplaceExecuteLoweredBufferValue(
+            parallelResult, loweredTensor, guardChain);
+      else
+        loweringState.emplaceExecuteLoweredValue(parallelResult, loweredTensor);
     }
   }
 
-  loweringState.setCurrentExecuteChain(
-      cast<TypedValue<MEF::ChainType>>(outChain));
+  // Erase clone shells in reverse order (later kernels may reference earlier
+  // kernels' results as operands).
+  for (Operation *clone : llvm::reverse(allClones))
+    clone->erase();
 
   return success();
 }

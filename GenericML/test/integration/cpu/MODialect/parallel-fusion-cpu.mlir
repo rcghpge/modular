@@ -1,0 +1,92 @@
+// RUN: mo-opt %s --mo-to-mgp=constant-fold=false --mlir-print-ir-after=mgp-mo-to-primitives -o %t.mlir 2> %t.mgp
+// RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
+// RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
+// Verify that the parallel body contains multiple kernels before lowering.
+// RUN: mo-opt %s --mo-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
+// Verify lowering works with fusion disabled (multiple kernel groups).
+// RUN: mo-opt %s --mo-to-mgp="constant-fold=false fuse-jit-kernels=false" -o /dev/null
+
+
+// Tests for elementwise fusion patterns inside mo.parallel.
+// All tests use f32 [2,2] matrices.
+// Input 1: [[1, 0], [0, -1]]
+// Input 2: [[0, 1], [-1, 0]]
+
+
+// --- Negative + relu with f32: elementwise chain ---
+// relu(neg(x)):
+//   neg([[1,0],[0,-1]]) = [[-1,0],[0,1]], relu = [[0,0],[0,1]]
+//   neg([[0,1],[-1,0]]) = [[0,-1],[1,0]], relu = [[0,0],[1,0]]
+mo.graph @parallel_neg_relu_f32() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32>,
+                                  %b : !mo.tensor<[2, 2], f32>)
+         -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+    %neg = mo.negative(%arg0) : !mo.tensor<[2, 2], f32>
+    %relu = mo.relu(%neg) : !mo.tensor<[2, 2], f32>
+    mo.yield %relu : !mo.tensor<[2, 2], f32>
+  }
+  mo.output %res#0, %res#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// CHECK: 'parallel_neg_relu_f32' returned tensor<2x2xf32>
+// CHECK-SAME: [0.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00, 1.{{0*}}e+00]
+// CHECK: , tensor<2x2xf32>
+// CHECK-SAME: [0.{{0*}}e+00, 0.{{0*}}e+00, 1.{{0*}}e+00, 0.{{0*}}e+00]
+
+
+// --- Three chained ops: negative + relu + negative ---
+// neg(relu(neg(x))):
+//   neg([[1,0],[0,-1]]) = [[-1,0],[0,1]]
+//   relu = [[0,0],[0,1]]
+//   neg = [[0,0],[0,-1]]
+//
+//   neg([[0,1],[-1,0]]) = [[0,-1],[1,0]]
+//   relu = [[0,0],[1,0]]
+//   neg = [[0,0],[-1,0]]
+mo.graph @parallel_three_ops() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32>,
+                                  %b : !mo.tensor<[2, 2], f32>)
+         -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+    %neg1 = mo.negative(%arg0) : !mo.tensor<[2, 2], f32>
+    %relu = mo.relu(%neg1) : !mo.tensor<[2, 2], f32>
+    %neg2 = mo.negative(%relu) : !mo.tensor<[2, 2], f32>
+    mo.yield %neg2 : !mo.tensor<[2, 2], f32>
+  }
+  mo.output %res#0, %res#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// neg(0.0) = -0.0 in IEEE 754, so zeros become negative zero.
+// CHECK: 'parallel_three_ops' returned tensor<2x2xf32>
+// CHECK-SAME: [-0.{{0*}}e+00, -0.{{0*}}e+00, -0.{{0*}}e+00, -1.{{0*}}e+00]
+// CHECK: , tensor<2x2xf32>
+// CHECK-SAME: [-0.{{0*}}e+00, -0.{{0*}}e+00, -1.{{0*}}e+00, -0.{{0*}}e+00]
+
+// Both graphs produce fused compiled regions with async dispatch.
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready
+
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready
+
+// Verify that before lowering, the parallel body has multiple kernels.
+// neg+relu = 2 kernels:
+// CHECK-MOGG: mo.parallel
+// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mo.yield
+// neg+relu+neg = 3 kernels:
+// CHECK-MOGG: mo.parallel
+// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mo.yield

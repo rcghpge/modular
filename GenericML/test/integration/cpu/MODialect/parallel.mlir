@@ -1,8 +1,6 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-to-mgp=constant-fold=false --mlir-print-ir-after=mgp-mo-to-primitives -o %t.mlir 2> %t.mgp
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
-
-// Verify async dispatch structure at the MGP stage.
-// RUN: mo-opt %s --mo-to-mogg --mgp-mo-to-primitives | FileCheck %s --check-prefix=CHECK-MGP
+// RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
 
 // Execute two relu ops
 mo.graph @sequential_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
@@ -30,10 +28,96 @@ mo.graph @parallel_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
 }
 
-// Verify the parallel op lowers to async dispatch at the MGP stage.
-// CHECK-MGP: mogg.kernel.stub @parallel_stub_0
+
+// Test mo.parallel with multiple kernels: add with captured constant + relu.
+mo.graph @parallel_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %bias = mo.constant {value = #M.dense_array<-5, -5, -5> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
+                                  %const2 : !mo.tensor<[3], si32>)
+         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+    %added = mo.add(%arg0, %bias) : !mo.tensor<[3], si32>
+    %relu = mo.relu(%added) : !mo.tensor<[3], si32>
+    mo.yield %relu : !mo.tensor<[3], si32>
+  }
+  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+}
+
+// CHECK: 'parallel_add_relu' returned tensor<3xsi32> [0, 0, 0]
+// CHECK: , tensor<3xsi32> [0, 3, 0]
+
+
+// Test mo.parallel where the kernel uses the same input twice.
+// The optimizer strength-reduces add(%arg0, %arg0) to mul(%arg0, 2), which
+// introduces a captured constant and exercises the captured-value path.
+mo.graph @parallel_self_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
+                                  %const2 : !mo.tensor<[3], si32>)
+         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+    %added = mo.add(%arg0, %arg0) : !mo.tensor<[3], si32>
+    %relu = mo.relu(%added) : !mo.tensor<[3], si32>
+    mo.yield %relu : !mo.tensor<[3], si32>
+  }
+  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+}
+
+// add(x,x) = 2*x, then relu:
+// [1,-2,3]*2=[2,-4,6] -> relu=[2,0,6]; [-9,8,-7]*2=[-18,16,-14] -> relu=[0,16,0]
+// CHECK: 'parallel_self_add_relu' returned tensor<3xsi32> [2, 0, 6]
+// CHECK: , tensor<3xsi32> [0, 16, 0]
+
+
+// Test mo.parallel with a diamond dependence pattern: relu and negative are
+// independent branches that both consume the input, and add merges them.
+//   relu(X)   neg(X)
+//       \      /
+//      add(B, C)
+// [1,-2,3]:  relu=[1,0,3], neg=[-1,2,-3], add=[0,2,0]
+// [-9,8,-7]: relu=[0,8,0], neg=[9,-8,7],  add=[9,0,7]
+mo.graph @parallel_diamond() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
+                                  %const2 : !mo.tensor<[3], si32>)
+         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+    %r = mo.relu(%arg0) : !mo.tensor<[3], si32>
+    %n = mo.negative(%arg0) : !mo.tensor<[3], si32>
+    %sum = mo.add(%r, %n) : !mo.tensor<[3], si32>
+    mo.yield %sum : !mo.tensor<[3], si32>
+  }
+  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+}
+
+// CHECK: 'parallel_diamond' returned tensor<3xsi32> [0, 2, 0]
+// CHECK: , tensor<3xsi32> [9, 0, 7]
+
+// Each parallel graph lowers to a fused compiled region with async dispatch:
+// two call.stub.async (one per launch), an async.join, and an async.ready.
+
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @parallel_stub_0({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.call.stub.async @parallel_stub_0({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
+
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready
+
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready
+
+// CHECK-MGP: mogg.generic.compiled.region
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.async.join
+// CHECK-MGP:   mogg.async.ready
+

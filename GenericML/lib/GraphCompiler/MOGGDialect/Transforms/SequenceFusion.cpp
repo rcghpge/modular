@@ -30,10 +30,9 @@ namespace M::MOGG {
 
 namespace M::MOGG {
 
-namespace {
-
-void fuseAndReplaceCompiledRegions(bool allowDuplication,
-                                   ArrayRef<Operation *> toFuse) {
+GenericCompiledRegionOp
+fuseAndReplaceCompiledRegions(bool allowDuplication,
+                              ArrayRef<Operation *> toFuse) {
   ASSERT_STREAM(llvm::all_of(toFuse,
                              [](auto op) {
                                return isa<MOGG::GenericCompiledRegionOp>(op);
@@ -211,7 +210,11 @@ void fuseAndReplaceCompiledRegions(bool allowDuplication,
                      !chainsThatShouldBeRemapped.empty()))) {
     oldValue.replaceAllUsesWith(newValue);
   }
+
+  return fusedCompiledRegionOp;
 }
+
+namespace {
 
 /// TODO(GEX-2986): Remove this function.
 static SmallVector<SmallVector<Operation *>>

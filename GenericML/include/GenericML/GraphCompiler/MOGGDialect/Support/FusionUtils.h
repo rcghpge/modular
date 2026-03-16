@@ -59,6 +59,14 @@ FusionInfoAttr createFusionInfo(MLIRContext *ctx, ArrayRef<Operation *> ops,
     return FusionInfoAttr::get(ctx, GroupAttr::get(ctx, children));
 }
 
+/// Fuse a topologically-sorted list of GenericCompiledRegionOps into a single
+/// region.  All uses of the old regions' results are replaced with the fused
+/// region's results.  The caller must erase the old regions afterward.
+/// Returns the newly created fused region.
+GenericCompiledRegionOp
+fuseAndReplaceCompiledRegions(bool allowDuplication,
+                              ArrayRef<Operation *> toFuse);
+
 /// Fuse small constant inputs to `kernel` into the kernel, and erase the
 /// original constant op if it has no remaining users.
 ///
