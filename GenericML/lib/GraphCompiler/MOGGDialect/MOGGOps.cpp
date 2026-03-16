@@ -911,8 +911,7 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
     std::string sig;
     llvm::raw_string_ostream os(sig);
     os << "fn " << methodName << "[dtype: DType, rank: Int, simd_width: Int,"
-       << " element_alignment: Int = 1]("
-       << "self, idx: IndexList[rank]";
+       << " element_alignment: Int = 1](" << "self, idx: IndexList[rank]";
     if (isOutputLambda)
       os << ", val: SIMD[dtype, simd_width]";
     os << ")";
@@ -1582,9 +1581,9 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
                     break;
                   }
                 }
-                if (!errOccurred)
-                  state.genAllKeepAliveStatements();
               });
+              if (!errOccurred)
+                state.genAllKeepAliveStatements();
             }
           };
 
