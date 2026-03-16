@@ -56,7 +56,8 @@ public:
   /// Retrieve the device for this context.
   DeviceRef getDevice() const;
 
-  ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
+  ErrorOr<BufferRef> allocBufferSync(size_t byteSize);
+  ErrorOr<BufferRef> allocBufferPinned(size_t byteSize);
   ErrorOr<QueueRef> createQueue();
   ErrorOr<EventRef> createEvent();
 

@@ -18,13 +18,25 @@ Context::~Context() {
   device->driver->plugin.context_destroy(handle);
 }
 
-ErrorOr<BufferRef> Context::allocBuffer(size_t byteSize,
-                                        Buffer::AllocMode mode) {
+ErrorOr<BufferRef> Context::allocBufferSync(size_t byteSize) {
   void *memory;
-  if (M_driver_status_t status = device->driver->plugin.memory_alloc(
-          handle, static_cast<M_driver_alloc_mode_t>(mode), byteSize, &memory))
+  if (M_driver_status_t status =
+          device->driver->plugin.memory_alloc_sync(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));
-  Buffer *buffer = new (std::nothrow) Buffer(this, memory);
+  Buffer *buffer =
+      new (std::nothrow) Buffer(this, Buffer::AllocMode::kSync, memory);
+  if (!buffer)
+    return Error("Failed to allocate memory for Buffer object");
+  return BufferRef::take(buffer);
+}
+
+ErrorOr<BufferRef> Context::allocBufferPinned(size_t byteSize) {
+  void *memory;
+  if (M_driver_status_t status =
+          device->driver->plugin.memory_alloc_pinned(handle, byteSize, &memory))
+    return Error(device->driver->getStatusMessage(status));
+  Buffer *buffer =
+      new (std::nothrow) Buffer(this, Buffer::AllocMode::kPinned, memory);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);

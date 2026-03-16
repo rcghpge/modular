@@ -13,6 +13,7 @@
 #define MLRT_DRIVER_HAL_QUEUE_H
 
 #include "HAL/M_driver_api.h"
+#include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
@@ -20,12 +21,17 @@ namespace M::Driver::HAL {
 
 class Context;
 
+class Buffer;
+using BufferRef = RCRef<Buffer>;
+
 class Queue;
 using QueueRef = RCRef<Queue>;
 
 class Queue : public ReferenceCounted<Queue> {
 public:
   ~Queue();
+
+  ErrorOr<BufferRef> allocBufferAsync(size_t byteSize);
 
 private:
   explicit Queue(Context *context, M_driver_queue_t handle)
@@ -35,6 +41,7 @@ private:
   M_driver_queue_t handle;
 
   friend class Context;
+  friend class Buffer;
 };
 
 } // namespace M::Driver::HAL

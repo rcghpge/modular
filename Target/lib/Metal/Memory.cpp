@@ -4,14 +4,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Common.h"
 #include "Context.h"
-#include "Device.h"
-#include "HAL/M_driver_api.h"
+#include "HAL/M_driver_memory.h"
 
-M_driver_status_t M_driver_memory_alloc(M_driver_context_t context,
-                                        M_driver_alloc_mode_t mode,
-                                        uint64_t size, void **memory) {
+M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
+                                               uint64_t size, void **memory) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
@@ -20,62 +17,57 @@ M_driver_status_t M_driver_memory_alloc(M_driver_context_t context,
     *memory = nullptr;
     return M_DRIVER_STATUS_SUCCESS;
   }
-
-  auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
-  MTL::Device *metalDev = context->device->mDevice;
-  if (!metalDev)
-    return M_DRIVER_STATUS_BAD_CONTEXT;
-
-  MTL::ResourceOptions options =
-      MTL::ResourceStorageModeShared | MTL::ResourceCPUCacheModeWriteCombined;
-  MTL::Buffer *buffer = metalDev->newBuffer(size, options);
-  if (!buffer)
-    return M_DRIVER_STATUS_OUT_OF_MEMORY;
-
-  switch (mode) {
-  case M_DRIVER_ALLOC_MODE_HOST: {
-    void *contents = buffer->contents();
-    if (!contents) {
-      buffer->release();
-      return M_DRIVER_STATUS_OUT_OF_MEMORY;
-    }
-    *memory = contents;
-    context->trackBuffer(contents, buffer);
-    return M_DRIVER_STATUS_SUCCESS;
-  }
-  case M_DRIVER_ALLOC_MODE_SYNC:
-  case M_DRIVER_ALLOC_MODE_ASYNC: {
-    uint64_t gpuAddress = buffer->gpuAddress();
-    if (gpuAddress == 0) {
-      buffer->release();
-      return M_DRIVER_STATUS_OUT_OF_MEMORY;
-    }
-    *memory = reinterpret_cast<void *>(gpuAddress);
-    context->trackBuffer(reinterpret_cast<void *>(gpuAddress), buffer);
-    return M_DRIVER_STATUS_SUCCESS;
-  }
-  }
-
-  buffer->release();
-  return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  auto result = context->alloc(size);
+  if (!result)
+    return result.error();
+  *memory = *result;
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_memory_free(M_driver_context_t context,
-                                       void *memory) {
+M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
+                                             uint64_t size, void **memory) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (!memory)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (size == 0) {
+    *memory = nullptr;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  auto result = context->alloc(size);
+  if (!result)
+    return result.error();
+  *memory = *result;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
+                                              void *memory) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
     return M_DRIVER_STATUS_SUCCESS;
+  return context->free(memory);
+}
 
-  auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
+                                            void *memory) {
+  if (!context)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (!memory)
+    return M_DRIVER_STATUS_SUCCESS;
+  return context->free(memory);
+}
 
-  MTL::Buffer *buf = context->getTrackedBuffer(memory);
-  if (!buf)
-    return M_DRIVER_STATUS_BAD_MEMORY;
+M_driver_status_t
+M_driver_memory_alloc_async([[maybe_unused]] M_driver_queue_t queue,
+                            [[maybe_unused]] uint64_t size,
+                            [[maybe_unused]] void **memory) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
 
-  buf->release();
-  context->untrackBuffer(memory);
-
-  return M_DRIVER_STATUS_SUCCESS;
+M_driver_status_t
+M_driver_memory_free_async([[maybe_unused]] M_driver_queue_t queue,
+                           [[maybe_unused]] void *memory) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
 }

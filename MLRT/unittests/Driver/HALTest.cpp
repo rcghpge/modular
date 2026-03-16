@@ -133,16 +133,14 @@ protected:
 
 TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
   for (ContextRef &context : contexts) {
-    ErrorOr<BufferRef> bufferOr =
-        context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::HOST);
+    ErrorOr<BufferRef> bufferOr = context->allocBufferPinned(/*byteSize=*/128);
     ASSERT_FALSE(bufferOr.isError());
   }
 }
 
 TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
   for (ContextRef &context : contexts) {
-    ErrorOr<BufferRef> bufferOr =
-        context->allocBuffer(/*byteSize=*/128, Buffer::AllocMode::SYNC);
+    ErrorOr<BufferRef> bufferOr = context->allocBufferSync(/*byteSize=*/128);
     ASSERT_FALSE(bufferOr.isError());
   }
 }
@@ -183,5 +181,33 @@ TEST_F(DriverHALContextTest, EventIsReady) {
     // An unrecorded event should report ready.
     ASSIGN_NO_ERR(bool, ready, event->isReady());
     EXPECT_TRUE(ready);
+  }
+}
+
+struct DriverHALQueueTest : DriverHALContextTest {
+  void SetUp() override {
+    DriverHALContextTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    if (api == "CUDA" || api == "HIP" || api == "Metal")
+      GTEST_SKIP() << "Unimplemented for " << api;
+
+    for (ContextRef &context : contexts) {
+      auto queueOr = context->createQueue();
+      ASSERT_FALSE(queueOr.isError()) << queueOr.getError();
+      queues.push_back(queueOr.takeValue());
+    }
+  }
+
+  std::vector<QueueRef> queues;
+};
+
+TEST_F(DriverHALQueueTest, AllocBufferAsync) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+  for (QueueRef &queue : queues) {
+    ErrorOr<BufferRef> bufferOr = queue->allocBufferAsync(/*byteSize=*/128);
+    ASSERT_FALSE(bufferOr.isError());
   }
 }

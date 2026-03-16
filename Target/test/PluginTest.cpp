@@ -84,72 +84,74 @@ TEST_F(DriverPluginTest, DeviceContext) {
   }
 }
 
-TEST_F(DriverPluginContextTest, MemoryHost) {
+TEST_F(DriverPluginContextTest, MemoryAllocSync) {
   for (M_driver_context_t context : contexts) {
     void *memory;
-    ASSERT_SUCCESS(
-        memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 128, &memory));
-    ASSERT_SUCCESS(memory_free(context, memory));
+    ASSERT_SUCCESS(memory_alloc_sync(context, 128, &memory));
+    ASSERT_SUCCESS(memory_free_sync(context, memory));
   }
 }
 
-TEST_F(DriverPluginContextTest, MemorySync) {
+TEST_F(DriverPluginContextTest, MemoryAllocPinned) {
   for (M_driver_context_t context : contexts) {
     void *memory;
-    ASSERT_SUCCESS(
-        memory_alloc(context, M_DRIVER_ALLOC_MODE_SYNC, 128, &memory));
-    ASSERT_SUCCESS(memory_free(context, memory));
+    ASSERT_SUCCESS(memory_alloc_pinned(context, 128, &memory));
+    ASSERT_SUCCESS(memory_free_pinned(context, memory));
   }
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocReturnsNonNull) {
   for (M_driver_context_t context : contexts) {
     void *memory = nullptr;
-    ASSERT_SUCCESS(
-        memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 128, &memory));
+    ASSERT_SUCCESS(memory_alloc_sync(context, 128, &memory));
     EXPECT_NE(memory, nullptr);
-    ASSERT_SUCCESS(memory_free(context, memory));
+    ASSERT_SUCCESS(memory_free_sync(context, memory));
 
     memory = nullptr;
-    ASSERT_SUCCESS(
-        memory_alloc(context, M_DRIVER_ALLOC_MODE_SYNC, 128, &memory));
+    ASSERT_SUCCESS(memory_alloc_pinned(context, 128, &memory));
     EXPECT_NE(memory, nullptr);
-    ASSERT_SUCCESS(memory_free(context, memory));
+    ASSERT_SUCCESS(memory_free_pinned(context, memory));
   }
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocZeroSize) {
   for (M_driver_context_t context : contexts) {
     void *memory = reinterpret_cast<void *>(-1);
-    ASSERT_SUCCESS(memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 0, &memory));
+    ASSERT_SUCCESS(memory_alloc_pinned(context, 0, &memory));
     EXPECT_EQ(memory, nullptr);
 
     memory = reinterpret_cast<void *>(-1);
-    ASSERT_SUCCESS(memory_alloc(context, M_DRIVER_ALLOC_MODE_SYNC, 0, &memory));
+    ASSERT_SUCCESS(memory_alloc_sync(context, 0, &memory));
     EXPECT_EQ(memory, nullptr);
   }
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocBadContext) {
-  EXPECT_EQ(memory_alloc(nullptr, M_DRIVER_ALLOC_MODE_HOST, 128, nullptr),
+  EXPECT_EQ(memory_alloc_sync(nullptr, 128, nullptr),
+            M_DRIVER_STATUS_BAD_CONTEXT);
+  EXPECT_EQ(memory_alloc_pinned(nullptr, 128, nullptr),
             M_DRIVER_STATUS_BAD_CONTEXT);
 }
 
 TEST_F(DriverPluginContextTest, MemoryAllocNullOut) {
   for (M_driver_context_t context : contexts) {
-    EXPECT_EQ(memory_alloc(context, M_DRIVER_ALLOC_MODE_HOST, 128, nullptr),
+    EXPECT_EQ(memory_alloc_sync(context, 128, nullptr),
+              M_DRIVER_STATUS_INVALID_ARG);
+    EXPECT_EQ(memory_alloc_pinned(context, 128, nullptr),
               M_DRIVER_STATUS_INVALID_ARG);
   }
 }
 
 TEST_F(DriverPluginContextTest, MemoryFreeNull) {
   for (M_driver_context_t context : contexts) {
-    ASSERT_SUCCESS(memory_free(context, nullptr));
+    ASSERT_SUCCESS(memory_free_pinned(context, nullptr));
+    ASSERT_SUCCESS(memory_free_sync(context, nullptr));
   }
 }
 
 TEST_F(DriverPluginContextTest, MemoryFreeBadContext) {
-  EXPECT_EQ(memory_free(nullptr, nullptr), M_DRIVER_STATUS_BAD_CONTEXT);
+  EXPECT_EQ(memory_free_pinned(nullptr, nullptr), M_DRIVER_STATUS_BAD_CONTEXT);
+  EXPECT_EQ(memory_free_sync(nullptr, nullptr), M_DRIVER_STATUS_BAD_CONTEXT);
 }
 
 TEST_F(DriverPluginContextTest, QueueCreateDestroy) {

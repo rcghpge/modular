@@ -15,15 +15,10 @@
 
 struct M_driver_device;
 
-struct AllocInfo {
-  M_driver_alloc_mode_t allocMode;
-};
-
 struct M_driver_context {
 private:
   M_driver_device &device;
   CUcontext primaryCtx;
-  llvm::DenseMap<uintptr_t, AllocInfo> allocations;
 
 public:
   [[nodiscard]] static DriverResult<M_driver_context_t>
@@ -37,24 +32,10 @@ public:
   M_driver_device &getDevice() { return device; }
   CUcontext getPrimaryCtx() const { return primaryCtx; }
 
-  DriverResult<void *> alloc(M_driver_alloc_mode_t mode, uint64_t size);
-  M_driver_status_t free(void *memory);
-
-  // Track allocations so free() knows which API to call.
-  void trackAlloc(void *ptr, AllocInfo info) {
-    allocations[reinterpret_cast<uintptr_t>(ptr)] = info;
-  }
-
-  void untrackAlloc(void *ptr) {
-    allocations.erase(reinterpret_cast<uintptr_t>(ptr));
-  }
-
-  const AllocInfo *getAllocInfo(void *ptr) const {
-    auto it = allocations.find(reinterpret_cast<uintptr_t>(ptr));
-    if (it != allocations.end())
-      return &it->second;
-    return nullptr;
-  }
+  DriverResult<void *> allocPinned(uint64_t size);
+  DriverResult<void *> allocSync(uint64_t size);
+  M_driver_status_t freePinned(void *memory);
+  M_driver_status_t freeSync(void *memory);
 };
 
 #endif // TARGET_LIB_CUDA_CONTEXT_H
