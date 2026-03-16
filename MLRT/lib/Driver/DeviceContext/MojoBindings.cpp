@@ -248,6 +248,13 @@ AsyncRT_DeviceContext_createStream(DeviceStream **stream, int priority,
   return checkRef(stream, ctx->createStream(priority));
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_createExternalStream(
+    DeviceStream **stream, void *externalStream, DeviceContext *ctx) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_createExternalStream",
+                       TRACY_COLOR_GRAY);
+  return checkRef(stream, ctx->createExternalStream(externalStream));
+}
+
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_streamPriorityRange(
     int *leastPriority, int *greatestPriority, DeviceContext *ctx) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_streamPriorityRange",
