@@ -165,15 +165,6 @@ TEST_F(DriverHALContextTest, CreateEvent) {
   }
 }
 
-TEST_F(DriverHALContextTest, CreateTimingEvent) {
-  if (api == "HIP" || api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
-  for (ContextRef &context : contexts) {
-    ErrorOr<EventRef> eventOr = context->createEvent(/*enableTiming=*/true);
-    ASSERT_FALSE(eventOr.isError()) << eventOr.getError();
-  }
-}
-
 TEST_F(DriverHALContextTest, EventSynchronize) {
   if (api == "HIP" || api == "Metal")
     GTEST_SKIP() << "Unimplemented for " << api;

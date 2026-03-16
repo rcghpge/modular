@@ -25,7 +25,7 @@ ErrorOrSuccess Event::synchronize() {
 
 ErrorOr<bool> Event::isReady() {
   bool ready = false;
-  if (M_driver_status_t status = context->device->driver->plugin.event_is_ready(
+  if (M_driver_status_t status = context->device->driver->plugin.is_event_ready(
           context->handle, handle, &ready))
     return Error(context->device->driver->getStatusMessage(status));
   return ready;

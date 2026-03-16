@@ -29,13 +29,11 @@ public:
   ErrorOr<bool> isReady();
 
 private:
-  explicit Event(Context *context, M_driver_event_t handle,
-                 bool enableTiming = false)
-      : context(context), handle(handle), enableTiming(enableTiming) {}
+  explicit Event(Context *context, M_driver_event_t handle)
+      : context(context), handle(handle) {}
 
   Context *context;
   M_driver_event_t handle;
-  bool enableTiming;
 
   friend Context;
 };

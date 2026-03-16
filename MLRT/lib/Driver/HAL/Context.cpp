@@ -41,27 +41,15 @@ ErrorOr<QueueRef> Context::createQueue() {
   return QueueRef::take(queue.release());
 }
 
-ErrorOr<EventRef> Context::createEvent(bool enableTiming) {
+ErrorOr<EventRef> Context::createEvent() {
   M_driver_event_t eventHandle = nullptr;
-  if (M_driver_status_t status = device->driver->plugin.event_create(
-          handle, &eventHandle, enableTiming))
+  if (M_driver_status_t status =
+          device->driver->plugin.event_create(handle, &eventHandle))
     return Error(device->driver->getStatusMessage(status));
-  std::unique_ptr<Event> event(new (std::nothrow)
-                                   Event(this, eventHandle, enableTiming));
+  std::unique_ptr<Event> event(new (std::nothrow) Event(this, eventHandle));
   if (!event)
     return Error("Failed to allocate memory for Event object");
   return EventRef::take(event.release());
-}
-
-ErrorOr<float> Context::eventElapsedTime(Event &start, Event &end) {
-  if (!start.enableTiming || !end.enableTiming)
-    return Error("Both events must be created with timing enabled to "
-                 "compute elapsed time");
-  float elapsedMs = 0.0f;
-  if (M_driver_status_t status = device->driver->plugin.event_elapsed_time(
-          handle, start.handle, end.handle, &elapsedMs))
-    return Error(device->driver->getStatusMessage(status));
-  return elapsedMs;
 }
 
 ErrorOr<FunctionRef>

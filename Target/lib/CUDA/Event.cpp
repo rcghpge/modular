@@ -8,17 +8,14 @@
 #include "Context.h"
 #include "Device.h"
 
-DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx,
-                                                      bool enableTiming) {
+DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
   CUDALoader &cuda = ctx.getDevice().getDriver().cuda();
 
   CUDA_CHECK_DR(cuda.cuCtxSetCurrent(ctx.getPrimaryCtx()),
                 M_DRIVER_STATUS_BAD_CONTEXT);
 
-  unsigned int flags =
-      enableTiming ? CU_EVENT_DEFAULT : CU_EVENT_DISABLE_TIMING;
   CUevent event;
-  CUDA_CHECK_DR(cuda.cuEventCreate(&event, flags),
+  CUDA_CHECK_DR(cuda.cuEventCreate(&event, CU_EVENT_DISABLE_TIMING),
                 M_DRIVER_STATUS_UNKNOWN_ERROR);
 
   return new M_driver_event(event);
@@ -69,20 +66,4 @@ M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
     return M_DRIVER_STATUS_SUCCESS;
   }
   return M_DRIVER_STATUS_UNKNOWN_ERROR;
-}
-
-M_driver_status_t M_driver_event::elapsedTime(M_driver_context &ctx,
-                                              M_driver_event_t start,
-                                              M_driver_event_t end,
-                                              float *elapsed_ms) {
-  CUDALoader &cuda = ctx.getDevice().getDriver().cuda();
-
-  CUDA_CHECK(cuda.cuCtxSetCurrent(ctx.getPrimaryCtx()),
-             M_DRIVER_STATUS_BAD_CONTEXT);
-
-  CUDA_CHECK(
-      cuda.cuEventElapsedTime(elapsed_ms, start->getEvent(), end->getEvent()),
-      M_DRIVER_STATUS_UNKNOWN_ERROR);
-
-  return M_DRIVER_STATUS_SUCCESS;
 }

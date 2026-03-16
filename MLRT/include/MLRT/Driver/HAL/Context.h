@@ -58,10 +58,7 @@ public:
 
   ErrorOr<BufferRef> allocBuffer(size_t byteSize, Buffer::AllocMode mode);
   ErrorOr<QueueRef> createQueue();
-  ErrorOr<EventRef> createEvent(bool enableTiming = false);
-
-  /// Compute the elapsed time in milliseconds between two events.
-  ErrorOr<float> eventElapsedTime(Event &start, Event &end);
+  ErrorOr<EventRef> createEvent();
 
   /// Load a named function from device code. Results are cached per-device
   /// to avoid redundant JIT compilation.

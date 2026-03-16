@@ -21,7 +21,7 @@ public:
   explicit M_driver_event(CUevent event) : event(event) {}
 
   [[nodiscard]] static DriverResult<M_driver_event_t>
-  create(M_driver_context &ctx, bool enableTiming);
+  create(M_driver_context &ctx);
 
   static M_driver_status_t destroy(M_driver_context &ctx,
                                    M_driver_event_t event);
@@ -31,10 +31,6 @@ public:
 
   static M_driver_status_t isReady(M_driver_context &ctx,
                                    M_driver_event_t event, bool *is_ready);
-
-  static M_driver_status_t elapsedTime(M_driver_context &ctx,
-                                       M_driver_event_t start,
-                                       M_driver_event_t end, float *elapsed_ms);
 
   CUevent getEvent() const { return event; }
 };
