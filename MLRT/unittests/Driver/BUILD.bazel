@@ -205,7 +205,7 @@ modular_cc_test(
 
 modular_cc_test(
     name = "MetalDeviceContextTest",
-    size = "small",
+    size = "medium",
     srcs = ["MetalDeviceContextTest.cpp"],
     gpu_constraints = ["//:apple_gpu"],
     tags = ["gpu"],
