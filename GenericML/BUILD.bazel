@@ -238,6 +238,7 @@ modular_cc_library(
         ":MGPDialect.headers",
         ":MODialect",
         ":MOGGDialect.headers",
+        ":MOGGFusionSupport",
         "//MLRT:Driver/DeviceContext",
         "@llvm-project//llvm:Support",
     ],
@@ -794,6 +795,9 @@ modular_cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":GraphCompilerConversion",
+        ":GraphCompilerConvertibleInterfacesIncGen",
+        ":GraphCompilerEmitsMojoInterfacesIncGen",
+        ":GraphCompilerInterfacesIncGen",
         ":MGPDialect.headers",
         ":MODialect",
         ":MOGGDialectEnumsIncGen",
@@ -807,12 +811,25 @@ modular_cc_library(
 )
 
 modular_cc_library(
+    name = "MOGGFusionSupport",
+    srcs = ["lib/GraphCompiler/MOGGDialect/Support/RegionFusion.cpp"],
+    deps = [
+        ":MOGGDialect.headers",
+        "//MLRT:GraphRT/GRTDialect",
+        "//Support:Base",
+    ],
+)
+
+modular_cc_library(
     name = "MOGGDialect",
-    srcs = glob([
-        "lib/GraphCompiler/MOGGDialect/*.cpp",
-        "lib/GraphCompiler/MOGGDialect/Support/*.cpp",
-        "lib/GraphCompiler/MOGGDialect/Analysis/*.cpp",
-    ]),
+    srcs = glob(
+        [
+            "lib/GraphCompiler/MOGGDialect/*.cpp",
+            "lib/GraphCompiler/MOGGDialect/Support/*.cpp",
+            "lib/GraphCompiler/MOGGDialect/Analysis/*.cpp",
+        ],
+        exclude = ["lib/GraphCompiler/MOGGDialect/Support/RegionFusion.cpp"],
+    ),
     hdrs = glob([
         "include/GenericML/GraphCompiler/MOGGDialect/*.h",
         "include/GenericML/GraphCompiler/MOGGDialect/Support/*.h",
@@ -828,6 +845,7 @@ modular_cc_library(
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
+        ":MOGGFusionSupport",
         ":MOSHDialect",
         ":Support",
         "//KGEN:MojoParser",
@@ -848,6 +866,7 @@ modular_cc_library(
         ":MGPTransforms",
         ":MOAnalysis",
         ":MOGGDialect",
+        ":MOGGFusionSupport",
         ":MOToPrimitives",
         ":Support",
         "//KGEN:TransformUtils",
