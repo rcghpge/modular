@@ -419,9 +419,7 @@ struct AddElementwise:
     def elementwise[
         dtype: DType,
         width: Int,
-    ](
-        lhs: SIMD[dtype, width], rhs: SIMD[dtype, width], _idx: IndexList
-    ) -> SIMD[dtype, width]:
+    ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return lhs + rhs
 
 
@@ -949,7 +947,7 @@ struct CastElementwise:
         dtype: DType,
         out_dtype: DType,
         width: Int,
-    ](x: SIMD[dtype, width], _idx: IndexList) -> SIMD[out_dtype, width]:
+    ](x: SIMD[dtype, width]) -> SIMD[out_dtype, width]:
         return x.cast[out_dtype]()
 
 
@@ -1282,3 +1280,19 @@ struct ElemwiseAddWithParam:
         bias: Int,
     ](input: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return input + Scalar[dtype](bias)
+
+
+@compiler.register("elemwise_add_with_index")
+struct ElemwiseAddWithIndex:
+    @staticmethod
+    fn elementwise[
+        dtype: DType,
+        width: Int,
+        rank: Int,
+    ](input: SIMD[dtype, width], indices: IndexList[rank]) -> SIMD[
+        dtype, width
+    ]:
+        var bias = SIMD[dtype, width]()
+        comptime for i in range(width):
+            bias[i] = Scalar[dtype](indices[0] + i)
+        return input + bias
