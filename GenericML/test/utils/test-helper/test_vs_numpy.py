@@ -105,8 +105,6 @@ def test_vs_numpy(testCase, file_to_run) -> None:  # noqa: ANN001
         print(out.stderr)
         assert False, "MT failed to run"  # noqa: B011
 
-    lines = out.stdout.splitlines()
-
     # The run index
     output_index = -1
 
