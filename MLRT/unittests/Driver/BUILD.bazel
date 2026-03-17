@@ -208,7 +208,12 @@ modular_cc_test(
     size = "medium",
     srcs = ["MetalDeviceContextTest.cpp"],
     gpu_constraints = ["//:apple_gpu"],
-    tags = ["gpu"],
+    # FIXME(GEX-3391): Metal GPU computation produces wrong results on
+    # BuildBuddy remote macOS workers. Excluded from CI wildcard runs.
+    tags = [
+        "gpu",
+        "manual",
+    ],
     target_compatible_with = select({
         "//:asan": ["@platforms//:incompatible"],
         "//conditions:default": [],
