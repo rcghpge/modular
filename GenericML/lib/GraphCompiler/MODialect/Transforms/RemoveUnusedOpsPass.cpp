@@ -30,7 +30,8 @@ static bool isUnusedOp(Operation *op) {
 }
 
 static bool isSafeToErase(Operation *op) {
-  return isa<MO::AllReduceSumOp, MO::DistributedBroadcastOp>(op);
+  return isa<MO::AllReduceSumOp, MO::DistributedBroadcastOp,
+             MO::DistributedScatterOp>(op);
 }
 
 struct EraseDeadOpPattern : RewritePattern {

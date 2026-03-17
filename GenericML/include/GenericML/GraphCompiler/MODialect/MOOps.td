@@ -5101,6 +5101,7 @@ def MO_DistributedScatterOp : MO_DistributedOp<"distributed.scatter", [
     device holds the source data.
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,

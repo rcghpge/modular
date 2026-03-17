@@ -164,11 +164,11 @@ MOGGKernelBuilder::MOGGKernelBuilder(
   // Note that `cuModuleLoadDataEx` and sync kernel launch can block in
   // general. Rely on sequence fusion to amortize the associated primitive
   // launch overhead, instead of synchronous primitive execution.
-  bool isSyncRequired = forceSync || isa<MO::TransposeOp>(op) ||
-                        (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
-                        isa<MO::AllReduceSumOp>(op) ||
-                        isa<MO::ReduceScatterSumOp>(op) ||
-                        isa<MO::DistributedBroadcastOp>(op);
+  bool isSyncRequired =
+      forceSync || isa<MO::TransposeOp>(op) ||
+      (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
+      isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
+      isa<MO::DistributedBroadcastOp>(op) || isa<MO::DistributedScatterOp>(op);
   isAsync = !isSyncRequired;
 
   // Get ready for building ops.

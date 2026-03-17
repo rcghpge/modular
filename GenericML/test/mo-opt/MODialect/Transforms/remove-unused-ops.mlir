@@ -32,6 +32,16 @@ mo.graph @used_all_reduce_chain<total_seq_len>(%arg0: !mo.tensor<[total_seq_len,
 // CHECK-LABEL: mo.graph @used_all_reduce_chain
 // CHECK-NEXT:  mo.distributed.allreduce.sum
 
+mo.graph @unused_scatter(%arg0: !mo.tensor<[2, 3], f32, gpu:0>, %arg1: !mo.tensor<[2, 3], f32, gpu:0>, %sig0: !mo.buffer<[1], ui8, gpu:0>, %sig1: !mo.buffer<[1], ui8, gpu:1>, %chain: !mo.chain, %arg5: !mo.tensor<[2, 3], f32, gpu:0>) -> (!mo.tensor<[2, 3], f32, gpu:0>) {
+  %output:2, %outChain = mo.distributed.scatter(%arg0, %arg1, %sig0, %sig1, %chain) {root = 0 : i64} : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain) -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  %0 = mo.add(%arg5, %arg5) : !mo.tensor<[2, 3], f32, gpu:0>
+  mo.output %0 : !mo.tensor<[2, 3], f32, gpu:0>
+}
+// COM: Remove the unused scatter op
+// CHECK-LABEL: mo.graph @unused_scatter
+// CHECK-NEXT:  mo.add
+// CHECK-NEXT:  mo.output
+
 mo.graph @unused_print(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
   mo.debug.tensor.print(%ch0, %arg0) {label = "label"} : !mo.tensor<[4, 5], f32>

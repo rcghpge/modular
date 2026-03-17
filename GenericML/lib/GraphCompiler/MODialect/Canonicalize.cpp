@@ -309,6 +309,22 @@ LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
 }
 
 //===----------------------------------------------------------------------===//
+// DistributedScatterOp
+//===----------------------------------------------------------------------===//
+LogicalResult
+DistributedScatterOp::fold(FoldAdaptor adaptor,
+                           SmallVectorImpl<OpFoldResult> &results) {
+  // Single device scatter: return the input as-is.
+  if (getInputs().size() == 1 && getOutputs().size() == 1 &&
+      getInputs()[0].getType() == getOutputs()[0].getType()) {
+    results.push_back(getInputs()[0]);
+    results.push_back(getInChain());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // DistributedBroadcastOp
 //===----------------------------------------------------------------------===//
 LogicalResult

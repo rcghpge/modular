@@ -254,3 +254,70 @@ mo.graph @broadcast_dtype_mismatch(
     -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>, !mo.chain)
   mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>
 }
+
+// -----
+
+// Test scatter with empty inputs (no tensors, no signal buffers).
+// NOTE: signal buffer count mismatch (condition 3) cannot be triggered
+// independently because the SameVariadicOperandSize trait enforces
+// inputs.size() == signalBuffers.size() before the custom verifier runs.
+mo.graph @scatter_empty_inputs(%ch: !mo.chain) -> (!mo.chain) {
+  // expected-error@+1 {{scatter requires at least one input}}
+  %0:1 = "mo.distributed.scatter"(%ch) {root = 0 : i64} :
+    (!mo.chain) -> (!mo.chain)
+  mo.output %0#0 : !mo.chain
+}
+
+// -----
+
+// Test scatter with output count != input count.
+mo.graph @scatter_output_count_mismatch(
+    %arg0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %arg1: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>,
+    %ch: !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>) {
+  // expected-error@+1 {{number of outputs must match number of inputs}}
+  %0:2 = "mo.distributed.scatter"(%arg0, %arg1, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[2, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test scatter with mismatched input element types.
+mo.graph @scatter_element_type_mismatch(
+    %arg0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %arg1: !mo.tensor<[2, 3], f16, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>,
+    %ch: !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>) {
+  // expected-error@+1 {{all inputs must have the same element type}}
+  %0:3 = "mo.distributed.scatter"(%arg0, %arg1, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:0>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:1>
+}
+
+// -----
+
+// Test scatter with root index out of range.
+mo.graph @scatter_root_out_of_range(
+    %arg0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %arg1: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>,
+    %ch: !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>) {
+  // expected-error@+1 {{root must be in range [0, ngpus)}}
+  %0:3 = "mo.distributed.scatter"(%arg0, %arg1, %sig0, %sig1, %ch) {root = 5 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>,
+     !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>
+}
