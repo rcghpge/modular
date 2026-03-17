@@ -6,7 +6,7 @@
 
 from dataclasses import dataclass, field
 
-from max.pipelines.lib.config import PipelineConfig
+from max.pipelines.lib.config import MAXModelConfig, PipelineConfig
 from max.pipelines.lib.interfaces.arch_config import ArchConfig
 from typing_extensions import Self
 
@@ -39,7 +39,11 @@ class LlasaConfig(ArchConfig):
     xcodec2_config: XCodec2Config = field(default_factory=XCodec2Config)
 
     @classmethod
-    def initialize(cls, pipeline_config: PipelineConfig) -> Self:
+    def initialize(
+        cls,
+        pipeline_config: PipelineConfig,
+        model_config: MAXModelConfig | None = None,
+    ) -> Self:
         return cls()
 
     def get_max_seq_len(self) -> int:
