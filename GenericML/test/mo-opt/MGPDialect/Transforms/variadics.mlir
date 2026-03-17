@@ -6,8 +6,7 @@
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)
 // CHECK: var {{.*}} = StaticTuple[size = 3]({{.*}}.shape(), {{.*}}.shape(), {{.*}}.shape())
 // CHECK: comptime {{.*}} = Variadic.values[{{.*}}.static_spec.get_internals(), {{.*}}.static_spec.get_internals(), {{.*}}.static_spec.get_internals()]
-// CHECK: var {{.*}} = managed_tensor_slice._FusionPack({{.*}}, {{.*}}, {{.*}})
-// CHECK: var {{.*}} = managed_tensor_slice._FusedInputVariadicTensors[{{.*}}, {{.*}}, {{.*}}, static_specs = {{.*}}]({{.*}}, {{.*}}, {{.*}})
+// CHECK: var {{.*}} = VariadicTensors[io_spec = {{.*}}.io_spec, static_specs = {{.*}}]({{.*}}, {{.*}})
 // CHECK: MOGGKernelAPI.Concat.execute[target = "cpu"]({{.*}}, {{.*}}, {{.*}}, {{.*}})
 
 mo.graph @concat(%arg0: !mo.tensor<[2], si32>, %arg1: !mo.tensor<[3], si32>, %arg2: !mo.tensor<[4], si32>) -> !mo.tensor<[9], si32> {

@@ -113,10 +113,8 @@ struct EmitMojo
       }
     }
 
-    // Append any deferred struct definitions (fusion structs emitted by
-    // BindLambdaOp). Mojo processes all module-scope declarations before
-    // compiling function bodies, so ordering doesn't matter.
-    auto mojoText = state.builder.str() + state.structDefsBuilder.str();
+    // Store the emitted text into a resource.
+    auto mojoText = state.builder.str();
 
 #ifndef MODULAR_PRODUCTION
     // Save the emitted Mojo code to a file if max.temps_dir is set.

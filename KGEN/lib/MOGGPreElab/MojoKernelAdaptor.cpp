@@ -51,16 +51,6 @@ MojoKernelOperandAdaptor::MojoKernelOperandAdaptor(
               underlyingType.emplace<VariadicTensorOperandAdaptor>(
                   VariadicTensorOperandAdaptor{getIOSpec()});
             })
-      .Case(MOJO_FUSED_INPUT_VARIADIC_TENSORS_NAME,
-            [&]() {
-              underlyingType.emplace<VariadicTensorOperandAdaptor>(
-                  VariadicTensorOperandAdaptor{getIOSpec()});
-            })
-      .Case(MOJO_FUSED_OUTPUT_VARIADIC_TENSORS_NAME,
-            [&]() {
-              underlyingType.emplace<VariadicTensorOperandAdaptor>(
-                  VariadicTensorOperandAdaptor{getIOSpec()});
-            })
       .Case(ScalarOperandAdaptor::typeName,
             [&]() {
               if (promoteSIMDToFusedTensor) {

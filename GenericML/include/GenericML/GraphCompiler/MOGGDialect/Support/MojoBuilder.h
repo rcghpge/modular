@@ -136,14 +136,6 @@ struct FunctionBody {
   SmallVector<MojoValue> arguments;
 };
 
-/// Tracks an emitted fusion struct instance and the bind method to use
-/// when attaching it to a tensor during Mojo emission.
-struct EmittedFusionInfo {
-  MojoValue instance;
-  StringLiteral bindMethodName;
-  MojoValue typeName;
-};
-
 // Class used to represent a unique mojo identifier.
 // It contains a static prefix, followed by a unique index `bar_45`
 // In most cases the MojoBuilder takes care of handling unique names so we don't
@@ -308,17 +300,6 @@ public:
                   ArrayRef<std::pair<MojoValue, MojoValue>> fields,
                   bool fieldwiseInit = true);
 
-  /// Emits a struct definition with trait conformances, fields, and a body
-  /// callback for emitting method definitions. Always emits @fieldwise_init.
-  /// Example output:
-  ///   @fieldwise_init
-  ///   struct MyStruct(MyTrait):
-  ///       var field1: Type1
-  ///       <body callback output>
-  void structDecl(const MojoValue &name, ArrayRef<MojoValue> traits,
-                  ArrayRef<std::pair<MojoValue, MojoValue>> fields,
-                  std::function<void()> body);
-
   /// Imports the specified module.
   void import(const MojoValue &mod);
 
@@ -386,16 +367,6 @@ private:
                           ArrayRef<NamedMojoDef> operands,
                           std::optional<MojoValue> retType, bool raises,
                           FunctionBody &body);
-
-  /// Shared implementation for all structDecl overloads. Emits a struct
-  /// header with optional parameters and trait conformances, followed by
-  /// field declarations. When \p body is non-null, the callback is invoked
-  /// after the fields to emit method definitions inside the struct body.
-  void structDeclImpl(const MojoValue &name,
-                      ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
-                      ArrayRef<MojoValue> traits,
-                      ArrayRef<std::pair<MojoValue, MojoValue>> fields,
-                      bool fieldwiseInit, std::function<void()> body);
 
   std::string sourceStr;
   llvm::raw_string_ostream ss;
