@@ -100,16 +100,21 @@ protected:
       #include <metal_stdlib>
       using namespace metal;
 
+      struct FloatBufPtr      { device float*       ptr; };
+      struct ConstFloatBufPtr { device const float* ptr; };
+
       kernel void vec_add_msl(
-          device float* output [[buffer(0)]],
-          device const float* input0 [[buffer(1)]],
-          device const float* input1 [[buffer(2)]],
-          constant uint& length [[buffer(3)]],
+          device FloatBufPtr&       out_ref [[buffer(0)]],
+          device ConstFloatBufPtr&  in0_ref [[buffer(1)]],
+          device ConstFloatBufPtr&  in1_ref [[buffer(2)]],
+          constant uint&            length  [[buffer(3)]],
           uint tid [[thread_position_in_grid]])
       {
-          if (tid < length) {
+          device float*       output = out_ref.ptr;
+          device const float* input0 = in0_ref.ptr;
+          device const float* input1 = in1_ref.ptr;
+          if (tid < length)
               output[tid] = input0[tid] + input1[tid];
-          }
       }
     )";
   }
@@ -200,16 +205,13 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
   EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host));
   EXPECT_NO_ERR(ctx_->synchronize());
 
-  // Mimic how Mojo passes pointers
   void *outPtr = outDevice->ptr();
   void *in0Ptr = in0Device->ptr();
   void *in1Ptr = in1Device->ptr();
-
-  // Prepare arguments for direct call - use device buffer pointers directly
-  uint64_t lengthValue = static_cast<uint64_t>(length);
+  uint32_t lengthValue = static_cast<uint32_t>(length);
   void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-  size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                       sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+  size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                       sizeof(lengthValue)};
 
   // Execute kernel
   constexpr uint32_t blockDim = 256;
@@ -310,16 +312,13 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
     EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host.data()));
     EXPECT_NO_ERR(ctx_->synchronize());
 
-    // Mimic how Mojo passes pointers
     void *outPtr = outDevice->ptr();
     void *in0Ptr = in0Device->ptr();
     void *in1Ptr = in1Device->ptr();
-
-    // Prepare arguments for direct call - use device buffer pointers directly
-    uint64_t lengthValue = static_cast<uint64_t>(length);
+    uint32_t lengthValue = static_cast<uint32_t>(length);
     void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-    size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                         sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+    size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                         sizeof(lengthValue)};
 
     // Execute kernel
     uint32_t gridSize =
@@ -423,16 +422,13 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
       EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1Device, in1Host.data()));
       EXPECT_NO_ERR(ctx_->synchronize());
 
-      // Mimic how Mojo passes pointers
       void *outPtr = outDevice->ptr();
       void *in0Ptr = in0Device->ptr();
       void *in1Ptr = in1Device->ptr();
-
-      // Prepare arguments
-      uint64_t lengthValue = static_cast<uint64_t>(length);
+      uint32_t lengthValue = static_cast<uint32_t>(length);
       void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-      size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                           sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+      size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                           sizeof(lengthValue)};
 
       // Time the kernel execution only
       std::chrono::high_resolution_clock::time_point startTime =
@@ -588,12 +584,10 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
       void *outPtr = outDevice->ptr();
       void *in0Ptr = in0Device->ptr();
       void *in1Ptr = in1Device->ptr();
-
-      // Prepare arguments
-      uint64_t lengthValue = static_cast<uint64_t>(length);
+      uint32_t lengthValue = static_cast<uint32_t>(length);
       void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
-      size_t argSizes[] = {sizeof(outDevice->ptr()), sizeof(in0Device->ptr()),
-                           sizeof(in1Device->ptr()), sizeof(&lengthValue)};
+      size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                           sizeof(lengthValue)};
 
       // Time the kernel execution only
       std::chrono::high_resolution_clock::time_point startTime =
