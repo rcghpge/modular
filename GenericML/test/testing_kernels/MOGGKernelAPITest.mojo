@@ -1286,7 +1286,7 @@ struct ElemwiseAddWithParam:
 @compiler.register("elemwise_add_with_index")
 struct ElemwiseAddWithIndex:
     @staticmethod
-    fn elementwise[
+    def elementwise[
         dtype: DType,
         width: Int,
         rank: Int,
