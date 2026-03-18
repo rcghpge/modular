@@ -16,6 +16,7 @@
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/ErrorOr.h"
 #include "Support/Profiling/Tracy.h"
+#include "Support/Profiling/TracyRocm.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
@@ -1072,7 +1073,10 @@ const HIPDeviceTimer &HIPDeviceTimer::cast(const DeviceTimer &timer) {
 // ===== HIPDeviceContext ===== //
 HIPDeviceContext::HIPDeviceContext(HIPDevice &device, hipStream_t stream)
     : DeviceContext(device), driver_(device.hipDriver()),
-      device_(device.hipDevice()), stream_(stream) {}
+      device_(device.hipDevice()), stream_(stream) {
+  // Initialize Tracy ROCm profiling context if not already initialized.
+  M::initTracyRocm();
+}
 
 HIPDeviceContext::~HIPDeviceContext() {
   HIP_WITH_CTX(*this);
