@@ -310,8 +310,8 @@ modular_py_test(
     name = "tests_gpu",
     ...
     exec_properties = {
-        # Ensure the test has at least 24GB of GPU memory available.
-        "test.resources:gpu-memory": "24",
+        # Ensure the test has at least 5GB of GPU memory available.
+        "test.resources:gpu-memory": "5",
     },
 )
 ```
