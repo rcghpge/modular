@@ -6,6 +6,7 @@
 
 #include "GenericML/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GenericML/GraphCompiler/MODialect/MODevices.h"
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GenericML/GraphCompiler/MOGGDialect/Analysis/Support.h"
@@ -164,11 +165,13 @@ MOGGKernelBuilder::MOGGKernelBuilder(
   // Note that `cuModuleLoadDataEx` and sync kernel launch can block in
   // general. Rely on sequence fusion to amortize the associated primitive
   // launch overhead, instead of synchronous primitive execution.
-  bool isSyncRequired =
-      forceSync || isa<MO::TransposeOp>(op) ||
-      (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
-      isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
-      isa<MO::DistributedBroadcastOp>(op) || isa<MO::DistributedScatterOp>(op);
+  bool isSyncRequired = forceSync;
+  isSyncRequired |= isa<MO::TransposeOp>(op);
+  isSyncRequired |= MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op);
+  // MO_MultiDevice ops manage their own cross-device parallelism internally
+  // (via _launch_device_collective / TaskGroup) and must complete before the
+  // graph runtime proceeds.
+  isSyncRequired |= op->hasTrait<MO::MOMultiDevice>();
   isAsync = !isSyncRequired;
 
   // Get ready for building ops.

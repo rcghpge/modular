@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
+#include "GenericML/GraphCompiler/MODialect/MOInterfaces.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -30,8 +31,9 @@ static bool isUnusedOp(Operation *op) {
 }
 
 static bool isSafeToErase(Operation *op) {
-  return isa<MO::AllReduceSumOp, MO::DistributedBroadcastOp,
-             MO::DistributedScatterOp>(op);
+  // MO_MultiDevice ops manage side effects on signal buffers, but if their
+  // tensor outputs are all dead, the collective itself is safe to remove.
+  return op->hasTrait<MOMultiDevice>();
 }
 
 struct EraseDeadOpPattern : RewritePattern {
