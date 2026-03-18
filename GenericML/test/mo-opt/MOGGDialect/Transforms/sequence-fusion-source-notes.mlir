@@ -14,7 +14,7 @@
 // The emitted source notes use a triple-quoted Mojo string and must contain:
 // 1. Source note tracebacks from each fused op (shown for small fusions).
 // 2. A fusion summary noting ops were fused, with a tree of combined ops.
-// CHECK:       string.String("""
+// CHECK:       String("""
 // CHECK:       trace_beta
 // CHECK:       trace_alpha
 // CHECK:       fused into a single kernel

@@ -1190,14 +1190,14 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
     // Trace[TraceLevel.OP, target=StaticString("device")]("trace name"[,
     // task_id=...])
     SmallVector<MojoValue> traceParams = {
-        MojoValue("TraceLevel.OP"),
+        MojoValue("std.runtime.tracing.TraceLevel.OP"),
         MojoValue("target").equal(
             MojoValue("StaticString")({}, {MojoValue(deviceLabel).quote()}))};
     SmallVector<MojoValue> traceOperands = {MojoValue(traceName).quote()};
     if (!contextArg.text.empty())
       traceOperands.push_back(MojoValue("task_id").equal(
-          MojoValue("get_safe_task_id")({}, {contextArg})));
-    return MojoValue("Trace")(traceParams, traceOperands);
+          MojoValue("std.runtime.tracing.get_safe_task_id")({}, {contextArg})));
+    return MojoValue("std.runtime.tracing.Trace")(traceParams, traceOperands);
   };
 
   // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
@@ -2292,9 +2292,9 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
       });
 
   // 3. Launch the task: var task_N = asyncrt.create_task(wrapper_N())
-  MojoValue taskVar =
-      state.builder.var(MojoValue("asyncrt.create_task")({}, {wrapper({}, {})}),
-                        /*cache=*/false);
+  MojoValue taskVar = state.builder.var(
+      MojoValue("std.runtime.asyncrt.create_task")({}, {wrapper({}, {})}),
+      /*cache=*/false);
 
   // 4. Record task handle info for AsyncJoinOp to consume
   state.taskHandleInfos[getTaskHandle()] = {taskVar, errorVar};
@@ -2711,11 +2711,11 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
   MojoValue inputSpecsStridesComptime = state.builder.comptime(
       MojoValue("Variadic").get("values")[staticSpecStrides]);
   MojoValue inputSpecsComptime =
-      state.builder.comptime(MojoValue("StaticTensorSpecList")[{
+      state.builder.comptime(MojoValue("tensor.StaticTensorSpecList")[{
           inputSpecsInternalsComptime, inputSpecsShapesComptime,
           inputSpecsStridesComptime}]());
 
-  MojoValue variadicTensorsConstructor = MojoValue("VariadicTensors")[{
+  MojoValue variadicTensorsConstructor = MojoValue("tensor.VariadicTensors")[{
       MojoValue("io_spec").equal(inputValues[0].get("io_spec")),
       MojoValue("static_specs").equal(inputSpecsComptime)}];
 

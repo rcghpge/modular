@@ -25,25 +25,25 @@ namespace M::MOGG {
 
 namespace HardcodedMojoSymbols {
 constexpr StringLiteral struct_IO = "io_spec.IO";
-constexpr StringLiteral struct_IndexList = "IndexList";
-constexpr StringLiteral struct_UnsafePointer = "memory.UnsafePointer";
-constexpr StringLiteral struct_String = "string.String";
-constexpr StringLiteral struct_DeviceContextPtr = "asyncrt.DeviceContextPtr";
+constexpr StringLiteral struct_IndexList = "std.utils.IndexList";
+constexpr StringLiteral struct_UnsafePointer = "UnsafePointer";
+constexpr StringLiteral struct_String = "String";
+constexpr StringLiteral struct_DeviceContextPtr =
+    "std.runtime.asyncrt.DeviceContextPtr";
 constexpr StringLiteral struct_DeviceContextPtrList =
-    "asyncrt.DeviceContextPtrList";
-constexpr StringLiteral struct_ManagedTensorSlice =
-    "managed_tensor_slice.ManagedTensorSlice";
+    "std.runtime.asyncrt.DeviceContextPtrList";
+constexpr StringLiteral struct_ManagedTensorSlice = "tensor.ManagedTensorSlice";
 constexpr StringLiteral struct_Int = "Int";
 constexpr StringLiteral struct_UInt = "UInt";
 constexpr StringLiteral struct_Bool = "Bool";
-constexpr StringLiteral struct_DimList = "dimlist.DimList";
-constexpr StringLiteral struct_Dim = "Dim";
-constexpr StringLiteral struct_AddressSpace = "pointer.AddressSpace";
+constexpr StringLiteral struct_DimList = "buffer.DimList";
+constexpr StringLiteral struct_Dim = "buffer.Dim";
+constexpr StringLiteral struct_AddressSpace = "std.memory.AddressSpace";
 constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
 constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
-constexpr StringLiteral struct_StaticTuple = "StaticTuple";
+constexpr StringLiteral struct_StaticTuple = "std.utils.StaticTuple";
 constexpr StringLiteral struct_InlineArray = "InlineArray";
 constexpr StringLiteral struct_MoggAsyncPackHelper =
     "MOGGPrimitives.MoggAsyncPackHelper";
@@ -57,13 +57,13 @@ constexpr StringLiteral func_to_managed_tensor_slice =
     "MOGGPrimitives.to_managed_tensor_slice";
 constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
 constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
-    "managed_tensor_slice.simd_load_from_managed_tensor_slice";
+    "tensor.simd_load_from_managed_tensor_slice";
 constexpr StringLiteral func_simd_load_from_tensor_pointer =
-    "managed_tensor_slice.simd_load_from_tensor_pointer";
+    "tensor.simd_load_from_tensor_pointer";
 constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
-    "managed_tensor_slice.simd_store_into_managed_tensor_slice";
+    "tensor.simd_store_into_managed_tensor_slice";
 constexpr StringLiteral func_simd_store_into_tensor_pointer =
-    "managed_tensor_slice.simd_store_into_tensor_pointer";
+    "tensor.simd_store_into_tensor_pointer";
 constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_input =
     "_bind_to_fused_input";
 constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_output =
@@ -89,12 +89,9 @@ constexpr StringLiteral func_mogg_async_pack_borrow =
 constexpr StringLiteral func_get_buffer_mem_storage_handle =
     "MOGGPrimitives.get_buffer_mem_storage_handle";
 
-constexpr StringLiteral comptime_OpaquePointer =
-    "memory.OpaquePointer[MutAnyOrigin]";
-constexpr StringLiteral comptime_InputTensor =
-    "managed_tensor_slice.InputTensor";
-constexpr StringLiteral comptime_OutputTensor =
-    "managed_tensor_slice.OutputTensor";
+constexpr StringLiteral comptime_OpaquePointer = "OpaquePointer[MutAnyOrigin]";
+constexpr StringLiteral comptime_InputTensor = "tensor.InputTensor";
+constexpr StringLiteral comptime_OutputTensor = "tensor.OutputTensor";
 constexpr StringLiteral comptime_MutableInputTensor =
     "managed_tensor_slice._MutableInputTensor";
 constexpr StringLiteral comptime_UInt8 = "UInt8";
@@ -105,17 +102,28 @@ constexpr StringLiteral comptime_MutAnyOrigin = "MutAnyOrigin";
 // custom type for managing these int8 buffers (probably just some simple
 // vector/string type).
 constexpr StringLiteral comptime_NDBuffer_In_MGP =
-    "NDBuffer[rank=1, DType.int8, MutAnyOrigin]";
+    "buffer.NDBuffer[rank=1, DType.int8, MutAnyOrigin]";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than
 /// relying on an `__init__.mojo` file that imports things or hardcoding a
 /// package that could change/be moved around.
-constexpr StringLiteral packagesToImport[] = {
-    "MOGGPrimitives",      "MOGGKernelAPI", "tensor",
-    "compiler_internal",   "std.utils",     "std.runtime",
-    "std.runtime.tracing", "std.memory",    "buffer",
-    "std.collections"};
+constexpr std::pair<StringLiteral, StringLiteral> packagesToImport[] = {
+    {"MOGGPrimitives.MOGGPrimitives", "MOGGPrimitives"},
+    {"MOGGKernelAPI.MOGGKernelAPI", "MOGGKernelAPI"},
+    {"MOGGKernelAPI.logprobs", "logprobs"},
+    {"MOGGKernelAPI.ep_api", "ep_api"},
+    {"tensor", ""},
+    {"tensor.io_spec", "io_spec"},
+    {"tensor.managed_tensor_slice", "managed_tensor_slice"},
+    {"compiler_internal", ""},
+    {"std.utils", ""},
+    {"std.runtime", ""},
+    {"std.runtime.tracing", ""},
+    {"std.memory", ""},
+    {"buffer", ""},
+    {"std.collections", ""},
+};
 
 /// TODO(GEX-2488): Find another way to find that a type is an IOSpec without
 /// relying on package / type name.

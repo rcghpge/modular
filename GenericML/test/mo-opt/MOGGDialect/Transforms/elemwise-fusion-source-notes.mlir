@@ -11,7 +11,7 @@
 // all source notes.
 
 // The emitted error notes should contain source traces from both fused ops.
-// CHECK:       string.String("""
+// CHECK:       String("""
 // CHECK:       trace_add
 // CHECK:       trace_relu
 // CHECK:       """)

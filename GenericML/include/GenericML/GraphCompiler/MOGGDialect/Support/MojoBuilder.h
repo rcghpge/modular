@@ -303,8 +303,11 @@ public:
   /// Imports the specified module.
   void import(const MojoValue &mod);
 
+  /// Imports the specified module as an alias
+  void importAs(const MojoValue &from, const MojoValue &as);
+
   /// Imports the specified object from the module.
-  void import(const MojoValue &from, const MojoValue &import);
+  void importFrom(const MojoValue &from, const MojoValue &import);
 
   /// Returns the generated Mojo module as a string.
   const std::string &str() const { return sourceStr; }

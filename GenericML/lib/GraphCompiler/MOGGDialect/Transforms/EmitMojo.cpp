@@ -93,13 +93,17 @@ struct EmitMojo
                               moggDebugDumpFusedTensorSpecs);
 
     // Import mojo stdlib packages and compiler directives.
-    for (auto package : MOGG::HardcodedMojoSymbols::packagesToImport)
-      state.builder.import(package, "*");
+    for (auto [package, as] : MOGG::HardcodedMojoSymbols::packagesToImport) {
+      if (as.empty())
+        state.builder.import(package);
+      else
+        state.builder.importAs(package, as);
+    }
 
     // Import mojo packages for the custom kernel libraries.
     for (const auto &kernelLibraryPath : kernelLibraryPaths) {
       auto moduleName = std::filesystem::path(kernelLibraryPath).stem();
-      state.builder.import(moduleName.string(), "*");
+      state.builder.importFrom(moduleName.string(), "*");
       // Store the package name for opaque type resolution.
       state.customKernelPackages.push_back(moduleName.string());
     }

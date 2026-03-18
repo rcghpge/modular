@@ -10,7 +10,7 @@
 // source notes ARE present and the header IS emitted.
 
 // The notes string should contain the fusion tree but not the traceback header.
-// CHECK:       string.String("""
+// CHECK:       String("""
 // CHECK-NOT:   Source Traceback
 // CHECK:       Fused ops:
 // CHECK:       Elementwise

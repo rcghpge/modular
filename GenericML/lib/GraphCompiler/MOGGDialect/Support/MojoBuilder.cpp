@@ -304,7 +304,11 @@ void MojoBuilder::import(const MojoValue &mod) {
   statement("import ", mod.text);
 }
 
-void MojoBuilder::import(const MojoValue &from, const MojoValue &import) {
+void MojoBuilder::importAs(const MojoValue &mod, const MojoValue &as) {
+  statement("import ", mod.text, " as ", as.text);
+}
+
+void MojoBuilder::importFrom(const MojoValue &from, const MojoValue &import) {
   statement("from ", from.text, " import ", import.text);
 }
 
