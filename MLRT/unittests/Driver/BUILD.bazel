@@ -228,12 +228,17 @@ modular_cc_test(
 modular_cc_test(
     name = "CUDADeviceContextTest",
     size = "small",
-    srcs = ["CUDADeviceContextTest.cpp"],
+    srcs = [
+        "CUDADeviceContextTest.cpp",
+        "ScopedEnvVar.h",
+    ],
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -286,7 +291,10 @@ modular_cc_test(
 modular_cc_test(
     name = "CUDAMultiDeviceContextTest",
     size = "small",
-    srcs = ["CUDADeviceContextTest.cpp"],
+    srcs = [
+        "CUDADeviceContextTest.cpp",
+        "ScopedEnvVar.h",
+    ],
     gpu_constraints = [
         "//:nvidia_gpu",
         "//:has_multi_gpu",
@@ -299,6 +307,8 @@ modular_cc_test(
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -311,6 +321,23 @@ modular_cc_test(
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
+    ],
+)
+
+modular_cc_test(
+    name = "GPUHealthcheckTest",
+    size = "small",
+    srcs = [
+        "GPUHealthcheckTest.cpp",
+        "ScopedEnvVar.h",
+    ],
+    gpu_constraints = ["//:has_gpu"],
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
     ],
 )
 

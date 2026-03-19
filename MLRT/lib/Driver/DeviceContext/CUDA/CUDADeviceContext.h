@@ -104,6 +104,8 @@ public:
   static ErrorOr<int> numberOfGPUs();
   static ErrorOr<CUDADevice &> get(int id);
 
+  ErrorOrSuccess runHealthcheck() const override;
+
   ErrorOr<CUevent> eventCachePop(bool useCache = true) const;
   void eventCachePush(CUevent event) const;
 

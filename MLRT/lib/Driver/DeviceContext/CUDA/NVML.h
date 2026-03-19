@@ -57,11 +57,31 @@ struct nvmlMemory_t {
   unsigned long long used;
 };
 
+struct nvmlProcessInfo_t {
+  unsigned int pid;
+  unsigned long long usedGpuMemory;
+  unsigned int gpuInstanceId;
+  unsigned int computeInstanceId;
+};
+
+// Throttle reason bitmask constants.
+static constexpr unsigned long long NVML_CLK_THROTTLE_REASON_HW_SLOWDOWN =
+    0x8ULL;
+static constexpr unsigned long long
+    NVML_CLK_THROTTLE_REASON_HW_THERMAL_SLOWDOWN = 0x40ULL;
+static constexpr unsigned long long
+    NVML_CLK_THROTTLE_REASON_HW_POWER_BRAKE_SLOWDOWN = 0x80ULL;
+
+// ECC error type and counter type constants.
+static constexpr int NVML_MEMORY_ERROR_TYPE_UNCORRECTABLE = 1;
+static constexpr int NVML_VOLATILE_ECC = 0;
+
 class NVML {
 public:
   enum Result : unsigned int {
     SUCCESS = 0,
     NOT_SUPPORTED = 3,
+    INSUFFICIENT_SIZE = 7,
   };
 
   ~NVML();

@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -712,8 +713,71 @@ ErrorOr<HIPDevice &> HIPDevice::get(int id) {
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;
+
+    // Run healthcheck after device init — returns error on unhealthy GPU.
+    RETURN_IF_ERROR(device->runHealthcheck());
   }
   return *device;
+}
+
+/// Run a shell command and capture its first line of output.
+/// Returns an empty string if the command fails or produces no output.
+/// The command string must be a fixed-format string with only %d
+/// substitutions (safe from injection since device IDs are always small
+/// non-negative integers).
+static std::string runShellCommand(const char *cmd) {
+  FILE *pipe = popen(cmd, "r");
+  if (!pipe)
+    return {};
+  char buf[512] = {};
+  std::string result;
+  if (fgets(buf, sizeof(buf), pipe) != nullptr)
+    result = buf;
+  pclose(pipe);
+  return result;
+}
+
+ErrorOrSuccess HIPDevice::runHealthcheck() const {
+  if (DeviceContext::configAsBool("disable-healthcheck", false))
+    return success();
+
+  GPUHealthData data;
+  data.deviceId = id();
+  data.deviceName = name();
+
+  // 1. Gather hardware throttle violations via amd-smi (per-GPU).
+  // Query the THROTTLE_STATUS field which outputs a comma-separated list of
+  // active throttle reasons, e.g. "THROTTLE_STATUS: PROCHOT_THERMAL, PPT_PWR"
+  // or "THROTTLE_STATUS: UNTHROTTLED" when clean.
+  // PPT_PWR is excluded — hitting the power budget is normal GPU operation,
+  // analogous to NVIDIA's SW_POWER_CAP which the CUDA healthcheck ignores.
+  // WARNING: This output parsing was tested against amd-smi from ROCm 6.3.
+  // The CLI output format may change across ROCm versions — if throttle
+  // detection breaks after a ROCm upgrade, check `amd-smi metric` output
+  // and update the parsing accordingly.
+  // Safe: id() is always a small non-negative integer (%d format).
+  char throttleCmd[256];
+  snprintf(throttleCmd, sizeof(throttleCmd),
+           "amd-smi metric --gpu %d 2>/dev/null | grep 'THROTTLE_STATUS'",
+           id());
+  std::string throttleLine = runShellCommand(throttleCmd);
+  if (!throttleLine.empty()) {
+    data.throttleQueried = true;
+    // Check for each alarming throttle reason in the status line.
+    // The field format is "THROTTLE_STATUS: REASON1, REASON2, ..."
+    if (throttleLine.find("PROCHOT") != std::string::npos)
+      data.throttleReasons |= GPUHealthData::THROTTLE_PROCHOT;
+    if (throttleLine.find("SOCKET_THERMAL") != std::string::npos)
+      data.throttleReasons |= GPUHealthData::THROTTLE_SOCKET_THERMAL;
+    if (throttleLine.find("VR_THERMAL") != std::string::npos)
+      data.throttleReasons |= GPUHealthData::THROTTLE_VR_THERMAL;
+    if (throttleLine.find("HBM_THERMAL") != std::string::npos)
+      data.throttleReasons |= GPUHealthData::THROTTLE_HBM_THERMAL;
+  }
+  // Empty output means amd-smi not found or no THROTTLE_STATUS field;
+  // leave unqueried.
+
+  return evaluateGPUHealth(data);
 }
 
 // ===== HIPDeviceEvent ===== //

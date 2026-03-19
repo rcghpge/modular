@@ -274,6 +274,12 @@ public:
   virtual ErrorOr<int> getApiVersion() const = 0;
   virtual ErrorOr<DriverVersion &> getDriverVersion() const = 0;
   virtual ErrorOrSuccess isCompatible() const = 0;
+
+  /// Run lightweight GPU health validation. Checks for hardware throttling,
+  /// ECC errors, zombie VRAM, etc. Disable with
+  /// MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK=true.
+  virtual ErrorOrSuccess runHealthcheck() const = 0;
+
   virtual ErrorOr<int> computeCapability() const = 0;
 
   size_t allocationAlignment() const;
@@ -369,6 +375,33 @@ private:
   // Tracks whether P2P access is enabled to other devices.
   mutable llvm::BitVector canAccessPeer_;
 };
+
+/// Raw GPU health metrics, used by evaluateGPUHealth().
+/// Separating data gathering from evaluation enables unit testing without
+/// requiring a real GPU or mocking NVML.
+struct GPUHealthData {
+  // Throttle reason bitmask constants.
+  // NVIDIA (mirrored from NVML):
+  static constexpr unsigned long long THROTTLE_HW_SLOWDOWN = 0x8ULL;
+  static constexpr unsigned long long THROTTLE_HW_THERMAL_SLOWDOWN = 0x40ULL;
+  static constexpr unsigned long long THROTTLE_HW_POWER_BRAKE = 0x80ULL;
+  // AMD (from amd-smi throttle violations):
+  static constexpr unsigned long long THROTTLE_PROCHOT = 0x100ULL;
+  static constexpr unsigned long long THROTTLE_SOCKET_THERMAL = 0x200ULL;
+  static constexpr unsigned long long THROTTLE_VR_THERMAL = 0x400ULL;
+  static constexpr unsigned long long THROTTLE_HBM_THERMAL = 0x800ULL;
+
+  int deviceId = 0;
+  std::string deviceName;
+  unsigned long long throttleReasons = 0;
+  bool throttleQueried = false;
+  unsigned long long eccErrors = 0;
+  bool eccQueried = false;
+};
+
+/// Evaluate GPU health from pre-gathered metrics. Returns an error with a
+/// descriptive message if the GPU is unhealthy.
+ErrorOrSuccess evaluateGPUHealth(const GPUHealthData &data);
 
 class DeviceBuffer final : public ReferenceCounted<DeviceBuffer> {
 public:

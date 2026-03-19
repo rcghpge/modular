@@ -38,6 +38,12 @@ TEST(DeviceContextTest, CPUDeviceContextCreateSucceeds) {
   EXPECT_NE(ctx.getPointer(), nullptr);
 }
 
+TEST(DeviceContextTest, CPUHealthcheckSucceeds) {
+  // CPU device has a no-op healthcheck that always succeeds.
+  ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::cpuAPI));
+  EXPECT_NO_ERR(device->runHealthcheck());
+}
+
 TEST(DeviceContextTest, CreationFailure) {
   EXPECT_ERR_MSG(DeviceContext::create(Device::cpuAPI, 1),
                  "Device(api: cpu, id: 1) is not available");
@@ -806,4 +812,162 @@ TEST(DeviceContextTest, VirtualDeviceModeWithDeviceContext) {
   // Clean up
   setVirtualDeviceCount(0);
 }
+
+// ===== GPU Health Evaluation Tests (no GPU required) ===== //
+// These test evaluateGPUHealth() directly with crafted inputs,
+// verifying that the evaluation logic correctly detects unhealthy states.
+
+TEST(GPUHealthEvalTest, HealthyGPUReturnsSuccess) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = true;
+  data.throttleReasons = 0;
+  data.eccQueried = true;
+  data.eccErrors = 0;
+  EXPECT_NO_ERR(evaluateGPUHealth(data));
+}
+
+TEST(GPUHealthEvalTest, HWSlowdownDetected) {
+  GPUHealthData data;
+  data.deviceId = 3;
+  data.deviceName = "NVIDIA H100";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_HW_SLOWDOWN;
+  auto err = evaluateGPUHealth(data);
+  ASSERT_TRUE(err.isError());
+  auto msg = std::string(err.getError());
+  EXPECT_THAT(msg, testing::HasSubstr("hardware-throttled"));
+  EXPECT_THAT(msg, testing::HasSubstr("[HW Slowdown]"));
+  EXPECT_THAT(msg, testing::HasSubstr("GPU 3"));
+  EXPECT_THAT(msg, testing::HasSubstr("NVIDIA H100"));
+  EXPECT_THAT(msg,
+              testing::HasSubstr("MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK"));
+}
+
+TEST(GPUHealthEvalTest, HWThermalSlowdownDetected) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_HW_THERMAL_SLOWDOWN;
+  EXPECT_ERR_MSG(evaluateGPUHealth(data), "[HW Thermal Slowdown]");
+}
+
+TEST(GPUHealthEvalTest, HWPowerBrakeDetected) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_HW_POWER_BRAKE;
+  EXPECT_ERR_MSG(evaluateGPUHealth(data), "[HW Power Brake]");
+}
+
+TEST(GPUHealthEvalTest, MultipleThrottleReasonsReported) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_HW_SLOWDOWN |
+                         GPUHealthData::THROTTLE_HW_THERMAL_SLOWDOWN;
+  auto err = evaluateGPUHealth(data);
+  ASSERT_TRUE(err.isError());
+  auto msg = std::string(err.getError());
+  EXPECT_THAT(msg, testing::HasSubstr("[HW Slowdown]"));
+  EXPECT_THAT(msg, testing::HasSubstr("[HW Thermal Slowdown]"));
+}
+
+TEST(GPUHealthEvalTest, AMDProchotDetected) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "AMD Instinct MI355X";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_PROCHOT;
+  EXPECT_ERR_MSG(evaluateGPUHealth(data), "[PROCHOT]");
+}
+
+TEST(GPUHealthEvalTest, AMDHBMThermalDetected) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "AMD Instinct MI355X";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_HBM_THERMAL;
+  EXPECT_ERR_MSG(evaluateGPUHealth(data), "[HBM Thermal]");
+}
+
+TEST(GPUHealthEvalTest, AMDMultipleThrottleReasons) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "AMD Instinct MI355X";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_PROCHOT |
+                         GPUHealthData::THROTTLE_SOCKET_THERMAL |
+                         GPUHealthData::THROTTLE_VR_THERMAL;
+  auto err = evaluateGPUHealth(data);
+  ASSERT_TRUE(err.isError());
+  auto msg = std::string(err.getError());
+  EXPECT_THAT(msg, testing::HasSubstr("[PROCHOT]"));
+  EXPECT_THAT(msg, testing::HasSubstr("[Socket Thermal]"));
+  EXPECT_THAT(msg, testing::HasSubstr("[VR Thermal]"));
+}
+
+TEST(GPUHealthEvalTest, SoftwareThrottleNotFlagged) {
+  // Non-hardware throttle reasons (like SW thermal) should not trigger error.
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = true;
+  data.throttleReasons = 0x20ULL; // SW Thermal Slowdown (not in hw mask)
+  EXPECT_NO_ERR(evaluateGPUHealth(data));
+}
+
+TEST(GPUHealthEvalTest, EccErrorsDetected) {
+  GPUHealthData data;
+  data.deviceId = 1;
+  data.deviceName = "NVIDIA A100";
+  data.eccQueried = true;
+  data.eccErrors = 42;
+  auto err = evaluateGPUHealth(data);
+  ASSERT_TRUE(err.isError());
+  auto msg = std::string(err.getError());
+  EXPECT_THAT(msg, testing::HasSubstr("42 uncorrectable ECC error"));
+  EXPECT_THAT(msg, testing::HasSubstr("GPU 1"));
+  EXPECT_THAT(msg, testing::HasSubstr("NVIDIA A100"));
+}
+
+TEST(GPUHealthEvalTest, ZeroEccErrorsOK) {
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.eccQueried = true;
+  data.eccErrors = 0;
+  EXPECT_NO_ERR(evaluateGPUHealth(data));
+}
+
+TEST(GPUHealthEvalTest, UnqueriedFieldsSkipped) {
+  // If fields weren't queried (e.g., NVML returned NOT_SUPPORTED),
+  // those checks should be silently skipped.
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = false;
+  data.throttleReasons = GPUHealthData::THROTTLE_HW_SLOWDOWN; // Would fail
+  data.eccQueried = false;
+  data.eccErrors = 100; // Would fail
+  EXPECT_NO_ERR(evaluateGPUHealth(data));
+}
+
+TEST(GPUHealthEvalTest, AllChecksFailReportsFirstFailure) {
+  // When multiple checks fail, the first one (throttling) is reported.
+  GPUHealthData data;
+  data.deviceId = 0;
+  data.deviceName = "TestGPU";
+  data.throttleQueried = true;
+  data.throttleReasons = GPUHealthData::THROTTLE_HW_SLOWDOWN;
+  data.eccQueried = true;
+  data.eccErrors = 5;
+  // Should report throttling first.
+  EXPECT_ERR_MSG(evaluateGPUHealth(data), "hardware-throttled");
+}
+
 } // namespace

@@ -800,8 +800,47 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
 
     // Once the Device has been created remember it in the devices list.
     (*devices)[id] = device;
+
+    // Run healthcheck after device init — returns error on unhealthy GPU.
+    RETURN_IF_ERROR(device->runHealthcheck());
   }
   return *device;
+}
+
+ErrorOrSuccess CUDADevice::runHealthcheck() const {
+  if (DeviceContext::configAsBool("disable-healthcheck", false))
+    return success();
+
+  auto nvmlOr = NVML::get();
+  if (nvmlOr.isError())
+    return success(); // Gracefully skip if NVML unavailable.
+
+  const NVML &nvml = *nvmlOr;
+
+  GPUHealthData data;
+  data.deviceId = id();
+  data.deviceName = name();
+
+  // Gather throttle reasons — map NVML-specific bitmask to platform-agnostic
+  // GPUHealthData constants.
+  unsigned long long nvmlThrottle = 0;
+  if (nvml.nvmlDeviceGetCurrentClocksThrottleReasons(
+          nvmlDevice_, &nvmlThrottle) == NVML::SUCCESS) {
+    data.throttleQueried = true;
+    if (nvmlThrottle & NVML_CLK_THROTTLE_REASON_HW_SLOWDOWN)
+      data.throttleReasons |= GPUHealthData::THROTTLE_HW_SLOWDOWN;
+    if (nvmlThrottle & NVML_CLK_THROTTLE_REASON_HW_THERMAL_SLOWDOWN)
+      data.throttleReasons |= GPUHealthData::THROTTLE_HW_THERMAL_SLOWDOWN;
+    if (nvmlThrottle & NVML_CLK_THROTTLE_REASON_HW_POWER_BRAKE_SLOWDOWN)
+      data.throttleReasons |= GPUHealthData::THROTTLE_HW_POWER_BRAKE;
+  }
+
+  // Gather ECC errors.
+  data.eccQueried = nvml.nvmlDeviceGetTotalEccErrors(
+                        nvmlDevice_, NVML_MEMORY_ERROR_TYPE_UNCORRECTABLE,
+                        NVML_VOLATILE_ECC, &data.eccErrors) == NVML::SUCCESS;
+
+  return evaluateGPUHealth(data);
 }
 
 ErrorOr<const char *> CUDADevice::getArchName() const {

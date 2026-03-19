@@ -60,6 +60,7 @@ public:
   ErrorOr<int> getApiVersion() const override;
   ErrorOr<DriverVersion &> getDriverVersion() const override;
   ErrorOrSuccess isCompatible() const override;
+  ErrorOrSuccess runHealthcheck() const override { return success(); }
   ErrorOr<int> computeCapability() const override;
 
   ErrorOr<bool> canAccess(const Device &peer) const override;

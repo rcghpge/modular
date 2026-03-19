@@ -200,6 +200,57 @@ Device::~Device() {
 
 MODULAR_CXX_EXPORT const std::string &Device::name() const { return name_; }
 
+ErrorOrSuccess evaluateGPUHealth(const GPUHealthData &data) {
+  // 1. Check hardware throttling.
+  if (data.throttleQueried) {
+    constexpr unsigned long long hwThrottleMask =
+        // NVIDIA
+        GPUHealthData::THROTTLE_HW_SLOWDOWN |
+        GPUHealthData::THROTTLE_HW_THERMAL_SLOWDOWN |
+        GPUHealthData::THROTTLE_HW_POWER_BRAKE |
+        // AMD
+        GPUHealthData::THROTTLE_PROCHOT |
+        GPUHealthData::THROTTLE_SOCKET_THERMAL |
+        GPUHealthData::THROTTLE_VR_THERMAL |
+        GPUHealthData::THROTTLE_HBM_THERMAL;
+    if (data.throttleReasons & hwThrottleMask) {
+      std::string msg;
+      llvm::raw_string_ostream os(msg);
+      os << "GPU " << data.deviceId << " (" << data.deviceName
+         << ") is hardware-throttled:";
+      // NVIDIA throttle reasons.
+      if (data.throttleReasons & GPUHealthData::THROTTLE_HW_SLOWDOWN)
+        os << " [HW Slowdown]";
+      if (data.throttleReasons & GPUHealthData::THROTTLE_HW_THERMAL_SLOWDOWN)
+        os << " [HW Thermal Slowdown]";
+      if (data.throttleReasons & GPUHealthData::THROTTLE_HW_POWER_BRAKE)
+        os << " [HW Power Brake]";
+      // AMD throttle reasons.
+      if (data.throttleReasons & GPUHealthData::THROTTLE_PROCHOT)
+        os << " [PROCHOT]";
+      if (data.throttleReasons & GPUHealthData::THROTTLE_SOCKET_THERMAL)
+        os << " [Socket Thermal]";
+      if (data.throttleReasons & GPUHealthData::THROTTLE_VR_THERMAL)
+        os << " [VR Thermal]";
+      if (data.throttleReasons & GPUHealthData::THROTTLE_HBM_THERMAL)
+        os << " [HBM Thermal]";
+      os << ". Set MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK=true to bypass.";
+      RETURN_ERROR(msg);
+    }
+  }
+
+  // 2. Check uncorrectable ECC errors.
+  if (data.eccQueried && data.eccErrors > 0) {
+    RETURN_ERROR("GPU " + std::to_string(data.deviceId) + " (" +
+                 data.deviceName + ") has " + std::to_string(data.eccErrors) +
+                 " uncorrectable ECC error(s). "
+                 "Set MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK=true to "
+                 "bypass.");
+  }
+
+  return success();
+}
+
 ErrorOr<const char *> Device::getArchName() const {
   return Error(Twine("Not implemented for device: ") + Twine(name_));
 }

@@ -95,6 +95,8 @@ public:
 
   static ErrorOr<HIPDevice &> get(int id);
 
+  ErrorOrSuccess runHealthcheck() const override;
+
 private:
   // We only support HIP architectures sm_80 and above.
   static constexpr int MIN_COMPUTE_CAPABILITY = 80;

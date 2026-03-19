@@ -501,6 +501,13 @@ AsyncRT_DeviceContext_isCompatible(DeviceContext *ctx) {
   return checkSuccess(ctx->device().isCompatible());
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_runHealthcheck(DeviceContext *ctx) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_runHealthcheck",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(ctx->device().runHealthcheck());
+}
+
 MODULAR_EXPORT int64_t AsyncRT_DeviceContext_id(DeviceContext *ctx) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_id", TRACY_COLOR_GRAY);
   return ctx->device().id();

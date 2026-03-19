@@ -4,8 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/NVML.h"
+#include "ScopedEnvVar.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
@@ -742,6 +744,78 @@ TEST_F(CUDADeviceContextTest, CUDA13DriverVersion) {
   ASSIGN_NO_ERR(int, apiVersion, ctx->device().getApiVersion());
   EXPECT_GE(apiVersion, 13000)
       << "Expected CUDA 13+ API version after libnvptxcompiler upgrade";
+}
+
+// ===== GPU Healthcheck Tests ===== //
+
+TEST_F(CUDADeviceContextTest, HealthcheckSucceedsOnHealthyGPU) {
+  // On a healthy GPU, the healthcheck should pass.
+  auto deviceOr = CUDADevice::get(0);
+  ASSERT_FALSE(deviceOr.isError()) << deviceOr.getError();
+  EXPECT_NO_ERR(deviceOr->runHealthcheck());
+}
+
+TEST_F(CUDADeviceContextTest, HealthcheckDisabledByEnvVar) {
+  ScopedEnvVar disableHealthcheck("MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK",
+                                  "true");
+
+  auto deviceOr = CUDADevice::get(0);
+  ASSERT_FALSE(deviceOr.isError()) << deviceOr.getError();
+  EXPECT_NO_ERR(deviceOr->runHealthcheck());
+}
+
+TEST_F(CUDADeviceContextTest, NVMLThrottleReasonsQueryable) {
+  // Verify the new NVML throttle reasons API is callable.
+  ErrorOr<const NVML &> nvmlOr = NVML::get();
+  ASSERT_FALSE(nvmlOr.isError()) << nvmlOr.getError();
+  const NVML &nvml = *nvmlOr;
+
+  nvmlDevice_t device;
+  ASSERT_EQ(nvml.nvmlDeviceGetHandleByIndex(0, &device), NVML::SUCCESS);
+
+  unsigned long long throttleReasons = 0;
+  NVML::Result result =
+      nvml.nvmlDeviceGetCurrentClocksThrottleReasons(device, &throttleReasons);
+  // Should succeed or return NOT_SUPPORTED on some hardware.
+  EXPECT_TRUE(result == NVML::SUCCESS || result == NVML::NOT_SUPPORTED)
+      << "Unexpected NVML result: " << result;
+}
+
+TEST_F(CUDADeviceContextTest, NVMLEccErrorsQueryable) {
+  // Verify the new NVML ECC errors API is callable.
+  ErrorOr<const NVML &> nvmlOr = NVML::get();
+  ASSERT_FALSE(nvmlOr.isError()) << nvmlOr.getError();
+  const NVML &nvml = *nvmlOr;
+
+  nvmlDevice_t device;
+  ASSERT_EQ(nvml.nvmlDeviceGetHandleByIndex(0, &device), NVML::SUCCESS);
+
+  unsigned long long eccErrors = 0;
+  NVML::Result result = nvml.nvmlDeviceGetTotalEccErrors(
+      device, NVML_MEMORY_ERROR_TYPE_UNCORRECTABLE, NVML_VOLATILE_ECC,
+      &eccErrors);
+  // Should succeed or return NOT_SUPPORTED (e.g., consumer GPUs without ECC).
+  EXPECT_TRUE(result == NVML::SUCCESS || result == NVML::NOT_SUPPORTED)
+      << "Unexpected NVML result: " << result;
+}
+
+TEST_F(CUDADeviceContextTest, NVMLComputeProcessesQueryable) {
+  // Verify the new NVML compute processes API is callable.
+  ErrorOr<const NVML &> nvmlOr = NVML::get();
+  ASSERT_FALSE(nvmlOr.isError()) << nvmlOr.getError();
+  const NVML &nvml = *nvmlOr;
+
+  nvmlDevice_t device;
+  ASSERT_EQ(nvml.nvmlDeviceGetHandleByIndex(0, &device), NVML::SUCCESS);
+
+  // Query with nullptr buffer to just get the count.
+  unsigned int processCount = 0;
+  NVML::Result result = nvml.nvmlDeviceGetComputeRunningProcesses_v3(
+      device, &processCount, nullptr);
+  // SUCCESS means 0 processes, any other non-error result means processes
+  // exist. We just verify the call doesn't crash.
+  (void)result;
+  (void)processCount;
 }
 
 } // namespace
