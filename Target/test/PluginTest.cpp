@@ -155,7 +155,7 @@ TEST_F(DriverPluginContextTest, MemoryFreeBadContext) {
 }
 
 TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "HIP" || api == "Metal")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     M_driver_queue_t queue = nullptr;
