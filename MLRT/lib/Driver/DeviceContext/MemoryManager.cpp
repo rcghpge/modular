@@ -983,6 +983,9 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
           // the chunk size to all remaining memory for future chunk
           // allocations.
           memoryManager_.growChunkSizeTo(memoryManager_.maxCacheSize_);
+        } else {
+          memoryManager_.growChunkSizeTo(
+              std::min(memoryManager_.maxCacheSize_, wrappedSize));
         }
       }
 
