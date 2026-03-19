@@ -625,7 +625,7 @@ modular_cc_library(
         "//conditions:default": [],
     }),
     visibility = [
-        "//GenericML:__subpackages__",
+        "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
     ],
     deps = [

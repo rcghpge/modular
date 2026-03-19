@@ -1,0 +1,1462 @@
+load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
+load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES", "KERNEL_PROFILING_LOCAL_DEFINES")
+load("//max/python/max/_core/internal/mlir_nanobind:tblgen.bzl", "mlir_nanobind")  # buildifier: disable=bzl-visibility
+
+# gazelle:default_visibility //GraphCompiler:consumers
+
+package(default_visibility = ["//GraphCompiler:consumers"])
+
+package_group(
+    name = "consumers",
+    packages = [
+        "//GraphCompiler/...",
+        "//MLRT/...",
+        "//SDK/...",
+        "//max/...",
+        "//oss/modular/max/...",
+        "//utils/...",
+    ],
+)
+
+pkg_files(
+    name = "docs",
+    srcs = [
+        ":MGPDialect.doc",
+        ":MGPTransformsIncGen.doc",
+        ":MODialect.doc",
+        ":MOGGDialect.doc",
+        ":MOGGDialectPassesIncGen.doc",
+        ":MOGGToMGPIncGen.doc",
+        ":MOSHDialect.doc",
+        ":MOToMOGGIncGen.doc",
+        ":MOTransformsIncGen.doc",
+        ":RMODialect.doc",
+        ":RMOTransformsIncGen.doc",
+    ],
+    prefix = "GraphCompiler/docs",
+    visibility = ["//docs:__subpackages__"],
+)
+
+modular_cc_library(
+    name = "FrameworkFrontend",
+    srcs = glob(["lib/FrameworkFrontend/**/*.cpp"]),
+    hdrs = ["include/GraphCompiler/FrameworkFrontend.h"],
+    deps = [
+        ":MOFOptions",
+        "//Cache",
+        "//GraphCompiler:CommonDriver",
+        "//GraphCompiler:CompileDriver",
+        "//GraphCompiler:ExecutionDriver",
+        "//MLRT:AsyncRT/CompilerSupport",
+        "//MLRT:GraphRT/MEFExecutor",
+        "//Support:Base",
+        "//Support:Buffer",
+        "//Support:Context",
+        "//max/internal:MOFDriver",
+    ],
+)
+
+# MOTransforms relies on these, but the GraphCompiler relies
+# on MOTransforms.
+modular_cc_library(
+    name = "GraphCompilerPublic.headers",
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/*.h"]),
+    tags = ["no-clang-tidy-headers"],
+    visibility = ["//visibility:private"],
+)
+
+modular_cc_library(
+    name = "GraphCompiler",
+    srcs = glob(["lib/GraphCompiler/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/*.h"]),
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":MGPRT",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOGGToMGP",
+        ":MOGGTransforms",
+        ":MOToMOGG",
+        ":MOTransforms",
+        ":RMODialect",
+        ":RMOTransforms",
+        ":Support",
+        "//KGEN:CompilerRT",
+        "//MLRT:AsyncRT/RuntimeGlobals",
+        "//MLRT:Driver/DeviceContext",
+        "//MLRT:GraphRT/MLIRToMEF",
+        "//Support:Base",
+        "//Support:BinaryID",
+        "//Support:Diagnostics",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
+    ],
+)
+
+modular_cc_library(
+    name = "CommonDriver",
+    srcs = glob(["lib/CommonDriver/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/CommonDriver/*.h"]),
+    deps = [
+        ":GraphCompilerPublic.headers",
+        ":Support",
+        "//Support:Base",
+        "//Support:Context",
+    ],
+)
+
+modular_cc_library(
+    name = "CompileDriver",
+    srcs = glob(["lib/CompileDriver/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/CompileDriver/*.h"]),
+    local_defines = CONFIG_SECTION_LOCAL_DEFINES,
+    deps = [
+        ":CommonDriver",
+        ":Support",
+        "//MLRT:GraphRT/MLIRToMEF",
+        "//Support:Base",
+        "//Support:CacheLog",
+        "//Support:Context",
+    ],
+)
+
+modular_cc_library(
+    name = "ExecutionDriver",
+    srcs = glob(["lib/ExecutionDriver/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/ExecutionDriver/*.h"]),
+    deps = [
+        ":CommonDriver",
+        ":MEFModel",
+        ":Support",
+        "//Support:Base",
+    ],
+)
+
+# TODO: Move deeper into subdirectories, this being so high up is wack.
+# Circular dependency between these two directories, so we need to be
+# mindful.
+modular_cc_library(
+    name = "GraphCompilerConversion",
+    srcs = glob(["lib/GraphCompiler/Conversion/*.cpp"]),
+    hdrs = glob(
+        ["include/GraphCompiler/GraphCompiler/Conversion/*.h"],
+        # Deal with a circular dependency.
+        exclude = [
+            "include/GraphCompiler/GraphCompiler/Conversion/DeviceBufferizationRegistry.h",
+            "include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h",
+        ],
+    ),
+    tags = ["no-clang-tidy-headers"],
+    deps = [
+        ":MOGGToMGPIncGen",
+        ":MOSHDialect",
+        "//KGEN:KGENDialect",
+        "//Support:Base",
+        "//Support:Compiler",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+td_library(
+    name = "GraphCompilerInterfacesTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/Interfaces/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphCompilerInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphCompilerConvertibleInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-type-interface-decls"],
+            "include/GraphCompiler/GraphCompiler/Interfaces/ConvertibleToMGPTypeInterface.h.inc",
+        ),
+        (
+            ["-gen-type-interface-defs"],
+            "include/GraphCompiler/GraphCompiler/Interfaces/ConvertibleToMGPTypeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/Interfaces/ConvertibleToMGPTypeInterface.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "GraphCompilerEmitsMojoInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GraphCompiler/GraphCompiler/Interfaces/EmitsMojoInterface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GraphCompiler/GraphCompiler/Interfaces/EmitsMojoInterface.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/Interfaces/EmitsMojoInterface.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphCompilerInterfaces",
+    srcs = glob(["lib/GraphCompiler/Interfaces/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/Interfaces/*.h"]),
+    deps = [
+        ":GraphCompilerConversion",
+        ":GraphCompilerConvertibleInterfacesIncGen",
+        ":GraphCompilerEmitsMojoInterfacesIncGen",
+        ":GraphCompilerInterfacesIncGen",
+        ":MGPDialect.headers",
+        ":MODialect",
+        ":MOGGDialect.headers",
+        ":MOGGFusionSupport",
+        "//MLRT:Driver/DeviceContext",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "GraphCompilerDeviceBuggerizationRegistry",
+    hdrs = ["include/GraphCompiler/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"],
+    deps = [
+        ":GraphCompilerInterfaces",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+##
+# MO Dialect
+##
+td_library(
+    name = "MODialectTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MODialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "//KGEN:KGENDialectTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
+    ],
+)
+
+mlir_nanobind(
+    name = "MODialectNanobindInc",
+    srcs = glob([
+        "include/GraphCompiler/GraphCompiler/MODialect/*.td",
+        "include/GraphCompiler/GraphCompiler/MODialect/Transforms/**/*.td",
+        "include/GraphCompiler/GraphCompiler/Conversion/**/*.td",
+    ]),
+    output_dir = "include/GraphCompiler/MODialect/Nanobind",
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+mlir_nanobind(
+    name = "RMODialectNanobindInc",
+    srcs = glob([
+        "include/GraphCompiler/GraphCompiler/RMODialect/*.td",
+        "include/GraphCompiler/GraphCompiler/RMODialect/Transforms/**/*.td",
+    ]),
+    exclude = [
+        # rmo.concat uses OptionalAttr, which tblgen generates as a normal
+        # mlir::Attribute that's allowed to be null, while our bindings
+        # generate as std::optional<mlir::Attribute>.
+        "RMO_ConcatOp",
+        "RMO_MOTransferOp",
+    ],
+    output_dir = "include/GraphCompiler/RMODialect/Nanobind",
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        ":RMODialectTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "MODialectIncGen",
+    dialect = "mo",
+    extra_tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mo",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mo",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOAttrs.cpp.inc",
+        ),
+    ],
+    td_file = "include/GraphCompiler/GraphCompiler/MODialect/MO.td",
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "MOBindingIncGen",
+    tbl_outs = [(
+        [
+            "-gen-python-op-bindings",
+            "-bind-dialect=mo",
+        ],
+        ":include/GraphCompiler/GraphCompiler/MODialect/mo.py",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = ":include/GraphCompiler/GraphCompiler/MODialect/MO.td",
+    visibility = [
+        "//max:__subpackages__",
+        "//oss/modular/max/python/max/_mlir/dialects:__pkg__",
+    ],
+    deps = [
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "mosh_json",
+    tbl_outs = [(
+        ["--dump-json"],
+        "mosh.json",
+    )],
+    tblgen = "@llvm-project//llvm:llvm-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MOSHDialect/MOSH.td",
+    deps = [
+        "//GraphCompiler:MOSHDialectTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "rmo_json",
+    tags = [ALLOW_UNUSED_TAG],  # TODO: Remove when used
+    tbl_outs = [(
+        ["--dump-json"],
+        "rmo.json",
+    )],
+    tblgen = "@llvm-project//llvm:llvm-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/RMODialect/RMO.td",
+    deps = [
+        "//GraphCompiler:MODialectTdFiles",
+        "//GraphCompiler:MOSHDialectTdFiles",
+        "//GraphCompiler:RMODialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MODialectEnumsIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mo",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOEnumAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mo",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOEnumAttrs.cpp.inc",
+        ),
+        (
+            [
+                "-gen-enum-decls",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOEnums.h.inc",
+        ),
+        (
+            [
+                "-gen-enum-defs",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOEnums.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MODialect/MOEnums.td",
+    deps = [
+        ":MODialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MODialectInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MODialect/MOInterfaces.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MODialectTypeInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-type-interface-decls",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOTypeInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-type-interface-defs",
+            ],
+            "include/GraphCompiler/GraphCompiler/MODialect/MOTypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MODialect/MOTypeInterfaces.td",
+    deps = [
+        ":MODialectTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MODialect",
+    srcs = glob(["lib/GraphCompiler/MODialect/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MODialect/*.h"]) + [
+        "include/GraphCompiler/GraphCompiler/Matchers.h",
+    ],
+    deps = [
+        ":MODialectEnumsIncGen",
+        ":MODialectIncGen",
+        ":MODialectInterfacesIncGen",
+        ":MODialectTypeInterfacesIncGen",
+        ":MOSHDialect",
+        ":Support",
+        "//MLRT:GraphRT/GRTDialect",
+    ],
+)
+
+modular_cc_library(
+    name = "MOAnalysis",
+    srcs = glob(["lib/GraphCompiler/MODialect/Analysis/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MODialect/Analysis/*.h"]),
+    deps = [
+        ":MODialect",
+    ],
+)
+
+td_library(
+    name = "MOTransformsTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MODialect/Transforms/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MOTransformsIncGen",
+    output_name = "MOTransforms",
+    td_file = "include/GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.td",
+    deps = [
+        ":MOTransformsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOTransforms",
+    srcs = glob(["lib/GraphCompiler/MODialect/Transforms/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MODialect/Transforms/*.h"]),
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":CommonDriver",
+        ":DeviceDriver",
+        ":GraphCompilerPublic.headers",
+        ":MEFModel",
+        ":MGPPrimitives",
+        ":MOAnalysis",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOTarget",
+        ":MOTransformsIncGen",
+        ":RMODialect",
+        ":RMOSupport",
+        "//Support:Context",
+    ],
+)
+
+##
+# RMO Dialect
+##
+td_library(
+    name = "RMODialectTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/RMODialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "RMODialectIncGen",
+    dialect = "rmo",
+    extra_tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=rmo",
+            ],
+            "include/GraphCompiler/GraphCompiler/RMODialect/RMOAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=rmo",
+            ],
+            "include/GraphCompiler/GraphCompiler/RMODialect/RMOAttrs.cpp.inc",
+        ),
+    ],
+    td_file = "include/GraphCompiler/GraphCompiler/RMODialect/RMO.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+        ":MGPDialectTdFiles",
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        ":RMODialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "RMOBindingIncGen",
+    tbl_outs = [(
+        [
+            "-gen-python-op-bindings",
+            "-bind-dialect=rmo",
+        ],
+        ":include/GraphCompiler/GraphCompiler/RMODialect/rmo.py",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = ":include/GraphCompiler/GraphCompiler/RMODialect/RMO.td",
+    visibility = [
+        "//max:__subpackages__",
+        "//oss/modular/max/python/max/_mlir/dialects:__pkg__",
+    ],
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+        ":MGPDialectTdFiles",
+        ":MODialectTdFiles",
+        ":MOSHDialectTdFiles",
+        ":RMODialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "RMODialectInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GraphCompiler/GraphCompiler/RMODialect/RMOInterfaces.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GraphCompiler/GraphCompiler/RMODialect/RMOInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/RMODialect/RMOInterfaces.td",
+    deps = [
+        ":MODialectTdFiles",
+        ":RMODialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "RMODialect",
+    srcs = glob(["lib/GraphCompiler/RMODialect/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/RMODialect/*.h"]),
+    deps = [
+        ":MODialect",
+        ":RMODialectIncGen",
+        ":RMODialectInterfacesIncGen",
+        "//MLRT:GraphRT/GRTDialect",
+    ],
+)
+
+modular_cc_library(
+    name = "RMOSupport",
+    srcs = glob(["lib/GraphCompiler/Conversion/RMOSupport/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/Conversion/RMOSupport/*.h"]),
+    deps = [
+        ":RMODialect",
+    ],
+)
+
+td_library(
+    name = "RMOTransformsTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/RMODialect/Transforms/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "RMOTransformsIncGen",
+    td_file = "include/GraphCompiler/GraphCompiler/RMODialect/Transforms/RMOTransforms.td",
+    deps = [
+        ":RMOTransformsTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "RMOTransforms",
+    srcs = glob(["lib/GraphCompiler/RMODialect/Transforms/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/RMODialect/Transforms/*.h"]),
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":RMODialect",
+        ":RMOSupport",
+        ":RMOTransformsIncGen",
+    ],
+)
+
+##
+# MOGG Dialect
+##
+td_library(
+    name = "MOGGDialectTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MOGGDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "//KGEN:KGENDialectTdFiles",
+        "//KGEN:POPDialectTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "MOGGDialectIncGen",
+    dialect = "mogg",
+    extra_tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mogg",
+            ],
+            "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mogg",
+            ],
+            "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.cpp.inc",
+        ),
+    ],
+    td_file = "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGG.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+        ":MGPDialectTdFiles",
+        ":MODialectTdFiles",
+        ":MOGGDialectTdFiles",
+        ":MOSHDialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MOGGDialectInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.td",
+    deps = [
+        ":MOGGDialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MOGGDialectEnumsIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.td",
+    deps = [
+        "MOGGDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MOGGDialectPassesIncGen",
+    td_file = "include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td",
+    deps = [
+        ":MOGGDialectTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOGGDialect.headers",
+    hdrs = glob([
+        "include/GraphCompiler/GraphCompiler/MOGGDialect/*.h",
+        "include/GraphCompiler/GraphCompiler/MOGGDialect/Support/*.h",
+        "include/GraphCompiler/GraphCompiler/MOGGDialect/Analysis/*.h",
+        "include/GraphCompiler/GraphCompiler/Interfaces/*.h",
+    ]),
+    tags = ["no-clang-tidy-headers"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":GraphCompilerConversion",
+        ":GraphCompilerConvertibleInterfacesIncGen",
+        ":GraphCompilerEmitsMojoInterfacesIncGen",
+        ":GraphCompilerInterfacesIncGen",
+        ":MGPDialect.headers",
+        ":MODialect",
+        ":MOGGDialectEnumsIncGen",
+        ":MOGGDialectIncGen",
+        ":MOGGDialectInterfacesIncGen",
+        ":MOGGDialectPassesIncGen",
+        "//KGEN:KGENDialect",
+        "//KGEN:POPDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+modular_cc_library(
+    name = "MOGGFusionSupport",
+    srcs = ["lib/GraphCompiler/MOGGDialect/Support/RegionFusion.cpp"],
+    deps = [
+        ":MOGGDialect.headers",
+        "//MLRT:GraphRT/GRTDialect",
+        "//Support:Base",
+    ],
+)
+
+modular_cc_library(
+    name = "MOGGDialect",
+    srcs = glob(
+        [
+            "lib/GraphCompiler/MOGGDialect/*.cpp",
+            "lib/GraphCompiler/MOGGDialect/Support/*.cpp",
+            "lib/GraphCompiler/MOGGDialect/Analysis/*.cpp",
+        ],
+        exclude = ["lib/GraphCompiler/MOGGDialect/Support/RegionFusion.cpp"],
+    ),
+    hdrs = glob([
+        "include/GraphCompiler/GraphCompiler/MOGGDialect/*.h",
+        "include/GraphCompiler/GraphCompiler/MOGGDialect/Support/*.h",
+        "include/GraphCompiler/GraphCompiler/MOGGDialect/Analysis/*.h",
+    ]),
+    local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
+    deps = [
+        ":GraphCompilerInterfaces",
+        ":GraphCompilerPublic.headers",
+        ":MOAnalysis",
+        ":MODialect",
+        ":MOGGDialectEnumsIncGen",
+        ":MOGGDialectIncGen",
+        ":MOGGDialectInterfacesIncGen",
+        ":MOGGDialectPassesIncGen",
+        ":MOGGFusionSupport",
+        ":MOSHDialect",
+        ":Support",
+        "//KGEN:MojoParser",
+        "//KGEN:ObjectCompiler",
+        "//MLRT:Driver/DeviceContext",
+        "//MLRT:GraphRT/GRTDialect",
+        "//Support:Context",
+        "//Support:HashUtils",
+    ],
+)
+
+modular_cc_library(
+    name = "MOGGTransforms",
+    srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
+    local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
+    deps = [
+        ":GraphCompilerDeviceBuggerizationRegistry",
+        ":MGPTransforms",
+        ":MOAnalysis",
+        ":MOGGDialect",
+        ":MOGGFusionSupport",
+        ":MOGGToMGP",
+        ":Support",
+        "//KGEN:TransformUtils",
+        "//MLRT:AsyncRT/CompilerSupport",
+        "//MLRT:Driver/DeviceContext",
+    ],
+)
+
+##
+# MGP Dialect
+##
+td_library(
+    name = "MGPDialectTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+        ":MODialectTdFiles",
+        ":MOGGDialectTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "MGPDialect.doc",
+    includes = ["include"],
+    tbl_outs = [(
+        [
+            "-gen-dialect-doc",
+            "-dialect=mgp",
+        ],
+        "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.md",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGP.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGP.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGP.cpp.inc",
+        ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.cpp.inc",
+        ),
+        # Carry over from CMake. Original comment:
+        # Type declarations need to be generated for MGPTypes.td directly so that
+        # MGPTensorSpec is declared in its own include file (which is needed by
+        # TensorTypeInterface). Type definitions for all types and TensorSpec need
+        # to be generated in the same file so that there is only one copy of the type
+        # parser.
+        (
+            [
+                "-gen-typedef-defs",
+                "-typedefs-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGP.td",
+    deps = [
+        ":GraphCompilerInterfacesTdFiles",
+        ":MGPDialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectAttrsIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPAttrs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGP.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+        "//MLRT:GraphRT/MEFTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectTypesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        "//MLRT:GraphRT/MEFTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectTensorSpecIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-typedef-decls",
+                "-typedefs-dialect=mgp",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTensorSpec.td",
+    deps = [
+        ":MGPDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectTypeInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-type-interface-decls",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-type-interface-defs",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypeInterfaces.td",
+    deps = [
+        ":MGPDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "MGPDialectOpInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            [
+                "-gen-op-interface-decls",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.h.inc",
+        ),
+        (
+            [
+                "-gen-op-interface-defs",
+            ],
+            "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOpInterfaces.td",
+    deps = [
+        ":MGPDialectTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MGPDialect.headers",
+    hdrs = glob([
+        "include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/*.h",
+        "include/GraphCompiler/GraphCompiler/Interfaces/*.h",
+    ]),
+    tags = ["no-clang-tidy-headers"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":MGPDialectAttrsIncGen",
+        ":MGPDialectIncGen",
+        ":MGPDialectOpInterfacesIncGen",
+        ":MGPDialectTensorSpecIncGen",
+        ":MGPDialectTypeInterfacesIncGen",
+        ":MGPDialectTypesIncGen",
+        "//KGEN:KGENDialect",
+        "//KGEN:POPDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+modular_cc_library(
+    name = "MGPDialect",
+    srcs = glob(["lib/GraphCompiler/MGPDialect/Dialect/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/Dialect/*.h"]),
+    deps = [
+        ":GraphCompilerInterfaces",
+        ":MGPDialectAttrsIncGen",
+        ":MGPDialectIncGen",
+        ":MGPDialectOpInterfacesIncGen",
+        ":MGPDialectTensorSpecIncGen",
+        ":MGPDialectTypeInterfacesIncGen",
+        ":MGPDialectTypesIncGen",
+        ":MOSHDialect",
+        ":Support",
+        "//MLRT:GraphRT/GRTDialect",
+    ],
+)
+
+##
+# MGP Transforms
+##
+td_library(
+    name = "MGPTransformsTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/*.td"]),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MGPTransformsIncGen",
+    output_name = "MGPTransforms",
+    td_file = "include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.td",
+    deps = [
+        ":MGPDialectTdFiles",
+        ":MGPTransformsTdFiles",
+        "//MLRT:GraphRT/GRTTdFiles",
+        "//MLRT:GraphRT/MEFTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MGPTransforms",
+    srcs = glob(["lib/GraphCompiler/MGPDialect/Transforms/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/*.h"]),
+    deps = [
+        ":MGPDialect",
+        ":MGPTransformsIncGen",
+        ":MOGGDialect",
+        ":RMODialect",
+        ":Support",
+        "//MLRT:Driver/DeviceContext",
+        "//MLRT:GraphRT/MEFDialect",
+        "//Support:HashUtils",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
+    name = "MEFModel",
+    srcs = glob(["lib/MEFModel/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/MEFModel/*.h"]),
+    deps = [
+        ":DeviceDriver",
+        ":MGPPrimitives",
+        ":Support",
+        "//Kernels:WeightsRegistry",
+        "//MLRT:AsyncRT/Runtime",
+        "//MLRT:AsyncRT/RuntimeGlobals",
+        "//MLRT:Core",
+        "//MLRT:Core/Tensor",
+        "//MLRT:GraphRT/MEFExecutor",
+        "//MLRT:GraphRT/Primitives",
+        "//Support:Profiling",
+    ],
+)
+
+# Shared source files for MGPPrimitives variants
+# Using filegroup to avoid duplicate source errors when used in multiple targets
+filegroup(
+    name = "MGPPrimitives_srcs",
+    srcs = [
+        "lib/GraphCompiler/MGPDialect/Primitives/KernelLogger.cpp",
+        "lib/GraphCompiler/MGPDialect/Primitives/MGPCPUPrimitives.cpp",
+        "lib/GraphCompiler/MGPDialect/Primitives/MGPPrimitives.cpp",
+    ],
+)
+
+modular_cc_library(
+    name = "MGPPrimitives",
+    srcs = [":MGPPrimitives_srcs"],
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/Primitives/*.h"]),
+    data = [
+        ":MGPRT",
+    ],
+    deps = [
+        ":MGPDialect",
+        "//Kernels:Tracing",
+        "//Kernels:mojo_string_c_api",
+        "//Kernels:weights_registry_c_api",
+        "//MLRT:AsyncRT/RuntimeGlobals",
+    ],
+)
+
+# MGPPrimitives library with kernel logging always enabled (for testing)
+# Note: Uses same source files as MGPPrimitives but with different defines.
+# Tagged with no-clang-tidy to prevent duplicate tidy rules for the same source files.
+modular_cc_library(
+    name = "MGPPrimitivesWithLogging",
+    srcs = [":MGPPrimitives_srcs"],
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/Primitives/*.h"]),
+    data = [
+        ":MGPRT",
+    ],
+    local_defines = ["ENABLE_MGP_KERNEL_LOGGING"],
+    tags = ["no-clang-tidy"],
+    deps = [
+        ":MGPDialect",
+        "//Kernels:Tracing",
+        "//Kernels:mojo_string_c_api",
+        "//Kernels:weights_registry_c_api",
+        "//MLRT:AsyncRT/RuntimeGlobals",
+    ],
+)
+
+modular_cc_library(
+    name = "Support",
+    srcs = glob(["lib/Support/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/Support/*.h"]),
+    local_defines = select({
+        "@platforms//os:macos": ["GENERICML_LINKER_CMD=\\\"clang\\ -Wl,-undefined,dynamic_lookup\\\""],
+        "@platforms//os:linux": ["GENERICML_LINKER_CMD=\\\"clang\\\""],
+    }),
+    deps = [
+        ":DeviceDriver.headers",
+        "//KGEN:Compiler",
+        "//KGEN:CompilerRT",
+        "//KGEN:ExecutionEngine",
+        "//KGEN:ObjectCompiler",
+        "//MLRT:AsyncRT/Runtime",
+        "//MLRT:Core",
+        "//MLRT:Core/Tensor",
+        "//MLRT:GraphRT/MEFExecutor",
+        "//Support:Base",
+        "//Support:Context",
+        "//Support:ML",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+##
+# MOSH dialect.
+##
+
+td_library(
+    name = "MOSHDialectTdFiles",
+    srcs = glob(["include/GraphCompiler/GraphCompiler/MOSHDialect/*.td"]),
+    includes = ["include"],
+    deps = [
+        "//KGEN:KGENDialectTdFiles",
+        "@llvm-project//mlir:AttrTdFiles",
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl_mlir_dialect(
+    name = "MOSHDialectIncGen",
+    dialect = "mosh",
+    extra_tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=mosh",
+            ],
+            "include/GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=mosh",
+            ],
+            "include/GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.cpp.inc",
+        ),
+    ],
+    td_file = "include/GraphCompiler/GraphCompiler/MOSHDialect/MOSH.td",
+    deps = [
+        ":MOSHDialectTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOSHDialect",
+    srcs = glob(["lib/GraphCompiler/MOSHDialect/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MOSHDialect/*.h"]),
+    deps = [
+        ":MOSHDialectIncGen",
+        ":Support",
+        "//KGEN:KGENDialect",
+        "//KGEN:POPDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+##
+# CONVERSIONS
+##
+
+## MOGGToMGP
+td_library(
+    name = "MOGGToMGPTdFiles",
+    srcs = ["include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MOGGToMGPIncGen",
+    output_name = "MOGGToMGP",
+    td_file = "include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td",
+    deps = [
+        ":MOGGToMGPTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOGGToMGP",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOGGToMGP/*.cpp"]),
+    deps = [
+        ":CommonDriver",
+        ":GraphCompilerDeviceBuggerizationRegistry",
+        ":MGPTransforms",
+        ":MOAnalysis",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOGGToMGPIncGen",
+        "//KGEN:ToolCommon",
+        "//MLRT:Driver/DeviceContext",
+        "//Support:CommonCLOptions",
+    ],
+)
+
+## MOToMogg
+td_library(
+    name = "MOToMOGGTdFiles",
+    srcs = ["include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.td"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+    ],
+)
+
+gentbl_modular_passes(
+    name = "MOToMOGGIncGen",
+    output_name = "MOToMOGG",
+    td_file = "include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.td",
+    deps = [
+        ":MOToMOGGTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+modular_cc_library(
+    name = "MOToMOGG",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOToMOGG/*.cpp"]),
+    hdrs = ["include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h"],
+    copts = ["-fvisibility=default"],
+    deps = [
+        ":GraphCompilerInterfaces",
+        ":MGPDialect",
+        ":MODialect",
+        ":MOGGDialect",
+        ":MOToMOGGIncGen",
+        "//KGEN:ToolCommon",
+    ],
+)
+
+##
+# Conversion Targets
+##
+modular_cc_library(
+    name = "MOTarget",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOTarget/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/Conversion/MOTarget/*.h"]),
+    deps = [
+        ":MODialect",
+        ":RMODialect",
+    ],
+)
+
+# TODO: Break circular dependency and remove this
+modular_cc_library(
+    name = "DeviceDriver.headers",
+    hdrs = glob(["include/GraphCompiler/DeviceDriver/*.h"]),
+    tags = ["no-clang-tidy-headers"],
+    visibility = [
+        "//max:__pkg__",
+        "//visibility:private",
+    ],
+    deps = [
+        "//Support:DeviceSpecs",
+        "//Support:ML",
+    ],
+)
+
+modular_cc_library(
+    name = "DeviceDriver",
+    srcs = glob(["lib/DeviceDriver/*.cpp"]),
+    hdrs = glob(["include/GraphCompiler/DeviceDriver/*.h"]),
+    deps = [
+        ":CommonDriver",
+        ":Support",
+        "//Init",
+        "//MLRT:Driver/DeviceContext",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Context",
+    ],
+)
+
+modular_shared_library(
+    name = "MGPRT",
+    srcs = glob([
+        "lib/GraphCompiler/MGPDialect/RT/*.cpp",
+    ]),
+    hdrs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/RT/*.h"]),
+    deps = [
+        ":Support",
+        "//MLRT:Core/Tensor",
+        "//Support:Base",
+        "//Support:Context",
+    ],
+)
+
+modular_cc_library(
+    name = "SafeTensor",
+    srcs = ["lib/Support/SafeTensor/SafeTensor.cpp"],
+    hdrs = ["include/GraphCompiler/Support/SafeTensor/SafeTensor.h"],
+    deps = [
+        ":DeviceDriver",
+        "//MLRT:Driver/DeviceContext",
+        "//Support:Base",
+        "//Support:ML",
+    ],
+    alwayslink = True,
+)
+
+modular_cc_library(
+    name = "MOFOptions",
+    srcs = glob(["lib/MOFOptions/*.cpp"]),
+    hdrs = ["include/GraphCompiler/MOFOptions.h"],
+    deps = [
+        "//Support:Base",
+        "//Support:Context",
+        "//Support:ML",
+    ],
+)

@@ -200,7 +200,7 @@ DECLARE_ATTR_MAPPING(kString, StringRef);
 // MEF type constants and helpers
 //===----------------------------------------------------------------------===//
 
-/// MEF Types are always compatible with GenericML's DType but have some
+/// MEF Types are always compatible with GraphCompiler's DType but have some
 /// additional types for good measure.
 class TypeKind : public DType {
 public:

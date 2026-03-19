@@ -1,0 +1,79 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+
+#include "GraphCompiler/GraphCompiler/Interfaces/LoweringState.h"
+#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGInterfaces.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
+
+using namespace M;
+
+namespace M::MOGG {
+
+#define GEN_PASS_DEF_OUTLINEKERNELS
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
+
+} // namespace M::MOGG
+
+namespace M::MOGG {
+
+namespace {
+
+struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
+  using OutlineKernelsBase::OutlineKernelsBase;
+
+  void runOnOperation() override {
+    auto moduleOp = getOperation();
+    OpBuilder builder(moduleOp->getContext());
+    builder.setInsertionPointToStart(moduleOp.getBody(0));
+    auto ctx = moduleOp->getContext();
+
+    uint64_t stubNumber = 0;
+    moduleOp.walk<mlir::WalkOrder::PreOrder>(
+        [&](MOGG::GenericCompiledRegionOp kernelOp) {
+          auto loc = kernelOp.getLoc();
+          auto resultTypes = kernelOp->getResultTypes();
+          auto functionType = TypeAttr::get(FunctionType::get(
+              ctx, kernelOp->getOperandTypes(), kernelOp.getResultTypes()));
+          auto stubName =
+              StringAttr::get(kernelOp->getContext(),
+                              llvm::formatv("region_{}", stubNumber++).str());
+          auto stubOp = MOGG::KernelStubOp::create(
+              builder, loc, stubName, functionType,
+              kernelOp.getFusionInfoAttr(), kernelOp.getIsAsyncAttr(),
+              kernelOp.getConstantResourcesAttr(),
+              MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP));
+          stubOp.getBody().takeBody(kernelOp.getBody());
+          DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
+          stubOp.setDeviceRef(device);
+
+          builder.setInsertionPoint(kernelOp);
+          auto callOp = MOGG::ExecuteCompiledOp::create(
+              builder, stubOp->getLoc(),
+              /*resultTypes=*/resultTypes,
+              /*operands=*/kernelOp->getOperands(),
+              /*kernelName=*/FlatSymbolRefAttr::get(stubName),
+              /*usedParams=*/builder.getArrayAttr({}),
+              /*outputParamDecls=*/
+              KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
+              /*fusionInfo=*/stubOp.getFusionInfoAttr(),
+              /*isAsync=*/stubOp.getIsAsyncAttr(),
+              /*constantResources=*/stubOp.getConstantResources());
+          callOp.setDeviceRef(stubOp.getExecutionDevice());
+
+          kernelOp->replaceAllUsesWith(callOp);
+          kernelOp.erase();
+          builder.setInsertionPoint(stubOp);
+
+          return mlir::WalkResult::skip();
+        });
+  }
+};
+
+} // namespace
+
+} // namespace M::MOGG

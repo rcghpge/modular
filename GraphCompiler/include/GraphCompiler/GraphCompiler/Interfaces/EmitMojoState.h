@@ -1,0 +1,462 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+#ifndef GENERICML_INTERFACES_EMITMOJOSTATE_H
+#define GENERICML_INTERFACES_EMITMOJOSTATE_H
+
+#include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGEnums.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
+
+#include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "Support/AssertStream.h"
+
+namespace M::MOGG {
+/// TODO(GEX-2488): The following are Mojo symbols that are hardcoded for
+/// convenience. The end goal is to remove them all and either register them in
+/// a Mojo file via `@compiler_register` or determine them programmatically
+/// (packages). Ideally, name changes or file movements should not break
+/// anything in C++ land and be contained in Mojo (ex: stdlib decide to rename
+/// IndexList to something else, all the changes will be in Mojo only).
+
+namespace HardcodedMojoSymbols {
+constexpr StringLiteral struct_IO = "io_spec.IO";
+constexpr StringLiteral struct_IndexList = "std.utils.IndexList";
+constexpr StringLiteral struct_UnsafePointer = "UnsafePointer";
+constexpr StringLiteral struct_String = "String";
+constexpr StringLiteral struct_DeviceContextPtr =
+    "std.runtime.asyncrt.DeviceContextPtr";
+constexpr StringLiteral struct_DeviceContextPtrList =
+    "std.runtime.asyncrt.DeviceContextPtrList";
+constexpr StringLiteral struct_ManagedTensorSlice = "tensor.ManagedTensorSlice";
+constexpr StringLiteral struct_Int = "Int";
+constexpr StringLiteral struct_UInt = "UInt";
+constexpr StringLiteral struct_Bool = "Bool";
+constexpr StringLiteral struct_DimList = "buffer.DimList";
+constexpr StringLiteral struct_Dim = "buffer.Dim";
+constexpr StringLiteral struct_AddressSpace = "std.memory.AddressSpace";
+constexpr StringLiteral struct_DType = "DType";
+constexpr StringLiteral struct_SIMD = "SIMD";
+constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
+constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
+constexpr StringLiteral struct_StaticTuple = "std.utils.StaticTuple";
+constexpr StringLiteral struct_InlineArray = "InlineArray";
+constexpr StringLiteral struct_MoggAsyncPackHelper =
+    "MOGGPrimitives.MoggAsyncPackHelper";
+
+constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
+
+constexpr StringLiteral func_DimList_create_unknown = "create_unknown";
+constexpr StringLiteral func_ManagedTensorslice_shape = "shape";
+constexpr StringLiteral func_stack_allocation = "stack_allocation";
+constexpr StringLiteral func_to_managed_tensor_slice =
+    "MOGGPrimitives.to_managed_tensor_slice";
+constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
+constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
+    "tensor.simd_load_from_managed_tensor_slice";
+constexpr StringLiteral func_simd_load_from_tensor_pointer =
+    "tensor.simd_load_from_tensor_pointer";
+constexpr StringLiteral func_simd_store_into_managed_tensor_slice =
+    "tensor.simd_store_into_managed_tensor_slice";
+constexpr StringLiteral func_simd_store_into_tensor_pointer =
+    "tensor.simd_store_into_tensor_pointer";
+constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_input =
+    "_bind_to_fused_input";
+constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_output =
+    "_bind_to_fused_output";
+constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_compute_output =
+    "_bind_to_fused_compute_output";
+constexpr StringLiteral func_reshape_contiguous_buffer =
+    "MOGGPrimitives.tmp_reshape_contiguous_buffer";
+constexpr StringLiteral func_unpack_tensor_spec =
+    "MOGGPrimitives.unpack_tensor_spec";
+constexpr StringLiteral func_get_simd_width_for_dtypes =
+    "MOGGPrimitives.get_simd_width_for_dtypes";
+constexpr StringLiteral func_unpack_buffer_ref =
+    "MOGGPrimitives.unpack_buffer_ref";
+constexpr StringLiteral func_buffer_constant =
+    "MOGGPrimitives.mgp_buffer_constant";
+constexpr StringLiteral func_unpack_device_ctx =
+    "MOGGPrimitives.unpack_device_ctx";
+constexpr StringLiteral func_unpack_tensor = "MOGGPrimitives.unpack_tensor";
+constexpr StringLiteral func_all_zeros = "MOGGPrimitives.all_zeros";
+constexpr StringLiteral func_mogg_async_pack_borrow =
+    "MOGGPrimitives.mogg_async_pack_borrow";
+constexpr StringLiteral func_get_buffer_mem_storage_handle =
+    "MOGGPrimitives.get_buffer_mem_storage_handle";
+
+constexpr StringLiteral comptime_OpaquePointer = "OpaquePointer[MutAnyOrigin]";
+constexpr StringLiteral comptime_InputTensor = "tensor.InputTensor";
+constexpr StringLiteral comptime_OutputTensor = "tensor.OutputTensor";
+constexpr StringLiteral comptime_MutableInputTensor =
+    "managed_tensor_slice._MutableInputTensor";
+constexpr StringLiteral comptime_UInt8 = "UInt8";
+constexpr StringLiteral comptime_MutAnyOrigin = "MutAnyOrigin";
+
+// The following could be built by combining multiple symbols but this is more
+// convenient. Note that NDBuffer will disappear and the GC will instead use a
+// custom type for managing these int8 buffers (probably just some simple
+// vector/string type).
+constexpr StringLiteral comptime_NDBuffer_In_MGP =
+    "buffer.NDBuffer[rank=1, DType.int8, MutAnyOrigin]";
+
+/// TODO(GEX-2488): Do this programmatically by checking the Modular config for
+/// all included packages and packages provided by the user. This is better than
+/// relying on an `__init__.mojo` file that imports things or hardcoding a
+/// package that could change/be moved around.
+constexpr std::pair<StringLiteral, StringLiteral> packagesToImport[] = {
+    {"MOGGPrimitives.MOGGPrimitives", "MOGGPrimitives"},
+    {"MOGGKernelAPI.MOGGKernelAPI", "MOGGKernelAPI"},
+    {"MOGGKernelAPI.logprobs", "logprobs"},
+    {"MOGGKernelAPI.ep_api", "ep_api"},
+    {"tensor", ""},
+    {"tensor.io_spec", "io_spec"},
+    {"tensor.managed_tensor_slice", "managed_tensor_slice"},
+    {"compiler_internal", ""},
+    {"std.utils", ""},
+    {"std.runtime", ""},
+    {"std.runtime.tracing", ""},
+    {"std.memory", ""},
+    {"buffer", ""},
+    {"std.collections", ""},
+};
+
+/// TODO(GEX-2488): Find another way to find that a type is an IOSpec without
+/// relying on package / type name.
+inline bool isMojoIOSpecTypeName(ArrayRef<FlatSymbolRefAttr> symbolRefs) {
+  constexpr StringLiteral mojoPackageName = "io_spec";
+  constexpr StringLiteral mojoTypeName = "IOSpec";
+  return symbolRefs.size() == 2 &&
+         symbolRefs[0].getValue() == mojoPackageName &&
+         symbolRefs[1].getValue() == mojoTypeName;
+}
+
+}; // namespace HardcodedMojoSymbols
+
+/// This struct holds all the necessary state to lower a MOGG operation into
+/// Mojo text.
+struct EmitMojoState {
+  EmitMojoState(MojoLibraryAnalysis &analysis,
+                bool enableOpTraceComments = false,
+                bool enableComputeLambdas = false,
+                bool enableDebugDumpFusedTensorSpecs = false)
+      : analysis(analysis), enableComputeLambdas(enableComputeLambdas),
+        enableOpTraceComments(enableOpTraceComments),
+        enableDebugDumpFusedTensorSpecs(enableDebugDumpFusedTensorSpecs) {}
+
+  /// The Mojo builder used to generate the text.
+  MojoBuilder builder;
+  /// The actual return values of the `mogg.generic.compiled.region`. This is
+  /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
+  SmallVector<MojoValue> mojoReturnValues;
+  /// Kernels that dense resources will get these in the void** input after
+  /// inputs and outputs.
+  SmallVector<std::tuple<MojoValue, MojoValue>> mojoConstantResources;
+
+  MojoLibraryAnalysis &analysis;
+
+  /// In some cases values must be kept alive using `_ = someVar` at the end of
+  /// the function. This is because mojo Compiler isn't smart enough in some
+  /// cases to detect the right lifetime. This is mostly around lambdas, and
+  /// should be fixed by the new closures work.
+  SmallVector<MojoValue> keepAliveValues;
+
+  /// Tracks the emitted Mojo variable names for each TaskHandle value.
+  /// Populated by CallStubAsyncOp::emitMojo, consumed by AsyncJoinOp::emitMojo.
+  struct TaskHandleInfo {
+    MojoValue task;  // The Task variable from create_task()
+    MojoValue error; // The Optional[Error] variable
+  };
+  llvm::DenseMap<Value, TaskHandleInfo> taskHandleInfos;
+
+  /// Keep track of the mojo arguments / parameters for the current function
+  /// being lowered.
+  FunctionBody currentFunctionBody;
+
+  /// If true, generate compute lambdas when possible.
+  bool enableComputeLambdas;
+
+  /// Name of the entry point of the current kernel
+  std::string currentKernelName;
+
+private:
+  /// A mapping between mlir::Value to MojoValue (text).
+  mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
+
+  /// Enables the emission of additional comments detailing IR ops that are
+  /// currently being processed
+  bool enableOpTraceComments;
+
+  /// Enable the emission of print statements intside the fused lambda to debug
+  /// the fused tensor specs.
+  bool enableDebugDumpFusedTensorSpecs;
+
+public:
+  // Helper to create a kernel wrapper function with a given body
+  using KernelBodyBuilder =
+      llvm::function_ref<void(const MOGG::FunctionBody &)>;
+
+  /// Get the Mojovalue mapped to `val`.
+  const MojoValue &getMojoValueFor(Value val) const {
+    auto it = mlirValueToMojoValue.find(val);
+    ASSERT_STREAM(it != mlirValueToMojoValue.end(),
+                  << "value not bound to any MojoValue");
+    return it->second;
+  }
+
+  /// Set the mapping from `val` to `mojoVal`.
+  void setMojoValueFor(Value val, MojoValue mojoVal) {
+    [[maybe_unused]] auto inserted =
+        mlirValueToMojoValue.insert(std::make_pair(val, mojoVal)).second;
+    ASSERT_STREAM(inserted, << "value already bound to a MojoValue");
+  }
+
+  /// Mark a value as being kept alive.
+  /// Will generate `_ = value` at the end of the function.
+  void markAsKeepAlive(MojoValue value) { keepAliveValues.push_back(value); }
+
+  /// Generate all keep alive statements for the previous calls to
+  /// `markAsKeepAlive`.
+  void genAllKeepAliveStatements() {
+    for (const MojoValue &val : keepAliveValues)
+      builder.keepAlive(val);
+    keepAliveValues.clear();
+  }
+
+  /// Try to lower `op` to Mojo using the EmitMojoInterface.
+  /// Returns an error if lowering failed.
+  LogicalResult lowerOpToMojo(Operation *op);
+
+  /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
+  /// For parameterized opaque types, this returns LegacyOpaquePointer.
+  /// Use mlirOpaqueTypeToMojoType for the full parameterized type string.
+  static MojoValue mlirTypeToMojoType(Type mlirType) {
+    if (isa<MGP::DeviceBufferType, MEF::ChainType>(mlirType)) {
+      return HardcodedMojoSymbols::comptime_OpaquePointer;
+    } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
+      return HardcodedMojoSymbols::struct_DeviceContextPtr;
+    } else if (auto integerTy = dyn_cast<IntegerType>(mlirType)) {
+      if (integerTy.getWidth() == 1)
+        return HardcodedMojoSymbols::struct_Bool;
+      return HardcodedMojoSymbols::struct_Int;
+    } else if (auto tensorType = dyn_cast<MO::TensorType>(mlirType)) {
+      return mlirTensorTypeToMojoType(tensorType);
+    } else if (auto tensorSpecType = dyn_cast<MGP::TensorSpecType>(mlirType)) {
+      return MojoValue(HardcodedMojoSymbols::struct_IndexList)[int64_t(
+          tensorSpecType.getRank())];
+    } else if (isa<MGP::ContextType>(mlirType)) {
+      return HardcodedMojoSymbols::struct_StateContext;
+    } else if (isa<IndexType>(mlirType)) {
+      return HardcodedMojoSymbols::struct_Int;
+    } else if (auto simdType = dyn_cast<KGEN::POP::SIMDType>(mlirType)) {
+      /// FIXME(GEX-2867)
+      // The only reason we would be manipulating SIMD types in the IR is for
+      // doing shape calculations which all operate on index/Int.
+      if (simdType.getResolvedDType()->isBool())
+        return HardcodedMojoSymbols::struct_Bool;
+      return HardcodedMojoSymbols::struct_Int;
+    } else if (auto shapeResultType = dyn_cast<ShapeFuncResultType>(mlirType)) {
+      MOGG::MojoValue rankParam = MOGG::MojoValue(shapeResultType.getRank());
+      return MOGG::MojoValue(
+          MOGG::HardcodedMojoSymbols::struct_IndexList)[rankParam];
+    } else if (isa<MGP::OpaqueType, MO::OpaqueType>(mlirType)) {
+      // Opaque types are represented as OpaquePointer in Mojo
+      return HardcodedMojoSymbols::comptime_OpaquePointer;
+    } else {
+      ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
+      llvm_unreachable("Unsupported mlir type");
+    }
+  }
+
+  /// Convert an MO::OpaqueType to its fully qualified Mojo type name.
+  /// Returns just the qualified name without parameters.
+  /// Example: !mo.opaque<"SIMDPair", ...> becomes "PackageName.SIMDPair"
+  /// Use getOpaqueTypeParameters() to get the parameters as MojoValues,
+  /// then apply them using MojoValue::operator[].
+  MojoValue mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) const;
+
+  /// Extract parameters from an MO::OpaqueType as MojoValues.
+  /// Returns empty vector if no parameters.
+  /// Example: !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> returns [4, 8]
+  static SmallVector<MojoValue>
+  getOpaqueTypeParameters(MO::OpaqueType opaqueType);
+
+  static MojoValue mlirDTypeToMojoType(DType dtype) {
+    KGEN::KGENDType kgenDtype(dtype);
+    return MojoValue(HardcodedMojoSymbols::struct_DType)
+        .get(kgenDtype.getAsString(/*libForm*/ true));
+  }
+
+  static MojoValue mlirTensorTypeToMojoType(MO::TensorType tensorType) {
+    MO::IOKindAttr ioKind = tensorType.getIOKindAttr();
+    auto tensorTypeName = [&]() {
+      if (!ioKind)
+        return HardcodedMojoSymbols::struct_ManagedTensorSlice;
+      else if (ioKind.getValue() == MO::IOKind::Input) {
+        BoolAttr isMutable = tensorType.getIsMutableAttr();
+        if (isMutable && isMutable.getValue()) {
+          return HardcodedMojoSymbols::comptime_MutableInputTensor;
+        } else {
+          return HardcodedMojoSymbols::comptime_InputTensor;
+        }
+      } else if (ioKind.getValue() == MO::IOKind::Output)
+        return HardcodedMojoSymbols::comptime_OutputTensor;
+      else {
+        ASSERT_STREAM(false, << "Unsupported ioKind " << ioKind);
+        return HardcodedMojoSymbols::struct_ManagedTensorSlice;
+      }
+    }();
+    auto rank = tensorType.getRank();
+    // Always use rank 1 for scalar tensors.
+    if (rank == 0)
+      rank = 1;
+    auto dtype = mlirDTypeToMojoType(tensorType.getDtype()).text;
+    return llvm::formatv("{}[dtype = {}, rank = {}, ...]", tensorTypeName,
+                         dtype, rank)
+        .str();
+  }
+
+  /// Given an array of dimensions, represent it in Mojo using `DimList`.
+  static MojoValue getAsDimListMojoValue(ArrayRef<int64_t> dims) {
+    if (!dims.empty() && llvm::all_of(dims, [](int64_t dim) {
+          return dim == mlir::ShapedType::kDynamic;
+        })) {
+
+      return MojoValue(HardcodedMojoSymbols::struct_DimList)
+          .get(HardcodedMojoSymbols::func_DimList_create_unknown)(
+              {std::to_string(dims.size())});
+    }
+
+    SmallVector<MojoValue> dimsAsMojoValues;
+    for (auto dim : dims) {
+      if (dim == mlir::ShapedType::kDynamic) {
+        dimsAsMojoValues.push_back(
+            MojoValue(HardcodedMojoSymbols::struct_Dim)());
+      } else {
+        dimsAsMojoValues.push_back(std::to_string(dim));
+      }
+    }
+    // Always convert rank-0 tensors to [1]
+    if (dimsAsMojoValues.empty())
+      dimsAsMojoValues.push_back(1);
+
+    return MojoValue(HardcodedMojoSymbols::struct_DimList)[dimsAsMojoValues]();
+  }
+
+  static MojoValue getStaticShapeAsMojoValue(MO::TensorType type) {
+    return getAsDimListMojoValue(type.getIntDims());
+  }
+
+  static MojoValue getStaticStridesAsMojoValue(MO::TensorType type) {
+    return getAsDimListMojoValue(
+        MO::getStridesForTensor(type, /*unknown=*/false));
+  }
+
+  MojoValue getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,
+                                         ValueRange dynamicDims = {});
+
+  /// Helper to simply forward a list of mlir::Value into their MojoValue mapped
+  /// equivalents.
+  SmallVector<MojoValue> getMojoValuesFor(ValueRange operands) {
+    return llvm::map_to_vector(
+        operands, [&](Value operand) { return getMojoValueFor(operand); });
+  }
+
+  /// Returns the original Mojo name of the registered function. The
+  /// MOGGPreElab annotation will always tell you which .mojo file contains the
+  /// generator. This is convenient for imports. Only packages need to be
+  /// imported, not the .mojo file.
+  static MojoValue getOriginalMojoNameFor(KGEN::LIT::FnOp op) {
+    // TODO: update the signature to only take a LIT::FuncOp when the move to
+    // LIT is complete.
+    auto nameAttr =
+        op->getAttrOfType<StringAttr>(KGEN::MOGGPreElab::mojoSymbolName);
+    ASSERT_STREAM(nameAttr,
+                  "Could not find original mojo symbol name attribute");
+    return nameAttr.str();
+  }
+
+  static MojoValue getOriginalMojoNamePrefixFor(KGEN::LIT::FnOp op) {
+    // A hack that will always work because we know there is a dot before the
+    // call to execute or shape. Will be fixed once we remove
+    // MojoLibraryAnalysis (no more annotations, can just look at the LIT). For
+    // now, we do the easy thing.
+    std::string fullName = getOriginalMojoNameFor(op).text;
+    uint64_t indexOfLastDot = fullName.find_last_of(".");
+    fullName.resize(indexOfLastDot);
+
+    stripInitModulePrefix(fullName);
+
+    return fullName;
+  }
+
+  static MojoValue getOriginalMojoNameSuffixFor(KGEN::LIT::FnOp op) {
+    // A hack that will always work because we know there is a dot before the
+    // call to execute or shape. Will be fixed once we remove
+    // MojoLibraryAnalysis (no more annotations, can just look at the LIT). For
+    // now, we do the easy thing.
+    std::string fullName = getOriginalMojoNameFor(op).text;
+    uint64_t indexOfLastDot = fullName.find_last_of(".");
+    fullName.erase(0, indexOfLastDot + 1);
+
+    return fullName;
+  }
+
+  // Returns the corresponding SIMD type given its dtpype and its width
+  static MojoValue getSIMDType(DType dtype, MojoValue width) {
+    return MojoValue(
+        HardcodedMojoSymbols::struct_SIMD)[{mlirDTypeToMojoType(dtype), width}];
+  }
+
+  /// Looks at the named parameters of the output value of the function.
+  /// Returns the corresponding parameter name of the function if found.
+  static std::optional<StringRef>
+  getOriginalResultParamNameFor(KGEN::LIT::FnOp op, StringRef paramName) {
+    auto resultParams = op->getAttrOfType<ArrayAttr>(
+        KGEN::MOGGPreElab::kKernelResultParameterAttrName);
+    if (!resultParams)
+      return std::nullopt;
+
+    for (auto resultParam : resultParams) {
+      auto resultParamDict = cast<DictionaryAttr>(resultParam);
+      if (auto funcParamName =
+              resultParamDict.getAs<KGEN::ParamDeclRefAttr>(paramName))
+        return funcParamName.getName();
+    }
+
+    return std::nullopt;
+  }
+
+  struct InferedParameters {
+    llvm::SmallVector<MojoValue> structParameters;
+    llvm::SmallVector<MojoValue> functionParameters;
+  };
+  /// Fill and return the list of inferred parameters to call `function`.
+  /// Call `inferCallback` for each parameter that needs to be inferred.
+  static ErrorOr<InferedParameters> inferKernelParameters(
+      KGEN::LIT::FnOp function,
+      std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
+
+  /// Base function to infer all parameter values of a kernel.
+  ErrorOr<MojoValue>
+  inferDefaultKernelParamValue(Operation *callOp, StringRef paramName,
+                               DictionaryAttr customParamDict = nullptr);
+
+  /// Debug print the spec of `tensorValue` if enabled.
+  void addDebugPrintTensorSpecs(const MojoValue &tensorValue,
+                                const MojoValue &indicesValue, bool isInput,
+                                unsigned operandIndex);
+
+  /// Debug print the parameters of a fused lambda if enabled.
+  void addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
+                                const MojoValue &widthParam,
+                                const MojoValue &alignmentParam,
+                                const MojoValue &indicesValue);
+};
+} // namespace M::MOGG
+
+#endif // GENERICML_INTERFACES_EMITMOJOSTATE_H
