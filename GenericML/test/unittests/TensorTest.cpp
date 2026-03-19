@@ -16,7 +16,8 @@
 using namespace M;
 
 static std::unique_ptr<AsyncRT::Runtime> getRuntime() {
-  return AsyncRT::createUniqueRuntime(AsyncRT::RuntimeOptions().forDebug());
+  return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
+                                AsyncRT::RuntimeOptions().forDebug());
 }
 
 constexpr size_t kN = 4;

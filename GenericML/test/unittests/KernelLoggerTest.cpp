@@ -26,8 +26,8 @@ protected:
   std::unique_ptr<AsyncRT::Runtime> runtime;
 
   void SetUp() override {
-    runtime =
-        AsyncRT::createUniqueRuntime(AsyncRT::RuntimeOptions().forDebug());
+    runtime = AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
+                                     AsyncRT::RuntimeOptions().forDebug());
   }
 };
 

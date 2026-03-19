@@ -27,7 +27,8 @@ namespace {
 struct ValueTest : ::testing::Test {};
 
 static std::unique_ptr<AsyncRT::Runtime> getRuntime() {
-  return AsyncRT::createUniqueRuntime(AsyncRT::RuntimeOptions().forDebug());
+  return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
+                                AsyncRT::RuntimeOptions().forDebug());
 }
 
 static Tensor makeTensor(AsyncRT::Runtime &runtime, size_t size) {

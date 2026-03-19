@@ -121,7 +121,7 @@ static std::unique_ptr<Runtime> createBenchmarkRuntime() {
   RuntimeOptions opts;
   opts.numThreads = 32;
   opts.withMainWillNotDonate();
-  return createUniqueRuntime(opts);
+  return createRuntime(RuntimeSource::Test, opts);
 }
 
 //===----------------------------------------------------------------------===//
