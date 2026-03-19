@@ -103,9 +103,7 @@ struct EmitMojo
     // Import mojo packages for the custom kernel libraries.
     for (const auto &kernelLibraryPath : kernelLibraryPaths) {
       auto moduleName = std::filesystem::path(kernelLibraryPath).stem();
-      state.builder.importFrom(moduleName.string(), "*");
-      // Store the package name for opaque type resolution.
-      state.customKernelPackages.push_back(moduleName.string());
+      state.builder.import(moduleName.string());
     }
 
     // Emit mojo for all the kernel stubs that exist in the current module.

@@ -165,10 +165,6 @@ struct EmitMojoState {
   /// should be fixed by the new closures work.
   SmallVector<MojoValue> keepAliveValues;
 
-  /// Custom kernel library package names (e.g., "MOGGKernelAPITest").
-  /// These are used to resolve opaque type names to fully qualified names.
-  SmallVector<std::string> customKernelPackages;
-
   /// Tracks the emitted Mojo variable names for each TaskHandle value.
   /// Populated by CallStubAsyncOp::emitMojo, consumed by AsyncJoinOp::emitMojo.
   struct TaskHandleInfo {
