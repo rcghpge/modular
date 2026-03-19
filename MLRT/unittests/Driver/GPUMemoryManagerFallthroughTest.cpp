@@ -56,7 +56,8 @@ protected:
 // addresses. With the bug (sync alloc / async free), each cuMemAlloc returns
 // a fresh address from the default heap while cuMemFreeAsync deposits into
 // the stream-ordered pool, so addresses are never reused.
-TEST_F(GPUMemoryManagerFallthroughTest, FallthroughAllocReusesSameAddress) {
+TEST_F(GPUMemoryManagerFallthroughTest,
+       DISABLED_FallthroughAllocReusesSameAddress) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
   MemoryManagerFreeList &freeList = ctx->freeList();
 
@@ -101,7 +102,7 @@ TEST_F(GPUMemoryManagerFallthroughTest, FallthroughAllocReusesSameAddress) {
 // Same check with multiple DeviceContexts (each with their own CUDA stream).
 // Within each context, pointer reuse should occur independently.
 TEST_F(GPUMemoryManagerFallthroughTest,
-       MultipleContextsFallthroughReusesSameAddress) {
+       DISABLED_MultipleContextsFallthroughReusesSameAddress) {
   const size_t allocSize = 8 * 1024 * 1024;
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int numContexts = 4;

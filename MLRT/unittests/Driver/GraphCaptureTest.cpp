@@ -1127,4 +1127,44 @@ TEST_F(GraphCaptureTest, LoopWithUnfreedAllocationReplay) {
   }
 }
 
+// Test: Buffer allocated during graph capture comes from the graph free list,
+// not the device stream, so no memory management node is encoded in the graph.
+// We verify this by checking that the buffer pointer is stable across multiple
+// replays (memory management nodes would reallocate on each replay).
+TEST_F(GraphCaptureTest, GraphCaptureDoesNotEncodeAllocNodes) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->createStream());
+
+  const size_t allocSize = 4 * 1024 * 1024; // 4 MB
+
+  // Capture a graph that allocates a buffer inside the callback.
+  DeviceBufferRef capturedBuf = {};
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+        DEFINE_OR_RETURN_ERROR(DeviceBufferRef, buf,
+                               ctx->enqueueCreateBuffer(allocSize));
+        capturedBuf = std::move(buf);
+        return success();
+      });
+
+  ASSERT_FALSE(captured.isError());
+  ASSERT_TRUE(capturedBuf);
+
+  // The buffer pointer must be non-null and the buffer must be valid.
+  void *ptrAfterCapture = capturedBuf->ptr();
+  EXPECT_NE(ptrAfterCapture, nullptr);
+  EXPECT_EQ(capturedBuf->byteSize(), allocSize);
+
+  // Replay the graph multiple times; the buffer pointer must remain stable.
+  // If alloc nodes were encoded, CUDA would reallocate on each replay and
+  // the pointer could change or the replay could fail.
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_NO_ERR(captured->replay());
+    EXPECT_NO_ERR(ctx->synchronize());
+    // The captured buffer ref still points to the same memory.
+    EXPECT_EQ(capturedBuf->ptr(), ptrAfterCapture);
+  }
+}
+
 } // namespace

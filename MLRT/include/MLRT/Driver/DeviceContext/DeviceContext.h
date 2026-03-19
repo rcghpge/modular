@@ -405,8 +405,6 @@ public:
 
   void setDestructorFn(llvm::unique_function<void()> destructor);
 
-  void setOwning(bool owning);
-
 private:
   friend class DeviceContext;
 
@@ -775,6 +773,7 @@ public:
 
   MemoryManagerFreeList &freeList() const;
   MemoryManagerFreeList &hostFreeList() const;
+  MemoryManagerFreeList &graphFreeList() const;
 
   static ErrorOr<DeviceContextRef> create(StringRef api, int id = 0);
 
@@ -849,6 +848,7 @@ private:
 
   std::unique_ptr<MemoryManagerFreeList> freeList_;
   std::unique_ptr<MemoryManagerFreeList> hostFreeList_;
+  std::unique_ptr<MemoryManagerFreeList> graphFreeList_;
 
   std::atomic<int> syncMode_ = {0};
 

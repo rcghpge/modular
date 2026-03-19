@@ -59,25 +59,6 @@ getNamesAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
   return result;
 }
 
-/// Set the owning flag on all DeviceBuffers found in the given async value
-/// references. This is used to control whether buffers are freed when their
-/// reference count reaches zero.
-static void setOwningOnDeviceBuffers(ArrayRef<AsyncRT::AnyAsyncValueRef> refs,
-                                     bool owning) {
-  for (const AsyncRT::AnyAsyncValueRef &result : refs) {
-    if (result.isError())
-      continue;
-
-    if (auto *tensor = dyn_cast<Tensor>(result)) {
-      if (const AsyncRT::AnyAsyncValueRef *storageRef =
-              tensor->getBufferRef().getMemStorageHandleRef()) {
-        if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
-          (*buffer)->setOwning(owning);
-      }
-    }
-  }
-}
-
 static const Driver::Device *
 getDeviceForTensorResult(const AsyncRT::AnyAsyncValueRef &result) {
   if (auto *tensor = dyn_cast<Tensor>(result)) {
@@ -619,11 +600,6 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
   // even if an error was present.
   ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
 
-  // Mark output buffers as non-owning. During graph capture, output buffers
-  // become part of the captured CUDA graph and their lifetime is managed by
-  // the DeviceGraph itself. This prevents premature deallocation.
-  setOwningOnDeviceBuffers(graphResults, /*owning=*/false);
-
   if (err.isError())
     return err.takeError();
 
@@ -746,8 +722,6 @@ ErrorOrSuccess ExecutableModel::replay(
                                     captureOutputsById);
   if (replayOutputsOr.isError())
     return replayOutputsOr.takeError();
-
-  setOwningOnDeviceBuffers(*replayOutputsOr, /*owning=*/true);
 
   return success();
 }

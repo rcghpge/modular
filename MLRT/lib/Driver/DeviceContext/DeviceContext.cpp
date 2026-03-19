@@ -446,8 +446,6 @@ void DeviceBuffer::setDestructorFn(llvm::unique_function<void()> destructor) {
   destructorFn_ = std::move(destructor);
 }
 
-void DeviceBuffer::setOwning(bool owning) { owning_ = owning; }
-
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyTo(DeviceBuffer &dst,
                                                        size_t srcByteOffset,
                                                        size_t srcByteSize) {
@@ -897,10 +895,15 @@ static std::mutex &getGlobalMutex() {
 DeviceContext::DeviceContext(Device &device)
     : device_(DeviceRef::copy(&device)),
       freeList_(std::make_unique<MemoryManagerFreeList>(
-          this, device.memoryManager(), device.memoryManager().freeList())),
+          this, device.memoryManager(), device.memoryManager().freeList(),
+          /*disableFlush=*/false, /*label=*/"freeList")),
       hostFreeList_(std::make_unique<MemoryManagerFreeList>(
           this, device.hostMemoryManager(),
-          device.hostMemoryManager().freeList())),
+          device.hostMemoryManager().freeList(),
+          /*disableFlush=*/false, /*label=*/"hostFreeList")),
+      graphFreeList_(std::make_unique<MemoryManagerFreeList>(
+          this, device.memoryManager(), device.memoryManager().freeList(),
+          /*disableFlush=*/true, /*label=*/"graphFreeList")),
       syncMode_(0) {
   if (configAsBool("sync-mode", false)) {
     incSyncMode();
@@ -1146,35 +1149,28 @@ DeviceContext::createHostBufferOwning(void *ptr, size_t byteSize, bool owning) {
 ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
                                                     Device::AllocMode mode) {
   assert(byteSize != 0);
-  void *ptr = nullptr;
 
-  // When in graph capture mode, we bypass the MemoryManager and allow the
-  // graph capture mechanism handle memory allocations.
-  if (isGraphCapturing()) {
-    if (ErrorOrSuccess err = memAlloc(&ptr, byteSize, mode))
-      return err.takeError();
+  if (mode == Device::AllocMode::ASYNC)
+    mode = Device::AllocMode::SYNC;
 
-    auto result = DeviceBufferRef::take(new DeviceBuffer(
-        *this, ptr, byteSize, mode == Device::AllocMode::HOST));
+  // Select the free list to allocate from:
+  //  - graph capture + device: graphFreeList() avoids capturing stream ops as
+  //                            graph nodes; allocatedBy_ tracking routes the
+  //                            free back to graphFreeList_ via the default
+  //                            destructor.
+  //  - non-capture + device:   freeList()
+  //  - host:                   hostFreeList() (capture-safe: no GPU stream ops)
+  MemoryManagerFreeList &allocator = (mode == Device::AllocMode::HOST)
+                                         ? hostFreeList()
+                                     : isGraphCapturing() ? graphFreeList()
+                                                          : freeList();
 
-    result->setDestructorFn([ptr, mode, ctx = DeviceContextRef::copy(this)]() {
-      RECORD_PENDING_ERROR(
-          *ctx, ctx->memFree(ptr, /*isHost=*/mode == Device::AllocMode::HOST));
-    });
+  ErrorOr<void *> errPtr = allocator.allocate(byteSize, mode);
+  if (errPtr.isError())
+    return errPtr.takeError();
 
-    return result;
-  } else {
-    // Allocate from the correct memory manager.
-    ErrorOr<void *> errPtr =
-        ((mode == Device::AllocMode::HOST) ? hostFreeList() : freeList())
-            .allocate(byteSize, mode);
-    if (errPtr.isError()) {
-      return errPtr.takeError();
-    }
-    ptr = errPtr.takeValue();
-  }
-  return DeviceBufferRef::take(
-      new DeviceBuffer(*this, ptr, byteSize, mode == Device::AllocMode::HOST));
+  return DeviceBufferRef::take(new DeviceBuffer(
+      *this, errPtr.takeValue(), byteSize, mode == Device::AllocMode::HOST));
 }
 
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
@@ -1304,6 +1300,9 @@ DeviceContext::operator!=(const DeviceContext &other) const {
 MemoryManagerFreeList &DeviceContext::freeList() const { return *freeList_; }
 MemoryManagerFreeList &DeviceContext::hostFreeList() const {
   return *hostFreeList_;
+}
+MemoryManagerFreeList &DeviceContext::graphFreeList() const {
+  return *graphFreeList_;
 }
 
 //

@@ -28,6 +28,16 @@
 #define TWINE_PTR(ptr)                                                         \
   (llvm::Twine("0x") + llvm::Twine::utohexstr(reinterpret_cast<uintptr_t>(ptr)))
 
+// Guard a logErr() call inside MemoryManager methods.
+#define LOG_ERR(...)                                                           \
+  if (doLog_)                                                                  \
+  logErr(__VA_ARGS__)
+
+// Guard a logMsg() call inside MemoryManagerFreeList methods.
+#define LOG_MSG(...)                                                           \
+  if (memoryManager_.doLog_)                                                   \
+  logMsg(__VA_ARGS__)
+
 static constexpr int KB = 1024;                  // NOLINT
 static constexpr size_t GB = 1024 * 1024 * 1024; // NOLINT
 
@@ -73,6 +83,7 @@ public:
     prevFree_ = nullptr;
     owner_ = nullptr;
     nextMap_ = nullptr;
+    allocatedBy_ = nullptr;
   }
 
   MemoryManagerFreeList *owner() const { return owner_; }
@@ -83,6 +94,7 @@ public:
   void setFree(MemoryManagerFreeList *owner) {
     assert(owner != nullptr);
     owner_ = owner;
+    allocatedBy_ = nullptr;
   }
 
 private:
@@ -120,6 +132,11 @@ private:
 
   // Fields owned by MemoryManager::DescMap.
   Desc *nextMap_;
+
+  // Tracks which MemoryManagerFreeList originally allocated this descriptor
+  // (set in allocateDesc(), cleared in reset()). Used by free() to detect when
+  // a stale DeviceBuffer frees an address now owned by a different free list.
+  MemoryManagerFreeList *allocatedBy_;
 };
 
 MemoryManager::DescMap::DescMap(int mapSizeLog2)
@@ -364,8 +381,11 @@ void MemoryManager::Chunk::selfCheck() const {
 
 MemoryManagerFreeList::MemoryManagerFreeList(DeviceContext *context,
                                              MemoryManager &memoryManager,
-                                             MemoryManagerFreeList *parent)
-    : ctx_(context), memoryManager_(memoryManager), parent_(parent) {
+                                             MemoryManagerFreeList *parent,
+                                             bool disableFlush,
+                                             std::string label)
+    : ctx_(context), memoryManager_(memoryManager), parent_(parent),
+      disableFlush_(disableFlush), label_(std::move(label)) {
   // Either parent and context are both null for the free list associated with
   // the MemoryManager or both are set for free lists associated with a
   // DeviceContext.
@@ -377,8 +397,9 @@ MemoryManagerFreeList::MemoryManagerFreeList(DeviceContext *context,
 
   if (ctx_ && ctx_->isDebugAllocatorEnabled("out-of-bounds")) {
     if (context == nullptr) {
-      memoryManager_.logErr("redzone checks disabled due to null context in "
-                            "MemoryManagerFreeList");
+      memoryManager_.logErr("[" + label_ +
+                            "] redzone checks disabled due to "
+                            "null context in MemoryManagerFreeList");
     } else {
       enableRedzones();
     }
@@ -391,11 +412,18 @@ const DeviceContext *MemoryManagerFreeList::context() const { return ctx_; }
 
 MemoryManagerFreeList::~MemoryManagerFreeList() { flushToParent(); }
 
+void MemoryManagerFreeList::logMsg(llvm::Twine msg) const {
+  memoryManager_.logErr("[" + label_ + "] " + msg);
+}
+
+void MemoryManagerFreeList::logMsg(llvm::Twine msg, size_t info,
+                                   int64_t size) const {
+  memoryManager_.logErr("[" + label_ + "] " + msg, info, size);
+}
+
 void MemoryManagerFreeList::flushToParent() {
   std::lock_guard<std::mutex> lock(memoryManager_.mu_);
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr("Flush all to parent from " + TWINE_PTR(this));
-  }
+  LOG_MSG("Flush all to parent");
   for (int i = 0; i < kNumFreeBufferLists; ++i) {
     flushFreeBuffersToParent(i);
   }
@@ -409,10 +437,7 @@ void MemoryManagerFreeList::flushFreeBuffersToParent(int id) {
   if (memoryManager_.chunks_ == nullptr)
     return;
 
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
-                          " to parent " + TWINE_PTR(parent_));
-  }
+  LOG_MSG("flushing id: " + TWINE(id) + " to parent " + TWINE_PTR(parent_));
   size_t bufSize = 0;
   MemoryManager::Desc *curDesc = freeBuffers_[id];
   while (curDesc != nullptr) {
@@ -436,11 +461,9 @@ void MemoryManagerFreeList::flushFreeBuffersToParent(int id) {
   // Reset the current freelist to empty.
   freeBuffers_[id] = nullptr;
 
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr("flushing " + TWINE_PTR(this) + " id: " + TWINE(id) +
-                              " to parent " + TWINE_PTR(parent_) + " : Done",
-                          0, bufSize);
-  }
+  LOG_MSG("flushing id: " + TWINE(id) + " to parent " + TWINE_PTR(parent_) +
+              " : Done",
+          0, bufSize);
 }
 
 bool MemoryManagerFreeList::empty() {
@@ -463,12 +486,8 @@ void MemoryManagerFreeList::addToFreeList(MemoryManager::Desc *desc) {
   // Add the descriptor to the currently active (aka newest) free buffers. Each
   // list of free buffers is ordered non-descending by size.
   MemoryManager::Desc *&activeList = freeBuffers_[primaryFreeBuffers_];
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr(
-        "In addToFreeList for (" + TWINE_PTR(this) +
-        ") using free buffer id: " + TWINE(primaryFreeBuffers_) + " address " +
-        TWINE_PTR(desc->ptr_));
-  }
+  LOG_MSG("In addToFreeList using free buffer id: " +
+          TWINE(primaryFreeBuffers_) + " address " + TWINE_PTR(desc->ptr_));
   if (activeList == nullptr) {
     activeList = desc;
   } else if (activeList->size_ >= descSize) {
@@ -534,7 +553,7 @@ void MemoryManagerFreeList::selfCheck() const {
 
 #define SELF_CHECK(cond)                                                       \
   if (!(cond)) {                                                               \
-    memoryManager_.logErr("!!! selfCheck !!! - " #cond);                       \
+    memoryManager_.logErr("[" + label_ + "] !!! selfCheck !!! - " #cond);      \
     abort();                                                                   \
   }
 
@@ -557,7 +576,9 @@ void MemoryManagerFreeList::selfCheck() const {
       if ((aheadDesc != nullptr) && (aheadDesc->nextFree_ != nullptr)) {
         aheadDesc = aheadDesc->nextFree_->nextFree_;
         if (aheadDesc == curDesc) {
-          memoryManager_.logErr("!!! selfCheck !!! cycle - free buffers");
+          memoryManager_.logErr("[" + label_ +
+                                "] !!! selfCheck !!! cycle - "
+                                "free buffers");
           abort();
         }
       }
@@ -647,21 +668,19 @@ MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
 
   // Allocate a freelist that maintains free memory blocks not associated with a
   // DeviceContext (aka stream).
-  freeList_ = std::make_unique<MemoryManagerFreeList>(nullptr, *this, nullptr);
+  freeList_ = std::make_unique<MemoryManagerFreeList>(nullptr, *this, nullptr,
+                                                      /*disableFlush=*/false,
+                                                      "mm:root");
 
   // Determine state of debugging flags.
   doLog_ = DeviceContext::configAsBool("memory_manager_log", false);
   doSelfCheck_ =
       DeviceContext::configAsBool("memory_manager_self_check", false);
-  if (doLog_) {
-    logErr(llvm::Twine()); // Print initial config of memory manager.
-  }
+  LOG_ERR(llvm::Twine()); // Print initial config of memory manager.
 }
 
 MemoryManager::~MemoryManager() {
-  if (doLog_) {
-    logErr("destructor");
-  }
+  LOG_ERR("destructor");
   assert(chunks_ == nullptr);
   assert(freeList_->empty());
   assert(unusedDescs_ == nullptr);
@@ -715,10 +734,8 @@ bool MemoryManager::allocateChunk() {
   void *ptr = nullptr;
   ErrorOrSuccess err = device().chunkAlloc(&ptr, allocSize, isHost());
   if (err.isError()) {
-    if (doLog_) {
-      logErr("allocate_chunk(" + TWINE(allocSize) + ") - failed with " +
-             err.getError());
-    }
+    LOG_ERR("allocate_chunk(" + TWINE(allocSize) + ") - failed with " +
+            err.getError());
     // Keep chunks_ unmodified.
     return false;
   }
@@ -727,10 +744,8 @@ bool MemoryManager::allocateChunk() {
   chunks_ = chunk;
   cacheSize_ += allocSize;
   ++chunkCount_;
-  if (doLog_) {
-    logErr("allocate_chunk(" + TWINE_PTR(ptr) + " ; " + TWINE(allocSize) + ")",
-           0, 0);
-  }
+  LOG_ERR("allocate_chunk(" + TWINE_PTR(ptr) + " ; " + TWINE(allocSize) + ")",
+          0, 0);
   return true;
 }
 
@@ -747,9 +762,7 @@ void MemoryManager::selfCheck() const {
     curChunk = curChunk->next_;
   }
 
-  if (doLog_) {
-    logErr("selfCheck OK");
-  }
+  LOG_ERR("selfCheck OK");
 }
 
 MemoryManager::Desc *MemoryManager::popDesc() {
@@ -845,10 +858,8 @@ void MemoryManager::clear() {
     freeList_->removeFromFreeList(desc);
     delete desc;
     // Release the chunk memory.
-    if (doLog_) {
-      logErr("free_chunk(" + TWINE_PTR(chunk->base_) + ", " +
-             TWINE(chunk->size_) + ")");
-    }
+    LOG_ERR("free_chunk(" + TWINE_PTR(chunk->base_) + ", " +
+            TWINE(chunk->size_) + ")");
     ErrorOrSuccess err = device().chunkFree(chunk->base_, isHost());
     if (err.isError()) {
       logErr(err.getError());
@@ -885,14 +896,12 @@ void MemoryManagerFreeList::enableRedzones() {
   size_t remainder = redzoneSize_ % alignment;
   if (remainder != 0) {
     redzoneSize_ += (alignment - remainder);
-    memoryManager_.logErr("memory_manager_redzone_size must be a multiple of " +
-                          Twine(alignment) + " rounding up to " +
-                          Twine(redzoneSize_));
+    LOG_MSG("memory_manager_redzone_size must be a multiple of " +
+            Twine(alignment) + " rounding up to " + Twine(redzoneSize_));
   }
   redzonePattern_ = static_cast<uint8_t>(
       DeviceContext::configAsInt("memory_manager_redzone_pattern", 0xBA));
-  memoryManager_.logErr("redzone checks enabled on free list: 0x" +
-                        Twine::utohexstr((uintptr_t)this));
+  LOG_MSG("redzone checks enabled");
 }
 
 ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
@@ -901,12 +910,11 @@ ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
   uint8_t *wrappedPtr = underflowRedzone + redzoneSize_;
   uint8_t *overflowRedzone = wrappedPtr + size;
 
-  memoryManager_.logErr(
-      "redzone(address 0x" + Twine::utohexstr((uintptr_t)wrappedPtr) +
-      " ; size: " + Twine(redzoneSize_) +
-      " ; pattern: " + Twine::utohexstr(redzonePattern_) + " ; underflow: 0x" +
-      Twine::utohexstr((uintptr_t)underflowRedzone) + " ; overflow: 0x" +
-      Twine::utohexstr((uintptr_t)overflowRedzone));
+  LOG_MSG("redzone(address 0x" + Twine::utohexstr((uintptr_t)wrappedPtr) +
+          " ; size: " + Twine(redzoneSize_) +
+          " ; pattern: " + Twine::utohexstr(redzonePattern_) +
+          " ; underflow: 0x" + Twine::utohexstr((uintptr_t)underflowRedzone) +
+          " ; overflow: 0x" + Twine::utohexstr((uintptr_t)overflowRedzone));
 
   if (memoryManager_.isHost()) {
     std::memset(underflowRedzone, redzonePattern_, redzoneSize_);
@@ -970,10 +978,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
             assert(memoryManager_.cacheSize_ == 0);
             MemoryManager::enableUseMaxSize();
           } else {
-            if (memoryManager_.doLog_) {
-              memoryManager_.logErr("allocate(" + TWINE(wrappedSize) +
-                                    ") - skip growChunkSizeTo()");
-            }
+            LOG_MSG("allocate(" + TWINE(wrappedSize) +
+                    ") - skip growChunkSizeTo()");
           }
         }
 
@@ -1011,18 +1017,16 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
     if (useOnlyMemoryManagerMode && availableCacheSize < wrappedSize) {
       if (memoryManager_.doLog_) {
-        memoryManager_.logErr("allocate(" + TWINE(wrappedSize) +
-                                  ") - memory_manager_only OOM",
-                              0, 0);
+        logMsg("allocate(" + TWINE(wrappedSize) + ") - memory_manager_only OOM",
+               0, 0);
         // Print more debugging information about the largest available blocks.
         MemoryManagerFreeList *cur = this;
         while (cur != nullptr) {
           for (int i = 0; i < kNumFreeBufferLists; ++i) {
             if (cur->freeBuffers_[i] != nullptr) {
-              memoryManager_.logErr(
-                  "max block on " + TWINE_PTR(cur) + " id: " + TWINE(i) +
-                  ": (" + TWINE_PTR(cur->freeBuffers_[i]->ptr_) + " ; " +
-                  TWINE(cur->freeBuffers_[i]->size_) + ")");
+              cur->logMsg("max block id: " + TWINE(i) + ": (" +
+                          TWINE_PTR(cur->freeBuffers_[i]->ptr_) + " ; " +
+                          TWINE(cur->freeBuffers_[i]->size_) + ")");
             }
           }
           cur = cur->parent_;
@@ -1047,35 +1051,20 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     // In the case of the bottom most freelist being consulted for allocation
     // we might not have a DeviceContext associated, so we fail the allocation
     // with an error.
-    if (memoryManager_.doLog_) {
-      memoryManager_.logErr("allocate_buffer(" + TWINE(size) +
-                            ") - failed due to missing context");
-    }
+    LOG_MSG("allocate_buffer(" + TWINE(size) +
+            ") - failed due to missing context");
     return Error("memAlloc failed due to missing context");
   }
-  ErrorOrSuccess err = ctx_->memAlloc(
-      &ptr, wrappedSize,
-      // If allocating for host just forward that.
-      (mode == Device::AllocMode::HOST) ? Device::AllocMode::HOST
-      // Use async allocation to match the async free in memFree(). Using sync
-      // allocation (cuMemAlloc) with async free (cuMemFreeAsync) causes a
-      // memory leak because they operate on different memory pools - the sync
-      // pool and the stream-ordered pool respectively. Freed memory never
-      // becomes available for subsequent sync allocations, exhausting GPU
-      // memory.
-      : (memoryManager_.chunkSize_ != 0) ? Device::AllocMode::ASYNC
-                                         : mode);
+  ErrorOrSuccess err = ctx_->memAlloc(&ptr, wrappedSize, mode);
+
   if (err.isError()) {
-    if (memoryManager_.doLog_) {
-      memoryManager_.logErr("allocate_buffer(" + TWINE(size) +
-                            ") - failed with " + err.getError());
-    }
+    LOG_MSG("allocate_buffer(" + TWINE(size) + ") - failed with " +
+            err.getError());
     return err.takeError();
   }
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr(
-        "allocate_buffer(" + TWINE_PTR(ptr) + " ; " + TWINE(size) + ")", 0, 0);
-  }
+
+  LOG_MSG("allocate_buffer(" + TWINE_PTR(ptr) + " ; " + TWINE(size) + ")", 0,
+          0);
   assert(ptr != nullptr);
   if (redzoneEnable_) {
     // Returns pointer to immediately after the end of the underflow redzone
@@ -1086,11 +1075,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
 
 MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
   assert((size & memoryManager_.alignmentMask_) == size);
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr(
-        "In allocateDesc with size " + TWINE(size) +
-        " and primary free buffer id: " + TWINE(primaryFreeBuffers_));
-  }
+  LOG_MSG("In allocateDesc with size " + TWINE(size) +
+          " and primary free buffer id: " + TWINE(primaryFreeBuffers_));
   int iterations = 0;
   // Try allocating from all free buffer lists in this MemoryManagerFreeList,
   // starting with the primary free buffer list.
@@ -1114,14 +1100,11 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
       assert(desc->isInUse());
 
       memoryManager_.allocatedMap_.add(desc);
+      desc->allocatedBy_ = this;
 
-      if (memoryManager_.doLog_) {
-        memoryManager_.logErr(
-            "allocate on " + TWINE_PTR(this) +
-                " from free buffer at id: " + TWINE(freeListIdToUse) + " (" +
-                TWINE_PTR(desc->ptr_) + " ; " + TWINE(size) + ")",
-            iterations, -size);
-      }
+      LOG_MSG("allocate from free buffer at id: " + TWINE(freeListIdToUse) +
+                  " (" + TWINE_PTR(desc->ptr_) + " ; " + TWINE(size) + ")",
+              iterations, -size);
 
       return desc;
     }
@@ -1129,17 +1112,18 @@ MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
 
   // Delegate to parent freelist if available.
   if (parent_ != nullptr) {
-    return parent_->allocateDesc(size);
+    MemoryManager::Desc *desc = parent_->allocateDesc(size);
+    if (desc != nullptr)
+      desc->allocatedBy_ = this;
+    return desc;
   }
 
   // We only ever allocate chunks in the bottom most free list which is
   // associated with the MemoryManager directly.
   assert(parent_ == nullptr);
   if (!memoryManager_.allocateChunk()) {
-    if (memoryManager_.doLog_) {
-      memoryManager_.logErr("allocate(" + TWINE(size) + ") - nullptr (" +
-                            TWINE(iterations) + ")");
-    }
+    LOG_MSG("allocate(" + TWINE(size) + ") - nullptr (" + TWINE(iterations) +
+            ")");
     // No success allocating a new Chunk, so we bail from allocating in the
     // cache. Instead we will try to allocate directly from the device and if
     // that fails, then we propagate the failure reported by the device.
@@ -1279,69 +1263,24 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
   }
 
   if (memoryManager_.chunks_ != nullptr) {
-    if (memoryManager_.doLog_) {
-      memoryManager_.logErr("Starting free of " + TWINE_PTR(ptr) +
-                            " on free list " + TWINE_PTR(this) +
-                            " with free id: " + TWINE(primaryFreeBuffers_));
-    }
+    LOG_MSG("Starting free of " + TWINE_PTR(ptr) +
+            " with free id: " + TWINE(primaryFreeBuffers_));
+
     std::lock_guard<std::mutex> lock(memoryManager_.mu_);
     selfCheck();
 
     MemoryManager::Desc *desc =
         memoryManager_.allocatedMap_.remove(unwrappedPtr);
-    if (desc != nullptr) {
-      if (redzoneEnable_) {
-        RedzoneInfo info = redzoneDeviceAllocSizeMap_.at(ptr);
-        redzoneDeviceAllocSizeMap_.erase(ptr);
-        if (auto result = validateRedzones(unwrappedPtr, info);
-            result.isError()) {
-          return result;
-        }
-      }
 
-      freeDesc(desc);
-      if ((ctx_ != nullptr) && !handlerPending_) {
-        // Free the list preceeding the next primary so that we can keep buffers
-        // cached for an extended period.
-        // primaryFreeBuffers + 0: current primary
-        // primaryFreeBuffers + 1: next primary to be used, should contain null
-        // now
-        // primaryFreeBuffers + 2: oldest list of free buffers, to be released
-        // to parent (for the default of 2 lists, this is equivalent to the
-        // current primary)
-        int toFreeId = (primaryFreeBuffers_ + 2) & (kNumFreeBufferLists - 1);
-        primaryFreeBuffers_ =
-            (primaryFreeBuffers_ + 1) & (kNumFreeBufferLists - 1);
-        assert(freeBuffers_[primaryFreeBuffers_] == nullptr);
-        handlerPending_ = true;
-        ErrorOrSuccess err = ctx_->enqueueEventHandler(
-            // We need to ensure that ctx_ survives while this handler is
-            // pending, so we capture the DeviceContextRef.
-            [contextRef = DeviceContextRef::copy(ctx_), freelist = this,
-             id = toFreeId]() {
-              std::lock_guard<std::mutex> lock(freelist->memoryManager_.mu_);
-              if (freelist->memoryManager_.doLog_) {
-                freelist->memoryManager_.logErr("Running flush handler for " +
-                                                TWINE_PTR(freelist) +
-                                                " id: " + TWINE(id));
-              }
-              assert(freelist->handlerPending_);
-              freelist->flushFreeBuffersToParent(id);
-              freelist->handlerPending_ = false;
-            });
-        if (err.isError()) {
-          return err.takeError();
-        }
-        if (memoryManager_.doLog_) {
-          memoryManager_.logErr("Enqueued flush handler for " +
-                                TWINE_PTR(this) + " id: " + TWINE(toFreeId));
-        }
-      }
-      if (memoryManager_.doLog_) {
-        memoryManager_.logErr("Completed free of " + TWINE_PTR(ptr) +
-                              " after queuing flush handler");
-      }
-      return success();
+    if (desc != nullptr) {
+      // The allocating free list gets lost through the different layers of
+      // MLRT and MGP, meaning that the pointer being free'ed did not come from
+      // the current free list. Dispatch to the allocating freelist to free
+      // the descriptor.
+      MemoryManagerFreeList *owner = desc->allocatedBy_;
+      assert(owner && "desc freed without a valid allocatedBy_ - was it ever "
+                      "allocated via allocateDesc?");
+      return owner->freeAllocatedDesc(desc, ptr);
     }
   }
 
@@ -1353,9 +1292,7 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
     }
   }
 
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr("free_buffer(" + TWINE_PTR(ptr) + ")");
-  }
+  LOG_MSG("free_buffer(" + TWINE_PTR(ptr) + ")");
   return ctx_->memFree(ptr, memoryManager_.isHost());
 }
 
@@ -1363,11 +1300,56 @@ void MemoryManagerFreeList::freeDesc(MemoryManager::Desc *desc) {
   void *ptr = desc->ptr_;
   size_t bufSize = desc->size_;
   desc->chunk_->mergeFreeBlockDesc(this, desc);
-  if (memoryManager_.doLog_) {
-    memoryManager_.logErr("free on " + TWINE_PTR(this) + " (" + TWINE_PTR(ptr) +
-                              " ; " + TWINE(bufSize) + ")",
-                          0, bufSize);
+  LOG_MSG("free (" + TWINE_PTR(ptr) + " ; " + TWINE(bufSize) + ")", 0, bufSize);
+}
+
+ErrorOrSuccess
+MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
+  assert(desc->allocatedBy_ == this &&
+         "descriptor must be allocated by the current free list");
+
+  if (redzoneEnable_) {
+    RedzoneInfo info = redzoneDeviceAllocSizeMap_.at(ptr);
+    redzoneDeviceAllocSizeMap_.erase(ptr);
+    if (auto result = validateRedzones(desc->ptr_, info); result.isError())
+      return result;
   }
+
+  freeDesc(desc);
+
+  if ((ctx_ != nullptr) && !handlerPending_ && !disableFlush_) {
+    // Free the list preceding the next primary so that we can keep buffers
+    // cached for an extended period.
+    // primaryFreeBuffers + 0: current primary
+    // primaryFreeBuffers + 1: next primary to be used, should contain null now
+    // primaryFreeBuffers + 2: oldest list of free buffers, to be released to
+    //                         parent (for the default of 2 lists, this is
+    //                         equivalent to the current primary)
+    int toFreeId = (primaryFreeBuffers_ + 2) & (kNumFreeBufferLists - 1);
+    primaryFreeBuffers_ = (primaryFreeBuffers_ + 1) & (kNumFreeBufferLists - 1);
+    assert(freeBuffers_[primaryFreeBuffers_] == nullptr);
+    handlerPending_ = true;
+    ErrorOrSuccess err = ctx_->enqueueEventHandler(
+        // We need to ensure that ctx_ survives while this handler is pending,
+        // so we capture the DeviceContextRef.
+        [contextRef = DeviceContextRef::copy(ctx_), freelist = this,
+         id = toFreeId]() {
+          std::lock_guard<std::mutex> lock(freelist->memoryManager_.mu_);
+          if (freelist->memoryManager_.doLog_)
+            freelist->logMsg("Running flush handler id: " + TWINE(id));
+          assert(freelist->handlerPending_);
+          freelist->flushFreeBuffersToParent(id);
+          freelist->handlerPending_ = false;
+        });
+    if (err.isError())
+      return err.takeError();
+    LOG_MSG("Enqueued flush handler id: " + TWINE(toFreeId));
+  }
+
+  LOG_MSG("Completed free of " + TWINE_PTR(ptr) +
+          " after queuing flush handler");
+
+  return success();
 }
 
 MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,

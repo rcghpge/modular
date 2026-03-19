@@ -158,7 +158,8 @@ private:
 class MemoryManagerFreeList {
 public:
   MemoryManagerFreeList(DeviceContext *context, MemoryManager &memoryManager,
-                        MemoryManagerFreeList *parent);
+                        MemoryManagerFreeList *parent,
+                        bool disableFlush = false, std::string label = "");
   ~MemoryManagerFreeList();
 
   // Release blocks owned by this free list to the parent if available.
@@ -196,10 +197,17 @@ private:
   MemoryManager::Desc *allocateDesc(size_t size);
   void freeDesc(MemoryManager::Desc *desc);
 
+  // Free a descriptor allocated by the current free list.
+  ErrorOrSuccess freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr);
+
   void addToFreeList(MemoryManager::Desc *desc);
   void removeFromFreeList(MemoryManager::Desc *desc);
 
   void flushFreeBuffersToParent(int id);
+
+  // Log helpers that check doLog_ and prepend the free list label.
+  void logMsg(llvm::Twine msg) const;
+  void logMsg(llvm::Twine msg, size_t info, int64_t size) const;
 
   struct RedzoneInfo {
     std::string stackTraceOnAlloc_;
@@ -219,10 +227,14 @@ private:
   int primaryFreeBuffers_ = 0;
   bool handlerPending_ = false;
 
+  bool disableFlush_ = false;
+
   bool redzoneEnable_ = false;
   size_t redzoneSize_ = 0;
   uint8_t redzonePattern_ = 0;
   DenseMap<void *, RedzoneInfo> redzoneDeviceAllocSizeMap_;
+
+  std::string label_;
 };
 
 } // namespace M::Driver
