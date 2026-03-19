@@ -126,7 +126,6 @@ modular_cc_library(
         "//Support:Base",
         "//Support:ConcurrentAppendingVector",
         "//Support:Configuration",
-        "//Support:Context",
         "//Support:MArchTargetMinimal",
         "//Support:Profiling",
         "//Support:SymbolExport",

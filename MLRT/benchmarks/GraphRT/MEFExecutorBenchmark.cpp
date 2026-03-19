@@ -117,7 +117,7 @@ static GRTTestcase findTestcase(MEFFile *mefFile, llvm::StringRef name) {
 }
 
 /// Create a runtime with 32 threads for async primitive execution.
-static std::unique_ptr<Runtime> createBenchmarkRuntime() {
+static RuntimeRef createBenchmarkRuntime() {
   RuntimeOptions opts;
   opts.numThreads = 32;
   opts.withMainWillNotDonate();

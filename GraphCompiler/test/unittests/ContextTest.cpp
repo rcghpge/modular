@@ -25,7 +25,7 @@ struct PayloadB : public ReferenceCounted<PayloadB> {
   char c;
 };
 
-static std::unique_ptr<AsyncRT::Runtime> getRuntime() {
+static AsyncRT::RuntimeRef getRuntime() {
   return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
                                 AsyncRT::RuntimeOptions().forDebug());
 }

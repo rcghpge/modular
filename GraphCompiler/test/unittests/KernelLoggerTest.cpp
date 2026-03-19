@@ -23,7 +23,7 @@ namespace {
 
 class KernelLoggerTest : public ::testing::Test {
 protected:
-  std::unique_ptr<AsyncRT::Runtime> runtime;
+  AsyncRT::RuntimeRef runtime;
 
   void SetUp() override {
     runtime = AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
