@@ -18,11 +18,11 @@ class MojoLibraryAnalysis;
 
 namespace M::MO {
 
-/// Collects mlir options which influence buildMoToMgpPipeline.
+/// Collects mlir options which influence buildGCPipeline.
 ///
 /// See also GraphCompilerCLOptions for the corresponding mt command line
 /// options.
-struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
+struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
   Option<std::string> compiledFrameworkLabel{
       *this, "compiled-framework-label",
       llvm::cl::desc(
@@ -216,15 +216,18 @@ struct MoToMgpOptions : public mlir::PassPipelineOptions<MoToMgpOptions> {
       llvm::cl::init(false)};
 };
 
-/// Registers the MO-to-MGP pipeline for use by testing tools.
-/// The passes will use the current runtime, which must be established by the
-/// tool.
-void registerMoToMgpPipeline();
-void registerJITCompilationPipeline();
+/// Registers all graph-compiler pipelines and sub-pipelines for use by testing
+/// tools. The passes will use the current runtime, which must be established by
+/// the tool.
+void registerGCPipeline();
+void registerMoPipeline();
+void registerMoggPipeline();
+void registerMgpPipeline();
+void registerJitPipeline();
 
-/// Creates the canonical MO-to-MGP pipeline for the given options.
-void buildMoToMgpPipeline(
-    mlir::OpPassManager &pm, const MoToMgpOptions &opts,
+/// Builds the complete graph-compiler pipeline (MO → MGP → JIT).
+void buildGCPipeline(
+    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
 
 /// Registers the end-to-end shape inference pipeline for use by testing tools.
@@ -232,6 +235,174 @@ void registerShapeInferencePipeline();
 
 // Create the end-to-end shape inference pipeline.
 void buildShapeInferencePipeline(mlir::OpPassManager &pm);
+
+// ---------------------------------------------------------------------------
+// Lean option structs for sub-pipelines.
+//
+// Each struct exposes only the options actually consumed by that stage.
+// ---------------------------------------------------------------------------
+
+/// Options for `mo-pipeline`: all passes from graph input up to (but not
+/// including) the `mo-to-mogg` conversion.
+struct MoPipelineOptions : public mlir::PassPipelineOptions<MoPipelineOptions> {
+  Option<bool> debugPrintAllTensors{
+      *this, "debug-print-all-tensors",
+      llvm::cl::desc("If enabled, print all intermediate tensors. The usual "
+                     "'result-output-style', 'print-precision' and "
+                     "'binary-output-dir' flags may be used to control the "
+                     "printed format and saved location."),
+      llvm::cl::init(false)};
+  Option<bool> useShapeInference{
+      *this, "mo-shape-inference",
+      llvm::cl::desc("Run shape inference on the input before other "
+                     "optimizations and lowering."),
+      llvm::cl::init(true)};
+  Option<bool> constantFold{
+      *this, "constant-fold",
+      llvm::cl::desc("Evaluate parts of the program that can be evaluated at "
+                     "compile time."),
+      llvm::cl::init(true)};
+  Option<std::string> compiledFrameworkLabel{
+      *this, "compiled-framework-label",
+      llvm::cl::desc(
+          "Framework label to compile to (used in mgp.model framework tag).")};
+  Option<std::string> cacheDir{
+      *this, "cache-dir",
+      llvm::cl::desc("Path used by the CAS subsystem to establish its backing "
+                     "store. If non-empty then models will be rewritten to "
+                     "outline dense_attributes to the given CAS instance.")};
+  Option<bool> symbolicFfastMath{
+      *this, "symbolic-ffast-math",
+      llvm::cl::desc(
+          "If the symbolic optimizer is allowed (1) to operate under the "
+          "finite math assumption, (2) re-order floating point operations and "
+          "(3) apply reciprocal optimizations"),
+      llvm::cl::init(true)};
+  Option<bool> symbolicNoUndefinedMath{
+      *this, "symbolic-no-undefined-math",
+      llvm::cl::desc(
+          "If the symbolic optimizer is allowed to assume that there will be no"
+          "undefined math operations such as divisions by 0"),
+      llvm::cl::init(true)};
+  ListOption<std::string> kernelLibraryPaths{
+      *this, "kernel-library-paths",
+      llvm::cl::desc(
+          "Paths to mojo packages containing mojo kernel definitions used to "
+          "replace MO ops.")};
+  Option<bool> usePatterns{
+      *this, "use-patterns",
+      llvm::cl::desc("Lower to hand-fused kernels using pattern matching."),
+      llvm::cl::init(true)};
+  Option<bool> patternFusionMHAEnable{
+      *this, "mha-enable",
+      llvm::cl::desc("Enables multi-head attention (mha) pattern fusion."),
+      llvm::cl::init(true)};
+  Option<bool> patternFusionMHAAllowUnsafeBCasts{
+      *this, "mha-allow-unsafe-bcast",
+      llvm::cl::desc("If the mha pattern is enabled, allows fusing potentially "
+                     "unsafe bcasts with a runtime guard."),
+      llvm::cl::init(true)};
+  Option<bool> patternFusionMHAAllowInternalReshape{
+      *this, "mha-allow-internal-reshape",
+      llvm::cl::desc("If the mha pattern is enabled, allows fusing potentially "
+                     "unsafe bcasts with a runtime guard."),
+      llvm::cl::init(true)};
+  Option<bool> sanityCheckShapeFuncs{
+      *this, "sanity-check-shape-funcs",
+      llvm::cl::desc(
+          "Insert runtime checks which compare C++ and Mojo shape functions."),
+      llvm::cl::init(false)};
+  Option<std::string> defaultDeviceLabel{
+      *this, "default-device-label",
+      llvm::cl::desc(
+          "If non-empty, assign as many ops as possible to the device "
+          "with the given label (and device id zero)."),
+      llvm::cl::init("cpu")};
+  Option<size_t> defaultDeviceId{
+      *this, "default-device-id",
+      llvm::cl::desc(
+          "If default-device-label is specified, this field specifies the"
+          "default device id to target. Defaults to zero."),
+      llvm::cl::init(0)};
+  Option<std::string> defaultDeviceTargetTriple{
+      *this, "default-device-target-triple",
+      llvm::cl::desc("llvm::Triple representing the compilation target for the "
+                     "defaultDevice."),
+      llvm::cl::init("")};
+  Option<std::string> defaultDeviceTargetArch{
+      *this, "default-device-target-arch",
+      llvm::cl::desc("String representing the architecture of the "
+                     "defaultDevice. For example, for NVIDIA GPUs this is the "
+                     "compute capability (i.e. sm_X)"),
+      llvm::cl::init("")};
+  Option<bool> fuseJitKernels{
+      *this, "fuse-jit-kernels",
+      llvm::cl::desc(
+          "Fusing kernels is on by default but will do nothing if useJit is "
+          "off. If use jit is on then we will fuse incoming jit kernels."),
+      llvm::cl::init(true)};
+};
+
+/// Options for `mogg-pipeline`: all passes between `mo-to-mogg` and
+/// `mogg-to-mgp` (both endpoints excluded).
+struct MoggPipelineOptions
+    : public mlir::PassPipelineOptions<MoggPipelineOptions> {
+  Option<bool> fuseJitKernels{
+      *this, "fuse-jit-kernels",
+      llvm::cl::desc(
+          "Fuse connected elementwise/view/prologue–epilogue kernels."),
+      llvm::cl::init(true)};
+  Option<bool> fuseMutableLoadStore{
+      *this, "fuse-mutable-load-store",
+      llvm::cl::desc("If set to false will disable the creation of in-place "
+                     "kernels, instead lowering to explicit copies into and "
+                     "out of mo.buffer values. Primarily used for testing."),
+      llvm::cl::init(true)};
+};
+
+/// Options for `mgp-pipeline`: all passes between `mogg-to-mgp` and `jit`
+/// (both endpoints excluded).
+struct MgpPipelineOptions
+    : public mlir::PassPipelineOptions<MgpPipelineOptions> {
+  ListOption<std::string> kernelLibraryPaths{
+      *this, "kernel-library-paths",
+      llvm::cl::desc(
+          "Paths to mojo packages containing mojo kernel definitions.")};
+  Option<size_t> minimumCpuAlignment{
+      *this, "minimum-cpu-alignment",
+      llvm::cl::desc("Alignment for all CPU-allocated buffers."),
+      llvm::cl::init(kPreferredMemoryAlignment)};
+  Option<bool> enableOpTraceComments{
+      *this, "enable-op-trace-comments",
+      llvm::cl::desc("Flag to enable adding comments in the Mojo code "
+                     "detailing which operation is being emitted."),
+      llvm::cl::init(false)};
+  Option<bool> enableComputeLambdas{
+      *this, "enable-compute-lambdas",
+      llvm::cl::desc("If true, the Graph Compiler will generate compute "
+                     "lambdas when possible"),
+      llvm::cl::init(true)};
+  Option<bool> moggDebugDumpFusedTensorSpecs{
+      *this, "mogg-debug-dump-fused-tensor-specs",
+      llvm::cl::desc("Flag to enable adding prints of the fused tensor specs "
+                     "in the lambdas of Mojo code "
+                     "to easily debug / test kernel fusion."),
+      llvm::cl::init(false)};
+  Option<bool> dumpMojoText{
+      *this, "dump-mojo-text",
+      llvm::cl::desc("Dump generated mojo code of the kernels as text"),
+      llvm::cl::init(false)};
+};
+
+/// Builds individual sub-pipelines.
+void buildMoPipeline(mlir::OpPassManager &pm, const MoPipelineOptions &opts);
+void buildMoggPipeline(mlir::OpPassManager &pm,
+                       const MoggPipelineOptions &opts);
+void buildMgpPipeline(
+    mlir::OpPassManager &pm, const MgpPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
+/// Builds all passes that run after `jit` (i.e., after JitCompileKernels).
+void buildJitPipeline(mlir::OpPassManager &pm);
 
 } // namespace M::MO
 

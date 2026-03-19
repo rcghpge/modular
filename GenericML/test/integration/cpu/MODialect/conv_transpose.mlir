@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute --result-output-style=full --model-inputs=ones %t.mlir | FileCheck %s
 
 mo.graph @conv_transpose_default_hyperparameters() -> (!mo.tensor<[1, 3, 3, 1], si64>) {

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=kernel-library-paths="%kernel_api_test_pkg" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=kernel-library-paths="%kernel_api_test_pkg" -o %t.mlir
 // RUN: mt --execute %t.mlir --model-inputs=ones --result-output-style=full | FileCheck %s
 
 // CHECK-LABEL: Running 'supports_scalars':

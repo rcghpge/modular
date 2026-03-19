@@ -9,6 +9,7 @@
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
 #include "GenericML/GraphCompiler/MODialect/MOOps.h"
 #include "GenericML/GraphCompiler/MODialect/MOTypes.h"
+#include "GenericML/GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
 #include "GenericML/GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOSHDialect/MOSHOps.h"
@@ -784,16 +785,12 @@ struct ConstantFoldPass
   ConstantFoldPass()
       : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)) {}
 
-  ConstantFoldPass(std::string_view label, const MO::MoToMgpOptions &origOpts)
+  ConstantFoldPass(std::string_view label,
+                   std::optional<std::string> cacheDirArg,
+                   llvm::ArrayRef<std::string> kernelLibraryPathsArg)
       : ConstantFoldBase(), policy(new FactorMemIncrease(2, 100)),
-        compiledFrameworkLabel(label) {
-    // Copy some of the options used for main compilation to compilation of the
-    // subgraph. We don't need to copy all options, we only want the ones that
-    // affect correctness.
-    cacheDir = origOpts.cacheDir;
-    kernelLibraryPaths =
-        origOpts.kernelLibraryPaths.operator ArrayRef<std::string>();
-  }
+        compiledFrameworkLabel(label), cacheDir(std::move(cacheDirArg)),
+        kernelLibraryPaths(kernelLibraryPathsArg.vec()) {}
 
 private:
   // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
@@ -813,7 +810,7 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   // Lower module to MGP.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
-  MO::MoToMgpOptions moOpts;
+  MO::GCPipelineOptions moOpts;
   if (cacheDir)
     moOpts.cacheDir = cacheDir.value();
   if (kernelLibraryPaths)
@@ -834,7 +831,7 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   // We gain little benefit by enabling post-abi as most constant subgraphs are
   // isolated, besides, it hurts compilation time.
   moOpts.enablePostABIRegionFusion = false;
-  MO::buildMoToMgpPipeline(pm, moOpts);
+  MO::buildGCPipeline(pm, moOpts);
   // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
@@ -971,6 +968,8 @@ void ConstantFoldPass::runOnOperation() {
 
 std::unique_ptr<mlir::Pass>
 M::MO::createConstantFoldPass(std::string_view compiledFrameworkLabel,
-                              const MoToMgpOptions &opts) {
-  return std::make_unique<ConstantFoldPass>(compiledFrameworkLabel, opts);
+                              std::optional<std::string> cacheDir,
+                              llvm::ArrayRef<std::string> kernelLibraryPaths) {
+  return std::make_unique<ConstantFoldPass>(
+      compiledFrameworkLabel, std::move(cacheDir), kernelLibraryPaths);
 }

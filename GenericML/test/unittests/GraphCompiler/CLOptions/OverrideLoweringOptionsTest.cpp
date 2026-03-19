@@ -15,7 +15,7 @@ class OverrideLoweringOptionsTest : public ::testing::Test {};
 /// This tests that after overriding lowering options with command-line options,
 /// `opt.hasValue()` returns true.
 TEST_F(OverrideLoweringOptionsTest, HasValue) {
-  MoToMgpOptions compilerOptions;
+  GCPipelineOptions compilerOptions;
   EXPECT_FALSE(compilerOptions.cacheDir.hasValue());
 
   GraphCompilerOptions clOptions;

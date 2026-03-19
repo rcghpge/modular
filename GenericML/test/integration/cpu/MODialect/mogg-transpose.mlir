@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute %t.mlir -model-inputs=ones | FileCheck %s
 
 mo.graph @transpose() -> !mo.tensor<[5, 4], si32>  {

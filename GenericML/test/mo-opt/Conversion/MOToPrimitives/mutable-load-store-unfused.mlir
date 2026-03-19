@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mogg --mgp-mo-to-primitives %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --mogg-to-mgp %s | FileCheck %s
 
 !tt = !mo.tensor<[2, 2], f32>
 !bt = !mo.buffer<[2, 2], f32>

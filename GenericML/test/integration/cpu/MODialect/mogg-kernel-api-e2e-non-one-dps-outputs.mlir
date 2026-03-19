@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="constant-fold=false kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="constant-fold=false kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t.mlir --result-output-style=full | FileCheck %s
 
 // Check kernels with non-1 dps outputs work as expected

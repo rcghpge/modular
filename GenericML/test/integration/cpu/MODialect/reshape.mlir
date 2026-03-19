@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t_mojo.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t_mojo.mlir
 // RUN: mt --execute --input-shapes=4 --input-data=0::ones --result-output-style=full %t_mojo.mlir | FileCheck %s || true
 
 mo.graph @reshape_dyn_input_dyn_output<D0 -> D1, D2>(%input: !mo.tensor<[D0], f32>) -> !mo.tensor<[D1, D2], f32> {

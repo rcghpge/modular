@@ -1,5 +1,5 @@
 // RUN: mo-opt -mo-shape-inference -mo-symbolic-optimize %s | FileCheck %s --check-prefix=CHECK-IR
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s --check-prefix=CHECK-EXEC
 
 // CHECK-IR: mo.graph @bmm_broadcast(%[[ARG0:.*]]:  !mo.tensor<[4, 3, 2], f32>, %[[ARG1:.*]]: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[4, 3, 3], f32>

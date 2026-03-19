@@ -1,4 +1,4 @@
-// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit-pipeline %s -o %t.mlir
+// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --jit-pipeline %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'debug_print'

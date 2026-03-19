@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mgp-mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mogg-to-mgp | FileCheck %s
 
 
 // CHECK-LABEL: mgp.model @transfer_d2h : mof

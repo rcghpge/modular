@@ -13,7 +13,7 @@
 namespace M::MOF {
 
 /// Options which control MOF lowering and execution.
-/// See also MO::MoToMgpOptions for generic lowering options.
+/// See also MO::GCPipelineOptions for generic lowering options.
 struct MOFLoweringOptions {
   DebugTensorPrintOptions debugTensorPrintOptions;
 

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline %s -o %t.mlir
 // RUN: mt --execute   --input-shapes=3x2x1x4 --input-shapes=3x2x4x1 -model-inputs=ones %t.mlir | FileCheck --check-prefix=CHECK-WORKING %s
 
 // RUN: mt --execute   --input-shapes=3x2x1x4 --input-shapes=3x2x2x1 -model-inputs=ones %t.mlir > %t.output1 || true

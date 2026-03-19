@@ -1,13 +1,13 @@
-// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=true fuse-jit-kernels=true" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="fuse-mutable-load-store=true fuse-jit-kernels=true" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=false fuse-jit-kernels=true" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="fuse-mutable-load-store=false fuse-jit-kernels=true" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=true fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="fuse-mutable-load-store=true fuse-jit-kernels=false" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=false fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="fuse-mutable-load-store=false fuse-jit-kernels=false" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'load_add_mean':

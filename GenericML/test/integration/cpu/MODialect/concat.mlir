@@ -1,7 +1,7 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp="trivial-kernel-opt=false constant-fold=false" -o %t_no_opt.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline="trivial-kernel-opt=false constant-fold=false" -o %t_no_opt.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t_no_opt.mlir | FileCheck %s
 
 // CHECK: --- Running 'concat_static_output':

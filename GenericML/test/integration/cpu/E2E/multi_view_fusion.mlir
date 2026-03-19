@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline -o %t.mlir
 // RUN: python3 %mo_vs_numpy_py -n MultiViewFusion -f %t.mlir | FileCheck %s
 
 // CHECK: All MO values match numpy

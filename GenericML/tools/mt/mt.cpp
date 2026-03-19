@@ -94,8 +94,8 @@ static int setupMLIRAndRun(
 static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
                          M::BufferRef fileBuffer, const ModelList &models) {
   MOF::MOFLoweringOptions mofLoweringOptions;
-  MO::MoToMgpOptions moToMgpOptions;
-  ctx.overrideLoweringOptions(mofLoweringOptions, moToMgpOptions);
+  MO::GCPipelineOptions gcPipelineOptions;
+  ctx.overrideLoweringOptions(mofLoweringOptions, gcPipelineOptions);
   const ExecutorDriverOptions *driverOptions = ctx.getExecutorDriverOptions();
   assert(driverOptions && "cannot run a binary file via the API");
 

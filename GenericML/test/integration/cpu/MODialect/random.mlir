@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @random_normal() -> !mo.tensor<[1, 1, 7, 8], f32> {

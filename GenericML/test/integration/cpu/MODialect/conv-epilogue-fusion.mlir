@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @conv_test0(%input : !mo.tensor<[1, 5, 5, 2], f32>, %filter : !mo.tensor<[3,3,2,19], f32>) -> (!mo.tensor<[1, 3 ,3, 19], f32>) {

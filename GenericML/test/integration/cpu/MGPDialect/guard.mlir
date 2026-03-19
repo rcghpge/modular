@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'basic_test':

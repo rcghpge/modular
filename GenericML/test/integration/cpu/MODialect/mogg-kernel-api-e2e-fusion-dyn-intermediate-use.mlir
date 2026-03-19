@@ -1,7 +1,7 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t.mlir --input-shapes=1x2x3 | FileCheck %s
 
-// RUN: mo-opt %s -o %t_mojo.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t_mojo.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t_mojo.mlir --input-shapes=1x2x3 | FileCheck %s
 
 // CHECK-LABEL: Running 'print_shape':

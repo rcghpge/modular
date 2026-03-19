@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --input-shapes=2x1 --input-data=0::ones --result-output-style=full %t.mlir | FileCheck %s
 
 // TODO(GEX-1573): currently failing

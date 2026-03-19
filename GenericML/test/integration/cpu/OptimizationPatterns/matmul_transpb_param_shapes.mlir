@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: cat %t.mlir | FileCheck %s --check-prefix=CHECK-IR
 // RUN: mt --execute --input-shapes=4x2 --input-shapes=4x2 -model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 

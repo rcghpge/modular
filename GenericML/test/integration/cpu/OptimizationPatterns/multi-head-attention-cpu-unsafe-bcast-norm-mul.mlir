@@ -2,7 +2,7 @@
 // RUN: mo-opt %s --mogg-pattern-fusion="mha-allow-unsafe-bcast=0" | FileCheck %s
 // RUN: mo-opt %s --mogg-pattern-fusion="mha-allow-unsafe-bcast=1" | FileCheck %s --check-prefix=CHECK-ALLOW-BCAST --enable-var-scope
 
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 
 // COM: Finally check runtime assertions work
 // RUN: mt --execute %t.mlir --input-shapes=1x1x6x8 --input-shapes=1x1x6x8 --input-shapes=1x1x6x8 --input-shapes="" --input-shapes=1 --model-inputs=ones | FileCheck %s --check-prefix=CHECK-MT

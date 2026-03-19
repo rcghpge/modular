@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 
 mo.graph @add(%arg0: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) attributes {isSubgraph} {
   %1 = mo.constant.external {align = 16 : ui64, device = #M.device_ref<"cpu", 0>, name = "foo", isPlaceholder = true } : !mo.tensor<[5], f32>

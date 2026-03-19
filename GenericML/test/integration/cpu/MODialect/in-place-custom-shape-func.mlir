@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg" %s -o %t.mlir
 // RUN: mt --execute --input-shapes=1x1 --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @dyn_shape_func<D0, D1 -> D4, D5>(%arg0: !mo.buffer<[D0, D1], f32>) -> (!mo.buffer<[D0, D1], f32>, !mo.tensor<[D4, D5], f32>, !mo.chain) {

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GenericML/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GenericML/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GenericML/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
@@ -39,8 +39,8 @@ using namespace M;
 
 namespace M::MGP {
 
-#define GEN_PASS_DEF_MOTOPRIMITIVES
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#define GEN_PASS_DEF_MOGGTOMGP
+#include "GenericML/GraphCompiler/Conversion/MOGGToMGP.h.inc"
 
 } // namespace M::MGP
 
@@ -2043,13 +2043,12 @@ LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
 }
 
 //===----------------------------------------------------------------------===//
-// MOToPrimitivesPass
+// MOGGToMGPPass
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct MOToPrimitivesPass
-    : public MGP::impl::MOToPrimitivesBase<MOToPrimitivesPass> {
-  using MOToPrimitivesBase::MOToPrimitivesBase;
+struct MOGGToMGPPass : public MGP::impl::MOGGToMGPBase<MOGGToMGPPass> {
+  using MOGGToMGPBase::MOGGToMGPBase;
 
   void runOnOperation() override;
 
@@ -2057,13 +2056,13 @@ struct MOToPrimitivesPass
 };
 } // namespace
 
-void MOToPrimitivesPass::getDependentDialects(DialectRegistry &registry) const {
-  MOToPrimitivesBase::getDependentDialects(registry);
+void MOGGToMGPPass::getDependentDialects(DialectRegistry &registry) const {
+  MOGGToMGPBase::getDependentDialects(registry);
   // Bring in all the device-specific dialects.
   MO::registerAllDeviceDialects(registry);
 }
 
-void MOToPrimitivesPass::runOnOperation() {
+void MOGGToMGPPass::runOnOperation() {
   ModuleOp theModule = getOperation();
 
   std::deque<MO::GraphOp> worklist;

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mogg-jit-compile-kernels --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t.mlir
+// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'device_to_device'

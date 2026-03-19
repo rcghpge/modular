@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK: tensor<5x3xsi64> [0, 1, 2, 5, 6, 7, 10, 11, 12, 15, 16, 17, 20, 21, 22]

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=1x5x5x3 --input-shapes=3x3x3x1 --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @conv<D0, D1, D2, D3, D4, D5, D6, D7 -> D8, D9, D10, D11>(%input : !mo.tensor<[D0, D1, D2, D3], f32>, %filter : !mo.tensor<[D4, D5, D6, D7], f32>) -> (!mo.tensor<[D8, D9, D10, D11], f32>) {

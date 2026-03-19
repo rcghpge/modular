@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false --allow-unregistered-dialect -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false --allow-unregistered-dialect -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @resize_nearest_half_pixel_down(%input : !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false kernel-library-paths="%kernel_api_test_pkg"" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false kernel-library-paths="%kernel_api_test_pkg"" -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck %s
 
 // CHECK: MGP_RT_TEST

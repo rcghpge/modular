@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
+#include "GenericML/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GenericML/GraphCompiler/MOGGDialect/MOGGOps.h"
 

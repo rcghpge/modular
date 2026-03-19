@@ -1,8 +1,8 @@
-// RUN: mo-opt %s --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-jit-compile-kernels --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t.mlir
+// RUN: mo-opt %s --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck %s
 
 // Test it works without fusion.
-// RUN: mo-opt %s --mgp-lower-primitives --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-jit-compile-kernels --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t_nofused.mlir
+// RUN: mo-opt %s --mgp-lower-primitives --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t_nofused.mlir
 // RUN: mt --execute %t_nofused.mlir | FileCheck %s
 
 // CHECK-LABEL:--- Running 'mgp_assert_true':

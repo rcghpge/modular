@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @range1<() -> D0>(%limit: !mo.tensor<[], f32>) -> !mo.tensor<[D0], f32> {

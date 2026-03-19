@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="use-patterns=false" -o %t_new_api.mlir
+// RUN: mo-opt %s --gc-pipeline="use-patterns=false" -o %t_new_api.mlir
 // RUN: mt --execute --model-inputs=zeros --result-output-style=full %t_new_api.mlir | FileCheck %s --check-prefix=CHECK-NEW
 
 // A simple graph that computes: concat[(0 + 1) * 4, (0 + 2) * 4]

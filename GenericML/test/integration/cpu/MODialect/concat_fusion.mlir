@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t_new_api.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t_new_api.mlir
 // RUN: mt --execute --result-output-style=full %t_new_api.mlir | FileCheck %s
 // RUN: cat %t_new_api.mlir | FileCheck %s --check-prefix=CHECK-IR
 

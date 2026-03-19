@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline | FileCheck %s
 
 // The allreduce.sum should be fused with the add operations
 // CHECK-LABEL: mef.callable @allreduce_sum_with_epilogue$exec

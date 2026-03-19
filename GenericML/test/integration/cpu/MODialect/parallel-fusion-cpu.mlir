@@ -1,10 +1,10 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false --mlir-print-ir-after=mgp-mo-to-primitives -o %t.mlir 2> %t.mgp
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2> %t.mgp
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 // RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
 // Verify that the parallel body contains multiple kernels before lowering.
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
 // Verify lowering works with fusion disabled (multiple kernel groups).
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false fuse-jit-kernels=false" -o /dev/null
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false fuse-jit-kernels=false" -o /dev/null
 
 
 // Tests for elementwise fusion patterns inside mo.parallel.

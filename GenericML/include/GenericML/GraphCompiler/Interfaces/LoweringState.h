@@ -36,7 +36,7 @@ namespace M::MGP {
 
 /// This class holds the state needed to orchestrate the lowering of one
 /// mo.graph operation to a mgp.model. It is shared between the lowering itself
-/// (MOToPrimitives) and ops that it supports (implementers of
+/// (MOGGToMGP) and ops that it supports (implementers of
 /// LowerableToMGPInterface). The state is gradually built as ops are lowered.
 class MOGraphLoweringState {
 public:

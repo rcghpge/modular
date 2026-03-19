@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mo-to-mogg=kernel-library-paths="%kernel_api_test_pkg" | FileCheck %s
 
-// RUN: mo-opt %s --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg constant-fold=false" -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s --check-prefix=CHECK-MT
 
 // CHECK-LABEL: @parameterized_opaque_type

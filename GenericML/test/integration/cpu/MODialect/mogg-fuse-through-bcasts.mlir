@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute --result-output-style=full --model-inputs=ones --input-shapes=1x2x3 --input-shapes=1x2x3 --input-shapes=1x2x3 %t.mlir | FileCheck %s
 
 // CHECK: 'fuse_through_rebinds' returned tensor<1x2x3xf32> [3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00]

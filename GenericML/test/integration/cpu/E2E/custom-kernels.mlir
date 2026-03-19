@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t.mlir| FileCheck %s
 
 // CHECK-LABEL: Running 'print_shape':

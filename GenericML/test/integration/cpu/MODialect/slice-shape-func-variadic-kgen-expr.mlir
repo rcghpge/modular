@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --input-shapes=2 --input-shapes=100 %t.mlir --result-output-style=full | FileCheck %s
 
 // This test make sure MOGG properly lowers KGEN expression with variadic

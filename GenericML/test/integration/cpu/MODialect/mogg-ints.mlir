@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full --model-inputs=ones %t.mlir | FileCheck %s
 
 mo.graph @si32_mul() -> (!mo.tensor<[6], si32>) {

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=5x5 --input-shapes=3x3 --input-shapes=2 %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'strided_slice':

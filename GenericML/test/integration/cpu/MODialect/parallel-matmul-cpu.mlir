@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false --mlir-print-ir-after=mgp-mo-to-primitives -o %t.mlir 2> %t.mgp
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2> %t.mgp
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 // RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
 

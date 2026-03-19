@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --input-shapes=2x8 --input-shapes=1x1 -model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK: 'mogg_split' returned tensor<1x8xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00]

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute %t.mlir  --input-shapes=10x12 --model-inputs=ones --result-output-style=full | FileCheck %s --check-prefix=CHECK-10
 // RUN: mt --execute %t.mlir  --input-shapes=11x12 --model-inputs=ones --result-output-style=full | FileCheck %s --check-prefix=CHECK-11
 

@@ -4,7 +4,7 @@
 // Check E2E performance. Note we also run the case where the pattern does not
 // trigger (due to improper devices in graph) E2E to help establish correctness.
 
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute %t.mlir --input-shapes=1x8x2x4 --input-shapes=1x8x2x4 --input-shapes=1x8x2x4 --input-shapes=1 --model-inputs=random --result-output-style=full | FileCheck %s -check-prefix=CHECK-MT
 
 // Dimension names:

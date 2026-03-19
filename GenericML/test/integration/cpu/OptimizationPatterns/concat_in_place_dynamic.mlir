@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=3 --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK{LITERAL}: 'concat_dynamic_output' returned tensor<6xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 7.615942e-01, 7.615942e-01, 7.615942e-01]

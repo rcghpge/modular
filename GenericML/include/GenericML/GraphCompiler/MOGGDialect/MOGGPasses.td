@@ -9,7 +9,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def JitCompileKernels: Pass<"mogg-jit-compile-kernels", "ModuleOp"> {
+def JitCompileKernels: Pass<"jit", "ModuleOp"> {
   let summary = "Replace kernel op with calls into compiled kernel";
   let description = [{
     This pass finds all the kernels ops, compile the kernels with the KGEN
@@ -248,7 +248,7 @@ def NormalizeAllNames: Pass<"mogg-normalize-all-names", "mlir::ModuleOp"> {
   ];
 }
 
-// Passes moved from MOToPrimitives (mogg-* passes that operate on MOGG dialect)
+// Passes moved from MOGGToMGP (mogg-* passes that operate on MOGG dialect)
 def LowerMOGGRegionCompiles: Pass<"mogg-lower-mogg-region-compile", "ModuleOp"> {
   let summary = "Convert MOGG compile ops into MGP versions";
   let description = [{
@@ -396,7 +396,7 @@ def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
     -jit-pipeline can be run to compile all the way to the end.
 
     Example:
-    mo-opt program.mlir -mo-to-mgp -o /dev/null -mlir-print-ir-after=mogg-emit-mojo &> program.mgp.mlir
+    mo-opt program.mlir -gc-pipeline -o /dev/null -mlir-print-ir-after=mogg-emit-mojo &> program.mgp.mlir
     mo-opt program.mgp.mlir -mgp-dump-mojo -o /dev/null &> program.mojo
     # Modify Mojo here
     mo-opt program.mgp.mlir -mgp-load-mojo=path=program.mojo -jit-pipeline

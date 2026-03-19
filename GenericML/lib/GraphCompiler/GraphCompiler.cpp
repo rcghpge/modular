@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "GenericML/GraphCompiler/GraphCompiler.h"
+#include "GenericML/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GenericML/GraphCompiler/Conversion/MOToMOGG.h"
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h"
 #include "GenericML/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GenericML/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GenericML/GraphCompiler/MODialect/MODialect.h"
@@ -59,21 +59,7 @@ void M::MO::registerShapeInferencePipeline() {
       buildShapeInferencePipeline);
 }
 
-void buildJITCompilationPipeline(
-    mlir::OpPassManager &pm, const MoToMgpOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr) {
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
-
-  MOGG::JitCompileKernelsOptions jitOpts;
-  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  jitOpts.saveTempPrefix = opts.saveTempPrefix;
-  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-  jitOpts.kernelLibraryPaths = kernelLibraryPaths;
-  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
-  jitOpts.debugKGENStubs = opts.debugKGENStubs;
-
-  pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
+void M::MO::buildJitPipeline(mlir::OpPassManager &pm) {
   pm.addPass(MOGG::createLowerMOGGRegionCompiles());
   pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(MGP::createFixupOverhangsPass());
@@ -84,29 +70,56 @@ void buildJITCompilationPipeline(
   pm.addPass(MGP::createOutlineModelsToCallables());
 }
 
-void M::MO::registerMoToMgpPipeline() {
-  mlir::PassPipelineRegistration<MoToMgpOptions>(
-      "mo-to-mgp", "Lower MO to MGP.",
-      [](mlir::OpPassManager &pm, const MoToMgpOptions &opts) {
-        buildMoToMgpPipeline(pm, opts);
+void M::MO::registerGCPipeline() {
+  mlir::PassPipelineRegistration<GCPipelineOptions>(
+      "gc-pipeline", "Full graph-compiler pipeline (MO → MGP → JIT).",
+      [](mlir::OpPassManager &pm, const GCPipelineOptions &opts) {
+        buildGCPipeline(pm, opts);
       });
 }
 
-void M::MO::registerJITCompilationPipeline() {
-  mlir::PassPipelineRegistration<MoToMgpOptions>(
-      "jit-pipeline", "JIT pass pipeline.",
-      [](mlir::OpPassManager &pm, const MoToMgpOptions &opts) {
-        buildJITCompilationPipeline(pm, opts);
+void M::MO::registerMoPipeline() {
+  mlir::PassPipelineRegistration<MoPipelineOptions>(
+      "mo-pipeline",
+      "Passes from graph input up to (but not including) mo-to-mogg.",
+      [](mlir::OpPassManager &pm, const MoPipelineOptions &opts) {
+        buildMoPipeline(pm, opts);
       });
+}
+
+void M::MO::registerMoggPipeline() {
+  mlir::PassPipelineRegistration<MoggPipelineOptions>(
+      "mogg-pipeline",
+      "Passes between mo-to-mogg and mogg-to-mgp (both excluded).",
+      [](mlir::OpPassManager &pm, const MoggPipelineOptions &opts) {
+        buildMoggPipeline(pm, opts);
+      });
+}
+
+void M::MO::registerMgpPipeline() {
+  mlir::PassPipelineRegistration<MgpPipelineOptions>(
+      "mgp-pipeline", "Passes between mogg-to-mgp and jit (both excluded).",
+      [](mlir::OpPassManager &pm, const MgpPipelineOptions &opts) {
+        buildMgpPipeline(pm, opts);
+      });
+}
+
+void M::MO::registerJitPipeline() {
+  mlir::PassPipelineRegistration<>(
+      "jit-pipeline", "Passes that run after the jit pass.",
+      [](mlir::OpPassManager &pm) { buildJitPipeline(pm); });
 }
 
 void M::MO::registerPasses() {
   MO::registerShapeInferencePipeline();
-  MO::registerMoToMgpPipeline();
-  MO::registerJITCompilationPipeline();
+  MO::registerGCPipeline();
+  MO::registerMoPipeline();
+  MO::registerMoggPipeline();
+  MO::registerMgpPipeline();
+  MO::registerJitPipeline();
   MO::registerMOToMOGGPasses();
   MO::registerMOTransformsPasses();
-  MGP::registerMOToPrimitives();
+  MGP::registerMOGGToMGP();
 
   MOGG::registerMergeIdenticalKernelStubs();
   MOGG::registerAddTryExceptBlocksPass();
@@ -136,29 +149,32 @@ void M::MO::registerPasses() {
 }
 
 LogicalResult
-MO::lowerMOToMGP(ModuleOp module, const MoToMgpOptions &moToMgpOptions,
-                 std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+MO::runGcPipeline(ModuleOp module, const GCPipelineOptions &gcPipelineOptions,
+                  std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
 
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
 
-  if (!moToMgpOptions.mlirTimingOutDir.empty()) {
-    const char *pipelineName = "MOToMGP Pipeline";
+  if (!gcPipelineOptions.mlirTimingOutDir.empty()) {
+    const char *pipelineName = "GC Pipeline";
     auto enabledTiming = M::configureMLIRPassTimingJSONOutput(
-        pm, moToMgpOptions.mlirTimingOutDir.getValue(), pipelineName);
+        pm, gcPipelineOptions.mlirTimingOutDir.getValue(), pipelineName);
     if (enabledTiming.isError()) {
       llvm::errs() << enabledTiming.getError() << "\n";
       return failure();
     }
   }
 
-  MO::buildMoToMgpPipeline(pm, moToMgpOptions, std::move(libraryAnalysis));
+  MO::buildGCPipeline(pm, gcPipelineOptions, std::move(libraryAnalysis));
   return pm.run(module);
 }
 
-void M::MO::buildMoToMgpPipeline(
-    mlir::OpPassManager &pm, const MoToMgpOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+// ---------------------------------------------------------------------------
+// mo-pipeline
+// ---------------------------------------------------------------------------
+
+void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
+                            const MoPipelineOptions &opts) {
   pm.addPass(KGEN::createVerifyParameters());
 
   if (opts.debugPrintAllTensors)
@@ -180,6 +196,12 @@ void M::MO::buildMoToMgpPipeline(
   if (opts.compiledFrameworkLabel.hasValue())
     compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
+  std::optional<std::string> cacheDir;
+  if (opts.cacheDir.hasValue())
+    cacheDir = opts.cacheDir;
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+
   // Run shape inference and constant fold.
   if (opts.useShapeInference)
     buildShapeInferencePipeline(pm);
@@ -187,7 +209,8 @@ void M::MO::buildMoToMgpPipeline(
   // TODO(GEX-886): Remove dependency of constant folding for symbolic
   // optimization
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, cacheDir,
+                                          kernelLibraryPaths));
 
   pm.addPass(MO::createHoistConstantSubgraphsIntoParent());
   pm.addNestedPass<MO::GraphOp>(mlir::createCSEPass());
@@ -203,18 +226,16 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
-
   pm.addPass(MO::createMergeDuplicateShapeMaterializations());
-  pm.addPass(MO::createAddFallbackShapeFunctions({kernelLibraryPaths},
-                                                 libraryAnalysis));
+  pm.addPass(
+      MO::createAddFallbackShapeFunctions({kernelLibraryPaths}, nullptr));
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, cacheDir,
+                                          kernelLibraryPaths));
 
   pm.addPass(MO::createInferLayouts());
   if (opts.usePatterns) {
@@ -248,7 +269,8 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
   if (opts.constantFold)
-    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, opts));
+    pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, cacheDir,
+                                          kernelLibraryPaths));
 
   if (opts.fuseJitKernels) {
     // Only run this when kernel fusion is enabled as otherwise we might
@@ -259,9 +281,14 @@ void M::MO::buildMoToMgpPipeline(
   pm.addPass(MO::createHoistParameterExpressions());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addPass(MO::createRemoveUnusedOps());
+}
 
-  pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
-                                libraryAnalysis));
+// ---------------------------------------------------------------------------
+// mogg-pipeline
+// ---------------------------------------------------------------------------
+
+void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
+                              const MoggPipelineOptions &opts) {
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
   // Fuse connected elementwise kernels.
@@ -295,13 +322,17 @@ void M::MO::buildMoToMgpPipeline(
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
   pm.addPass(MOGG::createSimplifyKernelOperands());
+}
 
-  // Create the options for MoToPrimitives.
-  MGP::MOToPrimitivesOptions moToPrimOpts;
-  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  if (opts.compiledFrameworkLabel.hasValue())
-    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-  pm.addPass(MGP::createMOToPrimitives(moToPrimOpts));
+// ---------------------------------------------------------------------------
+// mgp-pipeline
+// ---------------------------------------------------------------------------
+
+void M::MO::buildMgpPipeline(
+    mlir::OpPassManager &pm, const MgpPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
@@ -359,8 +390,85 @@ void M::MO::buildMoToMgpPipeline(
 
   if (opts.dumpMojoText)
     pm.addPass(MOGG::createDumpMojo());
+}
 
-  buildJITCompilationPipeline(pm, opts, libraryAnalysis);
+// ---------------------------------------------------------------------------
+// gc-pipeline  (full pipeline: mo-pipeline + mo-to-mogg + mogg-pipeline +
+//               mogg-to-mgp + mgp-pipeline + jit + jit-pipeline)
+// ---------------------------------------------------------------------------
+
+void M::MO::buildGCPipeline(
+    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+
+  // --- mo-pipeline ---
+  MoPipelineOptions moOpts;
+  moOpts.debugPrintAllTensors = opts.debugPrintAllTensors;
+  moOpts.useShapeInference = opts.useShapeInference;
+  moOpts.constantFold = opts.constantFold;
+  if (opts.compiledFrameworkLabel.hasValue())
+    moOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel.getValue();
+  if (opts.cacheDir.hasValue())
+    moOpts.cacheDir = opts.cacheDir.getValue();
+  moOpts.symbolicFfastMath = opts.symbolicFfastMath;
+  moOpts.symbolicNoUndefinedMath = opts.symbolicNoUndefinedMath;
+  moOpts.kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+  moOpts.usePatterns = opts.usePatterns;
+  moOpts.patternFusionMHAEnable = opts.patternFusionMHAEnable;
+  moOpts.patternFusionMHAAllowUnsafeBCasts =
+      opts.patternFusionMHAAllowUnsafeBCasts;
+  moOpts.patternFusionMHAAllowInternalReshape =
+      opts.patternFusionMHAAllowInternalReshape;
+  moOpts.sanityCheckShapeFuncs = opts.sanityCheckShapeFuncs;
+  moOpts.defaultDeviceLabel = opts.defaultDeviceLabel;
+  moOpts.defaultDeviceId = opts.defaultDeviceId;
+  moOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
+  moOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
+  moOpts.fuseJitKernels = opts.fuseJitKernels;
+  buildMoPipeline(pm, moOpts);
+
+  // --- mo-to-mogg ---
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+  pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
+                                libraryAnalysis));
+
+  // --- mogg-pipeline ---
+  MoggPipelineOptions moggOpts;
+  moggOpts.fuseJitKernels = opts.fuseJitKernels;
+  moggOpts.fuseMutableLoadStore = opts.fuseMutableLoadStore;
+  buildMoggPipeline(pm, moggOpts);
+
+  // --- mogg-to-mgp ---
+  MGP::MOGGToMGPOptions moToPrimOpts;
+  moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  if (opts.compiledFrameworkLabel.hasValue())
+    moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
+  pm.addPass(MGP::createMOGGToMGP(moToPrimOpts));
+
+  // --- mgp-pipeline ---
+  MgpPipelineOptions mgpOpts;
+  mgpOpts.kernelLibraryPaths = kernelLibraryPaths;
+  mgpOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  mgpOpts.enableOpTraceComments = opts.enableOpTraceComments;
+  mgpOpts.enableComputeLambdas = opts.enableComputeLambdas;
+  mgpOpts.moggDebugDumpFusedTensorSpecs = opts.moggDebugDumpFusedTensorSpecs;
+  mgpOpts.dumpMojoText = opts.dumpMojoText;
+  buildMgpPipeline(pm, mgpOpts, libraryAnalysis);
+
+  // --- jit ---
+  MOGG::JitCompileKernelsOptions jitOpts;
+  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+  jitOpts.saveTempPrefix = opts.saveTempPrefix;
+  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
+  jitOpts.kernelLibraryPaths = kernelLibraryPaths;
+  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
+  jitOpts.debugKGENStubs = opts.debugKGENStubs;
+  pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
+
+  // --- jit-pipeline ---
+  buildJitPipeline(pm);
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {

@@ -1,7 +1,7 @@
 // TODO(GEX-2735): Support mo.opaque
 // XFAIL: *
 
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false kernel-library-paths="%kernel_api_test_lib"" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false kernel-library-paths="%kernel_api_test_lib"" -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 // DISABLED-CHECK-LABEL: Running 'scalar_to_scalar'

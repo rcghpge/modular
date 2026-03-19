@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --input-shapes=2x128x768 --input-shapes=1 --model-inputs=ones %t.mlir | FileCheck %s
 
 // Check the intersection of MOGG and shape lowers correctly.

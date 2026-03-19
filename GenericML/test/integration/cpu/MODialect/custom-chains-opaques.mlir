@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg" %s -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck %s
 
 // CHECK-LABEL: Running 'test_opaques_and_chains_non_raising'

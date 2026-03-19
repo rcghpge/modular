@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t_mojo.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t_mojo.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t_mojo.mlir | FileCheck %s
 
 // We use the simdwidth of int8 for this elementwise kernel.

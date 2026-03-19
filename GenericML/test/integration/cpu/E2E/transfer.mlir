@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mgp-mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s --mogg-to-mgp | FileCheck %s
 
 //
 mo.graph @transfer_d2d(%arg0: !mo.tensor<[4, 4], f32, gpu:0>) -> !mo.tensor<[4, 4], f32, gpu:1> {

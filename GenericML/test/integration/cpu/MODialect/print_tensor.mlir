@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="default-device-label=cpu constant-fold=false kernel-library-paths=%kernel_api_test_pkg" 2>&1
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="default-device-label=cpu constant-fold=false kernel-library-paths=%kernel_api_test_pkg" 2>&1
 // RUN: mt --execute %t.mlir --result-output-style=full | FileCheck %s
 
 // Test printing of ManagedTensorSlice

@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mo-shape-inference --mogg-pattern-fusion | FileCheck %s --check-prefix=CHECK-IR
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false enable-post-abi-regions-fusion=true" | FileCheck %s --check-prefix=CHECK-MGP
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false enable-post-abi-regions-fusion=true" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false enable-post-abi-regions-fusion=true" | FileCheck %s --check-prefix=CHECK-MGP
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false enable-post-abi-regions-fusion=true" -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-IR-LABEL: mo.graph @concat_static_output

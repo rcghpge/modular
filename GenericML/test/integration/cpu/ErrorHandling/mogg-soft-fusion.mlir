@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp="constant-fold=false kernel-library-paths=%kernel_api_test_pkg" %s -o %t_mojo.mlir
+// RUN: mo-opt --gc-pipeline="constant-fold=false kernel-library-paths=%kernel_api_test_pkg" %s -o %t_mojo.mlir
 // RUN: mt --execute %t_mojo.mlir &> %t_mojo.txt || true
 // RUN: cat %t_mojo.txt | FileCheck %s
 

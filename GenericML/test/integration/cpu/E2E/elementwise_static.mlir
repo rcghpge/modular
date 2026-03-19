@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: python3 %mo_vs_numpy_py -n ElementwiseStatic -f %t.mlir | FileCheck %s
 
 // CHECK: All MO values match numpy

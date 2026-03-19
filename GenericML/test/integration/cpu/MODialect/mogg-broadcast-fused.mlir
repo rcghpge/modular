@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute %t.mlir --input-shapes=2x2x3 -model-inputs=ones | FileCheck %s
 
 mo.graph @many_bcasts<N, M, L>(%in : !mo.tensor<[N, M, L], f32>) -> !mo.tensor<[N, M, L], f32> {

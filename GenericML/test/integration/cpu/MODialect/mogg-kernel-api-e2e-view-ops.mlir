@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp --allow-unregistered-dialect
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline --allow-unregistered-dialect
 // RUN: mt --execute %t.mlir --result-output-style=full --input-shapes=2 --model-inputs=ones | FileCheck %s
 
 // Kernel under new API should print the following:

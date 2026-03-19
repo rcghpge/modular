@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp="constant-fold=false" -o %t_new_api.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline="constant-fold=false" -o %t_new_api.mlir
 // RUN: mt --execute --input-shapes=4x3x3x1 --input-shapes=2 -model-inputs=ones --result-output-style=full %t_new_api.mlir | FileCheck %s
 
 // Note that the MGP checks are to make sure the `pack_matmul_b_shape_func` call

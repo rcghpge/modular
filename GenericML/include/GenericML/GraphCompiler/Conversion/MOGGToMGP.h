@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H
-#define GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H
+#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOGGTOMGP_H
+#define GENERICML_GRAPHCOMPILER_CONVERSION_MOGGTOMGP_H
 
 #include "Support/AlignedAlloc.h"
 #include "mlir/Pass/Pass.h"
@@ -28,14 +28,14 @@
 namespace M::MGP {
 
 /// Generate the code for declaring the pass.
-#define GEN_PASS_DECL_MOTOPRIMITIVES
+#define GEN_PASS_DECL_MOGGTOMGP
 #define GEN_PASS_DECL_RAISEBACKINDEXCONSTANT
 #define GEN_PASS_DECL_LOWERPRIMITIVES
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/Conversion/MOGGToMGP.h.inc"
 
 /// Generate the code for registering the pass.
 #define GEN_PASS_REGISTRATION
-#include "GenericML/GraphCompiler/Conversion/MOToPrimitives.h.inc"
+#include "GenericML/GraphCompiler/Conversion/MOGGToMGP.h.inc"
 
 } // namespace M::MGP
 
@@ -51,4 +51,4 @@ std::unique_ptr<mlir::Pass> createLowerPrimitives(
 
 } // namespace M::MGP
 
-#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_H
+#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOGGTOMGP_H

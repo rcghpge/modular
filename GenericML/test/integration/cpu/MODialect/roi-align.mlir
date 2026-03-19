@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp --allow-unregistered-dialect -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline --allow-unregistered-dialect -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @roi_align(%inp_ones: !mo.tensor<[1, 5, 5, 1], f32>) -> !mo.tensor<[1, 2, 2, 1], f32> {

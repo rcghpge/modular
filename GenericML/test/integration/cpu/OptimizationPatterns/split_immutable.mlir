@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t
 // RUN: mt --execute %t --input-shapes=1x1024x1024x3 | FileCheck %s
 
 mo.graph @split_immutable<D0, D1>(%arg0: !mo.tensor<[1, D0, D1, 3], f32>) -> !mo.tensor<[1, D0, D1, 3], f32> {

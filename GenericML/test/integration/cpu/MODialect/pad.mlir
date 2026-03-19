@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @pad_constant_1d() -> (!mo.tensor<[6], f32>) {

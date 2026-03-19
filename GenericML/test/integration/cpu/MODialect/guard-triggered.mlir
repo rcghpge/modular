@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline %s -o %t.mlir
 // RUN: mt --execute  --model-inputs=ones --input-shapes=1x3 --input-shapes=40x4 --result-output-style=full %t.mlir > %t.output || true
 
 // using the rather laborious specification of passes above because

@@ -13,9 +13,9 @@
 namespace M::MO {
 
 /// Collects mt command line options which influence
-/// M::MO::buildMoToMgpPipeline.
+/// M::MO::buildGCPipeline.
 ///
-/// See also MoToMgpOptions for the corresponding MLIR xxx-opt command line
+/// See also GCPipelineOptions for the corresponding MLIR xxx-opt command line
 /// options.
 class GraphCompilerOptions {
 
@@ -38,16 +38,17 @@ public:
 
   bool debugKGENStubs{false};
 
-  void overrideLoweringOptions(MoToMgpOptions &moToMgpOptions) const {
+  void overrideLoweringOptions(GCPipelineOptions &gcPipelineOptions) const {
 
-    moToMgpOptions.cacheDir = cacheDir;
-    moToMgpOptions.defaultDeviceLabel = defaultDeviceLabel;
-    moToMgpOptions.defaultDeviceId = defaultDeviceId;
-    moToMgpOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
-    moToMgpOptions.debugPrintAllTensors = debugPrintAllTensors;
-    moToMgpOptions.softFusionNonHostKernelLimit = softFusionNonHostKernelLimit;
-    moToMgpOptions.kernelLibraryPaths = kernelLibraryPaths;
-    moToMgpOptions.debugKGENStubs = debugKGENStubs;
+    gcPipelineOptions.cacheDir = cacheDir;
+    gcPipelineOptions.defaultDeviceLabel = defaultDeviceLabel;
+    gcPipelineOptions.defaultDeviceId = defaultDeviceId;
+    gcPipelineOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
+    gcPipelineOptions.debugPrintAllTensors = debugPrintAllTensors;
+    gcPipelineOptions.softFusionNonHostKernelLimit =
+        softFusionNonHostKernelLimit;
+    gcPipelineOptions.kernelLibraryPaths = kernelLibraryPaths;
+    gcPipelineOptions.debugKGENStubs = debugKGENStubs;
   }
 };
 

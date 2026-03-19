@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mogg --canonicalize --mgp-mo-to-primitives --mgp-lower-primitives | FileCheck %s
+// RUN: mo-opt %s --mo-to-mogg --canonicalize --mogg-to-mgp --mgp-lower-primitives | FileCheck %s
 
 // CHECK-LABEL: @while_op
 // CHECK: } execute

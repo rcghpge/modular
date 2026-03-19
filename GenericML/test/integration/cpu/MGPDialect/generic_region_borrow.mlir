@@ -1,7 +1,7 @@
 // TODO(GEX-2747): Fix MGPPrimitives tests with EmitMojo
 // XFAIL: *
 
-// RUN: mo-opt --mgp-lower-primitives --mogg-jit-compile-kernels --mogg-lower-mogg-region-compile %s -o %t.mlir
+// RUN: mo-opt --mgp-lower-primitives --jit --mogg-lower-mogg-region-compile %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL:--- Running 'buffer_borrow_intrinsic':

@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s --mlir-print-ir-before=mogg-jit-compile-kernels -o %t.mlir 2>&1 | FileCheck %s
+// RUN: mo-opt --gc-pipeline %s --mlir-print-ir-before=jit -o %t.mlir 2>&1 | FileCheck %s
 
 // Check that fusionInfo is printed on kernel stubs after fusion passes.
 // Under the new API we expect the matmul+add to be fused followed by sequence fusing the cumsum.

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=11x4x6x5 --input-shapes=2x3x5x7 --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @conv_dynamic_batch<D0>(%arg0: !mo.tensor<[D0, 4, 6, 5], f32>, %arg1: !mo.tensor<[2, 3, 5, 7], f32>) -> !mo.tensor<[D0, 3, 4, 7], f32> {

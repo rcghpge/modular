@@ -1,13 +1,13 @@
-// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=true fuse-jit-kernels=true" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=true fuse-jit-kernels=true" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=false fuse-jit-kernels=true" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=false fuse-jit-kernels=true" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=true fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=true fuse-jit-kernels=false" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=false fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg fuse-mutable-load-store=false fuse-jit-kernels=false" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
 !tt = !mo.tensor<[2, 2], f32>

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg" --allow-unregistered-dialect
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg" --allow-unregistered-dialect
 // RUN: mt --execute %t.mlir --result-output-style=full --input-shapes=2 --input-shapes=2 --model-inputs=ones | FileCheck %s
 
 // CHECK: 'dynamic' returned tensor<2xf32> [8.000000e+00, 8.000000e+00]

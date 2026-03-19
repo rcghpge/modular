@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp="constant-fold=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="constant-fold=false" %s -o %t.mlir
 
 // RUN: not mt --execute  --model-inputs=ones --input-shapes=7x10 --input-shapes=10x10 --result-output-style=full %t.mlir | FileCheck --enable-var-scope --check-prefix=CHECK-FIRST-DIM %s
 

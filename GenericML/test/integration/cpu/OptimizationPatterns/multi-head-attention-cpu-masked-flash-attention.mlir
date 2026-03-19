@@ -1,7 +1,7 @@
 // COM: Check we use flash attention kernel when D <= 256
 // RUN: mo-opt %s --mogg-pattern-fusion | FileCheck %s
 
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute %t.mlir --input-shapes=1x1x6x64 --input-shapes=1x1x6x64 --input-shapes=1x1x6x64 --input-shapes="" --input-shapes=1x6x1x1 --model-inputs=random --result-output-style=full | FileCheck %s -check-prefix=CHECK-MT
 
 // Check E2E performance. Note we also run the case where the pattern does not

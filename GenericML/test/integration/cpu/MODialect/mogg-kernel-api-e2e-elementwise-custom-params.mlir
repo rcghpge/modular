@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="constant-fold=false kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="constant-fold=false kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute --model-inputs=ones %t.mlir --result-output-style=full | FileCheck %s
 
 // CHECK: Running 'elemwise_add_with_param':

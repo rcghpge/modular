@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full --input-shapes=1 -model-inputs=negones %t.mlir | FileCheck %s
 
 // indices_not_used is just there to work since `mt` invocation expects one input

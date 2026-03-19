@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --input-shapes=1x10x2 -model-inputs=zeros --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @range_with_runtime_index_si32<START, LIMIT, STEP -> N>(

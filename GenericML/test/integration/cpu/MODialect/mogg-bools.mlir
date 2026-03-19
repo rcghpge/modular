@@ -1,6 +1,6 @@
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute --input-shapes=2x2x4 -model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s --check-prefix=CHECK-ONES
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute --input-shapes=2x2x4 -model-inputs=zeros --result-output-style=full %t.mlir | FileCheck %s --check-prefix=CHECK-ZEROS
 
 mo.graph @equal<D0, D1, D2>(%arg0 : !mo.tensor<[D0, D1, D2], si64>) -> !mo.tensor<[D0, D1, D2], bool> {

@@ -23,7 +23,7 @@ namespace MOF {
 struct MOFLoweringOptions;
 }
 namespace MO {
-struct MoToMgpOptions;
+struct GCPipelineOptions;
 }
 
 // TODO: It would be nice if we didn't have to export these... Unsure how else
@@ -47,7 +47,7 @@ public:
 
   // TODO: overrideLoweringOptions is only used by mt
   EXPORT_FOR_MT void overrideLoweringOptions(MOF::MOFLoweringOptions &,
-                                             MO::MoToMgpOptions &);
+                                             MO::GCPipelineOptions &);
 
   ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs);
 

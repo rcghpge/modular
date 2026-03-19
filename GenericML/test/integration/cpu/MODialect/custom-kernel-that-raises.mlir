@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp=kernel-library-paths="%kernel_api_test_pkg" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline=kernel-library-paths="%kernel_api_test_pkg" %s -o %t.mlir
 // RUN: not mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @custom_success(%arg0: !mo.tensor<[2], f32>) -> !mo.tensor<[2], f32> {

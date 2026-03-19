@@ -1,7 +1,7 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: python3 %mo_vs_numpy_py -n Range -f %t.mlir | FileCheck %s
 
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp="constant-fold=false fuse-jit-kernels=false" -o %t_no_fuse.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline="constant-fold=false fuse-jit-kernels=false" -o %t_no_fuse.mlir
 // RUN: python3 %mo_vs_numpy_py -n Range -f %t_no_fuse.mlir | FileCheck %s
 
 // CHECK: All MO values match numpy

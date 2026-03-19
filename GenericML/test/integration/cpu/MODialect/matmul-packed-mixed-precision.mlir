@@ -1,5 +1,5 @@
 // REQUIRES: x86_64-linux
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @matmul_u8_s8_s32(%input: !mo.tensor<[4, 2], ui8>) -> !mo.tensor<[4, 4], si32> {

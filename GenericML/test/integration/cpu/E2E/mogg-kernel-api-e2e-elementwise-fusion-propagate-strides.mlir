@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="constant-fold=false  mogg-debug-dump-fused-tensor-specs=true"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="constant-fold=false  mogg-debug-dump-fused-tensor-specs=true"
 // RUN: mt --execute %t.mlir | FileCheck %s
 
 // Unit tests to ensure that during ViewFusion the static strides are propagated correctly.

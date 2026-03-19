@@ -27,7 +27,7 @@ implementation expects contiguous strides. Therefore, bcast -> reshape will
 yield invalid results.
 3. Raise mogg.kernels that used to be mo.static.reshape back into reshapes. This
 step is optional for correctness but necessary for performance. Reshapes, as
-with other views, copy data. A later pass, MOToPrimitives, will turn the reshape
+with other views, copy data. A later pass, MOGGToMGP, will turn the reshape
 into a primitive that does not copy.
 
 All in all, this pass fuses views into other views or kernels that aren't

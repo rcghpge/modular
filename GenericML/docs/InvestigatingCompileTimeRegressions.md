@@ -119,10 +119,10 @@ MODULAR_MAX_TEMPS_DIR="path/to/dump" bazel run //max/python/max/entrypoints:pipe
 ```
 
 - Use the MLIR pass timing infrastructure to capture the runtime of each pass
-  in the `mo-to-mgp` pipeline
+  in the `gc-pipeline` pipeline
 
 ```bash
-bazel run //GenericML/tools/mo-opt:mo-opt -- path/to/dump/temp.mo.mlir --mo-to-mgp --mlir-timing -o /dev/null
+bazel run //GenericML/tools/mo-opt:mo-opt -- path/to/dump/temp.mo.mlir --gc-pipeline --mlir-timing -o /dev/null
 ```
 
 The exact file name may depend on the model. Many pipelines will involve

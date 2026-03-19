@@ -1,6 +1,6 @@
 // XFAIL: *
 
-// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --mogg-jit-compile-kernels --mogg-lower-mogg-region-compile %s -o %t.mlir
+// RUN: mo-opt --mgp-lower-primitives --mogg-sequence-fusion --jit --mogg-lower-mogg-region-compile %s -o %t.mlir
 // RUN: mt --execute %t.mlir | FileCheck %s
 
 // CHECK-LABEL:--- Running 'mgp_assert_false':

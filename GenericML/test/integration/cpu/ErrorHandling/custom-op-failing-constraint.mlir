@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg" &> %t.txt || true
+// RUN: mo-opt %s --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg" &> %t.txt || true
 // RUN: cat %t.txt | FileCheck %s
 
 // Let's only validate that the message from the `constrained` statement in Mojo is displayed,

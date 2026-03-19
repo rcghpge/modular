@@ -1,4 +1,4 @@
-// RUN: mo-opt --mgp-mo-to-primitives %s | FileCheck --enable-var-scope %s
+// RUN: mo-opt --mogg-to-mgp %s | FileCheck --enable-var-scope %s
 
 // CHECK-LABEL: mgp.model @buffer_transfer_h2d
 // CHECK: execute

@@ -13,7 +13,7 @@ def LowerableToMGPInterface :
     OpInterface<"LowerableToMGPInterface"> {
   let description = [{
     This interface provides a way for dialects to implement methods needed to
-    lower themselves during the MOToPrimitives pass.
+    lower themselves during the MOGGToMGP pass.
   }];
 
   let cppNamespace = "::M::MGP";

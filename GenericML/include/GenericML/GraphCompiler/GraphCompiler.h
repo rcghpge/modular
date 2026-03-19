@@ -24,11 +24,11 @@ void loadDialects(mlir::DialectRegistry &registry);
 /// Register Graph Compiler passes. This function is not thread-safe.
 void registerPasses();
 
-struct MoToMgpOptions;
+struct GCPipelineOptions;
 
 /// Compile a module at the MO dialect level down to the MGP level.
-LogicalResult lowerMOToMGP(
-    ModuleOp module, const MoToMgpOptions &moToMgpOptions,
+LogicalResult runGcPipeline(
+    ModuleOp module, const GCPipelineOptions &gcPipelineOptions,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
 
 /// Convert a module at the MGP level to a buffer in MEF format.

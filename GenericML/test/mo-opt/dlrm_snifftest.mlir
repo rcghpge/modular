@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false | FileCheck %s
 
 // Just check we can compile it.
 

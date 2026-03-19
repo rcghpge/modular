@@ -26,9 +26,9 @@ pkg_files(
         ":MODialect.doc",
         ":MOGGDialect.doc",
         ":MOGGDialectPassesIncGen.doc",
+        ":MOGGToMGPIncGen.doc",
         ":MOSHDialect.doc",
         ":MOToMOGGIncGen.doc",
-        ":MOToPrimitivesIncGen.doc",
         ":MOTransformsIncGen.doc",
         ":RMODialect.doc",
         ":RMOTransformsIncGen.doc",
@@ -74,9 +74,9 @@ modular_cc_library(
         ":MGPRT",
         ":MODialect",
         ":MOGGDialect",
+        ":MOGGToMGP",
         ":MOGGTransforms",
         ":MOToMOGG",
-        ":MOToPrimitives",
         ":MOTransforms",
         ":RMODialect",
         ":RMOTransforms",
@@ -148,8 +148,8 @@ modular_cc_library(
     ),
     tags = ["no-clang-tidy-headers"],
     deps = [
+        ":MOGGToMGPIncGen",
         ":MOSHDialect",
-        ":MOToPrimitivesIncGen",
         "//KGEN:KGENDialect",
         "//Support:Base",
         "//Support:Compiler",
@@ -867,7 +867,7 @@ modular_cc_library(
         ":MOAnalysis",
         ":MOGGDialect",
         ":MOGGFusionSupport",
-        ":MOToPrimitives",
+        ":MOGGToMGP",
         ":Support",
         "//KGEN:TransformUtils",
         "//MLRT:AsyncRT/CompilerSupport",
@@ -1307,10 +1307,10 @@ modular_cc_library(
 # CONVERSIONS
 ##
 
-## MOToPrimitives
+## MOGGToMGP
 td_library(
-    name = "MOToPrimitivesTdFiles",
-    srcs = ["include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td"],
+    name = "MOGGToMGPTdFiles",
+    srcs = ["include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td"],
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -1318,19 +1318,19 @@ td_library(
 )
 
 gentbl_modular_passes(
-    name = "MOToPrimitivesIncGen",
-    output_name = "MOToPrimitives",
-    td_file = "include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td",
+    name = "MOGGToMGPIncGen",
+    output_name = "MOGGToMGP",
+    td_file = "include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td",
     deps = [
-        ":MOToPrimitivesTdFiles",
+        ":MOGGToMGPTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
 modular_cc_library(
-    name = "MOToPrimitives",
-    srcs = glob(["lib/GraphCompiler/Conversion/MOToPrimitives/*.cpp"]),
+    name = "MOGGToMGP",
+    srcs = glob(["lib/GraphCompiler/Conversion/MOGGToMGP/*.cpp"]),
     deps = [
         ":CommonDriver",
         ":GraphCompilerDeviceBuggerizationRegistry",
@@ -1338,7 +1338,7 @@ modular_cc_library(
         ":MOAnalysis",
         ":MODialect",
         ":MOGGDialect",
-        ":MOToPrimitivesIncGen",
+        ":MOGGToMGPIncGen",
         "//KGEN:ToolCommon",
         "//MLRT:Driver/DeviceContext",
         "//Support:CommonCLOptions",

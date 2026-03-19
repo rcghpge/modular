@@ -1,9 +1,9 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 // This test is useful to tickle concurrency issues between the MEF runtime,
 // AsyncRT and our kgenned kernels.
-// Avoid using `-mo-to-mgp` to avoid fusing the kernels.
+// Avoid using `-gc-pipeline` to avoid fusing the kernels.
 
 // CHECK-LABEL: --- Running 'acid':
 mo.graph @acid() -> (!mo.tensor<[5], f32>) {

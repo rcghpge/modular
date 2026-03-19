@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @custom_reduce_inner_min_and_max_1d<() -> D0, D1>() -> !mo.tensor<[D0, D1], f32> {

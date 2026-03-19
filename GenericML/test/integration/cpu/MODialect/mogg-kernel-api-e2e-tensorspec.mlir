@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t_mojo.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t_mojo.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t_mojo.mlir --result-output-style=full --input-shapes=1x2x3x4 --input-shapes=1x2x3x4 --model-inputs=ones | FileCheck %s
 
 // CHECK-LABEL: Running 'print_static_shape_strides'

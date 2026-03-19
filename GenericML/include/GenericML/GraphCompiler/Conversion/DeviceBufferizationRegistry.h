@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Provides a registry so device-specific dialects can plug into the
-// MOToPrimitives lowering pass.
+// MOGGToMGP lowering pass.
 //
 // Cf GenericML/Support/HostDeviceSpecs.h, which provides
 // a similar mechanism for collecting device specs at runtime.
@@ -39,7 +39,7 @@ struct DeviceSpecificDialect {
   virtual ~DeviceSpecificDialect() = default;
 
   // Registers a device-specific dialect with the given registry. This function
-  // is called when the MOToPrimitives pass is created.
+  // is called when the MOGGToMGP pass is created.
   virtual void registerDialect(DialectRegistry &registry) = 0;
 
   /// Given an #M.device_spec, registers a MGP::TypeBuilder appropriate for
@@ -118,7 +118,7 @@ private:
 };
 
 /// Registers the device-specific dialect helpers to be called by the
-/// MOToPrimitives lowering pass for devices with the given label.
+/// MOGGToMGP lowering pass for devices with the given label.
 void registerDeviceSpecificDialect(
     StringRef label,
     std::unique_ptr<DeviceSpecificDialect> deviceSpecificDialect);

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s  --mgp-mo-to-primitives | FileCheck %s
+// RUN: mo-opt %s  --mogg-to-mgp | FileCheck %s
 // Test invoking `mo-to-primitives` removes any lit register ops.
 
 mo.graph @empty() -> () {

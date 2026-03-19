@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline -o %t.mlir
 // RUN: mt --execute --input-shapes=1x5x5x1 --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @roi_align<D0, D1, D2, D3 -> D4, D5, D6, D7>(%inp_ones: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {

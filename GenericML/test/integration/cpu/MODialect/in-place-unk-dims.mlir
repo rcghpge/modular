@@ -1,10 +1,10 @@
-// RUN: mo-opt --mo-to-mgp %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=4x4 --input-shapes=4x4 --input-shapes=2x2 %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="fuse-mutable-load-store=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="fuse-mutable-load-store=false" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=4x4 --input-shapes=4x4 --input-shapes=2x2 %t.mlir | FileCheck %s
 
-// RUN: mo-opt --mo-to-mgp="fuse-jit-kernels=false" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="fuse-jit-kernels=false" %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=4x4 --input-shapes=4x4 --input-shapes=2x2 %t.mlir | FileCheck %s
 
 // CHECK-LABEL: --- Running 'unk_dims':

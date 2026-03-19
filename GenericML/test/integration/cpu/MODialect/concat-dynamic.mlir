@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --input-shapes=0 --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK: --- Running 'concat_empty_dynamic':

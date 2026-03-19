@@ -1,6 +1,6 @@
 // TODO(GEX-2314): Support opaque output fusion to enable this test.
 // REQUIRES: disabled
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck --check-prefix=CHECK-MT %s
 
 // CHECK-MT: [1.0, 1.0, 1.0, 1.0, 1.0]

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="trivial-kernel-opt=false constant-fold=false" | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s --gc-pipeline="trivial-kernel-opt=false constant-fold=false" | FileCheck %s --check-prefix=CHECK-IR
 // RUN: mt --execute --result-output-style=full %s | FileCheck %s --check-prefix=CHECK-MT
 
 mo.graph @batch_matmul_m1_n1() -> (!mo.tensor<[3, 1, 1], f32>) {

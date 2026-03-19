@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false| FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false| FileCheck %s --check-prefix=CHECK-IR
 // RUN: mt --execute --result-output-style=full %s | FileCheck %s --check-prefix=CHECK-MT
 
 mo.graph @rms_norm_fused_residual_add() -> !mo.tensor<[3, 2], f32> {

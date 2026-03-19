@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --model-inputs=zeros --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @pool(%input : !mo.tensor<[1, 5, 5, 1], f32>) -> (!mo.tensor<[1, 3, 3, 1], f32>) {

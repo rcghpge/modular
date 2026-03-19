@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s | FileCheck %s
+// RUN: mo-opt --gc-pipeline %s | FileCheck %s
 
 // CHECK-LABEL: mef.callable @all_cpu$exec
 // CHECK: mo.matmul

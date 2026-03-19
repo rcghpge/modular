@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --input-shapes=1x5x5x3 --input-shapes=1x3x3x3 --result-output-style=full %t.mlir | FileCheck %s
 
 // TODO: Support Conv FCSR support on CPU (GEX-2302)

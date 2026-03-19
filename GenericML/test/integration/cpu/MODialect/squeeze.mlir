@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false --allow-unregistered-dialect -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false --allow-unregistered-dialect -o %t.mlir
 // RUN: mt --execute --result-output-style=full --input-shapes=1 -model-inputs=negones %t.mlir | FileCheck %s
 
 mo.graph @calculate_squeeze_shape_dynamic_indices_with_reshape<() -> D0, D1, D2>(%indices : !mo.tensor<[1], si32>) -> !mo.tensor<[D0, D1, D2], si8> {

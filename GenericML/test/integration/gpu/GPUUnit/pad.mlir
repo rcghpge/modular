@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir --mlir-print-ir-before=mo-to-mogg &> %t.mo.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir --mlir-print-ir-before=mo-to-mogg &> %t.mo.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 // RUN: cat %t.mo.mlir | FileCheck %s --check-prefix=CHECK-IR
 

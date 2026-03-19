@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s | FileCheck %s
+// RUN: mo-opt --gc-pipeline %s | FileCheck %s
 
 // CHECK: mef.callable @buffer_output$exec({{.*}}[[BUFFER:%.*]]: !mgp.tensor<2x2xf32>) -> (!mef.chain, !mgp.tensor<2x2xf32>)
 // CHECK: mef.output %{{.*}}, [[BUFFER]] : !mef.chain, !mgp.tensor<2x2xf32>

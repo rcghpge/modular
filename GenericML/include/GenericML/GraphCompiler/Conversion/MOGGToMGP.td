@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
-#define GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
+#ifndef GENERICML_GRAPHCOMPILER_CONVERSION_MOGGTOMGP_TD
+#define GENERICML_GRAPHCOMPILER_CONVERSION_MOGGTOMGP_TD
 
 include "mlir/Pass/PassBase.td"
 
-def MOToPrimitives : Pass<"mgp-mo-to-primitives", "ModuleOp"> {
+def MOGGToMGP : Pass<"mogg-to-mgp", "ModuleOp"> {
   let summary = "Convert `mo` dialect to primitives.";
   let description = [{
     This pass performs a conversion from known `mo` dialect ops to `mgp` and
@@ -78,4 +78,4 @@ def RaiseBackIndexConstant: Pass<"mgp-raise-back-index-constant", "ModuleOp"> {
 }
 
 
-#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOTOPRIMITIVES_TD
+#endif // GENERICML_GRAPHCOMPILER_CONVERSION_MOGGTOMGP_TD

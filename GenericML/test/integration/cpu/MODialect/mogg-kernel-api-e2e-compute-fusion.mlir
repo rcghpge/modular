@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --mo-to-mgp="enable-compute-lambdas=true constant-fold=false kernel-library-paths=%kernel_api_test_pkg"
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="enable-compute-lambdas=true constant-fold=false kernel-library-paths=%kernel_api_test_pkg"
 // RUN: mt --execute %t.mlir --result-output-style=full | FileCheck %s
 
 // CHECK: has_compute_lambda = True

@@ -1,5 +1,5 @@
 // REQUIRES: AMD-GPU
-// RUN: mo-opt --mo-to-mgp="default-device-label=gpu save-temp-prefix=%t" %s -o %t.mlir
+// RUN: mo-opt --gc-pipeline="default-device-label=gpu save-temp-prefix=%t" %s -o %t.mlir
 
 // -quit to stop on the first file found
 // RUN: find $(dirname %t) -type f -name "*.amdgcn" -print -quit | xargs grep "amdgcn_target"

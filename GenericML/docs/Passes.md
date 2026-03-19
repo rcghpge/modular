@@ -197,7 +197,7 @@ to a compute kernel. The latter includes `mo.graph` and some other runtime
 plumbing ops like buffer transfers, materialization, external resources
 management, views and list ops (controlled by
 `PreservedDuringKernelLowering`). Those usually have either specialized
-semantics or custom lowerings and survive until `MOToPrimitives` later in the
+semantics or custom lowerings and survive until `MOGGToMGP` later in the
 pipeline.
 
 For eligible ops, a `MOGGKernelBuilder` controls the kernel selection. The
@@ -222,7 +222,7 @@ all the referenced library functions.
 Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.cpp>
 Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToMOGG.td>
 
-### MOToPrimitives
+### MOGGToMGP
 
 #### Description
 
@@ -273,8 +273,8 @@ The difference between the shape of a tensor being static or dynamic is in the
 materialization of the tensor spec. For dynamic, runtime dims are expressed via
 `mosh`. Constants may introduce additional buffer allocation + transfer.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/MOToPrimitives.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ## MGP passes
 
@@ -316,8 +316,8 @@ hashing on constants).
 
 Relies on `MojoLibraryAnalysis` but never uses it.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/LowerPrimitives.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/LowerPrimitives.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### LookupConstantResources
 
@@ -351,8 +351,8 @@ kernels by constant values, and compilation efficiency. Earlier in the
 pipeline, index constants are converted to `mgp.buffer.constant` (by the
 LowerPrimitives pass) with a resource attribute for the same reason.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/LookupConstantResources.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/LookupConstantResources.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### ExecInvariantCodeMotionPass (EICM)
 
@@ -459,7 +459,7 @@ into the kernel boundary.
 
 #### Additional notes
 
-`mgp.extend.lifetime` are created at MO to MGP lowering (during MOToPrimitives)
+`mgp.extend.lifetime` are created at MO to MGP lowering (during MOGGToMGP)
 whenever a transfer is introduced (e.g., host->device or device->host copies;
 so, both source and destination buffers). When buffer builder emits a transfer,
 it adds an `mgp.sync` on the copy chain and then a `mgp.extend.lifetime` to keep
@@ -534,8 +534,8 @@ Sets the device from the original op, and forwards summary/async/constant
 resource attributes. Uses `ABIKind::MGP` (void-style; multiple results via
 opaque buffers) for the stub.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/OutlineKernels.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/OutlineKernels.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### AddStackTracesToAssertsPass
 
@@ -785,8 +785,8 @@ The pass relies on `ParametricTopologyAnalysis` for deterministic ordering
 (preserved), and preserves region attributes like async flags, resources, and
 fusion capability.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/SequenceFusion.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/SequenceFusion.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### EmitMojo
 
@@ -822,8 +822,8 @@ execute section, and adds a `mogg.load_compiled_kernel` op into init that points
 to the Mojo blob. The op is later lowered to `mgp` buffer load while
 JitCompileKernels provides the pointer to the correct resource.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/EmitMojo.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/EmitMojo.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### LowerMOGGRegionCompiles
 
@@ -852,8 +852,8 @@ execute blocks (finding the correct `!mgp.context`), replaces the module-load
 placeholder chain, removes `mogg.to_mgp_from_opaque` in execute, and fixes
 isolated-from-above bindings. Module loads are forced to CPU.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/LowerMOGGRegionCompile.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/LowerMOGGRegionCompile.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### RemoveRedundantOperands
 
@@ -871,8 +871,8 @@ Consumes and produces `mogg`(ModelOp), depends on `mef` for chain types.
 Reduces async value count and kernel signatures by eliminating unused or
 duplicate operands/results.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOToPrimitives/RemoveRedundantOperands.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOToPrimitives.td>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/Conversion/MOGGToMGP/RemoveRedundantOperands.cpp>
+Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/include/GenericML/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### GlobalizeSlotIndices
 
@@ -1522,7 +1522,7 @@ compiled code instead of high-level kernel bodies.
 #### Additional notes
 
 JitCompileKernels is the backbone of the JIT compilation pipeline (last stage
-of mo-to-mgp) that converts `mogg` kernel regions into executable code. The
+of gc-pipeline) that converts `mogg` kernel regions into executable code. The
 rest of the pipeline runs on the surrounding IR that has references to the
 compiled blobs. The pass looks up the source code in the Mojo resource blob,
 parses Mojo source into MLIR module with LIT parser, runs KGEN piplines
@@ -1573,7 +1573,7 @@ deriving strides from input.
 
 Guarantees that remaining reshapes are raised to `mo.static.reshape` (converted
 back to their original form) and that no view is fused into a reshape kernel.
-Those remaining reshapes are then lowered by `MOToPrimitives`. The
+Those remaining reshapes are then lowered by `MOGGToMGP`. The
 implementation basically inserts a new tensor spec reusing the input buffer, so
 there's no copy.
 
@@ -1612,7 +1612,7 @@ three, at the time of writing: `AddSingletonDimOp`, `SplitDimOp`, and
 output lambdas (aka lambda fusion interface) - the pass performs "hard" fusion.
 It works by rewriting the kernel internals (output placeholder + lambdas)
 within the graph, fusing view ops into a producer kernel. Remaining ops are
-handled by `MOToPrimitives` pass which create a new tensor spec and reuses
+handled by `MOGGToMGP` pass which create a new tensor spec and reuses
 existing buffer.
 
 Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GenericML/lib/GraphCompiler/MOGGDialect/Transforms/FuseAffineViews.cpp>

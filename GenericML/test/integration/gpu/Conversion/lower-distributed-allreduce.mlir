@@ -1,4 +1,4 @@
-// RUN: mo-opt --mo-to-mgp %s | FileCheck --check-prefix=CHECK-IR %s
+// RUN: mo-opt --gc-pipeline %s | FileCheck --check-prefix=CHECK-IR %s
 
 // CHECK-IR-LABEL: mef.callable @graph$exec
 // CHECK-IR: %{{.*}} = "mgp.generic.execute"{{.*}}mo.distributed.allreduce.sum{{.*}}

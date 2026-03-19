@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-to-mgp="constant-fold=false" -o %t.mlir
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --result-output-style=full --model-inputs=ones %t.mlir | FileCheck %s
 
 // CHECK-LABEL: 'simple_add_singleton_dim_rank3_insert1_middle' returned tensor<2x1x3xf32>

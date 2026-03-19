@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mo-shape-inference --mo-to-mgp=constant-fold=false -o %t.mlir
+// RUN: mo-opt %s --mo-shape-inference --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute %t.mlir --result-output-style=full | FileCheck %s
 
 // Equiv: print(torch.arange(0, 15).reshape(3, 5)[1:3:1, 0:5:2])

@@ -1,5 +1,5 @@
 // FIXME: KERN-1437
-// RUN: mo-opt --mo-to-mgp="compiled-framework-label=mof constant-fold=false default-device-label=gpu" %s -o %t
+// RUN: mo-opt --gc-pipeline="compiled-framework-label=mof constant-fold=false default-device-label=gpu" %s -o %t
 // RUN: mt --execute --default-device-label=gpu --soft-fusion-non-host-kernel-limit=3 --model-inputs=ones --result-output-style=compact %t | FileCheck %s
 
 // Simply check it runs e2e without issues
