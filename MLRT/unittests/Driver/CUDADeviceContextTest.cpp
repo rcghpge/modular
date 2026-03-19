@@ -175,7 +175,8 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
 
     EXPECT_NO_ERR(ctx->enqueueFunctionExecDirect(
         *deviceFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, args, argSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, sizeof(args) / sizeof(void *),
+        argSizes));
 
     EXPECT_NO_ERR(ctx->enqueueCopyFromDevice(outHost, *outDevice));
 
@@ -352,7 +353,8 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(srcCtx->enqueueFunctionExecDirect(
         *deviceFunction, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, args, argSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, args, sizeof(args) / sizeof(void *),
+        argSizes));
 
     EXPECT_NO_ERR(srcCtx->synchronize());
 
@@ -627,7 +629,8 @@ $L__BB0_2:
 
       EXPECT_NO_ERR(ctx.enqueueFunctionExecDirect(
           *copyFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-          /*attrs=*/nullptr, /*numAttrs=*/0, copyArgs, copyArgSizes));
+          /*attrs=*/nullptr, /*numAttrs=*/0, copyArgs,
+          sizeof(copyArgs) / sizeof(void *), copyArgSizes));
 
       bzero(hostPtr, allocLen);
       EXPECT_NO_ERR(mapBuf->copyTo(*hostBuf));
@@ -660,7 +663,8 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(ctx0.enqueueFunctionExecDirect(
         *mapFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, mapArgs, mapArgSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, mapArgs,
+        sizeof(mapArgs) / sizeof(void *), mapArgSizes));
 
     bzero(hostPtr, allocLen); // Reset the memory used to validate.
     EXPECT_NO_ERR(devBuf->copyTo(*hostBuf));
@@ -690,7 +694,8 @@ $L__BB0_2:
 
     EXPECT_NO_ERR(ctx0.enqueueFunctionExecDirect(
         *splatFun, numElems / blockDim, 1, 1, blockDim, 1, 1, 0,
-        /*attrs=*/nullptr, /*numAttrs=*/0, splatArgs, splatArgSizes));
+        /*attrs=*/nullptr, /*numAttrs=*/0, splatArgs,
+        sizeof(splatArgs) / sizeof(void *), splatArgSizes));
 
     EXPECT_NO_ERR(ctx0.synchronize());
     for (int i = 0; i < numDevices; ++i) {

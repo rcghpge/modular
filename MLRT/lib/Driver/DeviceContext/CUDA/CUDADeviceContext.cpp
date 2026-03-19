@@ -1775,7 +1775,8 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
 ErrorOrSuccess CUDADeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t numAttrs, void **args, const size_t *argSizes) {
+    void *attrs, uint32_t numAttrs, void **args, uint32_t argCount,
+    const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
 

@@ -215,9 +215,9 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecution) {
 
   // Execute kernel
   constexpr uint32_t blockDim = 256;
-  EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*libFunction, length / blockDim,
-                                                1, 1, blockDim, 1, 1, 0,
-                                                nullptr, 4, args, argSizes));
+  EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+      *libFunction, length / blockDim, 1, 1, blockDim, 1, 1, 0, nullptr, 4,
+      args, sizeof(args) / sizeof(void *), argSizes));
 
   // Copy results back
   EXPECT_NO_ERR(ctx_->enqueueCopyFromDevice(outHost, *outDevice));
@@ -323,9 +323,9 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionMultipleSizes) {
     // Execute kernel
     uint32_t gridSize =
         static_cast<uint32_t>((length + blockDim - 1) / blockDim);
-    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(*libFunction, gridSize, 1, 1,
-                                                  blockDim, 1, 1, 0, nullptr, 4,
-                                                  args, argSizes));
+    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+        *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
+        sizeof(args) / sizeof(void *), argSizes));
     EXPECT_NO_ERR(ctx_->synchronize());
 
     // Copy results back
@@ -438,7 +438,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionPerformance) {
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
           *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
-          argSizes));
+          sizeof(args) / sizeof(void *), argSizes));
       EXPECT_NO_ERR(ctx_->synchronize());
 
       std::chrono::high_resolution_clock::time_point endTime =
@@ -597,7 +597,7 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
           static_cast<uint32_t>((length + blockDim - 1) / blockDim);
       EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
           *libFunction, gridSize, 1, 1, blockDim, 1, 1, 0, nullptr, 4, args,
-          argSizes));
+          sizeof(args) / sizeof(void *), argSizes));
       EXPECT_NO_ERR(ctx_->synchronize());
 
       std::chrono::high_resolution_clock::time_point endTime =
