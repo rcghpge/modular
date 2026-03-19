@@ -699,7 +699,7 @@ bool MemoryManager::allocateChunk() {
     // Limit to available GPU memory.
     ErrorOr<Device::MemInfo> memInfo = device().getMemoryInfo();
     maxSize = memInfo.isError() ? maxCacheSize_
-                                : std::min((*memInfo).free, maxCacheSize_);
+                                : std::min((*memInfo).total, maxCacheSize_);
   }
 
   const size_t allocSize =
