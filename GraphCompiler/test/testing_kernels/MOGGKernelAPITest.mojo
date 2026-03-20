@@ -228,7 +228,7 @@ def toNDBuffer[
 
 def _matmul[
     elementwise_lambda_fn: Optional[
-        fn[
+        def[
             dtype: DType, width: Int, *, alignment: Int = 1
         ](IndexList[2], SIMD[dtype, width]) capturing -> None
     ] = None,
