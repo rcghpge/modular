@@ -13,9 +13,11 @@ mo.graph @parallel_with_extra_inputs(
 
   // CHECK: mo.parallel
   // CHECK-SAME: (%arg2, %arg3) in
+  // CHECK-SAME: -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>)
   %res:2 = mo.parallel (%arg, %extra) in
       ((%in0, %w0) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>),
-       (%in1, %w1) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>)) {
+       (%in1, %w1) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>))
+      -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
     %sum = mo.add(%arg, %extra) : !mo.tensor<[3], f32>
     mo.yield %sum : !mo.tensor<[3], f32>
   }

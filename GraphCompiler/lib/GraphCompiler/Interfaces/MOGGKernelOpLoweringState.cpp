@@ -899,6 +899,15 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   size_t numLaunches = parallelOp.getInputs().size();
   Value blockArg = bodyBlock.getArgument(0);
 
+  // Use the explicit inChain (when present) as the starting execute chain.
+  if (parallelOp.hasChain()) {
+    Value inChainLowered =
+        loweringState.lookupExecuteLoweredValue(parallelOp.getInChain());
+    if (inChainLowered)
+      loweringState.setCurrentExecuteChain(
+          cast<TypedValue<MEF::ChainType>>(inChainLowered));
+  }
+
   SmallVector<MOGG::KernelOp> kernelOps;
   for (Operation &op : bodyBlock.without_terminator())
     if (auto kernel = dyn_cast<MOGG::KernelOp>(&op))
@@ -1010,6 +1019,14 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
       else
         loweringState.emplaceExecuteLoweredValue(parallelResult, loweredTensor);
     }
+  }
+
+  // Register the outChain result (when present) mapped to the final fused
+  // region chain.
+  if (parallelOp.hasChain()) {
+    Value finalChain = loweringState.getCurrentExecuteChain();
+    loweringState.emplaceExecuteLoweredValue(parallelOp.getOutChain(),
+                                             finalChain);
   }
 
   // Erase clone shells in reverse order (later kernels may reference earlier

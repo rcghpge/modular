@@ -1112,7 +1112,10 @@ LogicalResult ParallelOp::canonicalize(ParallelOp op,
   if (yieldOp.getOperand(0) != body.getArgument(0))
     return failure();
 
-  rewriter.replaceOp(op, op.getInputs());
+  SmallVector<Value> replacements(op.getInputs().begin(), op.getInputs().end());
+  if (op.hasChain())
+    replacements.push_back(op.getInChain());
+  rewriter.replaceOp(op, replacements);
   return success();
 }
 

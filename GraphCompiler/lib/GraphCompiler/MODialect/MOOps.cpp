@@ -1122,11 +1122,25 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
       if (parser.resolveOperand(op, type, result.operands))
         return failure();
 
+  // Parse optional chain: `chain(%ch)`
+  bool hasChain = succeeded(parser.parseOptionalKeyword("chain"));
+  if (hasChain) {
+    OpAsmParser::UnresolvedOperand chainOp;
+    if (parser.parseLParen() || parser.parseOperand(chainOp) ||
+        parser.parseRParen())
+      return failure();
+    if (parser.resolveOperand(chainOp, ChainType::get(parser.getContext()),
+                              result.operands))
+      return failure();
+  }
+
   size_t numLaunches = groupOps[0].size();
-  result.addAttribute("operandSegmentSizes",
-                      parser.getBuilder().getDenseI32ArrayAttr(
-                          {static_cast<int32_t>(numLaunches),
-                           static_cast<int32_t>(isTupled ? numLaunches : 0)}));
+  result.addAttribute(
+      "operandSegmentSizes",
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {static_cast<int32_t>(numLaunches),
+           static_cast<int32_t>(isTupled ? numLaunches : 0),
+           /*inChain=*/static_cast<int32_t>(hasChain ? 1 : 0)}));
 
   for (size_t g = 0; g < numGroups; ++g)
     blockArgs[g].type = groupTypes[g][0];
@@ -1146,6 +1160,8 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   } else {
     resultTypes.assign(groupTypes[0].begin(), groupTypes[0].end());
   }
+  if (hasChain)
+    resultTypes.push_back(ChainType::get(parser.getContext()));
 
   if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
     return failure();
@@ -1198,11 +1214,24 @@ void ParallelOp::print(OpAsmPrinter &p) {
       p.printType(input.getType());
     });
   }
-  p << ") -> (";
+  p << ')';
+  if (hasChain()) {
+    p << " chain(";
+    p.printOperand(getInChain());
+    p << ')';
+  }
 
-  llvm::interleaveComma(getResultTypes(), p,
-                        [&](Type type) { p.printType(type); });
-  p << ")";
+  // Print non-chain result types.
+  SmallVector<Type> tensorResultTypes;
+  for (auto result : getResults())
+    if (!isa<ChainType>(result.getType()))
+      tensorResultTypes.push_back(result.getType());
+  if (!tensorResultTypes.empty()) {
+    p << " -> (";
+    llvm::interleaveComma(tensorResultTypes, p,
+                          [&](Type type) { p.printType(type); });
+    p << ')';
+  }
 
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
                                      /*elidedAttrs=*/{"operandSegmentSizes"});
@@ -1243,22 +1272,25 @@ static bool typesMatchIgnoringDeviceId(Type a, Type b) {
 }
 
 SmallVector<ChainValue> ParallelOp::getInChains() {
-  return getChainValues(getOperands());
+  if (auto chain = getInChain())
+    return {cast<ChainValue>(chain)};
+  return {};
 }
 
 SmallVector<ChainValue> ParallelOp::getOutChains() {
-  return getChainValues(getResults());
+  if (hasChain())
+    return {getOutChain()};
+  return {};
 }
 
 SmallVector<OpOperand *> ParallelOp::getInChainsMutable() {
-  SmallVector<OpOperand *> results;
-
-  for (auto &value : getInputsMutable()) {
-    if (isa<ChainType>(value.get().getType()))
-      results.push_back(&value);
+  SmallVector<OpOperand *> result;
+  if (getInChain()) {
+    auto mutableRange = getInChainMutable();
+    for (auto &operand : mutableRange)
+      result.push_back(&operand);
   }
-
-  return results;
+  return result;
 }
 
 LogicalResult ParallelOp::verify() {
@@ -1268,9 +1300,10 @@ LogicalResult ParallelOp::verify() {
   if (inputs.empty())
     return emitOpError("requires at least one input");
 
-  if (getNumResults() != inputs.size())
-    return emitOpError("requires the same number of results as inputs, got ")
-           << getNumResults() << " results for " << inputs.size() << " inputs";
+  size_t expectedResults = inputs.size() + (hasChain() ? 1 : 0);
+  if (getNumResults() != expectedResults)
+    return emitOpError("requires ")
+           << expectedResults << " results, got " << getNumResults();
 
   if (!extraInputs.empty() && extraInputs.size() != inputs.size())
     return emitOpError("extraInputs size (")
@@ -1313,6 +1346,8 @@ LogicalResult ParallelOp::verify() {
 
   Type yieldType = yieldOp.getOperand(0).getType();
   for (auto [idx, result] : llvm::enumerate(getResults())) {
+    if (isa<ChainType>(result.getType()))
+      continue;
     if (!typesMatchIgnoringDeviceId(result.getType(), yieldType))
       return emitOpError("result #")
              << idx << " type " << result.getType()

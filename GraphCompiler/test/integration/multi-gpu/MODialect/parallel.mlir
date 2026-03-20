@@ -3,14 +3,15 @@
 // RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
 
 
-// Test for mo.parallel op on multiple GPUs (different device IDs, same label)
+// Test for mo.parallel op on multiple GPUs -- no chain needed (tensor-only).
 // NOTE: This test requires a system with at least 2 GPUs.
 mo.graph @parallel_multi_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:1>
-  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32, gpu:0>,
-                                  %const2 : !mo.tensor<[3], si32, gpu:1>)
-         -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) {
+  %res:2 = mo.parallel %arg0 in
+      (%const1 : !mo.tensor<[3], si32, gpu:0>,
+       %const2 : !mo.tensor<[3], si32, gpu:1>)
+      -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) {
     %1 = mo.relu(%arg0) : !mo.tensor<[3], si32, gpu:0>
     mo.yield %1 : !mo.tensor<[3], si32, gpu:0>
   }
@@ -30,9 +31,10 @@ mo.graph @parallel_multi_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si3
 mo.graph @parallel_multi_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:1>
-  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32, gpu:0>,
-                                  %const2 : !mo.tensor<[3], si32, gpu:1>)
-         -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) {
+  %res:2 = mo.parallel %arg0 in
+      (%const1 : !mo.tensor<[3], si32, gpu:0>,
+       %const2 : !mo.tensor<[3], si32, gpu:1>)
+      -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) {
     %neg = mo.negative(%arg0) : !mo.tensor<[3], si32, gpu:0>
     %relu = mo.relu(%neg) : !mo.tensor<[3], si32, gpu:0>
     mo.yield %relu : !mo.tensor<[3], si32, gpu:0>
@@ -58,4 +60,3 @@ mo.graph @parallel_multi_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3
 // CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
-

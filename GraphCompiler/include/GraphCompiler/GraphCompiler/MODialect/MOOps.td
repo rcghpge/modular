@@ -624,11 +624,15 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
     extraInputs must have the same length as inputs, and the body block
     receives an additional argument for the extra input.
 
+    A chain input (`inChain`) provides the sequencing dependency from prior
+    ops. The chain result (`outChain`) represents completion of all parallel
+    launches and can be used to sequence subsequent ops.
+
     Example with individual types (different device IDs):
     ```mlir
-    %res:2 = mo.parallel %arg in (%a : !mo.tensor<[3], f32, gpu:0>,
-                                  %b : !mo.tensor<[3], f32, gpu:1>)
-          -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) {
+    %res:2, %out_ch = mo.parallel %arg in
+        (%a : !mo.tensor<[3], f32, gpu:0>,
+         %b : !mo.tensor<[3], f32, gpu:1>) chain(%ch) {
       %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
       mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
     }
@@ -636,16 +640,21 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
 
     Example with extra inputs (tupled per-device operands):
     ```mlir
-    %res:2 = mo.parallel (%arg, %sig) in
+    %res:2, %out_ch = mo.parallel (%arg, %sig) in
         ((%a, %sig0) : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
-         (%b, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>)) {
+         (%b, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))
+        chain(%ch_in) {
       %out, %ch = mo.bundled.allreduce.sum(%arg, %sig, %ch_in) : ...
       mo.yield %out : !mo.tensor<[3], f32, gpu:0>
     }
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs, Variadic<AnyType>:$extraInputs);
+  let arguments = (ins
+    Variadic<AnyType>:$inputs,
+    Variadic<AnyType>:$extraInputs,
+    Optional<MO_Chain>:$inChain
+  );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
 
@@ -660,6 +669,15 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
 
     /// Returns the number of input groups (1 if no extraInputs, 2 otherwise).
     size_t getNumInputGroups() { return getExtraInputs().empty() ? 1 : 2; }
+
+    /// Whether this parallel op has explicit chain I/O.
+    bool hasChain() { return static_cast<bool>(getInChain()); }
+
+    /// Returns the trailing chain result. Only valid when hasChain().
+    ChainValue getOutChain() {
+      assert(hasChain() && "no chain on this parallel op");
+      return cast<ChainValue>(getResults().back());
+    }
   }];
 
   // Custom assembly format supports:
