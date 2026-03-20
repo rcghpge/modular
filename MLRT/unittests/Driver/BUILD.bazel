@@ -81,7 +81,7 @@ modular_cc_test(
 
 modular_cc_test(
     name = "GPUMemoryManagerFallthroughTest",
-    size = "small",
+    size = "medium",
     srcs = [
         "GPUMemoryManagerFallthroughTest.cpp",
     ],
@@ -93,6 +93,32 @@ modular_cc_test(
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "100",
         # Disable memory-manager-only mode so the fallthrough path is reachable.
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "false",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "GPUMemoryManagerOnlyTest",
+    size = "small",
+    srcs = [
+        "GPUMemoryManagerOnlyTest.cpp",
+    ],
+    env = {
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "16777216",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "true",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
     },

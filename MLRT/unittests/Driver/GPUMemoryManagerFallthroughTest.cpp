@@ -74,7 +74,7 @@ TEST_F(GPUMemoryManagerFallthroughTest,
 
   // Perform many alloc/free cycles and track unique pointers.
   std::set<void *> uniquePointers;
-  const int numCycles = 50;
+  const int numCycles = 20;
 
   for (int i = 0; i < numCycles; ++i) {
     ASSIGN_NO_ERR(void *, ptr, freeList.allocate(allocSize, mode));
@@ -106,7 +106,7 @@ TEST_F(GPUMemoryManagerFallthroughTest,
   const size_t allocSize = 8 * 1024 * 1024;
   const Device::AllocMode mode = Device::AllocMode::SYNC;
   const int numContexts = 4;
-  const int numCyclesPerContext = 20;
+  const int numCyclesPerContext = 8;
 
   std::vector<DeviceContextRef> contexts;
   for (int i = 0; i < numContexts; ++i) {

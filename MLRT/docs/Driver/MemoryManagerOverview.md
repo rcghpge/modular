@@ -263,8 +263,8 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   (default: false)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK`**: Enable internal
   consistency checks (default: false)
-- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: Fail if memory manager
-  cannot satisfy allocation (testing mode)
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: Fail on any allocation
+  that would fall back outside the memory manager (testing mode)
 - **`MODULAR_DEBUG_DEVICE_ALLOCATOR`**: List of comma separated allocator
   debugging features from the following:
   - `uninitialized-poison`: enable filling buffers with type-aware poison

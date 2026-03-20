@@ -1008,16 +1008,36 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       return desc->ptr_;
     }
 
-    // If only allowing allocations from the memory manager, raise an error at
-    // this point if there is insufficient capacity, printing as much debugging
-    // information as needed.
-    static bool useOnlyMemoryManagerMode =
-        memoryManager_.useOnlyMemoryManagerMode_;
-    auto availableCacheSize =
-        memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
-    if (useOnlyMemoryManagerMode && availableCacheSize < wrappedSize) {
+    // If only allowing allocations from the memory manager, raise an error on
+    // any memory manager miss instead of falling through to direct device
+    // allocation.
+    bool useOnlyMemoryManagerMode = memoryManager_.useOnlyMemoryManagerMode_;
+    size_t availableCacheSize = 0;
+    size_t chunkSize = 0;
+    size_t cacheSize = 0;
+    size_t maxCacheSize = 0;
+    size_t freeSize = 0;
+    {
+      std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+      availableCacheSize =
+          memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
+      chunkSize = memoryManager_.chunkSize_;
+      cacheSize = memoryManager_.cacheSize_;
+      maxCacheSize = memoryManager_.maxCacheSize_;
+      freeSize = memoryManager_.freeSize_;
+    }
+    if (useOnlyMemoryManagerMode) {
+      std::string missReason =
+          "memory manager free lists could not satisfy request";
+      if (wrappedSize > chunkSize) {
+        missReason = "request exceeds memory manager chunk size";
+      } else if (availableCacheSize < wrappedSize) {
+        missReason = "remaining memory manager capacity is insufficient";
+      }
+
       if (memoryManager_.doLog_) {
-        logMsg("allocate(" + TWINE(wrappedSize) + ") - memory_manager_only OOM",
+        logMsg("allocate(" + TWINE(wrappedSize) +
+                   ") - memory_manager_only reject (" + missReason + ")",
                0, 0);
         // Print more debugging information about the largest available blocks.
         MemoryManagerFreeList *cur = this;
@@ -1033,14 +1053,22 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
         }
       }
       return Error(
-          "[Use only memory manager mode]: No room left in memory manager: " +
-          memoryManager_.getDeviceDescription() + " on " + TWINE_PTR(this) +
-          " (size: " + humanMemorySize(wrappedSize) +
-          " ; free: " + humanMemorySize(memoryManager_.freeSize_) +
-          " ; cache_size: " + humanMemorySize(memoryManager_.cacheSize_) +
-          " ; max_cache_size: " +
-          humanMemorySize(memoryManager_.maxCacheSize_) + ")");
+          "[Use only memory manager mode]: Memory manager cannot satisfy "
+          "allocation (" +
+          missReason + "): " + memoryManager_.getDeviceDescription() + " on " +
+          TWINE_PTR(this) + " (size: " + humanMemorySize(wrappedSize) +
+          " ; free: " + humanMemorySize(freeSize) +
+          " ; cache_size: " + humanMemorySize(cacheSize) +
+          " ; max_cache_size: " + humanMemorySize(maxCacheSize) + ")");
     }
+  }
+
+  if (memoryManager_.useOnlyMemoryManagerMode_) {
+    return Error(
+        "[Use only memory manager mode]: Memory manager cannot satisfy "
+        "allocation (memory manager is disabled): " +
+        memoryManager_.getDeviceDescription() + " on " + TWINE_PTR(this) +
+        " (size: " + humanMemorySize(wrappedSize) + ")");
   }
 
   // Allocate straight from device driver if cache was not able to fulfill
@@ -1354,6 +1382,10 @@ MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
 
 MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
                                        size_t alignment, int64_t memoryLimit) {
+  bool useOnlyMemoryManagerMode =
+      (device.api() != Device::cpuAPI) &&
+      DeviceContext::configAsBool("memory_manager_only", false);
+
   // Do not use memory manager if memory manager has been disabled by the
   // calling code (empty memInfo).
   // This is for example the case for CPU Device: We are relying on malloc
@@ -1365,7 +1397,7 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
         /*chunkSize=*/0,
         /*alignment=*/alignment,
         /*isHost=*/false,
-        /*useOnlyMemoryManagerMode=*/false);
+        /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
 
   // Determine cache size
   bool isDefaultCacheSize = false;
@@ -1384,7 +1416,7 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
         /*chunkSize=*/0,
         /*alignment=*/alignment,
         /*isHost=*/false,
-        /*useOnlyMemoryManagerMode=*/false);
+        /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
 
   // If there's no provided size or if the provided size is larger than
   // the free memory, use a percentage of the available memory
@@ -1419,10 +1451,6 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
   size_t chunkSize = std::min(
       maxCacheSize,
       llvm::alignToPowerOf2((maxCacheSize * chunkSizePercent) / 100, 256 * KB));
-
-  // Determine whether to only allocate memory from the memory manager.
-  static bool useOnlyMemoryManagerMode =
-      DeviceContext::configAsBool("memory_manager_only", false);
 
   auto result = new MemoryManager(
       /*device=*/device,
