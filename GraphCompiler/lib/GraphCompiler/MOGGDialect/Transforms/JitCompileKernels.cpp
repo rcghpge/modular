@@ -109,7 +109,6 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     return uniqueSymbols;
   }
 
-  // Rename stub functions with semantic naming
   SmallVector<StringAttr> collectStubSymbols(ModuleOp kgenModuleOp) {
     SmallVector<StringAttr> stubs;
     kgenModuleOp.walk<mlir::WalkOrder::PreOrder>(
@@ -291,14 +290,54 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
   CompileDiagnosticOr<KGENCachingResult>
   erasePreviouslyCompiledKernels(const CompilationState &state) {
     auto regionSymbols = collectRegionSymbols(state.mgpModule);
-    auto stubSymbols = collectStubSymbols(*state.kgenModule);
+    // Stub semantic naming is intentionally disabled for now.
+    //
+    // Historical behavior:
+    // - `applySemanticNaming()` used to see both top-level `region_X` entry
+    //   points and GC-generated `<input>::stub_N` helpers.
+    // - That gave us some extra KGEN-level dedup for identical stub bodies.
+    //
+    // Why it is disabled today:
+    // - The temporary trait-based fusion lowering emits module-scope
+    //   `FusionStruct_*` declarations and methods instead of the older inline
+    //   closure bodies.
+    // - `ModuleHasher::setGeneratorHash()` intentionally normalizes
+    //   `FlatSymbolRefAttr` inside attributes and types so generator names do
+    //   not perturb semantic hashes.
+    // - For fusion stubs, the only distinction between two otherwise-identical
+    //   stub bodies may be the nominal `FusionStruct_*` type they bind.
+    // - After normalization, those nominal references disappear from the
+    //   stub bytecode. The two stubs can then hash identically and be merged.
+    // - Once those stubs are merged, their callers can also collapse through
+    //   `setInputsHash()`, which turns this from a missed optimization into
+    //   wrong code.
+    //
+    // Why the blunt exclusion is acceptable:
+    // - `region_X` generators are the cacheable entry points; stubs do not
+    //   participate directly in cache lookup.
+    // - Whole-stub dedup still happens earlier at the MOGG level in
+    //   `MergeIdenticalKernelStubs`, where the original BindLambda regions are
+    //   still available structurally.
+    // - This keeps the workaround local and easy to remove once the fusion
+    //   lowering stops depending on nominal struct identity.
+    //
+    // How to bring stub renaming/dedup back:
+    // - When fusion moves off these temporary structs and onto unified closures
+    //   again, the distinguishing fusion semantics should be represented in the
+    //   generator body or in stable generator-to-generator edges rather than in
+    //   nominal `FusionStruct_*` symbols.
+    // - At that point, uncomment the `collectStubSymbols()` line above, insert
+    //   those symbols into `symbolsToRename` below, and delete this comment
+    //   block.
+    // - If unified closures still leave semantically-important identity only in
+    //   non-generator symbol references, we should fix that representation
+    //   first instead of re-enabling stub semantic naming.
+    // OLD LINE:
+    // auto stubSymbols = collectStubSymbols(*state.kgenModule);
+
     llvm::SetVector<StringAttr> symbolsToRename(regionSymbols.begin(),
                                                 regionSymbols.end());
-    for (auto &&stubSymbol : stubSymbols)
-      symbolsToRename.insert(stubSymbol);
     auto renamedRegions = renameGenerators(*state.kgenModule, symbolsToRename);
-    for (auto &&stubSymbol : stubSymbols)
-      renamedRegions.erase(stubSymbol);
 
     updateMGPCallSites(state.mgpModule, renamedRegions);
 

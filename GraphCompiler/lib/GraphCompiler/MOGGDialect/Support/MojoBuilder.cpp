@@ -315,36 +315,74 @@ void MojoBuilder::importFrom(const MojoValue &from, const MojoValue &import) {
 void MojoBuilder::structDecl(const MojoValue &name,
                              ArrayRef<std::pair<MojoValue, MojoValue>> fields,
                              bool fieldwiseInit) {
-  structDecl(name, /*parameters=*/{}, fields, fieldwiseInit);
+  structDeclImpl(name, /*parameters=*/{}, /*traits=*/{}, fields, fieldwiseInit,
+                 nullptr);
 }
 
 void MojoBuilder::structDecl(
     const MojoValue &name, ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
     ArrayRef<std::pair<MojoValue, MojoValue>> fields, bool fieldwiseInit) {
+  structDeclImpl(name, parameters, /*traits=*/{}, fields, fieldwiseInit,
+                 nullptr);
+}
+
+void MojoBuilder::structDecl(const MojoValue &name, ArrayRef<MojoValue> traits,
+                             ArrayRef<std::pair<MojoValue, MojoValue>> fields,
+                             std::function<void()> body) {
+  structDeclImpl(name, /*parameters=*/{}, traits, fields,
+                 /*fieldwiseInit=*/true, std::move(body));
+}
+
+void MojoBuilder::structDecl(
+    const MojoValue &name, ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
+    ArrayRef<MojoValue> traits,
+    ArrayRef<std::pair<MojoValue, MojoValue>> fields,
+    std::function<void()> body) {
+  structDeclImpl(name, parameters, traits, fields,
+                 /*fieldwiseInit=*/true, std::move(body));
+}
+
+void MojoBuilder::structDeclImpl(
+    const MojoValue &name, ArrayRef<std::pair<MojoValue, MojoValue>> parameters,
+    ArrayRef<MojoValue> traits,
+    ArrayRef<std::pair<MojoValue, MojoValue>> fields, bool fieldwiseInit,
+    std::function<void()> body) {
   newline();
   if (fieldwiseInit)
     statement("@fieldwise_init");
 
-  // Build struct header with optional parameters
-  if (parameters.empty()) {
-    statement("struct ", name, ":");
-  } else {
-    std::string paramStr;
-    llvm::raw_string_ostream os(paramStr);
-    os << "struct " << name.text << "[";
-    for (size_t i = 0; i < parameters.size(); ++i) {
-      if (i > 0)
-        os << ", ";
-      os << parameters[i].first.text << ": " << parameters[i].second.text;
-    }
-    os << "]:";
-    statement(paramStr);
+  std::string headerStr;
+  llvm::raw_string_ostream os(headerStr);
+  os << "struct " << name.text;
+  if (!parameters.empty()) {
+    os << "[";
+    llvm::interleaveComma(parameters, os, [&](const auto &p) {
+      os << p.first.text << ": " << p.second.text;
+    });
+    os << "]";
   }
+  if (!traits.empty()) {
+    os << "(";
+    llvm::interleaveComma(traits, os, [&](const auto &t) { os << t.text; });
+    os << ")";
+  }
+  os << ":";
+  statement(headerStr);
 
   increaseIndentation();
+  if (body)
+    pushCache();
+
   for (const auto &[fieldName, fieldType] : fields) {
     statement("var ", fieldName, ": ", fieldType);
   }
+
+  if (body) {
+    newline();
+    body();
+    popCache();
+  }
+
   decreaseIndentation();
   newline();
 }

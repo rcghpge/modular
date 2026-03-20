@@ -8,7 +8,6 @@ from std.collections.string import StaticString
 from std.math import iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
-
 import compiler_internal as compiler
 from buffer import NDBuffer
 from buffer.dimlist import DimList
@@ -1151,8 +1150,8 @@ struct MySquareComputeOutFusion:
         input: InputTensor[dtype=dtype, rank=1, ...],
     ) capturing:
         var res = input[0] * input[0]
-        comptime has_compute_lambda = outp.static_spec.out_compute_lambda is not None
-        comptime has_store_lambda = outp.static_spec.out_lambda is not None
+        comptime has_compute_lambda = type_of(outp)._has_compute_fusion
+        comptime has_store_lambda = type_of(outp)._has_output_store_fusion
         print("has_compute_lambda =", has_compute_lambda)
         print("has_store_lambda =", has_store_lambda)
 

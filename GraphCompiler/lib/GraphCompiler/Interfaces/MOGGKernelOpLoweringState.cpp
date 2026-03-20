@@ -455,10 +455,11 @@ void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
   if (isa<MOGG::TensorFusedOp>(*lambdaVal.getUsers().begin()))
     return;
 
-  // We always pass an empty tensor to the kernels for fused input tensors or
-  // output lambdas with a cast.
   bool lambdaHasCast = MO::castFromTensorLike(tensorVal.getType()).getDtype() !=
                        MO::castFromTensorLike(lambdaVal.getType()).getDtype();
+
+  // We always pass an empty tensor to the kernels for fused input tensors or
+  // output lambdas with a cast.
   bool substituteWithEmptyTensor =
       bindOp.getBindKind() == MOGG::BindLambdaKind::InputLambda ||
       lambdaHasCast;
@@ -467,7 +468,6 @@ void MOGGKernelOpLoweringState::lowerBindLambdaOp(MOGG::BindLambdaOp bindOp) {
 
   auto mgpBufferType = MGP::DeviceBufferType::get(device);
 
-  // Replace the output of the lambda with an empty tensor.
   if (substituteWithEmptyTensor) {
     Value emptyBuffer =
         MOGG::EmptyBufferOp::create(builder, bindOp->getLoc(), mgpBufferType);

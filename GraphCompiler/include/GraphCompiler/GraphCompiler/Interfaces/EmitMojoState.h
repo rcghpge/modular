@@ -70,7 +70,15 @@ constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_output =
     "_bind_to_fused_output";
 constexpr StringLiteral func_ManagedTensorSlice_bind_to_fused_compute_output =
     "_bind_to_fused_compute_output";
-constexpr StringLiteral func_reshape_contiguous_buffer =
+// Fusion trait names for struct conformance declarations.
+constexpr StringLiteral trait_InputFusion = "managed_tensor_slice.InputFusion";
+constexpr StringLiteral trait_OutputFusion =
+    "managed_tensor_slice.OutputFusion";
+constexpr StringLiteral trait_ComputeOutputFusion =
+    "managed_tensor_slice.ComputeOutputFusion";
+constexpr StringLiteral trait_ElementwiseFusion =
+    "managed_tensor_slice.ElementwiseFusion";
+constexpr StringLiteral func_tmp_reshape_contiguous_buffer =
     "MOGGPrimitives.tmp_reshape_contiguous_buffer";
 constexpr StringLiteral func_unpack_tensor_spec =
     "MOGGPrimitives.unpack_tensor_spec";
@@ -117,6 +125,7 @@ constexpr std::pair<StringLiteral, StringLiteral> packagesToImport[] = {
     {"tensor.io_spec", "io_spec"},
     {"tensor.managed_tensor_slice", "managed_tensor_slice"},
     {"compiler_internal", ""},
+    {"compiler_internal.directives", "directives"},
     {"std.utils", ""},
     {"std.runtime", ""},
     {"std.runtime.tracing", ""},
@@ -150,6 +159,12 @@ struct EmitMojoState {
 
   /// The Mojo builder used to generate the text.
   MojoBuilder builder;
+  /// Separate builder for module-scope struct definitions (fusion structs).
+  /// Struct definitions are discovered mid-function during body emission
+  /// (e.g. from BindLambdaOp), so they cannot be written to the main builder
+  /// which is mid-function at that point. The output is concatenated after the
+  /// main builder's output; Mojo allows file-scope declarations in any order.
+  MojoBuilder structDefsBuilder;
   /// The actual return values of the `mogg.generic.compiled.region`. This is
   /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;
@@ -183,6 +198,14 @@ struct EmitMojoState {
   /// Name of the entry point of the current kernel
   std::string currentKernelName;
 
+  /// Maps BindLambdaOp output values to their fusion struct instance
+  /// and the correct bind method name.
+  mlir::DenseMap<Value, EmittedFusionInfo> fusionStructInstances;
+
+  /// Store the fusion struct info for a BindLambdaOp output value.
+  void setFusionStructFor(Value val, MojoValue instance,
+                          StringLiteral bindMethod, MojoValue typeName);
+
 private:
   /// A mapping between mlir::Value to MojoValue (text).
   mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
@@ -191,11 +214,14 @@ private:
   /// currently being processed
   bool enableOpTraceComments;
 
-  /// Enable the emission of print statements intside the fused lambda to debug
+  /// Enable the emission of print statements inside the fused lambda to debug
   /// the fused tensor specs.
   bool enableDebugDumpFusedTensorSpecs;
 
 public:
+  bool isDebugDumpFusedTensorSpecsEnabled() const {
+    return enableDebugDumpFusedTensorSpecs;
+  }
   // Helper to create a kernel wrapper function with a given body
   using KernelBodyBuilder =
       llvm::function_ref<void(const MOGG::FunctionBody &)>;
@@ -251,6 +277,18 @@ public:
     } else if (isa<MGP::ContextType>(mlirType)) {
       return HardcodedMojoSymbols::struct_StateContext;
     } else if (isa<IndexType>(mlirType)) {
+      return HardcodedMojoSymbols::struct_Int;
+    } else if (auto scalarTy = dyn_cast<MO::ScalarType>(mlirType)) {
+      // Fusion struct fields can capture non-tensor operands from the fused
+      // op body (e.g. integer/bool constants from ConstantScalarOp).  The
+      // SIMDType branch below only covers KGEN-level types; this handles
+      // MO-dialect scalars that appear before lowering.
+      DType dtype = scalarTy.getDtype();
+      if (dtype.isBool())
+        return HardcodedMojoSymbols::struct_Bool;
+      assert(dtype.isInt() &&
+             "only bool/integer MO::ScalarType expected in fusion captures; "
+             "extend this to handle float/other dtypes if needed");
       return HardcodedMojoSymbols::struct_Int;
     } else if (auto simdType = dyn_cast<KGEN::POP::SIMDType>(mlirType)) {
       /// FIXME(GEX-2867)
