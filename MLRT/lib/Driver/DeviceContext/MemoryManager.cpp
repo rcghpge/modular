@@ -749,20 +749,18 @@ bool MemoryManager::allocateChunk() {
     growChunkSizeTo(maxCacheSize_);
   }
 
-  // Avoid allocating chunks beyond the maxCacheSize_ or available memory.
-  size_t maxSize = maxCacheSize_;
+  // Cap the chunk to the remaining memory manager budget and, for GPU
+  // devices, to whatever the device actually has free right now.
+  assert(cacheSize_ <= maxCacheSize_ && "cache size <= max size precondition");
+  size_t remainingBudget = maxCacheSize_ - cacheSize_;
   if (!isHost()) {
-    // Limit chunk growth to the configured cache budget and total GPU memory.
     ErrorOr<Device::MemInfo> memInfo = device().getMemoryInfo();
-    maxSize = memInfo.isError() ? maxCacheSize_
-                                : std::min((*memInfo).total, maxCacheSize_);
+    if (!memInfo.isError()) {
+      remainingBudget = std::min((*memInfo).free, remainingBudget);
+    }
   }
 
-  const size_t allocSize =
-      std::min(chunkSize_, maxSize -
-                               // Avoid overflowing the subtraction by guarding
-                               // against cacheSize_ being larger than maxSize.
-                               std::min(maxSize, cacheSize_));
+  const size_t allocSize = std::min(chunkSize_, remainingBudget);
 
   const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {

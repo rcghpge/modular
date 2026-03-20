@@ -380,6 +380,21 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "MemoryManagerChunkGrowthTest",
+    size = "small",
+    srcs = [
+        "MemoryManagerChunkGrowthTest.cpp",
+        "ScopedEnvVar.h",
+    ],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
     name = "HALTest",
     size = "small",
     srcs = ["HALTest.cpp"],
