@@ -7,6 +7,8 @@
 #include "Fixture.h"
 #include <cstring>
 
+#include "llvm/ADT/ScopeExit.h"
+
 TEST_F(DriverPluginTest, StandardStatusMessage) {
   char errorMessage[1024];
   ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
@@ -197,5 +199,61 @@ TEST_F(DriverPluginContextTest, EventIsReady) {
     EXPECT_SUCCESS(is_event_ready(ctx, event, &isReady));
     EXPECT_TRUE(isReady);
     EXPECT_SUCCESS(event_destroy(ctx, event));
+  }
+}
+
+TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unsupported on " << api;
+
+  constexpr size_t size = 256;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < content.size(); i++)
+    content[i] = i;
+
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    void *memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
+    auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
+
+    ASSERT_SUCCESS(queue_copy_to_device(queue, /*dst=*/memory,
+                                        /*src=*/content.data(), size));
+
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    ASSERT_SUCCESS(queue_copy_from_device(queue, /*dst=*/result.data(),
+                                          /*src=*/memory, size));
+
+    ASSERT_EQ(content, result);
+  }
+}
+
+TEST_F(DriverPluginQueueTest, SetMemory) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unsupported on " << api;
+
+  constexpr size_t size = 128;
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    void *memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
+    auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
+
+    ASSERT_SUCCESS(queue_set_memory(queue, /*dst=*/memory, /*size=*/size,
+                                    uint8_t(42), sizeof(uint8_t)));
+
+    std::array<uint8_t, size> result;
+    ASSERT_SUCCESS(queue_copy_from_device(queue, /*dst=*/result.data(),
+                                          /*src=*/memory, size));
+
+    std::array<uint8_t, size> expected;
+    expected.fill(42);
+
+    ASSERT_EQ(expected, result);
   }
 }

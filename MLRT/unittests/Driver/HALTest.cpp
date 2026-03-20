@@ -211,3 +211,55 @@ TEST_F(DriverHALQueueTest, AllocBufferAsync) {
     ASSERT_FALSE(bufferOr.isError());
   }
 }
+
+TEST_F(DriverHALQueueTest, CopyToDeviceThenFromDevice) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unsupported on " << api;
+
+  constexpr size_t size = 128;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < size; i++)
+    content[i] = i;
+
+  for (size_t i = 0; i < contexts.size(); i++) {
+    ContextRef context = contexts[i];
+    QueueRef queue = queues[i];
+
+    auto bufferOr = context->allocBufferSync(size);
+    ASSIGN_NO_ERR(BufferRef, buffer, context->allocBufferSync(size));
+    M::ErrorOrSuccess errorOr =
+        queue->copyToDevice(buffer, content.data(), size);
+    ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    errorOr = queue->copyFromDevice(result.data(), buffer, size);
+    ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+    ASSERT_EQ(content, result);
+  }
+}
+
+TEST_F(DriverHALQueueTest, SetMemory) {
+  if (api == "CUDA" || api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unsupported on " << api;
+
+  constexpr size_t size = 128;
+
+  for (size_t i = 0; i < contexts.size(); i++) {
+    ContextRef context = contexts[i];
+    QueueRef queue = queues[i];
+
+    ASSIGN_NO_ERR(BufferRef, buffer, context->allocBufferSync(size));
+    M::ErrorOrSuccess errorOr =
+        queue->setMemory(buffer, uint8_t(42), sizeof(uint8_t));
+    ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    errorOr = queue->copyFromDevice(result.data(), buffer, size);
+    ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+    std::array<uint8_t, size> expected;
+    expected.fill(42);
+    ASSERT_EQ(expected, result);
+  }
+}

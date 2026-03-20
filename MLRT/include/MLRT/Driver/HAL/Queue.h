@@ -33,6 +33,10 @@ public:
 
   ErrorOr<BufferRef> allocBufferAsync(size_t byteSize);
 
+  ErrorOrSuccess copyToDevice(BufferRef dst, void *src, size_t byteSize);
+  ErrorOrSuccess copyFromDevice(void *dst, BufferRef src, size_t byteSize);
+  ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
+
 private:
   explicit Queue(Context *context, M_driver_queue_t handle)
       : context(context), handle(handle) {}

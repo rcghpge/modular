@@ -56,8 +56,7 @@ using std::endl;
       EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS) << getStatusMessage(status);  \
   } while (0)
 
-class DriverPluginTest : public ::testing::Test {
-protected:
+struct DriverPluginTest : ::testing::Test {
   void SetUp() override {
     const char *pluginSpec = std::getenv("MODULAR_DRIVER_PLUGINS");
     if (pluginSpec == nullptr) {
@@ -115,8 +114,7 @@ protected:
   llvm::StringRef api;
 };
 
-class DriverPluginContextTest : public DriverPluginTest {
-public:
+struct DriverPluginContextTest : DriverPluginTest {
   void SetUp() override {
     DriverPluginTest::SetUp();
     if (this->HasFatalFailure() || this->IsSkipped())
@@ -141,4 +139,23 @@ public:
   }
 
   std::vector<M_driver_context_t> contexts;
+};
+
+struct DriverPluginQueueTest : DriverPluginContextTest {
+  void SetUp() override {
+    DriverPluginContextTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    if (api == "CUDA" || api == "HIP" || api == "Metal")
+      GTEST_SKIP() << "Unsupported on " << api;
+
+    for (M_driver_context_t context : contexts) {
+      M_driver_queue_t queue;
+      ASSERT_SUCCESS(queue_create(context, &queue));
+      queues.push_back(queue);
+    }
+  }
+
+  std::vector<M_driver_queue_t> queues;
 };

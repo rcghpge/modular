@@ -23,8 +23,8 @@ ErrorOr<BufferRef> Context::allocBufferSync(size_t byteSize) {
   if (M_driver_status_t status =
           device->driver->plugin.memory_alloc_sync(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));
-  Buffer *buffer =
-      new (std::nothrow) Buffer(this, Buffer::AllocMode::kSync, memory);
+  Buffer *buffer = new (std::nothrow)
+      Buffer(this, Buffer::AllocMode::kSync, memory, byteSize);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);
@@ -35,8 +35,8 @@ ErrorOr<BufferRef> Context::allocBufferPinned(size_t byteSize) {
   if (M_driver_status_t status =
           device->driver->plugin.memory_alloc_pinned(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));
-  Buffer *buffer =
-      new (std::nothrow) Buffer(this, Buffer::AllocMode::kPinned, memory);
+  Buffer *buffer = new (std::nothrow)
+      Buffer(this, Buffer::AllocMode::kPinned, memory, byteSize);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);

@@ -35,15 +35,18 @@ public:
   ~Buffer();
 
 private:
-  explicit Buffer(Context *context, AllocMode mode, void *memory)
-      : context(context), queue(nullptr), memory(memory), mode(mode) {}
-  explicit Buffer(Queue *queue, void *memory)
+  explicit Buffer(Context *context, AllocMode mode, void *memory,
+                  size_t byteSize)
+      : context(context), queue(nullptr), memory(memory), byteSize(byteSize),
+        mode(mode) {}
+  explicit Buffer(Queue *queue, void *memory, size_t byteSize)
       : context(queue->context), queue(queue), memory(memory),
-        mode(AllocMode::kAsync) {}
+        byteSize(byteSize), mode(AllocMode::kAsync) {}
 
   Context *context;
   Queue *queue;
   void *memory;
+  size_t byteSize;
   AllocMode mode;
 
   friend Context;

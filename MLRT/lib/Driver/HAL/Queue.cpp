@@ -9,6 +9,7 @@
 #include "MLRT/Driver/HAL/Context.h"
 #include "MLRT/Driver/HAL/Device.h"
 #include "MLRT/Driver/HAL/Driver.h"
+#include "Support/LogicalResult.h"
 
 namespace M::Driver::HAL {
 
@@ -22,10 +23,36 @@ ErrorOr<BufferRef> Queue::allocBufferAsync(size_t byteSize) {
           context->device->driver->plugin.memory_alloc_async(handle, byteSize,
                                                              &memory))
     return Error(context->device->driver->getStatusMessage(status));
-  Buffer *buffer = new (std::nothrow) Buffer(this, memory);
+  Buffer *buffer = new (std::nothrow) Buffer(this, memory, byteSize);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);
+}
+
+ErrorOrSuccess Queue::copyToDevice(BufferRef dst, void *src, size_t byteSize) {
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_copy_to_device(
+              handle, dst->memory, src, byteSize))
+    return Error(context->device->driver->getStatusMessage(status));
+  return success();
+}
+
+ErrorOrSuccess Queue::copyFromDevice(void *dst, BufferRef src,
+                                     size_t byteSize) {
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_copy_from_device(
+              handle, dst, src->memory, byteSize))
+    return Error(context->device->driver->getStatusMessage(status));
+  return success();
+}
+
+ErrorOrSuccess Queue::setMemory(BufferRef dst, uint64_t value,
+                                size_t valueSize) {
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_set_memory(
+              handle, dst->memory, dst->byteSize, value, valueSize))
+    return Error(context->device->driver->getStatusMessage(status));
+  return success();
 }
 
 } // namespace M::Driver::HAL
