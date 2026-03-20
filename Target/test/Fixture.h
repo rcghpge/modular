@@ -130,16 +130,10 @@ public:
       M_driver_context_t context = nullptr;
       ASSERT_SUCCESS(context_create(device, &context));
       contexts.push_back(context);
-      M_driver_queue_t queue = nullptr;
-      ASSERT_SUCCESS(queue_create(context, &queue));
-      queues.push_back(queue);
     }
   }
 
   void TearDown() override {
-    for (size_t i = 0; i < queues.size(); i++) {
-      EXPECT_SUCCESS(queue_destroy(contexts[i], queues[i]));
-    }
     for (M_driver_context_t context : contexts) {
       EXPECT_SUCCESS(context_destroy(context));
     }
@@ -147,5 +141,4 @@ public:
   }
 
   std::vector<M_driver_context_t> contexts;
-  std::vector<M_driver_queue_t> queues;
 };
