@@ -23,7 +23,6 @@ and Python code.
 from std.ffi import _Global, c_int
 from std.sys.info import size_of
 
-from std.builtin._startup import _ensure_current_or_global_runtime_init
 from std.reflection import get_type_name
 from std.memory import OpaquePointer, stack_allocation
 from std.python import Python, PythonObject
@@ -427,7 +426,7 @@ struct PythonModuleBuilder:
         )
 
     def def_function[
-        func_type: __TypeOfAllTypes,
+        func_type: TrivialRegisterPassable,
         //,
         func: PyObjectFunction[func_type, has_kwargs=_],
     ](mut self, func_name: StaticString, docstring: StaticString = ""):
@@ -484,9 +483,6 @@ struct PythonModuleBuilder:
         for ref builder in self.type_builders:
             builder.finalize(self.module)
         self.type_builders.clear()
-
-        # Check or initialize the global runtime
-        _ensure_current_or_global_runtime_init()
 
         return self.module
 
@@ -871,7 +867,7 @@ struct PythonTypeBuilder(Copyable):
         )
 
     def def_method[
-        method_type: __TypeOfAllTypes,
+        method_type: TrivialRegisterPassable,
         //,
         method: PyObjectFunction[method_type, self_type=_, has_kwargs=_],
     ](
@@ -910,7 +906,7 @@ struct PythonTypeBuilder(Copyable):
         ](method_name, docstring)
 
     def def_staticmethod[
-        method_type: __TypeOfAllTypes,
+        method_type: TrivialRegisterPassable,
         //,
         method: PyObjectFunction[method_type, has_kwargs=_],
     ](
@@ -1091,7 +1087,7 @@ def _py_c_function_wrapper[
 
 @always_inline
 def _py_function_wrapper[
-    method_type: __TypeOfAllTypes,
+    method_type: TrivialRegisterPassable,
     self_type: ImplicitlyDestructible,
     //,
     func: PyObjectFunction[method_type, self_type, has_kwargs=_],

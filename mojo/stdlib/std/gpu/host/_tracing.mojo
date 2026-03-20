@@ -110,7 +110,7 @@ def _init_dylib() -> OwnedDLHandle:
 
 @always_inline
 def _get_dylib_function[
-    func_name: StaticString, result_type: __TypeOfAllTypes
+    func_name: StaticString, result_type: TrivialRegisterPassable
 ]() raises -> result_type:
     return _ffi_get_dylib_function[
         GPU_TRACING_LIBRARY,
@@ -171,6 +171,12 @@ struct Color(Intable, TrivialRegisterPassable):
 
     def __int__(self) -> Int:
         return self._value
+
+
+def _ensure_is_null_terminated(str: String) -> String:
+    var str2 = str
+    _ = str2.as_c_string_slice()
+    return str2
 
 
 @fieldwise_init
@@ -250,14 +256,12 @@ struct EventAttributes(TrivialRegisterPassable):
         )
 
 
-struct _dylib_function[fn_name: StaticString, type: __TypeOfAllTypes](
+struct _dylib_function[fn_name: StaticString, fn_type: TrivialRegisterPassable](
     TrivialRegisterPassable
 ):
-    comptime fn_type = Self.type
-
     @staticmethod
-    def load() raises -> Self.type:
-        return _get_dylib_function[Self.fn_name, Self.type]()
+    def load() raises -> Self.fn_type:
+        return _get_dylib_function[Self.fn_name, Self.fn_type]()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -439,13 +443,13 @@ def _start_range(
     comptime if _is_disabled():
         return 0
 
+    var msg = _ensure_is_null_terminated(message)
+
     comptime if has_nvidia_gpu_accelerator():
-        var info = EventAttributes(
-            message=message, color=color, category=category
-        )
+        var info = EventAttributes(message=msg, color=color, category=category)
         return _RangeStart()(UnsafePointer(to=info._value))
     else:
-        return _RangeStart()(message.unsafe_ptr())
+        return _RangeStart()(msg.unsafe_ptr())
 
 
 @always_inline
@@ -465,13 +469,13 @@ def _mark(
     comptime if _is_disabled():
         return
 
+    var msg = _ensure_is_null_terminated(message)
+
     comptime if has_nvidia_gpu_accelerator():
-        var info = EventAttributes(
-            message=message, color=color, category=category
-        )
+        var info = EventAttributes(message=msg, color=color, category=category)
         _Mark()(UnsafePointer(to=info._value))
     else:
-        _Mark()(message.unsafe_ptr())
+        _Mark()(msg.unsafe_ptr())
 
 
 struct Range:
@@ -481,6 +485,8 @@ struct Range:
     var _start_fn: _RangeStart
     var _end_fn: _RangeEnd
 
+    var _msg: String
+
     def __init__(
         out self,
         *,
@@ -489,8 +495,9 @@ struct Range:
         category: Int = _TraceType_MAX,
     ) raises:
         comptime assert _is_enabled(), "GPU tracing must be enabled"
+        self._msg = _ensure_is_null_terminated(message)
         self._info = EventAttributes(
-            message=message, color=color, category=category
+            message=self._msg, color=color, category=category
         )
         self._id = 0
         self._start_fn = _RangeStart()
@@ -528,6 +535,8 @@ struct RangeStack:
     var _push_fn: _RangePush
     var _pop_fn: _RangePop
 
+    var _msg: String
+
     def __init__(
         out self,
         *,
@@ -536,8 +545,11 @@ struct RangeStack:
         category: Int = _TraceType_MAX,
     ) raises:
         comptime assert _is_enabled(), "GPU tracing must be enabled"
+
+        self._msg = _ensure_is_null_terminated(message)
+
         self._info = EventAttributes(
-            message=message, color=color, category=category
+            message=self._msg, color=color, category=category
         )
         self._push_fn = _RangePush()
         self._pop_fn = _RangePop()

@@ -71,7 +71,7 @@ def _gcd_pow2[a: Int, b: Int]() -> Int:
 # predictably introspect and manipulate these particular functions.
 #
 # They are set to be inlined further down graph compiler stack.
-@doc_private
+@doc_hidden
 @register_internal("simd_store_into_managed_tensor_slice")
 @always_inline
 def simd_store_into_managed_tensor_slice[
@@ -137,7 +137,7 @@ def simd_store_into_managed_tensor_slice[
             store_strided(static_stride.get())
 
 
-@doc_private
+@doc_hidden
 @register_internal("simd_store_into_tensor_pointer")
 @always_inline
 def simd_store_into_tensor_pointer[
@@ -185,7 +185,7 @@ def simd_store_into_tensor_pointer[
 # GPU-safe load function that takes raw components (pointer, strides) instead of
 # ManagedTensorSlice. This avoids capturing ManagedTensorSlice in GPU kernels,
 # which doesn't work correctly due to closure capture limitations.
-@doc_private
+@doc_hidden
 @register_internal("simd_load_from_tensor_pointer")
 @always_inline
 def simd_load_from_tensor_pointer[
@@ -231,7 +231,7 @@ def simd_load_from_tensor_pointer[
     ](tensor, indices)
 
 
-@doc_private
+@doc_hidden
 @register_internal("simd_load_from_managed_tensor_slice")
 @always_inline
 def simd_load_from_managed_tensor_slice[
@@ -309,7 +309,7 @@ def simd_load_from_managed_tensor_slice[
 
 @no_inline
 def rebuild_static_tensor_specs_with_input_lambda[
-    func_type: __TypeOfAllTypes,
+    func_type: TrivialRegisterPassable,
     //,
     dtype: DType,
     rank: Int,
@@ -329,7 +329,7 @@ def rebuild_static_tensor_specs_with_input_lambda[
 
 @no_inline
 def rebuild_static_tensor_specs_with_output_lambda[
-    func_type: __TypeOfAllTypes,
+    func_type: TrivialRegisterPassable,
     //,
     dtype: DType,
     rank: Int,
@@ -349,7 +349,7 @@ def rebuild_static_tensor_specs_with_output_lambda[
 
 @no_inline
 def rebuild_static_tensor_specs_with_compute_output_lambda[
-    func_type: __TypeOfAllTypes,
+    func_type: TrivialRegisterPassable,
     //,
     dtype: DType,
     rank: Int,
@@ -964,7 +964,7 @@ struct ManagedTensorSlice[
             new_runtime_strides,
         }
 
-    @doc_private
+    @doc_hidden
     @always_inline
     def _bind_to_fused_input[
         lambda_fn: StaticTensorSpec[Self.dtype, Self.rank].in_lambda_t
@@ -986,7 +986,7 @@ struct ManagedTensorSlice[
         ), "The tensor is already bound to a lambda"
         return {self._ptr, self._spec, self._runtime_strides}
 
-    @doc_private
+    @doc_hidden
     @always_inline
     def _bind_to_fused_output[
         lambda_fn: StaticTensorSpec[Self.dtype, Self.rank].out_lambda_t
@@ -1008,7 +1008,7 @@ struct ManagedTensorSlice[
         ), "The tensor is already bound to a lambda"
         return {self._ptr, self._spec, self._runtime_strides}
 
-    @doc_private
+    @doc_hidden
     @always_inline
     def _bind_to_fused_compute_output[
         lambda_fn: StaticTensorSpec[Self.dtype, Self.rank].out_compute_lambda_t
@@ -1030,7 +1030,7 @@ struct ManagedTensorSlice[
         ), "The tensor is already bound to a lambda"
         return {self._ptr, self._spec, self._runtime_strides}
 
-    @doc_private
+    @doc_hidden
     @always_inline
     def _bind_to_fused_compute_output[
         lambda_fn: StaticTensorSpec[Self.dtype, Self.rank].out_lambda_t
@@ -1212,7 +1212,7 @@ struct StaticTensorSpecList[
     with heterogenous specs.
     """
 
-    def __getitem__[
+    def __getitem_param__[
         index: Int
     ](
         self,
@@ -1274,7 +1274,7 @@ struct VariadicTensors[
         """
         return Self.size
 
-    def __getitem__[
+    def __getitem_param__[
         index: Int
     ](
         self,
@@ -1301,7 +1301,7 @@ struct VariadicTensors[
 # ===----------------------------------------------------------------------=== #
 
 
-@doc_private
+@doc_hidden
 def get_kernel_simd_width[dtype: DType, target: StaticString]() -> Int:
     """Get the simd width used in lambda functions.
 
@@ -1483,7 +1483,7 @@ def foreach[
 # TensorCopy intrinsic used by view kernels.
 # z is a kernel output, and x a view of the input.
 @__mogg_intrinsic_attr("mogg.view_materialize")
-@doc_private
+@doc_hidden
 @no_inline
 def view_copy_impl[
     dtype: DType,

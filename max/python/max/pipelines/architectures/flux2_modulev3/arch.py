@@ -19,7 +19,7 @@ from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
 from max.pipelines.core import PixelContext
 from max.pipelines.lib import PixelGenerationTokenizer, SupportedArchitecture
-from max.pipelines.lib.config import PipelineConfig
+from max.pipelines.lib.config import MAXModelConfig, PipelineConfig
 from max.pipelines.lib.interfaces import ArchConfig
 from typing_extensions import Self
 
@@ -38,8 +38,13 @@ class Flux2ArchConfig(ArchConfig):
         return self.max_seq_len
 
     @classmethod
-    def initialize(cls, pipeline_config: PipelineConfig) -> Self:
-        if len(pipeline_config.model.device_specs) != 1:
+    def initialize(
+        cls,
+        pipeline_config: PipelineConfig,
+        model_config: MAXModelConfig | None = None,
+    ) -> Self:
+        model_config = model_config or pipeline_config.model
+        if len(model_config.device_specs) != 1:
             raise ValueError("Flux2 is only supported on a single device")
         return cls()
 
@@ -48,9 +53,10 @@ flux2_modulev3_arch = SupportedArchitecture(
     name="Flux2Pipeline_ModuleV3",
     task=PipelineTask.PIXEL_GENERATION,
     default_encoding="bfloat16",
-    supported_encodings={"bfloat16"},
+    supported_encodings={"bfloat16", "float4_e2m1fnx2"},
     example_repo_ids=[
         "black-forest-labs/FLUX.2-dev",
+        "black-forest-labs/FLUX.2-dev-NVFP4",
     ],
     pipeline_model=Flux2Pipeline,  # type: ignore[arg-type]
     context_type=PixelContext,

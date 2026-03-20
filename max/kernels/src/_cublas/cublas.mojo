@@ -81,7 +81,7 @@ def _init_dylib() -> OwnedDLHandle:
 
 @always_inline
 def _get_dylib_function[
-    func_name: StaticString, result_type: __TypeOfAllTypes
+    func_name: StaticString, result_type: TrivialRegisterPassable
 ]() raises -> result_type:
     return _ffi_get_dylib_function[
         CUDA_CUBLAS_LIBRARY(),
@@ -2597,7 +2597,7 @@ def cublasSetMatrixAsync(
 
 # def cublasGetLoggerCallback(user_callback: UNKNOWN) raises -> Result:
 #     return _get_dylib_function[
-#         "cublasGetLoggerCallback", def (UNKNOWN) -> Result
+#         "cublasGetLoggerCallback", fn (UNKNOWN) -> Result
 #     ]()(user_callback)
 
 

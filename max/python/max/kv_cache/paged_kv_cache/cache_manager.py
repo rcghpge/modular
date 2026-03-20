@@ -19,7 +19,6 @@ import logging
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 from max.driver import Buffer, Device, DevicePinnedBuffer
@@ -46,7 +45,6 @@ from max.support.math import ceildiv
 
 from ..connectors import create_connector
 from .block_manager import BlockManager
-from .increment_cache_lengths import IncrementCacheLengthsProcessor
 
 logger = logging.getLogger("max.pipelines")
 
@@ -240,11 +238,13 @@ class PagedKVCacheManager:
                 enable_runtime_checks=enable_runtime_checks,
             )
             attention_dispatch_resolver = AttentionDispatchResolver(
-                session=session,
                 device=DeviceRef.from_device(replica_devices[0]),
                 is_mla=params.is_mla,
                 n_kv_heads_per_device=params.n_kv_heads_per_device,
-                num_q_heads=params.num_q_heads,
+                num_q_heads_per_device=params.num_q_heads_per_device,
+                # TODO(SERVOPT-1094): Replace with quantized_kv_cache once
+                # SnapMLA uses a valid scale_dtype.
+                is_fp8_kv=params.is_fp8_kv_dtype,
             )
             replica_metadata = _ReplicaMetadata(
                 block_manager=block_manager,
@@ -255,13 +255,6 @@ class PagedKVCacheManager:
                 attention_dispatch_resolver=attention_dispatch_resolver,
             )
             self._replica.append(replica_metadata)
-
-        # Initialize the ragged increment cache lengths model
-        self.increment_cache_lengths_processor = IncrementCacheLengthsProcessor(
-            session=session,
-            params=self.params,
-            devices=devices,
-        )
 
     def get_pct_used_blocks_after_allocation(
         self, ctx: TextGenerationContext, replica_idx: int, num_steps: int = 1
@@ -488,23 +481,6 @@ class PagedKVCacheManager:
             batch_size, max_prompt_len, max_cached_len
         )
 
-        # MLA: the resolver usually produces the buffer on GPU (devices[0]).
-        # For empty batches, it may return host-only scalars; synthesize a
-        # device buffer in that case so MLA decode paths keep using GPU
-        # dispatch metadata.
-        # Shard 0 reuses it directly; other shards get a device copy.
-        # MHA: pack scalars into a single CPU buffer shared by all shards.
-        gpu_metadata: Buffer | None = None
-        cpu_metadata: Buffer | None = None
-        if self.params.is_mla:
-            gpu_metadata = resolved_metadata.device_buffer
-            if gpu_metadata is None:
-                gpu_metadata = resolved_metadata.to_buffer().to(
-                    replica.devices[0]
-                )
-        else:
-            cpu_metadata = resolved_metadata.to_buffer()
-
         ret_list: list[KVCacheInputsPerDevice] = []
         for tp_shard in range(len(replica.devices)):
             cache_lengths_device = cache_lengths_by_device[tp_shard]
@@ -512,16 +488,11 @@ class PagedKVCacheManager:
             cache_lengths_device.inplace_copy_from(cache_lengths_host)
             lookup_table_device.inplace_copy_from(lut_table_host)
 
-            if self.params.is_mla:
-                assert gpu_metadata is not None
-                metadata = (
-                    gpu_metadata
-                    if tp_shard == 0
-                    else gpu_metadata.to(replica.devices[tp_shard])
-                )
-            else:
-                assert cpu_metadata is not None
-                metadata = cpu_metadata
+            metadata = (
+                resolved_metadata.to(replica.devices[tp_shard])
+                if self.params.is_mla
+                else resolved_metadata
+            )
 
             ret_list.append(
                 KVCacheInputsPerDevice(
@@ -533,7 +504,6 @@ class PagedKVCacheManager:
                     if replica.device_buffer.scales is not None
                     else None,
                     attention_dispatch_metadata=metadata,
-                    dispatch_scalars=resolved_metadata,
                 )
             )
 
@@ -667,18 +637,6 @@ class PagedKVCacheManager:
         """Resets metrics for all replica managers."""
         for replica in self._replica:
             replica.block_manager.reset_metrics()
-
-    @traced
-    def increment_cache_lengths(
-        self,
-        kv_cache_inputs: KVCacheInputs,
-        prev_model_inputs: Any,
-    ) -> KVCacheInputs:
-        """Increments cache lengths for the given inputs and returns updated inputs."""
-        return self.increment_cache_lengths_processor.execute(
-            kv_cache_inputs,
-            prev_model_inputs,
-        )
 
     def reset_prefix_cache(self) -> None:
         """Resets the prefix cache for all replica managers."""

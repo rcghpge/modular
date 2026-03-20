@@ -58,6 +58,8 @@ from std.utils.static_tuple import StaticTuple
 from nn.sm100_attention_utils import (
     elect,
     elect_mma_arrive,
+    SharedMemPointer,
+    MBarType,
 )
 from nn.mha_fa3_utils import KVTMATile
 
@@ -69,9 +71,6 @@ from nn.mla_decode_sm100_utils import (
     MLA_Decode_Pack,
     num_matrix_view_rows_decode,
     OffsetPosition,
-    SharedMemPointer,
-    MBarType,
-    SharedMemTensor,
     KVPipelineGeneric,
     KVLoad2CvtProducer,
     KVLoad2CvtConsumer,
@@ -271,7 +270,7 @@ struct MLA_SM100_Decode_KV_FP8[
         ],
         scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
         scalar_args: TileTensor[
-            DType.int64, RowMajorLayout[ComptimeInt[4]], MutAnyOrigin
+            DType.int64, RowMajorLayout[ComptimeInt[3]], MutAnyOrigin
         ],
     ):
         # Softmax now includes the epilogue, so it needs more registers
