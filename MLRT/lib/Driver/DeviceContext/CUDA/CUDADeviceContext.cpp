@@ -1218,7 +1218,7 @@ CUstreamCaptureStatus CUDADeviceStream::getCaptureStatus() const {
 }
 
 ErrorOrSuccess CUDADeviceStream::beginCapture() const {
-  auto status = getCaptureStatus();
+  CUstreamCaptureStatus status = getCaptureStatus();
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_ACTIVE)
     RETURN_ERROR("stream is already capturing");
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_INVALIDATED)
@@ -1649,14 +1649,14 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                            byteSize, stream_));
   } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
-      return Error("byteSize of buffer is misaliged");
+      return Error("byteSize of buffer is misaligned");
     }
     size_t len = byteSize >> 1;
     CUDA_CHECK_ERR(driver_.cuMemsetD16Async(dst, static_cast<uint16_t>(val),
                                             len, stream_));
   } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
-      return Error("byteSize of buffer is misaliged");
+      return Error("byteSize of buffer is misaligned");
     }
     size_t len = byteSize >> 2;
     CUDA_CHECK_ERR(driver_.cuMemsetD32Async(dst, static_cast<uint32_t>(val),
@@ -1666,7 +1666,7 @@ ErrorOrSuccess CUDADeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
       return Error("unsupported valSize");
     }
     if ((byteSize & 7) != 0) {
-      return Error("byteSize of buffer is misaliged");
+      return Error("byteSize of buffer is misaligned");
     }
     uint32_t hiBits = static_cast<uint32_t>(val >> 32);
     uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
@@ -1988,6 +1988,10 @@ ErrorOrSuccess CUDADeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(
   CUDA_WITH_CTX_ERR(*this);
   return cudaFunc.occupancyMaxActiveBlocksPerMultiprocessor(
       numBlocks, blockSize, dynamicSharedMemSize);
+}
+
+bool CUDADeviceContext::isGraphCapturing() const {
+  return isStreamCapturing(cudaDriver(), cudaStream());
 }
 
 const CUDADriver &CUDADeviceContext::cudaDriver() const { return driver_; }

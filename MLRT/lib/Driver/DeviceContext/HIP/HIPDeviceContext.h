@@ -113,7 +113,8 @@ private:
 
 class HIPDeviceEvent : public DeviceEvent {
 public:
-  HIPDeviceEvent(HIPDevice &device, hipEvent_t event);
+  HIPDeviceEvent(HIPDevice &device, hipEvent_t event,
+                 bool recordedDuringCapture);
   ~HIPDeviceEvent() override;
 
   ErrorOrSuccess synchronize() override;
@@ -128,6 +129,7 @@ public:
 
 private:
   hipEvent_t event_;
+  bool recordedDuringCapture_;
 };
 
 class HIPDeviceGraph : public DeviceGraph {
@@ -310,6 +312,8 @@ public:
   ErrorOrSuccess occupancyMaxActiveBlocksPerMultiprocessor(
       int *numBlocks, DeviceFunction &func, int blockSize,
       size_t dynamicSharedMemSize) override;
+
+  bool isGraphCapturing() const override;
 
   const HIPDriver &hipDriver() const;
   hipDevice_t hipDevice() const;

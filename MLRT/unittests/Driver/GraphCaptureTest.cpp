@@ -1167,4 +1167,40 @@ TEST_F(GraphCaptureTest, GraphCaptureDoesNotEncodeAllocNodes) {
   }
 }
 
+// Test: Event handlers enqueued during graph capture are processed after
+// synchronize. This verifies that enqueueEventHandler() works correctly when
+// called inside a graph capture: the event is recorded with
+// recordedDuringCapture=true, so isReady() returns true immediately when
+// polled, and the handler fires during synchronize().
+TEST_F(GraphCaptureTest, EventHandlerCalledAfterCapture) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  // Use the context's default stream, which is also the stream used internally
+  // by enqueueEventHandler. This ensures the event is recorded on the captured
+  // stream and therefore has recordedDuringCapture=true.
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+  bool handlerCalled = false;
+
+  // Perform graph capture. Inside the capture, enqueue an event handler that
+  // records whether it was invoked.
+  ErrorOr<DeviceGraphCollection> captured =
+      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+        return ctx->enqueueEventHandler(
+            [&handlerCalled]() { handlerCalled = true; });
+      });
+
+  ASSERT_FALSE(captured.isError());
+
+  // Handler is not called until ctx.pollPendingEvents is called.
+  EXPECT_FALSE(handlerCalled);
+
+  // Synchronize to process all pending event handlers.
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // The handler must have been called.
+  EXPECT_TRUE(handlerCalled);
+}
+
 } // namespace

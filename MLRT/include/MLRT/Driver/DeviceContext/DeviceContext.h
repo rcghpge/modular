@@ -793,6 +793,10 @@ public:
                                             DeviceFunction &func, int blockSize,
                                             size_t dynamicSharedMemSize) = 0;
 
+  // Is the current execution stream for the device running in graph capture
+  // mode?
+  virtual bool isGraphCapturing() const;
+
   ErrorOrSuccess setAsCurrent() const;
 
   // Returns true if the device context is bound to the current thread.
@@ -911,10 +915,6 @@ private:
   ErrorOr<DeviceBufferRef> allocBuffer(size_t byteSize, Device::AllocMode mode);
 
   void setPendingEventHandler(PendingEventHandler *h);
-
-  // Is the current execution stream for the device running in graph capture
-  // mode?
-  bool isGraphCapturing() const;
 
   // Shared configuration object.
   // REQUIRES: `getGlobalMutex()` must be held to get and access the shared

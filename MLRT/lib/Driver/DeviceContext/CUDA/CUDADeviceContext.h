@@ -382,6 +382,8 @@ public:
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
+  bool isGraphCapturing() const override;
+
   const CUDADriver &cudaDriver() const;
   CUcontext cudaContext() const;
   CUstream cudaStream() const;

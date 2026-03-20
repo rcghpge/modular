@@ -90,7 +90,8 @@
 #define MAYBE_SYNC(ctx)                                                        \
   do {                                                                         \
     const HIPDeviceContext &hip_ctx = (ctx);                                   \
-    if (hip_ctx.syncMode()) {                                                  \
+    if (hip_ctx.syncMode() &&                                                  \
+        !isStreamCapturing(hip_ctx.hipDriver(), hip_ctx.hipStream())) {        \
       HIP_CHECK_ERR(                                                           \
           hip_ctx.hipDriver().hipStreamSynchronize(hip_ctx.hipStream()));      \
     }                                                                          \
@@ -171,6 +172,15 @@ static Error formatHipError(const char *file, int line, const char *func,
                                       llvm::Twine("HIP call failed: ") +
                                           llvm::Twine(result));
   }
+}
+
+static bool isStreamCapturing(const HIPDriver &driver, hipStream_t stream) {
+  hipStreamCaptureStatus status =
+      hipStreamCaptureStatus::hipStreamCaptureStatusNone;
+  if (driver.hipStreamIsCapturing(stream, &status) != HIPDriver::SUCCESS)
+    return false;
+
+  return status != hipStreamCaptureStatus::hipStreamCaptureStatusNone;
 }
 
 // ===== HIPDevice ===== //
@@ -781,8 +791,10 @@ ErrorOrSuccess HIPDevice::runHealthcheck() const {
 }
 
 // ===== HIPDeviceEvent ===== //
-HIPDeviceEvent::HIPDeviceEvent(HIPDevice &device, hipEvent_t event)
-    : DeviceEvent(device), event_(event) {}
+HIPDeviceEvent::HIPDeviceEvent(HIPDevice &device, hipEvent_t event,
+                               bool recordedDuringCapture)
+    : DeviceEvent(device), event_(event),
+      recordedDuringCapture_(recordedDuringCapture) {}
 
 HIPDeviceEvent::~HIPDeviceEvent() {
   const auto &hipDevice = HIPDevice::cast(device());
@@ -799,6 +811,11 @@ ErrorOrSuccess HIPDeviceEvent::synchronize() {
 }
 
 ErrorOr<bool> HIPDeviceEvent::isReady() const {
+  if (recordedDuringCapture_) {
+    // Events recorded during stream capture become graph nodes; polling them
+    // directly is not allowed, so treat them as ready.
+    return true;
+  }
   const auto &hipDevice = HIPDevice::cast(device());
   HIP_WITH_DEV_ERR(hipDevice);
   HIPDriver::Result res = hipDevice.hipDriver().hipEventQuery(event_);
@@ -879,12 +896,14 @@ ErrorOrSuccess HIPDeviceStream::synchronize() {
 
 ErrorOr<DeviceEventRef> HIPDeviceStream::enqueueEvent() const {
   HIPDevice &hipDevice = HIPDevice::cast(this->device());
+  const bool recordedDuringCapture =
+      isStreamCapturing(hipDevice.hipDriver(), stream_);
 
   HIP_WITH_DEV_ERR(hipDevice);
   hipEvent_t event;
   HIP_CHECK_ERR(hipDevice.hipDriver().hipEventCreateWithFlags(&event, 0));
   HIP_CHECK_ERR(hipDevice.hipDriver().hipEventRecord(event, stream_));
-  return HIPDeviceEventRef::create(hipDevice, event);
+  return HIPDeviceEventRef::create(hipDevice, event, recordedDuringCapture);
 }
 
 ErrorOrSuccess
@@ -1277,14 +1296,14 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                            byteSize, stream_));
   } else if (valSize == 2) {
     if ((byteSize & 1) != 0) {
-      return Error("byteSize of buffer is misaliged");
+      return Error("byteSize of buffer is misaligned");
     }
     size_t len = byteSize >> 1;
     HIP_CHECK_ERR(driver_.hipMemsetD16Async(dst, static_cast<uint16_t>(val),
                                             len, stream_));
   } else if (valSize == 4) {
     if ((byteSize & 3) != 0) {
-      return Error("byteSize of buffer is misaliged");
+      return Error("byteSize of buffer is misaligned");
     }
     size_t len = byteSize >> 2;
     HIP_CHECK_ERR(driver_.hipMemsetD32Async(dst, static_cast<uint32_t>(val),
@@ -1294,7 +1313,7 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
       return Error("unsupported valSize");
     }
     if ((byteSize & 7) != 0) {
-      return Error("byteSize of buffer is misaliged");
+      return Error("byteSize of buffer is misaligned");
     }
     uint32_t hiBits = static_cast<uint32_t>(val >> 32);
     uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
@@ -1452,11 +1471,14 @@ ErrorOrSuccess HIPDeviceContext::synchronize() {
 ErrorOr<DeviceEventRef> HIPDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
 
+  const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
+
   hipEvent_t event;
   HIP_WITH_CTX_ERR(*this);
   HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&event, 0));
   HIP_CHECK_ERR(driver_.hipEventRecord(event, stream_));
-  return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
+  return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event,
+                                   recordedDuringCapture);
 }
 
 ErrorOrSuccess HIPDeviceContext::enqueueEvent(const DeviceEvent &event) {
@@ -1471,6 +1493,8 @@ ErrorOrSuccess HIPDeviceContext::enqueueEvent(const DeviceEvent &event) {
 ErrorOr<DeviceEventRef> HIPDeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
 
+  const bool recordedDuringCapture = isStreamCapturing(driver_, stream_);
+
   // hipEventDisableTiming = 0x2, hipEventDefault = 0x0
   constexpr unsigned int kHipEventDefault = 0x0;
   constexpr unsigned int kHipEventDisableTiming = 0x2;
@@ -1480,7 +1504,9 @@ ErrorOr<DeviceEventRef> HIPDeviceContext::eventCreate(bool enableTiming) {
   HIP_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipEventCreateWithFlags(&event, flags));
-  return HIPDeviceEventRef::create(HIPDevice::cast(this->device()), event);
+  return HIPDeviceEventRef::create(
+      HIPDevice::cast(this->device()), event,
+      /*recordedDuringCapture=*/recordedDuringCapture);
 }
 
 ErrorOrSuccess HIPDeviceContext::enqueueWaitFor(DeviceEvent &event) {
@@ -1541,6 +1567,10 @@ ErrorOr<Device::MemInfo> HIPDeviceContext::getDeviceMemoryInfo() const {
   HIP_CHECK_ERR(driver_.hipStreamSynchronize(stream_));
 
   return device().getMemoryInfo();
+}
+
+bool HIPDeviceContext::isGraphCapturing() const {
+  return isStreamCapturing(hipDriver(), hipStream());
 }
 
 const HIPDriver &HIPDeviceContext::hipDriver() const { return driver_; }
