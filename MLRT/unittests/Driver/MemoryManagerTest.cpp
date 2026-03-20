@@ -547,6 +547,72 @@ TEST_F(MemoryManagerTest, LargeAllocationHandling) {
   EXPECT_NO_ERR(freeList.free(small_ptr));
 }
 
+TEST_F(MemoryManagerTest, EnabledMemoryManagerRejectsOversizeAllocation) {
+  constexpr size_t maxCacheSize = 4 * 1024 * 1024;
+
+  Device::MemInfo memInfo;
+  memInfo.free = 128 * maxCacheSize;
+  memInfo.total = 256 * maxCacheSize;
+
+  ScopedEnvVar env[] = {
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE",
+                   std::to_string(maxCacheSize)),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "25"),
+  };
+
+  CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  EXPECT_ERR_MSG(ctx->enqueueCreateBuffer(maxCacheSize + 1024),
+                 "Memory manager cannot satisfy allocation");
+}
+
+TEST_F(MemoryManagerTest,
+       EnabledMemoryManagerWithZeroChunkPercentRejectsAllocation) {
+  constexpr size_t maxCacheSize = 4 * 1024 * 1024;
+
+  Device::MemInfo memInfo;
+  memInfo.free = 128 * maxCacheSize;
+  memInfo.total = 256 * maxCacheSize;
+
+  ScopedEnvVar env[] = {
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE",
+                   std::to_string(maxCacheSize)),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "0"),
+  };
+
+  CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  EXPECT_ERR_MSG(ctx->enqueueCreateBuffer(1024),
+                 "Memory manager cannot satisfy allocation");
+}
+
+TEST_F(MemoryManagerTest, EnabledMemoryManagerRejectsUntrackedFree) {
+  constexpr size_t maxCacheSize = 4 * 1024 * 1024;
+
+  Device::MemInfo memInfo;
+  memInfo.free = 128 * maxCacheSize;
+  memInfo.total = 256 * maxCacheSize;
+
+  ScopedEnvVar env[] = {
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE",
+                   std::to_string(maxCacheSize)),
+      ScopedEnvVar("MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "25"),
+  };
+
+  CpuDeviceRef device = CpuDeviceRef::create(memInfo);
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  void *rawPtr = nullptr;
+  EXPECT_NO_ERR(device->chunkAlloc(&rawPtr, 1024, /*isHost=*/false));
+  ASSERT_NE(rawPtr, nullptr);
+
+  EXPECT_ERR_MSG(ctx->freeList().free(rawPtr),
+                 "Memory manager cannot free untracked allocation");
+  EXPECT_NO_ERR(device->chunkFree(rawPtr, /*isHost=*/false));
+}
+
 TEST_F(MemoryManagerTest, AllocationModeHandling) {
   CpuDeviceRef device = createTestDevice();
   MemoryManagerFreeList &freeList = *device->memoryManager().freeList();

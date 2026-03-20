@@ -334,7 +334,7 @@ TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
                                                   /* ownning = */ true);
   }
   // Trigger deferred error.
-  EXPECT_ERR_MSG(ctx->synchronize(), "failed");
+  EXPECT_ERR_MSG(ctx->synchronize(), "cannot free untracked allocation");
 
   free(aPtr);
 }
@@ -447,9 +447,9 @@ TEST_F(GPUDeviceContextTest, RecycleBuffers) {
   constexpr size_t mb = 1024 * kb;
   constexpr size_t sizes[8] = {3 * kb,  2 * kb,   1 * mb,  511 * kb,
                                32 * kb, 128 * mb, 32 * mb, 78 * mb};
-  // When run with MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY=true this will
-  // move all free buffers from allocCtx to freeCtx unless we regularly flush
-  // buffers from freeCtx to the parent.
+  // With an enabled GPU memory manager this will move all free buffers from
+  // allocCtx to freeCtx unless we regularly flush buffers from freeCtx to the
+  // parent.
   for (int i = 0; i < 1000; ++i) {
     size_t allocSize = sizes[i & 7];
     ASSIGN_NO_ERR(DeviceBufferRef, buf,

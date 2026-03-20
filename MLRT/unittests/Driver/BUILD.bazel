@@ -80,62 +80,6 @@ modular_cc_test(
 )
 
 modular_cc_test(
-    name = "GPUMemoryManagerFallthroughTest",
-    size = "medium",
-    srcs = [
-        "GPUMemoryManagerFallthroughTest.cpp",
-    ],
-    env = {
-        # Small cache (4MB) so allocations > 4MB fall through to the device
-        # driver instead of being served from the memory manager's chunk cache.
-        # This exercises the fallthrough path fixed in GEX-2965.
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "4194304",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "100",
-        # Disable memory-manager-only mode so the fallthrough path is reachable.
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "false",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
-    },
-    gpu_constraints = select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
-    tags = ["gpu"],
-    deps = [
-        ":TestUtils",
-        "//MLRT:Driver/DeviceContextImpl",
-        "//Support:Base",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_test(
-    name = "GPUMemoryManagerOnlyTest",
-    size = "small",
-    srcs = [
-        "GPUMemoryManagerOnlyTest.cpp",
-    ],
-    env = {
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "16777216",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "25",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "true",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
-    },
-    gpu_constraints = select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
-    tags = ["gpu"],
-    deps = [
-        ":TestUtils",
-        "//MLRT:Driver/DeviceContextImpl",
-        "//Support:Base",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_test(
     name = "DeviceContextTest",
     size = "small",
     srcs = [
@@ -191,7 +135,6 @@ modular_cc_test(
     env = {
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "1073741824",
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT": "100",
-        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "true",
         # Log memory manager operations for debugging.
         "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "true",
         # These tests exercise the host memory manager, so give them 8GB

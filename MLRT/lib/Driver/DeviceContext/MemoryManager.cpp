@@ -632,7 +632,7 @@ void MemoryManager::logErr(llvm::Twine msg) const {
 
 void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
                            bool printInfoSize) const {
-  if (chunkSize_ == 0)
+  if (!isEnabled())
     return;
 
   // Using a shared mutex to avoid interleaved output.
@@ -653,11 +653,9 @@ void MemoryManager::logErr(llvm::Twine msg, size_t info, int64_t size,
 }
 
 MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
-                             size_t alignment, bool isHost,
-                             bool useOnlyMemoryManagerMode)
-    : device_(device), isHost_(isHost),
-      useOnlyMemoryManagerMode_(useOnlyMemoryManagerMode),
-      maxCacheSize_(maxSize), chunkSize_(chunkSize),
+                             size_t alignment, bool isHost)
+    : device_(device), isHost_(isHost), maxCacheSize_(maxSize),
+      chunkSize_(chunkSize),
       // A minimum of 64 byte alignment for allocations from the memory manager.
       alignmentOffset_(std::max(64UL, alignment) - 1),
       alignmentMask_(~(std::max(64UL, alignment) - 1)),
@@ -706,6 +704,45 @@ Device::MemInfo MemoryManager::getMemoryInfo() const {
 
 bool MemoryManager::isEnabled() const { return maxCacheSize_ > 0; }
 
+Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
+                                         size_t wrappedSize) const {
+  size_t availableCacheSize = 0;
+  size_t chunkSize = 0;
+  size_t cacheSize = 0;
+  size_t maxCacheSize = 0;
+  size_t freeSize = 0;
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    availableCacheSize =
+        maxCacheSize_ >= cacheSize_ ? maxCacheSize_ - cacheSize_ : 0;
+    chunkSize = chunkSize_;
+    cacheSize = cacheSize_;
+    maxCacheSize = maxCacheSize_;
+    freeSize = freeSize_;
+  }
+
+  std::string missReason =
+      "memory manager free lists could not satisfy request";
+  if (chunkSize == 0) {
+    missReason = "memory manager chunk size is zero";
+  } else if (wrappedSize > chunkSize) {
+    missReason = "request exceeds memory manager chunk size";
+  } else if (availableCacheSize < wrappedSize) {
+    missReason = "remaining memory manager capacity is insufficient";
+  }
+
+  if (doLog_) {
+    logErr("allocate(" + TWINE(wrappedSize) + ") - reject (" + missReason + ")",
+           0, 0);
+  }
+  return Error("Memory manager cannot satisfy allocation (" + missReason +
+               "): " + getDeviceDescription() + " on " + TWINE_PTR(freeList) +
+               " (size: " + humanMemorySize(wrappedSize) +
+               " ; free: " + humanMemorySize(freeSize) +
+               " ; cache_size: " + humanMemorySize(cacheSize) +
+               " ; max_cache_size: " + humanMemorySize(maxCacheSize) + ")");
+}
+
 bool MemoryManager::allocateChunk() {
   if (shouldUseMaxSize()) {
     // Ensure that we have grown chunkSize_ to the maximum.
@@ -715,7 +752,7 @@ bool MemoryManager::allocateChunk() {
   // Avoid allocating chunks beyond the maxCacheSize_ or available memory.
   size_t maxSize = maxCacheSize_;
   if (!isHost()) {
-    // Limit to available GPU memory.
+    // Limit chunk growth to the configured cache budget and total GPU memory.
     ErrorOr<Device::MemInfo> memInfo = device().getMemoryInfo();
     maxSize = memInfo.isError() ? maxCacheSize_
                                 : std::min((*memInfo).total, maxCacheSize_);
@@ -955,7 +992,7 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     wrappedSize += redzoneSize_ * 2;
   }
 
-  if (memoryManager_.chunkSize_ != 0) {
+  if (memoryManager_.isEnabled() && memoryManager_.chunkSize_ != 0) {
     wrappedSize = (wrappedSize + memoryManager_.alignmentOffset_) &
                   memoryManager_.alignmentMask_;
 
@@ -1007,73 +1044,15 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
       }
       return desc->ptr_;
     }
-
-    // If only allowing allocations from the memory manager, raise an error on
-    // any memory manager miss instead of falling through to direct device
-    // allocation.
-    bool useOnlyMemoryManagerMode = memoryManager_.useOnlyMemoryManagerMode_;
-    size_t availableCacheSize = 0;
-    size_t chunkSize = 0;
-    size_t cacheSize = 0;
-    size_t maxCacheSize = 0;
-    size_t freeSize = 0;
-    {
-      std::lock_guard<std::mutex> lock(memoryManager_.mu_);
-      availableCacheSize =
-          memoryManager_.maxCacheSize_ - memoryManager_.cacheSize_;
-      chunkSize = memoryManager_.chunkSize_;
-      cacheSize = memoryManager_.cacheSize_;
-      maxCacheSize = memoryManager_.maxCacheSize_;
-      freeSize = memoryManager_.freeSize_;
-    }
-    if (useOnlyMemoryManagerMode) {
-      std::string missReason =
-          "memory manager free lists could not satisfy request";
-      if (wrappedSize > chunkSize) {
-        missReason = "request exceeds memory manager chunk size";
-      } else if (availableCacheSize < wrappedSize) {
-        missReason = "remaining memory manager capacity is insufficient";
-      }
-
-      if (memoryManager_.doLog_) {
-        logMsg("allocate(" + TWINE(wrappedSize) +
-                   ") - memory_manager_only reject (" + missReason + ")",
-               0, 0);
-        // Print more debugging information about the largest available blocks.
-        MemoryManagerFreeList *cur = this;
-        while (cur != nullptr) {
-          for (int i = 0; i < kNumFreeBufferLists; ++i) {
-            if (cur->freeBuffers_[i] != nullptr) {
-              cur->logMsg("max block id: " + TWINE(i) + ": (" +
-                          TWINE_PTR(cur->freeBuffers_[i]->ptr_) + " ; " +
-                          TWINE(cur->freeBuffers_[i]->size_) + ")");
-            }
-          }
-          cur = cur->parent_;
-        }
-      }
-      return Error(
-          "[Use only memory manager mode]: Memory manager cannot satisfy "
-          "allocation (" +
-          missReason + "): " + memoryManager_.getDeviceDescription() + " on " +
-          TWINE_PTR(this) + " (size: " + humanMemorySize(wrappedSize) +
-          " ; free: " + humanMemorySize(freeSize) +
-          " ; cache_size: " + humanMemorySize(cacheSize) +
-          " ; max_cache_size: " + humanMemorySize(maxCacheSize) + ")");
-    }
   }
 
-  if (memoryManager_.useOnlyMemoryManagerMode_) {
-    return Error(
-        "[Use only memory manager mode]: Memory manager cannot satisfy "
-        "allocation (memory manager is disabled): " +
-        memoryManager_.getDeviceDescription() + " on " + TWINE_PTR(this) +
-        " (size: " + humanMemorySize(wrappedSize) + ")");
-  }
+  // Enabled memory managers return an allocation error on any miss instead of
+  // bypassing the memory manager with a direct device allocation.
+  if (memoryManager_.isEnabled())
+    return memoryManager_.allocationMissError(this, wrappedSize);
 
-  // Allocate straight from device driver if cache was not able to fulfill
-  // the request. If the cache is disabled, the we pass on the allocation
-  // mode.
+  // Allocate straight from device driver only when the memory manager is
+  // disabled. In that case, preserve the caller's allocation mode.
   void *ptr = nullptr;
   if (ctx_ == nullptr) {
     // In the case of the bottom most freelist being consulted for allocation
@@ -1084,7 +1063,6 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     return Error("memAlloc failed due to missing context");
   }
   ErrorOrSuccess err = ctx_->memAlloc(&ptr, wrappedSize, mode);
-
   if (err.isError()) {
     LOG_MSG("allocate_buffer(" + TWINE(size) + ") - failed with " +
             err.getError());
@@ -1312,6 +1290,16 @@ ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
     }
   }
 
+  if (memoryManager_.isEnabled()) {
+    if (memoryManager_.doLog_) {
+      memoryManager_.logErr("free_buffer(" + TWINE_PTR(ptr) +
+                            ") - failed due to untracked allocation");
+    }
+    return Error("Memory manager cannot free untracked allocation: " +
+                 memoryManager_.getDeviceDescription() + " on " +
+                 TWINE_PTR(this) + " (ptr: " + TWINE_PTR(ptr) + ")");
+  }
+
   if (redzoneEnable_) {
     RedzoneInfo info = redzoneDeviceAllocSizeMap_.at(ptr);
     redzoneDeviceAllocSizeMap_.erase(ptr);
@@ -1382,22 +1370,21 @@ MemoryManagerFreeList::freeAllocatedDesc(MemoryManager::Desc *desc, void *ptr) {
 
 MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
                                        size_t alignment, int64_t memoryLimit) {
-  bool useOnlyMemoryManagerMode =
-      (device.api() != Device::cpuAPI) &&
-      DeviceContext::configAsBool("memory_manager_only", false);
+  auto disabledMemoryManager = [&]() {
+    return new MemoryManager(
+        /*device=*/device,
+        /*maxSize=*/0,
+        /*chunkSize=*/0,
+        /*alignment=*/alignment,
+        /*isHost=*/false);
+  };
 
   // Do not use memory manager if memory manager has been disabled by the
   // calling code (empty memInfo).
   // This is for example the case for CPU Device: We are relying on malloc
   // optimizations instead.
   if (memInfo.free == 0 || memoryLimit == 0)
-    return new MemoryManager(
-        /*device=*/device,
-        /*maxSize=*/0,
-        /*chunkSize=*/0,
-        /*alignment=*/alignment,
-        /*isHost=*/false,
-        /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
+    return disabledMemoryManager();
 
   // Determine cache size
   bool isDefaultCacheSize = false;
@@ -1410,13 +1397,7 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
 
   // Disable the memory manager if the requested cache size is 0
   if (maxCacheSize == 0 && !isDefaultCacheSize)
-    return new MemoryManager(
-        /*device=*/device,
-        /*maxSize=*/0,
-        /*chunkSize=*/0,
-        /*alignment=*/alignment,
-        /*isHost=*/false,
-        /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
+    return disabledMemoryManager();
 
   // If there's no provided size or if the provided size is larger than
   // the free memory, use a percentage of the available memory
@@ -1457,8 +1438,7 @@ MemoryManager *MemoryManager::onDevice(Device &device, Device::MemInfo memInfo,
       /*maxSize=*/maxCacheSize,
       /*chunkSize=*/chunkSize,
       /*alignment=*/alignment,
-      /*isHost=*/false,
-      /*useOnlyMemoryManagerMode=*/useOnlyMemoryManagerMode);
+      /*isHost=*/false);
   if (result->doLog_) {
     result->logErr("initial memInfo(free: " + humanMemorySize(memInfo.free) +
                    ", total: " + humanMemorySize(memInfo.total) + ")");
@@ -1492,10 +1472,7 @@ MemoryManager *MemoryManager::onHost(Device &device, size_t alignment) {
       /*maxSize=*/maxCacheSize,
       /*chunkSize=*/chunkSize,
       /*alignment=*/alignment,
-      /*isHost=*/true,
-      // We disable useOnlyMemoryManagerMode for host memory manager since it is
-      // not useful by bazel to better binpack tests on a runner.
-      /*useOnlyMemoryManagerMode=*/false);
+      /*isHost=*/true);
 }
 
 } // namespace M::Driver

@@ -78,11 +78,14 @@ private:
   friend class MemoryManagerFreeList;
 
   MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
-                size_t alignment, bool isHost, bool useOnlyMemoryManagerMode);
+                size_t alignment, bool isHost);
 
   Device &device() const;
 
   void selfCheck() const;
+
+  Error allocationMissError(const MemoryManagerFreeList *freeList,
+                            size_t wrappedSize) const;
 
   bool allocateChunk();
   bool freeLocked(void *buf);
@@ -113,11 +116,6 @@ private:
 
   // This memory manager is managing "pinned" host memory.
   const bool isHost_;
-
-  // Whether to only allocate memory from the memory manager.
-  // This setting is useful for bazel to enforce the cap on gpu memory used by
-  // a particular test. This enables better binpacking of tests on a CI runner.
-  const bool useOnlyMemoryManagerMode_;
 
   const size_t maxCacheSize_;
   size_t chunkSize_;
@@ -165,10 +163,11 @@ public:
   // Release blocks owned by this free list to the parent if available.
   void flushToParent();
 
-  // Allocate and free memory by using the `MemoryManager`. If the allocation
-  // cannot be serviced by the `MemoryManager` due to allocation size or cache
-  // capacity, then the allocation request gets transparently forwarded to the
-  // associated `DeviceContext`.
+  // Allocate and free memory by using the `MemoryManager`. If the memory
+  // manager is enabled and cannot service the allocation due to allocation
+  // size, chunk configuration, or cache capacity, then the request fails.
+  // Disabled memory managers forward allocation requests to the associated
+  // `DeviceContext`.
   ErrorOr<void *> allocate(size_t size, Device::AllocMode mode);
   ErrorOrSuccess free(void *buf);
 

@@ -134,8 +134,9 @@ free-list is tried. If the root fails, then we allocate a chunk in the
 `MemoryManager` object associated with the `DeviceContext` and retry this
 `allocate()`. When all this fails, we declare out-of-memory (OOM).
 
-MemoryManager can be suppressed by setting `chunkSize_ == 0`. All allocations
-will routed directly to the OEM driver (eg. CUDA).
+Disabled memory managers route allocations directly to the OEM driver (eg.
+CUDA). Enabled memory managers with `chunkSize_ == 0` reject allocations
+because they cannot satisfy requests from managed chunks.
 
 There are heuristics to grow chunk-sizes when the requested size is larger than
 the current chunk size.
@@ -263,8 +264,6 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   (default: false)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK`**: Enable internal
   consistency checks (default: false)
-- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: Fail on any allocation
-  that would fall back outside the memory manager (testing mode)
 - **`MODULAR_DEBUG_DEVICE_ALLOCATOR`**: List of comma separated allocator
   debugging features from the following:
   - `uninitialized-poison`: enable filling buffers with type-aware poison
@@ -354,7 +353,7 @@ MemoryManagerFreeList* freeList = deviceContext->freeList();
 // Allocate buffer
 ErrorOr<void*> ptrResult = freeList->allocate(1024, Device::AllocMode::SYNC);
 if (ptrResult.isError()) {
-    // Handle allocation failure - may fallback to direct device allocation
+    // Handle allocation failure from the memory manager
     handleError(ptrResult.takeError());
 }
 
@@ -424,8 +423,6 @@ export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG=true
 # Enable self-checks (debug builds only)
 export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK=true
 
-# Force memory-manager-only mode (testing fragmentation)
-export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY=true
 ```
 
 ### Log Output Format

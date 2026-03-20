@@ -58,6 +58,28 @@ protected:
     DeviceRef device = deviceOr.takeValue();
     return std::unique_ptr<MemoryManager>(MemoryManager::onHost(*device, 64));
   }
+
+  ErrorOr<std::unique_ptr<MemoryManager>>
+  createConfiguredDeviceCache(size_t maxCacheSize, int chunkPercent) {
+    ScopedEnvVar chunkPercentEnv(
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT",
+        std::to_string(chunkPercent));
+
+    auto deviceOr = createTestDevice();
+    if (deviceOr.isError()) {
+      return deviceOr.takeError();
+    }
+    DeviceRef device = deviceOr.takeValue();
+
+    auto memInfoOr = device->getMemoryInfo();
+    if (memInfoOr.isError()) {
+      return memInfoOr.takeError();
+    }
+
+    return std::unique_ptr<MemoryManager>(
+        MemoryManager::onDevice(*device, memInfoOr.takeValue(),
+                                device->allocationAlignment(), maxCacheSize));
+  }
 };
 
 // Keep this test as the first in the file in order to ensure that the free list
@@ -258,6 +280,46 @@ TEST_F(GPUMemoryManagerTest, LargeAllocationHandling) {
   ASSIGN_NO_ERR(void *, smallPtr, freeList.allocate(128, mode));
   EXPECT_NE(smallPtr, nullptr);
   EXPECT_NO_ERR(freeList.free(smallPtr));
+}
+
+TEST_F(GPUMemoryManagerTest, EnabledMemoryManagerRejectsOversizeAllocation) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+  ASSIGN_NO_ERR(std::unique_ptr<MemoryManager>, cache,
+                createConfiguredDeviceCache(4 * 1024 * 1024, 100));
+
+  MemoryManagerFreeList freeList(ctx.getPointer(), *cache, cache->freeList());
+
+  EXPECT_ERR_MSG(freeList.allocate(8 * 1024 * 1024, Device::AllocMode::SYNC),
+                 "Memory manager cannot satisfy allocation");
+}
+
+TEST_F(GPUMemoryManagerTest, MultipleContextsRejectOversizeAllocation) {
+  for (int i = 0; i < 4; ++i) {
+    ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+    ASSIGN_NO_ERR(std::unique_ptr<MemoryManager>, cache,
+                  createConfiguredDeviceCache(4 * 1024 * 1024, 100));
+
+    MemoryManagerFreeList freeList(ctx.getPointer(), *cache, cache->freeList());
+
+    EXPECT_ERR_MSG(freeList.allocate(8 * 1024 * 1024, Device::AllocMode::SYNC),
+                   "Memory manager cannot satisfy allocation");
+  }
+}
+
+TEST_F(GPUMemoryManagerTest,
+       DisabledMemoryManagerFallsBackToContextAllocation) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, createTestDeviceContext());
+  ASSIGN_NO_ERR(std::unique_ptr<MemoryManager>, cache,
+                createConfiguredDeviceCache(/*maxCacheSize=*/0, 100));
+
+  EXPECT_FALSE(cache->isEnabled());
+
+  MemoryManagerFreeList freeList(ctx.getPointer(), *cache, cache->freeList());
+
+  ASSIGN_NO_ERR(void *, ptr, freeList.allocate(1024, Device::AllocMode::SYNC));
+  EXPECT_NE(ptr, nullptr);
+  EXPECT_NO_ERR(freeList.free(ptr));
+  EXPECT_NO_ERR(ctx->synchronize());
 }
 
 TEST_F(GPUMemoryManagerTest, AllocationModeHandling) {
