@@ -29,7 +29,6 @@
 #include "Support/HashUtils.h"
 #include "Support/ML/CommonAttributes.h"
 #include "Support/Profiling/Tracy.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -57,76 +56,6 @@ getNamesAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
                     return StringRef(ioSpec.name);
                   });
   return result;
-}
-
-static const Driver::Device *
-getDeviceForTensorResult(const AsyncRT::AnyAsyncValueRef &result) {
-  if (auto *tensor = dyn_cast<Tensor>(result)) {
-    if (const AsyncRT::AnyAsyncValueRef *storageRef =
-            tensor->getBufferRef().getMemStorageHandleRef()) {
-      if (auto buffer = dyn_cast<Driver::DeviceBufferRef>(*storageRef))
-        return &(*buffer)->context().device();
-    }
-  }
-  return nullptr;
-}
-
-static ErrorOr<SmallVector<AnyAsyncValueRef>> selectReplayOutputsForDevices(
-    ArrayRef<uint64_t> selectedCaptureIds,
-    ArrayRef<Driver::DeviceStreamRef> replayDevices,
-    const llvm::DenseMap<uint64_t, SmallVector<AnyAsyncValueRef>>
-        &captureOutputsById) {
-  // Build the output handle set that corresponds to the exact per-device
-  // graph selection used for this replay call.
-  //
-  // Captured outputs are stored once per capture id, but replay can select
-  // different capture ids per device key (for example in data parallel replay).
-  // Therefore, choose each output slot from the capture id associated with
-  // that output's device, then mark owning on the resulting composed output set
-  // after replay.
-  if (selectedCaptureIds.empty())
-    return SmallVector<AnyAsyncValueRef>{};
-
-  auto firstOutputsIt = captureOutputsById.find(selectedCaptureIds.front());
-  if (firstOutputsIt == captureOutputsById.end()) {
-    return Error(Twine("Missing captured outputs for capture id ") +
-                 Twine(selectedCaptureIds.front()));
-  }
-
-  ArrayRef<AnyAsyncValueRef> defaultOutputs = firstOutputsIt->second;
-  SmallVector<AnyAsyncValueRef> replayOutputs;
-  replayOutputs.reserve(defaultOutputs.size());
-
-  for (size_t outputIdx = 0; outputIdx < defaultOutputs.size(); ++outputIdx) {
-    uint64_t outputCaptureId = selectedCaptureIds.front();
-
-    if (const Driver::Device *outputDevice =
-            getDeviceForTensorResult(defaultOutputs[outputIdx])) {
-      for (size_t deviceIdx = 0; deviceIdx < replayDevices.size();
-           ++deviceIdx) {
-        const Driver::Device &replayDevice = replayDevices[deviceIdx]->device();
-        if (replayDevice.id() == outputDevice->id() &&
-            replayDevice.api() == outputDevice->api()) {
-          outputCaptureId = selectedCaptureIds[deviceIdx];
-          break;
-        }
-      }
-    }
-
-    auto outputsIt = captureOutputsById.find(outputCaptureId);
-    if (outputsIt == captureOutputsById.end())
-      return Error(Twine("Missing captured outputs for capture id ") +
-                   Twine(outputCaptureId));
-
-    ArrayRef<AnyAsyncValueRef> outputs = outputsIt->second;
-    if (outputs.size() != defaultOutputs.size())
-      return Error(Twine("Captured output count mismatch for capture id ") +
-                   Twine(outputCaptureId));
-
-    replayOutputs.push_back(outputs[outputIdx].copy());
-  }
-
-  return replayOutputs;
 }
 
 //===----------------------------------------------------------------------===//
@@ -596,15 +525,14 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
 
   // Await the error, but don't propagate yet.
-  // We want to ensure all output device buffers are relinquished,
-  // even if an error was present.
+  // We want to ensure the capture results are materialized before extracting
+  // the captured graphs, even if an error was present.
   ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
 
   if (err.isError())
     return err.takeError();
 
   Driver::DeviceGraphCollection graphs = graphOrErr.takeValue();
-  graphs.setOutputs(graphResults);
 
   ArrayRef<Driver::DeviceGraphRef> capturedGraphs = graphs.getGraphs();
   if (capturedGraphs.size() != deviceCount) {
@@ -612,18 +540,10 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
                  Twine(deviceCount) + ", got " + Twine(capturedGraphs.size()));
   }
 
-  uint64_t captureId = nextCaptureId++;
-  captureOutputsById.try_emplace(
-      captureId,
-      llvm::map_to_vector(graphResults, [](const AnyAsyncValueRef &val) {
-        return val.copy();
-      }));
-
   for (size_t deviceIdx = 0; deviceIdx < deviceCount; ++deviceIdx) {
     CapturedPerDeviceGraphEntry entry;
     entry.graph = capturedGraphs[deviceIdx].copy();
     entry.inputSignature = inputSignatures[deviceIdx];
-    entry.captureId = captureId;
     perDeviceGraphs[deviceIdx].try_emplace(normalizedKeys[deviceIdx],
                                            std::move(entry));
   }
@@ -703,25 +623,15 @@ ErrorOrSuccess ExecutableModel::replay(
           validateCapturedPerDeviceEntries(normalizedKeys, inputSignatures))
     return err.takeError();
 
-  SmallVector<uint64_t> selectedCaptureIds;
-  selectedCaptureIds.reserve(normalizedKeys.size());
-
   for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx) {
     const auto &deviceMap = perDeviceGraphs[deviceIdx];
     auto it = deviceMap.find(normalizedKeys[deviceIdx]);
     ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
 
     const CapturedPerDeviceGraphEntry &entry = it->second;
-    selectedCaptureIds.push_back(entry.captureId);
     if (ErrorOrSuccess err = entry.graph->replay())
       return err.takeError();
   }
-
-  ErrorOr<SmallVector<AnyAsyncValueRef>> replayOutputsOr =
-      selectReplayOutputsForDevices(selectedCaptureIds, *streamsOr,
-                                    captureOutputsById);
-  if (replayOutputsOr.isError())
-    return replayOutputsOr.takeError();
 
   return success();
 }

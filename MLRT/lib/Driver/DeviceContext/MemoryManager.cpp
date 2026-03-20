@@ -750,7 +750,7 @@ bool MemoryManager::allocateChunk() {
   }
 
   // Cap the chunk to the remaining memory manager budget and, for GPU
-  // devices, to whatever the device actually has free right now.
+  // devices, to how much free memory the device actually has right now.
   assert(cacheSize_ <= maxCacheSize_ && "cache size <= max size precondition");
   size_t remainingBudget = maxCacheSize_ - cacheSize_;
   if (!isHost()) {
