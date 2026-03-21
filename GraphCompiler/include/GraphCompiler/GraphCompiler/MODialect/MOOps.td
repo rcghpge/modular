@@ -565,7 +565,7 @@ def MO_YieldOp : MO_ControlOp<"yield", [
 
 def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
   DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
-    ["getSuccessorRegions"]>,
+    ["getSuccessorRegions", "getMutableSuccessorOperands"]>,
   HasParent<"WhileOp">,
   MO_PreservedDuringKernelLowering,
   Pure,
