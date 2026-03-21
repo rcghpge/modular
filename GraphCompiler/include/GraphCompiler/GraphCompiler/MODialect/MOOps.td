@@ -5081,6 +5081,55 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   }];
 }
 
+def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_BundledCollective,
+  MO_SameVariadicOperandSizeInterface,
+  MO_SingleDeviceWithHostOperands<["inChain"], ["input", "signalBuffer"]>,
+  AllTypesMatch<["input", "output"]>
+]> {
+  let summary = "Per-device allreduce sum, for use inside mo.parallel.";
+  let description = [{
+    Per-device entry point for allreduce sum. Unlike
+    `mo.distributed.allreduce.sum` (which takes N tensor inputs and N signal
+    buffers), this op takes a single tensor input, a single signal buffer, and
+    a chain. It is designed to be used inside an `mo.parallel` region with
+    tupled inputs, where the tensor and signal buffer both vary per launch.
+
+    The lowering expands the single input and signal buffer to all N peer
+    inputs/buffers when constructing the kernel stub.
+
+    Example (inside mo.parallel with tupled inputs):
+    ```mlir
+    %res:2, %out_ch = mo.parallel (%arg, %sig) in
+        ((%in0, %sig0) : (!mo.tensor<[3], f32, gpu:0>,
+                          !mo.buffer<[1], ui8, gpu:0>),
+         (%in1, %sig1) : (!mo.tensor<[3], f32, gpu:1>,
+                          !mo.buffer<[1], ui8, gpu:1>))
+        chain(%ch) {
+      %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
+          : (!mo.tensor<[3], f32, gpu:0>,
+             !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
+          -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
+      mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+    }
+    ```
+  }];
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Buffer:$signalBuffer,
+    MO_Chain:$inChain
+  );
+  let results = (outs
+    MO_Tensor:$output,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
   MO_MultiDevice
 ]> {

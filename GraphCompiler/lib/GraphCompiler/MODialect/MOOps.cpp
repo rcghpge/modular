@@ -3146,6 +3146,16 @@ void AllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// BundledAllReduceSumOp
+//===----------------------------------------------------------------------===//
+
+void BundledAllReduceSumOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  effects.emplace_back(mlir::MemoryEffects::Write::get(),
+                       &getSignalBufferMutable());
+}
+
+//===----------------------------------------------------------------------===//
 // DistributedScatterOp
 //===----------------------------------------------------------------------===//
 

@@ -255,6 +255,10 @@ public:
 };
 
 template <typename ConcreteType>
+class MOBundledCollective
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOBundledCollective> {};
+
+template <typename ConcreteType>
 class MOSingleDeviceWithHostOperands
     : public mlir::OpTrait::TraitBase<ConcreteType,
                                       MOSingleDeviceWithHostOperands> {

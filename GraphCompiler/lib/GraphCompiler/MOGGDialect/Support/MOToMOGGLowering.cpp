@@ -713,6 +713,8 @@ ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
     kernelOp.setHasReadEffect(
         memEffectOp.hasEffect<mlir::MemoryEffects::Read>());
   }
+  if (moOp->hasTrait<MO::MOBundledCollective>())
+    kernelOp.setIsBundledCollective(true);
   SmallVector<Type> dpsReturns;
   for (auto [idx, val] : operandMapping.resultMapping)
     if (val.isDpsOutput())

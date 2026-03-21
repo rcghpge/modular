@@ -1317,19 +1317,15 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
     Value input = inputs[i];
     MojoValue inputValue = state.getMojoValueFor(input);
 
-    // Transform mutable inputs if kernel expects InputTensor
+    // Transform mutable inputs if kernel expects InputTensor.
+    // Skip for variadic kernel args (e.g., bundled collectives with
+    // N-expanded inputs) where the adaptor entry is a
+    // VariadicTensorOperandAdaptor, not a TensorOperandAdaptor.
     if (isMutableInputTensor(input) &&
         i < kernelAdaptor.inputArguments.size()) {
       auto *tensorInfo = std::get_if<TensorOperandAdaptor>(
           &kernelAdaptor.inputArguments[i].underlyingType);
-      ASSERT_STREAM(tensorInfo, "Expected tensor operand for kernel input #"
-                                    << i
-                                    << " when "
-                                       "matching "
-                                       "mutable "
-                                       "MO "
-                                       "operand");
-      if (tensorInfo->ioSpec == IOSpec::InputTensor)
+      if (tensorInfo && tensorInfo->ioSpec == IOSpec::InputTensor)
         inputValue = generateMutableTensorInit(input, state);
     }
 

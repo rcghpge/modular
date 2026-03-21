@@ -630,7 +630,22 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   auto loweredInputOperands = opLoweringState.getLoweredOperands();
   Value chain = loweringState.getCurrentExecuteChain();
   if (maybeInChain) {
-    chain = loweringState.lookupExecuteLoweredValue(*maybeInChain);
+    Value lowered = loweringState.lookupExecuteLoweredValue(*maybeInChain);
+    if (lowered) {
+      chain = lowered;
+    } else {
+      // Fallback to getCurrentExecuteChain() for chains that are defined
+      // inside an mo.parallel body (e.g. mo.chain.create() local to the
+      // body) and therefore have no entry in the enclosing lowering state.
+      // Chains defined in the same region as the kernel MUST have a lowered
+      // value; a null lookup there indicates a real bug.
+      Region *chainRegion = maybeInChain->getParentRegion();
+      Region *kernelRegion = moggKernelOp->getParentRegion();
+      ASSERT_STREAM(
+          chainRegion != kernelRegion,
+          << "chain defined in the kernel's own region has no lowered value: "
+          << *maybeInChain);
+    }
     loweredInputOperands.pop_back();
   }
   chain = opLoweringState.getGuardChain(chain);
@@ -828,6 +843,86 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   return success();
 }
 
+static bool isBundledKernel(MOGG::KernelOp kernelOp) {
+  return kernelOp.getIsBundledCollective();
+}
+
+/// N-expand a cloned bundled kernel so it receives inputs from ALL launches.
+///
+/// A bundled collective (e.g. allreduce) needs to see every device's data.
+/// After cloning, the kernel has one input per input group (mapped to the
+/// current launch's value via IRMapping). This function inserts additional
+/// inputs for the other launches and rewrites the AsTupleOps in the kernel
+/// body so each tuple aggregates all N launches' values.
+///
+/// `allLaunchInputs[group][launch]` provides the value for input group
+/// `group` at launch `launch`. `currentLaunch` identifies which launch
+/// this clone corresponds to (its input is already at position 0 of each
+/// group in the clone).
+static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
+                                 size_t numLaunches,
+                                 ArrayRef<SmallVector<Value>> allLaunchInputs) {
+  if (numLaunches <= 1)
+    return;
+
+  mlir::MLIRContext *ctx = kernelOp->getContext();
+  Location loc = kernelOp.getLoc();
+  Block *kBody = &kernelOp.getExecBody().front();
+  size_t numGroups = allLaunchInputs.size();
+  size_t numOrigInputs = kernelOp.getInputs().size();
+
+  // Collect AsTupleOps before modifying the body.
+  SmallVector<MOGG::AsTupleOp> tupleOps;
+  for (auto &op : *kBody)
+    if (auto tupleOp = dyn_cast<MOGG::AsTupleOp>(&op))
+      tupleOps.push_back(tupleOp);
+
+  // Track which block arg corresponds to each (group, launch) pair.
+  SmallVector<SmallVector<Value>> groupBlockArgs(numGroups);
+  for (size_t groupId = 0; groupId < numGroups; ++groupId) {
+    groupBlockArgs[groupId].resize(numLaunches);
+    groupBlockArgs[groupId][currentLaunch] = kBody->getArgument(groupId);
+  }
+
+  // Insert new block args for the other launches right after the original
+  // inputs (at position numOrigInputs), before any output/scratch placeholder
+  // args that may have been promoted.
+  size_t insertPos = numOrigInputs;
+  SmallVector<Value> extraOperands;
+  for (size_t groupId = 0; groupId < numGroups; ++groupId) {
+    for (size_t launch = 0; launch < numLaunches; ++launch) {
+      if (launch == currentLaunch)
+        continue;
+      Type ty = allLaunchInputs[groupId][launch].getType();
+      Value blockArg = kBody->insertArgument(insertPos, ty, loc);
+      groupBlockArgs[groupId][launch] = blockArg;
+      extraOperands.push_back(allLaunchInputs[groupId][launch]);
+      ++insertPos;
+    }
+  }
+
+  kernelOp.getInputsMutable().append(extraOperands);
+
+  // Rewrite the AsTupleOps: expand each 1-tuple to an N-tuple.
+  ASSERT_STREAM(numGroups == tupleOps.size(), << "expected " << numGroups
+                                              << " AsTupleOps but found "
+                                              << tupleOps.size());
+  for (size_t groupId = 0; groupId < numGroups; ++groupId) {
+    MOGG::AsTupleOp oldTuple = tupleOps[groupId];
+    SmallVector<Type> groupTypes;
+    SmallVector<Value> groupArgs;
+    for (size_t launch = 0; launch < numLaunches; ++launch) {
+      groupArgs.push_back(groupBlockArgs[groupId][launch]);
+      groupTypes.push_back(groupBlockArgs[groupId][launch].getType());
+    }
+    OpBuilder b(oldTuple);
+    auto newTuple = MOGG::AsTupleOp::create(
+        b, loc, TupleType::get(ctx, groupTypes), groupArgs);
+    oldTuple.replaceAllUsesWith(newTuple.getResult());
+    oldTuple.erase();
+  }
+}
+
 /// Fuse a set of synchronous compiled regions into one, then convert the
 /// synchronous call stubs to async dispatch with a join barrier.
 ///
@@ -898,6 +993,17 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   Block &bodyBlock = parallelOp.getBodyRegion().front();
   size_t numLaunches = parallelOp.getInputs().size();
   Value blockArg = bodyBlock.getArgument(0);
+  Value extraBlockArg =
+      bodyBlock.getNumArguments() > 1 ? bodyBlock.getArgument(1) : Value{};
+
+  // Use the explicit inChain (when present) as the starting execute chain.
+  if (parallelOp.hasChain()) {
+    Value inChainLowered =
+        loweringState.lookupExecuteLoweredValue(parallelOp.getInChain());
+    if (inChainLowered)
+      loweringState.setCurrentExecuteChain(
+          cast<TypedValue<MEF::ChainType>>(inChainLowered));
+  }
 
   // Use the explicit inChain (when present) as the starting execute chain.
   if (parallelOp.hasChain()) {
@@ -922,6 +1028,10 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   // cycles: a later group's buffer allocs may depend on the earlier group's
   // chain output.
   //
+  // Bundled kernels (collectives like allreduce) are cloned per launch like
+  // regular kernels, but each clone is N-expanded to receive inputs from ALL
+  // launches so the collective can see every device's data.
+  //
   // perLaunchCloneResults tracks inter-kernel dependencies: for each original
   // kernel result in the parallel body, we record the per-launch clone result
   // so that subsequent kernel clones can resolve their operands via IRMapping.
@@ -933,10 +1043,13 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   for (MOGG::KernelOp kernelOp : kernelOps) {
     SmallVector<Operation *> kernelClones;
     SmallVector<Operation *> groupRegions;
+    bool bundled = isBundledKernel(kernelOp);
 
     for (size_t launch = 0; launch < numLaunches; ++launch) {
       IRMapping mapper;
       mapper.map(blockArg, parallelOp.getInputs()[launch]);
+      if (extraBlockArg)
+        mapper.map(extraBlockArg, parallelOp.getExtraInputs()[launch]);
       for (auto &[origResult, cloneResults] : perLaunchCloneResults)
         mapper.map(origResult, cloneResults[launch]);
 
@@ -963,6 +1076,39 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
             if (resTy.getDeviceRef() != launchDevice)
               result.setType(resTy.cloneWith(launchDevice));
         }
+      }
+
+      if (bundled) {
+        SmallVector<SmallVector<Value>> allLaunchInputs;
+
+        // Resolve primary inputs for all launches. The kernel's first input
+        // is either the block arg (resolves to parallelOp.getInputs()) or a
+        // prior kernel's result (found in perLaunchCloneResults).
+        Value firstInput = kernelOp.getInputs().front();
+        bool fromPriorKernel = perLaunchCloneResults.count(firstInput);
+        ASSERT_STREAM(
+            fromPriorKernel || firstInput == blockArg,
+            << "bundled kernel's first input must be the block arg or a "
+               "prior kernel result");
+        SmallVector<Value> primaryInputs;
+        for (size_t launchIdx = 0; launchIdx < numLaunches; ++launchIdx) {
+          if (fromPriorKernel)
+            primaryInputs.push_back(
+                perLaunchCloneResults[firstInput][launchIdx]);
+          else
+            primaryInputs.push_back(parallelOp.getInputs()[launchIdx]);
+        }
+        allLaunchInputs.push_back(std::move(primaryInputs));
+
+        if (extraBlockArg) {
+          SmallVector<Value> extraInputs;
+          for (size_t launchIdx = 0; launchIdx < numLaunches; ++launchIdx)
+            extraInputs.push_back(parallelOp.getExtraInputs()[launchIdx]);
+          allLaunchInputs.push_back(std::move(extraInputs));
+        }
+
+        nExpandBundledKernel(clonedKernel, launch, numLaunches,
+                             allLaunchInputs);
       }
 
       MOGGKernelOpLoweringState perLaunchState(clonedKernel, loweringState);
