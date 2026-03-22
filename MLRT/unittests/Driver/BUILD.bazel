@@ -48,6 +48,7 @@ modular_cc_library(
     ],
     visibility = [
         "//GraphCompiler:__subpackages__",
+        "//MLRT/unittests/Driver/NIXL:__subpackages__",
     ],
     deps = [
         "@llvm-project//third-party/unittest:gmock",
@@ -320,39 +321,6 @@ modular_cc_test(
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Buffer",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_test(
-    name = "NixlTest",
-    size = "small",
-    srcs = ["NixlTest.cpp"],
-    # Even though this is just a CPU transfer, we still require a GPU because
-    # we build NIXL to necessarily pick up either CUDA or ROCm.
-    gpu_constraints = [
-        "//:has_gpu",
-    ],
-    tags = ["gpu"],
-    deps = [
-        "//MLRT:Driver/NIXL",
-    ],
-)
-
-modular_cc_test(
-    name = "NixlTestUcx",
-    size = "medium",
-    srcs = ["NixlTestUcx.cpp"],
-    gpu_constraints = [
-        "//:has_gpu",
-        "//:has_multi_gpu",
-    ],
-    tags = ["gpu"],
-    deps = [
-        ":TestUtils",
-        "//MLRT:Driver/DeviceContextImpl",
-        "//MLRT:Driver/NIXL",
-        "//Support:Base",
         "@llvm-project//llvm:Support",
     ],
 )

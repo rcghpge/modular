@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>

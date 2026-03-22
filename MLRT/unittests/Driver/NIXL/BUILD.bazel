@@ -1,0 +1,22 @@
+load("//bazel:api.bzl", "modular_cc_library")
+
+package(
+    default_visibility = ["//visibility:private"],
+    features = [
+        "layering_check",
+        "parse_headers",
+    ],
+)
+
+modular_cc_library(
+    name = "TestCommon",
+    testonly = True,
+    srcs = ["TestCommon.cpp"],
+    hdrs = ["TestCommon.h"],
+    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
+    deps = [
+        "//MLRT:Driver/NIXL",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//third-party/unittest:gtest",
+    ],
+)
