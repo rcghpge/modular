@@ -121,6 +121,7 @@ modular_cc_library(
     }),
     visibility = ["//MLRT:consumers"],
     deps = [
+        ":AsyncRT/RuntimeGlobals",
         ":AsyncRT/Support",
         "//Support:ADT",
         "//Support:Base",
