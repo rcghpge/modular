@@ -23,9 +23,13 @@ StringRef Driver::getStatusMessage(M_driver_status_t status) {
 }
 
 ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
-  auto driver = std::unique_ptr<Driver>(new (std::nothrow) Driver);
-  if (!driver)
+  auto *rawPtr = new (std::nothrow) Driver;
+  if (!rawPtr)
     return Error("Failed to allocate memory for Driver object");
+  // Use DriverRef (RCRef) from the start so error paths properly release the
+  // ref-counted object instead of hitting the refCount != 0 assert in
+  // ~ReferenceCounted when a unique_ptr would destroy it.
+  DriverRef driver = DriverRef::take(rawPtr);
 
   size_t atSignPos = pluginSpec.find('@');
   if (atSignPos != std::string::npos) {
@@ -67,7 +71,7 @@ ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
         driver->getStatusMessage(status));
   driver->devices.resize(numDevices);
 
-  return DriverRef::take(driver.release());
+  return driver;
 }
 
 Driver::~Driver() {
