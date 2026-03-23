@@ -1293,17 +1293,44 @@ SmallVector<OpOperand *> ParallelOp::getInChainsMutable() {
   return result;
 }
 
+LogicalResult
+ParallelOp::inferReturnTypes(MLIRContext *context,
+                             std::optional<Location> location, Adaptor adaptor,
+                             SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto inputs = adaptor.getInputs();
+  Region &body = adaptor.getBodyRegion();
+  auto yieldOp = cast<YieldOp>(body.front().getTerminator());
+
+  if (inputs.empty() || body.empty() || yieldOp.getNumOperands() != 1)
+    return failure();
+
+  Type yieldType = yieldOp.getOperand(0).getType();
+  auto yieldDevice = dyn_cast<MO::MOHasDeviceTypeInterface>(yieldType);
+
+  for (auto input : inputs) {
+    auto inputDevice = dyn_cast<MO::MOHasDeviceTypeInterface>(input.getType());
+    if (inputDevice && yieldDevice) {
+      // Use the yield type with the device of the matching input
+      inferredReturnTypes.push_back(
+          yieldDevice.cloneWithNewDevice(inputDevice.getDeviceRef()));
+    } else {
+      // No devices, just use the yield type
+      inferredReturnTypes.push_back(yieldType);
+    }
+  }
+
+  if (adaptor.getInChain())
+    inferredReturnTypes.push_back(ChainType::get(context));
+
+  return success();
+}
+
 LogicalResult ParallelOp::verify() {
   auto inputs = getInputs();
   auto extraInputs = getExtraInputs();
 
   if (inputs.empty())
     return emitOpError("requires at least one input");
-
-  size_t expectedResults = inputs.size() + (hasChain() ? 1 : 0);
-  if (getNumResults() != expectedResults)
-    return emitOpError("requires ")
-           << expectedResults << " results, got " << getNumResults();
 
   if (!extraInputs.empty() && extraInputs.size() != inputs.size())
     return emitOpError("extraInputs size (")
@@ -1343,17 +1370,6 @@ LogicalResult ParallelOp::verify() {
   if (yieldOp.getNumOperands() != 1)
     return emitOpError("yield must have exactly one operand, got ")
            << yieldOp.getNumOperands();
-
-  Type yieldType = yieldOp.getOperand(0).getType();
-  for (auto [idx, result] : llvm::enumerate(getResults())) {
-    if (isa<ChainType>(result.getType()))
-      continue;
-    if (!typesMatchIgnoringDeviceId(result.getType(), yieldType))
-      return emitOpError("result #")
-             << idx << " type " << result.getType()
-             << " does not match yield type " << yieldType
-             << " (shape, dtype, and device label must match)";
-  }
 
   return success();
 }

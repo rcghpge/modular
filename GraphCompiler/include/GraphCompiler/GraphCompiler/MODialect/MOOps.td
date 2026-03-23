@@ -597,6 +597,7 @@ def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
 def MO_ParallelOp : MO_ControlOp<"parallel", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   HasOnlyGraphRegion,
+  InferTypeOpAdaptor,
   RecursiveMemoryEffects,
   RegionKindInterface,
   SingleBlock,
