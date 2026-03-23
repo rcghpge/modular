@@ -62,6 +62,7 @@ private:
 
   std::map<nixl_backend_t, std::shared_ptr<const nixlPluginHandle>>
       loaded_plugins_;
+  std::vector<std::string> plugin_dirs_;
   std::mutex lock;
 
   // Private constructor for singleton pattern
@@ -83,6 +84,9 @@ public:
   // Load a specific plugin
   std::shared_ptr<const nixlPluginHandle>
   loadPlugin(const nixl_backend_t &plugin_name);
+
+  // Add a plugin directory
+  void addPluginDirectory(const std::string &directory);
 
   // Unload a plugin
   void unloadPlugin(const nixl_backend_t &plugin_name);

@@ -924,6 +924,41 @@ nixl_status_t nixlAgent::createXferReq(
   return nixl_status_t::NIXL_SUCCESS;
 }
 
+nixl_status_t nixlAgent::estimateXferCost(
+    const nixlXferReqH *req_hndl, std::chrono::microseconds &duration,
+    std::chrono::microseconds &err_margin, nixl_cost_t &method,
+    const nixl_opt_args_t *extra_params) const {
+  if (!req_hndl) {
+    NIXL_ERROR_FUNC << "transfer request handle is null";
+    return nixl_status_t::NIXL_ERR_INVALID_PARAM;
+  }
+
+  NIXL_SHARED_LOCK_GUARD(data->lock);
+
+  if (!req_hndl->remoteAgent.empty() &&
+      data->remoteSections.count(req_hndl->remoteAgent) == 0) {
+    NIXL_ERROR_FUNC << "invalid request handle, remote agent was invalidated "
+                       "after transfer request creation";
+    return nixl_status_t::NIXL_ERR_NOT_FOUND;
+  }
+
+  if (!req_hndl->engine) {
+    NIXL_ERROR_FUNC << "invalid request handle: engine is null";
+    return nixl_status_t::NIXL_ERR_UNKNOWN;
+  }
+
+  nixl_status_t ret = req_hndl->engine->estimateXferCost(
+      req_hndl->backendOp, *req_hndl->initiatorDescs, *req_hndl->targetDescs,
+      req_hndl->remoteAgent, req_hndl->backendHandle, duration, err_margin,
+      method, extra_params);
+  if (ret != nixl_status_t::NIXL_SUCCESS) {
+    NIXL_ERROR_FUNC << "backend '" << req_hndl->engine->getType()
+                    << "' failed to estimate the transfer cost with status "
+                    << ret;
+  }
+  return ret;
+}
+
 nixl_status_t
 nixlAgent::postXferReq(nixlXferReqH *req_hndl,
                        const nixl_opt_args_t *extra_params) const {

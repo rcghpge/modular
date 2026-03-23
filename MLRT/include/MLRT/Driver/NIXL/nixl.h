@@ -19,6 +19,7 @@
 #include "MLRT/Driver/NIXL/nixl_descriptors.h"
 #include "MLRT/Driver/NIXL/nixl_params.h"
 #include "MLRT/Driver/NIXL/nixl_types.h"
+#include <chrono>
 #include <memory>
 
 namespace M::AsyncRT::NIXL {
@@ -289,6 +290,22 @@ public:
                 const nixl_opt_args_t *extra_params = nullptr) const;
 
   /*** Operations on prepared Transfer Request ***/
+
+  /**
+   * @brief Estimate the cost of executing a transfer request.
+   *
+   * @param  req_hndl      Transfer request handle
+   * @param  duration      [out] Estimated duration of the transfer
+   * @param  err_margin    [out] Estimated error margin of the transfer
+   * @param  method        [out] Method used to compute the estimate
+   * @param  extra_params  Optional extra parameters
+   * @return nixl_status_t Error code if call was not successful
+   */
+  nixl_status_t
+  estimateXferCost(const nixlXferReqH *req_hndl,
+                   std::chrono::microseconds &duration,
+                   std::chrono::microseconds &err_margin, nixl_cost_t &method,
+                   const nixl_opt_args_t *extra_params = nullptr) const;
 
   /**
    * @brief  Submit a transfer request `req_hndl` which initiates a transfer.

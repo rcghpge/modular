@@ -13,6 +13,7 @@
 
 #include "MLRT/Driver/NIXL/backend/backend_aux.h"
 #include "MLRT/Driver/NIXL/nixl_types.h"
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -194,6 +195,16 @@ public:
     // Default implementation for file backends
     // File backends can override this to provide custom implementation
     // For now, return not supported - for object backends
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
+
+  // Estimate the cost (duration) of a transfer operation.
+  virtual nixl_status_t estimateXferCost(
+      const nixl_xfer_op_t &operation, const nixl_meta_dlist_t &local,
+      const nixl_meta_dlist_t &remote, const std::string &remote_agent,
+      nixlBackendReqH *const &handle, std::chrono::microseconds &duration,
+      std::chrono::microseconds &err_margin, nixl_cost_t &method,
+      const nixl_opt_args_t *extra_params = nullptr) const {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
 
