@@ -1,11 +1,10 @@
 # Debugging the Device Context
 
 The device context manages interactions with the different kinds of devices
-supported by our runtime.
-By default, the `DeviceContext` launches user kernels asynchronously, which makes
-debugging code launched through the `DeviceContext` difficult.
-That is further compounded by the entire process sitting on top of the `AsyncRT`
-runtime, which is itself asynchronous.
+supported by our runtime. By default, the `DeviceContext` launches user kernels
+asynchronously, which makes debugging code launched through the `DeviceContext`
+difficult. That is further compounded by the entire process sitting on top of
+the `AsyncRT` runtime, which is itself asynchronous.
 
 In Mojo, the `DeviceContext` attempts to turn failures into Mojo
 errors, but this only occurs at synchronization points which loses the context

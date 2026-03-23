@@ -47,10 +47,11 @@ used for all framework-specific options.
 
 ### Consequences
 
-The main consequence of this design (that is loading dynamic libraries at runtime)
-is that you now have to have at least the dynamic libraries you care about along
-with the `mt` binary itself. The table below contains the binaries for each
-framework, along with their CMake target to simplify building the target.
+The main consequence of this design (that is loading dynamic libraries at
+runtime) is that you now have to have at least the dynamic libraries you care
+about along with the `mt` binary itself. The table below contains the binaries
+for each framework, along with their CMake target to simplify building the
+target.
 
 > NOTE: The dynamic library prefixes/suffixes have been normalized to the Linux
 > standard for simplicity - please insert your platform's dynamic library
@@ -61,9 +62,9 @@ framework, along with their CMake target to simplify building the target.
 | `tf`                  | `libtf.so`                  | Modular TensorFlow |
 | `stock-pytorch-plugin` | `libstock-pytorch-plugin.so` | Stock pytorch       |
 
-Another consequence is that `mt --help` cannot work the way many users expect
-it to. Passing the help option to `mt` will result in getting the `mt` help,
-not any framework options. In order to get the framework-specific help options you
+Another consequence is that `mt --help` cannot work the way many users expect it
+to. Passing the help option to `mt` will result in getting the `mt` help, not
+any framework options. In order to get the framework-specific help options you
 can do (for example):
 
 ```shell
