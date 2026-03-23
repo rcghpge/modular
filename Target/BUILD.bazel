@@ -101,7 +101,6 @@ modular_cc_test(
     # run manually for now, as this isn't quite up to full impl coverage
     tags = [
         "gpu",
-        "manual",
     ],
     visibility = ["//visibility:private"],
     deps = [
