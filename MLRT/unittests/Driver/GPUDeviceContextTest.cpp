@@ -304,6 +304,12 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
 TEST_F(GPUDeviceContextTest, FailDeviceBuffers) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
 
+  // FIXME(GEX-3391): Metal returns a different error message for freeing
+  // untracked allocations, and cross-context copies produce wrong results.
+  if (ctx->device().api() == Device::metalAPI) {
+    GTEST_SKIP() << "Known Metal issue (GEX-3391)";
+  }
+
   int allocLen = 256;
 
   std::cerr << "DeviceContext failing copies(len: " << allocLen << ")\n";
@@ -544,6 +550,11 @@ TEST_F(GPUDeviceContextTest, Timers) {
 }
 
 TEST_F(GPUDeviceContextTest, MultiContextCopies) {
+  // FIXME(GEX-3391): Cross-context copies produce wrong results on Metal.
+  ASSIGN_NO_ERR(DeviceContextRef, probe, DeviceContext::create(Device::gpuAPI));
+  if (probe->device().api() == Device::metalAPI)
+    GTEST_SKIP() << "Known Metal issue (GEX-3391)";
+
   int numDevices = Device::numberOfDevices(Device::gpuAPI);
   std::cerr << "Number of GPU devices: " << numDevices << "\n";
 

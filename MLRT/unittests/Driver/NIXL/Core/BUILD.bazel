@@ -12,7 +12,7 @@ modular_cc_test(
     name = "AgentTests",
     size = "small",
     srcs = ["AgentTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
         "//MLRT:Driver/NIXL",

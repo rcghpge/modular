@@ -21,7 +21,7 @@ modular_cc_test(
     name = "TransferTests",
     size = "medium",
     srcs = ["TransferTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
 )
@@ -30,7 +30,7 @@ modular_cc_test(
     name = "MetadataExchangeTests",
     size = "medium",
     srcs = ["MetadataExchangeTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
 )
@@ -39,7 +39,7 @@ modular_cc_test(
     name = "ErrorHandlingTests",
     size = "medium",
     srcs = ["ErrorHandlingTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
 )
@@ -48,7 +48,7 @@ modular_cc_test(
     name = "QueryMemTests",
     size = "medium",
     srcs = ["QueryMemTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
 )
@@ -57,7 +57,7 @@ modular_cc_test(
     name = "ConcurrencyTests",
     size = "medium",
     srcs = ["ConcurrencyTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = UCX_TEST_DEPS,
 )
