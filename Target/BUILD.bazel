@@ -4,6 +4,29 @@ load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_library", "modular_cc_t
 
 package(default_visibility = ["//MLRT:__subpackages__"])
 
+# Host-side plugin loader: dlopen/dlsym wrapper that loads HAL plugin .so
+# files at runtime and exposes them via the M::Driver::Plugin C++ API.
+modular_cc_library(
+    name = "DriverPlugin",
+    srcs = [
+        "lib/DriverPlugin/DriverPlugin.cpp",
+        "lib/DriverPlugin/setup_driver_functions.inc",
+    ],
+    hdrs = [
+        "include/Target/DriverPlugin.h",
+    ],
+    includes = ["include"],
+    tags = ["maybe-unused"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//MLRT:Driver/DeviceContextAPI",
+        "//SDK:HAL",
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 # Simulate independent development by an external HW vendor with minimal
 # dependence on mono-repo code and bazel rules.
 modular_cc_binary(

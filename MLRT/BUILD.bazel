@@ -553,6 +553,28 @@ modular_cc_library(
 
 # Driver targets
 
+# Header-only target for DeviceContext/CompilationDevice interfaces.
+# Broken out so that //Target:DriverPlugin can depend on these headers
+# without creating a circular dependency with Driver/DeviceContextImpl.
+modular_cc_library(
+    name = "Driver/DeviceContextAPI",
+    hdrs = [
+        "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceContext.h",
+        "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
+    ],
+    includes = ["include"],
+    tags = ["maybe-unused"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":AsyncRT/Runtime",
+        "//Support:Base",
+        "//Support:Buffer",
+        "//Support:Configuration",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 # Library target exporting the different vendor platforms
 modular_shared_library(
     name = "Driver/DeviceContext",
