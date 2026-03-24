@@ -565,7 +565,6 @@ modular_cc_library(
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
     ],
     includes = ["include"],
-    tags = ["maybe-unused"],
     visibility = ["//visibility:public"],
     deps = [
         ":AsyncRT/Runtime",
@@ -646,13 +645,20 @@ modular_cc_library(
         ],
         "//conditions:default": [],
     }),
+    local_defines = select({
+        "@platforms//os:linux": ["MODULAR_LINUX"],
+        "//conditions:default": [],
+    }),
     visibility = [
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
+        "@internal_skye//:__pkg__",
     ],
     deps = [
         ":AsyncRT/Runtime",
         ":AsyncRT/RuntimeGlobals",
+        ":Driver/DeviceContextAPI",
+        "//SDK:HAL",
         "//Support:Base",
         "//Support:Buffer",
         "//Support:Configuration",
@@ -660,6 +666,7 @@ modular_cc_library(
         "//Support:ML",
         "//Support:Profiling",
         "//Support:SymbolExport",
+        "//Target:DriverPlugin",
         "@llvm-project//llvm:Support",
     ] + select({
         "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
@@ -677,6 +684,7 @@ modular_cc_library(
     hdrs = glob(["include/MLRT/Driver/HAL/*.h"]),
     includes = ["include"],
     target_compatible_with = select({
+        "//:internal_skye_enabled": [],
         "//:nvidia_gpu": [],
         "//:apple_gpu": [],
         "//:amd_gpu": [],

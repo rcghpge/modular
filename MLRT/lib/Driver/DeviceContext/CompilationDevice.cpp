@@ -14,6 +14,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
+#include "Target/DriverPlugin.h"
 
 namespace M::Driver {
 
@@ -50,9 +51,17 @@ CompilationDevice::create(StringRef api, StringRef arch) {
     // TODO: Implement MetalCompilationDevice for Apple GPU compilation
     return Error("Metal virtual device mode not yet implemented. "
                  "Only CUDA is currently supported in compile-only mode.");
-  } else {
-    return Error(llvm::Twine("Unknown virtual device API: ") + api);
   }
+
+  // Generic plugin-based compilation device (no hardcoded API names).
+  {
+    auto compilationDeviceOr = Plugin::getCompilationDevice(api, arch);
+    if (!compilationDeviceOr.isError())
+      return std::move(*compilationDeviceOr);
+    // Fall through to unknown API error if no plugin handles this.
+  }
+
+  return Error(llvm::Twine("Unknown virtual device API: ") + api);
 }
 
 } // namespace M::Driver

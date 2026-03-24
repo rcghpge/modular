@@ -16,7 +16,6 @@ modular_cc_library(
         "include/Target/DriverPlugin.h",
     ],
     includes = ["include"],
-    tags = ["maybe-unused"],
     visibility = ["//visibility:public"],
     deps = [
         "//MLRT:Driver/DeviceContextAPI",

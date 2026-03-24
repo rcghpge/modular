@@ -22,6 +22,7 @@
 #include "Support/AssertStream.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
+#include "Target/DriverPlugin.h"
 #include "Virtual/VirtualDeviceContext.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -369,6 +370,20 @@ MODULAR_CXX_EXPORT ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
       return device.takeError();
     metalError = device.getError();
 #endif
+  }
+
+  // Generic plugin-based device discovery (no hardcoded API names).
+  // Plugins self-identify via property_string("api").
+  {
+    Plugin::ensurePluginsLoaded();
+    if (Plugin::hasPluginForApi(api)) {
+      auto deviceOr = Plugin::getDevice(api, id, /*deviceMemoryLimit=*/-1);
+      if (!deviceOr.isError())
+        return deviceOr;
+      else if (api != gpuAPI)
+        return deviceOr.takeError();
+      // For gpuAPI, fall through to try other backends.
+    }
   }
 
   if (api == cpuAPI) {
@@ -1386,6 +1401,14 @@ MODULAR_CXX_EXPORT int Device::numberOfDevices(StringRef api) {
       return *count;
 #endif
   }
+  // Check plugins for any API (generic, no hardcoded API names).
+  {
+    Plugin::ensurePluginsLoaded();
+    int count = Plugin::deviceCount(api);
+    if (count > 0)
+      return count;
+  }
+
   if (api == cpuAPI) {
     // For CPU we go back to the device to get the number of supported devices.
     ErrorOr<CpuDevice &> device = CpuDevice::get(0);
@@ -1533,6 +1556,16 @@ MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {
       archName = MetalDevice::getArchName(nullptr);
     }
 #endif
+
+    // Check all loaded plugins (generic, no hardcoded vendor names).
+    if (archName.isError()) {
+      Plugin::ensurePluginsLoaded();
+      auto pluginResult = Plugin::getArchFromPlugins();
+      if (!pluginResult.isError()) {
+        vendor = pluginResult.get().first;
+        archName = pluginResult.get().second;
+      }
+    }
 
     if (archName.isError())
       return std::string();
