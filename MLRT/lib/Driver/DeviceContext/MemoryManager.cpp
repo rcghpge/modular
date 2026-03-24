@@ -62,7 +62,7 @@ private:
   MemoryManager &cache_;
   void *base_ = nullptr;
   size_t size_ = 0;
-  Chunk *next_ = nullptr;
+  std::unique_ptr<Chunk> next_ = nullptr;
   Desc *descs_ = nullptr; // Ordered list of all memory regions in this chunk.
 };
 
@@ -814,9 +814,10 @@ bool MemoryManager::allocateChunk() {
     // Keep chunks_ unmodified.
     return false;
   }
-  Chunk *chunk = new Chunk(*this, ptr, allocSize);
-  chunk->next_ = chunks_;
-  chunks_ = chunk;
+  auto chunk = std::make_unique<Chunk>(*this, ptr, allocSize);
+  chunk->next_ = std::move(chunks_);
+  chunks_ = std::move(chunk);
+
   cacheSize_ += allocSize;
   ++chunkCount_;
   LOG_ERR("allocate_chunk(" + TWINE_PTR(ptr) + " ; " + TWINE(allocSize) + ")",
@@ -831,10 +832,10 @@ void MemoryManager::selfCheck() const {
     return;
   }
 
-  Chunk *curChunk = chunks_;
+  Chunk *curChunk = chunks_.get();
   while (curChunk != nullptr) {
     curChunk->selfCheck();
-    curChunk = curChunk->next_;
+    curChunk = curChunk->next_.get();
   }
 
   LOG_ERR("selfCheck OK");
@@ -919,9 +920,9 @@ void MemoryManager::clear() {
     desc = desc->nextFree_;
   }
 
-  Chunk *chunk = chunks_;
+  std::unique_ptr<Chunk> chunk = std::move(chunks_);
   while (chunk != nullptr) {
-    Chunk *nextChunk = chunk->next_;
+    std::unique_ptr<Chunk> nextChunk = std::move(chunk->next_);
     Desc *desc = chunk->descs_;
     // Ensure each chunk only contains one free desc.
     assert(desc->ptr_ == chunk->base_);
@@ -941,9 +942,8 @@ void MemoryManager::clear() {
       abort();
     }
     assert(!err.isError());
-    delete chunk;
 
-    chunk = nextChunk;
+    chunk = std::move(nextChunk);
   }
   chunks_ = nullptr;
   for (int i = 0; i < MemoryManagerFreeList::kNumFreeBufferLists; ++i) {

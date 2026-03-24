@@ -126,7 +126,7 @@ private:
   mutable std::mutex mu_;
   // List of all chunks allocated from the driver and their total size.
   size_t cacheSize_ = 0;
-  Chunk *chunks_ = nullptr;
+  std::unique_ptr<Chunk> chunks_ = nullptr;
 
   // List of unallocated memory regions.
   std::unique_ptr<MemoryManagerFreeList> freeList_;
