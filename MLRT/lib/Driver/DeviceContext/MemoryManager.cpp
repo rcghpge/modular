@@ -10,6 +10,7 @@
 
 #include "MemoryManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "Support/Profiling/Tracy.h"
 #include "Support/StringExtras.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/WithColor.h"
@@ -1023,6 +1024,8 @@ ErrorOr<void *> MemoryManagerFreeList::redzoneFillAndWrap(void *unwrappedPtr,
 ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
                                                 Device::AllocMode mode) {
   assert(size != 0);
+  TRACY_ZONE_SCOPED_NCT("MemoryManagerFreeList::allocate", TRACY_COLOR_PURPLE,
+                        "size: " + std::to_string(size));
 
   size_t wrappedSize = size;
   if (redzoneEnable_) {
@@ -1118,6 +1121,8 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
 }
 
 MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {
+  TRACY_ZONE_SCOPED_NCT("MemoryManagerFreeList::allocateDesc",
+                        TRACY_COLOR_PURPLE, "size: " + std::to_string(size));
   assert((size & memoryManager_.alignmentMask_) == size);
   LOG_MSG("In allocateDesc with size " + TWINE(size) +
           " and primary free buffer id: " + TWINE(primaryFreeBuffers_));
@@ -1297,6 +1302,7 @@ void MemoryManagerFreeList::printRedzone(const uint8_t *dataPtr,
 }
 
 ErrorOrSuccess MemoryManagerFreeList::free(void *ptr) {
+  TRACY_ZONE_SCOPED_NC("MemoryManagerFreeList::free", TRACY_COLOR_PURPLE);
   if (ptr == nullptr)
     return success();
 
