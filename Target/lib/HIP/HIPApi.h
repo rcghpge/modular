@@ -37,7 +37,11 @@
   HIP_FN(hipMalloc)                                                            \
   HIP_FN(hipFree)                                                              \
   HIP_FN(hipHostMalloc)                                                        \
-  HIP_FN(hipHostFree)
+  HIP_FN(hipHostFree)                                                          \
+  HIP_FN(hipEventCreateWithFlags)                                              \
+  HIP_FN(hipEventDestroy)                                                      \
+  HIP_FN(hipEventSynchronize)                                                  \
+  HIP_FN(hipEventQuery)
 
 struct HIPApi {
   // dlopen handle to loaded libamdhip64.so.
