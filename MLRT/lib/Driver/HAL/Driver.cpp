@@ -109,8 +109,8 @@ ErrorOr<DeviceRef> Driver::getDevice(int64_t id) {
       return Error("Failed to get device #" + llvm::Twine(id) + ": " +
                    getStatusMessage(status));
 
-    Device *device = new (std::nothrow)
-        Device(this, deviceHandle, id, "Device #" + std::to_string(id));
+    Device *device = new (std::nothrow) Device(
+        copyRCRef(this), deviceHandle, id, "Device #" + std::to_string(id));
     if (!device)
       return Error("Failed to allocate memory for Device object");
 

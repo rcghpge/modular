@@ -14,11 +14,13 @@
 
 #include "HAL/M_driver_api.h"
 #include "Support/ErrorOr.h"
+#include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
 namespace M::Driver::HAL {
 
 class Context;
+using ContextRef = RCRef<Context>;
 
 class Event : public ReferenceCounted<Event> {
 public:
@@ -29,10 +31,9 @@ public:
   ErrorOr<bool> isReady();
 
 private:
-  explicit Event(Context *context, M_driver_event_t handle)
-      : context(context), handle(handle) {}
+  explicit Event(ContextRef context, M_driver_event_t handle);
 
-  Context *context;
+  ContextRef context;
   M_driver_event_t handle;
 
   friend Context;

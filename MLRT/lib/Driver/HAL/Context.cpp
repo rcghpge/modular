@@ -12,11 +12,16 @@
 
 namespace M::Driver::HAL {
 
+Context::Context(DeviceRef device, M_driver_context_t handle)
+    : device(std::move(device)), handle(handle) {}
+
 Context::~Context() {
   // Functions must be unloaded while the context is still valid.
   funcCache.clear();
   device->driver->plugin.context_destroy(handle);
 }
+
+DeviceRef Context::getDevice() const { return device.copy(); }
 
 ErrorOr<BufferRef> Context::allocBufferSync(size_t byteSize) {
   void *memory;
@@ -24,7 +29,7 @@ ErrorOr<BufferRef> Context::allocBufferSync(size_t byteSize) {
           device->driver->plugin.memory_alloc_sync(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));
   Buffer *buffer = new (std::nothrow)
-      Buffer(this, Buffer::AllocMode::kSync, memory, byteSize);
+      Buffer(copyRCRef(this), Buffer::AllocMode::kSync, memory, byteSize);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);
@@ -36,7 +41,7 @@ ErrorOr<BufferRef> Context::allocBufferPinned(size_t byteSize) {
           device->driver->plugin.memory_alloc_pinned(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));
   Buffer *buffer = new (std::nothrow)
-      Buffer(this, Buffer::AllocMode::kPinned, memory, byteSize);
+      Buffer(copyRCRef(this), Buffer::AllocMode::kPinned, memory, byteSize);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);
@@ -47,7 +52,8 @@ ErrorOr<QueueRef> Context::createQueue() {
   if (M_driver_status_t status =
           device->driver->plugin.queue_create(handle, &queueHandle))
     return Error(device->driver->getStatusMessage(status));
-  std::unique_ptr<Queue> queue(new (std::nothrow) Queue(this, queueHandle));
+  std::unique_ptr<Queue> queue(new (std::nothrow)
+                                   Queue(copyRCRef(this), queueHandle));
   if (!queue)
     return Error("Failed to allocate memory for Queue object");
   return QueueRef::take(queue.release());
@@ -58,7 +64,8 @@ ErrorOr<EventRef> Context::createEvent() {
   if (M_driver_status_t status =
           device->driver->plugin.event_create(handle, &eventHandle))
     return Error(device->driver->getStatusMessage(status));
-  std::unique_ptr<Event> event(new (std::nothrow) Event(this, eventHandle));
+  std::unique_ptr<Event> event(new (std::nothrow)
+                                   Event(copyRCRef(this), eventHandle));
   if (!event)
     return Error("Failed to allocate memory for Event object");
   return EventRef::take(event.release());
@@ -86,7 +93,8 @@ Context::loadFunction(llvm::StringRef moduleName, llvm::StringRef functionName,
           &funcHandle))
     return Error(device->driver->getStatusMessage(status));
 
-  FunctionRef ref = FunctionRef::take(new Function(this, funcHandle));
+  FunctionRef ref =
+      FunctionRef::take(new Function(copyRCRef(this), funcHandle));
   {
     std::unique_lock<std::shared_mutex> lock(funcCacheMutex);
     funcCache[std::move(key)] = ref.copy();

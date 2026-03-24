@@ -13,6 +13,9 @@
 
 namespace M::Driver::HAL {
 
+Queue::Queue(ContextRef context, M_driver_queue_t handle)
+    : context(std::move(context)), handle(handle) {}
+
 Queue::~Queue() {
   context->device->driver->plugin.queue_destroy(context->handle, handle);
 }
@@ -23,7 +26,7 @@ ErrorOr<BufferRef> Queue::allocBufferAsync(size_t byteSize) {
           context->device->driver->plugin.memory_alloc_async(handle, byteSize,
                                                              &memory))
     return Error(context->device->driver->getStatusMessage(status));
-  Buffer *buffer = new (std::nothrow) Buffer(this, memory, byteSize);
+  Buffer *buffer = new (std::nothrow) Buffer(copyRCRef(this), memory, byteSize);
   if (!buffer)
     return Error("Failed to allocate memory for Buffer object");
   return BufferRef::take(buffer);

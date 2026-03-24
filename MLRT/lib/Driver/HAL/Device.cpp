@@ -10,6 +10,10 @@
 
 namespace M::Driver::HAL {
 
+Device::Device(DriverRef driver, M_driver_device_t handle, int64_t id,
+               std::string name)
+    : driver(std::move(driver)), handle(handle), id(id), name(name) {}
+
 Device::~Device() {}
 
 ErrorOr<StringRef> Device::getName() const { return name; }
@@ -22,7 +26,7 @@ ErrorOr<ContextRef> Device::createContext() {
           driver->plugin.context_create(handle, &contextHandle)) {
     return Error(driver->getStatusMessage(status));
   }
-  Context *context = new (std::nothrow) Context(this, contextHandle);
+  Context *context = new (std::nothrow) Context(copyRCRef(this), contextHandle);
   if (context == nullptr) {
     return Error("Failed to allocate memory for Context object");
   }

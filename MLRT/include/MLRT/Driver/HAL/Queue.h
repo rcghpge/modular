@@ -20,6 +20,7 @@
 namespace M::Driver::HAL {
 
 class Context;
+using ContextRef = RCRef<Context>;
 
 class Buffer;
 using BufferRef = RCRef<Buffer>;
@@ -38,10 +39,9 @@ public:
   ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
 
 private:
-  explicit Queue(Context *context, M_driver_queue_t handle)
-      : context(context), handle(handle) {}
+  explicit Queue(ContextRef context, M_driver_queue_t handle);
 
-  Context *context;
+  ContextRef context;
   M_driver_queue_t handle;
 
   friend class Context;

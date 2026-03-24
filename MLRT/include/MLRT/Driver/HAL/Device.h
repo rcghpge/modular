@@ -23,6 +23,7 @@ class Context;
 using ContextRef = RCRef<Context>;
 
 class Driver;
+using DriverRef = RCRef<Driver>;
 
 class Device : public ReferenceCounted<Device> {
 public:
@@ -33,11 +34,10 @@ public:
   ErrorOr<ContextRef> createContext();
 
 private:
-  explicit Device(Driver *driver, M_driver_device_t handle, int64_t id,
-                  std::string name)
-      : driver(driver), handle(handle), id(id), name(name) {}
+  explicit Device(DriverRef driver, M_driver_device_t handle, int64_t id,
+                  std::string name);
 
-  Driver *driver;
+  DriverRef driver;
   M_driver_device_t handle;
 
   int64_t id;

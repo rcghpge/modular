@@ -11,6 +11,15 @@
 
 namespace M::Driver::HAL {
 
+Buffer::Buffer(ContextRef context, AllocMode mode, void *memory,
+               size_t byteSize)
+    : context(std::move(context)), memory(memory), byteSize(byteSize),
+      mode(mode) {}
+
+Buffer::Buffer(QueueRef queue, void *memory, size_t byteSize)
+    : context(queue->context.copy()), queue(std::move(queue)), memory(memory),
+      byteSize(byteSize), mode(AllocMode::kAsync) {}
+
 Buffer::~Buffer() {
   switch (mode) {
   case AllocMode::kPinned:

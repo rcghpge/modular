@@ -131,6 +131,24 @@ protected:
   std::vector<ContextRef> contexts;
 };
 
+TEST_F(DriverHALTest, ChildKeepsParentAlive) {
+  ASSIGN_NO_ERR(DeviceRef, device, driver->getDevice(0));
+  ASSIGN_NO_ERR(ContextRef, context, device->createContext());
+
+  // Drop parent references -- children keep them alive via RCRef.
+  device.reset();
+  driver.reset();
+
+  // Context should still be usable.
+  ASSIGN_NO_ERR(BufferRef, syncBuffer, context->allocBufferSync(128));
+  ASSIGN_NO_ERR(BufferRef, pinnedBuffer, context->allocBufferPinned(128));
+
+  // getDevice() should return a valid DeviceRef.
+  DeviceRef recoveredDevice = context->getDevice();
+  ASSIGN_NO_ERR(int64_t, id, recoveredDevice->getId());
+  EXPECT_EQ(id, 0);
+}
+
 TEST_F(DriverHALContextTest, ContextAllocBufferHOST) {
   for (ContextRef &context : contexts) {
     ErrorOr<BufferRef> bufferOr = context->allocBufferPinned(/*byteSize=*/128);

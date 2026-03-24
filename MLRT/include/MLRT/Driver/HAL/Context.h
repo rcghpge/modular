@@ -77,10 +77,9 @@ public:
                llvm::StringRef debugLevel = "", int32_t optimizationLevel = -1);
 
 private:
-  explicit Context(Device *device, M_driver_context_t handle)
-      : device(device), handle(handle) {}
+  explicit Context(DeviceRef device, M_driver_context_t handle);
 
-  Device *device;
+  DeviceRef device;
   M_driver_context_t handle;
 
   std::shared_mutex funcCacheMutex;

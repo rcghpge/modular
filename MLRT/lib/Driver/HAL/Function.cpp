@@ -10,6 +10,9 @@
 
 namespace M::Driver::HAL {
 
+Function::Function(ContextRef context, M_driver_function_t handle)
+    : context(std::move(context)), handle(handle) {}
+
 Function::~Function() {
   context->device->driver->plugin.function_unload(
       context->device->driver->handle, context->handle, handle);

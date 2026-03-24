@@ -19,16 +19,16 @@
 namespace M::Driver::HAL {
 
 class Context;
+using ContextRef = RCRef<Context>;
 
 class Function : public ReferenceCounted<Function> {
 public:
   ~Function();
 
 private:
-  explicit Function(Context *context, M_driver_function_t handle)
-      : context(context), handle(handle) {}
+  explicit Function(ContextRef context, M_driver_function_t handle);
 
-  Context *context;
+  ContextRef context;
   M_driver_function_t handle;
 
   friend class Context;
