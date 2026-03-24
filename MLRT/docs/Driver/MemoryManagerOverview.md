@@ -97,8 +97,7 @@ The source of the above image is available
 
 The memory manager operates on a two-level hierarchy:
 
-1. **MemoryManager**: Owns (relatively large) memory chunks allocated from
-   CUDA/HIP
+1. **MemoryManager**: Owns (relatively large) memory chunks allocated from CUDA/HIP
 2. **MemoryManagerFreeList**: Manages free blocks within chunks, with hierarchy:
    - **Parent/Shared**: Global free list accessible to all DeviceContexts
    - **DeviceContext-local**: Stream-specific free lists for better cache
@@ -112,10 +111,10 @@ a (new) `Chunk` and split off a block from it (and track its `Desc`riptor).
 invoke the OEM-Driver to (cuda)Free each at the end. This could have been any
 other kind of container, like `vector`.
 
-`Desc`-s on the other hand need to be in doubly-linked lists (blue lines)
-because of the need to coalesce/defragment. This is done greedily at the time
-the `Desc` is merged back into a free-list. The `next` and `prev` pointers in a
-`Desc` chain contiguous (in-use or free) blocks within a chunk.
+`Desc`-s on the other hand need to be in doubly-linked lists (blue lines) because
+of the need to coalesce/defragment. This is done greedily at the time the `Desc`
+is merged back into a free-list. The `next` and `prev` pointers in a `Desc`
+chain contiguous (in-use or free) blocks within a chunk.
 
 `Desc`-s are also part of a second doubly-linked list (red lines), characterized
 by `nextFree` and `prevFree`. These construct the free-list. Blocks may be
@@ -169,9 +168,9 @@ In the diagram above, we have allocated two chunks of memory with a set of
 memory blocks each. A chunk starts with a single large memory block which is
 subdivided into multiple blocks as needed to satisfy allocation requests.
 
-There are 5 blocks on the shared MemoryManager free list (aka parent) and 1
-block on the MemoryManager free list associated with the stream in the single
-(in this example!) DeviceContext.
+There are 5 blocks on the shared MemoryManager free list (aka parent) and 1 block
+on the MemoryManager free list associated with the stream in the single (in this
+example!) DeviceContext.
 
 ### Key Components
 
@@ -301,10 +300,9 @@ export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK=true
 specify, in GB, the default MemoryManager capacity for all tests.
 
 - `oss/modular/bazel/internal/config.bzl`, the `get_default_test_env()` function
-uses this value to compute and set various
-`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_*` environment variables.
-- In order to override this per test, follow this example (from
-  `docs/internal/BazelBuildFiles.md`):
+uses this value to compute and set various `MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_*`
+environment variables.
+- In order to override this per test, follow this example (from `docs/internal/BazelBuildFiles.md`):
 
 ```bzl
 modular_py_test(
@@ -468,8 +466,7 @@ Monitor these metrics in production:
 
 - `MemoryManager` was originally called `BufferCache`.
 
-- `MemoryManager::DescMap` is basically just a hash-map. This could very well
-  have
+- `MemoryManager::DescMap` is basically just a hash-map. This could very well have
 been std::unordered_map except that we implement per-bucket mutexes for
 fine-grain locking, for performance (hence the custom implementation).
 - The MemoryManager feature looks a lot like CUDA's mempools but in early
@@ -481,10 +478,9 @@ management so we built this.
 claimed its capacity in a single shot from the OEM driver in its CTOR. When its
 capacity was expressed in relative measure (eg. default of 90% (of available
 device memory!)), it left no room to run other applications (eg: packing
-multiple tests per node for CI/CD efficiency). Chunking was then introduced as a
-way to gently grow allocations based on actual demand even if its capacity was
-estimated very loosely.
-[CI/CD has been using `chunk-percent`=100](https://modular-ai.slack.com/archives/C05M07LTK0V/p1767836840942569?thread_ts=1767834473.328959&cid=C05M07LTK0V)
+multiple tests per node for CI/CD efficiency). Chunking was then introduced as
+a way to gently grow allocations based on actual demand even if its capacity was
+estimated very loosely. [CI/CD has been using `chunk-percent`=100](https://modular-ai.slack.com/archives/C05M07LTK0V/p1767836840942569?thread_ts=1767834473.328959&cid=C05M07LTK0V)
 for a while now and effective turns off chunking so we now retain it to control
 memory pressure. We expect use-cases like PyTorch inter-op to benefit from this.
 - Each `MemoryManagerFreeList` is internally implemented with "multi-buffering";

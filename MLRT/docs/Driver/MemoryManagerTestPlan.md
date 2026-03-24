@@ -2,10 +2,9 @@
 
 ## Overview
 
-This document outlines a comprehensive testing plan for the AsyncRT
-MemoryManager system. The memory manager is a sophisticated memory management
-component that requires thorough testing to ensure correctness, performance, and
-reliability.
+This document outlines a comprehensive testing plan for the AsyncRT MemoryManager
+system. The memory manager is a sophisticated memory management component that
+requires thorough testing to ensure correctness, performance, and reliability.
 
 ## Current State
 
@@ -24,8 +23,7 @@ device context functionality.
 ### Core Classes
 
 - `MemoryManager`: Memory pool manager with configurable chunk and cache sizes
-- `MemoryManagerFreeList`: Hierarchical free list with parent-child
-  relationships
+- `MemoryManagerFreeList`: Hierarchical free list with parent-child relationships
 - `MemoryManager::Chunk`: Individual memory chunks allocated from device
 - `MemoryManager::Desc`: Descriptors tracking memory regions
 - `MemoryManager::DescMap`: Hash map for fast pointer-to-descriptor lookup

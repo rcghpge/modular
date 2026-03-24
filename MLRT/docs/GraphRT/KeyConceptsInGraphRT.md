@@ -1,7 +1,7 @@
 # Key Concepts in GraphRT
 
 The main idea of GraphRT is an "executor" which efficiently executes a
-user-defined program expressed as a dataflow graph. Like MLIR, the framework
+user-defined program expressed as a dataflow graph.  Like MLIR, the framework
 is domain-independent - the focus is making it easy to define and extend
 domain-specific abstractions and provide the infrastructure for working in this
 domain.
@@ -14,9 +14,9 @@ GraphRT.
 As with [the AsyncRT library](../AsyncRT/README.md), GraphRT is
 designed to be completely non-blocking, and built on the principle of executing
 asynchronous operations across an efficient thread pool (which aims to have a
-1:1 mapping to hardware threads in the steady state). The implementation of
+1:1 mapping to hardware threads in the steady state).  The implementation of
 the MEF executor is fully thread safe, but uses lightweight atomic operations
-instead of locks. As with AsyncRT, GraphRT is designed with full error
+instead of locks.  As with AsyncRT, GraphRT is designed with full error
 propagation support.
 
 GraphRT is also compatible with "regions of synchronicity" for specialized
@@ -24,7 +24,7 @@ situations that don't benefit from asynchronous designs.
 
 ## Primitives: the ingredients of a GraphRT program
 
-A GraphRT program is usually described in MLIR form. For example, here is an
+A GraphRT program is usually described in MLIR form.  For example, here is an
 example of a Fibonacci computation:
 
 ```mlir
@@ -54,7 +54,7 @@ actual computation.
 
 This example is using the
 ["grt" dialect](../../include/MLRT/GraphRT/GRTDialect/), which is just one of
-many MLIR dialects that provide GraphRT primitives. In the case of the `grt`
+many MLIR dialects that provide GraphRT primitives.  In the case of the `grt`
 dialect, this includes simple integer and control flow operations like `grt.if`
 and `grt.invoke`.
 
@@ -65,7 +65,7 @@ interfaces, as well as the CPU side of drivers for diverse accelerators. It is
 powerful to be able to drive these from a consistent low-level runtime, and
 being "hackable" makes it possible to explore and iterate on new ideas quickly.
 
-This works because GraphRT "doesn't know what it is doing. Each primitive is
+This works because GraphRT "doesn't know what it is doing.  Each primitive is
 typically defined as a C++ function and is registered with GraphRT at load time.
 This keeps GraphRT domain independent, and the primitive libraries are what
 carry dependencies on various bits of hardware or heavy software libraries, not
@@ -73,20 +73,20 @@ the GraphRT implementation itself.
 
 Primitive implementation functions take and return some number of `AsyncValue`
 objects, some number of MLIR attributes, and optionally regions and invokable
-references. You can optionally use the [MLIR ODS
+references.  You can optionally use the [MLIR ODS
 framework](https://mlir.llvm.org/docs/OpDefinitions/) to define these primitives
 in a way understood by MLIR, which gives access to pretty syntax, verification
-and makes it easier for compiler to generate the operations. For more details
+and makes it easier for compiler to generate the operations.  For more details
 on defining primitives, please see the [Defining Primitives in
 GraphRT](DefiningPrimitives.md) guide.
 
 ## Inputs/outputs of primitives can be arbitrary C++ types
 
 Typical machine learning interpreters hard code the input and output types for
-operations as some framework-specific "Tensor" type. GraphRT is far more
+operations as some framework-specific "Tensor" type.  GraphRT is far more
 general than that, allowing values of any arbitrary C++ type to be produced or
-consumed by primitives in its interpreter. These types don't even need to be
-copyable or movable. This is one of the reasons that GraphRT is multi-framework
+consumed by primitives in its interpreter.  These types don't even need to be
+copyable or movable.  This is one of the reasons that GraphRT is multi-framework
 capable, and it opens up other opportunities as well.
 
 While the Fibonacci example above use integers for simplicity, you can pass
@@ -98,9 +98,9 @@ another runtime.
 
 The key thing to know here is that the MEF executor does not type checking
 itself: it is fully dynamically typed, taking and passing around `AsyncValue`s
-to primitives. Each `AsyncValue` carries around a lightweight C++ type
+to primitives.  Each `AsyncValue` carries around a lightweight C++ type
 descriptor (queryable with `->isType<T>()`), which allows the primitives to
-be completely dynamically typed if they want. For example, you don't want a
+be completely dynamically typed if they want.  For example, you don't want a
 different "invoke" primitive for each signature you want to support.
 
 On the other hand, many primitives do have static types they work with, for
@@ -115,28 +115,28 @@ safe "trusted compute" execution format like Java bytecode tried to be.
 To efficiently execute a kernel graph, the runtime does not directly process the
 program’s MLIR representation. Instead the
 [MLIRToMEF](../../include/MLRT/GraphRT/MLIRToMEF.h) library converts the program
-to an in-memory format called Modular Executor Format, or **MEF**. The MEF
+to an in-memory format called Modular Executor Format, or **MEF**.  The MEF
 format is isomorphic to the MLIR representation, but is `mmap`-able, more
 cache-friendly, and requires many fewer dependencies for execution compared to
-executing MLIR's directly. This is good for code size and performance.
+executing MLIR's directly.  This is good for code size and performance.
 For more information on the file format, see the [Modular Executor Format (MEF)
 File Format](ModularExecutorFormat.md) documentation.
 
 ## MEF executor: why not call it an "interpreter"?
 
 The `MEFExecutor` is the library that reads a MEF file and executes invokables
-on demand. It is designed to be low-dependency (and thus low code size) and
+on demand.  It is designed to be low-dependency (and thus low code size) and
 efficient.
 
 A key design point of the MEF executor is that it executes primitives "strictly"
 when their dataflow graph inputs are available, not according to their lexical
-order in the invokable. Recall that each primitive takes and returns
-asynchronous values and may have unpredictable latency. Because we cannot (in
+order in the invokable.  Recall that each primitive takes and returns
+asynchronous values and may have unpredictable latency.  Because we cannot (in
 general) know how long each operation in the program will take, the compiler
 cannot produce a reasonable static schedule for an invokable.
 
 Instead, GraphRT uses a dataflow executor that trigger execution of strict
-primitives once all their inputs are available. For example, consider
+primitives once all their inputs are available.  For example, consider
 execution of this invokable that computes `(a+a)+(b+b)`:
 
 ```mlir
@@ -160,7 +160,7 @@ add.
 Executing the primitives in dataflow order is a powerful feature that allows us
 to work with accelerators and concurrent CPU algorithms efficiently, and makes
 it much more likely that we'll continue discovering work to keep our thread
-queues full. However, it is such a fundamental difference from most
+queues full.  However, it is such a fundamental difference from most
 interpreters (which generally execute things "top down" with a program counter)
 that we remind ourselves of it by calling it an "Executor" instead of an
 "Interpreter".
@@ -172,10 +172,10 @@ information.
 ## Chains for side effect ordering
 
 One challenge with dataflow-based execution is that it only works correctly in
-the case of side-effect free arithmetic operations. While this is the majority
+the case of side-effect free arithmetic operations.  While this is the majority
 case in many domains, we also want to support operations that can print, can
 read or write mutable buffers, or need other synchronization constructs that we
-haven't dreamed of yet. Consider the following pseudo-code program:
+haven't dreamed of yet.  Consider the following pseudo-code program:
 
 ```mlir
 mef.invokable @dataflow_example(%a: i32, %b: i32) {
@@ -189,14 +189,14 @@ mef.invokable @dataflow_example(%a: i32, %b: i32) {
 
 With a normal interpreter, this would be no problem: the operations execute in
 top-down lexical order, so the first print would be ordered before the second
-printout. However, we have a dataflow executor, and as we discussed above, the
+printout.  However, we have a dataflow executor, and as we discussed above, the
 `%b2` value may be computed earlier than the `%a2` value, which could cause the
 print-outs to come out of order.
 
 The solution to this problem is to explicitly serialize side effects by turning
 the implicit dependencies into explicitly ordered dataflow edges. We do this
-with a `M::AsyncRT::Chain` type, which is threaded through the operations. This
-is a legal MEF dialect program:
+with a `M::AsyncRT::Chain` type, which is threaded through the operations. This is
+a legal MEF dialect program:
 
 ```mlir
 mef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !mef.chain) -> !mef.chain {
@@ -223,17 +223,17 @@ notion of strict and non-strict primitives.
 
 In addition to being a "[future or promise of a
 value](https://en.wikipedia.org/wiki/Futures_and_promises)", an `AsyncValue` may
-also be fulfilled with an `Error` value. This is important because many
+also be fulfilled with an `Error` value.  This is important because many
 asynchronous operations can fail, or depend transitively on other operations
 that fail (for example a matrix mutiplication may produce a shape error,
-invalidating any computation that uses its results). One challenge with this is
+invalidating any computation that uses its results).  One challenge with this is
 that it is very easy to forget to write code "defensively" that checks for all
 the possible error conditions.
 
 The GraphRT executor directly supports error propagation for strict primitives:
 if any input operand to a primitive is resolved to an error, the executor will
 implicitly skip invoking the primitive and propagate the error to the result
-value(s) of the primitive. This ensures that errors are correctly propagated,
+value(s) of the primitive.  This ensures that errors are correctly propagated,
 and moves the burden of error propagation from primitives out to the executor
 itself.
 
@@ -268,7 +268,7 @@ mef.invokable @dataflow_example(%a: i32, %b: i32) -> i32 {
 
 As we discussed earlier, it is possible that the `%a` and `%b` inputs are
 available at different times, and it is entirely common for an "add" operation
-to take longer to execute than "some long latency operation". In higher level
+to take longer to execute than "some long latency operation".  In higher level
 machine learning graphs, some operators take a lot less time to execute than
 others - for example some might be accelerated and some might not.
 
@@ -280,8 +280,8 @@ loaded up as we can.
 
 For this reason, we don't want `grt.invoke` to be a strict primitive that waits
 for both arguments to become available before dispatching the async call to
-`@other_invokable`. Instead, we want to start the execution as soon as *either*
-argument is available. As such, we mark `grt.invoke` as a non-strict primitive.
+`@other_invokable`.  Instead, we want to start the execution as soon as *either*
+argument is available.  As such, we mark `grt.invoke` as a non-strict primitive.
 
 Non-strict primitives are generally useful for control flow operations (for
 example `grt.if` can start execution of its body as soon as the condition
@@ -294,16 +294,16 @@ condition is known, the `AsyncValue` for the right side can be forwarded on as
 the result.
 
 A primitive may opt-into non-strict behavior by adopting the `NonStrictOp` trait
-in its MLIR ODS description. Doing so means it needs to be ready to handle
+in its MLIR ODS description.  Doing so means it needs to be ready to handle
 argument `AsyncValue`s that are not ready yet, so it requires more careful logic
-when implementing the primitive. Please see the [Defining Primitives in
+when implementing the primitive.  Please see the [Defining Primitives in
 GraphRT](DefiningPrimitives.md) guide for more information.
 
 ## Lowering to MEF
 
 Finally, MEF and the MEF dialect in MLIR is designed to be a low-level
-execution-oriented format. While it is possible to do some optimizations at
+execution-oriented format.  While it is possible to do some optimizations at
 this level, it is expected that machine learning frameworks will "lower" to this
-level of representation using MLIR's fantastic support for doing this. As such,
+level of representation using MLIR's fantastic support for doing this.  As such,
 the machine learning graph will pass through many levels of abstraction,
 exposing lots of opportunities for optimization.

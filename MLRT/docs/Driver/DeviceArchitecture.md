@@ -382,8 +382,7 @@ VirtualDevice
 **Supported APIs**:
 
 - **CUDA**: Uses `CUDACompilationDevice` for PTX → CUBIN compilation
-- **HIP**: Uses `HIPCompilationDevice` to store target architecture (gfx942,
-  gfx950)
+- **HIP**: Uses `HIPCompilationDevice` to store target architecture (gfx942, gfx950)
   - Compilation happens through KGEN's LLVM AMDGPU backend
   - No runtime compilation needed
 - **Metal**: Future support
@@ -545,8 +544,7 @@ auto cubinOrErr = ctx.compileFunction(ptxCode, "debug", 3, "sm_90");
 
 ### Separation of Concerns
 
-1. **Runtime** (Driver) and **Compilation** (CompilationDriver) are completely
-   separate
+1. **Runtime** (Driver) and **Compilation** (CompilationDriver) are completely separate
    - Different libraries: libcuda.so.1 vs libnvptxcompiler.so
    - Different initialization and error handling
    - Can load compilation driver without runtime driver
@@ -589,10 +587,8 @@ Each component is independent and can be developed/tested separately.
 
 ## References
 
-- `MLRT/include/MLRT/Driver/DeviceContext/DeviceContext.h`: Core device
-  interfaces
-- `MLRT/include/MLRT/Driver/DeviceContext/CompilationDevice.h`: Compilation
-  interface
+- `MLRT/include/MLRT/Driver/DeviceContext/DeviceContext.h`: Core device interfaces
+- `MLRT/include/MLRT/Driver/DeviceContext/CompilationDevice.h`: Compilation interface
 - `MLRT/lib/Driver/DeviceContext/CUDA/CUDADevice*.{h,cpp}`: CUDA implementation
 - `MLRT/lib/Driver/DeviceContext/Virtual/VirtualDevice*.{h,cpp}`: Virtual device
   implementation

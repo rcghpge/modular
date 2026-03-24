@@ -12,55 +12,52 @@ how they interact. I wrote up this document with my findings.
 - Add a new method to every operation in the dialect
 - Use `Interface` to allow calling this method without knowing the concrete type
   of the operation
-- Provide a default implementation of the method, so that support can be added
+- Provide a  default implementation of the method, so that support can be added
   to new operations incrementally.
 - Put the method implementations in `Trait` classes to share code between many
   operations that share the same implementation. This way, Operations can pick
   an implementation of the interface method by picking a trait, or get the
   default by not picking any trait.
-- Minimize the amount of boilerplate code that needs to be added for each new
-  operation
+- Minimize the amount of boilerplate code that needs to be added for each new operation
 
 Now, let’s briefly review the documentation for Traits and Interfaces:
 
 ## <https://mlir.llvm.org/docs/Traits/>
 
 In general, Trait functionality is available only when working with a concrete
-instance of an operation class. For example, if you have an instance of an
-`AddOp`, you can directly call any trait method. This also works in templated
-code.
+instance of an operation class. For example, if you have an instance of an `AddOp`,
+you can directly call any trait method. This also works in templated code.
 
 Trait definition:
 
-1. Define a class for the trait in MOInterfaces.h, templated on the
-   `ConcreteType` of the op
-2. Add a `def` in [MOInterfaces.td](http://MOInterfaces.td) that specializes
-   `MO_OpTrait` with the name of the C++ class (this is just MLIR’s
-   `NativeOpTrait` with the `M::MO` namespace.
+1. Define a class for the trait in MOInterfaces.h, templated on the `ConcreteType`
+   of the op
+2. Add a `def` in [MOInterfaces.td](http://MOInterfaces.td) that specializes `MO_OpTrait`
+   with the name of the C++ class (this is just MLIR’s `NativeOpTrait` with the
+   `M::MO` namespace.
 
 With a Trait, there are two ways to add a method to an op:
 
-1. Add the methods to the C++ template class for the Trait. The concrete class
-   will inherit from this class, so it gets the method.
-2. Inject the methods into the concrete op class using `extraOpDeclaration` or
-   `extraOpDefinition` when defining the trait in TableGen (ODS).
+1. Add the methods to the C++ template class for the Trait. The concrete class will
+   inherit from this class, so it gets the method.
+2. Inject the methods into the concrete op class using `extraOpDeclaration` or `extraOpDefinition`
+   when defining the trait in TableGen (ODS).
 
 ## <https://mlir.llvm.org/docs/Interfaces/>
 
-Interface functionality works in a type-erased way. You can use `dyn_cast` to
-get an instance of the interface, and call methods directly on this without ever
-knowing what the concrete type is.
+Interface functionality works in a type-erased way. You can use `dyn_cast` to get
+an instance of the interface, and call methods directly on this without ever knowing
+what the concrete type is.
 
-1. Add a `def` in [MOInterfaces.td](http://MOInterfaces.td) that specializes
-   `OpInterface`
+1. Add a `def` in [MOInterfaces.td](http://MOInterfaces.td) that specializes `OpInterface`
 2. Declare the interface methods
 3. (Optional) Define the interface methods
-    1. Provide a `MethodBody`. This is only visible when calling through an
-       instance of the Interface, not through the concrete operation class.
-       Using interfaces in this way makes them a realization of the “Interface
-       Injection” pattern, rather than a version of Interfaces in Java or C++.
-    2. Provide a `DefaultImplementation`. This goes in the Interface’s Trait
-       class, which the operation class will inherit from.
+    1. Provide a `MethodBody`. This is only visible when calling through an instance
+       of the Interface, not through the concrete operation class. Using interfaces
+       in this way makes them a realization of the “Interface Injection” pattern,
+       rather than a version of Interfaces in Java or C++.
+    2. Provide a `DefaultImplementation`. This goes in the Interface’s Trait class,
+       which the operation class will inherit from.
 
 Attach the interface to ops just like a Trait in ODS.
 
@@ -68,27 +65,26 @@ Attach the interface to ops just like a Trait in ODS.
 
 Add `DeclareOpInterfaceMethods` to the operation’s trait list. This generates a
 declaration of the interface method in the concrete operation class, which
-shadows the default implementation in the interface trait class. Then you can
-implement the method in a C++ module like MOOps.cpp.
+shadows the default implementation in the interface trait class. Then you can implement
+the method in a C++ module like MOOps.cpp.
 
 ## Implementing an Interface Method via a Trait
 
 Finally, let’s try to achieve the goals stated above. We want to define a method
-on a trait, attach that trait to an operation that also has an interface, and
-have the interface method use the implementation provided by the trait.
+on a trait, attach that trait to an operation that also has an interface, and have
+the interface method use the implementation provided by the trait.
 
 ### Case 1: Interface does not provide a definition of the method
 
-Implement the method within the Trait class in C++. Since the operation class
-inherits from this trait, it has the method too and the Interface will use this
-implementation.
+Implement the method within the Trait class in C++. Since the operation class inherits
+from this trait, it has the method too and the Interface will use this implementation.
 
 <aside>
 ⚠️
 
-Don’t use `DeclareOpInterfaceMethods`, this will declare the method in the
-concrete operation class. Then the C++ compiler will expect the implementation
-to live in the Operation class instead of in the Trait class!
+Don’t use `DeclareOpInterfaceMethods`, this will declare the method in the concrete
+operation class. Then the C++ compiler will expect the implementation to live in
+the Operation class instead of in the Trait class!
 
 </aside>
 
@@ -98,37 +94,36 @@ This cannot be overridden AFAIK.
 
 ### Case 3: Interface provides a `DefaultImplementation`
 
-Add `DeclareOpInterfaceMethods` to the operation’s trait list along with your
-trait. Then use the`extraOpDefinition` field of `NativeOpTrait` to inject the
-implementation code into the concrete operation class.
+Add `DeclareOpInterfaceMethods` to the operation’s trait list along with your trait.
+Then use the`extraOpDefinition` field of `NativeOpTrait` to inject the implementation
+code into the concrete operation class.
 
 <aside>
 ⚠️
 
 Defining the method in the trait class doesn’t work, because it will be shadowed
-by the declaration in the operation class generated by
-`DeclareOpInterfaceMethods`.
+by the  declaration in the operation class generated by `DeclareOpInterfaceMethods`.
 
 </aside>
 
 <aside>
 ⚠️
 
-Omitting `DeclareOpInterfaceMethods` leads to a C++ compiler error: “member
-found in multiple base classes of different types”. Now our operation class
-inherits from two Traits: one provided by us, and one provided by the interface,
-and they both implement the same method!
+Omitting `DeclareOpInterfaceMethods` leads to a C++ compiler error: “member found
+in multiple base classes of different types”. Now our operation class inherits from
+two Traits: one provided by us, and one provided by the interface, and they both
+implement the same method!
 
 </aside>
 
 <aside>
 ⚠️
 
-`DeclareOpInterfaceMethods` must be in the trait list for the op itself. It
-doesn’t work if you add it to the trait list of the Trait that implements the
-methods. I find it convenient to define a `TraitList` comprising
-`DeclareOpInterfaceMethods` and the trait that implements those methods, and
-then add that to the trait list of the operation.
+`DeclareOpInterfaceMethods` must be in the trait list for the op itself. It doesn’t
+work if you add it to the trait list of the Trait that implements the methods. I
+find it convenient to define a  `TraitList` comprising  `DeclareOpInterfaceMethods`
+and the trait that implements those methods, and then add that to the trait list
+of the operation.
 
 </aside>
 
@@ -136,13 +131,12 @@ then add that to the trait list of the operation.
 
 - MLIR Interfaces are not the same as Interfaces in C++ or Java. Conceptually,
   the concrete class is not overriding an existing method, rather the interface
-  is doing the work to expose similar behavior of multiple classes in a
-  type-erased way.
+  is doing the work to expose  similar behavior of multiple classes in a type-erased
+  way.
 - MLIR Interfaces are not using the vtables provided by the C++ compiler, they
   have a different implementation with different semantics.
 - `DefaultImplementation` makes it way harder to mix Interfaces and Traits. I
-  strongly suggest not using this feature. Instead, put the default
-  implementation in another trait and attach that trait to operations that need
-  to use the default.
+  strongly suggest not using this feature. Instead, put the default implementation
+  in another trait and attach that trait to operations that need to use the default.
 - The upstream documentation for Trait and Interface could be improved, none of
   this was explained there.

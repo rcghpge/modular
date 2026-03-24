@@ -117,8 +117,8 @@ over entirely by the reader) and an optional alignment for the contents of the
 section.
 
 Section IDs and other fundamental constants are defined in
-[`MEFEncoding.h`](../../include/MLRT/GraphRT/MEF/MEFEncoding.h), and utilities
-for decoding the basic file structures like VBR integers are defined in
+[`MEFEncoding.h`](../../include/MLRT/GraphRT/MEF/MEFEncoding.h), and utilities for
+decoding the basic file structures like VBR integers are defined in
 [`MEFReader.h`](../../include/MLRT/GraphRT/MEF/MEFReader.h).
 
 The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and
@@ -382,15 +382,13 @@ Each primitive has these properties:
 
 It is organized as a fixed-size header containing counts for the variable-size
 portions of the primitive, followed by a variable-size portion whose size
-depends on the header. Additionally, the size of `PrimitiveUsedBy` depends on
+depends on the header.  Additionally, the size of `PrimitiveUsedBy` depends on
 the values of `NumUsedBys`.
 
-<!-- rumdl-disable MD038 -->
-MEF primitives must have consecutive result registers. Hence, when `NumResults
+MEF primitives must have consecutive result registers.  Hence, when `NumResults
 >= 2`,`PrimitiveResult`still only consists of one`FIXED32`value,
 representing the first result register.  When`NumResults = 0`,
 `PrimitiveResult` is absent.
-<!-- rumdl-enable MD038 -->
 
 'Used by' records for the same result are grouped together and these groups are
 in the same order of 'result' records. For example, if there are two results, A
