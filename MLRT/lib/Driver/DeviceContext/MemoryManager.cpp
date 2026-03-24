@@ -711,8 +711,12 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
   size_t cacheSize = 0;
   size_t maxCacheSize = 0;
   size_t freeSize = 0;
+
   size_t freeCount = 0;
   size_t chunkCount = 0;
+
+  std::string lastChunkAllocFailureDetail;
+
   {
     std::lock_guard<std::mutex> lock(mu_);
     availableCacheSize =
@@ -721,8 +725,11 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
     cacheSize = cacheSize_;
     maxCacheSize = maxCacheSize_;
     freeSize = freeSize_;
+
     freeCount = freeCount_;
     chunkCount = chunkCount_;
+
+    lastChunkAllocFailureDetail = lastChunkAllocFailureDetail_;
   }
 
   std::string missReason =
@@ -739,17 +746,23 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
     logErr("allocate(" + TWINE(wrappedSize) + ") - reject (" + missReason + ")",
            0, 0);
   }
-  return Error("Memory manager cannot satisfy allocation (" + missReason +
-               "): " + getDeviceDescription() + " on " + "[" +
-               freeList->label_ + "]@" + TWINE_PTR(freeList) +
-               " (request: " + humanMemorySize(wrappedSize) +
-               " ; free: " + humanMemorySize(freeSize) +
-               " ; free_blocks: " + TWINE(freeCount) +
-               " ; available: " + humanMemorySize(availableCacheSize) +
-               " ; chunk_size: " + humanMemorySize(chunkSize) +
-               " ; chunk_count: " + TWINE(chunkCount) +
-               " ; cache_size: " + humanMemorySize(cacheSize) +
-               " ; max_cache_size: " + humanMemorySize(maxCacheSize) + ")");
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << "Memory manager cannot satisfy allocation (" << missReason
+     << "): " << getDeviceDescription() << " on "
+     << "[" << freeList->label_ << "]@" << TWINE_PTR(freeList)
+     << " (request: " << humanMemorySize(wrappedSize)
+     << " ; free: " << humanMemorySize(freeSize)
+     << " ; free_blocks: " << freeCount
+     << " ; available: " << humanMemorySize(availableCacheSize)
+     << " ; chunk_size: " << humanMemorySize(chunkSize)
+     << " ; chunk_count: " << chunkCount
+     << " ; cache_size: " << humanMemorySize(cacheSize)
+     << " ; max_cache_size: " << humanMemorySize(maxCacheSize);
+  if (!lastChunkAllocFailureDetail.empty())
+    os << " ; last_chunk_alloc_failure: " << lastChunkAllocFailureDetail;
+  os << ")";
+  return Error(os.str());
 }
 
 bool MemoryManager::allocateChunk() {
@@ -761,11 +774,16 @@ bool MemoryManager::allocateChunk() {
   // Cap the chunk to the remaining memory manager budget and, for GPU
   // devices, to how much free memory the device actually has right now.
   assert(cacheSize_ <= maxCacheSize_ && "cache size <= max size precondition");
+  lastChunkAllocFailureDetail_.clear();
   size_t remainingBudget = maxCacheSize_ - cacheSize_;
+  std::string currentDeviceFree = "n/a";
+  std::string currentDeviceTotal = "n/a";
   if (!isHost()) {
     ErrorOr<Device::MemInfo> memInfo = device().getMemoryInfo();
     if (!memInfo.isError()) {
       remainingBudget = std::min((*memInfo).free, remainingBudget);
+      currentDeviceFree = humanMemorySize((*memInfo).free);
+      currentDeviceTotal = humanMemorySize((*memInfo).total);
     }
   }
 
@@ -773,11 +791,24 @@ bool MemoryManager::allocateChunk() {
 
   const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {
+    llvm::raw_string_ostream os(lastChunkAllocFailureDetail_);
+    os << "alloc_size " << humanMemorySize(allocSize)
+       << " below min_chunk_size " << humanMemorySize(minChunkSize)
+       << " (remaining_budget: " << humanMemorySize(remainingBudget)
+       << " ; device_free: " << currentDeviceFree
+       << " ; device_total: " << currentDeviceTotal << ")";
     return false;
   }
+
   void *ptr = nullptr;
   ErrorOrSuccess err = device().chunkAlloc(&ptr, allocSize, isHost());
   if (err.isError()) {
+    llvm::raw_string_ostream os(lastChunkAllocFailureDetail_);
+    os << "chunkAlloc(" << humanMemorySize(allocSize) << ") failed with "
+       << err.getError()
+       << " (remaining_budget: " << humanMemorySize(remainingBudget)
+       << " ; device_free: " << currentDeviceFree
+       << " ; device_total: " << currentDeviceTotal << ")";
     LOG_ERR("allocate_chunk(" + TWINE(allocSize) + ") - failed with " +
             err.getError());
     // Keep chunks_ unmodified.

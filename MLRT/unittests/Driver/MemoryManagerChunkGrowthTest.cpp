@@ -63,6 +63,10 @@ public:
     freeBytes_ -= byteSize;
   }
 
+  void failNextChunkAlloc(llvm::StringRef error) {
+    nextChunkAllocError_ = error.str();
+  }
+
   const std::vector<size_t> &chunkAllocRequests() const {
     return chunkAllocRequests_;
   }
@@ -71,6 +75,11 @@ public:
                                bool isHost) override {
     if (isHost)
       return M::Error("unexpected host allocation");
+    if (!nextChunkAllocError_.empty()) {
+      std::string error = std::move(nextChunkAllocError_);
+      nextChunkAllocError_.clear();
+      return M::Error(error);
+    }
     if (byteSize > freeBytes_)
       return M::Error("out of fake device memory");
 
@@ -109,6 +118,7 @@ public:
 private:
   size_t freeBytes_;
   size_t totalBytes_;
+  std::string nextChunkAllocError_;
   std::unordered_map<void *, size_t> allocations_;
   std::vector<size_t> chunkAllocRequests_;
 };
@@ -142,6 +152,32 @@ TEST(MemoryManagerChunkGrowthTest, CapsChunkGrowthToCurrentFreeMemory) {
   EXPECT_EQ(device->chunkAllocRequests().front(), kExpectedChunkSize);
 
   EXPECT_NO_ERR(freeList.free(ptr));
+  manager->clear();
+}
+
+TEST(MemoryManagerChunkGrowthTest, ReportsChunkAllocFailureDetails) {
+  ScopedEnvVar chunkPercent(
+      "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT", "25");
+
+  constexpr size_t kInitialFree = MB;
+  constexpr size_t kTotalMemory = 2 * MB;
+  constexpr size_t kMaxCacheSize = MB;
+
+  auto device =
+      M::RCRef<TestMemoryPressureDevice>::create(kInitialFree, kTotalMemory);
+  ASSIGN_NO_ERR(Device::MemInfo, initialMemInfo, device->getMemoryInfo());
+  auto manager = std::unique_ptr<MemoryManager>(MemoryManager::onDevice(
+      *device, initialMemInfo, device->allocationAlignment(), kMaxCacheSize));
+
+  device->failNextChunkAlloc("fake oom");
+
+  MemoryManagerFreeList &freeList = *manager->freeList();
+  auto err = freeList.allocate(/*size=*/512, Device::AllocMode::SYNC);
+  ASSERT_TRUE(err.isError());
+  EXPECT_THAT(err.getError(),
+              testing::HasSubstr("last_chunk_alloc_failure: chunkAlloc("));
+  EXPECT_THAT(err.getError(), testing::HasSubstr("failed with fake oom"));
+
   manager->clear();
 }
 

@@ -150,6 +150,7 @@ private:
   size_t freeSize_ = 0;
   size_t freeCount_ = 0;
   size_t chunkCount_ = 0;
+  std::string lastChunkAllocFailureDetail_;
   mutable std::string deviceDescription_;
 };
 
