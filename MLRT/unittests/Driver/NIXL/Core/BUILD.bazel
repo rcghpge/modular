@@ -24,7 +24,7 @@ modular_cc_test(
     name = "SharedInfraTests",
     size = "small",
     srcs = ["SharedInfraTests.cpp"],
-    gpu_constraints = ["//:has_gpu"],
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
         "//MLRT:Driver/NIXL",
