@@ -56,10 +56,10 @@ framework, along with their CMake target to simplify building the target.
 > standard for simplicity - please insert your platform's dynamic library
 > prefix/suffix where appropriate.
 
-| CMake target          | Binary                      | Framework          |
-| --------------------- | --------------------------- | ------------------ |
-| `tf`                  | `libtf.so`                  | Modular TensorFlow |
-| `stock-pytorch-plugin` | `libstock-pytorch-plugin.so` | Stock pytorch       |
+| CMake target           | Binary                       | Framework          |
+|------------------------|------------------------------|--------------------|
+| `tf`                   | `libtf.so`                   | Modular TensorFlow |
+| `stock-pytorch-plugin` | `libstock-pytorch-plugin.so` | Stock pytorch      |
 
 Another consequence is that `mt --help` cannot work the way many users expect
 it to. Passing the help option to `mt` will result in getting the `mt` help,
