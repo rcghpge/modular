@@ -53,12 +53,12 @@ mo.graph @bundled_allreduce_then_relu(
 // data).  The canonical arg ordering in nExpandBundledKernel makes these
 // structurally identical; MergeIdenticalKernelStubs (run later in EmitMojo)
 // will deduplicate them into a single stub definition.
-// CHECK-MGP-DAG: mogg.kernel.stub @[[AR0:stub_[0-9]+]]{{.*}}fusionInfo = mo.bundled.allreduce.sum
-// CHECK-MGP-DAG: mogg.kernel.stub @[[AR1:stub_[0-9]+]]{{.*}}fusionInfo = mo.bundled.allreduce.sum
+// CHECK-MGP-DAG: mogg.kernel.stub @[[AR0:stub_[0-9]+]]{{.*}}fusionInfo = "mo.bundled.allreduce.sum"
+// CHECK-MGP-DAG: mogg.kernel.stub @[[AR1:stub_[0-9]+]]{{.*}}fusionInfo = "mo.bundled.allreduce.sum"
 
 // Relu stubs (one per GPU, also structurally identical).
-// CHECK-MGP-DAG: mogg.kernel.stub @[[RELU0:stub_[0-9]+]]{{.*}}fusionInfo = mo.relu
-// CHECK-MGP-DAG: mogg.kernel.stub @[[RELU1:stub_[0-9]+]]{{.*}}fusionInfo = mo.relu
+// CHECK-MGP-DAG: mogg.kernel.stub @[[RELU0:stub_[0-9]+]]{{.*}}fusionInfo = "mo.relu"
+// CHECK-MGP-DAG: mogg.kernel.stub @[[RELU1:stub_[0-9]+]]{{.*}}fusionInfo = "mo.relu"
 
 // First compiled region dispatches the allreduce stubs async to each GPU.
 // CHECK-MGP: mogg.generic.compiled.region
@@ -77,12 +77,12 @@ mo.graph @bundled_allreduce_then_relu(
 // After MergeIdenticalKernelStubs + SymbolDCE: exactly one allreduce stub
 // and one relu stub remain.  Stub definition order is not guaranteed, so
 // use DAG for the definitions.
-// CHECK-DEDUP-DAG: mogg.kernel.stub @[[AR:stub_[0-9]+]]{{.*}}fusionInfo = mo.bundled.allreduce.sum
-// CHECK-DEDUP-DAG: mogg.kernel.stub @[[RELU:stub_[0-9]+]]{{.*}}fusionInfo = mo.relu
+// CHECK-DEDUP-DAG: mogg.kernel.stub @[[AR:stub_[0-9]+]]{{.*}}fusionInfo = "mo.bundled.allreduce.sum"
+// CHECK-DEDUP-DAG: mogg.kernel.stub @[[RELU:stub_[0-9]+]]{{.*}}fusionInfo = "mo.relu"
 
 // No additional allreduce or relu stubs should exist.
-// CHECK-DEDUP-NOT: fusionInfo = mo.bundled.allreduce.sum
-// CHECK-DEDUP-NOT: fusionInfo = mo.relu
+// CHECK-DEDUP-NOT: fusionInfo = "mo.bundled.allreduce.sum"
+// CHECK-DEDUP-NOT: fusionInfo = "mo.relu"
 
 // Allreduce compiled region: both launches call the same deduplicated stub.
 // CHECK-DEDUP: mogg.generic.compiled.region

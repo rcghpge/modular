@@ -76,12 +76,11 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 
-  auto fi = oldKernel.getFusionInfoAttr();
   auto newExecuteOp = MGP::ExecuteGenericOp::create(
       builder, oldKernel.getLoc(), resultTypes, context,
       oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
-      StringAttr::get(ctx, fi ? fi.toString() : ""), oldKernel.getIsAsync(),
-      oldKernel.getConstantResources());
+      StringAttr::get(ctx, oldKernel.getFusionInfoAttr().toString()),
+      oldKernel.getIsAsync(), oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))
     result.replaceAllUsesWith(newExecuteOp.getResult(idx));

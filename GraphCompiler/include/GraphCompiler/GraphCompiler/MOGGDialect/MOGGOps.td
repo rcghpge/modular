@@ -927,7 +927,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   }];
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
-                       OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
+                       MOGG_FusionInfoAttr:$fusionInfo,
                        OptionalAttr<BoolAttr>:$isAsync,
                        DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
                        MOGG_ABIKind:$abi,

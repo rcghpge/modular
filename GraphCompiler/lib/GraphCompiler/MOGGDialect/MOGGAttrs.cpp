@@ -8,6 +8,7 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
@@ -49,7 +50,9 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
                   bool includeLineNumbers) {
   llvm::TypeSwitch<Attribute>(node)
       .Case<FusionLeafAttr>([&](FusionLeafAttr leaf) {
-        os << leaf.getOpName().getValue();
+        os << '"';
+        llvm::printEscapedString(leaf.getOpName().getValue(), os);
+        os << '"';
         if (includeLineNumbers)
           if (auto fileLoc = dyn_cast_or_null<FileLineColLoc>(leaf.getLoc()))
             if (fileLoc.getLine() > 0)

@@ -42,10 +42,19 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
           auto stubName =
               StringAttr::get(kernelOp->getContext(),
                               llvm::formatv("region_{}", stubNumber++).str());
+          // Synthesize a leaf FusionInfoAttr from the summary when the region
+          // has no fusionInfo, so KernelStubOp always carries one.
+          FusionInfoAttr fusionInfo = kernelOp.getFusionInfoAttr();
+          if (!fusionInfo) {
+            StringAttr opName = stubName;
+            if (auto s = kernelOp->getAttrOfType<StringAttr>("summary"))
+              opName = s;
+            fusionInfo = FusionInfoAttr::get(
+                ctx, FusionLeafAttr::get(ctx, opName, /*loc=*/{}, /*sig=*/{}));
+          }
           auto stubOp = MOGG::KernelStubOp::create(
-              builder, loc, stubName, functionType,
-              kernelOp.getFusionInfoAttr(), kernelOp.getIsAsyncAttr(),
-              kernelOp.getConstantResourcesAttr(),
+              builder, loc, stubName, functionType, fusionInfo,
+              kernelOp.getIsAsyncAttr(), kernelOp.getConstantResourcesAttr(),
               MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP));
           stubOp.getBody().takeBody(kernelOp.getBody());
           DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);

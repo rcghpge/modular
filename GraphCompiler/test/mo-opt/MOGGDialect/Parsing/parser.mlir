@@ -1,6 +1,8 @@
+// RUN: mo-opt %s | FileCheck %s
 // RUN: mo-opt %s | mo-opt
 
 // Test we can parse the custom mogg operations.
+// CHECK: fusionInfo = "mo.matmul":4
 
 // Test MOGG_ShapeFuncResult type roundtrip with different ranks
 func.func @shapeFuncResultTypeRoundTrip(%shape_rank3: !mogg.shape_func_result<3>,

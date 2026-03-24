@@ -1484,12 +1484,10 @@ bool KernelStubOp::isThrows() {
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
   auto emitFusionInfoComment = [&] {
-    if (auto fi = getFusionInfoAttr()) {
-      state.builder.comment("FusionInfo:");
-      std::string tree = fi.toPrettyTree();
-      for (auto line : llvm::split(tree, '\n'))
-        state.builder.comment(("  " + line).str());
-    }
+    state.builder.comment("FusionInfo:");
+    std::string tree = getFusionInfoAttr().toPrettyTree();
+    for (auto line : llvm::split(tree, '\n'))
+      state.builder.comment(("  " + line).str());
   };
 
   // Build the Trace[] context manager expression for instrumentation.
@@ -1498,11 +1496,8 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
   // task_id=get_safe_task_id(ctx) for task-level tracing granularity.
   auto buildTraceContextExpr = [&](MojoValue contextArg) -> MojoValue {
     std::string deviceLabel = MO::getDeviceOrDefaultAny(*this).getLabel().str();
-    std::string traceName;
-    if (auto fi = getFusionInfoAttr())
-      traceName = fi.toString(/*includeLineNumbers=*/false);
-    else
-      traceName = getSymName().str();
+    std::string traceName =
+        getFusionInfoAttr().toString(/*includeLineNumbers=*/false);
 
     // Trace[TraceLevel.OP, target=StaticString("device")]("trace name"[,
     // task_id=...])
@@ -1730,12 +1725,14 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
                      TypeAttr::get(FunctionType::get(parser.getContext(),
                                                      argTypes, resTypes)));
 
-  // Parse optional fusionInfo before attr-dict.
+  // Parse required fusionInfo before attr-dict.
   FusionInfoAttr fusionInfo;
   if (parseFusionInfo(parser, fusionInfo))
     return failure();
-  if (fusionInfo)
-    state.addAttribute("fusionInfo", fusionInfo);
+  if (!fusionInfo)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected 'fusionInfo' attribute");
+  state.addAttribute("fusionInfo", fusionInfo);
 
   // If function attributes are present, parse them.
   NamedAttrList parsedAttributes;
@@ -3322,7 +3319,7 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
 
       // Highlight this stub's leaf ops in the full fusion tree.
       llvm::DenseSet<Attribute> highlightOps;
-      if (callee && callee.getFusionInfoAttr())
+      if (callee)
         collectLeaves(callee.getFusionInfoAttr().getRoot(), highlightOps);
       std::string stubNotes =
           buildNotesString(notesList, parentFusionInfo, highlightOps);

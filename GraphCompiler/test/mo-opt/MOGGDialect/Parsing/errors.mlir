@@ -2,7 +2,7 @@
 
 !tt = !mo.tensor<[10, 10], f32>
 
-mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
+mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>) fusionInfo = "stub_0"
   attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.output
 }
@@ -18,7 +18,7 @@ mo.graph @too_few_args() -> () {
 
 // -----
 
-mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
+mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>) fusionInfo = "stub_0"
   attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.output
 }
@@ -35,7 +35,7 @@ mo.graph @too_many_args() -> () {
 
 // -----
 
-mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>)
+mogg.kernel.stub @stub_0(%arg0: !mo.tensor<[], f32>) fusionInfo = "stub_0"
   attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.output
 }
@@ -63,7 +63,7 @@ mo.graph @does_not_exist() -> () {
 
 // -----
 
-mogg.kernel.stub @stub_1()
+mogg.kernel.stub @stub_1() fusionInfo = "stub_1"
   attributes {abi = 1 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
   mogg.output
 }
