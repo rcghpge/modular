@@ -440,6 +440,12 @@ void M::MO::buildGCPipeline(
   moggOpts.fuseMutableLoadStore = opts.fuseMutableLoadStore;
   buildMoggPipeline(pm, moggOpts);
 
+  // Insert NaN/Inf checks at compiled region boundaries. Runs after all
+  // fusion passes so checks sit between already-fused compiled regions.
+  // The pass creates mo.custom ops and lowers them to MOGG kernels in-place.
+  if (opts.nanCheck)
+    pm.addPass(MO::createNanCheckPass(libraryAnalysis));
+
   // --- mogg-to-mgp ---
   MGP::MOGGToMGPOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;

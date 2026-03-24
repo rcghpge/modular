@@ -30,6 +30,8 @@ public:
 
   bool debugPrintAllTensors{false};
 
+  bool nanCheck{false};
+
   size_t softFusionNonHostKernelLimit{3};
 
   bool cacheBuffersAcrossExecutes{false};
@@ -45,6 +47,7 @@ public:
     gcPipelineOptions.defaultDeviceId = defaultDeviceId;
     gcPipelineOptions.enableCompiledRegionsFusion = enableCompiledRegionsFusion;
     gcPipelineOptions.debugPrintAllTensors = debugPrintAllTensors;
+    gcPipelineOptions.nanCheck = nanCheck;
     gcPipelineOptions.softFusionNonHostKernelLimit =
         softFusionNonHostKernelLimit;
     gcPipelineOptions.kernelLibraryPaths = kernelLibraryPaths;
@@ -99,6 +102,13 @@ private:
                "'binary-output-dir' flags may be used to control the "
                "printed format and saved location."),
       llvm::cl::location(options.debugPrintAllTensors),
+      llvm::cl::cat(GraphCompilerCLOptionsCategory)};
+
+  M::cl::MOpt<bool, true> nanCheck{
+      "nan-check",
+      cl::desc("Insert NaN/Inf checks after each compiled region's "
+               "floating-point outputs."),
+      llvm::cl::location(options.nanCheck),
       llvm::cl::cat(GraphCompilerCLOptionsCategory)};
 
   M::cl::MOpt<size_t, true> softFusionNonHostKernelLimit{

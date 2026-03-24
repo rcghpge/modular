@@ -1916,6 +1916,7 @@ void KernelOp::getEffects(
   // hasReadEffect/hasWriteEffect flag is true.
   // TODO(GEX-1516): Establish fine-grained tracking of mem-effects for
   // mogg.kernel operands and maintain it through transforms.
+  bool addedEffect = false;
   for (auto &&opOperand : getOperation()->getOpOperands()) {
     if (!MO::isMutableOperand(opOperand.get()))
       continue;
@@ -1923,7 +1924,15 @@ void KernelOp::getEffects(
       effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
     if (hasReadEffect)
       effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
+    addedEffect = true;
   }
+
+  // Kernels with observable side effects (e.g. nan_check_raise) but no
+  // mutable operands still need a generic write effect to prevent DCE.
+  // This is only triggered when hasWriteEffect is explicitly set to true
+  // during lowering (e.g. by NanCheckPass for the raise kernel).
+  if (!addedEffect && (hasReadEffect || hasWriteEffect))
+    effects.emplace_back(mlir::MemoryEffects::Write::get());
 }
 
 LogicalResult KernelOp::verify() {

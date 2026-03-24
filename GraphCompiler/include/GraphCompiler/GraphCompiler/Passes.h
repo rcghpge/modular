@@ -127,6 +127,11 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
                      "'binary-output-dir' flags may be used to control the "
                      "printed format and saved location."),
       llvm::cl::init(false)};
+  Option<bool> nanCheck{
+      *this, "nan-check",
+      llvm::cl::desc("Insert NaN/Inf checks after each compiled region's "
+                     "floating-point outputs."),
+      llvm::cl::init(false)};
   ListOption<std::string> dimNames{
       *this, "dim-names",
       llvm::cl::desc("Named dimensions for each input of the MO graph")};

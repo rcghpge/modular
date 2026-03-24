@@ -42,6 +42,9 @@ std::unique_ptr<Pass> createAddFallbackShapeFunctions(
     const M::MO::AddFallbackShapeFunctionsOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
 
+std::unique_ptr<Pass>
+createNanCheckPass(std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis);
+
 } // namespace M::MO
 //
 

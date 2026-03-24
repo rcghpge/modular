@@ -285,6 +285,22 @@ def DebugPrintAllTensorsPass : Pass<"mo-debug-print-all-tensors", "GraphOp"> {
   }];
 }
 
+def NanCheckPass : Pass<"mo-nan-check-pass", "GraphOp"> {
+  let summary = "Insert NaN/Inf checks after each compiled region's floating-point outputs.";
+  let description = [{
+    This pass inserts nan_check ops after each floating-point tensor output
+    in the graph and lowers them to MOGG kernels in-place. Each nan_check
+    returns a pass-through copy of its input tensor; downstream uses are
+    rewired to the nan_check output to prevent DCE.
+    For debugging only — activated via MODULAR_MAX_NAN_CHECK=1 env var or
+    --nan-check compiler flag.
+  }];
+  let options = [
+    ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
+      "Paths to mojo packages containing mojo kernel definitions.">
+  ];
+}
+
 def SplatLargeConstants :
     Pass<"mo-splat-large-constants", "GraphOp"> {
   let summary = "Will splat a large constant for development purposes";
