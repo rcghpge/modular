@@ -257,24 +257,33 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
     }
   }
 
-  // ModelOp contain calls to stubs too but those do not come from a
-  // KernelStubOp. They are ExecuteCompiledOp. In order to merge high level
-  // stubs, we have to do the attribute replacement here.
-  for (auto modelOp : module.getOps<MGP::ModelOp>()) {
-    modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
-      auto it =
-          cg.topLevelReplacements.find(callOp.getCalleeSymbolAttr().getAttr());
-      if (it == cg.topLevelReplacements.end())
-        return;
+  // The SCC call graph only tracks CallStubOp edges between KernelStubOps.
+  // Other callers (ExecuteCompiledOp in ModelOps, CallStubAsyncOp from
+  // mo.parallel lowering inside GenericCompiledRegionOps) are not in the
+  // graph and need their symbol references rewritten here.
+  module.walk([&](Operation *op) {
+    StringAttr calleeName;
+    if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))
+      calleeName = execOp.getCalleeSymbolAttr().getAttr();
+    else if (auto asyncOp = dyn_cast<MOGG::CallStubAsyncOp>(op))
+      calleeName = asyncOp.getCalleeSymbol().getAttr();
+    else
+      return;
 
-      auto replacement = finalReplacements.find(it->second);
-      if (replacement == finalReplacements.end())
-        return;
+    auto it = cg.topLevelReplacements.find(calleeName);
+    if (it == cg.topLevelReplacements.end())
+      return;
 
-      callOp.setCalleeSymbolAttr(
-          mlir::FlatSymbolRefAttr::get(replacement->second));
-    });
-  }
+    auto replacement = finalReplacements.find(it->second);
+    if (replacement == finalReplacements.end())
+      return;
+
+    auto newRef = mlir::FlatSymbolRefAttr::get(replacement->second);
+    if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))
+      execOp.setCalleeSymbolAttr(newRef);
+    else
+      cast<MOGG::CallStubAsyncOp>(op).setNameAttr(newRef);
+  });
 }
 
 struct MergeIdenticalKernelStubs

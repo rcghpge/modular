@@ -851,14 +851,17 @@ static bool isBundledKernel(MOGG::KernelOp kernelOp) {
 ///
 /// A bundled collective (e.g. allreduce) needs to see every device's data.
 /// After cloning, the kernel has one input per input group (mapped to the
-/// current launch's value via IRMapping). This function inserts additional
-/// inputs for the other launches and rewrites the AsTupleOps in the kernel
-/// body so each tuple aggregates all N launches' values.
+/// current launch's value via IRMapping). This function inserts inputs for
+/// all launches in canonical (launch-index) order and rewrites the AsTupleOps
+/// in the kernel body so each tuple aggregates all N launches' values.
+///
+/// Canonical ordering ensures every clone's exec body is structurally
+/// identical regardless of `currentLaunch`, enabling MergeIdenticalKernelStubs
+/// to deduplicate them into a single shared stub definition.
 ///
 /// `allLaunchInputs[group][launch]` provides the value for input group
 /// `group` at launch `launch`. `currentLaunch` identifies which launch
-/// this clone corresponds to (its input is already at position 0 of each
-/// group in the clone).
+/// this clone corresponds to.
 static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
                                  size_t numLaunches,
                                  ArrayRef<SmallVector<Value>> allLaunchInputs) {
@@ -877,22 +880,17 @@ static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
     if (auto tupleOp = dyn_cast<MOGG::AsTupleOp>(&op))
       tupleOps.push_back(tupleOp);
 
-  // Track which block arg corresponds to each (group, launch) pair.
+  // Insert block args for ALL launches (including the current one) in
+  // canonical order right after the original inputs. This produces an
+  // identical block-arg layout regardless of which launch is "current."
   SmallVector<SmallVector<Value>> groupBlockArgs(numGroups);
-  for (size_t groupId = 0; groupId < numGroups; ++groupId) {
+  for (size_t groupId = 0; groupId < numGroups; ++groupId)
     groupBlockArgs[groupId].resize(numLaunches);
-    groupBlockArgs[groupId][currentLaunch] = kBody->getArgument(groupId);
-  }
 
-  // Insert new block args for the other launches right after the original
-  // inputs (at position numOrigInputs), before any output/scratch placeholder
-  // args that may have been promoted.
   size_t insertPos = numOrigInputs;
   SmallVector<Value> extraOperands;
   for (size_t groupId = 0; groupId < numGroups; ++groupId) {
     for (size_t launch = 0; launch < numLaunches; ++launch) {
-      if (launch == currentLaunch)
-        continue;
       Type ty = allLaunchInputs[groupId][launch].getType();
       Value blockArg = kBody->insertArgument(insertPos, ty, loc);
       groupBlockArgs[groupId][launch] = blockArg;
@@ -900,6 +898,12 @@ static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
       ++insertPos;
     }
   }
+
+  // Redirect uses of the original block args (positions 0..numGroups-1) to
+  // the new canonical args so the body no longer depends on currentLaunch.
+  for (size_t groupId = 0; groupId < numGroups; ++groupId)
+    kBody->getArgument(groupId).replaceAllUsesWith(
+        groupBlockArgs[groupId][currentLaunch]);
 
   kernelOp.getInputsMutable().append(extraOperands);
 
