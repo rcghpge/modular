@@ -711,6 +711,8 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
   size_t cacheSize = 0;
   size_t maxCacheSize = 0;
   size_t freeSize = 0;
+  size_t freeCount = 0;
+  size_t chunkCount = 0;
   {
     std::lock_guard<std::mutex> lock(mu_);
     availableCacheSize =
@@ -719,6 +721,8 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
     cacheSize = cacheSize_;
     maxCacheSize = maxCacheSize_;
     freeSize = freeSize_;
+    freeCount = freeCount_;
+    chunkCount = chunkCount_;
   }
 
   std::string missReason =
@@ -736,9 +740,14 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
            0, 0);
   }
   return Error("Memory manager cannot satisfy allocation (" + missReason +
-               "): " + getDeviceDescription() + " on " + TWINE_PTR(freeList) +
-               " (size: " + humanMemorySize(wrappedSize) +
+               "): " + getDeviceDescription() + " on " + "[" +
+               freeList->label_ + "]@" + TWINE_PTR(freeList) +
+               " (request: " + humanMemorySize(wrappedSize) +
                " ; free: " + humanMemorySize(freeSize) +
+               " ; free_blocks: " + TWINE(freeCount) +
+               " ; available: " + humanMemorySize(availableCacheSize) +
+               " ; chunk_size: " + humanMemorySize(chunkSize) +
+               " ; chunk_count: " + TWINE(chunkCount) +
                " ; cache_size: " + humanMemorySize(cacheSize) +
                " ; max_cache_size: " + humanMemorySize(maxCacheSize) + ")");
 }
