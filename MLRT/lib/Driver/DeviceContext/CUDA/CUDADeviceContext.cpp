@@ -11,6 +11,7 @@
 #include "CUDADeviceContext.h"
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
+#include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "NVML.h"
 #include "Support/HashUtils.h"
@@ -38,141 +39,6 @@ static bool isStreamCapturing(const CUDADriver &driver, CUstream stream) {
 }
 
 namespace {
-
-// Launch-trace capture is a lightweight, deterministic fingerprint of GPU
-// work submitted to a stream. We record a compact hash per kernel launch that
-// encodes the function, grid/block dimensions, shared memory size, launch
-// attributes, parameter sizes, and sub-pointer-sized parameter values.
-//
-// We use a size-based approach to identify scalar parameters:
-// - Parameters < 8 bytes (pointer size): Definitely scalars, included in hash
-// - Parameters >= 8 bytes: Could be pointers excluded
-//
-// This conservative strategy reliably detects changes to common kernel
-// parameters (int32_t dimensions, float constants, uint32_t flags) while
-// avoiding false positives from pointer-sized scalars that might accidentally
-// contain valid CUDA memory addresses.
-//
-// Memory buffer pointers are excluded from hashes to avoid false positives
-// when the CUDA memory manager allocates at different addresses.
-
-// Per-stream launch trace collection state.
-struct LaunchTraceState {
-  bool enabled = false;
-  std::vector<KernelLaunchMetadata> entries;
-};
-
-// Global registry for launch-trace capture across device backends.
-// Uses type-erased stream handles and ArrayRef for safe, generic interface.
-class LaunchTraceRegistry {
-public:
-  bool isLaunchTraceEnabled(void *stream) {
-    std::lock_guard<std::mutex> lock(mu);
-    auto it = states.find(stream);
-    return it != states.end() && it->second.enabled;
-  }
-
-  void appendLaunchTraceEntry(void *stream,
-                              const KernelLaunchMetadata &metadata) {
-    std::lock_guard<std::mutex> lock(mu);
-    auto it = states.find(stream);
-    if (it == states.end() || !it->second.enabled)
-      return;
-    it->second.entries.push_back(metadata);
-  }
-
-  // Hash kernel launch WITHOUT memory pointers - only deterministic params.
-  // Includes sub-pointer-sized parameter values (dimensions, flags, constants)
-  // but excludes pointer-sized parameters to avoid ambiguity.
-  void recordLaunchTrace(StringRef kernelName, uintptr_t functionPtr,
-                         ArrayRef<size_t> paramSizes, uint32_t gridX,
-                         uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                         uint32_t blockY, uint32_t blockZ,
-                         uint32_t sharedMemBytes, ArrayRef<uint8_t> attrs,
-                         uint32_t numAttrs, ArrayRef<void *> args,
-                         void *stream) {
-    raw_xxhash64_stream hasher;
-
-    // Hash deterministic launch parameters
-    const uint64_t header[] = {static_cast<uint64_t>(functionPtr),
-                               gridX,
-                               gridY,
-                               gridZ,
-                               blockX,
-                               blockY,
-                               blockZ,
-                               sharedMemBytes,
-                               numAttrs};
-    hasher.write(reinterpret_cast<const char *>(header), sizeof(header));
-
-    // Hash launch attributes (deterministic)
-    if (!attrs.empty()) {
-      hasher.write(reinterpret_cast<const char *>(attrs.data()), attrs.size());
-    }
-
-    // Hash parameter SIZES and sub-pointer-sized VALUES.
-    // Conservative approach: only hash parameters smaller than pointer size.
-    // This reliably detects changes in int32_t, float, uint32_t
-    // dimensions/flags while avoiding false positives from pointer-sized
-    // scalars.
-    if (!args.empty()) {
-      assert(args.size() == paramSizes.size() &&
-             "args and paramSizes must have the same length");
-      constexpr size_t kPointerSize = sizeof(void *); // 8 bytes on 64-bit
-
-      for (size_t paramIdx : llvm::seq(paramSizes.size())) {
-        size_t size = paramSizes[paramIdx];
-
-        // Always hash the size
-        hasher.write(reinterpret_cast<const char *>(&size), sizeof(size));
-
-        const void *paramPtr = args[paramIdx];
-
-        // Hash values for parameters smaller than pointer size (definitely
-        // scalars)
-        if (size < kPointerSize)
-          hasher.write(reinterpret_cast<const char *>(paramPtr), size);
-      }
-    }
-
-    // Create metadata with kernel name, hash, and launch parameters
-    // Note: streamIndex is set to 0 for now (could be enhanced to track actual
-    // stream index in multi-stream captures)
-    KernelLaunchMetadata metadata(kernelName, hasher.hash(), gridX, gridY,
-                                  gridZ, blockX, blockY, blockZ, sharedMemBytes,
-                                  numAttrs, /*streamIndex=*/0);
-    appendLaunchTraceEntry(stream, metadata);
-  }
-
-  void beginTraceForStream(void *stream) {
-    std::lock_guard<std::mutex> lock(mu);
-    auto &state = states[stream];
-    state.enabled = true;
-    state.entries.clear();
-  }
-
-  std::vector<KernelLaunchMetadata> takeTraceForStream(void *stream) {
-    std::lock_guard<std::mutex> lock(mu);
-    auto it = states.find(stream);
-    if (it == states.end())
-      return {};
-
-    std::vector<KernelLaunchMetadata> result = std::move(it->second.entries);
-    states.erase(it);
-    return result;
-  }
-
-private:
-  std::mutex mu;
-  llvm::DenseMap<void *, LaunchTraceState> states;
-};
-
-enum class LaunchTraceKind : uint64_t {
-  kMemcpyHtoD = 1,
-  kMemcpyDtoH = 2,
-  kMemcpyDtoD = 3,
-  kMemset = 4,
-};
 
 // Helper class to set and restore the CUcontext around interactions with the
 // CUDA driver.
@@ -212,38 +78,6 @@ private:
 };
 
 } // namespace
-
-static LaunchTraceRegistry &launchTraceRegistry() {
-  static std::unique_ptr<LaunchTraceRegistry> registry =
-      std::make_unique<LaunchTraceRegistry>();
-  return *registry;
-}
-
-// Hash memcpy WITHOUT pointer addresses - only size and direction
-static uint64_t hashMemcpyTrace(LaunchTraceKind kind, size_t byteSize) {
-  raw_xxhash64_stream hasher;
-  const uint64_t header[] = {static_cast<uint64_t>(kind),
-                             static_cast<uint64_t>(byteSize)};
-  hasher.write(reinterpret_cast<const char *>(header), sizeof(header));
-  return hasher.hash();
-}
-
-// Hash memset WITHOUT pointer address - only size and value
-static uint64_t hashMemsetTrace(size_t byteSize, uint64_t value,
-                                size_t valueSize) {
-  uint64_t maskedValue = value;
-  if (valueSize < sizeof(value)) {
-    uint64_t mask = (1ULL << (valueSize * 8)) - 1;
-    maskedValue &= mask;
-  }
-
-  raw_xxhash64_stream hasher;
-  const uint64_t header[] = {static_cast<uint64_t>(LaunchTraceKind::kMemset),
-                             static_cast<uint64_t>(byteSize), maskedValue,
-                             static_cast<uint64_t>(valueSize)};
-  hasher.write(reinterpret_cast<const char *>(header), sizeof(header));
-  return hasher.hash();
-}
 
 #define NVML_CHECK_ERR(nvml_call)                                              \
   do {                                                                         \
@@ -1382,11 +1216,8 @@ ErrorOrSuccess CUDADeviceFunction::cudaCallKernelDirect(
                                      sizeof(CUlaunchAttribute) * numAttrs);
     }
 
-    ArrayRef<void *> argsArray;
-    if (args) {
-      ArrayRef<size_t> paramSizes = moduleFunction_->paramSizes();
-      argsArray = ArrayRef<void *>(args, paramSizes.size());
-    }
+    ArrayRef<size_t> paramSizes = moduleFunction_->paramSizes();
+    ArrayRef<void *> argsArray = ArrayRef<void *>(args, paramSizes.size());
 
     registry.recordLaunchTrace(
         moduleFunction_->name(),
