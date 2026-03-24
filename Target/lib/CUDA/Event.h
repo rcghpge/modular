@@ -14,10 +14,8 @@
 struct M_driver_context;
 
 struct M_driver_event {
-private:
   CUevent event;
 
-public:
   explicit M_driver_event(CUevent event) : event(event) {}
 
   [[nodiscard]] static DriverResult<M_driver_event_t>
@@ -31,8 +29,6 @@ public:
 
   static M_driver_status_t isReady(M_driver_context &ctx,
                                    M_driver_event_t event, bool *is_ready);
-
-  CUevent getEvent() const { return event; }
 };
 
 #endif // TARGET_LIB_CUDA_EVENT_H

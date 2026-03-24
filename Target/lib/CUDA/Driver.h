@@ -15,11 +15,9 @@ using M::Target::CUDA::CUDALoader;
 using M::Target::CUDA::NVML;
 
 struct M_driver_driver {
-private:
   CUDALoader rawCuda;
   NVML rawNvml;
 
-public:
   [[nodiscard]] static DriverResult<M_driver_driver_t> create();
   static M_driver_status_t destroy(M_driver_driver_t driver);
 
@@ -29,8 +27,6 @@ public:
   M_driver_driver(const M_driver_driver &) = delete;
   M_driver_driver &operator=(const M_driver_driver &) = delete;
 
-  CUDALoader &cuda() { return rawCuda; }
-  NVML &nvml() { return rawNvml; }
   DriverResult<int64_t> deviceCount();
 };
 

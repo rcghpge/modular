@@ -13,11 +13,9 @@
 #include <cuda.h>
 
 struct M_driver_device {
-private:
   M_driver_driver &driver;
   CUdevice deviceId;
 
-public:
   [[nodiscard]] static DriverResult<M_driver_device_t>
   create(M_driver_driver &driver, int64_t deviceId);
 
@@ -26,8 +24,6 @@ public:
   explicit M_driver_device(M_driver_driver &driver, CUdevice id)
       : driver(driver), deviceId(id) {}
 
-  CUdevice id() const { return deviceId; }
-  M_driver_driver &getDriver() { return driver; }
   M_driver_status_t property(const char *propertyName, void *value);
 };
 

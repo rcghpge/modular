@@ -16,11 +16,9 @@
 struct M_driver_device;
 
 struct M_driver_context {
-private:
   M_driver_device &device;
   CUcontext primaryCtx;
 
-public:
   [[nodiscard]] static DriverResult<M_driver_context_t>
   create(M_driver_device &dev);
 
@@ -29,8 +27,7 @@ public:
   explicit M_driver_context(M_driver_device &dev, CUcontext ctx)
       : device(dev), primaryCtx(ctx) {}
 
-  M_driver_device &getDevice() { return device; }
-  CUcontext getPrimaryCtx() const { return primaryCtx; }
+  M_driver_status_t ensureContextBound();
 
   DriverResult<void *> allocPinned(uint64_t size);
   DriverResult<void *> allocSync(uint64_t size);

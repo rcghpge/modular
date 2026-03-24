@@ -59,10 +59,8 @@ M_driver_function::load(M_driver_context &ctx, llvm::StringRef code,
                         const char *function_name,
                         int32_t max_dynamic_shared_bytes,
                         const char *debug_level, int32_t optimization_level) {
-  CUDALoader &cuda = ctx.getDevice().getDriver().cuda();
-
-  CUDA_CHECK_DR(cuda.cuCtxSetCurrent(ctx.getPrimaryCtx()),
-                M_DRIVER_STATUS_BAD_CONTEXT);
+  RETURN_IF_ERROR(ctx.ensureContextBound(), tl::unexpected(status));
+  CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   auto [optionKind, optionValues] =
       setupCompilationOptions(debug_level, optimization_level);
@@ -104,10 +102,8 @@ M_driver_function::load(M_driver_context &ctx, llvm::StringRef code,
 
 M_driver_status_t M_driver_function::unload(M_driver_context &ctx,
                                             M_driver_function_t func) {
-  CUDALoader &cuda = ctx.getDevice().getDriver().cuda();
-
-  CUDA_CHECK(cuda.cuCtxSetCurrent(ctx.getPrimaryCtx()),
-             M_DRIVER_STATUS_BAD_CONTEXT);
+  QUICK_RETURN_IF_ERROR(ctx.ensureContextBound());
+  CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   CUDA_CHECK(cuda.cuModuleUnload(func->module), M_DRIVER_STATUS_UNKNOWN_ERROR);
 

@@ -15,7 +15,7 @@ DriverResult<M_driver_device_t> M_driver_device::create(M_driver_driver &driver,
     return tl::unexpected(M_DRIVER_STATUS_BAD_DEVICE);
 
   CUdevice cudaDevice{};
-  CUDA_CHECK_DR(driver.cuda().cuDeviceGet(&cudaDevice, deviceId),
+  CUDA_CHECK_DR(driver.rawCuda.cuDeviceGet(&cudaDevice, deviceId),
                 M_DRIVER_STATUS_BAD_DEVICE);
 
   return new M_driver_device(driver, cudaDevice);
