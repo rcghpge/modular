@@ -2849,6 +2849,41 @@ static bool allResultsAreUniquelyUsedBy(Operation *op) {
   });
 }
 
+/// Maps a split/slice-like axis through a static reshape.
+///
+/// Returns the new axis in the reshaped space if the mapping is valid,
+/// or std::nullopt if the axis cannot be mapped.
+///
+/// The mapping is valid when:
+/// - After skipping trailing 1-dimensions, a non-1, non-dynamic dim is found.
+/// - That dimension is not mixed with left-neighbor dimensions in the reshape.
+static std::optional<int64_t> mapAxisThroughStaticReshape(
+    const StaticReshapeDimensionsMappingAnalysis &analysis,
+    TensorType beforeType, int64_t axis) {
+  // Skip trailing 1-dims (they are ignored by the analysis).
+  int64_t mappedAxis = axis;
+  while (mappedAxis < static_cast<int64_t>(beforeType.getRank()) &&
+         beforeType.getIntDim(mappedAxis) == 1) {
+    ++mappedAxis;
+  }
+
+  // No non-1 dimension found, or it is dynamic — unsupported.
+  if (mappedAxis == static_cast<int64_t>(beforeType.getRank()) ||
+      !isa<IntegerAttr>(beforeType.getDim(mappedAxis))) {
+    return std::nullopt;
+  }
+
+  // Reject if the axis is mixed with left-neighbor dimensions in the reshape.
+  int64_t newAxis = analysis.forwardMapping()[mappedAxis].front();
+  bool couldMix = analysis.backwardMapping()[newAxis].size() > 1;
+  bool mixedButAxisIsFirst =
+      analysis.backwardMapping()[newAxis].front() == mappedAxis;
+  if (couldMix && !mixedButAxisIsFirst)
+    return std::nullopt;
+
+  return newAxis;
+}
+
 /// A pattern that will move a split/ operation after identical elementwise
 /// operations if certain conditions are met
 /// CONDITIONS:
@@ -3119,52 +3154,13 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     int64_t splitAxis =
         normalizeAxis(*tryGetConstantInt(op.getAxis()), splitType.getRank());
 
-    uint64_t mappedSplitAxis = splitAxis;
-    // Will stop at the first non 1 dimension, dynamic dimension included. This
-    // is because 1s are ignored by the analysis and they serve no real purpose
-    // in the reshape.
-    while (mappedSplitAxis < splitType.getRank() &&
-           splitType.getIntDim(mappedSplitAxis) == 1) {
-      ++mappedSplitAxis;
+    std::optional<int64_t> newSplitAxisOpt = mapAxisThroughStaticReshape(
+        staticReshapeDimensionsMappingAnalysis, splitType, splitAxis);
+    if (!newSplitAxisOpt) {
+      return rewriter.notifyMatchFailure(
+          op, "Cannot map split axis through reshape");
     }
-
-    // If there is no non-1 dimension and or if that dimension is dynamic, then
-    // the reshape is unsupported. This is because there is no way to split it
-    // with the new dimensions.
-    const bool couldNotFindAnotherAxis = mappedSplitAxis == splitType.getRank();
-    if (couldNotFindAnotherAxis ||
-        !isa<IntegerAttr>(splitType.getDim(mappedSplitAxis)))
-      return rewriter.notifyMatchFailure(op, "Trailing ones is unsupported");
-
-    // If the dimension was expanded and it was not mixed with other dimensions
-    // or if it was contracted but the mixing was done with dimensions that are
-    // on the right, then it can proceed. This assumes a row major memory
-    // layout.
-    // What mixing means is that two dimensions from the original shape
-    // contributed to the same dimension in the reshaped shape. This prevents a
-    // split unless the split axis is the leftmost of the mixed dimensions (in
-    // row major).
-    const bool couldMix =
-        staticReshapeDimensionsMappingAnalysis
-            .backwardMapping()[staticReshapeDimensionsMappingAnalysis
-                                   .forwardMapping()[mappedSplitAxis]
-                                   .front()]
-            .size() > 1;
-    const bool mixedButSplitAxisIsFirst =
-        staticReshapeDimensionsMappingAnalysis
-            .backwardMapping()[staticReshapeDimensionsMappingAnalysis
-                                   .forwardMapping()[mappedSplitAxis]
-                                   .front()]
-            .front() == static_cast<int64_t>(mappedSplitAxis);
-    if (couldMix && !mixedButSplitAxisIsFirst) {
-      return rewriter.notifyMatchFailure(op,
-                                         "Reshape is mixing static dimensions");
-    }
-
-    // The new split axis is the left most axis in the shape after the reshape.
-    const int64_t newSplitAxis =
-        staticReshapeDimensionsMappingAnalysis.forwardMapping()[mappedSplitAxis]
-            .front();
+    const int64_t newSplitAxis = *newSplitAxisOpt;
 
     Location loc = op->getLoc();
     rewriter.setInsertionPoint(op);
@@ -3199,6 +3195,234 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
       rewriter.eraseOp(reshapeOps[i]);
     }
 
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+/// This pattern swims a reshape through a slice operation.
+///
+/// CONDITIONS:
+/// - Slice result is used exactly once by a ReshapeOpType.
+/// - Slice operates on exactly one dimension (one dim differs between
+///   input and output).
+/// - The slice dimension is statically known in both input and output.
+/// - start/stop/step are constants.
+/// - The reshape must not mix dynamic and static dimensions.
+/// - The slice axis must not be mixed with left dimensions after the reshape.
+/// - [Unchecked] Row major-like memory layout.
+/// When the slice axis expands into multiple dimensions in the reshape
+/// (expansion case), additional constraints apply:
+/// - step must be 1.
+/// - start must be aligned to the contraction factor (product of the inner
+///   expanded dims).
+/// - stop must be aligned to the contraction factor or past the input size.
+/// - The input dimension must be divisible by the contraction factor.
+///
+/// CASE 1 — 1-to-1 mapping (the sliced axis maps to a single axis after
+/// reshape, contraction factor = 1):
+///
+///   Input [10, 4]                    Input [10, 4]
+///       │                                │
+///       ▼                                ▼
+///   ┌───────┐                        ┌─────────┐
+///   │ slice │ axis=0                 │ reshape │
+///   │ [2:6:2]                        └────┬────┘
+///   └───┬───┘                             │ [10, 2, 2]
+///       │ [2, 4]           ─────►         ▼
+///       ▼                            ┌───────┐
+///   ┌─────────┐                      │ slice │ axis=0
+///   │ reshape │                      │ [2:6:2]
+///   └────┬────┘                      └───┬───┘
+///        │ [2, 2, 2]                     │ [2, 2, 2]
+///        ▼                               ▼
+///
+/// CASE 2 — Expansion case (the sliced axis expands into multiple axes after
+/// reshape, contraction factor > 1). Here axis 0 of [12, 4] expands into
+/// [N, 2] after reshape (contraction factor = 2), so start/stop are divided
+/// by 2 and the reshaped input uses the full input size / factor:
+///
+///   Input [12, 4]                    Input [12, 4]
+///       │                                │
+///       ▼                                ▼
+///   ┌───────┐                        ┌─────────┐
+///   │ slice │ axis=0                 │ reshape │
+///   │ [4:8:1]                        └────┬────┘
+///   └───┬───┘                             │ [6, 2, 4]
+///       │ [4, 4]           ─────►         ▼
+///       ▼                            ┌───────┐
+///   ┌─────────┐                      │ slice │ axis=0
+///   │ reshape │                      │ [2:4:1]
+///   └────┬────┘                      └───┬───┘
+///        │ [2, 2, 4]                     │ [2, 2, 4]
+///        ▼                               ▼
+template <typename ReshapeOpType>
+struct SwimStaticReshapeLikeOpsThroughSliceOp
+    : public DeviceAwareRewritePattern<OpRewritePattern, SliceOp> {
+  SwimStaticReshapeLikeOpsThroughSliceOp(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(SliceOp op,
+                             DeviceAwareRewriter &rewriter) const override {
+    // The slice result must be uniquely used by a single ReshapeOpType.
+    auto result = op.getResult();
+    auto users = result.getUsers();
+    if (llvm::range_size(users) != 1 || !isa<ReshapeOpType>(*users.begin())) {
+      return rewriter.notifyMatchFailure(
+          op, "Slice result must have exactly one user of ReshapeOpType");
+    }
+
+    auto reshapeOp = cast<ReshapeOpType>(*users.begin());
+
+    rewriter.pushOp(reshapeOp);
+    if (!rewriter.addOps()) {
+      return rewriter.notifyMatchFailure(
+          op, "matched ops have inconsistent devices");
+    }
+
+    auto inputType = llvm::cast<TensorType>(op.getInput().getType());
+    auto sliceType = llvm::cast<TensorType>(op.getResult().getType());
+    auto reshapeType = reshapeOp.getType();
+
+    if (!inputType.hasRank() || !sliceType.hasRank() || !reshapeType.hasRank())
+      return rewriter.notifyMatchFailure(op, "Types must be ranked");
+
+    // Find the single dimension being sliced (the one where input and output
+    // differ).
+    int64_t sliceAxis = -1;
+    int64_t differentDimensions = 0;
+    for (int64_t i = 0; i < static_cast<int64_t>(inputType.getRank()); ++i) {
+      if (inputType.getDim(i) != sliceType.getDim(i)) {
+        sliceAxis = i;
+        ++differentDimensions;
+      }
+    }
+
+    if (differentDimensions != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "Slice must operate on exactly one dimension");
+    }
+
+    // Both sizes at sliceAxis must be statically known.
+    if (!isa<IntegerAttr>(inputType.getDim(sliceAxis)) ||
+        !isa<IntegerAttr>(sliceType.getDim(sliceAxis))) {
+      return rewriter.notifyMatchFailure(
+          op, "Slice dimension must be statically known");
+    }
+
+    // start/stop/step must be constants so that we can rebuild them.
+    auto startValues = tryGetConstantIntVector(op.getStart());
+    auto stopValues = tryGetConstantIntVector(op.getStop());
+    auto stepValues = tryGetConstantIntVector(op.getStep());
+    if (!startValues || !stopValues || !stepValues) {
+      return rewriter.notifyMatchFailure(op,
+                                         "start/stop/step must be constants");
+    }
+
+    // Compute the reshape analysis from sliceType (before reshape) to
+    // reshapeType (after reshape).
+    const StaticReshapeDimensionsMappingAnalysis
+        staticReshapeDimensionsMappingAnalysis(sliceType.getDims(),
+                                               reshapeType.getDims());
+    if (!staticReshapeDimensionsMappingAnalysis)
+      return rewriter.notifyMatchFailure(op, "Unsupported reshape");
+
+    std::optional<int64_t> newSliceAxisOpt = mapAxisThroughStaticReshape(
+        staticReshapeDimensionsMappingAnalysis, sliceType, sliceAxis);
+    if (!newSliceAxisOpt) {
+      return rewriter.notifyMatchFailure(
+          op, "Cannot map slice axis through reshape");
+    }
+    int64_t newSliceAxis = *newSliceAxisOpt;
+
+    // Reject the contraction case: when multiple source dims collapse into the
+    // target axis (e.g. [K, M] → [K*M]), the new reshape type cannot be
+    // reconstructed by only updating newSliceAxis — the other contracted dims
+    // must also be accounted for, which this pattern does not do.
+    // TODO: Improve this for the contraction case.
+    if (staticReshapeDimensionsMappingAnalysis.backwardMapping()[newSliceAxis]
+            .size() > 1) {
+      return rewriter.notifyMatchFailure(
+          op, "Slice axis participates in a dimension contraction");
+    }
+
+    // Compute the contraction factor: the product of the inner (right-side)
+    // dims that the slice axis expands into after the reshape. For a 1-to-1
+    // mapping this is 1.
+    uint64_t mappedSliceAxis = sliceAxis;
+    while (mappedSliceAxis < sliceType.getRank() &&
+           sliceType.getIntDim(mappedSliceAxis) == 1) {
+      ++mappedSliceAxis;
+    }
+    const auto &expandedDims = staticReshapeDimensionsMappingAnalysis
+                                   .forwardMapping()[mappedSliceAxis];
+    int64_t contractionFactor = 1;
+    for (size_t i = 1; i < expandedDims.size(); ++i)
+      contractionFactor *= reshapeType.getIntDim(expandedDims[i]);
+
+    // For the expansion case (contractionFactor > 1), additional alignment
+    // constraints must hold so that the slice boundaries fall on whole rows of
+    // the inner dimensions.
+    if (contractionFactor > 1) {
+      if ((*stepValues)[sliceAxis] != 1) {
+        return rewriter.notifyMatchFailure(op,
+                                           "Expansion case requires step == 1");
+      }
+      if ((*startValues)[sliceAxis] % contractionFactor != 0) {
+        return rewriter.notifyMatchFailure(
+            op, "start is not aligned to contraction factor");
+      }
+      if (inputType.getIntDim(sliceAxis) % contractionFactor != 0) {
+        return rewriter.notifyMatchFailure(
+            op, "Input dimension is not divisible by contraction factor");
+      }
+      int64_t stop = (*stopValues)[sliceAxis];
+      int64_t inputDimSize = inputType.getIntDim(sliceAxis);
+      if (stop % contractionFactor != 0 && stop < inputDimSize) {
+        return rewriter.notifyMatchFailure(
+            op, "stop is not aligned to contraction factor");
+      }
+    }
+
+    Location loc = op->getLoc();
+    rewriter.setInsertionPoint(op);
+
+    // Build the new reshape type: same as reshapeType but with [newSliceAxis]
+    // scaled up by the ratio inputSize / contractionFactor.
+    SmallVector<TypedAttr> newReshapeShape(reshapeType.getDims());
+    newReshapeShape[newSliceAxis] =
+        rewriter.getDimAttr(inputType.getIntDim(sliceAxis) / contractionFactor);
+    auto newReshapeType = reshapeType.cloneWith(newReshapeShape);
+    auto newReshape =
+        rewriter.create<ReshapeOpType>(loc, newReshapeType, op.getInput())
+            .getResult();
+
+    // Build new start/stop/step tensors in the reshaped space. In the
+    // expansion case start and stop are divided by the contraction factor so
+    // they address the outer expanded dimension; step remains 1 (enforced
+    // above). In the 1-to-1 case (contractionFactor == 1) the values are
+    // unchanged.
+    int64_t newRank = reshapeType.getRank();
+    SmallVector<int64_t> newStart(newRank, 0);
+    SmallVector<int64_t> newStop(newRank, std::numeric_limits<int64_t>::max());
+    SmallVector<int64_t> newStep(newRank, 1);
+    newStart[newSliceAxis] = (*startValues)[sliceAxis] / contractionFactor;
+    newStop[newSliceAxis] = (*stopValues)[sliceAxis] / contractionFactor;
+    // Preserve the original step for the 1-to-1 case; the expansion case
+    // already enforces step == 1.
+    newStep[newSliceAxis] = (*stepValues)[sliceAxis];
+
+    Value newStartVal = rewriter.createHostConstant(loc, newStart);
+    Value newStopVal = rewriter.createHostConstant(loc, newStop);
+    Value newStepVal = rewriter.createHostConstant(loc, newStep);
+
+    auto newSlice = rewriter.create<SliceOp>(
+        loc, reshapeType, newReshape, newStartVal, newStopVal, newStepVal);
+
+    rewriter.replaceAllUsesWith(reshapeOp.getResult(), newSlice.getResult());
+    rewriter.eraseOp(reshapeOp);
     rewriter.eraseOp(op);
 
     return success();
@@ -4645,6 +4869,10 @@ struct SymbolicOptimizationPass
     patterns.add<SinkSplitThroughStaticReshapeLikeOpsPattern<Static::ReshapeOp>,
                  SinkSplitThroughStaticReshapeLikeOpsPattern<RebindOp>,
                  SinkSplitThroughElementwisePattern>(context);
+
+    // Slice swimming.
+    patterns.add<SwimStaticReshapeLikeOpsThroughSliceOp<Static::ReshapeOp>,
+                 SwimStaticReshapeLikeOpsThroughSliceOp<RebindOp>>(context);
 
     // Concat rewriters.
     patterns.add<FlattenNestedConcatPattern,

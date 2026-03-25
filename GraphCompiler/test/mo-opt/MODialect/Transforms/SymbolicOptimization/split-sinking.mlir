@@ -275,10 +275,13 @@ mo.graph @reshape_no_sinking_1_suffix_mixed_dimensions(%in: !mo.tensor<[2, 2], f
   mo.output %3, %4 : !mo.tensor<[2], f32>, !mo.tensor<[2], f32>
 }
 
+// The two slices have different reshape targets: [1, 2, 2] can swim (1-to-1
+// mapping for the sliced axis), while [4] cannot (mixing). The first case
+// is transformed by SwimStaticReshapeLikeOpsThroughSliceOp.
 // CHECK-LABEL:  mo.graph @no_sinking_different_reshapes
-// CHECK:         mo.slice
+// CHECK:         mo.static.reshape
 // CHECK-NEXT:    mo.slice
-// CHECK-NEXT:    mo.static.reshape
+// CHECK-NEXT:    mo.slice
 // CHECK-NEXT:    mo.static.reshape
 
 mo.graph @no_sinking_different_reshapes(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[1, 2, 2], f32>, !mo.tensor<[4], f32>) {
