@@ -165,8 +165,7 @@ runTestcases(SmallVectorImpl<GRTTestcase> &testcasesToExecute,
   for (auto &fn : testcasesToExecute) {
     if (auto err = runTestcase(ctxOr->copy(), fn, context)) {
       options.reportError(err.getError());
-      if (options.stopOnFirstError())
-        return failure();
+      return failure();
     }
   }
   return success();

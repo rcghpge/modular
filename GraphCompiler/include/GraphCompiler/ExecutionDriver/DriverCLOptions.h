@@ -71,6 +71,11 @@ class ExecutorDriverOptions : public AsyncRT::RuntimeOptions,
                               public CommonOptions {
 
 public:
+  enum class OnFailure {
+    kContinue,
+    kExit,
+  };
+
   //   using CommonCLOptions::CommonCLOptions;
 
   /// This specifies the number of times we should execute the model in a warmup
@@ -101,6 +106,12 @@ public:
 
   /// If set, save the execution time of every non-warmup run to given file.
   std::string saveTimings{""};
+
+  /// Behavior when an executed function returns an error.
+  OnFailure onFailure{OnFailure::kExit};
+
+  /// Returns whether an executor should stop when a model returns an error.
+  bool stopOnFirstError() const { return onFailure == OnFailure::kExit; }
 };
 
 /// Contains the core CLI options for *-executor, so that other executables
@@ -249,6 +260,21 @@ private:
                "nanonseconds) per run. Use '-' to output to stdout. Does "
                "not include warmup runs. Ignored in --benchmark mode."),
       llvm::cl::location(options.saveTimings),
+      llvm::cl::cat(ExecutorDriverOptionsCategory)};
+
+  /// Set the behavior of executors if one of the functions they should run
+  /// returns with an error. E.g. Set to `continue` for diagnostic
+  /// verification.
+  M::cl::MOpt<ExecutorDriverOptions::OnFailure, true> onFailure{
+      "on-failure",
+      llvm::cl::desc("Behavior in case an executed function returns with an "
+                     "error. Ignored if there is only one function executed."),
+      llvm::cl::values(clEnumValN(ExecutorDriverOptions::OnFailure::kContinue,
+                                  "continue",
+                                  "Continue executing remaining functions"),
+                       clEnumValN(ExecutorDriverOptions::OnFailure::kExit,
+                                  "exit", "Stop on first error")),
+      llvm::cl::location(options.onFailure),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 };
 
