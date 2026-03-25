@@ -382,13 +382,13 @@ Each primitive has these properties:
 
 It is organized as a fixed-size header containing counts for the variable-size
 portions of the primitive, followed by a variable-size portion whose size
-depends on the header.  Additionally, the size of `PrimitiveUsedBy` depends on
+depends on the header. Additionally, the size of `PrimitiveUsedBy` depends on
 the values of `NumUsedBys`.
 
-MEF primitives must have consecutive result registers.  Hence, when `NumResults
+MEF primitives must have consecutive result registers. Hence, when `NumResults
 >= 2`,`PrimitiveResult`still only consists of one`FIXED32`value,
-representing the first result register.  When`NumResults = 0`,
-`PrimitiveResult` is absent.
+representing the first result register.  When`NumResults = 0`,`PrimitiveResult`
+is absent.
 
 'Used by' records for the same result are grouped together and these groups are
 in the same order of 'result' records. For example, if there are two results, A

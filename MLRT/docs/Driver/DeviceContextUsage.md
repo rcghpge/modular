@@ -10,7 +10,7 @@ If a MOGG Primitive takes a DeviceContext argument, it is added to the calls
 by [`addContextIfPresent`](https://github.com/modularml/modular/blob/a58f8e68c386c59065142749432d9863be0be381/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.cpp#L103).
 
 The added arguments are of the type `mogg.device_context_placeholder`, which
-become `mgp.device_context`  attributes. When lowered to MEF, all device
+become `mgp.device_context` attributes. When lowered to MEF, all device
 references used by the model are serialized as a JSON string.
 
 When the model is loaded by the model executor, DeviceContexts are created for
