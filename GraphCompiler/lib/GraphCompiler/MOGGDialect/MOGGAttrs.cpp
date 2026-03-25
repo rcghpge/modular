@@ -47,12 +47,14 @@ FusionInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 namespace {
 
 void nodeToString(Attribute node, llvm::raw_string_ostream &os,
-                  bool includeLineNumbers) {
+                  bool includeLineNumbers, bool quote) {
   llvm::TypeSwitch<Attribute>(node)
       .Case<FusionLeafAttr>([&](FusionLeafAttr leaf) {
-        os << '"';
+        if (quote)
+          os << '"';
         llvm::printEscapedString(leaf.getOpName().getValue(), os);
-        os << '"';
+        if (quote)
+          os << '"';
         if (includeLineNumbers)
           if (auto fileLoc = dyn_cast_or_null<FileLineColLoc>(leaf.getLoc()))
             if (fileLoc.getLine() > 0)
@@ -62,14 +64,14 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
             FusionAffineAttr, FusionMutableLoadAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
-          nodeToString(child, os, includeLineNumbers);
+          nodeToString(child, os, includeLineNumbers, quote);
         });
         os << ')';
       })
       .Case<FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
-          nodeToString(child, os, includeLineNumbers);
+          nodeToString(child, os, includeLineNumbers, quote);
         });
         os << ", operandIndices=[";
         llvm::interleaveComma(attr.getOperandIndices(), os);
@@ -141,10 +143,11 @@ void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
 
 } // namespace
 
-std::string FusionInfoAttr::toString(bool includeLineNumbers) const {
+std::string FusionInfoAttr::toString(bool includeLineNumbers,
+                                     bool quote) const {
   std::string result;
   llvm::raw_string_ostream os(result);
-  nodeToString(getRoot(), os, includeLineNumbers);
+  nodeToString(getRoot(), os, includeLineNumbers, quote);
   return result;
 }
 
@@ -278,7 +281,8 @@ ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
 void M::MOGG::printFusionInfo(AsmPrinter &p, Operation *op,
                               FusionInfoAttr fusionInfo) {
   if (fusionInfo)
-    p << " fusionInfo = " << fusionInfo.toString(/*includeLineNumbers=*/true);
+    p << " fusionInfo = "
+      << fusionInfo.toString(/*includeLineNumbers=*/true, /*quote*/ true);
 }
 
 ParseResult M::MOGG::parseFusionInfo(AsmParser &p, FusionInfoAttr &fusionInfo) {

@@ -2,7 +2,7 @@
 
 // The allreduce.sum should be fused with the add operations
 // CHECK-LABEL: mef.callable @allreduce_sum_with_epilogue$exec
-// CHECK: Epilogue(\22mo.distributed.allreduce.sum\22, \22mo.add\22, \22mo.add\22, operandIndices=[0, 1])
+// CHECK: Epilogue(mo.distributed.allreduce.sum, mo.add, mo.add, operandIndices=[0, 1])
 // CHECK: mef.output
 mo.graph @allreduce_sum_with_epilogue(
   %input0: !mo.tensor<[5, 64], bf16, gpu:0>,

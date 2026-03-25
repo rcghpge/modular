@@ -79,7 +79,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   auto newExecuteOp = MGP::ExecuteGenericOp::create(
       builder, oldKernel.getLoc(), resultTypes, context,
       oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
-      StringAttr::get(ctx, oldKernel.getFusionInfoAttr().toString()),
+      StringAttr::get(ctx, oldKernel.getFusionInfoAttr().toString(
+                               /*includeLineNumbers=*/false)),
       oldKernel.getIsAsync(), oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))
