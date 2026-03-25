@@ -439,14 +439,17 @@ def DynamicMemoryPlanningPass : Pass<"mgp-dynamic-memory-planning", "MGP::ModelO
 }
 
 //===----------------------------------------------------------------------===//
-// AddStackTracesToAssertsPass
+// AttachPythonStackTraces
 //===----------------------------------------------------------------------===//
 
-def AddStackTracesToAssertsPass : Pass<"mgp-add-stack-traces-to-asserts", "mlir::ModuleOp"> {
-  let summary = "Adds stack traces to all asserts";
+def AttachPythonStackTraces : Pass<"mgp-attach-python-stack-traces", "mlir::ModuleOp"> {
+  let summary = "Attaches Python stack traces from OpaqueLoc to ops and asserts";
   let description = [{
-    Adds a stack trace to all assert messages in the ir. The stack traces
-    are based off of the locations of the asserts.
+    Walks all ops in the module. For each op with an OpaqueLoc wrapping a
+    PythonFrameAttr, encodes the Python stack trace as FusedLoc metadata
+    (so it survives downstream lowering) and strips the OpaqueLoc. Also
+    embeds the trace directly into the message of any mgp.assert op for
+    better runtime diagnostics.
   }];
 }
 

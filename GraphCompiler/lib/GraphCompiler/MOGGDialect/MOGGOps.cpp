@@ -1374,7 +1374,7 @@ LogicalResult CallExecuteOp::emitMojo(EmitMojoState &state) {
 
 /// Collect source notes (Python stack traces) from a location tree. Source
 /// notes are StringAttr metadata on FusedLoc nodes, set by
-/// AddStackTracesToAssertsPass.
+/// AttachPythonStackTraces.
 static SmallVector<StringRef, 4> collectSourceNotes(Location rootLoc) {
   SmallVector<StringRef, 4> notes;
   llvm::SmallSet<StringRef, 4> seen;

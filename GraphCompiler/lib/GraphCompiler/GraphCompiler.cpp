@@ -355,9 +355,8 @@ void M::MO::buildMgpPipeline(
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
-  // Before any sort of fusion, use location information to create better
-  // runtime assert messages.
-  pm.addPass(MGP::createAddStackTracesToAssertsPass());
+  // Before any sort of fusion, attach Python stack traces to ops and asserts.
+  pm.addPass(MGP::createAttachPythonStackTraces());
 
   pm.addPass(MGP::createGlobalizeSlotIndicesPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());

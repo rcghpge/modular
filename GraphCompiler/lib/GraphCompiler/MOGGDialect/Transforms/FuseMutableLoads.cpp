@@ -121,7 +121,7 @@ KernelOp fuseLoadBufferAndChains(OpBuilder &builder, MO::MutableLoadOp loadOp,
       /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
 
   // Merge source locations so that Python stack traces from fused-in ops
-  // survive into AddStackTracesToAssertsPass.
+  // survive into AttachPythonStackTraces.
   newKernelOp->setLoc(mlir::FusedLoc::get(
       kernelOp->getContext(), {loadOp->getLoc(), kernelOp->getLoc()}));
 
@@ -337,7 +337,7 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
       MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
           kernelOp->getContext(), {loadOp, kernelOp}));
   // Merge source locations so that Python stack traces from fused-in ops
-  // survive into AddStackTracesToAssertsPass.
+  // survive into AttachPythonStackTraces.
   kernelOp->setLoc(mlir::FusedLoc::get(kernelOp->getContext(),
                                        {loadOp->getLoc(), kernelOp->getLoc()}));
 

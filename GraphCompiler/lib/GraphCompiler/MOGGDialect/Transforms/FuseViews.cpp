@@ -228,7 +228,7 @@ struct FuseViewsPass : public impl::FuseViewsBase<FuseViewsPass> {
     kernel.setFusionInfoAttr(createFusionInfo<FusionViewAttr>(
         kernel->getContext(), {viewProducer, kernel}));
     // Merge source locations so that Python stack traces from fused-in ops
-    // survive into AddStackTracesToAssertsPass.
+    // survive into AttachPythonStackTraces.
     kernel->setLoc(mlir::FusedLoc::get(
         kernel->getContext(), {viewProducer->getLoc(), kernel->getLoc()}));
   }

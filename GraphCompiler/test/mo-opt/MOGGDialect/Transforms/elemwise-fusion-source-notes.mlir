@@ -7,7 +7,7 @@
 // Before the fix, FuseElementwiseKernels.cpp only called setFusionInfoAttr()
 // without merging locations. This caused source notes from the fused-in op
 // to be lost. Now FusedLoc::get() is used to merge locations from both src
-// and dst, so AddStackTracesToAssertsPass / KernelStubOp::emitMojo can find
+// and dst, so AttachPythonStackTraces / KernelStubOp::emitMojo can find
 // all source notes.
 
 // The outer MGP region wraps errors with the region name (mogg_format_region_error).

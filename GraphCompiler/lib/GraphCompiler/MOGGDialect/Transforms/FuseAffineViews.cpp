@@ -154,7 +154,7 @@ struct FuseAffineViewsPass
     kernel.setFusionInfoAttr(
         createFusionInfo<FusionAffineAttr>(kernel->getContext(), ops));
     // Merge source locations so that Python stack traces from fused-in ops
-    // survive into AddStackTracesToAssertsPass.
+    // survive into AttachPythonStackTraces.
     kernel->setLoc(mlir::FusedLoc::get(kernel->getContext(),
                                        {viewOp->getLoc(), kernel->getLoc()}));
   }
