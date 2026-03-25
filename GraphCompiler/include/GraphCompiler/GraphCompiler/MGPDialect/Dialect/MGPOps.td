@@ -802,6 +802,40 @@ def DebugPrintOp : MGP_Op<"debug.print", [
 }
 
 //===----------------------------------------------------------------------===//
+// DebugPrintIntOp
+//===----------------------------------------------------------------------===//
+
+def DebugPrintIntOp : MGP_Op<"debug.print.int", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Prints a runtime integer value. For debugging and testing only.";
+  let description = [{
+    Prints a runtime index (integer) value. If a label attribute is supplied
+    the value is printed with that label.
+
+    For debugging and testing only.
+
+    Example:
+    ```mlir
+    %ch0: !mef.chain
+    %ctx: !mgp.context
+    %val: index
+    %ch1 = mgp.debug.print.int %ch0, %ctx, %val, "label"
+    %ch1: !mef.chain
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       Index:$value,
+                       DefaultValuedAttr<StrAttr, "\"\"">:$aLabel);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `,` $value ( `,` $aLabel^ )? attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // CallOp
 //===----------------------------------------------------------------------===//
 

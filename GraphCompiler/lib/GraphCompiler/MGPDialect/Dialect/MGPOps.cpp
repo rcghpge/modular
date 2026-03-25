@@ -893,6 +893,24 @@ LogicalResult DebugPrintOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
+// DebugPrintIntOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DebugPrintIntOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  MOGG::MojoValue labelParam = MOGG::MojoValue(getALabel()).quote();
+  MOGG::MojoValue ctxVar = state.getMojoValueFor(getTheContext());
+  MOGG::MojoValue valueVar = state.getMojoValueFor(getValue());
+
+  state.builder.call(function, {labelParam}, {ctxVar, valueVar});
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ModelOp
 //===----------------------------------------------------------------------===//
 
