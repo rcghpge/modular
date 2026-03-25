@@ -123,6 +123,13 @@ struct CanonicalizeBufferOpSequences
 
     auto rawParent = inChain->getDefiningOp();
 
+    // Don't rewrite chains that cross region boundaries.  An op inside a
+    // region body (e.g. mo.parallel) may capture a chain from an outer-scope
+    // op; bypassing that chain would break sequencing guarantees.
+    if (rawParent && rawParent->getParentRegion() != mutOp->getParentRegion())
+      return rewriter.notifyMatchFailure(mutOp,
+                                         "chain crosses a region boundary");
+
     auto parent = dyn_cast_if_present<MOMutableOpInterface>(rawParent);
 
     if (parent && hasSingleChain(parent) &&

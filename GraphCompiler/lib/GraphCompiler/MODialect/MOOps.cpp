@@ -1310,11 +1310,9 @@ ParallelOp::inferReturnTypes(MLIRContext *context,
   for (auto input : inputs) {
     auto inputDevice = dyn_cast<MO::MOHasDeviceTypeInterface>(input.getType());
     if (inputDevice && yieldDevice) {
-      // Use the yield type with the device of the matching input
       inferredReturnTypes.push_back(
           yieldDevice.cloneWithNewDevice(inputDevice.getDeviceRef()));
     } else {
-      // No devices, just use the yield type
       inferredReturnTypes.push_back(yieldType);
     }
   }
@@ -1323,6 +1321,36 @@ ParallelOp::inferReturnTypes(MLIRContext *context,
     inferredReturnTypes.push_back(ChainType::get(context));
 
   return success();
+}
+
+void ParallelOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  Block &body = getBodyRegion().front();
+
+  SmallVector<mlir::MemoryEffects::EffectInstance> bodyEffects;
+  for (Operation &op : body) {
+    auto nested = mlir::getEffectsRecursively(&op);
+    if (!nested)
+      return;
+    bodyEffects.append(nested->begin(), nested->end());
+  }
+
+  MutableOperandRange inputsMut = getInputsMutable();
+  MutableOperandRange extraInputsMut = getExtraInputsMutable();
+
+  for (auto &effect : bodyEffects) {
+    Value val = effect.getValue();
+    auto blockArg = val ? dyn_cast<BlockArgument>(val) : BlockArgument{};
+    if (!blockArg || blockArg.getOwner() != &body) {
+      effects.push_back(effect);
+      continue;
+    }
+
+    MutableOperandRange &group =
+        blockArg.getArgNumber() == 0 ? inputsMut : extraInputsMut;
+    for (auto &operand : group)
+      effects.emplace_back(effect.getEffect(), &operand);
+  }
 }
 
 LogicalResult ParallelOp::verify() {

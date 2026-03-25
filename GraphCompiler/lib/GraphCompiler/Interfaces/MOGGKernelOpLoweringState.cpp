@@ -1196,6 +1196,14 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
                                              finalChain);
   }
 
+  // Purge lowering-state entries keyed by clone results before erasing them.
+  // After erasure the Value pointers dangle; if a later parallel op allocates
+  // new clones at the same addresses, the stale map entries would shadow the
+  // new registrations (try_emplace does not overwrite).
+  for (Operation *clone : allClones)
+    for (Value res : clone->getResults())
+      loweringState.eraseExecuteLoweredValue(res);
+
   // Erase clone shells in reverse order (later kernels may reference earlier
   // kernels' results as operands).
   for (Operation *clone : llvm::reverse(allClones))
