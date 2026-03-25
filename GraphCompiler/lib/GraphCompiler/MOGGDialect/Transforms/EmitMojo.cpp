@@ -106,6 +106,8 @@ struct EmitMojo
       state.builder.import(moduleName.string());
     }
 
+    state.builder.newline();
+
     // Emit mojo for all the kernel stubs that exist in the current module.
     for (auto &&kernelStub : llvm::make_early_inc_range(
              moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {

@@ -58,6 +58,33 @@ struct AddTryExceptBlocks
     auto terminator = kernelBody.getTerminator();
     Location loc = kernelOp->getLoc();
 
+    // Handle MOGG ABI stubs: wrap all ops (except TryOp and OutputOp) in a
+    // TryOp. The try block contains the setup ops and WithTraceOp (added by
+    // createKernelStub). The except block contains a RaiseOp that formats
+    // the error with full kernel context (name, fusion info, traceback).
+    if (kernelOp.getAbi() == MOGG::ABIKind::MOGG) {
+      if (!kernelOp.isThrows())
+        return;
+
+      builder.setInsertionPointToStart(&kernelBody);
+      auto tryOp = MOGG::TryOp::create(builder, loc, TypeRange{});
+      Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
+      for (Operation &op :
+           llvm::make_early_inc_range(kernelBody.getOperations())) {
+        if (!isa<MOGG::TryOp, MOGG::OutputOp>(op))
+          op.moveBefore(&tryBlock, tryBlock.end());
+      }
+      builder.setInsertionPointToEnd(&tryBlock);
+      MOGG::YieldOp::create(builder, loc, ValueRange{});
+
+      Block &exceptBlock = tryOp.getExceptRegion().emplaceBlock();
+      Value errArg =
+          exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
+      builder.setInsertionPointToStart(&exceptBlock);
+      MOGG::RaiseOp::create(builder, loc, errArg);
+      return;
+    }
+
     if (kernelOp.getAbi() != MOGG::ABIKind::MGP)
       return;
 

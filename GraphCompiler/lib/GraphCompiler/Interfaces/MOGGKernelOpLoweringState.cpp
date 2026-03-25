@@ -6,6 +6,7 @@
 
 #include "GraphCompiler/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "Support/AssertStream.h"
 #include "mlir/IR/IRMapping.h"
@@ -198,6 +199,22 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp,
       kernelOp.getIsAsyncAttr(), ArrayAttr::get(ctx, {}),
       MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG));
   kernelStub.getBody().takeBody(kernelOp.getExecBody());
+
+  // Wrap the kernel terminator in a WithTraceOp so that Trace instrumentation
+  // and error context are handled structurally (not inline in emitMojoMOGGABI).
+  {
+    auto &bodyBlock = kernelStub.getBodyBlock();
+    auto *kernelTerminator = bodyBlock.getTerminator();
+    OpBuilder localBuilder(ctx);
+    localBuilder.setInsertionPoint(kernelTerminator);
+    auto withTraceOp =
+        MOGG::WithTraceOp::create(localBuilder, kernelTerminator->getLoc());
+    Block &innerBlock = withTraceOp.getBody().emplaceBlock();
+    kernelTerminator->moveBefore(&innerBlock, innerBlock.end());
+    localBuilder.setInsertionPointAfter(withTraceOp);
+    MOGG::OutputOp::create(localBuilder, kernelStub.getLoc(), ValueRange{});
+  }
+
   kernelStub.setDeviceRef(device);
 
   builder.restoreInsertionPoint(insertionPoint);

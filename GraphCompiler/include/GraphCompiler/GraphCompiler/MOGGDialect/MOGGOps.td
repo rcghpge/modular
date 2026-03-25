@@ -1259,8 +1259,37 @@ def MOGG_YieldOp
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
 
+def MOGG_WithTraceOp : MOGG_Op<"with_trace", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
+]> {
+  let summary = "Wraps a kernel terminator in a Trace context manager";
+  let description = [{
+    Models the `with Trace[...]` clause emitted around the kernel terminator
+    in MOGG ABI kernel stubs.  The body region contains exactly one block
+    whose terminator is the KernelTerminator for the stub.  This op is
+    always considered throwing because Trace.__enter__ raises.
+  }];
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = "$body attr-dict";
+}
+
+def MOGG_RaiseOp : MOGG_Op<"raise", [
+  Terminator,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>
+]> {
+  let summary = "Re-raises a kernel error with full context";
+  let description = [{
+    Emitted as the terminator of the except block in MOGG ABI kernel stubs.
+    Formats the caught error with the enclosing stub name, fusion info, and
+    Python source traceback, then re-raises it so the caller sees the full
+    context.
+  }];
+  let arguments = (ins MOGG_Error:$error);
+  let assemblyFormat = "$error attr-dict";
+}
+
 def MOGG_TryOp : MOGG_Op<"try", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<KernelTerminatorProvider>
 ]> {
   let summary = "Op that represent a try / except statement";

@@ -1413,9 +1413,9 @@ LogicalResult KernelStubOp::verify() {
 }
 
 bool KernelStubOp::isThrows() {
-  // MOGG ABI kernels are always considered raising so that they are emitted
-  // with `raises` and wrapped in a `with Trace[...]` block unconditionally.
-  // Trace.__enter__ is raises, so the surrounding function must be raises.
+  // MOGG ABI kernels always use `with Trace[...]` which can raise, so they
+  // unconditionally return true. This also prevents deep recursion through
+  // CallStubOp chains in sequence-fused kernels.
   if (getAbi() == ABIKind::MOGG)
     return true;
   return llvm::any_of(getBodyBlock().getOps<MOGG::EmitsMojoInterface>(),
@@ -1423,6 +1423,12 @@ bool KernelStubOp::isThrows() {
 }
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
+  // Emit the fusion info tree as a top-level comment before the function.
+  state.builder.comment("FusionInfo:");
+  std::string fusionTree = getFusionInfoAttr().toPrettyTree();
+  for (auto line : llvm::split(fusionTree, '\n'))
+    state.builder.comment(("  " + line).str());
+
   // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
   // GenericCompiledRegionOp which has that implicit void** ABI.
   if (getAbi() == ABIKind::MOGG)
@@ -1431,35 +1437,6 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
-  auto emitFusionInfoComment = [&] {
-    state.builder.comment("FusionInfo:");
-    std::string tree = getFusionInfoAttr().toPrettyTree();
-    for (auto line : llvm::split(tree, '\n'))
-      state.builder.comment(("  " + line).str());
-  };
-
-  // Build the Trace[] context manager expression for instrumentation.
-  // Uses fusion info as the trace name. The target is the device label
-  // (e.g. "cpu"/"gpu"). If a context argument is present, includes
-  // task_id=get_safe_task_id(ctx) for task-level tracing granularity.
-  auto buildTraceContextExpr = [&](MojoValue contextArg) -> MojoValue {
-    std::string deviceLabel = MO::getDeviceOrDefaultAny(*this).getLabel().str();
-    std::string traceName =
-        getFusionInfoAttr().toString(/*includeLineNumbers=*/false);
-
-    // Trace[TraceLevel.OP, target=StaticString("device")]("trace name"[,
-    // task_id=...])
-    SmallVector<MojoValue> traceParams = {
-        MojoValue("std.runtime.tracing.TraceLevel.OP"),
-        MojoValue("target").equal(
-            MojoValue("StaticString")({}, {MojoValue(deviceLabel).quote()}))};
-    SmallVector<MojoValue> traceOperands = {MojoValue(traceName).quote()};
-    if (!contextArg.text.empty())
-      traceOperands.push_back(MojoValue("task_id").equal(
-          MojoValue("std.runtime.tracing.get_safe_task_id")({}, {contextArg})));
-    return MojoValue("std.runtime.tracing.Trace")(traceParams, traceOperands);
-  };
-
   // Helper to convert type to Mojo, using proper opaque type representation
   // for parameterized opaque types.
   auto typeToMojo = [&](Type type) -> MojoValue {
@@ -1469,7 +1446,7 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
       if (!params.empty())
         return baseTy[params];
       return baseTy;
-    } else if (auto mgpBufferType = dyn_cast<MGP::DeviceBufferType>(type)) {
+    } else if (dyn_cast<MGP::DeviceBufferType>(type)) {
       // mgp.buffer should always be treated as NDBuffer of uint8_t.
       return HardcodedMojoSymbols::comptime_NDBuffer_In_MGP;
     }
@@ -1493,125 +1470,21 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
       /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
         state.currentFunctionBody = functionBody;
 
-        emitFusionInfoComment();
-
         for (auto &&[mlirArg, mojoArg] :
-             llvm::zip(getBody().getArguments(), functionBody.arguments)) {
+             llvm::zip(getBody().getArguments(), functionBody.arguments))
           state.setMojoValueFor(mlirArg, mojoArg);
-        }
 
-        // Find the context argument (if present) to include task_id in Trace.
-        MojoValue contextMojoArg;
-        for (auto mlirArg : getBody().getArguments()) {
-          if (isa<MOGG::ContextType>(mlirArg.getType())) {
-            contextMojoArg = state.getMojoValueFor(mlirArg);
-            break;
-          }
-        }
-
-        // Collect all ops in the body now (before any dynamic insertions
-        // from lowerOpToMojo mutate the block).
-        SmallVector<mlir::Operation *> bodyOps;
-        for (auto &op : getOps())
-          bodyOps.push_back(&op);
-
-        // Find the first kernel terminator (CallExecuteOp, CallForeachOp,
-        // CallMaterializeOp). Everything before it is setup (lambdas, tensor
-        // inits, etc.) and must be emitted OUTSIDE the Trace block so that
-        // @parameter captures are not reordered by the Mojo compiler.
-        auto terminatorIt = llvm::find_if(bodyOps, [](mlir::Operation *op) {
-          return isa<MOGG::KernelTerminator>(op);
+        // Emit body ops: TryOp (wrapping setup, WithTraceOp, RaiseOp) and
+        // OutputOp. Each op's emitMojo handles the details.
+        errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
+          return state.lowerOpToMojo(&op).failed();
         });
-
-        auto emitBody = [&]() {
-          for (auto *op : llvm::make_range(bodyOps.begin(), terminatorIt)) {
-            if (state.lowerOpToMojo(op).failed()) {
-              errOccurred = true;
-              break;
-            }
-          }
-
-          // Wrap only the terminator (and keepalives) in the Trace block.
-          if (!errOccurred) {
-            state.builder.with_(buildTraceContextExpr(contextMojoArg), [&]() {
-              for (auto *op : llvm::make_range(terminatorIt, bodyOps.end())) {
-                if (state.lowerOpToMojo(op).failed()) {
-                  errOccurred = true;
-                  break;
-                }
-              }
-            });
-            if (!errOccurred)
-              state.genAllKeepAliveStatements();
-          }
-        };
-
-        // MOGG ABI stubs catch errors and re-raise with full context (stub
-        // name, fusion info, source traceback) embedded. The outer
-        // AsyncErrorOp wraps the formatted error with the MGP region name.
-        if (isThrows()) {
-          // Build fusion info content (indented tree) for this stub.
-          std::string fusionInfoContent =
-              getFusionInfoAttr().toPrettyTree({}, /*indent=*/true);
-
-          // Build source traceback content for this stub.
-          auto notesList = collectSourceNotes(getLoc());
-          std::string tracebackContent;
-          if (!notesList.empty()) {
-            llvm::raw_string_ostream os(tracebackContent);
-            constexpr size_t kMaxInlineTraces = 3;
-            bool showAllTraces = notesList.size() <= kMaxInlineTraces;
-            if (showAllTraces) {
-              for (auto note : notesList)
-                os << note << '\n';
-            }
-            if (notesList.size() > 1) {
-              if (showAllTraces) {
-                os << "\nNote: these operations were fused into a single "
-                      "kernel.\n"
-                   << "The source traceback for each fused op is above.\n";
-              } else {
-                os << "Note: " << notesList.size()
-                   << " operations were fused into a single kernel.\n"
-                   << "The crash occurred in one of the operations below.\n";
-              }
-            }
-          }
-
-          auto formatKernelErrorFunc = state.getOriginalMojoNameFor(
-              state.analysis.getRegisteredLITMojoKernelFor(
-                  "mogg.format_kernel_error"));
-          std::string stubName = getSymNameAttr().str();
-          state.builder.try_([&]() { emitBody(); })
-              .except([&](const MojoValue &e) {
-                SmallVector<MojoValue> args = {
-                    MojoValue(stubName).quote(),
-                    e,
-                    MojoValue(fusionInfoContent).escape(),
-                    MojoValue(tracebackContent).escape(),
-                };
-                auto formattedErr =
-                    state.builder.var(formatKernelErrorFunc({}, args));
-                state.builder.raise(formattedErr.transfer());
-              });
-        } else {
-          emitBody();
-        }
       });
 
-  if (errOccurred)
-    return failure();
-  return success();
+  return failure(errOccurred);
 }
 
 LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
-  auto emitFusionInfoComment = [&] {
-    state.builder.comment("FusionInfo:");
-    std::string tree = getFusionInfoAttr().toPrettyTree();
-    for (auto line : llvm::split(tree, '\n'))
-      state.builder.comment(("  " + line).str());
-  };
-
   // Clear any previous kernel's return values from the state.
   state.mojoReturnValues.clear();
   state.mojoConstantResources.clear();
@@ -1635,9 +1508,6 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
             "This is the entry point of the kernel. The first argument is a "
             "pointer to a list of inputs and outputs. The second is a pointer "
             "to a runtime context.");
-
-        if (getFusionInfoAttr())
-          emitFusionInfoComment();
 
         auto runtimeArgument = functionBody.arguments.front();
         auto &kernelBody = getBody().front();
@@ -2544,7 +2414,10 @@ LogicalResult CallStubOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return success();
 }
 
-bool CallStubOp::isThrows() { return getCallee().isThrows(); }
+bool CallStubOp::isThrows() {
+  auto callee = getCallee();
+  return callee && callee.isThrows();
+}
 
 LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
@@ -3192,6 +3065,118 @@ LogicalResult OutputOp::emitMojo(EmitMojoState &) { return success(); }
 LogicalResult YieldOp::emitMojo(EmitMojoState &) { return success(); }
 
 //===----------------------------------------------------------------------===//
+// WithTraceOp
+//===----------------------------------------------------------------------===//
+
+bool WithTraceOp::isThrows() { return true; }
+
+LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
+  // Find the enclosing KernelStubOp to get the device and fusion info.
+  auto kernelStubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  if (!kernelStubOp)
+    return emitOpError("WithTraceOp must be nested in a KernelStubOp");
+
+  std::string deviceLabel =
+      MO::getDeviceOrDefaultAny(kernelStubOp).getLabel().str();
+  std::string traceName =
+      kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false);
+
+  // Find the context argument (if present) to include task_id in Trace.
+  MojoValue contextMojoArg;
+  for (auto mlirArg : kernelStubOp.getBody().getArguments()) {
+    if (isa<MOGG::ContextType>(mlirArg.getType())) {
+      contextMojoArg = state.getMojoValueFor(mlirArg);
+      break;
+    }
+  }
+
+  // Build: Trace[TraceLevel.OP, target=StaticString("device")]("name"[,
+  // task_id=...])
+  SmallVector<MojoValue> traceParams = {
+      MojoValue("std.runtime.tracing.TraceLevel.OP"),
+      MojoValue("target").equal(
+          MojoValue("StaticString")({}, {MojoValue(deviceLabel).quote()}))};
+  SmallVector<MojoValue> traceOperands = {MojoValue(traceName).quote()};
+  if (!contextMojoArg.text.empty())
+    traceOperands.push_back(MojoValue("task_id").equal(MojoValue(
+        "std.runtime.tracing.get_safe_task_id")({}, {contextMojoArg})));
+  MojoValue traceExpr =
+      MojoValue("std.runtime.tracing.Trace")(traceParams, traceOperands);
+
+  bool errOccurred = false;
+  state.builder.with_(traceExpr, [&]() {
+    for (auto &op : getBody().getOps()) {
+      if (state.lowerOpToMojo(&op).failed()) {
+        errOccurred = true;
+        return;
+      }
+    }
+  });
+
+  if (!errOccurred)
+    state.genAllKeepAliveStatements();
+
+  return failure(errOccurred);
+}
+
+//===----------------------------------------------------------------------===//
+// RaiseOp
+//===----------------------------------------------------------------------===//
+
+bool RaiseOp::isThrows() { return true; }
+
+LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
+  // Find the enclosing KernelStubOp for kernel context (name, fusion info,
+  // source tracebacks).
+  auto kernelStubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  if (!kernelStubOp)
+    return emitOpError("RaiseOp must be nested in a KernelStubOp");
+
+  std::string stubName = kernelStubOp.getSymNameAttr().str();
+
+  std::string fusionInfoContent =
+      kernelStubOp.getFusionInfoAttr().toPrettyTree({}, /*indent=*/true);
+
+  // Build source traceback content from FusedLoc metadata set by
+  // AttachPythonStackTraces.
+  auto notesList = collectSourceNotes(kernelStubOp.getLoc());
+  std::string tracebackContent;
+  if (!notesList.empty()) {
+    llvm::raw_string_ostream os(tracebackContent);
+    constexpr size_t kMaxInlineTraces = 3;
+    bool showAllTraces = notesList.size() <= kMaxInlineTraces;
+    if (showAllTraces) {
+      for (auto note : notesList)
+        os << note << '\n';
+    }
+    if (notesList.size() > 1) {
+      if (showAllTraces) {
+        os << "\nNote: these operations were fused into a single kernel.\n"
+           << "The source traceback for each fused op is above.\n";
+      } else {
+        os << "Note: " << notesList.size()
+           << " operations were fused into a single kernel.\n"
+           << "The crash occurred in one of the operations below.\n";
+      }
+    }
+  }
+
+  auto formatKernelErrorFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor("mogg.format_kernel_error"));
+  MojoValue errorExpr = state.getMojoValueFor(getError());
+  SmallVector<MojoValue> args = {
+      MojoValue(stubName).quote(),
+      errorExpr,
+      MojoValue(fusionInfoContent).escape(),
+      MojoValue(tracebackContent).escape(),
+  };
+  auto formattedErr = state.builder.var(formatKernelErrorFunc({}, args));
+  state.builder.raise(formattedErr.transfer());
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TryOp
 //===----------------------------------------------------------------------===//
 
@@ -3219,6 +3204,14 @@ LogicalResult TryOp::emitMojo(EmitMojoState &state) {
       });
 
   return failure(errOccurred);
+}
+
+bool TryOp::isThrows() {
+  auto regionThrows = [](Region &region) {
+    return llvm::any_of(region.front().getOps<MOGG::EmitsMojoInterface>(),
+                        [](auto op) { return op.isThrows(); });
+  };
+  return regionThrows(getTryRegion()) && regionThrows(getExceptRegion());
 }
 
 //===----------------------------------------------------------------------===//
