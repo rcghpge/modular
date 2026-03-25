@@ -654,7 +654,7 @@ modular_cc_library(
     visibility = [
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
-        "@internal_skye//:__pkg__",
+        "@plugin//:__pkg__",
     ],
     deps = [
         ":AsyncRT/Runtime",
@@ -686,7 +686,7 @@ modular_cc_library(
     hdrs = glob(["include/MLRT/Driver/HAL/*.h"]),
     includes = ["include"],
     target_compatible_with = select({
-        "//:internal_skye_enabled": [],
+        "//:plugin_enabled": [],
         "//:nvidia_gpu": [],
         "//:apple_gpu": [],
         "//:amd_gpu": [],
