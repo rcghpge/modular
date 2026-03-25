@@ -13,16 +13,21 @@ static std::string code = R"MSL(
 #include <metal_stdlib>
 using namespace metal;
 
+struct FloatBufPtr      { device float*       ptr; };
+struct ConstFloatBufPtr { device const float* ptr; };
+
 kernel void vec_add_msl(
-    device float* output [[buffer(0)]],
-    device const float* input0 [[buffer(1)]],
-    device const float* input1 [[buffer(2)]],
-    constant uint& length [[buffer(3)]],
+    device FloatBufPtr&       out_ref [[buffer(0)]],
+    device ConstFloatBufPtr&  in0_ref [[buffer(1)]],
+    device ConstFloatBufPtr&  in1_ref [[buffer(2)]],
+    constant uint&            length  [[buffer(3)]],
     uint tid [[thread_position_in_grid]])
 {
-    if (tid < length) {
+    device float*       output = out_ref.ptr;
+    device const float* input0 = in0_ref.ptr;
+    device const float* input1 = in1_ref.ptr;
+    if (tid < length)
         output[tid] = input0[tid] + input1[tid];
-    }
 }
 )MSL";
 
