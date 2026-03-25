@@ -15,6 +15,12 @@ TEST_F(DriverPluginTest, StandardStatusMessage) {
             this->status_message(M_DRIVER_STATUS_SUCCESS, errorMessage,
                                  sizeof(errorMessage)));
   ASSERT_GT(strlen(errorMessage), 0);
+
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_INCOMPATIBLE_VERSION,
+                                 errorMessage, sizeof(errorMessage)));
+  ASSERT_STREQ(errorMessage, "Incompatible version");
+
   ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
             this->status_message(M_DRIVER_STATUS_UNKNOWN_ERROR, errorMessage,
                                  sizeof(errorMessage)));
@@ -23,8 +29,10 @@ TEST_F(DriverPluginTest, StandardStatusMessage) {
 
 TEST_F(DriverPluginTest, BadStatusCode) {
   char errorMessage[1024];
+  M_driver_status_t kPositiveStatusCode = 10; // Arbitrarily chosen
   ASSERT_EQ(M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE,
-            this->status_message(10, errorMessage, sizeof(errorMessage)));
+            this->status_message(kPositiveStatusCode, errorMessage,
+                                 sizeof(errorMessage)));
   ASSERT_EQ(M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE,
             this->status_message(-M_DRIVER_NUM_STANDARD_STATUS_CODES,
                                  errorMessage, sizeof(errorMessage)));
@@ -37,6 +45,29 @@ TEST_F(DriverPluginTest, BadStatusCode) {
             this->status_message(M_DRIVER_STATUS_CUSTOM_CODES_BASE -
                                      assumedNumCustomStatusCodes,
                                  errorMessage, sizeof(errorMessage)));
+}
+
+TEST_F(DriverPluginTest, DriverPropertyVersion) {
+  // Good version
+  M_driver_version version = {
+      .major = 0xFFFFFFFFu, .minor = 0xFFFFFFFFu, .patch = 0xFFFFFFFFu};
+  ASSERT_EQ(
+      M_DRIVER_STATUS_SUCCESS,
+      this->property(driver, M_DRIVER_PROPERTY_VERSION, (void *)&version));
+  EXPECT_EQ(M_DRIVER_INTERFACE_VERSION_MAJOR, version.major);
+  EXPECT_EQ(M_DRIVER_INTERFACE_VERSION_MINOR, version.minor);
+  EXPECT_EQ(M_DRIVER_INTERFACE_VERSION_PATCH, version.patch);
+  std::cerr << "Version: " << version.major << "." << version.minor << "."
+            << version.patch << "\n";
+
+  // Bad version
+  version.major = 0xFFFFFFFFu;
+  version.minor = 0xFFFFFFFFu;
+  version.patch = 0xFFFFFFFFu;
+  M_driver_driver_t noDriver = nullptr;
+  EXPECT_EQ(M_DRIVER_STATUS_INCOMPATIBLE_VERSION,
+            this->create(&version, &noDriver));
+  EXPECT_EQ(noDriver, nullptr);
 }
 
 TEST_F(DriverPluginTest, DriverPropertyAPI) {

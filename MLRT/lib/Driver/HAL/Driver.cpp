@@ -57,10 +57,28 @@ ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
 
-  if (M_driver_status_t status = driver->plugin.create(&driver->handle))
+  M_driver_version version = {.major = M_DRIVER_INTERFACE_VERSION_MAJOR,
+                              .minor = M_DRIVER_INTERFACE_VERSION_MINOR,
+                              .patch = M_DRIVER_INTERFACE_VERSION_PATCH};
+  if (M_driver_status_t status =
+          driver->plugin.create(&version, &driver->handle)) {
     return Error("Failed to initialize driver plugin from " +
                  driver->plugin.soPath + ": " +
                  driver->getStatusMessage(status));
+  }
+
+  if (version.major != M_DRIVER_INTERFACE_VERSION_MAJOR ||
+      version.minor != M_DRIVER_INTERFACE_VERSION_MINOR) {
+    [[maybe_unused]] auto _ = driver->plugin.destroy(driver->handle);
+    return Error(
+        "Failed to initialize driver plugin from " + driver->plugin.soPath +
+        ": " + "Plugin version: " + llvm::Twine(version.major) + "." +
+        llvm::Twine(version.minor) + "." + llvm::Twine(version.patch) +
+        " is incompatible with Modular's " +
+        "HAL version: " + llvm::Twine(M_DRIVER_INTERFACE_VERSION_MAJOR) + "." +
+        llvm::Twine(M_DRIVER_INTERFACE_VERSION_MINOR) + "." +
+        llvm::Twine(M_DRIVER_INTERFACE_VERSION_PATCH) + ".");
+  }
 
   // Pre-size data structures for subsequent lazy initialization.
   int64_t numDevices = 0;

@@ -78,7 +78,12 @@ struct DriverPluginTest : ::testing::Test {
 
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
-    DO_TEST(create(&driver));
+    M_driver_version version = {.major = M_DRIVER_INTERFACE_VERSION_MAJOR,
+                                .minor = M_DRIVER_INTERFACE_VERSION_MINOR,
+                                .patch = M_DRIVER_INTERFACE_VERSION_PATCH};
+    DO_TEST(create(&version, &driver));
+    ASSERT_EQ(version.major, M_DRIVER_INTERFACE_VERSION_MAJOR);
+    ASSERT_EQ(version.minor, M_DRIVER_INTERFACE_VERSION_MINOR);
 
     const char *apiStr = nullptr;
     M_driver_status_t status = property(driver, M_DRIVER_PROPERTY_API, &apiStr);

@@ -6,7 +6,7 @@
 
 #include "Driver.h"
 #include "Common.h"
-#include "HAL/M_driver_driver.h"
+#include "HAL/M_driver_api.h"
 #include "llvm/ADT/StringRef.h"
 
 M_driver_driver_t M_driver_driver::create() {
@@ -31,7 +31,15 @@ M_driver_driver_t M_driver_driver::create() {
 
 void M_driver_driver::destroy(M_driver_driver *driver) { delete driver; }
 
-extern "C" M_driver_status_t M_driver_create(M_driver_driver_t *outDriver) {
+M_driver_status_t M_driver_create(M_driver_version *version,
+                                  M_driver_driver_t *outDriver) {
+  if (version->major != M_DRIVER_INTERFACE_VERSION_MAJOR)
+    return M_DRIVER_STATUS_INCOMPATIBLE_VERSION;
+
+  version->major = M_DRIVER_INTERFACE_VERSION_MAJOR;
+  version->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
+  version->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
+
   M_driver_driver *driver = M_driver_driver::create();
   if (!driver)
     return M_DRIVER_STATUS_NO_DEVICES;
@@ -50,7 +58,12 @@ M_driver_property([[maybe_unused]] M_driver_driver_t handle,
   StringRef name(property_name);
   if (name == M_DRIVER_PROPERTY_API)
     *static_cast<const char **>(value) = "Metal";
-  else
+  else if (name == M_DRIVER_PROPERTY_VERSION) {
+    M_driver_version *version = static_cast<M_driver_version *>(value);
+    version->major = M_DRIVER_INTERFACE_VERSION_MAJOR;
+    version->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
+    version->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
+  } else
     return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
   return M_DRIVER_STATUS_SUCCESS;
 }

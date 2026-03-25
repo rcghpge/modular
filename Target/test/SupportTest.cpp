@@ -112,14 +112,16 @@ TEST(SupportTest, CopyStatusMessageStringRef) {
 
 TEST(SupportTest, StandardStatusMessagesKnownStrings) {
   EXPECT_STREQ(standardStatusMessages[0], "Success");
-  EXPECT_STREQ(standardStatusMessages[1], "Unknown error");
-  EXPECT_STREQ(standardStatusMessages[2], "Argument out of range");
-  EXPECT_STREQ(standardStatusMessages[3], "Unknown property name");
-  EXPECT_STREQ(standardStatusMessages[4], "No devices");
-  EXPECT_STREQ(standardStatusMessages[5], "Bad device");
-  EXPECT_STREQ(standardStatusMessages[6], "Bad context");
-  EXPECT_STREQ(standardStatusMessages[7], "Bad memory");
-  EXPECT_STREQ(standardStatusMessages[8], "Out of memory");
+  EXPECT_STREQ(standardStatusMessages[1], "Incompatible version");
+  EXPECT_STREQ(standardStatusMessages[2], "Unknown error");
+  EXPECT_STREQ(standardStatusMessages[3], "Argument out of range");
+  EXPECT_STREQ(standardStatusMessages[4], "Unknown property name");
+  EXPECT_STREQ(standardStatusMessages[5], "No devices");
+  EXPECT_STREQ(standardStatusMessages[6], "Bad device");
+  EXPECT_STREQ(standardStatusMessages[7], "Bad context");
+  EXPECT_STREQ(standardStatusMessages[8], "Bad memory");
+  EXPECT_STREQ(standardStatusMessages[9], "Out of memory");
+  EXPECT_STREQ(standardStatusMessages[10], "Invalid argument");
 }
 
 TEST(SupportTest, StandardStatusMessagesNonEmpty) {

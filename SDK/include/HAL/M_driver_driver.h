@@ -17,15 +17,24 @@ extern "C" {
 /**
  * Perform initialization activities prior to using other functions in this API.
  *
- * @param driver (out) The driver.
+ * @param version (inout) The version of the driver interface implemented by
+ * both sides. Before entry, Modular fills in the version it was built with.
+ * On exit, the plugin MUST overwrite it with the version it implements.
+ * @param driver (out) The driver object, which may store any persistent state.
  *
- * @return Standard Status Protocol.
+ * @return M_DRIVER_STATUS_SUCCESS if the driver was created successfully.
+ *         M_DRIVER_STATUS_INCOMPATIBLE_VERSION if the version is incompatible.
+ * @note In the case where the Modular's major version is the same as the
+ *       plugin's and Modular's minor version is greater than the plugin's,
+ *       the call must succeed and the plugin must return
+ *       M_DRIVER_STATUS_SUCCESS. Modular will then decide if/how to proceed.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_create(M_driver_driver_t *driver);
+M_driver_status_t M_driver_create(M_driver_version *version,
+                                  M_driver_driver_t *driver);
 
 typedef M_driver_status_t (*M_driver_create_func_ptr_t)(
-    M_driver_driver_t *driver);
+    M_driver_version *version, M_driver_driver_t *driver);
 
 /**
  * Perform shutdown activities after using all other functions in this API,
@@ -45,6 +54,7 @@ typedef M_driver_status_t (*M_driver_destroy_func_ptr_t)(
  * Common driver properties
  */
 #define M_DRIVER_PROPERTY_API "api"
+#define M_DRIVER_PROPERTY_VERSION "version"
 
 /**
  * Retrieve an integer-valued property.

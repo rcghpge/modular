@@ -7,6 +7,7 @@
 #ifndef M_DRIVER_COMMON_H
 #define M_DRIVER_COMMON_H
 
+#include <cstdint>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -15,6 +16,44 @@ extern "C" {
 
 #define M_DRIVER_API_EXPORT __attribute__((visibility("default")))
 #define M_DRIVER_API_LOCAL __attribute__((visibility("hidden")))
+
+/**
+ * The major, minor, and patch version of the driver interface.
+ * Semantic versioning: https://semver.org/
+ *
+ * The Modular stack and the hardware plugins may be developed by different
+ * organizations at different times. Both Modular and plugins must declare to
+ * each other the hardware interface version they implement at plugin
+ * initialization, when Modular calls `M_driver_create()`. Plugins must also
+ * return their version via the `M_driver_property()` query with the "version"
+ * property name.
+ *
+ * When comparing versions between the Modular stack and the HW plugins,
+ * MAJOR version: When same, indicates compatibility.
+ *                When different, indicates incompatibility.
+ * MINOR version: Relevant only when the major version is the same. Then:
+ *                - the same minor version indicates no new functionality and
+ *                  that it is safe to proceed.
+ *                - When the plugin's minor version is greater than the
+ *                  Modular stack's minor version, it is safe to proceed,
+ *                  since the plugin is backward compatible.
+ *                - When the plugin's minor version is less than Modular's,
+ *                  the plugin must overwrite Modular's version with its own
+ *                  when returning from `M_driver_create()`. Modular will then
+ *                  decide how to proceed.
+ * PATCH version: Increases monotonically for each backward compatible bug
+ *                fix.
+ */
+struct M_driver_version {
+  uint32_t major;
+  uint32_t minor;
+  uint32_t patch;
+};
+
+/* For implementers of this interface */
+uint32_t const M_DRIVER_INTERFACE_VERSION_MAJOR = 0u;
+uint32_t const M_DRIVER_INTERFACE_VERSION_MINOR = 1u;
+uint32_t const M_DRIVER_INTERFACE_VERSION_PATCH = 0u;
 
 /**
  * Common type definitions.
@@ -46,17 +85,18 @@ typedef struct M_driver_function *M_driver_function_t;
  * See documentation for M_driver_status_message() for more details.
  */
 #define M_DRIVER_STATUS_SUCCESS ((M_driver_status_t)(0))
-#define M_DRIVER_STATUS_UNKNOWN_ERROR ((M_driver_status_t)(-1))
-#define M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE ((M_driver_status_t)(-2))
-#define M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME ((M_driver_status_t)(-3))
-#define M_DRIVER_STATUS_NO_DEVICES ((M_driver_status_t)(-4))
-#define M_DRIVER_STATUS_BAD_DEVICE ((M_driver_status_t)(-5))
-#define M_DRIVER_STATUS_BAD_CONTEXT ((M_driver_status_t)(-6))
-#define M_DRIVER_STATUS_BAD_MEMORY ((M_driver_status_t)(-7))
-#define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-8))
-#define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-9))
+#define M_DRIVER_STATUS_INCOMPATIBLE_VERSION ((M_driver_status_t)(-1))
+#define M_DRIVER_STATUS_UNKNOWN_ERROR ((M_driver_status_t)(-2))
+#define M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE ((M_driver_status_t)(-3))
+#define M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME ((M_driver_status_t)(-4))
+#define M_DRIVER_STATUS_NO_DEVICES ((M_driver_status_t)(-5))
+#define M_DRIVER_STATUS_BAD_DEVICE ((M_driver_status_t)(-6))
+#define M_DRIVER_STATUS_BAD_CONTEXT ((M_driver_status_t)(-7))
+#define M_DRIVER_STATUS_BAD_MEMORY ((M_driver_status_t)(-8))
+#define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-9))
+#define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-10))
 /* Future standard status codes may be added here. */
-#define M_DRIVER_NUM_STANDARD_STATUS_CODES (10)
+#define M_DRIVER_NUM_STANDARD_STATUS_CODES (11)
 
 #define M_DRIVER_STATUS_CUSTOM_CODES_BASE ((M_driver_status_t)(-65536))
 

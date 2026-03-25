@@ -207,7 +207,10 @@ ErrorOr<int64_t> Driver::Create(std::string const &soPath) {
   // Create the driver. Tolerate M_DRIVER_STATUS_NO_DEVICES - the plugin
   // is still valid for compilation device creation even without hardware.
   {
-    M_driver_status_t status = impl->create(&impl->driverHandle_);
+    M_driver_version version = {.major = M_DRIVER_INTERFACE_VERSION_MAJOR,
+                                .minor = M_DRIVER_INTERFACE_VERSION_MINOR,
+                                .patch = M_DRIVER_INTERFACE_VERSION_PATCH};
+    M_driver_status_t status = impl->create(&version, &impl->driverHandle_);
     if (status != M_DRIVER_STATUS_SUCCESS &&
         status != M_DRIVER_STATUS_NO_DEVICES) {
       char message[1024];
@@ -215,6 +218,14 @@ ErrorOr<int64_t> Driver::Create(std::string const &soPath) {
       impl->reset_();
       return Error(std::string("Failed initialization: Driver plugin failed "
                                "create() on ") +
+                   soPath);
+    }
+    if (version.major != M_DRIVER_INTERFACE_VERSION_MAJOR ||
+        version.minor != M_DRIVER_INTERFACE_VERSION_MINOR) {
+      impl->destroy(impl->driverHandle_);
+      impl->reset_();
+      return Error(std::string("Failed initialization: Driver plugin returned "
+                               "incompatible version: ") +
                    soPath);
     }
   }

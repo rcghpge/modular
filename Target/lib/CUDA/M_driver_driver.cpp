@@ -8,11 +8,18 @@
 #include "HAL/M_driver_api.h"
 #include "llvm/ADT/StringRef.h"
 
-M_driver_status_t M_driver_create(M_driver_driver_t *driver) {
+M_driver_status_t M_driver_create(M_driver_version *version,
+                                  M_driver_driver_t *driver) {
+  if (version->major != M_DRIVER_INTERFACE_VERSION_MAJOR)
+    return M_DRIVER_STATUS_INCOMPATIBLE_VERSION;
+
+  version->major = M_DRIVER_INTERFACE_VERSION_MAJOR;
+  version->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
+  version->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
+
   DriverResult<M_driver_driver_t> res = M_driver_driver::create();
   if (!res)
     return res.error();
-
   *driver = *res;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -28,7 +35,12 @@ M_driver_status_t M_driver_property([[maybe_unused]] M_driver_driver_t handle,
   llvm::StringRef name(property_name);
   if (name == M_DRIVER_PROPERTY_API)
     *static_cast<const char **>(value) = "CUDA";
-  else
+  else if (name == M_DRIVER_PROPERTY_VERSION) {
+    M_driver_version *version = static_cast<M_driver_version *>(value);
+    version->major = M_DRIVER_INTERFACE_VERSION_MAJOR;
+    version->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
+    version->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
+  } else
     return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
   return M_DRIVER_STATUS_SUCCESS;
 }
