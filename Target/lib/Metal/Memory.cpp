@@ -13,7 +13,7 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
-    return M_DRIVER_STATUS_INVALID_ARG;
+    return M_DRIVER_STATUS_BAD_MEMORY;
   if (size == 0) {
     *memory = nullptr;
     return M_DRIVER_STATUS_SUCCESS;
@@ -31,7 +31,7 @@ M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
-    return M_DRIVER_STATUS_INVALID_ARG;
+    return M_DRIVER_STATUS_BAD_MEMORY;
   if (size == 0) {
     *memory = nullptr;
     return M_DRIVER_STATUS_SUCCESS;

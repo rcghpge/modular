@@ -8,12 +8,14 @@
 #define TARGET_LIB_CUDA_QUEUE_H
 
 #include "Error.h"
+#include "Memory.h"
 
 #include <cuda.h>
 
 struct M_driver_context;
 
 struct M_driver_queue {
+  M_driver_context &context;
   CUstream stream;
 
   [[nodiscard]] static DriverResult<M_driver_queue_t>
@@ -22,7 +24,17 @@ struct M_driver_queue {
   static M_driver_status_t destroy(M_driver_context &ctx,
                                    M_driver_queue_t queue);
 
-  explicit M_driver_queue(CUstream stream) : stream(stream) {}
+  DriverResult<M_driver_memory_t> allocAsync(uint64_t size);
+  M_driver_status_t freeAsync(M_driver_memory_t memory);
+  M_driver_status_t copyToDevice(M_driver_memory_t dst, void *src,
+                                 uint64_t size);
+  M_driver_status_t copyFromDevice(void *dst, M_driver_memory_t src,
+                                   uint64_t size);
+  M_driver_status_t setMemory(M_driver_memory_t dst, uint64_t size,
+                              uint64_t value, uint64_t valueSize);
+
+  explicit M_driver_queue(M_driver_context &context, CUstream stream)
+      : context(context), stream(stream) {}
 };
 
 #endif // TARGET_LIB_CUDA_QUEUE_H

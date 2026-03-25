@@ -138,9 +138,9 @@ TEST_F(DriverPluginContextTest, MemoryAllocBadContext) {
 TEST_F(DriverPluginContextTest, MemoryAllocNullOut) {
   for (M_driver_context_t context : contexts) {
     EXPECT_EQ(memory_alloc_sync(context, 128, nullptr),
-              M_DRIVER_STATUS_INVALID_ARG);
+              M_DRIVER_STATUS_BAD_MEMORY);
     EXPECT_EQ(memory_alloc_pinned(context, 128, nullptr),
-              M_DRIVER_STATUS_INVALID_ARG);
+              M_DRIVER_STATUS_BAD_MEMORY);
   }
 }
 
