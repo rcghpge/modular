@@ -708,12 +708,15 @@ modular_cc_library(
             "include/MLRT/Driver/NIXL/**/*.h",
         ],
         exclude = [
+            "include/MLRT/Driver/NIXL/plugins/libfabric/**",
             "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/libfabric/**",
             "include/MLRT/Driver/NIXL/utils/ucx/**",
         ],
     ),
     data = select({
         "//:linux_x86_64": [
+            ":Driver/plugin_libfabric",
             ":Driver/plugin_ucx_cpu",
             ":Driver/plugin_ucx_cuda",
             ":Driver/plugin_ucx_cuda_verbs",
@@ -741,7 +744,9 @@ modular_cc_library(
             "lib/Driver/NIXL/**/*.cpp",
         ],
         exclude = [
+            "lib/Driver/NIXL/plugins/libfabric/**",
             "lib/Driver/NIXL/plugins/ucx/**",
+            "lib/Driver/NIXL/utils/libfabric/**",
             "lib/Driver/NIXL/utils/ucx/**",
         ],
     ),
@@ -750,14 +755,16 @@ modular_cc_library(
             "include/MLRT/Driver/NIXL/**/*.h",
         ],
         exclude = [
+            "include/MLRT/Driver/NIXL/plugins/libfabric/**",
             "include/MLRT/Driver/NIXL/plugins/ucx/**",
+            "include/MLRT/Driver/NIXL/utils/libfabric/**",
             "include/MLRT/Driver/NIXL/utils/ucx/**",
         ],
     ),
     include_prefix = "",
     strip_include_prefix = "include",
     tags = ["no-clang-tidy"],  # Copied code doesn't conform to our style
-    visibility = ["//visibility:private"],
+    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
     deps = [
         ":AsyncRT/Support",
         "//Support:Base",
@@ -767,6 +774,63 @@ modular_cc_library(
     ],
     # This is needed for `utils/sync-stubfiles.py` to work
     alwayslink = True,
+)
+
+modular_cc_library(
+    name = "Driver/NIXLLibfabricUtils",
+    srcs = glob([
+        "lib/Driver/NIXL/utils/libfabric/**",
+    ]),
+    hdrs = glob([
+        "include/MLRT/Driver/NIXL/utils/libfabric/**",
+    ]),
+    include_prefix = "",
+    strip_include_prefix = "include",
+    tags = ["no-clang-tidy"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/NIXLLibOnly",
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "//Support:Threading",
+        "@efa_libfabric_prebuilt//:hwloc",
+        "@efa_libfabric_prebuilt//:libfabric",
+        "@efa_libfabric_prebuilt//:numa",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_shared_library(
+    name = "Driver/plugin_libfabric",
+    srcs = glob([
+        "lib/Driver/NIXL/plugins/libfabric/**",
+    ]),
+    hdrs = glob([
+        "include/MLRT/Driver/NIXL/plugins/libfabric/**",
+    ]),
+    linkopts = [
+        "-Wl,-z,undefs",
+    ],
+    tags = ["no-clang-tidy"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":AsyncRT/Support",
+        ":Driver/NIXLLibOnly",
+        ":Driver/NIXLLibfabricUtils",
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "//Support:Threading",
+        "@efa_libfabric_prebuilt//:libfabric",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 modular_shared_library(

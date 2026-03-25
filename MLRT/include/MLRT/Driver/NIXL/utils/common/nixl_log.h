@@ -11,9 +11,14 @@
 #ifndef MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_LOG_H
 #define MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_LOG_H
 
+#include "MLRT/Driver/NIXL/nixl_types.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstring>
+#include <ios>
+#include <ostream>
 #include <system_error>
+#include <type_traits>
 
 namespace M::AsyncRT::NIXL {
 
@@ -45,14 +50,63 @@ public:
   NixlLogStream(llvm::raw_ostream &os) : os_(os) {}
   ~NixlLogStream() { os_ << '\n'; }
 
+  NixlLogStream &operator<<(std::ios_base &(*manip)(std::ios_base &)) {
+    if (manip == static_cast<std::ios_base &(*)(std::ios_base &)>(std::hex)) {
+      hexMode_ = true;
+    } else if (manip ==
+               static_cast<std::ios_base &(*)(std::ios_base &)>(std::dec)) {
+      hexMode_ = false;
+    } else if (manip == static_cast<std::ios_base &(*)(std::ios_base &)>(
+                            std::showbase)) {
+      showBase_ = true;
+    } else if (manip == static_cast<std::ios_base &(*)(std::ios_base &)>(
+                            std::noshowbase)) {
+      showBase_ = false;
+    }
+    return *this;
+  }
+
+  NixlLogStream &operator<<(std::ostream &(*manip)(std::ostream &)) {
+    if (manip == static_cast<std::ostream &(*)(std::ostream &)>(std::endl)) {
+      os_ << '\n';
+    }
+    return *this;
+  }
+
+  NixlLogStream &operator<<(nixl_status_t value) {
+    os_ << nixlEnumStrings::statusStr(value);
+    return *this;
+  }
+
   template <typename T>
+    requires(std::is_enum_v<T>)
+  NixlLogStream &operator<<(T value) {
+    using U = std::underlying_type_t<T>;
+    return *this << static_cast<U>(value);
+  }
+
+  template <typename T>
+    requires(!std::is_enum_v<T>)
   NixlLogStream &operator<<(const T &value) {
+    if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool> &&
+                  !std::is_same_v<T, char> && !std::is_same_v<T, signed char> &&
+                  !std::is_same_v<T, unsigned char>) {
+      if (hexMode_) {
+        if (showBase_) {
+          os_ << "0x";
+        }
+        os_ << llvm::utohexstr(static_cast<std::make_unsigned_t<T>>(value));
+        return *this;
+      }
+    }
     os_ << value;
     return *this;
   }
 
 private:
   llvm::raw_ostream &os_;
+  bool hexMode_ = false;
+  bool showBase_ = false;
 };
 
 } // namespace M::AsyncRT::NIXL
