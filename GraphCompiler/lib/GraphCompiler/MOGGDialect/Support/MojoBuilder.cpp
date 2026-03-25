@@ -38,6 +38,31 @@ MojoValue MojoValue::operator()(ArrayRef<MojoValue> parameters,
   return str;
 }
 
+MojoValue MojoValue::escape() const {
+  std::string res = "\"";
+  for (char c : text) {
+    switch (c) {
+    case '\\':
+      res += "\\\\";
+      break;
+    case '"':
+      res += "\\\"";
+      break;
+    case '\n':
+      res += "\\n";
+      break;
+    case '\r':
+      res += "\\r";
+      break;
+    default:
+      res += c;
+      break;
+    }
+  }
+  res += '"';
+  return MojoValue(res);
+}
+
 MojoValue createTypedVar(const MojoValue &name, const MojoValue &type) {
   return llvm::formatv("{}: {}", name.text, type.text).str();
 }

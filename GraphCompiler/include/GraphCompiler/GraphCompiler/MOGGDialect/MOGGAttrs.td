@@ -163,8 +163,10 @@ def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
     /// If \p highlightLeaves is non-empty, leaf nodes present in the set are
     /// annotated with "<-- error" in the output. Matching is by attribute
     /// identity, not by op name, so same-named ops are disambiguated.
+    /// If \p indent is true, each line is prefixed with two spaces.
     std::string toPrettyTree(
-        const llvm::DenseSet<mlir::Attribute> &highlightLeaves = {}) const;
+        const llvm::DenseSet<mlir::Attribute> &highlightLeaves = {},
+        bool indent = false) const;
   }];
 }
 

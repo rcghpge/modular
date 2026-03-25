@@ -148,14 +148,21 @@ std::string FusionInfoAttr::toString(bool includeLineNumbers) const {
   return result;
 }
 
-std::string FusionInfoAttr::toPrettyTree(
-    const llvm::DenseSet<Attribute> &highlightLeaves) const {
+std::string
+FusionInfoAttr::toPrettyTree(const llvm::DenseSet<Attribute> &highlightLeaves,
+                             bool indent) const {
   std::string result;
   llvm::raw_string_ostream os(result);
   nodeToPrettyTree(getRoot(), os, highlightLeaves);
   while (!result.empty() && result.back() == '\n')
     result.pop_back();
-  return result;
+  if (!indent)
+    return result;
+  std::string indented;
+  llvm::raw_string_ostream ios(indented);
+  for (auto line : llvm::split(result, '\n'))
+    ios << "  " << line << '\n';
+  return indented;
 }
 
 //===----------------------------------------------------------------------===//

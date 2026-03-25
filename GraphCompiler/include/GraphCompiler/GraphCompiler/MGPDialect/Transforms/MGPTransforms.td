@@ -442,7 +442,7 @@ def DynamicMemoryPlanningPass : Pass<"mgp-dynamic-memory-planning", "MGP::ModelO
 // AddStackTracesToAssertsPass
 //===----------------------------------------------------------------------===//
 
-def AddStackTracesToAssertsPass : Pass<"mgp-add-stack-traces-to-asserts", "MGP::ModelOp"> {
+def AddStackTracesToAssertsPass : Pass<"mgp-add-stack-traces-to-asserts", "mlir::ModuleOp"> {
   let summary = "Adds stack traces to all asserts";
   let description = [{
     Adds a stack trace to all assert messages in the ir. The stack traces

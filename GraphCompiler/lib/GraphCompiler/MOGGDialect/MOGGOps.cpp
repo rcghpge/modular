@@ -1395,66 +1395,6 @@ static SmallVector<StringRef, 4> collectSourceNotes(Location rootLoc) {
   return notes;
 }
 
-/// Collect all FusionLeafAttr nodes from a fusion tree using AttrTypeWalker.
-/// Matching is by attribute identity, so same-named ops (e.g. two mo.add)
-/// are disambiguated — only the exact leaves from the crashing sub-kernel
-/// get highlighted.
-static void collectLeaves(Attribute root, llvm::DenseSet<Attribute> &leaves) {
-  mlir::AttrTypeWalker walker;
-  walker.addWalk([&](FusionLeafAttr leaf) { leaves.insert(leaf); });
-  walker.walk(root);
-}
-
-/// Build a human-readable notes string from source notes and optional fusion
-/// info. If \p highlightLeaves is non-empty, those leaf attributes are
-/// highlighted in the fusion tree with "<-- error".
-static std::string
-buildNotesString(ArrayRef<StringRef> notesList, FusionInfoAttr fusionInfo,
-                 const llvm::DenseSet<Attribute> &highlightLeaves = {}) {
-  if (notesList.empty() && !fusionInfo)
-    return "";
-
-  std::string notesStr;
-  llvm::raw_string_ostream os(notesStr);
-
-  // When there are few enough traces, show them all inline; otherwise just
-  // report the count to avoid overwhelming the user.
-  constexpr size_t kMaxInlineTraces = 3;
-  bool showAllTraces = notesList.size() <= kMaxInlineTraces;
-
-  // Add "Source Traceback:" header only when there are actual Python
-  // tracebacks. Without this guard, fusion-only notes would carry the header
-  // and trick the runtime into thinking a real traceback is present, hiding
-  // the MODULAR_MAX_DEBUG hint from users. See GEX-2678.
-  if (!notesList.empty())
-    os << "Source Traceback:\n";
-
-  if (showAllTraces) {
-    for (auto note : notesList)
-      os << note << '\n';
-  }
-
-  if (notesList.size() > 1 && fusionInfo) {
-    if (showAllTraces) {
-      os << "\nNote: these operations were fused into a single kernel.\n"
-         << "The source traceback for each fused op is above.\n";
-    } else {
-      os << "Note: " << notesList.size()
-         << " operations were fused into a single kernel.\n"
-         << "The crash occurred in one of the operations below.\n";
-    }
-  }
-
-  if (fusionInfo) {
-    std::string tree = fusionInfo.toPrettyTree(highlightLeaves);
-    os << "Fused ops:\n";
-    for (auto line : llvm::split(tree, '\n'))
-      os << "  " << line << '\n';
-  }
-
-  return notesStr;
-}
-
 //===----------------------------------------------------------------------===//
 // KernelStubOp
 //===----------------------------------------------------------------------===//
@@ -1483,6 +1423,14 @@ bool KernelStubOp::isThrows() {
 }
 
 LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
+  // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
+  // GenericCompiledRegionOp which has that implicit void** ABI.
+  if (getAbi() == ABIKind::MOGG)
+    return emitMojoMOGGABI(state);
+  return emitMojoMGPABI(state);
+}
+
+LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
   auto emitFusionInfoComment = [&] {
     state.builder.comment("FusionInfo:");
     std::string tree = getFusionInfoAttr().toPrettyTree();
@@ -1512,192 +1460,231 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
     return MojoValue("std.runtime.tracing.Trace")(traceParams, traceOperands);
   };
 
-  // If the ABI is MOGG, this was originally a MOGG kernel. Otherwise, it was a
-  // GenericCompiledRegionOp which has that implicit void** ABI.
-  if (getAbi() == ABIKind::MOGG) {
-    // Helper to convert type to Mojo, using proper opaque type representation
-    // for parameterized opaque types.
-    auto typeToMojo = [&](Type type) -> MojoValue {
-      if (auto opaqueType = dyn_cast<MO::OpaqueType>(type)) {
-        MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
-        auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
-        if (!params.empty())
-          return baseTy[params];
-        return baseTy;
-      } else if (auto mgpBufferType = dyn_cast<MGP::DeviceBufferType>(type)) {
-        // mgp.buffer should always be treated as NDBuffer of uint8_t.
-        return HardcodedMojoSymbols::comptime_NDBuffer_In_MGP;
-      }
-      return state.mlirTypeToMojoType(type);
-    };
+  // Helper to convert type to Mojo, using proper opaque type representation
+  // for parameterized opaque types.
+  auto typeToMojo = [&](Type type) -> MojoValue {
+    if (auto opaqueType = dyn_cast<MO::OpaqueType>(type)) {
+      MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
+      auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
+      if (!params.empty())
+        return baseTy[params];
+      return baseTy;
+    } else if (auto mgpBufferType = dyn_cast<MGP::DeviceBufferType>(type)) {
+      // mgp.buffer should always be treated as NDBuffer of uint8_t.
+      return HardcodedMojoSymbols::comptime_NDBuffer_In_MGP;
+    }
+    return state.mlirTypeToMojoType(type);
+  };
 
-    SmallVector<MOGG::NamedMojoDef> inputTypes;
-    for (auto arg : getBody().getArguments())
-      inputTypes.push_back(
-          MOGG::NamedMojoDef("arg", typeToMojo(arg.getType())));
+  SmallVector<MOGG::NamedMojoDef> inputTypes;
+  for (auto arg : getBody().getArguments())
+    inputTypes.push_back(MOGG::NamedMojoDef("arg", typeToMojo(arg.getType())));
 
-    // Determine the Mojo return type from the stub's return type
-    std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
-    FunctionType functionType = getFunctionType();
-    if (functionType.getNumResults())
-      mojoReturnType = typeToMojo(functionType.getResult(0));
+  // Determine the Mojo return type from the stub's return type.
+  std::optional<MOGG::MojoValue> mojoReturnType = std::nullopt;
+  FunctionType functionType = getFunctionType();
+  if (functionType.getNumResults())
+    mojoReturnType = typeToMojo(functionType.getResult(0));
 
-    bool errOccurred = false;
-    state.builder.fn(
-        getSymNameAttr().str(), {}, inputTypes,
-        /*returnType=*/mojoReturnType, /*exported=*/false,
-        /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
-          state.currentFunctionBody = functionBody;
+  bool errOccurred = false;
+  state.builder.fn(
+      getSymNameAttr().str(), {}, inputTypes,
+      /*returnType=*/mojoReturnType, /*exported=*/false,
+      /*raises=*/isThrows(), [&](const MOGG::FunctionBody &functionBody) {
+        state.currentFunctionBody = functionBody;
 
-          emitFusionInfoComment();
+        emitFusionInfoComment();
 
-          for (auto &&[mlirArg, mojoArg] :
-               llvm::zip(getBody().getArguments(), functionBody.arguments)) {
-            state.setMojoValueFor(mlirArg, mojoArg);
+        for (auto &&[mlirArg, mojoArg] :
+             llvm::zip(getBody().getArguments(), functionBody.arguments)) {
+          state.setMojoValueFor(mlirArg, mojoArg);
+        }
+
+        // Find the context argument (if present) to include task_id in Trace.
+        MojoValue contextMojoArg;
+        for (auto mlirArg : getBody().getArguments()) {
+          if (isa<MOGG::ContextType>(mlirArg.getType())) {
+            contextMojoArg = state.getMojoValueFor(mlirArg);
+            break;
           }
+        }
 
-          // Find the context argument (if present) to include task_id in Trace.
-          MojoValue contextMojoArg;
-          for (auto mlirArg : getBody().getArguments()) {
-            if (isa<MOGG::ContextType>(mlirArg.getType())) {
-              contextMojoArg = state.getMojoValueFor(mlirArg);
+        // Collect all ops in the body now (before any dynamic insertions
+        // from lowerOpToMojo mutate the block).
+        SmallVector<mlir::Operation *> bodyOps;
+        for (auto &op : getOps())
+          bodyOps.push_back(&op);
+
+        // Find the first kernel terminator (CallExecuteOp, CallForeachOp,
+        // CallMaterializeOp). Everything before it is setup (lambdas, tensor
+        // inits, etc.) and must be emitted OUTSIDE the Trace block so that
+        // @parameter captures are not reordered by the Mojo compiler.
+        auto terminatorIt = llvm::find_if(bodyOps, [](mlir::Operation *op) {
+          return isa<MOGG::KernelTerminator>(op);
+        });
+
+        auto emitBody = [&]() {
+          for (auto *op : llvm::make_range(bodyOps.begin(), terminatorIt)) {
+            if (state.lowerOpToMojo(op).failed()) {
+              errOccurred = true;
               break;
             }
           }
 
-          // Collect all ops in the body now (before any dynamic insertions
-          // from lowerOpToMojo mutate the block).
-          SmallVector<mlir::Operation *> bodyOps;
-          for (auto &op : getOps())
-            bodyOps.push_back(&op);
+          // Wrap only the terminator (and keepalives) in the Trace block.
+          if (!errOccurred) {
+            state.builder.with_(buildTraceContextExpr(contextMojoArg), [&]() {
+              for (auto *op : llvm::make_range(terminatorIt, bodyOps.end())) {
+                if (state.lowerOpToMojo(op).failed()) {
+                  errOccurred = true;
+                  break;
+                }
+              }
+            });
+            if (!errOccurred)
+              state.genAllKeepAliveStatements();
+          }
+        };
 
-          // Find the first kernel terminator (CallExecuteOp, CallForeachOp,
-          // CallMaterializeOp). Everything before it is setup (lambdas, tensor
-          // inits, etc.) and must be emitted OUTSIDE the Trace block so that
-          // @parameter captures are not reordered by the Mojo compiler.
-          auto terminatorIt = llvm::find_if(bodyOps, [](mlir::Operation *op) {
-            return isa<MOGG::KernelTerminator>(op);
-          });
+        // MOGG ABI stubs catch errors and re-raise with full context (stub
+        // name, fusion info, source traceback) embedded. The outer
+        // AsyncErrorOp wraps the formatted error with the MGP region name.
+        if (isThrows()) {
+          // Build fusion info content (indented tree) for this stub.
+          std::string fusionInfoContent =
+              getFusionInfoAttr().toPrettyTree({}, /*indent=*/true);
 
-          auto emitBody = [&]() {
-            for (auto *op : llvm::make_range(bodyOps.begin(), terminatorIt)) {
-              if (state.lowerOpToMojo(op).failed()) {
-                errOccurred = true;
-                break;
+          // Build source traceback content for this stub.
+          auto notesList = collectSourceNotes(getLoc());
+          std::string tracebackContent;
+          if (!notesList.empty()) {
+            llvm::raw_string_ostream os(tracebackContent);
+            constexpr size_t kMaxInlineTraces = 3;
+            bool showAllTraces = notesList.size() <= kMaxInlineTraces;
+            if (showAllTraces) {
+              for (auto note : notesList)
+                os << note << '\n';
+            }
+            if (notesList.size() > 1) {
+              if (showAllTraces) {
+                os << "\nNote: these operations were fused into a single "
+                      "kernel.\n"
+                   << "The source traceback for each fused op is above.\n";
+              } else {
+                os << "Note: " << notesList.size()
+                   << " operations were fused into a single kernel.\n"
+                   << "The crash occurred in one of the operations below.\n";
               }
             }
-
-            // Wrap only the terminator (and keepalives) in the Trace block.
-            if (!errOccurred) {
-              state.builder.with_(buildTraceContextExpr(contextMojoArg), [&]() {
-                for (auto *op : llvm::make_range(terminatorIt, bodyOps.end())) {
-                  if (state.lowerOpToMojo(op).failed()) {
-                    errOccurred = true;
-                    break;
-                  }
-                }
-              });
-              if (!errOccurred)
-                state.genAllKeepAliveStatements();
-            }
-          };
-
-          // Throwing MOGG stubs self-report by wrapping their body in
-          // try/except and re-raising with a [STUB:<name>] marker prefix.
-          // This lets the outer AsyncErrorOp identify which sub-kernel
-          // crashed and highlight the right ops in the fusion tree.
-          if (isThrows()) {
-            std::string marker = "[STUB:" + getSymNameAttr().str() + "]";
-            state.builder.try_([&]() { emitBody(); })
-                .except([&](const MojoValue &e) {
-                  state.builder.raise(
-                      MojoValue(llvm::formatv("Error(\"{0}\" + String({1}))",
-                                              marker, e.text)
-                                    .str()));
-                });
-          } else {
-            emitBody();
           }
-        });
 
-    if (errOccurred)
-      return failure();
-  } else {
-    // Clear any previous kernel's return values from the state
-    state.mojoReturnValues.clear();
-    state.mojoConstantResources.clear();
+          auto formatKernelErrorFunc = state.getOriginalMojoNameFor(
+              state.analysis.getRegisteredLITMojoKernelFor(
+                  "mogg.format_kernel_error"));
+          std::string stubName = getSymNameAttr().str();
+          state.builder.try_([&]() { emitBody(); })
+              .except([&](const MojoValue &e) {
+                SmallVector<MojoValue> args = {
+                    MojoValue(stubName).quote(),
+                    e,
+                    MojoValue(fusionInfoContent).escape(),
+                    MojoValue(tracebackContent).escape(),
+                };
+                auto formattedErr =
+                    state.builder.var(formatKernelErrorFunc({}, args));
+                state.builder.raise(formattedErr.transfer());
+              });
+        } else {
+          emitBody();
+        }
+      });
 
-    bool errOccurred = false;
-    static const MOGG::MojoValue vMutAnyOrigin =
-        MOGG::MojoValue(MOGG::HardcodedMojoSymbols::comptime_MutAnyOrigin);
-    static const MOGG::MojoValue vUnsafePointer =
-        MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
-    static const MOGG::MojoValue vOpaquePointer =
-        MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
+  if (errOccurred)
+    return failure();
+  return success();
+}
 
-    state.builder.fn(
-        getSymNameAttr().strref(), {},
-        {MOGG::NamedMojoDef("arg",
-                            vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}]),
-         MOGG::NamedMojoDef("arg", vOpaquePointer)},
-        std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
-          state.currentFunctionBody = functionBody;
-          state.builder.comment(
-              "This is the entry point of the kernel. The first argument is a "
-              "pointer to a list of inputs and outputs. The second is a "
-              "pointer "
-              "to a runtime context.");
+LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
+  auto emitFusionInfoComment = [&] {
+    state.builder.comment("FusionInfo:");
+    std::string tree = getFusionInfoAttr().toPrettyTree();
+    for (auto line : llvm::split(tree, '\n'))
+      state.builder.comment(("  " + line).str());
+  };
 
+  // Clear any previous kernel's return values from the state.
+  state.mojoReturnValues.clear();
+  state.mojoConstantResources.clear();
+
+  bool errOccurred = false;
+  static const MOGG::MojoValue vMutAnyOrigin =
+      MOGG::MojoValue(MOGG::HardcodedMojoSymbols::comptime_MutAnyOrigin);
+  static const MOGG::MojoValue vUnsafePointer =
+      MOGG::HardcodedMojoSymbols::struct_UnsafePointer;
+  static const MOGG::MojoValue vOpaquePointer =
+      MOGG::HardcodedMojoSymbols::comptime_OpaquePointer;
+
+  state.builder.fn(
+      getSymNameAttr().strref(), {},
+      {MOGG::NamedMojoDef("arg",
+                          vUnsafePointer[{vOpaquePointer, vMutAnyOrigin}]),
+       MOGG::NamedMojoDef("arg", vOpaquePointer)},
+      std::nullopt, true, false, [&](const MOGG::FunctionBody &functionBody) {
+        state.currentFunctionBody = functionBody;
+        state.builder.comment(
+            "This is the entry point of the kernel. The first argument is a "
+            "pointer to a list of inputs and outputs. The second is a pointer "
+            "to a runtime context.");
+
+        if (getFusionInfoAttr())
           emitFusionInfoComment();
 
-          auto runtimeArgument = functionBody.arguments.front();
-          auto &kernelBody = getBody().front();
-          // The order of arguments in runtimeArgument:
-          // 1. Inputs and DPS outputs
-          // 2. Return values (chain and non DPS outputs)
-          for (auto argument : kernelBody.getArguments()) {
-            state.setMojoValueFor(
-                argument,
-                runtimeArgument[std::to_string(argument.getArgNumber())]);
-          }
-          // Return values, although in DPS form from the runtime's perspective,
-          // are still in value semantics inside of the kernel. Therefore, there
-          // is no value to associate them with. Instead, we have a mapping that
-          // mogg.return and mogg.async.pack will use.
-          uint64_t numArguments = getBodyBlock().getNumArguments();
-          for (uint64_t i = 0; i < getNumResults(); ++i) {
-            state.mojoReturnValues.emplace_back(
-                runtimeArgument[std::to_string(i + numArguments)]);
-          }
+        auto runtimeArgument = functionBody.arguments.front();
+        auto &kernelBody = getBody().front();
+        // The order of arguments in runtimeArgument:
+        // 1. Inputs and DPS outputs
+        // 2. Return values (chain and non DPS outputs)
+        for (auto argument : kernelBody.getArguments()) {
+          state.setMojoValueFor(
+              argument,
+              runtimeArgument[std::to_string(argument.getArgNumber())]);
+        }
+        // Return values, although in DPS form from the runtime's perspective,
+        // are still in value semantics inside of the kernel. Therefore, there
+        // is no value to associate them with. Instead, we have a mapping that
+        // mogg.return and mogg.async.pack will use.
+        uint64_t numArguments = getBodyBlock().getNumArguments();
+        for (uint64_t i = 0; i < getNumResults(); ++i) {
+          state.mojoReturnValues.emplace_back(
+              runtimeArgument[std::to_string(i + numArguments)]);
+        }
 
-          // After inputs and outputs, there are constant resources appended to
-          // the void** array. These come in pairs of ptr + size which is
-          // handled here.
-          for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
-            uint64_t flatIndex = i * 2 + numArguments + getNumResults();
-            MOGG::MojoValue ptr = runtimeArgument[flatIndex];
-            // The ABI is that the bytecount is directly stored as an
-            // OpaquePointer.
-            MOGG::MojoValue byteCount =
-                runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
-            state.mojoConstantResources.emplace_back(
-                std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
-          }
+        // After inputs and outputs, there are constant resources appended to
+        // the void** array. These come in pairs of ptr + size which is
+        // handled here.
+        for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
+          uint64_t flatIndex = i * 2 + numArguments + getNumResults();
+          MOGG::MojoValue ptr = runtimeArgument[flatIndex];
+          // The ABI is that the bytecount is directly stored as an
+          // OpaquePointer.
+          MOGG::MojoValue byteCount =
+              runtimeArgument.get("bitcast[Int]()")[flatIndex + 1];
+          state.mojoConstantResources.emplace_back(
+              std::tuple<MOGG::MojoValue, MOGG::MojoValue>{ptr, byteCount});
+        }
 
-          // void** ABI entry-point functions are never `raises`, so we cannot
-          // use `with Trace[...]` here (Trace.__enter__ is raises). Tracing
-          // is handled in the MOGG ABI function this entry point calls.
-          errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
-            return state.lowerOpToMojo(&op).failed();
-          });
-          if (!errOccurred)
-            state.genAllKeepAliveStatements();
+        // void** ABI entry-point functions are never `raises`, so we cannot
+        // use `with Trace[...]` here (Trace.__enter__ is raises). Tracing
+        // is handled in the MOGG ABI function this entry point calls.
+        errOccurred = llvm::any_of(getOps(), [&](mlir::Operation &op) {
+          return state.lowerOpToMojo(&op).failed();
         });
+        if (!errOccurred)
+          state.genAllKeepAliveStatements();
+      });
 
-    if (errOccurred)
-      return failure();
-  }
-
+  if (errOccurred)
+    return failure();
   return success();
 }
 
@@ -3209,12 +3196,10 @@ LogicalResult YieldOp::emitMojo(EmitMojoState &) { return success(); }
 //===----------------------------------------------------------------------===//
 
 LogicalResult TryOp::emitMojo(EmitMojoState &state) {
-  // Throwing CallStubOps self-report by wrapping their body in try/except
-  // and re-raising with a [STUB:<name>] marker prefix (see
-  // KernelStubOp::emitMojo, MOGG ABI path). The outer TryOp here just
-  // emits the try/except structure — no caller-side bookkeeping needed.
-  // AsyncErrorOp::emitMojo detects the marker to identify the crashing
-  // sub-kernel and highlight its ops in the fusion tree.
+  // MOGG ABI stubs catch errors, format them with kernel context (name,
+  // fusion info, source traceback), and re-raise. The outer TryOp here
+  // just emits the try/except structure — no caller-side bookkeeping needed.
+  // AsyncErrorOp::emitMojo wraps the formatted error with the region name.
   bool errOccurred = false;
   state.builder
       .try_([&]() {
@@ -3268,106 +3253,21 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
            << " return values";
   }
 
-  // Collect source notes (Python tracebacks) and fusion info from the parent
-  // kernel. Source notes live on the outer kernel's FusedLoc, set by
-  // AddStackTracesToAssertsPass.
-  auto notesList = collectSourceNotes(getLoc());
-  FusionInfoAttr parentFusionInfo;
-  if (auto kernelStub = tryOp->getParentOfType<MOGG::KernelStubOp>())
-    parentFusionInfo = kernelStub.getFusionInfoAttr();
-
-  // Helper to emit a mogg_async_error call with optional notes string.
-  auto emitErrorCall = [&](StringRef notesStr, const MojoValue &errorVal) {
-    SmallVector<MojoValue> args = {state.mojoReturnValues[outputIndex],
-                                   errorVal};
-    if (!notesStr.empty()) {
-      std::string tripleQuoted =
-          llvm::formatv("\"\"\"\n{}\"\"\"", notesStr).str();
-      MojoValue notesLiteral(std::move(tripleQuoted));
-      MojoValue notesString = state.builder.var(
-          MojoValue(HardcodedMojoSymbols::struct_String)({}, {notesLiteral}));
-      args.push_back(notesString);
-    }
-    state.builder.call(moggAsyncErrorFunc, {}, args);
-  };
-
-  // Collect throwing CallStubOps from the try region. When multiple inner
-  // stubs can throw, each self-reports by re-raising with a [STUB:<name>]
-  // marker prefix (see KernelStubOp::emitMojo, MOGG ABI path). We detect
-  // the marker to highlight the crashing sub-kernel's ops in the fusion tree.
-  SmallVector<CallStubOp> throwingStubs;
-  for (auto &op : tryOp.getTryRegion().getOps())
-    if (auto callStub = dyn_cast<CallStubOp>(&op))
-      if (callStub.isThrows())
-        throwingStubs.push_back(callStub);
-
   MojoValue errorExpr = state.getMojoValueFor(getError());
 
-  if (throwingStubs.size() > 1 && parentFusionInfo) {
-    // Multiple throwing stubs (sequence fusion): emit marker-based detection
-    // with per-stub highlighting in the fusion tree.
-    mlir::SymbolTable symTable(tryOp->getParentOfType<ModuleOp>());
+  // Get the parent MGP region name for the error header.
+  std::string regionName;
+  if (auto parentKernel = tryOp->getParentOfType<MOGG::KernelStubOp>())
+    regionName = parentKernel.getSymNameAttr().str();
 
-    // Convert error to string once for marker inspection.
-    MojoValue errMsgVar = state.builder.var(
-        MojoValue(llvm::formatv("String({0})", errorExpr.text).str()));
-
-    // Emit flat if/elif/else chain for per-stub marker detection.
-    auto emitStubBlock = [&](size_t i) {
-      auto callee = dyn_cast_or_null<KernelStubOp>(
-          symTable.lookup(throwingStubs[i].getName()));
-
-      // Highlight this stub's leaf ops in the full fusion tree.
-      llvm::DenseSet<Attribute> highlightOps;
-      if (callee)
-        collectLeaves(callee.getFusionInfoAttr().getRoot(), highlightOps);
-      std::string stubNotes =
-          buildNotesString(notesList, parentFusionInfo, highlightOps);
-
-      std::string marker = "[STUB:" + throwingStubs[i].getName().str() + "]";
-      // Strip the marker prefix from the error message.
-      MojoValue cleanErr = state.builder.var(
-          MojoValue(llvm::formatv("Error({0}.removeprefix(\"{1}\"))",
-                                  errMsgVar.text, marker)
-                        .str()));
-      emitErrorCall(stubNotes, cleanErr);
-    };
-
-    for (size_t i = 0; i < throwingStubs.size(); ++i) {
-      std::string marker = "[STUB:" + throwingStubs[i].getName().str() + "]";
-      auto cond = MojoValue(
-          llvm::formatv("\"{0}\" in {1}", marker, errMsgVar.text).str());
-
-      if (i == 0)
-        state.builder.if_(cond, [&]() { emitStubBlock(i); });
-      else
-        (void)state.builder.elif_(cond, [&]() { emitStubBlock(i); });
-    }
-    state.builder.else_([&]() {
-      // Fallback: no marker found, emit generic notes without highlighting.
-      std::string genericNotes = buildNotesString(notesList, parentFusionInfo);
-      emitErrorCall(genericNotes, errorExpr);
-    });
-  } else if (throwingStubs.size() == 1) {
-    // Single throwing stub: strip the marker and emit notes (no highlighting
-    // since all ops are in one sub-kernel).
-    std::string marker = "[STUB:" + throwingStubs[0].getName().str() + "]";
-    std::string notesStr = buildNotesString(notesList, parentFusionInfo);
-
-    // Convert error to string for marker stripping.
-    MojoValue errMsgVar = state.builder.var(
-        MojoValue(llvm::formatv("String({0})", errorExpr.text).str()));
-    MojoValue cleanErr = state.builder.var(
-        MojoValue(llvm::formatv("Error({0}.removeprefix(\"{1}\"))",
-                                errMsgVar.text, marker)
-                      .str()));
-    emitErrorCall(notesStr, cleanErr);
-  } else {
-    // No throwing stubs (e.g. sequence-fused without inner CallStubOps):
-    // emit notes without highlighting.
-    std::string notesStr = buildNotesString(notesList, parentFusionInfo);
-    emitErrorCall(notesStr, errorExpr);
-  }
+  // Format the error with the region name prefix and call mogg_async_error.
+  auto formatRegionErrorFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor("mogg.format_region_error"));
+  MojoValue formattedErr = state.builder.var(
+      formatRegionErrorFunc({}, {MojoValue(regionName).quote(), errorExpr}));
+  state.builder.call(
+      moggAsyncErrorFunc, {},
+      {state.mojoReturnValues[outputIndex], formattedErr.transfer()});
 
   return success();
 }

@@ -956,6 +956,10 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     void setResAttrsAttr(mlir::ArrayAttr attrs){}
     mlir::Attribute removeArgAttrsAttr() { return nullptr; }
     mlir::Attribute removeResAttrsAttr() { return nullptr; }
+
+  private:
+    mlir::LogicalResult emitMojoMOGGABI(EmitMojoState &state);
+    mlir::LogicalResult emitMojoMGPABI(EmitMojoState &state);
   }];
 }
 

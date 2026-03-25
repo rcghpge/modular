@@ -22,7 +22,7 @@ mo.graph @custom_success<D0, D1 -> D2>(
 // CHECK-LABEL: --- Running 'custom_raises':
 // CHECK-NEXT: Hello
 // CHECK: 'custom_raises' returned <error:
-// CHECK: data.get_shape()[0] == 20>
+// CHECK: data.get_shape()[0] == 20
 mo.graph @custom_raises<D0, D1 -> D2>(
   %arg0: !mo.tensor<[D0], f32>,
   %arg1: !mo.tensor<[D1], f32>

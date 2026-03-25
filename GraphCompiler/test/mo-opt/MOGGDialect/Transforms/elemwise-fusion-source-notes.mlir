@@ -2,20 +2,22 @@
 
 // Test that when mo ops with FusedLoc source note metadata are fused via
 // elementwise fusion, the source notes from ALL fused ops are preserved in
-// the emitted mogg_async_error call.
+// the emitted mogg_format_kernel_error call.
 //
 // Before the fix, FuseElementwiseKernels.cpp only called setFusionInfoAttr()
 // without merging locations. This caused source notes from the fused-in op
 // to be lost. Now FusedLoc::get() is used to merge locations from both src
-// and dst, so AddStackTracesToAssertsPass / AsyncErrorOp::emitMojo can find
+// and dst, so AddStackTracesToAssertsPass / KernelStubOp::emitMojo can find
 // all source notes.
 
-// The emitted error notes should contain source traces from both fused ops.
-// CHECK:       String("""
+// The outer MGP region wraps errors with the region name (mogg_format_region_error).
+// The inner MOGG ABI stub embeds fusion tree and source traces in mogg_format_kernel_error.
+// Output order: outer region stub Mojo first, inner stub Mojo after.
+// CHECK:       mogg_format_region_error(
+// CHECK:       mogg_async_error({{.*}},{{.*}})
+// CHECK:       mogg_format_kernel_error(
 // CHECK:       trace_add
 // CHECK:       trace_relu
-// CHECK:       """)
-// CHECK:       mogg_async_error({{.*}},{{.*}},{{.*}})
 
 mo.graph @elemwise_source_notes(
     %arg0: !mo.tensor<[4, 3], f32>

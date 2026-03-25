@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: --- Running 'bad_shape':
 // CHECK: <error:
-// CHECK: Shape mismatch for mo.mutable.store.slice: expected 'slice' operand to have shape: (3, 3) but got: (5, 5)>
+// CHECK: Shape mismatch for mo.mutable.store.slice: expected 'slice' operand to have shape: (3, 3) but got: (5, 5)
 mo.graph @bad_shape<d0, d1>(%arg0: !mo.buffer<[5, 5], f32>, %arg1: !mo.tensor<[d0, d1], f32>, %arg2: !mo.tensor<[2], si64>) -> (!mo.buffer<[5, 5], f32>, !mo.chain) {
   %0 = mo.chain.create(%arg0) : !mo.buffer<[5, 5], f32>
   %1 = mo.add(%arg2, %arg2) : !mo.tensor<[2], si64>

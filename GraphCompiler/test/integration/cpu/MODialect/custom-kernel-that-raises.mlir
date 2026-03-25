@@ -16,4 +16,4 @@ mo.graph @custom_raises(%arg0: !mo.tensor<[10], f32>) -> !mo.tensor<[10], f32> {
 
 // CHECK-LABEL: --- Running 'custom_raises':
 // CHECK: 'custom_raises' returned <error:
-// CHECK: input_shape[0] == 10>
+// CHECK: input_shape[0] == 10

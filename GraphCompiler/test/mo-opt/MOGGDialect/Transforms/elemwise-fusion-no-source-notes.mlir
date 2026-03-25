@@ -1,21 +1,23 @@
 // RUN: mo-opt %s --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse -mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that when fused ops have NO source note metadata (no FusedLoc with
-// Python tracebacks), the emitted mogg_async_error notes contain the fusion
-// tree but NOT a "Source Traceback:" header. This ensures that the runtime
-// correctly detects the missing traceback and shows the MODULAR_MAX_DEBUG hint.
+// Python tracebacks), the emitted mogg_format_kernel_error call contains the
+// fusion tree but NOT a "Source Traceback:" section. This ensures that the
+// runtime correctly omits the traceback section when no traces are present.
 // See GEX-2678.
 //
 // Contrast with elemwise-fusion-source-notes.mlir, which tests the case where
-// source notes ARE present and the header IS emitted.
+// source notes ARE present.
 
-// The notes string should contain the fusion tree but not the traceback header.
-// CHECK:       String("""
-// CHECK-NOT:   Source Traceback
-// CHECK:       Fused ops:
+// The outer MGP region wraps errors with the region name (mogg_format_region_error).
+// The inner MOGG ABI stub embeds the fusion tree in mogg_format_kernel_error
+// with an empty traceback argument (no FusedLoc metadata on these ops).
+// Output order: outer region stub Mojo first, inner stub Mojo after.
+// CHECK:       mogg_format_region_error(
+// CHECK:       mogg_async_error({{.*}},{{.*}})
+// CHECK:       mogg_format_kernel_error(
 // CHECK:       Elementwise
-// CHECK:       """)
-// CHECK:       mogg_async_error({{.*}},{{.*}},{{.*}})
+// CHECK-NOT:   Source Traceback
 
 mo.graph @elemwise_no_source_notes(
     %arg0: !mo.tensor<[4, 3], f32>

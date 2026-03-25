@@ -67,6 +67,9 @@ public:
     os << '"';
     return MojoValue(res);
   }
+  /// Escape and quote the text for use as a Mojo single-line string literal.
+  /// Handles \\, ", \n, and \r. Returns a MojoValue safe to embed in "...".
+  MojoValue escape() const;
   MojoValue operator+(const MojoValue &other) const {
     return llvm::formatv("{} + {}", text, other.text).str();
   }

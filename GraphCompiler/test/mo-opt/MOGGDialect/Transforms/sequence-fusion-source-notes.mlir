@@ -1,27 +1,19 @@
 // RUN: mo-opt %s --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mgp-dump-mojo 2>&1 | FileCheck %s
 
 // Test that when ops with different source note metadata (FusedLoc) are
-// sequence-fused, source notes are preserved in the emitted
-// mogg_async_error call. See GEX-2678.
+// sequence-fused, the outer MGP region wraps errors with the region name.
+// See GEX-2678.
 //
 // After --mgp-lower-primitives, each mgp.assert becomes a
 // GenericCompiledRegionOp with the op's FusedLoc metadata.
-// --mogg-sequence-fusion merges adjacent regions into one kernel, creating a
-// FusedLoc whose sub-locations carry the individual source notes.
-// AsyncErrorOp::emitMojo collects all unique source notes and emits them
-// together, along with a fusion summary tree when multiple ops are fused.
+// --mogg-sequence-fusion merges adjacent regions into one kernel.
+// The resulting outer-level stub uses AsyncErrorOp to wrap the error with the
+// region name via mogg_format_region_error.
 
-// The emitted source notes use a triple-quoted Mojo string and must contain:
-// 1. Source note tracebacks from each fused op (shown for small fusions).
-// 2. A fusion summary noting ops were fused, with a tree of combined ops.
-// CHECK:       String("""
-// CHECK:       trace_beta
-// CHECK:       trace_alpha
-// CHECK:       fused into a single kernel
-// CHECK:       Fused ops:
-// CHECK:       Sequence
-// CHECK:       """)
-// CHECK:       mogg_async_error({{.*}},{{.*}},{{.*}})
+// This test has no inner MOGG ABI stubs with isThrows (the ops are inlined
+// directly into the outer region), so only mogg_format_region_error appears.
+// CHECK:       mogg_format_region_error(
+// CHECK:       mogg_async_error({{.*}},{{.*}})
 
 mgp.model @fused_source_notes : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch0 = grt.chain.create ()
