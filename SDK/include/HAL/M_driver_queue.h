@@ -54,11 +54,11 @@ typedef M_driver_status_t (*M_driver_queue_destroy_func_ptr_t)(
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
-                                                void *dst, void *src,
-                                                uint64_t size);
+                                                M_driver_memory_t dst,
+                                                void *src, uint64_t size);
 
 typedef M_driver_status_t (*M_driver_queue_copy_to_device_func_ptr_t)(
-    M_driver_queue_t queue, void *dst, void *src, uint64_t size);
+    M_driver_queue_t queue, M_driver_memory_t dst, void *src, uint64_t size);
 
 /**
  * Copy data from device memory to host memory.
@@ -71,11 +71,12 @@ typedef M_driver_status_t (*M_driver_queue_copy_to_device_func_ptr_t)(
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
-                                                  void *dst, void *src,
+                                                  void *dst,
+                                                  M_driver_memory_t src,
                                                   uint64_t size);
 
 typedef M_driver_status_t (*M_driver_queue_copy_from_device_func_ptr_t)(
-    M_driver_queue_t queue, void *dst, void *src, uint64_t size);
+    M_driver_queue_t queue, void *dst, M_driver_memory_t src, uint64_t size);
 
 /**
  * Fill device memory with a repeated value.
@@ -88,7 +89,8 @@ typedef M_driver_status_t (*M_driver_queue_copy_from_device_func_ptr_t)(
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue, void *dst,
+M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
+                                            M_driver_memory_t dst,
                                             uint64_t size, uint64_t value,
                                             uint64_t value_size);
 

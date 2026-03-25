@@ -25,10 +25,11 @@ extern "C" {
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
-                                               uint64_t size, void **memory);
+                                               uint64_t size,
+                                               M_driver_memory_t *memory);
 
 typedef M_driver_status_t (*M_driver_memory_alloc_pinned_func_ptr_t)(
-    M_driver_context_t context, uint64_t size, void **memory);
+    M_driver_context_t context, uint64_t size, M_driver_memory_t *memory);
 
 /**
  * Free pinned (page-locked) host memory for the given context.
@@ -40,10 +41,10 @@ typedef M_driver_status_t (*M_driver_memory_alloc_pinned_func_ptr_t)(
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
-                                              void *memory);
+                                              M_driver_memory_t memory);
 
 typedef M_driver_status_t (*M_driver_memory_free_pinned_func_ptr_t)(
-    M_driver_context_t context, void *memory);
+    M_driver_context_t context, M_driver_memory_t memory);
 
 /**
  * Allocate memory for the given context.
@@ -57,10 +58,11 @@ typedef M_driver_status_t (*M_driver_memory_free_pinned_func_ptr_t)(
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
-                                             uint64_t size, void **memory);
+                                             uint64_t size,
+                                             M_driver_memory_t *memory);
 
 typedef M_driver_status_t (*M_driver_memory_alloc_sync_func_ptr_t)(
-    M_driver_context_t context, uint64_t size, void **memory);
+    M_driver_context_t context, uint64_t size, M_driver_memory_t *memory);
 
 /**
  * Free memory for the given context.
@@ -72,10 +74,10 @@ typedef M_driver_status_t (*M_driver_memory_alloc_sync_func_ptr_t)(
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
-                                            void *memory);
+                                            M_driver_memory_t memory);
 
 typedef M_driver_status_t (*M_driver_memory_free_sync_func_ptr_t)(
-    M_driver_context_t context, void *memory);
+    M_driver_context_t context, M_driver_memory_t memory);
 
 /**
  * Asynchronously allocate memory on the given queue.
@@ -89,14 +91,15 @@ typedef M_driver_status_t (*M_driver_memory_free_sync_func_ptr_t)(
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
-                                              uint64_t size, void **memory);
+                                              uint64_t size,
+                                              M_driver_memory_t *memory);
 
 typedef M_driver_status_t (*M_driver_memory_alloc_async_func_ptr_t)(
-    M_driver_queue_t queue, uint64_t size, void **memory);
+    M_driver_queue_t queue, uint64_t size, M_driver_memory_t *memory);
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
-                                             void *memory);
+                                             M_driver_memory_t memory);
 /**
  * Asynchronously free memory on the given queue.
  *
@@ -106,7 +109,25 @@ M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
  *         queue is not valid.
  */
 typedef M_driver_status_t (*M_driver_memory_free_async_func_ptr_t)(
-    M_driver_queue_t queue, void *memory);
+    M_driver_queue_t queue, M_driver_memory_t memory);
+
+/**
+ * Retrieve a memory property.
+ *
+ * @param property_name (in) The name of the property as a null-terminated
+ * string.
+ * @param value (out) Type-erased pointer to the value of the property. Consult
+ * the property table to instantiate the correct type at the call-site.
+ * - e.g. "address" to retrieve the device memory address
+ * @return Standard Status Protocol or
+ * - M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME if the property name is not valid.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_memory_property(M_driver_driver_t handle,
+                                    const char *property_name, void *value);
+
+typedef M_driver_status_t (*M_memory_property_func_ptr_t)(
+    M_driver_driver_t handle, const char *property_name, void *value);
 
 #ifdef __cplusplus
 }

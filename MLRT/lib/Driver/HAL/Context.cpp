@@ -24,7 +24,7 @@ Context::~Context() {
 DeviceRef Context::getDevice() const { return device.copy(); }
 
 ErrorOr<BufferRef> Context::allocBufferSync(size_t byteSize) {
-  void *memory;
+  M_driver_memory_t memory;
   if (M_driver_status_t status =
           device->driver->plugin.memory_alloc_sync(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));
@@ -36,7 +36,7 @@ ErrorOr<BufferRef> Context::allocBufferSync(size_t byteSize) {
 }
 
 ErrorOr<BufferRef> Context::allocBufferPinned(size_t byteSize) {
-  void *memory;
+  M_driver_memory_t memory;
   if (M_driver_status_t status =
           device->driver->plugin.memory_alloc_pinned(handle, byteSize, &memory))
     return Error(device->driver->getStatusMessage(status));

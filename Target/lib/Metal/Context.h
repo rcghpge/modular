@@ -17,8 +17,8 @@ struct M_driver_context {
   [[nodiscard]] static M_driver_context_t create(M_driver_device_t device);
   static void destroy(M_driver_context_t context);
 
-  DriverResult<void *> alloc(uint64_t size);
-  M_driver_status_t free(void *memory);
+  DriverResult<M_driver_memory_t> alloc(uint64_t size);
+  M_driver_status_t free(M_driver_memory_t memory);
 
   void trackBuffer(void *ptr, MTL::Buffer *buffer) {
     allocations[reinterpret_cast<uintptr_t>(ptr)] = buffer;

@@ -8,7 +8,8 @@
 #include "HAL/M_driver_memory.h"
 
 M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
-                                               uint64_t size, void **memory) {
+                                               uint64_t size,
+                                               M_driver_memory_t *memory) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
@@ -25,7 +26,8 @@ M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
 }
 
 M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
-                                             uint64_t size, void **memory) {
+                                             uint64_t size,
+                                             M_driver_memory_t *memory) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
@@ -42,7 +44,7 @@ M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
 }
 
 M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
-                                              void *memory) {
+                                              M_driver_memory_t memory) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
@@ -51,7 +53,7 @@ M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
 }
 
 M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
-                                            void *memory) {
+                                            M_driver_memory_t memory) {
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!memory)
@@ -62,12 +64,12 @@ M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
 M_driver_status_t
 M_driver_memory_alloc_async([[maybe_unused]] M_driver_queue_t queue,
                             [[maybe_unused]] uint64_t size,
-                            [[maybe_unused]] void **memory) {
+                            [[maybe_unused]] M_driver_memory_t *memory) {
   return M_DRIVER_STATUS_UNIMPLEMENTED;
 }
 
 M_driver_status_t
 M_driver_memory_free_async([[maybe_unused]] M_driver_queue_t queue,
-                           [[maybe_unused]] void *memory) {
+                           [[maybe_unused]] M_driver_memory_t memory) {
   return M_DRIVER_STATUS_UNIMPLEMENTED;
 }

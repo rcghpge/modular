@@ -35,13 +35,13 @@ public:
   ~Buffer();
 
 private:
-  explicit Buffer(ContextRef context, AllocMode mode, void *memory,
+  explicit Buffer(ContextRef context, AllocMode mode, M_driver_memory_t memory,
                   size_t byteSize);
-  explicit Buffer(QueueRef queue, void *memory, size_t byteSize);
+  explicit Buffer(QueueRef queue, M_driver_memory_t memory, size_t byteSize);
 
   ContextRef context;
   QueueRef queue;
-  void *memory;
+  M_driver_memory_t handle;
   size_t byteSize;
   AllocMode mode;
 

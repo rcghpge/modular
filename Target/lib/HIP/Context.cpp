@@ -7,14 +7,14 @@
 #include "Context.h"
 #include "Device.h"
 #include "Error.h"
-#include "HAL/M_driver_memory.h"
+#include "Memory.h"
 
 DriverResult<M_driver_context_t>
 M_driver_context::create(M_driver_device &dev) {
   return new M_driver_context(dev);
 }
 
-DriverResult<void *> M_driver_context::allocPinned(uint64_t size) {
+DriverResult<M_driver_memory_t> M_driver_context::allocPinned(uint64_t size) {
   if (size == 0)
     return nullptr;
 
@@ -30,10 +30,14 @@ DriverResult<void *> M_driver_context::allocPinned(uint64_t size) {
   if (result != hipSuccess)
     return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
 
-  return ptr;
+  auto *memory = new (std::nothrow) M_driver_memory(ptr);
+  if (!memory)
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+
+  return memory;
 }
 
-DriverResult<void *> M_driver_context::allocSync(uint64_t size) {
+DriverResult<M_driver_memory_t> M_driver_context::allocSync(uint64_t size) {
   if (size == 0)
     return nullptr;
 
@@ -49,10 +53,14 @@ DriverResult<void *> M_driver_context::allocSync(uint64_t size) {
   if (result != hipSuccess)
     return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
 
-  return ptr;
+  auto *memory = new (std::nothrow) M_driver_memory(ptr);
+  if (!memory)
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+
+  return memory;
 }
 
-M_driver_status_t M_driver_context::freePinned(void *memory) {
+M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
 
@@ -60,15 +68,18 @@ M_driver_status_t M_driver_context::freePinned(void *memory) {
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
+  void *ptr = memory->ptr;
+  delete memory;
+
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipHostFree(memory);
+  hipError_t result = hip.hipHostFree(ptr);
   if (result != hipSuccess)
     return M_DRIVER_STATUS_UNKNOWN_ERROR;
 
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_context::freeSync(void *memory) {
+M_driver_status_t M_driver_context::freeSync(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
 
@@ -76,8 +87,11 @@ M_driver_status_t M_driver_context::freeSync(void *memory) {
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
+  void *ptr = memory->ptr;
+  delete memory;
+
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipFree(memory);
+  hipError_t result = hip.hipFree(ptr);
   if (result != hipSuccess)
     return M_DRIVER_STATUS_UNKNOWN_ERROR;
 

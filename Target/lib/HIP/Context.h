@@ -31,10 +31,10 @@ public:
 
   M_driver_device &getDevice() { return device; }
 
-  DriverResult<void *> allocPinned(uint64_t size);
-  DriverResult<void *> allocSync(uint64_t size);
-  M_driver_status_t freePinned(void *memory);
-  M_driver_status_t freeSync(void *memory);
+  DriverResult<M_driver_memory_t> allocPinned(uint64_t size);
+  DriverResult<M_driver_memory_t> allocSync(uint64_t size);
+  M_driver_status_t freePinned(M_driver_memory_t memory);
+  M_driver_status_t freeSync(M_driver_memory_t memory);
 };
 
 #endif // TARGET_LIB_HIP_CONTEXT_H

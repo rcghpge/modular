@@ -88,7 +88,7 @@ TEST_F(DriverPluginTest, DeviceContext) {
 
 TEST_F(DriverPluginContextTest, MemoryAllocSync) {
   for (M_driver_context_t context : contexts) {
-    void *memory;
+    M_driver_memory_t memory;
     ASSERT_SUCCESS(memory_alloc_sync(context, 128, &memory));
     ASSERT_SUCCESS(memory_free_sync(context, memory));
   }
@@ -96,7 +96,7 @@ TEST_F(DriverPluginContextTest, MemoryAllocSync) {
 
 TEST_F(DriverPluginContextTest, MemoryAllocPinned) {
   for (M_driver_context_t context : contexts) {
-    void *memory;
+    M_driver_memory_t memory;
     ASSERT_SUCCESS(memory_alloc_pinned(context, 128, &memory));
     ASSERT_SUCCESS(memory_free_pinned(context, memory));
   }
@@ -104,7 +104,7 @@ TEST_F(DriverPluginContextTest, MemoryAllocPinned) {
 
 TEST_F(DriverPluginContextTest, MemoryAllocReturnsNonNull) {
   for (M_driver_context_t context : contexts) {
-    void *memory = nullptr;
+    M_driver_memory_t memory = nullptr;
     ASSERT_SUCCESS(memory_alloc_sync(context, 128, &memory));
     EXPECT_NE(memory, nullptr);
     ASSERT_SUCCESS(memory_free_sync(context, memory));
@@ -118,11 +118,11 @@ TEST_F(DriverPluginContextTest, MemoryAllocReturnsNonNull) {
 
 TEST_F(DriverPluginContextTest, MemoryAllocZeroSize) {
   for (M_driver_context_t context : contexts) {
-    void *memory = reinterpret_cast<void *>(-1);
+    M_driver_memory_t memory = nullptr;
     ASSERT_SUCCESS(memory_alloc_pinned(context, 0, &memory));
     EXPECT_EQ(memory, nullptr);
 
-    memory = reinterpret_cast<void *>(-1);
+    memory = nullptr;
     ASSERT_SUCCESS(memory_alloc_sync(context, 0, &memory));
     EXPECT_EQ(memory, nullptr);
   }
@@ -215,7 +215,7 @@ TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
     M_driver_context_t context = contexts[i];
     M_driver_queue_t queue = queues[i];
 
-    void *memory = nullptr;
+    M_driver_memory_t memory = nullptr;
     ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
     auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
 
@@ -240,7 +240,7 @@ TEST_F(DriverPluginQueueTest, SetMemory) {
     M_driver_context_t context = contexts[i];
     M_driver_queue_t queue = queues[i];
 
-    void *memory = nullptr;
+    M_driver_memory_t memory = nullptr;
     ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
     auto defer = llvm::scope_exit([&]() { memory_free_sync(context, memory); });
 
