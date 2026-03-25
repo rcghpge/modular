@@ -31,21 +31,29 @@ static bool hasSingleChain(MOMutableOpInterface mutOp) {
   return mutOp.getInChains().size() == 1 && mutOp.getOutChains().size() == 1;
 }
 
+/// Collects operands with write effects for a mutable op. If effects cannot be
+/// determined (e.g. the op or a nested op doesn't implement
+/// MemoryEffectOpInterface), conservatively assumes all mutable operands are
+/// written. This ensures chain relaxation is never applied when write effects
+/// are unknown.
 static llvm::SmallDenseSet<Value>
 collectWriteEffectOperands(MOMutableOpInterface mutOp) {
   std::optional<llvm::SmallVector<mlir::MemoryEffects::EffectInstance>>
       effects = mlir::getEffectsRecursively(mutOp);
 
-  if (!effects)
-    return {};
+  if (!effects) {
+    // Cannot determine effects — conservatively treat all mutable operands as
+    // written so that chain relaxation is blocked.
+    auto range =
+        llvm::make_filter_range(mutOp->getOperands(), isMutableOperand);
+    return {range.begin(), range.end()};
+  }
 
   llvm::SmallDenseSet<Value> result;
 
   for (auto &effect : *effects) {
     if (isa<mlir::MemoryEffects::Write>(effect.getEffect())) {
       Value val = effect.getValue();
-      // NOTE: Alternately you could assume write effects on any operands that
-      // aren't encountered in this loop.
       ASSERT_STREAM(val, "Needs to have attached value!");
       result.insert(val);
     }
