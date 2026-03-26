@@ -19,6 +19,7 @@ modular_cc_test(
         "//GraphCompiler:MGPPrimitives",
         "//GraphCompiler:SafeTensor",
         "//GraphCompiler:Support",
+        "//Init",
         "//Support:Globals",
     ],
 )
@@ -35,6 +36,7 @@ modular_cc_test(
         "//GraphCompiler:MGPPrimitivesWithLogging",
         "//GraphCompiler:SafeTensor",
         "//GraphCompiler:Support",
+        "//Init",
         "//Support:Globals",
     ],
 )
