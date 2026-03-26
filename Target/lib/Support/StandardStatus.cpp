@@ -15,6 +15,9 @@ const char *standardStatusMessages[M_DRIVER_NUM_STANDARD_STATUS_CODES] = {
     /*6*/ "Bad device",
     /*7*/ "Bad context",
     /*8*/ "Bad memory",
-    /*9*/ "Out of memory",
-    /*10*/ "Invalid argument",
+    /*9*/ "Bad queue",
+    /*10*/ "Bad event",
+    /*11*/ "Bad function",
+    /*12*/ "Out of memory",
+    /*13*/ "Invalid argument",
 };

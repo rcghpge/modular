@@ -120,8 +120,11 @@ TEST(SupportTest, StandardStatusMessagesKnownStrings) {
   EXPECT_STREQ(standardStatusMessages[6], "Bad device");
   EXPECT_STREQ(standardStatusMessages[7], "Bad context");
   EXPECT_STREQ(standardStatusMessages[8], "Bad memory");
-  EXPECT_STREQ(standardStatusMessages[9], "Out of memory");
-  EXPECT_STREQ(standardStatusMessages[10], "Invalid argument");
+  EXPECT_STREQ(standardStatusMessages[9], "Bad queue");
+  EXPECT_STREQ(standardStatusMessages[10], "Bad event");
+  EXPECT_STREQ(standardStatusMessages[11], "Bad function");
+  EXPECT_STREQ(standardStatusMessages[12], "Out of memory");
+  EXPECT_STREQ(standardStatusMessages[13], "Invalid argument");
 }
 
 TEST(SupportTest, StandardStatusMessagesNonEmpty) {

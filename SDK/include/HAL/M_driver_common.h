@@ -92,10 +92,13 @@ typedef struct M_driver_function *M_driver_function_t;
 #define M_DRIVER_STATUS_BAD_DEVICE ((M_driver_status_t)(-6))
 #define M_DRIVER_STATUS_BAD_CONTEXT ((M_driver_status_t)(-7))
 #define M_DRIVER_STATUS_BAD_MEMORY ((M_driver_status_t)(-8))
-#define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-9))
-#define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-10))
+#define M_DRIVER_STATUS_BAD_QUEUE ((M_driver_status_t)(-9))
+#define M_DRIVER_STATUS_BAD_EVENT ((M_driver_status_t)(-10))
+#define M_DRIVER_STATUS_BAD_FUNCTION ((M_driver_status_t)(-11))
+#define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-12))
+#define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-13))
 /* Future standard status codes may be added here. */
-#define M_DRIVER_NUM_STANDARD_STATUS_CODES (11)
+#define M_DRIVER_NUM_STANDARD_STATUS_CODES (14)
 
 #define M_DRIVER_STATUS_CUSTOM_CODES_BASE ((M_driver_status_t)(-65536))
 
