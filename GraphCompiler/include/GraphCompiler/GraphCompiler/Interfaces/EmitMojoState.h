@@ -42,7 +42,6 @@ constexpr StringLiteral struct_AddressSpace = "std.memory.AddressSpace";
 constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
-constexpr StringLiteral struct_NDBuffer = "buffer.NDBuffer";
 constexpr StringLiteral struct_StaticTuple = "std.utils.StaticTuple";
 constexpr StringLiteral struct_InlineArray = "InlineArray";
 constexpr StringLiteral struct_MoggAsyncPackHelper =
@@ -128,12 +127,7 @@ constexpr StringLiteral comptime_MutableInputTensor =
 constexpr StringLiteral comptime_UInt8 = "UInt8";
 constexpr StringLiteral comptime_MutAnyOrigin = "MutAnyOrigin";
 
-// The following could be built by combining multiple symbols but this is more
-// convenient. Note that NDBuffer will disappear and the GC will instead use a
-// custom type for managing these int8 buffers (probably just some simple
-// vector/string type).
-constexpr StringLiteral comptime_NDBuffer_In_MGP =
-    "buffer.NDBuffer[rank=1, DType.int8, MutAnyOrigin]";
+constexpr StringLiteral comptime_MutByteBuffer = "MOGGPrimitives.MutByteBuffer";
 
 /// TODO(GEX-2488): Do this programmatically by checking the Modular config for
 /// all included packages and packages provided by the user. This is better than

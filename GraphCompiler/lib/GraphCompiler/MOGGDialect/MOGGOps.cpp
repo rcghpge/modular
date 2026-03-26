@@ -1463,8 +1463,9 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
         return baseTy[params];
       return baseTy;
     } else if (dyn_cast<MGP::DeviceBufferType>(type)) {
-      // mgp.buffer should always be treated as NDBuffer of uint8_t.
-      return HardcodedMojoSymbols::comptime_NDBuffer_In_MGP;
+      // mgp.buffer is represented as MutByteBuffer (DynamicTensor[DType.int8,
+      // 1]).
+      return HardcodedMojoSymbols::comptime_MutByteBuffer;
     }
     return state.mlirTypeToMojoType(type);
   };
@@ -2360,7 +2361,7 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
                        {dTypeParam, rankParam, mutParam, ioParam, shapeParam,
                         stridesParam, alignmentParam, exclusiveParam},
                        {state.getMojoValueFor(getBuffer())
-                            .get("data")
+                            .get("unsafe_ptr")()
                             .get("bitcast")({"NoneType"}),
                         shapeVar})));
 
@@ -2773,12 +2774,16 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
   // Represent the empty buffer with a NULL pointer.
+  MojoValue nullPtr = MojoValue(HardcodedMojoSymbols::struct_UnsafePointer)[{
+      MojoValue(HardcodedMojoSymbols::struct_Scalar)[{
+          MojoValue(HardcodedMojoSymbols::struct_DType).get("int8")}],
+      MojoValue(HardcodedMojoSymbols::comptime_MutAnyOrigin)}]();
+  MojoValue zeroShape = MojoValue(HardcodedMojoSymbols::struct_IndexList)(
+      {MojoValue("1")}, {MojoValue("0")});
   state.setMojoValueFor(
       getResult(),
-      state.builder.var(MojoValue(MOGG::HardcodedMojoSymbols::struct_NDBuffer)(
-          {MojoValue("rank=1"),
-           MojoValue(HardcodedMojoSymbols::struct_DType).get("uint8"),
-           HardcodedMojoSymbols::comptime_MutAnyOrigin})));
+      state.builder.var(MojoValue(HardcodedMojoSymbols::comptime_MutByteBuffer)(
+          {}, {nullPtr, zeroShape})));
   return success();
 }
 
