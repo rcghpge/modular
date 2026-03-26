@@ -47,8 +47,25 @@ constexpr StringLiteral struct_StaticTuple = "std.utils.StaticTuple";
 constexpr StringLiteral struct_InlineArray = "InlineArray";
 constexpr StringLiteral struct_MoggAsyncPackHelper =
     "MOGGPrimitives.MoggAsyncPackHelper";
+constexpr StringLiteral struct_Scalar = "Scalar";
+constexpr StringLiteral struct_Variadic = "Variadic";
+constexpr StringLiteral struct_StaticTensorSpec = "directives.StaticTensorSpec";
+constexpr StringLiteral struct_StaticTensorSpecList =
+    "tensor.StaticTensorSpecList";
+constexpr StringLiteral struct_VariadicTensors = "tensor.VariadicTensors";
+constexpr StringLiteral struct_StaticString = "StaticString";
+constexpr StringLiteral struct_ms_FusionPack =
+    "managed_tensor_slice._FusionPack";
+constexpr StringLiteral struct_ms_FusedInputVariadicTensors =
+    "managed_tensor_slice._FusedInputVariadicTensors";
+constexpr StringLiteral struct_ms_FusedOutputVariadicTensors =
+    "managed_tensor_slice._FusedOutputVariadicTensors";
+constexpr StringLiteral struct_Trace = "std.runtime.tracing.Trace";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
+constexpr StringLiteral enum_IO_Input = "io_spec.IO.Input";
+constexpr StringLiteral enum_TraceLevel_OP =
+    "std.runtime.tracing.TraceLevel.OP";
 
 constexpr StringLiteral func_DimList_create_unknown = "create_unknown";
 constexpr StringLiteral func_ManagedTensorslice_shape = "shape";
@@ -96,6 +113,16 @@ constexpr StringLiteral func_mogg_async_pack_borrow =
     "MOGGPrimitives.mogg_async_pack_borrow";
 constexpr StringLiteral func_get_buffer_mem_storage_handle =
     "MOGGPrimitives.get_buffer_mem_storage_handle";
+constexpr StringLiteral func_ms_simd_load_from_tensor_pointer =
+    "managed_tensor_slice.simd_load_from_tensor_pointer";
+constexpr StringLiteral func_ms_simd_store_into_tensor_pointer =
+    "managed_tensor_slice.simd_store_into_tensor_pointer";
+constexpr StringLiteral func_ms_foreach = "managed_tensor_slice.foreach";
+constexpr StringLiteral func_mogg_tensor_init =
+    "MOGGPrimitives.mogg_tensor_init";
+constexpr StringLiteral func_create_task = "std.runtime.asyncrt.create_task";
+constexpr StringLiteral func_get_safe_task_id =
+    "std.runtime.tracing.get_safe_task_id";
 
 constexpr StringLiteral comptime_OpaquePointer = "OpaquePointer[MutAnyOrigin]";
 constexpr StringLiteral comptime_InputTensor = "tensor.InputTensor";
