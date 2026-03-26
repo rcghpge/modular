@@ -112,6 +112,11 @@ typedef M_driver_status_t (*M_driver_memory_free_async_func_ptr_t)(
     M_driver_queue_t queue, M_driver_memory_t memory);
 
 /**
+ * Common memory properties
+ */
+#define M_DRIVER_MEMORY_PROPERTY_ADDRESS "address"
+
+/**
  * Retrieve a memory property.
  *
  * @param property_name (in) The name of the property as a null-terminated
@@ -123,11 +128,12 @@ typedef M_driver_status_t (*M_driver_memory_free_async_func_ptr_t)(
  * - M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME if the property name is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_memory_property(M_driver_driver_t handle,
-                                    const char *property_name, void *value);
+M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
+                                           const char *property_name,
+                                           void *value);
 
-typedef M_driver_status_t (*M_memory_property_func_ptr_t)(
-    M_driver_driver_t handle, const char *property_name, void *value);
+typedef M_driver_status_t (*M_driver_memory_property_func_ptr_t)(
+    M_driver_memory_t memory, const char *property_name, void *value);
 
 #ifdef __cplusplus
 }

@@ -10,8 +10,12 @@
 #include "HAL/M_driver_common.h"
 #include "MetalCpp.h"
 
+#include "llvm/ADT/StringRef.h"
+
 struct M_driver_memory {
   NS::SharedPtr<MTL::Buffer> buffer;
+
+  M_driver_status_t getProperty(llvm::StringRef name, void *value);
 };
 
 #endif // TARGET_LIB_METAL_MEMORY_H

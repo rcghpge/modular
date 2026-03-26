@@ -6,6 +6,7 @@
 
 #include "Context.h"
 #include "HAL/M_driver_api.h"
+#include "Memory.h"
 
 M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
                                                uint64_t size,
@@ -62,4 +63,10 @@ M_driver_status_t
 M_driver_memory_free_async([[maybe_unused]] M_driver_queue_t queue,
                            [[maybe_unused]] M_driver_memory_t memory) {
   return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
+                                           const char *property_name,
+                                           void *value) {
+  return memory->getProperty(property_name, value);
 }

@@ -6,6 +6,7 @@
 
 #include "Context.h"
 #include "HAL/M_driver_api.h"
+#include "Memory.h"
 #include "Queue.h"
 
 M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
@@ -73,4 +74,10 @@ M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_HANDLE;
   return queue->freeAsync(memory);
+}
+
+M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
+                                           const char *property_name,
+                                           void *value) {
+  return memory->getProperty(property_name, value);
 }

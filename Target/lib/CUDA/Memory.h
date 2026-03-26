@@ -7,10 +7,20 @@
 #ifndef TARGET_LIB_CUDA_MEMORY_H
 #define TARGET_LIB_CUDA_MEMORY_H
 
-#include "HAL/M_driver_common.h"
+#include "HAL/M_driver_memory.h"
+
+#include "llvm/ADT/StringRef.h"
 
 struct M_driver_memory {
   void *ptr;
+
+  M_driver_status_t getProperty(llvm::StringRef name, void *value) {
+    if (name == M_DRIVER_MEMORY_PROPERTY_ADDRESS)
+      *static_cast<void **>(value) = ptr;
+    else
+      return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
 };
 
 #endif // TARGET_LIB_CUDA_MEMORY_H
