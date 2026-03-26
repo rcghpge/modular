@@ -9,7 +9,8 @@
 #include "Device.h"
 
 DriverResult<M_driver_queue_t> M_driver_queue::create(M_driver_context &ctx) {
-  RETURN_IF_ERROR(ctx.ensureContextBound(), tl::unexpected(status));
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   // Default priority is 0 (lowest); compatible with CUDA specs.
@@ -32,7 +33,8 @@ DriverResult<M_driver_memory_t> M_driver_queue::allocAsync(uint64_t size) {
   if (size == 0)
     return nullptr;
 
-  RETURN_IF_ERROR(context.ensureContextBound(), tl::unexpected(status));
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   auto &cuda = context.device.driver.rawCuda;
 
   CUdeviceptr devicePtr;
@@ -52,7 +54,8 @@ M_driver_status_t M_driver_queue::freeAsync(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
 
-  QUICK_RETURN_IF_ERROR(context.ensureContextBound());
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
 
   CUdeviceptr devicePtr = reinterpret_cast<CUdeviceptr>(memory->ptr);
@@ -65,7 +68,8 @@ M_driver_status_t M_driver_queue::freeAsync(M_driver_memory_t memory) {
 
 M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst, void *src,
                                                uint64_t size) {
-  QUICK_RETURN_IF_ERROR(context.ensureContextBound());
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
   CUDA_CHECK(cuda.cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(dst->ptr),
                                     src, size, stream),
@@ -76,7 +80,8 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst, void *src,
 M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
                                                  M_driver_memory_t src,
                                                  uint64_t size) {
-  QUICK_RETURN_IF_ERROR(context.ensureContextBound());
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
   CUDA_CHECK(cuda.cuMemcpyDtoHAsync(
                  dst, reinterpret_cast<CUdeviceptr>(src->ptr), size, stream),
@@ -87,7 +92,8 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t size, uint64_t value,
                                             uint64_t valueSize) {
-  QUICK_RETURN_IF_ERROR(context.ensureContextBound());
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;
   CUdeviceptr dstPtr = reinterpret_cast<CUdeviceptr>(dst->ptr);
   switch (valueSize) {
@@ -139,7 +145,8 @@ M_driver_status_t M_driver_queue::destroy(M_driver_context &ctx,
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_HANDLE;
 
-  QUICK_RETURN_IF_ERROR(ctx.ensureContextBound());
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = ctx.device.driver.rawCuda;
   CUDA_CHECK(cuda.cuStreamDestroy(queue->stream),
              M_DRIVER_STATUS_UNKNOWN_ERROR);
@@ -152,7 +159,9 @@ M_driver_status_t M_driver_queue::synchronize(M_driver_queue_t queue) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_HANDLE;
 
-  QUICK_RETURN_IF_ERROR(queue->context.ensureContextBound());
+  ScopedContext scope(queue->context.primaryCtx,
+                      queue->context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = queue->context.device.driver.rawCuda;
   CUDA_CHECK(cuda.cuStreamSynchronize(queue->stream),
              M_DRIVER_STATUS_UNKNOWN_ERROR);

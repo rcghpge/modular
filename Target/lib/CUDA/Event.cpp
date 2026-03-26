@@ -9,7 +9,8 @@
 #include "Device.h"
 
 DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
-  RETURN_IF_ERROR(ctx.ensureContextBound(), tl::unexpected(status));
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   CUevent event;
@@ -21,7 +22,8 @@ DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
 
 M_driver_status_t M_driver_event::destroy(M_driver_context &ctx,
                                           M_driver_event_t event) {
-  QUICK_RETURN_IF_ERROR(ctx.ensureContextBound());
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   CUDA_CHECK(cuda.cuEventDestroy(event->event), M_DRIVER_STATUS_UNKNOWN_ERROR);
@@ -32,7 +34,8 @@ M_driver_status_t M_driver_event::destroy(M_driver_context &ctx,
 
 M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
                                               M_driver_event_t event) {
-  QUICK_RETURN_IF_ERROR(ctx.ensureContextBound());
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   CUDA_CHECK(cuda.cuEventSynchronize(event->event),
@@ -44,7 +47,8 @@ M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
 M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
                                           M_driver_event_t event,
                                           bool *is_ready) {
-  QUICK_RETURN_IF_ERROR(ctx.ensureContextBound());
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   CUresult result = cuda.cuEventQuery(event->event);

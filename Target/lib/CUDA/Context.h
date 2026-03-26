@@ -9,8 +9,10 @@
 
 #include "Error.h"
 #include "HAL/M_driver_memory.h"
+#include "Loader/CUDALoader.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include <cassert>
 #include <cuda.h>
 
 struct M_driver_device;
@@ -27,12 +29,56 @@ struct M_driver_context {
   explicit M_driver_context(M_driver_device &dev, CUcontext ctx)
       : device(dev), primaryCtx(ctx) {}
 
-  M_driver_status_t ensureContextBound();
-
   DriverResult<M_driver_memory_t> allocPinned(uint64_t size);
   DriverResult<M_driver_memory_t> allocSync(uint64_t size);
   M_driver_status_t freePinned(M_driver_memory_t memory);
   M_driver_status_t freeSync(M_driver_memory_t memory);
 };
+
+namespace M::Driver::CUDA {
+
+/// RAII guard that sets the CUDA context on construction and restores the
+/// previous context on destruction. This is defensive against external
+/// libraries (e.g. PyTorch) that may change the current CUDA context.
+class ScopedContext {
+public:
+  M_driver_status_t status;
+
+  ScopedContext(CUcontext ctx, M::Target::CUDA::CUDALoader &cuda)
+      : status(M_DRIVER_STATUS_SUCCESS), cuda(cuda), ctx(ctx),
+        prevCtx(nullptr) {
+    CUresult result = cuda.cuCtxGetCurrent(&prevCtx);
+    if (result != CUDA_SUCCESS) {
+      status = M_DRIVER_STATUS_BAD_CONTEXT;
+      return;
+    }
+    if (prevCtx == ctx)
+      return;
+    result = cuda.cuCtxSetCurrent(ctx);
+    if (result != CUDA_SUCCESS)
+      status = M_DRIVER_STATUS_BAD_CONTEXT;
+  }
+
+  ~ScopedContext() {
+    if (status != M_DRIVER_STATUS_SUCCESS || prevCtx == ctx)
+      return;
+    if (prevCtx == nullptr)
+      return;
+    [[maybe_unused]] CUresult result = cuda.cuCtxSetCurrent(prevCtx);
+    assert(result == CUDA_SUCCESS && "Failed to restore previous CUDA context");
+  }
+
+  ScopedContext(const ScopedContext &) = delete;
+  ScopedContext &operator=(const ScopedContext &) = delete;
+
+private:
+  M::Target::CUDA::CUDALoader &cuda;
+  CUcontext ctx;
+  CUcontext prevCtx;
+};
+
+} // namespace M::Driver::CUDA
+
+using M::Driver::CUDA::ScopedContext;
 
 #endif // TARGET_LIB_CUDA_CONTEXT_H

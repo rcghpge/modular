@@ -29,7 +29,8 @@ M_driver_status_t M_driver_context::destroy(M_driver_context_t ctx) {
 DriverResult<M_driver_memory_t> M_driver_context::allocPinned(uint64_t size) {
   if (size == 0)
     return nullptr;
-  RETURN_IF_ERROR(ensureContextBound(), tl::unexpected(status));
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   auto &driver = device.driver.rawCuda;
   void *memAlloc = nullptr;
   CUresult result = driver.cuMemAllocHost(&memAlloc, size);
@@ -46,7 +47,8 @@ DriverResult<M_driver_memory_t> M_driver_context::allocPinned(uint64_t size) {
 DriverResult<M_driver_memory_t> M_driver_context::allocSync(uint64_t size) {
   if (size == 0)
     return nullptr;
-  RETURN_IF_ERROR(ensureContextBound(), tl::unexpected(status));
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   auto &driver = device.driver.rawCuda;
   CUdeviceptr devicePtr;
   CUresult result = driver.cuMemAlloc(&devicePtr, size);
@@ -64,7 +66,8 @@ DriverResult<M_driver_memory_t> M_driver_context::allocSync(uint64_t size) {
 M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
-  QUICK_RETURN_IF_ERROR(ensureContextBound());
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   auto &driver = device.driver.rawCuda;
   void *ptr = memory->ptr;
   delete memory;
@@ -77,22 +80,13 @@ M_driver_status_t M_driver_context::freePinned(M_driver_memory_t memory) {
 M_driver_status_t M_driver_context::freeSync(M_driver_memory_t memory) {
   if (memory == nullptr)
     return M_DRIVER_STATUS_SUCCESS;
-  QUICK_RETURN_IF_ERROR(ensureContextBound());
+  ScopedContext scope(primaryCtx, device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
   auto &driver = device.driver.rawCuda;
   CUdeviceptr devicePtr = reinterpret_cast<CUdeviceptr>(memory->ptr);
   delete memory;
   CUresult result = driver.cuMemFree(devicePtr);
   if (result != CUDA_SUCCESS)
     return M_DRIVER_STATUS_UNKNOWN_ERROR;
-  return M_DRIVER_STATUS_SUCCESS;
-}
-
-M_driver_status_t M_driver_context::ensureContextBound() {
-  auto &driver = device.driver.rawCuda;
-  CUcontext current;
-  CUDA_CHECK(driver.cuCtxGetCurrent(&current), M_DRIVER_STATUS_BAD_CONTEXT);
-  if (current == primaryCtx)
-    return M_DRIVER_STATUS_SUCCESS;
-  CUDA_CHECK(driver.cuCtxSetCurrent(primaryCtx), M_DRIVER_STATUS_BAD_CONTEXT);
   return M_DRIVER_STATUS_SUCCESS;
 }
