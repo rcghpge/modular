@@ -13,9 +13,11 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/IndexSet.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/Utils.h"
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
 #include "MLRT/GraphRT/MEFDialect/MEFOps.h"
 #include "Support/AssertStream.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -51,6 +53,65 @@ static Value getLiftableBufferOp(Operation *op) {
   if (auto liftableOp = dyn_cast<MGPLiftableBufferCreateOpInterface>(op))
     return liftableOp.getOutBuffer();
   return nullptr;
+}
+
+static llvm::SmallVector<Value> getLiftableIndexOutputs(Operation *op) {
+  llvm::SmallVector<Value> res;
+  if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
+    for (Value result : op->getResults()) {
+      if (result.getType().isIntOrIndex())
+        res.push_back(result);
+    }
+  }
+  return res;
+}
+
+static std::pair<TypedValue<MEF::ChainType>, uint64_t>
+cacheIntValue(OpBuilder &builder, Location loc,
+              TypedValue<MEF::ChainType> inChain,
+              ContextCreateOp contextCreateOp, Value intValue) {
+
+  if (!intValue.getType().isIndex()) {
+    // The caching op expects index values, we need to cast integers
+    intValue =
+        index::CastSOp::create(builder, loc, builder.getIndexType(), intValue);
+  }
+
+  uint64_t intSlot = contextCreateOp.getNumSlots();
+  contextCreateOp.setNumSlots(intSlot + 1);
+
+  auto cacheOp = IntCacheOp::create(builder, loc, /*inChain=*/inChain,
+                                    /*theContext=*/contextCreateOp,
+                                    /*value=*/intValue,
+                                    /*bIntSlot=*/intSlot);
+  return {cacheOp.getOutChain(), intSlot};
+}
+
+static Value getCachedIntValue(OpBuilder &builder, Location loc,
+                               TypedValue<ContextType> context,
+                               TypedValue<MEF::ChainType> inChain,
+                               uint64_t intSlot, Type resultType) {
+  auto parentOp = builder.getBlock()->getParentOp();
+  if (!isa<ModelOp>(parentOp))
+    parentOp = parentOp->getParentOfType<MGP::ModelOp>();
+
+  auto modelOp = cast<ModelOp>(parentOp);
+  Value intSlotIndex = mlir::index::ConstantOp::create(builder, loc, intSlot);
+  if (modelOp.getIsSubgraph()) {
+    intSlotIndex = mlir::index::AddOp::create(builder, loc, intSlotIndex,
+                                              modelOp.getSubgraphIndex());
+  }
+
+  Value intValue =
+      IntGetCachedOp::create(builder, loc, builder.getIndexType(),
+                             /*inChain=*/inChain, /*theContext=*/context,
+                             /*bIntSlot=*/intSlotIndex);
+  if (!resultType.isIndex()) {
+    // The caching op expects index values, we need to cast integers.
+    intValue = index::CastSOp::create(builder, loc, resultType, intValue);
+  }
+
+  return intValue;
 }
 
 /// Returns true if op could be safely lifted into the 'init' block, but is
@@ -91,7 +152,8 @@ static Value getLiftableChainOp(Operation *op) {
 /// to the 'execute' block via the !mgp.context cache or 'execute' block
 /// arguments.
 static bool canBeConveyed(Operation *op) {
-  return getLiftableBufferOp(op) || getLiftableChainOp(op);
+  return getLiftableBufferOp(op) || getLiftableChainOp(op) ||
+         !getLiftableIndexOutputs(op).empty();
 }
 
 /// Returns true if the result of op cannot be cached, but it is ok for the
@@ -834,6 +896,38 @@ class ExecInvariantCodeMotionPass
                      << bufferCacheOutChain << "\n");
         } else {
           LLVM_DEBUG(llvm::dbgs() << "will lift buffer op without caching\n");
+        }
+
+      } else if (SmallVector<Value> indicesOutputs =
+                     getLiftableIndexOutputs(op);
+                 !indicesOutputs.empty()) {
+        for (Value oldIndexOut : indicesOutputs) {
+          if (!llvm::any_of(oldIndexOut.getUses(), isOpOperandUnliftable))
+            continue;
+
+          // Cache the index in the 'init' block.
+          auto [cacheOutChain, currIndexSlot] =
+              cacheIntValue(initState->builder, op->getLoc(),
+                            placeholderBufferCacheInputChain,
+                            initState->contextCreateOp, oldIndexOut);
+
+          // The final 'init' block chain must wait for this new cache op.
+          finalOutChains.push_back(cacheOutChain);
+
+          // Recover the cached index in the 'execute' block.
+          auto newIndex = getCachedIntValue(
+              executeState->builder, op->getLoc(), executeState->getContext(),
+              executeState->getRootChain(), currIndexSlot,
+              oldIndexOut.getType());
+
+          // Replace old uses that will remain in the 'execute' block.
+          oldIndexOut.replaceUsesWithIf(newIndex, isOpOperandUnliftable);
+          LLVM_DEBUG(
+              llvm::dbgs()
+              << "will lift shape function output and replace old index:\n"
+              << oldIndexOut << "\nwith:\n"
+              << newIndex << "\nvia cached:\n"
+              << cacheOutChain << "\n");
         }
 
       } else {

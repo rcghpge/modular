@@ -13,7 +13,8 @@
 // CHECK: {{.*}}step must be non-zero
 mo.graph @range_zero_step_error(%start_in: !mo.tensor<[], si32>) -> !mo.tensor<[D0], si32> {
   // start_in from input (will be 1), subtract 1 to get 0
-  %start = mo.sub(%start_in, %start_in) : !mo.tensor<[], si32>
+  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %start = mo.sub(%start_in, %one) : !mo.tensor<[], si32>
   %stop = mo.constant {value = #M.dense_array<10> : tensor<si32>} : !mo.tensor<[], si32>
   %step = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
 
