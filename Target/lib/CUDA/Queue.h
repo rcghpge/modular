@@ -32,6 +32,7 @@ struct M_driver_queue {
                                    uint64_t size);
   M_driver_status_t setMemory(M_driver_memory_t dst, uint64_t size,
                               uint64_t value, uint64_t valueSize);
+  static M_driver_status_t synchronize(M_driver_queue_t queue);
 
   explicit M_driver_queue(M_driver_context &context, CUstream stream)
       : context(context), stream(stream) {}

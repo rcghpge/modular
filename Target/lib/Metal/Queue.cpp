@@ -36,3 +36,7 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             uint64_t value_size) {
   return M_DRIVER_STATUS_UNIMPLEMENTED;
 }
+
+M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}

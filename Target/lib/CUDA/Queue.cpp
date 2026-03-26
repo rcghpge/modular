@@ -147,3 +147,15 @@ M_driver_status_t M_driver_queue::destroy(M_driver_context &ctx,
   delete queue;
   return M_DRIVER_STATUS_SUCCESS;
 }
+
+M_driver_status_t M_driver_queue::synchronize(M_driver_queue_t queue) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_HANDLE;
+
+  QUICK_RETURN_IF_ERROR(queue->context.ensureContextBound());
+  CUDALoader &cuda = queue->context.device.driver.rawCuda;
+  CUDA_CHECK(cuda.cuStreamSynchronize(queue->stream),
+             M_DRIVER_STATUS_UNKNOWN_ERROR);
+
+  return M_DRIVER_STATUS_SUCCESS;
+}

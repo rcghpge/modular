@@ -98,6 +98,18 @@ typedef M_driver_status_t (*M_driver_queue_set_memory_func_ptr_t)(
     M_driver_queue_t queue, void *dst, uint64_t size, uint64_t value,
     uint64_t value_size);
 
+/**
+ * Block the calling thread until all operations on the queue have completed.
+ *
+ * @param queue (in) The queue to synchronize on.
+ * @return Standard Status Protocol.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue);
+
+typedef M_driver_status_t (*M_driver_queue_synchronize_func_ptr_t)(
+    M_driver_queue_t queue);
+
 #ifdef __cplusplus
 }
 #endif

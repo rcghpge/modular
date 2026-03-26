@@ -58,4 +58,11 @@ ErrorOrSuccess Queue::setMemory(BufferRef dst, uint64_t value,
   return success();
 }
 
+ErrorOrSuccess Queue::synchronize() {
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_synchronize(handle))
+    return Error(context->device->driver->getStatusMessage(status));
+  return success();
+}
+
 } // namespace M::Driver::HAL

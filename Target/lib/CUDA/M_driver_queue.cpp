@@ -53,3 +53,7 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
     return M_DRIVER_STATUS_BAD_HANDLE;
   return queue->setMemory(dst, size, value, value_size);
 }
+
+M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
+  return M_driver_queue::synchronize(queue);
+}

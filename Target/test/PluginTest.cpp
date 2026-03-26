@@ -198,6 +198,72 @@ TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
   }
 }
 
+TEST_F(DriverPluginContextTest, QueueCopySync) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+
+  constexpr size_t size = 128;
+  std::array<uint8_t, size> src;
+  for (size_t i = 0; i < size; i++)
+    src[i] = static_cast<uint8_t>(i);
+
+  for (M_driver_context_t context : contexts) {
+    M_driver_queue_t queue = nullptr;
+    ASSERT_SUCCESS(queue_create(context, &queue));
+
+    M_driver_memory_t memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &memory));
+    ASSERT_NE(memory, nullptr);
+
+    ASSERT_SUCCESS(queue_copy_to_device(queue, memory, src.data(), size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    std::array<uint8_t, size> dst;
+    dst.fill(0);
+    ASSERT_SUCCESS(queue_copy_from_device(queue, dst.data(), memory, size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    EXPECT_EQ(src, dst);
+
+    ASSERT_SUCCESS(memory_free_sync(context, memory));
+    ASSERT_SUCCESS(queue_destroy(context, queue));
+  }
+}
+
+TEST_F(DriverPluginContextTest, QueueAsyncAllocSync) {
+  if (api == "HIP" || api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+
+  constexpr size_t size = 128;
+  std::array<uint8_t, size> src;
+  for (size_t i = 0; i < size; i++)
+    src[i] = static_cast<uint8_t>(i);
+
+  for (M_driver_context_t context : contexts) {
+    M_driver_queue_t queue = nullptr;
+    ASSERT_SUCCESS(queue_create(context, &queue));
+
+    M_driver_memory_t memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_async(queue, size, &memory));
+    ASSERT_NE(memory, nullptr);
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    ASSERT_SUCCESS(queue_copy_to_device(queue, memory, src.data(), size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    std::array<uint8_t, size> dst;
+    dst.fill(0);
+    ASSERT_SUCCESS(queue_copy_from_device(queue, dst.data(), memory, size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    EXPECT_EQ(src, dst);
+
+    ASSERT_SUCCESS(memory_free_async(queue, memory));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+    ASSERT_SUCCESS(queue_destroy(context, queue));
+  }
+}
+
 TEST_F(DriverPluginContextTest, EventCreateDestroy) {
   if (api == "Metal")
     GTEST_SKIP() << "Unimplemented for " << api;

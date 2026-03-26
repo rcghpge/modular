@@ -37,6 +37,7 @@ public:
   ErrorOrSuccess copyToDevice(BufferRef dst, void *src, size_t byteSize);
   ErrorOrSuccess copyFromDevice(void *dst, BufferRef src, size_t byteSize);
   ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
+  ErrorOrSuccess synchronize();
 
 private:
   explicit Queue(ContextRef context, M_driver_queue_t handle);
