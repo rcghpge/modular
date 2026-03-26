@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -mo-to-mogg --mogg-fuse-affine-views --mogg-fuse-prologues-epilogues --mogg-fuse-consts -mogg-to-mgp -canonicalize | FileCheck %s
+// RUN: mo-opt %s -mo-to-mogg --mogg-fuse-epilogues --mogg-fuse-consts -mogg-to-mgp -canonicalize | FileCheck %s
 
 // CHECK: mogg.kernel.stub @stub_0
 // CHECK:       [[LAMBDA:%.*]] = mogg.bind ({{.*}}) output_lambda

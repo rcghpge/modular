@@ -291,30 +291,28 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &opts) {
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
-  // Fuse connected elementwise kernels.
   if (opts.fuseJitKernels) {
-    pm.addPass(MOGG::createFuseAffineViews());
     MOGG::FuseElementwiseOptions fuseElementwiseOptions;
     // To dump dot graph, uncomment below:
     // fuseElementwiseOptions.dumpDotGraph = true;
     pm.addPass(MOGG::createFuseElementwise(fuseElementwiseOptions));
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
-    // Fuse views.
     pm.addPass(MOGG::createFuseViews());
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
-    // Fuse into big ops. I.E epilogue fusion into matmul.
-    pm.addPass(MOGG::createFuseProloguesEpilogues());
+    pm.addPass(MOGG::createFusePrologues());
     pm.addPass(MOGG::createSimplifyKernelOperands());
 
-    // Fuse constants last as they don't enable any extra fusions directly and
-    // should be fused as late as possible to catch all cases of constants.
-    pm.addPass(MOGG::createFuseConstants());
-  }
+    // FuseEpilogues also runs affine view fusion internally until convergence,
+    // handling multi-hop cases like: matmul -> add -> affine_view -> add.
+    pm.addPass(MOGG::createFuseEpilogues());
+    pm.addPass(MOGG::createSimplifyKernelOperands());
 
-  if (opts.fuseMutableLoadStore)
-    pm.addPass(MOGG::createFuseMutableLoads());
+    pm.addPass(MOGG::createFuseConstants());
+    if (opts.fuseMutableLoadStore)
+      pm.addPass(MOGG::createFuseMutableLoads());
+  }
 
   pm.addPass(MOGG::createSimplifyKernelOperands());
 

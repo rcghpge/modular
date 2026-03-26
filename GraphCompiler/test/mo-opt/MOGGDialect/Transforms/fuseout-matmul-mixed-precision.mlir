@@ -1,5 +1,5 @@
 
-// RUN: mo-opt --mo-to-mogg --canonicalize --mogg-fuse-prologues-epilogues --canonicalize --cse %s | FileCheck %s
+// RUN: mo-opt --mo-to-mogg --canonicalize --mogg-fuse-epilogues --canonicalize --cse %s | FileCheck %s
 
 // CHECK-LABEL: mo.graph @matmul_mixed
 

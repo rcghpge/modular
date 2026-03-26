@@ -1150,8 +1150,8 @@ Decomposes non‑contiguous `mo.slice` into per‑dim `mo.slice_dim` chains and
 rewrites `mo.static.reshape` into merge/split/add‑singleton sequences when
 possible, preserving layouts and rebinding types as needed.
 
-This aids downstream passes (e.g., FuseAffineViews) that don't handle complex
-cases.
+This aids downstream passes (e.g., FuseReshapesIntoEpilogues) that don't handle
+complex cases.
 
 Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/DecomposeViewOps.cpp>
 Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
@@ -1580,42 +1580,42 @@ there's no copy.
 Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseViews.cpp>
 Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
-### FuseAffineViews
+### FuseReshapesIntoEpilogues
 
 #### Description
 
-Fuses affine view operations (those representable as index-affine transforms)
-into kernels and elementwise lambdas. This avoids materializing intermediate
-views when they can be composed into downstream kernels.
+Fuses reshape operations (`SplitDim`, `MergeDim`, `AddSingletonDim`) into the
+output lambda of producer kernels. This avoids materializing intermediate
+tensors when the reshape can be composed into the producer's index computation.
 
 #### Dialects
 
-Consumes and produces `mogg` (GraphOp) and uses `mo` view ops plus `kgen`
+Consumes and produces `mogg` (GraphOp) and uses `mo` reshape ops plus `kgen`
 helpers for kernel rewriting.
 
 #### Performance
 
-Reduces view-kernel overhead and improves fusion opportunities by composing
-affine views directly into consumer kernels.
+Reduces reshape-kernel overhead and improves fusion opportunities by composing
+reshapes directly into producer kernel output lambdas.
 
 #### Additional notes
 
 Operates only on non-elementwise kernels (those are handled by a separate pass)
 and requires single-use outputs for output fusion. That is, the output of a
-kernel is simple enough that we can absorb an affine view by rewriting the
+kernel is simple enough that we can absorb a reshape by rewriting the
 producer's output lambda without changing observable semantics. The op has to
 live in the same block as its user, so no cross-control-flow fusion.
 
-Though the pass performs fusion at `mogg` level, it hanldes ops in `mo` (just
+Though the pass performs fusion at `mogg` level, it handles ops in `mo` (just
 three, at the time of writing: `AddSingletonDimOp`, `SplitDimOp`, and
 `MergeDimOp`) and expects `mo.graph` to have `mogg.kernel`s with the bound
 output lambdas (aka lambda fusion interface) - the pass performs "hard" fusion.
 It works by rewriting the kernel internals (output placeholder + lambdas)
-within the graph, fusing view ops into a producer kernel. Remaining ops are
+within the graph, fusing reshape ops into a producer kernel. Remaining ops are
 handled by `MOGGToMGP` pass which create a new tensor spec and reuses
 existing buffer.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseAffineViews.cpp>
+Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseReshapesIntoEpilogues.cpp>
 Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### FuseElementwise
@@ -1660,61 +1660,81 @@ topological ordering for safe rewrites. Controlled by `dump-dot-graph`.
 Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseElementwiseKernels.cpp>
 Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
-### FuseProloguesEpilogues
+### FusePrologues
 
 #### Description
 
-Fuses elementwise producer/consumer kernels directly into the input/output
-lambdas of their users (e.g., epilogue fusion into matmul), reducing kernel
-boundaries and enabling stronger fusion.
+Fuses elementwise producer kernels directly into the input lambdas of their
+consumers (prologue fusion), reducing kernel boundaries.
 
 #### Dialects
 
-Consumes and produces `mogg` (GraphOp), with elementwise lambdas and `mo` kernel
-names used to gate specific fusion cases.
+Consumes and produces `mogg` (GraphOp), with elementwise lambdas and `mo`
+kernel names used to gate specific fusion cases.
 
 #### Performance
 
-Reduces kernel launch overhead and improves locality by merging prologue and
-epilogue elementwise work into compute kernels.
+Reduces kernel launch overhead and improves locality by merging elementwise
+prologue work into compute kernels.
 
 #### Additional notes
 
-The fusion goes in two directions:
+An elementwise kernel is fused as a prologue if its output is the sole input
+to a non-elementwise kernel that has an input lambda for that operand.
 
-- Prologue: elementwise producer fused into the input lambda of a
-  non-elementwise kernel.
-- Epilogue: elementwise consumer fused into the output lambda of a
-  non‑elementwise kernel.
+Source: `GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp`
+Pass definition: `GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
 
-These are two separate stages of the pass.
+### FuseEpilogues
+
+#### Description
+
+Fuses elementwise consumer kernels directly into the output lambdas of their
+producers (epilogue fusion), reducing kernel boundaries. Runs interleaved with
+affine view fusion until convergence, enabling multi-hop fusion across affine
+views (e.g., `matmul -> add -> merge_dim -> add` fuses into a single kernel).
+
+#### Dialects
+
+Consumes and produces `mogg` (GraphOp), with elementwise lambdas and `mo`
+kernel names used to gate specific fusion cases.
+
+#### Performance
+
+Reduces kernel launch overhead and improves locality by merging elementwise
+epilogue work into compute kernels.
+
+#### Additional notes
 
 There's no strict written-down fusion contract, but the implementation implies
 the following set:
 
-- output labmda compatibility,
+- output lambda compatibility,
 - single-use output and the same block (producer's result is consumed in the
   same block),
 - no dependency cycles,
-- chain compatilibility for mutable kernels.
+- chain compatibility for mutable kernels.
 
-Some operations like matmul/conv/concat treated specailly during epilogue
+Some operations like matmul/conv/concat are treated specially during epilogue
 fusion and are matched by op name.
 
 Some cases require additional care:
 
 - If the elementwise epilogue contains a `mo.mutable_store` and shares any
   `mo.buffer` operand with the producer, fusion is blocked to avoid
-  side‑effects/aliasing hazards.
-- Device‑compatibility checks are relaxed for distributed ops (e.g.,
-  `MO::AllGatherOp`). The kernel itself executes on CPU even though the tensors
-  are GPU‑resident.
-- Even with single‑use checks, fusion can introduce cycles when there are extra
-  operands/chains. The pass explicitly checks that no other operand of the
-  epilogue depends on the producer.
+  side-effects/aliasing hazards.
+- Device-compatibility checks are relaxed for distributed ops (e.g.,
+  `MO::AllGatherOp`). The kernel itself executes on CPU even though the
+  tensors are GPU-resident.
+- Even with single-use checks, fusion can introduce cycles when there are
+  extra operands/chains. The pass explicitly checks that no other operand
+  of the epilogue depends on the producer.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+The pass internally loops over epilogue fusion and reshape-into-epilogue fusion
+(shared with `FuseReshapesIntoEpilogues`) until no more fusions are possible.
+
+Source: `GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp`
+Pass definition: `GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
 
 ### FuseMutableLoads
 

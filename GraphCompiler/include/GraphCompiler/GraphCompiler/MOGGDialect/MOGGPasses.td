@@ -113,12 +113,12 @@ def FuseViews: Pass<"mogg-fuse-views", "MO::GraphOp"> {
   ];
 }
 
-def FuseAffineViews: Pass<"mogg-fuse-affine-views", "MO::GraphOp"> {
-  let summary = "Fuse affine views into kernels";
+def FuseReshapesIntoEpilogues: Pass<"mogg-fuse-reshapes-into-epilogues", "MO::GraphOp"> {
+  let summary = "Fuse reshape ops into kernel output epilogues";
   let description = [{
-    A subset of view operations can be directly represented as affine expressions
-    on index operations. These can fuse both into normal view operations and into
-    elementwise lambdas.
+    Fuses reshape operations (SplitDim, MergeDim, AddSingletonDim) into the
+    output lambda of producer kernels, eliminating intermediate materializations
+    by composing the reshape as an affine index transform on the kernel output.
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let statistics = [
@@ -167,11 +167,11 @@ def FuseElementwise: Pass<"mogg-fuse-elementwise", "MO::GraphOp"> {
   ];
 }
 
-def FuseProloguesEpilogues: Pass<"mogg-fuse-prologues-epilogues", "MO::GraphOp"> {
-  let summary = "Fuse kernels into the lambda of their users";
+def FusePrologues: Pass<"mogg-fuse-prologues", "MO::GraphOp"> {
+  let summary = "Fuse elementwise kernels as prologues into their consumers";
   let description = [{
-    An elementwise kernel can be directly fused into the lambda body of another
-    kernel. I.E fused directly into a matmul output loop.
+    An elementwise kernel can be directly fused into the input lambda body of
+    another kernel. I.E fused directly into a matmul input loop.
   }];
 
   // Balloons due to dependency on MojoLibraryAnalysis
@@ -190,8 +190,27 @@ def FuseProloguesEpilogues: Pass<"mogg-fuse-prologues-epilogues", "MO::GraphOp">
   ];
 
   let statistics = [
-    Statistic<"numberOfFusedEpilogues", "# of fused epiloges", "Number of fused epiloges">,
     Statistic<"numberOfFusedPrologues", "# of fused prologues", "Number of fused prologues">
+  ];
+}
+
+def FuseEpilogues: Pass<"mogg-fuse-epilogues", "MO::GraphOp"> {
+  let summary = "Fuse elementwise kernels as epilogues into their producers";
+  let description = [{
+    An elementwise kernel can be directly fused into the output lambda body of
+    another kernel. I.E fused directly into a matmul output loop. Runs
+    interleaved with affine view fusion until convergence, enabling multi-hop
+    fusion across affine views.
+  }];
+
+  // Balloons due to dependency on MojoLibraryAnalysis
+  let dependentDialects = [
+    "M::MDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+
+  let statistics = [
+    Statistic<"numberOfFusedEpilogues", "# of fused epilogues", "Number of fused epilogues">
   ];
 }
 

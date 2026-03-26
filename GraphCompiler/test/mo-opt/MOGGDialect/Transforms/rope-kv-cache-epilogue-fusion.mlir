@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -o %t.mlir --gc-pipeline --allow-unregistered-dialect --mlir-print-ir-after="mogg-fuse-prologues-epilogues" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-IR
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline --allow-unregistered-dialect --mlir-print-ir-after="mogg-fuse-epilogues" --mlir-disable-threading 2>&1 | FileCheck %s --check-prefix=CHECK-IR
 // XFAIL: *
 
 // CHECK-IR-LABEL: @rope_kv_cache_epilogue_fusion

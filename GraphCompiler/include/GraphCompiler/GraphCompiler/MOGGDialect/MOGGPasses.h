@@ -27,6 +27,10 @@
 // Forward Declarations
 //===----------------------------------------------------------------------===//
 
+namespace M::MO {
+class GraphOp;
+} // namespace M::MO
+
 namespace M::MOGG {
 
 /// How to build kernels. Release is optimized with no debug information,
@@ -103,6 +107,12 @@ createEmitMojo(const EmitMojoOptions &opts,
                std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis);
 
 void mergeIdenticalKernelStubs(mlir::ModuleOp module);
+
+/// Perform one iteration of reshape-into-epilogue fusion on the graph, fusing
+/// SplitDim/MergeDim/AddSingletonDim ops into kernel output lambdas.
+/// Returns the number of views fused. Shared by FuseReshapesIntoEpilogues and
+/// FuseEpilogues.
+size_t fuseReshapesIntoEpiloguesStep(MO::GraphOp graph);
 
 } // namespace M::MOGG
 

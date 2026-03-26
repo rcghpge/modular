@@ -650,7 +650,7 @@ def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
   let summary = "Represents a mojo call to an affine remapping function";
   let description = [{
     This represents a call to a mojo function to remap the indices argument inside a fusion lambda.
-    This op is inserted by the Graph Compiler during FuseAffineViewsPass.
+    This op is inserted by the Graph Compiler during FuseReshapesIntoEpiloguesPass.
 
     Example:
     ```mlir
