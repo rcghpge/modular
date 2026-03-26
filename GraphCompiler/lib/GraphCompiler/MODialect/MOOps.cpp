@@ -1293,36 +1293,6 @@ SmallVector<OpOperand *> ParallelOp::getInChainsMutable() {
   return result;
 }
 
-LogicalResult
-ParallelOp::inferReturnTypes(MLIRContext *context,
-                             std::optional<Location> location, Adaptor adaptor,
-                             SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto inputs = adaptor.getInputs();
-  Region &body = adaptor.getBodyRegion();
-  auto yieldOp = cast<YieldOp>(body.front().getTerminator());
-
-  if (inputs.empty() || body.empty() || yieldOp.getNumOperands() != 1)
-    return failure();
-
-  Type yieldType = yieldOp.getOperand(0).getType();
-  auto yieldDevice = dyn_cast<MO::MOHasDeviceTypeInterface>(yieldType);
-
-  for (auto input : inputs) {
-    auto inputDevice = dyn_cast<MO::MOHasDeviceTypeInterface>(input.getType());
-    if (inputDevice && yieldDevice) {
-      inferredReturnTypes.push_back(
-          yieldDevice.cloneWithNewDevice(inputDevice.getDeviceRef()));
-    } else {
-      inferredReturnTypes.push_back(yieldType);
-    }
-  }
-
-  if (adaptor.getInChain())
-    inferredReturnTypes.push_back(ChainType::get(context));
-
-  return success();
-}
-
 void ParallelOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   Block &body = getBodyRegion().front();
@@ -1359,6 +1329,11 @@ LogicalResult ParallelOp::verify() {
 
   if (inputs.empty())
     return emitOpError("requires at least one input");
+
+  size_t expectedResults = inputs.size() + (hasChain() ? 1 : 0);
+  if (getNumResults() != expectedResults)
+    return emitOpError("requires ")
+           << expectedResults << " results, got " << getNumResults();
 
   if (!extraInputs.empty() && extraInputs.size() != inputs.size())
     return emitOpError("extraInputs size (")

@@ -598,7 +598,6 @@ def MO_ParallelOp : MO_ControlOp<"parallel", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   HasOnlyGraphRegion,
-  InferTypeOpAdaptor,
   RegionKindInterface,
   SingleBlock,
   DeclInterface,
