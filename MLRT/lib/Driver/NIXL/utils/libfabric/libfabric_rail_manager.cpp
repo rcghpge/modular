@@ -33,7 +33,8 @@ nixlLibfabricRailManager::create(size_t striping_threshold) {
                         ? "Failed to initialize libfabric rail manager."
                         : rail_manager->getInitError());
   }
-  return rail_manager;
+  return M::ErrorOr<std::unique_ptr<nixlLibfabricRailManager>>(
+      std::move(rail_manager));
 }
 
 nixlLibfabricRailManager::nixlLibfabricRailManager(size_t striping_threshold)
@@ -272,14 +273,17 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
   return NIXL_SUCCESS;
 }
 
-std::vector<size_t>
-nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
-                                               nixl_mem_t mem_type) const {
+std::vector<size_t> nixlLibfabricRailManager::selectRailsForMemory(
+    void *mem_addr, nixl_mem_t mem_type, uint64_t dev_id) const {
   if (mem_type == VRAM_SEG) {
-#if NIXL_LIBFABRIC_HAVE_CUDA
-    int gpu_id = topology->detectGpuIdForMemory(mem_addr);
+    int gpu_id = static_cast<int>(dev_id);
+    if (dev_id == std::numeric_limits<uint64_t>::max()) {
+      NIXL_ERROR << "Missing device ID for VRAM memory " << mem_addr;
+      return {};
+    }
     if (gpu_id < 0) {
-      NIXL_ERROR << "Could not detect GPU for VRAM memory " << mem_addr;
+      NIXL_ERROR << "Invalid GPU ID " << gpu_id << " for VRAM memory "
+                 << mem_addr;
       return {}; // Return empty vector to indicate failure
     }
     std::vector<std::string> gpu_efa_devices =
@@ -318,10 +322,6 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
     NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id
                << " will use " << gpu_rails.size() << " rails total";
     return gpu_rails;
-#else
-    NIXL_ERROR << "VRAM memory type not supported without CUDA";
-    return {};
-#endif
   }
   if (mem_type == DRAM_SEG) {
     int numa_node = topology->detectNumaNodeForMemory(mem_addr);
@@ -362,7 +362,7 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
 }
 
 nixl_status_t nixlLibfabricRailManager::registerMemory(
-    void *buffer, size_t length, nixl_mem_t mem_type,
+    void *buffer, size_t length, nixl_mem_t mem_type, uint64_t dev_id,
     std::vector<struct fid_mr *> &mr_list_out,
     std::vector<uint64_t> &key_list_out,
     std::vector<size_t> &selected_rails_out) {
@@ -372,7 +372,8 @@ nixl_status_t nixlLibfabricRailManager::registerMemory(
   }
 
   // Use internal rail selection (moved from engine)
-  std::vector<size_t> selected_rails = selectRailsForMemory(buffer, mem_type);
+  std::vector<size_t> selected_rails =
+      selectRailsForMemory(buffer, mem_type, dev_id);
   if (selected_rails.empty()) {
     NIXL_ERROR << "No rails selected for memory type " << mem_type;
     return NIXL_ERR_NOT_SUPPORTED;

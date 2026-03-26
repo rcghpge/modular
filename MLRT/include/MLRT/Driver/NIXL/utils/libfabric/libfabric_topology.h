@@ -16,6 +16,7 @@
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_common.h"
 #include "Support/ErrorOr.h"
 #include <hwloc.h>
+#include <limits>
 #include <map>
 
 namespace M::AsyncRT::NIXL {
@@ -115,16 +116,14 @@ public:
   ~nixlLibfabricTopology();
   // GPU-based queries
   std::vector<std::string> getEfaDevicesForGpu(int gpu_id) const;
-  int detectGpuIdForMemory(void *mem_addr) const;
-  bool isGpuMemory(void *mem_addr) const;
   // NUMA-based queries
   std::vector<std::string> getEfaDevicesForNumaNode(int numa_node) const;
   int detectNumaNodeForMemory(void *mem_addr) const;
-  bool isHostMemory(void *mem_addr) const;
 
   // Memory-based queries (main interface)
-  std::vector<std::string> getEfaDevicesForMemory(void *mem_addr,
-                                                  nixl_mem_t mem_type) const;
+  std::vector<std::string> getEfaDevicesForMemory(
+      void *mem_addr, nixl_mem_t mem_type,
+      uint64_t dev_id = std::numeric_limits<uint64_t>::max()) const;
 
   // System information
   int getNumGpus() const { return num_gpus; }

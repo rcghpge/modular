@@ -17,6 +17,7 @@ modular_cc_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//MLRT:Driver/DeviceContextImpl",
         "//MLRT:Driver/NIXL",
         "//MLRT:Driver/NIXLLibfabricUtils",
         "//MLRT/unittests/Driver/NIXL:TestCommon",

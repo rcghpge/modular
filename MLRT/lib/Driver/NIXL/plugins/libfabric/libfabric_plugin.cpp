@@ -32,7 +32,9 @@ static const char *getLibfabricPluginVersion() { return "0.1.0"; }
 static nixl_b_params_t getLibfabricBackendOptions() { return {}; }
 
 static nixl_mem_list_t getLibfabricBackendMems() {
-  return {DRAM_SEG, VRAM_SEG};
+  // GPU memory support is determined by the runtime DeviceContext-backed
+  // engine, so the plugin advertises the conservative baseline here.
+  return {DRAM_SEG};
 }
 
 static nixlBackendPlugin *getLibfabricPlugin() {

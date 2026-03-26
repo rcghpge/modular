@@ -10,6 +10,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "MLRT/Driver/NIXL/plugins/libfabric/libfabric_backend.h"
+#include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/NIXL/utils/common/nixl_log.h"
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_topology.h"
 #include "MLRT/Driver/NIXL/utils/serdes/serdes.h"
@@ -22,145 +23,65 @@
 #include <iomanip>
 #include <numeric>
 
-#if NIXL_LIBFABRIC_HAVE_CUDA
-// CUDA error checking macros
-#define CHECK_CUDA_ERROR(result, message)                                      \
-  do {                                                                         \
-    if (result != cudaSuccess) {                                               \
-      NIXL_ERROR << "CUDA Error: " << message << " ("                          \
-                 << cudaGetErrorString(result) << ")";                         \
-      return NIXL_ERR_BACKEND;                                                 \
-    }                                                                          \
-  } while (0)
-
-#define CHECK_CUDA_DRIVER_ERROR(result, message)                               \
-  do {                                                                         \
-    if (result != CUDA_SUCCESS) {                                              \
-      const char *error_str;                                                   \
-      cuGetErrorString(result, &error_str);                                    \
-      NIXL_ERROR << "CUDA Driver Error: " << message << " (" << error_str      \
-                 << ")";                                                       \
-      return NIXL_ERR_BACKEND;                                                 \
-    }                                                                          \
-  } while (0)
-#endif
-
 namespace M::AsyncRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
 
-/****************************************
- * CUDA Context Management
- *****************************************/
+class LibfabricGpuContextCache {
+public:
+  M::ErrorOrSuccess getOrCreate(uint64_t devId,
+                                M::Driver::DeviceContext *&context_out) {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto it = contexts_.find(devId);
+    if (it != contexts_.end()) {
+      context_out = it->second.getPointer();
+      return M::success();
+    }
 
-#if NIXL_LIBFABRIC_HAVE_CUDA
-static int cudaQueryAddr(void *address, bool &is_dev, CUdevice &dev,
-                         CUcontext &ctx) {
-  CUmemorytype mem_type = CU_MEMORYTYPE_HOST;
-  uint32_t is_managed = 0;
-  CUpointer_attribute attr_type[4];
-  void *attr_data[4];
-  CUresult result;
+    auto device = M::Driver::Device::create(M::Driver::Device::gpuAPI,
+                                            static_cast<int>(devId));
+    if (device.isError()) {
+      return device.takeError();
+    }
 
-  attr_type[0] = CU_POINTER_ATTRIBUTE_MEMORY_TYPE;
-  attr_data[0] = &mem_type;
-  attr_type[1] = CU_POINTER_ATTRIBUTE_IS_MANAGED;
-  attr_data[1] = &is_managed;
-  attr_type[2] = CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL;
-  attr_data[2] = &dev;
-  attr_type[3] = CU_POINTER_ATTRIBUTE_CONTEXT;
-  attr_data[3] = &ctx;
+    auto context = device.get()->createContext();
+    if (context.isError()) {
+      return context.takeError();
+    }
 
-  result =
-      cuPointerGetAttributes(4, attr_type, attr_data, (CUdeviceptr)address);
-  is_dev = (mem_type == CU_MEMORYTYPE_DEVICE);
-
-  return (CUDA_SUCCESS != result);
-}
-
-void nixlLibfabricCudaCtx::cudaResetCtxPtr() {
-  pthrCudaCtx_ = NULL;
-  myDevId_ = -1;
-}
-
-int nixlLibfabricCudaCtx::cudaUpdateCtxPtr(void *address, int expected_dev,
-                                           bool &was_updated) {
-  bool is_dev;
-  CUdevice dev;
-  CUcontext ctx;
-  int ret;
-
-  was_updated = false;
-
-  if (expected_dev == -1)
-    return -1;
-  if (myDevId_ != -1 && expected_dev != myDevId_)
-    return -1;
-
-  ret = cudaQueryAddr(address, is_dev, dev, ctx);
-  if (ret)
-    return ret;
-  if (!is_dev)
-    return 0;
-  if (dev != expected_dev)
-    return -1;
-
-  if (pthrCudaCtx_) {
-    if (pthrCudaCtx_ != ctx)
-      return -1;
-    return 0;
+    context_out = context.get().getPointer();
+    contexts_.emplace(devId, context.takeValue());
+    return M::success();
   }
 
-  pthrCudaCtx_ = ctx;
-  was_updated = true;
-  myDevId_ = expected_dev;
-
-  return 0;
-}
-
-int nixlLibfabricCudaCtx::cudaSetCtx() {
-  CUresult result;
-  if (NULL == pthrCudaCtx_)
-    return 0;
-
-  result = cuCtxSetCurrent(pthrCudaCtx_);
-  return (CUDA_SUCCESS == result);
-}
-
-void nixlLibfabricEngine::vramInitCtx() {
-  cudaCtx_ = std::make_unique<nixlLibfabricCudaCtx>();
-}
-
-int nixlLibfabricEngine::vramUpdateCtx(void *address, uint64_t devId,
-                                       bool &restart_reqd) {
-  int ret;
-  bool was_updated;
-
-  restart_reqd = false;
-
-  if (!cuda_addr_wa_) {
-    return 0; // Nothing to do
+  bool hasAnyGpuDevice() const {
+    return M::Driver::Device::numberOfDevices(M::Driver::Device::gpuAPI) > 0;
   }
 
-  ret = cudaCtx_->cudaUpdateCtxPtr(address, devId, was_updated);
-  if (ret) {
-    return ret;
+private:
+  mutable std::mutex mu_;
+  std::unordered_map<uint64_t, M::Driver::DeviceContextRef> contexts_;
+};
+
+M::ErrorOrSuccess createGpuContextScope(
+    LibfabricGpuContextCache &gpuContexts, uint64_t devId,
+    std::unique_ptr<M::Driver::DeviceContextScope> &scope_out) {
+  M::Driver::DeviceContext *context = nullptr;
+  if (auto err = gpuContexts.getOrCreate(devId, context);
+      const char *error = err.getError()) {
+    return M::Error(error);
   }
 
-  restart_reqd = was_updated;
-  return 0;
-}
-
-int nixlLibfabricEngine::vramApplyCtx() {
-  if (!cuda_addr_wa_) {
-    return 0; // Nothing to do
+  auto scope = std::make_unique<M::Driver::DeviceContextScope>(*context);
+  auto err = scope->err();
+  if (const char *error = err.getError()) {
+    return M::Error(error);
   }
-  return cudaCtx_->cudaSetCtx();
-}
 
-void nixlLibfabricEngine::vramFiniCtx() { cudaCtx_.reset(); }
-#endif
+  scope_out = std::move(scope);
+  return M::success();
+}
 
 /****************************************
  * Request Management
@@ -222,19 +143,7 @@ nixlLibfabricEngine::nixlLibfabricEngine(
           std::chrono::microseconds(init_params->pthrDelay)) {
 
   NIXL_DEBUG << "Initializing Libfabric Backend with GPU Support";
-
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // Initialize CUDA context management
-  vramInitCtx();
-  // CUDA address workaround
-  if (getenv("NIXL_DISABLE_CUDA_ADDR_WA")) {
-    NIXL_DEBUG << "Disabling CUDA address workaround";
-    cuda_addr_wa_ = false;
-  } else {
-    cuda_addr_wa_ = true;
-    NIXL_DEBUG << "CUDA address workaround enabled";
-  }
-#endif
+  gpu_contexts_ = std::make_unique<LibfabricGpuContextCache>();
 
   // Parse striping threshold parameter
   std::string threshold_str;
@@ -820,9 +729,9 @@ nixl_status_t nixlLibfabricEngine::establishConnection(
 nixl_mem_list_t nixlLibfabricEngine::getSupportedMems() const {
   nixl_mem_list_t mems;
   mems.push_back(DRAM_SEG);
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  mems.push_back(VRAM_SEG);
-#endif
+  if (gpu_contexts_ && gpu_contexts_->hasAnyGpuDevice()) {
+    mems.push_back(VRAM_SEG);
+  }
   return mems;
 }
 
@@ -830,57 +739,37 @@ nixl_status_t nixlLibfabricEngine::registerMem(const nixlBlobDesc &mem,
                                                const nixl_mem_t &nixl_mem,
                                                nixlBackendMD *&out) {
   auto priv = std::make_unique<nixlLibfabricPrivateMetadata>();
+  std::unique_ptr<M::Driver::DeviceContextScope> gpu_scope;
 
   priv->buffer_ = (void *)mem.addr;
   priv->length_ = mem.len;
-  priv->gpu_device_id_ = mem.devId; // Store GPU device ID
+  priv->gpu_device_id_ =
+      (nixl_mem == VRAM_SEG) ? static_cast<int>(mem.devId) : -1;
 
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // Handle CUDA memory registration with GPU Direct RDMA support
   if (nixl_mem == VRAM_SEG) {
-    // For multi-GPU support, skip CUDA address workaround
-    if (cuda_addr_wa_) {
-      bool need_restart;
-      if (vramUpdateCtx((void *)mem.addr, mem.devId, need_restart)) {
-        NIXL_WARN << "CUDA address workaround failed for device " << mem.devId
-                  << ", disabling workaround for multi-GPU support";
-        cuda_addr_wa_ =
-            false; // Disable workaround for subsequent registrations
-      } else if (need_restart) {
-        // Restart progress thread if needed
-        NIXL_DEBUG << "CUDA context updated, restarting progress thread";
-        vramApplyCtx();
-      }
+    if (mem.devId == std::numeric_limits<uint64_t>::max()) {
+      NIXL_ERROR << "VRAM registration requires a valid device ID";
+      return NIXL_ERR_INVALID_PARAM;
     }
-    // Set CUDA device context directly for multi-GPU support
-    if (!cuda_addr_wa_) {
-      cudaError_t cuda_ret = cudaSetDevice(mem.devId);
-      if (cuda_ret != cudaSuccess) {
-        NIXL_ERROR << "Failed to set CUDA device " << mem.devId << ": "
-                   << cudaGetErrorString(cuda_ret);
-        return NIXL_ERR_NOT_SUPPORTED;
-      }
-      NIXL_DEBUG << "Set CUDA device context to GPU " << mem.devId;
+
+    auto gpu_scope_err =
+        createGpuContextScope(*gpu_contexts_, mem.devId, gpu_scope);
+    if (const char *error = gpu_scope_err.getError()) {
+      NIXL_ERROR << "Failed to create GPU device context for device "
+                 << mem.devId << ": " << error;
+      return NIXL_ERR_NOT_SUPPORTED;
     }
   }
-#endif
 
   // Initialize vectors to accommodate all possible rails (for indexing
   // consistency)
   priv->rail_mr_list_.resize(rail_manager->getNumDataRails(), nullptr);
   priv->rail_key_list_.resize(rail_manager->getNumDataRails(), 0);
 
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // Set CUDA context before libfabric operations for VRAM
-  if (nixl_mem == VRAM_SEG) {
-    vramApplyCtx();
-  }
-#endif
-
   // Use Rail Manager for centralized memory registration with GPU Direct RDMA
   // support
   nixl_status_t status = rail_manager->registerMemory(
-      (void *)mem.addr, mem.len, nixl_mem, priv->rail_mr_list_,
+      (void *)mem.addr, mem.len, nixl_mem, mem.devId, priv->rail_mr_list_,
       priv->rail_key_list_, priv->selected_rails_);
   if (status != NIXL_SUCCESS) {
     NIXL_ERROR << "Rail Manager registerMemory failed";
@@ -1622,10 +1511,7 @@ void nixlLibfabricEngine::checkPendingNotifications() {
 
 void nixlLibfabricEngine::cleanup() {
   NIXL_DEBUG << "Cleaning up all resources";
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // Cleanup CUDA context
-  vramFiniCtx();
-#endif
+  gpu_contexts_.reset();
 
   NIXL_DEBUG << "Cleanup all resources complete";
 }

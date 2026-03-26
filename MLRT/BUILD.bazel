@@ -823,6 +823,7 @@ modular_shared_library(
     ],
     deps = [
         ":AsyncRT/Support",
+        ":Driver/DeviceContextImpl",
         ":Driver/NIXLLibOnly",
         ":Driver/NIXLLibfabricUtils",
         "//Support:Base",

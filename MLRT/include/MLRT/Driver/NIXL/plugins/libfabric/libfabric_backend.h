@@ -31,11 +31,6 @@
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_common.h"
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_rail_manager.h"
 
-#if NIXL_LIBFABRIC_HAVE_CUDA
-#include <cuda.h>
-#include <cuda_runtime.h>
-#endif
-
 namespace M::AsyncRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
@@ -43,30 +38,7 @@ using enum nixl_xfer_op_t;
 
 // Forward declarations
 class nixlLibfabricEngine;
-
-#if NIXL_LIBFABRIC_HAVE_CUDA
-/** CUDA context management for libfabric backend */
-class nixlLibfabricCudaCtx {
-private:
-  CUcontext pthrCudaCtx_;
-  int myDevId_;
-
-public:
-  nixlLibfabricCudaCtx() {
-    pthrCudaCtx_ = NULL;
-    myDevId_ = -1;
-  }
-
-  /** Reset CUDA context pointer to initial state */
-  void cudaResetCtxPtr();
-
-  /** Update CUDA context pointer for given memory address and device */
-  int cudaUpdateCtxPtr(void *address, int expected_dev, bool &was_updated);
-
-  /** Set the current CUDA context */
-  int cudaSetCtx();
-};
-#endif
+class LibfabricGpuContextCache;
 
 /** Private metadata for locally registered memory */
 class nixlLibfabricPrivateMetadata : public nixlBackendMD {
@@ -233,11 +205,7 @@ private:
   // Private notification implementation with unified binary notification system
   nixl_status_t notifSendPriv(const std::string &remote_agent,
                               nixlLibfabricReq *control_request) const;
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // CUDA context management
-  std::unique_ptr<nixlLibfabricCudaCtx> cudaCtx_;
-  bool cuda_addr_wa_; // CUDA address workaround flag
-#endif
+  std::unique_ptr<LibfabricGpuContextCache> gpu_contexts_;
 
   // ConnectionManagement thread and completion processing
   nixl_status_t cmThread();
@@ -253,14 +221,6 @@ private:
   nixl_status_t processConnectionRequest(uint16_t agent_idx,
                                          const std::string &serialized_data,
                                          nixlLibfabricRail *rail);
-
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // CUDA context management methods
-  void vramInitCtx();
-  int vramUpdateCtx(void *address, uint64_t devId, bool &restart_reqd);
-  int vramApplyCtx();
-  void vramFiniCtx();
-#endif
 
 public:
   /** Initialize multi-rail libfabric backend engine */

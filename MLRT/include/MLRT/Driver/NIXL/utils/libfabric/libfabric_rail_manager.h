@@ -16,16 +16,12 @@
 #include "Support/ErrorOr.h"
 #include <atomic>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#if NIXL_LIBFABRIC_HAVE_CUDA
-#include <cuda.h>
-#include <cuda_runtime.h>
-#endif
 
 namespace M::AsyncRT::NIXL {
 using enum nixl_mem_t;
@@ -106,6 +102,7 @@ public:
    * @return NIXL_SUCCESS on success, error code on failure
    */
   nixl_status_t registerMemory(void *buffer, size_t length, nixl_mem_t mem_type,
+                               uint64_t dev_id,
                                std::vector<struct fid_mr *> &mr_list_out,
                                std::vector<uint64_t> &key_list_out,
                                std::vector<size_t> &selected_rails_out);
@@ -282,8 +279,9 @@ private:
   std::unordered_set<size_t> active_rails_;
 
   // Internal rail selection method
-  std::vector<size_t> selectRailsForMemory(void *mem_addr,
-                                           nixl_mem_t mem_type) const;
+  std::vector<size_t> selectRailsForMemory(
+      void *mem_addr, nixl_mem_t mem_type,
+      uint64_t dev_id = std::numeric_limits<uint64_t>::max()) const;
 
   // Helper functions for connection SerDes
   void serializeRailEndpoints(nixlSerDes &ser_des,

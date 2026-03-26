@@ -21,10 +21,6 @@
 #include <rdma/fabric.h>
 #include <rdma/fi_domain.h>
 
-#if NIXL_LIBFABRIC_HAVE_CUDA
-#include <cuda_runtime.h>
-#endif
-
 namespace M::AsyncRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
@@ -39,7 +35,8 @@ nixlLibfabricTopology::create() {
                         ? "Failed to discover system topology."
                         : topology->getInitError());
   }
-  return topology;
+  return M::ErrorOr<std::unique_ptr<nixlLibfabricTopology>>(
+      std::move(topology));
 }
 
 nixlLibfabricTopology::nixlLibfabricTopology()
@@ -117,20 +114,18 @@ nixl_status_t nixlLibfabricTopology::discoverEfaDevices() {
   return NIXL_SUCCESS;
 }
 
-std::vector<std::string>
-nixlLibfabricTopology::getEfaDevicesForMemory(void *mem_addr,
-                                              nixl_mem_t mem_type) const {
+std::vector<std::string> nixlLibfabricTopology::getEfaDevicesForMemory(
+    void *mem_addr, nixl_mem_t mem_type, uint64_t dev_id) const {
   if (!topology_discovered) {
     NIXL_WARN << "Topology not discovered, returning all EFA devices";
     return all_efa_devices;
   }
   if (mem_type == VRAM_SEG) {
-    // GPU memory
-    int gpu_id = detectGpuIdForMemory(mem_addr);
-    if (gpu_id >= 0) {
-      return getEfaDevicesForGpu(gpu_id);
+    if (dev_id != std::numeric_limits<uint64_t>::max() &&
+        isValidGpuId(static_cast<int>(dev_id))) {
+      return getEfaDevicesForGpu(static_cast<int>(dev_id));
     }
-    NIXL_WARN << "Could not detect GPU ID for memory, using all devices";
+    NIXL_WARN << "Could not use GPU device ID for memory, using all devices";
   } else {
     // Host memory (DRAM_SEG, BLK_SEG, OBJ_SEG, FILE_SEG)
     int numa_node = detectNumaNodeForMemory(mem_addr);
@@ -162,50 +157,6 @@ nixlLibfabricTopology::getEfaDevicesForNumaNode(int numa_node) const {
   NIXL_WARN << "No EFA devices found for NUMA node " << numa_node
             << ", returning all devices";
   return all_efa_devices;
-}
-
-int nixlLibfabricTopology::detectGpuIdForMemory(void *mem_addr) const {
-  if (!mem_addr) {
-    NIXL_TRACE << "detectGpuIdForMemory: null memory address";
-    return -1;
-  }
-#if NIXL_LIBFABRIC_HAVE_CUDA
-  // Use CUDA runtime API to detect GPU memory
-  struct cudaPointerAttributes attributes;
-  memset(&attributes, 0, sizeof(attributes));
-
-  cudaError_t err = cudaPointerGetAttributes(&attributes, mem_addr);
-
-  if (err == cudaSuccess) {
-    NIXL_TRACE << "cudaPointerGetAttributes succeeded for " << mem_addr
-               << ": type=" << attributes.type
-               << ", device=" << attributes.device;
-
-    // Check if this is device memory
-    if (attributes.type == cudaMemoryTypeDevice) {
-      NIXL_TRACE << "Detected device memory on GPU " << attributes.device;
-      return attributes.device;
-    }
-    // For managed memory, also return the device ID if it has one
-    else if (attributes.type == cudaMemoryTypeManaged &&
-             attributes.device >= 0) {
-      NIXL_TRACE << "Detected managed memory on GPU " << attributes.device;
-      return attributes.device;
-    } else {
-      NIXL_TRACE << "Memory type " << attributes.type
-                 << " not recognized as GPU memory";
-    }
-  } else {
-    NIXL_TRACE << "cudaPointerGetAttributes failed for " << mem_addr << ": "
-               << cudaGetErrorString(err);
-    // Clear the error - this is expected for host memory
-    cudaGetLastError();
-  }
-#else
-  NIXL_TRACE << "CUDA not available, cannot detect GPU memory";
-#endif
-  // Not GPU memory or CUDA not available
-  return -1;
 }
 
 int nixlLibfabricTopology::detectNumaNodeForMemory(void *mem_addr) const {
@@ -248,14 +199,6 @@ int nixlLibfabricTopology::detectNumaNodeForMemory(void *mem_addr) const {
   }
   hwloc_bitmap_free(nodeset);
   return numa_node;
-}
-
-bool nixlLibfabricTopology::isGpuMemory(void *mem_addr) const {
-  return detectGpuIdForMemory(mem_addr) >= 0;
-}
-
-bool nixlLibfabricTopology::isHostMemory(void *mem_addr) const {
-  return !isGpuMemory(mem_addr);
 }
 
 bool nixlLibfabricTopology::isValidGpuId(int gpu_id) const {
