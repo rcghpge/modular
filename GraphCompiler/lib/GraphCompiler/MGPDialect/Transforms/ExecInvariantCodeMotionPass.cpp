@@ -123,7 +123,7 @@ static Value getCachedIntValue(OpBuilder &builder, Location loc,
 /// op in the 'execute' phase on every call.
 static bool isLiftableTrivialOp(Operation *op) {
   // Consider all pure ops to be trivial.
-  if (isPure(op))
+  if (isMemoryEffectFree(op))
     return true;
 
   // Liftable buffer ops declare whether they are trivial.
@@ -159,7 +159,7 @@ static bool canBeConveyed(Operation *op) {
 /// Returns true if the result of op cannot be cached, but it is ok for the
 /// op to be executed in both the 'init' and 'execute' blocks. Doing so will
 /// allow downstream ops to also be lifted to the 'init' block.
-static bool isRecomputableOp(Operation *op) { return isPure(op); }
+static bool isRecomputableOp(Operation *op) { return isMemoryEffectFree(op); }
 
 /// Returns true if the execution of op could be safely lifted or copied to
 /// the 'init' block without causing unintended side effects.
