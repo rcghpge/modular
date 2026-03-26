@@ -119,6 +119,20 @@ private:
 /// ops which have no extra state but wish to make use of buffer caching.
 class DefaultStateSlot : public ReferenceCounted<DefaultStateSlot> {};
 
+/// A state slot payload that holds a single size_t (index) value.
+/// Used by `mgp.int.cache` / `mgp.int.get_cached` to convey index
+/// values (e.g. dynamic dimension values) from the 'init' block to the
+/// 'execute' block via the !mgp.context cache.
+class IntStateSlot : public ReferenceCounted<IntStateSlot> {
+public:
+  explicit IntStateSlot(size_t value) : value(value) {}
+
+  size_t getValue() const { return value; }
+
+private:
+  size_t value;
+};
+
 /// A 'mutable borrow' of a state slot payload of type T. This object holds
 /// both the raw pointer to the state slot payload, as well as an async
 /// value reference to the outer context for the slot itself. This allows

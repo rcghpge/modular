@@ -589,6 +589,50 @@ LogicalResult BufferGetCachedOp::canonicalize(BufferGetCachedOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// IntCacheOp
+//===----------------------------------------------------------------------===//
+
+llvm::BitVector IntCacheOp::operandsToUnpack() {
+  llvm::BitVector res(getNumOperands(), true);
+  res[1] = false; // Do not unpack the context because the type is defined in
+                  // C++ only.
+  return res;
+}
+
+LogicalResult IntCacheOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  MOGG::MojoValue bIntSlotParam = MOGG::MojoValue(getBIntSlot());
+  state.builder.call(function, {bIntSlotParam},
+                     {state.getMojoValueFor(getTheContext()),
+                      state.getMojoValueFor(getValue())});
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// IntGetCachedOp
+//===----------------------------------------------------------------------===//
+
+llvm::BitVector IntGetCachedOp::operandsToUnpack() {
+  llvm::BitVector res(getNumOperands(), true);
+  res[1] = false; // Do not unpack the context because the type is defined in
+                  // C++ only.
+  return res;
+}
+
+LogicalResult IntGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MOGG::MojoValue function = state.getOriginalMojoNameFor(litFunction);
+  auto res =
+      state.builder.var(function({}, {state.getMojoValueFor(getTheContext()),
+                                      state.getMojoValueFor(getBIntSlot())}));
+  state.setMojoValueFor(getResult(), res);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 

@@ -735,6 +735,69 @@ def BufferRemoveCachedOp : MGP_Op<"buffer.remove_cached", [
 }
 
 //===----------------------------------------------------------------------===//
+// IntCacheOp
+//===----------------------------------------------------------------------===//
+
+def IntCacheOp : MGP_Op<"int.cache", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>
+]> {
+  let summary = "Stores an integer value into a dedicated state slot.";
+  let description = [{
+    Stores the given integer value into the state slot at the given index.
+    It may be later retrieved by `mgp.int.get_cached`.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %val : index
+    %ch0 : !mef.chain
+    // Cache the integer in slot 42.
+    %ch1 = mgp.int.cache %ch0, %ctx[42], %val
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       Index:$value,
+                       UI64Attr:$bIntSlot);
+  let results = (outs ChainType:$outChain);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $bIntSlot `]` `,` $value attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// IntGetCachedOp
+//===----------------------------------------------------------------------===//
+
+def IntGetCachedOp : MGP_Op<"int.get_cached", [
+  Pure,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["operandsToUnpack"]>
+]> {
+  let summary = "Retrieves an integer value from a dedicated state slot.";
+  let description = [{
+    Returns the integer value stored in the state slot at the given index.
+    The value should have already been stored by `mgp.int.cache`.
+
+    Example:
+    ```mlir
+    %ctx : !mgp.context
+    %ch0 : !mef.chain
+    %idx : index
+    %val = mgp.int.get_cached %ch0, %ctx[%idx]
+    ```
+  }];
+
+  let arguments = (ins ChainType:$inChain,
+                       MGP_ContextType:$theContext,
+                       Index:$bIntSlot);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{
+    $inChain `,` $theContext `[` $bIntSlot `]` attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // BufferGetSizeOp
 //===----------------------------------------------------------------------===//
 

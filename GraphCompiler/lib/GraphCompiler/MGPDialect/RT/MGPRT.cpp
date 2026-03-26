@@ -120,6 +120,26 @@ MGP_RT_RemoveCachedBuffer(size_t bufferSlot, StateContext &stateCtx) {
   stateSlot.clear();
 }
 
+/// This is the C++ implementation of mgp.int.cached.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
+MGP_RT_SetCachedInt(size_t bufferSlot,
+                    AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync,
+                    size_t value) {
+  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
+  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
+  stateCtx.emplaceStateSlot<IntStateSlot>(bufferSlot,
+                                          /*numBuffers=*/0, value);
+}
+
+/// This is the C++ implementation of mgp.int.get_cached.
+COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT size_t MGP_RT_GetCachedInt(
+    size_t bufferSlot, AsyncRTWrapper<AnyAsyncValueRef> stateCtxAsync) {
+  void *stateCtxPtr = MGP_RT_AsyncUnpack(stateCtxAsync);
+  StateContext &stateCtx = *reinterpret_cast<StateContext *>(stateCtxPtr);
+  auto &slot = stateCtx.getStateSlot(bufferSlot);
+  return slot.get<IntStateSlot>().getValue();
+}
+
 /// Returns the size of a C++ list.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT int64_t
 MGP_RT_ListSize(AsyncRTWrapper<GML::List> asyncList) {
