@@ -3189,7 +3189,7 @@ LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
   }
 
   auto formatKernelErrorFunc = state.getOriginalMojoNameFor(
-      state.analysis.getRegisteredLITMojoKernelFor("mogg.format_kernel_error"));
+      state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
   MojoValue errorExpr = state.getMojoValueFor(getError());
   SmallVector<MojoValue> args = {
       MojoValue(stubName).quote(),
