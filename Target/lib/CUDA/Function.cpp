@@ -7,6 +7,8 @@
 #include "Function.h"
 #include "Context.h"
 #include "Device.h"
+#include "HAL/M_driver_bundle.h"
+#include "HAL/M_driver_common.h"
 
 #include "llvm/ADT/SmallVector.h"
 
@@ -54,32 +56,54 @@ setupCompilationOptions(const char *debugLevel, int32_t optimizationLevel) {
   return {std::move(optionKind), std::move(optionValues)};
 }
 
-DriverResult<M_driver_function_t>
-M_driver_function::load(M_driver_context &ctx, llvm::StringRef code,
-                        const char *function_name,
-                        int32_t max_dynamic_shared_bytes,
-                        const char *debug_level, int32_t optimization_level) {
+DriverResult<M_driver_runtime_bundle_t>
+M_driver_runtime_bundle::load(M_driver_context &ctx,
+                              M_driver_static_bundle_t bundle,
+                              M_driver_bundle_compilation_options_t opts) {
   ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
   RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   CUDALoader &cuda = ctx.device.driver.rawCuda;
 
   auto [optionKind, optionValues] =
-      setupCompilationOptions(debug_level, optimization_level);
+      setupCompilationOptions(opts->debug_level, opts->optimization_level);
 
-  // Load module from PTX.
   CUmodule module;
-  // TODO: Might need equivalent of POLL_PENDING_EVENTS here after queue and
-  // events are in place, line 1716 CUDADeviceContext.cpp
-  CUDA_CHECK_DR(cuda.cuModuleLoadDataEx(
-                    &module, code.data(), optionKind.size(), optionKind.data(),
-                    reinterpret_cast<void **>(optionValues.data())),
-                M_DRIVER_STATUS_UNKNOWN_ERROR);
+  CUDA_CHECK_DR(
+      cuda.cuModuleLoadDataEx(&module, bundle->mapped_data.data,
+                              optionKind.size(), optionKind.data(),
+                              reinterpret_cast<void **>(optionValues.data())),
+      M_DRIVER_STATUS_UNKNOWN_ERROR);
 
-  // Get function from module.
+  auto runtimeBundle = new M_driver_runtime_bundle{.module = module};
+
+  return runtimeBundle;
+}
+
+M_driver_status_t
+M_driver_runtime_bundle::unload(M_driver_context &ctx,
+                                M_driver_runtime_bundle_t bundle) {
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  CUDALoader &cuda = ctx.device.driver.rawCuda;
+
+  CUDA_CHECK(cuda.cuModuleUnload(bundle->module),
+             M_DRIVER_STATUS_UNKNOWN_ERROR);
+
+  delete bundle;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+DriverResult<M_driver_function_t>
+M_driver_function::load(M_driver_context &ctx, M_driver_runtime_bundle_t bundle,
+                        const char *function_name, uint64_t function_name_len) {
+  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  RETURN_IF_ERROR(scope.status, tl::unexpected(status));
+  CUDALoader &cuda = ctx.device.driver.rawCuda;
+
   CUfunction func;
-  CUresult result = cuda.cuModuleGetFunction(&func, module, function_name);
+  CUresult result =
+      cuda.cuModuleGetFunction(&func, bundle->module, function_name);
   if (result != CUDA_SUCCESS) {
-    cuda.cuModuleUnload(module);
     return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
   }
 
@@ -88,16 +112,8 @@ M_driver_function::load(M_driver_context &ctx, llvm::StringRef code,
           func, CU_FUNC_ATTRIBUTE_NON_PORTABLE_CLUSTER_SIZE_ALLOWED, 1),
       M_DRIVER_STATUS_UNKNOWN_ERROR);
 
-  // Set max dynamic shared memory if specified.
-  if (max_dynamic_shared_bytes >= 0) {
-    CUDA_CHECK_DR(cuda.cuFuncSetAttribute(
-                      func, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                      max_dynamic_shared_bytes),
-                  M_DRIVER_STATUS_UNKNOWN_ERROR);
-  }
-
   auto ptr =
-      std::make_unique<M_driver_function>(M_driver_function{module, func});
+      std::make_unique<M_driver_function>(M_driver_function{.function = func});
   return ptr.release();
 }
 
@@ -105,10 +121,6 @@ M_driver_status_t M_driver_function::unload(M_driver_context &ctx,
                                             M_driver_function_t func) {
   ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
-  CUDALoader &cuda = ctx.device.driver.rawCuda;
-
-  CUDA_CHECK(cuda.cuModuleUnload(func->module), M_DRIVER_STATUS_UNKNOWN_ERROR);
-
   delete func;
   return M_DRIVER_STATUS_SUCCESS;
 }

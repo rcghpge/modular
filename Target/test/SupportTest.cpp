@@ -125,6 +125,9 @@ TEST(SupportTest, StandardStatusMessagesKnownStrings) {
   EXPECT_STREQ(standardStatusMessages[11], "Bad function");
   EXPECT_STREQ(standardStatusMessages[12], "Out of memory");
   EXPECT_STREQ(standardStatusMessages[13], "Invalid argument");
+  EXPECT_STREQ(standardStatusMessages[14], "Incompatible file type");
+  EXPECT_STREQ(standardStatusMessages[15], "Bad handle");
+  EXPECT_STREQ(standardStatusMessages[16], "Bad bundle");
 }
 
 TEST(SupportTest, StandardStatusMessagesNonEmpty) {

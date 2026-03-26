@@ -9,6 +9,8 @@
 #include "Context.h"
 #include "Device.h"
 #include "HAL/M_driver_api.h"
+#include "HAL/M_driver_bundle.h"
+#include "HAL/M_driver_common.h"
 
 #include <algorithm>
 
@@ -16,9 +18,10 @@ using namespace llvm;
 
 #define RETURN_ERROR(...) return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
 
-[[nodiscard]] DriverResult<M_driver_function_t>
-M_driver_function::create(M_driver_context_t context, llvm::StringRef code,
-                          llvm::StringRef name) {
+[[nodiscard]] DriverResult<M_driver_runtime_bundle_t>
+M_driver_runtime_bundle::load(M_driver_context_t context,
+                              M_driver_static_bundle_t static_bundle,
+                              M_driver_bundle_compilation_options_t opts) {
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
@@ -31,12 +34,14 @@ M_driver_function::create(M_driver_context_t context, llvm::StringRef code,
 
   // Detect if input is binary or MSL source code
   bool isBinary = false;
-  if (code.size() >= 4) {
+  if (static_bundle->mapped_data.size >= 4) {
     // Check if it's NOT MSL text (which would start with valid ASCII/UTF-8)
     // Look for non-printable characters in the first few bytes
     isBinary = false;
-    for (size_t i = 0; i < std::min(size_t(8), code.size()); ++i) {
-      unsigned char c = code[i];
+    for (size_t i = 0;
+         i < std::min(size_t(8), size_t(static_bundle->mapped_data.size));
+         ++i) {
+      unsigned char c = static_bundle->mapped_data.data[i];
       if (c < 32 && c != '\n' && c != '\r' && c != '\t') {
         isBinary = true;
         break;
@@ -46,8 +51,9 @@ M_driver_function::create(M_driver_context_t context, llvm::StringRef code,
 
   if (!isBinary) {
     // Compile from MSL source code
-    NS::String *sourceString =
-        NS::String::string(code.data(), NS::UTF8StringEncoding);
+    NS::String *sourceString = NS::String::string(
+        reinterpret_cast<const char *>(static_bundle->mapped_data.data),
+        NS::UTF8StringEncoding);
     NS::SharedPtr<MTL::CompileOptions> options =
         NS::TransferPtr(MTL::CompileOptions::alloc()->init());
 
@@ -61,7 +67,8 @@ M_driver_function::create(M_driver_context_t context, llvm::StringRef code,
   } else {
     // Load from binary metallib data
     dispatch_data_t binaryData = dispatch_data_create(
-        code.data(), code.size(), nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+        static_bundle->mapped_data.data, static_bundle->mapped_data.size,
+        nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
 
     NS::Error *error = nullptr;
     library = NS::TransferPtr(mDevice->newLibrary(binaryData, &error));
@@ -74,11 +81,26 @@ M_driver_function::create(M_driver_context_t context, llvm::StringRef code,
     dispatch_release(binaryData);
   }
 
+  return new M_driver_runtime_bundle{.library = library};
+}
+
+[[nodiscard]] DriverResult<M_driver_function_t>
+M_driver_function::create(M_driver_context_t context,
+                          M_driver_runtime_bundle_t bundle,
+                          llvm::StringRef name) {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  // Get the Metal device
+  MTL::Device *mDevice = context->device->mDevice;
+  if (mDevice == nullptr)
+    return tl::unexpected(M_DRIVER_STATUS_NO_DEVICES);
+
   // Get the function from the library
   NS::String *funcName =
       NS::String::string(name.str().c_str(), NS::UTF8StringEncoding);
   NS::SharedPtr<MTL::Function> mFunction =
-      NS::TransferPtr(library->newFunction(funcName));
+      NS::TransferPtr(bundle->library->newFunction(funcName));
   if (!mFunction) {
     RETURN_ERROR("Failed to create Metal function: " + Twine(function_name));
   }
@@ -126,16 +148,17 @@ M_driver_status_t M_driver_function::destroy(M_driver_function_t function) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t
-M_driver_function_load(M_driver_driver_t driver, M_driver_context_t context,
-                       const void *code, uint64_t code_size,
-                       const char *function_name,
-                       [[maybe_unused]] int32_t max_dynamic_shared_bytes,
-                       [[maybe_unused]] const char *debug_level,
-                       [[maybe_unused]] int32_t optimization_level,
-                       [[maybe_unused]] M_driver_function_t *function) {
-  auto result = M_driver_function::create(
-      context, {static_cast<const char *>(code), code_size}, function_name);
+M_driver_status_t M_driver_function_load(M_driver_context_t context,
+                                         M_driver_runtime_bundle_t bundle,
+                                         const char *function_name,
+                                         uint64_t function_name_len,
+                                         M_driver_function_t *function) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (bundle == nullptr)
+    return M_DRIVER_STATUS_BAD_BUNDLE;
+
+  auto result = M_driver_function::create(context, bundle, function_name);
   if (!result)
     return result.error();
 
@@ -143,8 +166,43 @@ M_driver_function_load(M_driver_driver_t driver, M_driver_context_t context,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-extern "C" M_driver_status_t
-M_driver_function_unload(M_driver_driver_t driver, M_driver_context_t context,
-                         M_driver_function_t function) {
+M_driver_status_t M_driver_function_unload(M_driver_context_t context,
+                                           M_driver_function_t function) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (function == nullptr)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
   return M_driver_function::destroy(function);
+}
+
+M_driver_status_t
+M_driver_bundle_load(M_driver_context_t context,
+                     M_driver_static_bundle_t bundle,
+                     M_driver_bundle_compilation_options_t opts,
+                     M_driver_runtime_bundle_t *runtime_bundle) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+
+  auto result = M_driver_runtime_bundle::load(context, bundle, opts);
+  if (!result)
+    return result.error();
+
+  *runtime_bundle = *result;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_bundle_unload(M_driver_context_t context,
+                                         M_driver_runtime_bundle_t bundle) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return M_driver_runtime_bundle::unload(bundle);
+}
+
+M_driver_status_t
+M_driver_runtime_bundle::unload(M_driver_runtime_bundle_t bundle) {
+  if (bundle == nullptr)
+    return M_DRIVER_STATUS_BAD_BUNDLE;
+  // SharedPtr releases the MTL::Library ref on destruction.
+  delete bundle;
+  return M_DRIVER_STATUS_SUCCESS;
 }

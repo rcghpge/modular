@@ -5,14 +5,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "Common.h"
+#include "HAL/M_driver_bundle.h"
 #include "MetalCpp.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <string>
 
+struct M_driver_runtime_bundle {
+  NS::SharedPtr<MTL::Library> library;
+
+  [[nodiscard]] static DriverResult<M_driver_runtime_bundle_t>
+  load(M_driver_context_t ctx, M_driver_static_bundle_t bundle,
+       M_driver_bundle_compilation_options_t opts);
+
+  static M_driver_status_t unload(M_driver_runtime_bundle_t bundle);
+};
+
 struct M_driver_function {
   [[nodiscard]] static DriverResult<M_driver_function_t>
-  create(M_driver_context_t context, llvm::StringRef code,
+  create(M_driver_context_t context, M_driver_runtime_bundle_t bundle,
          llvm::StringRef name);
   static M_driver_status_t destroy(M_driver_function_t function);
 

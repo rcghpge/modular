@@ -6,6 +6,18 @@
 
 #include "../lib/CUDA/Error.h"
 #include "Fixture.h"
+#include "HAL/M_driver_bundle.h"
+#include "HAL/M_driver_common.h"
+
+/// NOTE: assumes `s` is null terminated
+M_driver_slice M_driver_slice_from(const char *s) {
+  uint64_t size = strlen(s);
+  return M_driver_slice{s, size};
+}
+
+M_driver_slice M_driver_slice_from(std::string &s) {
+  return M_driver_slice{s.data(), s.size()};
+}
 
 // Extend test-cases per-plugin beyond the common ones in PluginTest.cpp
 
@@ -89,16 +101,31 @@ TEST_F(DriverPluginTest, CustomStatusMessage) {
                                  sizeof(errorMessage)));
   ASSERT_STREQ(errorMessage, "Unimplemented");
   ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
-            this->status_message(M_DRIVER_STATUS_BAD_HANDLE, errorMessage,
+            this->status_message(M_DRIVER_STATUS_BAD_BUNDLE, errorMessage,
                                  sizeof(errorMessage)));
-  ASSERT_STREQ(errorMessage, "Bad handle");
+  ASSERT_STREQ(errorMessage, "Bad bundle");
+  ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
+            this->status_message(M_DRIVER_STATUS_BAD_FUNCTION, errorMessage,
+                                 sizeof(errorMessage)));
+  ASSERT_STREQ(errorMessage, "Bad function");
 }
 
 TEST_F(DriverPluginContextTest, FunctionLoadUnload) {
+  std::string fileType("ptx");
+  M_driver_static_bundle staticBundle{.mapped_data =
+                                          M_driver_slice_from(vecAddPtx),
+                                      .file_type = fileType.c_str(),
+                                      .file_type_len = fileType.size()};
+  M_driver_bundle_compilation_options opts{"", 0, -1};
+  M_driver_runtime_bundle_t bundle = nullptr;
+  ASSERT_SUCCESS(this->bundle_load(contexts[0], &staticBundle, &opts, &bundle));
+  ASSERT_NE(bundle, nullptr);
+
+  std::string funcName("vec_add");
   M_driver_function_t func = nullptr;
-  ASSERT_SUCCESS(this->function_load(driver, contexts[0], vecAddPtx.data(),
-                                     vecAddPtx.size(), "vec_add", -1, nullptr,
-                                     -1, &func));
+  ASSERT_SUCCESS(this->function_load(contexts[0], bundle, funcName.c_str(),
+                                     funcName.size(), &func));
   ASSERT_NE(func, nullptr);
-  EXPECT_SUCCESS(this->function_unload(driver, contexts[0], func));
+  EXPECT_SUCCESS(this->function_unload(contexts[0], func));
+  EXPECT_SUCCESS(this->bundle_unload(contexts[0], bundle));
 }

@@ -7,62 +7,53 @@
 #ifndef M_DRIVER_FUNCTION_H
 #define M_DRIVER_FUNCTION_H
 
+#include "M_driver_bundle.h"
 #include "M_driver_common.h"
-
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * Load a named function from device code.
+ * Load a named function from a previously registered runtime code bundle.
  *
- * @param driver (in) The driver.
  * @param context (in) The context to load the function into.
- * @param code (in) Pointer to the device code image.
- * @param code_size (in) Size in bytes of the device code image.
- * @param function_name (in) Null-terminated name of the function to retrieve
- *                     from the loaded module.
- * @param max_dynamic_shared_bytes (in) Maximum dynamic shared memory in bytes
- *                                that this function may use. Pass -1 to leave
- *                                at the driver default.
- * @param debug_level (in) JIT debug level.
- * @param optimization_level (in) JIT optimization level.
+ * @param bundle (in) A runtime code bundle obtained from
+ *                M_driver_bundle_load().
+ * @param function_name (in) Null-terminated name of the function to retrieve.
+ * @param function_name_len (in) Length of function_name in bytes.
  * @param function (out) The loaded function handle.
- * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
- *         context is not valid.
+ * @return M_DRIVER_STATUS_SUCCESS, or:
+ * - M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
+ * - M_DRIVER_STATUS_BAD_BUNDLE if the bundle ptr is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_function_load(
-    M_driver_driver_t driver, M_driver_context_t context, const void *code,
-    uint64_t code_size, const char *function_name,
-    int32_t max_dynamic_shared_bytes, const char *debug_level,
-    int32_t optimization_level, M_driver_function_t *function);
+M_driver_status_t M_driver_function_load(M_driver_context_t context,
+                                         M_driver_runtime_bundle_t bundle,
+                                         const char *function_name,
+                                         uint64_t function_name_len,
+                                         M_driver_function_t *function);
 
 typedef M_driver_status_t (*M_driver_function_load_func_ptr_t)(
-    M_driver_driver_t driver, M_driver_context_t context, const void *code,
-    uint64_t code_size, const char *function_name,
-    int32_t max_dynamic_shared_bytes, const char *debug_level,
-    int32_t optimization_level, M_driver_function_t *function);
+    M_driver_context_t context, M_driver_runtime_bundle_t bundle,
+    const char *function_name, uint64_t function_name_len,
+    M_driver_function_t *function);
 
 /**
  * Unload a previously loaded function and release associated resources.
  *
- * @param driver (in) The driver.
  * @param context (in) The context the function was loaded into.
  * @param function (in) The function to unload.
- * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
- *         context is not valid.
+ * @return M_DRIVER_STATUS_SUCCESS, or:
+ * - M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
+ * - M_DRIVER_STATUS_BAD_FUNCTION if the function ptr is not valid.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_function_unload(M_driver_driver_t driver,
-                                           M_driver_context_t context,
+M_driver_status_t M_driver_function_unload(M_driver_context_t context,
                                            M_driver_function_t function);
 
 typedef M_driver_status_t (*M_driver_function_unload_func_ptr_t)(
-    M_driver_driver_t driver, M_driver_context_t context,
-    M_driver_function_t function);
+    M_driver_context_t context, M_driver_function_t function);
 
 #ifdef __cplusplus
 }

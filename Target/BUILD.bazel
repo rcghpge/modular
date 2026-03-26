@@ -127,6 +127,7 @@ modular_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":DriverPluginTests",
+        "@hip_include//:hip_headers",
         "@tl_expected",
     ],
 )

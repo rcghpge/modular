@@ -8,20 +8,29 @@
 #define TARGET_LIB_CUDA_FUNCTION_H
 
 #include "Error.h"
-#include "llvm/ADT/StringRef.h"
+#include "HAL/M_driver_bundle.h"
 
 #include <cuda.h>
 
 struct M_driver_context;
 
-struct M_driver_function {
+struct M_driver_runtime_bundle {
   CUmodule module;
+
+  [[nodiscard]] static DriverResult<M_driver_runtime_bundle_t>
+  load(M_driver_context &ctx, M_driver_static_bundle_t bundle,
+       M_driver_bundle_compilation_options_t opts);
+
+  static M_driver_status_t unload(M_driver_context &ctx,
+                                  M_driver_runtime_bundle_t bundle);
+};
+
+struct M_driver_function {
   CUfunction function;
 
   [[nodiscard]] static DriverResult<M_driver_function_t>
-  load(M_driver_context &ctx, llvm::StringRef code, const char *function_name,
-       int32_t max_dynamic_shared_bytes, const char *debug_level,
-       int32_t optimization_level);
+  load(M_driver_context &ctx, M_driver_runtime_bundle_t bundle,
+       const char *function_name, uint64_t function_name_len);
 
   static M_driver_status_t unload(M_driver_context &ctx,
                                   M_driver_function_t func);

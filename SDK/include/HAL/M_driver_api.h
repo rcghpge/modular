@@ -7,6 +7,7 @@
 #ifndef M_DRIVER_API_H
 #define M_DRIVER_API_H
 
+#include "M_driver_bundle.h"
 #include "M_driver_common.h"
 #include "M_driver_context.h"
 #include "M_driver_device.h"

@@ -20,4 +20,7 @@ const char *standardStatusMessages[M_DRIVER_NUM_STANDARD_STATUS_CODES] = {
     /*11*/ "Bad function",
     /*12*/ "Out of memory",
     /*13*/ "Invalid argument",
+    /*14*/ "Incompatible file type",
+    /*15*/ "Bad handle",
+    /*16*/ "Bad bundle",
 };

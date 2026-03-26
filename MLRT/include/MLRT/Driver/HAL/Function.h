@@ -13,6 +13,7 @@
 #define MLRT_DRIVER_HAL_FUNCTION_H
 
 #include "HAL/M_driver_common.h"
+#include "MLRT/Driver/HAL/Bundle.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 

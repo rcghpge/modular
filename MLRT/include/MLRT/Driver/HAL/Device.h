@@ -48,6 +48,7 @@ private:
   friend class Buffer;
   friend class Queue;
   friend class Event;
+  friend class Bundle;
   friend class Function;
 };
 

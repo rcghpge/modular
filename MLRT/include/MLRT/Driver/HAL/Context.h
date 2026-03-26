@@ -15,17 +15,15 @@
 #include "Buffer.h"
 #include "Event.h"
 #include "Function.h"
-#include "HAL/M_driver_api.h"
+#include "MLRT/Driver/HAL/Bundle.h"
 #include "Queue.h"
 #include "Support/ErrorOr.h"
-#include "Support/LLVMForwardDecls.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 
 #include <cstdint>
-#include <mutex>
 #include <shared_mutex>
 #include <string>
 
@@ -34,18 +32,25 @@ namespace M::Driver::HAL {
 class Device;
 using DeviceRef = RCRef<Device>;
 
-/// Cache key for loaded device functions, used to avoid redundant JIT
+/// Cache key for loaded device bundles, used to avoid redundant JIT
 /// compilation.
-struct FunctionCacheKey {
+struct BundleCacheKey {
   std::string name;
   std::string debugLevel;
-  int32_t maxDynamicSharedBytes;
   int32_t optimizationLevel;
 
-  bool operator==(const FunctionCacheKey &other) const {
+  bool operator==(const BundleCacheKey &other) const {
     return name == other.name && debugLevel == other.debugLevel &&
-           maxDynamicSharedBytes == other.maxDynamicSharedBytes &&
            optimizationLevel == other.optimizationLevel;
+  }
+};
+
+struct FuncCacheKey {
+  M_driver_runtime_bundle_t bundle;
+  std::string name;
+
+  bool operator==(const FuncCacheKey &other) const {
+    return bundle == other.bundle && name == other.name;
   }
 };
 
@@ -61,6 +66,11 @@ public:
   ErrorOr<QueueRef> createQueue();
   ErrorOr<EventRef> createEvent();
 
+  ErrorOr<BundleRef> loadBundle(llvm::StringRef bundleName,
+                                llvm::StringRef code, llvm::StringRef codeType,
+                                llvm::StringRef debugLevel = "",
+                                int32_t optimizationLevel = -1);
+
   /// Load a named function from device code. Results are cached per-device
   /// to avoid redundant JIT compilation.
   ///
@@ -68,13 +78,10 @@ public:
   ///                      code string is used instead).
   /// \param functionName  Name of the kernel entry point.
   /// \param code          Device code image.
-  /// \param maxDynamicSharedBytes  Max dynamic shared memory.
   /// \param debugLevel    JIT debug level.
   /// \param optimizationLevel  JIT optimization level.
-  ErrorOr<FunctionRef>
-  loadFunction(llvm::StringRef moduleName, llvm::StringRef functionName,
-               llvm::StringRef code, int32_t maxDynamicSharedBytes = -1,
-               llvm::StringRef debugLevel = "", int32_t optimizationLevel = -1);
+  ErrorOr<FunctionRef> loadFunction(BundleRef bundle,
+                                    llvm::StringRef functionName);
 
 private:
   explicit Context(DeviceRef device, M_driver_context_t handle);
@@ -82,12 +89,16 @@ private:
   DeviceRef device;
   M_driver_context_t handle;
 
+  std::shared_mutex bundleCacheMutex;
+  llvm::DenseMap<BundleCacheKey, BundleRef> bundleCache;
+
   std::shared_mutex funcCacheMutex;
-  llvm::DenseMap<FunctionCacheKey, FunctionRef> funcCache;
+  llvm::DenseMap<FuncCacheKey, FunctionRef> funcCache;
 
   friend class Device;
   friend class Buffer;
   friend class Queue;
+  friend class Bundle;
   friend class Function;
   friend class Event;
 };
@@ -98,19 +109,38 @@ using ContextRef = RCRef<Context>;
 
 namespace llvm {
 template <>
-struct DenseMapInfo<M::Driver::HAL::FunctionCacheKey> {
-  static inline M::Driver::HAL::FunctionCacheKey getEmptyKey() {
-    return {"", "", 0, 0};
+struct DenseMapInfo<M::Driver::HAL::BundleCacheKey> {
+  static inline M::Driver::HAL::BundleCacheKey getEmptyKey() {
+    return {"", "", 0};
   }
-  static inline M::Driver::HAL::FunctionCacheKey getTombstoneKey() {
-    return {"", "", -1, -1};
+  static inline M::Driver::HAL::BundleCacheKey getTombstoneKey() {
+    return {"", "", -1};
   }
-  static unsigned getHashValue(const M::Driver::HAL::FunctionCacheKey &val) {
-    return hash_combine(val.name, val.debugLevel, val.maxDynamicSharedBytes,
-                        val.optimizationLevel);
+  static unsigned getHashValue(const M::Driver::HAL::BundleCacheKey &val) {
+    return hash_combine(val.name, val.debugLevel, val.optimizationLevel);
   }
-  static bool isEqual(const M::Driver::HAL::FunctionCacheKey &lhs,
-                      const M::Driver::HAL::FunctionCacheKey &rhs) {
+  static bool isEqual(const M::Driver::HAL::BundleCacheKey &lhs,
+                      const M::Driver::HAL::BundleCacheKey &rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<M::Driver::HAL::FuncCacheKey> {
+  static inline M::Driver::HAL::FuncCacheKey getEmptyKey() {
+    return {.bundle = DenseMapInfo<M_driver_runtime_bundle_t>::getEmptyKey(),
+            .name = ""};
+  }
+  static inline M::Driver::HAL::FuncCacheKey getTombstoneKey() {
+    return {.bundle =
+                DenseMapInfo<M_driver_runtime_bundle_t>::getTombstoneKey(),
+            .name = ""};
+  }
+  static unsigned getHashValue(const M::Driver::HAL::FuncCacheKey &val) {
+    return hash_combine(val.bundle, val.name);
+  }
+  static bool isEqual(const M::Driver::HAL::FuncCacheKey &lhs,
+                      const M::Driver::HAL::FuncCacheKey &rhs) {
     return lhs == rhs;
   }
 };

@@ -95,7 +95,11 @@ ErrorOr<DriverRef> Driver::create(llvm::StringRef pluginSpec) {
 Driver::~Driver() {
   devices.clear();
 
-  plugin.destroy(handle);
+  // plugin.destroy may be null if Driver::create failed mid-way through dlsym
+  // loading (e.g. a symbol before 'destroy' in the .inc was missing), since we
+  // now use DriverRef for cleanup which invokes this destructor on error paths.
+  if (plugin.destroy)
+    plugin.destroy(handle);
 
 #define M_DRIVER_HAL_SYMBOL(name) plugin.name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"

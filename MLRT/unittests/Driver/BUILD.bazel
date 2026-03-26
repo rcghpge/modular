@@ -364,7 +364,7 @@ modular_cc_test(
 
 modular_cc_test(
     name = "HALTest",
-    size = "small",
+    size = "medium",
     srcs = ["HALTest.cpp"],
     data = select({
         "//:nvidia_gpu": ["//Target:CUDAPlugin.so"],

@@ -38,6 +38,9 @@
   HIP_FN(hipFree)                                                              \
   HIP_FN(hipHostMalloc)                                                        \
   HIP_FN(hipHostFree)                                                          \
+  HIP_FN(hipModuleLoadData)                                                    \
+  HIP_FN(hipModuleGetFunction)                                                 \
+  HIP_FN(hipModuleUnload)                                                      \
   HIP_FN(hipEventCreateWithFlags)                                              \
   HIP_FN(hipEventDestroy)                                                      \
   HIP_FN(hipEventSynchronize)                                                  \

@@ -6,8 +6,21 @@
 
 #include "../lib/Metal/Common.h"
 #include "Fixture.h"
+#include "HAL/M_driver_bundle.h"
+#include "HAL/M_driver_common.h"
+#include <string>
 
 // Extend test-cases per-plugin beyond the common ones in PluginTest.cpp
+
+/// NOTE: assumes `s` is null terminated
+M_driver_slice M_driver_slice_from(const char *s) {
+  uint64_t size = strlen(s);
+  return M_driver_slice{s, size};
+}
+
+M_driver_slice M_driver_slice_from(std::string &s) {
+  return M_driver_slice{s.data(), s.size()};
+}
 
 static std::string code = R"MSL(
 #include <metal_stdlib>
@@ -45,9 +58,18 @@ TEST_F(DriverPluginTest, CustomStatusMessage) {
 
 TEST_F(DriverPluginContextTest, FunctionLoad) {
   for (M_driver_context_t context : contexts) {
+    M_driver_runtime_bundle_t library;
+    std::string fileType("msl");
+    M_driver_static_bundle staticBundle{.mapped_data =
+                                            M_driver_slice_from(code),
+                                        .file_type = fileType.c_str(),
+                                        .file_type_len = fileType.size()};
+    M_driver_bundle_compilation_options opts{"", 0, -1};
+    ASSERT_SUCCESS(bundle_load(context, &staticBundle, &opts, &library));
+    std::string funcName("vec_add_msl");
     M_driver_function_t function;
-    ASSERT_SUCCESS(function_load(driver, context, code.data(), code.size(),
-                                 "vec_add_msl", -1, "", -1, &function));
-    ASSERT_SUCCESS(function_unload(driver, context, function));
+    ASSERT_SUCCESS(function_load(context, library, funcName.c_str(),
+                                 funcName.size(), &function));
+    ASSERT_SUCCESS(function_unload(context, function));
   }
 }

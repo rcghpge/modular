@@ -8,6 +8,10 @@
 #define M_DRIVER_COMMON_H
 
 #ifdef __cplusplus
+#include <cstring>
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -97,8 +101,11 @@ typedef struct M_driver_function *M_driver_function_t;
 #define M_DRIVER_STATUS_BAD_FUNCTION ((M_driver_status_t)(-11))
 #define M_DRIVER_STATUS_OUT_OF_MEMORY ((M_driver_status_t)(-12))
 #define M_DRIVER_STATUS_INVALID_ARG ((M_driver_status_t)(-13))
+#define M_DRIVER_STATUS_INCOMPATIBLE ((M_driver_status_t)(-14))
+#define M_DRIVER_STATUS_BAD_HANDLE ((M_driver_status_t)(-15))
+#define M_DRIVER_STATUS_BAD_BUNDLE ((M_driver_status_t)(-16))
 /* Future standard status codes may be added here. */
-#define M_DRIVER_NUM_STANDARD_STATUS_CODES (14)
+#define M_DRIVER_NUM_STANDARD_STATUS_CODES (17)
 
 #define M_DRIVER_STATUS_CUSTOM_CODES_BASE ((M_driver_status_t)(-65536))
 
@@ -138,6 +145,18 @@ M_driver_status_t M_driver_status_message(M_driver_status_t status,
 typedef M_driver_status_t (*M_driver_status_message_func_ptr_t)(
     M_driver_status_t status, char *message_buffer,
     int64_t message_buffer_size);
+
+/// A borrowed span of bytes.
+/// Encoding of the underlying bytes must be explicitly documented
+/// at each use-site.
+///
+/// This does not own the backing allocation, and no M_driver_slice
+/// may be stored non-transiently unless additional guarantees are
+/// provided by the passing context.
+struct M_driver_slice {
+  const char *data;
+  uint64_t size;
+};
 
 #ifdef __cplusplus
 }

@@ -8,5 +8,4 @@
 
 const char *customStatusMessages[M_DRIVER_NUM_CUSTOM_STATUS_CODES] = {
     /*-0*/ "Unimplemented",
-    /*-1*/ "Bad handle",
 };

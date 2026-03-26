@@ -25,6 +25,7 @@ struct DriverImpl;
 class Driver;
 using DriverRef = RCRef<Driver>;
 
+class Bundle;
 class Context;
 class Buffer;
 class Queue;
@@ -81,6 +82,7 @@ private:
   friend Buffer;
   friend Queue;
   friend Event;
+  friend Bundle;
   friend Function;
 };
 
