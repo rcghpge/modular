@@ -265,8 +265,6 @@ TEST_F(DriverPluginContextTest, QueueAsyncAllocSync) {
 }
 
 TEST_F(DriverPluginContextTest, EventCreateDestroy) {
-  if (api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t ctx : contexts) {
     M_driver_event_t event = nullptr;
     ASSERT_SUCCESS(event_create(ctx, &event));
@@ -276,8 +274,6 @@ TEST_F(DriverPluginContextTest, EventCreateDestroy) {
 }
 
 TEST_F(DriverPluginContextTest, EventSynchronize) {
-  if (api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t ctx : contexts) {
     M_driver_event_t event = nullptr;
     ASSERT_SUCCESS(event_create(ctx, &event));
@@ -287,8 +283,6 @@ TEST_F(DriverPluginContextTest, EventSynchronize) {
 }
 
 TEST_F(DriverPluginContextTest, EventIsReady) {
-  if (api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t ctx : contexts) {
     M_driver_event_t event = nullptr;
     ASSERT_SUCCESS(event_create(ctx, &event));
