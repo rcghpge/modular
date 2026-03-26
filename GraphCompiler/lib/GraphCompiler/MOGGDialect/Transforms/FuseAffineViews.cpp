@@ -10,7 +10,6 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
@@ -111,26 +110,22 @@ struct FuseAffineViewsPass
     mlir::NamedAttrList parameters;
     parameters.set("axis", viewOpUser.getAxisAttr());
     SmallVector<Value> operands = {indexValue};
-    StringLiteral funcName = "";
     Location loc = viewOpUser.getLoc();
     if constexpr (std::is_same_v<ViewOp, MO::SplitDimOp>) {
       TypedAttr axis =
           viewOpUser.getType()
               .getDims()[viewOpUser.getAxis().getLimitedValue() + 1];
       operands.push_back(lowerScalarDim(loc, builder, axis));
-      funcName = Utils::SplitDimIndices;
-    } else if (std::is_same_v<ViewOp, MO::MergeDimOp>) {
+    } else if constexpr (std::is_same_v<ViewOp, MO::MergeDimOp>) {
       TypedAttr axis =
           viewOpUser.getInput()
               .getType()
               .getDims()[viewOpUser.getAxis().getLimitedValue() + 1];
       operands.push_back(lowerScalarDim(loc, builder, axis));
-      funcName = Utils::MergeDimIndices;
-    } else if (std::is_same_v<ViewOp, MO::AddSingletonDimOp>) {
+    } else if constexpr (std::is_same_v<ViewOp, MO::AddSingletonDimOp>) {
       parameters.set("value", builder.getIndexAttr(0));
-      funcName = Utils::InsertIndex;
     }
-    ASSERT_STREAM(!funcName.empty(), << "Unsupported affine view op");
+    StringRef funcName = viewOpUser.getOperationName();
 
     builder.setInsertionPoint(outputOp);
     auto newIndexValue =

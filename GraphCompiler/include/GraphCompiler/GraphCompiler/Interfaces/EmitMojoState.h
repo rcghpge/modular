@@ -95,8 +95,6 @@ constexpr StringLiteral trait_ComputeOutputFusion =
     "managed_tensor_slice.ComputeOutputFusion";
 constexpr StringLiteral trait_ElementwiseFusion =
     "managed_tensor_slice.ElementwiseFusion";
-constexpr StringLiteral func_tmp_reshape_contiguous_buffer =
-    "MOGGPrimitives.tmp_reshape_contiguous_buffer";
 constexpr StringLiteral func_unpack_tensor_spec =
     "MOGGPrimitives.unpack_tensor_spec";
 constexpr StringLiteral func_get_simd_width_for_dtypes =
@@ -118,8 +116,6 @@ constexpr StringLiteral func_ms_simd_load_from_tensor_pointer =
 constexpr StringLiteral func_ms_simd_store_into_tensor_pointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr StringLiteral func_ms_foreach = "managed_tensor_slice.foreach";
-constexpr StringLiteral func_mogg_tensor_init =
-    "MOGGPrimitives.mogg_tensor_init";
 constexpr StringLiteral func_create_task = "std.runtime.asyncrt.create_task";
 constexpr StringLiteral func_get_safe_task_id =
     "std.runtime.tracing.get_safe_task_id";

@@ -6,7 +6,7 @@
 // CHECK-NEXT: %[[KERNEL_OUT:.*]] = mogg.kernel(%[[ARG2]]: !mo.tensor<[1, seq_len, 4096], f32>, %[[ARG0]]: !mo.tensor<[seq_len, 4096], f32>, %[[ARG1]]: !mo.tensor<[4096, 4096], f32, {layout = #mo.layout<KN>}>) -> !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[PLACEHOLDER]]) output_lambda (%[[ARG6:.*]]: f32, %[[ARG7:.*]]: !pop.array<2, index>)
-// CHECK: %[[INSERT_IDX:.*]] = mogg.call.affine "insert_index"(%[[ARG7]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
+// CHECK: %[[INSERT_IDX:.*]] = mogg.call.affine "mo.add_singleton_dim"(%[[ARG7]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK: %[[LOAD:.*]] = "mogg.tensor.load"(%[[ARG2]], %[[INSERT_IDX]]) : (!mo.tensor<[1, seq_len, 4096], f32>, !pop.array<3, index>) -> f32
 // CHECK: %[[ADD:.*]] = mogg.call.elementwise["mo.add"] (%[[ARG6]], %[[LOAD]]) {kernel_param = {}} : f32, f32 -> f32
 // CHECK: mogg.output %[[ADD]], %[[INSERT_IDX]] : f32, !pop.array<3, index>
@@ -30,7 +30,7 @@ mo.graph @inout_fusion<seq_len>(%arg0: !mo.tensor<[seq_len, 4096], f32>, %arg1: 
 // CHECK: %[[OUT_PLACEHOLDER:.*]] = mogg.output_placeholders : !mo.tensor<[1, seq_len, 4096], si32>
 // CHECK: %[[SCRATCH:.*]] = mogg.scratch_placeholders : !mo.tensor<[seq_len, 4096], f32>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PLACEHOLDER]]) output_lambda (%[[ARG4:.*]]: f32, %[[ARG5:.*]]: !pop.array<2, index>)
-// CHECK: %[[INSERT_IDX:.*]] = mogg.call.affine "insert_index"(%[[ARG5]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
+// CHECK: %[[INSERT_IDX:.*]] = mogg.call.affine "mo.add_singleton_dim"(%[[ARG5]]) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
 // CHECK: %[[CAST:.*]] = mogg.call.elementwise["mo.cast"] (%[[ARG4]]) {kernel_param = {}} : f32 -> si32
 // CHECK: mogg.output %[[CAST]], %[[INSERT_IDX]] : si32, !pop.array<3, index>
 // CHECK: }: (!mo.tensor<[1, seq_len, 4096], si32>) -> !mo.tensor<[seq_len, 4096], f32>

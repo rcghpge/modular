@@ -1308,7 +1308,9 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
       inputValue.get("shape")()};
 
   // Generate the mogg_tensor_init call
-  MojoValue moggTensorInit(HardcodedMojoSymbols::func_mogg_tensor_init);
+  MojoValue moggTensorInit =
+      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
+          TensorInitOp::getOperationName()));
   return state.builder.var(moggTensorInit(templateParams, runtimeArgs));
 }
 } // namespace
@@ -3290,7 +3292,7 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
-  // Call "tmp_reshape_contiguous_buffer" primitive with the output shape /
+  // Call "reshape_contiguous_buffer" primitive with the output shape /
   // strides.
   MO::TensorType toType = MO::castFromTensorLike(getResult().getType());
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
@@ -3298,13 +3300,13 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
       toType.getTypedShapeAttr(), getDynamicDims());
   MojoValue shapeParam = state.getStaticShapeAsMojoValue(toType);
   MojoValue stridesParam = state.getStaticStridesAsMojoValue(toType);
-  state.setMojoValueFor(
-      getResult(),
-      state.builder.var(
-          MojoValue(HardcodedMojoSymbols::func_tmp_reshape_contiguous_buffer)(
-              {MojoValue("static_shape").equal(shapeParam),
-               MojoValue("static_stride").equal(stridesParam)},
-              {tensorValue, shapeValue})));
+  MojoValue reshapeFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
+  state.setMojoValueFor(getResult(),
+                        state.builder.var(reshapeFunc(
+                            {MojoValue("static_shape").equal(shapeParam),
+                             MojoValue("static_stride").equal(stridesParam)},
+                            {tensorValue, shapeValue})));
   return success();
 }
 

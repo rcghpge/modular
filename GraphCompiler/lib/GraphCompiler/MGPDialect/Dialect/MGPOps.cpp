@@ -448,9 +448,8 @@ llvm::BitVector BufferRemoveCachedOp::operandsToUnpack() {
 
 LogicalResult BufferRemoveCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   /// TODO: Add error checking. The Mojo/C++ can return an error that we
-  auto mgpBufferRemoveCachedFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          "tmp.mgp.buffer.remove_cached"));
+  auto mgpBufferRemoveCachedFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
   state.builder.call(mgpBufferRemoveCachedFunc, {},
                      {state.getMojoValueFor(getTheContext()),
                       state.getMojoValueFor(getBBufferSlot())});
@@ -554,9 +553,8 @@ llvm::BitVector BufferGetCachedOp::resultsToPack() {
 
 LogicalResult BufferGetCachedOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
-  auto mgpBufferGetCacheFunc =
-      state.getOriginalMojoNameFor(state.analysis.getRegisteredLITMojoKernelFor(
-          "tmp.mgp.buffer.get_cached"));
+  auto mgpBufferGetCacheFunc = state.getOriginalMojoNameFor(
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
   auto res = state.builder.var(
       mgpBufferGetCacheFunc({}, {state.getMojoValueFor(getTheContext()),
                                  state.getMojoValueFor(getBBufferSlot())}));

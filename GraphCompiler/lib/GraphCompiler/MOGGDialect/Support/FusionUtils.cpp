@@ -11,7 +11,6 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MojoParameters.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MOGGTypeTraits.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Support/MojoTargetFunctions.h"
 #include "GraphCompiler/Support/DataflowUtils.h"
 #include "KGEN/KGENDialect/KGENOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
