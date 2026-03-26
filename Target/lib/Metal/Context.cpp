@@ -32,7 +32,7 @@ DriverResult<M_driver_memory_t> M_driver_context::alloc(uint64_t size) {
     buffer->release();
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
   }
-  M_driver_memory_t memory = new (std::nothrow) M_driver_memory{buffer};
+  M_driver_memory_t memory = new (std::nothrow) M_driver_memory{buffer, 0};
   if (!memory)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
 
@@ -42,7 +42,7 @@ DriverResult<M_driver_memory_t> M_driver_context::alloc(uint64_t size) {
 
 M_driver_status_t M_driver_context::free(M_driver_memory_t memory) {
   auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  untrackBuffer(memory->buffer->contents());
+  untrackBuffer(memory->mBuffer->contents());
   delete memory;
   return M_DRIVER_STATUS_SUCCESS;
 }

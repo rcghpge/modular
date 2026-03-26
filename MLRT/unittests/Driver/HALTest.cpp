@@ -231,7 +231,7 @@ TEST_F(DriverHALQueueTest, AllocBufferAsync) {
 }
 
 TEST_F(DriverHALQueueTest, CopyToDeviceThenFromDevice) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unsupported on " << api;
 
   constexpr size_t size = 128;
@@ -258,7 +258,7 @@ TEST_F(DriverHALQueueTest, CopyToDeviceThenFromDevice) {
 }
 
 TEST_F(DriverHALQueueTest, SetMemory) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unsupported on " << api;
 
   constexpr size_t size = 128;

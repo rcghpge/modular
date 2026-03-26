@@ -13,7 +13,8 @@
 #include "llvm/ADT/StringRef.h"
 
 struct M_driver_memory {
-  NS::SharedPtr<MTL::Buffer> buffer;
+  NS::SharedPtr<MTL::Buffer> mBuffer;
+  uint64_t offset = 0;
 
   M_driver_status_t getProperty(llvm::StringRef name, void *value);
 };

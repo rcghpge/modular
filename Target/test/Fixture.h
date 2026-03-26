@@ -152,7 +152,7 @@ struct DriverPluginQueueTest : DriverPluginContextTest {
     if (this->HasFatalFailure() || this->IsSkipped())
       return;
 
-    if (api == "CUDA" || api == "HIP" || api == "Metal")
+    if (api == "CUDA" || api == "HIP")
       GTEST_SKIP() << "Unsupported on " << api;
 
     for (M_driver_context_t context : contexts) {

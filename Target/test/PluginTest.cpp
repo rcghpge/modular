@@ -188,7 +188,7 @@ TEST_F(DriverPluginContextTest, MemoryFreeBadContext) {
 }
 
 TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
-  if (api == "HIP" || api == "Metal")
+  if (api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     M_driver_queue_t queue = nullptr;
@@ -294,7 +294,7 @@ TEST_F(DriverPluginContextTest, EventIsReady) {
 }
 
 TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unsupported on " << api;
 
   constexpr size_t size = 256;
@@ -323,7 +323,7 @@ TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
 }
 
 TEST_F(DriverPluginQueueTest, SetMemory) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "CUDA" || api == "HIP")
     GTEST_SKIP() << "Unsupported on " << api;
 
   constexpr size_t size = 128;
