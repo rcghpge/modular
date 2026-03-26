@@ -7,7 +7,6 @@
 #ifndef M_DRIVER_COMMON_H
 #define M_DRIVER_COMMON_H
 
-#include <cstdint>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,16 +43,16 @@ extern "C" {
  * PATCH version: Increases monotonically for each backward compatible bug
  *                fix.
  */
-struct M_driver_version {
+typedef struct M_driver_version {
   uint32_t major;
   uint32_t minor;
   uint32_t patch;
-};
+} M_driver_version;
 
 /* For implementers of this interface */
-uint32_t const M_DRIVER_INTERFACE_VERSION_MAJOR = 0u;
-uint32_t const M_DRIVER_INTERFACE_VERSION_MINOR = 1u;
-uint32_t const M_DRIVER_INTERFACE_VERSION_PATCH = 0u;
+static uint32_t const M_DRIVER_INTERFACE_VERSION_MAJOR = 0u;
+static uint32_t const M_DRIVER_INTERFACE_VERSION_MINOR = 1u;
+static uint32_t const M_DRIVER_INTERFACE_VERSION_PATCH = 0u;
 
 /**
  * Common type definitions.
