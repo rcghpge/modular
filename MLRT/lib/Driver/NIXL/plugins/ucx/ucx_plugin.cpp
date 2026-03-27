@@ -54,14 +54,6 @@ static nixlBackendPlugin plugin = {NIXL_PLUGIN_API_VERSION, create_ucx_engine,
                                    get_plugin_version,      get_backend_options,
                                    get_backend_mems};
 
-#ifdef STATIC_PLUGIN_UCX
-
-nixlBackendPlugin *NIXL::createStaticUcxPlugin() {
-  return &plugin; // Return the static plugin instance
-}
-
-#else
-
 // Plugin initialization function
 extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *nixl_plugin_init() {
   return &plugin;
@@ -71,4 +63,3 @@ extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *nixl_plugin_init() {
 extern "C" NIXL_PLUGIN_EXPORT void nixl_plugin_fini() {
   // Cleanup any resources if needed
 }
-#endif

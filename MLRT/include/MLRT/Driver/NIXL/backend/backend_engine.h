@@ -13,9 +13,12 @@
 
 #include "MLRT/Driver/NIXL/backend/backend_aux.h"
 #include "MLRT/Driver/NIXL/nixl_types.h"
+#include "MLRT/Driver/NIXL/telemetry/telemetry_event.h"
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace M::AsyncRT::NIXL {
 
@@ -28,11 +31,16 @@ private:
   // Members that cannot be modified by a child backend and parent bookkeep
   nixl_backend_t backendType;
   nixl_b_params_t customParams;
+  std::vector<nixlTelemetryEvent> telemetryEvents_;
+  mutable std::mutex telemetryEventsMutex_;
 
 protected:
   // Members that can be accessed by the child (localAgent cannot be modified)
   bool initErr = false;
   const std::string localAgent;
+  const bool enableTelemetry_;
+
+  static constexpr size_t kMaxTelemetryQueueSize = 1000;
 
   [[nodiscard]] nixl_status_t setInitParam(const std::string &key,
                                            const std::string &value) {
@@ -52,11 +60,29 @@ protected:
     return nixl_status_t::NIXL_ERR_INVALID_PARAM;
   }
 
+  void addTelemetryEvent(const std::string &eventName, uint64_t value) {
+    if (!enableTelemetry_) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(telemetryEventsMutex_);
+    if (telemetryEvents_.size() >= kMaxTelemetryQueueSize) {
+      return;
+    }
+
+    telemetryEvents_.emplace_back(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count(),
+        nixl_telemetry_category_t::NIXL_TELEMETRY_BACKEND, eventName, value);
+  }
+
 public:
   explicit nixlBackendEngine(const nixlBackendInitParams *init_params)
       : backendType(init_params->type),
         customParams(*init_params->customParams),
-        localAgent(init_params->localAgent) {}
+        localAgent(init_params->localAgent),
+        enableTelemetry_(init_params->enableTelemetry_) {}
 
   nixlBackendEngine(nixlBackendEngine &&) = delete;
   nixlBackendEngine(const nixlBackendEngine &) = delete;
@@ -65,6 +91,11 @@ public:
   void operator=(const nixlBackendEngine &) = delete;
 
   virtual ~nixlBackendEngine() = default;
+
+  std::vector<nixlTelemetryEvent> getTelemetryEvents() {
+    std::lock_guard<std::mutex> lock(telemetryEventsMutex_);
+    return std::move(telemetryEvents_);
+  }
 
   bool getInitErr() const { return initErr; }
   const nixl_backend_t &getType() const { return backendType; }

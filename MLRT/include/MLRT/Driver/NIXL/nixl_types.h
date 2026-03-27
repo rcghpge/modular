@@ -13,6 +13,7 @@
 
 #include "Support/SymbolExport.h"
 #include "llvm/ADT/STLExtras.h"
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -69,6 +70,8 @@ enum class nixl_status_t {
   NIXL_ERR_UNKNOWN = -8,
   NIXL_ERR_NOT_SUPPORTED = -9,
   NIXL_ERR_REMOTE_DISCONNECT = -10,
+  NIXL_ERR_CANCELED = -11,
+  NIXL_ERR_NO_TELEMETRY = -12,
 };
 
 constexpr bool isErrorStatus(nixl_status_t status) {
@@ -88,15 +91,15 @@ enum class nixl_thread_sync_t : std::uint8_t {
 };
 
 /**
- * @namespace nixlEnumStrings
+ * @namespace NixlEnumStrings
  * @brief     This namespace to get string representation
  *            of different enums
  */
-namespace nixlEnumStrings {
+namespace NixlEnumStrings {
 MODULAR_CXX_EXPORT std::string_view memTypeStr(nixl_mem_t mem);
 std::string_view xferOpStr(nixl_xfer_op_t op);
 MODULAR_CXX_EXPORT const char *statusStr(nixl_status_t status);
-} // namespace nixlEnumStrings
+} // namespace NixlEnumStrings
 
 /*** NIXL typedefs and defines used in the API ***/
 
@@ -104,6 +107,11 @@ MODULAR_CXX_EXPORT const char *statusStr(nixl_status_t status);
  * @brief A typedef for a std::string to identify nixl backends
  */
 using nixl_backend_t = std::string;
+
+/**
+ * @brief A typedef for a std::string to identify nixl telemetry plugins.
+ */
+using nixl_telemetry_plugin_t = std::string;
 
 /**
  * @brief A typedef for a std::string as nixl blob
@@ -158,6 +166,19 @@ enum class nixl_cost_t {
  *        and if true, the dictionary can be accessed by value() method.
  */
 using nixl_query_resp_t = std::optional<nixl_b_params_t>;
+
+using chrono_point_t = std::chrono::steady_clock::time_point;
+using chrono_period_us_t = std::chrono::microseconds;
+
+struct nixlXferTelemetry {
+  chrono_point_t startTime;
+  chrono_period_us_t postDuration{};
+  chrono_period_us_t xferDuration{};
+  size_t totalBytes = 0;
+  size_t descCount = 0;
+};
+
+using nixl_xfer_telem_t = nixlXferTelemetry;
 
 /**
  * @brief A constant to define the default communication port.

@@ -7,6 +7,8 @@
 #include "MLRT/unittests/Driver/NIXL/TestCommon.h"
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/NIXL/telemetry/telemetry_event.h"
+#include "MLRT/Driver/NIXL/utils/common/cyclic_buffer.h"
 #include "MLRT/unittests/Driver/TestUtils.h"
 #include "Support/ErrorOr.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -16,9 +18,11 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 using namespace M;
@@ -257,4 +261,361 @@ TEST_F(NixlUcxIntegrationTest, BasicXfer_Read) {
     ASSERT_EQ(dramBuffer1[dstOffset + transferSize], initialDstValue)
         << "READ: Data after destination range was modified";
   }
+}
+
+TEST_F(NixlUcxIntegrationTest, GetXferTelemetryDisabled) {
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_ENABLE", "n", 1);
+
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_Telemetry1",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer1(bufferSize, 'S');
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_Telemetry2",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer2(bufferSize, 'D');
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  exchangeMetadata(nixl1, nixl2);
+
+  nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+  srcDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), dramBuffer1.size()}, 0));
+  nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+  dstDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), dramBuffer2.size()}, 0));
+
+  nixlXferReqH *reqHandle = nullptr;
+  nixlAgentOptionalArgs xferArgs;
+  xferArgs.notifMsg = "notification";
+  xferArgs.hasNotif = true;
+  ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
+                                            srcDescs, dstDescs, nixl2.agentName,
+                                            reqHandle, &xferArgs));
+  ASSERT_NE(reqHandle, nullptr);
+
+  nixl_status_t status = nixl1.agent->postXferReq(reqHandle);
+  ASSERT_TRUE(status == nixl_status_t::NIXL_SUCCESS ||
+              status == nixl_status_t::NIXL_IN_PROG);
+  ASSERT_TRUE(wait_until_true([&]() {
+    status = nixl1.agent->getXferStatus(reqHandle);
+    return status == nixl_status_t::NIXL_SUCCESS;
+  }));
+  ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+
+  nixl_xfer_telem_t telemetry;
+  EXPECT_EQ(nixl1.agent->getXferTelemetry(reqHandle, telemetry),
+            nixl_status_t::NIXL_ERR_NO_TELEMETRY);
+
+  ASSERT_SUCCESS(nixl1.agent->releaseXferReq(reqHandle));
+  unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
+}
+
+TEST_F(NixlUcxIntegrationTest, GetXferTelemetryEnabledByEnv) {
+  namespace fs = std::filesystem;
+
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_ENABLE", "y", 1);
+  const fs::path telemetryDir =
+      fs::temp_directory_path() /
+      ("nixl_ucx_telem_env_" + std::to_string(getpid()) + "_" +
+       std::to_string(available_port()));
+  fs::create_directories(telemetryDir);
+  setenv("MODULAR_NIXL_TELEMETRY_DIR", telemetryDir.c_str(), 1);
+  setenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL", "1", 1);
+
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_TelemetryEnabled1",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer1(bufferSize, 'S');
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_TelemetryEnabled2",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer2(bufferSize, 'D');
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  exchangeMetadata(nixl1, nixl2);
+
+  nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+  srcDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), dramBuffer1.size()}, 0));
+  nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+  dstDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), dramBuffer2.size()}, 0));
+
+  nixlXferReqH *reqHandle = nullptr;
+  nixlAgentOptionalArgs xferArgs;
+  xferArgs.notifMsg = "notification";
+  xferArgs.hasNotif = true;
+  ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
+                                            srcDescs, dstDescs, nixl2.agentName,
+                                            reqHandle, &xferArgs));
+  ASSERT_NE(reqHandle, nullptr);
+
+  nixl_status_t status = nixl1.agent->postXferReq(reqHandle);
+  ASSERT_TRUE(status == nixl_status_t::NIXL_SUCCESS ||
+              status == nixl_status_t::NIXL_IN_PROG);
+  ASSERT_TRUE(wait_until_true([&]() {
+    status = nixl1.agent->getXferStatus(reqHandle);
+    return status == nixl_status_t::NIXL_SUCCESS;
+  }));
+  ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+
+  nixl_xfer_telem_t telemetry;
+  ASSERT_SUCCESS(nixl1.agent->getXferTelemetry(reqHandle, telemetry));
+  EXPECT_EQ(telemetry.totalBytes, bufferSize);
+  EXPECT_EQ(telemetry.descCount, 1u);
+  EXPECT_GE(telemetry.postDuration, chrono_period_us_t(0));
+  EXPECT_GE(telemetry.xferDuration, telemetry.postDuration);
+
+  ASSERT_SUCCESS(nixl1.agent->releaseXferReq(reqHandle));
+  ASSERT_SUCCESS(nixl1.agent->invalidateRemoteMD(nixl2.agentName));
+  ASSERT_SUCCESS(nixl2.agent->invalidateRemoteMD(nixl1.agentName));
+  nixl_reg_dlist_t regDescs1(nixl_mem_t::DRAM_SEG);
+  regDescs1.addDesc(blobDescfromVector(dramBuffer1, 0));
+  nixl_opt_args_t regArgs1;
+  regArgs1.backends = {nixl1.backend};
+  ASSERT_SUCCESS(nixl1.agent->deregisterMem(regDescs1, &regArgs1));
+  nixl_reg_dlist_t regDescs2(nixl_mem_t::DRAM_SEG);
+  regDescs2.addDesc(blobDescfromVector(dramBuffer2, 0));
+  nixl_opt_args_t regArgs2;
+  regArgs2.backends = {nixl2.backend};
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(regDescs2, &regArgs2));
+  fs::remove_all(telemetryDir);
+  unsetenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL");
+  unsetenv("MODULAR_NIXL_TELEMETRY_DIR");
+  unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
+}
+
+TEST_F(NixlUcxIntegrationTest, GetXferTelemetryEnabledForMakeXferReq) {
+  namespace fs = std::filesystem;
+
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_ENABLE", "y", 1);
+  const fs::path telemetryDir =
+      fs::temp_directory_path() /
+      ("nixl_ucx_telem_make_req_" + std::to_string(getpid()) + "_" +
+       std::to_string(available_port()));
+  fs::create_directories(telemetryDir);
+  setenv("MODULAR_NIXL_TELEMETRY_DIR", telemetryDir.c_str(), 1);
+  setenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL", "1", 1);
+
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_TelemetryMakeReq1",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer1(bufferSize, 'S');
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_TelemetryMakeReq2",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer2(bufferSize, 'D');
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  exchangeMetadata(nixl1, nixl2);
+
+  nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+  srcDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), dramBuffer1.size()}, 0));
+  nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+  dstDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), dramBuffer2.size()}, 0));
+
+  nixlDlistH *localHandle = nullptr;
+  nixlDlistH *remoteHandle = nullptr;
+  ASSERT_SUCCESS(nixl1.agent->prepXferDlist("", srcDescs, localHandle));
+  ASSERT_SUCCESS(
+      nixl1.agent->prepXferDlist(nixl2.agentName, dstDescs, remoteHandle));
+
+  nixlXferReqH *reqHandle = nullptr;
+  nixlAgentOptionalArgs xferArgs;
+  xferArgs.notifMsg = "notification";
+  xferArgs.hasNotif = true;
+  ASSERT_SUCCESS(nixl1.agent->makeXferReq(nixl_xfer_op_t::NIXL_WRITE,
+                                          localHandle, {0}, remoteHandle, {0},
+                                          reqHandle, &xferArgs));
+  ASSERT_NE(reqHandle, nullptr);
+
+  nixl_status_t status = nixl1.agent->postXferReq(reqHandle);
+  ASSERT_TRUE(status == nixl_status_t::NIXL_SUCCESS ||
+              status == nixl_status_t::NIXL_IN_PROG);
+  ASSERT_TRUE(wait_until_true([&]() {
+    status = nixl1.agent->getXferStatus(reqHandle);
+    return status == nixl_status_t::NIXL_SUCCESS;
+  }));
+  ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+
+  nixl_xfer_telem_t telemetry;
+  ASSERT_SUCCESS(nixl1.agent->getXferTelemetry(reqHandle, telemetry));
+  EXPECT_EQ(telemetry.totalBytes, bufferSize);
+  EXPECT_EQ(telemetry.descCount, 1u);
+  EXPECT_GE(telemetry.postDuration, chrono_period_us_t(0));
+  EXPECT_GE(telemetry.xferDuration, telemetry.postDuration);
+
+  ASSERT_SUCCESS(nixl1.agent->releaseXferReq(reqHandle));
+  ASSERT_SUCCESS(nixl1.agent->releasedDlistH(localHandle));
+  ASSERT_SUCCESS(nixl1.agent->releasedDlistH(remoteHandle));
+  ASSERT_SUCCESS(nixl1.agent->invalidateRemoteMD(nixl2.agentName));
+  ASSERT_SUCCESS(nixl2.agent->invalidateRemoteMD(nixl1.agentName));
+  nixl_reg_dlist_t regDescs1(nixl_mem_t::DRAM_SEG);
+  regDescs1.addDesc(blobDescfromVector(dramBuffer1, 0));
+  nixl_opt_args_t regArgs1;
+  regArgs1.backends = {nixl1.backend};
+  ASSERT_SUCCESS(nixl1.agent->deregisterMem(regDescs1, &regArgs1));
+  nixl_reg_dlist_t regDescs2(nixl_mem_t::DRAM_SEG);
+  regDescs2.addDesc(blobDescfromVector(dramBuffer2, 0));
+  nixl_opt_args_t regArgs2;
+  regArgs2.backends = {nixl2.backend};
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(regDescs2, &regArgs2));
+  fs::remove_all(telemetryDir);
+  unsetenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL");
+  unsetenv("MODULAR_NIXL_TELEMETRY_DIR");
+  unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
+}
+
+TEST_F(NixlUcxIntegrationTest, GetXferTelemetryWritesSharedBufferFile) {
+  namespace fs = std::filesystem;
+
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_ENABLE", "y", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL", "1", 1);
+  const fs::path telemetryDir = fs::temp_directory_path() /
+                                ("nixl_ucx_telem_" + std::to_string(getpid()) +
+                                 "_" + std::to_string(available_port()));
+  fs::create_directories(telemetryDir);
+  setenv("MODULAR_NIXL_TELEMETRY_DIR", telemetryDir.c_str(), 1);
+
+  size_t bufferSize = 512;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_TelemetryFile1",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer1(bufferSize, 'S');
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_TelemetryFile2",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer2(bufferSize, 'D');
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  exchangeMetadata(nixl1, nixl2);
+
+  nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+  srcDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), dramBuffer1.size()}, 0));
+  nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+  dstDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), dramBuffer2.size()}, 0));
+
+  nixlXferReqH *reqHandle = nullptr;
+  nixlAgentOptionalArgs xferArgs;
+  xferArgs.notifMsg = "telemetry";
+  xferArgs.hasNotif = true;
+  ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
+                                            srcDescs, dstDescs, nixl2.agentName,
+                                            reqHandle, &xferArgs));
+  ASSERT_NE(reqHandle, nullptr);
+
+  nixl_status_t status = nixl1.agent->postXferReq(reqHandle);
+  ASSERT_TRUE(status == nixl_status_t::NIXL_SUCCESS ||
+              status == nixl_status_t::NIXL_IN_PROG);
+  ASSERT_TRUE(wait_until_true([&]() {
+    status = nixl1.agent->getXferStatus(reqHandle);
+    return status == nixl_status_t::NIXL_SUCCESS;
+  }));
+  ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+
+  const fs::path telemetryPath = telemetryDir / nixl1.agentName;
+  ASSERT_TRUE(wait_until_true([&]() { return fs::exists(telemetryPath); }));
+
+  auto buffer = std::make_unique<sharedRingBuffer<nixlTelemetryEvent>>(
+      telemetryPath.string(), /*create=*/false, TELEMETRY_VERSION);
+  ASSERT_TRUE(wait_until_true([&]() { return buffer->size() >= 4; }));
+
+  nixlTelemetryEvent event;
+  bool sawTransferEvent = false;
+  while (buffer->pop(event)) {
+    if (std::string(event.eventName_) == "agent_xfer_time") {
+      sawTransferEvent = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(sawTransferEvent);
+
+  ASSERT_SUCCESS(nixl1.agent->releaseXferReq(reqHandle));
+  fs::remove_all(telemetryDir);
+  unsetenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL");
+  unsetenv("MODULAR_NIXL_TELEMETRY_DIR");
+  unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
+}
+
+TEST_F(NixlUcxIntegrationTest, TelemetryTracksMemoryRegistrationLifecycle) {
+  namespace fs = std::filesystem;
+
+  setenv("UCX_LOG_LEVEL", "debug", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_ENABLE", "y", 1);
+  setenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL", "1", 1);
+  const fs::path telemetryDir =
+      fs::temp_directory_path() / ("nixl_ucx_mem_" + std::to_string(getpid()) +
+                                   "_" + std::to_string(available_port()));
+  fs::create_directories(telemetryDir);
+  setenv("MODULAR_NIXL_TELEMETRY_DIR", telemetryDir.c_str(), 1);
+
+  const size_t bufferSize = 256;
+  NixlAgentWithUCXBackend nixl;
+  NixlAgentWithUCXBackend::create(nixl, "TestAgent_MemoryTelemetry",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer(bufferSize, 'R');
+
+  nixl_reg_dlist_t regDescs(nixl_mem_t::DRAM_SEG);
+  regDescs.addDesc(blobDescfromVector(dramBuffer, 0));
+
+  nixl_opt_args_t regArgs;
+  regArgs.backends = {nixl.backend};
+  ASSERT_SUCCESS(nixl.agent->registerMem(regDescs, &regArgs));
+  ASSERT_SUCCESS(nixl.agent->deregisterMem(regDescs, &regArgs));
+
+  auto buffer = std::make_unique<sharedRingBuffer<nixlTelemetryEvent>>(
+      (telemetryDir / nixl.agentName).string(), /*create=*/false,
+      TELEMETRY_VERSION);
+  ASSERT_TRUE(wait_until_true([&]() { return !buffer->empty(); }));
+
+  bool sawRegistered = false;
+  bool sawDeregistered = false;
+  nixlTelemetryEvent event;
+  while (buffer->pop(event)) {
+    const std::string_view eventName(event.eventName_);
+    if (eventName == "agent_memory_registered") {
+      sawRegistered = true;
+      EXPECT_EQ(event.value_, bufferSize);
+    }
+    if (eventName == "agent_memory_deregistered") {
+      sawDeregistered = true;
+      EXPECT_EQ(event.value_, bufferSize);
+    }
+  }
+
+  EXPECT_TRUE(sawRegistered);
+  EXPECT_TRUE(sawDeregistered);
+
+  fs::remove_all(telemetryDir);
+  unsetenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL");
+  unsetenv("MODULAR_NIXL_TELEMETRY_DIR");
+  unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
 }

@@ -34,6 +34,8 @@ private:
 
   nixl_xfer_op_t backendOp;
   nixl_status_t status;
+  bool telemetryEnabled = false;
+  nixl_xfer_telem_t telemetry;
 
 public:
   nixlXferReqH() = default;

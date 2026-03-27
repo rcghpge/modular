@@ -716,6 +716,7 @@ modular_cc_library(
     hdrs = glob(
         [
             "include/MLRT/Driver/NIXL/**/*.h",
+            "include/MLRT/Driver/NIXL/**/*.tpp",
         ],
         exclude = [
             "include/MLRT/Driver/NIXL/plugins/libfabric/**",
@@ -743,6 +744,7 @@ modular_cc_library(
         ":Driver/NIXLLibOnly",
         "//Support:Base",
         "//Support:SymbolExport",
+        "@asio",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -763,6 +765,7 @@ modular_cc_library(
     hdrs = glob(
         [
             "include/MLRT/Driver/NIXL/**/*.h",
+            "include/MLRT/Driver/NIXL/**/*.tpp",
         ],
         exclude = [
             "include/MLRT/Driver/NIXL/plugins/libfabric/**",
@@ -780,10 +783,29 @@ modular_cc_library(
         "//Support:Base",
         "//Support:SymbolExport",
         "//Support:Threading",
+        "@asio",
         "@llvm-project//llvm:Support",
     ],
     # This is needed for `utils/sync-stubfiles.py` to work
     alwayslink = True,
+)
+
+modular_cc_library(
+    name = "Driver/NIXLTelemetryApiOnly",
+    hdrs = [
+        "include/MLRT/Driver/NIXL/nixl_types.h",
+        "include/MLRT/Driver/NIXL/telemetry/telemetry_event.h",
+        "include/MLRT/Driver/NIXL/telemetry/telemetry_exporter.h",
+        "include/MLRT/Driver/NIXL/telemetry/telemetry_plugin.h",
+    ],
+    include_prefix = "",
+    strip_include_prefix = "include",
+    visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
+    deps = [
+        "//Support:Base",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 modular_cc_library(

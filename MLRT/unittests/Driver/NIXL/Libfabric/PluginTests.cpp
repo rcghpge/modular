@@ -24,14 +24,14 @@ bool containsMemType(const nixl_mem_list_t &mems, nixl_mem_t memType) {
   return std::find(mems.begin(), mems.end(), memType) != mems.end();
 }
 
-std::shared_ptr<const nixlPluginHandle> loadLibfabricPluginForTest() {
+std::shared_ptr<const nixlBackendPluginHandle> loadLibfabricPluginForTest() {
   const char *pluginDir = std::getenv("MODULAR_NIXL_PLUGIN_DIR");
   EXPECT_NE(pluginDir, nullptr);
 
   auto &pluginManager = nixlPluginManager::getInstance();
-  pluginManager.unloadPlugin("libfabric");
+  pluginManager.unloadBackendPlugin("libfabric");
   pluginManager.addPluginDirectory(std::string(pluginDir));
-  return pluginManager.loadPlugin("libfabric");
+  return pluginManager.loadBackendPlugin("libfabric");
 }
 
 } // namespace
@@ -41,10 +41,10 @@ TEST(LibfabricPluginTests, LoadsLibfabricPluginFromRegisteredDirectory) {
   ASSERT_NE(pluginDir, nullptr);
 
   auto &pluginManager = nixlPluginManager::getInstance();
-  pluginManager.unloadPlugin("libfabric");
+  pluginManager.unloadBackendPlugin("libfabric");
   pluginManager.addPluginDirectory(std::string(pluginDir));
 
-  auto pluginHandle = pluginManager.loadPlugin("libfabric");
+  auto pluginHandle = pluginManager.loadBackendPlugin("libfabric");
   ASSERT_NE(pluginHandle, nullptr);
   EXPECT_STREQ(pluginHandle->getName(), "LIBFABRIC");
 }

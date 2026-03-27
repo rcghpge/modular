@@ -18,17 +18,17 @@ namespace M::AsyncRT::NIXL {
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const nixl_mem_t value) {
-  return os << nixlEnumStrings::memTypeStr(value);
+  return os << NixlEnumStrings::memTypeStr(value);
 }
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const nixl_xfer_op_t value) {
-  return os << nixlEnumStrings::xferOpStr(value);
+  return os << NixlEnumStrings::xferOpStr(value);
 }
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                                      const nixl_status_t value) {
-  return os << nixlEnumStrings::statusStr(value);
+  return os << NixlEnumStrings::statusStr(value);
 }
 
 } // namespace M::AsyncRT::NIXL

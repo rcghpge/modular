@@ -334,6 +334,16 @@ public:
   nixl_status_t getXferStatus(nixlXferReqH *req_hndl) const;
 
   /**
+   * @brief Query telemetry captured for a completed transfer request.
+   *
+   * @param  req_hndl      Transfer request handle after postXferReq
+   * @param  telemetry     [out] Transfer telemetry data
+   * @return nixl_status_t Error code if call was not successful
+   */
+  nixl_status_t getXferTelemetry(const nixlXferReqH *req_hndl,
+                                 nixl_xfer_telem_t &telemetry) const;
+
+  /**
    * @brief  Query the backend associated with `req_hndl`. E.g., if for genNotif
    *         the same backend as a transfer is desired.
    *

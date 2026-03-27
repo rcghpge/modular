@@ -51,7 +51,7 @@ nixlLibfabricTopology::nixlLibfabricTopology()
   if (status != NIXL_SUCCESS) {
     init_status_ = status;
     init_error_ = std::string("Topology discovery failed with status ") +
-                  nixlEnumStrings::statusStr(status) + ".";
+                  NixlEnumStrings::statusStr(status) + ".";
     NIXL_ERROR << init_error_;
     return;
   }

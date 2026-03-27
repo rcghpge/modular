@@ -11,6 +11,10 @@
 #ifndef MLRT_DRIVER_NIXL_UTILS_COMMON_STR_TOOLS_H
 #define MLRT_DRIVER_NIXL_UTILS_COMMON_STR_TOOLS_H
 
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
+
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +47,13 @@ public:
     return true;
   }
 };
+
+inline bool isEnabledFlagValue(std::string_view value) {
+  return llvm::StringSwitch<bool>(llvm::StringRef(value))
+      .Case("1", true)
+      .CasesLower({"y", "yes", "on", "true", "enable"}, true)
+      .Default(false);
+}
 
 } // namespace M::AsyncRT::NIXL
 

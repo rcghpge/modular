@@ -13,8 +13,11 @@
 
 #include "MLRT/Driver/NIXL/mem_section.h"
 #include "MLRT/Driver/NIXL/sync.h"
+#include "MLRT/Driver/NIXL/telemetry/telemetry.h"
 #include "MLRT/Driver/NIXL/utils/common/str_tools.h"
 #include "MLRT/Driver/NIXL/utils/stream/metadata_stream.h"
+
+#include <memory>
 
 namespace M::AsyncRT::NIXL {
 
@@ -45,10 +48,18 @@ public:
   nixlAgentData(nixlAgentData &&) = delete;
   nixlAgentData &operator=(nixlAgentData &&) = delete;
 
+  void addErrorTelemetry(nixl_status_t errStatus) {
+    if (telemetry) {
+      telemetry->updateErrorCount(errStatus);
+    }
+  }
+
 private:
   std::string name;
   nixlAgentConfig config;
   nixlLock lock;
+  bool telemetryEnabled = false;
+  std::unique_ptr<nixlTelemetry> telemetry;
 
   // some handle that can be used to instantiate an object from the lib
   std::map<std::string, void *> backendLibs;

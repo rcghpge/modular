@@ -23,10 +23,10 @@ TEST(NixlSharedInfraTest,
   unsetenv("MODULAR_NIXL_PLUGIN_DIR");
 
   auto &pluginManager = nixlPluginManager::getInstance();
-  pluginManager.unloadPlugin("ucx");
+  pluginManager.unloadBackendPlugin("ucx_cpu");
   pluginManager.addPluginDirectory(pluginDirPath);
 
-  auto pluginHandle = pluginManager.loadPlugin("ucx_cpu");
+  auto pluginHandle = pluginManager.loadBackendPlugin("ucx_cpu");
   ASSERT_NE(pluginHandle, nullptr);
   EXPECT_STREQ(pluginHandle->getName(), "UCX");
 }

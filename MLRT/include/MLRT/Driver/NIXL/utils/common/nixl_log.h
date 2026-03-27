@@ -74,7 +74,7 @@ public:
   }
 
   NixlLogStream &operator<<(nixl_status_t value) {
-    os_ << nixlEnumStrings::statusStr(value);
+    os_ << NixlEnumStrings::statusStr(value);
     return *this;
   }
 

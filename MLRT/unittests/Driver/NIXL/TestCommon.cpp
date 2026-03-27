@@ -17,7 +17,7 @@
 
 namespace M::AsyncRT::NIXL {
 std::ostream &operator<<(std::ostream &os, nixl_status_t status) {
-  return os << nixlEnumStrings::statusStr(status);
+  return os << NixlEnumStrings::statusStr(status);
 }
 } // namespace M::AsyncRT::NIXL
 
@@ -145,7 +145,7 @@ void transferData(NixlAgentWithUCXBackend &nixl1,
   nixl_status_t xferStatus = nixl1.agent->postXferReq(reqHandle);
   if (xferStatus != nixl_status_t::NIXL_SUCCESS &&
       xferStatus != nixl_status_t::NIXL_IN_PROG) {
-    FAIL() << "postXferReq failed: " << nixlEnumStrings::statusStr(xferStatus);
+    FAIL() << "postXferReq failed: " << NixlEnumStrings::statusStr(xferStatus);
   }
 
   nixl_notifs_t notifMap;
@@ -199,7 +199,7 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
   if (xferStatus != expectedStatus &&
       xferStatus != nixl_status_t::NIXL_IN_PROG) {
     FAIL() << "postXferReq returned unexpected status: "
-           << nixlEnumStrings::statusStr(xferStatus);
+           << NixlEnumStrings::statusStr(xferStatus);
   }
 
   nixl_status_t checkStatus = xferStatus;
@@ -214,8 +214,8 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
 
   ASSERT_EQ(checkStatus, expectedStatus)
       << "Transfer did not complete with expected status. Got: "
-      << nixlEnumStrings::statusStr(checkStatus)
-      << ", Expected: " << nixlEnumStrings::statusStr(expectedStatus);
+      << NixlEnumStrings::statusStr(checkStatus)
+      << ", Expected: " << NixlEnumStrings::statusStr(expectedStatus);
 
   nixl1.agent->releaseXferReq(reqHandle);
 }

@@ -293,7 +293,7 @@ void nixlDescList<T>::serialize(nixlSerDes *serializer) const {
 
 template <class T>
 void nixlDescList<T>::print() const {
-  std::cout << "LOG: DescList of mem type " << nixlEnumStrings::memTypeStr(type)
+  std::cout << "LOG: DescList of mem type " << NixlEnumStrings::memTypeStr(type)
             << "\n";
   for (auto &elm : descs) {
     std::cout << "    ";

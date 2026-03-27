@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_test")
+load("//bazel:api.bzl", "modular_cc_test", "modular_shared_library")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -29,5 +29,38 @@ modular_cc_test(
     deps = [
         "//MLRT:Driver/NIXL",
         "//MLRT/unittests/Driver/NIXL:TestCommon",
+    ],
+)
+
+modular_cc_test(
+    name = "TelemetryTests",
+    size = "small",
+    srcs = ["TelemetryTests.cpp"],
+    deps = [
+        "//MLRT:Driver/NIXL",
+    ],
+)
+
+modular_shared_library(
+    name = "telemetry_exporter_test_plugin",
+    srcs = ["telemetry_exporter_test.cpp"],
+    shared_lib_name = "libtelemetry_exporter_test.so",
+    deps = [
+        "//MLRT:Driver/NIXLTelemetryApiOnly",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "TelemetryExporterTests",
+    size = "small",
+    srcs = ["TelemetryExporterTests.cpp"],
+    data = [":telemetry_exporter_test_plugin"],
+    env = {
+        "TEST_TELEMETRY_PLUGIN_PATH": "$(rootpath :telemetry_exporter_test_plugin)",
+    },
+    deps = [
+        "//MLRT:Driver/NIXL",
     ],
 )

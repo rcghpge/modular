@@ -11,7 +11,10 @@
 #ifndef MLRT_DRIVER_NIXL_PLUGIN_MANAGER_H
 #define MLRT_DRIVER_NIXL_PLUGIN_MANAGER_H
 
-#include "backend/backend_plugin.h"
+#include "MLRT/Driver/NIXL/backend/backend_plugin.h"
+#include "MLRT/Driver/NIXL/nixl_types.h"
+#include "MLRT/Driver/NIXL/telemetry/telemetry_plugin.h"
+
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -33,73 +36,131 @@ struct nixlBackendInitParams;
  * multi-threading environments without lock protection.
  */
 class nixlPluginHandle {
-private:
-  void *handle_;              // Handle to the dynamically loaded library
-  nixlBackendPlugin *plugin_; // Plugin interface
-
 public:
-  nixlPluginHandle(void *handle, nixlBackendPlugin *plugin);
-  ~nixlPluginHandle();
+  explicit nixlPluginHandle(void *handle) : handle_(handle) {}
+  virtual ~nixlPluginHandle() = default;
+
   nixlPluginHandle(const nixlPluginHandle &) = delete;
   nixlPluginHandle &operator=(const nixlPluginHandle &) = delete;
   nixlPluginHandle(nixlPluginHandle &&) = delete;
   nixlPluginHandle &operator=(nixlPluginHandle &&) = delete;
 
-  nixlBackendEngine *
-  createEngine(const nixlBackendInitParams *init_params) const;
-  void destroyEngine(nixlBackendEngine *engine) const;
-  const char *getName() const;
-  const char *getVersion() const;
-  nixl_b_params_t getBackendOptions() const;
-  nixl_mem_list_t getBackendMems() const;
+  virtual const char *getName() const = 0;
+  virtual const char *getVersion() const = 0;
+
+protected:
+  void *handle_;
 };
 
-class nixlPluginManager {
-private:
-  // Constants for the expected plugin filename structure.
-  static constexpr std::string_view kPluginPrefix = "libplugin_";
-  static constexpr std::string_view kPluginSuffix = ".so";
-
-  std::map<nixl_backend_t, std::shared_ptr<const nixlPluginHandle>>
-      loaded_plugins_;
-  std::vector<std::string> plugin_dirs_;
-  std::mutex lock;
-
-  // Private constructor for singleton pattern
-  nixlPluginManager();
-
+class nixlBackendPluginHandle : public nixlPluginHandle {
 public:
-  // Singleton instance accessor
+  nixlBackendPluginHandle(void *handle, nixlBackendPlugin *plugin);
+  ~nixlBackendPluginHandle() override;
+
+  nixlBackendEngine *
+  createEngine(const nixlBackendInitParams *initParams) const;
+  void destroyEngine(nixlBackendEngine *engine) const;
+  const char *getName() const override;
+  const char *getVersion() const override;
+  nixl_b_params_t getBackendOptions() const;
+  nixl_mem_list_t getBackendMems() const;
+
+private:
+  nixlBackendPlugin *plugin_;
+};
+
+struct nixlBackendStaticPluginInfo {
+  std::string name;
+  nixlStaticPluginCreatorFunc createFunc;
+};
+
+class nixlTelemetryPluginHandle : public nixlPluginHandle {
+public:
+  nixlTelemetryPluginHandle(void *handle, nixlTelemetryPlugin *plugin);
+  ~nixlTelemetryPluginHandle() override;
+
+  std::unique_ptr<nixlTelemetryExporter>
+  createExporter(const nixlTelemetryExporterInitParams &initParams) const;
+  const char *getName() const override;
+  const char *getVersion() const override;
+
+private:
+  nixlTelemetryPlugin *plugin_;
+};
+
+struct nixlTelemetryStaticPluginInfo {
+  std::string name;
+  nixlTelemetryStaticPluginCreatorFunc createFunc;
+};
+
+using nixlPluginLoaderFunc = std::shared_ptr<const nixlPluginHandle> (*)(
+    void *handle, const std::string &pluginPath);
+
+class nixlPluginManager {
+public:
   static nixlPluginManager &getInstance();
 
-  // Delete copy constructor and assignment operator
   nixlPluginManager(const nixlPluginManager &) = delete;
   nixlPluginManager &operator=(const nixlPluginManager &) = delete;
   nixlPluginManager(nixlPluginManager &&) = delete;
   nixlPluginManager &operator=(nixlPluginManager &&) = delete;
 
-  std::shared_ptr<const nixlPluginHandle>
-  loadPluginFromPath(const std::string &plugin_path);
+  void loadPluginsFromList(const std::string &filename);
 
-  // Load a specific plugin
-  std::shared_ptr<const nixlPluginHandle>
-  loadPlugin(const nixl_backend_t &plugin_name);
+  std::shared_ptr<const nixlBackendPluginHandle>
+  loadBackendPlugin(const nixl_backend_t &pluginName);
+  std::shared_ptr<const nixlTelemetryPluginHandle>
+  loadTelemetryPlugin(const nixl_telemetry_plugin_t &pluginName);
 
-  // Add a plugin directory
+  void unloadBackendPlugin(const nixl_backend_t &pluginName);
+  void unloadTelemetryPlugin(const nixl_telemetry_plugin_t &pluginName);
+
+  std::shared_ptr<const nixlBackendPluginHandle>
+  getBackendPlugin(const nixl_backend_t &pluginName);
+  std::shared_ptr<const nixlTelemetryPluginHandle>
+  getTelemetryPlugin(const nixl_telemetry_plugin_t &pluginName);
+
+  std::vector<nixl_backend_t> getLoadedBackendPluginNames();
+  std::vector<nixl_telemetry_plugin_t> getLoadedTelemetryPluginNames();
+
   void addPluginDirectory(const std::string &directory);
 
-  // Unload a plugin
-  void unloadPlugin(const nixl_backend_t &plugin_name);
+  const std::vector<nixlBackendStaticPluginInfo> &getBackendStaticPlugins();
+  const std::vector<nixlTelemetryStaticPluginInfo> &getTelemetryStaticPlugins();
 
-  // Get a plugin handle
-  std::shared_ptr<const nixlPluginHandle>
-  getPlugin(const nixl_backend_t &plugin_name);
-
-  // Get all loaded plugin names
-  std::vector<nixl_backend_t> getLoadedPluginNames();
-
-  // Get backend options
   nixl_b_params_t getBackendOptions(const nixl_backend_t &type);
+
+private:
+  std::map<nixl_backend_t, std::shared_ptr<const nixlBackendPluginHandle>>
+      loadedBackendPlugins_;
+  std::map<nixl_telemetry_plugin_t,
+           std::shared_ptr<const nixlTelemetryPluginHandle>>
+      loadedTelemetryPlugins_;
+  std::vector<std::string> pluginDirs_;
+  std::vector<nixlBackendStaticPluginInfo> backendStaticPlugins_;
+  std::vector<nixlTelemetryStaticPluginInfo> telemetryStaticPlugins_;
+  std::mutex lock;
+
+  nixlPluginManager();
+
+  void registerBuiltinPlugins();
+  void registerBackendStaticPlugin(const std::string &name,
+                                   nixlStaticPluginCreatorFunc creator);
+  void
+  registerTelemetryStaticPlugin(const std::string &name,
+                                nixlTelemetryStaticPluginCreatorFunc creator);
+
+  void discoverPluginsFromDir(const std::filesystem::path &dirpath);
+  void discoverBackendPlugin(const std::string &filename);
+  void discoverTelemetryPlugin(const std::string &filename);
+
+  std::shared_ptr<const nixlPluginHandle>
+  loadPluginFromPath(const std::string &pluginPath,
+                     nixlPluginLoaderFunc loader);
+
+  std::string composePluginPath(const std::string &dir,
+                                const std::string &pluginPrefix,
+                                const std::string &pluginName);
 };
 
 } // namespace M::AsyncRT::NIXL

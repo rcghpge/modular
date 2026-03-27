@@ -45,6 +45,8 @@ public:
 // Macro to define exported C functions for the plugin
 #define NIXL_PLUGIN_EXPORT __attribute__((visibility("default")))
 
+using nixlStaticPluginCreatorFunc = nixlBackendPlugin *(*)();
+
 // Plugin must implement these functions for dynamic loading
 extern "C" {
 // Initialize the plugin
