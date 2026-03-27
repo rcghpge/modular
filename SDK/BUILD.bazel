@@ -36,8 +36,9 @@ modular_cc_library(
         "include/HAL/M_driver_hal_symbols.inc",
     ],
     includes = ["include"],
-    # Avoid C++ style checks for pure C
-    tags = ["no-clang-tidy-headers"],
+    # HAL headers define a pure C interface; run clang-tidy as C so C++-only
+    # constructs (e.g. <cstddef>, enum class) are caught.
+    tags = ["clang-tidy-is-c-tu"],
     visibility = [
         "//visibility:public",
     ],
