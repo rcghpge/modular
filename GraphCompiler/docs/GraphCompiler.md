@@ -6,11 +6,12 @@ lowering tools and runtime. We expect that most of the optimizations important
 to Modular will hook into frameworks via the graph compiler. Framework
 fallbacks will live alongside modular-specific implementations.
 
-This document is a work in process and technical details will likely change
-over the next couple of milestones. To see the history of discussion that
-predated this version of the document, look at the
+This document is a work in process and technical details will likely change over
+the next couple of milestones. To see the history of discussion that predated
+this version of the document, look at the
 [Original Design Exploration](https://www.notion.so/modularai/Graph-Compiler-Design-Points-8db653075b7e4994a0916ef12f8b9083)
-and the [11/17/22 Onsite notes](https://www.notion.so/modularai/Graph-Compiler-Design-Points-8db653075b7e4994a0916ef12f8b9083).
+and the
+[11/17/22 Onsite notes](https://www.notion.so/modularai/Graph-Compiler-Design-Points-8db653075b7e4994a0916ef12f8b9083).
 
 ![High Level System Diagram](High-Level_Modular_Stack_Diagram.png)
 
@@ -40,8 +41,8 @@ strongly-typed stance.
 2. All RMO operators lower to a MO operator or an RMO operator which lowers to
    MO eventually.
 3. RMO operators are either a `MOAnalogue` or an `RMOComposite` operator.
-4. `MOAnalogue` operators match semantics with an associated MO operator in a 1-1
-   fashion. The only difference is RMO accepts all shapes, and lowers to the
+4. `MOAnalogue` operators match semantics with an associated MO operator in a
+   1-1 fashion. The only difference is RMO accepts all shapes, and lowers to the
    compatible shaped MO operation. For example `rmo.add` will lower to `mo.add`
    with some rebinds and dynamic runtime checks inserted.
 5. `RMOComposite` operators are operators which should only lower to other rmo
@@ -201,7 +202,8 @@ TODO: Flesh out MGP/kGen interface
 
 ## MGP (Modular Glue Primitives) Dialect
 
-Refer to the [MGP Dialect](https://engineering.modular.com/GraphCompiler/MGPDialect.html)
+Refer to the
+[MGP Dialect](https://engineering.modular.com/GraphCompiler/MGPDialect.html)
 
 ## Not Yet Considered
 

@@ -195,8 +195,8 @@ print-outs to come out of order.
 
 The solution to this problem is to explicitly serialize side effects by turning
 the implicit dependencies into explicitly ordered dataflow edges. We do this
-with a `M::AsyncRT::Chain` type, which is threaded through the operations. This is
-a legal MEF dialect program:
+with a `M::AsyncRT::Chain` type, which is threaded through the operations. This
+is a legal MEF dialect program:
 
 ```mlir
 mef.invokable @dataflow_example(%a: i32, %b: i32, %ch0: !mef.chain) -> !mef.chain {

@@ -31,12 +31,12 @@ Dialects have extensive documentation. Here's a quick reference:
 
 - **RMO (Relaxed Modular Operations)** - accepts incomplete type information
   from frontends and lowers to MO. Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/RMODialect/RMODialect.td`. Docs:
-  `GraphCompiler/docs/GraphCompiler.md` (RMO section).
-- **MO (Modular Operations)** - framework-agnostic, strongly-typed graph ops with
-  value semantics. Definition:
-  `GraphCompiler/include/GraphCompiler/GraphCompiler/MODialect/MODialect.td`. Docs:
-  `GraphCompiler/docs/GraphCompiler.md` (MO section).
+  `GraphCompiler/include/GraphCompiler/GraphCompiler/RMODialect/RMODialect.td`.
+  Docs: `GraphCompiler/docs/GraphCompiler.md` (RMO section).
+- **MO (Modular Operations)** - framework-agnostic, strongly-typed graph ops
+  with value semantics. Definition:
+  `GraphCompiler/include/GraphCompiler/GraphCompiler/MODialect/MODialect.td`.
+  Docs: `GraphCompiler/docs/GraphCompiler.md` (MO section).
 - **MOSH (Modular Shape)** - shape/parameter computation for MO graphs.
   Definition:
   `GraphCompiler/include/GraphCompiler/GraphCompiler/MOSHDialect/MOSHDialect.td`.
@@ -116,8 +116,10 @@ components are loaded:
   (MoToPrimitives and related lowering passes) and then included through kernel
   stubs produced by EmitMojo pass.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h>
-Implementation: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.cpp>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h>
+Implementation:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.cpp>
 
 ### ParametricTopologyAnalysis
 
@@ -134,12 +136,11 @@ dependencies (e.g., `kgen` parameter attrs) alongside SSA.
 
 #### Additional notes
 
-This is a custom analysis (technically, not an MLIR analysis) that allows
-passes to reason about true dependency order that are not expressed via SSA
-values. Provides `users()`/`providers()` that union SSA and parametric
-dependencies, and `topologicallySortAllOpsWithin`/`computeTopologicalSorting`
-helpers.
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h>
+This is a custom analysis (technically, not an MLIR analysis) that allows passes
+to reason about true dependency order that are not expressed via SSA values.
+Provides `users()`/`providers()` that union SSA and parametric dependencies, and
+`topologicallySortAllOpsWithin`/`computeTopologicalSorting` helpers. Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Analysis/MODialect/ParametricTopologyAnalysis.h>
 
 ### BufferLifetimeAnalysis
 
@@ -161,8 +162,8 @@ Enables downstream memory planning passes to reuse buffers by providing fast
 
 Tracks a per-block `DependencyTree` with pre/post indices, supports dominance
 and LCA queries, and includes alias-aware alloc-use discovery via
-`getAllocUses`.
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPDialect/MGPBufferLifetimeAnalysis.h>
+`getAllocUses`. Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPDialect/MGPBufferLifetimeAnalysis.h>
 
 ## Lowering passes
 
@@ -219,8 +220,10 @@ execute region of the `mogg.kernel` container (`mogg.call.execute` for normal
 kernels). Finally, he lowering forwards kernel parameters and forward-declares
 all the referenced library functions.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.td>
 
 ### MOGGToMGP
 
@@ -273,8 +276,10 @@ The difference between the shape of a tensor being static or dynamic is in the
 materialization of the tensor spec. For dynamic, runtime dims are expressed via
 `mosh`. Constants may introduce additional buffer allocation + transfer.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ## MGP passes
 
@@ -316,8 +321,10 @@ hashing on constants).
 
 Relies on `MojoLibraryAnalysis` but never uses it.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/LowerPrimitives.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/LowerPrimitives.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### LookupConstantResources
 
@@ -351,8 +358,10 @@ kernels by constant values, and compilation efficiency. Earlier in the
 pipeline, index constants are converted to `mgp.buffer.constant` (by the
 LowerPrimitives pass) with a resource attribute for the same reason.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/LookupConstantResources.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/LookupConstantResources.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### ExecInvariantCodeMotionPass (EICM)
 
@@ -408,8 +417,10 @@ latter must consider preserving side-effect ordering (this involves some
 gating placeholder chain creation until the pass can compute the real
 dependency chain).
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/ExecInvariantCodeMotionPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/ExecInvariantCodeMotionPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### FixupOverhangsPass
 
@@ -429,15 +440,17 @@ are not silently dropped.
 
 #### Additional notes
 
-Part of the JIT compilation pipeline.
-Walks each block in `mgp.model`, collects unused results (one per op), and uses
-`alsoWaitForChains` to add dependencies on the block output.
-An unused result is assumed to be a dangling chain (this is an IR invariant at
-this stage). The pass fulfills the assumption of the model being 'overhang
-free' (see <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/AsyncDataflowDependencies.h>)
+Part of the JIT compilation pipeline. Walks each block in `mgp.model`, collects
+unused results (one per op), and uses `alsoWaitForChains` to add dependencies on
+the block output. An unused result is assumed to be a dangling chain (this is an
+IR invariant at this stage). The pass fulfills the assumption of the model being
+'overhang free' (see
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/AsyncDataflowDependencies.h>)
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/FixupOverhangsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/FixupOverhangsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### SimplifyExtendLifetimes
 
@@ -469,8 +482,10 @@ The pass is run once the kernel boundaries and operand lists are settled, so
 after the fusion, right before kernel outlining (after which there's not enough
 infromation remaining).
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimplifyExtendLifetimesPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimplifyExtendLifetimesPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### ConcatInPlace
 
@@ -506,8 +521,10 @@ erases the original allocs and concat op.
 The pass assumes the concat input chain is only ready once all input buffers
 are ready, so it replaces the concat output chain with the input chain.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/ConcatInPlacePass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/ConcatInPlacePass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### OutlineKernels
 
@@ -534,8 +551,10 @@ Sets the device from the original op, and forwards summary/async/constant
 resource attributes. Uses `ABIKind::MGP` (void-style; multiple results via
 opaque buffers) for the stub.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/OutlineKernels.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/OutlineKernels.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### AddStackTracesToAssertsPass
 
@@ -550,8 +569,10 @@ Consumes and produces `mgp` (ModelOp); uses `rmo` location metadata.
 
 #### Additional notes
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/AddStackTracesToAssertsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/AddStackTracesToAssertsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### VerifyModelArguments
 
@@ -577,8 +598,10 @@ extracts the runtime tensor spec, and builds per-dimension equality checks.
 A device tensor should have at least one static dim and a known rank. For those,
 the pass combines the checks with `pop.and` and emits an `mgp.assert`.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/VerifyModelArgumentsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/VerifyModelArgumentsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### PrepareDevicePrimitives
 
@@ -599,8 +622,10 @@ device-specific primitive names directly.
 
 #### Additional notes
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/PrepareDevicePrimitivesPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/PrepareDevicePrimitivesPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### DeferAllocsPass
 
@@ -624,14 +649,15 @@ The pass walks both execute and init sections. For each alloc (ops implementing
 `MGPBufferAllocOpInterface`) it finds the unique mutating op (either a real
 mutating op or a `mgp.buffer.slice` (these can come from the dynamic planning
 pass that runs just before; the pass started handling slices after the
-introduction of the planning pass); only single uses are considered) that
-writes to the buffer and moves the allocation immediately before the mutating
-op. The mutator's input chains are inserted into the alloc so it can't execute
-too early. Moves each alloc before its unique mutator and adds chain
-dependencies via `alsoWaitForChains`, asserting that allocs accept input
-chains. Uses `ExecuteState` and applies to both `init` and `execute` regions.
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/DeferAllocsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+introduction of the planning pass); only single uses are considered) that writes
+to the buffer and moves the allocation immediately before the mutating op. The
+mutator's input chains are inserted into the alloc so it can't execute too
+early. Moves each alloc before its unique mutator and adds chain dependencies
+via `alsoWaitForChains`, asserting that allocs accept input chains. Uses
+`ExecuteState` and applies to both `init` and `execute` regions. Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/DeferAllocsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### DynamicMemoryPlanning
 
@@ -676,8 +702,10 @@ compatible with all the slices.
 Only non-data-dependent allocations (so the sizes are trivially computable) in
 the execute block with uses and without untraceable aliases are considered.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/DynamicMemoryPlanningPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/DynamicMemoryPlanningPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### SimpleBufferReuse
 
@@ -710,8 +738,10 @@ The pass marks BufferLifetimeAnalysis preserved though the IR is modified (so
 the analysis is invalid). The expectation is that the next pass (dynamic memory
 planning) checks the uses of the allocs, but not allocs themselves.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimpleBufferReusePass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimpleBufferReusePass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### SimplifyChainsPass
 
@@ -744,8 +774,10 @@ Some limitations of the local analysis:
 - no set simplification via relation algebra
 - no "always ready" knowledge for empty merges folding
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimplifyChainsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimplifyChainsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### SequenceFusion
 
@@ -785,8 +817,10 @@ The pass relies on `ParametricTopologyAnalysis` for deterministic ordering
 (preserved), and preserves region attributes like async flags, resources, and
 fusion capability.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/SequenceFusion.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/SequenceFusion.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### EmitMojo
 
@@ -822,8 +856,10 @@ execute section, and adds a `mogg.load_compiled_kernel` op into init that points
 to the Mojo blob. The op is later lowered to `mgp` buffer load while
 JitCompileKernels provides the pointer to the correct resource.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/EmitMojo.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/EmitMojo.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### LowerMOGGRegionCompiles
 
@@ -852,8 +888,10 @@ execute blocks (finding the correct `!mgp.context`), replaces the module-load
 placeholder chain, removes `mogg.to_mgp_from_opaque` in execute, and fixes
 isolated-from-above bindings. Module loads are forced to CPU.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/LowerMOGGRegionCompile.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/LowerMOGGRegionCompile.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### RemoveRedundantOperands
 
@@ -871,8 +909,10 @@ Consumes and produces `mogg`(ModelOp), depends on `mef` for chain types.
 Reduces async value count and kernel signatures by eliminating unused or
 duplicate operands/results.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/RemoveRedundantOperands.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Conversion/MOGGToMGP/RemoveRedundantOperands.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
 ### GlobalizeSlotIndices
 
@@ -901,8 +941,10 @@ and schedules analysis/rewrite in post-order, bottom-up), computes per‑model
 slot usage, and inserts per‑call slot offsets (index constants) while marking
 calls as globalized.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/GlobalizeSlotIndicesPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/GlobalizeSlotIndicesPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### InlineMGPCalls
 
@@ -928,8 +970,10 @@ ops, prefixes placeholder weight names, updates init output chains, and erases
 inlined subgraph models when unused. Also updates `mgp.context.create` slot
 counts after inlining.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/InlineMGPCallsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/InlineMGPCallsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ### LowerAlignments
 
@@ -952,8 +996,10 @@ memory accesses. Memory planning introduces slices; slices change alignment
 (GCD with offset), so the pass must run before slices are introduced. Defaults
 to device preferred alignment when unknown.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/LowerAlignmentsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/LowerAlignmentsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/MGPTransforms/MGPTransforms.td>
 
 ## RMO passes
 
@@ -998,12 +1044,15 @@ any operation like `rmo.mo.transfer` has to have a separate pattern. Device
 handling is done via output annotation. After the pass, all ops are in `mo`
 (TODO: verify).
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/RMODialect/LegalizeRMOOps.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/RMODialect/RMOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/RMODialect/LegalizeRMOOps.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/RMODialect/RMOTransforms.td>
 
 ## MO passes
 
-Pass definitions: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Pass definitions:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### AddFallbackShapeFunctions
 
@@ -1041,8 +1090,10 @@ For each `mo` op that:
 TODO: check phasing issue
 <https://linear.app/modularml/issue/GEX-886/graphcompiler-make-symbolic-optimization-not-phase-issue-with-constant>.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/AddFallbackShapeFuncs.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/AddFallbackShapeFuncs.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### MergeDuplicateShapeMaterializations
 
@@ -1068,8 +1119,10 @@ ops have the same op name + same operands, it keeps one and deletes the rest
 (remaps references using `ParameterCollector` analysis and building a def-use
 graph).
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/MergeDuplicateShapeMaterializations.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/MergeDuplicateShapeMaterializations.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### InvokeShapePackingFunctions
 
@@ -1104,8 +1157,10 @@ Another instance of shape propagation (with CSE and canonicalization) is run
 right after the pass, so that the newly introduced declarations are pushed
 through the graph.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/InvokeShapePackingFunctions.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/InvokeShapePackingFunctions.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### ValidateDevices
 
@@ -1130,8 +1185,10 @@ The limitations are only put on CPU targets:
 - no support for fp16/bf16 on arm (for others, the types allowed for casting).
 - no support for float types with size < 32bit on x86 and arch.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/ValidateDevicesPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/ValidateDevicesPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### DecomposeViewOps
 
@@ -1153,8 +1210,10 @@ possible, preserving layouts and rebinding types as needed.
 This aids downstream passes (e.g., FuseReshapesIntoEpilogues) that don't handle
 complex cases.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/DecomposeViewOps.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/DecomposeViewOps.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### ConstantFold
 
@@ -1187,8 +1246,10 @@ subgraphs.
 
 Depends on `ParameterCollector` analysis.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/ConstantFold.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/ConstantFold.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### HoistParameterExpressions
 
@@ -1211,8 +1272,10 @@ to make later passes simpler. Introduces `mo.rebind` on inputs/outputs to
 preserve original types, creates one alias per unique param expression per
 region, and folds consecutive rebinds.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/HoistParameterExpressionsPass.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/HoistParameterExpressionsPass.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### ElideRedundantMutableOps
 
@@ -1236,8 +1299,10 @@ the load is the sole chain user. Same for the stores.
 
 The pass is only enabled together with `mogg` fusion (TODO: see notes).
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/ElideRedundantMutableOps.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/ElideRedundantMutableOps.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### HoistConstantSubgraphsIntoParent
 
@@ -1268,8 +1333,10 @@ operates on two-point lattice (const/non-const), and thus, is cheap and easy.
 The optimization is performed when there are multiple callsitest. It ignores
 cycles and treats "constant" as invariant across callsitets.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/HoistConstantSubgraphsIntoParent.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/HoistConstantSubgraphsIntoParent.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### InferLayouts
 
@@ -1299,7 +1366,8 @@ and defining op). The inferred layouts are then assinged to tensors
 is updated to account for the changed signatures when necessary. Emits errors
 on conflicting constraints.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/InferLayouts.cpp>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/InferLayouts.cpp>
 
 ### CanonicalizeChainSequences
 
@@ -1329,9 +1397,9 @@ parallelism and scheduling freedom.
 #### Additional notes
 
 Chains are introduced at the IR construction time (e.g., by the Graph API).
-Implemented as a greedy rewrite over `GraphOp` with an increased iteration
-cap for long chains; may skip ops that have multiple in/out chains.
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/CanonicalizeChainSequences.cpp>
+Implemented as a greedy rewrite over `GraphOp` with an increased iteration cap
+for long chains; may skip ops that have multiple in/out chains. Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/CanonicalizeChainSequences.cpp>
 
 ### PropagateShapes
 
@@ -1368,21 +1436,20 @@ canonicalization, and improving compile-time simplifications of shape logic.
 #### Additional notes
 
 Used in the shape inference pipeline and in the pattern-fusion path after
-`InvokeShapePackingFunctions`. The pass relies on `ParameterCollector`
-analysis. It performs a parametric topological sort (via
-`ParametricTopologyAnalysis`) so the worklist visits ops only after their SSA
-and parameter dependencies are available, which is required for consistent
-rebinding and folding. It also builds a `KGEN::ParameterUseDefGraph` to drive
-dead `kgen.param.declare` elimination, and uses `KGEN::ParameterEvaluator` for
-substitution/constraint solving. Shape materialization depends on the
-`ShapeMaterialization` (lets ops generate the IR needed to compute their output
-shape parameters) and `Staticization` (convert tensors into symbolic parameter
-expressions) interfaces to evaluate shape logic. Dynamic ranks are not
-supported. Staticizing only works for tensors of rank less than 2. CSE for
-parameter expressions doesn't cross region boundaries. The pass is the basis
-for shape inferencing. The rest is canonicalization and CSE, plus
-`KGEN::VerifyParameters` (TODO).
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/PropagateShapesPass.cpp>
+`InvokeShapePackingFunctions`. The pass relies on `ParameterCollector` analysis.
+It performs a parametric topological sort (via `ParametricTopologyAnalysis`) so
+the worklist visits ops only after their SSA and parameter dependencies are
+available, which is required for consistent rebinding and folding. It also
+builds a `KGEN::ParameterUseDefGraph` to drive dead `kgen.param.declare`
+elimination, and uses `KGEN::ParameterEvaluator` for substitution/constraint
+solving. Shape materialization depends on the `ShapeMaterialization` (lets ops
+generate the IR needed to compute their output shape parameters) and
+`Staticization` (convert tensors into symbolic parameter expressions) interfaces
+to evaluate shape logic. Dynamic ranks are not supported. Staticizing only works
+for tensors of rank less than 2. CSE for parameter expressions doesn't cross
+region boundaries. The pass is the basis for shape inferencing. The rest is
+canonicalization and CSE, plus `KGEN::VerifyParameters` (TODO). Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/PropagateShapesPass.cpp>
 
 ### SymbolicOptimization
 
@@ -1440,8 +1507,10 @@ Some limitations/requirements:
 - Top-down traversal may miss some optimization opportunities
 - Reliance on the sequence of patterns application
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/SymbolicOptimization.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/SymbolicOptimization.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/Transforms/MODialect/MOTransforms.td>
 
 ### PatternFusion
 
@@ -1496,7 +1565,8 @@ matching has restrictions, e.g., single-use for intermediate values.
 
 The pass is gated by device/layout inference & validation.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/PatternFusion.cpp>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/PatternFusion.cpp>
 
 ## MOGG passes
 
@@ -1530,8 +1600,10 @@ parses Mojo source into MLIR module with LIT parser, runs KGEN piplines
 (-O3), and runs codegen (via ObjectCompiler). The binaries are then embedded
 into the MEF as resources attached to the module load path.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/JitCompileKernels.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/JitCompileKernels.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### FuseViews
 
@@ -1577,8 +1649,10 @@ Those remaining reshapes are then lowered by `MOGGToMGP`. The
 implementation basically inserts a new tensor spec reusing the input buffer, so
 there's no copy.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseViews.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseViews.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### FuseReshapesIntoEpilogues
 
@@ -1615,8 +1689,10 @@ within the graph, fusing reshape ops into a producer kernel. Remaining ops are
 handled by `MOGGToMGP` pass which create a new tensor spec and reuses
 existing buffer.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseReshapesIntoEpilogues.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseReshapesIntoEpilogues.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### FuseElementwise
 
@@ -1657,8 +1733,10 @@ parameters, block arguments, etc).
 Uses sequence-fusion analysis, respects mutable chain ordering, and requires
 topological ordering for safe rewrites. Controlled by `dump-dot-graph`.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseElementwiseKernels.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseElementwiseKernels.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### FusePrologues
 
@@ -1682,8 +1760,10 @@ prologue work into compute kernels.
 An elementwise kernel is fused as a prologue if its output is the sole input
 to a non-elementwise kernel that has an input lambda for that operand.
 
-Source: `GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp`
-Pass definition: `GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
+Source:
+`GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp`
+Pass definition:
+`GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
 
 ### FuseEpilogues
 
@@ -1733,8 +1813,10 @@ Some cases require additional care:
 The pass internally loops over epilogue fusion and reshape-into-epilogue fusion
 (shared with `FuseReshapesIntoEpilogues`) until no more fusions are possible.
 
-Source: `GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp`
-Pass definition: `GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
+Source:
+`GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseProloguesEpilogues.cpp`
+Pass definition:
+`GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td`
 
 ### FuseMutableLoads
 
@@ -1766,8 +1848,10 @@ chain).
 Parallelization is blocked in the kernel has write effects and shares the same
 buffer with the load.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseMutableLoads.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseMutableLoads.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### SimplifyKernelOperands
 
@@ -1798,8 +1882,10 @@ of duplicate block arguments and erasing redundant operands/arguments.
 
 Downstream passes assume operand uniqueness.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/SimplifyKernelOperands.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/SimplifyKernelOperands.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### HashModuleContents
 
@@ -1819,15 +1905,16 @@ deduplication based on semantic equivalence.
 
 #### Additional notes
 
-Not a part of the default pipeline. No usage currently.
-Builds a callgraph that tracks symbol references in attributes/types, hashes
-generator bytecode with normalized names/locations, and writes `semantic_hash`
-attributes. In that sense it is "semantic", i.e., insensitive to non-semantic
-differences like names/location.
-Uses `SymbolTableAnalysis` and `ModuleHasher`.
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/HashModuleContents.cpp>
-Implementation: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/ModuleHasher.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Not a part of the default pipeline. No usage currently. Builds a callgraph that
+tracks symbol references in attributes/types, hashes generator bytecode with
+normalized names/locations, and writes `semantic_hash` attributes. In that sense
+it is "semantic", i.e., insensitive to non-semantic differences like
+names/location. Uses `SymbolTableAnalysis` and `ModuleHasher`. Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/HashModuleContents.cpp>
+Implementation:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/ModuleHasher.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### NormalizeAllNames
 
@@ -1845,11 +1932,13 @@ differences in generated kernels.
 
 The implementation is used in the framework frontend as a cache-key
 normalization step (not the pass itself). Renames symbols to `__S<index>`, then
-walks operations in parallel to rename parameters to `__P<index>` and update
-all symbol/parameter references.
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/NormalizeAllNames.cpp>
-Implementation: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/KGENUtils.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+walks operations in parallel to rename parameters to `__P<index>` and update all
+symbol/parameter references. Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/NormalizeAllNames.cpp>
+Implementation:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/KGENUtils.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ### FuseConstants
 
@@ -1874,14 +1963,17 @@ small constant (all supported `mogg` types and small dense arrays) inputs into
 the kernel body (cloning `mo.constant`). The fusion only works for host kernels
 
 - an artifact of nvptx bringup (see
-<https://github.com/modularml/modular/issues/22959>). Unfused constants go through
-EICM and land into init if possible (TODO: check). Fused ones are added to the
-constat resources attribute during kernel-stub lowering and are materialized as
-`MGP::BufferConstantOp`
+<https://github.com/modularml/modular/issues/22959>). Unfused constants go
+through EICM and land into init if possible (TODO: check). Fused ones are added
+to the constat resources attribute during kernel-stub lowering and are
+materialized as `MGP::BufferConstantOp`
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseConstants.cpp>,
-but the logic is in <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/FusionUtils.cpp#L169>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/FuseConstants.cpp>,
+but the logic is in
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/MOGGDialect/Support/FusionUtils.cpp#L169>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 
 ## KGEN passes
 
@@ -1906,5 +1998,7 @@ Builds a `ParameterUseDefGraph` per declaration region and verifies it against a
 definitions, rebinds attributes/types/locations, removes `kgen.param.declare`
 ops, and peels redundant `kgen.rebind` ops.
 
-Source: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/KGEN/lib/Transforms/VerifyParameters.cpp>
-Pass definition: <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/KGEN/include/KGEN/KGENPasses.td>
+Source:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/KGEN/lib/Transforms/VerifyParameters.cpp>
+Pass definition:
+<https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/KGEN/include/KGEN/KGENPasses.td>

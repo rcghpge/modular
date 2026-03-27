@@ -99,8 +99,9 @@ defined elsewhere.
 ### **Operand Types Supported**
 
 - We support **ManagedTensorSlice** as a first class citizen.
-  - Since both output and input tensors are passed as arguments to the execute function
-    we distinguish which is which with parameters on the ManagedTensorSlice struct
+  - Since both output and input tensors are passed as arguments to the execute
+    function we distinguish which is which with parameters on the
+    ManagedTensorSlice struct
     - These are encoded with the **IOSpec** parameter
     - Rather than setting these directly users are encouraged to use three
       convenient aliases: **OutputTensor**, **InputTensor**, and
@@ -109,8 +110,8 @@ defined elsewhere.
 - Variadic tensors can be represented via
 **VariadicTensors[type, rank, size]**.
   - As with **ManagedTensorSlice** users must provide a specialization of its
-    io_spec parameter, but are encouraged to use the **InputVariadicTensors** and
-    **OutputVariadicTensors** aliases instead
+    io_spec parameter, but are encouraged to use the **InputVariadicTensors**
+    and **OutputVariadicTensors** aliases instead
   - We don’t support other variadic types besides Tensor
 - Dynamic lists of tensors are supported via
 **List[ManagedTensorSlice[dtype, rank]]** though support is

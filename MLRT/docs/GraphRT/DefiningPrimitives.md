@@ -12,10 +12,9 @@ with pointers to examples in the source base.
 ## How primitives work
 
 As mentioned above, primitives are implemented as C++ functions, and these
-functions take a `PrimitiveFrame` as their operand. They are registered
-with the [`PrimitiveRegistry`
-class](../../include/MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h) which looks like
-this:
+functions take a `PrimitiveFrame` as their operand. They are registered with the
+[`PrimitiveRegistry` class](../../include/MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h)
+which looks like this:
 
 ```c++
 class PrimitiveRegistry final {
@@ -36,17 +35,17 @@ This allows the executor itself to be completely operation independent: it works
 on the *structure* of the operations, but doesn't know "what they do". The MLIR
 syntax for the primitive has a directly corresponding runtime behavior:
 
-1) Each SSA value operand and result in MLIR is an
-   [`AsyncValue`](../AsyncRT/AsyncValue.md) operand or result to the
-   primitive.
-2) Each MLIR attribute turns into a runtime pointer to static data of a
+1. Each SSA value operand and result in MLIR is an
+   [`AsyncValue`](../AsyncRT/AsyncValue.md) operand or result to the primitive.
+2. Each MLIR attribute turns into a runtime pointer to static data of a
    corresponding C++ type. For example an MLIR `4 : i32` attribute will turn
    into a pointer to 32-bits of data containing a 4 (in little endian format).
-   **These are passed in [ASCIIbetical order](https://en.wikipedia.org/wiki/ASCII#Character_order)
-   by attribute name, not in lexical order in the `.mlir` file.** The attribute
-   names are not encoded by default.
-3) Symbol references like `@foo` and region bodies `{ ... }` in MLIR turn into
-   "invokable" references that may be invoked in the executor.
+   **These are passed in [ASCIIbetical
+   order](https://en.wikipedia.org/wiki/ASCII#Character_order) by attribute
+   name, not in lexical order in the `.mlir` file.** The attribute names are not
+   encoded by default.
+3. Symbol references like `@foo` and region bodies `{ ... }` in MLIR
+   turn into "invokable" references that may be invoked in the executor.
 
 The [`RunnablePrimitiveDescriptor
 class`](../../include/MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h) is the C++
@@ -113,9 +112,9 @@ This automates the checking logic, unwraps the `AsyncValue`'s for the arguments
 and generates the result `AsyncValue` as needed.
 
 There are rare cases where you might want to directly access the AsyncValue for
-an argument (for example maybe you want to `std::move` the reference to micro-optimize
-some reference counts. In this case, you can take an `AsyncValueRef` or
-`AnyAsyncValueRef` directly:
+an argument (for example maybe you want to `std::move` the reference to
+micro-optimize some reference counts. In this case, you can take an
+`AsyncValueRef` or `AnyAsyncValueRef` directly:
 
 ```C++
 static AsyncValueRef<int32_t> test_noop(AsyncValueRef<int32_t> input) {
@@ -223,10 +222,10 @@ vec_fill_non_prime_async_vector(int32_t size,
 
 While machine learning frameworks typically want to report errors synchronously,
 there are some rare cases where you only realize on the background task that
-there is a problem (for example maybe you want to treat divide by zero as an error,
-which is dependent on the element data). `AsyncValue`'s need location information
-to propagate their errors, and we don't copy that around by default. To get it
-into your closure, use the `copyWithLocation()` method on `Result`:
+there is a problem (for example maybe you want to treat divide by zero as an
+error, which is dependent on the element data). `AsyncValue`'s need location
+information to propagate their errors, and we don't copy that around by default.
+To get it into your closure, use the `copyWithLocation()` method on `Result`:
 
 ```C++
 static void
@@ -287,12 +286,12 @@ cases:
   "some.thing"() { a = 3275124123121 : si64, b = "string value" } : () -> ()
 ```
 
-Attributes in MLIR files are always canonicalized to be in alphabetical order
-by their key (that is, if you move the string value before the `si64` in the last
+Attributes in MLIR files are always canonicalized to be in alphabetical order by
+their key (that is, if you move the string value before the `si64` in the last
 example, they will still be emitted as "a" and then "b", so the `i64` will be
-first), and MEF files don't encode the attribute names ("a" and "b" in that
-last example). To handle these, you can implement the primitives using
-the `MEFAttr<>` C++ class, and access the attribute with `*` or `->`:
+first), and MEF files don't encode the attribute names ("a" and "b" in that last
+example). To handle these, you can implement the primitives using the
+`MEFAttr<>` C++ class, and access the attribute with `*` or `->`:
 
 ```c++
 static int32_t constant_i32(MEFAttr<int32_t> value) {
@@ -330,7 +329,7 @@ static int32_t findNamedElement(MEFDictionaryAttr dict) {
 
 static void handleAllElements(MEFDictionaryAttr dict) {
   for (auto element : dict) {
-    if (MEFAttr<StringRef> str = dyn_cast<StringRef>(element.getValue()))
+    if (MEFAttr<StringRef> str = dyn_cast<StringRef>(element.getValue())) {
       // handle `str`
     } else {
       MEFAttr<int32_t> value = element.getValue<int32_t>();
@@ -341,7 +340,7 @@ static void handleAllElements(MEFDictionaryAttr dict) {
 
 static void handleAllListElements(MEFListAttr list) {
   for (auto element : list) {
-    if (MEFAttr<StringRef> str = dyn_cast<StringRef>(element))
+    if (MEFAttr<StringRef> str = dyn_cast<StringRef>(element)) {
       // handle `str`
     }
   }
@@ -405,17 +404,17 @@ parallelism or other fancy things, etc. Large multicore machines want lots of
 bites of computation to keep all those cores busy. There are a few things
 to keep in mind for an efficient and well balanced system:
 
-1) Most important: all computation needs to be thread safe, and should not
+1. Most important: all computation needs to be thread safe, and should not
    block. This is core to the AsyncRT computation model. Do not use things like
    `llvm::outs()` because it is not thread safe.
-2) Don't do synchronous work that can take unbounded time (for example it is dependent
-   on the input sizes). Fork/join parallelism is an extremely common pattern,
-   which induces patterns with a lot of single-threaded regions in
+2. Don't do synchronous work that can take unbounded time (for example it is
+   dependent on the input sizes). Fork/join parallelism is an extremely common
+   pattern, which induces patterns with a lot of single-threaded regions in
    between the very-parallel forked regions. These single-threaded regions
-   easily end up dominating execution time due to [Amdahl's
-   Law](https://en.wikipedia.org/wiki/Amdahl%27s_law). As such, keep the
-   synchronous work small.
-3) Least important: there is a (very) small amount of cost to creating a task
+   easily end up dominating execution time due to
+   [Amdahl's Law](https://en.wikipedia.org/wiki/Amdahl%27s_law). As such,
+   keep the synchronous work small.
+3. Least important: there is a (very) small amount of cost to creating a task
    and doing asynchronous work, so doing extremely small computations (like
    adding two integers) on the executor thread does make sense.
 
@@ -495,10 +494,10 @@ static AsyncValueRef<MyAcceleratorType> allocate_thing() {
 
 The "MyAcceleratorType" instance will be created inline into the `AsyncValue`
 saving an extraneous allocation and automatically deleting it when the last use
-of the `AsyncValue` is done. Sometimes you might want to get more fancy, for example
-with C++ subclasses, shared references to concurrent-safe types like thread
-safe hash tables, etc. In those cases, you can use standard C++ smart pointers,
-for example like shared or unique pointers:
+of the `AsyncValue` is done. Sometimes you might want to get more fancy, for
+example with C++ subclasses, shared references to concurrent-safe types like
+thread safe hash tables, etc. In those cases, you can use standard C++ smart
+pointers, for example like shared or unique pointers:
 
 ```c++
 static void allocate_thing(Result<std::unique_ptr<MyAcceleratorType>> result) {
@@ -513,13 +512,13 @@ the wrong thing. TODO: Should we completely ban pointers (and things like
 ## Non-strict primitives
 
 By default, the MEF executor only invokes a primitive implementation function
-when all of the arguments (SSA values in MLIR syntax) are "ready" `AsyncValue`'s.
-When they become ready, it checks to see if any of them are errors. If so, the
-error value is automatically propagated to the result value of the primitive
-(so primitives don't have to handle errors explicitly). This is the right
-default for almost all primitives, but some (notably control flow) want to do
-more custom processing. For these cases, GraphRT supports a "non-strict"
-primitive.
+when all of the arguments (SSA values in MLIR syntax) are "ready"
+`AsyncValue`'s. When they become ready, it checks to see if any of them are
+errors. If so, the error value is automatically propagated to the result value
+of the primitive (so primitives don't have to handle errors explicitly). This is
+the right default for almost all primitives, but some (notably control flow)
+want to do more custom processing. For these cases, GraphRT supports a
+"non-strict" primitive.
 
 ### What are non-strict primitives?
 
@@ -604,7 +603,7 @@ examples.
 The next question is: how do you tell GraphRT that your primitive is non-strict?
 The contract is quite different, and invoking a strict primitive too early would
 cause crashes (because they'd unconditionally try to access `AsyncValue`'s that
-are not ready. As such, you have to explicitly register the operation in
+are not ready). As such, you have to explicitly register the operation in
 question with ODS (and the "mlir to mef" translator needs to know about the
 operation). You then adopt the `NonStrictOp` trait.
 

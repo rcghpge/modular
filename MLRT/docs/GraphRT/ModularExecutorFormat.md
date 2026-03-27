@@ -117,8 +117,8 @@ over entirely by the reader) and an optional alignment for the contents of the
 section.
 
 Section IDs and other fundamental constants are defined in
-[`MEFEncoding.h`](../../include/MLRT/GraphRT/MEF/MEFEncoding.h), and utilities for
-decoding the basic file structures like VBR integers are defined in
+[`MEFEncoding.h`](../../include/MLRT/GraphRT/MEF/MEFEncoding.h), and utilities
+for decoding the basic file structures like VBR integers are defined in
 [`MEFReader.h`](../../include/MLRT/GraphRT/MEF/MEFReader.h).
 
 The `LENGTH_AND_ALIGNMENT` contains `SECTION_LENGTH` and

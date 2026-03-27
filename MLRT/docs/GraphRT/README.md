@@ -70,7 +70,8 @@ Beyond documentation, it can be helpful to browse the code. The major
 components of the GraphRT module are:
 
 1. a set of MLIR components for representing GraphRT programs, notably the
-   [MEF Dialect](../../include/MLRT/GraphRT/MEFDialect) which defines `mef.invokable`.
+   [MEF Dialect](../../include/MLRT/GraphRT/MEFDialect) which defines
+   `mef.invokable`.
 1. a binary file format named the ["Modular Executor Format"
    (MEF)](ModularExecutorFormat.md) which is designed to be compact and
    efficiently executable by a low-dependency interpreter.
