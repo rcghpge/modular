@@ -18,7 +18,8 @@ class MojoLibraryAnalysis;
 
 namespace M::MO {
 
-/// Collects mlir options which influence buildGCPipeline.
+/// Collects mlir options which influence `buildGCPipeline` and
+/// `buildGCPipelineThroughEmitMojo`.
 ///
 /// See also GraphCompilerCLOptions for the corresponding mt command line
 /// options.
@@ -225,6 +226,7 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
 /// tools. The passes will use the current runtime, which must be established by
 /// the tool.
 void registerGCPipeline();
+void registerGCPipelineThroughEmitMojo();
 void registerMoPipeline();
 void registerMoggPipeline();
 void registerMgpPipeline();
@@ -232,6 +234,12 @@ void registerJitPipeline();
 
 /// Builds the complete graph-compiler pipeline (MO → MGP → JIT).
 void buildGCPipeline(
+    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
+
+/// Same lowering as `gc-pipeline` but stops after emit-mojo (excludes JIT and
+/// post-JIT passes).
+void buildGCPipelineThroughEmitMojo(
     mlir::OpPassManager &pm, const GCPipelineOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr);
 

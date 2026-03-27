@@ -78,6 +78,15 @@ void M::MO::registerGCPipeline() {
       });
 }
 
+void M::MO::registerGCPipelineThroughEmitMojo() {
+  mlir::PassPipelineRegistration<GCPipelineOptions>(
+      "gc-pipeline-pre-jit",
+      "Graph compiler through emit-mojo (MO → MGP → emit-mojo; no JIT).",
+      [](mlir::OpPassManager &pm, const GCPipelineOptions &opts) {
+        buildGCPipelineThroughEmitMojo(pm, opts);
+      });
+}
+
 void M::MO::registerMoPipeline() {
   mlir::PassPipelineRegistration<MoPipelineOptions>(
       "mo-pipeline",
@@ -113,6 +122,7 @@ void M::MO::registerJitPipeline() {
 void M::MO::registerPasses() {
   MO::registerShapeInferencePipeline();
   MO::registerGCPipeline();
+  MO::registerGCPipelineThroughEmitMojo();
   MO::registerMoPipeline();
   MO::registerMoggPipeline();
   MO::registerMgpPipeline();
@@ -389,14 +399,12 @@ void M::MO::buildMgpPipeline(
     pm.addPass(MOGG::createDumpMojo());
 }
 
-// ---------------------------------------------------------------------------
-// gc-pipeline  (full pipeline: mo-pipeline + mo-to-mogg + mogg-pipeline +
-//               mogg-to-mgp + mgp-pipeline + jit + jit-pipeline)
-// ---------------------------------------------------------------------------
+namespace {
 
-void M::MO::buildGCPipeline(
-    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+static void
+buildGCPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
+                    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
+                    bool skipJit) {
 
   // --- mo-pipeline ---
   MoPipelineOptions moOpts;
@@ -460,6 +468,9 @@ void M::MO::buildGCPipeline(
   mgpOpts.dumpMojoText = opts.dumpMojoText;
   buildMgpPipeline(pm, mgpOpts, libraryAnalysis);
 
+  if (skipJit)
+    return;
+
   // --- jit ---
   MOGG::JitCompileKernelsOptions jitOpts;
   jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -472,6 +483,28 @@ void M::MO::buildGCPipeline(
 
   // --- jit-pipeline ---
   buildJitPipeline(pm);
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// gc-pipeline  (full pipeline: mo-pipeline + mo-to-mogg + mogg-pipeline +
+//               mogg-to-mgp + mgp-pipeline + jit + jit-pipeline)
+// gc-pipeline-pre-jit: same through mgp-pipeline (emit-mojo); no jit
+// ---------------------------------------------------------------------------
+
+void M::MO::buildGCPipeline(
+    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+  buildGCPipelineImpl(pm, opts, std::move(libraryAnalysis),
+                      /*skipJit=*/false);
+}
+
+void M::MO::buildGCPipelineThroughEmitMojo(
+    mlir::OpPassManager &pm, const GCPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
+  buildGCPipelineImpl(pm, opts, std::move(libraryAnalysis),
+                      /*skipJit=*/true);
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
