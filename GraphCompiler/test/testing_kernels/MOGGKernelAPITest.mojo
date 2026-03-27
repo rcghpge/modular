@@ -9,8 +9,9 @@ from std.math import iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
 import compiler_internal as compiler
-from buffer import NDBuffer
 from buffer.dimlist import DimList
+from layout import TileTensor, CoordLike, RuntimeInt, Coord
+from layout.tile_layout import Layout as TileLayout
 from compiler_internal import StaticTensorSpec
 from std.runtime.asyncrt import DeviceContextPtr, DeviceContextPtrList
 from tensor import (
@@ -211,18 +212,6 @@ struct Foo:
     @staticmethod
     def shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
         return x.shape()
-
-
-@always_inline
-def toNDBuffer[
-    out_dtype: DType, out_rank: Int
-](tensor: ManagedTensorSlice) -> NDBuffer[
-    rank=out_rank, out_dtype, MutAnyOrigin
-]:
-    # TODO(GEX-734): forward other static params automatically
-    return rebind[NDBuffer[rank=out_rank, out_dtype, MutAnyOrigin]](
-        NDBuffer[rank=tensor.rank, tensor.dtype](tensor._ptr, tensor.shape())
-    )
 
 
 def _matmul[
@@ -474,11 +463,6 @@ struct MatmulFuseOut:
         comptime a_dtype = a.dtype
         comptime b_dtype = b.dtype
         comptime c_dtype = c.dtype
-
-        # Convert everything to NDBuffer
-        # var c_buffer = toNDBuffer[ rank=2,c_dtype](c)
-        # var a_buffer = toNDBuffer[ rank=2,a_dtype](a)
-        # var b_buffer = toNDBuffer[ rank=2,b_dtype](b)
 
         @parameter
         @always_inline
@@ -1071,9 +1055,23 @@ struct CustomOpWithStaticStringParams:
         print(foo)
 
 
+comptime _WrapperLayout = TileLayout[
+    shape_types=Variadic.types[
+        T=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
+    ],
+    stride_types=Variadic.types[
+        T=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
+    ],
+]
+
+
 @fieldwise_init
 struct TensorWrapper(RegisterPassable):
-    var buffer: NDBuffer[rank=2, DType.float32, MutAnyOrigin]
+    var buffer: TileTensor[
+        dtype=DType.float32,
+        origin=MutExternalOrigin,
+        LayoutType=_WrapperLayout,
+    ]
 
 
 @compiler.register("to_tensor_wrapper")
@@ -1083,13 +1081,23 @@ struct ToTensorWrapper:
     def execute[
         spec: StaticTensorSpec[dtype=DType.float32, rank=2, ...], //
     ](tensor: InputTensor[static_spec=spec],) -> TensorWrapper:
-        var ptr = tensor._ptr.address_space_cast[spec.address_space]()
+        var shape = tensor.shape()
+        var strides = tensor.strides()
+        var shape_coord = Coord[
+            RuntimeInt[DType.int64], RuntimeInt[DType.int64]
+        ]()
+        var stride_coord = Coord[
+            RuntimeInt[DType.int64], RuntimeInt[DType.int64]
+        ]()
+        shape_coord[0] = rebind[RuntimeInt[DType.int64]](Int64(shape[0]))
+        shape_coord[1] = rebind[RuntimeInt[DType.int64]](Int64(shape[1]))
+        stride_coord[0] = rebind[RuntimeInt[DType.int64]](Int64(strides[0]))
+        stride_coord[1] = rebind[RuntimeInt[DType.int64]](Int64(strides[1]))
         return TensorWrapper(
-            NDBuffer[
-                rank=spec.rank,
-                spec.dtype,
-                _,
-            ](ptr, tensor.shape(), tensor._runtime_strides)
+            TileTensor(
+                tensor.unsafe_ptr().unsafe_origin_cast[MutExternalOrigin](),
+                _WrapperLayout(shape_coord, stride_coord),
+            )
         )
 
 
@@ -1130,7 +1138,7 @@ struct MutableStore:
             var val = func[width](idx)
             idx[0] += 1
             idx[1] += 1
-            tw.buffer.store[width=width](idx, val)
+            tw.buffer.store_linear[width=width](idx, val)
 
         foreach[
             func,
