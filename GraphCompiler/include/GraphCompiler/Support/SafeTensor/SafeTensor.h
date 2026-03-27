@@ -115,22 +115,6 @@ private:
 
 }; // namespace M
 
-// Provide the DenseMapInfo for std::string so we can use it in llvm::DenseMaps.
-namespace llvm {
-template <>
-struct DenseMapInfo<std::string> : DenseMapInfo<StringRef> {
-  static std::string getEmptyKey() { return ""; }
-  static std::string getTombstoneKey() {
-    return DenseMapInfo<StringRef>::getTombstoneKey().str();
-  }
-  static unsigned getHashValue(const std::string &str) {
-    return DenseMapInfo<StringRef>::getHashValue(str);
-  }
-  static bool isEqual(const std::string &LHS, const std::string &RHS) {
-    return LHS == RHS;
-  }
-};
-
-} // namespace llvm
+#include "Support/ADT/DenseStringMap.h" // IWYU pragma: keep
 
 #endif // RUNTIME_SAFETENSOR_H
