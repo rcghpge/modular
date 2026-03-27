@@ -22,7 +22,7 @@ from std.sys import size_of
 
 import std.gpu.primitives.warp as warp
 from std.algorithm.functional import unswitch
-from std.gpu import block_idx, thread_idx
+from std.gpu import block_idx, thread_idx_uint as thread_idx
 from std.gpu.globals import WARPGROUP_SIZE
 from std.gpu.host import DeviceContext, DeviceBuffer
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -123,30 +123,40 @@ def _optional_lt_to_tt[
 trait OptionalPointer(Copyable, TrivialRegisterPassable):
     comptime dtype: DType
     comptime is_null: Bool
+    comptime address_space: AddressSpace
 
     @always_inline
-    def value(self) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    def value(
+        self,
+    ) -> UnsafePointer[
+        Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
+    ]:
         ...
 
 
-struct NonNullPointer[dtype_: DType](OptionalPointer):
+struct NonNullPointer[
+    dtype_: DType, address_space_: AddressSpace = AddressSpace.GENERIC
+](OptionalPointer):
     comptime dtype: DType = Self.dtype_
     comptime is_null: Bool = False
+    comptime address_space: AddressSpace = Self.address_space_
+    comptime PtrType = UnsafePointer[
+        Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
+    ]
 
-    var ptr: UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]
+    var ptr: Self.PtrType
 
     @always_inline
-    def __init__(
-        out self, ptr: UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]
-    ):
+    def __init__(out self, ptr: Self.PtrType):
         self.ptr = ptr
 
     @always_inline
     def __init__(out self, ptr: DeviceBuffer[Self.dtype]):
-        self.ptr = ptr.unsafe_ptr()
+        comptime assert Self.address_space == AddressSpace.GENERIC
+        self.ptr = rebind[Self.PtrType](ptr.unsafe_ptr())
 
     @always_inline
-    def value(self) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    def value(self) -> Self.PtrType:
         assert Bool(self.ptr), (
             "NonNullPointer is supposed to provide a compile-time guarantee"
             " of being non-null"
@@ -154,16 +164,22 @@ struct NonNullPointer[dtype_: DType](OptionalPointer):
         return self.ptr
 
 
-struct NullPointer[dtype_: DType](OptionalPointer):
+struct NullPointer[
+    dtype_: DType, address_space_: AddressSpace = AddressSpace.GENERIC
+](OptionalPointer):
     comptime dtype: DType = Self.dtype_
     comptime is_null: Bool = True
+    comptime address_space: AddressSpace = Self.address_space_
+    comptime PtrType = UnsafePointer[
+        Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
+    ]
 
     @always_inline
     def __init__(out self):
         pass
 
     @always_inline
-    def value(self) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    def value(self) -> Self.PtrType:
         return {}
 
 
@@ -425,7 +441,7 @@ struct MHAPosition[
         comptime if ragged:
             q_row = seq_info.start_of_seq
 
-        # NDBuffer inputs, homogeneous batching.
+        # Homogeneous batching.
         else:
             # When cache length (num_keys) is greater, we assume it has
             # prefix preceding the input seq_len.
@@ -450,7 +466,7 @@ struct MHAPosition[
         comptime if ragged:
             q_row = seq_info.start_of_seq
 
-        # NDBuffer inputs, homogeneous batching.
+        # Homogeneous batching.
         else:
             # When cache length (num_keys) is greater, we assume it has
             # prefix preceding the input seq_len.
@@ -660,7 +676,7 @@ def _get_position[
             num_keys = UInt32(cur_kv_len + Int(start_pos))
         q_row = seq_info.start_of_seq
 
-    # NDBuffer inputs, homogeneous batching.
+    # Homogeneous batching.
     else:
         num_keys = num_keys_arg
 

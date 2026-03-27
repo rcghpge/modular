@@ -41,8 +41,13 @@ def register_all_models() -> None:
     from .eagle_llama3 import eagle_llama_arch
     from .exaone import exaone_arch
     from .exaone_modulev3 import exaone_modulev3_arch
-    from .flux1_modulev3 import flux1_modulev3_arch
-    from .flux2_modulev3 import flux2_klein_modulev3_arch, flux2_modulev3_arch
+    from .flux1_modulev3 import flux1_arch, flux1_modulev3_arch
+    from .flux2 import flux2_arch
+    from .flux2_modulev3 import (
+        flux2_klein_arch,
+        flux2_klein_modulev3_arch,
+        flux2_modulev3_arch,
+    )
     from .gemma3 import gemma3_arch
     from .gemma3multimodal import gemma3_multimodal_arch
     from .gpt_oss import gpt_oss_arch
@@ -52,10 +57,10 @@ def register_all_models() -> None:
     from .idefics3 import idefics3_arch
     from .idefics3_modulev3 import idefics3_modulev3_arch
     from .internvl import internvl_arch
-    from .kimik2_5 import kimik2_5_arch, kimivl_arch
+    from .kimik2_5 import eagle3_kimik25_arch, kimik2_5_arch, kimivl_arch
     from .llama3 import llama_arch
     from .llama3_modulev3 import llama_modulev3_arch
-    from .llama4 import llama4_arch
+    from .mamba import mamba_arch
     from .mistral import mistral_arch
     from .mistral3 import mistral3_arch
     from .mpnet import mpnet_arch
@@ -76,6 +81,7 @@ def register_all_models() -> None:
     from .qwen3_embedding_modulev3 import qwen3_embedding_modulev3_arch
     from .qwen3vl_moe import qwen3vl_arch, qwen3vl_moe_arch
     from .unified_eagle_llama3 import unified_eagle_llama3_arch
+    from .unified_mtp_deepseekV3 import unified_mtp_deepseekV3_arch
 
     architectures = [
         exaone_arch,
@@ -85,7 +91,10 @@ def register_all_models() -> None:
         deepseekV3_2_arch,
         deepseekV3_nextn_arch,
         eagle_llama_arch,
+        flux1_arch,
         flux1_modulev3_arch,
+        flux2_arch,
+        flux2_klein_arch,
         flux2_modulev3_arch,
         flux2_klein_modulev3_arch,
         gemma3_arch,
@@ -97,11 +106,12 @@ def register_all_models() -> None:
         internvl_arch,
         idefics3_arch,
         idefics3_modulev3_arch,
+        eagle3_kimik25_arch,
         kimik2_5_arch,
         kimivl_arch,
         llama_arch,
         llama_modulev3_arch,
-        llama4_arch,
+        mamba_arch,
         bert_arch,
         mistral_arch,
         mistral3_arch,
@@ -125,6 +135,7 @@ def register_all_models() -> None:
         qwen3vl_arch,
         qwen3vl_moe_arch,
         unified_eagle_llama3_arch,
+        unified_mtp_deepseekV3_arch,
     ]
 
     for arch in architectures:

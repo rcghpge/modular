@@ -16,7 +16,6 @@ from std.math import align_up, ceildiv
 from std.sys import align_of, get_defined_bool, simd_width_of, size_of
 
 from std.bit import next_power_of_two, prev_power_of_two
-from buffer.dimlist import DimList
 from std.gpu import WARP_SIZE, barrier
 from std.gpu.primitives.cluster import (
     block_rank_in_cluster,
@@ -116,6 +115,7 @@ from ..profiler import (
 )
 from .pipeline import ProducerConsumerPipeline
 from linalg.fp4_utils import (
+    MXFP4_SF_DTYPE,
     MXFP8_SF_DTYPE,
     NVFP4_SF_DTYPE,
     SF_MN_GROUP_SIZE,
@@ -1076,7 +1076,6 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: UInt32 = 0,
 ](
@@ -1096,6 +1095,8 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
 ):
     comptime assert c_type != DType.float32, "c_type cannot be float32"
     comptime assert transpose_b, "only support k-major B"
+
+    comptime register_based_epilogue = config.register_based_epilogue
 
     comptime num_output_warps = 4
 
@@ -1133,16 +1134,19 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     comptime stage_stride_cols = config.mma_shape[1]
 
     comptime assert (
-        config.num_sf_k_tiles == 1
-        and config.scaling_kind == UMMAKind.KIND_MXF8F6F4
-    ) or (
-        config.num_sf_k_tiles == 4
-        and config.scaling_kind == UMMAKind.KIND_MXF4NVF4
-    ), (
-        "Only support num_sf_k_tiles == 1 and scaling kind is"
-        " UMMAKind.KIND_MXF8F6F4 or num_sf_k_tiles == 2 and scaling kind is"
-        " UMMAKind.KIND_MXF4NVF4"
-    )
+        (
+            config.num_sf_k_tiles == 1
+            and config.scaling_kind == UMMAKind.KIND_MXF8F6F4
+        )
+        or (
+            config.num_sf_k_tiles == 2
+            and config.scaling_kind == UMMAKind.KIND_MXF4
+        )
+        or (
+            config.num_sf_k_tiles == 4
+            and config.scaling_kind == UMMAKind.KIND_MXF4NVF4
+        )
+    ), "Only support MXF8F6F4 (k=1), MXF4 (k=2), or MXF4NVF4 (k=4)"
 
     comptime assert (
         UInt(config.num_accum_pipeline_stages) * UInt(MMA_N)
@@ -1593,13 +1597,13 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
                     mma_output_pipeline.producer_step()
                 work_info = next_work_info
 
-            comptime if pdl_level > PDLLevel.OFF:
-                launch_dependent_grids()
-
             tcgen05_release_allocation_lock[Int32(config.cta_group)]()
 
             # wait for epilogue to finish
             tmem_dealloc_mbar[].wait()
+
+            comptime if pdl_level > PDLLevel.OFF:
+                launch_dependent_grids()
 
             tcgen05_dealloc[Int32(config.cta_group)](tmem_addr, max_tmem_cols)
 
@@ -1840,7 +1844,6 @@ def _create_tma_and_launch[
             Int32(config.cluster_shape[2]),
         ),
         elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-        register_based_epilogue=register_based_epilogue,
         pdl_level=pdl_level,
         max_profiled_tiles_per_SM=max_profiled_tiles,
     ]
@@ -1907,9 +1910,7 @@ def _create_tma_and_launch[
 
 def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     sfa_dtype: DType,
-    sfa_layout: Layout,
     sfb_dtype: DType,
-    sfb_layout: Layout,
     transpose_b: Bool,
     *,
     K: Int,
@@ -1917,15 +1918,14 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
 ](
     c_tensor: TileTensor,
     a_tensor: TileTensor,
     b_tensor: TileTensor,
-    a_scales_tensor: LayoutTensor[sfa_dtype, sfa_layout, ImmutAnyOrigin],
-    b_scales_tensor: LayoutTensor[sfb_dtype, sfb_layout, ImmutAnyOrigin],
+    a_scales_tensor: TileTensor[sfa_dtype, ...],
+    b_scales_tensor: TileTensor[sfb_dtype, ...],
     ctx: DeviceContext,
     alpha: Float32 = 1.0,
 ) raises:
@@ -1942,15 +1942,20 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     comptime assert (
         sfa_dtype == sfb_dtype
     ), "Only support same scales dtype for A and B"
-    comptime assert sfa_dtype in (MXFP8_SF_DTYPE, NVFP4_SF_DTYPE), (
-        "Only support MXFP8_SF_DTYPE (F8-UE8M0) or MXFP4_SF_DTYPE (F8-E4M3) for"
-        " scales"
+    comptime assert sfa_dtype in (
+        MXFP4_SF_DTYPE,
+        MXFP8_SF_DTYPE,
+        NVFP4_SF_DTYPE,
+    ), (
+        "Only support float8_e8m0fnu (MXFP8/MXFP4) or float8_e4m3fn (NVFP4)"
+        " for scales"
     )
 
     comptime assert (
         config.scaling_kind == UMMAKind.KIND_MXF8F6F4
+        or config.scaling_kind == UMMAKind.KIND_MXF4
         or config.scaling_kind == UMMAKind.KIND_MXF4NVF4
-    ), "Only support MXF8F6F4 or MXF4NVF4 for scaling kind"
+    ), "Only support MXF8F6F4, MXF4, or MXF4NVF4 for scaling kind"
 
     comptime assert config.cta_group in (
         1,
@@ -1975,18 +1980,18 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     ), "a_scales must be 5D (non-batched) or 6D (batched) tensors"
 
     comptime assert (
-        sfa_layout.shape[3 if is_batched_matmul else 2].value()
-        == sfb_layout.shape[3 if is_batched_matmul else 2].value()
+        a_scales_tensor.static_shape[3 if is_batched_matmul else 2]
+        == b_scales_tensor.static_shape[3 if is_batched_matmul else 2]
         == SF_ATOM_M[0]
     ), ""
     comptime assert (
-        sfa_layout.shape[4 if is_batched_matmul else 3].value()
-        == sfb_layout.shape[4 if is_batched_matmul else 3].value()
+        a_scales_tensor.static_shape[4 if is_batched_matmul else 3]
+        == b_scales_tensor.static_shape[4 if is_batched_matmul else 3]
         == SF_ATOM_M[1]
     ), ""
     comptime assert (
-        sfa_layout.shape[5 if is_batched_matmul else 4].value()
-        == sfb_layout.shape[5 if is_batched_matmul else 4].value()
+        a_scales_tensor.static_shape[5 if is_batched_matmul else 4]
+        == b_scales_tensor.static_shape[5 if is_batched_matmul else 4]
         == SF_ATOM_K
     ), ""
 
@@ -2015,8 +2020,8 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     # from the TileTensor, so we need a proper row_major 5D layout with the
     # right runtime/comptime dims.
     @parameter
-    fn _scales_5d_shape(
-        scales: LayoutTensor,
+    def _scales_5d_shape(
+        scales: TileTensor,
     ) -> Coord[
         RuntimeInt[DType.int64],
         RuntimeInt[DType.int64],
@@ -2026,17 +2031,17 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     ]:
         comptime if is_batched_matmul:
             return Coord(
-                RuntimeInt[DType.int64](Int64(scales.dim(0))),
-                RuntimeInt[DType.int64](Int64(scales.dim(1))),
-                RuntimeInt[DType.int64](Int64(scales.dim(2))),
+                RuntimeInt[DType.int64](Int64(Int(scales.dim[0]()))),
+                RuntimeInt[DType.int64](Int64(Int(scales.dim[1]()))),
+                RuntimeInt[DType.int64](Int64(Int(scales.dim[2]()))),
                 Idx[SF_ATOM_M[0]](),
                 Idx[SF_ATOM_M[1] * SF_ATOM_K](),
             )
         else:
             return Coord(
                 RuntimeInt[DType.int64](Int64(1)),
-                RuntimeInt[DType.int64](Int64(scales.dim(0))),
-                RuntimeInt[DType.int64](Int64(scales.dim(1))),
+                RuntimeInt[DType.int64](Int64(Int(scales.dim[0]()))),
+                RuntimeInt[DType.int64](Int64(Int(scales.dim[1]()))),
                 Idx[SF_ATOM_M[0]](),
                 Idx[SF_ATOM_M[1] * SF_ATOM_K](),
             )
@@ -2067,7 +2072,7 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             K=K,
             config=config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-            register_based_epilogue=register_based_epilogue,
+            register_based_epilogue=config.register_based_epilogue,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
         ](
@@ -2084,7 +2089,7 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             K=K,
             config=config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-            register_based_epilogue=register_based_epilogue,
+            register_based_epilogue=config.register_based_epilogue,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
         ](
@@ -2100,9 +2105,7 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
 
 def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     sfa_dtype: DType,
-    sfa_layout: Layout,
     sfb_dtype: DType,
-    sfb_layout: Layout,
     transpose_b: Bool,
     *,
     K: Int,
@@ -2110,15 +2113,14 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
 ](
     c_tensor: TileTensor,
     a_tensor: TileTensor,
     b_tensor: TileTensor,
-    a_scales_tensor: LayoutTensor[sfa_dtype, sfa_layout, ImmutAnyOrigin],
-    b_scales_tensor: LayoutTensor[sfb_dtype, sfb_layout, ImmutAnyOrigin],
+    a_scales_tensor: TileTensor[sfa_dtype, ...],
+    b_scales_tensor: TileTensor[sfb_dtype, ...],
     ctx: DeviceContext,
     alpha: Float32 = 1.0,
 ) raises:
@@ -2127,8 +2129,9 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     Computes C = scale(A) @ scale(B) where A and B are FP8 matrices with
     per-block scaling factors following MXFP8 conventions.
 
-    A, B, and C are passed as TileTensors (2D for non-batched, 3D for batched).
-    Scale factors remain as LayoutTensors (5D non-batched, 6D batched).
+    A, B, C, and scale factors are all passed as TileTensors.
+    A/B/C are 2D (non-batched) or 3D (batched).
+    Scale factors are 5D (non-batched) or 6D (batched).
 
     When config.AB_swapped is True, internally swaps A and B operands
     (along with their scale factors) and transposes the output for better
@@ -2144,14 +2147,11 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
         comptime new_config = config.swap_AB_type()
         _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             sfb_dtype,
-            sfb_layout,
             sfa_dtype,
-            sfa_layout,
             transpose_b,
             K=K,
             config=new_config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-            register_based_epilogue=register_based_epilogue,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
         ](
@@ -2166,14 +2166,11 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     else:
         _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             sfa_dtype,
-            sfa_layout,
             sfb_dtype,
-            sfb_layout,
             transpose_b,
             K=K,
             config=config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-            register_based_epilogue=register_based_epilogue,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
         ](

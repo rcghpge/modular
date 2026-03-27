@@ -18,11 +18,11 @@ from std.testing import TestSuite
 from std.utils import IndexList
 from std.utils.numerics import min_or_neg_inf
 
-comptime _map_fn_type = fn[rank: Int](IndexList[rank]) capturing -> Tuple[
+comptime _map_fn_type = def[rank: Int](IndexList[rank]) capturing -> Tuple[
     IndexList[rank],
     IndexList[rank],
 ]
-comptime load_fn_type = fn[dtype: DType, rank: Int, simd_width: Int](
+comptime load_fn_type = def[dtype: DType, rank: Int, simd_width: Int](
     IndexList[rank]
 ) capturing -> SIMD[dtype, simd_width]
 
@@ -148,12 +148,6 @@ def test_stencil_avg_pool() raises:
         stencil_axis,
         simd_with,
         dtype,
-        type_of(map_fn),
-        type_of(dilation_fn),
-        type_of(load_fn),
-        type_of(avg_pool_compute_init),
-        type_of(avg_pool_compute),
-        type_of(avg_pool_compute_finalize),
     ](
         output_shape,
         input_shape,
@@ -275,12 +269,6 @@ def test_stencil_avg_pool_padded() raises:
         stencil_axis,
         simd_with,
         dtype,
-        type_of(map_fn),
-        type_of(dilation_fn),
-        type_of(load_fn),
-        type_of(avg_pool_compute_init),
-        type_of(avg_pool_compute),
-        type_of(avg_pool_compute_finalize),
     ](
         output_shape,
         input_shape,
@@ -403,12 +391,6 @@ def test_stencil_avg_pool_stride_2() raises:
         stencil_axis,
         simd_with,
         dtype,
-        type_of(map_fn),
-        type_of(dilation_fn),
-        type_of(load_fn),
-        type_of(avg_pool_compute_init),
-        type_of(avg_pool_compute),
-        type_of(avg_pool_compute_finalize),
     ](
         output_shape,
         input_shape,
@@ -533,12 +515,6 @@ def test_stencil_max_pool_dilation_2() raises:
         stencil_axis,
         simd_with,
         dtype,
-        type_of(map_fn),
-        type_of(dilation_fn),
-        type_of(load_fn),
-        type_of(max_pool_compute_init),
-        type_of(max_pool_compute),
-        type_of(max_pool_compute_finalize),
     ](
         output_shape,
         input_shape,
@@ -611,12 +587,6 @@ def test_stencil_size_0() raises:
         stencil_axis,
         1,
         DType.float32,
-        type_of(map_fn),
-        type_of(map_strides),
-        type_of(load_fn),
-        type_of(init_fn),
-        type_of(compute_fn),
-        type_of(finalize_fn),
     ](
         output_shape,
         input_shape,

@@ -222,20 +222,19 @@ struct Span[
 
     @always_inline
     @implicit
-    def __init__[
-        list_origin: Origin[mut=Self.mut],
-        U: Copyable,
-    ](out self: Span[U, list_origin], ref[list_origin] list: List[U]):
+    def __init__(
+        out self, ref[Self.origin] list: List[downcast[Self.T, Copyable]]
+    ):
         """Construct a `Span` from a `List`.
-
-        Parameters:
-            list_origin: The origin of the list.
-            U: The type of the elements in the `List`.
 
         Args:
             list: The list to which the span refers.
         """
-        self._data = {unsafe_from_nullable = list.unsafe_ptr()}
+        self._data = {
+            unsafe_from_nullable = rebind[Self._UnsafePointerType](
+                list.unsafe_ptr()
+            )
+        }
         self._len = list._len
 
     @always_inline
@@ -382,7 +381,7 @@ struct Span[
         return False
 
     def _write_self_to[
-        f: fn(Self.T, mut Some[Writer])
+        f: def(Self.T, mut Some[Writer])
     ](self, mut writer: Some[Writer]):
         var iterator = self.__iter__()
 
@@ -716,7 +715,7 @@ struct Span[
     def apply[
         dtype: DType,
         //,
-        func: fn[w: Int](SIMD[dtype, w]) capturing -> SIMD[dtype, w],
+        func: def[w: Int](SIMD[dtype, w]) capturing -> SIMD[dtype, w],
     ](self: Span[mut=True, Scalar[dtype], _]):
         """Apply the function to the `Span` inplace.
 
@@ -745,9 +744,9 @@ struct Span[
     def apply[
         dtype: DType,
         //,
-        func: fn[w: Int](SIMD[dtype, w]) capturing -> SIMD[dtype, w],
+        func: def[w: Int](SIMD[dtype, w]) capturing -> SIMD[dtype, w],
         *,
-        cond: fn[w: Int](SIMD[dtype, w]) capturing -> SIMD[DType.bool, w],
+        cond: def[w: Int](SIMD[dtype, w]) capturing -> SIMD[DType.bool, w],
     ](self: Span[mut=True, Scalar[dtype], _]):
         """Apply the function to the `Span` inplace where the condition is
         `True`.
@@ -781,7 +780,7 @@ struct Span[
     def count[
         dtype: DType,
         //,
-        F: fn[w: Int](v: SIMD[dtype, w]) unified -> SIMD[DType.bool, w],
+        F: def[w: Int](v: SIMD[dtype, w]) unified -> SIMD[DType.bool, w],
     ](self: Span[Scalar[dtype], _], func: F) -> UInt:
         """Count the amount of times the function returns `True`.
 
@@ -859,7 +858,7 @@ struct Span[
         return Optional(cursor) if value == needle else None
 
     def binary_search_by[
-        func: fn(Self.T) -> Int,
+        func: def(Self.T) -> Int,
     ](self) -> Optional[Int]:
         """Finds an element using binary search with a custom comparison function.
 
@@ -898,6 +897,58 @@ struct Span[
                 print("Found at index: ", index.value())
             else:
                 print("Not found")
+            ```
+        """
+
+        def _cmp(value: Self.T) unified {var} -> Int:
+            return func(value)
+
+        return self.binary_search_by(_cmp)
+
+    def binary_search_by[
+        FuncType: def(Self.T) unified -> Int,
+    ](self, func: FuncType) -> Optional[Int]:
+        """Finds an element using binary search with a custom comparison function.
+
+        The comparison function should return:
+        - A negative value if the element is less than the target
+        - Zero if the element matches the target
+        - A positive value if the element is greater than the target
+
+        Parameters:
+            FuncType: The type of the supplied function.
+
+        Args:
+            func: A function that takes an element and returns an Int representing
+                    the comparison result.
+
+        Returns:
+            Returns the index of the matching element if found, None otherwise.
+
+        Notes:
+            This function assumes that `self` is sorted according to the ordering
+            defined by `func`. If not sorted, the result is unspecified.
+
+        Example:
+            ```mojo
+            def main():
+                var data: List[String] = ["a", "bb", "ccc"]
+                var span = Span(data)
+
+                # Search for "bb"
+                def cmp(elem: String) unified {} -> Int:
+                    if elem < "bb":
+                        return -1
+                    elif elem > "bb":
+                        return 1
+                    else:
+                        return 0
+
+                var index = span.binary_search_by(cmp)
+                if index:
+                    print("Found at index: ", index.value())
+                else:
+                    print("Not found")
             ```
         """
 

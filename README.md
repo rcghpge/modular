@@ -10,6 +10,7 @@
 </div>
 
 ---
+
 🤝 Join our [monthly community meetings][public-com-meet-doc]: the next
 meeting is scheduled for [Monday, March 23rd at 10am PT][mar-com-meeting-time].
 
@@ -186,7 +187,7 @@ questions.
 
 Join us!
 
-| Channel               | Link                                           |
+| Channel               | Link                                            |
 |-----------------------|-------------------------------------------------|
 | 💬 Discord            | [discord.gg/modular][discord]                   |
 | 💬 Forum              | [forum.modular.com][forum]                      |

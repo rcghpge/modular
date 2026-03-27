@@ -16,7 +16,15 @@ from std.sys import simd_width_of, size_of, has_nvidia_gpu_accelerator
 from std.algorithm import elementwise
 from std.gpu.host import DeviceContext, get_gpu_target
 from std.gpu.host.info import B200
-from layout import Coord, Idx, TileTensor, row_major
+from layout import (
+    Coord,
+    Idx,
+    Layout,
+    LayoutTensor,
+    RuntimeLayout,
+    TileTensor,
+    row_major,
+)
 
 from std.utils import Index, IndexList
 
@@ -27,11 +35,16 @@ from .blas import matmul as vendor_matmul
 def matmul[
     transpose_b: Bool = False,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-](c: TileTensor, a: TileTensor, b: TileTensor, ctx: DeviceContext,) raises:
+](
+    c: TileTensor[mut=True, ...],
+    a: TileTensor,
+    b: TileTensor,
+    ctx: DeviceContext,
+) raises:
     """Vendor matmul dispatch for TileTensor operands."""
-    comptime assert c.rank == 2, "c must be of rank 2"
-    comptime assert a.rank == 2, "a must be of rank 2"
-    comptime assert b.rank == 2, "b must be of rank 2"
+    comptime assert c.flat_rank == 2, "c must be of rank 2"
+    comptime assert a.flat_rank == 2, "a must be of rank 2"
+    comptime assert b.flat_rank == 2, "b must be of rank 2"
 
     comptime c_type = c.dtype
 
@@ -59,8 +72,15 @@ def matmul[
             simd_width_of[c_type, target=get_gpu_target()]()
         )
 
-        # Use a LayoutTensor view for the epilogue load operation.
-        var c_lt = c.to_layout_tensor()
+        comptime c_lt_layout = Layout.row_major(
+            c.static_shape[0], c.static_shape[1]
+        )
+        var c_lt = LayoutTensor[c_type, c_lt_layout, MutAnyOrigin](
+            rebind[UnsafePointer[Scalar[c_type], MutAnyOrigin]](c.ptr),
+            RuntimeLayout[c_lt_layout].row_major(
+                IndexList[2](Int(c.dim[0]()), Int(c.dim[1]()))
+            ),
+        )
 
         @parameter
         @__copy_capture(c_lt)

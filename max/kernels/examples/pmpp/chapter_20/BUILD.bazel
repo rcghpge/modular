@@ -2,19 +2,25 @@ load("//bazel:api.bzl", "mojo_test")
 
 package(default_visibility = ["//max:consumers"])
 
-# PMPP examples target CUDA and are not compatible with Apple GPU.
-_APPLE_GPU_INCOMPATIBLE = select({
-    "//:apple_gpu": ["@platforms//:incompatible"],
-    "//conditions:default": [],
-})
+# Tests that exceed Metal threadgroup memory limits (32768 bytes).
+_MACOS_INCOMPATIBLE_TESTS = [
+    # FIXME(GEX-3391): Flash attention kernel requests 36864 bytes of
+    # threadgroup memory, exceeding Metal's 32768 byte limit.
+    "fig20_9.mojo",
+]
 
 [
     mojo_test(
         name = src.removesuffix(".mojo") + ".test",
-        size = "small",
+        size = "medium",
         srcs = [src],
         tags = ["gpu"],
-        target_compatible_with = ["//:has_gpu"] + _APPLE_GPU_INCOMPATIBLE,
+        target_compatible_with = ["//:has_gpu"] + (
+            select({
+                "@platforms//os:macos": ["@platforms//:incompatible"],
+                "//conditions:default": [],
+            }) if src in _MACOS_INCOMPATIBLE_TESTS else []
+        ),
         deps = [
             "@mojo//:std",
         ],

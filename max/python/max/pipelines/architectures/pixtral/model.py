@@ -54,7 +54,7 @@ logger = logging.getLogger("max.pipelines")
 class PixtralInputs(ModelInputs):
     """Holds inputs for the Pixtral model."""
 
-    input_ids: Buffer
+    tokens: Buffer
     input_row_offsets: Buffer
     return_n_logits: Buffer
 
@@ -124,7 +124,7 @@ class PixtralModel(PipelineModelWithKVCache[TextAndVisionContext]):
 
         # Execute language model with text and image embeddings.
         language_outputs = self.language_model.execute(
-            model_inputs.input_ids,
+            model_inputs.tokens,
             model_inputs.input_row_offsets,
             model_inputs.return_n_logits,
             image_embeddings,
@@ -259,7 +259,7 @@ class PixtralModel(PipelineModelWithKVCache[TextAndVisionContext]):
             ).to(self.devices[0])
 
         return PixtralInputs(
-            input_ids=input_ids,
+            tokens=input_ids,
             input_row_offsets=input_row_offsets,
             return_n_logits=Buffer.from_numpy(
                 np.array([return_n_logits], dtype=np.int64)
@@ -284,7 +284,7 @@ class PixtralModel(PipelineModelWithKVCache[TextAndVisionContext]):
 
         # Next-token steps have no vision inputs.
         return PixtralInputs(
-            input_ids=next_tokens,
+            tokens=next_tokens,
             input_row_offsets=next_row_offsets,
             return_n_logits=prev_model_inputs.return_n_logits,
             kv_cache_inputs=prev_model_inputs.kv_cache_inputs,
@@ -505,25 +505,23 @@ class PixtralModel(PipelineModelWithKVCache[TextAndVisionContext]):
         model_config.return_logits = self.return_logits
 
         # Build and compile vision model.
-        timer = CompilationTimer("vision model")
-        vision_graph, vision_weights = self._build_vision_graph(
-            model_config, vision_state_dict, patch_dim
-        )
-        timer.mark_build_complete()
-        vision_model = session.load(
-            vision_graph, weights_registry=vision_weights
-        )
-        timer.done()
+        with CompilationTimer("vision model") as timer:
+            vision_graph, vision_weights = self._build_vision_graph(
+                model_config, vision_state_dict, patch_dim
+            )
+            timer.mark_build_complete()
+            vision_model = session.load(
+                vision_graph, weights_registry=vision_weights
+            )
 
         # Build and compile language model.
-        timer = CompilationTimer("language model")
-        language_graph, language_weights = self._build_language_graph(
-            model_config, language_state_dict
-        )
-        timer.mark_build_complete()
-        language_model = session.load(
-            language_graph, weights_registry=language_weights
-        )
-        timer.done()
+        with CompilationTimer("language model") as timer:
+            language_graph, language_weights = self._build_language_graph(
+                model_config, language_state_dict
+            )
+            timer.mark_build_complete()
+            language_model = session.load(
+                language_graph, weights_registry=language_weights
+            )
 
         return vision_model, language_model

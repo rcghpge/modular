@@ -247,6 +247,28 @@ struct Variadic:
         element_types: The variadic sequence of types to search.
     """
 
+    comptime contains_value[
+        T: Equatable,
+        //,
+        value: T,
+        element_values: Variadic.ValuesOfType[T],
+    ] = _ReduceValueAndIdxToValue[
+        BaseVal=Variadic.values[False],
+        VariadicType=element_values,
+        #  Curry `_ContainsValueReducer` to fit the reducer signature
+        Reducer=_ContainsValueReducer[T=T, value=value, ...],
+    ][
+        0
+    ]
+    """
+    Check if a value is contained in a variadic sequence of values.
+
+    Parameters:
+        T: The type of the values. Must be `Equatable`.
+        value: The value to search for.
+        element_values: The variadic sequence of values to search.
+    """
+
     comptime map_types_to_types[
         From: type_of(AnyType),
         To: type_of(AnyType),
@@ -508,8 +530,10 @@ struct _VariadicParamListIter[type: Copyable, //, *values: type](
         return (len, {len})
 
 
-struct VariadicParamList[type: Copyable, //, *values: type](
-    Iterable, Sized, TrivialRegisterPassable, Writable
+# TODO: Make this conform to Iterable when IteratorType can be conditionally
+# defined only when 'type' is Copyable.
+struct VariadicParamList[type: AnyType, //, *values: type](
+    Sized, TrivialRegisterPassable, Writable
 ):
     """A utility class to access homogeneous variadic parameters.
 
@@ -555,16 +579,6 @@ struct VariadicParamList[type: Copyable, //, *values: type](
         ]
     )
     """The number of elements in the list."""
-
-    comptime IteratorType[
-        iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
-    ]: Iterator = _VariadicParamListIter[*Self.values]
-    """The iterator type for this variadic list.
-
-    Parameters:
-        iterable_mut: Whether the iterable is mutable.
-        iterable_origin: The origin of the iterable.
-    """
 
     @always_inline
     def __init__(out self):
@@ -676,8 +690,16 @@ struct VariadicParamList[type: Copyable, //, *values: type](
             TypeNames[Self.type](),
         ).fields[FieldsFn=write_fields]()
 
+    # We can only support iteration when the elements are Copyable, because
+    # iterators currently need to return the elements by value.
     @always_inline
-    def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
+    def __iter__(
+        ref self,
+    ) -> _VariadicParamListIter[
+        *rebind[Variadic.ValuesOfType[downcast[Self.type, Copyable]]](
+            Self.values
+        )
+    ] where conforms_to(Self.type, Copyable):
         """Iterate over the list.
 
         Returns:
@@ -819,7 +841,7 @@ struct VariadicList[
                 ]().destroy_pointee()
 
     def consume_elements[
-        elt_handler: fn(idx: Int, var elt: Self.element_type) capturing
+        elt_handler: def(idx: Int, var elt: Self.element_type) capturing
     ](deinit self):
         """Consume the variadic list by transferring ownership of each element
         into the provided closure one at a time.  This is only valid on 'owned'
@@ -1093,7 +1115,7 @@ struct VariadicPack[
                 ).mut_cast[True]().destroy_pointee()
 
     def consume_elements[
-        elt_handler: fn[idx: Int](var elt: Self.element_types[idx]) capturing
+        elt_handler: def[idx: Int](var elt: Self.element_types[idx]) capturing
     ](deinit self):
         """Consume the variadic pack by transferring ownership of each element
         into the provided closure one at a time.  This is only valid on 'owned'
@@ -1461,6 +1483,38 @@ Parameters:
 """
 
 
+comptime _ReduceValueAndIdxToValue[
+    To: AnyType,
+    From: AnyType,
+    //,
+    *,
+    BaseVal: Variadic.ValuesOfType[To],
+    VariadicType: Variadic.ValuesOfType[From],
+    Reducer: _ReduceValueIdxGeneratorTypeGenerator[
+        Variadic.ValuesOfType[To], From
+    ],
+] = __mlir_attr[
+    `#kgen.variadic.reduce<`,
+    BaseVal,
+    `,`,
+    VariadicType,
+    `,`,
+    _IndexToIntValueWrap[From, Variadic.ValuesOfType[To], Reducer, ...],
+    `> : `,
+    type_of(BaseVal),
+]
+"""Construct a new variadic of values using a reducer over an input variadic of
+values.
+
+Parameters:
+    To: The type of the output variadic values.
+    From: The type of the input variadic values.
+    BaseVal: The initial value to reduce on.
+    VariadicType: The variadic of values to be reduced.
+    Reducer: A `[BaseVal: Variadic.ValuesOfType[To], Ts: Variadic.ValuesOfType[From], idx: Int] -> Variadic.ValuesOfType[To]` that does the reduction.
+"""
+
+
 comptime _ReduceVariadicAndIdxToValue[
     To: AnyType,
     From: type_of(AnyType),
@@ -1597,6 +1651,14 @@ comptime _ContainsReducer[
     From: Variadic.TypesOfTrait[Trait],
     idx: Int,
 ] = Variadic.values[_type_is_eq_parse_time[From[idx], Type]() or Prev[0]]
+
+comptime _ContainsValueReducer[
+    T: Equatable,
+    value: T,
+    Prev: Variadic.ValuesOfType[Bool],
+    From: Variadic.ValuesOfType[T],
+    idx: Int,
+] = Variadic.values[From[idx] == value or Prev[0]]
 
 comptime _MapTypeToTypeReducer[
     FromTrait: type_of(AnyType),

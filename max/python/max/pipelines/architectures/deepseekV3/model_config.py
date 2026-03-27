@@ -82,6 +82,7 @@ class DeepseekV3Config(ArchConfigWithKVCache):
     attention_dropout: float = 0.0
 
     norm_dtype: DType = DType.bfloat16
+    gate_dtype: DType | None = None
     correction_bias_dtype: DType | None = None
     max_batch_context_length: int = 131072
     quant_config: QuantConfig | None = None
@@ -93,6 +94,9 @@ class DeepseekV3Config(ArchConfigWithKVCache):
 
     return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE
     """Whether to return hidden states and which type (none, last, all, last_normalized, all_normalized)."""
+
+    eagle_aux_hidden_state_layer_ids: list[int] | None = None
+    """Optional explicit hidden-state capture layer ids for EAGLE3."""
 
     def __post_init__(self) -> None:
         if self.hidden_act != "silu":

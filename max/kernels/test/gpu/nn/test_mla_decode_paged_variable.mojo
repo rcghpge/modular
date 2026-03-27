@@ -36,10 +36,11 @@ from kv_cache.types import (
     PagedKVCache,
     PagedKVCacheCollection,
 )
-from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
+from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE, lt_to_tt
 from std.memory import alloc
 from nn.mha import mha_gpu_naive
 from nn.mha_mask import NullMask
+from nn.mha_utils import MHAConfig
 from nn.mha_operand import KVCacheMHAOperand
 from nn.mla import flare_mla_decoding
 from nn.mla_decode_sm100_dispatch import MLADispatchScalarArgs
@@ -336,15 +337,19 @@ def run_test_paged_variable[
 
     print("  Launching MLA decode kernel...")
 
-    flare_mla_decoding[rank=3, ragged=True](
-        out_lt,
-        q_lt,
+    flare_mla_decoding[
+        rank=3,
+        config=MHAConfig[q_type](UInt(num_heads), UInt(DEPTH)),
+        ragged=True,
+    ](
+        lt_to_tt(out_lt),
+        lt_to_tt(q_lt),
         kv_cache,
         NullMask(),
-        row_offsets_lt,
+        lt_to_tt(row_offsets_lt),
         scale,
         ctx,
-        scalar_args_buf_lt,
+        lt_to_tt(scalar_args_buf_lt),
         q_max_seq_len=q_max_seq_len,
     )
 
@@ -790,15 +795,19 @@ def run_test_paged_variable_multiq[
 
     print("  Launching MLA decode kernel...")
 
-    flare_mla_decoding[rank=3, ragged=True](
-        out_lt,
-        q_lt,
+    flare_mla_decoding[
+        rank=3,
+        config=MHAConfig[q_type](UInt(num_heads), UInt(DEPTH)),
+        ragged=True,
+    ](
+        lt_to_tt(out_lt),
+        lt_to_tt(q_lt),
         kv_cache,
         NullMask(),
-        row_offsets_lt,
+        lt_to_tt(row_offsets_lt),
         scale,
         ctx,
-        scalar_args_buf_lt,
+        lt_to_tt(scalar_args_buf_lt),
         q_max_seq_len=q_max_seq_len,
     )
 
@@ -1284,15 +1293,19 @@ def run_test_paged_variable_ragged_q[
 
     print("  Launching MLA decode kernel...")
 
-    flare_mla_decoding[rank=3, ragged=True](
-        out_lt,
-        q_lt,
+    flare_mla_decoding[
+        rank=3,
+        config=MHAConfig[q_type](UInt(num_heads), UInt(DEPTH)),
+        ragged=True,
+    ](
+        lt_to_tt(out_lt),
+        lt_to_tt(q_lt),
         kv_cache,
         NullMask(),
-        row_offsets_lt,
+        lt_to_tt(row_offsets_lt),
         scale,
         ctx,
-        scalar_args_buf_lt,
+        lt_to_tt(scalar_args_buf_lt),
         q_max_seq_len=q_max_seq_len,
     )
 
@@ -1731,15 +1744,19 @@ def run_bench_paged_variable[
         scalar_args_buf_lt,
     )
     def kernel_launch(ctx: DeviceContext) raises:
-        flare_mla_decoding[rank=3, ragged=True](
-            out_lt,
-            q_lt,
+        flare_mla_decoding[
+            rank=3,
+            config=MHAConfig[q_type](UInt(num_heads), UInt(DEPTH)),
+            ragged=True,
+        ](
+            lt_to_tt(out_lt),
+            lt_to_tt(q_lt),
             kv_cache,
             NullMask(),
-            row_offsets_lt,
+            lt_to_tt(row_offsets_lt),
             scale,
             ctx,
-            scalar_args_buf_lt,
+            lt_to_tt(scalar_args_buf_lt),
             q_max_seq_len=q_max_seq_len,
         )
 
@@ -2055,15 +2072,19 @@ def run_test_paged_variable_native_fp8[
     var scalar_args_buf_lt = mla_args.gpu_layout_tensor()
     print("  Launching native FP8 MLA decode kernel...")
 
-    flare_mla_decoding[rank=3, ragged=True](
-        out_lt,
-        q_lt,
+    flare_mla_decoding[
+        rank=3,
+        config=MHAConfig[q_type](UInt(num_heads), UInt(DEPTH)),
+        ragged=True,
+    ](
+        lt_to_tt(out_lt),
+        lt_to_tt(q_lt),
         kv_cache,
         NullMask(),
-        row_offsets_lt,
+        lt_to_tt(row_offsets_lt),
         scale,
         ctx,
-        scalar_args_buf_lt,
+        lt_to_tt(scalar_args_buf_lt),
         q_max_seq_len=q_max_seq_len,
     )
 
@@ -2478,15 +2499,19 @@ def run_bench_paged_variable_native_fp8[
     @always_inline
     @__copy_capture(out_lt, q_lt, kv_cache, row_offsets_lt, scalar_args_buf_lt)
     def kernel_launch(ctx: DeviceContext) raises:
-        flare_mla_decoding[rank=3, ragged=True](
-            out_lt,
-            q_lt,
+        flare_mla_decoding[
+            rank=3,
+            config=MHAConfig[q_type](UInt(num_heads), UInt(DEPTH)),
+            ragged=True,
+        ](
+            lt_to_tt(out_lt),
+            lt_to_tt(q_lt),
             kv_cache,
             NullMask(),
-            row_offsets_lt,
+            lt_to_tt(row_offsets_lt),
             scale,
             ctx,
-            scalar_args_buf_lt,
+            lt_to_tt(scalar_args_buf_lt),
             q_max_seq_len=q_max_seq_len,
         )
 

@@ -24,7 +24,7 @@ from std.gpu.primitives.cluster import (
 from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.host.info import B200, _is_sm10x_gpu
-from std.gpu import block_id_in_cluster, lane_id, thread_idx
+from std.gpu import block_id_in_cluster, lane_id, thread_idx_uint as thread_idx
 from std.gpu import warp_id as get_warp_id
 from std.gpu.memory import (
     AddressSpace,
@@ -58,6 +58,7 @@ from layout import (
     LayoutTensor,
     RuntimeLayout,
     RuntimeTuple,
+    TileTensor,
     UNKNOWN_VALUE,
     lt_to_tt,
 )
@@ -85,6 +86,11 @@ from std.utils.static_tuple import StaticTuple
 from linalg.arch.sm100 import MmaOpSM100_BlockScaled_SS
 from linalg.utils import elementwise_compute_lambda_type
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
+from structured_kernels.tile_types import (
+    SMemTile,
+    internal_sf_k_major,
+    sf_tile_dim0,
+)
 from .grouped_matmul_tile_scheduler import TileScheduler
 from linalg.matmul.gpu.profiler import (
     MatmulProfileWarp,
@@ -533,7 +539,10 @@ def copy_accum_to_gmem[
                         var local_j = cmem_crd[1].get_int()
                         var global_i = coord_m + local_i
                         var global_j = coord_n + local_j
-                        if global_i < group_end_idx:
+                        if (
+                            global_i < group_end_idx
+                            and global_j + UInt32(simd_size) <= N
+                        ):
                             # src_ptr = c_smem_split.ptr + swizzle(linear_idx)
                             src_ptr = c_smem_split.ptr + (
                                 linear_idx if size_of[c_type]()
@@ -962,10 +971,12 @@ def load_AB[
             var group_scale_offset = group_scale_offset_vec[0]
             var a_m: Int
             var b_n: Int
+            var sf_groups_per_expert = ceildiv(
+                scheduler.static_MN, SF_MN_GROUP_SIZE
+            )
             if config.AB_swapped:
-                a_m = ufloordiv(
-                    Int(work_tile_coord[0]) + expert_offset,
-                    SF_MN_GROUP_SIZE,
+                a_m = Int(expert_id) * sf_groups_per_expert + ufloordiv(
+                    Int(work_tile_coord[0]), SF_MN_GROUP_SIZE
                 )
                 b_n = ufloordiv(
                     Int(work_tile_coord[1]), SF_MN_GROUP_SIZE
@@ -974,9 +985,8 @@ def load_AB[
                 a_m = ufloordiv(
                     Int(work_tile_coord[0]), SF_MN_GROUP_SIZE
                 ) + Int(group_scale_offset)
-                b_n = ufloordiv(
-                    Int(work_tile_coord[1]) + expert_offset,
-                    SF_MN_GROUP_SIZE,
+                b_n = Int(expert_id) * sf_groups_per_expert + ufloordiv(
+                    Int(work_tile_coord[1]), SF_MN_GROUP_SIZE
                 )
 
             sfa_tma_op.async_copy_4d[cta_group](
@@ -1079,6 +1089,11 @@ def consumer_main_loop[
     comptime sfa_smem_tile_size = sfa_smem_layout.size()
     comptime sfb_smem_tile_size = sfb_smem_layout.size()
 
+    comptime sfa_d0 = sf_tile_dim0[BM]
+    comptime sfa_d1 = sfa_smem_tile_size // sfa_d0
+    comptime sfb_d0 = sf_tile_dim0[MMA_N]
+    comptime sfb_d1 = sfb_smem_tile_size // sfb_d0
+
     if elect_one_sync():
         for j in range(UInt32(k_group_size)):
             var offset = Int(stage * UInt32(k_group_size) + j)
@@ -1096,20 +1111,18 @@ def consumer_main_loop[
                 address_space=AddressSpace.SHARED,
                 alignment=128,
             ](b_smem_base + offset * b_smem_tile_size)
-            var sfa_smem_tile = LayoutTensor[
-                sfa_dtype,
-                sfa_smem_layout,
-                MutAnyOrigin,
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ](sfa_smem_base + offset * sfa_smem_tile_size)
-            var sfb_smem_tile = LayoutTensor[
-                sfb_dtype,
-                sfb_smem_layout,
-                MutAnyOrigin,
-                address_space=AddressSpace.SHARED,
-                alignment=128,
-            ](sfb_smem_base + offset * sfb_smem_tile_size)
+            var sfa_smem_tile = SMemTile[
+                sfa_dtype, internal_sf_k_major[sfa_d0, sfa_d1]
+            ](
+                sfa_smem_base + offset * sfa_smem_tile_size,
+                internal_sf_k_major[sfa_d0, sfa_d1],
+            )
+            var sfb_smem_tile = SMemTile[
+                sfb_dtype, internal_sf_k_major[sfb_d0, sfb_d1]
+            ](
+                sfb_smem_base + offset * sfb_smem_tile_size,
+                internal_sf_k_major[sfb_d0, sfb_d1],
+            )
 
             var sfa_tmem_offset = sfa_tmem + (
                 stage * UInt32(k_group_size) + j
@@ -1118,9 +1131,18 @@ def consumer_main_loop[
                 stage * UInt32(k_group_size) + j
             ) * UInt32(SFB_NUM_COLS)
 
+            # When MMA_N doesn't fill a full SF group (128), adjacent
+            # N-tiles share one group in TMEM. Odd tiles offset by 2
+            # columns to read their half.
+            var sfb_tmem_adj: UInt32
+            comptime if MMA_N in (64, 192):
+                sfb_tmem_adj = UInt32(work_tile_coord[1] % 2) * 2
+            else:
+                sfb_tmem_adj = UInt32(0)
+
             mma_op.mma(
-                a_smem_tile,
-                b_smem_tile,
+                lt_to_tt(a_smem_tile),
+                lt_to_tt(b_smem_tile),
                 sfa_smem_tile,
                 sfb_smem_tile,
                 tmem_addr,
@@ -1129,50 +1151,47 @@ def consumer_main_loop[
                 init_c=(
                     (iter_idx + j) == k_start
                 ),  # Initialize C on first iteration
-                work_tile_coord=work_tile_coord,
+                sfb_tmem_adj=sfb_tmem_adj,
             )
         mma_op.commit(load_mma_pipeline.consumer_mbar(stage))
 
 
 def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
-    c_type: DType,
-    c_layout: Layout,
-    a_type: DType,
-    a_layout: Layout,
-    group_offsets_layout: Layout,
-    group_scale_offsets_layout: Layout,
-    b_type: DType,
-    b_layout: Layout,
-    expert_ids_layout: Layout,
-    sfa_dtype: DType,
-    sfa_layout: Layout,
-    sfb_dtype: DType,
-    sfb_layout: Layout,
-    expert_scale_layout: Layout,
     transpose_b: Bool,
     *,
-    config: BlockScaledMatmulConfig[
-        a_type, b_type, c_type, sfa_dtype, sfb_dtype, transpose_b
-    ],
+    config: BlockScaledMatmulConfig[_, _, _, _, _, transpose_b],
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
 ](
-    c_device: LayoutTensor[c_type, c_layout, ...],
-    a_device: LayoutTensor[a_type, a_layout, ...],
-    group_offsets: LayoutTensor[DType.uint32, group_offsets_layout, ...],
-    group_scale_offsets: LayoutTensor[
-        DType.uint32, group_scale_offsets_layout, ...
+    c_device: TileTensor[
+        mut=True, config.c_type, address_space=AddressSpace.GENERIC, ...
     ],
-    b_device: LayoutTensor[b_type, b_layout, ...],
-    expert_ids: LayoutTensor[DType.int32, expert_ids_layout, ...],
-    a_scales: LayoutTensor[sfa_dtype, sfa_layout, MutAnyOrigin],
-    b_scales: LayoutTensor[sfb_dtype, sfb_layout, MutAnyOrigin],
-    expert_scales: LayoutTensor[
-        DType.float32, expert_scale_layout, MutAnyOrigin
+    a_device: TileTensor[
+        mut=False, config.a_type, address_space=AddressSpace.GENERIC, ...
+    ],
+    group_offsets: TileTensor[
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+    ],
+    group_scale_offsets: TileTensor[
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+    ],
+    b_device: TileTensor[
+        mut=False, config.b_type, address_space=AddressSpace.GENERIC, ...
+    ],
+    expert_ids: TileTensor[
+        mut=False, DType.int32, address_space=AddressSpace.GENERIC, ...
+    ],
+    a_scales: TileTensor[
+        mut=False, config.sfa_dtype, address_space=AddressSpace.GENERIC, ...
+    ],
+    b_scales: TileTensor[
+        mut=False, config.sfb_dtype, address_space=AddressSpace.GENERIC, ...
+    ],
+    expert_scales: TileTensor[
+        mut=False, DType.float32, address_space=AddressSpace.GENERIC, ...
     ],
     num_active_experts: Int,
     ctx: DeviceContext,
@@ -1182,9 +1201,89 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     When config.AB_swapped is True, internally swaps A and B operands
     (along with their scale factors) and transposes the output for better
     performance when M is small.
-    """
 
-    # Reshape B weights (3D → 2D: merge expert dim) and B scales (6D → 5D)
+    Accepts TileTensors and converts to LayoutTensors internally.
+    """
+    comptime c_type = config.c_type
+    comptime a_type = config.a_type
+    comptime b_type = config.b_type
+    comptime sfa_dtype = config.sfa_dtype
+    comptime sfb_dtype = config.sfb_dtype
+
+    # Convert TileTensors to LayoutTensors at the boundary.
+    # Mutable tensors use to_layout_tensor() directly.
+    var c_lt = c_device.to_layout_tensor()
+    var a_lt = a_device.to_layout_tensor()
+    var b_lt = b_device.to_layout_tensor()
+
+    # The kernel expects all LayoutTensor args with MutAnyOrigin, so rebind
+    # immutable TileTensor-derived pointers to MutAnyOrigin.
+    comptime _group_offsets_lt_type = type_of(group_offsets.to_layout_tensor())
+    var group_offsets_lt = LayoutTensor[
+        DType.uint32, _group_offsets_lt_type.layout, MutAnyOrigin
+    ](
+        rebind[UnsafePointer[Scalar[DType.uint32], MutAnyOrigin]](
+            group_offsets.ptr
+        ),
+        group_offsets.to_layout_tensor().runtime_layout,
+    )
+    comptime _group_scale_offsets_lt_type = type_of(
+        group_scale_offsets.to_layout_tensor()
+    )
+    var group_scale_offsets_lt = LayoutTensor[
+        DType.uint32, _group_scale_offsets_lt_type.layout, MutAnyOrigin
+    ](
+        rebind[UnsafePointer[Scalar[DType.uint32], MutAnyOrigin]](
+            group_scale_offsets.ptr
+        ),
+        group_scale_offsets.to_layout_tensor().runtime_layout,
+    )
+    comptime _expert_ids_lt_type = type_of(expert_ids.to_layout_tensor())
+    var expert_ids_lt = LayoutTensor[
+        DType.int32, _expert_ids_lt_type.layout, MutAnyOrigin
+    ](
+        rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](
+            expert_ids.ptr
+        ),
+        expert_ids.to_layout_tensor().runtime_layout,
+    )
+
+    # Scales and expert_scales also need MutAnyOrigin rebinding.
+    comptime _a_scales_lt_type = type_of(a_scales.to_layout_tensor())
+    var a_scales_lt = LayoutTensor[
+        sfa_dtype, _a_scales_lt_type.layout, MutAnyOrigin
+    ](
+        rebind[UnsafePointer[Scalar[sfa_dtype], MutAnyOrigin]](a_scales.ptr),
+        a_scales.to_layout_tensor().runtime_layout,
+    )
+    comptime _b_scales_lt_type = type_of(b_scales.to_layout_tensor())
+    var b_scales_lt = LayoutTensor[
+        sfb_dtype, _b_scales_lt_type.layout, MutAnyOrigin
+    ](
+        rebind[UnsafePointer[Scalar[sfb_dtype], MutAnyOrigin]](b_scales.ptr),
+        b_scales.to_layout_tensor().runtime_layout,
+    )
+    comptime _expert_scales_lt_type = type_of(expert_scales.to_layout_tensor())
+    var expert_scales_lt = LayoutTensor[
+        DType.float32, _expert_scales_lt_type.layout, MutAnyOrigin
+    ](
+        rebind[UnsafePointer[Scalar[DType.float32], MutAnyOrigin]](
+            expert_scales.ptr
+        ),
+        expert_scales.to_layout_tensor().runtime_layout,
+    )
+
+    comptime c_layout = type_of(c_lt).layout
+    comptime a_layout = type_of(a_lt).layout
+    comptime b_layout = type_of(b_lt).layout
+    comptime group_offsets_layout = type_of(group_offsets_lt).layout
+    comptime group_scale_offsets_layout = type_of(group_scale_offsets_lt).layout
+    comptime expert_ids_layout = type_of(expert_ids_lt).layout
+    comptime sfa_layout = type_of(a_scales_lt).layout
+    comptime sfb_layout = type_of(b_scales_lt).layout
+    comptime expert_scale_layout = type_of(expert_scales_lt).layout
+
+    # Reshape B weights (3D -> 2D: merge expert dim) and B scales (6D -> 5D)
     # so the private function always receives uniform 2D data / 5D scales.
     comptime num_experts = b_layout.shape[0].value()
     comptime flat_b_layout = Layout.row_major(
@@ -1194,9 +1293,8 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     var flat_b_device = LayoutTensor[
         b_type,
         flat_b_layout,
-        b_device.origin,
-        address_space=b_device.address_space,
-    ](b_device.ptr)
+        address_space=AddressSpace.GENERIC,
+    ](b_device.ptr.as_any_origin())
 
     comptime assert (
         sfb_layout.shape[0].value() == num_experts
@@ -1209,7 +1307,7 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
         sfb_layout.shape[5].value(),
     )
     var flat_b_scales = LayoutTensor[sfb_dtype, flat_sfb_layout, MutAnyOrigin](
-        b_scales.ptr
+        rebind[UnsafePointer[Scalar[sfb_dtype], MutAnyOrigin]](b_scales.ptr)
     )
 
     comptime if config.AB_swapped:
@@ -1237,19 +1335,18 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             transpose_b,
             config=new_config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-            register_based_epilogue=register_based_epilogue,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
         ](
-            c_device,
+            c_lt,
             flat_b_device,
-            group_offsets,
-            group_scale_offsets,
-            a_device,
-            expert_ids,
+            group_offsets_lt,
+            group_scale_offsets_lt,
+            a_lt,
+            expert_ids_lt,
             flat_b_scales,
-            a_scales,
-            expert_scales,
+            a_scales_lt,
+            expert_scales_lt,
             num_active_experts,
             ctx,
         )
@@ -1272,19 +1369,18 @@ def blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             transpose_b,
             config=config,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-            register_based_epilogue=register_based_epilogue,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
         ](
-            c_device,
-            a_device,
-            group_offsets,
-            group_scale_offsets,
+            c_lt,
+            a_lt,
+            group_offsets_lt,
+            group_scale_offsets_lt,
             flat_b_device,
-            expert_ids,
-            a_scales,
+            expert_ids_lt,
+            a_scales_lt,
             flat_b_scales,
-            expert_scales,
+            expert_scales_lt,
             num_active_experts,
             ctx,
         )
@@ -1313,7 +1409,6 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
 ](
@@ -1348,6 +1443,8 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
         "Only support MXFP8_SF_DTYPE (F8-UE8M0) or MXFP4_SF_DTYPE (F8-E4M3) for"
         " scales"
     )
+
+    comptime register_based_epilogue = config.register_based_epilogue
 
     comptime assert a_scales.rank == 5, "a_scales must be 5D tensors"
     comptime assert b_scales.rank == 5, "b_scales must be 5D tensors"
@@ -1559,7 +1656,6 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             Int32(config.cluster_shape[2]),
         ),
         elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
-        register_based_epilogue=register_based_epilogue,
         pdl_level=pdl_level,
         max_profiled_tiles_per_SM=max_profiled_tiles,
     ]
@@ -1666,7 +1762,6 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
-    register_based_epilogue: Bool = True,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: UInt32 = 0,
 ](
@@ -1697,6 +1792,7 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     mnk: StaticTuple[UInt32, 3],
     workspace: Span[UInt64, MutAnyOrigin],
 ):
+    comptime register_based_epilogue = config.register_based_epilogue
     comptime assert c_type != DType.float32, "c_type cannot be float32"
     comptime assert transpose_b, "only support k-major B"
 
@@ -2088,13 +2184,13 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
                         expert_ids[Int(scheduler.current_group_idx)]
                     )
 
-            comptime if pdl_level > PDLLevel.OFF:
-                launch_dependent_grids()
-
             tcgen05_release_allocation_lock[Int32(config.cta_group)]()
 
             # wait for epilogue to finish
             tmem_dealloc_mbar[].wait()
+
+            comptime if pdl_level > PDLLevel.OFF:
+                launch_dependent_grids()
 
             tcgen05_dealloc[Int32(config.cta_group)](tmem_addr, max_tmem_cols)
 
@@ -2169,36 +2265,33 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
 
 def grouped_matmul_dynamic_scaled_nvfp4[
     c_type: DType,
-    c_layout: Layout,
     a_type: DType,
-    a_layout: Layout,
     b_type: DType,
-    b_layout: Layout,
     scales_type: DType,
-    a_scales_layout: Layout,
-    b_scales_layout: Layout,
-    group_offsets_layout: Layout,
-    group_scale_offsets_layout: Layout,
-    expert_ids_layout: Layout,
-    expert_scales_layout: Layout,
     //,
     transpose_b: Bool = True,
     target: StaticString = "cpu",
 ](
-    c: LayoutTensor[c_type, c_layout, MutAnyOrigin],
-    a: LayoutTensor[a_type, a_layout, MutAnyOrigin],
-    b: LayoutTensor[b_type, b_layout, MutAnyOrigin],
-    a_scales: LayoutTensor[scales_type, a_scales_layout, MutAnyOrigin],
-    b_scales: LayoutTensor[scales_type, b_scales_layout, MutAnyOrigin],
-    group_offsets: LayoutTensor[
-        DType.uint32, group_offsets_layout, MutAnyOrigin
+    c: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
+    a_scales: TileTensor[
+        mut=False, scales_type, address_space=AddressSpace.GENERIC, ...
     ],
-    group_scale_offsets: LayoutTensor[
-        DType.uint32, group_scale_offsets_layout, MutAnyOrigin
+    b_scales: TileTensor[
+        mut=False, scales_type, address_space=AddressSpace.GENERIC, ...
     ],
-    expert_ids: LayoutTensor[DType.int32, expert_ids_layout, MutAnyOrigin],
-    expert_scales: LayoutTensor[
-        DType.float32, expert_scales_layout, MutAnyOrigin
+    group_offsets: TileTensor[
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+    ],
+    group_scale_offsets: TileTensor[
+        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+    ],
+    expert_ids: TileTensor[
+        mut=False, DType.int32, address_space=AddressSpace.GENERIC, ...
+    ],
+    expert_scales: TileTensor[
+        mut=False, DType.float32, address_space=AddressSpace.GENERIC, ...
     ],
     num_active_experts: Int,
     ctx: DeviceContext,
@@ -2211,21 +2304,14 @@ def grouped_matmul_dynamic_scaled_nvfp4[
     Each group of 16 elements along the K dimension shares a single scale
     factor (1D block scaling).
 
+    Accepts TileTensors and converts to LayoutTensors internally.
+
     Parameters:
         c_type: The data type of the output tensor C.
-        c_layout: The memory layout of the output tensor C.
         a_type: The data type of input tensor A. Constraints: Must be `uint8`.
-        a_layout: The memory layout of input tensor A.
         b_type: The data type of input tensor B. Constraints: Must be `uint8`.
-        b_layout: The memory layout of input tensor B.
         scales_type: The data type of scale factors.
             Constraints: Must be `float8_e4m3fn`.
-        a_scales_layout: The memory layout of A's scale factors.
-        b_scales_layout: The memory layout of B's scale factors.
-        group_offsets_layout: The memory layout of the token offset indices.
-        group_scale_offsets_layout: The memory layout of the scale offset indices.
-        expert_ids_layout: The memory layout of the expert ID tensor.
-        expert_scales_layout: The memory layout of the per-expert scale tensor.
         transpose_b: Whether B is transposed. Constraints: Must be `True`.
         target: The target device.
 
@@ -2282,16 +2368,6 @@ def grouped_matmul_dynamic_scaled_nvfp4[
         Trace[TraceLevel.OP]._get_detail_str[description_fn](),
         task_id=get_safe_task_id(ctx),
     ):
-        var c_tensor = c
-        var a_tensor = a
-        var b_tensor = b
-        var group_offsets_tensor = group_offsets
-        var group_scale_offsets_tensor = group_scale_offsets
-        var expert_ids_tensor = expert_ids
-        var a_scales_tensor = a_scales
-        var b_scales_tensor = b_scales
-        var expert_scales_tensor = expert_scales
-
         comptime MMA_K = 32
         comptime bm = 128
         comptime bn = 128
@@ -2314,15 +2390,15 @@ def grouped_matmul_dynamic_scaled_nvfp4[
             transpose_b=transpose_b,
             config=matmul_config,
         ](
-            c_tensor,
-            a_tensor,
-            group_offsets_tensor,
-            group_scale_offsets_tensor,
-            b_tensor,
-            expert_ids_tensor,
-            a_scales_tensor,
-            b_scales_tensor,
-            expert_scales_tensor,
+            c,
+            a,
+            group_offsets,
+            group_scale_offsets,
+            b,
+            expert_ids,
+            a_scales,
+            b_scales,
+            expert_scales,
             num_active_experts,
             ctx,
         )

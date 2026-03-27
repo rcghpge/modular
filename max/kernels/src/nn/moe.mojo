@@ -28,7 +28,7 @@ from std.gpu import (
     block_idx,
     grid_dim,
     lane_id,
-    thread_idx,
+    thread_idx_uint as thread_idx,
 )
 from std.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
 from std.gpu.host.info import is_gpu
@@ -864,7 +864,7 @@ def group_limited_router_kernel[
     norm_weights: Bool,
     num_threads: Int,
     scores_input_fn: OptionalReg[
-        fn[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
+        def[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
     ] = None,
 ](
     expert_indices: TileTensor[
@@ -1049,7 +1049,7 @@ def router_group_limited[
     norm_weights: Bool,
     target: StaticString,
     scores_input_fn: OptionalReg[
-        fn[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
+        def[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
     ] = None,
 ](
     expert_indices: TileTensor[mut=True, DType.int32, ...],

@@ -36,11 +36,7 @@ from max.graph import (
 from max.graph.ops import assert_same_device
 from max.graph.ops.quantized import repack_gguf_quantized_weights
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
-from max.nn.quant_config import (
-    InputScaleSpec,
-    QuantConfig,
-    WeightScaleSpec,
-)
+from max.nn.quant_config import InputScaleSpec, QuantConfig, WeightScaleSpec
 
 from .attention.mask_config import AttentionMaskVariant, MHAMaskVariant
 from .kv_cache import (
@@ -1932,6 +1928,91 @@ def flash_attention_gpu(
     )[0].tensor
 
 
+def masked_flash_attention_gpu(
+    q: TensorValue,
+    k: TensorValue,
+    v: TensorValue,
+    mask: TensorValue,
+    scale: float,
+) -> TensorValue:
+    """Computes flash attention using a materialized additive mask.
+
+    Args:
+        q: Query tensor of shape [batch, q_seq_len, num_heads, head_dim]
+        k: Key tensor of shape [batch, kv_seq_len, num_heads, head_dim]
+        v: Value tensor of shape [batch, kv_seq_len, num_heads, head_dim]
+        mask: Additive mask tensor of shape [batch, q_seq_len, kv_seq_len].
+            The mask is broadcast across attention heads.
+        scale: Scaling factor for attention scores.
+
+    Returns:
+        Output tensor of shape [batch, q_seq_len, num_heads, head_dim]
+    """
+    if q.dtype != k.dtype or q.dtype != v.dtype:
+        raise ValueError(
+            "q, k, v must have matching dtypes. Got "
+            f"q.dtype={q.dtype}, k.dtype={k.dtype}, v.dtype={v.dtype}"
+        )
+
+    expected_rank = 4
+    for name, tensor in [("q", q), ("k", k), ("v", v)]:
+        if tensor.rank != expected_rank:
+            raise ValueError(
+                f"{name} must be rank {expected_rank}, got {tensor.rank}"
+            )
+
+    if mask.rank != 3:
+        raise ValueError(f"mask must be rank 3, got {mask.rank}")
+
+    if q.shape[0] != k.shape[0] or q.shape[0] != v.shape[0]:
+        raise ValueError(
+            "q, k, v batch sizes must match. Got "
+            f"q: {q.shape[0]}, k: {k.shape[0]}, v: {v.shape[0]}"
+        )
+
+    if mask.shape[0] != q.shape[0]:
+        raise ValueError(
+            f"mask batch size ({mask.shape[0]}) must match q batch size "
+            f"({q.shape[0]})"
+        )
+
+    if mask.shape[1] != q.shape[1]:
+        raise ValueError(
+            f"mask query length ({mask.shape[1]}) must match q sequence length "
+            f"({q.shape[1]})"
+        )
+
+    if mask.shape[2] != k.shape[1]:
+        raise ValueError(
+            f"mask key length ({mask.shape[2]}) must match k sequence length "
+            f"({k.shape[1]})"
+        )
+
+    head_dim = q.shape[-1]
+    if k.shape[-1] != head_dim or v.shape[-1] != head_dim:
+        raise ValueError(
+            "All inputs must have same head_dim. Got "
+            f"q: {head_dim}, k: {k.shape[-1]}, v: {v.shape[-1]}"
+        )
+
+    _validate_argument_tensor("k", k, device=q.device)
+    _validate_argument_tensor("v", v, device=q.device)
+    _validate_argument_tensor("mask", mask, device=q.device)
+
+    return ops.custom(
+        "masked_flash_attention_gpu",
+        values=[
+            q,
+            k,
+            v,
+            mask,
+            ops.constant(scale, dtype=DType.float32, device=DeviceRef.CPU()),
+        ],
+        out_types=[TensorType(dtype=q.dtype, shape=q.shape, device=q.device)],
+        device=q.device,
+    )[0].tensor
+
+
 def flash_attention_ragged(
     kv_params: KVCacheParams,
     input: TensorValue,
@@ -2681,6 +2762,46 @@ def compute_mla_dispatch_args_scalar(
             TensorType(shape=[3], dtype=DType.int64, device=DeviceRef.CPU()),
         ],
         parameters={"num_heads": num_heads, "is_fp8_kv": is_fp8_kv},
+    )
+    return results[0].tensor
+
+
+def compute_mha_decode_num_partitions(
+    batch_size: TensorValue,
+    max_cache_valid_length: TensorValue,
+    n_kv_heads: int,
+    device: DeviceRef,
+) -> TensorValue:
+    """Computes the MHA decode partition count inside a graph.
+
+    Wraps the ``mo.mha.decode.get_num_partitions`` kernel as a graph op so
+    that the partition heuristic can be evaluated dynamically during graph
+    execution rather than only at graph-build time.
+
+    Args:
+        batch_size: Scalar int64 tensor with the current batch size.
+        max_cache_valid_length: Scalar int64 tensor with the maximum valid
+            cache length across all requests.
+        n_kv_heads: Number of key-value attention heads per device
+            (compile-time constant).
+        device: The :class:`~max.graph.DeviceRef` whose hardware info
+            determines the partition heuristic.
+
+    Returns:
+        A CPU :class:`~max.graph.TensorValue` of shape ``[1]`` and dtype
+        ``int64`` containing the computed partition count.
+    """
+    request = ops.stack(
+        [batch_size.reshape([]), max_cache_valid_length.reshape([])], axis=0
+    )
+    results = ops.custom(
+        "mo.mha.decode.get_num_partitions",
+        device=device,
+        values=[request],
+        out_types=[
+            TensorType(shape=[1], dtype=DType.int64, device=DeviceRef.CPU()),
+        ],
+        parameters={"n_kv_heads": n_kv_heads},
     )
     return results[0].tensor
 
@@ -4756,16 +4877,8 @@ def eagle_prefill_shift_tokens(
     tokens: TensorValue,
     offsets: TensorValue,
     shift_next_tokens: TensorValue,
-    num_draft_tokens: TensorValue,
 ) -> TensorValue:
     """Shifts ragged tokens left by 1 per request, appending bonus tokens.
-
-    Eagle-specific operation that dispatches at runtime on
-    ``num_draft_tokens``:
-
-    - ``K=0`` (prefill): for each request, shift tokens left by 1 and append
-      the corresponding entry from ``shift_next_tokens``.
-    - ``K>0`` (decode): passthrough, returns tokens unchanged.
 
     Args:
         tokens: Flat ragged token sequence of shape ``[total_seq_len]``,
@@ -4773,9 +4886,6 @@ def eagle_prefill_shift_tokens(
         offsets: Row offsets of shape ``[batch_size + 1]``, dtype uint32.
         shift_next_tokens: One token per request of shape ``[batch_size]``,
             dtype int64, to append after shifting.
-        num_draft_tokens: Sentinel of shape ``[1]``, dtype int64.
-            ``0`` triggers shift (prefill), ``>0`` triggers passthrough
-            (decode).
 
     Returns:
         Shifted (or copied) tokens with the same shape as ``tokens``.
@@ -4783,7 +4893,7 @@ def eagle_prefill_shift_tokens(
     results = ops.custom(
         "mo.eagle_prefill_shift_tokens",
         device=tokens.device,
-        values=[tokens, offsets, shift_next_tokens, num_draft_tokens],
+        values=[tokens, offsets, shift_next_tokens],
         out_types=[
             TensorType(
                 dtype=tokens.dtype, shape=tokens.shape, device=tokens.device
@@ -4791,69 +4901,6 @@ def eagle_prefill_shift_tokens(
         ],
     )
     return results[0].tensor
-
-
-def extract_accepted_hs(
-    hs: TensorValue,
-    hs_offsets: TensorValue,
-    first_rejected: TensorValue,
-    num_draft_tokens: TensorValue,
-    zero_fill_rejected: bool = False,
-) -> tuple[TensorValue, TensorValue]:
-    """Extract accepted hidden states from ragged hidden state buffer.
-
-    Keeps only the hidden states corresponding to accepted tokens
-    (as determined by first_rejected counts). Handles both prefill
-    (K=0, keeps all) and decode (K>0, extracts positions
-    [0..first_rejected_idx] per request, yielding first_rejected_idx+1
-    rows when first_rejected_idx>0 or 1 row when first_rejected_idx=0).
-
-    Args:
-        hs: Hidden states, shape [total_hs, hidden].
-        hs_offsets: Per-request boundaries in hs, shape [batch+1].
-        first_rejected: Acceptance counts per request, shape [batch].
-        num_draft_tokens: K value as [1] int64 CPU tensor (0=prefill, >0=decode).
-        zero_fill_rejected: When True, zero-fill positions beyond the
-            accepted count.
-
-    Returns:
-        Tuple of (accepted_hs, accepted_offsets).
-    """
-    local_batch_plus_1 = hs_offsets.shape[0]
-    # Upper bound: total_hs covers both paths.
-    total_out = hs.shape[0]
-    # Reshape num_draft_tokens to a scalar (rank-0) on CPU so the MOGG kernel
-    # receives it as a Scalar and can skip the GPU kernel for prefill (K=0).
-    num_draft_tokens_scalar = ops.reshape(
-        num_draft_tokens.to(DeviceRef.CPU()), []
-    )
-    zero_fill_flag = ops.constant(
-        1 if zero_fill_rejected else 0, DType.int64, DeviceRef.CPU()
-    )
-    results = ops.custom(
-        "mo.extract_accepted_hs",
-        device=hs.device,
-        values=[
-            hs,
-            hs_offsets,
-            first_rejected,
-            num_draft_tokens_scalar,
-            zero_fill_flag,
-        ],
-        out_types=[
-            TensorType(
-                hs.dtype,
-                shape=[total_out, hs.shape[1]],
-                device=hs.device,
-            ),
-            TensorType(
-                DType.uint32,
-                shape=[local_batch_plus_1],
-                device=hs.device,
-            ),
-        ],
-    )
-    return results[0].tensor, results[1].tensor
 
 
 def apply_penalties_to_logits(

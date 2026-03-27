@@ -55,7 +55,7 @@ from .sync import (
 # to the performance.
 comptime _target_address_space = AddressSpace.GLOBAL if is_amd_gpu() else AddressSpace.GENERIC
 
-comptime elementwise_epilogue_type = fn[
+comptime elementwise_epilogue_type = def[
     dtype: DType, width: Int, *, alignment: Int
 ](Coord, SIMD[dtype, size=width]) capturing -> None
 
@@ -701,9 +701,7 @@ def reducescatter[
         _width: Int,
         *,
         _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, _width]) -> None where (
-        output_buffer.flat_rank >= coords.flat_rank
-    ):
+    ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
         output_buffer.store[width=_width, alignment=_alignment](
             coords, val.cast[dtype]()
         )

@@ -39,7 +39,7 @@ from std.ffi import OwnedDLHandle
 
 def main() raises:
     var lib = OwnedDLHandle("libm.so")
-    var sqrt = lib.get_function[fn(Float64) -> Float64]("sqrt")
+    var sqrt = lib.get_function[def(Float64) -> Float64]("sqrt")
     print(sqrt(4.0))  # 2.0
 ```
 """
@@ -207,7 +207,7 @@ struct OwnedDLHandle(Movable):
 
     def main() raises:
         var lib = OwnedDLHandle("libm.so")
-        var sqrt = lib.get_function[fn(Float64) -> Float64]("sqrt")
+        var sqrt = lib.get_function[def(Float64) -> Float64]("sqrt")
         print(sqrt(4.0))  # Prints: 2.0
         # Library automatically closed when lib goes out of scope
     ```
@@ -402,24 +402,7 @@ struct OwnedDLHandle(Movable):
         Returns:
             The result.
         """
-        return self._handle.call[name, return_type](args)
-
-    def call[
-        name: StaticString, return_type: TrivialRegisterPassable = NoneType
-    ](self, args: VariadicPack[element_trait=AnyType, ...]) -> return_type:
-        """Call a function with any amount of arguments.
-
-        Parameters:
-            name: The name of the function.
-            return_type: The return type of the function.
-
-        Args:
-            args: The arguments.
-
-        Returns:
-            The result.
-        """
-        return self._handle.call[name, return_type](args)
+        return self._handle.call[name, return_type](*args)
 
 
 @fieldwise_init
@@ -688,23 +671,6 @@ struct _DLHandle(Boolable, Copyable, TrivialRegisterPassable):
         Returns:
             The result.
         """
-        return self.call[name, return_type](args)
-
-    def call[
-        name: StaticString, return_type: TrivialRegisterPassable = NoneType
-    ](self, args: VariadicPack[element_trait=AnyType, ...]) -> return_type:
-        """Call a function with any amount of arguments.
-
-        Parameters:
-            name: The name of the function.
-            return_type: The return type of the function.
-
-        Args:
-            args: The arguments.
-
-        Returns:
-            The result.
-        """
 
         @parameter
         def _check_symbol() -> Bool:
@@ -712,7 +678,9 @@ struct _DLHandle(Boolable, Copyable, TrivialRegisterPassable):
 
         debug_assert[_check_symbol]("symbol not found: ", name)
         var v = args.get_loaded_kgen_pack()
-        return self.get_function[fn(type_of(v)) -> return_type](String(name))(v)
+        return self.get_function[def(type_of(v)) -> return_type](String(name))(
+            v
+        )
 
 
 @always_inline
@@ -818,7 +786,7 @@ def _find_dylib[
 
 
 def _find_dylib[
-    msg: fn() -> String, abort_on_failure: Bool = True
+    msg: def() -> String, abort_on_failure: Bool = True
 ](paths: List[Path]) -> OwnedDLHandle:
     """Load a dynamically linked library given a list of possible paths or names.
 
@@ -868,8 +836,8 @@ struct _Global[
     StorageType: Movable,
     //,
     name: StaticString,
-    init_fn: fn() -> StorageType,
-    on_error_msg: Optional[fn() -> Error] = None,
+    init_fn: def() -> StorageType,
+    on_error_msg: Optional[def() -> Error] = None,
 ](Defaultable):
     comptime ResultType = UnsafePointer[Self.StorageType, MutExternalOrigin]
 
@@ -937,8 +905,8 @@ struct _Global[
 @always_inline
 def _get_global[
     name: StaticString,
-    init_fn: fn() -> OpaquePointer[MutExternalOrigin],
-    destroy_fn: fn(OpaquePointer[MutExternalOrigin]) -> None,
+    init_fn: def() -> OpaquePointer[MutExternalOrigin],
+    destroy_fn: def(OpaquePointer[MutExternalOrigin]) -> None,
 ]() -> OpaquePointer[MutExternalOrigin]:
     return external_call[
         "KGEN_CompilerRT_GetOrCreateGlobal", OpaquePointer[MutExternalOrigin]
@@ -960,6 +928,10 @@ def _get_global_or_null(name: StringSlice) -> OpaquePointer[MutExternalOrigin]:
 # external_call
 # ===-----------------------------------------------------------------------===#
 
+comptime _CPointer[
+    mut: Bool, //, T: AnyType, origin: Origin[mut=mut]
+] = Optional[NonNullUnsafePointer[T, origin]]
+
 
 # TODO: work around for interacting with Optional[NonNull] across
 # C-FFI until we get conditional `RegisterPassable`.
@@ -976,8 +948,26 @@ def external_call[
     comptime UnsafePointerType = UnsafePointer[T, origin]
     comptime assert size_of[return_type]() == size_of[UnsafePointerType]()
 
-    var pointer = external_call[callee, UnsafePointerType](args)
+    var pointer = external_call[callee, UnsafePointerType](*args)
     return UnsafePointer(to=pointer).bitcast[return_type]()[]
+
+
+# TODO: work around for interacting with Optional[CStringSlice] across
+# C-FFI until we get conditional `RegisterPassable`.
+@always_inline("nodebug")
+@doc_hidden
+def external_call[
+    origin: ImmutOrigin,
+    //,
+    callee: StaticString,
+    return_type: type_of(Optional[CStringSlice[origin]]),
+    *types: AnyType,
+](*args: *types) -> return_type:
+    comptime CStr = CStringSlice[origin]
+    comptime assert size_of[return_type]() == size_of[CStr]()
+
+    var cstr = external_call[callee, CStr](*args)
+    return UnsafePointer(to=cstr).bitcast[return_type]()[]
 
 
 @always_inline("nodebug")
@@ -995,26 +985,6 @@ def external_call[
         callee: The name of the external function.
         return_type: The return type.
         types: The argument types.
-
-    Returns:
-        The external call result.
-    """
-    return external_call[callee, return_type](args)
-
-
-@always_inline("nodebug")
-def external_call[
-    callee: StaticString,
-    return_type: RegisterPassable,
-](args: VariadicPack[element_trait=AnyType, ...]) -> return_type:
-    """Calls an external function.
-
-    Parameters:
-        callee: The name of the external function.
-        return_type: The return type.
-
-    Args:
-        args: The arguments to pass to the external function.
 
     Returns:
         The external call result.

@@ -16,7 +16,6 @@ from std.sys import has_nvidia_gpu_accelerator, simd_width_of
 
 import linalg.matmul.vendor.blas as vendor_blas
 from std.algorithm.functional import elementwise
-from buffer import NDBuffer
 from std.gpu.host import DeviceContext, get_gpu_target
 from layout import Coord, Idx, TileTensor, row_major
 from layout.tile_layout import Layout
@@ -26,7 +25,7 @@ from std.random import rand
 from std.testing import assert_almost_equal
 from std.utils import IndexList
 
-comptime epilogue_func_type = fn[
+comptime epilogue_func_type = def[
     dtype: DType, width: Int, *, alignment: Int = 1
 ](SIMD[dtype, width]) capturing -> SIMD[dtype, width]
 
@@ -144,12 +143,14 @@ def run_bmm_and_check_result[
                 b_device.layout.stride[0]().value()
             )
 
-            var b_shape = IndexList[2](n, k) if transpose_b else IndexList[2](
-                k, n
+            var c_buffer = TileTensor(c_ptr, row_major((Idx(m), Idx(n))))
+            var a_buffer = TileTensor(a_ptr, row_major((Idx(m), Idx(k))))
+            var b_buffer = TileTensor(
+                b_ptr,
+                row_major(
+                    (Idx(n if transpose_b else k), Idx(k if transpose_b else n))
+                ),
             )
-            var c_buffer = NDBuffer[rank=2, dtype](c_ptr, {m, n})
-            var a_buffer = NDBuffer[rank=2, dtype](a_ptr, {m, k})
-            var b_buffer = NDBuffer[rank=2, dtype](b_ptr, b_shape)
 
             vendor_blas.matmul(
                 ctx,

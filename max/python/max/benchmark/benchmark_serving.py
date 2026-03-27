@@ -63,6 +63,7 @@ from max.benchmark.benchmark_shared.cpu_metrics import (
     collect_pids_for_port,
 )
 from max.benchmark.benchmark_shared.datasets import (
+    AgenticCodeBenchmarkDataset,
     ArxivSummarizationBenchmarkDataset,
     AxolotlBenchmarkDataset,
     BatchJobBenchmarkDataset,
@@ -108,6 +109,7 @@ from max.benchmark.benchmark_shared.server_metrics import (
     collect_server_metrics,
     print_server_metrics,
 )
+from max.benchmark.benchmark_shared.steady_state import detect_steady_state
 from max.diagnostics.gpu import GPUDiagContext
 
 BENCHMARK_SERVING_ARGPARSER_DESCRIPTION = (
@@ -529,6 +531,43 @@ def print_benchmark_summary(
     if metrics.server_metrics:
         print_server_metrics(metrics.server_metrics)
     print("=" * 50)
+
+
+def _steady_state_metric_values(
+    m: BenchmarkMetrics,
+) -> list[tuple[str, float]]:
+    """Return (suffix, value) pairs for steady-state metrics.
+
+    Each suffix corresponds to an existing full-run key (e.g.,
+    "mean_ttft_ms" maps to result["mean_ttft_ms"] in the full run and
+    result["steady_state_mean_ttft_ms"] in the steady-state section).
+    """
+    return [
+        ("request_throughput", m.request_throughput),
+        ("mean_ttft_ms", m.ttft_ms.mean),
+        ("p99_ttft_ms", m.ttft_ms.p99),
+        ("mean_tpot_ms", m.tpot_ms.mean),
+        ("p99_tpot_ms", m.tpot_ms.p99),
+        ("mean_itl_ms", m.itl_ms.mean),
+        ("p99_itl_ms", m.itl_ms.p99),
+        ("mean_latency_ms", m.latency_ms.mean),
+        ("p99_latency_ms", m.latency_ms.p99),
+    ]
+
+
+def _add_confidence_fields(
+    result: dict[str, Any],
+    metrics_by_prefix: list[tuple[str, Any]],
+) -> None:
+    """Add confidence interval fields to the result dict for each metric."""
+    for prefix, metric_obj in metrics_by_prefix:
+        ci = getattr(metric_obj, "confidence_info", None)
+        if ci:
+            result[f"{prefix}_ci_lower"] = ci.ci_lower
+            result[f"{prefix}_ci_upper"] = ci.ci_upper
+            result[f"{prefix}_ci_relative_width"] = ci.ci_relative_width
+            result[f"{prefix}_confidence"] = ci.confidence
+            result[f"{prefix}_sample_size"] = ci.sample_size
 
 
 def _add_optional_result(
@@ -1845,6 +1884,82 @@ async def benchmark(
         lora_manager=lora_manager,
     )
 
+    _add_confidence_fields(
+        result,
+        [
+            ("ttft_ms", text_metrics.ttft_ms),
+            ("tpot_ms", text_metrics.tpot_ms),
+            ("itl_ms", text_metrics.itl_ms),
+            ("latency_ms", text_metrics.latency_ms),
+            ("output_throughput", text_metrics.output_throughput),
+            ("input_throughput", text_metrics.input_throughput),
+        ],
+    )
+
+    for warn in text_metrics.confidence_warnings():
+        logger.warning(f"Confidence: {warn}")
+
+    # Steady-state metrics mirror the full-run metrics above but are
+    # prefixed with "steady_state_" and computed only over the detected window
+    steady = detect_steady_state(outputs)
+    result["steady_state_detected"] = steady.detected
+    result["steady_state_start_index"] = steady.start_index
+    result["steady_state_end_index"] = steady.end_index
+    result["steady_state_count"] = steady.steady_state_count
+    result["steady_state_warning"] = steady.warning
+
+    if steady.detected:
+        ss_index_set = set(steady.steady_state_indices)
+        ss_outputs = [
+            out
+            for i, out in enumerate(outputs)
+            if i in ss_index_set and out.success and not out.cancelled
+        ]
+        ss_valid = [
+            out
+            for out in ss_outputs
+            if out.request_submit_time is not None
+            and out.request_complete_time is not None
+        ]
+        if len(ss_valid) >= 2:
+            ss_valid.sort(key=lambda o: o.request_submit_time or 0.0)
+            first_submit = ss_valid[0].request_submit_time
+            last_complete = ss_valid[-1].request_complete_time
+            assert first_submit is not None and last_complete is not None
+            ss_duration = last_complete - first_submit
+            ss_duration = max(ss_duration, 1e-9)
+
+            ss_metrics, _ = calculate_metrics(
+                outputs=ss_outputs,
+                dur_s=ss_duration,
+                tokenizer=tokenizer,
+                gpu_metrics=gpu_metrics,
+                cpu_metrics=cpu_metrics,
+                skip_first_n_requests=0,
+                skip_last_n_requests=0,
+                max_concurrency=max_concurrency,
+                collect_gpu_stats=collect_gpu_stats,
+                server_metrics=server_metrics,
+            )
+            for suffix, value in _steady_state_metric_values(ss_metrics):
+                result[f"steady_state_{suffix}"] = value
+            _add_confidence_fields(
+                result,
+                [
+                    ("steady_state_ttft_ms", ss_metrics.ttft_ms),
+                    ("steady_state_tpot_ms", ss_metrics.tpot_ms),
+                    ("steady_state_itl_ms", ss_metrics.itl_ms),
+                    ("steady_state_latency_ms", ss_metrics.latency_ms),
+                ],
+            )
+        logger.info(
+            f"Steady-state detected: requests [{steady.start_index},"
+            f" {steady.end_index}) ({steady.steady_state_count} of"
+            f" {steady.total_requests} requests)"
+        )
+    elif steady.warning:
+        logger.warning(f"Steady-state detection: {steady.warning}")
+
     return result, text_metrics
 
 
@@ -2086,6 +2201,24 @@ def main_with_parsed_args(args: ServingBenchmarkConfig) -> None:
                 ),
                 image_dir=args.batch_job_image_dir,
             )
+        elif isinstance(benchmark_dataset, AgenticCodeBenchmarkDataset):
+            if args.num_chat_sessions:
+                samples = benchmark_dataset.gen_multiturn_sessions(
+                    num_sessions=args.num_chat_sessions,
+                    shuffle=(not args.record_output_lengths),
+                )
+            else:
+                assert args.num_prompts is not None
+                samples = benchmark_dataset.sample_requests(
+                    num_requests=args.num_prompts,
+                    tokenizer=tokenizer,
+                    output_lengths=output_lengths,
+                    shuffle=(
+                        output_lengths is None
+                        and not args.record_output_lengths
+                    ),
+                    enable_tool_calls=args.tool_calls,
+                )
         else:
             raise ValueError(
                 f"Unknown / unsupported dataset: {benchmark_dataset}"
