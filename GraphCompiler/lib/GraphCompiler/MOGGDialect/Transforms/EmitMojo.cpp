@@ -64,8 +64,10 @@ struct EmitMojo
           if (isa<IntegerAttr>(dimAttr)) {
             newShape.push_back(dimAttr);
           } else {
-            if (!dummyDimAttr)
-              dummyDimAttr = dimAttr;
+            if (!dummyDimAttr) {
+              dummyDimAttr =
+                  KGEN::ParamDeclRefAttr::get("dyn", dimAttr.getType());
+            }
             newShape.push_back(dummyDimAttr);
           }
         }
