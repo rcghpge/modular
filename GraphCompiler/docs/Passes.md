@@ -103,7 +103,7 @@ Custom ops can target these using `mo.custom {symbol = "MyOp"}`
 (see <ExtensibilityUserGuide.md>).
 
 The analysis parses Mojo packages/bytecode into MLIR, walsk every
-function/struct, and builds multiple lookup tables with registed kernels,
+function/struct, and builds multiple lookup tables with registered kernels,
 execute/shape/view functions, opaque-type map. By default, the main two
 components are loaded:
 
@@ -184,7 +184,7 @@ dialect, plus a transitive dependency on `lit`.
 #### Additional notes
 
 The pass consists of two phases. The first one replaces rebind ops with their
-inputs unless they carry important information. This inludes unknown shapes,
+inputs unless they carry important information. This includes unknown shapes,
 present layout attributes (matmul/conv), refined symbolic dims to static ones,
 or the user is not being lowered to `mogg`. The redundant ops come from type
 normalization/canonicalization and `rmo` legalization. The goal of the first
@@ -212,7 +212,7 @@ selection is performed by a Mojo kernel adaptor and consists of two steps:
 2. The target kernel is resolved via `MojoLibraryAnalysis`.
 
 The adaptor becomes the handle that ties the selected kernel to the op in the
-IR, and a `mogg.kernel` is created in the place of the origial op. Depending
+IR, and a `mogg.kernel` is created in the place of the original op. Depending
 on the type of the selected kernel (e.g., view/elementwise/shape/...; the
 interface depends on the type and later stages can use this as metadata to make
 decisions such as fusion), an explicit call to the kernel is inserted into the
@@ -480,7 +480,7 @@ the relevant buffer alive until that sync completes.
 
 The pass is run once the kernel boundaries and operand lists are settled, so
 after the fusion, right before kernel outlining (after which there's not enough
-infromation remaining).
+information remaining).
 
 Source:
 <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/MGPTransforms/SimplifyExtendLifetimesPass.cpp>
@@ -1080,7 +1080,7 @@ For each `mo` op that:
 - has the output param decls empty, meaning, params are already materialized -
   nothing to do.
 - has unmaterialized dims and has a fallback rule - dispatch to a fallback
-  builder to create shape computation and instert it before the op. The op is
+  builder to create shape computation and insert it before the op. The op is
   left intact and the implementation is handled by kernel selection as usual.
 - has unmaterialized dims and is a custom op - query `MojoLibraryAnalysis` to
   find a registered shape function and build and invocation using those kernel
@@ -1361,7 +1361,7 @@ The pass walks the mo.graph and adds hard layout constraints (seed constraints)
 where the op semantics require a particular layout (e.g., `mo.conv` with a rank
 of 4 in NHWC format). The second stage propagates those constraints through ops
 that keep the input/output layout identical (the layout is pushed through users
-and defining op). The inferred layouts are then assinged to tensors
+and defining op). The inferred layouts are then assigned to tensors
 (`TensorType`) - used for kernel selection and affects view fusion. `mo.graph`
 is updated to account for the changed signatures when necessary. Emits errors
 on conflicting constraints.
@@ -1390,7 +1390,7 @@ Consumes and produces `mo` (GraphOp) with chain semantics (`mo.chain.create`,
 
 #### Performance
 
-Reduces unnecessary serialization (e.g., splitting unecessary intermediate
+Reduces unnecessary serialization (e.g., splitting unnecessary intermediate
 chains) of side-effecting ops on different buffers, which can improve
 parallelism and scheduling freedom.
 
@@ -1416,7 +1416,7 @@ At a high-level these are the steps taken:
 
 1) Topologically sort ops with SSA + parameter dependencies.
 2) Worklist walk: materialize shape functions, staticize data-dependent
-   (requiring reading runtime values from intput tensors) shape inputs, and
+   (requiring reading runtime values from input tensors) shape inputs, and
    fold parameter expressions/ranges.
 3) Rebind/replace parameterized types and attrs, update graph signature and
    output bindings.
@@ -1595,7 +1595,7 @@ JitCompileKernels is the backbone of the JIT compilation pipeline (last stage
 of gc-pipeline) that converts `mogg` kernel regions into executable code. The
 rest of the pipeline runs on the surrounding IR that has references to the
 compiled blobs. The pass looks up the source code in the Mojo resource blob,
-parses Mojo source into MLIR module with LIT parser, runs KGEN piplines
+parses Mojo source into MLIR module with LIT parser, runs KGEN pipelines
 (generate library and the elaboration pipelines), lowers to llvm, optimizes
 (-O3), and runs codegen (via ObjectCompiler). The binaries are then embedded
 into the MEF as resources attached to the module load path.
@@ -1726,7 +1726,7 @@ number of ops = 64), then forms source->destination groups where every use can
 be fused; never fuses across blocks.
 
 For each of the identified fusion subgraph, the pass fuses (hard) everything
-into the last kernel by inlining the sourse elementwise lambda into the
+into the last kernel by inlining the source elementwise lambda into the
 destination lambda (plus updating effects and other cleanup like kernel
 parameters, block arguments, etc).
 
@@ -1872,9 +1872,9 @@ cleanliness and reducing downstream work.
 #### Additional notes
 
 This is a deduplication pass. It eliminates duplicate operands on both
-`mogg.kernel` and each `mogg.bind` (lambda) insided the kernel. Since every
+`mogg.kernel` and each `mogg.bind` (lambda) inside the kernel. Since every
 fusion pass in the pipeline (at `mogg`) can introduce duplicate operands or
-labmda arguments (fusion passes splice operand lists when they inline) it is
+lambda arguments (fusion passes splice operand lists when they inline) it is
 run inbetween passes in the fusion "subpipeline". So, the idea is to keep
 fusion passes simple at the cost of running simplification multiple times.
 Walks kernel inputs and bind lambda operands in reverse order, replacing uses
@@ -1965,7 +1965,7 @@ the kernel body (cloning `mo.constant`). The fusion only works for host kernels
 - an artifact of nvptx bringup (see
 <https://github.com/modularml/modular/issues/22959>). Unfused constants go
 through EICM and land into init if possible (TODO: check). Fused ones are added
-to the constat resources attribute during kernel-stub lowering and are
+to the constant resources attribute during kernel-stub lowering and are
 materialized as `MGP::BufferConstantOp`
 
 Source:

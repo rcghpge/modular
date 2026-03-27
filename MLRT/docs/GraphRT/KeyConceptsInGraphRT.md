@@ -225,7 +225,7 @@ In addition to being a "[future or promise of a
 value](https://en.wikipedia.org/wiki/Futures_and_promises)", an `AsyncValue` may
 also be fulfilled with an `Error` value. This is important because many
 asynchronous operations can fail, or depend transitively on other operations
-that fail (for example a matrix mutiplication may produce a shape error,
+that fail (for example a matrix multiplication may produce a shape error,
 invalidating any computation that uses its results). One challenge with this is
 that it is very easy to forget to write code "defensively" that checks for all
 the possible error conditions.

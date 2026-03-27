@@ -327,7 +327,7 @@ static void printRegionArguments(OpAsmPrinter &p, TypeRange resTypes,
 //===----------------------------------------------------------------------===//
 
 MojoValue callFunctionNestedInStruct(KGEN::LIT::FnOp function,
-                                     EmitMojoState::InferedParameters params,
+                                     EmitMojoState::InferredParameters params,
                                      ArrayRef<MojoValue> operands,
                                      EmitMojoState &state) {
   auto prefixSymbolName = state.getOriginalMojoNamePrefixFor(function);

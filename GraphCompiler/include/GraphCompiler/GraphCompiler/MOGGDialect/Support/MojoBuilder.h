@@ -196,7 +196,7 @@ public:
   MojoBuilder() : ss(sourceStr), variableCounters({0}) {}
   ~MojoBuilder() {
     ASSERT_STREAM(comptimeCache.empty(),
-                  << "Expected cahces of MojoValue to be empty");
+                  << "Expected caches of MojoValue to be empty");
   }
 
   /// Creates a function with the specified parameter and argument types, with
@@ -354,9 +354,9 @@ public:
   void decreaseIndentation() { indentation.erase(indentation.size() - 4, 4); }
 
   UniqueMojoIdentifier getIdentifier(const std::string &prefix = "val") {
-    auto prefixWithIdentationLevel =
+    auto prefixWithIndentationLevel =
         prefix + std::string(variableCounters.size(), '_');
-    return UniqueMojoIdentifier(prefixWithIdentationLevel,
+    return UniqueMojoIdentifier(prefixWithIndentationLevel,
                                 variableCounters.top()++);
   }
 
@@ -427,7 +427,7 @@ private:
   // represented in the IR. This duplicates a ton of Mojo text. This cache
   // catches those duplications and re-uses them when it can. We treat each
   // scope (if, functions, lambdas) as a new variable scope which is why this is
-  // a std::stack. It is pushed on entry and poped on exit.
+  // a std::stack. It is pushed on entry and popped on exit.
   MojoValueCache varCache;
   MojoValueCache comptimeCache;
 };

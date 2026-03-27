@@ -2816,7 +2816,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
       }
     }
 
-    // Otherwhise only fuse the RMSNorm + Quant.
+    // Otherwise only fuse the RMSNorm + Quant.
     SmallVector<Value> fusedOperands = {
         rmsNormOp.getOperand(0), // rms_norm.input
         rmsNormOp.getOperand(1), // rms_norm.gamma
@@ -2998,7 +2998,7 @@ private:
     for (Operation *user : val.getUsers()) {
       auto addOp = dyn_cast<MO::AddOp>(user);
       // The pattern must match exactly the rhs operand for the AllReduce.
-      // Otherwhise we match suboptimal ops when subgraphs are disabled.
+      // Otherwise we match suboptimal ops when subgraphs are disabled.
       // (The Add has two AllReduce operands, and we match with the wrong one).
       // TODO: This is very brittle, though this should be fixed once we switch
       // to mo.parallel.
@@ -3041,7 +3041,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
                            : DeviceRefAttr::get(ctx, targetDevice.getValue(),
                                                 targetDeviceId.getValue());
 
-    // Apply the special pattern to fuse allReduceOps at the begining.
+    // Apply the special pattern to fuse allReduceOps at the beginning.
     llvm::SmallVector<MO::AllReduceSumOp> allReduceOps;
     getOperation()->walk([&](MO::AllReduceSumOp allReduceSumOp) {
       allReduceOps.push_back(allReduceSumOp);

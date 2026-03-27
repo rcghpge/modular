@@ -701,12 +701,12 @@ def MO_MOReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
   }];
 }
 
-class RMO_MOAnalogeArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp<mnemonic,
+class RMO_MOAnalogueArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp<mnemonic,
   /*input_result_same_dtype=*/0> {
   let results = (outs MO_IndicesTensor:$result);
 }
 
-def MO_MOArgMaxOp : RMO_MOAnalogeArgMinMaxOp<"arg_max"> {
+def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -733,7 +733,7 @@ def MO_MOArgMaxOp : RMO_MOAnalogeArgMinMaxOp<"arg_max"> {
     }];
 }
 
-def MO_MOArgMinOp : RMO_MOAnalogeArgMinMaxOp<"arg_min"> {
+def MO_MOArgMinOp : RMO_MOAnalogueArgMinMaxOp<"arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.

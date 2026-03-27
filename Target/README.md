@@ -9,7 +9,7 @@ in the mono-repo! They MUST be developed in carefully controlled internal repos
 created and maintained by the Platform Engineering team.
 
 However, the architecture to consume all plugins, whether officially-supported
-(resident in this sub-tree) or confidental (resident in other repos) is the
+(resident in this sub-tree) or confidential (resident in other repos) is the
 same.
 
 ## Development Philopsophy

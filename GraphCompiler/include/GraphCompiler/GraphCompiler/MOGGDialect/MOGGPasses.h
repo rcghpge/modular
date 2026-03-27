@@ -34,7 +34,7 @@ class GraphOp;
 namespace M::MOGG {
 
 /// How to build kernels. Release is optimized with no debug information,
-/// relwithdebinfo is optimimized with debug information, debug is not optimized
+/// relwithdebinfo is optimized with debug information, debug is not optimized
 /// with debug information.
 enum class KernelBuildType {
   kRelease,

@@ -277,7 +277,7 @@ private:
           cfOp, domainMap,
           std::bind(&DependsOnArgsAnalysis::flow, this, _1, _2));
       if (!inInitBlock) {
-        // Control flow ops are intrisically not liftable.
+        // Control flow ops are intrinsically not liftable.
         operationIndex->addToSet(unliftableOps, op);
         // Thus we must make sure all the control flow results are marked as
         // unliftable, irrespective of the above.

@@ -419,12 +419,12 @@ LogicalResult MOGGKernelOpLoweringState::findExtraKernelArguments(
 
 void MOGGKernelOpLoweringState::findExtraKernelStubOnlyArguments() {
 
-  SmallVector<Attribute> newKernelRessources;
+  SmallVector<Attribute> newKernelResources;
 
   kernelStub.walk([&](MO::ConstantOp constantOp) {
     // Add the constant resource to the kernel, and create an MGP Buffer.
     auto constantAttr = *loweringState.lowerElementsAttr(constantOp.getValue());
-    newKernelRessources.push_back(constantAttr);
+    newKernelResources.push_back(constantAttr);
     Value bufferConstant = MGP::BufferConstantOp::create(
         builder, constantOp->getLoc(), cast<ElementsAttr>(constantAttr));
     operandsMapping.addOperand(bufferConstant,
@@ -435,13 +435,13 @@ void MOGGKernelOpLoweringState::findExtraKernelStubOnlyArguments() {
   });
 
   // Attach all new resources to the constant kernel.
-  if (!newKernelRessources.empty()) {
-    SmallVector<Attribute> allKernelRessources(
+  if (!newKernelResources.empty()) {
+    SmallVector<Attribute> allKernelResources(
         mgpRegion.getConstantResources().begin(),
         mgpRegion.getConstantResources().end());
-    allKernelRessources.append(std::move(newKernelRessources));
+    allKernelResources.append(std::move(newKernelResources));
     mgpRegion.setConstantResourcesAttr(
-        ArrayAttr::get(mgpRegion->getContext(), allKernelRessources));
+        ArrayAttr::get(mgpRegion->getContext(), allKernelResources));
   }
 }
 

@@ -516,7 +516,7 @@ LogicalResult emitMojo(KGEN::ParamConstantOp op, EmitMojoState &state) {
   return success();
 }
 
-ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
+ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
     KGEN::LIT::FnOp function,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
   // First get the set of all parameters that can be inferred from the inputs.
@@ -569,7 +569,7 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
       StringRef paramName = param.getName().getValue();
 
       // TODO(GEX-2623): IOSpec / origin parameters are currently removed from
-      // the parameters list because in KGEN-land empty-strust params are
+      // the parameters list because in KGEN-land empty-struct params are
       // removed during LITToKGEN. But they are still present in EmitMojo path
       // (and would cause an error: failed to infer parameter). Instead just
       // skip them for now, they'll be inferred automatically anyway. This is
@@ -616,7 +616,7 @@ ErrorOr<EmitMojoState::InferedParameters> EmitMojoState::inferKernelParameters(
     return success();
   };
 
-  EmitMojoState::InferedParameters ret;
+  EmitMojoState::InferredParameters ret;
   auto errOr =
       inferParametersInner(function.getInputParams(), ret.functionParameters);
   if (errOr.isError())
@@ -643,7 +643,7 @@ static MojoValue getTraceNameValue(FusionInfoAttr fusionInfo) {
   return MojoValue(fusionInfo.toString()).quote();
 }
 
-static MojoValue getLambasHaveFusionValue(mlir::Operation *kernelCallOp) {
+static MojoValue getLambdasHaveFusionValue(mlir::Operation *kernelCallOp) {
   // The kernel call op may be nested inside a WithTraceOp (MOGG ABI), so
   // BindLambdaOps may live in a parent block. Walk up the block hierarchy
   // (stopping at KernelStubOp) until we find BindLambdaOps.
@@ -732,7 +732,7 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     return getTraceNameValue(kernelStubOp.getFusionInfoAttr());
   }
   if (paramName == KGEN::MOGGPreElab::kMOGGLambdasHaveFusionParameterName)
-    return getLambasHaveFusionValue(callOp);
+    return getLambdasHaveFusionValue(callOp);
 
   return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
 }

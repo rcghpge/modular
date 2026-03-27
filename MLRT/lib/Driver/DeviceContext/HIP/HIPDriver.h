@@ -126,7 +126,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_FEATURE = 2,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_MACHINE_MODELS for a given intruction set
+   * @deprecated Query ::HSA_ISA_INFO_MACHINE_MODELS for a given instruction set
    * architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -136,7 +136,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_MACHINE_MODEL = 3,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_PROFILES for a given intruction set
+   * @deprecated Query ::HSA_ISA_INFO_PROFILES for a given instruction set
    * architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -147,7 +147,7 @@ enum class hsaAgentInfo_t {
   HSA_AGENT_INFO_PROFILE = 4,
   /**
    * @deprecated Query ::HSA_ISA_INFO_DEFAULT_FLOAT_ROUNDING_MODES for a given
-   * intruction set architecture supported by the agent instead.  If more than
+   * instruction set architecture supported by the agent instead.  If more than
    * one ISA is supported by the agent, the returned value corresponds to the
    * first ISA enumerated by ::hsa_agent_iterate_isas.
    *
@@ -158,7 +158,7 @@ enum class hsaAgentInfo_t {
   HSA_AGENT_INFO_DEFAULT_FLOAT_ROUNDING_MODE = 5,
   /**
    * @deprecated Query ::HSA_ISA_INFO_BASE_PROFILE_DEFAULT_FLOAT_ROUNDING_MODES
-   * for a given intruction set architecture supported by the agent instead.  If
+   * for a given instruction set architecture supported by the agent instead.  If
    * more than one ISA is supported by the agent, the returned value corresponds
    * to the first ISA enumerated by ::hsa_agent_iterate_isas.
    *
@@ -170,7 +170,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_BASE_PROFILE_DEFAULT_FLOAT_ROUNDING_MODES = 23,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_FAST_F16_OPERATION for a given intruction
+   * @deprecated Query ::HSA_ISA_INFO_FAST_F16_OPERATION for a given instruction
    * set architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -183,7 +183,7 @@ enum class hsaAgentInfo_t {
   HSA_AGENT_INFO_FAST_F16_OPERATION = 24,
   /**
    * @deprecated Query ::HSA_WAVEFRONT_INFO_SIZE for a given wavefront and
-   * intruction set architecture supported by the agent instead.  If more than
+   * instruction set architecture supported by the agent instead.  If more than
    * one ISA is supported by the agent, the returned value corresponds to the
    * first ISA enumerated by ::hsa_agent_iterate_isas and the first wavefront
    * enumerated by ::hsa_isa_iterate_wavefronts for that ISA.
@@ -194,7 +194,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_WAVEFRONT_SIZE = 6,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_WORKGROUP_MAX_DIM for a given intruction
+   * @deprecated Query ::HSA_ISA_INFO_WORKGROUP_MAX_DIM for a given instruction
    * set architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -207,7 +207,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_WORKGROUP_MAX_DIM = 7,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_WORKGROUP_MAX_SIZE for a given intruction
+   * @deprecated Query ::HSA_ISA_INFO_WORKGROUP_MAX_SIZE for a given instruction
    * set architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -218,7 +218,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_WORKGROUP_MAX_SIZE = 8,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_GRID_MAX_DIM for a given intruction set
+   * @deprecated Query ::HSA_ISA_INFO_GRID_MAX_DIM for a given instruction set
    * architecture supported by the agent instead.
    *
    * Maximum number of work-items of each dimension of a grid. Each maximum must
@@ -230,7 +230,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_GRID_MAX_DIM = 9,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_GRID_MAX_SIZE for a given intruction set
+   * @deprecated Query ::HSA_ISA_INFO_GRID_MAX_SIZE for a given instruction set
    * architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -241,7 +241,7 @@ enum class hsaAgentInfo_t {
    */
   HSA_AGENT_INFO_GRID_MAX_SIZE = 10,
   /**
-   * @deprecated Query ::HSA_ISA_INFO_FBARRIER_MAX_SIZE for a given intruction
+   * @deprecated Query ::HSA_ISA_INFO_FBARRIER_MAX_SIZE for a given instruction
    * set architecture supported by the agent instead.  If more than one ISA is
    * supported by the agent, the returned value corresponds to the first ISA
    * enumerated by ::hsa_agent_iterate_isas.
@@ -607,7 +607,7 @@ enum class hipMemoryType {
     hipMemoryTypeHost         = 1,  ///< Memory is physically located on host
     hipMemoryTypeDevice       = 2,  ///< Memory is physically located on device. (see deviceId for
                                     ///< specific device)
-    hipMemoryTypeManaged      = 3,  ///< Managed memory, automaticallly managed by the unified
+    hipMemoryTypeManaged      = 3,  ///< Managed memory, automatically managed by the unified
                                     ///< memory system
                                     ///< place holder for new values.
     hipMemoryTypeArray        = 10, ///< Array memory, physically located on device. (see deviceId for

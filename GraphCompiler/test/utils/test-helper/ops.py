@@ -72,7 +72,7 @@ class NumpyImpl(CommonImpls):
         # To match the TF api exactly we need to manually slice up the tensor.
         to_return = []
 
-        # Create an identity slice along every axis, baiscally [:, :, :]
+        # Create an identity slice along every axis, basically [:, :, :]
         # or [...]. We update this inplace to insert the actual dimension
         # we split along later.
         base_slice = [slice(0, 123141231, 1)] * x.ndim

@@ -181,7 +181,7 @@ private:
 
 /*
  * Logs messages unconditionally (maps to verbosity level 2)
- * Stripped from release buids.
+ * Stripped from release builds.
  */
 #define NIXL_TRACE M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
 

@@ -60,7 +60,7 @@ void remapTypesAndAttrs(
   }
 }
 
-// Scopeing aware name mappings for the parameter uniquing process.
+// Scoping aware name mappings for the parameter uniquing process.
 using DeclMap =
     llvm::ScopedHashTable<KGEN::ParamDeclRefAttr, KGEN::ParamDeclRefAttr>;
 using DeclMapScope =

@@ -185,7 +185,7 @@ class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []>
 }
 
 def RMO_EqualOp : RMO_PureBinaryComparisonOp<"equal", [Commutative]> {
-  let summary = "Flexible equality comaparison op";
+  let summary = "Flexible equality comparison op";
   let description = [{
     A flexible binary elementwise equality comparison operation with implicit broadcasting and implicit dtype promotion.
 

@@ -746,7 +746,7 @@ ErrorOr<KernelOp> MOGGKernelBuilder::buildKernelOpImpl(
     return kernelCallingOperation.takeError();
 
   if (!adaptor.isElementwise()) {
-    // Add the extra infered parameters to the kernel call.
+    // Add the extra inferred parameters to the kernel call.
     // One exception is elementwise, where the parameters aren't on the foreach,
     // but on the elementwise inside the lambda.
     kernelCallingOperation.get().setKernelParams(*forwardedParametersOr);

@@ -486,13 +486,13 @@ public:
     return std::nullopt;
   }
 
-  struct InferedParameters {
+  struct InferredParameters {
     llvm::SmallVector<MojoValue> structParameters;
     llvm::SmallVector<MojoValue> functionParameters;
   };
   /// Fill and return the list of inferred parameters to call `function`.
   /// Call `inferCallback` for each parameter that needs to be inferred.
-  static ErrorOr<InferedParameters> inferKernelParameters(
+  static ErrorOr<InferredParameters> inferKernelParameters(
       KGEN::LIT::FnOp function,
       std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);
 

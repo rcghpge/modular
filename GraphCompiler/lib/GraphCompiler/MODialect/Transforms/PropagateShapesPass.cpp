@@ -522,12 +522,12 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
         ShapeAttr annotatedOutShape =
             cast<TensorType>(res.getType()).getTypedShapeAttr();
         size_t returnedRank = outputShape.getRank();
-        size_t annnotatedRank = annotatedOutShape.getRank();
-        if (returnedRank != annnotatedRank) {
+        size_t annotatedRank = annotatedOutShape.getRank();
+        if (returnedRank != annotatedRank) {
           std::stringstream ss;
           ss << "shape function result #" << i << " returned shape of rank "
              << returnedRank << ", but the type annotation has shape of rank "
-             << annnotatedRank;
+             << annotatedRank;
           return Error(ss.str());
         }
         // Given `outputShape` for

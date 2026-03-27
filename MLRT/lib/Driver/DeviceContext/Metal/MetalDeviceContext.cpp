@@ -198,7 +198,7 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   case Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK:
     return 33554432; // 32KB
 
-  // The SIMD-group size is a dynamic property which is accessble through the
+  // The SIMD-group size is a dynamic property which is accessible through the
   // computePipeline->threadExecutionWidth property, i.e. it's tied to a
   // specific kernel invocation rather available as a static/dynamic device
   // property.
@@ -215,7 +215,7 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
     ATTRIBUTE_UNSUPPORTED(CLOCK_RATE);
 
   case Device::Attribute::MULTIPROCESSOR_COUNT: {
-// Host is built for MacOS 11.0, but `kIOMainPortDefault` is only avilable on
+// Host is built for MacOS 11.0, but `kIOMainPortDefault` is only available on
 // MacOS >= 12.0. However, we support Apple GPU only for MacOS >= 15, so this
 // warning can be ignored.
 #pragma clang diagnostic push

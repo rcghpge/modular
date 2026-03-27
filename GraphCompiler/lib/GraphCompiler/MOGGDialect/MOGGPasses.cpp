@@ -82,7 +82,7 @@ ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
   createCompilationOptions(target, buildType, debug, saveTempsPrefix)
       .print(keyBuf);
 
-  // Full version infomration for the graph compiler.
+  // Full version information for the graph compiler.
   keyBuf << MO::getGraphCompilerVersionString();
 
   return success();

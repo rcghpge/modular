@@ -602,7 +602,7 @@ public:
   void swap(context_t &other) { std::swap(ptr, other.ptr); }
 
 private:
-  context_t() { /*unititialized*/ }
+  context_t() { /*uninitialized*/ }
   void *ptr;
 
   context_t(const context_t &) = delete;

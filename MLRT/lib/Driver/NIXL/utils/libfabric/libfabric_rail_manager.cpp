@@ -566,7 +566,7 @@ nixl_status_t nixlLibfabricRailManager::postControlMessage(
   auto getMessageTypeValue = [](ControlMessageType message_type) {
     switch (message_type) {
     case ControlMessageType::NOTIFICATION:
-      return uint64_t{NIXL_LIBFABRIC_MSG_NOTIFICTION};
+      return uint64_t{NIXL_LIBFABRIC_MSG_NOTIFICATION};
     case ControlMessageType::CONNECTION_REQ:
       return uint64_t{NIXL_LIBFABRIC_MSG_CONNECT};
     case ControlMessageType::CONNECTION_ACK:

@@ -740,7 +740,7 @@ nixlLibfabricRail::processRecvCompletion(struct fi_cq_data_entry *comp) {
       NIXL_ERROR << "No connection state callback set for rail " << rail_id;
       return NIXL_ERR_BACKEND;
     }
-  } else if (msg_type == NIXL_LIBFABRIC_MSG_NOTIFICTION) {
+  } else if (msg_type == NIXL_LIBFABRIC_MSG_NOTIFICATION) {
     NIXL_TRACE << "Processing notification request on rail " << rail_id
                << " Xfer_id :" << xfer_id;
 
