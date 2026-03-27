@@ -97,15 +97,6 @@ def FuseViews: Pass<"mogg-fuse-views", "MO::GraphOp"> {
   let dependentDialects = [
     "M::MDialect",
     "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-    "M::KGEN::LIT::LITDialect",
-    "M::KGEN::POP::POPDialect",
-    "M::HLCF::HLCFDialect",
-    "M::DebugInfo::DebugInfoDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-    "mlir::ROCDL::ROCDLDialect",
-    "mlir::index::IndexDialect",
   ];
 
   let statistics = [

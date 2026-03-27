@@ -96,13 +96,15 @@ LogicalResult M::MGP::verifyConsistentDevices(
 
   for (OpOperand &opOperand : op->getOpOperands()) {
     if (auto hasDeviceType =
-            dyn_cast<MGPHasDeviceTypeInterface>(opOperand.get().getType()))
+            dyn_cast<MGPHasDeviceTypeInterface>(opOperand.get().getType())) {
       allDevices.insert(hasDeviceType.getDevice());
+    }
   }
   for (OpResult opResult : op->getResults()) {
     if (auto hasDeviceType =
-            dyn_cast<MGPHasDeviceTypeInterface>(opResult.getType()))
+            dyn_cast<MGPHasDeviceTypeInterface>(opResult.getType())) {
       allDevices.insert(hasDeviceType.getDevice());
+    }
   }
 
   if (allDevices.size() == expectedNumDevices)
@@ -849,6 +851,70 @@ LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 bool TensorCreateOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getBufferMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorSliceOp
+//===----------------------------------------------------------------------===//
+
+mlir::BitVector TensorSliceOp::resultsToPack() {
+  return mlir::BitVector{1, false};
+}
+
+LogicalResult TensorSliceOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  DeviceTensorType inputType = getInput().getType();
+  MojoValue rankParam = inputType.getRank();
+  auto tensorSpec = inputType.getTensorSpec();
+  MojoValue dtypeParam =
+      state.mlirDTypeToMojoType(tensorSpec.getOptDType().value());
+
+  // input, outputSpec, and start are all runtime operands.
+  MojoValue result = state.builder.var(
+      function({rankParam, dtypeParam}, state.getMojoValuesFor(getOperands())));
+  state.setMojoValueFor(getOutput(), result);
+
+  return success();
+}
+
+LogicalResult TensorSliceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto inputType = dyn_cast<DeviceTensorType>(adaptor.getInput().getType());
+  if (!inputType)
+    return mlir::emitError(location.value_or(UnknownLoc::get(context)),
+                           "expected tensor operand");
+  auto specType = dyn_cast<TensorSpecType>(adaptor.getOutputSpec().getType());
+  if (!specType)
+    return mlir::emitError(location.value_or(UnknownLoc::get(context)),
+                           "expected tensor spec operand");
+  inferredReturnTypes.emplace_back(
+      DeviceTensorType::get(inputType.getDevice(), specType));
+  return success();
+}
+
+LogicalResult TensorSliceOp::verify() {
+  DeviceTensorType inputType = getInput().getType();
+  TensorSpecType specType = getOutputSpec().getType();
+  if (inputType.getTensorSpec().getOptDType() != specType.getOptDType())
+    return emitOpError("input and output dtypes must match");
+  DeviceTensorType startType = getStart().getType();
+  if (startType.getDevice().getLabel() != kCPULabel)
+    return emitOpError("start must be on the host (cpu) device");
+  return success();
+}
+
+bool TensorSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getInputMutable().getOperandNumber();
+}
+
+bool TensorSliceOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getInputMutable().getOperandNumber();
 }
 
 //===----------------------------------------------------------------------===//

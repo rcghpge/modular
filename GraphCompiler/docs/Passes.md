@@ -1203,12 +1203,12 @@ Consumes and produces `mo` (GraphOp), `mosh` for shape ops.
 
 #### Additional notes
 
-Decomposes non‑contiguous `mo.slice` into per‑dim `mo.slice_dim` chains and
-rewrites `mo.static.reshape` into merge/split/add‑singleton sequences when
+Rewrites `mo.static.reshape` into merge/split/add‑singleton sequences when
 possible, preserving layouts and rebinding types as needed.
 
 This aids downstream passes (e.g., FuseReshapesIntoEpilogues) that don't handle
-complex cases.
+complex cases. `mo.slice` is left intact and handled directly by FuseViews
+(contiguous slices) or the copy‑kernel path (non‑contiguous slices).
 
 Source:
 <https://github.com/modularml/modular/blob/0b0ddc7a88321fc74dc8cb257939c8651a784910/GraphCompiler/lib/GraphCompiler/Transforms/MODialect/DecomposeViewOps.cpp>

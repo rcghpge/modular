@@ -1124,13 +1124,3 @@ mo.graph @bottom_k_different_output_shapes<() -> D0, D1, D2, D3, D4, D5, D6, D7>
  mo.output<D8, D9, D10, D11, D12, D13, D14, D15> %res#0, %res#1 : !mo.tensor<[D8, D9, D10, D11], f32>, !mo.tensor<[D12, D13, D14, D15], si64>
 }
 
-// -----
-
-mo.graph @slice_dim_op() -> (!mo.tensor<[], si32>) {
-  %2 = mo.constant {value = #M.dense_array<2, -4, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %4 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %5 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  // expected-error@+1 {{Slice axis is greater than rank of input}}
-  %6 = mo.slice_dim[1] (%2, %4, %5, %5) : (!mo.tensor<[3], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], si32>) -> !mo.tensor<[], si32>
-  mo.output %6 : !mo.tensor<[], si32>
-}

@@ -119,6 +119,29 @@ def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
   }];
 }
 
+def MOGG_SliceOp : MOGG_Op<"slice", [
+  Pure, MO_HasDeviceInterface,
+  MO_SingleDeviceWithHostOperands<["start", "stop"]>
+]> {
+  let summary = "Contiguous zero-copy slice op lowerable to mgp.tensor.slice";
+  let description = [{
+    Represents a contiguous slice of a tensor that is known to be lowerable
+    without data copies. Unlike mo.slice, this op is not lowered to a kernel
+    by MOToMOGG. During FuseViews it is temporarily lowered to a mogg.kernel
+    for fusion and raised back if unfused. It is finally lowered to
+    mgp.tensor.slice in MOGGToMGP.
+  }];
+
+  let arguments = (ins MO_Tensor:$input,
+                       MO_IndexScalarIfRanked:$start,
+                       MO_IndexScalarIfRanked:$stop);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // AsTupleOp
 //===----------------------------------------------------------------------===//

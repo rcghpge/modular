@@ -26,21 +26,37 @@ mo.graph @transpose_cst() -> (!mo.tensor<[1, 3, 2], ui32>) {
   mo.output %1 : !mo.tensor<[1, 3, 2], ui32>
 }
 
+// Test that a contiguous (step=1) slice with a dynamic output dimension lowers
+// correctly. The stop value comes from a graph argument so the output size is
+// not statically known. With model-inputs=ones the stop_offset tensor is [0]
+// for si64, so stop = 0 + 4 = [4], and the slice [1:4:1] of [1,2,3,4,5] is
+// [2,3,4].
+//
+// CHECK-LABEL: Running 'slice_dim_dynamic_output':
+// CHECK{LITERAL}: 'slice_dim_dynamic_output' returned tensor<3xf32> [2.000000e+00, 3.000000e+00, 4.000000e+00]
+mo.graph @slice_dim_dynamic_output<() -> D0>(
+  %stop_offset: !mo.tensor<[1], si64>
+) -> !mo.tensor<[D0], f32> {
+  %in = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %start = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %four = mo.constant {value = #M.dense_array<4> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %stop = mo.add(%stop_offset, %four) : !mo.tensor<[1], si64>
+  %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %res = mo.slice<() -> D1>(%in, %start, %stop, %step) : (
+    !mo.tensor<[5], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>
+  ) -> !mo.tensor<[D1], f32>
+  mo.output<D1> %res : !mo.tensor<[D1], f32>
+}
+
 // CHECK-LABEL: Running 'slice_dim_cst':
 // CHECK: 'slice_dim_cst' returned tensor<2x3xf32> [6.000000e+00, 8.000000e+00, 1.000000e+01, 1.100000e+01, 1.300000e+01, 1.500000e+01]
 mo.graph @slice_dim_cst() -> !mo.tensor<[2, 3], f32> {
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %two = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %three = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %five = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
   %in = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0> : tensor<15xf32>} : !mo.tensor<[3, 5], f32>
-  %res = mo.slice_dim[0](%in, %one, %three, %one) : (
-    !mo.tensor<[3, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
-  ) -> !mo.tensor<[2, 5], f32>
-  %res2 = mo.slice_dim[1](%res, %zero, %five, %two) : (
-    !mo.tensor<[2, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
+  %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<3, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.slice(%in, %start, %stop, %step) : (
+    !mo.tensor<[3, 5], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[2, 3], f32>
-  mo.output %res2 : !mo.tensor<[2, 3], f32>
+  mo.output %res : !mo.tensor<[2, 3], f32>
 }

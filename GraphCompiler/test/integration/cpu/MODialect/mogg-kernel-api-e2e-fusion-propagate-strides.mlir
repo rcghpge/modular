@@ -32,36 +32,26 @@ mo.graph @transpose(%x: !mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[3, 4, 2], f3
 // CHECK-LABEL: Running 'slice_dim_pos_step':
 // CHECK: input #0: shape = [2, 3] strides = [5, 2]
 mo.graph @slice_dim_pos_step(%x: !mo.tensor<[3, 5], f32>) -> !mo.tensor<[2, 3], f32> {
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %two = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %three = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %five = mo.constant {value = #M.dense_array<5> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
-  %res = mo.slice_dim[0](%x, %one, %three, %one) : (
-    !mo.tensor<[3, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
-  ) -> !mo.tensor<[2, 5], f32>
-  %res2 = mo.slice_dim[1](%res, %zero, %five, %two) : (
-    !mo.tensor<[2, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
+  %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<3, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.slice(%x, %start, %stop, %step) : (
+    !mo.tensor<[3, 5], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[2, 3], f32>
-  %out = mo.custom {symbol = "print_tensor_spec_fused", device = #M.device_ref<"cpu", 0>} (%res2) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %out = mo.custom {symbol = "print_tensor_spec_fused", device = #M.device_ref<"cpu", 0>} (%res) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %out : !mo.tensor<[2, 3], f32>
 }
 
 // CHECK-LABEL: Running 'slice_dim_neg_step':
 // CHECK: input #0: shape = [2, 2] strides = [-6, -1]
 mo.graph @slice_dim_neg_step(%x: !mo.tensor<[5, 3], f32>) -> !mo.tensor<[2, 2], f32> {
-  %neg_two = mo.constant {value = #M.dense_array<-2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %neg_one = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %zero = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-
-  %res = mo.slice_dim[0](%x, %neg_one, %zero, %neg_two) : (
-    !mo.tensor<[5, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
-  ) -> !mo.tensor<[2, 3], f32>
-  %res2 = mo.slice_dim[1](%res, %neg_one, %zero, %neg_one) : (
-    !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>
+  %start = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<-2, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.slice(%x, %start, %stop, %step) : (
+    !mo.tensor<[5, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[2, 2], f32>
-  %out = mo.custom {symbol = "print_tensor_spec_fused", device = #M.device_ref<"cpu", 0>} (%res2) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %out = mo.custom {symbol = "print_tensor_spec_fused", device = #M.device_ref<"cpu", 0>} (%res) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %out : !mo.tensor<[2, 2], f32>
 }
 

@@ -633,15 +633,12 @@ ErrorOr<DictionaryAttr> MOGGKernelBuilder::forwardParameters() {
                           MOGG::PARAMETER_CONV_STATIC_DILATIONS);
     extractConstantValues(convOp.getPaddings(),
                           MOGG::PARAMETER_CONV_STATIC_PADDING);
-  } else if (auto sliceDimOp = dyn_cast<MO::SliceDimOp>(moOp)) {
-    extractConstantValues(sliceDimOp.getStart(),
-                          MOGG::PARAMETER_SLICE_DIM_STATIC_START);
-    extractConstantValues(sliceDimOp.getStep(),
-                          MOGG::PARAMETER_SLICE_DIM_STATIC_STEP);
   } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(moOp)) {
     extractConstantValues(transposeOp.getPerm(),
                           MOGG::PARAMETER_TRANSPOSE_STATIC_PERM);
   } else if (auto sliceOp = dyn_cast<MO::SliceOp>(moOp)) {
+    extractConstantValues(sliceOp.getStart(),
+                          MOGG::PARAMETER_SLICE_STATIC_STARTS);
     extractConstantValues(sliceOp.getStep(),
                           MOGG::PARAMETER_SLICE_STATIC_STEPS);
   }

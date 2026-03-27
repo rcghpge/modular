@@ -1723,64 +1723,6 @@ def MO_SliceOp : MO_TensorOp<"slice", [
   let hasFolder = 1;
 }
 
-def MO_SliceDimOp : MO_TensorOp<"slice_dim", [
-  MO_SingleDeviceWithHostOperands<["start", "stop", "step"]>,
-  MO_ViewLike,
-  MO_ParamDeclaration,
-]> {
-  let summary = "Slice dim operation";
-  let description = [{
-    Returns a new tensor with a subset of the elements from an N-dimensional
-    `input` tensor. The slice will be taken using `start` / `stop` / `step`
-    along the `dim` dimension.
-
-    The semantics follows the numpy index semantics, such that
-    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
-       "indexing" along that dimension.
-    2. Negative indices are supported for `start` and `stop`, e.g., -1
-       represents the largest axis.
-    3. Out of bound indices in `start` and `stop` will be clamped to
-       [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must contain nonzero elements. Negative steps are supported.
-
-    Note: the order in which negative indices are resolved matches that of
-    python for `start:
-
-    1. Normalize negative indices by adding the dimension size.
-    2. Apply clipping logic.
-
-    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
-    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
-    N is the dimension size. Numbers smaller than -N-1 should also work.
-
-    Example:
-    ```mlir
-      %input: !mo.tensor<[?, ?, ?], f32>
-      %start: !mo.tensor<[1], si64> // [1]
-      %stop: !mo.tensor<[1], si32>  // [-3]
-      %step: !mo.tensor<[1], si64>  // [5]
-      // equivalent to this in numpy: `input[1:-3:5, :, :]`
-      %res = mo.slice_dim[0](%input, %start, %stop, %step) : (
-        !mo.tensor<[10, 10, 10], f32>,
-        !mo.tensor<[1], si64>,
-        !mo.tensor<[1], si32>,
-        !mo.tensor<[1], si64>
-      ) -> !mo.tensor<[?, ?, ?], f32>
-    ```
-  }];
-  let arguments = (ins MO_Tensor:$input,
-                       IndexAttr:$axis,
-                       MO_RankedScalarIndexTensor:$start,
-                       MO_RankedScalarIndexTensor:$stop,
-                       MO_RankedScalarIndexTensor:$step);
-  let results = (outs MO_Tensor:$result);
-  let assemblyFormat = [{
-    `[` $axis `]``(` operands `)` attr-dict `:`
-    functional-type(operands, results)
-  }];
-  let hasVerifier = 1;
-  let hasFolder = 1;
-}
 
 def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub", [
   DeclareOpInterfaceMethods<MO_Staticization>,

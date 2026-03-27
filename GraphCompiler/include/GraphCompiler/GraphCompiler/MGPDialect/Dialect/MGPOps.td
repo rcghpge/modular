@@ -255,6 +255,56 @@ def TensorExtractTensorSpecOp : MGP_Op<"tensor.extract.tensor_spec", [
 }
 
 //===----------------------------------------------------------------------===//
+// TensorSliceOp
+//===----------------------------------------------------------------------===//
+
+def TensorSliceOp : MGP_Op<"tensor.slice", [
+    Pure,
+    InferTypeOpAdaptor,
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+    DeclareOpInterfaceMethods<GRTMayAliasInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+    DeclareOpInterfaceMethods<KernelTerminatorProvider>,
+]> {
+  let summary = "Zero-copy contiguous slice of a tensor along one dimension.";
+  let description = [{
+    Returns a view into the input tensor starting at the given offset. No data
+    is copied; the output tensor borrows from the input. The sliced dimension
+    k, the stride in elements, and the start offset are all computed at runtime
+    inside the Mojo primitive from the input shape and the start buffer.
+
+    The input tensor may reside on any device. The start tensor must always
+    be on the host (cpu) device since it is a metadata buffer, not a data
+    buffer; the slice is zero-copy and no device data is read from start.
+
+    Example:
+    ```mlir
+    %input : !mgp.tensor<5xf32, <"gpu", 0>>
+    %spec  : !mgp.tensor_spec<3xf32>
+    %start : !mgp.tensor<1xsi64, <"cpu", 0>>
+    %out = mgp.tensor.slice %input, %spec, %start
+             : !mgp.tensor<5xf32, <"gpu", 0>>, !mgp.tensor_spec<3xf32>,
+               !mgp.tensor<1xsi64, <"cpu", 0>>
+    ```
+  }];
+
+  let arguments = (ins
+    MGP_DeviceTensorType:$input,
+    MGP_TensorSpecType:$outputSpec,
+    MGP_DeviceTensorType:$start
+  );
+
+  let results = (outs MGP_DeviceTensorType:$output);
+
+  let assemblyFormat = [{
+    $input `,` $outputSpec `,` $start attr-dict `:`
+    type($input) `,` type($outputSpec) `,` type($start)
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // TensorSpecCreateOp
 //===----------------------------------------------------------------------===//
 

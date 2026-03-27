@@ -1002,6 +1002,35 @@ static LogicalResult lowerReshapeImpl(MGP::MOOpLoweringState &opLoweringState,
   return success();
 }
 
+static LogicalResult lowerMoggSliceImpl(MGP::MOOpLoweringState &opLoweringState,
+                                        MOGG::SliceOp sliceOp, Value chain) {
+  MO::TensorType outputType = sliceOp.getType();
+
+  // Create the output tensor spec from the output type.
+  FailureOr<TypedValue<MGP::TensorSpecType>> outputSpecOr =
+      opLoweringState.createTensorSpec(outputType);
+  if (failed(outputSpecOr))
+    return failure();
+
+  // Get the lowered input tensor and start tensor.
+  Value loweredInput = opLoweringState.loweringState.lookupExecuteLoweredValue(
+      sliceOp.getInput());
+  Value loweredStart = opLoweringState.loweringState.lookupExecuteLoweredValue(
+      sliceOp.getStart());
+
+  // Emit a single mgp.tensor.slice op. The Mojo primitive computes the sliced
+  // dimension, stride, and start offset at runtime from the operands.
+  Value slicedTensor = opLoweringState.create<MGP::TensorSliceOp>(
+      loweredInput, *outputSpecOr, loweredStart);
+
+  // Associate the sliced tensor with the MOGG slice result.
+  Value inChain = opLoweringState.getGuardChain(chain);
+  opLoweringState.loweringState.emplaceExecuteLoweredBufferValue(
+      sliceOp.getResult(), slicedTensor, inChain);
+
+  return success();
+}
+
 LogicalResult MOGraphLowering::lowerDebugPrint(MO::DebugPrintOp printOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, printOp);
 
@@ -1786,6 +1815,14 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       if (failed(lowerReshapeImpl(
               opLoweringState, reshapeOp.getInput(), reshapeOp.getResult(),
               loweringState.getExecuteChain(), reshapeOp.getType())))
+        return failure();
+      continue;
+    }
+
+    if (auto sliceOp = dyn_cast<MOGG::SliceOp>(op)) {
+      MGP::MOOpLoweringState opLoweringState(loweringState, sliceOp);
+      if (failed(lowerMoggSliceImpl(opLoweringState, sliceOp,
+                                    loweringState.getExecuteChain())))
         return failure();
       continue;
     }

@@ -67,14 +67,10 @@ static constexpr llvm::StringLiteral PARAMETER_TRANSPOSE_STATIC_PERM =
     "static_permutations";
 
 // SliceOp
+static constexpr llvm::StringLiteral PARAMETER_SLICE_STATIC_STARTS =
+    "static_starts";
 static constexpr llvm::StringLiteral PARAMETER_SLICE_STATIC_STEPS =
     "static_steps";
-
-// SliceDimOp
-static constexpr llvm::StringLiteral PARAMETER_SLICE_DIM_STATIC_START =
-    "static_start";
-static constexpr llvm::StringLiteral PARAMETER_SLICE_DIM_STATIC_STEP =
-    "static_step";
 
 } // namespace M::MOGG
 

@@ -1404,13 +1404,6 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// SliceDimOp
-//===----------------------------------------------------------------------===//
-OpFoldResult SliceDimOp::fold(FoldAdaptor adaptor) {
-  return foldSliceHelper(*this, adaptor);
-}
-
-//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {

@@ -2691,18 +2691,6 @@ LogicalResult SliceOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// SliceDimOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult SliceDimOp::verify() {
-  TensorType inputType = getInput().getType();
-  if (inputType.hasRank())
-    if ((size_t)getAxis().getSExtValue() >= inputType.getRank())
-      return emitError("Slice axis is greater than rank of input");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 

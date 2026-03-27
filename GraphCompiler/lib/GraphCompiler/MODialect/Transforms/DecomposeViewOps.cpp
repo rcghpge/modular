@@ -29,110 +29,6 @@ using namespace M::MO;
 
 namespace {
 
-bool isContiguousSlice(SliceOp slice) {
-  auto inputValue = slice.getInput();
-  auto inputType = inputValue.getType();
-  auto outputType = slice.getType();
-
-  // Give up if the step doesn't come from a constant
-  auto constStep = slice.getStep().getDefiningOp<ConstantOp>();
-  if (!constStep)
-    return false;
-
-  auto maybeStepValue = tryGetConstantBlob<int64_t>(
-      constStep.getValue(), constStep.getType().getDtype());
-  // Give up if we can't get the step values
-  if (!maybeStepValue)
-    return false;
-
-  // Give up if the step of the outermost dimension is not 1.
-  if (maybeStepValue.value()[0] != 1)
-    return false;
-
-  // Give up if it is slicing through multiple dimensions.
-  auto inputShape = inputType.getTypedShapeAttr().getValues();
-  auto outputShape = outputType.getTypedShapeAttr().getValues();
-  for (uint64_t i = 1; i < inputType.getRank(); ++i) {
-    if (inputShape[i] != outputShape[i])
-      return false;
-  }
-
-  return true;
-}
-
-static void decomposeSlice(SliceOp slice, OpBuilder &builder) {
-  // Do not lower contiguous slices because we want them to fuse into other
-  // kernels as views regardless of input fusion opt in (they are always fused
-  // if contiguous).
-  if (isContiguousSlice(slice))
-    return;
-
-  TensorType inputType = slice.getInput().getType();
-  if (!inputType.hasRank())
-    return;
-  size_t rank = inputType.getRank();
-
-  TensorValue origStart = slice.getStart();
-  TensorValue origStop = slice.getStop();
-  TensorValue origStep = slice.getStep();
-
-  SmallVector<int64_t> scalarShape;
-  // Get the scalar equivalent type for the indices. We will slice out the
-  // correct value for each.
-  TensorType startScalar = origStart.getType().cloneWith(
-      scalarShape, origStart.getType().getElementType());
-  TensorType stopScalar = origStop.getType().cloneWith(
-      scalarShape, origStop.getType().getElementType());
-  TensorType stepScalar = origStep.getType().cloneWith(
-      scalarShape, origStep.getType().getElementType());
-
-  MO::ConstantOp one =
-      MO::ConstantOp::create(builder, slice.getLoc(), static_cast<int64_t>(1));
-
-  // We slice the tensor one dimension at a time and so only update the shape
-  // one dimension at a time as well.
-  SmallVector<TypedAttr> shape;
-  for (TypedAttr dim : inputType.getDims())
-    shape.push_back(dim);
-
-  auto zeroAxis = builder.getIndexAttr(0);
-
-  Value lastVal = slice.getInput();
-  for (size_t i = 0; i < rank; ++i) {
-    auto axis = builder.getIndexAttr(i);
-
-    int64_t asInt = i;
-
-    // We are slicing the start / stop / step one dimenson at a time. For dim 0
-    // we slice [0:1:1], dim 1 [1:2:1] and so on.
-    MO::ConstantOp startPos =
-        MO::ConstantOp::create(builder, slice.getLoc(), asInt);
-    MO::ConstantOp stopPos =
-        MO::ConstantOp::create(builder, slice.getLoc(), asInt + 1);
-
-    // Slice out the start, step and stop.
-    auto start =
-        SliceDimOp::create(builder, slice.getLoc(), startScalar, origStart,
-                           zeroAxis, startPos, stopPos, one);
-    auto stop = SliceDimOp::create(builder, slice.getLoc(), stopScalar,
-                                   origStop, zeroAxis, startPos, stopPos, one);
-    auto step = SliceDimOp::create(builder, slice.getLoc(), stepScalar,
-                                   origStep, zeroAxis, startPos, stopPos, one);
-
-    shape[i] = slice.getType().getDim(i);
-
-    // Create the new slice along just one dimension.
-    SliceDimOp newSlice = SliceDimOp::create(
-        builder, slice.getLoc(), slice.getType().cloneWith(shape), lastVal,
-        axis, start.getResult(), stop.getResult(), step.getResult());
-
-    lastVal = newSlice.getResult();
-  }
-
-  slice.replaceAllUsesWith(lastVal);
-  slice.erase();
-}
-
 // Decomposition for flattening ND -> 1D
 // e.g: [a, b, c] -> [a*b*c] via N-1 merge_dim ops
 // Requires that all dims are static
@@ -417,9 +313,7 @@ struct DecomposeViewsPass
     getOperation().walk([&](Operation *op) {
       builder.setInsertionPoint(op);
 
-      if (auto sliceOp = dyn_cast<SliceOp>(op))
-        decomposeSlice(sliceOp, builder);
-      else if (auto reshape = dyn_cast<Static::ReshapeOp>(op))
+      if (auto reshape = dyn_cast<Static::ReshapeOp>(op))
         decomposeReshape(reshape, builder);
     });
   }
