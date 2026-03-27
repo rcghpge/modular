@@ -8,7 +8,7 @@
 #define HAL_M_DRIVER_BUNDLE_H
 
 #include "M_driver_common.h"
-#include <cstddef>
+#include <stddef.h>
 
 #ifdef __cplusplus
 #endif
@@ -31,7 +31,7 @@ extern "C" {
 /// M_driver_runtime_bundle by loading it.
 struct M_driver_static_bundle {
   /// A reference to the backing data for this bundle
-  M_driver_slice mapped_data;
+  struct M_driver_slice mapped_data;
 
   /// A plugin-specific file type annotation for
   /// the format behind `mapped_data`, to use for
