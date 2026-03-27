@@ -33,6 +33,15 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "MetadataStreamTests",
+    size = "small",
+    srcs = ["MetadataStreamTests.cpp"],
+    deps = [
+        "//MLRT:Driver/NIXL",
+    ],
+)
+
+modular_cc_test(
     name = "TelemetryTests",
     size = "small",
     srcs = ["TelemetryTests.cpp"],

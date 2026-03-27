@@ -21,11 +21,10 @@
 using namespace M::AsyncRT::NIXL;
 using namespace std::string_view_literals;
 
-// fix SOCK_NONBLOCK for e.g. macOS
-#ifndef SOCK_NONBLOCK
+// SOCK_NONBLOCK cannot be ORed into the socket type on macOS — it is an fcntl
+// flag there, not a socket-type modifier like on Linux. Use fcntl after
+// creation instead, which is portable across Linux and macOS.
 #include <fcntl.h>
-#define SOCK_NONBLOCK O_NONBLOCK
-#endif
 
 nixlMetadataStream::nixlMetadataStream(int port) : port(port), socketFd(-1) {
   memset(&listenerAddr, 0, sizeof(listenerAddr));
@@ -34,9 +33,17 @@ nixlMetadataStream::nixlMetadataStream(int port) : port(port), socketFd(-1) {
 nixlMetadataStream::~nixlMetadataStream() { closeStream(); }
 
 bool nixlMetadataStream::setupStream() {
-  socketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  socketFd = socket(AF_INET, SOCK_STREAM, 0);
   if (socketFd == -1) {
     NIXL_PERROR << "failed to create stream socket for listener";
+    return false;
+  }
+
+  int flags = fcntl(socketFd, F_GETFL, 0);
+  if (flags == -1 || fcntl(socketFd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    NIXL_PERROR << "failed to set non-blocking mode on stream socket";
+    close(socketFd);
+    socketFd = -1;
     return false;
   }
 
