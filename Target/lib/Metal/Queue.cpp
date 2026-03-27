@@ -194,6 +194,25 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_queue::synchronize() {
+  // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize",
+  // TRACY_COLOR_PURPLE);
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer for sync");
+
+  // Submit an empty command buffer and wait for it to complete
+  // This acts as a fence, ensuring all previously submitted work completes
+  cmdBuffer->commit();
+  cmdBuffer->waitUntilCompleted();
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue_create(M_driver_context_t context,
                                         M_driver_queue_t *queue) {
   if (context == nullptr)
@@ -248,5 +267,7 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
 }
 
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return queue->synchronize();
 }

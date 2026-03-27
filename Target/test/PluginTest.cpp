@@ -199,7 +199,7 @@ TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
 }
 
 TEST_F(DriverPluginContextTest, QueueCopySync) {
-  if (api == "HIP" || api == "Metal")
+  if (api == "HIP")
     GTEST_SKIP() << "Unimplemented for " << api;
 
   constexpr size_t size = 128;
