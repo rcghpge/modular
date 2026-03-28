@@ -64,7 +64,7 @@ enum class hipGraphDebugDotFlags {
   hipGraphDebugDotFlagsVerbose =
       1 << 0, /**< Output all debug data as if every debug flag is enabled */
   hipGraphDebugDotFlagsKernelNodeParams = 1 << 2, /**< Adds hipKernelNodeParams to output */
-  hipGraphDebugDotFlagsMemcpyNodeParams = 1 << 3, /**< Adds hipMemcpy3DParms to output */
+  hipGraphDebugDotFlagsMemcpyNodeParams = 1 << 3, /**< Adds hipMemcpy3DParams to output */
   hipGraphDebugDotFlagsMemsetNodeParams = 1 << 4, /**< Adds hipMemsetParams to output */
   hipGraphDebugDotFlagsHostNodeParams = 1 << 5,   /**< Adds hipHostNodeParams to output */
   hipGraphDebugDotFlagsEventNodeParams =

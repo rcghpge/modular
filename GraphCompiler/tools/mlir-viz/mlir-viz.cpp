@@ -940,11 +940,11 @@ private:
       if (lineNumberToOp[actualLineNo]) {
         auto &line = textAsLines[actualLineNo];
         std::string lineNoAsStr = std::to_string(lineNo);
-        std::string lineNoPreceededWithSpaces =
+        std::string lineNoPrecededWithSpaces =
             llvm::formatv("{}{}", &spaces.c_str()[lineNoAsStr.size()],
                           lineNoAsStr)
                 .str();
-        if (ImGui::SmallButton(lineNoPreceededWithSpaces.c_str())) {
+        if (ImGui::SmallButton(lineNoPrecededWithSpaces.c_str())) {
           highlightOpInTextEditor(actualLineNo);
           treeRenderer.highlightOpOnTreeView(
               lineNumberToOp[textEditor.GetCursorPosition().mLine]);

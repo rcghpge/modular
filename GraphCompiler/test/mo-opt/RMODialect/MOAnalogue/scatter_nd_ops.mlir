@@ -14,7 +14,7 @@ mo.graph @scatter_nd_static_ok(%arg0: !mo.tensor<[4, 2], f32>, %updates: !mo.ten
 
 // -----
 
-mo.graph @scatter_nd_bad_updaes<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %updates: !mo.tensor<Sh1, f16>, %indices: !mo.tensor<Sh2, si64>) -> !mo.tensor<Sh3, f32> {
+mo.graph @scatter_nd_bad_updates<Sh0: !mosh.ape, Sh1: !mosh.ape, Sh2: !mosh.ape, Sh3: !mosh.ape>(%arg0: !mo.tensor<Sh0, f32>, %updates: !mo.tensor<Sh1, f16>, %indices: !mo.tensor<Sh2, si64>) -> !mo.tensor<Sh3, f32> {
   // expected-error @+1 {{'rmo.mo.scatter_nd' op failed to verify that all of {input, updates, result} have same dtype}}
   %0 = rmo.mo.scatter_nd(%arg0, %updates, %indices) : (!mo.tensor<Sh0, f32>, !mo.tensor<Sh1, f16>, !mo.tensor<Sh2, si64>) -> !mo.tensor<Sh3, f32>
   mo.output %0 : !mo.tensor<Sh3, f32>

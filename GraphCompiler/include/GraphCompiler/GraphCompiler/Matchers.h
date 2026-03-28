@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file provides MO/MOGG specific Pattern matching indended to be
+// This file provides MO/MOGG specific Pattern matching intended to be
 // used when lowering MO ops to more complex kernels or performing
 // simplifications
 //

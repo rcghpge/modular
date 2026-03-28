@@ -770,7 +770,7 @@ canonicalization patterns.
 Some limitations of the local analysis:
 
 - no equivalence/aliasing reasoning, pure structural reachability over operands
-- no transitive semantic rules beyound operands
+- no transitive semantic rules beyond operands
 - no set simplification via relation algebra
 - no "always ready" knowledge for empty merges folding
 
