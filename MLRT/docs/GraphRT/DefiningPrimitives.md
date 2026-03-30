@@ -63,7 +63,8 @@ primitives instead of directly poking at `RunnablePrimitiveDescriptor`.
 
 This macro uses template metaprogramming magic to generate accessors for
 `RunnablePrimitiveDescriptor` based on the signature for a C++ function.
-There are lots of examples in the [`lib/Primitives` library](../lib/Primitives/)
+There are lots of examples in the
+[`lib/Primitives` library](../../lib/GraphRT/Primitives/)
 but this section gives an overview of the key concepts.
 
 ### Registering simple primitives with operands and results
@@ -248,7 +249,8 @@ The `Result<T>` type is used when you know the static C++ type of a specific
 result, but sometimes, the result type is dynamic depending on the input values
 or input attributes. In this case, the `IndirectResult` class will initialize
 the result with an indirect `AsyncValue` that can be resolved to an arbitrary
-type later (see [test primitives](../lib/Primitives/TestPrimitives.cpp) for
+type later (see
+[test primitives](../../lib/GraphRT/Primitives/TestPrimitives.cpp) for
 examples).
 
 There are rare cases where you might want even more control over the AsyncValue
@@ -595,8 +597,8 @@ static void nonstrict_add_i32(AsyncValueRef<int32_t> lhs,
 
 There are lots of ways to handle the async operands of course, please take a
 look at the primitives implemented in
-[ControlFlowPrimitives.cpp](../lib/Primitives/ControlFlowPrimitives.cpp) for
-examples.
+[ControlFlowPrimitives.cpp](../../lib/GraphRT/Primitives/ControlFlowPrimitives.cpp)
+for examples.
 
 ### Declaring a non-strict primitive in ODS
 

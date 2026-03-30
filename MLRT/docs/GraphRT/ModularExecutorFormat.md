@@ -91,7 +91,8 @@ A MEF file is formed as a byte stream whose top-level structure is a list of
   the reader, for example as is the case with the primitives and types tables.
 
 MEF files can be created by an arbitrary producer, but the standard ways is to
-use the [MLIRToMEF](../lib/MLIRToMEF) translation library (or standalone tool),
+use the [MLIRToMEF](../../lib/GraphRT/MLIRToMEF) translation library
+(or standalone tool),
 which turns an MLIR representation of a program into a MEF file.
 
 The `MEFToMLIR` translation library performs the reverse translation from MEF

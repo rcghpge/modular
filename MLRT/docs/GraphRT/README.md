@@ -79,8 +79,8 @@ components of the GraphRT module are:
    the interpreter for the MEF file.
 1. translators for converting [MLIR to MEF](../../lib/GraphRT/MLIRToMEF/) (a
    core part of the typical compilation flow), and from
-   [MEF to MLIR](../lib/MEFToMLIR/) (more of a debugging/introspection/testing
-   aid).
+   [MEF to MLIR](../../lib/GraphRT/MEFToMLIR/) (more of a
+   debugging/introspection/testing aid).
 1. a [set of example primitives](../../lib/GraphRT/Primitives/) implementing
    integer arithmetic, common control flow operations, and for writing tests.
    This library is fully generic and can be used without these, but they are
