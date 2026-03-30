@@ -113,7 +113,8 @@ void Graph::build(ModuleOp module, const SymbolTable &symtab) {
       // Walker to collect all FlatSymbolRefAttrs and add an edge to the graph.
       mlir::AttrTypeWalker walker;
       walker.addWalk([&](FlatSymbolRefAttr symbol) {
-        auto callee = dyn_cast<Node::FuncOpT>(symtab.lookup(symbol.getAttr()));
+        auto callee =
+            dyn_cast_or_null<Node::FuncOpT>(symtab.lookup(symbol.getAttr()));
         if (!callee)
           return;
 
@@ -145,6 +146,10 @@ void Graph::build(ModuleOp module, const SymbolTable &symtab) {
 bool Graph::setGeneratorHash(Node *node) {
   node->hasher = std::make_unique<raw_xxhash128_stream>();
 
+  ModuleOp module = node->func->getParentOfType<ModuleOp>();
+  ASSERT_STREAM(module, "generator must live under a module");
+  SymbolTable symtab(module);
+
   auto ctx = node->func.getContext();
   Builder builder(ctx);
 
@@ -167,7 +172,17 @@ bool Graph::setGeneratorHash(Node *node) {
 
   mlir::AttrTypeReplacer replacer;
   replacer.addReplacement([&](FlatSymbolRefAttr symbol) -> SymbolRefAttr {
-    return attrMap.lookup_or(symbol, emptyString);
+    // Replace SCC member references with stable indices.
+    if (auto mapped = attrMap.lookup(symbol))
+      return mapped;
+    // Replace external GeneratorOp references with empty string — their
+    // hash is incorporated via setInputsHash. Non-GeneratorOp refs (e.g.,
+    // trait symbol refs from TypeConformsToTraitAttr) must be preserved so
+    // they contribute to the bytecode hash.
+    if (auto *op = symtab.lookup(symbol.getAttr()))
+      if (isa<KGEN::GeneratorOp>(op))
+        return emptyString;
+    return symbol;
   });
   replacer.addReplacement(
       [&](LocationAttr loc) -> LocationAttr { return unknownLoc; });
