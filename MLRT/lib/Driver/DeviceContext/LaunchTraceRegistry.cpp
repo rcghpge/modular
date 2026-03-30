@@ -62,32 +62,29 @@ void M::Driver::LaunchTraceRegistry::recordLaunchTrace(
   hasher.write(reinterpret_cast<const char *>(header), sizeof(header));
 
   // Hash launch attributes (deterministic)
-  if (!attrs.empty()) {
+  if (!attrs.empty())
     hasher.write(reinterpret_cast<const char *>(attrs.data()), attrs.size());
-  }
 
   // Hash parameter SIZES and sub-pointer-sized VALUES.
   // Conservative approach: only hash parameters smaller than pointer size.
   // This reliably detects changes in int32_t, float, uint32_t dimensions/flags
   // while avoiding false positives from pointer-sized scalars.
-  if (!args.empty()) {
-    assert(args.size() == paramSizes.size() &&
-           "args and paramSizes must have the same length");
-    constexpr size_t kPointerSize = sizeof(void *); // 8 bytes on 64-bit
+  assert(args.size() == paramSizes.size() &&
+         "args and paramSizes must have the same length");
+  constexpr size_t kPointerSize = sizeof(void *); // 8 bytes on 64-bit
 
-    for (size_t paramIdx : llvm::seq(paramSizes.size())) {
-      size_t size = paramSizes[paramIdx];
+  for (size_t paramIdx : llvm::seq(paramSizes.size())) {
+    size_t size = paramSizes[paramIdx];
 
-      // Always hash the size
-      hasher.write(reinterpret_cast<const char *>(&size), sizeof(size));
+    // Always hash the size
+    hasher.write(reinterpret_cast<const char *>(&size), sizeof(size));
 
-      const void *paramPtr = args[paramIdx];
+    const void *paramPtr = args[paramIdx];
 
-      // Hash values for parameters smaller than pointer size (definitely
-      // scalars)
-      if (size < kPointerSize)
-        hasher.write(reinterpret_cast<const char *>(paramPtr), size);
-    }
+    // Hash values for parameters smaller than pointer size (definitely
+    // scalars)
+    if (size < kPointerSize)
+      hasher.write(reinterpret_cast<const char *>(paramPtr), size);
   }
 
   // Create metadata with kernel name, hash, and launch parameters

@@ -13,8 +13,10 @@
 #include "HIPDriver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
+#include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/ErrorOr.h"
+#include "Support/HashUtils.h"
 #include "Support/Profiling/Tracy.h"
 #include "Support/Profiling/TracyRocm.h"
 #include "llvm/ADT/Twine.h"
@@ -1033,6 +1035,16 @@ ErrorOr<DeviceGraphRef> HIPDeviceStream::endCapture() {
       DeviceStreamRef::copy(static_cast<DeviceStream *>(this)));
 }
 
+void HIPDeviceStream::beginLaunchTrace() const {
+  auto &registry = launchTraceRegistry();
+  registry.beginTraceForStream(static_cast<void *>(stream_));
+}
+
+std::vector<KernelLaunchMetadata> HIPDeviceStream::takeLaunchTrace() const {
+  auto &registry = launchTraceRegistry();
+  return registry.takeTraceForStream(static_cast<void *>(stream_));
+}
+
 // ===== HIPModuleFunction ===== //
 HIPModuleFunction::HIPModuleFunction(const std::string name,
                                      const HIPDriver &driver,
@@ -1064,6 +1076,19 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
     uint32_t gridX, uint32_t gridY, uint32_t gridZ, uint32_t blockX,
     uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes, void **args,
     hipStream_t stream) const {
+  // Record launch trace if enabled
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream))) {
+    // HIP doesn't support parameter introspection like CUDA's
+    // cuFuncGetParamInfo, so we pass empty arrays for paramSizes and args
+    registry.recordLaunchTrace(
+        name(), reinterpret_cast<uintptr_t>(moduleFunction_->hipFunction()),
+        /*paramSizes=*/llvm::ArrayRef<size_t>(), gridX, gridY, gridZ, blockX,
+        blockY, blockZ, sharedMemBytes,
+        /*attrs=*/llvm::ArrayRef<uint8_t>(), /*numAttrs=*/0,
+        /*args=*/llvm::ArrayRef<void *>(), static_cast<void *>(stream));
+  }
+
   HIP_CHECK_ERR(moduleFunction_->hipDriver().hipModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args, nullptr));
@@ -1220,6 +1245,14 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
   HIP_WITH_CTX_ERR(*this);
 
   HIP_CHECK_ERR(driver_.hipMemcpyHtoDAsync(dst, src, byteSize, stream_));
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {
+    KernelLaunchMetadata metadata(
+        "hipMemcpyHtoD",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyHtoD, byteSize),
+        KernelLaunchMetadata::MemcpyKind::HtoD, byteSize);
+    registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
+  }
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1233,6 +1266,14 @@ ErrorOrSuccess HIPDeviceContext::enqueueCopyFromDevice(void *dst,
 
   HIP_CHECK_ERR(driver_.hipMemcpyDtoHAsync(dst, const_cast<void *>(src),
                                            byteSize, stream_));
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {
+    KernelLaunchMetadata metadata(
+        "hipMemcpyDtoH",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoH, byteSize),
+        KernelLaunchMetadata::MemcpyKind::DtoH, byteSize);
+    registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
+  }
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1281,6 +1322,15 @@ ErrorOrSuccess HIPDeviceContext::memCopyDtoD(DeviceBuffer &dst,
     HIP_CHECK_ERR(
         driver_.hipMemcpyDtoDAsync(dstPtr, srcPtr, dstByteSize, stream_));
   }
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {
+    KernelLaunchMetadata metadata(
+        "hipMemcpyDtoD",
+        hashMemcpyTrace(LaunchTraceKind::kMemcpyDtoD, dstByteSize),
+        KernelLaunchMetadata::MemcpyKind::DtoD, dstByteSize);
+    registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
+  }
+
   MAYBE_SYNC(*this);
   return success();
 }
@@ -1333,6 +1383,14 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
       }
     }
   }
+  auto &registry = launchTraceRegistry();
+  if (registry.isLaunchTraceEnabled(static_cast<void *>(stream_))) {
+    KernelLaunchMetadata metadata("hipMemset",
+                                  hashMemsetTrace(byteSize, val, valSize),
+                                  byteSize, val, valSize);
+    registry.appendLaunchTraceEntry(static_cast<void *>(stream_), metadata);
+  }
+
   MAYBE_SYNC(*this);
   return success();
 }

@@ -178,6 +178,10 @@ public:
   ErrorOrSuccess beginCapture() const override;
   ErrorOr<DeviceGraphRef> endCapture() override;
 
+  // Launch trace capture methods
+  void beginLaunchTrace() const override;
+  std::vector<KernelLaunchMetadata> takeLaunchTrace() const override;
+
   hipStream_t hipStream() const;
 
   static const HIPDeviceStream *verified_cast(const DeviceStream *stream);
