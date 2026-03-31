@@ -330,6 +330,11 @@ enum class CUmemAllocationHandleType {
   MAX = 0x7FFFFFFF,
 };
 
+enum class CUmemRangeHandleType {
+  DMA_BUF_FD = 0x1,
+  MAX = 0x7FFFFFFF,
+};
+
 using CUmemAllocationProp = struct CUmemAllocationProp_st {
   CUmemAllocationType type;
   CUmemAllocationHandleType requestedHandleTypes;

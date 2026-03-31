@@ -10,17 +10,34 @@
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
 
+#include "llvm/ADT/ScopeExit.h"
 #include "gtest/gtest.h"
 
 #include <cstdint>
 #include <cstring>
-#include <iostream>
+#include <string>
 
 using namespace M::Driver;
 using M::ErrorOr;
 using M::ErrorOrSuccess;
 
 namespace {
+
+std::string formatCudaResult(const CUDADriver &driver,
+                             CUDADriver::Result result) {
+  const char *name = nullptr;
+  const char *message = nullptr;
+  (void)driver.cuGetErrorName(result, &name);
+  (void)driver.cuGetErrorString(result, &message);
+
+  std::string formatted = name ? name : "unknown";
+  if (message) {
+    formatted += " (";
+    formatted += message;
+    formatted += ")";
+  }
+  return formatted;
+}
 
 static const char *vecAddPtx = R"PTX(
 // From max/kernels/test/gpu/vec_add.ptx
@@ -113,7 +130,7 @@ protected:
 
 TEST_F(CUDADeviceContextTest, DeviceExec) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
-                DeviceContext::create(Device::cudaAPI, /* id = */ 0));
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
   ASSERT_TRUE(ctx);
 
   // Check that the API and driver versions are available.
@@ -211,6 +228,42 @@ TEST_F(CUDADeviceContextTest, DeviceExec) {
   // ensuring that all pending operations have terminated.
   EXPECT_NO_ERR(ctx->synchronize());
   EXPECT_EQ(ctx->getNumReferences(), 1);
+}
+
+TEST_F(CUDADeviceContextTest, WrappedCuMemGetAddressRangeV2Works) {
+  constexpr size_t byteSize = 64 * 1024;
+
+  auto driverOrError = CUDADriver::get();
+  ASSERT_FALSE(driverOrError.isError()) << driverOrError.getError();
+  const auto &driver = *driverOrError;
+
+  CUdevice device = 0;
+  ASSERT_EQ(driver.cuDeviceGet(&device, 0), CUDADriver::SUCCESS);
+
+  CUcontext primaryContext = nullptr;
+  ASSERT_EQ(driver.cuDevicePrimaryCtxRetain(&primaryContext, device),
+            CUDADriver::SUCCESS);
+  auto releasePrimaryContext = llvm::scope_exit(
+      [&]() { (void)driver.cuDevicePrimaryCtxRelease_v2(device); });
+
+  CUcontext previousContext = nullptr;
+  ASSERT_EQ(driver.cuCtxGetCurrent(&previousContext), CUDADriver::SUCCESS);
+  auto restoreContext = llvm::scope_exit(
+      [&]() { (void)driver.cuCtxSetCurrent(previousContext); });
+
+  ASSERT_EQ(driver.cuCtxSetCurrent(primaryContext), CUDADriver::SUCCESS);
+
+  CUdeviceptr ptr = nullptr;
+  ASSERT_EQ(driver.cuMemAlloc_v2(&ptr, byteSize), CUDADriver::SUCCESS);
+  auto freePtr = llvm::scope_exit([&]() { (void)driver.cuMemFree_v2(ptr); });
+
+  CUdeviceptr basePtr = nullptr;
+  size_t totalSize = 0;
+  auto result = driver.cuMemGetAddressRange_v2(&basePtr, &totalSize, ptr);
+  ASSERT_EQ(result, CUDADriver::SUCCESS) << formatCudaResult(driver, result);
+
+  EXPECT_EQ(basePtr, ptr);
+  EXPECT_EQ(totalSize, byteSize);
 }
 
 TEST_F(CUDADeviceContextTest, MultiGPUKernels) {

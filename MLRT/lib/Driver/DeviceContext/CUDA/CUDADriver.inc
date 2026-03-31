@@ -82,6 +82,9 @@ CUDA_FUNC(cuMemAllocAsync, Result, CUdeviceptr *, size_t, CUstream)
 CUDA_FUNC(cuMemFreeAsync, Result, CUdeviceptr, CUstream)
 CUDA_FUNC(cuMemAlloc_v2, Result, CUdeviceptr *, size_t)
 CUDA_FUNC(cuMemFree_v2, Result, CUdeviceptr)
+CUDA_FUNC(cuMemGetAddressRange_v2, Result, CUdeviceptr *, size_t *, CUdeviceptr)
+CUDA_FUNC(cuMemGetHandleForAddressRange, Result, void *, CUdeviceptr, size_t,
+          CUmemRangeHandleType, unsigned long long)
 
 CUDA_FUNC(cuMemPoolSetAccess, Result, CUmemoryPool, const CUmemAccessDesc *,
           size_t)
@@ -140,6 +143,9 @@ CUDA_FUNC(cuMemGetAllocationGranularity, Result, size_t *,
           const CUmemAllocationProp *, CUmemAllocationGranularity_flags)
 CUDA_FUNC(cuMemCreate, Result, CUmemGenericAllocationHandle *, size_t,
           const CUmemAllocationProp *, unsigned long long)
+CUDA_FUNC(cuMemExportToShareableHandle, Result, void *,
+          CUmemGenericAllocationHandle, CUmemAllocationHandleType,
+          unsigned long long)
 CUDA_FUNC(cuMemRelease, Result, CUmemGenericAllocationHandle)
 CUDA_FUNC(cuMemAddressReserve, Result, CUdeviceptr *, size_t, size_t,
           CUdeviceptr, unsigned long long)
@@ -169,6 +175,8 @@ CUDA_FUNC(cuTensorMapEncodeTiled, Result, void *, CUtensorMapDataType, uint32_t,
 // It is hand-written in CUDADriver.h and CUDADriver.cpp instead.
 CUDA_FUNC(cuPointerGetAttributes, Result, unsigned int, CUpointer_attribute *,
           void **, CUdeviceptr)
+CUDA_FUNC(cuPointerSetAttribute, Result, void *, CUpointer_attribute,
+          CUdeviceptr)
 
 CUDA_FUNC(cuOccupancyMaxActiveBlocksPerMultiprocessor, Result, int *,
           CUfunction, int, size_t)
