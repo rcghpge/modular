@@ -99,6 +99,68 @@ typedef M_driver_status_t (*M_driver_queue_set_memory_func_ptr_t)(
     uint64_t value_size);
 
 /**
+ * Struct representing a three dimensional launch configuration.
+ */
+typedef struct M_driver_dim_t {
+  uint32_t x;
+  uint32_t y;
+  uint32_t z;
+} M_driver_dim_t;
+
+/**
+ * Struct representing a GPU launch configuration for executing an
+ * M_driver_function_t. Used in M_driver_queue_execute() via
+ * M_driver_queue_execute_config_t when targeting execution on a GPU device.
+ */
+typedef struct M_driver_queue_execute_config_gpu_t {
+  M_driver_dim_t grid;       ///< The grid dimension, AKA ND-range
+  M_driver_dim_t block;      ///< The block dimension, AKA work-group size.
+  uint32_t shared_mem_bytes; ///< Shared memory size in bytes.
+  void *attributes;          ///< Passthrough of CUlaunchAttributes
+  uint32_t num_attributes;   ///< Number of elements pointed to by attributes.
+} M_driver_queue_execute_config_gpu_t;
+
+// Selects the launch config mode, currently only GPU is supported
+typedef enum M_driver_queue_execute_mode_t {
+  M_DRIVER_QUEUE_EXECUTE_MODE_GPU, ///< Specify execution on a GPU device.
+} M_driver_queue_execute_mode_t;
+
+/**
+ * Struct representing a function execution launch configuration, contains
+ * the config union which is discriminated by the mode enum.
+ */
+typedef struct M_driver_queue_execute_config_t {
+  M_driver_queue_execute_mode_t mode; ///< Enum discriminates the config union.
+  union M_driver_queue_execute_config_union_t {
+    /// Execution launch configuration for GPU, used when mode is
+    /// M_DRIVER_QUEUE_EXECUTE_MODE_GPU.
+    M_driver_queue_execute_config_gpu_t gpu;
+  } config; ///< The union discriminated by mode.
+} M_driver_queue_execute_config_t;
+
+/**
+ * Execute a function on a device's queue.
+ *
+ * @param[in] queue The queue where the function will be executed.
+ * @param[in] function The function which will be executed.
+ * @param[in] config The function execution launch configuration.
+ * @param[in] args Array of function arguments, packed in a target specific way.
+ * @param[in] arg_sizes Array of function argument sizes.
+ * @param[in] num_args Number of arguments in the args and arg_sizes arrays.
+ * @return Standard Status Protocol.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t
+M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
+                       M_driver_queue_execute_config_t *config, void **args,
+                       uint64_t *arg_sizes, uint32_t num_args);
+
+typedef M_driver_status_t (*M_driver_queue_execute_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_function_t function,
+    M_driver_queue_execute_config_t *config, void **args, uint64_t *arg_sizes,
+    uint32_t num_args);
+
+/**
  * Block the calling thread until all operations on the queue have completed.
  *
  * @param queue (in) The queue to synchronize on.
