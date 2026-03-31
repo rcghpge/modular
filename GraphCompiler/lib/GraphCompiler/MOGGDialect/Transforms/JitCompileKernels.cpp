@@ -28,6 +28,7 @@
 #include "KGEN/ToolCommon/KGENPasses.h"
 #include "MLRT/AsyncRT/CompilerSupport/Context.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "Support/CacheLog.h"
 #include "Support/HashUtils.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/Telemetry/Telemetry.h"
@@ -198,11 +199,18 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
   checkCache(const CompilationState &state,
              const DenseMap<StringAttr, KGEN::GeneratorOp> &renaming,
              const std::string &keyHash) {
+    MODULAR_CACHE_LOG("mogg") << "checkCache: keyHash=" << keyHash
+                              << " kernelCount=" << renaming.size() << "\n";
+
     ErrorOr<RCRef<Cache::BlobCacheBackend>> moggCacheBackendOr =
         Cache::getLocalDefaultBackendChain(
             std::filesystem::path(".mogg_cache") / keyHash);
-    if (moggCacheBackendOr.isError())
+    if (moggCacheBackendOr.isError()) {
+      MODULAR_CACHE_LOG("mogg")
+          << "checkCache: failed to create MOGG cache backend: "
+          << moggCacheBackendOr.getError() << "\n";
       return (*state.kgenModule)->emitError(moggCacheBackendOr.getError());
+    }
 
     auto moggCache = RCRef<Cache::BlobCache<SemanticHashKey>>::create(
         moggCacheBackendOr.takeValue());
@@ -216,6 +224,8 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     SmallVector<mlir::StringAttr> cacheMissSymbols;
     SmallVector<std::string> cacheMissHashes;
     DenseSet<KGEN::GeneratorOp> opsToErase;
+    size_t moggHitCount = 0, moggMissCount = 0;
+    size_t mojoHitCount = 0, mojoMissCount = 0;
     for (auto [oldName, genOp] : renaming) {
       auto genOpCopy = genOp;
       auto newName = genOpCopy.getSymNameAttr();
@@ -223,6 +233,9 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       ErrorOr<std::optional<BufferRef>> moggCacheResult =
           moggCache->findSync(genOp, &genOpHash);
       if (moggCacheResult.isError()) {
+        MODULAR_CACHE_LOG("mogg")
+            << "checkCache: MOGG lookup error for " << newName.getValue()
+            << ": " << moggCacheResult.getError() << "\n";
 #ifndef MODULAR_PRODUCTION
         (*state.kgenModule)
             ->emitWarning(
@@ -232,6 +245,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
       }
 
       if (moggCacheResult->has_value()) {
+        ++moggHitCount;
         // we have a potential cache hit!
         BufferRef buffer = moggCacheResult->value();
         llvm::StringRef mojoCacheHashKey = buffer->getBuffer();
@@ -241,9 +255,15 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
             state.mojoCache->findKeyedSync(mojoCacheHashKey);
         if (mojoCacheResultOr.isError() || !mojoCacheResultOr->has_value()) {
           // this is a cache miss!
+          ++mojoMissCount;
+          MODULAR_CACHE_LOG("mogg") << "checkCache: MOGG hit but Mojo miss for "
+                                    << newName.getValue() << "\n";
           cacheMissSymbols.push_back(newName);
           cacheMissHashes.push_back(genOpHash);
           if (mojoCacheResultOr.isError()) {
+            MODULAR_CACHE_LOG("mogg")
+                << "checkCache: Mojo lookup error for " << newName.getValue()
+                << ": " << mojoCacheResultOr.getError() << "\n";
 #ifndef MODULAR_PRODUCTION
             (*state.kgenModule)
                 ->emitWarning(mojoCacheResultOr.takeError()
@@ -253,6 +273,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
           }
           continue;
         }
+        ++mojoHitCount;
         std::optional<BufferRef> maybeMojoCachedItemBuffer =
             mojoCacheResultOr.takeValue();
 
@@ -269,10 +290,18 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
           it->second.first.push_back(newName);
         }
       } else {
+        ++moggMissCount;
+        MODULAR_CACHE_LOG("mogg")
+            << "checkCache: MOGG miss for " << newName.getValue() << "\n";
         cacheMissSymbols.push_back(newName);
         cacheMissHashes.push_back(genOpHash);
       }
     }
+
+    MODULAR_CACHE_LOG("mogg")
+        << "checkCache summary: " << renaming.size() << " kernels, "
+        << "MOGG hit=" << moggHitCount << " miss=" << moggMissCount << ", "
+        << "Mojo hit=" << mojoHitCount << " miss=" << mojoMissCount << "\n";
 
     // Erase operations after iteration to avoid use-after-free
     for (auto genOp : opsToErase)
@@ -461,11 +490,18 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     for (const std::string &hash : cachingResult.cacheMissHashes) {
       BufferRef buffer = Buffer::get(binaryBlobKey);
       if (auto error = cachingResult.moggCache->insertKeyedSync(hash, buffer)) {
+        MODULAR_CACHE_LOG("mogg")
+            << "handleCacheMisses: MOGG cache insert failed for hash=" << hash
+            << ": " << error.getError() << "\n";
 #ifndef MODULAR_PRODUCTION
         state.mgpModule->emitWarning(
             error.takeError()
                 .get()); // Swallow the error, because it's not critical
 #endif
+      } else {
+        MODULAR_CACHE_LOG("mogg")
+            << "handleCacheMisses: MOGG cache insert success for hash=" << hash
+            << "\n";
       }
     }
 
@@ -550,6 +586,9 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     if (litResult.isError())
       return litResult.takeError();
 
+    MODULAR_CACHE_LOG("mogg")
+        << "compileMojoToBinary: creating ObjectCompiler with "
+           "basePath=.mojo_cache\n";
     auto objectCompiler = KGEN::ObjectCompiler::create(
         ".mojo_cache", opts, /*isJit=*/true, *ctx, {});
     if (objectCompiler.isError()) {
@@ -569,9 +608,16 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     auto cachingResult = cachingResultOr.takeValue();
 
     if (!cachingResult.cacheMissSymbols.empty()) {
+      MODULAR_CACHE_LOG("mogg")
+          << "compileMojoToBinary: compiling "
+          << cachingResult.cacheMissSymbols.size() << " cache-miss kernels\n";
       auto cacheMissResult = handleCacheMisses(state, cachingResult);
       if (cacheMissResult.isError())
         return cacheMissResult.takeError();
+    } else {
+      MODULAR_CACHE_LOG("mogg")
+          << "compileMojoToBinary: all kernels cached, no compilation "
+             "needed\n";
     }
 
     handleCacheHits(state, cachingResult);
