@@ -135,9 +135,8 @@ free-list is tried. If the root fails, then we allocate a chunk in the
 `MemoryManager` object associated with the `DeviceContext` and retry this
 `allocate()`. When all this fails, we declare out-of-memory (OOM).
 
-Disabled memory managers route allocations directly to the OEM driver (eg.
-CUDA). Enabled memory managers with `chunkSize_ == 0` reject allocations
-because they cannot satisfy requests from managed chunks.
+MemoryManager can be disabled via environment variables (documented below):
+all allocations will routed directly to the OEM driver (eg. CUDA).
 
 There are heuristics to grow chunk-sizes when the requested size is larger than
 the current chunk size.
@@ -246,11 +245,14 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
 #### Device Memory Configuration
 
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE`**: Maximum memory manager size
-  in KB (default: uses percentage)
+  in KB (default: uses percentage). A value of 0 disables the memory manager.
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT`**: Percentage of GPU
-  memory to use, after the driver has taken its memory (default: 90%)
+  memory to use, after the driver has taken its memory (default: 90%). Ignored
+  when absolute size (above) is specified. Otherwise, a value of 0 disables the
+  memory manager.
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT`**: Chunk size as
-  percentage of max memory manager size (default: 2%)
+  percentage of max memory manager size (default: 2%). Integer-valued. Must be
+  between 1 and 100; clamped to these limits if found to lie outside.
 
 #### Host Memory Configuration
 
@@ -265,6 +267,20 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   (default: false)
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK`**: Enable internal
   consistency checks (default: false)
+- **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY`**: When true, fail on any
+  allocation that exceeds memory manager's capacity set via the above variables
+  or its constructor API. When false, fall back to allocating from the device
+  driver when memory manager is at capacity. The former is useful for
+  application-characterization (strict discovery of memory usage). The latter
+  is useful in cases where it is not possible to accurately estimate memory
+  requirements ahead of time; rather than crashing (think very large models),
+  MemoryManager provides "best effort" service and gracefully hands off to
+  slower device-driver allocation path at the infrequent extreme. In that sense
+  this variable is also a quick relief valve to get more mileage with
+  memory-hungry LLM app/services (keep them running while we optimize in the
+  background). This variable is ignored when the Memory Manager is
+  disabled. Also ignored by the host (pinned) memory manager (i.e. this is
+  applicable to accelerator memory only).
 - **`MODULAR_DEBUG_DEVICE_ALLOCATOR`**: List of comma separated allocator
   debugging features from the following:
   - `uninitialized-poison`: enable filling buffers with type-aware poison
@@ -355,7 +371,7 @@ MemoryManagerFreeList* freeList = deviceContext->freeList();
 // Allocate buffer
 ErrorOr<void*> ptrResult = freeList->allocate(1024, Device::AllocMode::SYNC);
 if (ptrResult.isError()) {
-    // Handle allocation failure from the memory manager
+    // Handle allocation failure - may fallback to direct device allocation
     handleError(ptrResult.takeError());
 }
 
@@ -425,6 +441,8 @@ export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG=true
 # Enable self-checks (debug builds only)
 export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK=true
 
+# Force memory-manager-only mode (testing fragmentation)
+export MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY=true
 ```
 
 ### Log Output Format
