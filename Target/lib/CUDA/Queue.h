@@ -21,8 +21,7 @@ struct M_driver_queue {
   [[nodiscard]] static DriverResult<M_driver_queue_t>
   create(M_driver_context &ctx);
 
-  static M_driver_status_t destroy(M_driver_context &ctx,
-                                   M_driver_queue_t queue);
+  static M_driver_status_t destroy(M_driver_queue_t queue);
 
   DriverResult<M_driver_memory_t> allocAsync(uint64_t size);
   M_driver_status_t freeAsync(M_driver_memory_t memory);
@@ -32,7 +31,7 @@ struct M_driver_queue {
                                    uint64_t size);
   M_driver_status_t setMemory(M_driver_memory_t dst, uint64_t size,
                               uint64_t value, uint64_t valueSize);
-  static M_driver_status_t synchronize(M_driver_queue_t queue);
+  M_driver_status_t synchronize();
 
   explicit M_driver_queue(M_driver_context &context, CUstream stream)
       : context(context), stream(stream) {}

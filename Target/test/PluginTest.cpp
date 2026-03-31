@@ -188,8 +188,6 @@ TEST_F(DriverPluginContextTest, MemoryFreeBadContext) {
 }
 
 TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
-  if (api == "HIP")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (M_driver_context_t context : contexts) {
     M_driver_queue_t queue = nullptr;
     ASSERT_SUCCESS(queue_create(context, &queue));
@@ -199,9 +197,6 @@ TEST_F(DriverPluginContextTest, QueueCreateDestroy) {
 }
 
 TEST_F(DriverPluginContextTest, QueueCopySync) {
-  if (api == "HIP")
-    GTEST_SKIP() << "Unimplemented for " << api;
-
   constexpr size_t size = 128;
   std::array<uint8_t, size> src;
   for (size_t i = 0; i < size; i++)
@@ -294,9 +289,6 @@ TEST_F(DriverPluginContextTest, EventIsReady) {
 }
 
 TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
-  if (api == "CUDA" || api == "HIP")
-    GTEST_SKIP() << "Unsupported on " << api;
-
   constexpr size_t size = 256;
   std::array<uint8_t, size> content;
   for (size_t i = 0; i < content.size(); i++)
@@ -323,9 +315,6 @@ TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
 }
 
 TEST_F(DriverPluginQueueTest, SetMemory) {
-  if (api == "CUDA" || api == "HIP")
-    GTEST_SKIP() << "Unsupported on " << api;
-
   constexpr size_t size = 128;
   for (size_t i = 0; i < contexts.size(); i++) {
     M_driver_context_t context = contexts[i];

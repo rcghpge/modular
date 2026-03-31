@@ -23,16 +23,14 @@ M_driver_status_t M_driver_queue_create(M_driver_context_t context,
 
 M_driver_status_t M_driver_queue_destroy(M_driver_context_t context,
                                          M_driver_queue_t queue) {
-  if (context == nullptr)
-    return M_DRIVER_STATUS_BAD_CONTEXT;
-  return M_driver_queue::destroy(*context, queue);
+  return M_driver_queue::destroy(queue);
 }
 
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
                                                 M_driver_memory_t dst,
                                                 void *src, uint64_t size) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
   return queue->copyToDevice(dst, src, size);
 }
 
@@ -41,7 +39,7 @@ M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
                                                   M_driver_memory_t src,
                                                   uint64_t size) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
   return queue->copyFromDevice(dst, src, size);
 }
 
@@ -50,12 +48,14 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             uint64_t size, uint64_t value,
                                             uint64_t value_size) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
   return queue->setMemory(dst, size, value, value_size);
 }
 
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
-  return M_driver_queue::synchronize(queue);
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return queue->synchronize();
 }
 
 M_driver_status_t

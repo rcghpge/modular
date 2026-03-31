@@ -164,8 +164,6 @@ TEST_F(DriverHALContextTest, ContextAllocBufferSYNC) {
 }
 
 TEST_F(DriverHALContextTest, Queue) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
     ErrorOr<QueueRef> queueOr = context->createQueue();
     ASSERT_FALSE(queueOr.isError());
@@ -208,9 +206,6 @@ struct DriverHALQueueTest : DriverHALContextTest {
     if (this->HasFatalFailure() || this->IsSkipped())
       return;
 
-    if (api == "CUDA" || api == "HIP" || api == "Metal")
-      GTEST_SKIP() << "Unimplemented for " << api;
-
     for (ContextRef &context : contexts) {
       auto queueOr = context->createQueue();
       ASSERT_FALSE(queueOr.isError()) << queueOr.getError();
@@ -231,9 +226,6 @@ TEST_F(DriverHALQueueTest, AllocBufferAsync) {
 }
 
 TEST_F(DriverHALQueueTest, CopyToDeviceThenFromDevice) {
-  if (api == "CUDA" || api == "HIP")
-    GTEST_SKIP() << "Unsupported on " << api;
-
   constexpr size_t size = 128;
   std::array<uint8_t, size> content;
   for (size_t i = 0; i < size; i++)
@@ -258,9 +250,6 @@ TEST_F(DriverHALQueueTest, CopyToDeviceThenFromDevice) {
 }
 
 TEST_F(DriverHALQueueTest, SetMemory) {
-  if (api == "CUDA" || api == "HIP")
-    GTEST_SKIP() << "Unsupported on " << api;
-
   constexpr size_t size = 128;
 
   for (size_t i = 0; i < contexts.size(); i++) {

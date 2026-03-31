@@ -41,6 +41,14 @@
   HIP_FN(hipModuleLoadData)                                                    \
   HIP_FN(hipModuleGetFunction)                                                 \
   HIP_FN(hipModuleUnload)                                                      \
+  HIP_FN(hipStreamCreateWithPriority)                                          \
+  HIP_FN(hipStreamDestroy)                                                     \
+  HIP_FN(hipStreamSynchronize)                                                 \
+  HIP_FN(hipMemcpyAsync)                                                       \
+  HIP_FN(hipMemsetAsync)                                                       \
+  HIP_FN(hipMemsetD16Async)                                                    \
+  HIP_FN(hipMemsetD32Async)                                                    \
+  HIP_FN(hipMemsetD2D32Async)                                                  \
   HIP_FN(hipEventCreateWithFlags)                                              \
   HIP_FN(hipEventDestroy)                                                      \
   HIP_FN(hipEventSynchronize)                                                  \

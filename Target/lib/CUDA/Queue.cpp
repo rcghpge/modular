@@ -140,14 +140,14 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::destroy(M_driver_context &ctx,
-                                          M_driver_queue_t queue) {
+M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
 
-  ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
+  ScopedContext scope(queue->context.primaryCtx,
+                      queue->context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
-  CUDALoader &cuda = ctx.device.driver.rawCuda;
+  CUDALoader &cuda = queue->context.device.driver.rawCuda;
   CUDA_CHECK(cuda.cuStreamDestroy(queue->stream),
              M_DRIVER_STATUS_UNKNOWN_ERROR);
 
@@ -155,16 +155,11 @@ M_driver_status_t M_driver_queue::destroy(M_driver_context &ctx,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::synchronize(M_driver_queue_t queue) {
-  if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
-
-  ScopedContext scope(queue->context.primaryCtx,
-                      queue->context.device.driver.rawCuda);
+M_driver_status_t M_driver_queue::synchronize() {
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
-  CUDALoader &cuda = queue->context.device.driver.rawCuda;
-  CUDA_CHECK(cuda.cuStreamSynchronize(queue->stream),
-             M_DRIVER_STATUS_UNKNOWN_ERROR);
+  CUDALoader &cuda = context.device.driver.rawCuda;
+  CUDA_CHECK(cuda.cuStreamSynchronize(stream), M_DRIVER_STATUS_UNKNOWN_ERROR);
 
   return M_DRIVER_STATUS_SUCCESS;
 }
