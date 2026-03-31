@@ -3,8 +3,8 @@
 
 // CHECK-LABEL: Running 'merge_dim_rank3_merge_1':
 // We should get the correct shape / strides before merge_dim.
-// CHECK-NEXT: output._static_shape = [1, 2, 2, 3]
-// CHECK-NEXT: output._static_strides = [12, 6, 3, 1]
+// CHECK-NEXT: output._static_shape_tuple = (1, 2, 2, 3)
+// CHECK-NEXT: output._static_strides_tuple = (12, 6, 3, 1)
 // CHECK-NEXT: output._runtime_shape = (1, 2, 2, 3)
 // CHECK-NEXT: output._runtime_strides = (12, 6, 3, 1)
 // CHECK-NEXT: tensor<1x4x3xf32> [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00]

@@ -698,7 +698,7 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
       SmallVector<int64_t> values;
       for (auto val : arrAttr)
         values.push_back(cast<IntegerAttr>(val).getValue().getSExtValue());
-      return EmitMojoState::getAsDimListMojoValue(values);
+      return EmitMojoState::getAsIntTupleMojoValue(values);
     } else
       return Error(llvm::formatv("Unsupported custom param MLIR type for `{}`",
                                  paramName));
@@ -774,8 +774,10 @@ void EmitMojoState::addDebugPrintTensorSpecs(const MojoValue &tensorValue,
             "print", {},
             {MojoValue(isInput ? "input" : "output").quote(),
              MojoValue("#" + std::to_string(operandIndex) + ":").quote(),
-             MojoValue("shape =").quote(), tensorValue.get("_static_shape"),
-             MojoValue("strides =").quote(), tensorValue.get("_static_strides"),
+             MojoValue("shape =").quote(),
+             tensorValue.get("_static_shape_tuple"),
+             MojoValue("strides =").quote(),
+             tensorValue.get("_static_strides_tuple"),
              MojoValue("alignment =").quote(), tensorValue.get("alignment")});
       });
 }

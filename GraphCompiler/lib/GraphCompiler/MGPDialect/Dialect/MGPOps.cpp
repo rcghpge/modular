@@ -342,19 +342,14 @@ LogicalResult TensorSpecCreateOp::emitMojo(MOGG::EmitMojoState &state) {
   size_t rank = tensorSpec.getRank();
   MojoValue rawDimsRankParam = rank;
 
-  // TODO:Update mgp_tensor_spec_create to use DimList directly, which will let
-  // us use EmitMojoState::getAsDimListMojoValue. Currently, the behavior of the
-  // mojo function is incompatible with the EmitMojoState function and the mojo
-  // function can't be updated until the EmitMojo path is the default path
-  // because the soon-to-be-defunct relies on the current behavior.
-  SmallVector<MojoValue> dims;
-  dims.reserve(rank);
-  llvm::transform(tensorSpec.getDims(), std::back_inserter(dims),
-                  [](const std::optional<int64_t> &d) {
-                    return d.value_or(mlir::ShapedType::kDynamic);
+  // Emit dims as an IntTuple, mapping dynamic dims to -1 (UNKNOWN_VALUE).
+  SmallVector<int64_t> dimValues;
+  dimValues.reserve(rank);
+  llvm::transform(tensorSpec.getDims(), std::back_inserter(dimValues),
+                  [](const std::optional<int64_t> &d) -> int64_t {
+                    return d.value_or(-1);
                   });
-  MojoValue rawDimsParam =
-      MojoValue(HardcodedMojoSymbols::struct_DimList)[dims]();
+  MojoValue rawDimsParam = EmitMojoState::getAsIntTupleMojoValue(dimValues);
 
   MojoValue result = state.builder.var(function(
       {rawDimsParam, rawDimsRankParam}, state.getMojoValuesFor(getOperands())));

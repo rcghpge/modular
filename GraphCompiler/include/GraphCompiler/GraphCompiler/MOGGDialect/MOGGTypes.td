@@ -58,13 +58,10 @@ def MOGG_Shape : MOGG_Type<"Shape", "shape"> {
 // (at the moment) for two reasons:
 //
 // 1. !mogg.shape is already used in the emit-mojo pipeline to
-//    represent DimList values.
+//    represent IndexList values.
 //
 // 2. It currently doesn't carry around any notion of the rank of its result
 //    (which we is information we need during lowering).
-//
-// In the future we should unify the two and also investigate why both
-// IndexList and DimList are used in kernels.
 def MOGG_ShapeFuncResult : MOGG_Type<"ShapeFuncResult", "shape_func_result"> {
   let summary = "A type representing the result of a shape function with known rank";
   let description = [{

@@ -36,8 +36,6 @@ constexpr StringLiteral struct_ManagedTensorSlice = "tensor.ManagedTensorSlice";
 constexpr StringLiteral struct_Int = "Int";
 constexpr StringLiteral struct_UInt = "UInt";
 constexpr StringLiteral struct_Bool = "Bool";
-constexpr StringLiteral struct_DimList = "buffer.DimList";
-constexpr StringLiteral struct_Dim = "buffer.Dim";
 constexpr StringLiteral struct_AddressSpace = "std.memory.AddressSpace";
 constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
@@ -60,13 +58,15 @@ constexpr StringLiteral struct_ms_FusedInputVariadicTensors =
 constexpr StringLiteral struct_ms_FusedOutputVariadicTensors =
     "managed_tensor_slice._FusedOutputVariadicTensors";
 constexpr StringLiteral struct_Trace = "std.runtime.tracing.Trace";
+constexpr StringLiteral struct_IntTuple = "layout.IntTuple";
+constexpr StringLiteral alias_IndexListToTileLayout =
+    "directives._IndexListToTileLayout";
 
 constexpr StringLiteral enum_AddressSpace_GENERIC = "GENERIC";
 constexpr StringLiteral enum_IO_Input = "io_spec.IO.Input";
 constexpr StringLiteral enum_TraceLevel_OP =
     "std.runtime.tracing.TraceLevel.OP";
 
-constexpr StringLiteral func_DimList_create_unknown = "create_unknown";
 constexpr StringLiteral func_ManagedTensorslice_shape = "shape";
 constexpr StringLiteral func_stack_allocation = "stack_allocation";
 constexpr StringLiteral func_to_managed_tensor_slice =
@@ -115,6 +115,7 @@ constexpr StringLiteral func_ms_simd_load_from_tensor_pointer =
 constexpr StringLiteral func_ms_simd_store_into_tensor_pointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
 constexpr StringLiteral func_ms_foreach = "managed_tensor_slice.foreach";
+constexpr StringLiteral func_to_index_list = "layout.to_index_list";
 constexpr StringLiteral func_create_task = "std.runtime.asyncrt.create_task";
 constexpr StringLiteral func_get_safe_task_id =
     "std.runtime.tracing.get_safe_task_id";
@@ -149,6 +150,7 @@ constexpr std::pair<StringLiteral, StringLiteral> packagesToImport[] = {
     {"std.memory", ""},
     {"buffer", ""},
     {"std.collections", ""},
+    {"layout", ""},
 };
 
 /// TODO(GEX-2488): Find another way to find that a type is an IOSpec without
@@ -375,40 +377,52 @@ public:
         .str();
   }
 
-  /// Given an array of dimensions, represent it in Mojo using `DimList`.
-  static MojoValue getAsDimListMojoValue(ArrayRef<int64_t> dims) {
-    if (!dims.empty() && llvm::all_of(dims, [](int64_t dim) {
-          return dim == mlir::ShapedType::kDynamic;
-        })) {
-
-      return MojoValue(HardcodedMojoSymbols::struct_DimList)
-          .get(HardcodedMojoSymbols::func_DimList_create_unknown)(
-              {std::to_string(dims.size())});
-    }
-
+  /// Given an array of dimensions, represent it as an IndexList Mojo value.
+  /// Dynamic dimensions (kDynamic) are mapped to -1.
+  static MojoValue getAsIndexListMojoValue(ArrayRef<int64_t> dims) {
     SmallVector<MojoValue> dimsAsMojoValues;
+    // Map kDynamic to -1, keep others as-is.
     for (auto dim : dims) {
-      if (dim == mlir::ShapedType::kDynamic) {
-        dimsAsMojoValues.push_back(
-            MojoValue(HardcodedMojoSymbols::struct_Dim)());
-      } else {
+      if (dim == mlir::ShapedType::kDynamic)
+        dimsAsMojoValues.push_back(-1);
+      else
         dimsAsMojoValues.push_back(std::to_string(dim));
-      }
     }
-    // Always convert rank-0 tensors to [1]
+    // Rank-0 tensors become rank-1.
     if (dimsAsMojoValues.empty())
       dimsAsMojoValues.push_back(1);
-
-    return MojoValue(HardcodedMojoSymbols::struct_DimList)[dimsAsMojoValues]();
+    MojoValue rank = dimsAsMojoValues.size();
+    return MojoValue(HardcodedMojoSymbols::struct_IndexList)[rank](
+        {}, dimsAsMojoValues);
   }
 
-  static MojoValue getStaticShapeAsMojoValue(MO::TensorType type) {
-    return getAsDimListMojoValue(type.getIntDims());
+  /// Given an array of dimensions, represent it as an IntTuple Mojo value.
+  /// Dynamic dimensions (kDynamic) are mapped to -1 (UNKNOWN_VALUE).
+  static MojoValue getAsIntTupleMojoValue(ArrayRef<int64_t> dims) {
+    SmallVector<MojoValue> dimsAsMojoValues;
+    // Map kDynamic to -1 (UNKNOWN_VALUE), keep others as-is.
+    for (auto dim : dims) {
+      if (dim == mlir::ShapedType::kDynamic)
+        dimsAsMojoValues.push_back(-1);
+      else
+        dimsAsMojoValues.push_back(std::to_string(dim));
+    }
+    // Rank-0 tensors become rank-1.
+    if (dimsAsMojoValues.empty())
+      dimsAsMojoValues.push_back(1);
+    return MojoValue(HardcodedMojoSymbols::struct_IntTuple)({},
+                                                            dimsAsMojoValues);
   }
 
-  static MojoValue getStaticStridesAsMojoValue(MO::TensorType type) {
-    return getAsDimListMojoValue(
+  /// Given a tensor type, represent its static layout as a TileLayout Mojo
+  /// value using `_IndexListToTileLayout`.
+  static MojoValue
+  getStaticTileLayoutFromIndexListsMojoValue(MO::TensorType type) {
+    MojoValue shapeIL = getAsIndexListMojoValue(type.getIntDims());
+    MojoValue stridesIL = getAsIndexListMojoValue(
         MO::getStridesForTensor(type, /*unknown=*/false));
+    return MojoValue(HardcodedMojoSymbols::alias_IndexListToTileLayout)[{
+        shapeIL, stridesIL}];
   }
 
   MojoValue getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,

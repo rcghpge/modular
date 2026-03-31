@@ -9,7 +9,7 @@ from std.math import iota
 from std.ffi import external_call
 from std.sys.info import simd_width_of
 import compiler_internal as compiler
-from buffer.dimlist import DimList
+from layout import IntTuple
 from layout import TileTensor, CoordLike, RuntimeInt, Coord
 from layout.tile_layout import Layout as TileLayout
 from compiler_internal import StaticTensorSpec
@@ -274,8 +274,8 @@ struct PrintTensorSpecOp:
     def execute[
         target: StaticString,
     ](outp: OutputTensor, x: InputTensor) raises:
-        print("x.shape =", x._static_shape)
-        print("x.strides =", x._static_strides)
+        print("x.shape =", x._static_shape_tuple)
+        print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
         print("x.exclusive =", x.exclusive)
@@ -317,8 +317,8 @@ struct PrintTensor:
 struct PrintTensorSpecViewOp:
     @staticmethod
     def print_spec(x: InputTensor):
-        print("x.shape =", x._static_shape)
-        print("x.strides =", x._static_strides)
+        print("x.shape =", x._static_shape_tuple)
+        print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
         print("x.exclusive =", x.exclusive)
@@ -354,8 +354,8 @@ struct PrintTensorSpecFusedOp:
     def execute[
         target: StaticString,
     ](outp: FusedOutputTensor, x: FusedInputTensor) capturing raises:
-        print("x.shape =", x._static_shape)
-        print("x.strides =", x._static_strides)
+        print("x.shape =", x._static_shape_tuple)
+        print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
         print("x.exclusive =", x.exclusive)
@@ -380,8 +380,8 @@ struct PrintOutputShapeStridesFusedOp:
     def execute[
         target: StaticString,
     ](output: FusedOutputTensor, x: FusedInputTensor) capturing raises:
-        print("output._static_shape = ", output._static_shape)
-        print("output._static_strides = ", output._static_strides)
+        print("output._static_shape_tuple = ", output._static_shape_tuple)
+        print("output._static_strides_tuple = ", output._static_strides_tuple)
         print("output._runtime_shape = ", output._spec.shape)
         print("output._runtime_strides = ", output._runtime_strides)
 
@@ -589,21 +589,21 @@ struct Transpose2DOp:
 
     @staticmethod
     def get_view_strides(
-        input_strides: DimList,
-    ) -> DimList[input_strides.values[1], input_strides.values[0]]:
+        input_strides: IntTuple,
+    ) -> IndexList[2]:
         # transpose the strides of the input
-        return {}
+        return IndexList[2](Int(input_strides[1]), Int(input_strides[0]))
 
     @staticmethod
     def update_input_view[
-        dtype: DType, //, output_static_shape: DimList
+        dtype: DType, //, output_static_shape: IntTuple
     ](
         input: InputTensor[dtype=dtype, rank=2, ...],
         out result: InputTensor[
-            static_spec=input.static_spec.with_layout[
+            static_spec=input.static_spec.with_int_tuple_layout[
                 2,
                 output_static_shape,
-                Self.get_view_strides(input._static_strides),
+                Self.get_view_strides(input._static_strides_tuple),
             ]()
         ],
     ):
@@ -622,7 +622,7 @@ struct Transpose2DOp:
         x: InputTensor[dtype=dtype, rank=2, ...],
         ctx: DeviceContextPtr,
     ) raises:
-        var x_view = Self.update_input_view[z._static_shape](x)
+        var x_view = Self.update_input_view[z._static_shape_tuple](x)
 
         view_copy_impl[target=target](z, x_view, ctx)
 

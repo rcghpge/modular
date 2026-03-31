@@ -2,8 +2,8 @@
 // RUN: mt --execute %t_mojo.mlir --result-output-style=full --input-shapes=1x2x3x4 --input-shapes=1x2x3x4 --model-inputs=ones | FileCheck %s
 
 // CHECK-LABEL: Running 'print_static_shape_strides'
-// CHECK: x.shape = [1, 2, 3, 4]
-// CHECK: x.strides = [24, 12, 4, 1]
+// CHECK: x.shape = (1, 2, 3, 4)
+// CHECK: x.strides = (24, 12, 4, 1)
 // CHECK: x.alignment = {{[0-9][0-9]}}
 // CHECK: x.address_space = AddressSpace.GENERIC
 // CHECK: x.exclusive = True
@@ -14,8 +14,8 @@ mo.graph @print_static_shape_strides(%x: !mo.tensor<[1,2,3,4], f32>) -> !mo.tens
 }
 
 // CHECK-LABEL: Running 'print_dyn_shape_strides'
-// CHECK: x.shape = [1, 2, ?, 4]
-// CHECK: x.strides = [?, ?, 4, 1]
+// CHECK: x.shape = (1, 2, -1, 4)
+// CHECK: x.strides = (-1, -1, 4, 1)
 // CHECK: x.alignment = {{[0-9][0-9]}}
 // CHECK: x.address_space = AddressSpace.GENERIC
 // CHECK: x.exclusive = True
@@ -26,8 +26,8 @@ mo.graph @print_dyn_shape_strides<D0>(%x: !mo.tensor<[1,2,D0,4], f32>) -> !mo.te
 }
 
 // CHECK-LABEL: Running 'print_exclusive_inference'
-// CHECK: x.shape = [1, 2, 3, 4]
-// CHECK: x.strides = [24, 12, 4, 1]
+// CHECK: x.shape = (1, 2, 3, 4)
+// CHECK: x.strides = (24, 12, 4, 1)
 // CHECK: x.alignment = {{[0-9][0-9]}}
 // CHECK: x.address_space = AddressSpace.GENERIC
 // CHECK: x.exclusive = False

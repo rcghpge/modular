@@ -4,7 +4,7 @@
 // Unit tests to ensure that during ViewFusion the static strides are propagated correctly.
 
 // CHECK-LABEL: Running 'broadcast_to':
-// CHECK: input #0: shape = [5, 4, 3] strides = [0, 1, 0]
+// CHECK: input #0: shape = (5, 4, 3) strides = (0, 1, 0)
 mo.graph @broadcast_to(%x: !mo.tensor<[4, 1], f32>) -> (!mo.tensor<[5, 4, 3], f32>) {
     %0 = mo.static.broadcast_to(%x) : !mo.tensor<[4, 1], f32> -> !mo.tensor<[5, 4, 3], f32>
     %1 = mo.custom {symbol = "print_tensor_spec_fused", device = #M.device_ref<"cpu", 0>} (%0) : (!mo.tensor<[5, 4, 3], f32>) -> !mo.tensor<[5, 4, 3], f32>
@@ -13,7 +13,7 @@ mo.graph @broadcast_to(%x: !mo.tensor<[4, 1], f32>) -> (!mo.tensor<[5, 4, 3], f3
 
 
 // CHECK-LABEL: Running 'reshape':
-// CHECK: input #0: shape = [3, 4, 2] strides = [8, 2, 1]
+// CHECK: input #0: shape = (3, 4, 2) strides = (8, 2, 1)
 mo.graph @reshape(%x: !mo.tensor<[24], f32>) -> (!mo.tensor<[3, 4, 2], f32>) {
   %0 = mo.static.reshape(%x) : !mo.tensor<[24], f32> -> !mo.tensor<[3, 4, 2], f32>
   %1 = mo.custom {symbol = "print_tensor_spec_fused", device = #M.device_ref<"cpu", 0>} (%0) : (!mo.tensor<[3, 4, 2], f32>) -> !mo.tensor<[3, 4, 2], f32>
@@ -21,7 +21,7 @@ mo.graph @reshape(%x: !mo.tensor<[24], f32>) -> (!mo.tensor<[3, 4, 2], f32>) {
 }
 
 // CHECK-LABEL: Running 'transpose':
-// CHECK: input #0: shape = [3, 4, 2] strides = [4, 1, 12]
+// CHECK: input #0: shape = (3, 4, 2) strides = (4, 1, 12)
 mo.graph @transpose(%x: !mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[3, 4, 2], f32>) {
   %perm = mo.constant {value = #M.dense_array<1, 2, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %0 = mo.transpose(%x, %perm) : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[3, 4, 2], f32>
@@ -30,7 +30,7 @@ mo.graph @transpose(%x: !mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[3, 4, 2], f3
 }
 
 // CHECK-LABEL: Running 'slice_dim_pos_step':
-// CHECK: input #0: shape = [2, 3] strides = [5, 2]
+// CHECK: input #0: shape = (2, 3) strides = (5, 2)
 mo.graph @slice_dim_pos_step(%x: !mo.tensor<[3, 5], f32>) -> !mo.tensor<[2, 3], f32> {
   %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %stop = mo.constant {value = #M.dense_array<3, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -43,7 +43,7 @@ mo.graph @slice_dim_pos_step(%x: !mo.tensor<[3, 5], f32>) -> !mo.tensor<[2, 3], 
 }
 
 // CHECK-LABEL: Running 'slice_dim_neg_step':
-// CHECK: input #0: shape = [2, 2] strides = [-6, -1]
+// CHECK: input #0: shape = (2, 2) strides = (-6, -1)
 mo.graph @slice_dim_neg_step(%x: !mo.tensor<[5, 3], f32>) -> !mo.tensor<[2, 2], f32> {
   %start = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %stop = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -56,7 +56,7 @@ mo.graph @slice_dim_neg_step(%x: !mo.tensor<[5, 3], f32>) -> !mo.tensor<[2, 2], 
 }
 
 // CHECK-LABEL: Running 'reshape_and_transpose':
-// CHECK: input #0: shape = [3, 4, 2] strides = [4, 1, 12]
+// CHECK: input #0: shape = (3, 4, 2) strides = (4, 1, 12)
 mo.graph @reshape_and_transpose(%x: !mo.tensor<[24], f32>) -> (!mo.tensor<[3, 4, 2], f32>) {
   %0 = mo.static.reshape(%x) : !mo.tensor<[24], f32> -> !mo.tensor<[2, 3, 4], f32>
   %perm = mo.constant {value = #M.dense_array<1, 2, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>

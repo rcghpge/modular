@@ -958,9 +958,9 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
         sdb.decreaseIndentation();
       });
 
-  // Debug: dump the static shape/strides of each captured tensor.
+  // Debug: dump the shape/strides of each captured tensor.
   // This runs in the kernel function body (once per call) and accesses
-  // the fused input's _static_shape/_static_strides (DimList).
+  // the fused input's _static_shape/_static_strides.
   if (state.isDebugDumpFusedTensorSpecsEnabled()) {
     unsigned inputIdx = 0;
     for (unsigned i = 0; i < fusedInputs.size(); ++i) {
@@ -970,9 +970,10 @@ emitFusionStruct(BindLambdaOp bindOp, EmitMojoState &state, Block *lambdaBody,
           "print", {},
           {MojoValue(isOutputLambda ? "output" : "input").quote(),
            MojoValue("#" + std::to_string(inputIdx++) + ":").quote(),
-           MojoValue("shape =").quote(), fusedInputs[i].get("_static_shape"),
+           MojoValue("shape =").quote(),
+           fusedInputs[i].get("_static_shape_tuple"),
            MojoValue("strides =").quote(),
-           fusedInputs[i].get("_static_strides"),
+           fusedInputs[i].get("_static_strides_tuple"),
            MojoValue("alignment =").quote(), fusedInputs[i].get("alignment")});
     }
   }
@@ -1297,8 +1298,7 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
       rank,
       MojoValue(false), // False constant
       MojoValue(HardcodedMojoSymbols::enum_IO_Input),
-      staticSpec.get("shape"),
-      staticSpec.get("strides"),
+      staticSpec.get("static_layout"),
       staticSpec.get("alignment"),
       staticSpec.get("exclusive")};
 
@@ -2345,10 +2345,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
                      .get(MO::stringifyIOKind(getIo()));
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
-  auto shapeParam =
-      state.builder.comptime(state.getStaticShapeAsMojoValue(tensorTy));
-  auto stridesParam =
-      state.builder.comptime(state.getStaticStridesAsMojoValue(tensorTy));
+  auto layoutParam = state.builder.comptime(
+      state.getStaticTileLayoutFromIndexListsMojoValue(tensorTy));
   MojoValue alignmentParam(
       static_cast<uint64_t>(M::Driver::getPreferredAlignment(
           MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
@@ -2356,14 +2354,14 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       tensorTy.getTypedShapeAttr(), getDims()));
   auto moggTensorInit = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(this->getOperationName()));
-  state.setMojoValueFor(
-      getResult(), state.builder.var(moggTensorInit(
-                       {dTypeParam, rankParam, mutParam, ioParam, shapeParam,
-                        stridesParam, alignmentParam, exclusiveParam},
-                       {state.getMojoValueFor(getBuffer())
-                            .get("unsafe_ptr")()
-                            .get("bitcast")({"NoneType"}),
-                        shapeVar})));
+  state.setMojoValueFor(getResult(),
+                        state.builder.var(moggTensorInit(
+                            {dTypeParam, rankParam, mutParam, ioParam,
+                             layoutParam, alignmentParam, exclusiveParam},
+                            {state.getMojoValueFor(getBuffer())
+                                 .get("unsafe_ptr")()
+                                 .get("bitcast")({"NoneType"}),
+                             shapeVar})));
 
   return success();
 }
@@ -2681,8 +2679,8 @@ LogicalResult CallViewOp::emitMojo(EmitMojoState &state) {
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     constexpr StringLiteral staticOutShapeParamName = "output_static_shape";
     if (paramName == staticOutShapeParamName) {
-      return state.builder.comptime(
-          state.getStaticShapeAsMojoValue(getResult().getType()));
+      return state.builder.comptime(EmitMojoState::getAsIntTupleMojoValue(
+          getResult().getType().getIntDims()));
     }
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
@@ -2894,9 +2892,11 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
     auto inputWithStaticSpec = reboundInput.get("static_spec");
     staticSpecInternals.push_back(inputWithStaticSpec.get("get_internals")());
     staticSpecShapes.push_back(
-        inputWithStaticSpec.get("shape").get("to_index_list")[rank]());
+        MojoValue(HardcodedMojoSymbols::func_to_index_list)(
+            {rank}, {inputWithStaticSpec.get("shape_tuple")}));
     staticSpecStrides.push_back(
-        inputWithStaticSpec.get("strides").get("to_index_list")[rank]());
+        MojoValue(HardcodedMojoSymbols::func_to_index_list)(
+            {rank}, {inputWithStaticSpec.get("strides_tuple")}));
   }
   MojoValue inputSpecsInternalsComptime =
       state.builder.comptime(MojoValue(HardcodedMojoSymbols::struct_Variadic)
@@ -3303,14 +3303,13 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
   MojoValue tensorValue = state.getMojoValueFor(getTensor());
   MojoValue shapeValue = state.getShapeAsIndexListMojoValue(
       toType.getTypedShapeAttr(), getDynamicDims());
-  MojoValue shapeParam = state.getStaticShapeAsMojoValue(toType);
-  MojoValue stridesParam = state.getStaticStridesAsMojoValue(toType);
+  MojoValue layoutParam =
+      state.getStaticTileLayoutFromIndexListsMojoValue(toType);
   MojoValue reshapeFunc = state.getOriginalMojoNameFor(
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName()));
   state.setMojoValueFor(getResult(),
                         state.builder.var(reshapeFunc(
-                            {MojoValue("static_shape").equal(shapeParam),
-                             MojoValue("static_stride").equal(stridesParam)},
+                            {MojoValue("static_layout").equal(layoutParam)},
                             {tensorValue, shapeValue})));
   return success();
 }

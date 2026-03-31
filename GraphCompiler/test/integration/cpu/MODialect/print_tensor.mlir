@@ -4,7 +4,7 @@
 // Test printing of ManagedTensorSlice
 // CHECK{LITERAL}: ManagedTensorSlice([[1.0, 2.0, 3.0, 4.0],
 // CHECK-NEXT{LITERAL}: [5.0, 6.0, 7.0, 8.0]], dtype=float32, shape=2x4)
-// CHECK-SAME{LITERAL}: {static_shape = [2, 4], static_strides = [4, 1], dynamic_shape = (2, 4), dynamic_strides = (4, 1),
+// CHECK-SAME{LITERAL}: {static_shape = (2, 4), static_strides = (4, 1), dynamic_shape = (2, 4), dynamic_strides = (4, 1),
 
 // Note: alignment is platform specific
 // CHECK-SAME: alignment = [[ALIGNMENT:[0-9]+]], address_space = AddressSpace.GENERIC}
