@@ -277,9 +277,10 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   case Device::Attribute::COMPUTE_CAPABILITY_MINOR:
     return 0;
 
-  // Max shared memory per GPU core is not documented.
+  // Threadgroup memory limit per kernel dispatch, queried directly from the
+  // Metal device.  Apple Silicon is 32 KB; this may vary on future hardware.
   case Device::Attribute::MAX_SHARED_MEMORY_PER_MULTIPROCESSOR:
-    ATTRIBUTE_UNSUPPORTED(MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
+    return device_->maxThreadgroupMemoryLength();
 
   // Max registers per GPU core is not documented.
   case Device::Attribute::MAX_REGISTERS_PER_MULTIPROCESSOR:
@@ -888,12 +889,15 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     RETURN_ERROR("Failed to create compute command encoder");
 
   encoder->setComputePipelineState(pipeline);
-  size_t numArgs = func.argumentCount();
   const MetalDevice &metalDevice = MetalDevice::cast(device());
   MTL::Device *mtlDevice = metalDevice.metalDevice();
 
-  // 4) Bind all buffer arguments
-  for (uint32_t i = 0; i < numArgs; ++i) {
+  // 4) Bind caller-visible buffer arguments.
+  // Threadgroup memory is handled via !air.global_bindings and is not a
+  // kernel function argument, so argCount matches func.argumentCount() from
+  // pipeline reflection.  setThreadgroupMemoryLength (below) handles the
+  // threadgroup allocation separately.
+  for (uint32_t i = 0; i < argCount; ++i) {
     if (args[i] == nullptr) {
       encoder->endEncoding();
       RETURN_ERROR("Null argument at index " + std::to_string(i));
@@ -917,6 +921,20 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   // FIXME: only set resources that are used by the kernel
   for (const auto &it : metalDevice.getTrackedBuffers())
     encoder->useResource(it.second.buffer, MTL::ResourceUsageWrite);
+
+  if (sharedMemBytes > 0) {
+    DEFINE_OR_RETURN_ERROR(
+        uint32_t, maxSharedMemBytes,
+        metalDevice.getAttribute(
+            Device::Attribute::MAX_SHARED_MEMORY_PER_MULTIPROCESSOR));
+    if (sharedMemBytes > maxSharedMemBytes) {
+      encoder->endEncoding();
+      RETURN_ERROR(
+          "External memory byte count " + std::to_string(sharedMemBytes) +
+          " exceeds device limit of " + std::to_string(maxSharedMemBytes));
+    }
+    encoder->setThreadgroupMemoryLength(sharedMemBytes, /*index=*/0);
+  }
 
   // 6) Dispatch
   MTL::Size gridSize{gridX, gridY, gridZ};
