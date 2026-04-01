@@ -842,45 +842,12 @@ static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
 }
 
 //===----------------------------------------------------------------------===//
-// mgp.buffer.get_cached
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_get_cached(Chain inChain, StateContext &theContext,
-                                  AsyncValueRef<size_t> bBufferSlot,
-                                  Result<TensorBufferRef> outBuffer) {
-  TRACY_ZONE_SCOPED_NC("mgp_buffer_get_cached", TRACY_COLOR_TEAL);
-
-  auto &stateSlot = theContext.getStateSlot(*bBufferSlot);
-  ErrorOr<TensorBufferRef> errOr = stateSlot.getBuffer(/*bufferIndex=*/0);
-  if (errOr)
-    return std::move(outBuffer).setToError(errOr.takeError());
-
-  std::move(outBuffer).emplace(std::move(*errOr));
-}
-
-//===----------------------------------------------------------------------===//
-// mgp.buffer.remove_cached
-//===----------------------------------------------------------------------===//
-
-static void mgp_buffer_remove_cached(Chain inChain, StateContext &theContext,
-                                     Result<Chain> outChain,
-                                     MEFAttr<uint64_t> bufferSlot) {
-  TRACY_ZONE_SCOPED_NC("mgp_buffer_remove_cached", TRACY_COLOR_TEAL);
-
-  auto &stateSlot = theContext.getStateSlot(*bufferSlot);
-  stateSlot.clear();
-  std::move(outChain).emplace();
-}
-
-//===----------------------------------------------------------------------===//
 // registerMGPPrimitives
 //===----------------------------------------------------------------------===//
 
 void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.runtime.create", mgp_runtime_create);
   ADD_PRIMITIVE(registry, "mgp.buffer.cache", mgp_buffer_cache);
-  ADD_PRIMITIVE(registry, "mgp.buffer.get_cached", mgp_buffer_get_cached);
-  ADD_PRIMITIVE(registry, "mgp.buffer.remove_cached", mgp_buffer_remove_cached);
   ADD_PRIMITIVE(registry, "mgp.buffer.plan", mgp_buffer_plan);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
