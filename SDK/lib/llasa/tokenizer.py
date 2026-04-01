@@ -145,8 +145,7 @@ class LlasaTokenizer(
             max_length=text_context.max_length,
             tokens=text_context.tokens,
             json_schema=text_context.json_schema,
-            eos_token_ids=text_context.eos_token_ids,
-            eos_sequences=text_context.eos_sequences,
+            eos_tracker=text_context.eos_tracker,
             audio_prompt_tokens=np.array(
                 request.audio_prompt_tokens, dtype=np.int32
             ),
