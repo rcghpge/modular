@@ -31,6 +31,8 @@ enum class NixlLogLevel {
   kFatal = 5    // Map to FATAL
 };
 
+bool shouldLog(NixlLogLevel level);
+
 /*-----------------------------------------------------------------------------*
  * Helper Functions
  *-----------------------------------------------------------------------------*/
@@ -109,6 +111,11 @@ private:
   bool showBase_ = false;
 };
 
+class NixlLogVoidify {
+public:
+  void operator&(NixlLogStream &) const {}
+};
+
 } // namespace M::AsyncRT::NIXL
 
 /*-----------------------------------------------------------------------------*
@@ -118,78 +125,90 @@ private:
  * Usage: NIXL_INFO << "Message part 1 " << variable << " message part 2";
  */
 
-#define _LOG_HEADER "[" << __FILE__ << ":" << __LINE__ << "] "
+#define NIXL_LOG_HEADER_ "[" << __FILE__ << ":" << __LINE__ << "] "
+
+#define NIXL_LOG_IF_ENABLED_(level)                                            \
+  !::M::AsyncRT::NIXL::shouldLog(level)                                        \
+      ? (void)0                                                                \
+      : ::M::AsyncRT::NIXL::NixlLogVoidify() &                                 \
+            ::M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                    \
+                << NIXL_LOG_HEADER_
 
 /*
  * Logs a message and terminates the program unconditionally.
  * Maps to LOG(FATAL). Use for unrecoverable errors.
  */
-#define NIXL_FATAL M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
+#define NIXL_FATAL                                                             \
+  ::M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << NIXL_LOG_HEADER_
 
 /*
  * Like NIXL_FATAL, but also prints the errno message.
  */
 #define NIXL_PFATAL                                                            \
-  M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
-      << _LOG_HEADER << ": " << nixl_strerror(errno)
+  ::M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                              \
+      << NIXL_LOG_HEADER_ << ": " << nixl_strerror(errno)
 
 /* Logs messages unconditionally (maps to ERROR level) */
-#define NIXL_ERROR M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
+#define NIXL_ERROR                                                             \
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kError)
 
 /*
  * Like NIXL_ERROR, but also prints the errno message.
  */
 #define NIXL_PERROR                                                            \
-  M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
-      << _LOG_HEADER << ": " << nixl_strerror(errno)
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kError)               \
+      << ": " << nixl_strerror(errno)
 
 /*
  * Logs messages unconditionally (maps to WARNING level)
  */
-#define NIXL_WARN M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
+#define NIXL_WARN                                                              \
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kWarning)
 
 /*
  * Like NIXL_WARN, but also prints the errno message.
  */
 #define NIXL_PWARN                                                             \
-  M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
-      << _LOG_HEADER << ": " << nixl_strerror(errno)
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kWarning)             \
+      << ": " << nixl_strerror(errno)
 
 /*
  * Logs messages unconditionally (maps to INFO level)
  */
-#define NIXL_INFO M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
+#define NIXL_INFO NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kInfo)
 
 /*
  * Like NIXL_INFO, but also prints the errno message.
  */
 #define NIXL_PINFO                                                             \
-  M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
-      << _LOG_HEADER << ": " << nixl_strerror(errno)
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kInfo)                \
+      << ": " << nixl_strerror(errno)
 
 /*
  * Logs messages unconditionally (maps to verbosity level 1)
  */
-#define NIXL_DEBUG M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
+#define NIXL_DEBUG                                                             \
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kDebug)
 
 /*
  * Like NIXL_DEBUG, but also prints the errno message.
  */
 #define NIXL_PDEBUG                                                            \
-  M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
-      << _LOG_HEADER << ": " << nixl_strerror(errno)
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kDebug)               \
+      << ": " << nixl_strerror(errno)
 
 /*
  * Logs messages unconditionally (maps to verbosity level 2)
  * Stripped from release builds.
  */
-#define NIXL_TRACE M::AsyncRT::NIXL::NixlLogStream(llvm::errs()) << _LOG_HEADER
+#define NIXL_TRACE                                                             \
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kTrace)
 
 /*
  * Like NIXL_TRACE, but also prints the errno message.
  */
 #define NIXL_PTRACE                                                            \
-  M::AsyncRT::NIXL::NixlLogStream(llvm::errs())                                \
-      << _LOG_HEADER << ": " << nixl_strerror(errno)
+  NIXL_LOG_IF_ENABLED_(::M::AsyncRT::NIXL::NixlLogLevel::kTrace)               \
+      << ": " << nixl_strerror(errno)
 
 #endif // MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_LOG_H

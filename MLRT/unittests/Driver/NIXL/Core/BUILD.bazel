@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_test", "modular_shared_library")
+load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_test", "modular_shared_library")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -38,6 +38,28 @@ modular_cc_test(
     srcs = ["MetadataStreamTests.cpp"],
     deps = [
         "//MLRT:Driver/NIXL",
+    ],
+)
+
+modular_cc_binary(
+    name = "NIXLLogTestHelper",
+    srcs = ["NIXLLogTestHelper.cpp"],
+    deps = [
+        "//MLRT:Driver/NIXL",
+    ],
+)
+
+modular_cc_test(
+    name = "LoggingTests",
+    size = "small",
+    srcs = ["LoggingTests.cpp"],
+    data = [":NIXLLogTestHelper"],
+    env = {
+        "TEST_NIXL_LOG_HELPER_PATH": "$(location :NIXLLogTestHelper)",
+    },
+    deps = [
+        "//MLRT:Driver/NIXL",
+        "//MLRT/unittests/Driver:TestUtils",
     ],
 )
 

@@ -28,6 +28,9 @@ struct LogLevelSettings {
   int vlog_level;
 };
 
+std::atomic<NixlLogLevel> gMinNixlLogLevel{NixlLogLevel::kWarning};
+std::atomic<int> gNixlVlogLevel{0};
+
 } // anonymous namespace
 
 // Default log level if nothing else is specified
@@ -37,11 +40,6 @@ constexpr std::string_view kDefaultLogLevel = "WARN";
 static void InitializeNixlLogging() __attribute__((constructor));
 
 static void InitializeNixlLogging() {
-  // Define and initialize the global log level variables declared in the header
-  // Default to Warning level (3) and vlog level 0
-  static std::atomic<NixlLogLevel> g_min_nixl_log_level{NixlLogLevel::kWarning};
-  static std::atomic<int> g_nixl_vlog_level{0};
-
   // Map from log level string to settings using LLVM's StringMap
   llvm::StringMap<LogLevelSettings> kLogLevelMap{
       {"TRACE", {NixlLogLevel::kInfo, 2}},
@@ -54,35 +52,59 @@ static void InitializeNixlLogging() {
 
   // This is the fallback log level, an option of last resort if nothing else is
   // specified.
-  std::string_view level_to_use = kDefaultLogLevel;
-  bool invalid_env_var = false;
+  LogLevelSettings settings = kLogLevelMap.lookup(kDefaultLogLevel);
+  bool invalidEnvVar = false;
 
   // Check environment variable, it has priority over compile-time default.
-  const char *env_log_level = std::getenv("MODULAR_NIXL_LOG_LEVEL");
-  if (env_log_level != nullptr) {
-    std::string env_level_str_upper = StringRef(env_log_level).upper();
-    if (kLogLevelMap.count(env_level_str_upper)) {
-      level_to_use = env_level_str_upper;
+  const char *envLogLevel = std::getenv("MODULAR_NIXL_LOG_LEVEL");
+  if (envLogLevel != nullptr) {
+    std::string envLevelStrUpper = StringRef(envLogLevel).upper();
+    if (auto it = kLogLevelMap.find(envLevelStrUpper);
+        it != kLogLevelMap.end()) {
+      settings = it->second;
     } else {
       // Fall back to kDefaultLogLevel if env var is invalid
-      invalid_env_var = true;
+      invalidEnvVar = true;
     }
   }
 
-  // Apply the settings by finding the level in the map
-  auto it = kLogLevelMap.find(level_to_use);
-  const LogLevelSettings &settings =
-      (it != kLogLevelMap.end()) ? it->second
-                                 : kLogLevelMap.lookup(kDefaultLogLevel);
-
   // Store the determined levels globally
-  g_min_nixl_log_level.store(settings.min_severity, std::memory_order_relaxed);
-  g_nixl_vlog_level.store(settings.vlog_level, std::memory_order_relaxed);
+  gMinNixlLogLevel.store(settings.min_severity, std::memory_order_relaxed);
+  gNixlVlogLevel.store(settings.vlog_level, std::memory_order_relaxed);
 
-  if (invalid_env_var) {
+  if (invalidEnvVar) {
     llvm::errs() << "Invalid MODULAR_NIXL_LOG_LEVEL environment variable ('"
-                 << env_log_level
+                 << envLogLevel
                  << "'), using default log level: " << kDefaultLogLevel
                  << "\\n";
   }
 }
+
+namespace M::AsyncRT::NIXL {
+
+bool shouldLog(NixlLogLevel level) {
+  if (level == NixlLogLevel::kFatal) {
+    return true;
+  }
+
+  const NixlLogLevel minSeverity =
+      gMinNixlLogLevel.load(std::memory_order_relaxed);
+  const int vlogLevel = gNixlVlogLevel.load(std::memory_order_relaxed);
+
+  switch (level) {
+  case NixlLogLevel::kTrace:
+    return minSeverity <= NixlLogLevel::kInfo && vlogLevel >= 2;
+  case NixlLogLevel::kDebug:
+    return minSeverity <= NixlLogLevel::kInfo && vlogLevel >= 1;
+  case NixlLogLevel::kInfo:
+  case NixlLogLevel::kWarning:
+  case NixlLogLevel::kError:
+    return level >= minSeverity;
+  case NixlLogLevel::kFatal:
+    return true;
+  }
+
+  return true;
+}
+
+} // namespace M::AsyncRT::NIXL
