@@ -591,6 +591,34 @@ def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
 }
 
 //===----------------------------------------------------------------------===//
+// Bundle / Unbundle ops
+//===----------------------------------------------------------------------===//
+
+// Bundle/unbundle ops use Op<> directly (not MO_Op) to avoid
+// MO_BufferOpConformance — these are pure grouping ops with no mutation.
+
+def MO_TensorBundleOp : Op<MODialect, "tensor.bundle", [Pure]> {
+  let summary = "Bundle individual tensors into an mo.bundle.";
+  let arguments = (ins Variadic<MO_Tensor>:$inputs);
+  let results = (outs MO_Bundle:$result);
+  let assemblyFormat = [{
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, $result)
+  }];
+  let hasVerifier = 1;
+}
+
+def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle", [Pure]> {
+  let summary = "Extract individual tensors from an mo.bundle.";
+  let arguments = (ins MO_Bundle:$input);
+  let results = (outs Variadic<MO_Tensor>:$outputs);
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` functional-type($input, $outputs)
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//
 

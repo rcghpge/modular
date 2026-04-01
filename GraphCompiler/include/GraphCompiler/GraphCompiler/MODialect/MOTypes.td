@@ -240,6 +240,33 @@ def MO_List : MO_Type<"List", "list", [MO_HasDeviceTypeInterface,
 }
 
 //===----------------------------------------------------------------------===//
+// MO_Bundle
+//===----------------------------------------------------------------------===//
+
+def MO_Bundle : MO_Type<"Bundle", "bundle"> {
+  let summary = "Ordered collection of per-device tensors.";
+  let description = [{
+    A grouping type that bundles multiple per-device tensors into a single SSA
+    value.  All elements must be `!mo.tensor` types.  Elements may have
+    different devices, shapes, or dtypes.
+
+    Example:
+    ```mlir
+    !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+    ```
+  }];
+
+  let parameters = (ins ArrayRefParameter<"Type">:$elementTypes);
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns the number of elements in the bundle.
+    size_t getNumElements() const { return getElementTypes().size(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // MO_Scalar
 //===----------------------------------------------------------------------===//
 

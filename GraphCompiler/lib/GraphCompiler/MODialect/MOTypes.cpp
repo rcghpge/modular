@@ -727,6 +727,45 @@ Type ListType::cloneWithNewDevice(DeviceRefAttr device) const {
 }
 
 //===----------------------------------------------------------------------===//
+// BundleType
+//===----------------------------------------------------------------------===//
+
+Type BundleType::parse(AsmParser &parser) {
+  if (parser.parseLess() || parser.parseLSquare())
+    return {};
+  SmallVector<Type> elementTypes;
+  if (parser.parseCommaSeparatedList([&]() -> ParseResult {
+        Type ty;
+        if (parser.parseType(ty))
+          return failure();
+        elementTypes.push_back(ty);
+        return success();
+      }))
+    return {};
+  if (parser.parseRSquare() || parser.parseGreater())
+    return {};
+  return BundleType::get(parser.getContext(), elementTypes);
+}
+
+void BundleType::print(AsmPrinter &printer) const {
+  printer << '<' << '[';
+  llvm::interleaveComma(getElementTypes(), printer,
+                        [&](Type ty) { printer.printType(ty); });
+  printer << ']' << '>';
+}
+
+LogicalResult BundleType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 ArrayRef<Type> elementTypes) {
+  if (elementTypes.empty())
+    return emitError() << "bundle must have at least one element";
+  bool allTensors = llvm::all_of(
+      elementTypes, [](Type t) { return llvm::isa<TensorType>(t); });
+  if (!allTensors)
+    return emitError() << "bundle elements must all be !mo.tensor types";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ScalarType
 //===----------------------------------------------------------------------===//
 

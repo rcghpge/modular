@@ -1097,6 +1097,19 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
 }
 
 //===----------------------------------------------------------------------===//
+// TensorUnbundleOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorUnbundleOp::fold(FoldAdaptor adaptor,
+                                     SmallVectorImpl<OpFoldResult> &results) {
+  if (auto bundleOp = getInput().getDefiningOp<TensorBundleOp>()) {
+    results.append(bundleOp.getInputs().begin(), bundleOp.getInputs().end());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//
 LogicalResult ParallelOp::canonicalize(ParallelOp op,

@@ -1006,6 +1006,41 @@ WhileConditionOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
 }
 
 //===----------------------------------------------------------------------===//
+// Bundle / Unbundle ops
+//===----------------------------------------------------------------------===//
+
+LogicalResult TensorBundleOp::verify() {
+  BundleType resultType = getResult().getType();
+  if (getInputs().size() != resultType.getNumElements())
+    return emitOpError("input count (")
+           << getInputs().size() << ") must match bundle element count ("
+           << resultType.getNumElements() << ")";
+  for (auto [i, input, expected] :
+       llvm::enumerate(getInputs(), resultType.getElementTypes()))
+    if (input.getType() != expected)
+      return emitOpError("input #")
+             << i << " type " << input.getType()
+             << " does not match bundle element type " << expected;
+  return success();
+}
+
+LogicalResult TensorUnbundleOp::verify() {
+  BundleType inputType = getInput().getType();
+  if (getOutputs().getTypes().size() != inputType.getNumElements())
+    return emitOpError("output count (")
+           << getOutputs().getTypes().size()
+           << ") must match bundle element count ("
+           << inputType.getNumElements() << ")";
+  for (auto [i, output, expected] :
+       llvm::enumerate(getOutputs().getTypes(), inputType.getElementTypes()))
+    if (output != expected)
+      return emitOpError("output #")
+             << i << " type " << output
+             << " does not match bundle element type " << expected;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//
 
