@@ -251,7 +251,11 @@ public:
   /// Creates an comptime and assigns the provided value to it. The returned
   /// value is the name of the parameter. There is no cache option here because
   /// it is always on by default (can't have side effects in comptime).
-  [[nodiscard]] MojoValue comptime(const MojoValue &value);
+  [[nodiscard]] MojoValue comptime(const MojoValue &value,
+                                   const MojoValue *type = nullptr);
+
+  /// Creates a list literal of the supplied MojoValues.
+  [[nodiscard]] MojoValue listLiteral(ArrayRef<MojoValue> values);
 
   /// Calls a function. This is different from MojoValue::operator() in that it
   /// does not return anything and it actually writes something in the

@@ -206,7 +206,8 @@ class DynamicMemoryPlanningPass
       // Create BufferPlanOp in execute block
       auto bufferPlanOp =
           BufferPlanOp::create(execBuilder, loc, runtimeSizes, alignments,
-                               minPres, minPosts, maxPres, maxPosts);
+                               minPres, minPosts, maxPres, maxPosts,
+                               /*staticSizes=*/{});
 
       TypedValue<IndexType> poolSize = bufferPlanOp.getHighWatermark();
 

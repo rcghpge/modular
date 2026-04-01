@@ -19,10 +19,12 @@
 #include "Support/MDialect/MAttrs.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
+#include "Support/ML/Permutation.h"
 #include "Support/ML/SizeUtils.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LLVM.h"
@@ -505,14 +507,204 @@ BufferSetWithIndexOp::getInOutSemantics(size_t index) {
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
 
+// Helper to emit a typed comptime InlineArray[Int, N] declaration from
+// attribute values and return the variable name.
+template <typename T>
+static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
+                                   ArrayRef<T> values) {
+  static_assert(std::is_integral_v<T>, "Must be an integer type");
+
+  auto mojoValues = llvm::map_to_vector(
+      values, [](T value) { return MOGG::MojoValue(value); });
+
+  std::string type;
+  llvm::raw_string_ostream os(type);
+
+  os << MOGG::HardcodedMojoSymbols::struct_InlineArray << "[" << "Int" << ", "
+     << values.size() << "]";
+
+  auto mojoType = MOGG::MojoValue(std::move(type));
+
+  MOGG::MojoValue name =
+      state.builder.comptime(state.builder.listLiteral(mojoValues),
+                             /*type=*/&mojoType);
+  return name;
+}
+
+LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  // Calculate sizes: total allocations = staticSizes + runtimeSizes
+  size_t numStaticSizes = getStaticSizes() ? getStaticSizes()->size() : 0;
+  size_t numRuntimeSizes = getRuntimeSizes().size();
+
+  MojoValue numStaticSizesParam = numStaticSizes;
+  MojoValue numRuntimeSizesParam = numRuntimeSizes;
+
+  // Emit compile-time InlineArray parameters for all lifetime arrays.
+  MojoValue alignmentsParam = inlineArray(state, getAlignments());
+  MojoValue minPreParam = inlineArray(state, getMinPre());
+  MojoValue minPostParam = inlineArray(state, getMinPost());
+  MojoValue maxPreParam = inlineArray(state, getMaxPre());
+  MojoValue maxPostParam = inlineArray(state, getMaxPost());
+
+  // Emit compile-time InlineArray for optional staticSizes attribute.
+  MojoValue staticSizesParam;
+  if (auto staticSizes = getStaticSizes()) {
+    staticSizesParam = inlineArray(state, *staticSizes);
+  } else {
+    // Empty InlineArray for no static sizes.
+    staticSizesParam = inlineArray(state, ArrayRef<int64_t>{});
+  }
+
+  // Collect all runtime sizes as MojoValue arguments.
+  SmallVector<MojoValue> runtimeSizeArgs;
+  for (Value size : getRuntimeSizes())
+    runtimeSizeArgs.push_back(state.getMojoValueFor(size));
+
+  // Emit a typed var for the runtime sizes: InlineArray[Int, N] = [v0, v1, ...]
+  MojoValue runtimeSizesArray;
+  {
+    MojoValue name = state.builder.newVar("var");
+    std::string str;
+    llvm::raw_string_ostream stream(str);
+    stream << "var " << name << ": " << HardcodedMojoSymbols::struct_InlineArray
+           << "[Int, " << numRuntimeSizes << "] = [";
+    llvm::interleaveComma(runtimeSizeArgs, stream,
+                          [&](const MojoValue &v) { stream << v; });
+    stream << "]";
+    state.builder.verbatim(MojoValue(str));
+    runtimeSizesArray = name;
+  }
+
+  // Call the function with compile-time parameters and runtime arguments.
+  // Function signature: [num_static_sizes, num_runtime_sizes, alignments,
+  // minPre, minPost, maxPre, maxPost, staticSizes](runtimeSizes)
+  MojoValue result =
+      state.builder.var(function({alignmentsParam, minPreParam, minPostParam,
+                                  maxPreParam, maxPostParam, staticSizesParam},
+                                 {runtimeSizesArray}));
+
+  // Extract results: result is a tuple (highWatermark, offsets)
+  state.setMojoValueFor(getHighWatermark(), result[0]);
+
+  // Extract offsets from result[1] which is a StaticTuple
+  for (auto &&[i, offset] : llvm::enumerate(getOffsets()))
+    state.setMojoValueFor(offset, result[1][i]);
+
+  return success();
+}
+
 LogicalResult BufferPlanOp::verify() {
-  if (!llvm::all_equal({getRuntimeSizes().size(), getOffsets().size(),
-                        getAAlignments().size(), getBMinPre().size(),
-                        getCMinPost().size(), getDMaxPre().size(),
-                        getEMaxPost().size()}))
-    return emitOpError("expected number of sizes, output offsets, alignments "
-                       "and lifetime info attributes to "
-                       "be equal.");
+  size_t numStaticSizes = getStaticSizes() ? getStaticSizes()->size() : 0;
+  size_t numRuntimeSizes = getRuntimeSizes().size();
+  size_t totalSizes = numStaticSizes + numRuntimeSizes;
+
+  // The total number of offsets should equal staticSizes + runtimeSizes
+  if (getOffsets().size() != totalSizes) {
+    return emitOpError("expected number of offsets (")
+           << getOffsets().size() << ") to equal staticSizes size ("
+           << numStaticSizes << ") + runtimeSizes size (" << numRuntimeSizes
+           << ") = " << totalSizes;
+  }
+
+  // All lifetime and alignment attributes should match the total number of
+  // sizes
+  if (!llvm::all_equal({totalSizes, getAlignments().size(), getMinPre().size(),
+                        getMinPost().size(), getMaxPre().size(),
+                        getMaxPost().size()})) {
+    return emitOpError("expected alignments and lifetime info attributes to "
+                       "have size equal to total number of sizes (")
+           << totalSizes << ")";
+  }
+
+  return success();
+}
+
+LogicalResult BufferPlanOp::canonicalize(BufferPlanOp op,
+                                         PatternRewriter &rewriter) {
+  int64_t numExistingStatic = static_cast<int64_t>(
+      op.getStaticSizes().value_or(ArrayRef<int64_t>()).size());
+
+  // Identify which runtime inputs are statically known
+  SmallVector<int64_t> staticValues;
+
+  llvm::SmallBitVector staticIndices(op.getRuntimeSizes().size());
+
+  for (auto [i, runtimeSize] : llvm::enumerate(op.getRuntimeSizes())) {
+    IntegerAttr constantAttr;
+    if (matchPattern(runtimeSize, m_Constant(&constantAttr))) {
+      // This runtime operand is actually a constant
+      staticIndices.set(i);
+      staticValues.push_back(constantAttr.getInt());
+    }
+  }
+
+  // If we have no new static values, nothing to canonicalize
+  if (staticIndices.none())
+    return failure();
+
+  llvm::SmallBitVector dynamicIndices =
+      llvm::SmallBitVector(staticIndices).flip();
+
+  // Build new runtime sizes operands (only the dynamic ones)
+  SmallVector<Value> newRuntimeSizes;
+  for (size_t idx : dynamicIndices.set_bits())
+    newRuntimeSizes.push_back(op.getRuntimeSizes()[idx]);
+
+  // Build permutation map for attributes
+  // New order: [existing static..., newly discovered static..., dynamic...]
+  // Permutation maps new index -> old index in the full allocation array
+  // Existing static allocations stay in their positions
+  SmallVector<int64_t> permutation =
+      llvm::to_vector(llvm::seq(numExistingStatic));
+
+  // Newly discovered static allocations (from runtime operands)
+  for (int64_t idx : staticIndices.set_bits())
+    permutation.push_back(numExistingStatic + idx);
+
+  // Remaining dynamic allocations (from runtime operands)
+  for (int64_t idx : dynamicIndices.set_bits())
+    permutation.push_back(numExistingStatic + idx);
+
+  // Permute the attributes according to the new order
+  auto permuteAttr = [&](ArrayRef<uint64_t> attr) {
+    return M::permute(attr, permutation);
+  };
+
+  // Build new staticSizes attribute
+  SmallVector<int64_t> newStaticSizes =
+      llvm::to_vector(op.getStaticSizes().value_or(ArrayRef<int64_t>{}));
+
+  newStaticSizes.append(staticValues.begin(), staticValues.end());
+
+  auto newStaticSizesAttr = rewriter.getAttr<IntArrayElementsAttr>(
+      ArrayRef<int64_t>(newStaticSizes), IntegerType::Signed);
+
+  // Create new operation with permuted attributes
+  auto newOp = BufferPlanOp::create(
+      rewriter, op.getLoc(),
+      /*runtimeSizes=*/newRuntimeSizes,
+      /*alignments=*/permuteAttr(op.getAlignments()),
+      /*minPre=*/permuteAttr(op.getMinPre()),
+      /*minPost=*/permuteAttr(op.getMinPost()),
+      /*maxPre=*/permuteAttr(op.getMaxPre()),
+      /*maxPost*/ permuteAttr(op.getMaxPost()), newStaticSizesAttr);
+
+  SmallVector<Value> newOffsets =
+      llvm::to_vector(ValueRange(newOp.getOffsets()));
+
+  // Permute the results back to match original order
+  SmallVector<Value> newResults;
+  newResults.push_back(newOp.getHighWatermark());
+  newResults.append(M::permuteReverse(newOffsets, permutation));
+
+  // Create inverse permutation for results
+  rewriter.replaceOp(op, newResults);
   return success();
 }
 
@@ -520,9 +712,14 @@ LogicalResult BufferPlanOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   ValueRange operands = adaptor.getOperands();
-  // All outputs are index
+  size_t numStaticSizes =
+      adaptor.getStaticSizes() ? adaptor.getStaticSizes()->size() : 0;
+  size_t numRuntimeSizes = operands.size();
+  size_t totalAllocations = numStaticSizes + numRuntimeSizes;
+
+  // All outputs are index: 1 high watermark + N offsets
   inferredReturnTypes.clear();
-  inferredReturnTypes.resize(operands.size() + 1, IndexType::get(context));
+  inferredReturnTypes.resize(totalAllocations + 1, IndexType::get(context));
 
   return success();
 }

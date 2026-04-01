@@ -66,3 +66,89 @@ mgp.model @fold_buffer_get_size_alloc : mof devices [#M.device_ref<"cpu", 0>] in
   // CHECK: mef.output %[[ARG0]], %[[SIZE]] : !mef.chain, index
   mef.output %arg0, %size : !mef.chain, index
 }
+
+// -----
+
+// CHECK-LABEL: mgp.model @buffer_plan_extract_constants
+mgp.model @buffer_plan_extract_constants : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 0
+  mef.output %ch0, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %dynamic_size: index) -> (!mef.chain, index, index, index, index) {
+  // Test: constant runtime sizes should be extracted to staticSizes attribute
+  // Input: 3 allocations with sizes [constant 100, dynamic, constant 200]
+  // Expected: staticSizes = [100, 200], runtimeSizes = [dynamic]
+  // Attributes are permuted so static allocations come first
+
+  %c100 = index.constant 100
+  %c200 = index.constant 200
+
+  // CHECK: execute ({{.*}}%[[ARG:.*]]: index)
+  // CHECK: %[[HWM:.*]], %[[OFF:.*]]:3 = mgp.buffer.plan(%[[ARG]])
+  // CHECK-SAME: alignments = #M.dense_array<16, 16, 16>
+  // CHECK-SAME: minPre = #M.dense_array<0, 2, 1>
+  // CHECK-SAME: staticSizes = #M.dense_array<100, 200> : !M.array<2xsi64>
+  // CHECK: mef.output {{.*}}, %[[HWM]], %[[OFF]]#0, %[[OFF]]#2, %[[OFF]]#1
+  %hwm, %offsets:3 = mgp.buffer.plan(%c100, %dynamic_size, %c200) {
+    alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
+    minPre = #M.dense_array<0, 1, 2> : !M.array<3xui64>,
+    minPost = #M.dense_array<0, 1, 2> : !M.array<3xui64>,
+    maxPre = #M.dense_array<10, 11, 12> : !M.array<3xui64>,
+    maxPost = #M.dense_array<10, 11, 12> : !M.array<3xui64>
+  } : (index, index, index) -> (index, index, index, index)
+
+  mef.output %ch0, %hwm, %offsets#0, %offsets#1, %offsets#2 : !mef.chain, index, index, index, index
+}
+
+// -----
+
+// CHECK-LABEL: mgp.model @buffer_plan_all_constants
+mgp.model @buffer_plan_all_constants : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 0
+  mef.output %ch0, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, index, index, index, index) {
+  // Test: all runtime sizes are constants - should all be extracted
+
+  %c100 = index.constant 100
+  %c200 = index.constant 200
+  %c300 = index.constant 300
+
+  // CHECK: %[[HWM:.*]], %[[OFF:.*]]:3 = mgp.buffer.plan() {
+  // CHECK-SAME: staticSizes = #M.dense_array<100, 200, 300> : !M.array<3xsi64>
+  // CHECK: mef.output {{.*}}, %[[HWM]], %[[OFF]]#0, %[[OFF]]#1, %[[OFF]]#2
+  %hwm, %offsets:3 = mgp.buffer.plan(%c100, %c200, %c300) {
+    alignments = #M.dense_array<16, 32, 64> : !M.array<3xui64>,
+    minPre = #M.dense_array<0, 1, 2> : !M.array<3xui64>,
+    minPost = #M.dense_array<5, 6, 7> : !M.array<3xui64>,
+    maxPre = #M.dense_array<10, 11, 12> : !M.array<3xui64>,
+    maxPost = #M.dense_array<15, 16, 17> : !M.array<3xui64>
+  } : (index, index, index) -> (index, index, index, index)
+
+  mef.output %ch0, %hwm, %offsets#0, %offsets#1, %offsets#2 : !mef.chain, index, index, index, index
+}
+
+// -----
+
+// CHECK-LABEL: mgp.model @buffer_plan_no_constants
+mgp.model @buffer_plan_no_constants : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 0
+  mef.output %ch0, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %size0: index, %size1: index) -> (!mef.chain, index, index, index) {
+  // Test: no constants - should not canonicalize
+
+  // CHECK: execute ({{.*}}%[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
+  // CHECK: mgp.buffer.plan(%[[ARG0]], %[[ARG1]])
+  // CHECK-NOT: staticSizes
+  %hwm, %offsets:2 = mgp.buffer.plan(%size0, %size1) {
+    alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
+    minPre = #M.dense_array<0, 1> : !M.array<2xui64>,
+    minPost = #M.dense_array<5, 6> : !M.array<2xui64>,
+    maxPre = #M.dense_array<10, 11> : !M.array<2xui64>,
+    maxPost = #M.dense_array<15, 16> : !M.array<2xui64>
+  } : (index, index) -> (index, index, index)
+
+  mef.output %ch0, %hwm, %offsets#0, %offsets#1 : !mef.chain, index, index, index
+}
+

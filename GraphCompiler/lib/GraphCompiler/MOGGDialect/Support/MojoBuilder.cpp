@@ -287,17 +287,30 @@ MojoValue MojoBuilder::varDecl(const MojoValue &type) {
 
   return name;
 }
-MojoValue MojoBuilder::comptime(const MojoValue &value) {
+MojoValue MojoBuilder::comptime(const MojoValue &value, const MojoValue *type) {
   auto it = comptimeCache.top().insert({value.text, ""});
   if (!it.second)
     return it.first->second;
 
   auto name = newVar("param");
-  statement("comptime ", name, " = ", value);
+
+  if (type)
+    statement("comptime ", name, ": ", *type, " = ", value);
+  else
+    statement("comptime ", name, " = ", value);
 
   it.first->second = name;
 
   return name;
+}
+MojoValue MojoBuilder::listLiteral(ArrayRef<MojoValue> values) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  os << "[";
+  llvm::interleaveComma(values, os);
+  os << "]";
+
+  return MojoValue(std::move(str));
 }
 void MojoBuilder::call(const MojoValue &funcName,
                        ArrayRef<MojoValue> parameters,

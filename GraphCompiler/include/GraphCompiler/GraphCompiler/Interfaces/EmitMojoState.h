@@ -41,7 +41,7 @@ constexpr StringLiteral struct_DType = "DType";
 constexpr StringLiteral struct_SIMD = "SIMD";
 constexpr StringLiteral struct_StateContext = "MOGGPrimitives.StateContext";
 constexpr StringLiteral struct_StaticTuple = "std.utils.StaticTuple";
-constexpr StringLiteral struct_InlineArray = "InlineArray";
+constexpr StringLiteral struct_InlineArray = "std.collections.InlineArray";
 constexpr StringLiteral struct_MoggAsyncPackHelper =
     "MOGGPrimitives.MoggAsyncPackHelper";
 constexpr StringLiteral struct_Scalar = "Scalar";

@@ -688,7 +688,8 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
 def BufferPlanOp : MGP_Op<"buffer.plan", [
-    InferTypeOpAdaptor
+    InferTypeOpAdaptor,
+    DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
   let summary = "Runtime memory planning for buffers";
   let description = [{
@@ -701,15 +702,14 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
     See MGPBufferLifetimeAnalysis.h for details.
   }];
 
-  // CAUTION: The attribute arguments must be in alphabetical order by their
-  // names.
   let arguments = (ins
     Variadic<Index>:$runtimeSizes,
-    UI64ArrayElementsAttr:$aAlignments,
-    UI64ArrayElementsAttr:$bMinPre,
-    UI64ArrayElementsAttr:$cMinPost,
-    UI64ArrayElementsAttr:$dMaxPre,
-    UI64ArrayElementsAttr:$eMaxPost
+    UI64ArrayElementsAttr:$alignments,
+    UI64ArrayElementsAttr:$minPre,
+    UI64ArrayElementsAttr:$minPost,
+    UI64ArrayElementsAttr:$maxPre,
+    UI64ArrayElementsAttr:$maxPost,
+    OptionalAttr<SI64ArrayElementsAttr>:$staticSizes
   );
 
   let results = (outs
@@ -717,7 +717,12 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
     Variadic<Index>:$offsets
   );
 
+  let assemblyFormat = [{
+    `(` $runtimeSizes `)` attr-dict `:` functional-type($runtimeSizes, results)
+  }];
+
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 //===----------------------------------------------------------------------===//
