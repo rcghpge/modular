@@ -203,6 +203,10 @@ modular_cc_test(
     tags = ["gpu"],
     target_compatible_with = select({
         "//:asan": ["@platforms//:incompatible"],
+        # MEMORY_MANAGER_ONLY=true requires an enabled memory manager, but
+        # on macOS the Metal memory manager is disabled on CI workers.
+        # MetalGPUDeviceContextTest covers macOS without this env override.
+        "@platforms//os:macos": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),
     deps = [
@@ -411,6 +415,12 @@ modular_cc_test(
         "MemoryManagerChunkGrowthTest.cpp",
         "ScopedEnvVar.h",
     ],
+    # Chunk growth tests require a functional GPU memory manager; on macOS CI
+    # workers the Metal memory manager is disabled (max_cache_size=0).
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
