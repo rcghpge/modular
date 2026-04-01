@@ -16,8 +16,8 @@ extern "C" {
 /**
  * Create a context for a device, for use with other functions in this API.
  *
- * @param device (in) The device to create the context for.
- * @param context (out) The context.
+ * @param[in] device The device to create the context for.
+ * @param[out] context The context.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_DEVICE if the device
  *         is not valid.
  */
@@ -31,7 +31,7 @@ typedef M_driver_status_t (*M_driver_context_create_func_ptr_t)(
 /**
  * Destroy an active context for a device.
  *
- * @param context (in) The context to destroy.
+ * @param[in] context The context to destroy.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         `context` is not a valid handle, or if the context was previously
  *         destroyed.

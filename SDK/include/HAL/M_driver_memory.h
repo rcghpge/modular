@@ -16,9 +16,9 @@ extern "C" {
 /**
  * Allocate pinned (page-locked) host memory for the given context.
  *
- * @param context (in) The context to create the memory for.
- * @param size (in) Size in bytes of the allocation.
- * @param memory (out) Pointer to the address of the newly allocated memory.
+ * @param[in] context The context to create the memory for.
+ * @param[in] size Size in bytes of the allocation.
+ * @param[out] memory Pointer to the address of the newly allocated memory.
  * @return Standard Status Protocol, M_DRIVER_STATUS_OUT_OF_MEMORY if the
  *         allocation fails, or M_DRIVER_STATUS_BAD_CONTEXT if the context is
  *         not valid.
@@ -34,8 +34,8 @@ typedef M_driver_status_t (*M_driver_memory_alloc_pinned_func_ptr_t)(
 /**
  * Free pinned (page-locked) host memory for the given context.
  *
- * @param context (in) The context to free the memory from.
- * @param memory (in) The memory to free.
+ * @param[in] context The context to free the memory from.
+ * @param[in] memory The memory to free.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -49,9 +49,9 @@ typedef M_driver_status_t (*M_driver_memory_free_pinned_func_ptr_t)(
 /**
  * Allocate memory for the given context.
  *
- * @param context (in) The context to create the memory for.
- * @param size (in) Size in bytes of the allocation.
- * @param memory (out) Pointer to the address of the newly allocated memory.
+ * @param[in] context The context to create the memory for.
+ * @param[in] size Size in bytes of the allocation.
+ * @param[out] memory Pointer to the address of the newly allocated memory.
  * @return Standard Status Protocol, M_DRIVER_STATUS_OUT_OF_MEMORY if the
  *         allocation fails, or M_DRIVER_STATUS_BAD_CONTEXT if the context is
  *         not valid.
@@ -67,8 +67,8 @@ typedef M_driver_status_t (*M_driver_memory_alloc_sync_func_ptr_t)(
 /**
  * Free memory for the given context.
  *
- * @param context (in) The context to free the memory from.
- * @param memory (in) The memory to free.
+ * @param[in] context The context to free the memory from.
+ * @param[in] memory The memory to free.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -82,9 +82,9 @@ typedef M_driver_status_t (*M_driver_memory_free_sync_func_ptr_t)(
 /**
  * Asynchronously allocate memory on the given queue.
  *
- * @param queue (in) The queue to allocate memory on.
- * @param size (in) Size in bytes of the allocation.
- * @param memory (out) Pointer to the address of the newly allocated memory.
+ * @param[in] queue The queue to allocate memory on.
+ * @param[in] size Size in bytes of the allocation.
+ * @param[out] memory Pointer to the address of the newly allocated memory.
  * @return Standard Status Protocol, M_DRIVER_STATUS_OUT_OF_MEMORY if the
  *         allocation fails, or M_DRIVER_STATUS_BAD_QUEUE if the queue is
  *         not valid.
@@ -103,8 +103,8 @@ M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
 /**
  * Asynchronously free memory on the given queue.
  *
- * @param queue (in) The queue to free the memory from.
- * @param memory (in) The memory to free.
+ * @param[in] queue The queue to free the memory from.
+ * @param[in] memory The memory to free.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_QUEUE if the
  *         queue is not valid.
  */
@@ -119,9 +119,9 @@ typedef M_driver_status_t (*M_driver_memory_free_async_func_ptr_t)(
 /**
  * Retrieve a memory property.
  *
- * @param property_name (in) The name of the property as a null-terminated
+ * @param[in] property_name The name of the property as a null-terminated
  * string.
- * @param value (out) Type-erased pointer to the value of the property. Consult
+ * @param[out] value Type-erased pointer to the value of the property. Consult
  * the property table to instantiate the correct type at the call-site.
  * - e.g. "address" to retrieve the device memory address
  * @return Standard Status Protocol or

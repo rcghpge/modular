@@ -16,8 +16,8 @@ extern "C" {
 /**
  * Create a queue for the given context.
  *
- * @param context (in) The context to create the queue for.
- * @param queue (out) Pointer to store the newly created queue.
+ * @param[in] context The context to create the queue for.
+ * @param[out] queue Pointer to store the newly created queue.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -31,8 +31,8 @@ typedef M_driver_status_t (*M_driver_queue_create_func_ptr_t)(
 /**
  * Destroy a previously created queue.
  *
- * @param context (in) The context the queue was created for.
- * @param queue (in) The queue to destroy.
+ * @param[in] context The context the queue was created for.
+ * @param[in] queue The queue to destroy.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -46,10 +46,10 @@ typedef M_driver_status_t (*M_driver_queue_destroy_func_ptr_t)(
 /**
  * Copy data from host memory to device memory.
  *
- * @param queue (in) The queue to use for the copy operation.
- * @param dst (in) Pointer to the destination device memory.
- * @param src (in) Pointer to the source host memory.
- * @param size (in) The number of bytes to copy.
+ * @param[in] queue The queue to use for the copy operation.
+ * @param[in] dst Pointer to the destination device memory.
+ * @param[in] src Pointer to the source host memory.
+ * @param[in] size The number of bytes to copy.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
@@ -63,10 +63,10 @@ typedef M_driver_status_t (*M_driver_queue_copy_to_device_func_ptr_t)(
 /**
  * Copy data from device memory to host memory.
  *
- * @param queue (in) The queue to use for the copy operation.
- * @param dst (in) Pointer to the destination host memory.
- * @param src (in) Pointer to the source device memory.
- * @param size (in) The number of bytes to copy.
+ * @param[in] queue The queue to use for the copy operation.
+ * @param[in] dst Pointer to the destination host memory.
+ * @param[in] src Pointer to the source device memory.
+ * @param[in] size The number of bytes to copy.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
@@ -81,11 +81,11 @@ typedef M_driver_status_t (*M_driver_queue_copy_from_device_func_ptr_t)(
 /**
  * Fill device memory with a repeated value.
  *
- * @param queue (in) The queue to use for the set operation.
- * @param dst (in) Pointer to the destination device memory.
- * @param size (in) The number of bytes to fill.
- * @param value (in) The value to fill with.
- * @param value_size (in) The size of the value in bytes.
+ * @param[in] queue The queue to use for the set operation.
+ * @param[in] dst Pointer to the destination device memory.
+ * @param[in] size The number of bytes to fill.
+ * @param[in] value The value to fill with.
+ * @param[in] value_size The size of the value in bytes.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
@@ -163,7 +163,7 @@ typedef M_driver_status_t (*M_driver_queue_execute_func_ptr_t)(
 /**
  * Block the calling thread until all operations on the queue have completed.
  *
- * @param queue (in) The queue to synchronize on.
+ * @param[in] queue The queue to synchronize on.
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT

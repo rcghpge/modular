@@ -18,8 +18,8 @@ extern "C" {
 /**
  * Create an event for the given context.
  *
- * @param context (in) The context to create the event for.
- * @param event (out) The event.
+ * @param[in] context The context to create the event for.
+ * @param[out] event The event.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -33,8 +33,8 @@ typedef M_driver_status_t (*M_driver_event_create_func_ptr_t)(
 /**
  * Destroy an event.
  *
- * @param context (in) The context the event belongs to.
- * @param event (in) The event to destroy.
+ * @param[in] context The context the event belongs to.
+ * @param[in] event The event to destroy.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -48,8 +48,8 @@ typedef M_driver_status_t (*M_driver_event_destroy_func_ptr_t)(
 /**
  * Block the calling thread until the event has completed.
  *
- * @param context (in) The context the event belongs to.
- * @param event (in) The event to synchronize on.
+ * @param[in] context The context the event belongs to.
+ * @param[in] event The event to synchronize on.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
@@ -63,10 +63,10 @@ typedef M_driver_status_t (*M_driver_event_synchronize_func_ptr_t)(
 /**
  * Query whether an event has completed without blocking.
  *
- * @param context (in) The context the event belongs to.
- * @param event (in) The event to query.
- * @param is_ready (out) Set to true if the event has completed, false
- *        otherwise.
+ * @param[in] context The context the event belongs to.
+ * @param[in] event The event to query.
+ * @param[out] is_ready Set to true if the event has completed, false
+ *             otherwise.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */

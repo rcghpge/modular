@@ -112,10 +112,10 @@ typedef struct M_driver_function *M_driver_function_t;
 /**
  * Retrieve human-readable status message corresponding to a status code.
  *
- * @param status (in) A status code.
- * @param message_buffer (inout) A buffer to write the corresponding status
- *                       message into as a null-terminated string.
- * @param message_buffer_size (in) The size of the buffer.
+ * @param[in] status A status code.
+ * @param[in,out] message_buffer A buffer to write the corresponding status
+ *                message into as a null-terminated string.
+ * @param[in] message_buffer_size The size of the buffer.
  * @note If the status message is longer than the buffer, the message
  *       must be truncated to fit into the buffer. In any case, the last
  *       character must be the null terminator, '\0'.

@@ -77,9 +77,9 @@ typedef struct M_driver_runtime_bundle *M_driver_runtime_bundle_t;
 /// Use to load a code object containing a module/library or
 /// some other bundle of target-specific executable code,
 /// to construct a runtime bundle from a static bundle.
-/// @param context (in) The context to load the bundle into.
-/// @param bundle (in) The bundle to register.
-/// @param runtime_bundle (out) The runtime bundle.
+/// @param[in] context The context to load the bundle into.
+/// @param[in] bundle The bundle to register.
+/// @param[out] runtime_bundle The runtime bundle.
 /// @return M_DRIVER_STATUS_SUCCESS, or:
 /// - M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
 /// - M_DRIVER_STATUS_BAD_BUNDLE if the bundle ptr is not valid.
@@ -99,8 +99,8 @@ typedef M_driver_status_t (*M_driver_bundle_load_func_ptr_t)(
     M_driver_runtime_bundle_t *runtime_bundle);
 
 /// Use to unload a previously loaded bundle and release associated resources.
-/// @param context (in) The context the bundle was loaded into.
-/// @param bundle (in) The bundle to unload.
+/// @param[in] context The context the bundle was loaded into.
+/// @param[in] bundle The bundle to unload.
 /// @return M_DRIVER_STATUS_SUCCESS, or:
 /// - M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
 /// - M_DRIVER_STATUS_BAD_BUNDLE if the bundle ptr is not valid.

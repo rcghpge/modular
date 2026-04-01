@@ -20,7 +20,7 @@ extern "C" {
  * @param version (inout) The version of the driver interface implemented by
  * both sides. Before entry, Modular fills in the version it was built with.
  * On exit, the plugin MUST overwrite it with the version it implements.
- * @param driver (out) The driver object, which may store any persistent state.
+ * @param[out] driver The driver object, which may store any persistent state.
  *
  * @return M_DRIVER_STATUS_SUCCESS if the driver was created successfully.
  *         M_DRIVER_STATUS_INCOMPATIBLE_VERSION if the version is incompatible.
@@ -40,7 +40,7 @@ typedef M_driver_status_t (*M_driver_create_func_ptr_t)(
  * Perform shutdown activities after using all other functions in this API,
  * except for M_driver_status_message().
  *
- * @param driver (in) The driver to destroy.
+ * @param[in] driver The driver to destroy.
  *
  * @return Standard Status Protocol.
  */
@@ -59,9 +59,9 @@ typedef M_driver_status_t (*M_driver_destroy_func_ptr_t)(
 /**
  * Retrieve an integer-valued property.
  *
- * @param property_name (in) The name of the property as a null-terminated
+ * @param[in] property_name The name of the property as a null-terminated
  * string.
- * @param value (out) Type-erased pointer to the value of the property. Consult
+ * @param[out] value Type-erased pointer to the value of the property. Consult
  * the property table to instantiate the correct type at the call-site.
  * @return Standard Status Protocol or
  * - M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME if the property name is not valid.

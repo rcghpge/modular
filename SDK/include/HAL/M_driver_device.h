@@ -18,9 +18,9 @@ extern "C" {
 /**
  * Retrieve the number of devices supported by this driver implementation.
  *
- * @param count (out) The number of devices supported by the driver. Must
- *              be greater than or equal to 0. In case of error, the pointed-to
- *              value must remain unchanged.
+ * @param[out] count The number of devices supported by the driver. Must be
+ * greater than or equal to 0. In case of error, the pointed-to value must
+ * remain unchanged.
  * @return The status code.
  */
 M_DRIVER_API_EXPORT
@@ -33,10 +33,10 @@ typedef M_driver_status_t (*M_driver_device_count_func_ptr_t)(
 /**
  * Retrieve a device by its ID.
  *
- * @param device_id (in) The ID of the device to retrieve.
- *                  Must be in the range [0, `count`-1] where `count` is the
- *                  value previously returned by M_driver_device_count().
- * @param device (out) The device.
+ * @param[in] device_id The ID of the device to retrieve. Must be in the range
+ * [0, `count`-1] where `count` is the value previously returned by
+ * M_driver_device_count().
+ * @param[out] device The device.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_DEVICE if device_id
            is out of range or if the device_id is within range but the device
            cannot be accessed for any reason.
@@ -52,9 +52,9 @@ typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
 /**
  * Retrieve an integer-valued property of a device, as 64-bit integer.
  *
- * @param device (in) The device to retrieve the property from.
- * @param property_name (in) The name of the property to retrieve.
- * @param value (out) Type-erased pointer to the value of the property. Consult
+ * @param[in] device The device to retrieve the property from.
+ * @param[in] property_name The name of the property to retrieve.
+ * @param[out] value Type-erased pointer to the value of the property. Consult
  * the property table to instantiate the correct type at the call-site.
  * @return Standard Status Protocol or one of
  * - M_DRIVER_STATUS_BAD_DEVICE if the device is not valid.

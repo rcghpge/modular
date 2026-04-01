@@ -17,12 +17,12 @@ extern "C" {
 /**
  * Load a named function from a previously registered runtime code bundle.
  *
- * @param context (in) The context to load the function into.
- * @param bundle (in) A runtime code bundle obtained from
- *                M_driver_bundle_load().
- * @param function_name (in) Null-terminated name of the function to retrieve.
- * @param function_name_len (in) Length of function_name in bytes.
- * @param function (out) The loaded function handle.
+ * @param[in] context The context to load the function into.
+ * @param[in] bundle A runtime code bundle obtained from
+ *                   M_driver_bundle_load().
+ * @param[in] function_name Null-terminated name of the function to retrieve.
+ * @param[in] function_name_len Length of function_name in bytes.
+ * @param[out] function The loaded function handle.
  * @return M_DRIVER_STATUS_SUCCESS, or:
  * - M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
  * - M_DRIVER_STATUS_BAD_BUNDLE if the bundle ptr is not valid.
@@ -42,8 +42,8 @@ typedef M_driver_status_t (*M_driver_function_load_func_ptr_t)(
 /**
  * Unload a previously loaded function and release associated resources.
  *
- * @param context (in) The context the function was loaded into.
- * @param function (in) The function to unload.
+ * @param[in] context The context the function was loaded into.
+ * @param[in] function The function to unload.
  * @return M_DRIVER_STATUS_SUCCESS, or:
  * - M_DRIVER_STATUS_BAD_CONTEXT if the context is not valid.
  * - M_DRIVER_STATUS_BAD_FUNCTION if the function ptr is not valid.
