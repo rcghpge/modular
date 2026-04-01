@@ -608,14 +608,15 @@ nixl_status_t nixlLibfabricRailManager::postControlMessage(
 }
 
 nixl_status_t nixlLibfabricRailManager::progressActiveDataRails() {
+  std::vector<size_t> active_rails = snapshotActiveRails();
 
-  if (active_rails_.empty()) {
+  if (active_rails.empty()) {
     return NIXL_IN_PROG; // No active rails to process
   }
 
   bool any_completions = false;
 
-  for (size_t rail_id : active_rails_) {
+  for (size_t rail_id : active_rails) {
     if (rail_id >= data_rails_.size()) {
       NIXL_ERROR << "Invalid active rail ID: " << rail_id;
       continue;
@@ -633,7 +634,7 @@ nixl_status_t nixlLibfabricRailManager::progressActiveDataRails() {
   }
 
   if (any_completions) {
-    NIXL_TRACE << "Processed " << active_rails_.size()
+    NIXL_TRACE << "Processed " << active_rails.size()
                << " active rails, completions found";
   }
 
@@ -847,34 +848,56 @@ void nixlLibfabricRailManager::markRailActive(size_t rail_id) {
     return;
   }
 
-  bool was_inserted = active_rails_.insert(rail_id).second;
+  bool was_inserted = false;
+  size_t active_count = 0;
+  {
+    std::lock_guard<std::mutex> lock(active_rails_mutex_);
+    was_inserted = active_rails_.insert(rail_id).second;
+    active_count = active_rails_.size();
+  }
 
   if (was_inserted) {
     NIXL_DEBUG << "Marked rail " << rail_id
-               << " as active (total active: " << active_rails_.size() << ")";
+               << " as active (total active: " << active_count << ")";
   } else {
     NIXL_TRACE << "Rail " << rail_id << " was already active";
   }
 }
 
 void nixlLibfabricRailManager::markRailInactive(size_t rail_id) {
-  size_t erased = active_rails_.erase(rail_id);
+  size_t erased = 0;
+  size_t active_count = 0;
+  {
+    std::lock_guard<std::mutex> lock(active_rails_mutex_);
+    erased = active_rails_.erase(rail_id);
+    active_count = active_rails_.size();
+  }
   if (erased > 0) {
     NIXL_DEBUG << "Marked rail " << rail_id
-               << " as inactive (total active: " << active_rails_.size() << ")";
+               << " as inactive (total active: " << active_count << ")";
   } else {
     NIXL_TRACE << "Rail " << rail_id << " was not in active set";
   }
 }
 
 void nixlLibfabricRailManager::clearActiveRails() {
-  size_t cleared_count = active_rails_.size();
-  active_rails_.clear();
+  size_t cleared_count = 0;
+  {
+    std::lock_guard<std::mutex> lock(active_rails_mutex_);
+    cleared_count = active_rails_.size();
+    active_rails_.clear();
+  }
   NIXL_DEBUG << "Cleared " << cleared_count << " active rails";
 }
 
 size_t nixlLibfabricRailManager::getActiveRailCount() const {
+  std::lock_guard<std::mutex> lock(active_rails_mutex_);
   return active_rails_.size();
+}
+
+std::vector<size_t> nixlLibfabricRailManager::snapshotActiveRails() const {
+  std::lock_guard<std::mutex> lock(active_rails_mutex_);
+  return {active_rails_.begin(), active_rails_.end()};
 }
 
 } // namespace M::AsyncRT::NIXL

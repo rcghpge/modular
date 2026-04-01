@@ -277,6 +277,8 @@ private:
 
   // Active Rail Tracking System
   std::unordered_set<size_t> active_rails_;
+  mutable std::mutex active_rails_mutex_;
+  std::vector<size_t> snapshotActiveRails() const;
 
   // Internal rail selection method
   std::vector<size_t> selectRailsForMemory(
