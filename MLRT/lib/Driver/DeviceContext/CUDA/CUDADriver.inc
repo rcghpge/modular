@@ -15,7 +15,7 @@
 //
 // Note: For parameters it should be the type only, no parameter names.
 //
-// Note: If a new API has more than 12 parameters, the macros in
+// Note: If a new API has more than 15 parameters, the macros in
 // Support/Preprocessor.h will need to be updated.
 //
 //===----------------------------------------------------------------------===//
@@ -170,9 +170,11 @@ CUDA_FUNC(cuTensorMapEncodeTiled, Result, void *, CUtensorMapDataType, uint32_t,
           void *, const uint64_t *, const uint64_t *, const uint32_t *,
           const uint32_t *, CUtensorMapInterleave, CUtensorMapSwizzle,
           CUtensorMapL2promotion, CUtensorMapFloatOOBfill)
-// NOTE: cuTensorMapEncodeIm2col is NOT in CUDADriver.inc because it has
-// 15 parameters which exceeds the EXPAND_PARAMS macro limit (12).
-// It is hand-written in CUDADriver.h and CUDADriver.cpp instead.
+CUDA_FUNC(cuTensorMapEncodeIm2col, Result, void *, CUtensorMapDataType,
+          uint32_t, void *, const uint64_t *, const uint64_t *, const int *,
+          const int *, uint32_t, uint32_t, const uint32_t *,
+          CUtensorMapInterleave, CUtensorMapSwizzle, CUtensorMapL2promotion,
+          CUtensorMapFloatOOBfill)
 CUDA_FUNC(cuPointerGetAttributes, Result, unsigned int, CUpointer_attribute *,
           void **, CUdeviceptr)
 CUDA_FUNC(cuPointerSetAttribute, Result, void *, CUpointer_attribute,
