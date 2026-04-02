@@ -40,9 +40,10 @@ static void removeResultOnlyParams(KGEN::LIT::FnOp function,
   // Collect params from result type.
   SmallVector<KGEN::ParamDeclRefAttr> resultParamRefs;
   bool hasConstExpr = false;
+  size_t requiredSignatureDepth = 0;
   Type userResultType = function.getUserResultType();
   KGEN::collectParameterReferences(userResultType, resultParamRefs,
-                                   hasConstExpr);
+                                   hasConstExpr, requiredSignatureDepth);
   llvm::DenseSet<StringRef> resultParams;
   for (auto paramRef : resultParamRefs)
     resultParams.insert(paramRef.getName().getValue());
@@ -58,7 +59,8 @@ static void removeResultOnlyParams(KGEN::LIT::FnOp function,
   llvm::DenseSet<StringRef> inputParams;
   for (Type argType : argTypes) {
     SmallVector<KGEN::ParamDeclRefAttr> argParamRefs;
-    KGEN::collectParameterReferences(argType, argParamRefs, hasConstExpr);
+    KGEN::collectParameterReferences(argType, argParamRefs, hasConstExpr,
+                                     requiredSignatureDepth);
     for (auto paramRef : argParamRefs)
       inputParams.insert(paramRef.getName().getValue());
   }
@@ -536,8 +538,9 @@ ErrorOr<EmitMojoState::InferredParameters> EmitMojoState::inferKernelParameters(
       if (auto inputParamDict = dyn_cast<DictionaryAttr>(inputParam))
         for (auto param : inputParamDict) {
           bool hasConstExpr = false;
+          size_t requiredSignatureDepth = 0;
           collector.collectUsesFromAttr(param.getValue(), paramDeclUses,
-                                        hasConstExpr);
+                                        hasConstExpr, requiredSignatureDepth);
           while (!paramDeclUses.empty())
             inferByInputs.insert(
                 paramDeclUses.pop_back_val().getName().getValue());
