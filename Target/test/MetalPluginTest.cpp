@@ -10,6 +10,8 @@
 #include "HAL/M_driver_common.h"
 #include <string>
 
+#include "llvm/ADT/ScopeExit.h"
+
 // Extend test-cases per-plugin beyond the common ones in PluginTest.cpp
 
 /// NOTE: assumes `s` is null terminated
@@ -22,7 +24,7 @@ M_driver_slice M_driver_slice_from(std::string &s) {
   return M_driver_slice{s.data(), s.size()};
 }
 
-static std::string code = R"MSL(
+static std::string vecAddMsl = R"MSL(
 #include <metal_stdlib>
 using namespace metal;
 
@@ -61,7 +63,7 @@ TEST_F(DriverPluginContextTest, FunctionLoad) {
     M_driver_runtime_bundle_t library;
     std::string fileType("msl");
     M_driver_static_bundle staticBundle{.mapped_data =
-                                            M_driver_slice_from(code),
+                                            M_driver_slice_from(vecAddMsl),
                                         .file_type = fileType.c_str(),
                                         .file_type_len = fileType.size()};
     M_driver_bundle_compilation_options opts{"", 0, -1};
@@ -71,5 +73,136 @@ TEST_F(DriverPluginContextTest, FunctionLoad) {
     ASSERT_SUCCESS(function_load(context, library, funcName.c_str(),
                                  funcName.size(), &function));
     ASSERT_SUCCESS(function_unload(context, function));
+  }
+}
+
+struct DriverMetalPluginFunctionTest : DriverPluginQueueTest {
+  void SetUp() override {
+    DriverPluginQueueTest::SetUp();
+    if (this->HasFatalFailure() || this->IsSkipped())
+      return;
+
+    for (size_t i = 0; i < contexts.size(); i++) {
+      M_driver_context_t context = contexts[i];
+      M_driver_runtime_bundle_t library;
+      std::string fileType("msl");
+      M_driver_static_bundle staticBundle{.mapped_data =
+                                              M_driver_slice_from(vecAddMsl),
+                                          .file_type = fileType.c_str(),
+                                          .file_type_len = fileType.size()};
+      M_driver_bundle_compilation_options opts{"", 0, -1};
+      ASSERT_SUCCESS(bundle_load(context, &staticBundle, &opts, &library));
+      libraries.push_back(library);
+      std::string funcName("vec_add_msl");
+      M_driver_function_t function;
+      ASSERT_SUCCESS(function_load(context, library, funcName.c_str(),
+                                   funcName.size(), &function));
+      functions.push_back(function);
+    }
+  }
+
+  void TearDown() override {
+    for (size_t i = 0; i < contexts.size(); i++) {
+      M_driver_context_t context = contexts[i];
+      M_driver_function_t function = functions[i];
+      M_driver_runtime_bundle_t library = libraries[i];
+      EXPECT_SUCCESS(function_unload(context, function));
+      EXPECT_SUCCESS(bundle_unload(context, library));
+    }
+    DriverPluginQueueTest::TearDown();
+  }
+
+  std::vector<M_driver_runtime_bundle_t> libraries;
+  std::vector<M_driver_function_t> functions;
+};
+
+TEST_F(DriverMetalPluginFunctionTest, QueueExecute) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    [[maybe_unused]] M_driver_context_t context = contexts[i];
+    [[maybe_unused]] M_driver_queue_t queue = queues[i];
+    [[maybe_unused]] M_driver_function_t function = functions[i];
+
+    // Test the function with some data
+    constexpr size_t length = 1024;
+    constexpr size_t elemSize = sizeof(float);
+    constexpr size_t memorySize = length * elemSize;
+
+    // Cleanup allocated device memory
+    std::vector<M_driver_memory_t> memories;
+    auto defer = llvm::scope_exit([&]() {
+      for (M_driver_memory_t memory : memories)
+        memory_free_sync(context, memory);
+    });
+
+    // Create device buffers
+    M_driver_memory_t in0Memory;
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &in0Memory));
+    memories.push_back(in0Memory);
+
+    M_driver_memory_t in1Memory;
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &in1Memory));
+    memories.push_back(in1Memory);
+
+    M_driver_memory_t outMemory;
+    ASSERT_SUCCESS(memory_alloc_sync(context, memorySize, &outMemory));
+    memories.push_back(outMemory);
+
+    // Initialize host buffers
+    std::vector<float> in0Host(length);
+    std::vector<float> in1Host(length);
+    std::vector<float> outHost(length);
+
+    for (size_t i = 0; i < length; ++i) {
+      in0Host[i] = static_cast<float>(i);
+      in1Host[i] = 2.0f;
+      outHost[i] = 0.0f;
+    }
+
+    // Copy data to device
+    ASSERT_SUCCESS(
+        queue_copy_to_device(queue, in0Memory, in0Host.data(), memorySize));
+    ASSERT_SUCCESS(
+        queue_copy_to_device(queue, in1Memory, in1Host.data(), memorySize));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    constexpr uint32_t blockDim = 256;
+    M_driver_queue_execute_config_t config = {
+        .mode = M_DRIVER_QUEUE_EXECUTE_MODE_GPU,
+        .config = {.gpu = {
+                       .grid = {length / blockDim, 1, 1},
+                       .block = {blockDim, 1, 1},
+                       .shared_mem_bytes = 0,
+                       .attributes = nullptr,
+                       .num_attributes = 0,
+                   }}};
+
+    void *outPtr = nullptr;
+    ASSERT_SUCCESS(memory_property(outMemory, "address", &outPtr));
+    ASSERT_NE(nullptr, outPtr);
+    void *in0Ptr = nullptr;
+    ASSERT_SUCCESS(memory_property(in0Memory, "address", &in0Ptr));
+    ASSERT_NE(nullptr, in0Ptr);
+    void *in1Ptr = nullptr;
+    ASSERT_SUCCESS(memory_property(in1Memory, "address", &in1Ptr));
+    ASSERT_NE(nullptr, in1Ptr);
+    uint32_t lengthValue = static_cast<uint32_t>(length);
+    void *args[] = {&outPtr, &in0Ptr, &in1Ptr, &lengthValue};
+    uint64_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                           sizeof(lengthValue)};
+
+    ASSERT_SUCCESS(queue_execute(queue, function, &config, args, argSizes, 4));
+
+    // Copy results back
+    ASSERT_SUCCESS(
+        queue_copy_from_device(queue, outHost.data(), outMemory, memorySize));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    // Verify results
+    for (size_t i = 0; i < length; ++i) {
+      float expected = static_cast<float>(i) + 2.0f;
+      EXPECT_FLOAT_EQ(outHost[i], expected)
+          << "Mismatch at index " << i << ": expected " << expected << ", got "
+          << outHost[i];
+    }
   }
 }

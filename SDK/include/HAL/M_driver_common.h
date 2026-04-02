@@ -104,6 +104,7 @@ typedef struct M_driver_function *M_driver_function_t;
 #define M_DRIVER_STATUS_INCOMPATIBLE ((M_driver_status_t)(-14))
 #define M_DRIVER_STATUS_BAD_HANDLE ((M_driver_status_t)(-15))
 #define M_DRIVER_STATUS_BAD_BUNDLE ((M_driver_status_t)(-16))
+#define M_DRIVER_STATUS_EXECUTE_MODE_NOT_SUPPORTED ((M_driver_status_t)(-17))
 /* Future standard status codes may be added here. */
 #define M_DRIVER_NUM_STANDARD_STATUS_CODES (17)
 

@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Common.h"
+#include "HAL/M_driver_queue.h"
 #include "MetalCpp.h"
 
 struct M_driver_queue {
@@ -20,6 +21,10 @@ struct M_driver_queue {
                               uint64_t value, uint64_t valueSize);
 
   M_driver_status_t synchronize();
+
+  M_driver_status_t execute(M_driver_function_t function,
+                            M_driver_queue_execute_config_t *config,
+                            void **args, uint64_t *argSizes, uint32_t numArgs);
 
   M_driver_context_t context;
   NS::SharedPtr<MTL::CommandQueue> mCommandQueue;

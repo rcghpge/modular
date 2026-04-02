@@ -7,9 +7,11 @@
 #include "Queue.h"
 #include "Context.h"
 #include "Device.h"
+#include "Driver.h"
+#include "Function.h"
 #include "Memory.h"
 
-#include "HAL/M_driver_queue.h"
+#include <dispatch/dispatch.h>
 
 DriverResult<M_driver_queue_t>
 M_driver_queue::create(M_driver_context_t context) {
@@ -19,6 +21,27 @@ M_driver_queue::create(M_driver_context_t context) {
       NS::TransferPtr(context->device->mDevice->newCommandQueue());
   if (!commandQueue)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+
+  // Seed a thread-local autorelease pool on Metal's callback thread.
+  // Metal autoreleases AGXG16SDevice on its internal callback thread during
+  // command buffer processing; that thread has no pool by default. Submitting
+  // a no-op command buffer with a completion handler that creates a
+  // thread_local pool ensures all subsequent autoreleases on that thread are
+  // caught. The pool persists for the thread's lifetime so this is
+  // forward-compatible with async (non-blocking) queue usage.
+  // NOTE: dispatch_semaphore is required here (not std::binary_semaphore)
+  // because Metal dispatches completion handlers via GCD. Using a GCD-aware
+  // wait ensures the handler runs on the correct callback thread.
+  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+  MTL::CommandBuffer *warmup = commandQueue->commandBuffer();
+  warmup->addCompletedHandler(^(MTL::CommandBuffer *) {
+    M_driver_driver::ensureThreadlocalAutoreleasePoolExists();
+    dispatch_semaphore_signal(sem);
+  });
+  warmup->commit();
+  dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+  dispatch_release(sem);
+
   M_driver_queue_t queue =
       new (std::nothrow) M_driver_queue(context, commandQueue);
   if (!queue)
@@ -194,6 +217,83 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+namespace {
+MTL::Size toSize(M_driver_dim_t dim) { return {dim.x, dim.y, dim.z}; }
+} // namespace
+
+M_driver_status_t
+M_driver_queue::execute(M_driver_function_t function,
+                        M_driver_queue_execute_config_t *config, void **args,
+                        uint64_t *argSizes, uint32_t numArgs) {
+  // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
+  //                      TRACY_COLOR_PURPLE);
+
+  if (config->mode != M_DRIVER_QUEUE_EXECUTE_MODE_GPU)
+    return M_DRIVER_STATUS_EXECUTE_MODE_NOT_SUPPORTED;
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer");
+
+  // Create compute encoder
+  MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
+  if (encoder == nullptr)
+    RETURN_ERROR("Failed to create compute command encoder");
+  encoder->setComputePipelineState(function->pipelineState.get());
+
+  // Bind all buffer arguments
+  for (uint32_t i = 0; i < function->argumentCount; ++i) {
+    if (args[i] == nullptr) {
+      encoder->endEncoding();
+      RETURN_ERROR("Null argument at index " + std::to_string(i));
+    }
+
+    const size_t argSize = argSizes[i];
+    if (argSize == 0)
+      RETURN_ERROR("Unknown argument size at index " + std::to_string(i));
+
+    // We have more complex argument, such as pointer to a struct. Allocate
+    // new MTLBuffer and set it.
+    NS::SharedPtr<MTL::Buffer> buf =
+        NS::TransferPtr(context->device->mDevice->newBuffer(
+            args[i], argSize,
+            MTL::ResourceOptions(MTL::StorageModeShared) |
+                MTL::ResourceOptions(MTL::CPUCacheModeWriteCombined)));
+    encoder->setBuffer(buf.get(), 0, i);
+  }
+
+  // Set resources that might be used by the kernel
+  // FIXME: only set resources that are used by the kernel
+  for (const auto &it : context->allocations)
+    encoder->useResource(it.second, MTL::ResourceUsageWrite);
+
+  // Dispatch
+  MTL::Size gridSize = toSize(config->config.gpu.grid);
+  MTL::Size threadgroupSize = toSize(config->config.gpu.block);
+  encoder->dispatchThreadgroups(gridSize, threadgroupSize);
+
+  // End encoding
+  encoder->endEncoding();
+
+  cmdBuffer->addCompletedHandler(^(MTL::CommandBuffer *buffer){
+      // Empty completion handler ensures an autorelease pool is present when
+      // cmdBuffer->commit() is executed avoiding leaking of autoreleased ObjC
+      // objects.
+  });
+
+  // Commit and release
+  cmdBuffer->commit();
+
+  // Wait until completion. This is a blocking call therefore we have no pure
+  // asynchronous execution. Remove it with GEX-2503 fixed.
+  cmdBuffer->waitUntilCompleted();
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue::synchronize() {
   // TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize",
   // TRACY_COLOR_PURPLE);
@@ -266,15 +366,19 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
   return queue->setMemory(dst, size, value, value_size);
 }
 
-M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
-  if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_QUEUE;
-  return queue->synchronize();
-}
-
 M_driver_status_t
 M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
                        M_driver_queue_execute_config_t *config, void **args,
                        uint64_t *arg_sizes, uint32_t num_args) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (function == nullptr)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  return queue->execute(function, config, args, arg_sizes, num_args);
+}
+
+M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  return queue->synchronize();
 }
