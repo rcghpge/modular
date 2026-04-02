@@ -306,15 +306,48 @@ llvm::DenseMap<StringAttr, KGEN::GeneratorOp>
 M::MOGG::applySemanticNaming(ModuleOp module,
                              ArrayRef<StringAttr> symbolsToRename,
                              const SymbolTable &symtab, StringRef namePrefix) {
-  // Mapping from old names in the module to the new semantic names.
+  // Mapping from old (public) names to the renamed generators.  The keys are
+  // the names that callers in the MGP module use (i.e. the linkage name when
+  // present, otherwise the sym_name).
   llvm::DenseMap<StringAttr, KGEN::GeneratorOp> renaming;
   renaming.reserve(symbolsToRename.size());
 
   if (symbolsToRename.empty())
     return renaming;
 
+  // At this stage of Mojo compilation, generator ops do not yet have their
+  // 'final' linkage names set onto their symbol names; they're resolved during
+  // elaboration. Thus we cannot simply look up the symbols we're interested in
+  // the symbol table. We have to build up a few data structures to get us from
+  // linkage name to generator. Technically we shouldn't be able to rely on
+  // "literal" linakge names (they may contain parameter expressions in theory)
+  // so this is a bit of a hack, assuming the symbols we're interested in are
+  // simple literals.
+
+  // Build a map from linkageName -> GeneratorOp so we can look up generators
+  // by their public name even when the sym_name is mangled.
+  llvm::DenseMap<StringAttr, KGEN::GeneratorOp> linkageNameToGen;
+  for (auto gen : module.getOps<KGEN::GeneratorOp>()) {
+    if (auto ln = gen.getLinkageNameAttr()) {
+      // We're only interested in looking up literal linkage names. Our symbols
+      // will not refer to parametric ones, so skip them.
+      if (auto str = dyn_cast<StringAttr>(ln)) {
+        // Convert back from a !kgen.string-typed StringAttr to an untyped one,
+        // so that symbol equality works.
+        linkageNameToGen[StringAttr::get(module.getContext(), str.getValue())] =
+            gen;
+      }
+    }
+  }
+
+  auto findGenerator = [&](StringAttr name) -> KGEN::GeneratorOp {
+    if (auto gen = symtab.lookup<KGEN::GeneratorOp>(name))
+      return gen;
+    return linkageNameToGen.lookup(name);
+  };
+
   for (StringAttr symbol : symbolsToRename) {
-    auto generator = symtab.lookup<KGEN::GeneratorOp>(symbol);
+    auto generator = findGenerator(symbol);
     ASSERT_STREAM(generator, << "symbol " << symbol << " not found in module");
     // Remove it because it influences the hashing.
     generator.removeSourceNameAttr();
@@ -327,31 +360,42 @@ M::MOGG::applySemanticNaming(ModuleOp module,
   llvm::DenseMap<StringAttr, KGEN::GeneratorOp> visited;
   visited.reserve(symbolsToRename.size());
 
+  // Track old sym_name -> new sym_name for updating references within the
+  // kgen module (sym_name may differ from the public linkage name).
+  llvm::DenseMap<StringAttr, StringAttr> symRenaming;
+
   for (StringAttr symbol : symbolsToRename) {
-    auto generator = symtab.lookup<KGEN::GeneratorOp>(symbol);
+    auto generator = findGenerator(symbol);
     auto hash = generator->getAttrOfType<StringAttr>(kSemanticHashName);
     ASSERT_STREAM(hash, "module has not had semantic hashes computed");
+
+    StringAttr oldSymName = generator.getSymNameAttr();
 
     // If the operation is already in the module, then it is semantically
     // equivalent to another operation. We can delete it and replace it with its
     // equivalent when updating all symbol uses
     if (auto remapped = visited.lookup_or(hash, nullptr)) {
-      renaming[generator.getSymNameAttr()] = remapped;
+      symRenaming[oldSymName] = remapped.getSymNameAttr();
+      renaming[symbol] = remapped;
       generator.erase();
     } else {
       auto newName = StringAttr::get(module.getContext(),
                                      Twine(namePrefix) + hash.strref());
 
-      renaming[generator.getSymNameAttr()] = generator;
+      symRenaming[oldSymName] = newName;
+      renaming[symbol] = generator;
       generator.setSymNameAttr(newName);
+      // Remove the linkage name so that it doesn't propagate through
+      // elaboration and cause the linkage name resolution to undo this rename.
+      generator.removeLinkageNameAttr();
       visited.insert({hash, generator});
     }
   }
 
   mlir::AttrTypeReplacer replacer;
   replacer.addReplacement([&](FlatSymbolRefAttr ref) {
-    if (auto generator = renaming.lookup_or(ref.getAttr(), {}))
-      return FlatSymbolRefAttr::get(generator.getSymNameAttr());
+    if (auto newName = symRenaming.lookup_or(ref.getAttr(), {}))
+      return FlatSymbolRefAttr::get(newName);
     return ref;
   });
 
