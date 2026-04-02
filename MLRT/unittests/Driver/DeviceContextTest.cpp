@@ -301,6 +301,31 @@ TEST(DeviceContextTest, SetMemory) {
   }
 }
 
+TEST(DeviceContextTest, SetMemoryAlignmentCheck) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+
+  // Use a raw pointer to call the virtual enqueueSetMemory(void*, size_t,
+  // uint64_t, size_t) directly, so we can control byteSize independently of
+  // any buffer allocation rounding.
+  uint8_t scratch[64] = {};
+
+  // valSize=1 bypasses the alignment check entirely.
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 3, 0, 1));
+
+  // Sizes that are multiples of valSize should succeed.
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 2, 0, 2));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 6, 0, 2));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 4, 0, 4));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 12, 0, 4));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 8, 0, 8));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 24, 0, 8));
+
+  // Sizes that are NOT multiples of valSize should fail.
+  EXPECT_ERR_MSG(ctx->enqueueSetMemory(scratch, 3, 0, 2), "misaligned");
+  EXPECT_ERR_MSG(ctx->enqueueSetMemory(scratch, 5, 0, 4), "misaligned");
+  EXPECT_ERR_MSG(ctx->enqueueSetMemory(scratch, 7, 0, 8), "misaligned");
+}
+
 TEST(DeviceContextTest, DeviceExec) {
   const char *vecAddPtx = R"PTX(
 // From max/kernels/test/gpu/vec_add.ptx

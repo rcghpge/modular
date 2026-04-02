@@ -260,7 +260,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   if (valSize > sizeof(uint64_t))
     return Error("unsupported val size");
 
-  if (valSize != 1 && (byteSize & (1 << valSize) - 1))
+  if (valSize != 1 && (byteSize & (valSize - 1)))
     return Error("byteSize of buffer is misaligned");
 
   size_t len = byteSize / valSize;
