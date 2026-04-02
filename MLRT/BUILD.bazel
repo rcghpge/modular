@@ -826,15 +826,43 @@ modular_cc_library(
     visibility = ["//MLRT/unittests/Driver/NIXL:__subpackages__"],
     deps = [
         ":AsyncRT/Support",
+        ":Driver/DeviceContextImpl",
+        ":Driver/NIXLHwlocPrebuilt",
         ":Driver/NIXLLibOnly",
+        ":Driver/NIXLLibfabricPrebuilt",
+        ":Driver/NIXLNumaPrebuilt",
         "//Support:Base",
         "//Support:SymbolExport",
         "//Support:Threading",
-        "@efa_libfabric_prebuilt//:hwloc",
-        "@efa_libfabric_prebuilt//:libfabric",
-        "@efa_libfabric_prebuilt//:numa",
         "@llvm-project//llvm:Support",
     ],
+)
+
+alias(
+    name = "Driver/NIXLHwlocPrebuilt",
+    actual = select({
+        "//:h100_gpu": "@efa_libfabric_prebuilt_cuda//:hwloc",
+        "//:b200_gpu": "@efa_libfabric_prebuilt_cuda//:hwloc",
+        "//conditions:default": "@efa_libfabric_prebuilt//:hwloc",
+    }),
+)
+
+alias(
+    name = "Driver/NIXLLibfabricPrebuilt",
+    actual = select({
+        "//:h100_gpu": "@efa_libfabric_prebuilt_cuda//:libfabric",
+        "//:b200_gpu": "@efa_libfabric_prebuilt_cuda//:libfabric",
+        "//conditions:default": "@efa_libfabric_prebuilt//:libfabric",
+    }),
+)
+
+alias(
+    name = "Driver/NIXLNumaPrebuilt",
+    actual = select({
+        "//:h100_gpu": "@efa_libfabric_prebuilt_cuda//:numa",
+        "//:b200_gpu": "@efa_libfabric_prebuilt_cuda//:numa",
+        "//conditions:default": "@efa_libfabric_prebuilt//:numa",
+    }),
 )
 
 modular_shared_library(
@@ -857,11 +885,11 @@ modular_shared_library(
         ":AsyncRT/Support",
         ":Driver/DeviceContextImpl",
         ":Driver/NIXLLibOnly",
+        ":Driver/NIXLLibfabricPrebuilt",
         ":Driver/NIXLLibfabricUtils",
         "//Support:Base",
         "//Support:SymbolExport",
         "//Support:Threading",
-        "@efa_libfabric_prebuilt//:libfabric",
         "@llvm-project//llvm:Support",
     ],
 )

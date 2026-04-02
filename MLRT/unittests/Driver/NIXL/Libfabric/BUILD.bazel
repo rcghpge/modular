@@ -12,6 +12,9 @@ modular_cc_test(
     name = "PluginTests",
     size = "small",
     srcs = ["PluginTests.cpp"],
+    env = {
+        "FI_EFA_USE_DEVICE_RDMA": "1",
+    },
     target_compatible_with = select({
         "//:linux_x86_64": [],
         "//conditions:default": ["@platforms//:incompatible"],
