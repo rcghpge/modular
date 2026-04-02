@@ -160,7 +160,6 @@ modular_cc_test(
     data = [":MetalPlugin.so"],
     env = {
         "MODULAR_DRIVER_PLUGINS": "$(location :MetalPlugin.so)",
-        "OBJC_DEBUG_MISSING_POOLS": "YES",
     },
     gpu_constraints = ["//:apple_gpu"],
     tags = ["gpu"],
