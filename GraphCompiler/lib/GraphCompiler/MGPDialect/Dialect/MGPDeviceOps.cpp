@@ -28,6 +28,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Base64.h"
 
@@ -599,6 +600,264 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
   return success();
 }
 
+namespace {
+
+/// Expand and contract each lifetime bound as far as the reuse constraints
+/// permit, reducing the number of distinct values.  The reuse condition is:
+///   canReuse(i, j) = (maxPre[i] < minPre[j]) AND (minPost[i] > maxPost[j])
+///
+/// Pre-order steps (applied in order):
+///   a) Expand maxPre[i] upward: upper bound is
+///      min(minPre[j] : canReuse(i,j)) - 1, or the global pre-value max.
+///   b) Contract minPre[i] downward: lower bound is
+///      max(maxPre_new[j] : canReuse(j,i)) + 1, or the global pre-value min.
+///
+/// Post-order steps (direction reversed because the post condition uses >):
+///   c) Contract minPost[i] downward: lower bound is
+///      max(maxPost[j] : canReuse(i,j)) + 1, or the global post-value min.
+///   d) Expand maxPost[i] upward: upper bound is
+///      min(minPost_new[j] : canReuse(j,i)) - 1, or the global post-value max.
+///
+/// After this pass, allocations with no reuse relationship collapse to the same
+/// global min/max values, while strictly-ordered pairs keep their relative
+/// ordering.
+struct ExpandContractBufferPlanLifetimes final
+    : public OpRewritePattern<BufferPlanOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BufferPlanOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() == 0)
+      return failure();
+
+    ArrayRef<uint64_t> minPre = op.getMinPre();
+    ArrayRef<uint64_t> maxPre = op.getMaxPre();
+    ArrayRef<uint64_t> minPost = op.getMinPost();
+    ArrayRef<uint64_t> maxPost = op.getMaxPost();
+    unsigned n = minPre.size();
+
+    auto canReuse = [&](unsigned i, unsigned j) {
+      return i != j && maxPre[i] < minPre[j] && minPost[i] > maxPost[j];
+    };
+
+    uint64_t globalMinPre =
+        std::min(*llvm::min_element(minPre), *llvm::min_element(maxPre));
+    uint64_t globalMaxPre =
+        std::max(*llvm::max_element(minPre), *llvm::max_element(maxPre));
+    uint64_t globalMinPost =
+        std::min(*llvm::min_element(minPost), *llvm::min_element(maxPost));
+    uint64_t globalMaxPost =
+        std::max(*llvm::max_element(minPost), *llvm::max_element(maxPost));
+
+    // Expand arr[i] upward toward globalMax, stopped by fence(j) for each j
+    // where pred(i, j) is true.
+    auto expand = [&](MutableArrayRef<uint64_t> arr, uint64_t globalMax,
+                      auto pred, auto fence) {
+      for (unsigned i : llvm::seq(n)) {
+        uint64_t upper = globalMax;
+        for (unsigned j : llvm::seq(n))
+          if (pred(i, j))
+            upper = std::min(upper, fence(j));
+        arr[i] = upper;
+      }
+    };
+
+    // Contract arr[i] downward toward globalMin, floored by floor(j) for each
+    // j where pred(j, i) is true.
+    auto contract = [&](MutableArrayRef<uint64_t> arr, uint64_t globalMin,
+                        auto pred, auto floor) {
+      for (unsigned i : llvm::seq(n)) {
+        uint64_t lower = globalMin;
+        for (unsigned j : llvm::seq(n))
+          if (pred(j, i))
+            lower = std::max(lower, floor(j));
+        arr[i] = lower;
+      }
+    };
+
+    // (a) canReuse(i, j) → maxPre[i] < minPre[j], so expand calls pred(i, j).
+    auto newMaxPre = llvm::to_vector(maxPre);
+    expand(newMaxPre, globalMaxPre, canReuse,
+           [&](unsigned j) { return minPre[j] - 1; });
+
+    // (b) canReuse(j, i) → maxPre[j] < minPre[i], so contract calls pred(j, i).
+    auto newMinPre = llvm::to_vector(minPre);
+    contract(newMinPre, globalMinPre, canReuse,
+             [&](unsigned j) { return newMaxPre[j] + 1; });
+
+    // (c) canReuse(i, j) → minPost[i] > maxPost[j], so j constrains i when
+    // canReuse(i, j).  contract calls pred(j, i), so flip.
+    auto newMinPost = llvm::to_vector(minPost);
+    contract(
+        newMinPost, globalMinPost,
+        [&](unsigned a, unsigned b) { return canReuse(b, a); },
+        [&](unsigned j) { return maxPost[j] + 1; });
+
+    // (d) canReuse(j, i) → minPost[j] > maxPost[i], so j constrains i when
+    // canReuse(j, i).  expand calls pred(i, j), so flip.
+    auto newMaxPost = llvm::to_vector(maxPost);
+    expand(
+        newMaxPost, globalMaxPost,
+        [&](unsigned a, unsigned b) { return canReuse(b, a); },
+        [&](unsigned j) { return newMinPost[j] - 1; });
+
+    if (ArrayRef<uint64_t>(newMinPre) == minPre &&
+        ArrayRef<uint64_t>(newMaxPre) == maxPre &&
+        ArrayRef<uint64_t>(newMinPost) == minPost &&
+        ArrayRef<uint64_t>(newMaxPost) == maxPost)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<BufferPlanOp>(
+        op, op.getRuntimeSizes(), op.getAlignments(), newMinPre, newMinPost,
+        newMaxPre, newMaxPost, op.getStaticSizesAttr());
+    return success();
+  }
+};
+
+/// Replace each lifetime value with its rank in the joint sorted set of all
+/// pre values (minPre ∪ maxPre), and similarly for post values.  This
+/// eliminates differences in absolute DFS index values while preserving all
+/// strict-less-than relationships required by the reuse condition.
+struct NormalizeBufferPlanLifetimeRanks final
+    : public OpRewritePattern<BufferPlanOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BufferPlanOp op,
+                                PatternRewriter &rewriter) const override {
+    ArrayRef<uint64_t> minPre = op.getMinPre();
+    ArrayRef<uint64_t> maxPre = op.getMaxPre();
+    ArrayRef<uint64_t> minPost = op.getMinPost();
+    ArrayRef<uint64_t> maxPost = op.getMaxPost();
+
+    auto computeRanks = [](ArrayRef<uint64_t> a, ArrayRef<uint64_t> b,
+                           SmallVectorImpl<uint64_t> &ra,
+                           SmallVectorImpl<uint64_t> &rb) {
+      SmallVector<uint64_t> all(a.begin(), a.end());
+      all.append(b.begin(), b.end());
+
+      llvm::sort(all);
+      all.erase(llvm::unique(all), all.end());
+
+      auto rank = [&](uint64_t v) -> uint64_t {
+        return llvm::lower_bound(all, v) - all.begin();
+      };
+
+      ra = llvm::map_to_vector(a, rank);
+      rb = llvm::map_to_vector(b, rank);
+    };
+
+    SmallVector<uint64_t> cMinPre, cMaxPre, cMinPost, cMaxPost;
+    computeRanks(minPre, maxPre, cMinPre, cMaxPre);
+    computeRanks(minPost, maxPost, cMinPost, cMaxPost);
+
+    if (ArrayRef<uint64_t>(cMinPre) == minPre &&
+        ArrayRef<uint64_t>(cMaxPre) == maxPre &&
+        ArrayRef<uint64_t>(cMinPost) == minPost &&
+        ArrayRef<uint64_t>(cMaxPost) == maxPost)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<BufferPlanOp>(
+        op, op.getRuntimeSizes(), op.getAlignments(), cMinPre, cMinPost,
+        cMaxPre, cMaxPost, op.getStaticSizesAttr());
+    return success();
+  }
+};
+
+struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BufferPlanOp op,
+                                PatternRewriter &rewriter) const override {
+    int64_t numExistingStatic = static_cast<int64_t>(
+        op.getStaticSizes().value_or(ArrayRef<int64_t>()).size());
+
+    // Identify which runtime inputs are statically known
+    SmallVector<int64_t> staticValues;
+
+    llvm::SmallBitVector staticIndices(op.getRuntimeSizes().size());
+
+    for (auto [i, runtimeSize] : llvm::enumerate(op.getRuntimeSizes())) {
+      IntegerAttr constantAttr;
+      if (matchPattern(runtimeSize, m_Constant(&constantAttr))) {
+        // This runtime operand is actually a constant
+        staticIndices.set(i);
+        staticValues.push_back(constantAttr.getInt());
+      }
+    }
+
+    // If we have no new static values, nothing to canonicalize
+    if (staticIndices.none())
+      return failure();
+
+    llvm::SmallBitVector dynamicIndices =
+        llvm::SmallBitVector(staticIndices).flip();
+
+    // Build new runtime sizes operands (only the dynamic ones)
+    SmallVector<Value> newRuntimeSizes;
+    for (size_t idx : dynamicIndices.set_bits())
+      newRuntimeSizes.push_back(op.getRuntimeSizes()[idx]);
+
+    // Build permutation map for attributes
+    // New order: [existing static..., newly discovered static..., dynamic...]
+    // Permutation maps new index -> old index in the full allocation array
+    // Existing static allocations stay in their positions
+    SmallVector<int64_t> permutation =
+        llvm::to_vector(llvm::seq(numExistingStatic));
+
+    // Newly discovered static allocations (from runtime operands)
+    for (int64_t idx : staticIndices.set_bits())
+      permutation.push_back(numExistingStatic + idx);
+
+    // Remaining dynamic allocations (from runtime operands)
+    for (int64_t idx : dynamicIndices.set_bits())
+      permutation.push_back(numExistingStatic + idx);
+
+    // Permute the attributes according to the new order
+    auto permuteAttr = [&](ArrayRef<uint64_t> attr) {
+      return M::permute(attr, permutation);
+    };
+
+    // Build new staticSizes attribute
+    SmallVector<int64_t> newStaticSizes =
+        llvm::to_vector(op.getStaticSizes().value_or(ArrayRef<int64_t>{}));
+
+    newStaticSizes.append(staticValues.begin(), staticValues.end());
+
+    auto newStaticSizesAttr = rewriter.getAttr<IntArrayElementsAttr>(
+        ArrayRef<int64_t>(newStaticSizes), IntegerType::Signed);
+
+    // Create new operation with permuted attributes
+    auto newOp = BufferPlanOp::create(
+        rewriter, op.getLoc(),
+        /*runtimeSizes=*/newRuntimeSizes,
+        /*alignments=*/permuteAttr(op.getAlignments()),
+        /*minPre=*/permuteAttr(op.getMinPre()),
+        /*minPost=*/permuteAttr(op.getMinPost()),
+        /*maxPre=*/permuteAttr(op.getMaxPre()),
+        /*maxPost*/ permuteAttr(op.getMaxPost()), newStaticSizesAttr);
+
+    SmallVector<Value> newOffsets =
+        llvm::to_vector(ValueRange(newOp.getOffsets()));
+
+    // Permute the results back to match original order
+    SmallVector<Value> newResults;
+    newResults.push_back(newOp.getHighWatermark());
+    newResults.append(M::permuteReverse(newOffsets, permutation));
+
+    // Create inverse permutation for results
+    rewriter.replaceOp(op, newResults);
+    return success();
+  }
+};
+
+} // namespace
+
+void BufferPlanOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                               MLIRContext *ctx) {
+  patterns.add<ExpandContractBufferPlanLifetimes,
+               NormalizeBufferPlanLifetimeRanks, StaticizeAllocSizes>(ctx);
+}
+
 LogicalResult BufferPlanOp::verify() {
   size_t numStaticSizes = getStaticSizes() ? getStaticSizes()->size() : 0;
   size_t numRuntimeSizes = getRuntimeSizes().size();
@@ -622,89 +881,6 @@ LogicalResult BufferPlanOp::verify() {
            << totalSizes << ")";
   }
 
-  return success();
-}
-
-LogicalResult BufferPlanOp::canonicalize(BufferPlanOp op,
-                                         PatternRewriter &rewriter) {
-  int64_t numExistingStatic = static_cast<int64_t>(
-      op.getStaticSizes().value_or(ArrayRef<int64_t>()).size());
-
-  // Identify which runtime inputs are statically known
-  SmallVector<int64_t> staticValues;
-
-  llvm::SmallBitVector staticIndices(op.getRuntimeSizes().size());
-
-  for (auto [i, runtimeSize] : llvm::enumerate(op.getRuntimeSizes())) {
-    IntegerAttr constantAttr;
-    if (matchPattern(runtimeSize, m_Constant(&constantAttr))) {
-      // This runtime operand is actually a constant
-      staticIndices.set(i);
-      staticValues.push_back(constantAttr.getInt());
-    }
-  }
-
-  // If we have no new static values, nothing to canonicalize
-  if (staticIndices.none())
-    return failure();
-
-  llvm::SmallBitVector dynamicIndices =
-      llvm::SmallBitVector(staticIndices).flip();
-
-  // Build new runtime sizes operands (only the dynamic ones)
-  SmallVector<Value> newRuntimeSizes;
-  for (size_t idx : dynamicIndices.set_bits())
-    newRuntimeSizes.push_back(op.getRuntimeSizes()[idx]);
-
-  // Build permutation map for attributes
-  // New order: [existing static..., newly discovered static..., dynamic...]
-  // Permutation maps new index -> old index in the full allocation array
-  // Existing static allocations stay in their positions
-  SmallVector<int64_t> permutation =
-      llvm::to_vector(llvm::seq(numExistingStatic));
-
-  // Newly discovered static allocations (from runtime operands)
-  for (int64_t idx : staticIndices.set_bits())
-    permutation.push_back(numExistingStatic + idx);
-
-  // Remaining dynamic allocations (from runtime operands)
-  for (int64_t idx : dynamicIndices.set_bits())
-    permutation.push_back(numExistingStatic + idx);
-
-  // Permute the attributes according to the new order
-  auto permuteAttr = [&](ArrayRef<uint64_t> attr) {
-    return M::permute(attr, permutation);
-  };
-
-  // Build new staticSizes attribute
-  SmallVector<int64_t> newStaticSizes =
-      llvm::to_vector(op.getStaticSizes().value_or(ArrayRef<int64_t>{}));
-
-  newStaticSizes.append(staticValues.begin(), staticValues.end());
-
-  auto newStaticSizesAttr = rewriter.getAttr<IntArrayElementsAttr>(
-      ArrayRef<int64_t>(newStaticSizes), IntegerType::Signed);
-
-  // Create new operation with permuted attributes
-  auto newOp = BufferPlanOp::create(
-      rewriter, op.getLoc(),
-      /*runtimeSizes=*/newRuntimeSizes,
-      /*alignments=*/permuteAttr(op.getAlignments()),
-      /*minPre=*/permuteAttr(op.getMinPre()),
-      /*minPost=*/permuteAttr(op.getMinPost()),
-      /*maxPre=*/permuteAttr(op.getMaxPre()),
-      /*maxPost*/ permuteAttr(op.getMaxPost()), newStaticSizesAttr);
-
-  SmallVector<Value> newOffsets =
-      llvm::to_vector(ValueRange(newOp.getOffsets()));
-
-  // Permute the results back to match original order
-  SmallVector<Value> newResults;
-  newResults.push_back(newOp.getHighWatermark());
-  newResults.append(M::permuteReverse(newOffsets, permutation));
-
-  // Create inverse permutation for results
-  rewriter.replaceOp(op, newResults);
   return success();
 }
 

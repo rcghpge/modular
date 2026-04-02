@@ -86,7 +86,6 @@ mgp.model @buffer_plan_extract_constants : mof devices [#M.device_ref<"cpu", 0>]
   // CHECK: execute ({{.*}}%[[ARG:.*]]: index)
   // CHECK: %[[HWM:.*]], %[[OFF:.*]]:3 = mgp.buffer.plan(%[[ARG]])
   // CHECK-SAME: alignments = #M.dense_array<16, 16, 16>
-  // CHECK-SAME: minPre = #M.dense_array<0, 2, 1>
   // CHECK-SAME: staticSizes = #M.dense_array<100, 200> : !M.array<2xsi64>
   // CHECK: mef.output {{.*}}, %[[HWM]], %[[OFF]]#0, %[[OFF]]#2, %[[OFF]]#1
   %hwm, %offsets:3 = mgp.buffer.plan(%c100, %dynamic_size, %c200) {
@@ -152,3 +151,151 @@ mgp.model @buffer_plan_no_constants : mof devices [#M.device_ref<"cpu", 0>] init
   mef.output %ch0, %hwm, %offsets#0, %offsets#1 : !mef.chain, index, index, index
 }
 
+// Test that BufferPlanOp lifetime indices are canonicalized.
+//
+// Allocation lifetimes (pre/post intervals):
+//   alloc0: minPre=100, maxPre=150, minPost=50, maxPost=80
+//   alloc1: minPre=200, maxPre=250, minPost=90, maxPost=120
+//
+// Interference check (canReuse[i][j] = maxPre[i]<minPre[j] && minPost[i]>maxPost[j]):
+//   canReuse[0][1]: 150<200 YES, but 50>120? NO -> false
+//   canReuse[1][0]: 250<100? NO -> false
+// All-zeros interference matrix: no allocation can reuse any other's memory.
+//
+// Phase 1 (value range reduction):
+//   Pre:  globalMin=100, globalMax=250
+//         newMaxPre[i] = 250 (no reuse constraints), newMinPre[i] = 100
+//   Post: globalMin=50, globalMax=120
+//         newMinPost[i] = 50 (no reuse constraints), newMaxPost[i] = 120
+// Phase 2 (dense-rank): {100,250}->ranks 0,1; {50,120}->ranks 0,1
+//
+// Canonical form: bMinPre=[0,0], dMaxPre=[1,1], cMinPost=[0,0], eMaxPost=[1,1]
+//
+// CHECK-LABEL: mgp.model @canonicalize_buffer_plan_lifetime_indices
+mgp.model @canonicalize_buffer_plan_lifetime_indices : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index) -> !mef.chain {
+  // CHECK: mgp.buffer.plan
+  // CHECK-SAME: alignments = #M.dense_array<16, 16>
+  // CHECK-SAME: maxPost = #M.dense_array<1, 1>
+  // CHECK-SAME: maxPre = #M.dense_array<1, 1>
+  // CHECK-SAME: minPost = #M.dense_array<0, 0>
+  // CHECK-SAME: minPre = #M.dense_array<0, 0>
+  %hwm, %off0, %off1 = mgp.buffer.plan(%arg4, %arg5) {
+    alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
+    minPre = #M.dense_array<100, 200> : !M.array<2xui64>,
+    minPost = #M.dense_array<50, 90> : !M.array<2xui64>,
+    maxPre = #M.dense_array<150, 250> : !M.array<2xui64>,
+    maxPost = #M.dense_array<80, 120> : !M.array<2xui64>
+  } : (index, index) -> (index, index, index)
+  %ch = "use"(%arg0, %off0, %off1) : (!mef.chain, index, index) -> !mef.chain
+  mef.output %ch : !mef.chain
+}
+
+// -----
+
+// Test that a BufferPlanOp already in canonical form is not rewritten.
+// The canonical form for an all-zeros interference matrix (2 allocations) is
+// bMinPre=[0,0], dMaxPre=[1,1], cMinPost=[0,0], eMaxPost=[1,1].
+//
+// CHECK-LABEL: mgp.model @already_canonical_buffer_plan
+mgp.model @already_canonical_buffer_plan : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index) -> !mef.chain {
+  // CHECK: mgp.buffer.plan
+  // CHECK-SAME: maxPost = #M.dense_array<1, 1>
+  // CHECK-SAME: maxPre = #M.dense_array<1, 1>
+  // CHECK-SAME: minPost = #M.dense_array<0, 0>
+  // CHECK-SAME: minPre = #M.dense_array<0, 0>
+  %hwm, %off0, %off1 = mgp.buffer.plan(%arg4, %arg5) {
+    alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
+    minPre = #M.dense_array<0, 0> : !M.array<2xui64>,
+    minPost = #M.dense_array<0, 0> : !M.array<2xui64>,
+    maxPre = #M.dense_array<1, 1> : !M.array<2xui64>,
+    maxPost = #M.dense_array<1, 1> : !M.array<2xui64>
+  } : (index, index) -> (index, index, index)
+  %ch = "use"(%arg0, %off0, %off1) : (!mef.chain, index, index) -> !mef.chain
+  mef.output %ch : !mef.chain
+}
+
+// -----
+
+// Test that a BufferPlanOp with actual reuse (canReuse[0][1]=true) is
+// canonicalized correctly.
+//
+// Allocation lifetimes:
+//   alloc0: minPre=100, maxPre=150, minPost=90, maxPost=80
+//   alloc1: minPre=200, maxPre=250, minPost=50, maxPost=40
+//
+// canReuse[0][1]: 150<200 YES, 90>40 YES -> TRUE
+// canReuse[1][0]: 250<100? NO -> false
+//
+// Phase 1 (pre): globalMin=100, globalMax=250
+//   newMaxPre[0] = minPre[1]-1 = 199  (bounded by reuse constraint)
+//   newMaxPre[1] = 250                (no outgoing reuse constraints)
+//   newMinPre[0] = 100                (nothing reuses alloc0)
+//   newMinPre[1] = newMaxPre[0]+1=200 (alloc0 reuses alloc1)
+//
+// Phase 1 (post): globalMin=40, globalMax=90
+//   newMinPost[0] = maxPost[1]+1 = 41 (alloc0 reuses alloc1, post-constrained)
+//   newMinPost[1] = 40                (no outgoing reuse constraints)
+//   newMaxPost[0] = 90                (nothing reuses alloc0)
+//   newMaxPost[1] = newMinPost[0]-1=40 (alloc0 reuses alloc1)
+//
+// Phase 2 (dense-rank):
+//   Pre:  {100,200,199,250} -> sorted {100,199,200,250} -> ranks 0,1,2,3
+//         minPre: 100->0, 200->2 = [0,2]; maxPre: 199->1, 250->3 = [1,3]
+//   Post: {41,40,90,40} -> sorted {40,41,90} -> ranks 0,1,2
+//         minPost: 41->1, 40->0 = [1,0]; maxPost: 90->2, 40->0 = [2,0]
+//
+// CHECK-LABEL: mgp.model @canonicalize_buffer_plan_with_reuse
+mgp.model @canonicalize_buffer_plan_with_reuse : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index) -> !mef.chain {
+  // CHECK: mgp.buffer.plan
+  // CHECK-SAME: maxPost = #M.dense_array<2, 0>
+  // CHECK-SAME: maxPre = #M.dense_array<1, 3>
+  // CHECK-SAME: minPost = #M.dense_array<1, 0>
+  // CHECK-SAME: minPre = #M.dense_array<0, 2>
+  %hwm, %off0, %off1 = mgp.buffer.plan(%arg4, %arg5) {
+    alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
+    minPre = #M.dense_array<100, 200> : !M.array<2xui64>,
+    minPost = #M.dense_array<90, 50> : !M.array<2xui64>,
+    maxPre = #M.dense_array<150, 250> : !M.array<2xui64>,
+    maxPost = #M.dense_array<80, 40> : !M.array<2xui64>
+  } : (index, index) -> (index, index, index)
+  %ch = "use"(%arg0, %off0, %off1) : (!mef.chain, index, index) -> !mef.chain
+  mef.output %ch : !mef.chain
+}
+
+// -----
+
+// Test that a reuse op already in canonical form is not rewritten.
+//
+// CHECK-LABEL: mgp.model @already_canonical_buffer_plan_with_reuse
+mgp.model @already_canonical_buffer_plan_with_reuse : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index) -> !mef.chain {
+  // CHECK: mgp.buffer.plan
+  // CHECK-SAME: maxPost = #M.dense_array<2, 0>
+  // CHECK-SAME: maxPre = #M.dense_array<1, 3>
+  // CHECK-SAME: minPost = #M.dense_array<1, 0>
+  // CHECK-SAME: minPre = #M.dense_array<0, 2>
+  %hwm, %off0, %off1 = mgp.buffer.plan(%arg4, %arg5) {
+    alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
+    minPre = #M.dense_array<0, 2> : !M.array<2xui64>,
+    minPost = #M.dense_array<1, 0> : !M.array<2xui64>,
+    maxPre = #M.dense_array<1, 3> : !M.array<2xui64>,
+    maxPost = #M.dense_array<2, 0> : !M.array<2xui64>
+  } : (index, index) -> (index, index, index)
+  %ch = "use"(%arg0, %off0, %off1) : (!mef.chain, index, index) -> !mef.chain
+  mef.output %ch : !mef.chain
+}

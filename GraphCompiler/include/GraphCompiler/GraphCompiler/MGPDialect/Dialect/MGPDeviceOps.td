@@ -688,6 +688,7 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
 def BufferPlanOp : MGP_Op<"buffer.plan", [
+    Pure,
     InferTypeOpAdaptor,
     DeclareOpInterfaceMethods<EmitsMojoInterface>
 ]> {
@@ -722,7 +723,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
   }];
 
   let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
