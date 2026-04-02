@@ -91,6 +91,21 @@ modular_cc_library(
 # AsyncRT targets
 
 modular_cc_library(
+    name = "AsyncRT/DeviceAffinity",
+    srcs = ["lib/AsyncRT/DeviceAffinity.cpp"],
+    hdrs = ["include/MLRT/AsyncRT/DeviceAffinity.h"],
+    visibility = ["//MLRT:consumers"],
+    deps = [
+        ":AsyncRT/Runtime",
+        ":Driver/DeviceContextAPI",
+        "//Support:Base",
+        "//Support:Configuration",
+        "//Support:Threading",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_library(
     name = "AsyncRT/CompilerSupport",
     srcs = glob(["lib/AsyncRT/CompilerSupport/*.cpp"]),
     hdrs = glob(["include/MLRT/AsyncRT/CompilerSupport/*.h"]),

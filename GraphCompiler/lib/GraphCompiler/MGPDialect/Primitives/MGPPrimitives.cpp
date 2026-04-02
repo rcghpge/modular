@@ -9,6 +9,7 @@
 #include "GraphCompiler/Support/CompiledKernelsContext.h"
 #include "GraphCompiler/Support/List.h"
 #include "KGEN/Support/Configuration.h"
+#include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
@@ -20,7 +21,6 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveRegistry.h"
 #include "Support/AssertStream.h"
-#include "Support/Configuration.h"
 #include "Support/Context.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/MArchTarget/MArchTarget.h"
@@ -28,7 +28,6 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Profiling/Tracy.h"
-#include "Support/Threading/HWInfo.h"
 #include "Support/Threading/SpinWaiter.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -40,8 +39,6 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include <algorithm>
-#include <cstdlib>
 
 #define DEBUG_TYPE "mgp"
 
@@ -134,55 +131,6 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
   return kernelInputs;
 }
 
-static std::map<int, int> inferGpuToCpuCoreMapping() {
-  // Retrieve the NUMA topology.
-  auto numaTopologyOrError = NUMATopology::get();
-  if (numaTopologyOrError.isError())
-    return {};
-  const NUMATopology &numaTopology = *numaTopologyOrError;
-
-  // Retrieve a list of device IDs.
-  int numDevices =
-      M::Driver::Device::numberOfDevices(M::Driver::Device::gpuAPI);
-
-  // Iterate over device IDs and infer a mapping of each to a CPU core.
-  std::map<int, int> gpuToCpuCoreMapping;
-  std::map<int, size_t> nextCpuCoreIndexPerNuma;
-
-  for (int i = 0; i < numDevices; i++) {
-    auto deviceOrError =
-        M::Driver::Device::create(M::Driver::Device::gpuAPI, i);
-    if (deviceOrError.isError())
-      break;
-    auto &device = *deviceOrError;
-
-    auto pciBusIdOrError = device->getPciBusId();
-    if (pciBusIdOrError.isError())
-      break;
-
-    int numaNode = numaTopology.getNumaNodeForPciBus(*pciBusIdOrError);
-    if (numaNode == -1)
-      break;
-
-    std::vector<size_t> cpuIds = numaTopology.getCpuIdsForNumaNode(numaNode);
-    if (cpuIds.empty())
-      break;
-
-    size_t cpuCoreIndex =
-        (1 + nextCpuCoreIndexPerNuma[numaNode]++ % (cpuIds.size() - 1));
-
-    gpuToCpuCoreMapping[i] = cpuIds[cpuCoreIndex];
-  }
-  return gpuToCpuCoreMapping;
-}
-
-static std::map<int, int> getGpuToCpuCoreMapping() {
-  TRACY_ZONE_SCOPED_NC("getGpuToCpuCoreMapping", TRACY_COLOR_TEAL);
-
-  static std::map<int, int> mapping = inferGpuToCpuCoreMapping();
-  return mapping;
-}
-
 /// Extract device hint from DeviceContext if present in operands.
 /// Returns kNoDevicePreference if no single accelerator device is found.
 /// Also returns the DeviceContextRef for pinning if exactly one accelerator
@@ -218,85 +166,6 @@ deviceHintAndContextFor(const RemainingArguments &operands) {
   return {kNoDevicePreference, M::Driver::DeviceContextRef{}};
 }
 
-/// Compute the taskId for a device hint.
-/// Returns kDefaultTaskId if no affinity is needed.
-/// Always uses workers 1..N-1 for device affinity to avoid potential stalls
-/// when worker 0 is the main/donating thread.
-static int taskIdForDevice(int deviceHint,
-                           M::Driver::DeviceContextRef deviceCtx,
-                           size_t numWorkers) {
-  if (deviceHint == kNoDevicePreference)
-    return kDefaultTaskId;
-
-  assert(deviceHint >= 0 &&
-         "expected kNoDevicePreference or non-negative device hint");
-
-  if (numWorkers <= 1)
-    return kDefaultTaskId;
-
-  // Initialize only once as Config::open() is expensive.
-  static SmallVector<int, 8> deviceTaskCpuIds = []() {
-    // If the user explicitly specified the cpu ID they want assigned to
-    // this device, then go with that. For example, if the system has 32
-    // CPUs per NUMA node and the user wants all 8 GPUs controlled from NUMA
-    // node 1, then the user would set
-    // MODULAR_RUNTIME_DEVICE_TASK_CPU_IDS="32,33,34,35,36,37,38,39".
-    SmallVector<int, 8> deviceTaskCpuIds;
-    auto config = Config::open();
-    if (!config.isError()) {
-      SmallVector<StringRef, 8> deviceTaskCpuIdStrs;
-      config->getValueAsList("runtime.device_task_cpu_ids",
-                             deviceTaskCpuIdStrs);
-      for (size_t i = 0; i < deviceTaskCpuIdStrs.size(); i++) {
-        int cpuId;
-        if (deviceTaskCpuIdStrs[i].getAsInteger(10, cpuId)) {
-          llvm::errs() << "Failed to parse runtime.device_task_cpu_ids[" << i
-                       << "] as an integer: " << deviceTaskCpuIdStrs[i] << "\n";
-          std::abort();
-        }
-        if (cpuId == 0) {
-          llvm::errs()
-              << "CPU ID 0 is not allowed in runtime.device_task_cpu_ids\n";
-          std::abort();
-        } else if (std::find(deviceTaskCpuIds.begin(), deviceTaskCpuIds.end(),
-                             cpuId) != deviceTaskCpuIds.end()) {
-          llvm::errs()
-              << "Duplicate CPU ID found in runtime.device_task_cpu_ids: "
-              << cpuId << "\n";
-          std::abort();
-        } else {
-          deviceTaskCpuIds.push_back(cpuId);
-        }
-      }
-    }
-    return deviceTaskCpuIds;
-  }();
-
-  if (deviceTaskCpuIds.size() > static_cast<size_t>(deviceHint))
-    return deviceTaskCpuIds[deviceHint];
-
-  // Infer the task ID from the GPU to CPU core mapping, based on NUMA topology
-  // affinity, if it is available for the target device.
-  // Only use the mapping if numWorkers matches the number of physical CPU
-  // cores, which indicates the thread pool wasn't limited by cgroups or other
-  // means.
-  if (deviceCtx.getPointer() != nullptr &&
-      numWorkers >= M::getNumPhysicalCores()) {
-    auto gpuToCpuCoreMapping = getGpuToCpuCoreMapping();
-    if (!gpuToCpuCoreMapping.empty()) {
-      int deviceId = deviceCtx->device().id();
-      auto it = gpuToCpuCoreMapping.find(deviceId);
-      if (it != gpuToCpuCoreMapping.end()) {
-        return it->second;
-      }
-    }
-  }
-
-  // Conservative: always skip worker 0 for affinity tasks.
-  // This avoids stalls regardless of mainWillDonate setting.
-  return 1 + (deviceHint % static_cast<int>(numWorkers - 1));
-}
-
 static void mgp_generic_execute(
     StateContext &ctx, RemainingArguments operands, RemainingResults outResults,
     MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
@@ -315,10 +184,12 @@ static void mgp_generic_execute(
   // deviceCtx is only valid (non-null) when deviceHint != kNoDevicePreference.
   auto [deviceHint, deviceCtx] = deviceHintAndContextFor(operands);
 
-  // Compute taskId for worker affinity. Uses conservative worker 0 avoidance.
+  // Compute taskId for worker affinity via the shared DeviceAffinity logic.
   AsyncRT::WorkQueue *workQueue = runtime.getWorkQueue();
-  int taskId =
-      taskIdForDevice(deviceHint, deviceCtx, workQueue->getParallelismLevel());
+  int taskId = (deviceHint == kNoDevicePreference)
+                   ? kDefaultTaskId
+                   : AsyncRT::taskIdForDevice(deviceHint,
+                                              workQueue->getParallelismLevel());
 
   // Launch the kernel on a new thread when:
   // - isAsync = true: always run out of line.

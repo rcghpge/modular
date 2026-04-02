@@ -1196,6 +1196,7 @@ modular_cc_library(
         "//Kernels:Tracing",
         "//Kernels:mojo_string_c_api",
         "//Kernels:weights_registry_c_api",
+        "//MLRT:AsyncRT/DeviceAffinity",
         "//MLRT:AsyncRT/RuntimeGlobals",
     ],
 )
@@ -1217,6 +1218,7 @@ modular_cc_library(
         "//Kernels:Tracing",
         "//Kernels:mojo_string_c_api",
         "//Kernels:weights_registry_c_api",
+        "//MLRT:AsyncRT/DeviceAffinity",
         "//MLRT:AsyncRT/RuntimeGlobals",
     ],
 )
