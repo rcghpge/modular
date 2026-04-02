@@ -19,6 +19,7 @@ from max.interfaces import (
     TextGenerationInputs,
     TextGenerationRequest,
 )
+from max.pipelines.lib.model_manifest import ModelManifest
 
 from .config import LlasaConfig
 from .prompt_template import create_llasa_prompt
@@ -47,12 +48,16 @@ class SpeechLM:
             device_specs = [driver.DeviceSpec(id=0, device_type="gpu")]
 
         pipeline_config = pipelines.PipelineConfig(
-            model=pipelines.MAXModelConfig(
-                device_specs=device_specs,
-                quantization_encoding=encoding,
-                model_path=config.llama_model_path,
-                trust_remote_code=True,
-                max_length=config.max_length,
+            models=ModelManifest(
+                {
+                    "main": pipelines.MAXModelConfig(
+                        device_specs=device_specs,
+                        quantization_encoding=encoding,
+                        model_path=config.llama_model_path,
+                        trust_remote_code=True,
+                        max_length=config.max_length,
+                    )
+                }
             ),
         )
 
