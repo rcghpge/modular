@@ -1,5 +1,4 @@
 load("//bazel:api.bzl", "modular_cc_library")
-load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 
 # gazelle:default_visibility //SDK:consumers
 
@@ -12,20 +11,6 @@ package_group(
         "//docs/...",
         "//utils/...",
     ],
-)
-
-# TODO: Remove, currently just for convenience
-alias(
-    name = "python",
-    actual = "//max:repl",
-    tags = [TOP_LEVEL_TAG],
-)
-
-# TODO: Remove, currently just for convenience
-alias(
-    name = "pipelines",
-    actual = "//max",
-    tags = [TOP_LEVEL_TAG],
 )
 
 modular_cc_library(
