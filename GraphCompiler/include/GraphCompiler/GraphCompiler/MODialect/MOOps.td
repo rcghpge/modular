@@ -622,9 +622,11 @@ def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle", [Pure]> {
 // ParallelOp
 //===----------------------------------------------------------------------===//
 
-def MO_ParallelOp : MO_ControlOp<"parallel", [
+def MO_ParallelOp : MO_TensorOp<"parallel", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface, ["getInChains", "getOutChains", "getInChainsMutable"]>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_PreservedDuringKernelLowering,
+  MO_ExecutesOnHost, // TODO this should be MO_MultiDevice
   HasOnlyGraphRegion,
   RegionKindInterface,
   SingleBlock,

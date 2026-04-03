@@ -1,28 +1,29 @@
 // RUN: mo-opt %s --mo-pipeline --mo-to-mogg --mogg-to-mgp -o /dev/null
 
-// Regression test: HoistParameterExpressionsPass must not insert mo.rebind
-// inside mo.parallel bodies.  The parallel body must remain kernel-only
-// for lowerParallelOp.
+// Regression test: mo.parallel with expression-form dims in tensor types.
 //
-// The graph feeds tensors with a complex expression dim (div(D0, 2)) into
-// the parallel, so that HoistParameterExpressionsPass would normally try
-// to rewrite the allreduce's types and insert rebinds.  The pass must
-// skip ops inside mo.parallel.
+// The VisionPatchMerger in Qwen3-VL produces tensors with div(D0, 4) dims
+// via reshape.  These flow into bundled allreduce as parallel inputs.
+// The kernel stub infrastructure must handle expression-form dims
+// (ParamExprAttr) in TensorInitOps, not just named refs (ParamDeclRefAttr).
+//
+// Additionally, HoistParameterExpressionsPass must not insert mo.rebind
+// inside mo.parallel bodies (which would break lowerParallelOp).
 //
 // NOTE: Requires a system with at least 2 GPUs.
 
-mo.graph @bundled_allreduce_complex_expr<D0>(
+mo.graph @bundled_allreduce_expr_dim_inputs<D0>(
     %in0: !mo.tensor<[D0, 3], f32, gpu:0>,
     %in1: !mo.tensor<[D0, 3], f32, gpu:1>,
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>
 ) -> (!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>) {
-  // Create tensors with a complex expression dim via rebind.
+  // Create tensors with expression-form dims (mimics VisionPatchMerger reshape).
   %r0 = mo.rebind(%in0) : !mo.tensor<[D0, 3], f32, gpu:0> -> !mo.tensor<[div(D0, 2), 3], f32, gpu:0>
   %r1 = mo.rebind(%in1) : !mo.tensor<[D0, 3], f32, gpu:1> -> !mo.tensor<[div(D0, 2), 3], f32, gpu:1>
   %ch = mo.chain.create()
-  // The parallel inputs have div(D0, 2) which is a ParamOperatorAttr.
-  // HoistParameterExpressionsPass must NOT rewrite the allreduce inside.
+  // Parallel inputs have div(D0, 2) -- an expression-form dim that kernel
+  // stubs must provide runtime values for.
   %res:2, %out_ch = mo.parallel (%arg, %sig) in
       ((%r0, %sig0) : (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
        (%r1, %sig1) : (!mo.tensor<[div(D0, 2), 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))

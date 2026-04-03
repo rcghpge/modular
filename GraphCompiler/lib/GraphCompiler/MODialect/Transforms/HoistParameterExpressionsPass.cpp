@@ -79,14 +79,16 @@ struct RewriteParamExprTypes : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &origRewriter) const override {
-    // Skip parameter declarations, control flow, and ops inside mo.parallel
-    // bodies.  The parallel body must remain kernel-only; inserting rebinds
-    // there would break lowerParallelOp which only processes MOGG kernels.
-    if (isa<KGEN::ParamDeclareOp, MO::MOControlOpInterface>(op) ||
-        op->getParentOfType<MO::ParallelOp>()) {
-      return origRewriter.notifyMatchFailure(
-          op, "don't rewrite declarations, control flow, or parallel body ops");
-    }
+    if (isa<KGEN::ParamDeclareOp>(op))
+      return origRewriter.notifyMatchFailure(op, "skip parameter declarations");
+    if (isa<MO::MOControlOpInterface>(op))
+      return origRewriter.notifyMatchFailure(op, "skip control flow");
+
+    // Don't rewrite individual ops inside mo.parallel bodies -- the body
+    // must remain kernel-only (no rebinds).  The parallel op itself is
+    // rewritten as a whole.
+    if (op->getParentOfType<MO::ParallelOp>())
+      return origRewriter.notifyMatchFailure(op, "skip parallel body ops");
 
     DeviceAwareRewriter rewriter(op, origRewriter);
 
