@@ -6,7 +6,6 @@
 
 #include "MLRT/AsyncRT/Runtime/Allocator.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/Core/Tensor/StateContext.h"
 #include "Support/TypeID.h"
 
@@ -27,8 +26,8 @@ struct PayloadB : public ReferenceCounted<PayloadB> {
 };
 
 static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
-                                     AsyncRT::RuntimeOptions().forDebug());
+  return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
+                                AsyncRT::RuntimeOptions().forDebug());
 }
 
 #ifndef NDEBUG

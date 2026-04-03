@@ -11,7 +11,6 @@
 
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/GraphRT/GRTTestcase.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
@@ -122,7 +121,7 @@ static RuntimeRef createBenchmarkRuntime() {
   RuntimeOptions opts;
   opts.numThreads = 32;
   opts.withMainWillNotDonate();
-  return getOrCreateRuntime(RuntimeSource::Test, opts);
+  return createRuntime(RuntimeSource::Test, opts);
 }
 
 //===----------------------------------------------------------------------===//
