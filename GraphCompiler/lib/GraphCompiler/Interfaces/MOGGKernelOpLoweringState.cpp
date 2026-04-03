@@ -1017,23 +1017,11 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   Value extraBlockArg =
       bodyBlock.getNumArguments() > 1 ? bodyBlock.getArgument(1) : Value{};
 
-  // Use the explicit inChain (when present) as the starting execute chain.
-  if (parallelOp.hasChain()) {
-    Value inChainLowered =
-        loweringState.lookupExecuteLoweredValue(parallelOp.getInChain());
-    if (inChainLowered)
-      loweringState.setCurrentExecuteChain(
-          cast<TypedValue<MEF::ChainType>>(inChainLowered));
-  }
-
-  // Use the explicit inChain (when present) as the starting execute chain.
-  if (parallelOp.hasChain()) {
-    Value inChainLowered =
-        loweringState.lookupExecuteLoweredValue(parallelOp.getInChain());
-    if (inChainLowered)
-      loweringState.setCurrentExecuteChain(
-          cast<TypedValue<MEF::ChainType>>(inChainLowered));
-  }
+  // The parallel op has explicit chain threading (inChain/outChain).
+  // Do NOT call setCurrentExecuteChain here -- doing so would pollute
+  // unrelated ops lowered after the parallel (like RoPE frequency kernels)
+  // with the embedding/allreduce chain dependency, preventing
+  // ExecInvariantCodeMotionPass from hoisting them to init.
 
   SmallVector<MOGG::KernelOp> kernelOps;
   for (Operation &op : bodyBlock.without_terminator())
@@ -1150,8 +1138,6 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
     MOGG::GenericCompiledRegionOp fusedRegion =
         fuseAndConvertToAsync(ctx, loc, groupRegions);
     Value fusedChain = fusedRegion.getResult(0);
-    loweringState.setCurrentExecuteChain(
-        cast<TypedValue<MEF::ChainType>>(fusedChain));
 
     // lowerKernelOp registered chain guards against individual compiled region
     // chains, which fuseAndConvertToAsync just erased. Repoint them to the
