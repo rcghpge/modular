@@ -7,6 +7,7 @@
 #include "Queue.h"
 #include "Context.h"
 #include "Device.h"
+#include "Event.h"
 
 DriverResult<M_driver_queue_t> M_driver_queue::create(M_driver_context &ctx) {
   M_driver_device &dev = ctx.getDevice();
@@ -137,6 +138,32 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   default:
     return M_DRIVER_STATUS_INVALID_ARG;
   }
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
+  M_driver_device &dev = context.getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  hipError_t result = hip.hipEventRecord(event->event, stream);
+  if (result != hipSuccess)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_queue::waitForEvent(M_driver_event_t event) {
+  M_driver_device &dev = context.getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  hipError_t result = hip.hipStreamWaitEvent(stream, event->event, 0);
+  if (result != hipSuccess)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
 
   return M_DRIVER_STATUS_SUCCESS;
 }

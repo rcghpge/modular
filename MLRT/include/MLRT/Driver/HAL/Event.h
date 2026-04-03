@@ -37,6 +37,7 @@ private:
   M_driver_event_t handle;
 
   friend Context;
+  friend class Queue;
 };
 
 using EventRef = RCRef<Event>;

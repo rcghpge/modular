@@ -52,6 +52,8 @@
   HIP_FN(hipMemsetD2D32Async)                                                  \
   HIP_FN(hipEventCreateWithFlags)                                              \
   HIP_FN(hipEventDestroy)                                                      \
+  HIP_FN(hipEventRecord)                                                       \
+  HIP_FN(hipStreamWaitEvent)                                                   \
   HIP_FN(hipEventSynchronize)                                                  \
   HIP_FN(hipEventQuery)
 

@@ -9,6 +9,7 @@
 #include "MLRT/Driver/HAL/Context.h"
 #include "MLRT/Driver/HAL/Device.h"
 #include "MLRT/Driver/HAL/Driver.h"
+#include "MLRT/Driver/HAL/Event.h"
 #include "Support/LogicalResult.h"
 
 namespace M::Driver::HAL {
@@ -54,6 +55,25 @@ ErrorOrSuccess Queue::setMemory(BufferRef dst, uint64_t value,
   if (M_driver_status_t status =
           context->device->driver->plugin.queue_set_memory(
               handle, dst->handle, dst->byteSize, value, valueSize))
+    return Error(context->device->driver->getStatusMessage(status));
+  return success();
+}
+
+ErrorOr<EventRef> Queue::recordEvent() {
+  ErrorOr<EventRef> event = context->createEvent();
+  if (event.isError())
+    return event.takeError();
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_record_event(handle,
+                                                             (*event)->handle))
+    return Error(context->device->driver->getStatusMessage(status));
+  return event;
+}
+
+ErrorOrSuccess Queue::waitForEvent(EventRef event) {
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_wait_for_event(handle,
+                                                               event->handle))
     return Error(context->device->driver->getStatusMessage(status));
   return success();
 }

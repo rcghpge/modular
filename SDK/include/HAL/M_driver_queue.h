@@ -161,6 +161,40 @@ typedef M_driver_status_t (*M_driver_queue_execute_func_ptr_t)(
     uint32_t num_args);
 
 /**
+ * Record an event on the queue.
+ *
+ * The event will be signaled once all operations enqueued on the queue before
+ * this call have completed.
+ *
+ * @param queue (in) The queue to record the event on.
+ * @param event (in) The event to record.
+ * @return Standard Status Protocol.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
+                                              M_driver_event_t event);
+
+typedef M_driver_status_t (*M_driver_queue_record_event_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_event_t event);
+
+/**
+ * Make the queue wait until an event has been signaled.
+ *
+ * All operations enqueued on the queue after this call will not begin
+ * execution until the event has completed.
+ *
+ * @param queue (in) The queue that should wait.
+ * @param event (in) The event to wait on.
+ * @return Standard Status Protocol.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
+                                                M_driver_event_t event);
+
+typedef M_driver_status_t (*M_driver_queue_wait_for_event_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_event_t event);
+
+/**
  * Block the calling thread until all operations on the queue have completed.
  *
  * @param[in] queue The queue to synchronize on.

@@ -377,6 +377,16 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
   return queue->execute(function, config, args, arg_sizes, num_args);
 }
 
+M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
+                                              M_driver_event_t event) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
+M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
+                                                M_driver_event_t event) {
+  return M_DRIVER_STATUS_UNIMPLEMENTED;
+}
+
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;

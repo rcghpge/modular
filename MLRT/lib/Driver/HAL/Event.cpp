@@ -14,9 +14,7 @@ namespace M::Driver::HAL {
 Event::Event(ContextRef context, M_driver_event_t handle)
     : context(std::move(context)), handle(handle) {}
 
-Event::~Event() {
-  context->device->driver->plugin.event_destroy(context->handle, handle);
-}
+Event::~Event() { context->recycleEventHandle(handle); }
 
 ErrorOrSuccess Event::synchronize() {
   if (M_driver_status_t status =

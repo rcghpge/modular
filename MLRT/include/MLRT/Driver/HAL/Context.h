@@ -24,8 +24,10 @@
 #include "llvm/ADT/Hashing.h"
 
 #include <cstdint>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <vector>
 
 namespace M::Driver::HAL {
 
@@ -58,13 +60,11 @@ class Context : public ReferenceCounted<Context> {
 public:
   ~Context();
 
-  /// Retrieve the device for this context.
   DeviceRef getDevice() const;
 
   ErrorOr<BufferRef> allocBufferSync(size_t byteSize);
   ErrorOr<BufferRef> allocBufferPinned(size_t byteSize);
   ErrorOr<QueueRef> createQueue();
-  ErrorOr<EventRef> createEvent();
 
   ErrorOr<BundleRef> loadBundle(llvm::StringRef bundleName,
                                 llvm::StringRef code, llvm::StringRef codeType,
@@ -86,8 +86,15 @@ public:
 private:
   explicit Context(DeviceRef device, M_driver_context_t handle);
 
+  ErrorOr<EventRef> createEvent();
+
+  void recycleEventHandle(M_driver_event_t handle);
+
   DeviceRef device;
   M_driver_context_t handle;
+
+  std::mutex eventCacheMutex;
+  std::vector<M_driver_event_t> eventCache;
 
   std::shared_mutex bundleCacheMutex;
   llvm::DenseMap<BundleCacheKey, BundleRef> bundleCache;

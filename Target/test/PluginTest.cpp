@@ -268,23 +268,47 @@ TEST_F(DriverPluginContextTest, EventCreateDestroy) {
   }
 }
 
-TEST_F(DriverPluginContextTest, EventSynchronize) {
-  for (M_driver_context_t ctx : contexts) {
-    M_driver_event_t event = nullptr;
-    ASSERT_SUCCESS(event_create(ctx, &event));
-    EXPECT_SUCCESS(event_synchronize(ctx, event));
-    EXPECT_SUCCESS(event_destroy(ctx, event));
-  }
-}
+TEST_F(DriverPluginContextTest, EventRecordWait) {
+  if (api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
 
-TEST_F(DriverPluginContextTest, EventIsReady) {
+  constexpr size_t numElems = 256;
+  constexpr size_t byteSize = numElems * sizeof(unsigned int);
+  std::array<unsigned int, numElems> src;
+  for (unsigned int i = 0; i < numElems; i++)
+    src[i] = i;
+
   for (M_driver_context_t ctx : contexts) {
+    M_driver_queue_t queueA = nullptr;
+    M_driver_queue_t queueB = nullptr;
+    ASSERT_SUCCESS(queue_create(ctx, &queueA));
+    ASSERT_SUCCESS(queue_create(ctx, &queueB));
+
+    M_driver_memory_t memory = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(ctx, byteSize, &memory));
+
+    ASSERT_SUCCESS(queue_copy_to_device(queueA, memory, src.data(), byteSize));
     M_driver_event_t event = nullptr;
     ASSERT_SUCCESS(event_create(ctx, &event));
+    ASSERT_SUCCESS(queue_record_event(queueA, event));
+
+    ASSERT_SUCCESS(queue_wait_for_event(queueB, event));
+    std::array<unsigned int, numElems> dst;
+    dst.fill(0);
+    ASSERT_SUCCESS(
+        queue_copy_from_device(queueB, dst.data(), memory, byteSize));
+    ASSERT_SUCCESS(queue_synchronize(queueB));
+
+    EXPECT_EQ(src, dst);
+
     bool isReady = false;
     EXPECT_SUCCESS(is_event_ready(ctx, event, &isReady));
     EXPECT_TRUE(isReady);
+
     EXPECT_SUCCESS(event_destroy(ctx, event));
+    EXPECT_SUCCESS(memory_free_sync(ctx, memory));
+    EXPECT_SUCCESS(queue_destroy(ctx, queueB));
+    EXPECT_SUCCESS(queue_destroy(ctx, queueA));
   }
 }
 

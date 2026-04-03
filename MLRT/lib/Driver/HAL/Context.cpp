@@ -34,8 +34,10 @@ Context::Context(DeviceRef device, M_driver_context_t handle)
     : device(std::move(device)), handle(handle) {}
 
 Context::~Context() {
-  // Functions must be unloaded while the context is still valid.
   funcCache.clear();
+  for (M_driver_event_t event : eventCache)
+    device->driver->plugin.event_destroy(handle, event);
+  eventCache.clear();
   device->driver->plugin.context_destroy(handle);
 }
 
@@ -70,23 +72,35 @@ ErrorOr<QueueRef> Context::createQueue() {
   if (M_driver_status_t status =
           device->driver->plugin.queue_create(handle, &queueHandle))
     return Error(device->driver->getStatusMessage(status));
-  std::unique_ptr<Queue> queue(new (std::nothrow)
-                                   Queue(copyRCRef(this), queueHandle));
+  auto *queue = new (std::nothrow) Queue(copyRCRef(this), queueHandle);
   if (!queue)
     return Error("Failed to allocate memory for Queue object");
-  return QueueRef::take(queue.release());
+  return QueueRef::take(queue);
 }
 
 ErrorOr<EventRef> Context::createEvent() {
   M_driver_event_t eventHandle = nullptr;
-  if (M_driver_status_t status =
-          device->driver->plugin.event_create(handle, &eventHandle))
-    return Error(device->driver->getStatusMessage(status));
-  std::unique_ptr<Event> event(new (std::nothrow)
-                                   Event(copyRCRef(this), eventHandle));
+  {
+    std::lock_guard<std::mutex> lock(eventCacheMutex);
+    if (!eventCache.empty()) {
+      eventHandle = eventCache.back();
+      eventCache.pop_back();
+    }
+  }
+  if (!eventHandle) {
+    if (M_driver_status_t status =
+            device->driver->plugin.event_create(handle, &eventHandle))
+      return Error(device->driver->getStatusMessage(status));
+  }
+  auto *event = new (std::nothrow) Event(copyRCRef(this), eventHandle);
   if (!event)
     return Error("Failed to allocate memory for Event object");
-  return EventRef::take(event.release());
+  return EventRef::take(event);
+}
+
+void Context::recycleEventHandle(M_driver_event_t eventHandle) {
+  std::lock_guard<std::mutex> lock(eventCacheMutex);
+  eventCache.push_back(eventHandle);
 }
 
 ErrorOr<BundleRef> Context::loadBundle(llvm::StringRef bundleName,

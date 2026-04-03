@@ -170,31 +170,13 @@ TEST_F(DriverHALContextTest, Queue) {
   }
 }
 
-TEST_F(DriverHALContextTest, CreateEvent) {
-  if (api == "HIP" || api == "Metal")
+TEST_F(DriverHALContextTest, EventSyncIsReady) {
+  if (api == "Metal")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (ContextRef &context : contexts) {
-    ErrorOr<EventRef> eventOr = context->createEvent();
-    ASSERT_FALSE(eventOr.isError()) << eventOr.getError();
-  }
-}
-
-TEST_F(DriverHALContextTest, EventSynchronize) {
-  if (api == "HIP" || api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
-  for (ContextRef &context : contexts) {
-    ASSIGN_NO_ERR(EventRef, event, context->createEvent());
-    // Synchronizing an unrecorded event should succeed immediately.
+    ASSIGN_NO_ERR(QueueRef, queue, context->createQueue());
+    ASSIGN_NO_ERR(EventRef, event, queue->recordEvent());
     EXPECT_NO_ERR(event->synchronize());
-  }
-}
-
-TEST_F(DriverHALContextTest, EventIsReady) {
-  if (api == "HIP" || api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
-  for (ContextRef &context : contexts) {
-    ASSIGN_NO_ERR(EventRef, event, context->createEvent());
-    // An unrecorded event should report ready.
     ASSIGN_NO_ERR(bool, ready, event->isReady());
     EXPECT_TRUE(ready);
   }
@@ -216,8 +198,39 @@ struct DriverHALQueueTest : DriverHALContextTest {
   std::vector<QueueRef> queues;
 };
 
+TEST_F(DriverHALContextTest, EventRecordWait) {
+  if (api == "Metal")
+    GTEST_SKIP() << "Unimplemented for " << api;
+
+  constexpr size_t numElems = 128;
+  constexpr size_t byteSize = numElems * sizeof(unsigned int);
+  std::array<unsigned int, numElems> src;
+  for (unsigned int i = 0; i < numElems; i++)
+    src[i] = i;
+
+  for (ContextRef &context : contexts) {
+    ASSIGN_NO_ERR(QueueRef, queueA, context->createQueue());
+    ASSIGN_NO_ERR(QueueRef, queueB, context->createQueue());
+    ASSIGN_NO_ERR(BufferRef, buffer, context->allocBufferSync(byteSize));
+
+    EXPECT_NO_ERR(queueA->copyToDevice(buffer, src.data(), byteSize));
+    ASSIGN_NO_ERR(EventRef, event, queueA->recordEvent());
+
+    EXPECT_NO_ERR(queueB->waitForEvent(event));
+    std::array<unsigned int, numElems> dst;
+    dst.fill(0);
+    EXPECT_NO_ERR(queueB->copyFromDevice(dst.data(), buffer, byteSize));
+    EXPECT_NO_ERR(queueB->synchronize());
+
+    EXPECT_EQ(src, dst);
+
+    ASSIGN_NO_ERR(bool, isReady, event->isReady());
+    EXPECT_TRUE(isReady);
+  }
+}
+
 TEST_F(DriverHALQueueTest, AllocBufferAsync) {
-  if (api == "CUDA" || api == "HIP" || api == "Metal")
+  if (api == "HIP" || api == "Metal")
     GTEST_SKIP() << "Unimplemented for " << api;
   for (QueueRef &queue : queues) {
     ErrorOr<BufferRef> bufferOr = queue->allocBufferAsync(/*byteSize=*/128);

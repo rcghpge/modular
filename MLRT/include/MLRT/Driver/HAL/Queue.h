@@ -25,6 +25,9 @@ using ContextRef = RCRef<Context>;
 class Buffer;
 using BufferRef = RCRef<Buffer>;
 
+class Event;
+using EventRef = RCRef<Event>;
+
 class Queue;
 using QueueRef = RCRef<Queue>;
 
@@ -37,6 +40,11 @@ public:
   ErrorOrSuccess copyToDevice(BufferRef dst, void *src, size_t byteSize);
   ErrorOrSuccess copyFromDevice(void *dst, BufferRef src, size_t byteSize);
   ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
+  /// Record a new event on this queue. The returned event will be signaled
+  /// once all operations enqueued before this call have completed.
+  ErrorOr<EventRef> recordEvent();
+  /// Make this queue wait until the given event has been signaled.
+  ErrorOrSuccess waitForEvent(EventRef event);
   ErrorOrSuccess synchronize();
 
 private:

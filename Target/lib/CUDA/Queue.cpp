@@ -7,6 +7,7 @@
 #include "Queue.h"
 #include "Context.h"
 #include "Device.h"
+#include "Event.h"
 
 DriverResult<M_driver_queue_t> M_driver_queue::create(M_driver_context &ctx) {
   ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
@@ -137,6 +138,24 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
   default:
     return M_DRIVER_STATUS_INVALID_ARG;
   }
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  CUDALoader &cuda = context.device.driver.rawCuda;
+  CUDA_CHECK(cuda.cuEventRecord(event->event, stream),
+             M_DRIVER_STATUS_UNKNOWN_ERROR);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_queue::waitForEvent(M_driver_event_t event) {
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  CUDALoader &cuda = context.device.driver.rawCuda;
+  CUDA_CHECK(cuda.cuStreamWaitEvent(stream, event->event, 0),
+             M_DRIVER_STATUS_UNKNOWN_ERROR);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
