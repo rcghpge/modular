@@ -14,7 +14,6 @@
 #include "MLRT/Driver/NIXL/nixl_types.h"
 #include "MLRT/Driver/NIXL/telemetry/telemetry_event.h"
 #include "MLRT/Driver/NIXL/telemetry/telemetry_exporter.h"
-#include "MLRT/Driver/NIXL/utils/common/cyclic_buffer.h"
 
 #include <asio.hpp>
 #include <atomic>
@@ -72,7 +71,6 @@ private:
   bool writeEventHelper();
 
   std::unique_ptr<nixlTelemetryExporter> exporter_;
-  std::unique_ptr<sharedRingBuffer<nixlTelemetryEvent>> buffer_;
   std::vector<nixlTelemetryEvent> events_;
   std::mutex mutex_;
   asio::thread_pool pool_;

@@ -110,8 +110,9 @@ nixlTelemetry::~nixlTelemetry() {
   pool_.stop();
   pool_.join();
 
-  writeEventHelper();
-  buffer_.reset();
+  if (exporter_) {
+    writeEventHelper();
+  }
 }
 
 void nixlTelemetry::initializeTelemetry() {

@@ -163,6 +163,9 @@ nixlAgentData::nixlAgentData(std::string agentName, nixlAgentConfig cfg)
 }
 
 nixlAgentData::~nixlAgentData() {
+  // Flush telemetry while backend engines and plugin state are still alive.
+  telemetry.reset();
+
   delete memorySection;
 
   for (auto &elm : remoteSections)
