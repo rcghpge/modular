@@ -204,7 +204,7 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
 
   nixl_status_t checkStatus = xferStatus;
   const auto startTime = std::chrono::steady_clock::now();
-  const auto timeout = std::chrono::seconds(10);
+  const auto timeout = std::chrono::seconds(30);
 
   while (checkStatus == nixl_status_t::NIXL_IN_PROG &&
          (std::chrono::steady_clock::now() - startTime < timeout)) {

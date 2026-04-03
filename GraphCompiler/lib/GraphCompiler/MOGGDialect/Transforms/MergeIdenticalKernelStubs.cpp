@@ -122,7 +122,8 @@ static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
   properties.sym_name = {};
   properties.fusionInfo = {};
 
-  stubOp->getName().hashOpProperties(mlir::OpaqueProperties(&properties));
+  stubOp->getName().hashOpProperties(mlir::PropertyRef(
+      stubOp->getName().getOpPropertiesTypeID(), &properties));
 
   for (NamedAttribute namedAttr : cStubOp->getDiscardableAttrDictionary()) {
     StringAttr attrName = namedAttr.getName();

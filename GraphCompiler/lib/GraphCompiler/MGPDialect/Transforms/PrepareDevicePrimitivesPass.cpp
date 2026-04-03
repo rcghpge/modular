@@ -68,7 +68,7 @@ class PrepareDevicePrimitivesPass
             /*resultTypes=*/origOp->getResults().getTypes(),
             /*operands=*/origOp->getOperands(),
             /*attributes=*/std::move(newAttrs),
-            /*properties=*/origOp->getPropertiesStorage(),
+            /*properties=*/PropertyRef{},
             /*successors=*/{},
             /*numRegions=*/0);
         builder.setInsertionPoint(origOp);
