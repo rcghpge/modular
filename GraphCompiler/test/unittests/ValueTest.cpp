@@ -14,6 +14,7 @@
 #include "GraphCompiler/Support/List.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "llvm/Support/YAMLTraits.h"
 
@@ -27,8 +28,8 @@ namespace {
 struct ValueTest : ::testing::Test {};
 
 static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
-                                AsyncRT::RuntimeOptions().forDebug());
+  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
+                                     AsyncRT::RuntimeOptions().forDebug());
 }
 
 static Tensor makeTensor(AsyncRT::Runtime &runtime, size_t size) {
