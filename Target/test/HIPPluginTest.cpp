@@ -8,8 +8,10 @@
 #include "Fixture.h"
 #include "HAL/M_driver_bundle.h"
 #include "HAL/M_driver_common.h"
+#include "HAL/M_driver_memory.h"
 
 #include "hip/hiprtc.h"
+#include "llvm/ADT/ScopeExit.h"
 
 #include <cstdio>
 #include <dlfcn.h>
@@ -258,4 +260,86 @@ TEST_F(DriverPluginContextTest, EventIsReadyNull) {
     ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE,
               is_event_ready(ctx, nullptr, &isReady));
   }
+}
+
+// Uses synchronous (context-based) memory allocation.
+TEST_F(DriverPluginQueueTest, VecAdd) {
+  std::vector<char> hsaco = compileHIPKernel();
+  ASSERT_FALSE(hsaco.empty()) << "Failed to compile HIP kernel via HIPRTC";
+
+  std::string fileType("hsaco");
+  auto staticBundle = makeStaticBundle(hsaco, fileType);
+  M_driver_bundle_compilation_options opts{"", 0, -1};
+  M_driver_runtime_bundle_t bundle = nullptr;
+  ASSERT_SUCCESS(bundle_load(contexts[0], &staticBundle, &opts, &bundle));
+  ASSERT_NE(bundle, nullptr);
+  auto bundleCleanup =
+      llvm::scope_exit([&]() { bundle_unload(contexts[0], bundle); });
+
+  std::string funcName("vec_add");
+  M_driver_function_t func = nullptr;
+  ASSERT_SUCCESS(function_load(contexts[0], bundle, funcName.c_str(),
+                               funcName.size(), &func));
+  auto funcCleanup =
+      llvm::scope_exit([&]() { function_unload(contexts[0], func); });
+
+  constexpr size_t length = 1024;
+  constexpr size_t bufSize = length * sizeof(float);
+
+  std::vector<float> inHostA(length);
+  std::vector<float> inHostB(length);
+  std::vector<float> outHost(length, 0.0f);
+
+  for (size_t i = 0; i < length; i++) {
+    inHostA[i] = static_cast<float>(i);
+    inHostB[i] = 2.0f;
+  }
+
+  M_driver_memory_t inDevA = nullptr;
+  M_driver_memory_t inDevB = nullptr;
+  M_driver_memory_t outDev = nullptr;
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[0], bufSize, &inDevA));
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[0], bufSize, &inDevB));
+  ASSERT_SUCCESS(memory_alloc_sync(contexts[0], bufSize, &outDev));
+  auto memCleanup = llvm::scope_exit([&]() {
+    memory_free_sync(contexts[0], outDev);
+    memory_free_sync(contexts[0], inDevB);
+    memory_free_sync(contexts[0], inDevA);
+  });
+
+  ASSERT_SUCCESS(
+      queue_copy_to_device(queues[0], inDevA, inHostA.data(), bufSize));
+  ASSERT_SUCCESS(
+      queue_copy_to_device(queues[0], inDevB, inHostB.data(), bufSize));
+
+  void *outPtr = nullptr;
+  void *inPtrA = nullptr;
+  void *inPtrB = nullptr;
+  ASSERT_SUCCESS(
+      memory_property(outDev, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &outPtr));
+  ASSERT_SUCCESS(
+      memory_property(inDevA, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &inPtrA));
+  ASSERT_SUCCESS(
+      memory_property(inDevB, M_DRIVER_MEMORY_PROPERTY_ADDRESS, &inPtrB));
+
+  void *args[] = {&inPtrA, &inPtrB, &outPtr, (void *)&length};
+  uint64_t argSizes[] = {sizeof(inPtrA), sizeof(inPtrB), sizeof(outPtr),
+                         sizeof(length)};
+
+  constexpr uint32_t blockDim = 32;
+  M_driver_queue_execute_config_t config{};
+  config.mode = M_DRIVER_QUEUE_EXECUTE_MODE_GPU;
+  config.config.gpu = {.grid = {length / blockDim, 1, 1},
+                       .block = {blockDim, 1, 1},
+                       .shared_mem_bytes = 0,
+                       .attributes = nullptr,
+                       .num_attributes = 0};
+  ASSERT_SUCCESS(queue_execute(queues[0], func, &config, args, argSizes, 4));
+
+  ASSERT_SUCCESS(
+      queue_copy_from_device(queues[0], outHost.data(), outDev, bufSize));
+  ASSERT_SUCCESS(queue_synchronize(queues[0]));
+
+  for (size_t i = 0; i < length; i++)
+    EXPECT_EQ(outHost[i], static_cast<float>(i) + 2.0f);
 }

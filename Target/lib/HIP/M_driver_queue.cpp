@@ -5,6 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
+#include "Device.h"
+#include "Driver.h"
+#include "Function.h"
 #include "HAL/M_driver_api.h"
 #include "Queue.h"
 
@@ -54,7 +57,28 @@ M_driver_status_t
 M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
                        M_driver_queue_execute_config_t *config, void **args,
                        uint64_t *arg_sizes, uint32_t num_args) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (function == nullptr)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  if (config == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  M_driver_device &dev = queue->context.getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  auto &gpu = config->config.gpu;
+
+  hipError_t result = hip.hipModuleLaunchKernel(
+      function->function, gpu.grid.x, gpu.grid.y, gpu.grid.z, gpu.block.x,
+      gpu.block.y, gpu.block.z, gpu.shared_mem_bytes, queue->stream, args,
+      /*extra=*/nullptr);
+  if (result != hipSuccess)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {

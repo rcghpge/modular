@@ -40,6 +40,7 @@
   HIP_FN(hipHostFree)                                                          \
   HIP_FN(hipModuleLoadData)                                                    \
   HIP_FN(hipModuleGetFunction)                                                 \
+  HIP_FN(hipModuleLaunchKernel)                                                \
   HIP_FN(hipModuleUnload)                                                      \
   HIP_FN(hipStreamCreateWithPriority)                                          \
   HIP_FN(hipStreamDestroy)                                                     \

@@ -5,7 +5,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
+#include "Device.h"
 #include "Error.h"
+#include "Function.h"
 #include "HAL/M_driver_api.h"
 #include "Queue.h"
 
@@ -62,5 +64,35 @@ M_driver_status_t
 M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
                        M_driver_queue_execute_config_t *config, void **args,
                        uint64_t *arg_sizes, uint32_t num_args) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_HANDLE;
+  if (function == nullptr)
+    return M_DRIVER_STATUS_BAD_FUNCTION;
+  if (config == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  ScopedContext scope(queue->context.primaryCtx,
+                      queue->context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = queue->context.device.driver.rawCuda;
+
+  auto &gpu = config->config.gpu;
+  CUlaunchConfig launchConfig{
+      .gridDimX = gpu.grid.x,
+      .gridDimY = gpu.grid.y,
+      .gridDimZ = gpu.grid.z,
+      .blockDimX = gpu.block.x,
+      .blockDimY = gpu.block.y,
+      .blockDimZ = gpu.block.z,
+      .sharedMemBytes = gpu.shared_mem_bytes,
+      .hStream = queue->stream,
+      .attrs = static_cast<CUlaunchAttribute *>(gpu.attributes),
+      .numAttrs = gpu.num_attributes,
+  };
+
+  CUDA_CHECK(cuda.cuLaunchKernelEx(&launchConfig, function->function, args,
+                                   /*extra=*/nullptr),
+             M_DRIVER_STATUS_UNKNOWN_ERROR);
+
+  return M_DRIVER_STATUS_SUCCESS;
 }
