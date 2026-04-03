@@ -24,6 +24,7 @@
 #include <IOKit/IOKitLib.h>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <sys/resource.h>
@@ -75,6 +76,16 @@ static ErrorOr<int> getComputeCapability(StringRef name) {
     return 1;
 
   RETURN_ERROR("Unknown device name");
+}
+
+// Return true if logging for Metal kernel is enabled.
+static bool isLoggingEnabled(void *attrs, uint32_t numAttrs) {
+  Device::Attribute *deviceAttrs = (Device::Attribute *)attrs;
+  for (uint32_t i = 0; i < numAttrs; ++i) {
+    if (deviceAttrs[i] == Device::Attribute::METAL_DISABLE_LOGGING)
+      return false;
+  }
+  return true;
 }
 
 //
@@ -297,6 +308,8 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   // Max access policy window size is not supported.
   case Device::Attribute::MAX_ACCESS_POLICY_WINDOW_SIZE:
     ATTRIBUTE_UNSUPPORTED(MAX_ACCESS_POLICY_WINDOW_SIZE);
+  case Device::Attribute::METAL_DISABLE_LOGGING:
+    return 0;
   }
 
 #undef ATTRIBUTE_UNSUPPORTED
@@ -868,7 +881,7 @@ MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
 ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void * /*attrs*/, uint32_t numAttrs, void **args, uint32_t argCount,
+    void *attrs, uint32_t numAttrs, void **args, uint32_t argCount,
     const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
@@ -879,7 +892,17 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
   const MetalDeviceFunction &metalFunc = MetalDeviceFunction::cast(func);
   MTL::ComputePipelineState *pipeline = metalFunc.getPipelineState();
 
-  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  // Create command buffer with log state to capture GPU print output.
+  MTL::CommandBuffer *cmdBuffer = nullptr;
+  if (MTL::LogState *ls =
+          getOrCreateLogState(isLoggingEnabled(attrs, numAttrs))) {
+    NS::SharedPtr<MTL::CommandBufferDescriptor> desc =
+        NS::TransferPtr(MTL::CommandBufferDescriptor::alloc()->init());
+    desc->setLogState(ls);
+    cmdBuffer = commandQueue_->commandBuffer(desc.get());
+  } else {
+    cmdBuffer = commandQueue_->commandBuffer();
+  }
   if (cmdBuffer == nullptr)
     RETURN_ERROR("Failed to create command buffer");
 
@@ -1223,6 +1246,40 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
 
   DEFINE_OR_RETURN_ERROR(int, cc, getComputeCapability(name));
   return std::to_string(cc);
+}
+
+MTL::LogState *MetalDeviceContext::getOrCreateLogState(bool enable) {
+  if (!enable)
+    return nullptr;
+  if (logState_)
+    return logState_.get();
+
+  MTL::Device *mtlDevice = metalDevice();
+
+  NS::SharedPtr<MTL::LogStateDescriptor> desc =
+      NS::TransferPtr(MTL::LogStateDescriptor::alloc()->init());
+  desc->setLevel(MTL::LogLevelDebug);
+
+  NS::Error *error = nullptr;
+  logState_ = NS::TransferPtr(mtlDevice->newLogState(desc.get(), &error));
+
+  if (error || !logState_)
+    return nullptr; // LogState not supported — fall back silently.
+
+  // Register a handler that writes GPU print output to stdout so it
+  // can be captured by test infrastructure (FileCheck pipes stdout).
+  logState_->addLogHandler([](NS::String *subsystem, NS::String *category,
+                              MTL::LogLevel /*level*/, NS::String *message) {
+    if (message) {
+      const char *cstr = message->cString(NS::UTF8StringEncoding);
+      if (cstr) {
+        fprintf(stdout, "%s", cstr);
+        fflush(stdout);
+      }
+    }
+  });
+
+  return logState_.get();
 }
 
 //

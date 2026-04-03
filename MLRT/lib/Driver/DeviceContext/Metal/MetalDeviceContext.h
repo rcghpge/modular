@@ -187,6 +187,9 @@ public:
 
 private:
   NS::SharedPtr<MTL::CommandQueue> commandQueue_;
+  // Log state for capturing GPU shader print output.
+  NS::SharedPtr<MTL::LogState> logState_;
+  MTL::LogState *getOrCreateLogState(bool enable = true);
   // Memory allocation
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;

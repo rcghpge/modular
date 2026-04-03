@@ -964,6 +964,8 @@ enum class Device::Attribute : int {
   MAX_BLOCKS_PER_MULTIPROCESSOR = 106,
   // CUDA-only: Maximum value of CUaccessPolicyWindow::num_bytes.
   MAX_ACCESS_POLICY_WINDOW_SIZE = 109,
+  // Metal-only: Disable `print` to improve kernel's execution time.
+  METAL_DISABLE_LOGGING = 110,
 };
 
 //

@@ -222,6 +222,7 @@ gethipDeviceAttribute(Device::Attribute attr) {
     RAISE_ENTRY(COOPERATIVE_LAUNCH);
     RAISE_ENTRY(MAX_BLOCKS_PER_MULTIPROCESSOR);
     RAISE_ENTRY(MAX_ACCESS_POLICY_WINDOW_SIZE);
+    RAISE_ENTRY(METAL_DISABLE_LOGGING);
     // No `default:` to ensure that all possible enum values are handled.
   }
 #undef RAISE_ENTRY

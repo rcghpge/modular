@@ -94,6 +94,22 @@ protected:
     device_.reset();
   }
 
+  // Helper function to get Metal shader source that emits a known marker via
+  // os_log (MSL 3.1 / macOS 14+). Compilation is attempted at test time; if
+  // os_log is unavailable the load will fail and the test skips.
+  std::string getPrintKernelSource() {
+    return R"(
+      #include <metal_stdlib>
+      using namespace metal;
+
+      kernel void print_test_kernel(uint tid [[thread_position_in_grid]])
+      {
+          if (tid == 0)
+              os_log("gpu_print_test_marker\n");
+      }
+    )";
+  }
+
   // Helper function to get Metal shader source code
   std::string getMetalShaderSource() {
     return R"(
@@ -655,4 +671,69 @@ TEST_F(MetalDeviceContextTestBase, BinaryMetallibExecutionCPUComparison) {
                  "comparison.\n\n";
   }
 }
+// Returns true if MTL::LogState can be created on the current platform
+// (requires macOS 14+). Used to skip print tests on older systems.
+static bool isLogStateSupported(MTL::Device *mtlDevice) {
+  NS::SharedPtr<MTL::LogStateDescriptor> desc =
+      NS::TransferPtr(MTL::LogStateDescriptor::alloc()->init());
+  NS::Error *error = nullptr;
+  NS::SharedPtr<MTL::LogState> ls =
+      NS::TransferPtr(mtlDevice->newLogState(desc.get(), &error));
+  return !error && ls;
+}
+
+// Test: GPU print output is captured on stdout when logging is enabled (the
+// default). The kernel calls os_log() with a known marker string; after
+// synchronisation the string must appear in stdout because the log handler
+// installed by getOrCreateLogState() writes there.
+TEST_F(MetalDeviceContextTestBase, MetalPrint_CapturesOutput) {
+  const MetalDevice &metalDevice = MetalDevice::cast(*device_);
+  if (!isLogStateSupported(metalDevice.metalDevice()))
+    GTEST_SKIP() << "MTL::LogState not supported on this platform";
+
+  ErrorOr<DeviceFunctionRef> fnOr = ctx_->loadFunction(
+      "print_test_module", "print_test_kernel", getPrintKernelSource());
+  if (fnOr.isError())
+    GTEST_SKIP() << "os_log not available in MSL on this platform: "
+                 << fnOr.getError();
+  DeviceFunctionRef fn = fnOr.takeValue();
+
+  testing::internal::CaptureStdout();
+  EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+      *fn, 1, 1, 1, 1, 1, 1, /*sharedMemBytes=*/0,
+      /*attrs=*/nullptr, /*numAttrs=*/0, /*args=*/nullptr));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  std::string output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(output.find("gpu_print_test_marker"), std::string::npos)
+      << "Expected GPU print marker in stdout; got: " << output;
+}
+
+// Test: METAL_DISABLE_LOGGING attribute prevents the log state from being
+// attached to the command buffer, so no GPU print output reaches stdout.
+TEST_F(MetalDeviceContextTestBase, MetalPrint_DisabledByAttribute) {
+  const MetalDevice &metalDevice = MetalDevice::cast(*device_);
+  if (!isLogStateSupported(metalDevice.metalDevice()))
+    GTEST_SKIP() << "MTL::LogState not supported on this platform";
+
+  ErrorOr<DeviceFunctionRef> fnOr =
+      ctx_->loadFunction("print_test_module_disabled", "print_test_kernel",
+                         getPrintKernelSource());
+  if (fnOr.isError())
+    GTEST_SKIP() << "os_log not available in MSL on this platform: "
+                 << fnOr.getError();
+  DeviceFunctionRef fn = fnOr.takeValue();
+
+  Device::Attribute attrs[] = {Device::Attribute::METAL_DISABLE_LOGGING};
+  testing::internal::CaptureStdout();
+  EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+      *fn, 1, 1, 1, 1, 1, 1, /*sharedMemBytes=*/0, static_cast<void *>(attrs),
+      /*numAttrs=*/1, /*args=*/nullptr));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  std::string output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(output.find("gpu_print_test_marker"), std::string::npos)
+      << "Expected no GPU print output with logging disabled; got: " << output;
+}
+
 } // namespace M::Driver
