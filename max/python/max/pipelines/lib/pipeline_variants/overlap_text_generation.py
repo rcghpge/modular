@@ -62,7 +62,7 @@ from __future__ import annotations
 import copy
 import logging
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -87,6 +87,7 @@ from max.graph.weights import (
 )
 from max.interfaces import (
     BatchType,
+    EOSTracker,
     PipelineOutputsDict,
     PipelineTokenizer,
     RequestID,
@@ -266,7 +267,12 @@ class ScatterFutureTokenProcessor:
         prev_batch: AsyncBatch[TextGenerationContextType],
         inputs: TextGenerationInputs[TextGenerationContextType],
         ragged_input_tokens: Buffer,
-    ) -> DevicePinnedBuffer:
+    ) -> DevicePinnedBuffer | None:
+        """Computes scatter indices mapping previous-batch tokens to current slots.
+
+        Returns None if all indices are out-of-bounds (no overlap between
+        the previous and current batch), indicating the scatter can be skipped.
+        """
         prev_generated_tokens = prev_batch.generated_tokens_device
         device = prev_generated_tokens.device
         if device.is_host:
@@ -324,7 +330,11 @@ class ScatterFutureTokenProcessor:
                     req_id
                 ]
 
-        return future_tok_indices
+        return (
+            None
+            if np.all(future_tok_indices_np == oob_idx)
+            else future_tok_indices
+        )
 
     @traced
     def scatter_future_tokens(
@@ -336,11 +346,20 @@ class ScatterFutureTokenProcessor:
         """Scatters generated tokens from the previous batch into placeholder slots.
 
         Fills placeholder future tokens in the current batch on the GPU.
+        Returns ragged_input_tokens unchanged if there is no overlap between
+        the previous and current batch.
         """
         future_tok_indices = self._compute_scatter_future_tok_indices(
             prev_batch,
             inputs,
             ragged_input_tokens,
+        )
+
+        if future_tok_indices is None:
+            return ragged_input_tokens
+
+        assert self._scatter_future_tokens is not None, (
+            "ScatterFutureTokenProcessor is None but there are tokens to scatter."
         )
 
         # Execute the scatter_nd kernel.
@@ -376,6 +395,7 @@ class OverlapTextGenerationPipeline(
             npt.NDArray[np.integer[Any]],
             TextGenerationRequest,
         ],
+        disable_overlap: bool = False,
     ) -> None:
         """Initialize a text generation pipeline instance.
 
@@ -389,6 +409,9 @@ class OverlapTextGenerationPipeline(
                 one or to seed the EOS set.
             weight_adapters: Mapping from weights format to adapter implementation.
             tokenizer: Tokenizer implementation used to build contexts and decode.
+            disable_overlap: When this flag is set, the overlap scheduler will
+                immediately synchronize after model execution. This removes any
+                potential cpu / gpu overlap.
 
         Raises:
             ValueError: If ``quantization_encoding`` is not configured in
@@ -446,6 +469,7 @@ class OverlapTextGenerationPipeline(
 
         available_cache_memory = model_config.kv_cache._available_cache_memory
         kv_params = self._pipeline_model.kv_params
+        self._extra_kv_managers: list[PagedKVCacheManager] = []
         if isinstance(kv_params, MultiKVCacheParams):
             kv_managers = load_multi_kv_managers(
                 params=kv_params,
@@ -456,8 +480,12 @@ class OverlapTextGenerationPipeline(
             )
             self._kv_manager = kv_managers[0]
 
-            # Temporary hack to pass extra cache managers to PipelineModel
-            self._pipeline_model.extra_kv_managers = kv_managers[1:]
+            # Extra managers (e.g. global attention KV for multimodal models) must
+            # be exposed on the pipeline so the serve scheduler can claim/alloc
+            # them alongside the primary cache — same contract as generate.py and
+            # TextGenerationPipeline.
+            self._extra_kv_managers = kv_managers[1:]
+            self._pipeline_model.extra_kv_managers = self._extra_kv_managers
         else:
             assert isinstance(kv_params, KVCacheParams)
             self._kv_manager = load_kv_manager(
@@ -467,6 +495,8 @@ class OverlapTextGenerationPipeline(
                 session=session,
                 available_cache_memory=available_cache_memory,
             )
+
+        pipeline_role = self._pipeline_config.runtime.pipeline_role
 
         # Load sampler.
         self._sampler: Model = session.load(
@@ -478,17 +508,34 @@ class OverlapTextGenerationPipeline(
 
         # Overlap scheduling specific initialization.
 
-        # Load the scatter future tokens graph.
-        self._scatter_future_tokens: ScatterFutureTokenProcessor = (
+        # Load the scatter future tokens graph — not needed on prefill-only
+        # workers (no decode phase, so no future tokens to scatter).
+        self._scatter_future_tokens: ScatterFutureTokenProcessor | None = (
             ScatterFutureTokenProcessor(
                 session, DeviceRef.from_device(self._devices[0])
             )
+            if pipeline_role != "prefill_only"
+            else None
         )
         # Set previous asynchronously executing batch to None.
         self._prev_batch: AsyncBatch[TextGenerationContextType] | None = None
         self._graph_capture_runner: ServeGraphCaptureRunner | None = None
         # set a default graph capture size, 128
         self._max_graph_capture_batch_size: int = _MAX_GRAPH_CAPTURE_BATCH_SIZE
+
+        self._disable_overlap = disable_overlap
+
+    @property
+    def _effective_max_cache_length(self) -> int:
+        """Max cache length capped to the smallest KV pool capacity."""
+        all_managers = [self._kv_manager] + self._extra_kv_managers
+        return min(
+            self._pipeline_model.max_seq_len,
+            *(
+                mgr._total_num_pages * mgr.params.page_size
+                for mgr in all_managers
+            ),
+        )
 
     @property
     def pipeline_config(self) -> PipelineConfig:
@@ -530,17 +577,26 @@ class OverlapTextGenerationPipeline(
                         tokens=TokenBuffer(
                             np.zeros(q_max_seq_len, dtype=np.int64)
                         ),
-                        eos_token_ids=self._eos_token_id,
+                        eos_tracker=EOSTracker(),
                         model_name=self._pipeline_config.model.model_name,
                     )
                     for idx in range(batch_size)
                 ]
             )
-        with self._kv_manager.reserve(replica_batches, num_steps=1):
+        # TODO(b-rod): ExitStack is needed to reserve multiple KV managers.
+        # Once MultiKVCacheManager exposes a single reserve() that covers
+        # all caches, replace with a plain `with` statement.
+        with ExitStack() as stack:
+            stack.enter_context(
+                self._kv_manager.reserve(replica_batches, num_steps=1)
+            )
+            for ekm in self._extra_kv_managers:
+                stack.enter_context(ekm.reserve(replica_batches, num_steps=1))
+            max_cache_length = self._effective_max_cache_length
             kv_cache_inputs = self._kv_manager.runtime_inputs(
                 replica_batches,
                 num_steps=1,
-                max_cache_length=self._pipeline_model.max_seq_len,
+                max_cache_length=max_cache_length,
             )
             with Tracer("prepare_initial_token_inputs"):
                 model_inputs = (
@@ -580,20 +636,44 @@ class OverlapTextGenerationPipeline(
                 max_capture_batch_size,
             )
 
+        # TODO(b-rod): Reaching into _replica[0].attention_dispatch_resolver
+        # is fragile. The KV manager should expose this via a public API.
+        # Also only handles one extra manager — generalize for N.
+        extra_resolver = (
+            self._extra_kv_managers[0]._replica[0].attention_dispatch_resolver
+            if self._extra_kv_managers
+            else None
+        )
         graph_capture_runner = ServeGraphCaptureRunner(
             model=self._pipeline_model.model,
             execute_model=self._pipeline_model.execute,
             session=self.session,
             kv_params=self._kv_manager.params,
             warmup_model_inputs=self._warmup_model_inputs,
-            max_cache_length_upper_bound=self._pipeline_model.max_seq_len,
+            max_cache_length_upper_bound=self._effective_max_cache_length,
             max_batch_size=max_capture_batch_size,
+            extra_dispatch_resolver=extra_resolver,
         )
         self._graph_capture_runner = graph_capture_runner
         self._max_graph_capture_batch_size = max_capture_batch_size
         logger.info("Starting serve device graph capture warmup.")
         graph_capture_runner.warmup_pre_ready()
         logger.info("Completed serve device graph capture warmup.")
+
+    def _maybe_scatter_future_tokens(
+        self,
+        inputs: TextGenerationInputs[TextGenerationContextType],
+        ragged_input_tokens: Buffer,
+    ) -> Buffer:
+        scatter = self._scatter_future_tokens
+        if self._prev_batch is None or scatter is None:
+            return ragged_input_tokens
+        with Tracer("scatter_future_tokens"):
+            return scatter.scatter_future_tokens(
+                prev_batch=self._prev_batch,
+                inputs=inputs,
+                ragged_input_tokens=ragged_input_tokens,
+            )
 
     def _run_forward(
         self, inputs: TextGenerationInputs[TextGenerationContextType]
@@ -617,11 +697,12 @@ class OverlapTextGenerationPipeline(
         # Replay uses LUT buffers sized by max cache length so copied inputs
         # match captured graph buffer shapes.
         if use_graph_capture_replay:
+            assert self._graph_capture_runner is not None
             with self._kv_manager.scalar_metadata_on_host():
                 kv_cache_inputs = self._kv_manager.runtime_inputs(
                     inputs.batches,
                     num_steps=1,
-                    max_cache_length=self._pipeline_model.max_seq_len,
+                    max_cache_length=self._graph_capture_runner._max_cache_length_upper_bound,
                 )
         else:
             kv_cache_inputs = self._kv_manager.runtime_inputs(
@@ -658,16 +739,10 @@ class OverlapTextGenerationPipeline(
                 "inputs with a Buffer `tokens` field."
             )
         ragged_input_tokens = model_inputs.tokens
-        if self._prev_batch is not None:
-            with Tracer("scatter_future_tokens"):
-                new_ragged_input_tokens = (
-                    self._scatter_future_tokens.scatter_future_tokens(
-                        prev_batch=self._prev_batch,
-                        inputs=inputs,
-                        ragged_input_tokens=ragged_input_tokens,
-                    )
-                )
-            # Overwrite the ragged input tokens with the new ones.
+        new_ragged_input_tokens = self._maybe_scatter_future_tokens(
+            inputs, ragged_input_tokens
+        )
+        if new_ragged_input_tokens is not ragged_input_tokens:
             model_inputs.tokens = new_ragged_input_tokens
             if debug_verify_model_inputs is not None:
                 debug_verify_model_inputs.tokens = new_ragged_input_tokens
@@ -716,6 +791,18 @@ class OverlapTextGenerationPipeline(
             )
 
         model_outputs = self._run_forward(inputs)
+
+        if model_outputs.logit_offsets is None:
+            batch_size = len(flat_batch)
+            logits_batch = int(model_outputs.logits.shape[0])
+            if logits_batch != batch_size:
+                raise AssertionError(
+                    "Model returned LAST_TOKEN logits with a leading dimension "
+                    f"that does not match request batch size: logits.shape[0]={logits_batch}, "
+                    f"batch_size={batch_size}, input_tokens={sum(ctx.tokens.active_length for ctx in flat_batch)}, "
+                    f"active_lengths={[ctx.tokens.active_length for ctx in flat_batch]}, "
+                    f"generated_lengths={[ctx.tokens.generated_length for ctx in flat_batch]}."
+                )
 
         with Tracer("apply_logits_processors"):
             apply_logits_processors(
@@ -798,6 +885,9 @@ class OverlapTextGenerationPipeline(
             curr_batch = None
 
         if self._prev_batch is not None:
+            assert not self._disable_overlap, (
+                "Cannot have a previous batch when overlap is disabled"
+            )
             outputs: PipelineOutputsDict[TextGenerationOutput] = (
                 self._prev_batch.sync_and_process_outputs()
             )
@@ -813,9 +903,20 @@ class OverlapTextGenerationPipeline(
         # Commit the new KV blocks into the prefix cache, ignoring the final
         # placeholder future token.
         self._kv_manager.step(inputs.batches)
+        for extra_kv_manager in self._extra_kv_managers:
+            extra_kv_manager.step(inputs.batches)
 
         if curr_batch is not None:
-            self._prev_batch = curr_batch
+            if self._disable_overlap:
+                assert not outputs, (
+                    "Cannot have prev outputs when overlap is disabled"
+                )
+                # Immediately synchronize after gpu execution and return the
+                # results of the current batch.
+                outputs = curr_batch.sync_and_process_outputs()
+            else:
+                # Otherwise, delay the synchronization until the next step.
+                self._prev_batch = curr_batch
 
         return outputs
 
@@ -835,3 +936,8 @@ class OverlapTextGenerationPipeline(
     def kv_manager(self) -> PagedKVCacheManager:
         """Returns the KV cache manager for this pipeline."""
         return self._kv_manager
+
+    @property
+    def extra_kv_managers(self) -> list[PagedKVCacheManager]:
+        """Returns extra KV cache managers (e.g. global attention for Diancie)."""
+        return self._extra_kv_managers

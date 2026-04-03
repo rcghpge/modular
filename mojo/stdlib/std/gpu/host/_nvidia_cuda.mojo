@@ -55,8 +55,6 @@ def CUDA(ctx: DeviceContext) raises -> CUcontext:
         external_call[
             "AsyncRT_DeviceContext_cuda_context",
             _CString[],
-            UnsafePointer[CUcontext, origin_of(result)],
-            _DeviceContextPtr,
         ](
             UnsafePointer(to=result),
             ctx._handle,
@@ -75,8 +73,6 @@ def CUDA(stream: DeviceStream) raises -> CUstream:
         external_call[
             "AsyncRT_DeviceStream_cuda_stream",
             _CString[],
-            UnsafePointer[CUstream, origin_of(result)],
-            _DeviceStreamPtr,
         ](
             UnsafePointer(to=result),
             stream._handle,
@@ -94,8 +90,6 @@ def CUDA_MODULE(func: DeviceFunction) raises -> CUmodule:
         external_call[
             "AsyncRT_DeviceFunction_cuda_module",
             _CString[],
-            UnsafePointer[CUmodule, origin_of(result)],
-            _DeviceFunctionPtr,
         ](
             UnsafePointer(to=result),
             func._handle,

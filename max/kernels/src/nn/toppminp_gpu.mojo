@@ -13,13 +13,13 @@
 
 
 from std.math import ceildiv
-from std.sys import align_of, size_of, bit_width_of
+from std.sys import bit_width_of
 
 from std.builtin.dtype import _uint_type_of_width
 from std.gpu import (
     barrier,
     block_dim,
-    block_idx,
+    block_idx_uint as block_idx,
     grid_dim,
     WARP_SIZE,
     thread_idx_uint as thread_idx,
@@ -27,16 +27,14 @@ from std.gpu import (
 import std.gpu.primitives.warp as warp
 from std.gpu.host import DeviceContext, DeviceBuffer
 from std.gpu.host.dim import Dim
-from std.gpu.memory import external_memory
-from std.sys.info import has_apple_gpu_accelerator, is_apple_gpu
+from std.sys.info import has_apple_gpu_accelerator
 from std.random import Random
-from layout import Coord, CoordLike, Idx, TileTensor, row_major
+from layout import Coord, Idx, TileTensor, row_major
 from std.memory import bitcast, stack_allocation
 from nn.softmax import _softmax_gpu
 from nn.topk import (
     TopK_2,
     _block_reduce_topk,
-    _get_shmem_size_stg_1,
     _topk_dead_val,
     _warp_reduce_topk,
 )
@@ -184,7 +182,7 @@ def topk_wrapper[
         var partial = topk_sram[tid]
 
         # Perform block-level reduction to find the maximum TopK_2
-        var total = _block_reduce_topk[accending=largest](partial)
+        var total = _block_reduce_topk[ascending=largest](partial)
 
         if tid == 0:
             # Store the local top-K values and indices in global memory
@@ -611,7 +609,7 @@ def run_radix_sort_pairs_gpu[
             dtype, out_idx_type, current_bit, ascending, BLOCK_SIZE
         ]
 
-        ctx.enqueue_function_experimental[kernel](
+        ctx.enqueue_function[kernel, kernel](
             keys.current(ctx),
             keys.alternate(ctx),
             key_ids.current(ctx),
@@ -807,8 +805,7 @@ def _topp_minp_sampling_gpu[
     def apply_temperature[
         _simd_width: Int, _rank: Int
     ](coords: IndexList[_rank]) -> SIMD[dtype, _simd_width]:
-        var idx = input_logits.layout(Coord(coords))
-        var val = input_logits.ptr.load[width=_simd_width](idx)
+        var val = input_logits.load[width=_simd_width](Coord(coords))
         return val / temperature
 
     var input_size = input_logits.num_elements()
@@ -816,7 +813,7 @@ def _topp_minp_sampling_gpu[
     var probs_buf = ctx.enqueue_create_buffer[dtype](input_size * 2)
     var input_probs = TileTensor(
         probs_buf.unsafe_ptr(),
-        row_major((Idx(batch_size), Idx(vocab_size))),
+        row_major(Idx(batch_size), Idx(vocab_size)),
     )
 
     _softmax_gpu[
@@ -845,7 +842,7 @@ def _topp_minp_sampling_gpu[
             _test_sort=_test_sort,
         ]
 
-        ctx.enqueue_function_experimental[topk_kernel](
+        ctx.enqueue_function[topk_kernel, topk_kernel](
             K,
             vocab_size,
             num_blocks_per_input,
@@ -866,7 +863,7 @@ def _topp_minp_sampling_gpu[
             _test_sort=_test_sort,
         ]
 
-        ctx.enqueue_function_experimental[topk_kernel](
+        ctx.enqueue_function[topk_kernel, topk_kernel](
             K,
             vocab_size,
             num_blocks_per_input,
@@ -916,7 +913,7 @@ def _topp_minp_sampling_gpu[
     comptime topp_minp_kernel = topp_minp_sampling_kernel[
         dtype, out_idx_type, is_top_p
     ]
-    ctx.enqueue_function_experimental[topp_minp_kernel](
+    ctx.enqueue_function[topp_minp_kernel, topp_minp_kernel](
         p_thresholds.to_device_buffer(ctx),
         probs_buf,
         ids_buf,

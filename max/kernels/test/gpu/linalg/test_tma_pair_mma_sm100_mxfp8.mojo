@@ -15,13 +15,11 @@ from std.math import align_up
 from std.sys import size_of
 import linalg.matmul.vendor.blas as vendor_blas
 from std.gpu import (
-    WARP_SIZE,
     barrier,
     warp_id as get_warp_id,
     block_id_in_cluster,
     block_idx,
     lane_id,
-    thread_idx,
 )
 from std.gpu.primitives.cluster import (
     block_rank_in_cluster,
@@ -44,7 +42,6 @@ from layout import (
     TileTensor,
     row_major,
 )
-from layout._utils import ManagedLayoutTensor
 from layout.tensor_core_async import (
     tile_layout_k_major,
     tile_layout_mn_major,
@@ -56,19 +53,15 @@ from layout.tma_async import (
     TMATensorTile,
     _idx_product,
     create_tensor_tile,
-    create_tma_tile,
 )
 from std.utils.index import Index, IndexList
-from std.utils.numerics import get_accum_type, max_finite, min_finite
+from std.utils.numerics import get_accum_type
 from std.utils.static_tuple import StaticTuple
 from internal_utils import assert_almost_equal
 from std.random import rand
 from std.math import ceildiv
-from std.builtin.simd import _convert_f32_to_float8_ue8m0
 from std.gpu.sync import syncwarp
 from std.sys import argv
-from std.logger import Logger
-from linalg.fp8_quantization import naive_blockwise_scaled_fp8_matmul
 from std.random import random_ui64
 from linalg.fp4_utils import (
     convert_ref_scales_to_mxfp8_format,
@@ -135,7 +128,7 @@ def blockscaled_pair_cta_mxfp8[
         b_scales_desc_shape,
     ],
     c: LayoutTensor[c_type, c_layout, MutAnyOrigin],
-    num_iters: UInt,
+    num_iters: Int,
 ):
     comptime assert (
         a_type == b_type == DType.float8_e4m3fn
@@ -348,18 +341,18 @@ def blockscaled_pair_cta_mxfp8[
         b_mma_mask | b_mma_mask << 1
     )
 
-    for k_iter in range(Int(num_iters)):
+    for k_iter in range(num_iters):
         if elect_one_warp and elect_one_thread:
             if elect_one_cta:
                 tma_mbar[0].expect_bytes(Int32(expected_bytes))
 
             var a_gmem_slice_coord = (
-                Int(peer_cta_coord[2]) * a_tma_rows + Int(block_idx.x) * BM
+                Int(peer_cta_coord[2]) * a_tma_rows + block_idx.x * BM
             )
             var b_gmem_slice_coord = (
                 Int(peer_cta_coord[1]) * b_tma_rows
                 + Int(peer_cta_coord[0]) * BN
-                + Int(block_idx.y) * MMA_N
+                + block_idx.y * MMA_N
             )
 
             var a_smem_reshape = a_smem_tile.reshape[Layout.row_major(BM, BK)]()
@@ -388,7 +381,7 @@ def blockscaled_pair_cta_mxfp8[
                     0,
                     0,
                     k_iter,
-                    Int(block_idx.x) * (BM // SF_MN_GROUP_SIZE),
+                    block_idx.x * (BM // SF_MN_GROUP_SIZE),
                 ),
             )
 
@@ -399,7 +392,7 @@ def blockscaled_pair_cta_mxfp8[
                     0,
                     0,
                     k_iter,
-                    Int(block_idx.y) * (MMA_N // SF_MN_GROUP_SIZE),
+                    block_idx.y * (MMA_N // SF_MN_GROUP_SIZE),
                 ),
             )
 
@@ -529,7 +522,7 @@ def blockscaled_pair_cta_mxfp8[
         tcgen05_release_allocation_lock[Int32(cta_group)]()
         tcgen05_dealloc[Int32(cta_group)](tmem_addr, max_tmem_cols)
 
-    warp_id = get_warp_id()
+    var warp_id = get_warp_id()
 
     var c_gmem_block = c.tile[MMA_M, MMA_N](
         Int(peer_cta_coord[1]), Int(peer_cta_coord[2])
@@ -538,7 +531,7 @@ def blockscaled_pair_cta_mxfp8[
 
     comptime if MMA_M == 128:
         var c_gmem_frag = c_gmem_slice.tile[BM // 2, BN](
-            Int(warp_id) % 2, Int(warp_id) // 2
+            warp_id % 2, warp_id // 2
         ).vectorize[1, 2]()
 
         comptime for i in range(c_frag_size // 2):
@@ -550,7 +543,7 @@ def blockscaled_pair_cta_mxfp8[
             )
     else:
         var c_gmem_frag = c_gmem_slice.tile[BM // 4, MMA_N](
-            Int(warp_id), 0
+            warp_id, 0
         ).vectorize[1, 2]()
 
         comptime for i in range(c_frag_size // 2):
@@ -747,7 +740,7 @@ def sm100_blockscaled_mxfp8_cta_pair[
         a_scales_tma_op,
         b_scales_tma_op,
         c,
-        UInt(ceildiv(K, BK)),
+        ceildiv(K, BK),
         grid_dim=(
             align_up(ceildiv(M, BM), Int(cluster_shape[0])),
             align_up(ceildiv(N, BN) // cta_group, Int(cluster_shape[1])),

@@ -18,6 +18,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields, replace
 from typing import Any
+from unittest.mock import MagicMock
 
 import numpy as np
 from max._core.driver import is_virtual_device_mode
@@ -29,10 +30,7 @@ from max.graph.weights import WeightData, load_weights
 from max.nn.comm.ep import EPCommInitializer
 from max.nn.kv_cache import KVCacheInputs, KVCacheParams, PagedCacheValues
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
-from max.pipelines.lib import (
-    CompilationTimer,
-    ModelInputs,
-)
+from max.pipelines.lib import CompilationTimer, ModelInputs
 from max.pipelines.lib.pipeline_variants.utils import get_weight_paths
 from max.pipelines.lib.speculative_decoding.unified_eagle import (
     UnifiedEagleOutputs,
@@ -48,9 +46,7 @@ from .model_config import (
     _extract_eagle_aux_layer_ids,
 )
 from .unified_eagle_model import Eagle3KimiK25Unified
-from .weight_adapters import (
-    convert_eagle3_draft_state_dict,
-)
+from .weight_adapters import convert_eagle3_draft_state_dict
 
 logger = logging.getLogger("max.pipelines")
 
@@ -69,7 +65,6 @@ class Eagle3KimiK25Inputs(KimiK2_5ModelInputs):
         )
     )
     draft_kv_cache_buffers: list[Buffer] = field(default_factory=list)
-    draft_signal_buffers: list[Buffer] = field(default_factory=list)
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
@@ -83,7 +78,6 @@ class Eagle3KimiK25Inputs(KimiK2_5ModelInputs):
             *self.signal_buffers,
             *(self.kv_cache_inputs or ()),
             *self.draft_kv_cache_buffers,
-            *self.draft_signal_buffers,
             *self.batch_context_lengths,
             *self.ep_inputs,
         )
@@ -195,13 +189,11 @@ class Eagle3KimiK25Model(KimiK2_5Model):
 
         nn_model = Eagle3KimiK25Unified(config, draft_config)
 
-        # Share embed_tokens, norm, and lm_head before loading so the graph
-        # sees a single Weight object for each shared parameter.
+        # Share embed_tokens before loading so the graph sees a single
+        # Weight object for the shared embedding.  norm and lm_head are
+        # loaded independently from the draft checkpoint.
         assert nn_model.draft is not None
         nn_model.draft.embed_tokens = nn_model.target.embed_tokens
-        nn_model.draft.norm = nn_model.target.norm
-        nn_model.draft.norm_shards = nn_model.target.norm_shards
-        nn_model.draft.lm_head = nn_model.target.lm_head
 
         target_llm_sd = {
             k[len("language_model.") :]: v
@@ -218,7 +210,7 @@ class Eagle3KimiK25Model(KimiK2_5Model):
 
         draft_expected = set(nn_model.draft.raw_state_dict().keys())
         draft_provided = set(draft_state_dict.keys())
-        shared_prefixes = ("embed_tokens.", "norm.", "lm_head.")
+        shared_prefixes = ("embed_tokens.",)
         missing = {
             k
             for k in draft_expected - draft_provided
@@ -226,16 +218,29 @@ class Eagle3KimiK25Model(KimiK2_5Model):
         }
         extra = draft_provided - draft_expected
         if missing:
-            logger.warning(
+            raise ValueError(
                 f"Draft model has unloaded non-shared weights: {sorted(missing)}"
             )
         if extra:
             logger.warning(f"Draft state_dict has unused keys: {sorted(extra)}")
 
-        self.state_dict = {
-            **nn_model.draft.state_dict(),
-            **nn_model.target.state_dict(),
-        }
+        # Build the weights registry with "draft." prefix for non-shared
+        # draft weights.  Must call state_dict() before renaming because
+        # state_dict() resets weight.name to the module-path key.
+        self.state_dict = {}
+        for k, v in nn_model.target.state_dict().items():
+            self.state_dict[k] = v
+        for k, v in nn_model.draft.state_dict().items():
+            if k.startswith("embed_tokens."):
+                continue
+            self.state_dict[f"draft.{k}"] = v
+
+        # Rename non-shared draft Weights so graph-level names are unique
+        # (e.g. "draft.norm.weight" vs "norm.weight" from target).
+        for name, weight in nn_model.draft.raw_state_dict().items():
+            if name.startswith("embed_tokens."):
+                continue
+            weight.name = f"draft.{name}"
 
         from .kimik2_5 import KimiK2_5
 
@@ -256,14 +261,19 @@ class Eagle3KimiK25Model(KimiK2_5Model):
         }
         self.state_dict.update(vision_sd)
 
-        with CompilationTimer("eagle3_vision_model") as timer:
-            vision_graph = self._build_vision_graph(
-                kimik2_5_config, vision_state_dict
-            )
-            timer.mark_build_complete()
-            vision_model = session.load(
-                vision_graph, weights_registry=self.state_dict
-            )
+        # TODO: Add support for vision model in unified model
+        # with CompilationTimer("eagle3_vision_model") as timer:
+        #     vision_graph = self._build_vision_graph(
+        #         kimik2_5_config, vision_state_dict
+        #     )
+        #     timer.mark_build_complete()
+        #     vision_model = session.load(
+        #         vision_graph, weights_registry=self.state_dict
+        #     )
+        logger.warning(
+            "Skipping compilation of vision model. Vision support is not yet implemented for Kimi Eagle."
+        )
+        vision_model = MagicMock(spec=Model)
 
         with CompilationTimer("eagle3_language_model") as timer:
             with Graph(
@@ -315,11 +325,6 @@ class Eagle3KimiK25Model(KimiK2_5Model):
                         )
                     )
 
-                draft_signal_buffers = [
-                    next(variadic_args_iter).buffer
-                    for _ in range(len(self.devices))
-                ]
-
                 batch_context_lengths = [
                     next(variadic_args_iter).tensor
                     for _ in range(len(self.devices))
@@ -344,7 +349,6 @@ class Eagle3KimiK25Model(KimiK2_5Model):
                     batch_context_lengths,
                     ep_inputs=target_ep_inputs,
                     draft_kv_collections=draft_kv_collections,
-                    draft_signal_buffers=draft_signal_buffers,
                 )
                 graph.output(*outputs)
 
@@ -370,13 +374,6 @@ class Eagle3KimiK25Model(KimiK2_5Model):
             next_draft_tokens=model_outputs[2],
         )
 
-    def execute_unified(
-        self,
-        model_inputs: ModelInputs,
-    ) -> UnifiedEagleOutputs:
-        """Backward-compatible wrapper around :meth:`execute`."""
-        return self.execute(model_inputs)
-
     def prepare_initial_token_inputs(
         self,
         replica_batches: Sequence[Sequence[KimiK2_5TextAndVisionContext]],
@@ -384,7 +381,6 @@ class Eagle3KimiK25Model(KimiK2_5Model):
         return_n_logits: int = 1,
         draft_tokens: Buffer | None = None,
         draft_kv_cache_buffers: list[Buffer] | None = None,
-        draft_signal_buffers: list[Buffer] | None = None,
         **kwargs,
     ) -> Eagle3KimiK25Inputs:
         base = KimiK2_5Model.prepare_initial_token_inputs(
@@ -406,7 +402,6 @@ class Eagle3KimiK25Model(KimiK2_5Model):
             host_input_row_offsets=base.host_input_row_offsets,
             draft_tokens=draft_tokens,
             draft_kv_cache_buffers=draft_kv_cache_buffers or [],
-            draft_signal_buffers=draft_signal_buffers or [],
             batch_context_lengths=base.batch_context_lengths,
             signal_buffers=base.signal_buffers,
             kv_cache_inputs=base.kv_cache_inputs,
@@ -431,7 +426,6 @@ class Eagle3KimiK25Model(KimiK2_5Model):
             host_input_row_offsets=base.host_input_row_offsets,
             draft_tokens=prev_model_inputs.draft_tokens,
             draft_kv_cache_buffers=prev_model_inputs.draft_kv_cache_buffers,
-            draft_signal_buffers=prev_model_inputs.draft_signal_buffers,
             batch_context_lengths=base.batch_context_lengths,
             signal_buffers=base.signal_buffers,
             kv_cache_inputs=base.kv_cache_inputs,
@@ -447,8 +441,8 @@ class Eagle3KimiK25Model(KimiK2_5Model):
     ) -> DeepseekV3Config:
         """Create config for the Eagle3 draft model.
 
-        Uses the target config as base but overrides dtype/quant settings
-        based on the draft checkpoint contents.
+        Uses the target config as base but overrides rope_scaling from the
+        draft's HF config and dtype/quant based on the draft checkpoint.
         """
         draft_config = DeepseekV3Config(
             **{
@@ -457,6 +451,15 @@ class Eagle3KimiK25Model(KimiK2_5Model):
                 if f.name in {ff.name for ff in fields(DeepseekV3Config)}
             }
         )
+
+        # The draft may use different YarnRoPE parameters (e.g.
+        # beta_fast=1.0 vs target's 32.0).
+        assert self.pipeline_config.draft_model is not None
+        draft_hf_config = self.pipeline_config.draft_model.huggingface_config
+        if draft_hf_config is not None:
+            draft_rope = getattr(draft_hf_config, "rope_scaling", None)
+            if draft_rope is not None:
+                draft_config.rope_scaling = draft_rope
 
         # Avoid mutating the target's ep_config (shallow-copied from target).
         if draft_config.ep_config is not None:

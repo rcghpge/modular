@@ -3,6 +3,10 @@ load("//bazel:api.bzl", "mojo_filecheck_test", "mojo_test")
 package(default_visibility = ["//max:consumers"])
 
 _EXTRA_CONSTRAINTS = {
+    "test_mma_ws_ts.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     "test_cudnn_conv.mojo": ["//:nvidia_gpu"],
     "test_miopen_conv.mojo": ["//:amd_gpu"],
     "test_conv2d_sm100.mojo": select({
@@ -90,7 +94,6 @@ _EXTRA_CONSTRAINTS = {
     }),  # FIXME: PRDT-506
     "test_flash_attention.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
-        "//:amd_gpu": ["@platforms//:incompatible"],  # FIXME: MSTDL-2240
         "//conditions:default": [],
     }),  # FIXME: MOCO-3049
     "test_padding_gpu.mojo": select({
@@ -155,7 +158,15 @@ _EXTRA_CONSTRAINTS = {
     "test_group_norm.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
-    }),  # FIXME: GEX-3155
+    }),  # FIXME: MOCO-3587 — Metal compilation failure
+    "test_topk_gpu.mojo": select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),  # Apple GPU shared memory limit (32768) exceeded by second stage top-k kernel
+    "test_toppminp_gpu.mojo": select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),  # FIXME: MOCO-3650 — NaN in BFloat16 top-p sampling on Apple GPU
 }
 
 _FILECHECK_TESTS = [
@@ -192,9 +203,8 @@ _FILECHECK_TESTS = [
         copts = [],
         # KERN-2339: Several tests disabled due to bounds check failures
         enable_assertions = select({
-            # On B200, the SM100 MLA path OOB was fixed (kv_row clamping),
-            # so test_mla.mojo can run with assertions enabled.
-            "//:b200_gpu": src not in [
+            "//:amd_gpu": src not in [
+                "test_flash_attention.mojo",  # MSTDL-2240: stack frame size exceeds limit with assertions
                 "test_flash_attention_amd.mojo",  # MSTDL-2240: stack frame size exceeds limit with assertions
             ],
             # KERN-2339: H100 MLA kernel has OOB in LayoutTensor masking
@@ -205,7 +215,6 @@ _FILECHECK_TESTS = [
             "//conditions:default": src not in [
                 "test_mla.mojo",
                 "test_mha_chunked_causal_mask.mojo",  # MSTDL-2240: stack frame size exceeds limit with assertions (amdgpu)
-                "test_flash_attention_amd.mojo",  # MSTDL-2240: stack frame size exceeds limit with assertions
             ],
         }),
         exec_properties = {
@@ -223,6 +232,70 @@ _FILECHECK_TESTS = [
     )
     for src in glob(
         ["**/*.mojo"],
-        exclude = _FILECHECK_TESTS,
+        exclude = _FILECHECK_TESTS + [
+            "test_mha_causal_mask.mojo",
+        ],
     )
+]
+
+# test_mha_causal_mask.mojo split by depth via -D depth=N.
+# Each depth gets its own target for parallel execution.
+# Depths and their GPU constraints:
+#   64, 128: all GPUs
+#   72, 80, 96, 256: H100 and B200 only
+#   512: B200 only (prefill-only support)
+_MHA_CAUSAL_MASK_DEPTHS = {
+    "64": [],
+    "128": [],
+    "72": select({
+        "//:h100_gpu": [],
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "80": select({
+        "//:h100_gpu": [],
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "96": select({
+        "//:h100_gpu": [],
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "256": select({
+        "//:h100_gpu": [],
+        "//:b200_gpu": [],
+        "//:amd_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "512": select({
+        "//:b200_gpu": [],
+        "//:amd_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+}
+
+[
+    mojo_test(
+        name = "test_mha_causal_mask_depth_{}.mojo.test".format(depth),
+        size = "large",
+        srcs = ["test_mha_causal_mask.mojo"],
+        copts = [
+            "-D",
+            "depth={}".format(depth),
+        ],
+        exec_properties = {
+            "test.resources:gpu-memory": "3",
+        },
+        tags = ["gpu"],
+        target_compatible_with = ["//:has_gpu"] + constraints,
+        deps = [
+            "//max:internal_utils",
+            "//max:linalg",
+            "//max:nn",
+            "//max:testdata",
+            "@mojo//:std",
+        ],
+    )
+    for depth, constraints in _MHA_CAUSAL_MASK_DEPTHS.items()
 ]

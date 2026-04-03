@@ -24,13 +24,11 @@ from kv_cache.types import (
 from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
 from layout._utils import ManagedLayoutTensor
 from layout._fillers import random
-from nn.mha import flash_attention
-from nn.mha_mask import CausalMask
+from nn.attention.gpu.mha import flash_attention
+from nn.attention.mha_mask import CausalMask
 from std.testing import assert_almost_equal
 
 from std.utils import Index, IndexList
-
-from std.sys import has_amd_gpu_accelerator
 
 comptime kv_params_llama3 = KVCacheStaticParams(num_heads=8, head_size=128)
 comptime llama_num_q_heads = 32
@@ -326,10 +324,7 @@ def execute_ragged_flash_attention[
                         ragged_offset + s, h, Int(hd)
                     ]
                     try:
-                        # amd uses more aggressive split-k partitioning
-                        var rtol_bf16 = (
-                            2e-2 if has_amd_gpu_accelerator() else 1e-2
-                        )
+                        var rtol_bf16 = 1e-2
                         assert_almost_equal(
                             ref_val,
                             test_val,

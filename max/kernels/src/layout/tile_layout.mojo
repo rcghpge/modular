@@ -40,13 +40,10 @@ from layout.tile_layout import Layout, TensorLayout, row_major, col_major
 ```
 """
 
-from std.os import abort
-from std.sys.intrinsics import _type_is_eq
+from std.math.uutils import udivmod_unchecked
 
 from std.builtin.variadics import (
     Variadic,
-    VariadicPack,
-    _MapVariadicAndIdxToType,
     _ReduceVariadicAndIdxToVariadic,
     _ReduceVariadicAndIdxToValue,
 )
@@ -63,6 +60,7 @@ from .coord import (
     coord_to_int_tuple,
     _IntToComptimeInt,
     _CoordToDynamic,
+    _NestedDynamicCoord,
     _Divide,
     _Multiply,
     _MultiplyByScalar,
@@ -70,6 +68,36 @@ from .coord import (
 )
 from .int_tuple import IntTuple
 from .layout import Layout as LegacyLayout
+
+
+@always_inline("nodebug")
+def _divide_by_stride[StrideType: CoordLike](idx: Int, stride_val: Int) -> Int:
+    """Divide idx by stride, specializing for compile-time known values."""
+    comptime if StrideType.is_static_value and StrideType.static_value == 1:
+        return idx
+    elif StrideType.is_static_value:
+        var q, _ = udivmod_unchecked(idx, StrideType.static_value)
+        return q
+    else:
+        var q, _ = udivmod_unchecked(idx, stride_val)
+        return q
+
+
+@always_inline("nodebug")
+def _mod_by_shape[ShapeType: CoordLike](val: Int, shape_val: Int) -> Int:
+    """Compute val % shape, specializing for compile-time known values.
+
+    When the shape is compile-time known, uses the static value so LLVM can
+    constant-fold. Special-cases shape==1 to return 0 directly.
+    """
+    comptime if ShapeType.is_static_value and ShapeType.static_value == 1:
+        return 0
+    elif ShapeType.is_static_value:
+        _, var r = udivmod_unchecked(val, ShapeType.static_value)
+        return r
+    else:
+        _, var r = udivmod_unchecked(val, shape_val)
+        return r
 
 
 trait TensorLayout(TrivialRegisterPassable):
@@ -172,11 +200,15 @@ trait TensorLayout(TrivialRegisterPassable):
     def idx2crd[
         *,
         out_dtype: DType = DType.int64,
-    ](self, idx: Int) -> DynamicCoord[out_dtype, Self.rank]:
+    ](self, idx: Int) -> Coord[
+        *_NestedDynamicCoord[out_dtype, *Self._shape_types]
+    ]:
         """Maps a linear memory index back to logical coordinates.
 
         This is the inverse of `__call__` (crd2idx). Given a linear index,
         it computes the corresponding multi-dimensional coordinates.
+        For hierarchical layouts (e.g. from `zipped_divide`), the result
+        preserves the nested coordinate structure.
 
         Parameters:
             out_dtype: The data type for the output coordinate values.
@@ -186,7 +218,8 @@ trait TensorLayout(TrivialRegisterPassable):
 
         Returns:
             A Coord containing the logical coordinates corresponding to
-            the linear index.
+            the linear index. For nested layouts, the result mirrors the
+            shape nesting with RuntimeInt leaves.
 
         Examples:
             For a layout with shape (3, 4) and row-major strides:
@@ -325,6 +358,7 @@ struct Layout[
         self._shape = Coord[*Self.shape_types]()
         self._stride = Coord[*Self.stride_types]()
 
+    @always_inline("nodebug")
     def __init__(
         out self,
         shape: Coord[*Self.shape_types],
@@ -405,15 +439,20 @@ struct Layout[
                 index, self._shape, self._stride
             )
 
+    @always_inline("nodebug")
     def idx2crd[
         *,
         out_dtype: DType = DType.int64,
-    ](self, idx: Int) -> DynamicCoord[out_dtype, Self.rank]:
+    ](self, idx: Int) -> Coord[
+        *_NestedDynamicCoord[out_dtype, *Self.shape_types]
+    ]:
         """Maps a linear memory index back to logical coordinates.
 
         This is the inverse of `__call__` (crd2idx). Given a linear index,
         it computes the corresponding multi-dimensional coordinates using
         the per-element formula: ``coord[i] = (idx // stride[i]) % shape[i]``.
+        For hierarchical layouts (e.g. from `zipped_divide`), the result
+        preserves the nested coordinate structure.
 
         Parameters:
             out_dtype: The data type for the output coordinate values.
@@ -422,7 +461,9 @@ struct Layout[
             idx: The linear memory index to convert to coordinates.
 
         Returns:
-            A Coord containing the logical coordinates corresponding to the linear index.
+            A Coord containing the logical coordinates corresponding to
+            the linear index. For nested layouts, the result mirrors the
+            shape nesting with RuntimeInt leaves.
 
         Examples:
             For a layout with shape (3, 4) and row-major strides:
@@ -430,23 +471,51 @@ struct Layout[
             - layout.idx2crd(5) returns (1, 1).
             - layout.idx2crd(11) returns (2, 3).
         """
-        comptime ResultType = DynamicCoord[out_dtype, Self.rank]
+        comptime ResultType = Coord[
+            *_NestedDynamicCoord[out_dtype, *Self.shape_types]
+        ]
         var result = ResultType()
         var shape_t = self._shape.tuple()
         var stride_t = self._stride.tuple()
 
         comptime for i in range(Self.rank):
-            var coord_val = Int(
-                (UInt(idx) // UInt(stride_t[i].value()))
-                % UInt(shape_t[i].value())
-            )
-            UnsafePointer(to=result[i]).init_pointee_copy(
-                rebind[ResultType.element_types[i]](
-                    RuntimeInt[out_dtype](Scalar[out_dtype](coord_val))
+            comptime if Self.shape_types[i].is_tuple:
+                # Nested dimension: compute sub-coordinates.
+                comptime sub_rank = Self.shape_types[i].__len__()
+                comptime SubResultType = DynamicCoord[out_dtype, sub_rank]
+                var sub_result = SubResultType()
+                var sub_shape = shape_t[i].tuple()
+                var sub_stride = stride_t[i].tuple()
+                comptime for j in range(sub_rank):
+                    var divided = _divide_by_stride[
+                        Self.stride_types[i].VariadicType[j]
+                    ](idx, sub_stride[j].value())
+                    var coord_val = _mod_by_shape[
+                        Self.shape_types[i].VariadicType[j]
+                    ](divided, sub_shape[j].value())
+                    UnsafePointer(to=sub_result[j]).init_pointee_copy(
+                        rebind[SubResultType.element_types[j]](
+                            RuntimeInt[out_dtype](Scalar[out_dtype](coord_val))
+                        )
+                    )
+                UnsafePointer(to=result[i]).init_pointee_copy(
+                    rebind[ResultType.element_types[i]](sub_result)
                 )
-            )
+            else:
+                var divided = _divide_by_stride[Self.stride_types[i]](
+                    idx, stride_t[i].value()
+                )
+                var coord_val = _mod_by_shape[Self.shape_types[i]](
+                    divided, shape_t[i].value()
+                )
+                UnsafePointer(to=result[i]).init_pointee_copy(
+                    rebind[ResultType.element_types[i]](
+                        RuntimeInt[out_dtype](Scalar[out_dtype](coord_val))
+                    )
+                )
         return result
 
+    @always_inline("nodebug")
     def product(self) -> Int:
         """Returns the total number of elements in the layout's domain.
 
@@ -458,6 +527,7 @@ struct Layout[
         """
         return self._shape.product()
 
+    @always_inline("nodebug")
     def size(self) -> Int:
         """Returns the total number of elements in the layout's domain.
 
@@ -468,6 +538,7 @@ struct Layout[
         """
         return self.product()
 
+    @always_inline("nodebug")
     def cosize[
         linear_idx_type: DType = DType.int64
     ](self) -> Scalar[linear_idx_type]:
@@ -486,6 +557,7 @@ struct Layout[
             self[linear_idx_type=linear_idx_type](Idx(self.product() - 1)) + 1
         )
 
+    @always_inline("nodebug")
     def to_layout(self) -> LegacyLayout:
         """Converts this mixed layout to a legacy `Layout` using `IntTuple`.
 
@@ -588,6 +660,7 @@ struct Layout[
             self._stride.make_dynamic[dtype](),
         )
 
+    @always_inline("nodebug")
     def shape[i: Int](self) -> Self._shape_types[i]:
         """Returns the i-th shape dimension.
 
@@ -599,6 +672,7 @@ struct Layout[
         """
         return self._shape[i]
 
+    @always_inline("nodebug")
     def stride[i: Int](self) -> Self._stride_types[i]:
         """Returns the i-th stride dimension.
 
@@ -610,6 +684,7 @@ struct Layout[
         """
         return self._stride[i]
 
+    @always_inline("nodebug")
     def shape_coord(self) -> Coord[*Self._shape_types]:
         """Returns the full shape as a `Coord`.
 
@@ -618,6 +693,7 @@ struct Layout[
         """
         return self._shape
 
+    @always_inline("nodebug")
     def stride_coord(self) -> Coord[*Self._stride_types]:
         """Returns the full stride as a `Coord`.
 
@@ -626,6 +702,7 @@ struct Layout[
         """
         return self._stride
 
+    @always_inline("nodebug")
     def write_to(self, mut writer: Some[Writer]):
         """Writes the Layout representation to a Writer.
 
@@ -698,9 +775,16 @@ comptime _StaticCosize[
 
 comptime _RowMajor[*element_types: CoordLike] = _ReduceVariadicAndIdxToVariadic[
     BaseVal=Variadic.empty_of_trait[CoordLike],
-    VariadicType=Variadic.reverse[*element_types],
+    VariadicType=Variadic.reverse[*_UnwrapSingleTuple[*element_types]],
     Reducer=_RowMajorMapper,
 ]
+
+
+comptime _UnwrapSingleTuple[*element_types: CoordLike] = element_types[
+    0
+].VariadicType if Variadic.size(element_types) == 1 and element_types[
+    0
+].is_tuple else element_types
 
 
 comptime _RowMajorMapper[
@@ -735,17 +819,74 @@ def row_major(var shape: Coord) -> RowMajorLayout[*shape.element_types]:
     Row-major means the rightmost dimension has stride 1, and each preceding
     dimension has stride equal to the product of all following dimensions.
 
+    For shape (M, N, K):
+    - row_major strides: (N*K, K, 1)
+    - col_major strides: (1, M, M*N)
+
     Args:
         shape: The shape as a Coord.
 
     Returns:
         A Layout with row-major strides.
     """
-    # Flatten the shape and compute row-major strides on the flattened representation
-    # For now, we keep both shape and strides flat (not nested)
-
     comptime RowMajorTypes = _RowMajor[*shape.element_types]
     comptime rank = Variadic.size(shape.element_types)
+
+    var strides = Tuple[*RowMajorTypes]()
+
+    comptime for i in range(rank):
+        comptime idx = rank - 1 - i  # Process in reverse order
+        var stride_ptr = UnsafePointer(to=strides[idx])
+
+        comptime if i == 0:
+            # Rightmost dimension always has stride 1
+            comptime StrideType = RowMajorTypes[idx]
+            stride_ptr.init_pointee_copy(rebind[StrideType](Idx[1]()))
+        else:
+            # Calculate stride as product of shape[idx+1] * stride[idx+1]
+            comptime StrideType = RowMajorTypes[idx]
+
+            comptime if StrideType.is_static_value:
+                comptime stride_val = StrideType.static_value
+                stride_ptr.init_pointee_copy(
+                    rebind[StrideType](Idx[stride_val]())
+                )
+            else:
+                var stride_val = (
+                    shape[idx + 1].value() * strides[idx + 1].value()
+                )
+                stride_ptr.init_pointee_copy(
+                    rebind[StrideType](
+                        RuntimeInt[StrideType.DTYPE](
+                            Scalar[StrideType.DTYPE](stride_val)
+                        )
+                    )
+                )
+
+    return Layout(shape, Coord(strides^))
+
+
+@always_inline
+def row_major[
+    *element_types: CoordLike
+](var *elements: *element_types) -> RowMajorLayout[*element_types]:
+    """Creates a row-major layout from a shape `Coord`.
+
+    Row-major means the rightmost dimension has stride 1, and each preceding
+    dimension has stride equal to the product of all following dimensions.
+
+    Parameters:
+        element_types: The variadic pack of element types that implement `CoordLike`.
+
+    Args:
+        elements: The shape as a Coord.
+
+    Returns:
+        A Layout with row-major strides.
+    """
+
+    comptime RowMajorTypes = _RowMajor[*element_types]
+    comptime rank = Variadic.size(element_types)
 
     var strides = Tuple[*RowMajorTypes]()
 
@@ -773,7 +914,7 @@ def row_major(var shape: Coord) -> RowMajorLayout[*shape.element_types]:
             else:
                 # At least one is runtime, compute at runtime
                 var stride_val = (
-                    shape[idx + 1].value() * strides[idx + 1].value()
+                    elements[idx + 1].value() * strides[idx + 1].value()
                 )
                 stride_ptr.init_pointee_copy(
                     rebind[StrideType](
@@ -783,7 +924,7 @@ def row_major(var shape: Coord) -> RowMajorLayout[*shape.element_types]:
                     )
                 )
 
-    return Layout(shape, Coord(strides^))
+    return Layout(Coord(storage=elements^), Coord(strides^))
 
 
 @always_inline("nodebug")
@@ -798,42 +939,6 @@ def row_major[*idxs: Int]() -> RowMajorLayout[*_IntToComptimeInt[*idxs]]:
     """
     var shape = Coord[*_IntToComptimeInt[*idxs]]()
     return row_major(shape)
-
-
-@always_inline("nodebug")
-def row_major(
-    idx: ComptimeInt[...],
-) -> Layout[
-    shape_types=Variadic.types[type_of(idx)],
-    stride_types=Variadic.types[ComptimeInt[1]],
-]:
-    """Creates a 1D row-major layout from a compile-time dimension.
-
-    Args:
-        idx: The shape dimension as a `ComptimeInt`.
-
-    Returns:
-        A 1D Layout with stride 1.
-    """
-    return Layout(Coord(idx), Coord(Idx[1]()))
-
-
-@always_inline("nodebug")
-def row_major(
-    idx: RuntimeInt[...],
-) -> Layout[
-    shape_types=Variadic.types[type_of(idx)],
-    stride_types=Variadic.types[ComptimeInt[1]],
-]:
-    """Creates a 1D row-major layout from a runtime dimension.
-
-    Args:
-        idx: The shape dimension as a `RuntimeInt`.
-
-    Returns:
-        A 1D Layout with stride 1.
-    """
-    return Layout(Coord(idx), Coord(Idx[1]()))
 
 
 # ===----------------------------------------------------------------------=== #
@@ -853,7 +958,9 @@ Parameters:
 
 comptime _ColMajor[*element_types: CoordLike] = _ReduceVariadicAndIdxToVariadic[
     BaseVal=Variadic.empty_of_trait[CoordLike],
-    VariadicType=Variadic.types[*element_types],  # Process in forward order
+    VariadicType=Variadic.types[
+        *_UnwrapSingleTuple[*element_types]
+    ],  # Process in forward order
     Reducer=_ColMajorMapper,
 ]
 
@@ -883,6 +990,27 @@ comptime _ColMajorMapper[
         ]
     ),
 ]
+
+
+@always_inline
+def col_major[
+    *element_types: CoordLike
+](var *elements: *element_types) -> ColMajorLayout[*element_types]:
+    """Create a column-major layout from variadic arguments.
+
+    Column-major means the first dimension has stride 1, and each subsequent
+    dimension has stride equal to the product of all previous dimensions.
+
+    Parameters:
+        element_types: The variadic pack of element types that implement `CoordLike`.
+
+    Args:
+        elements: The shape dimensions.
+
+    Returns:
+        A Layout with column-major strides.
+    """
+    return col_major(Coord(storage=elements^))
 
 
 @always_inline
@@ -1101,26 +1229,67 @@ Parameters:
 # ===----------------------------------------------------------------------=== #
 
 
+comptime _BlockedProductShapeReducer[
+    BlockLayoutType: TensorLayout,
+    TilerLayoutType: TensorLayout,
+    Prev: Variadic.TypesOfTrait[CoordLike],
+    From: Variadic.TypesOfTrait[CoordLike],
+    idx: Int,
+] = Variadic.concat_types[
+    Prev,
+    Variadic.types[
+        T=CoordLike,
+        Coord[
+            BlockLayoutType._shape_types[idx],
+            TilerLayoutType._shape_types[idx],
+        ],
+    ],
+]
+
 comptime _BlockedProductShapeTypes[
     BlockLayoutType: TensorLayout,
     TilerLayoutType: TensorLayout,
-] = Variadic.types[
-    T=CoordLike,
-    Coord[*BlockLayoutType._shape_types],
-    Coord[*TilerLayoutType._shape_types],
+] = _ReduceVariadicAndIdxToVariadic[
+    BaseVal=Variadic.empty_of_trait[CoordLike],
+    VariadicType=BlockLayoutType._shape_types,
+    Reducer=_BlockedProductShapeReducer[
+        BlockLayoutType,
+        TilerLayoutType,
+        ...,
+    ],
+]
+
+comptime _BlockedProductStrideReducer[
+    BlockLayoutType: TensorLayout,
+    TilerLayoutType: TensorLayout,
+    block_cosize: Int,
+    Prev: Variadic.TypesOfTrait[CoordLike],
+    From: Variadic.TypesOfTrait[CoordLike],
+    idx: Int,
+] = Variadic.concat_types[
+    Prev,
+    Variadic.types[
+        T=CoordLike,
+        Coord[
+            BlockLayoutType._stride_types[idx],
+            ComptimeInt[
+                block_cosize * TilerLayoutType._stride_types[idx].static_value
+            ],
+        ],
+    ],
 ]
 
 comptime _BlockedProductStrideTypes[
     BlockLayoutType: TensorLayout,
     TilerLayoutType: TensorLayout,
-] = Variadic.types[
-    T=CoordLike,
-    Coord[*BlockLayoutType._stride_types],
-    Coord[
-        *_MultiplyByScalar[
-            TilerLayoutType._stride_types,
-            Coord[*BlockLayoutType._shape_types].static_product,
-        ]
+] = _ReduceVariadicAndIdxToVariadic[
+    BaseVal=Variadic.empty_of_trait[CoordLike],
+    VariadicType=BlockLayoutType._stride_types,
+    Reducer=_BlockedProductStrideReducer[
+        BlockLayoutType,
+        TilerLayoutType,
+        Coord[*BlockLayoutType._shape_types].static_product,
+        ...,
     ],
 ]
 
@@ -1171,12 +1340,11 @@ comptime BlockedProductLayout[
 """Type alias for blocked product layout.
 
 Creates a hierarchical layout by combining a block (inner) layout with a
-tiler (outer) layout. The result is a 2-level hierarchical layout where:
+tiler (outer) layout. The result zips corresponding dimensions so that
+each mode ``i`` pairs ``block[i]`` with ``tiler[i]``:
 
-- ``inner_shape  = block.shape``
-- ``outer_shape  = tiler.shape``
-- ``inner_stride = block.stride``
-- ``outer_stride = block.cosize * tiler.stride``
+- ``shape[i]  = (block.shape[i],  tiler.shape[i])``
+- ``stride[i] = (block.stride[i], block.cosize * tiler.stride[i])``
 
 When ``coalesce_output`` is True, contiguous inner/outer pairs per mode
 are merged into flat dimensions (``block_shape[i] * block_stride[i] ==
@@ -1317,13 +1485,10 @@ def blocked_product[
     var tiler = row_major[2, 3]()
     # Create blocked layout
     var blocked = blocked_product(block, tiler)
-    # Result: shape ((2,2), (2,3)), stride ((2,1), (12,4))
+    # Result: shape ((2,2), (2,3)), stride ((2,12), (1,4))
     ```
     """
     comptime BlockShape = Coord[*BlockLayoutType._shape_types]
-    comptime BlockStride = Coord[*BlockLayoutType._stride_types]
-    comptime TilerShape = Coord[*TilerLayoutType._shape_types]
-    comptime TilerStride = Coord[*TilerLayoutType._stride_types]
     comptime OuterStrideTypes = _MultiplyByScalar[
         TilerLayoutType._stride_types,
         BlockShape.static_product,
@@ -1337,22 +1502,16 @@ def blocked_product[
     var outer_shape = tiler.shape_coord()
 
     # Build outer stride = block.cosize * tiler.stride
-    # For row-major block, cosize = product of shape
-    # We compute this by multiplying tiler stride by the row-major strides of block shape
     var outer_stride = Coord[*OuterStrideTypes]()
 
-    comptime for i in range(TilerShape.rank):
+    comptime for i in range(outer_shape.rank):
         comptime if OuterStrideTypes[i].is_static_value:
-            # Compile-time known
             UnsafePointer(to=outer_stride[i]).init_pointee_copy(
                 rebind[OuterStrideTypes[i]](
                     ComptimeInt[OuterStrideTypes[i].static_value]()
                 )
             )
         else:
-            # Runtime computation needed
-            # outer_stride[i] = tiler.stride[i] * block.cosize
-            # For row-major, block.cosize = product of block shape
             var block_cosize = block.shape_coord().product()
             UnsafePointer(to=outer_stride[i]).init_pointee_copy(
                 rebind[OuterStrideTypes[i]](
@@ -1364,8 +1523,22 @@ def blocked_product[
                 )
             )
 
-    var result_shape = Coord(inner_shape, outer_shape)
-    var result_stride = Coord(inner_stride, outer_stride)
+    # Zip per dimension: mode i = (block[i], tiler[i])
+    comptime ResultType = BlockedProductLayout[BlockLayoutType, TilerLayoutType]
+    var result_shape = Coord[*ResultType._shape_types]()
+    var result_stride = Coord[*ResultType._stride_types]()
+
+    comptime for i in range(inner_shape.rank):
+        UnsafePointer(to=result_shape[i]).init_pointee_copy(
+            rebind[ResultType._shape_types[i]](
+                Coord(inner_shape[i], outer_shape[i])
+            )
+        )
+        UnsafePointer(to=result_stride[i]).init_pointee_copy(
+            rebind[ResultType._stride_types[i]](
+                Coord(inner_stride[i], outer_stride[i])
+            )
+        )
 
     return Layout(result_shape, result_stride)
 

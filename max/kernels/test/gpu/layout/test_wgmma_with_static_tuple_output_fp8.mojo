@@ -12,11 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 
 import linalg.matmul.vendor.blas as vendor_blas
-from std.gpu import barrier, warp_id, lane_id_int as lane_id
+from std.gpu import barrier, warp_id, lane_id
 from std.gpu.host import DeviceContext
 
 # from testing import assert_almost_equal
-from std.gpu import thread_idx_uint as thread_idx
+from std.gpu import thread_idx
 from std.gpu.compute.mma import (
     wgmma_async,
     wgmma_commit_group_sync,
@@ -25,7 +25,7 @@ from std.gpu.compute.mma import (
 )
 from internal_utils import assert_equal
 from std.random import rand
-from layout import Layout, LayoutTensor, TileTensor, Coord, Idx, row_major
+from layout import Layout, LayoutTensor, TileTensor, row_major
 from layout.tensor_core_async import (
     _lhs_descriptor,
     _rhs_descriptor,
@@ -107,7 +107,7 @@ def wgmma_kernel_ss[
         wgmma_wait_group_sync()
 
     var th_local_res = (
-        c_gmem.tile[16, WMMA_N](Int(warp_id()), 0)
+        c_gmem.tile[16, WMMA_N](warp_id(), 0)
         .vectorize[1, 2]()
         .distribute[Layout.row_major(8, 4)](lane_id())
     )

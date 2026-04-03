@@ -17,14 +17,7 @@ from std.random import rand
 from std.sys import argv, size_of
 
 import linalg.matmul.vendor.blas as vendor_blas
-from std.gpu import (
-    WARP_SIZE,
-    barrier,
-    block_idx,
-    lane_id,
-    thread_idx_uint as thread_idx,
-    warp_id,
-)
+from std.gpu import WARP_SIZE, barrier, block_idx, lane_id, thread_idx, warp_id
 from std.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from std.gpu.host.nvidia.tma import TMADescriptor, create_tma_descriptor
 from std.gpu.primitives import warp
@@ -38,19 +31,15 @@ from layout import (
     CoordLike,
     Coord,
     Idx,
-    IntTuple,
     Layout,
     LayoutTensor,
-    RuntimeLayout,
     TileTensor,
-    UNKNOWN_VALUE,
     row_major,
 )
 from layout.layout_tensor import LayoutTensorIter
 from layout.tma_async import PipelineState, SharedMemBarrier
 
-from std.utils import StaticTuple
-from std.utils.index import Index, IndexList
+from std.utils.index import Index
 from std.utils.numerics import get_accum_type
 
 
@@ -82,11 +71,10 @@ def gemv_tma_kernel[
     N: UInt,
     K: UInt,
 ):
-    var tid = thread_idx.x
-    var bidx = block_idx.x
+    var bidx = UInt(block_idx.x)
     var block_row = bidx * BLOCK_SIZE_M
 
-    var warp_row_offset = warp_id() * ROWS_PER_WARP
+    var warp_row_offset = UInt(warp_id()) * ROWS_PER_WARP
     var global_row_idx = block_row + warp_row_offset
 
     comptime accum_type = get_accum_type[dtype]()
@@ -166,7 +154,7 @@ def gemv_tma_kernel[
     var consumer_phase = PipelineState[Int(NUM_PIPELINE_STAGES)]()
     var producer_phase = PipelineState[Int(NUM_PIPELINE_STAGES)](0, 1, 0)
 
-    for col_offset in range(0, K, BLOCK_SIZE_K):
+    for col_offset in range(0, Int(K), Int(BLOCK_SIZE_K)):
         var current_block_size = min(BLOCK_SIZE_K, K - UInt(col_offset))
 
         # Producer: Thread 0 loads data.
@@ -215,8 +203,8 @@ def gemv_tma_kernel[
             b_smem.linear_uint_type(Int(stage))
         )[]
 
-        for k_idx in range(0, current_block_size, WARP_SIZE):
-            var col_idx = k_idx + Int(lane_id())
+        for k_idx in range(0, Int(current_block_size), WARP_SIZE):
+            var col_idx = k_idx + lane_id()
             if col_idx < Int(current_block_size):
                 var b_val = current_b_tile[col_idx]
 

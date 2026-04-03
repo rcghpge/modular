@@ -28,7 +28,6 @@ from .pixel_generation import (
     PixelGenerationContext,
     PixelGenerationContextType,
     PixelGenerationInputs,
-    PixelGenerationOutput,
 )
 from .text_generation import (
     BatchType,
@@ -46,6 +45,7 @@ from .text_generation import (
     TextGenerationRequestMessage,
     TextGenerationRequestTool,
     TextGenerationResponseFormat,
+    VideoContentPart,
     VLMContextType,
     VLMTextGenerationContext,
 )
@@ -67,7 +67,6 @@ __all__ = [
     "PixelGenerationContext",
     "PixelGenerationContextType",
     "PixelGenerationInputs",
-    "PixelGenerationOutput",
     "SpecDecodingState",
     "TextContentPart",
     "TextGenerationContext",
@@ -81,4 +80,5 @@ __all__ = [
     "TextGenerationResponseFormat",
     "VLMContextType",
     "VLMTextGenerationContext",
+    "VideoContentPart",
 ]

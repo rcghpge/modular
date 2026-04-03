@@ -21,11 +21,19 @@ introducing a comm → nn → comm circular dependency.
 from std.math import rsqrt
 from std.sys import align_of, simd_width_of
 from std.algorithm.functional import _get_start_indices_of_nth_subvolume
-from std.gpu import WARP_SIZE, block_idx, thread_idx
+from std.gpu import (
+    WARP_SIZE,
+    block_idx_uint as block_idx,
+    thread_idx_uint as thread_idx,
+)
 import std.gpu.primitives.warp as warp
 from std.gpu.host import DeviceContext, get_gpu_target
 from std.gpu.primitives import block
-from std.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
+from std.gpu.primitives.grid_controls import (
+    PDL,
+    PDLLevel,
+    pdl_launch_attributes,
+)
 from layout import Coord, Idx, TensorLayout, TileTensor, row_major
 from std.utils import IndexList, StaticTuple
 from std.utils.numerics import get_accum_type
