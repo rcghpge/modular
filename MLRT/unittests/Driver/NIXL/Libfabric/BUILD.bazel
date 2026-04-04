@@ -23,6 +23,7 @@ modular_cc_test(
         "//MLRT:Driver/DeviceContextImpl",
         "//MLRT:Driver/NIXL",
         "//MLRT:Driver/NIXLLibfabricUtils",
+        "//MLRT/unittests/Driver:TestUtils",
         "//MLRT/unittests/Driver/NIXL:TestCommon",
     ],
 )

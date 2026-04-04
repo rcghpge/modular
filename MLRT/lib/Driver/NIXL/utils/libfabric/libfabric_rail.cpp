@@ -11,10 +11,10 @@
 
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_rail.h"
 #include "MLRT/Driver/NIXL/utils/common/nixl_log.h"
-#include "MLRT/Driver/NIXL/utils/serdes/serdes.h"
 
 #include <cstring>
 #include <stdexcept>
+#include <sys/uio.h>
 
 // RequestPool Base Class Implementation
 
@@ -956,10 +956,9 @@ nixl_status_t nixlLibfabricRail::postRead(void *local_buffer, size_t length,
 
 // Memory Registration Methods
 
-nixl_status_t nixlLibfabricRail::registerMemory(void *buffer, size_t length,
-                                                uint64_t access_flags,
-                                                struct fid_mr **mr_out,
-                                                uint64_t *key_out) const {
+nixl_status_t nixlLibfabricRail::registerMemory(
+    void *buffer, size_t length, nixl_mem_t mem_type, int device_id,
+    uint64_t access_flags, struct fid_mr **mr_out, uint64_t *key_out) const {
   if (!buffer || !mr_out || !key_out) {
     NIXL_ERROR << "Invalid parameters on rail " << rail_id;
     return NIXL_ERR_INVALID_PARAM;
@@ -969,17 +968,30 @@ nixl_status_t nixlLibfabricRail::registerMemory(void *buffer, size_t length,
     return NIXL_ERR_BACKEND;
   }
 
-  struct fid_mr *mr;
-  int ret = fi_mr_reg(domain, buffer, length, access_flags, 0, 0, 0, &mr, NULL);
+  struct iovec iov = {};
+  iov.iov_base = buffer;
+  iov.iov_len = length;
+
+  struct fi_mr_attr attr = {};
+  attr.mr_iov = &iov;
+  attr.iov_count = 1;
+  attr.access = access_flags;
+
+  if (mem_type == VRAM_SEG) {
+    attr.iface = FI_HMEM_CUDA;
+    attr.device.cuda = device_id;
+  }
+
+  struct fid_mr *mr = nullptr;
+  int ret = fi_mr_regattr(domain, &attr, 0, &mr);
   if (ret) {
-    NIXL_ERROR << "fi_mr_reg failed on rail " << rail_id << ": "
+    NIXL_ERROR << "fi_mr_regattr failed on rail " << rail_id << ": "
                << fi_strerror(-ret);
     return NIXL_ERR_BACKEND;
   }
 
   *mr_out = mr;
   *key_out = fi_mr_key(mr);
-
   return NIXL_SUCCESS;
 }
 

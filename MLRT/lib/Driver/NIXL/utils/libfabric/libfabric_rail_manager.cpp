@@ -404,7 +404,8 @@ nixl_status_t nixlLibfabricRailManager::registerMemory(
     struct fid_mr *mr;
     uint64_t key;
     nixl_status_t status = data_rails_[rail_idx]->registerMemory(
-        buffer, length, FI_REMOTE_WRITE | FI_REMOTE_READ, &mr, &key);
+        buffer, length, mem_type, static_cast<int>(dev_id),
+        FI_REMOTE_WRITE | FI_REMOTE_READ, &mr, &key);
     if (status != NIXL_SUCCESS) {
       NIXL_ERROR << "Failed to register memory on rail " << rail_idx;
       // Cleanup already registered MRs

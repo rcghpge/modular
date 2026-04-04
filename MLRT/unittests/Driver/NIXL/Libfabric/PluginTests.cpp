@@ -8,6 +8,7 @@
 #include "MLRT/Driver/NIXL/plugin_manager.h"
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_common.h"
 #include "MLRT/unittests/Driver/NIXL/TestCommon.h"
+#include "MLRT/unittests/Driver/TestUtils.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -125,4 +126,46 @@ TEST(LibfabricPluginTests, EngineRejectsMissingVramDeviceId) {
   EXPECT_EQ(metadata, nullptr);
 
   pluginHandle->destroyEngine(engine);
+}
+
+TEST(LibfabricPluginTests, AgentRegistersVramWithImplicitHmem) {
+  if (LibfabricUtils::getAvailableEfaDevices().empty()) {
+    GTEST_SKIP() << "libfabric backend creation requires available EFA devices";
+  }
+
+  auto gpuContextOrError =
+      M::Driver::DeviceContext::create(M::Driver::Device::gpuAPI, /*id=*/0);
+  if (gpuContextOrError.isError()) {
+    GTEST_SKIP() << "Need a GPU device to test libfabric VRAM registration";
+  }
+  M::Driver::DeviceContextRef gpuContext = gpuContextOrError.takeValue();
+
+  const size_t bufferSize = 64 * 1024;
+  ASSIGN_NO_ERR(M::Driver::DeviceBufferRef, deviceBuffer,
+                gpuContext->enqueueCreateBuffer(bufferSize));
+  EXPECT_NO_ERR(
+      gpuContext->enqueueSetMemory(*deviceBuffer, 0x5A, sizeof(char)));
+  EXPECT_NO_ERR(gpuContext->synchronize());
+
+  nixlAgent agent("LibfabricRegisterVramTestAgent",
+                  nixlAgentConfig(/*use_prog_thread=*/true,
+                                  /*use_listen_thread=*/false,
+                                  /*port=*/0));
+
+  nixl_mem_list_t mems;
+  nixl_b_params_t params;
+  ASSERT_SUCCESS(agent.getPluginParams("libfabric", mems, params));
+
+  nixlBackendH *backend = nullptr;
+  ASSERT_SUCCESS(agent.createBackend("libfabric", params, backend));
+  ASSERT_NE(backend, nullptr);
+
+  nixl_reg_dlist_t descs(nixl_mem_t::VRAM_SEG);
+  descs.addDesc(nixlBlobDesc(reinterpret_cast<uintptr_t>(deviceBuffer->ptr()),
+                             bufferSize, /*devId=*/0, ""));
+
+  nixl_opt_args_t regArgs;
+  regArgs.backends = {backend};
+  ASSERT_SUCCESS(agent.registerMem(descs, &regArgs));
+  ASSERT_SUCCESS(agent.deregisterMem(descs, &regArgs));
 }

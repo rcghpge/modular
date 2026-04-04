@@ -18,7 +18,6 @@
 #include <charconv>
 #include <cstring>
 #include <limits>
-#include <unistd.h>
 
 #include <iomanip>
 #include <numeric>
@@ -570,6 +569,7 @@ nixl_status_t nixlLibfabricEngine::createAgentConnection(
   }
 
   conn->remoteAgent_ = agent_name;
+  conn->overall_state_ = ConnectionState::DISCONNECTED;
   conn->rail_remote_addr_list_.reserve(rail_manager->getNumDataRails());
   conn->control_rail_remote_addr_list_.reserve(
       rail_manager->getNumControlRails());
@@ -649,7 +649,6 @@ nixl_status_t nixlLibfabricEngine::establishConnection(
   // Use single "Communicator" for CM
   auto *conn_info =
       reinterpret_cast<nixlLibfabricConnection *>(it->second.get());
-
   if (!conn_info) {
     NIXL_ERROR << "Connection info for agent " << remote_agent << " is null";
     return NIXL_ERR_BACKEND;

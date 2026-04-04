@@ -388,6 +388,7 @@ nixl_status_t nixlAgent::registerMemOnBackends(nixlAgentData &data,
                                                const nixl_reg_dlist_t &descs,
                                                backend_list_t &backends) {
   int successCount = 0;
+  nixl_status_t firstFailure = nixl_status_t::NIXL_SUCCESS;
 
   for (nixlBackendEngine *backend : backends) {
     nixl_sec_dlist_t secDescs(descs.getType());
@@ -395,6 +396,8 @@ nixl_status_t nixlAgent::registerMemOnBackends(nixlAgentData &data,
     nixl_status_t ret =
         data.memorySection->addDescList(descs, *backend, secDescs);
     if (ret != nixl_status_t::NIXL_SUCCESS) {
+      if (firstFailure == nixl_status_t::NIXL_SUCCESS)
+        firstFailure = ret;
       // Soft fail: try next.
       continue;
     }
@@ -409,6 +412,8 @@ nixl_status_t nixlAgent::registerMemOnBackends(nixlAgentData &data,
       // Load descriptors to the new or existing section.
       ret = iter->second->loadLocalData(secDescs, backend);
       if (ret != nixl_status_t::NIXL_SUCCESS) {
+        if (firstFailure == nixl_status_t::NIXL_SUCCESS)
+          firstFailure = ret;
         data.memorySection->remDescList(descs, *backend);
         continue;
       }
@@ -417,8 +422,12 @@ nixl_status_t nixlAgent::registerMemOnBackends(nixlAgentData &data,
     ++successCount;
   }
 
-  return successCount ? nixl_status_t::NIXL_SUCCESS
-                      : nixl_status_t::NIXL_ERR_BACKEND;
+  if (successCount) {
+    return nixl_status_t::NIXL_SUCCESS;
+  }
+  return firstFailure == nixl_status_t::NIXL_SUCCESS
+             ? nixl_status_t::NIXL_ERR_BACKEND
+             : firstFailure;
 }
 
 nixl_status_t nixlAgent::registerMem(const nixl_reg_dlist_t &descs,
