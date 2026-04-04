@@ -958,7 +958,7 @@ LogicalResult DebugTensorPrintOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue labelString = state.builder.var(MOGG::MojoValue(
       MOGG::HardcodedMojoSymbols::struct_String)({}, {labelLiteral}));
   MOGG::MojoValue labelPtrVar = labelString.get("unsafe_ptr")();
-  MOGG::MojoValue labelSizeVar = labelString.get("byte_length")();
+  MOGG::MojoValue labelSizeVar = labelString.get("__len__")();
 
   state.builder.call(
       function, {specRankParam, dtypeParam},

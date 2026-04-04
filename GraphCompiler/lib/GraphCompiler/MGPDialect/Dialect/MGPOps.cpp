@@ -643,7 +643,7 @@ LogicalResult AssertOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue messageString = state.builder.var(MOGG::MojoValue(
       MOGG::HardcodedMojoSymbols::struct_String)({}, {messageLiteral}));
   MOGG::MojoValue messagePtr = messageString.get("unsafe_ptr")();
-  MOGG::MojoValue messageSize = messageString.get("byte_length")();
+  MOGG::MojoValue messageSize = messageString.get("__len__")();
 
   state.builder.call(function, {}, {conditionVar, messagePtr, messageSize});
 
