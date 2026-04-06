@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_cc_test")
+load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_test")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -39,5 +39,26 @@ modular_cc_test(
     deps = [
         "//MLRT:Driver/NIXLLibfabricUtils",
         "//MLRT/unittests/Driver/NIXL:TestCommon",
+    ],
+)
+
+modular_cc_binary(
+    name = "LibfabricVramSmoke",
+    srcs = ["LibfabricVramSmoke.cpp"],
+    data = ["//MLRT:Driver/plugin_libfabric"],
+    env = {
+        "FI_EFA_USE_DEVICE_RDMA": "1",
+        "FI_LOG_LEVEL": "warn",
+        "MODULAR_NIXL_TELEMETRY_ENABLE": "y",
+    },
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "//:linux_x86_64": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//MLRT:Driver/DeviceContextImpl",
+        "//MLRT:Driver/NIXL",
+        "//MLRT:Driver/NIXLLibfabricUtils",
     ],
 )
