@@ -13,7 +13,7 @@ mo.graph @conv_transpose(
   // CHECK-DAG: %[[OUT_PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: %[[CONV:.*]] = mo.conv_transpose<() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[C1]], dilations = %[[C1]], paddings = %[[PADDINGS]], output_paddings = %[[OUT_PADDINGS]]] : (!mo.tensor<[1, 2, 2, 1], si64>, !mo.tensor<[2, 2, 1, 1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], si64>
   // CHECK: kgen.param.declare [[EQ:.*]]: i1 = <and(eq(:si64 [[D0]], 1), eq(:si64 [[D1]], 3), eq(:si64 [[D2]], 3), eq(:si64 [[D3]], 1))>
-  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, [[EQ]])>
+  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed{{.*}}" : !kgen.string}, [[EQ]])>
   // CHECK: %[[OUT:.*]] = mo.rebind(%[[CONV]]) : !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], si64> -> !mo.tensor<[1, 3, 3, 1], si64>
 
   %output = rmo.conv_transpose(%input, %filter) {
@@ -45,7 +45,7 @@ mo.graph @conv_transpose_symbolic<height, width, channels>(
   // CHECK-DAG: %[[OUT_PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: %[[CONV:.*]] = mo.conv_transpose<() -> [[D0:.*]], [[D1:.*]], [[D2:.*]], [[D3:.*]]>(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[C1]], dilations = %[[C1]], paddings = %[[PADDINGS]], output_paddings = %[[OUT_PADDINGS]]] : (!mo.tensor<[1, height, width, channels], si64>, !mo.tensor<[2, 2, 1, 1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], si64>
   // CHECK: kgen.param.declare [[EQ:.*]]: i1 = <and(eq(:si64 add(height, 1), [[D1]]), eq(:si64 add(width, 1), [[D2]]), eq(:si64 [[D0]], 1), eq(:si64 [[D3]], 1))>
-  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, [[EQ]])>
+  // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(i1) -> !mo.chain "mo.assert"{message = "rebind shape check failed{{.*}}" : !kgen.string}, [[EQ]])>
   // CHECK: %[[OUT:.*]] = mo.rebind(%[[CONV]]) : !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], si64> -> !mo.tensor<[1, add(height, 1), add(width, 1), 1], si64>
 
   %output = rmo.conv_transpose(%input, %filter) {

@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/Conversion/RMOSupport/Broadcast.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/ShapeFunctions.h"
+#include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphCompiler/GraphCompiler/MOSHDialect/MOSHTypes.h"
 #include "GraphCompiler/GraphCompiler/RMODialect/RMOOps.h"
@@ -442,11 +443,13 @@ struct LowerRebindTensorShapeOp
     KGEN::ParamDeclareOp::create(rewriter, loc, condAttr, cmpAttr);
 
     // Add assertion, then return a rebind.
-    std::string fullMsg = "rebind shape check failed";
+    std::string fullMsg = "rebind shape check failed: expected shape ";
     llvm::raw_string_ostream ss(fullMsg);
+    ss << MOSH::shapeTypedAttrToStr(resultShape) << " but got "
+       << MOSH::shapeTypedAttrToStr(operandShape);
     StringAttr msg = mlir::cast<StringAttr>(op.getMessageAttr());
     if (!msg.empty()) {
-      ss << " with error: " << msg;
+      ss << "\n" << msg;
     }
 
     TypedAttr assertAttr = MO::AssertOp::emitStaticCall(
