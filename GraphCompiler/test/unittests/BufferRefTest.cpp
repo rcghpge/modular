@@ -8,6 +8,7 @@
 
 #include "MLRT/AsyncRT/Runtime/Allocator.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/AsyncRT/Support/Location.h"
 #include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 
@@ -16,8 +17,8 @@
 using namespace M;
 
 static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
-                                AsyncRT::RuntimeOptions().forDebug());
+  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
+                                     AsyncRT::RuntimeOptions().forDebug());
 }
 
 TEST(TensorBufferRef, Default) {

@@ -9,6 +9,7 @@
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/AsyncRT/Runtime/Allocator.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/AsyncRT/Runtime/WorkQueue.h"
 
 #include "gtest/gtest.h"
@@ -16,8 +17,8 @@
 using namespace M;
 
 static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::createRuntime(AsyncRT::RuntimeSource::Test,
-                                AsyncRT::RuntimeOptions().forDebug());
+  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
+                                     AsyncRT::RuntimeOptions().forDebug());
 }
 
 constexpr size_t kN = 4;
