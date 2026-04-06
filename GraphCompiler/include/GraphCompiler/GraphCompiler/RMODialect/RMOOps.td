@@ -529,8 +529,12 @@ def RMO_ConvOp : RMO_Op<"conv", [
     The op supports 1D-3D convolution, with the following layout assumptions:
     - input has channel last layout. For 2D, that's NHWC, i.e.,
       (batch_size, height, width, in_channels)
-    - filter has layout RSCF, i.e.,
-      (height, width, in_channels / num_groups, out_channels)
+    - filter has layout FCRS, i.e.,
+      (out_channels, in_channels / num_groups, height, width)
+
+    The filter layout is determined by the layout attribute on the filter
+    tensor type. Supported layouts include FCRS (default), RSCF (legacy),
+    and packed variants like FRSCf.
 
     `strides`, `dilations`, and `padding` are all shape attributes.
     If the input has static rank, and must have have sizes of `input_rank - 2`,
@@ -569,7 +573,7 @@ def RMO_ConvOp : RMO_Op<"conv", [
 
     ```mlir
     %input: !mo.tensor<[10, 5, 5, 32], f32>,
-    %filter: !mo.tensor<[2, 2, 32, 64], f32>
+    %filter: !mo.tensor<[64, 32, 2, 2], f32>
 
     %result = rmo.conv(%input, %filter) {
       strides = #mosh<ape[2, 2]> : !mosh.ape,
@@ -577,7 +581,7 @@ def RMO_ConvOp : RMO_Op<"conv", [
       dilations = #mosh<ape[1, 1]> : !mosh.ape,
       num_groups = 1 : si64
     } : (
-      !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[2, 2, 32, 64], f32>
+      !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[64, 32, 2, 2], f32>
     ) -> !mo.tensor<[10, 4, 4, 64], f32>
     ```
   }];

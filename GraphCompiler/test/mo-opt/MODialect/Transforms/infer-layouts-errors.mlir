@@ -8,7 +8,7 @@ mo.graph @conv_same_input_and_filter(
   %num_groups: !mo.tensor<[], si64>
 ) -> !mo.tensor<[?, ?, ?, ?], f32> {
 
-  // expected-error @below {{attempting to constrain value to layout: #mo.layout<RSCF> when it's already constrained to layout: #mo.layout<NHWC>}}
+  // expected-error @below {{attempting to constrain value to layout: #mo.layout<FCRS> when it's already constrained to layout: #mo.layout<NHWC>}}
   %conv1 = mo.conv(%input, %input) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] : (
     !mo.tensor<[?, ?, ?, ?], f32>,
     !mo.tensor<[?, ?, ?, ?], f32>,

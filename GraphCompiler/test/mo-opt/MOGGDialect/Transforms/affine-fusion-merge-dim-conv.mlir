@@ -8,10 +8,10 @@ mo.graph @conv_merge_dim_rank3_merge_1(%input : !mo.tensor<[1, 2, 2, 3], f32>) -
     %di = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
     %pa = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
     %ng = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>
-    %filter = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 1.0, 1.0> : tensor<1x1x1x3xf32>} : () -> !mo.tensor<[1, 1, 1, 3], f32>
-    %0 = mo.add(%filter, %filter) : !mo.tensor<[1, 1, 1, 3], f32>
+    %filter = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 1.0, 1.0> : tensor<1x1x1x3xf32>} : () -> !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>
+    %0 = mo.add(%filter, %filter) : !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>
     %conv = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
-        !mo.tensor<[1, 2, 2, 3], f32>, !mo.tensor<[1, 1, 1, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+        !mo.tensor<[1, 2, 2, 3], f32>, !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
     ) -> !mo.tensor<[1, 2, 2, 3], f32>
     %merged = mo.merge_dim[1](%conv): (!mo.tensor<[1, 2, 2, 3], f32>) -> !mo.tensor<[1, 4, 3], f32>
     %final = mo.add(%merged, %bias): !mo.tensor<[1, 4, 3], f32>
@@ -28,10 +28,10 @@ mo.graph @conv_merge_dim_rank3_merge_2(%input : !mo.tensor<[1, 2, 2, 3], f32>) -
     %di = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
     %pa = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
     %ng = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>
-    %filter = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 1.0, 1.0> : tensor<1x1x1x3xf32>} : () -> !mo.tensor<[1, 1, 1, 3], f32>
-    %0 = mo.add(%filter, %filter) : !mo.tensor<[1, 1, 1, 3], f32>
+    %filter = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 1.0, 1.0> : tensor<1x1x1x3xf32>} : () -> !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>
+    %0 = mo.add(%filter, %filter) : !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>
     %conv = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
-        !mo.tensor<[1, 2, 2, 3], f32>, !mo.tensor<[1, 1, 1, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
+        !mo.tensor<[1, 2, 2, 3], f32>, !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
     ) -> !mo.tensor<[1, 2, 2, 3], f32>
     %merged = mo.merge_dim[2](%conv): (!mo.tensor<[1, 2, 2, 3], f32>) -> !mo.tensor<[1, 2, 6], f32>
     %final = mo.add(%merged, %bias): !mo.tensor<[1, 2, 6], f32>

@@ -621,10 +621,6 @@ struct ConvConstFilterPattern
     if (llvm::is_contained({"FQRSCf", "FRSCf"}, filterLayout.getFormat()))
       return rewriter.notifyMatchFailure(op, "filter is already packed");
 
-    if (filterLayout.getFormat() == "FCRS")
-      return rewriter.notifyMatchFailure(op,
-                                         "Packing FCRS format isn't supported");
-
     if (!dependsOnNoAliasConstantLikesOnly(filter.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "filter isn't constant");
 
