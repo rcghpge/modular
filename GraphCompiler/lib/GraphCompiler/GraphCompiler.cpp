@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/GraphCompiler.h"
+#include "GraphCompiler/CommonDriver/Utils.h"
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
@@ -401,12 +402,30 @@ void M::MO::buildMgpPipeline(
 
 namespace {
 
-static void
-buildGCPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
-                    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
-                    bool skipJit) {
+/// Unified gc-pipeline implementation.
+///
+/// Builds all stage option structs from `opts` once. Each stage is driven by
+/// `buildOrRunStage`: when `dumpIntermediates` is true and `moduleOp` is set,
+/// it creates a fresh PassManager per stage, runs it against `moduleOp`, and
+/// writes intermediate IR identified by `dumpSuffix`; otherwise it appends
+/// passes directly to `pm`.
+///
+/// Callers:
+///   - buildGCPipeline / buildGCPipelineThroughEmitMojo: pass a null
+///     `moduleOp`; `pm` is populated without being run.
+///   - runGCPipeline: passes a non-null `moduleOp`; `pm` is populated and
+///     then run by the caller (or left empty when `dumpIntermediates` is true
+///     and each stage already ran internally).
+static LogicalResult
+gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
+               std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
+               bool skipJit, ModuleOp moduleOp = {},
+               bool dumpIntermediates = false) {
 
-  // --- mo-pipeline ---
+  auto kernelLibraryPaths =
+      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+
+  // --- mo-pipeline options ---
   MoPipelineOptions moOpts;
   moOpts.debugPrintAllTensors = opts.debugPrintAllTensors;
   moOpts.useShapeInference = opts.useShapeInference;
@@ -417,8 +436,7 @@ buildGCPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
     moOpts.cacheDir = opts.cacheDir.getValue();
   moOpts.symbolicFfastMath = opts.symbolicFfastMath;
   moOpts.symbolicNoUndefinedMath = opts.symbolicNoUndefinedMath;
-  moOpts.kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
+  moOpts.kernelLibraryPaths = kernelLibraryPaths;
   moOpts.usePatterns = opts.usePatterns;
   moOpts.patternFusionMHAEnable = opts.patternFusionMHAEnable;
   moOpts.patternFusionMHAAllowUnsafeBCasts =
@@ -431,34 +449,19 @@ buildGCPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
   moOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
   moOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   moOpts.fuseJitKernels = opts.fuseJitKernels;
-  buildMoPipeline(pm, moOpts);
 
-  // --- mo-to-mogg ---
-  auto kernelLibraryPaths =
-      llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
-  pm.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
-                                libraryAnalysis));
-
-  // --- mogg-pipeline ---
+  // --- mogg-pipeline options ---
   MoggPipelineOptions moggOpts;
   moggOpts.fuseJitKernels = opts.fuseJitKernels;
   moggOpts.fuseMutableLoadStore = opts.fuseMutableLoadStore;
-  buildMoggPipeline(pm, moggOpts);
 
-  // Insert NaN/Inf checks at compiled region boundaries. Runs after all
-  // fusion passes so checks sit between already-fused compiled regions.
-  // The pass creates mo.custom ops and lowers them to MOGG kernels in-place.
-  if (opts.nanCheck)
-    pm.addPass(MO::createNanCheckPass(libraryAnalysis));
-
-  // --- mogg-to-mgp ---
+  // --- mogg-to-mgp options ---
   MGP::MOGGToMGPOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   if (opts.compiledFrameworkLabel.hasValue())
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
-  pm.addPass(MGP::createMOGGToMGP(moToPrimOpts));
 
-  // --- mgp-pipeline ---
+  // --- mgp-pipeline options ---
   MgpPipelineOptions mgpOpts;
   mgpOpts.kernelLibraryPaths = kernelLibraryPaths;
   mgpOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -466,23 +469,90 @@ buildGCPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
   mgpOpts.enableComputeLambdas = opts.enableComputeLambdas;
   mgpOpts.moggDebugDumpFusedTensorSpecs = opts.moggDebugDumpFusedTensorSpecs;
   mgpOpts.dumpMojoText = opts.dumpMojoText;
-  buildMgpPipeline(pm, mgpOpts, libraryAnalysis);
 
-  if (skipJit)
-    return;
-
-  // --- jit ---
+  // --- jit options ---
   MOGG::JitCompileKernelsOptions jitOpts;
-  jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  jitOpts.saveTempPrefix = opts.saveTempPrefix;
-  jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
-  jitOpts.kernelLibraryPaths = kernelLibraryPaths;
-  jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
-  jitOpts.debugKGENStubs = opts.debugKGENStubs;
-  pm.addPass(MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
+  if (!skipJit) {
+    jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
+    jitOpts.saveTempPrefix = opts.saveTempPrefix;
+    jitOpts.createMOGGReproducers = opts.createMOGGReproducers;
+    jitOpts.kernelLibraryPaths = kernelLibraryPaths;
+    jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
+    jitOpts.debugKGENStubs = opts.debugKGENStubs;
+  }
 
-  // --- jit-pipeline ---
-  buildJitPipeline(pm);
+  // Invokes `build` to populate a pass manager for one pipeline stage.
+  // When dumping: creates a fresh PM, runs it against `moduleOp`, then writes
+  // intermediate IR tagged with `dumpSuffix` (skipped when empty).
+  // Otherwise: appends passes directly to the shared `pm`.
+  auto buildOrRunStage = [&](auto &&build,
+                             const std::string &dumpSuffix) -> LogicalResult {
+    if (!moduleOp || !dumpIntermediates) {
+      build(pm);
+      return success();
+    }
+
+    auto stagePM = mlir::PassManager::on<ModuleOp>(
+        moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
+    build(stagePM);
+    if (failed(stagePM.run(moduleOp)))
+      return failure();
+
+    if (!dumpSuffix.empty()) {
+      M::writeIntermediateFileIfRequested(dumpSuffix, moduleOp,
+                                          /*options=*/nullptr, BufferRef());
+    }
+
+    return success();
+  };
+
+  // --- mo-pipeline ---
+  if (failed(buildOrRunStage([&](auto &p) { buildMoPipeline(p, moOpts); },
+                             "mo-pre-mogg")))
+    return failure();
+
+  // --- mo-to-mogg ---
+  if (failed(buildOrRunStage(
+          [&](auto &p) {
+            p.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync},
+                                         libraryAnalysis));
+          },
+          "mogg")))
+    return failure();
+
+  // --- mogg-pipeline (+ optional nan-check) ---
+  // Insert NaN/Inf checks at compiled region boundaries. Runs after all fusion
+  // passes so checks sit between already-fused compiled regions. The pass
+  // creates mo.custom ops and lowers them to MOGG kernels in-place.
+  if (failed(buildOrRunStage(
+          [&](auto &p) {
+            buildMoggPipeline(p, moggOpts);
+            if (opts.nanCheck)
+              p.addPass(MO::createNanCheckPass(libraryAnalysis));
+          },
+          "mogg-pre-mgp")))
+    return failure();
+
+  // --- mogg-to-mgp ---
+  if (failed(buildOrRunStage(
+          [&](auto &p) { p.addPass(MGP::createMOGGToMGP(moToPrimOpts)); },
+          "mgp-pre-pipeline")))
+    return failure();
+
+  // --- mgp-pipeline + jit + jit-pipeline ---
+  if (failed(buildOrRunStage(
+          [&](auto &p) {
+            buildMgpPipeline(p, mgpOpts, libraryAnalysis);
+            if (!skipJit) {
+              p.addPass(
+                  MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
+              buildJitPipeline(p);
+            }
+          },
+          "")))
+    return failure();
+
+  return success();
 }
 
 } // namespace
@@ -496,15 +566,28 @@ buildGCPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
 void M::MO::buildGCPipeline(
     mlir::OpPassManager &pm, const GCPipelineOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  buildGCPipelineImpl(pm, opts, std::move(libraryAnalysis),
-                      /*skipJit=*/false);
+  (void)gcPipelineImpl(pm, opts, std::move(libraryAnalysis), /*skipJit=*/false);
 }
 
 void M::MO::buildGCPipelineThroughEmitMojo(
     mlir::OpPassManager &pm, const GCPipelineOptions &opts,
     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  buildGCPipelineImpl(pm, opts, std::move(libraryAnalysis),
-                      /*skipJit=*/true);
+  (void)gcPipelineImpl(pm, opts, std::move(libraryAnalysis), /*skipJit=*/true);
+}
+
+LogicalResult
+M::MO::runGCPipeline(ModuleOp moduleOp, const GCPipelineOptions &opts,
+                     std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis,
+                     bool dumpIntermediates) {
+  auto pm = mlir::PassManager::on<ModuleOp>(
+      moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
+  // gcPipelineImpl either runs staged PMs directly (leaving `pm` empty) or
+  // populates `pm` for a single-shot run. Either way, running `pm` after is
+  // correct: it is a no-op when the staged path already executed everything.
+  if (failed(gcPipelineImpl(pm, opts, std::move(libraryAnalysis),
+                            /*skipJit=*/false, moduleOp, dumpIntermediates)))
+    return failure();
+  return pm.run(moduleOp);
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {

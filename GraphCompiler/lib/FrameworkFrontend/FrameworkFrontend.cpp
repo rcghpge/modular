@@ -330,26 +330,6 @@ private:
   }
 };
 
-/// Lowers a module op to MGP then exports it to MEF.
-static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
-                                         mlir::PassManager &gcPipelinePasses,
-                                         bool enableMEFMetadata) {
-  GraphApiDiagnosticHandler diagnostics(gcPipelinePasses.getContext());
-  if (failed(gcPipelinePasses.run(moduleOp))) {
-    return Error(Twine("Graph compilation failed:\n") +
-                 diagnostics.formatMessage());
-  }
-
-  // Save MGP IR pre export to MEF.
-  writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
-                                   BufferRef());
-
-  auto bufOr = MO::convertMGPToMEF(moduleOp, enableMEFMetadata);
-  if (bufOr)
-    return bufOr.takeError();
-  return bufOr.takeValue();
-}
-
 /// Lowers a module op to MGP then exports to MEF.
 static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          const MO::GCPipelineOptions &options,
@@ -362,11 +342,19 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
   if (failed(libraryAnalysis))
     return libraryAnalysis.takeError();
 
-  auto gcPipelinePasses = mlir::PassManager::on<ModuleOp>(
-      moduleOp.getContext(), mlir::OpPassManager::Nesting::Implicit);
-  MO::buildGCPipeline(gcPipelinePasses, options, libraryAnalysis.takeValue());
+  bool const dumpStages = !!llvm::sys::Process::GetEnv("MODULAR_MAX_TEMPS_DIR");
+  GraphApiDiagnosticHandler diagnostics(moduleOp.getContext());
+  if (failed(MO::runGCPipeline(moduleOp, options, libraryAnalysis.takeValue(),
+                               dumpStages)))
+    return Error(Twine("Graph compilation failed:\n") +
+                 diagnostics.formatMessage());
 
-  return convertMOToMEF(moduleOp, gcPipelinePasses, enableMEFMetadata);
+  writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
+                                   BufferRef());
+  auto bufOr = MO::convertMGPToMEF(moduleOp, enableMEFMetadata);
+  if (bufOr)
+    return bufOr.takeError();
+  return bufOr.takeValue();
 }
 
 /// Get the textual key used to represent the compilation pipeline.

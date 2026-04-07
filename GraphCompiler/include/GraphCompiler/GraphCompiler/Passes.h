@@ -417,6 +417,20 @@ void buildMgpPipeline(
 /// Builds all passes that run after `jit` (i.e., after JitCompileKernels).
 void buildJitPipeline(mlir::OpPassManager &pm);
 
+/// Runs the full gc-pipeline on `moduleOp`.  When `dumpIntermediates` is true,
+/// each stage runs in its own pass manager and intermediate IR is written via
+/// writeIntermediateFileIfRequested at each phase boundary:
+///   mo-pre-mogg      — after mo-pipeline, before mo-to-mogg
+///   mogg             — after mo-to-mogg, before mogg-pipeline
+///   mogg-pre-mgp     — after mogg-pipeline, before mogg-to-mgp
+///   mgp-pre-pipeline — after mogg-to-mgp, before mgp-pipeline
+/// When `dumpIntermediates` is false, all stages run in a single pass manager.
+/// The final mgp dump and MEF conversion are left to the caller.
+LogicalResult runGCPipeline(
+    ModuleOp moduleOp, const GCPipelineOptions &opts,
+    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis = nullptr,
+    bool dumpIntermediates = false);
+
 } // namespace M::MO
 
 #endif // GENERICML_MO_GRAPHCOMPILER_PASSES_H
