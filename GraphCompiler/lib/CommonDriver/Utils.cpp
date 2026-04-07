@@ -68,7 +68,6 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
     return;
   }
 
-#ifndef MODULAR_PRODUCTION
   // Else check in config and use the value there.
   auto configOr = Config::open();
   if (!configOr.isError()) {
@@ -83,5 +82,4 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
       writeFile(&tempOptions);
     }
   }
-#endif // MODULAR_PRODUCTION
 }
