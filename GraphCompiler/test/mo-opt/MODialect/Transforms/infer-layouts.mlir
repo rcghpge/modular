@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: mo.graph @chained_conv2d_with_reused_filter(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
-// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<FCRS>}>,
+// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
 // CHECK-SAME:   %[[STRIDES:.*]]: !mo.tensor<[2], si64>, %[[DILATIONS:.*]]: !mo.tensor<[2], si64>,
 // CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[4], si64>,
 // CHECK-SAME:   %[[NUM_GROUPS:.*]]: !mo.tensor<[], si64>
@@ -19,7 +19,7 @@ mo.graph @chained_conv2d_with_reused_filter(
 
   // CHECK-NEXT: %[[CONV1:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
-  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<FCRS>}>,
+  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[4], si64>
@@ -35,7 +35,7 @@ mo.graph @chained_conv2d_with_reused_filter(
 
   // CHECK-NEXT: %[[CONV2:.*]] = mo.conv(%[[CONV1]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<NHWC>}>,
-  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<FCRS>}>,
+  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?], f32, {layout = #mo.layout<RSCF>}>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[2], si64>,
   // CHECK-SAME:   !mo.tensor<[4], si64>
@@ -55,7 +55,7 @@ mo.graph @chained_conv2d_with_reused_filter(
 
 // CHECK-LABEL: mo.graph @chained_conv3d_with_reused_filter(
 // CHECK-SAME:   %[[INPUT:.*]]: !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
-// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<FCQRS>}>,
+// CHECK-SAME:   %[[FILTER:.*]]: !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSCF>}>,
 // CHECK-SAME:   %[[STRIDES:.*]]: !mo.tensor<[3], si64>, %[[DILATIONS:.*]]: !mo.tensor<[3], si64>,
 // CHECK-SAME:   %[[PADDINGS:.*]]: !mo.tensor<[6], si64>,
 // CHECK-SAME:   %[[NUM_GROUPS:.*]]: !mo.tensor<[], si64>
@@ -71,7 +71,7 @@ mo.graph @chained_conv3d_with_reused_filter(
 
   // CHECK-NEXT: %[[CONV1:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
-  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<FCQRS>}>,
+  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSCF>}>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[6], si64>
@@ -87,7 +87,7 @@ mo.graph @chained_conv3d_with_reused_filter(
 
   // CHECK-NEXT: %[[CONV2:.*]] = mo.conv(%[[CONV1]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]] : (
   // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<NDHWC>}>,
-  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<FCQRS>}>,
+  // CHECK-SAME:   !mo.tensor<[?, ?, ?, ?, ?], f32, {layout = #mo.layout<QRSCF>}>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[3], si64>,
   // CHECK-SAME:   !mo.tensor<[6], si64>

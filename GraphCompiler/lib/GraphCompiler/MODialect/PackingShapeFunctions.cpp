@@ -269,14 +269,7 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
   int64_t filterRank = filterType.getRank();
 
   int64_t simdSize = target.simdWidthOf(filterElementType);
-
-  // Detect whether the filter is in FCRS/FCQRS layout (F is dim 0) or
-  // RSCF/QRSCF layout (F is the last dim).
-  MO::LayoutAttr filterLayout = filterType.getLayoutAttr();
-  bool isFCRS = filterLayout && (filterLayout.getFormat() == "FCRS" ||
-                                 filterLayout.getFormat() == "FCQRS");
-  int64_t f = isFCRS ? filterType.getIntDims()[0]
-                     : filterType.getIntDims()[filterRank - 1];
+  int64_t f = filterType.getIntDims()[filterRank - 1];
 
   if (ShapedType::isDynamic(f))
     return {};
@@ -308,28 +301,12 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
   int64_t microKernelWidth = microKernelShape[1];
   int64_t microKernelFSize = microKernelWidth * simdSize;
 
-  // Packed layout is always FRSCf (2D) or FQRSCf (3D), regardless of the
-  // input filter layout. The packed shape positions are:
-  //   [0]          = F_packed = numGroups * ceil(fPerGroup / microKernelFSize)
-  //   [1..rank-1]  = spatial dims followed by C (i.e., R,S,C or Q,R,S,C)
-  //   [rank]       = f = microKernelFSize
   SmallVector<int64_t> packedShape(filterRank + 1, 0);
   packedShape[0] = numGroups * ceilDiv(fPerGroup, microKernelFSize);
   packedShape[filterRank] = microKernelFSize;
 
-  if (isFCRS) {
-    // FCRS [F,C,R,S]: packed positions 1..rank-1 should be R,S,C.
-    // FCQRS [F,C,Q,R,S]: packed positions 1..rank-1 should be Q,R,S,C.
-    // Pattern: skip dim[0] (F), put dim[2..rank-1] first, then dim[1] (C).
-    int64_t pos = 1;
-    for (int64_t i = 2; i < filterRank; ++i)
-      packedShape[pos++] = filterType.getIntDim(i);
-    packedShape[pos] = filterType.getIntDim(1); // C
-  } else {
-    // RSCF [R,S,C,F] or QRSCF [Q,R,S,C,F]: dims 0..rank-2 are already R,S,C.
-    for (int64_t i : llvm::seq<int64_t>(filterRank - 1))
-      packedShape[i + 1] = filterType.getIntDim(i);
-  }
+  for (int64_t i : llvm::seq<int64_t>(filterRank - 1))
+    packedShape[i + 1] = filterType.getIntDim(i);
 
   // Unable to infer a static shape.
   if (llvm::any_of(packedShape, [](int64_t x) { return x < 0; }))

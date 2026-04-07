@@ -472,18 +472,11 @@ struct ConvToMatmulPattern
     if (!inputTy.hasRank() || inputTy.getRank() != 4)
       return rewriter.notifyMatchFailure(op, "input rank must be 4");
 
-    // Detect filter layout: FCRS has spatial dims at [2,3], RSCF at [0,1].
-    LayoutAttr filterLayout = filterTy.getLayoutAttr();
-    bool isFCRS = filterLayout && (filterLayout.getFormat() == "FCRS" ||
-                                   filterLayout.getFormat() == "FCQRS");
-
-    // Check filter size — spatial dims must be 1x1.
+    // Check filter size
     ArrayRef<TypedAttr> inputDims = inputTy.getTypedShapeAttr().getValues();
     ArrayRef<TypedAttr> filterDims = filterTy.getTypedShapeAttr().getValues();
     IntegerAttr intOneAttr = rewriter.getDimAttr(1);
-    size_t spatialStart = isFCRS ? 2 : 0;
-    if (filterDims[spatialStart] != intOneAttr ||
-        filterDims[spatialStart + 1] != intOneAttr)
+    if (filterDims[0] != intOneAttr || filterDims[1] != intOneAttr)
       return rewriter.notifyMatchFailure(op, "filter size must be 1x1");
 
     // Check strides and paddings, note that we don't need to check dilations
@@ -506,48 +499,29 @@ struct ConvToMatmulPattern
     if (!isConstant(op.getNumGroups(), 1))
       return rewriter.notifyMatchFailure(op, "num_groups must be 1");
 
-    // Insert reshapes for conv input and filter.
-    // RSCF [1,1,Ci,Co] → reshape [Ci,Co], matmul(input, weight)
-    // FCRS [Co,Ci,1,1] → reshape [Co,Ci], matmul(input, weight, transpose_b)
+    // Insert reshapes for conv input and filter
     auto shapeTy = rewriter.getType<MOSH::ShapeType>();
     // TODO provide a better API for symbolic dimension manipulations
     auto matmulDimM = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap,
                                                    inputDims.slice(0, 3));
-    TypedAttr matmulDimK = inputDims.back(); // Ci from NHWC input
-    TypedAttr matmulDimN = isFCRS ? filterDims[0] : filterDims.back(); // Co
-
+    TypedAttr matmulDimK = inputDims.back();
+    TypedAttr matmulDimN = filterDims.back();
     auto matmulInputShape =
         MOSH::ShapeAttr::get({matmulDimM, matmulDimK}, shapeTy);
+    auto matmulWeightShape =
+        MOSH::ShapeAttr::get({matmulDimK, matmulDimN}, shapeTy);
     auto matmulShape = MOSH::ShapeAttr::get({matmulDimM, matmulDimN}, shapeTy);
     auto matmulInputTy = inputTy.cloneWith(matmulInputShape);
+    auto matmulWeightTy = filterTy.cloneWith(matmulWeightShape);
     auto matmulTy = opTy.cloneWith(matmulShape);
     auto matmulInput =
         rewriter.create<MO::Static::ReshapeOp>(loc, matmulInputTy, input);
-
-    Value matmulWeight;
-    bool transposeB = false;
-    if (isFCRS) {
-      // FCRS [Co,Ci,1,1] → reshape [Co,Ci], use transpose_b=true
-      auto matmulWeightShape =
-          MOSH::ShapeAttr::get({matmulDimN, matmulDimK}, shapeTy);
-      auto matmulWeightTy = filterTy.cloneWith(matmulWeightShape);
-      matmulWeight =
-          rewriter.create<MO::Static::ReshapeOp>(loc, matmulWeightTy, filter);
-      transposeB = true;
-    } else {
-      // RSCF [1,1,Ci,Co] → reshape [Ci,Co]
-      auto matmulWeightShape =
-          MOSH::ShapeAttr::get({matmulDimK, matmulDimN}, shapeTy);
-      auto matmulWeightTy = filterTy.cloneWith(matmulWeightShape);
-      matmulWeight =
-          rewriter.create<MO::Static::ReshapeOp>(loc, matmulWeightTy, filter);
-    }
+    auto matmulWeight =
+        rewriter.create<MO::Static::ReshapeOp>(loc, matmulWeightTy, filter);
 
     // Replace convolution with a newly created matmul
-    auto matmul = rewriter.create<MO::MatmulOp>(
-        loc, matmulTy, matmulInput, matmulWeight,
-        /*transpose_b=*/rewriter.getBoolAttr(transposeB),
-        /*packed_b=*/rewriter.getBoolAttr(false));
+    auto matmul =
+        rewriter.create<MO::MatmulOp>(loc, matmulTy, matmulInput, matmulWeight);
     rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(op, opTy, matmul);
     return mlir::success();
   }

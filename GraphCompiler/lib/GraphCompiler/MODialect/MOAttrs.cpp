@@ -89,7 +89,6 @@ LayoutAttr::verify(llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
       "FCRS",
       // 3d
       "QRSCF",
-      "FCQRS",
 
       // convTranspose filter
       // 2d

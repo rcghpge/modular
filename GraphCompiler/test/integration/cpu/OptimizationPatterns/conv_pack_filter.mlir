@@ -18,13 +18,13 @@ mo.graph @conv_const_filter(
   // CHECK-IR: mo.conv({{.*}}, %[[PACKED_FILTER]])
   %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
   %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pa, num_groups = %ng] : (
-    !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
+    !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 1], f32>
 
@@ -48,14 +48,14 @@ mo.graph @conv_transp_filter(
   %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32>
   %perm = mo.constant {value = #M.dense_array<1, 0, 2, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %filter_t = mo.transpose(%filter, %perm) : (!mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[4], si64>) -> !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %filter_t = mo.transpose(%filter, %perm) : (!mo.tensor<[2, 2, 1, 1], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[2, 2, 1, 1], f32>
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
   %res = mo.conv(%input, %filter_t) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pa, num_groups = %ng] : (
-    !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
+    !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 1], f32>
 
@@ -77,13 +77,13 @@ mo.graph @conv_const_filter_dyn_output<() -> D0, D1>(
   // CHECK-IR: mo.conv({{.*}}, %[[PACKED_FILTER]])
   %dilations = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32>
   %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
   %res = mo.conv<() -> D2, D3>(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
-    !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
+    !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, D2, D3, 1], f32>
 

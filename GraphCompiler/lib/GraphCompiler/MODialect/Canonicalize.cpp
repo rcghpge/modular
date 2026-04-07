@@ -1816,20 +1816,6 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     return success();
   }
 
-  // Fold transpose of a broadcast constant (single stored element).
-  // The constant fold pass cannot execute kernels on broadcast constants
-  // because the backing buffer is smaller than the tensor shape implies.
-  // Since all elements are identical, transposing just changes the shape.
-  if (auto constantOp = op.getInput().getDefiningOp<ConstantOp>()) {
-    if (auto arrayAttr =
-            dyn_cast<ArrayElementsAttr>(constantOp.getValueAttr())) {
-      if (arrayAttr.getType().getNumElements() == 1) {
-        rewriter.replaceOpWithNewOp<ConstantOp>(op, op.getType(), arrayAttr);
-        return success();
-      }
-    }
-  }
-
   // NOTE The following (transposes merging or transpose-->reshape) assumes
   // the verifier checks against invalid permutations.
 

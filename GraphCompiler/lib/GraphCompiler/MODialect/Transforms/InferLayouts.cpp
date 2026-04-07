@@ -51,9 +51,9 @@ struct InferLayoutPass : public impl::InferLayoutsBase<InferLayoutPass> {
   llvm::StringRef getConvFilterLayout(size_t rank) {
     switch (rank) {
     case 4:
-      return "FCRS";
+      return "RSCF";
     case 5:
-      return "FCQRS";
+      return "QRSCF";
     default:
       llvm_unreachable("Only able to handle convs up to conv1-3d");
     }
