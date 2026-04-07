@@ -1,7 +1,8 @@
 // RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
-// TODO(GEX-3365): FCRS packing kernel produces incorrect results — needs debugging.
+// FCRS filters are transposed to RSCF at compile time before packing.
+// This test disables constant folding, so the transpose is not folded.
 // XFAIL: *
 
 // CHECK{LITERAL}: 'conv' returned tensor<1x3x3x1xf32> [5.400000e+01, 5.400000e+01, 5.400000e+01, 5.400000e+01, 5.400000e+01, 5.400000e+01, 5.400000e+01, 5.400000e+01, 5.400000e+01]

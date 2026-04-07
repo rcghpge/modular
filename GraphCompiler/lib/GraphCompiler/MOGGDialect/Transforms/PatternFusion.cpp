@@ -636,6 +636,41 @@ struct ConvConstFilterPattern
           op, "packing is only supported on the host device");
     }
 
+    // For FCRS/FCQRS filters, insert a transpose to RSCF/QRSCF first.
+    // The transpose on a constant will be folded by constant folding.
+    // This avoids needing a separate FCRS packing kernel.
+    bool isFCRS = (filterLayout.getFormat() == "FCRS" ||
+                   filterLayout.getFormat() == "FCQRS");
+    if (isFCRS) {
+      size_t rank = filterType.getRank();
+      // FCRS [F,C,R,S] -> RSCF [R,S,C,F]: perm = [2,3,1,0]
+      // FCQRS [F,C,Q,R,S] -> QRSCF [Q,R,S,C,F]: perm = [2,3,4,1,0]
+      SmallVector<int64_t> perm;
+      for (size_t i = 2; i < rank; ++i)
+        perm.push_back(i);
+      perm.push_back(1);
+      perm.push_back(0);
+
+      // Create permutation constant.
+      auto permConstant = rewriter.createHostConstant(loc, perm);
+
+      // Build the RSCF shape from the FCRS shape.
+      SmallVector<TypedAttr> rscfDims;
+      for (auto idx : perm)
+        rscfDims.push_back(filterType.getTypedShapeAttr().getValues()[idx]);
+      auto rscfShapeAttr =
+          MOSH::ShapeAttr::get(rscfDims, rewriter.getType<MOSH::ShapeType>());
+
+      StringRef rscfLayoutStr = (rank == 4) ? "RSCF" : "QRSCF";
+      auto rscfLayout = rewriter.getAttr<MO::LayoutAttr>(rscfLayoutStr);
+      auto rscfType = filterType.cloneWith(rscfShapeAttr).cloneWith(rscfLayout);
+
+      filter =
+          rewriter.create<MO::TransposeOp>(loc, rscfType, filter, permConstant);
+      filterType = filter.getType();
+      filterLayout = filterType.getLayoutAttr();
+    }
+
     // Create shape parameters for the new type.
     auto graphOp = op->getParentOfType<MO::GraphOp>();
 
