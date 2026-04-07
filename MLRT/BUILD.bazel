@@ -1084,6 +1084,24 @@ modular_shared_library(
 )
 
 modular_shared_library(
+    # Minimal shared library containing only Modular's NIXL (MIXL) symbols.
+    # Replaces the dependency on the monolithic libmax.so, which also carries
+    # GraphCompiler, Kernels, and MLIR.
+    #
+    # UCX and libfabric transport plugins are available as runfiles via the
+    # transitive data deps of Driver/NIXL.
+    name = "libmixl",
+    srcs = [],
+    output_name = "mixl",
+    tags = [
+        "maybe-unused",
+        "no-clang-tidy",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [":Driver/NIXL"],
+)
+
+modular_shared_library(
     name = "Driver/plugin_ucx_rocm_verbs",
     srcs = glob([
         "lib/Driver/NIXL/plugins/ucx/**",
