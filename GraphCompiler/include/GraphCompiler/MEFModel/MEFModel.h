@@ -111,6 +111,8 @@ private:
   validateCapturedPerDeviceEntries(ArrayRef<uint64_t> graphKeys,
                                    ArrayRef<uint64_t> inputSignatures) const;
 
+  ErrorOrSuccess launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const;
+
   const class Model *model;
   Runtime &runtime;
   AnyAsyncValueRef chain;

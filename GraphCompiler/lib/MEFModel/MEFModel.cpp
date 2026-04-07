@@ -13,6 +13,7 @@
 #include "GraphCompiler/Support/QuantSpec.h"
 #include "GraphCompiler/Support/ResultInfo.h"
 #include "GraphCompiler/Support/Value.h"
+#include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
@@ -601,6 +602,54 @@ ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceEntries(
   return success();
 }
 
+ErrorOrSuccess
+ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
+  if (normalizedKeys.empty())
+    return success();
+
+  std::atomic<size_t> numElementsLeft = normalizedKeys.size();
+
+  auto readyChain = AsyncValueRef<Chain>::allocate(runtime);
+
+  auto markReady = [readyChain = readyChain.copy()]() mutable {
+    std::move(readyChain).emplace();
+  };
+
+  SmallVector<ErrorOrSuccess, 8> errors;
+  errors.resize(normalizedKeys.size());
+
+  AsyncRT::WorkQueue *workQueue = getRuntime().getWorkQueue();
+
+  for (auto deviceIdx : llvm::seq(normalizedKeys.size())) {
+    int taskId = AsyncRT::taskIdForDevice(static_cast<int>(deviceIdx),
+                                          workQueue->getParallelismLevel());
+
+    workQueue->addTask(
+        [&, deviceIdx]() {
+          const auto &deviceMap = perDeviceGraphs[deviceIdx];
+          auto it = deviceMap.find(normalizedKeys[deviceIdx]);
+          ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
+
+          const CapturedPerDeviceGraphEntry &entry = it->second;
+          if (ErrorOrSuccess err = entry.graph->replay())
+            errors[deviceIdx] = err.takeError();
+
+          if (--numElementsLeft == 0)
+            markReady();
+        },
+        /*taskId=*/taskId);
+  }
+
+  AsyncRT::await(readyChain);
+
+  for (ErrorOrSuccess &err : errors) {
+    if (err)
+      return err.takeError();
+  }
+
+  return success();
+}
+
 ErrorOrSuccess ExecutableModel::replay(
     ArrayRef<uint64_t> graphKeys,
     ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs) {
@@ -623,17 +672,7 @@ ErrorOrSuccess ExecutableModel::replay(
           validateCapturedPerDeviceEntries(normalizedKeys, inputSignatures))
     return err.takeError();
 
-  for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx) {
-    const auto &deviceMap = perDeviceGraphs[deviceIdx];
-    auto it = deviceMap.find(normalizedKeys[deviceIdx]);
-    ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
-
-    const CapturedPerDeviceGraphEntry &entry = it->second;
-    if (ErrorOrSuccess err = entry.graph->replay())
-      return err.takeError();
-  }
-
-  return success();
+  return launchDeviceGraphs(normalizedKeys);
 }
 
 ErrorOrSuccess ExecutableModel::debugVerifyReplay(
