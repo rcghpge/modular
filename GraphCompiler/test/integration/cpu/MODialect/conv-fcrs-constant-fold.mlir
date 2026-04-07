@@ -12,7 +12,9 @@ mo.graph @conv(%input : !mo.tensor<[1, 5, 5, 3], f32>) -> (!mo.tensor<[1, 3, 3, 
   %pa = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %ng = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   // FCRS filter: [1 out_channel, 3 in_channels, 3 height, 3 width], all 2.0
-  %filter = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0> : tensor<f32>} : () -> !mo.tensor<[1, 3, 3, 3], f32, {layout = #mo.layout<FCRS>}>
+  // Use a fully-materialized constant (not a splat) so the constant fold pass
+  // can correctly execute the transpose and packing kernels on the buffer.
+  %filter = "mo.constant"() {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0> : tensor<1x3x3x3xf32>} : () -> !mo.tensor<[1, 3, 3, 3], f32, {layout = #mo.layout<FCRS>}>
   %output = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
     !mo.tensor<[1, 5, 5, 3], f32>, !mo.tensor<[1, 3, 3, 3], f32, {layout = #mo.layout<FCRS>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 3, 3, 1], f32>
