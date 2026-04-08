@@ -33,6 +33,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include <cstdlib>
 #include <future>
 
 using namespace M;
@@ -1409,6 +1410,117 @@ static SmallVector<StringRef, 4> collectSourceNotes(Location rootLoc) {
       worklist.push_back(subLoc);
   }
   return notes;
+}
+
+/// Parse a single Python traceback frame line of the form:
+///   File "path/to/file.py", line 42, in func_name
+/// into a compact "last/components.py:42:func_name" representation, keeping
+/// only the trailing `numComponents` path segments.
+static std::string compactFrame(StringRef frameLine,
+                                unsigned numComponents = 3) {
+  // Expected format: `  File "<path>", line <N>, in <func>`
+  auto filePos = frameLine.find("File \"");
+  if (filePos == StringRef::npos)
+    return "";
+  StringRef afterFile = frameLine.substr(filePos + 6); // skip `File "`
+  auto quoteEnd = afterFile.find('"');
+  if (quoteEnd == StringRef::npos)
+    return "";
+  StringRef fullPath = afterFile.substr(0, quoteEnd);
+  StringRef rest = afterFile.substr(quoteEnd + 1); // after closing quote
+
+  // Extract line number: `, line <N>`
+  auto linePos = rest.find("line ");
+  StringRef lineNo;
+  if (linePos != StringRef::npos) {
+    StringRef afterLine = rest.substr(linePos + 5);
+    lineNo = afterLine.take_while([](char c) { return c >= '0' && c <= '9'; });
+  }
+
+  // Extract function name: `, in <func>`
+  StringRef func;
+  auto inPos = rest.find(", in ");
+  if (inPos != StringRef::npos) {
+    func = rest.substr(inPos + 5).trim();
+  }
+
+  // Keep only the last N path components.
+  SmallVector<StringRef, 8> components;
+  fullPath.split(components, '/');
+  unsigned start =
+      components.size() > numComponents ? components.size() - numComponents : 0;
+  std::string shortPath;
+  llvm::raw_string_ostream pathOs(shortPath);
+  for (unsigned i = start; i < components.size(); ++i) {
+    if (i > start)
+      pathOs << '/';
+    pathOs << components[i];
+  }
+
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << shortPath;
+  if (!lineNo.empty())
+    os << ':' << lineNo;
+  if (!func.empty())
+    os << ':' << func;
+  return result;
+}
+
+/// Return the maximum number of Python stack frames to include in NVTX trace
+/// detail strings. Configurable via MODULAR_TRACE_MAX_FRAMES (default 10).
+static unsigned getTraceMaxFrames() {
+  static unsigned cached = [] {
+    if (const char *env = std::getenv("MODULAR_TRACE_MAX_FRAMES")) {
+      int val = std::atoi(env);
+      if (val > 0)
+        return static_cast<unsigned>(val);
+    }
+    return 10u;
+  }();
+  return cached;
+}
+
+/// Collect compact source notes for NVTX trace detail strings. Delegates to
+/// collectSourceNotes for the FusedLoc tree walk, then reformats each trace
+/// to show only the bottom N frames in compact `path:line:func` form.
+/// N is controlled by MODULAR_TRACE_MAX_FRAMES (default 10). Source detail is
+/// non-empty only when MODULAR_MAX_DEBUG=1 was set at graph construction time.
+static std::string collectCompactSourceNotes(Location rootLoc) {
+  unsigned maxFrames = getTraceMaxFrames();
+  auto notes = collectSourceNotes(rootLoc);
+  if (notes.empty())
+    return "";
+
+  std::string result;
+  llvm::raw_string_ostream os(result);
+
+  for (auto note : notes) {
+    // Parse all frames from the traceback, then take the bottom N.
+    SmallVector<std::string, 8> frames;
+    StringRef remaining = note;
+    while (!remaining.empty()) {
+      auto [line, rest] = remaining.split('\n');
+      if (line.contains("File \""))
+        if (auto compact = compactFrame(line); !compact.empty())
+          frames.push_back(std::move(compact));
+      remaining = rest;
+    }
+
+    unsigned start = frames.size() > maxFrames ? frames.size() - maxFrames : 0;
+    for (unsigned i = start; i < frames.size(); ++i) {
+      if (i > start)
+        os << '\n';
+      os << frames[i];
+    }
+    if (!frames.empty())
+      os << '\n';
+  }
+
+  if (notes.size() > 1)
+    os << "[fused from " << notes.size() << " ops]";
+
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3107,6 +3219,10 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
   std::string traceName =
       kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false);
 
+  // Build compact source traceback from FusedLoc metadata set by
+  // AttachPythonStackTraces, to surface Python call sites in NVTX markers.
+  std::string sourceDetail = collectCompactSourceNotes(kernelStubOp.getLoc());
+
   // Find the context argument (if present) to include task_id in Trace.
   MojoValue contextMojoArg;
   for (auto mlirArg : kernelStubOp.getBody().getArguments()) {
@@ -3117,13 +3233,15 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
   }
 
   // Build: Trace[TraceLevel.OP, target=StaticString("device")]("name"[,
-  // task_id=...])
+  // detail=..., task_id=...])
   SmallVector<MojoValue> traceParams = {
       MojoValue(HardcodedMojoSymbols::enum_TraceLevel_OP),
       MojoValue("target").equal(
           MojoValue(HardcodedMojoSymbols::struct_StaticString)(
               {}, {MojoValue(deviceLabel).quote()}))};
   SmallVector<MojoValue> traceOperands = {MojoValue(traceName).quote()};
+  if (!sourceDetail.empty())
+    traceOperands.push_back(MojoValue("\n" + sourceDetail).quote());
   if (!contextMojoArg.text.empty())
     traceOperands.push_back(MojoValue("task_id").equal(MojoValue(
         HardcodedMojoSymbols::func_get_safe_task_id)({}, {contextMojoArg})));
