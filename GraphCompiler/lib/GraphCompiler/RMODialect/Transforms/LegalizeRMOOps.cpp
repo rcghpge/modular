@@ -1098,7 +1098,7 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
   LogicalResult matchAndRewrite(RMO::SliceOp op,
                                 PatternRewriter &rewriter) const override {
     // Note that rmo.slice has special restrictions compared to mo.slice:
-    // - Requires start, stop to be in [-dim, dim) so that there is no clamping.
+    // - Requires start to be in [-dim, dim) and stop in [-dim, dim].
     // - Requires steps to be a statically known positive integer.
     // These are to simplify rmo.slice's shape function, reducing bloat in
     // algebraic dims computed in the rmo.slice type.
@@ -1152,12 +1152,15 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
         createAssert(b, op, stop >= 0,
                      "[rmo.slice] requires positive stop when symbolic");
 
-      // Restrict start/stop to within [-dim, dim).
+      // Restrict start to [-dim, dim) and stop to [-dim, dim].
+      // Stop uses an inclusive upper bound because stop=dim is the
+      // natural exclusive end-of-dimension value (e.g. selecting the
+      // last element produces stop = dim-1+1 = dim).
       Var dim = b.createVar(inputShape[axis]);
       createAssert(b, op, start >= -dim && start < dim,
                    "[rmo.slice] requires start in [-dim, dim)");
-      createAssert(b, op, stop >= -dim && stop < dim,
-                   "[rmo.slice] requires stop in [-dim, dim)");
+      createAssert(b, op, stop >= -dim && stop <= dim,
+                   "[rmo.slice] requires stop in [-dim, dim]");
     }
 
     // Create the mo.slice op.
