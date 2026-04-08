@@ -206,6 +206,12 @@ void CallGraph::doRewrite(CallGraphNode *node) {
     }
 
     if (replacementCallee != callee->func) {
+      // Merge locations so source notes from all merged stubs survive.
+      // This preserves Python call site metadata for error messages and
+      // NVTX trace detail strings.
+      replacementCallee->setLoc(mlir::FusedLoc::get(
+          caller->getContext(),
+          {replacementCallee->getLoc(), callee->func->getLoc()}));
       caller.setNameAttr(FlatSymbolRefAttr::get(
           caller->getContext(), replacementCallee.getSymName()));
     }
@@ -222,6 +228,11 @@ void CallGraph::doRewrite(CallGraphNode *node) {
     replacementCallee =
         uniqueFuncSet.insert(KernelStubHashEntry{node->func, node->hash})
             .first->op;
+    if (replacementCallee != node->func) {
+      replacementCallee->setLoc(mlir::FusedLoc::get(
+          node->func->getContext(),
+          {replacementCallee->getLoc(), node->func->getLoc()}));
+    }
     reverseReplacements[replacementCallee.getSymNameAttr()].emplace_back(
         node->func.getSymNameAttr());
     topLevelReplacements[node->func.getSymNameAttr()] =
