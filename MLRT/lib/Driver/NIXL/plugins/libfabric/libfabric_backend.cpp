@@ -996,9 +996,11 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     NIXL_DEBUG << "Processing descriptor " << desc_idx << " GPU " << gpu_id
                << " addr: " << transfer_addr << " size: " << transfer_size;
 
-    // Prepare and submit transfer
+    // Prepare and submit transfer (use per-descriptor remote address, not
+    // the metadata base address, so each descriptor targets the correct
+    // offset within the remote buffer).
     nixl_status_t status = rail_manager->prepareAndSubmitTransfer(
-        op_type, transfer_addr, transfer_size, remote_md->remote_buf_addr_,
+        op_type, transfer_addr, transfer_size, remote[desc_idx].addr,
         local_md->selected_rails_, local_md->rail_mr_list_,
         remote_md->rail_remote_key_list_,
         conn_it->second->rail_remote_addr_list_, conn_it->second->agent_index_,
