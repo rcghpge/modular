@@ -14,8 +14,6 @@
 #define M_DRIVER_STATUS_UNINITIALIZED (M_DRIVER_STATUS_CUSTOM_CODES_BASE - 1)
 #define M_DRIVER_NUM_CUSTOM_STATUS_CODES 2
 
-extern const char *customStatusMessages[M_DRIVER_NUM_CUSTOM_STATUS_CODES];
-
 template <class T>
 using DriverResult = tl::expected<T, M_driver_status_t>;
 

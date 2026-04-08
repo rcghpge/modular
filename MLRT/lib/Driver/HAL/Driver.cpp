@@ -16,8 +16,8 @@ namespace M::Driver::HAL {
 
 StringRef Driver::getStatusMessage(M_driver_status_t status) {
   static thread_local char errorMessage[1024];
-  if (plugin.status_message(status, errorMessage, sizeof(errorMessage)) !=
-      M_DRIVER_STATUS_SUCCESS)
+  if (plugin.status_message(handle, status, errorMessage,
+                            sizeof(errorMessage)) != M_DRIVER_STATUS_SUCCESS)
     return "(problem retrieving status message)";
   return llvm::StringRef(errorMessage);
 }

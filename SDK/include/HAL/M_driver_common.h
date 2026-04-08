@@ -139,12 +139,13 @@ typedef struct M_driver_function *M_driver_function_t;
  *           (ephemeral) custom status code.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_status_message(M_driver_status_t status,
+M_driver_status_t M_driver_status_message(M_driver_driver_t driver,
+                                          M_driver_status_t status,
                                           char *message_buffer,
                                           int64_t message_buffer_size);
 
 typedef M_driver_status_t (*M_driver_status_message_func_ptr_t)(
-    M_driver_status_t status, char *message_buffer,
+    M_driver_driver_t driver, M_driver_status_t status, char *message_buffer,
     int64_t message_buffer_size);
 
 /// A borrowed span of bytes.

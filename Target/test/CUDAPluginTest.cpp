@@ -102,16 +102,16 @@ $L__BB0_2:
 TEST_F(DriverPluginTest, CustomStatusMessage) {
   char errorMessage[1024];
   ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
-            this->status_message(M_DRIVER_STATUS_UNIMPLEMENTED, errorMessage,
-                                 sizeof(errorMessage)));
+            this->status_message(driver, M_DRIVER_STATUS_UNIMPLEMENTED,
+                                 errorMessage, sizeof(errorMessage)));
   ASSERT_STREQ(errorMessage, "Unimplemented");
   ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
-            this->status_message(M_DRIVER_STATUS_BAD_BUNDLE, errorMessage,
-                                 sizeof(errorMessage)));
+            this->status_message(driver, M_DRIVER_STATUS_BAD_BUNDLE,
+                                 errorMessage, sizeof(errorMessage)));
   ASSERT_STREQ(errorMessage, "Bad bundle");
   ASSERT_EQ(M_DRIVER_STATUS_SUCCESS,
-            this->status_message(M_DRIVER_STATUS_BAD_FUNCTION, errorMessage,
-                                 sizeof(errorMessage)));
+            this->status_message(driver, M_DRIVER_STATUS_BAD_FUNCTION,
+                                 errorMessage, sizeof(errorMessage)));
   ASSERT_STREQ(errorMessage, "Bad function");
 }
 

@@ -11,8 +11,10 @@
 #include "MetalCpp.h"
 
 struct M_driver_device {
-  explicit M_driver_device(MTL::Device *mDevice) : mDevice(mDevice) {}
+  explicit M_driver_device(M_driver_driver_t driver, MTL::Device *mDevice)
+      : driver(driver), mDevice(mDevice) {}
 
+  M_driver_driver_t driver;
   MTL::Device *mDevice;
 };
 

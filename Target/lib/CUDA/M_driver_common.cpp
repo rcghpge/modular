@@ -9,9 +9,10 @@
 #include "Target/lib/Support/StandardStatus.h"
 #include "Target/lib/Support/Utils.h"
 
-M_driver_status_t M_driver_status_message(M_driver_status_t status,
-                                          char *message_buffer,
-                                          int64_t message_buffer_size) {
+M_driver_status_t
+M_driver_status_message([[maybe_unused]] M_driver_driver_t driver,
+                        M_driver_status_t status, char *message_buffer,
+                        int64_t message_buffer_size) {
   if (message_buffer_size <= 0) {
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
   }

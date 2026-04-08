@@ -103,8 +103,8 @@ struct DriverPluginTest : ::testing::Test {
 
   std::string getStatusMessage(M_driver_status_t status) {
     char errorMessage[1024];
-    M_driver_status_t msgStatus =
-        this->status_message(status, errorMessage, sizeof(errorMessage));
+    M_driver_status_t msgStatus = this->status_message(
+        driver, status, errorMessage, sizeof(errorMessage));
     if (msgStatus != M_DRIVER_STATUS_SUCCESS)
       return std::string("Failed to get status message");
     return std::string(errorMessage);

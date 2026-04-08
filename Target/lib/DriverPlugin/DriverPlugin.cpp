@@ -134,7 +134,8 @@ void DriverImpl::reset_() {
     M_driver_status_t status = obj->api(__VA_ARGS__);                          \
     if (status != M_DRIVER_STATUS_SUCCESS) {                                   \
       char message[1024];                                                      \
-      (void)obj->status_message(status, message, sizeof(message));             \
+      (void)obj->status_message(driverHandle_, status, message,                \
+                                sizeof(message));                              \
       return Error(std::string("Failed ") + activity +                         \
                    ": Driver plugin failed " + std::string(#api) + "() on " +  \
                    obj->soPath_);                                              \
@@ -214,7 +215,8 @@ ErrorOr<int64_t> Driver::Create(std::string const &soPath) {
     if (status != M_DRIVER_STATUS_SUCCESS &&
         status != M_DRIVER_STATUS_NO_DEVICES) {
       char message[1024];
-      (void)impl->status_message(status, message, sizeof(message));
+      (void)impl->status_message(impl->driverHandle_, status, message,
+                                 sizeof(message));
       impl->reset_();
       return Error(std::string("Failed initialization: Driver plugin failed "
                                "create() on ") +

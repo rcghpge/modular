@@ -23,7 +23,7 @@ M_driver_driver_t M_driver_driver::create() {
   driver->devices.reserve(mDevices->count());
   for (NS::UInteger i = 0; i < mDevices->count(); i++) {
     driver->devices.emplace_back(
-        static_cast<MTL::Device *>(mDevices->object(i)));
+        driver.get(), static_cast<MTL::Device *>(mDevices->object(i)));
   }
 
   return driver.release();
