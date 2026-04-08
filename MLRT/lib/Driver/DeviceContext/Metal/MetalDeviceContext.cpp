@@ -1245,7 +1245,14 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
   std::string name = device->name()->cString(NS::UTF8StringEncoding);
 
   DEFINE_OR_RETURN_ERROR(int, cc, getComputeCapability(name));
-  return std::to_string(cc);
+  std::string archName = std::to_string(cc);
+  if (device->supportsFamily(MTL::GPUFamilyMetal4)) {
+    // Prefer to use latest supported Metal version by default.
+    // TODO: this might not be sufficient and may also need to check xcode's
+    // version.
+    archName += "-metal4";
+  }
+  return archName;
 }
 
 MTL::LogState *MetalDeviceContext::getOrCreateLogState(bool enable) {
