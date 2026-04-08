@@ -607,38 +607,18 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
   if (normalizedKeys.empty())
     return success();
 
-  std::atomic<size_t> numElementsLeft = normalizedKeys.size();
+  SmallVector<ErrorOrSuccess, 8> errors(normalizedKeys.size());
 
-  auto readyChain = AsyncValueRef<Chain>::allocate(runtime);
+  auto readyChain = AsyncRT::launchDeviceCollective(
+      runtime, normalizedKeys.size(), [&](size_t deviceIdx) {
+        const auto &deviceMap = perDeviceGraphs[deviceIdx];
+        auto it = deviceMap.find(normalizedKeys[deviceIdx]);
+        ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
 
-  auto markReady = [readyChain = readyChain.copy()]() mutable {
-    std::move(readyChain).emplace();
-  };
-
-  SmallVector<ErrorOrSuccess, 8> errors;
-  errors.resize(normalizedKeys.size());
-
-  AsyncRT::WorkQueue *workQueue = getRuntime().getWorkQueue();
-
-  for (auto deviceIdx : llvm::seq(normalizedKeys.size())) {
-    int taskId = AsyncRT::taskIdForDevice(static_cast<int>(deviceIdx),
-                                          workQueue->getParallelismLevel());
-
-    workQueue->addTask(
-        [&, deviceIdx]() {
-          const auto &deviceMap = perDeviceGraphs[deviceIdx];
-          auto it = deviceMap.find(normalizedKeys[deviceIdx]);
-          ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
-
-          const CapturedPerDeviceGraphEntry &entry = it->second;
-          if (ErrorOrSuccess err = entry.graph->replay())
-            errors[deviceIdx] = err.takeError();
-
-          if (--numElementsLeft == 0)
-            markReady();
-        },
-        /*taskId=*/taskId);
-  }
+        const CapturedPerDeviceGraphEntry &entry = it->second;
+        if (ErrorOrSuccess err = entry.graph->replay())
+          errors[deviceIdx] = err.takeError();
+      });
 
   AsyncRT::await(readyChain);
 

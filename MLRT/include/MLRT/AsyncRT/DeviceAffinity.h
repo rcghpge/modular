@@ -12,6 +12,8 @@
 #ifndef MLRT_ASYNCRT_DEVICEAFFINITY_H
 #define MLRT_ASYNCRT_DEVICEAFFINITY_H
 
+#include "MLRT/AsyncRT/Runtime/Algorithms.h"
+
 #include <cstddef>
 
 namespace M::AsyncRT {
@@ -26,6 +28,24 @@ namespace M::AsyncRT {
 ///
 /// Returns kDefaultTaskId (-1) when numWorkers <= 1.
 int taskIdForDevice(int deviceId, size_t numWorkers);
+
+/// Like parallelForEachNChainWithTaskIds, but automatically pins each element
+/// to the worker thread with affinity for device `elementIdx`, using
+/// taskIdForDevice to compute the thread assignment from the runtime's work
+/// queue parallelism level.
+template <typename... CaptureTys, typename ElementFn>
+static inline AsyncValueRef<Chain>
+launchDeviceCollective(Runtime &runtime, size_t totalCount,
+                       ElementFn &&elementFn, CaptureTys &&...captures) {
+  WorkQueue *workQueue = runtime.getWorkQueue();
+  auto taskIdFn = [workQueue](size_t deviceIdx) {
+    return taskIdForDevice(static_cast<int>(deviceIdx),
+                           workQueue->getParallelismLevel());
+  };
+  return parallelForEachNChainWithTaskIds(
+      runtime, totalCount, taskIdFn, std::forward<ElementFn>(elementFn),
+      std::forward<CaptureTys>(captures)...);
+}
 
 } // namespace M::AsyncRT
 
