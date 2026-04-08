@@ -766,7 +766,8 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   //   input_channels]
   // - filter has layout [...spatial_dims..., filter_channels, output_channels]
   bool isNCHW = inputLayoutAttr == "NCHW";
-  bool isFCRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "FCRS";
+  bool isFCRS = filterLayoutAttr && (filterLayoutAttr.getFormat() == "FCRS" ||
+                                     filterLayoutAttr.getFormat() == "FCQRS");
   size_t filterChannelIdx = isFCRS ? 1 : inputRank - 2;
   size_t outputChannelIdx = isFCRS ? 0 : inputRank - 1;
   size_t inputChannelIdx = isNCHW ? 1 : inputRank - 1;
