@@ -221,6 +221,8 @@ TEST(DeviceContextTest, SubBuffer) {
   // Copy base buffer back to host memory.
   EXPECT_NO_ERR(bBuf->copyTo(dPtr));
 
+  EXPECT_NO_ERR(ctx->synchronize());
+
   uint32_t *dIntPtr = reinterpret_cast<uint32_t *>(dPtr);
   uint32_t expectedVals[] = {0x80000000, 0x3f800000, 0xc0000000};
   for (int i = 0; i < (subAllocLen); ++i) {
@@ -319,6 +321,9 @@ TEST(DeviceContextTest, SetMemoryAlignmentCheck) {
   EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 12, 0, 4));
   EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 8, 0, 8));
   EXPECT_NO_ERR(ctx->enqueueSetMemory(scratch, 24, 0, 8));
+
+  // Wait for all async work to complete before scratch goes out of scope.
+  EXPECT_NO_ERR(ctx->synchronize());
 
   // Sizes that are NOT multiples of valSize should fail.
   EXPECT_ERR_MSG(ctx->enqueueSetMemory(scratch, 3, 0, 2), "misaligned");

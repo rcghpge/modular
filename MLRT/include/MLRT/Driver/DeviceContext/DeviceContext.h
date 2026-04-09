@@ -17,6 +17,7 @@
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
 #include "Support/LLVMForwardDecls.h"
+#include "Support/LogicalResult.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
 
@@ -896,7 +897,7 @@ private:
   // missing an update to hasPendingError_ from a different thread.
   std::atomic<int> hasPendingError_ = {0};
   std::mutex pendingErrorMutex_;
-  ErrorOrSuccess pendingError_;
+  ErrorOrSuccess pendingError_ = success();
 
   // hasPendingWork_ indicates whether pendingWork_ should be checked.
   // pendingWorkMutex_ protects pendingEvents_ and pendingEventsLast_.

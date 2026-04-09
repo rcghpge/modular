@@ -1247,10 +1247,20 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
   if ((srcByteOffset + srcByteSize) < dst.byteSize())
     RETURN_ERROR("not enough data in src");
 
+  // Treat host memory and memory owned by a CPU device context as DtoH
+  // or HtoD. If the host memory is owned by a CPU device context,
+  // synchronize to avoid conflicts with pending events (we cannot wait on
+  // events between different device types).
   if (src.isHost() || (srcApi == Device::cpuAPI)) {
+    if (srcApi == Device::cpuAPI && dstApi != Device::cpuAPI)
+      RETURN_IF_ERROR(src.context().synchronize());
+
     return dst.context().enqueueCopyToDevice(
         dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (dst.isHost() || (dstApi == Device::cpuAPI)) {
+    if (dstApi == Device::cpuAPI && srcApi != Device::cpuAPI)
+      RETURN_IF_ERROR(dst.context().synchronize());
+
     return src.context().enqueueCopyFromDevice(
         dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (srcApi == dstApi) {

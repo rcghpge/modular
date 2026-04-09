@@ -10,7 +10,11 @@
 
 #include "CpuDeviceContext.h"
 
+#include "MLRT/AsyncRT/Runtime/Algorithms.h"
+#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/Globals/Globals.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
+#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
@@ -195,10 +199,37 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
   return static_cast<const CpuDeviceTimer &>(timer);
 }
 
+// ===== CpuDeviceEvent ===== //
+CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device, AsyncRT::RuntimeRef runtime,
+                               AsyncRT::AnyAsyncValueRef value)
+    : DeviceEvent(device), runtime(std::move(runtime)),
+      value(std::move(value)) {}
+
+ErrorOrSuccess CpuDeviceEvent::synchronize() {
+  runtime->getWorkQueue()->await({&value, 1});
+  return success();
+}
+
+ErrorOr<bool> CpuDeviceEvent::isReady() const { return value.isReady(); }
+
 //
 // ===== CpuDeviceContext === //
 //
-CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {}
+CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {
+  // Get or create the runtime - if it exists already use the existing options,
+  // but assert that mainWillDonate is disabled.
+  runtime = AsyncRT::getOrCreateRuntime(
+      AsyncRT::RuntimeSource::CPUDeviceContext,
+      AsyncRT::getDefaultOrExistingRuntimeOptions().withMainWillNotDonate());
+
+  streamChain = runtime->getReadyChain().copy();
+}
+
+CpuDeviceContext::~CpuDeviceContext() {
+  // Wait for pending work to finish
+  if (!streamChain.isReady())
+    runtime->getWorkQueue()->await({&streamChain, 1});
+}
 
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) {
@@ -213,18 +244,38 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
 
 ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
-  M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
-  return success();
+  if (isHost) {
+    M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
+    return success();
+  }
+  return enqueueWork([=]() { M::AsyncRT::TCMallocGlobals::tc_delete(ptr); });
 }
 
 void *CpuDeviceContext::driverContext() const { return nullptr; }
+
+// Enqueue work with stream-like semantics. Keep a chain to the last enqueued
+// function so the next task can await it.
+// Returns any pending error from previously enqueued async work.
+ErrorOrSuccess CpuDeviceContext::enqueueWork(AsyncRT::TaskFunction &&work) {
+  RETURN_IF_PENDING_ERROR(*this);
+
+  auto eventChain = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*runtime);
+
+  std::lock_guard<std::mutex> streamLock{streamChainMutex};
+  streamChain.andThenAsync(
+      [work = std::move(work), eventChain = eventChain.copy()]() mutable {
+        work();
+        std::move(eventChain).emplace();
+      });
+  streamChain = std::move(eventChain);
+  return success();
+}
 
 ErrorOrSuccess CpuDeviceContext::enqueueCopyToDevice(void *dst, const void *src,
                                                      size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
-  memcpy(dst, src, byteSize);
-  return success();
+  return enqueueWork([=]() { memcpy(dst, src, byteSize); });
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueCopyFromDevice(void *dst,
@@ -232,8 +283,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueCopyFromDevice(void *dst,
                                                        size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
-  memcpy(dst, src, byteSize);
-  return success();
+  return enqueueWork([=]() { memcpy(dst, src, byteSize); });
 }
 
 ErrorOrSuccess CpuDeviceContext::memCopyDtoD(DeviceBuffer &dst,
@@ -245,10 +295,10 @@ ErrorOrSuccess CpuDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   CHECK_IS_CPU_ERR(dst.context().device());
   void *srcPtr = (uint8_t *)src.ptr() + srcByteOffset;
   void *dstPtr = dst.ptr();
+  size_t size = dst.byteSize();
   assert(srcByteOffset + srcByteSize <= src.byteSize());
   assert(srcByteSize == dst.byteSize());
-  memcpy(dstPtr, srcPtr, dst.byteSize());
-  return success();
+  return enqueueWork([=]() { memcpy(dstPtr, srcPtr, size); });
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
@@ -263,29 +313,37 @@ ErrorOrSuccess CpuDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   if (valSize != 1 && (byteSize & (valSize - 1)))
     return Error("byteSize of buffer is misaligned");
 
-  size_t len = byteSize / valSize;
-
-  switch (valSize) {
-  case 1: {
-    uint8_t u8Val = static_cast<uint8_t>(val);
-    return M::fillHomogeneous(dst, len, DType::ui8, &u8Val);
-  }
-  case 2: {
-    uint16_t ui16Val = static_cast<uint16_t>(val);
-    return M::fillHomogeneous(dst, len, DType::ui16, &ui16Val);
-  }
-  case 4: {
-    uint32_t ui32Val = static_cast<uint32_t>(val);
-    return M::fillHomogeneous(dst, len, DType::ui32, &ui32Val);
-  }
-  case 8: {
-    uint64_t ui64Val = static_cast<uint64_t>(val);
-    return M::fillHomogeneous(dst, len, DType::ui64, &ui64Val);
-  }
-  default:
-    llvm_unreachable("unsupported val size");
-    return Error("unsupported val size");
-  }
+  return enqueueWork([this, dst, byteSize, val, valSize]() {
+    size_t len = byteSize / valSize;
+    switch (valSize) {
+    case 1: {
+      uint8_t u8Val = static_cast<uint8_t>(val);
+      RECORD_PENDING_ERROR(*this,
+                           M::fillHomogeneous(dst, len, DType::ui8, &u8Val));
+      break;
+    }
+    case 2: {
+      uint16_t ui16Val = static_cast<uint16_t>(val);
+      RECORD_PENDING_ERROR(*this,
+                           M::fillHomogeneous(dst, len, DType::ui16, &ui16Val));
+      break;
+    }
+    case 4: {
+      uint32_t ui32Val = static_cast<uint32_t>(val);
+      RECORD_PENDING_ERROR(*this,
+                           M::fillHomogeneous(dst, len, DType::ui32, &ui32Val));
+      break;
+    }
+    case 8: {
+      uint64_t ui64Val = static_cast<uint64_t>(val);
+      RECORD_PENDING_ERROR(*this,
+                           M::fillHomogeneous(dst, len, DType::ui64, &ui64Val));
+      break;
+    }
+    default:
+      llvm_unreachable("unsupported val size");
+    }
+  });
 }
 
 DeviceContext::MMapFileImplResult
@@ -361,33 +419,72 @@ CpuDeviceContext::createExternalStream(void *externalStream) {
 
 ErrorOrSuccess CpuDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::synchronize", TRACY_COLOR_PURPLE);
-  // Currently we do not schedule asynchronous work.
-  return success();
+  RETURN_IF_PENDING_ERROR(*this);
+  AsyncRT::AnyAsyncValueRef head;
+  {
+    std::lock_guard<std::mutex> streamLock{streamChainMutex};
+    head = streamChain.copy();
+  }
+  runtime->getWorkQueue()->await({&head, 1});
+  RETURN_IF_ERROR(pollPendingEvents());
+  return checkPendingError();
 }
 
 ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented");
+  std::lock_guard<std::mutex> streamLock{streamChainMutex};
+  return CpuDeviceEventRef::create(static_cast<CpuDevice &>(device()), runtime,
+                                   streamChain.copy());
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented");
+  auto &cpuEvent =
+      const_cast<CpuDeviceEvent &>(static_cast<const CpuDeviceEvent &>(event));
+  std::lock_guard<std::mutex> streamLock{streamChainMutex};
+  cpuEvent.asyncValue() = streamChain.copy();
+  return success();
 }
 
 ErrorOr<DeviceEventRef> CpuDeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented");
+  return CpuDeviceEventRef::create(static_cast<CpuDevice &>(device()), runtime,
+                                   runtime->getReadyChain().copy());
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented");
+  RETURN_IF_PENDING_ERROR(*this);
+
+  auto &cpuEvent = static_cast<CpuDeviceEvent &>(event);
+  auto eventChain = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*runtime);
+
+  std::lock_guard<std::mutex> streamLock{streamChainMutex};
+  AsyncRT::andThenAsync(
+      std::make_tuple(streamChain.copy(), cpuEvent.asyncValue().copy()),
+      [eventChain = eventChain.copy()](auto, auto) mutable {
+        std::move(eventChain).emplace();
+      });
+  streamChain = std::move(eventChain);
+  return success();
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueWaitFor", TRACY_COLOR_PURPLE);
-  RETURN_ERROR("Unimplemented");
+  RETURN_IF_PENDING_ERROR(*this);
+
+  auto &other = static_cast<CpuDeviceContext &>(ctx);
+  auto eventChain = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*runtime);
+
+  std::scoped_lock<std::mutex, std::mutex> lock{streamChainMutex,
+                                                other.streamChainMutex};
+  AsyncRT::andThenAsync(
+      std::make_tuple(streamChain.copy(), other.streamChain.copy()),
+      [eventChain = eventChain.copy()](auto, auto) mutable {
+        std::move(eventChain).emplace();
+      });
+  streamChain = std::move(eventChain);
+  return success();
 }
 
 ErrorOrSuccess CpuDeviceContext::occupancyMaxActiveBlocksPerMultiprocessor(

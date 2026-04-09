@@ -11,23 +11,29 @@
 #ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_CPU_CPUDEVICECONTEXT_H
 
+#include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/RCRef.h"
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <stddef.h>
 
 namespace M::Driver {
 
 class CpuDevice;
 class CpuDeviceContext;
+class CpuDeviceEvent;
 class CpuDeviceStream;
 class CpuDeviceTimer;
 
 using CpuDeviceRef = RCRef<CpuDevice>;
 using CpuDeviceContextRef = RCRef<CpuDeviceContext>;
+using CpuDeviceEventRef = RCRef<CpuDeviceEvent>;
 using CpuDeviceStreamRef = RCRef<CpuDeviceStream>;
 using CpuDeviceTimerRef = RCRef<CpuDeviceTimer>;
 
@@ -106,10 +112,26 @@ private:
   const std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
+class CpuDeviceEvent : public DeviceEvent {
+public:
+  CpuDeviceEvent(CpuDevice &device, AsyncRT::RuntimeRef runtime,
+                 AsyncRT::AnyAsyncValueRef value);
+  ~CpuDeviceEvent() override = default;
+
+  ErrorOrSuccess synchronize() override;
+  ErrorOr<bool> isReady() const override;
+
+  AsyncRT::AnyAsyncValueRef &asyncValue() { return value; }
+
+private:
+  AsyncRT::RuntimeRef runtime;
+  AsyncRT::AnyAsyncValueRef value;
+};
+
 class CpuDeviceContext : public DeviceContext {
 public:
   explicit CpuDeviceContext(CpuDevice &device);
-  ~CpuDeviceContext() override = default;
+  ~CpuDeviceContext() override;
 
   // DeviceBuffer copies.
   ErrorOrSuccess enqueueCopyToDevice(void *dst, const void *src,
@@ -169,6 +191,15 @@ private:
 
   MMapFileImplResult
   memmapFileImpl(const std::filesystem::path &filename) const override;
+
+  ErrorOrSuccess enqueueWork(AsyncRT::TaskFunction &&work);
+
+  AsyncRT::RuntimeRef runtime;
+
+  // Contains the chain of the last enqueued operation, which may already have
+  // completed
+  AsyncRT::AnyAsyncValueRef streamChain;
+  std::mutex streamChainMutex{};
 };
 
 } // namespace M::Driver

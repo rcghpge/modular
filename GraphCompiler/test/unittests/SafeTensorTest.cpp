@@ -22,6 +22,8 @@ M::Driver::DeviceBufferRef getDeserializedBuffer(const char (&data)[N],
   assert(!buffer.isError());
   auto copyResult = (*buffer)->copyFrom(data);
   assert(!copyResult.isError());
+  auto syncResult = ctx->synchronize();
+  assert(!syncResult.isError());
   return *buffer;
 }
 
