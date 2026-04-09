@@ -331,7 +331,7 @@ M::MOGG::applySemanticNaming(ModuleOp module,
     if (auto ln = gen.getLinkageNameAttr()) {
       // We're only interested in looking up literal linkage names. Our symbols
       // will not refer to parametric ones, so skip them.
-      if (auto str = dyn_cast<StringAttr>(ln)) {
+      if (auto str = dyn_cast<StringAttr>(ln.getName())) {
         // Convert back from a !kgen.string-typed StringAttr to an untyped one,
         // so that symbol equality works.
         linkageNameToGen[StringAttr::get(module.getContext(), str.getValue())] =
