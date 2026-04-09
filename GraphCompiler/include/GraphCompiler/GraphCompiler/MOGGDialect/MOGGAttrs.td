@@ -157,7 +157,8 @@ def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
 
   let extraClassDeclaration = [{
     /// Flatten the fusion info tree to a string.
-    std::string toString(bool includeLineNumbers = false, bool quote = false) const;
+    std::string toString(bool includeLineNumbers = false, bool quote = false,
+                         bool stripDialectPrefixes = false) const;
 
     /// Return a multi-line, indented tree visualization of the fusion info.
     /// If \p highlightLeaves is non-empty, leaf nodes present in the set are

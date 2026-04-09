@@ -3217,7 +3217,9 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
   std::string deviceLabel =
       MO::getDeviceOrDefaultAny(kernelStubOp).getLabel().str();
   std::string traceName =
-      kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false);
+      kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false,
+                                                /*quote=*/false,
+                                                /*stripDialectPrefixes=*/true);
 
   // Build compact source traceback from FusedLoc metadata set by
   // AttachPythonStackTraces, to surface Python call sites in NVTX markers.

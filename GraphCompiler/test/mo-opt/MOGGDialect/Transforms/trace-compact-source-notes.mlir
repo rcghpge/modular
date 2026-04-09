@@ -9,14 +9,14 @@
 // generated code, to avoid coupling to unrelated pipeline changes.
 
 // --- Single short-path source note: leading \n separates from kernel name ---
-// CHECK: Trace[{{.*}}]("mo.relu", "\nmodel.py:10:forward\n"
+// CHECK: Trace[{{.*}}]("relu", "\nmodel.py:10:forward\n"
 
 // --- No source notes: no detail string between name and task_id ---
-// CHECK: Trace[{{.*}}]("mo.relu", task_id
+// CHECK: Trace[{{.*}}]("relu", task_id
 
 // --- Deep stack with long bazel paths: all frames shown (default 10),
 // ---   paths trimmed to last 3 components ---
-// CHECK: Trace[{{.*}}]("mo.relu", "\ngraph/ops/custom.py:173:inplace_custom
+// CHECK: Trace[{{.*}}]("relu", "\ngraph/ops/custom.py:173:inplace_custom
 // CHECK-SAME: nn/comm/allreduce.py:42:__call__
 // CHECK-SAME: architectures/deepseekV3/model.py:187:build_graph
 // CHECK-SAME: comm/ep/ep_manager.py:656:_build_ep_init_graph

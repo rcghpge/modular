@@ -46,13 +46,26 @@ FusionInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 
 namespace {
 
+// Strip the dialect prefix (e.g., "mo.add" -> "add") from an operation name
+// to make trace descriptions more readable.
+std::string stripDialectPrefix(StringRef opName) {
+  auto dotPos = opName.find('.');
+  if (dotPos != StringRef::npos)
+    return opName.substr(dotPos + 1).str();
+  return opName.str();
+}
+
 void nodeToString(Attribute node, llvm::raw_string_ostream &os,
-                  bool includeLineNumbers, bool quote) {
+                  bool includeLineNumbers, bool quote,
+                  bool stripDialectPrefixes) {
   llvm::TypeSwitch<Attribute>(node)
       .Case<FusionLeafAttr>([&](FusionLeafAttr leaf) {
         if (quote)
           os << '"';
-        llvm::printEscapedString(leaf.getOpName().getValue(), os);
+        std::string name = stripDialectPrefixes
+                               ? stripDialectPrefix(leaf.getOpName().getValue())
+                               : leaf.getOpName().getValue().str();
+        llvm::printEscapedString(name, os);
         if (quote)
           os << '"';
         if (includeLineNumbers)
@@ -64,14 +77,16 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
             FusionAffineAttr, FusionMutableLoadAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
-          nodeToString(child, os, includeLineNumbers, quote);
+          nodeToString(child, os, includeLineNumbers, quote,
+                       stripDialectPrefixes);
         });
         os << ')';
       })
       .Case<FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
-          nodeToString(child, os, includeLineNumbers, quote);
+          nodeToString(child, os, includeLineNumbers, quote,
+                       stripDialectPrefixes);
         });
         os << ", operandIndices=[";
         llvm::interleaveComma(attr.getOperandIndices(), os);
@@ -143,11 +158,11 @@ void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
 
 } // namespace
 
-std::string FusionInfoAttr::toString(bool includeLineNumbers,
-                                     bool quote) const {
+std::string FusionInfoAttr::toString(bool includeLineNumbers, bool quote,
+                                     bool stripDialectPrefixes) const {
   std::string result;
   llvm::raw_string_ostream os(result);
-  nodeToString(getRoot(), os, includeLineNumbers, quote);
+  nodeToString(getRoot(), os, includeLineNumbers, quote, stripDialectPrefixes);
   return result;
 }
 

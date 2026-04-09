@@ -3,8 +3,9 @@
 // Test that emitting Mojo wraps the body of raising kernels in a Trace context
 // manager using the fusion info string as the trace name.
 //
-// Fused relu+add produces fusion info Elementwise(mo.relu, mo.add).
-// CHECK: with std.runtime.tracing.Trace[std.runtime.tracing.TraceLevel.OP, target = StaticString("cpu")]("Elementwise(mo.relu, mo.add)"{{.*}}):
+// Fused relu+add produces fusion info Elementwise(relu, add) (dialect
+// prefixes are stripped from trace descriptions for readability).
+// CHECK: with std.runtime.tracing.Trace[std.runtime.tracing.TraceLevel.OP, target = StaticString("cpu")]("Elementwise(relu, add)"{{.*}}):
 
 mo.graph @simple_fusion(
     %x: !mo.tensor<[10], f32>,
