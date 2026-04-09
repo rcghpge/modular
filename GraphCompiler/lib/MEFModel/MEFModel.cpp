@@ -609,18 +609,26 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
 
   SmallVector<ErrorOrSuccess, 8> errors(normalizedKeys.size());
 
-  auto readyChain = AsyncRT::launchDeviceCollective(
-      runtime, normalizedKeys.size(), [&](size_t deviceIdx) {
-        const auto &deviceMap = perDeviceGraphs[deviceIdx];
-        auto it = deviceMap.find(normalizedKeys[deviceIdx]);
-        ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
+  auto launchGraph = [&](size_t deviceIdx) {
+    const auto &deviceMap = perDeviceGraphs[deviceIdx];
+    auto it = deviceMap.find(normalizedKeys[deviceIdx]);
+    ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
 
-        const CapturedPerDeviceGraphEntry &entry = it->second;
-        if (ErrorOrSuccess err = entry.graph->replay())
-          errors[deviceIdx] = err.takeError();
-      });
+    const CapturedPerDeviceGraphEntry &entry = it->second;
+    if (ErrorOrSuccess err = entry.graph->replay())
+      errors[deviceIdx] = err.takeError();
+  };
 
-  AsyncRT::await(readyChain);
+  // Directly execute the graph if there is only one to launch,
+  // otherwise use launchDeviceCollective to launch each per-device graph in
+  // parallel.
+  if (normalizedKeys.size() == 1) {
+    launchGraph(0);
+  } else {
+    auto readyChain = AsyncRT::launchDeviceCollective(
+        runtime, normalizedKeys.size(), std::move(launchGraph));
+    AsyncRT::await(readyChain);
+  }
 
   for (ErrorOrSuccess &err : errors) {
     if (err)
