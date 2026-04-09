@@ -117,16 +117,16 @@ TEST(SupportTest, StandardStatusMessagesKnownStrings) {
   EXPECT_STREQ(standardStatusMessages[3], "Argument out of range");
   EXPECT_STREQ(standardStatusMessages[4], "Unknown property name");
   EXPECT_STREQ(standardStatusMessages[5], "No devices");
-  EXPECT_STREQ(standardStatusMessages[6], "Bad device");
-  EXPECT_STREQ(standardStatusMessages[7], "Bad context");
-  EXPECT_STREQ(standardStatusMessages[8], "Bad memory");
-  EXPECT_STREQ(standardStatusMessages[9], "Bad queue");
-  EXPECT_STREQ(standardStatusMessages[10], "Bad event");
-  EXPECT_STREQ(standardStatusMessages[11], "Bad function");
-  EXPECT_STREQ(standardStatusMessages[12], "Out of memory");
-  EXPECT_STREQ(standardStatusMessages[13], "Invalid argument");
-  EXPECT_STREQ(standardStatusMessages[14], "Incompatible file type");
-  EXPECT_STREQ(standardStatusMessages[15], "Bad handle");
+  EXPECT_STREQ(standardStatusMessages[6], "Bad driver");
+  EXPECT_STREQ(standardStatusMessages[7], "Bad device");
+  EXPECT_STREQ(standardStatusMessages[8], "Bad context");
+  EXPECT_STREQ(standardStatusMessages[9], "Bad memory");
+  EXPECT_STREQ(standardStatusMessages[10], "Bad queue");
+  EXPECT_STREQ(standardStatusMessages[11], "Bad event");
+  EXPECT_STREQ(standardStatusMessages[12], "Bad function");
+  EXPECT_STREQ(standardStatusMessages[13], "Out of memory");
+  EXPECT_STREQ(standardStatusMessages[14], "Invalid argument");
+  EXPECT_STREQ(standardStatusMessages[15], "Incompatible file type");
   EXPECT_STREQ(standardStatusMessages[16], "Bad bundle");
 }
 

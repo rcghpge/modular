@@ -231,33 +231,33 @@ TEST_F(DriverPluginContextTest, EventCreateDestroyMultiple) {
 
 TEST_F(DriverPluginContextTest, EventNullContext) {
   M_driver_event_t event = nullptr;
-  ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE, event_create(nullptr, &event));
+  ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT, event_create(nullptr, &event));
 
-  ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE, event_destroy(nullptr, event));
+  ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT, event_destroy(nullptr, event));
 
-  ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE, event_synchronize(nullptr, event));
+  ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT, event_synchronize(nullptr, event));
 
   bool isReady = false;
-  ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE,
+  ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT,
             is_event_ready(nullptr, event, &isReady));
 }
 
 TEST_F(DriverPluginContextTest, EventDestroyNull) {
   for (M_driver_context_t ctx : contexts) {
-    ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE, event_destroy(ctx, nullptr));
+    ASSERT_EQ(M_DRIVER_STATUS_BAD_EVENT, event_destroy(ctx, nullptr));
   }
 }
 
 TEST_F(DriverPluginContextTest, EventSynchronizeNull) {
   for (M_driver_context_t ctx : contexts) {
-    ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE, event_synchronize(ctx, nullptr));
+    ASSERT_EQ(M_DRIVER_STATUS_BAD_EVENT, event_synchronize(ctx, nullptr));
   }
 }
 
 TEST_F(DriverPluginContextTest, EventIsReadyNull) {
   for (M_driver_context_t ctx : contexts) {
     bool isReady = false;
-    ASSERT_EQ(M_DRIVER_STATUS_BAD_HANDLE,
+    ASSERT_EQ(M_DRIVER_STATUS_BAD_EVENT,
               is_event_ready(ctx, nullptr, &isReady));
   }
 }

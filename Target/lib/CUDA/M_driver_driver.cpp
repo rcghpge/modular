@@ -26,7 +26,7 @@ M_driver_status_t M_driver_create(M_driver_version *version,
 
 M_driver_status_t M_driver_destroy(M_driver_driver_t handle) {
   if (handle == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_DRIVER;
   return M_driver_driver::destroy(handle);
 }
 

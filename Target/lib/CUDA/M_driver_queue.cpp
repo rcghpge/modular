@@ -56,15 +56,19 @@ M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
 
 M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
                                               M_driver_event_t event) {
-  if (queue == nullptr || event == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (event == nullptr)
+    return M_DRIVER_STATUS_BAD_EVENT;
   return queue->recordEvent(event);
 }
 
 M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
                                                 M_driver_event_t event) {
-  if (queue == nullptr || event == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (event == nullptr)
+    return M_DRIVER_STATUS_BAD_EVENT;
   return queue->waitForEvent(event);
 }
 
@@ -79,7 +83,7 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
                        M_driver_queue_execute_config_t *config, void **args,
                        uint64_t *arg_sizes, uint32_t num_args) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
   if (function == nullptr)
     return M_DRIVER_STATUS_BAD_FUNCTION;
   if (config == nullptr)

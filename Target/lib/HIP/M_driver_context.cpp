@@ -11,7 +11,7 @@
 M_driver_status_t M_driver_context_create(M_driver_device_t device,
                                           M_driver_context_t *context) {
   if (device == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_DEVICE;
   DriverResult<M_driver_context_t> result = M_driver_context::create(*device);
   if (!result)
     return result.error();
@@ -21,6 +21,6 @@ M_driver_status_t M_driver_context_create(M_driver_device_t device,
 
 M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
   if (context == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_CONTEXT;
   return M_driver_context::destroy(context);
 }

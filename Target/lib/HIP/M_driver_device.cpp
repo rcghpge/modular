@@ -13,7 +13,7 @@
 M_driver_status_t M_driver_device_count(M_driver_driver_t handle,
                                         int64_t *count) {
   if (handle == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_DEVICE;
   DriverResult<int64_t> result = handle->deviceCount();
   if (!result)
     return result.error();
@@ -25,7 +25,7 @@ M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
                                       int64_t device_id,
                                       M_driver_device_t *device) {
   if (driver == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_DEVICE;
   DriverResult<M_driver_device_t> result =
       M_driver_device::create(*driver, device_id);
   if (!result)
@@ -38,6 +38,6 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
                                            const char *property_name,
                                            void *value) {
   if (device == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_DEVICE;
   return device->property(property_name, value);
 }

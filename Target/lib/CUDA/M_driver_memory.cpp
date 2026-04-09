@@ -58,7 +58,7 @@ M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
                                               uint64_t size,
                                               M_driver_memory_t *memory) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
   if (memory == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
 
@@ -72,7 +72,7 @@ M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
 M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
                                              M_driver_memory_t memory) {
   if (queue == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_QUEUE;
   return queue->freeAsync(memory);
 }
 

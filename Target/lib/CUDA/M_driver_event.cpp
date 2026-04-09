@@ -11,7 +11,7 @@
 M_driver_status_t M_driver_event_create(M_driver_context_t context,
                                         M_driver_event_t *event) {
   if (context == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+    return M_DRIVER_STATUS_BAD_CONTEXT;
   DriverResult<M_driver_event_t> result = M_driver_event::create(*context);
   if (!result)
     return result.error();
@@ -21,22 +21,28 @@ M_driver_status_t M_driver_event_create(M_driver_context_t context,
 
 M_driver_status_t M_driver_event_destroy(M_driver_context_t context,
                                          M_driver_event_t event) {
-  if (context == nullptr || event == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (event == nullptr)
+    return M_DRIVER_STATUS_BAD_EVENT;
   return M_driver_event::destroy(*context, event);
 }
 
 M_driver_status_t M_driver_event_synchronize(M_driver_context_t context,
                                              M_driver_event_t event) {
-  if (context == nullptr || event == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (event == nullptr)
+    return M_DRIVER_STATUS_BAD_EVENT;
   return M_driver_event::synchronize(*context, event);
 }
 
 M_driver_status_t M_driver_is_event_ready(M_driver_context_t context,
                                           M_driver_event_t event,
                                           bool *is_ready) {
-  if (context == nullptr || event == nullptr)
-    return M_DRIVER_STATUS_BAD_HANDLE;
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (event == nullptr)
+    return M_DRIVER_STATUS_BAD_EVENT;
   return M_driver_event::isReady(*context, event, is_ready);
 }
