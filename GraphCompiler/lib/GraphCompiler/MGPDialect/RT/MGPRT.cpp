@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/Support/List.h"
+#include "Init/Init.h"
 #include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "MLRT/AsyncRT/Runtime/AsyncValue.h"
@@ -612,7 +613,8 @@ MGP_RT_DebugTensorPrint(const char *label, size_t labelLen, uint8_t dtype,
     // CPU buffers. The printTensor function will crash for GPU buffers, so this
     // primitive assumes that the buffer is a CPU buffer. I don't see a good way
     // to assert on this condition though.
-    Context *context = M::getCurrentMaxContextOrNull();
+    ContextRef context = Init::getContext();
+
     DebugTensorPrintOptions defaultOptions;
     DebugTensorPrintOptions *options = &defaultOptions;
     if (context)

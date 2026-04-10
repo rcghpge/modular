@@ -8,6 +8,7 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Primitives/KernelLogger.h"
 #include "GraphCompiler/Support/CompiledKernelsContext.h"
 #include "GraphCompiler/Support/List.h"
+#include "Init/Init.h"
 #include "KGEN/Support/Configuration.h"
 #include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
@@ -523,9 +524,9 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
 
   // Primitives are invoked by the MEF executor with a fixed frame (chain,
   // state, runtime, etc.); Context is not in the invocation ABI. Callers
-  // (engine, mt, mo-opt) set TLS via setCurrentMaxContext() before running MEF
-  // so we can read it here.
-  M::ContextRef ctxRef = M::getCurrentMaxContext();
+  // (engine, mt, mo-opt) create the M::Context, and this is then retrieved
+  // here by calling Init::getContext().
+  M::ContextRef ctxRef = Init::getContext();
 
   // Establish an execution engine, to be shared amongst all loaded models
   // across all models using this runtime.

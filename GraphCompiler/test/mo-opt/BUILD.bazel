@@ -9,6 +9,7 @@ _GPU_ONLY_TESTS = [
 
 lit_tests(
     name = "test",
+    size = "large",
     srcs = glob(
         ["**/*.mlir"],
         exclude = _GPU_ONLY_TESTS,
@@ -35,6 +36,7 @@ lit_tests(
 
 lit_tests(
     name = "test-gpu",
+    size = "large",
     srcs = _GPU_ONLY_TESTS,
     custom_substitutions = {
         "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/testing_kernels:MOGGKernelAPITest)",

@@ -1193,6 +1193,7 @@ modular_cc_library(
     ],
     deps = [
         ":MGPDialect",
+        "//Init",
         "//Kernels:Tracing",
         "//Kernels:mojo_string_c_api",
         "//Kernels:weights_registry_c_api",
@@ -1215,6 +1216,7 @@ modular_cc_library(
     tags = ["no-clang-tidy"],
     deps = [
         ":MGPDialect",
+        "//Init",
         "//Kernels:Tracing",
         "//Kernels:mojo_string_c_api",
         "//Kernels:weights_registry_c_api",
@@ -1432,6 +1434,7 @@ modular_shared_library(
     hdrs = glob(["include/GraphCompiler/GraphCompiler/MGPDialect/RT/*.h"]),
     deps = [
         ":Support",
+        "//Init",
         "//MLRT:Core/Tensor",
         "//Support:Base",
         "//Support:Context",
