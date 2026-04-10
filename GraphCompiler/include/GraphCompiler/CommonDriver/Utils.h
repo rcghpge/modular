@@ -28,10 +28,12 @@ ErrorOr<std::string> getFileContentIdentity(const BufferRef &file,
                                             FileFormat format);
 
 /// Saves an intermediate file with a dump of `module` if --saved-temps is set.
+/// `baseName` is used as the output file stem when `file` has no backing path.
 void writeIntermediateFileIfRequested(const std::string &identifier,
                                       ModuleOp module,
                                       const CommonOptions *options,
-                                      const BufferRef &file);
+                                      const BufferRef &file,
+                                      llvm::StringRef baseName = "temp");
 
 } // namespace M
 

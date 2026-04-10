@@ -40,7 +40,8 @@ M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
 void M::writeIntermediateFileIfRequested(const std::string &identifier,
                                          ModuleOp module,
                                          const CommonOptions *options,
-                                         const BufferRef &file) {
+                                         const BufferRef &file,
+                                         llvm::StringRef baseName) {
   std::string ext = "." + identifier + ".mlir";
   std::string filePath;
 
@@ -49,7 +50,7 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
   if (filePathOr)
     filePath = filePathOr->string();
   else
-    filePath = "temp";
+    filePath = baseName.str();
 
   auto writeFile = [&](const CommonOptions *opt) {
     std::unique_ptr<llvm::ToolOutputFile> intermediateFile =

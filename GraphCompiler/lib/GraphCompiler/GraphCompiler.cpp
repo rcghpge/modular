@@ -425,6 +425,21 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
+  // Compute a base file name for intermediate dumps from the names of
+  // non-subgraph GraphOps. These correspond to user-visible model names.
+  // Falls back to "temp" when no such graphs are present.
+  std::string baseFileName;
+  if (moduleOp) {
+    for (Operation &op : moduleOp.getOps()) {
+      if (auto graphOp = dyn_cast<GraphOp>(op)) {
+        if (!graphOp.getIsSubgraph())
+          baseFileName += graphOp.getSymName().str();
+      }
+    }
+  }
+  if (baseFileName.empty())
+    baseFileName = "temp";
+
   // --- mo-pipeline options ---
   MoPipelineOptions moOpts;
   moOpts.debugPrintAllTensors = opts.debugPrintAllTensors;
@@ -500,7 +515,8 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
 
     if (!dumpSuffix.empty()) {
       M::writeIntermediateFileIfRequested(dumpSuffix, moduleOp,
-                                          /*options=*/nullptr, BufferRef());
+                                          /*options=*/nullptr, BufferRef(),
+                                          baseFileName);
     }
 
     return success();

@@ -11,6 +11,7 @@ modular_cc_test(
     deps = [
         "//GraphCompiler:CommonDriver",
         "//GraphCompiler:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
