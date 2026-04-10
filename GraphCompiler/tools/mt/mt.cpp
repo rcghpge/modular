@@ -187,7 +187,7 @@ int main(int argc, char **argv) {
 
   // Create a context used by this command (compile/execute/benchmark) run.
   Init::Options contextOptions;
-  contextOptions.withRuntimeOptions(options.withMainWillNotDonate());
+  contextOptions.withRuntimeOptions(options);
   auto contextOr =
       Init::createContext(options.getProgramName(), contextOptions);
   if (contextOr.isError())

@@ -216,11 +216,15 @@ ErrorOr<bool> CpuDeviceEvent::isReady() const { return value.isReady(); }
 // ===== CpuDeviceContext === //
 //
 CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {
-  // Get or create the runtime - if it exists already use the existing options,
-  // but assert that mainWillDonate is disabled.
+  // Get or create the runtime. Request mainWillDonate=false if this is the only
+  // runtime user, but allow using the existing runtime options if they are set.
+  // This is safe as the other runtime users are guaranteeing they will wait on
+  // the main thread to progress work. Otherwise CpuDeviceContext is invariant
+  // to the runtime options, so this is safe.
   runtime = AsyncRT::getOrCreateRuntime(
       AsyncRT::RuntimeSource::CPUDeviceContext,
-      AsyncRT::getDefaultOrExistingRuntimeOptions().withMainWillNotDonate());
+      AsyncRT::RuntimeOptions().withMainWillNotDonate(),
+      /*allowUsingExistingOptions=*/true);
 
   streamChain = runtime->getReadyChain().copy();
 }
