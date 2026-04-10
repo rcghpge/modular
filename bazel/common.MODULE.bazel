@@ -4,7 +4,7 @@ bazel_dep(name = "apple_support", version = "1.24.2", repo_name = "build_bazel_a
 bazel_dep(name = "aspect_bazel_lib", version = "2.21.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "curl", version = "8.12.0")
-bazel_dep(name = "gazelle", version = "0.47.0")
+bazel_dep(name = "gazelle", version = "0.50.0")
 bazel_dep(name = "google_benchmark", version = "1.9.4")
 bazel_dep(name = "grpc", version = "1.76.0.bcr.1", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "imgui", version = "1.91.8")
@@ -32,19 +32,6 @@ archive_override(
 )
 
 single_version_override(
-    module_name = "gazelle",
-    patch_strip = 1,
-    patches = [
-        # https://github.com/bazel-contrib/bazel-gazelle/pull/2249
-        "//bazel/public-patches:gazelle-package-top.patch",
-        # https://github.com/bazel-contrib/bazel-gazelle/pull/2248
-        "//bazel/public-patches:gazelle-exports-files.patch",
-        # https://github.com/bazel-contrib/bazel-gazelle/pull/2247
-        "//bazel/public-patches:gazelle-default-features.patch",
-    ],
-)
-
-single_version_override(
     module_name = "rules_cc",
     patch_strip = 1,
     patches = [
@@ -52,6 +39,8 @@ single_version_override(
         "//bazel/public-patches:rules_cc_textual_hdrs.patch",
         # https://github.com/bazelbuild/rules_cc/pull/578
         "//bazel/public-patches:rules_cc_private_api.patch",
+        # https://github.com/bazelbuild/rules_cc/pull/675
+        "//bazel/public-patches:rules_cc_set_soname.patch",
     ],
 )
 
@@ -221,6 +210,13 @@ filegroup(
     # built from commit: https://github.com/modularml/rocm-systems/commit/84f4e1e366b66066ba01d0ec64bfeaee0bf6f7b6
     sha256 = "9e75030c46158d8ff87d305cf39b9953c5a0d780780fcff93ef89c149835c69e",
     url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/rocshmem/3.2.1/9e75030c46158d8ff87d305cf39b9953c5a0d780780fcff93ef89c149835c69e/rocshmem.tar.gz",
+)
+
+http_archive(
+    name = "llvm-ifs",
+    build_file_content = "filegroup(name = 'llvm-ifs', srcs = glob(['**']), visibility = ['//visibility:public'])",
+    sha256 = "126f4b14273588f221eb98e8d9952675eddd7f8a0466347be9c8e6d0530c9144",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-tools/1/126f4b14273588f221eb98e8d9952675eddd7f8a0466347be9c8e6d0530c9144/tools.tar.gz",
 )
 
 http_archive(
@@ -402,7 +398,7 @@ http_archive(
     url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-macos/20.1.8/a871653a114657136ae0dc25d979046a800aa30d8951e82b00eb5720caf9b4a8/llvm-macos.tar.xz",
 )
 
-SHELLCHECK_VERSION = "v0.10.0"
+SHELLCHECK_VERSION = "v0.11.0"
 
 [
     http_archive(
@@ -419,9 +415,9 @@ SHELLCHECK_VERSION = "v0.10.0"
         ],
     )
     for arch, sha in [
-        ("linux.x86_64", "sha256-bIgasGmOTm6iNSRfIoMoYFRPF7o4ZEL+fp1in4y+34c="),
-        ("linux.aarch64", "sha256-Mkp+id6Poq7Q0MKPPatZz4TG10JkAiwAwir2Ze0aCbs="),
-        ("darwin.aarch64", "sha256-u9LxSCYyju52edpyIfK8OvsBH2qSi4SMgMMh9gRt34E="),
+        ("linux.x86_64", "sha256-jDvhKwXVwXegTCnjx4zomshvFZVoHKsUm2W5fE4icZg="),
+        ("linux.aarch64", "sha256-ErMxwdLba56xPPymQwaxsVeobraduDAj4mHqp+fBRYg="),
+        ("darwin.aarch64", "sha256-Vq/92N5VJ4lNym3D1+Cpmoc7DwBNeqvDCuQH0/SLCnk="),
     ]
 ]
 

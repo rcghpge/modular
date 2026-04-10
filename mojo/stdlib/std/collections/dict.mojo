@@ -41,6 +41,7 @@ from std.compile import get_type_name
 from std.hashlib import Hasher, default_comp_time_hasher, default_hasher
 import std.format._utils as fmt
 from std.sys.intrinsics import likely
+from std.math import ceildiv
 
 from std.bit import count_trailing_zeros, next_power_of_two
 from std.memory import alloc, bitcast, memcpy, memset, pack_bits
@@ -287,7 +288,7 @@ struct _DictEntryIter[
         K: The key type of the elements in the dictionary.
         V: The value type of the elements in the dictionary.
         H: The type of the hasher in the dictionary.
-        origin: The origin of the List
+        origin: The origin of the Dict.
         forward: The iteration direction. `False` is backwards.
     """
 
@@ -404,6 +405,90 @@ struct _TakeDictEntryIter[
 
 
 @fieldwise_init
+struct _DictEntryIterOwned[
+    K: KeyElement,
+    V: Copyable & ImplicitlyDestructible,
+    H: Hasher,
+](IterableOwned, Iterator, Movable):
+    """An owning iterator over DictEntry values that consumes the dictionary.
+
+    Parameters:
+        K: The key type of the elements in the dictionary.
+        V: The value type of the elements in the dictionary.
+        H: The type of the hasher in the dictionary.
+    """
+
+    comptime Element = DictEntry[Self.K, Self.V, Self.H]
+    comptime IteratorOwnedType = Self
+
+    var _dict: Dict[Self.K, Self.V, Self.H]
+    var _index: Int
+
+    @always_inline
+    def __del__(deinit self):
+        # Dict.__del__ handles destroying remaining occupied slots.
+        pass
+
+    @always_inline
+    def __iter__(var self) -> Self.IteratorOwnedType:
+        return self^
+
+    @always_inline
+    def __next__(mut self) raises StopIteration -> Self.Element:
+        while self._index < len(self._dict._order):
+            var slot = Int(self._dict._order[self._index])
+            self._index += 1
+
+            if _is_occupied(self._dict._ctrl[slot]):
+                var entry = (self._dict._slots + slot).take_pointee()
+                self._dict._set_ctrl(slot, _CTRL_DELETED)
+                self._dict._len -= 1
+                return entry^
+
+        debug_assert(
+            self._dict._len == 0,
+            "_order exhausted but _len > 0: ctrl bytes and _len out of sync",
+        )
+        raise StopIteration()
+
+    @always_inline
+    def bounds(self) -> Tuple[Int, Optional[Int]]:
+        return (self._dict._len, {self._dict._len})
+
+
+@fieldwise_init
+struct _DictKeyIterOwned[
+    K: KeyElement,
+    V: Copyable & ImplicitlyDestructible,
+    H: Hasher,
+](IterableOwned, Iterator, Movable):
+    """An owning iterator over Dict keys that consumes the dictionary.
+
+    Parameters:
+        K: The key type of the elements in the dictionary.
+        V: The value type of the elements in the dictionary.
+        H: The type of the hasher in the dictionary.
+    """
+
+    comptime Element = Self.K
+    comptime IteratorOwnedType = Self
+
+    var _inner: _DictEntryIterOwned[Self.K, Self.V, Self.H]
+
+    @always_inline
+    def __iter__(var self) -> Self.IteratorOwnedType:
+        return self^
+
+    @always_inline
+    def __next__(mut self) raises StopIteration -> Self.Element:
+        return self._inner.__next__().reap_key()
+
+    @always_inline
+    def bounds(self) -> Tuple[Int, Optional[Int]]:
+        return self._inner.bounds()
+
+
+@fieldwise_init
 struct _DictKeyIter[
     mut: Bool,
     //,
@@ -416,11 +501,11 @@ struct _DictKeyIter[
     """Iterator over immutable Dict key references.
 
     Parameters:
-        mut: Whether the reference to the vector is mutable.
+        mut: Whether the reference to the dictionary is mutable.
         K: The key type of the elements in the dictionary.
         V: The value type of the elements in the dictionary.
         H: The type of the hasher in the dictionary.
-        origin: The origin of the List
+        origin: The origin of the Dict.
         forward: The iteration direction. `False` is backwards.
     """
 
@@ -463,11 +548,11 @@ struct _DictValueIter[
     is mutable.
 
     Parameters:
-        mut: Whether the reference to the vector is mutable.
+        mut: Whether the reference to the dictionary is mutable.
         K: The key type of the elements in the dictionary.
         V: The value type of the elements in the dictionary.
         H: The type of the hasher in the dictionary.
-        origin: The origin of the List
+        origin: The origin of the Dict.
         forward: The iteration direction. `False` is backwards.
     """
 
@@ -541,6 +626,14 @@ struct DictEntry[
         self.key = key^
         self.value = value^
 
+    def reap_key(deinit self) -> Self.K:
+        """Take the key from an owned entry, discarding hash and value.
+
+        Returns:
+            The key of the entry.
+        """
+        return self.key^
+
     def reap_value(deinit self) -> Self.V:
         """Take the value from an owned entry.
 
@@ -566,6 +659,7 @@ struct Dict[
     Equatable where conforms_to(V, Equatable),
     Hashable where conforms_to(V, Hashable),
     Iterable,
+    IterableOwned,
     Sized,
     Writable where conforms_to(K, Writable) and conforms_to(V, Writable),
 ):
@@ -771,6 +865,11 @@ struct Dict[
         iterable_origin: The origin of the iterable.
     """
 
+    comptime IteratorOwnedType: Iterator = _DictKeyIterOwned[
+        Self.K, Self.V, Self.H
+    ]
+    """The owned iterator type for this dictionary."""
+
     # ===-------------------------------------------------------------------===#
     # Fields
     # ===-------------------------------------------------------------------===#
@@ -822,9 +921,9 @@ struct Dict[
     def __init__(out self, *, capacity: Int):
         """Initialize an empty dictionary with a pre-reserved capacity.
 
-        The capacity is rounded up to the next power of two (minimum 16)
-        to satisfy internal layout requirements. The usable capacity
-        before resizing is 7/8 of the rounded value.
+        The capacity is defined by `next_power_of_two(ceildiv(capacity * 8, 7))`
+        (minimum 16) to satisfy internal layout requirements. The usable
+        capacity before resizing is `7 // 8` of the rounded value.
 
         Args:
             capacity: The requested minimum number of slots.
@@ -833,10 +932,12 @@ struct Dict[
 
         ```mojo
         var x = Dict[Int, Int](capacity=1000)
-        # Actual capacity is 1024; can hold 896 entries without resizing.
+        # Actual capacity is 2048; can hold 1792 entries without resizing.
         ```
         """
-        self._capacity = max(next_power_of_two(capacity), _INITIAL_CAPACITY)
+        self._capacity = max(
+            next_power_of_two(ceildiv(capacity * 8, 7)), _INITIAL_CAPACITY
+        )
         self._ctrl = alloc[UInt8](self._capacity + _GROUP_WIDTH)
         memset(self._ctrl, _CTRL_EMPTY, self._capacity + _GROUP_WIDTH)
         self._slots = alloc[DictEntry[Self.K, Self.V, Self.H]](self._capacity)
@@ -992,6 +1093,14 @@ struct Dict[
         """
         var found, _ = self._find_slot(hash[Self.H](key), key)
         return found
+
+    def __iter__(var self) -> Self.IteratorOwnedType:
+        """Consume the dictionary and iterate over its keys.
+
+        Returns:
+            An iterator that owns the dictionary's keys.
+        """
+        return {_DictEntryIterOwned(self^, 0)}
 
     def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
         """Iterate over the dict's keys as immutable references.

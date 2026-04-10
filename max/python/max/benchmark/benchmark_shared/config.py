@@ -38,6 +38,14 @@ logger = logging.getLogger(__name__)
 
 from max.config import ConfigFileModel, deep_merge_max_configs
 
+BaseBackend = Literal[
+    "modular",
+    "sglang",
+    "trtllm",
+    "vllm",
+    "vllm-omni",
+]
+
 Backend = Literal[
     "modular",
     "modular-chat",
@@ -47,6 +55,9 @@ Backend = Literal[
     "trtllm-chat",
     "vllm",
     "vllm-chat",
+    # vllm-omni has no -chat variant: it always uses /v1/chat/completions
+    # for pixel generation and does not support text generation.
+    "vllm-omni",
 ]
 
 Endpoint = Literal[
@@ -54,6 +65,7 @@ Endpoint = Literal[
     "/v1/chat/completions",
     "/v2/models/ensemble/generate_stream",
     "/v1/responses",
+    "/v1/images/generations",
 ]
 
 CACHE_RESET_ENDPOINT_MAP: Mapping[Backend, str] = {
@@ -74,6 +86,22 @@ BenchmarkTask = Literal[
 PIXEL_GENERATION_TASKS: tuple[BenchmarkTask, ...] = (
     "text-to-image",
     "image-to-image",
+)
+
+# Default endpoint per backend for pixel generation tasks.
+# Backends not listed here do not support pixel generation.
+# NOTE: Each endpoint value here is coupled to a specific request driver in
+# get_request_driver_class() in request.py. Adding a new backend that reuses
+# an existing endpoint will route to that endpoint's existing driver.
+PIXEL_GEN_DEFAULT_ENDPOINT: Mapping[str, Endpoint] = {
+    "modular": "/v1/responses",
+    "sglang": "/v1/images/generations",
+    "vllm-omni": "/v1/chat/completions",
+}
+
+# Valid endpoints for pixel generation tasks (union of all backend defaults).
+PIXEL_GENERATION_ENDPOINTS: frozenset[Endpoint] = frozenset(
+    PIXEL_GEN_DEFAULT_ENDPOINT.values()
 )
 
 
@@ -222,6 +250,12 @@ class BaseBenchmarkConfig(ConfigFileModel):
 
     _config_file_section_name: ClassVar[str] = "benchmark_config"
     """The section name to use when loading this config from a config file."""
+
+    section_name: str | None = Field(default="benchmark_config", exclude=True)
+    """Default section name for benchmark config files.
+
+    Overrides ConfigFileModel's default to automatically extract the
+    ``benchmark_config`` section when loading YAML config files."""
 
     # Model and tokenizer configuration (common to all benchmarks)
     model: str | None = Field(
@@ -510,7 +544,7 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
 
     endpoint: Endpoint = Field(
         default="/v1/chat/completions",
-        description="API endpoint. Choices: /v1/completions, /v1/chat/completions, /v1/responses, /v2/models/ensemble/generate_stream",
+        description="API endpoint. Choices: /v1/completions, /v1/chat/completions, /v1/responses, /v1/images/generations, /v2/models/ensemble/generate_stream. For pixel generation tasks, auto-selected from backend if not specified.",
         json_schema_extra={"group": "Backend and API Configuration"},
     )
 
@@ -559,6 +593,17 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
             "Delay between chat turns in milliseconds. Accepts a float or int for a constant delay, "
             "or a distribution string: 'N(mean,std)' for normal, 'U(lower,upper)' for continuous uniform, "
             "'DU(lower,upper)' for discrete uniform, 'G(shape,scale)' for gamma, or 'LN(mean,std)' for log-normal."
+        ),
+        json_schema_extra={"group": "Workload Configuration"},
+    )
+
+    force_unique_runs: bool = Field(
+        default=False,
+        description=(
+            "Prepend a single run-level UUID prefix to every prompt in this run. "
+            "All requests in the same run share the same prefix, preserving "
+            "within-run system-prompt prefix caching while preventing KV-cache "
+            "reuse across benchmark runs."
         ),
         json_schema_extra={"group": "Workload Configuration"},
     )
@@ -675,6 +720,18 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
         json_schema_extra={"group": "Traffic Control"},
     )
 
+    randomize_starting_turn: bool = Field(
+        default=True,
+        description="Start each multi-turn session at a random turn offset. Prefix turns run densely (no inter-turn delay) to build KV cache context and are excluded from benchmark results.",
+        json_schema_extra={"group": "Traffic Control"},
+    )
+
+    randomize_session_start: bool = Field(
+        default=True,
+        description="Add a random sleep (0 to inter-turn delay) before each session's first measured query to spread out the initial wave of requests.",
+        json_schema_extra={"group": "Traffic Control"},
+    )
+
     # Dataset-specific parameters (serving workloads)
     arxiv_summarization_input_len: int = Field(
         default=15000,
@@ -743,6 +800,16 @@ class ServingBenchmarkConfig(BaseBenchmarkConfig):
         default=0.0,
         description="Ratio to determine the system prompt length, used only for random sampling.",
         json_schema_extra={"group": "Dataset-Specific Parameters"},
+    )
+    fit_distributions: bool = Field(
+        default=False,
+        description=(
+            "With --num-chat-sessions on instruct-coder or agentic-code, reshape "
+            "workloads to match random_* and delay_between_chat_turns (same "
+            "semantics as random multiturn). Unsupported for code-debug multiturn. "
+            "Random/synthetic datasets already follow these distributions."
+        ),
+        json_schema_extra={"group": "Workload Configuration"},
     )
     sonnet_input_len: int = Field(
         default=550,
@@ -970,6 +1037,12 @@ class SweepServingBenchmarkConfig(ServingBenchmarkConfig):
             "group": "Sweep Configuration",
             "cli_flag": "--num-prompts-multiplier",
         },
+    )
+
+    collect_gpu_stats: bool = Field(
+        default=True,
+        description="Enable GPU stats collection for serving benchmarks.",
+        json_schema_extra={"group": "Control Flags"},
     )
 
     @classmethod

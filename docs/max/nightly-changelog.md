@@ -28,11 +28,21 @@ This version is still a work in progress.
 - Removed the `--allow-safetensors-weights-fp32-bf16-bidirectional-cast` CLI
   flag. Float32 <-> bfloat16 safetensors weight casting is now unconditionally
   enabled.
+- Added `--model-override` CLI flag for per-component `ModelManifest` overrides
+  (e.g. `--model-override transformer.quantization_encoding=float4_e2m1fnx2`),
+  enabling mixed quantization in diffusion pipelines.
 
 ### `max` CLI {#26-3-max-cli}
 
 ### Python API {#26-3-max-python}
 
+- Fixed tensor slicing with negative integer indices (e.g. `hidden[:, -1]`)
+  which previously raised a `RuntimeError` at compile time.
+- Setting `MODULAR_MAX_UNINITIALIZED_READ_CHECK=true` enables detection of
+  uninitialized memory reads in Mojo kernels. `InferenceSession` automatically
+  enables the debug allocator poison and compiles kernels with load-time
+  poison checks for all float types. When a load matches a poison pattern,
+  the process aborts with a descriptive message.
 - Added support for the `bfloat16` data type on ARM CPU devices in MAX graphs.
   Previously, `session.load()` raised a `ValueError` when a graph contained
   bf16 tensors targeting an ARM CPU.
@@ -53,6 +63,8 @@ This version is still a work in progress.
   `max.pipelines.lib`.
 - `max.diagnostics.gpu.BackgroundRecorder`'s sampling interval can now be
   configured.
+- Introduced `CPUMetrics` alongside the existing GPU diagnostics and open source
+  it under from `max.diagnostics`.
 - Added experimental `max.experimental.distributed` module with `DTensor`,
   `DeviceMesh`, and placement types (`Replicated`, `Sharded`, `Partial`) for
   expressing how tensors are distributed across multiple devices. Op dispatch
@@ -111,6 +123,16 @@ This version is still a work in progress.
   `InterpolationMode.BILINEAR` by delegating to `resize_linear`.
 - Added `resize_linear` op handler to the experimental eager interpreter
   (CPU) via `max.experimental.functional.resize_linear`.
+- Added `distributed.allreduce.sum` op handler to the experimental eager
+  interpreter, enabling multi-GPU eager execution of allreduce collectives
+- Added `distributed.allgather` op handler to the experimental eager
+  interpreter, enabling multi-GPU eager execution of allgather collectives
+  without falling back to compilation.
+- Added `distributed.scatter` op handler to the experimental eager
+  interpreter, enabling multi-GPU eager execution of scatter collectives
+  without falling back to compilation.
+- Added `distributed_scatter` collective to `distributed_functional` for
+  hardware-accelerated root-to-device tensor distribution.
 - `Module.compile()` now accepts a `custom_extensions` parameter for loading
   custom Mojo kernel libraries at graph construction time, fixing validation
   failures for kernels with struct-level parameters.

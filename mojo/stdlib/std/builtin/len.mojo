@@ -65,51 +65,6 @@ trait Sized:
         ...
 
 
-trait UIntSized:
-    """The `Sized` trait describes a type that has an integer length (such as a
-    string or array).
-
-    Any type that conforms to `Sized` or
-    [`SizedRaising`](/mojo/std/builtin/len/SizedRaising) works with the
-    built-in [`len()`](/mojo/std/builtin/len/len) function.
-
-    The `Sized` trait requires a type to implement the `__len__()`
-    method. For example:
-
-    ```mojo
-    struct Foo(Sized):
-        var length: Int
-
-        def __len__(self) -> Int:
-            return self.length
-    ```
-
-    You can pass an instance of `Foo` to the `len()` function to get its
-    length:
-
-    ```mojo
-    var foo = Foo(42)
-    print(len(foo) == 42)
-    ```
-
-    ```plaintext
-    True
-    ```
-
-    **Note:** If the `__len__()` method can raise an error, use the
-    [`SizedRaising`](/mojo/std/builtin/len/SizedRaising) trait instead.
-
-    """
-
-    def __len__(self) -> UInt:
-        """Get the length of the type.
-
-        Returns:
-            The length of the type.
-        """
-        ...
-
-
 trait SizedRaising:
     """The `SizedRaising` trait describes a type that has an integer length,
     which might raise an error if the length can't be determined.
@@ -160,6 +115,23 @@ trait SizedRaising:
 # ===----------------------------------------------------------------------=== #
 #  len
 # ===----------------------------------------------------------------------=== #
+
+
+@deprecated(
+    "Using String.__len__() is discouraged, prefer .byte_length() or"
+    " .count_codepoints()"
+)
+@always_inline("nodebug")
+def len(value: StringSlice[mut=False, _]) -> Int:
+    """Get the string length.
+
+    Args:
+        value: The object to get the length of.
+
+    Returns:
+        The length of this value.
+    """
+    return value.byte_length()
 
 
 @always_inline

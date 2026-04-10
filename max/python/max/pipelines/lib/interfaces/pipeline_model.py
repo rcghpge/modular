@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Generic
 
@@ -32,7 +32,6 @@ from max.engine import InferenceSession
 from max.graph import DeviceRef, Value
 from max.graph.weights import Weights, WeightsAdapter
 from max.interfaces import BaseContextType, LogProbabilities
-from max.kv_cache import PagedKVCacheManager
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParamInterface,
@@ -187,13 +186,6 @@ class ModelInputs:
 
     kv_cache_inputs: KVCacheInputs | None = None
 
-    extra_kv_cache_inputs: list[KVCacheInputs] = field(default_factory=list)
-    """Extra KV cache inputs beyond the primary (e.g., global attention).
-
-    Models with multiple KV caches populate this so the graph capture
-    runner can patch all caches generically during capture and replay.
-    """
-
     lora_ids: Buffer | None = None
     """Buffer containing the LoRA ids."""
 
@@ -221,6 +213,22 @@ class ModelInputs:
         raise NotImplementedError(
             f"{type(self).__name__} does not define model ABI buffers."
         )
+
+
+@dataclass(kw_only=True)
+class UnifiedEagleOutputs(ModelOutputs):
+    """Outputs from a unified EAGLE graph execution."""
+
+    num_accepted_draft_tokens: Buffer
+    next_tokens: Buffer
+    next_draft_tokens: Buffer
+
+    # HACK: These are required to inherit from ModelOutputs but are unused
+    # for UnifiedEagleOutputs!
+    logits: Buffer | None = None  # type: ignore[assignment]
+    next_token_logits: None = None
+    logit_offsets: None = None
+    hidden_states: None = None
 
 
 class PipelineModel(ABC, Generic[BaseContextType]):
@@ -495,7 +503,6 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
     """A pipeline model that supports KV cache."""
 
     kv_params: KVCacheParamInterface
-    extra_kv_managers: list[PagedKVCacheManager]
 
     def __init__(
         self,
@@ -525,7 +532,6 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
             kv_cache_config=self.kv_cache_config,
             cache_dtype=self.pipeline_config.model.kv_cache.cache_dtype,
         )
-        self.extra_kv_managers = []
 
     def _unflatten_kv_inputs(
         self, kv_inputs_flat: Sequence[Value[Any]]

@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """
-Tensor Core Module for High-Performance Matrix Operations
+Tensor Core Module for High-Performance Matrix Operations.
 
 Provides abstractions for using GPU Tensor Cores to perform optimized matrix operations.
 It supports both NVIDIA and AMD GPU architectures with hardware-specific optimizations.
@@ -67,8 +67,8 @@ from std.sys.info import (
 
 from std.gpu import (
     WARP_SIZE,
-    lane_id_int as lane_id,
-    thread_idx_int as thread_idx,
+    lane_id,
+    thread_idx,
 )
 from std.gpu.intrinsics import lop, ds_read_tr16_b64
 from std.gpu.compute.mma import (

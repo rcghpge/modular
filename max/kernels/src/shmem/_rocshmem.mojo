@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 from std.collections.string.string_slice import get_static_string
+from std.ffi import _CPointer
 from std.gpu.host import DeviceContext
 from std.gpu.host._amdgpu_hip import hipStream_t, HIP
 from std.os import abort, getenv
@@ -176,14 +177,14 @@ struct ROCSHMEMInitAttr(ImplicitlyCopyable):
         self.rank = 0
         self.nranks = 0
         self.uid = SHMEMUniqueID()
-        self.mpi_comm = UnsafePointer[NoneType, ImmutAnyOrigin]()
+        self.mpi_comm = {_unsafe_null = ()}
 
     def __init__(out self, rank: Int32, nranks: Int32, uid: SHMEMUniqueID):
         self.rank = rank
         self.nranks = nranks
         self.uid = uid
         # Null pointer, we're not using MPI
-        self.mpi_comm = UnsafePointer[NoneType, ImmutAnyOrigin]()
+        self.mpi_comm = {_unsafe_null = ()}
 
 
 def _dtype_to_rocshmem_type[
@@ -459,7 +460,7 @@ def rocshmem_malloc[
 ](size: c_size_t) raises -> UnsafePointer[Scalar[dtype], MutExternalOrigin]:
     var ptr = _get_rocshmem_function[
         "rocshmem_malloc",
-        def(c_size_t) -> UnsafePointer[Scalar[dtype], MutExternalOrigin],
+        def(c_size_t) -> _CPointer[Scalar[dtype], MutExternalOrigin],
     ]()(size)
 
     return _check_rocshmem_allocation(ptr, "rochsmem_malloc", size)
@@ -472,9 +473,7 @@ def rocshmem_calloc[
 ]:
     var ptr = _get_rocshmem_function[
         "rocshmem_calloc",
-        def(
-            c_size_t, c_size_t
-        ) -> UnsafePointer[Scalar[dtype], MutExternalOrigin],
+        def(c_size_t, c_size_t) -> _CPointer[Scalar[dtype], MutExternalOrigin],
     ]()(count, size)
 
     return _check_rocshmem_allocation(ptr, "rochsmem_calloc", count * size)
@@ -483,7 +482,7 @@ def rocshmem_calloc[
 def _check_rocshmem_allocation[
     dtype: DType
 ](
-    ptr: UnsafePointer[Scalar[dtype], MutExternalOrigin],
+    ptr: _CPointer[Scalar[dtype], MutExternalOrigin],
     func_name: StaticString,
     requested_bytes: c_size_t,
 ) raises -> UnsafePointer[Scalar[dtype], MutExternalOrigin]:
@@ -499,7 +498,7 @@ def _check_rocshmem_allocation[
                 " env var"
             ),
         )
-    return ptr
+    return ptr.unsafe_value()
 
 
 def rocshmem_free[
@@ -709,5 +708,5 @@ def rocshmem_signal_wait_until[
 
 
 @extern("rocshmem_fence")
-def rocshmem_fence():
+def rocshmem_fence() abi("C"):
     ...

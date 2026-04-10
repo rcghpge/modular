@@ -44,18 +44,20 @@ from std.gpu.sync import (
     named_barrier,
     cp_async_bulk_commit_group,
     cp_async_bulk_wait_group,
+    umma_arrive_leader_cta,
 )
 from std.gpu.compute.arch.tcgen05 import (
+    tcgen05_dealloc,
     tcgen05_fence_after,
     tcgen05_fence_before,
     tcgen05_ld,
+    tcgen05_release_allocation_lock,
     tcgen05_store_wait,
 )
 from std.gpu.primitives.warp import _vote_nvidia_helper
 from std.gpu.primitives.cluster import block_rank_in_cluster
 from linalg.matmul.gpu.sm100_structured.structured_kernels.tmem import (
     TmemAddress,
-    TmemAllocation,
 )
 from layout import IntTuple
 from layout.swizzle import make_swizzle
@@ -107,6 +109,7 @@ def depth512_scale_write_output[
         config.swizzle_mode,
         BM=config.BM,
         BN=config.ov_depth,
+        group=config.group if config.fuse_gqa else 1,
     ],
     num_output_rows: Int32,
     out_head_idx: UInt32,
@@ -184,9 +187,9 @@ def depth512_scale_write_output[
                 var col = col_base + col_offset + base
                 var o_k_block = col // o_sw_K
                 var o_inner = Int(m_row) * o_sw_K + col % o_sw_K
-                (o_smem + o_k_block * BM * o_sw_K + o_swizzle(o_inner)).store(
-                    vals.cast[output_type]()
-                )
+                (o_smem + o_k_block * BM * o_sw_K + o_swizzle(o_inner)).bitcast[
+                    Scalar[DType.uint32]
+                ]().store(bitcast[DType.uint32, 4](vals.cast[output_type]()))
 
     # Phase 1: O_lo → SMEM cols [col_base_lo, col_base_lo + ov_quarter).
     read_scale_write(o_lo_tmem, col_base_lo)
@@ -242,6 +245,7 @@ def depth512_softmax[
         config.swizzle_mode,
         BM=config.BM,
         BN=config.ov_depth,
+        group=config.group if config.fuse_gqa else 1,
     ],
     num_output_rows: Int32,
     out_head_idx: UInt32,
@@ -251,7 +255,10 @@ def depth512_softmax[
     comptime BM = config.BM
     comptime BN = config.BN
     comptime BN_half = BN // 2
-    comptime PairBM = BM * 2
+    comptime group = config.group
+    comptime fuse_gqa = config.fuse_gqa
+    comptime BM_eff: Int = config.BM_eff()
+    comptime PairBM_mask = BM_eff * 2
     comptime f32x2 = SIMD[DType.float32, 2]
 
     # Batch size for pipelined TMEM loads and exp computation.
@@ -270,7 +277,15 @@ def depth512_softmax[
     var is_lower = row < UInt32(BM)  # True = first half columns
 
     var cta_rank = block_rank_in_cluster() % 2
-    var per_thread_score_row: UInt32 = score_row + cta_rank * UInt32(BM) + m_row
+    var per_thread_score_row: UInt32
+    comptime if fuse_gqa:
+        per_thread_score_row = (
+            score_row
+            + UInt32(cta_rank) * UInt32(BM_eff)
+            + m_row // UInt32(group)
+        )
+    else:
+        per_thread_score_row = score_row + cta_rank * UInt32(BM) + m_row
 
     # Column offset into the full BN score tile.
     # Lower (warps 0-1): columns 0..BN_half-1 → col_offset=0
@@ -306,18 +321,20 @@ def depth512_softmax[
     var s = InlineArray[Scalar[accum_dtype], BN_half](uninitialized=True)
 
     # ---- Iteration bounds (must match MMA and load warps) ----------------
-    var kv_row: UInt32 = mask.start_column[PairBM, BN, page_size](score_row)
+    var kv_row: UInt32 = mask.start_column[PairBM_mask, BN, page_size](
+        score_row
+    )
 
-    comptime mask_sets = MaskType.nonfull_sets[PairBM, BN]()
-    comptime mask_strategies = MaskType.mask_strategies[PairBM, BN]()
+    comptime mask_sets = MaskType.nonfull_sets[PairBM_mask, BN]()
+    comptime mask_strategies = MaskType.mask_strategies[PairBM_mask, BN]()
     comptime num_sets = len(mask_sets)
 
     var mask_iters: StaticTuple[UInt32, num_sets] = {}
 
     comptime if mask_sets[0] != TileMaskStatus.UNKNOWN_MASK:
-        mask_ends = mask.masked_set_ends[BM=PairBM, BN=BN, page_size=page_size](
-            score_row, num_keys
-        )
+        mask_ends = mask.masked_set_ends[
+            BM=PairBM_mask, BN=BN, page_size=page_size
+        ](score_row, num_keys)
         mask_iters[0] = mask_ends[0]
         comptime for i in range(1, num_sets):
             mask_iters[i] = mask_ends[i] - mask_ends[i - 1]
@@ -541,10 +558,12 @@ def depth512_softmax[
                 ).cast[qkv_dtype]()
                 var col = Int(col_offset) + base
                 var p_k_block = col // p_sw_K
-                var p_inner = Int(m_row) * p_sw_K + col % p_sw_K
-                (p_smem + p_k_block * BM * p_sw_K + p_swizzle(p_inner)).store(
-                    vals
-                )
+                comptime assert BN_half % p_sw_K == 0
+                comptime r = base % p_sw_K
+                var p_inner = Int(m_row) * p_sw_K + r
+                (p_smem + p_k_block * BM * p_sw_K + p_swizzle(p_inner)).bitcast[
+                    Scalar[DType.uint32]
+                ]().store(bitcast[DType.uint32, 4](vals))
 
         # Batch 0: compute exp.
         comptime for idx in range(p_batch):
@@ -565,6 +584,12 @@ def depth512_softmax[
             comptime for idx in range(offset, offset + p_remainder):
                 exp_iter[idx]()
             write_p_batch[el_offset, p_remainder * exp_simd]()
+
+        # P is fully written to SMEM. Fence + signal PO_lo so the MMA warp
+        # can start P@V as early as possible (before the row-sum reduction).
+        # Cluster-scope arrive so both CTAs' signals reach the leader.
+        fence_async_view_proxy()
+        umma_arrive_leader_cta(po_lo)
 
         # Row sum: 4-way unrolled accumulation over exp values in s.
         var acc0 = s_load[0]()
@@ -600,19 +625,17 @@ def depth512_softmax[
             )
             mask_iters[1] -= 1
 
-    pipeline_s_even.release()
+    umma_arrive_leader_cta(pipeline_s_even.consumer_mbar())
+    pipeline_s_even.step()
 
     # pipeline_c.acquire() passes immediately on first use (buffer free).
     pipeline_c.acquire()
     var row_max = exchange_reduce["max"](partial_max)
 
-    # Compute exp, write P to SMEM, get partial sum.
+    # Compute exp, write P to SMEM (signals PO_lo inside), get partial sum.
     var partial_sum = store_exp(row_max)
     var global_sum = exchange_reduce["add"](partial_sum.reduce_add())
     var row_sum = f32x2(global_sum, 0)
-
-    # Signal P ready (PO_lo gates P@V_lo; PO_hi is correction-only).
-    _ = po_lo[].arrive()
 
     # ---- Main loop (alternating S_even / S_odd) --------------------------
 
@@ -639,7 +662,8 @@ def depth512_softmax[
         partial_max = load_mask_max[mask_strategy=mask_strategy](
             s_cur_tmem, kv_row, old_max
         )
-        s_cur_pipeline.release()
+        umma_arrive_leader_cta(s_cur_pipeline.consumer_mbar())
+        s_cur_pipeline.step()
 
         # Exchange max (correction_smem free after acquire).
         pipeline_c.acquire()
@@ -659,12 +683,9 @@ def depth512_softmax[
             row_max = new_row_max
             correction = exp2(diff)
 
-        # Compute exp, write P, exchange sum.
+        # Compute exp, write P (signals PO_lo inside), exchange sum.
         partial_sum = store_exp(row_max)
         local_sum = exchange_reduce["add"](partial_sum.reduce_add())
-
-        # Signal P ready (PO_lo gates P@V_lo; PO_hi is correction-only).
-        _ = po_lo[].arrive()
 
         # Write correction (only lower half to avoid double-write).
         if is_lower:
@@ -698,7 +719,7 @@ def depth512_softmax[
                 break
             cur_mask_status = mask.status(
                 Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
-                Index[dtype=DType.int32](PairBM, BN),
+                Index[dtype=DType.int32](PairBM_mask, BN),
             )
             if cur_mask_status == TileMaskStatus.FULL_MASK:
                 continue
@@ -739,6 +760,5 @@ def depth512_softmax[
     # TMEM deallocation: all other warps (correction, MMA, load) are done
     # with TMEM by this point. Only warp 0 needs to deallocate.
     if tid // UInt32(WARP_SIZE) == 0:
-        var tmem = TmemAllocation[config.cta_group](tmem_addr)
-        tmem.release_lock()
-        tmem.deallocate()
+        tcgen05_release_allocation_lock[Int32(config.cta_group)]()
+        tcgen05_dealloc[Int32(config.cta_group)](tmem_addr, UInt32(512))

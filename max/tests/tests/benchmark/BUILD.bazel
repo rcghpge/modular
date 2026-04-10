@@ -15,11 +15,13 @@ modular_py_test(
         exclude = [
             "test_benchmark_datasets_functional.py",
             "test_benchmark_throughput_*.py",
+            "test_sweep_benchmark_serving_result_utils.py",
         ],
     ),
     deps = [
         "//max/python/max/benchmark:benchmark_serving_lib",
         "//max/python/max/benchmark/benchmark_shared",
+        "//max/python/max/diagnostics",
         requirement("numpy"),
         requirement("pillow"),
         requirement("pydantic"),
@@ -29,6 +31,15 @@ modular_py_test(
         requirement("requests"),
         requirement("tqdm"),
         requirement("transformers"),
+    ],
+)
+
+modular_py_test(
+    name = "test_sweep_benchmark_serving_result_utils",
+    srcs = ["test_sweep_benchmark_serving_result_utils.py"],
+    deps = [
+        "//max/python/max/benchmark/benchmark_shared",
+        "//max/python/max/diagnostics",
     ],
 )
 

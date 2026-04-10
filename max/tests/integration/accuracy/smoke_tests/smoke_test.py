@@ -128,6 +128,16 @@ MODEL_ALIASES: dict[str, ModelAlias] = {
             "--speculative-method eagle"
         ),
     },
+    # Llama Eagle + CUDA Graph only works when num_speculative_tokens == 1
+    # TODO: Remove this config once we support CUDA Graph for >1 draft tokens
+    "meta-llama/llama-3.1-8b-instruct__eagle_1_draft_token": {
+        "hf_model_path": "meta-llama/Llama-3.1-8B-Instruct",
+        "max_serve_args": (
+            "--draft-model-path atomicapple0/EAGLE-LLaMA3.1-Instruct-8B "
+            "--speculative-method eagle "
+            "--num-speculative-tokens 1"
+        ),
+    },
     "nvidia/deepseek-v3.1-nvfp4__mtp": {
         "hf_model_path": "nvidia/deepseek-v3.1-nvfp4",
         "max_serve_args": (
@@ -160,7 +170,7 @@ def is_huge_moe(model: str) -> bool:
     """Large MoE models that need expert parallelism instead of tensor parallelism."""
     if "deepseek" in model and "lite" not in model:
         return True
-    return any(x in model for x in ["minimax-m", "kimi-k"])
+    return any(x in model for x in ["minimax-m", "kimi-k", "qwen3-235b"])
 
 
 def validate_hf_token() -> None:
@@ -333,6 +343,7 @@ def call_eval(
             "academic-ds",
             "deepseek-r1",
             "deepseek-v3",
+            "gemma-4",
             "gpt-oss",
             "internvl3_5",
             "qwen3",
@@ -607,6 +618,7 @@ def smoke_test(
         kw in model
         for kw in (
             "gemma-3",
+            "gemma-4",
             "idefics",
             "internvl",
             "kimi-k2",

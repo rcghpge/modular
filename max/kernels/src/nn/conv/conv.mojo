@@ -13,6 +13,7 @@
 
 from std.collections import Optional
 from std.math import align_down, ceildiv
+from std.math.uutils import udivmod
 
 
 from std.os import abort
@@ -92,11 +93,7 @@ from buffer.buffer import (
 )
 from std.gpu.host import DeviceContext
 from std.gpu.host._nvidia_cuda import CUDA
-from std.gpu import (
-    block_dim_uint as block_dim,
-    block_idx_uint as block_idx,
-    thread_idx_uint as thread_idx,
-)
+from std.gpu import block_dim, block_idx, thread_idx
 from layout import (
     Idx,
     IntTuple,
@@ -2877,6 +2874,104 @@ def pack_filter_lt[
 
 
 @always_inline
+def pack_filter_from_fcrs(
+    filter: TileTensor,
+    packed_filter: TileTensor[mut=True, ...],
+    num_groups: Int,
+):
+    """This packs the filter from FCRS to FRSCf (2D) or FCQRS to FQRSCf (3D).
+
+    The filter arrives with its actual dtype (e.g., float32). We transpose
+    FCRS→RSCF in a temp buffer using the actual dtype, then create an int64-
+    reinterpreted TileTensor for pack_filter (which expects int64).
+
+    Args:
+        filter: Filter TileTensor with actual element dtype in FCRS layout.
+        packed_filter: Output TileTensor with int64 dtype (for pack_filter).
+        num_groups: Number of groups in the convolution.
+    """
+
+    var filter_lt = filter.to_layout_tensor()
+    var total_elems = filter_lt.size()
+
+    # Allocate temporary buffer for RSCF-ordered data (actual dtype).
+    var rscf_buf = alloc[Scalar[filter.dtype]](total_elems)
+
+    # Transpose FCRS→RSCF or FCQRS→QRSCF and create a TileTensor for packing.
+    comptime if filter_lt.rank == 4:
+        # FCRS [F, C, R, S] → RSCF [R, S, C, F]
+        var dim_F = filter_lt.dim[0]()
+        var dim_C = filter_lt.dim[1]()
+        var dim_R = filter_lt.dim[2]()
+        var dim_S = filter_lt.dim[3]()
+        for f in range(dim_F):
+            for c in range(dim_C):
+                for r in range(dim_R):
+                    for s in range(dim_S):
+                        var src = (
+                            f * dim_C * dim_R * dim_S
+                            + c * dim_R * dim_S
+                            + r * dim_S
+                            + s
+                        )
+                        var dst = (
+                            r * dim_S * dim_C * dim_F
+                            + s * dim_C * dim_F
+                            + c * dim_F
+                            + f
+                        )
+                        rscf_buf.store(dst, filter_lt.ptr.load(src))
+        # Reinterpret as int64 for pack_filter (matches existing convention).
+        var rscf_tile = TileTensor(
+            rscf_buf.bitcast[Scalar[DType.int64]](),
+            row_major((Idx(dim_R), Idx(dim_S), Idx(dim_C), Idx(dim_F))),
+        )
+        pack_filter(rscf_tile, packed_filter, num_groups)
+    else:
+        # FCQRS [F, C, Q, R, S] → QRSCF [Q, R, S, C, F]
+        var dim_F = filter_lt.dim[0]()
+        var dim_C = filter_lt.dim[1]()
+        var dim_Q = filter_lt.dim[2]()
+        var dim_R = filter_lt.dim[3]()
+        var dim_S = filter_lt.dim[4]()
+        for f in range(dim_F):
+            for c in range(dim_C):
+                for q in range(dim_Q):
+                    for r in range(dim_R):
+                        for s in range(dim_S):
+                            var src = (
+                                f * dim_C * dim_Q * dim_R * dim_S
+                                + c * dim_Q * dim_R * dim_S
+                                + q * dim_R * dim_S
+                                + r * dim_S
+                                + s
+                            )
+                            var dst = (
+                                q * dim_R * dim_S * dim_C * dim_F
+                                + r * dim_S * dim_C * dim_F
+                                + s * dim_C * dim_F
+                                + c * dim_F
+                                + f
+                            )
+                            rscf_buf.store(dst, filter_lt.ptr.load(src))
+        var rscf_tile = TileTensor(
+            rscf_buf.bitcast[Scalar[DType.int64]](),
+            row_major(
+                (
+                    Idx(dim_Q),
+                    Idx(dim_R),
+                    Idx(dim_S),
+                    Idx(dim_C),
+                    Idx(dim_F),
+                )
+            ),
+        )
+        pack_filter(rscf_tile, packed_filter, num_groups)
+
+    rscf_buf.free()
+
+
+@always_inline
 def conv_shape[
     input_type: DType,
     filter_type: DType,
@@ -3185,7 +3280,7 @@ def conv2d_gpu_naive_nhwc_rscf[
     var h = block_idx.y * block_dim.y + thread_idx.y
     var w = block_idx.x * block_dim.x + thread_idx.x
 
-    if h >= UInt(H_out) or w >= UInt(W_out):
+    if h >= H_out or w >= W_out:
         return
 
     for co in range(C_out):
@@ -3195,15 +3290,13 @@ def conv2d_gpu_naive_nhwc_rscf[
         var ci_base = g * C_per_group
         for r in range(R):
             for s in range(S):
-                var h_in = h * UInt(stride_h) - UInt(pad_h) + UInt(r * dil_h)
-                var w_in = w * UInt(stride_w) - UInt(pad_w) + UInt(s * dil_w)
-                if 0 <= Int(h_in) < H and 0 <= Int(w_in) < W:
+                var h_in = h * stride_h - pad_h + r * dil_h
+                var w_in = w * stride_w - pad_w + s * dil_w
+                if 0 <= h_in < H and 0 <= w_in < W:
                     for ci in range(C_per_group):
                         value += (
                             input.load[width=1](
-                                IndexList[4](
-                                    Int(n), Int(h_in), Int(w_in), ci_base + ci
-                                )
+                                IndexList[4](n, h_in, w_in, ci_base + ci)
                             ).cast[accum_type]()
                             * filter.load[width=1](
                                 IndexList[4](r, s, ci, co)
@@ -3213,12 +3306,12 @@ def conv2d_gpu_naive_nhwc_rscf[
         comptime if maybe_epilogue_func:
             comptime epilogue_func = maybe_epilogue_func.value()
             epilogue_func(
-                IndexList[4](Int(n), Int(h), Int(w), co),
+                IndexList[4](n, h, w, co),
                 value.cast[output_type](),
             )
         else:
             output.store(
-                IndexList[4](Int(n), Int(h), Int(w), co),
+                IndexList[4](n, h, w, co),
                 value.cast[output_type](),
             )
 
@@ -3244,35 +3337,27 @@ struct CuDNNConvMeta(ImplicitlyCopyable, RegisterPassable):
     var ptr_output_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
     def __init__(out self) raises:
-        self.ptr_handle = UnsafePointer[cudnnContext, AnyOrigin[mut=True]]()
+        self.ptr_handle = {_unsafe_null = ()}
         check_cudnn_error(cudnnCreate(UnsafePointer(to=self.ptr_handle)))
 
-        self.ptr_input_desc = UnsafePointer[
-            cudnnTensorStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_input_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_input_desc))
         )
 
-        self.ptr_filter_desc = UnsafePointer[
-            cudnnFilterStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_filter_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateFilterDescriptor(UnsafePointer(to=self.ptr_filter_desc))
         )
 
-        self.ptr_conv_desc = UnsafePointer[
-            cudnnConvolutionStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_conv_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateConvolutionDescriptor(
                 UnsafePointer(to=self.ptr_conv_desc)
             )
         )
 
-        self.ptr_output_desc = UnsafePointer[
-            cudnnTensorStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_output_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_output_desc))
         )
@@ -3385,35 +3470,27 @@ struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
     var dil: Tuple[Int, Int]
 
     def __init__(out self) raises:
-        self.ptr_handle = UnsafePointer[cudnnContext, AnyOrigin[mut=True]]()
+        self.ptr_handle = {_unsafe_null = ()}
         check_cudnn_error(cudnnCreate(UnsafePointer(to=self.ptr_handle)))
 
-        self.ptr_input_desc = UnsafePointer[
-            cudnnTensorStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_input_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_input_desc))
         )
 
-        self.ptr_filter_desc = UnsafePointer[
-            cudnnFilterStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_filter_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateFilterDescriptor(UnsafePointer(to=self.ptr_filter_desc))
         )
 
-        self.ptr_conv_desc = UnsafePointer[
-            cudnnConvolutionStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_conv_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateConvolutionDescriptor(
                 UnsafePointer(to=self.ptr_conv_desc)
             )
         )
 
-        self.ptr_output_desc = UnsafePointer[
-            cudnnTensorStruct, AnyOrigin[mut=True]
-        ]()
+        self.ptr_output_desc = {_unsafe_null = ()}
         check_cudnn_error(
             cudnnCreateTensorDescriptor(UnsafePointer(to=self.ptr_output_desc))
         )
@@ -4199,9 +4276,9 @@ def conv_gpu[
     padding: IndexList[2 * conv_rank],
     num_groups: Int,
     ctx: DeviceContext,
-    source_ptr: UnsafePointer[
-        Scalar[output_type], MutAnyOrigin
-    ] = UnsafePointer[Scalar[output_type], MutAnyOrigin](),
+    source_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin] = {
+        _unsafe_null = ()
+    },
     beta: Float32 = 0.0,
 ) raises:
     # Bridge to LayoutTensor for internal GPU kernel dispatch and cuDNN/MIOpen
@@ -4727,18 +4804,13 @@ def conv3d_gpu_naive_ndhwc_qrscf[
     var x_thread_id = block_idx.x * block_dim.x + thread_idx.x
 
     # map back to separate height and width
-    var h_out_idx, w_out_idx = divmod(x_thread_id, UInt(W_out))
+    var h_out_idx, w_out_idx = udivmod(x_thread_id, W_out)
 
     # calculate depth from y-dimension
     var d_out_idx = block_idx.y * block_dim.y + thread_idx.y
 
     # bounds check
-    if (
-        n >= UInt(N)
-        or d_out_idx >= UInt(D_out)
-        or h_out_idx >= UInt(H_out)
-        or w_out_idx >= UInt(W_out)
-    ):
+    if n >= N or d_out_idx >= D_out or h_out_idx >= H_out or w_out_idx >= W_out:
         return
 
     # ============= convolution =============
@@ -4751,28 +4823,16 @@ def conv3d_gpu_naive_ndhwc_qrscf[
         for q in range(Q):
             for r in range(R):
                 for s in range(S):
-                    var d_in = Int(
-                        d_out_idx * UInt(stride_d)
-                        + UInt(q * dil_d)
-                        - UInt(pad_d)
-                    )
-                    var h_in = Int(
-                        h_out_idx * UInt(stride_h)
-                        + UInt(r * dil_h)
-                        - UInt(pad_h)
-                    )
-                    var w_in = Int(
-                        w_out_idx * UInt(stride_w)
-                        + UInt(s * dil_w)
-                        - UInt(pad_w)
-                    )
+                    var d_in = d_out_idx * stride_d + q * dil_d - pad_d
+                    var h_in = h_out_idx * stride_h + r * dil_h - pad_h
+                    var w_in = w_out_idx * stride_w + s * dil_w - pad_w
 
                     if 0 <= d_in < D and 0 <= h_in < H and 0 <= w_in < W:
                         for ci in range(C_per_group):
                             value += (
                                 input.load[width=1](
                                     IndexList[5](
-                                        Int(n), d_in, h_in, w_in, ci_base + ci
+                                        n, d_in, h_in, w_in, ci_base + ci
                                     )
                                 ).cast[accum_type]()
                                 * filter.load[width=1](
@@ -4783,16 +4843,12 @@ def conv3d_gpu_naive_ndhwc_qrscf[
         comptime if maybe_epilogue_func:
             comptime epilogue_func = maybe_epilogue_func.value()
             epilogue_func(
-                IndexList[5](
-                    Int(n), Int(d_out_idx), Int(h_out_idx), Int(w_out_idx), co
-                ),
+                IndexList[5](n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),
             )
         else:
             output.store(
-                IndexList[5](
-                    Int(n), Int(d_out_idx), Int(h_out_idx), Int(w_out_idx), co
-                ),
+                IndexList[5](n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),
             )
 

@@ -170,8 +170,8 @@ struct PyObjectPtr(
     @always_inline
     def __init__[
         T: AnyType, //
-    ](out self, *, upcast_from: UnsafePointer[T, MutAnyOrigin]):
-        self._unsized_obj_ptr = upcast_from.bitcast[PyObject]()
+    ](out self, *, upcast_from: _CPointer[T, MutAnyOrigin]):
+        self._unsized_obj_ptr = bitcast[PyObject](upcast_from)
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -260,7 +260,7 @@ struct PythonVersion(ImplicitlyCopyable, RegisterPassable):
         var start = 0
         var next_idx = 0
         var i = 0
-        while next_idx < len(version) and i < 3:
+        while next_idx < version.byte_length() and i < 3:
             if version[byte=next_idx] == "." or (
                 version[byte=next_idx] == " " and i == 2
             ):
@@ -484,7 +484,7 @@ struct PyType_Slot(ImplicitlyCopyable, RegisterPassable):
 
     @staticmethod
     def null() -> Self:
-        return PyType_Slot(0, OpaquePointer[MutAnyOrigin]())
+        return PyType_Slot(0, OpaquePointer[MutAnyOrigin](_unsafe_null=()))
 
 
 @fieldwise_init
@@ -1436,7 +1436,7 @@ struct CPython(Defaultable, Movable):
         self.init_error = StaticString(
             unsafe_from_utf8_ptr=external_call[
                 "KGEN_CompilerRT_Python_SetPythonPath",
-                _CPointer[c_char, StaticConstantOrigin],
+                UnsafePointer[c_char, StaticConstantOrigin],
             ]()
         )
 
@@ -1718,7 +1718,7 @@ struct CPython(Defaultable, Movable):
         # instance.
         var ptr = self.lib.get_symbol[PyObjectPtr](global_name)
 
-        if not ptr:
+        if not ptr._is_not_null():
             abort(
                 "error: unable to get pointer to CPython `"
                 + String(global_name)

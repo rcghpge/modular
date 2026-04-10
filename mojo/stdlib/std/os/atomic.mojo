@@ -20,6 +20,7 @@ from std.os import Atomic
 """
 
 from std.collections.string.string_slice import _get_kgen_string
+from std.memory._poison import _check_not_poison
 from std.sys.info import is_nvidia_gpu, is_apple_gpu
 
 from std.builtin.dtype import _integral_type_of, _unsigned_integral_type_of
@@ -138,7 +139,7 @@ struct Consistency(
         Args:
             writer: The object to write to.
         """
-        comptime prefix_len = len("Consistency.")
+        comptime prefix_len = "Consistency.".byte_length()
         writer.write_string(self.as_string_slice()[byte=prefix_len:])
 
     def write_repr_to(self, mut writer: Some[Writer]):
@@ -261,10 +262,13 @@ struct Atomic[dtype: DType, *, scope: StaticString = ""]:
         if __is_run_in_comptime_interpreter:
             return ptr[]
 
-        return __mlir_op.`pop.load`[
+        var result = __mlir_op.`pop.load`[
             ordering=ordering.__mlir_attr(),
             syncscope=_get_kgen_string[Self.scope](),
         ](ptr.address)
+        comptime if Self.dtype.is_floating_point():
+            _check_not_poison[Self.dtype, 1](result)
+        return result
 
     @always_inline
     def load[

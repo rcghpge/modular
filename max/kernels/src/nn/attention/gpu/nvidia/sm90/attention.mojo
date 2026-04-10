@@ -13,6 +13,7 @@
 
 from std.collections import OptionalReg
 from std.math import ceildiv, align_up
+from std.math.uutils import ufloordiv
 from std.math.constants import log2e
 from std.memory import (
     bitcast,
@@ -22,7 +23,7 @@ from std.sys import size_of
 
 import std.gpu.primitives.warp as warp
 from std.algorithm.functional import unswitch
-from std.gpu import thread_idx_uint as thread_idx
+from std.gpu import thread_idx
 from std.gpu.globals import WARPGROUP_SIZE
 from std.gpu.host import DeviceContext, DeviceBuffer
 from std.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -74,8 +75,6 @@ from std.utils.static_tuple import StaticTuple
 from std.builtin.device_passable import DevicePassable
 from std.utils import StaticTuple
 
-
-from std.gpu import block_idx_uint as block_idx
 
 comptime _LocalTT[dtype: DType, layout: InternalLayout] = TileTensor[
     dtype,
@@ -157,7 +156,7 @@ struct NonNullPointer[
 
     @always_inline
     def value(self) -> Self.PtrType:
-        assert Bool(self.ptr), (
+        assert self.ptr._is_not_null(), (
             "NonNullPointer is supposed to provide a compile-time guarantee"
             " of being non-null"
         )
@@ -180,7 +179,7 @@ struct NullPointer[
 
     @always_inline
     def value(self) -> Self.PtrType:
-        return {}
+        return Self.PtrType(_unsafe_null=())
 
 
 struct Pack[
@@ -506,9 +505,9 @@ def get_seq_info[
         pair_cta=pair_cta,
     ]()
     var state: MHATileState = scheduler.initial_state(
-        UnsafePointer[
-            UInt32, MutAnyOrigin, address_space=AddressSpace.SHARED
-        ](),
+        UnsafePointer[UInt32, MutAnyOrigin, address_space=AddressSpace.SHARED](
+            _unsafe_null=()
+        ),
         tile_summary,
     )
     return scheduler.unsafe_seq_info(tile_summary, state)
@@ -714,13 +713,26 @@ def q_smem_shape[
     group: Int,
     depth: Int,
     decoding: Bool,
+    fuse_gqa: Bool = False,
     num_qk_stages: Int = 1,
-](out res: IndexList[4 if decoding else 3]):
+](out res: IndexList[4 if (decoding or fuse_gqa) else 3]):
     comptime L = res.size
     comptime assert L in (3, 4)
     comptime swizzle_granularity = swizzle_mode.bytes() // size_of[dtype]()
 
-    comptime if L == 3:  # prefill
+    comptime if decoding:
+        return {1, 1, max(group, 8), swizzle_granularity}
+    elif fuse_gqa:
+        comptime if num_qk_stages == 1:
+            return {BM // group, 1, group, depth}
+        else:
+            return {
+                BM // group,
+                1,
+                group,
+                align_up(depth, swizzle_granularity) // num_qk_stages,
+            }
+    else:
         comptime if num_qk_stages == 1:
             return {BM, 1, depth}
         else:
@@ -729,8 +741,6 @@ def q_smem_shape[
                 1,
                 align_up(depth, swizzle_granularity) // num_qk_stages,
             }
-    else:
-        return {1, 1, max(group, 8), swizzle_granularity}
 
 
 def q_gmem_shape[
@@ -741,13 +751,14 @@ def q_gmem_shape[
     q_num_heads: Int,
     depth: Int,
     decoding: Bool,
-](out res: IndexList[4 if decoding else 3]):
+    fuse_gqa: Bool = False,
+](out res: IndexList[4 if (decoding or fuse_gqa) else 3]):
     comptime L = res.size
     comptime assert L in (3, 4)
 
-    comptime if L == 3:  # prefill
+    comptime if L == 3:  # prefill, no fusion
         return {UNKNOWN_VALUE, q_num_heads, depth}
-    else:
+    else:  # decoding or fuse_gqa prefill
         return {UNKNOWN_VALUE, q_num_heads // group, group, depth}
 
 
@@ -759,6 +770,7 @@ comptime QTMATile[
     depth: Int,
     group: Int,
     decoding: Bool,
+    fuse_gqa: Bool = False,
     num_qk_stages: Int = 1,
 ] = SplitLastDimTMATensorTile[
     dtype,
@@ -769,6 +781,7 @@ comptime QTMATile[
         group=group,
         depth=depth,
         decoding=decoding,
+        fuse_gqa=fuse_gqa,
         num_qk_stages=num_qk_stages,
     ](),
     swizzle_mode,
@@ -798,6 +811,7 @@ def q_tma[
     q_num_heads: Int,
     group: Int,
     decoding: Bool,
+    fuse_gqa: Bool = False,
     num_qk_stages: Int = 1,
 ](
     ctx: DeviceContext,
@@ -810,6 +824,7 @@ def q_tma[
     depth=depth,
     group=group,
     decoding=decoding,
+    fuse_gqa=fuse_gqa,
     num_qk_stages=num_qk_stages,
 ]:
     comptime smem_dim = q_smem_shape[
@@ -819,6 +834,7 @@ def q_tma[
         group=group,
         depth=depth,
         decoding=decoding,
+        fuse_gqa=fuse_gqa,
         num_qk_stages=num_qk_stages,
     ]()
     comptime gmem_dim = q_gmem_shape[
@@ -828,6 +844,7 @@ def q_tma[
         q_num_heads=q_num_heads,
         depth=depth,
         decoding=decoding,
+        fuse_gqa=fuse_gqa,
     ]()
     return create_split_tma[smem_dim, gmem_dim, swizzle_mode](ctx, ptr, rows)
 
@@ -906,7 +923,9 @@ def _apply_mask[
     var batch_cache_valid_length: UInt32
 
     comptime if decoding:
-        if warp.broadcast((thread_idx.x - 128) // 32) > UInt((group - 1) // 16):
+        if warp.broadcast(ufloordiv(thread_idx.x - 128, 32)) > (
+            (group - 1) // 16
+        ):
             return
         if lane >= UInt32(4 * group):
             return

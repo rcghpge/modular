@@ -261,6 +261,66 @@ def _handle_transfer(
     return [input_buffer.to(target_device), None]
 
 
+# Debug operations
+
+
+@register_op_handler(mo.DebugPrintOp)
+def _handle_debug_print(
+    op: mo.DebugPrintOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer | None]:
+    """Handle mo.debug.print by printing the string value.
+
+    DebugPrintOp has operands (inChain) and attributes (value, label).
+    It produces (outChain). The interpreter prints the string to stdout.
+
+    Args:
+        op: The debug print operation.
+        inputs: Input buffers - first is the chain (None).
+
+    Returns:
+        List containing None for the output chain.
+    """
+    label = op.label
+    value = op.value
+    if label:
+        print(f"[{label}] {value}")
+    else:
+        print(value)
+    return [None]
+
+
+@register_op_handler(mo.DebugTensorPrintOp)
+def _handle_debug_tensor_print(
+    op: mo.DebugTensorPrintOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer | None]:
+    """Handle mo.debug.tensor.print by printing tensor data.
+
+    DebugTensorPrintOp has operands (inChain, input_tensor) and attribute
+    (label). It produces (outChain). The interpreter converts the tensor
+    buffer to numpy and prints it to stdout.
+
+    Args:
+        op: The debug tensor print operation.
+        inputs: Input buffers - first is the chain (None), second is the
+            tensor Buffer.
+
+    Returns:
+        List containing None for the output chain.
+    """
+    tensor_buf = inputs[1]
+    label = op.label
+    if tensor_buf is not None:
+        np_array = tensor_buf.to_numpy()
+        if label:
+            print(f"[{label}] {np_array}")
+        else:
+            print(np_array)
+    else:
+        tag = f"[{label}] " if label else ""
+        print(f"{tag}<no tensor data>")
+    return [None]
+
+
 # Shape operations
 
 
@@ -890,6 +950,12 @@ def _handle_slice(
     start_np = starts_buffer.to_numpy().astype(np.int64)
     stop_np = stops_buffer.to_numpy().astype(np.int64)
     step_np = steps_buffer.to_numpy().astype(np.int64)
+
+    # Normalize negative starts/stops relative to input dims (NumPy
+    # convention: -1 means last element, etc.).
+    input_shape_np = np.array(input_buffer.shape, dtype=np.int64)
+    start_np = np.where(start_np < 0, start_np + input_shape_np, start_np)
+    stop_np = np.where(stop_np < 0, stop_np + input_shape_np, stop_np)
 
     rank = len(start_np)
     output_shape = tuple(
@@ -3029,3 +3095,152 @@ def _handle_resize_linear(
         target_device._device_context_ptr(),
     )
     return [output]
+
+
+# Distributed operations
+
+
+@register_op_handler(mo.DistributedAllreduceSumOp)
+def _handle_distributed_allreduce_sum(
+    op: mo.DistributedAllreduceSumOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer | None]:
+    """Handle mo.distributed.allreduce.sum by summing tensors across devices.
+
+    Operands (flat): N input tensors, N signal buffers, 1 input chain.
+    Results: N output tensors (one per device, all holding the sum), 1 output chain.
+
+    The interpreter executes sequentially on the host, so signal buffers
+    and chains are unused.  Each input tensor is transferred to the CPU,
+    summed via NumPy, and the result is placed back on each output device.
+
+    Args:
+        op: The allreduce sum operation.
+        inputs: Flat operand buffers from the interpreter dispatcher.
+
+    Returns:
+        N output buffers (one per device) followed by None for the chain.
+    """
+    num_inputs = len(op.inputs)
+    bufs: list[Buffer] = []
+    for i in range(num_inputs):
+        b = inputs[i]
+        assert isinstance(b, Buffer), f"allreduce input {i} is not a Buffer"
+        bufs.append(b)
+
+    # Sum all inputs on the CPU via NumPy.
+    total = bufs[0].to(CPU()).to_numpy().copy()
+    for buf in bufs[1:]:
+        total += buf.to(CPU()).to_numpy()
+
+    # Place the sum on each output device.
+    results = list(op.results)
+    output_buffers: list[Buffer | None] = []
+    for result in results[:-1]:
+        result_type: mo.TensorType = result.type  # type: ignore[assignment]
+        device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
+        output_buffers.append(Buffer.from_numpy(total).to(device))
+
+    # Trailing None for the output chain.
+    output_buffers.append(None)
+    return output_buffers
+
+
+@register_op_handler(mo.DistributedAllgatherOp)
+def _handle_distributed_allgather(
+    op: mo.DistributedAllgatherOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer | None]:
+    """Handle mo.distributed.allgather by copying each input to every device.
+
+    Operands (flat): N input tensors, N signal buffers, 1 input chain.
+    Results: N*N output tensors, 1 output chain.
+
+    The MO-level allgather produces N*N raw outputs: for each device d
+    and each input i, ``results[d*N + i]`` is a copy of ``input[i]`` on
+    ``device[d]``.  The Graph API wraps these with separate ``ConcatOp``
+    calls to produce the final N gathered tensors.
+
+    The interpreter executes sequentially on the host, so signal buffers
+    and chains are unused.
+
+    Args:
+        op: The allgather operation.
+        inputs: Flat operand buffers from the interpreter dispatcher.
+
+    Returns:
+        N*N output buffers followed by None for the chain.
+    """
+    num_inputs = len(op.inputs)
+    bufs: list[Buffer] = []
+    for i in range(num_inputs):
+        b = inputs[i]
+        assert isinstance(b, Buffer), f"allgather input {i} is not a Buffer"
+        bufs.append(b)
+
+    results = list(op.results)
+    output_buffers: list[Buffer | None] = []
+    for idx, result in enumerate(results[:-1]):
+        input_idx = idx % num_inputs
+        result_type: mo.TensorType = result.type  # type: ignore[assignment]
+        device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
+        output_buffers.append(bufs[input_idx].to(device))
+
+    output_buffers.append(None)
+    return output_buffers
+
+
+@register_op_handler(mo.DistributedScatterOp)
+def _handle_distributed_scatter(
+    op: mo.DistributedScatterOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer | None]:
+    """Handle mo.distributed.scatter by distributing root inputs to devices.
+
+    Operands (flat): N input tensors (all on root), N signal buffers, 1 input chain.
+    Results: N output tensors (one per device), 1 output chain.
+
+    Each input[i] is copied to the device indicated by result[i]'s type.
+
+    The interpreter executes sequentially on the host, so signal buffers
+    and chains are unused.
+
+    Args:
+        op: The scatter operation.
+        inputs: Flat operand buffers from the interpreter dispatcher.
+
+    Returns:
+        N output buffers followed by None for the chain.
+    """
+    num_inputs = len(op.inputs)
+    bufs: list[Buffer] = []
+    for i in range(num_inputs):
+        b = inputs[i]
+        assert isinstance(b, Buffer), f"scatter input {i} is not a Buffer"
+        bufs.append(b)
+
+    # All inputs should reside on the root device.
+    if bufs:
+        root_device = bufs[0].device
+        for i, buf in enumerate(bufs[1:], 1):
+            assert buf.device == root_device, (
+                f"scatter expects all inputs on root device {root_device}, "
+                f"but input {i} is on {buf.device}"
+            )
+
+    results = list(op.results)
+    num_outputs = len(results) - 1  # exclude trailing chain
+    assert num_outputs == num_inputs, (
+        f"scatter expects N inputs and N outputs, "
+        f"got {num_inputs} inputs and {num_outputs} outputs"
+    )
+
+    output_buffers: list[Buffer | None] = []
+    for idx, result in enumerate(results[:-1]):
+        result_type: mo.TensorType = result.type  # type: ignore[assignment]
+        device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
+        output_buffers.append(bufs[idx].to(device))
+
+    # Trailing None for the output chain.
+    output_buffers.append(None)
+    return output_buffers

@@ -26,9 +26,6 @@ from max.graph import (
     Value,
     ops,
 )
-from max.kv_cache.paged_kv_cache.increment_cache_lengths import (
-    ragged_increment_cache_lengths,
-)
 from max.nn.comm import Signals
 from max.nn.kernels import eagle_prefill_shift_tokens
 from max.nn.kv_cache import (
@@ -49,6 +46,9 @@ from max.pipelines.lib.speculative_decoding.ragged_token_merger import (
 
 from ..deepseekV3.deepseekV3 import DeepseekV3
 from ..deepseekV3.model_config import DeepseekV3Config
+from ..unified_mtp_deepseekV3.unified_mtp_deepseekV3 import (
+    compute_host_merged_offsets,
+)
 from .eagle3_kimi_k25 import Eagle3KimiK25
 
 
@@ -92,8 +92,8 @@ class Eagle3KimiK25Unified(Module):
             tokens, input_row_offsets, draft_tokens
         )
 
-        host_merged_offsets = merged_offsets.cast(DType.uint32).to(
-            DeviceRef.CPU()
+        host_merged_offsets = compute_host_merged_offsets(
+            host_input_row_offsets, draft_tokens
         )
 
         target_outputs = self.target(
@@ -165,65 +165,11 @@ class Eagle3KimiK25Unified(Module):
             batch_dims=1,
         ).reshape([-1, 1])
 
-        # Build accepted_offsets for correct cache increment: each sequence
-        # grows by original_len + first_rejected (accepted draft count).
-        input_lengths = ops.rebind(
-            (input_row_offsets[1:] - input_row_offsets[:-1]).cast(DType.int64),
-            ["batch_size"],
-        )
-        accepted_lengths = input_lengths + first_rejected.cast(DType.int64)
-        accepted_offsets = ops.concat(
-            [
-                ops.constant(
-                    0, DType.int64, accepted_lengths.device
-                ).broadcast_to([1]),
-                ops.cumsum(accepted_lengths, axis=0),
-            ],
-            axis=0,
-        ).cast(DType.uint32)
-
-        self._increment_draft_cache(
-            accepted_offsets,
-            data_parallel_splits,
-            signal_buffers,
-            draft_kv_collections,
-        )
-
         return (
             first_rejected,  # num_accepted_draft_tokens [B]
             next_tokens,  # next_tokens [B]
             new_token,  # next_draft_tokens [B, num_steps]
         )
-
-    def _increment_draft_cache(
-        self,
-        input_row_offsets: TensorValue,
-        data_parallel_splits: TensorValue,
-        signal_buffers: list[BufferValue],
-        draft_kv_collections: list[PagedCacheValues],
-    ) -> list[PagedCacheValues]:
-        devices = self.config.devices
-        use_comm = len(devices) > 1
-
-        updated_lengths = ragged_increment_cache_lengths(
-            input_row_offsets,
-            data_parallel_splits,
-            [kv.cache_lengths for kv in draft_kv_collections],
-            signal_buffers if use_comm else None,
-        )
-
-        new_kv: list[PagedCacheValues] = []
-        for dev_idx, kv in enumerate(draft_kv_collections):
-            new_kv.append(
-                PagedCacheValues(
-                    kv_blocks=kv.kv_blocks,
-                    cache_lengths=updated_lengths[dev_idx],
-                    lookup_table=kv.lookup_table,
-                    max_lengths=kv.max_lengths[1:, :],
-                )
-            )
-
-        return new_kv
 
     def input_types(
         self,
@@ -274,17 +220,11 @@ class Eagle3KimiK25Unified(Module):
             tokens_type,
             device_input_row_offsets_type,
             host_input_row_offsets_type,
-            draft_tokens_type,
             return_n_logits_type,
             data_parallel_splits_type,
         ]
         all_input_types.extend(signal_buffer_types)
         all_input_types.extend(kv_params.get_symbolic_inputs().flatten())
-
-        if draft_kv_params is not None:
-            for sym in draft_kv_params.get_symbolic_inputs():
-                assert isinstance(sym, PagedCacheInputSymbols)
-                all_input_types.append(sym.kv_blocks)
 
         batch_context_length_type = TensorType(
             DType.int32, shape=[1], device=DeviceRef.CPU()
@@ -295,5 +235,11 @@ class Eagle3KimiK25Unified(Module):
 
         if self.target.ep_manager is not None:
             all_input_types.extend(self.target.ep_manager.input_types())
+
+        all_input_types.append(draft_tokens_type)
+        if draft_kv_params is not None:
+            for sym in draft_kv_params.get_symbolic_inputs():
+                assert isinstance(sym, PagedCacheInputSymbols)
+                all_input_types.append(sym.kv_blocks)
 
         return tuple(all_input_types)

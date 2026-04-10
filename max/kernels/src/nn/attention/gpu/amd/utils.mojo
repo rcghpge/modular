@@ -13,24 +13,29 @@
 
 from std.sys import align_of, simd_width_of, size_of
 
-from std.gpu import (
-    lane_id_int as lane_id,
-    thread_idx_int as thread_idx,
-)
-from std.gpu import warp_id_uint as get_warp_id, WARP_SIZE
-from layout import IntTuple, Layout, LayoutTensor, RuntimeLayout
+from std.gpu import lane_id
+from std.gpu import WARP_SIZE, warp_id as get_warp_id
+from layout import IntTuple, Layout, LayoutTensor, RuntimeLayout, TileTensor
 from layout._utils import idx2crd, make_amd_buffer_resource
-from layout.element import Element
-from layout.layout_tensor import ThreadScope
+from layout.tile_layout import (
+    Layout as TileLayout,
+    ComptimeInt,
+    RuntimeInt,
+    Idx,
+)
+from layout.coord import Coord, CoordLike
+from std.builtin.variadics import Variadic
 from layout.tensor_core import num_matrix_reg
+from std.memory import AddressSpace as BaseAddressSpace
 from std.memory import stack_allocation
-from std.math.uutils import umod, ufloordiv
+from std.math.uutils import umod, ufloordiv, udivmod
 
 from std.utils import IndexList
 from std.utils.numerics import get_accum_type
 from layout.swizzle import Swizzle
-from std.gpu._utils import to_i32, to_i64
+from std.gpu._utils import to_i32, to_llvm_shared_mem_ptr, to_i64
 from std.itertools import product
+from std.sys._assembly import inlined_assembly
 
 
 @always_inline
@@ -58,8 +63,8 @@ def get_warp_layout[mma_shape: IndexList[3]]() -> Layout:
 @always_inline
 def get_warp_coords[BN: Int, WN: Int]() -> IndexList[2]:
     comptime num_warps_n = BN // WN
-    var warp_row, warp_col = divmod(get_warp_id(), UInt(num_warps_n))
-    return IndexList[2](Int(warp_row), Int(warp_col))
+    var warp_row, warp_col = udivmod(get_warp_id(), num_warps_n)
+    return IndexList[2](warp_row, warp_col)
 
 
 @always_inline
@@ -82,67 +87,6 @@ comptime SharedLayoutTensor[dtype: DType, layout: Layout] = LayoutTensor[
     MutAnyOrigin,
     address_space=AddressSpace.SHARED,
 ]
-
-
-@always_inline("nodebug")
-def copy_local_to_dram2[
-    dst_thread_layout: Layout,
-    thread_scope: ThreadScope = ThreadScope.BLOCK,
-](dst: LayoutTensor, src: LayoutTensor, dst_base: LayoutTensor):
-    # TODO: use copy_local_to_dram instead. This is a hack for hackathon :|.
-
-    var worker_idx = (
-        thread_idx.x if thread_scope == ThreadScope.BLOCK else lane_id()
-    )
-    var dst_fragments = dst.distribute[dst_thread_layout](worker_idx)
-
-    var offset = (Int(dst.ptr) - Int(dst_base.ptr)) // size_of[dst.dtype]()
-    var buffer = make_amd_buffer_resource(dst_base)
-    var dst_frag_offset = dst_fragments.distance(dst.ptr) + Scalar[
-        dst.linear_idx_type
-    ](offset)
-
-    comptime M = src.layout.shape[0].value()
-    comptime N = src.layout.shape[1].value()
-
-    comptime for n in range(N):
-        comptime for m in range(M):
-            comptime src_idx = 4 * n + 16 * m
-            comptime i = 4 * m + n
-
-            comptime dst_static_idx = dst_fragments.layout(i)
-            var dst_idx = dst_frag_offset
-
-            comptime if dst_fragments.layout.all_dims_known():
-                dst_idx += Scalar[dst.linear_idx_type](dst_static_idx)
-            else:
-                dst_idx += dst_fragments.runtime_layout(i)
-
-            var src_element = Element[index_type=src.linear_idx_type].load(
-                src.ptr + src_idx,
-                src.runtime_element_layout,
-            )
-
-            comptime element_stride = dst_fragments.element_layout.stride[
-                1
-            ].value()
-
-            comptime if element_stride == 1:
-                buffer.store(
-                    Int32(dst_idx),
-                    src_element.element_data.cast[dst.dtype](),
-                )
-            else:
-                comptime for i in range(dst_fragments.element_layout.size()):
-                    comptime element_offset = dst_fragments.element_layout(i)
-                    var src = src_element.element_data[i].cast[dst.dtype]()
-                    buffer.store(
-                        Int32(
-                            dst_idx
-                            + Scalar[dst.linear_idx_type](element_offset)
-                        ),
-                        src,
-                    )
 
 
 struct SharedMemoryManager[
@@ -261,7 +205,13 @@ struct SharedMemoryManager[
         MutAnyOrigin,
         address_space=AddressSpace.SHARED,
     ]:
-        return self.k_smem.bitcast[Scalar[_dtype]]() if Self.token_gen else {}
+        return self.k_smem.bitcast[
+            Scalar[_dtype]
+        ]() if Self.token_gen else UnsafePointer[
+            Scalar[_dtype], MutAnyOrigin, address_space=AddressSpace.SHARED
+        ](
+            _unsafe_null=()
+        )
 
 
 struct GlobalMemoryManager[
@@ -292,24 +242,53 @@ struct GlobalMemoryManager[
         Int(Self.BM), Int(Self.output_depth)
     )
 
+    # TileTensor output layout with RuntimeInt for valid_rows (OOB clamping).
+    comptime _output_stride0 = (
+        Int(Self.num_heads)
+        * Int(Self.output_depth) if not Self.token_gen else Int(
+            Self.output_depth
+        )
+    )
+    comptime OutputTileLayout = TileLayout[
+        Variadic.types[
+            T=CoordLike,
+            RuntimeInt[DType.int64],
+            ComptimeInt[Int(Self.output_depth)],
+        ],
+        Variadic.types[
+            T=CoordLike,
+            ComptimeInt[Self._output_stride0],
+            ComptimeInt[1],
+        ],
+    ]
+
     comptime kv_gmem_layout = Layout(
         IntTuple(Int(Self.BN), Int(Self.depth)),
         IntTuple(Int(Self.kv_num_heads * Self.depth), 1),
     )
 
-    var q_offset: UInt32
-    var q_runtime_layout: RuntimeLayout[
-        Self.q_gmem_layout,
-        element_type=DType.int32,
-        linear_idx_type=DType.int32,
+    # TileTensor KV layout with RuntimeInt for valid_rows (OOB clamping).
+    comptime _kv_stride0 = Int(Self.kv_num_heads) * Int(Self.depth)
+    comptime KvTileLayout = TileLayout[
+        Variadic.types[
+            T=CoordLike,
+            RuntimeInt[DType.int64],
+            ComptimeInt[Int(Self.depth)],
+        ],
+        Variadic.types[
+            T=CoordLike,
+            ComptimeInt[Self._kv_stride0],
+            ComptimeInt[1],
+        ],
     ]
 
+    var q_offset: UInt32
     var output_offset: UInt32
-    var output_runtime_layout: RuntimeLayout[
-        Self.output_gmem_layout,
-        element_type=DType.int32,
-        linear_idx_type=DType.int32,
-    ]
+    # The only truly runtime dimension: number of valid rows in the Q/output
+    # tile.  Everything else (depth, stride) is comptime-known.  Replacing
+    # two full RuntimeLayout fields (6 wasted registers) with this single
+    # UInt32.
+    var valid_rows: UInt32
 
     @always_inline
     def __init__(
@@ -320,34 +299,11 @@ struct GlobalMemoryManager[
         q_offset: UInt32,
         output_offset: UInt32,
     ):
-        var q_tile_num_rows = min(
-            Self.BM, UInt32(seq_len) - q_tile_idx * Self.BM
-        ) if not Self.token_gen else Self.group
-
         self.q_offset = q_offset
         self.output_offset = output_offset
-
-        self.q_runtime_layout = type_of(self.q_runtime_layout)(
-            {Int(q_tile_num_rows), Int(Self.q_depth)},
-            {
-                Int(
-                    Self.num_heads
-                    * Self.q_depth if not Self.token_gen else Self.q_depth
-                ),
-                1,
-            },
-        )
-
-        self.output_runtime_layout = type_of(self.output_runtime_layout)(
-            {Int(q_tile_num_rows), Int(Self.output_depth)},
-            {
-                Int(
-                    Self.num_heads
-                    * Self.output_depth if not Self.token_gen else Self.output_depth
-                ),
-                1,
-            },
-        )
+        self.valid_rows = min(
+            Self.BM, UInt32(seq_len) - q_tile_idx * Self.BM
+        ) if not Self.token_gen else Self.group
 
     @always_inline
     def get_q_tensor[
@@ -364,7 +320,68 @@ struct GlobalMemoryManager[
             masked=True,
         ],
     ):
-        return {ptr + Int(self.q_offset), self.q_runtime_layout}
+        # Construct RuntimeLayout on-the-fly from the single runtime value.
+        var q_rt = RuntimeLayout[
+            Self.q_gmem_layout,
+            element_type=DType.int32,
+            linear_idx_type=DType.int32,
+        ](
+            {Int(self.valid_rows), Int(Self.q_depth)},
+            {
+                Int(
+                    Self.num_heads
+                    * Self.q_depth if not Self.token_gen else Self.q_depth
+                ),
+                1,
+            },
+        )
+        return {ptr + Int(self.q_offset), q_rt}
+
+    # TileTensor Q layout with RuntimeInt for valid_rows (OOB clamping).
+    comptime _q_stride0 = (
+        Int(Self.num_heads)
+        * Int(Self.q_depth) if not Self.token_gen else Int(Self.q_depth)
+    )
+    comptime QTileLayout = TileLayout[
+        Variadic.types[
+            T=CoordLike,
+            RuntimeInt[DType.int64],
+            ComptimeInt[Int(Self.q_depth)],
+        ],
+        Variadic.types[
+            T=CoordLike,
+            ComptimeInt[Self._q_stride0],
+            ComptimeInt[1],
+        ],
+    ]
+
+    @always_inline
+    def get_q_tile[
+        qtype: DType,
+    ](
+        self,
+        ptr: UnsafePointer[Scalar[qtype], ImmutAnyOrigin],
+    ) -> TileTensor[
+        qtype, Self.QTileLayout, ImmutAnyOrigin
+    ]:
+        """Return the Q DRAM tile as a TileTensor with RuntimeInt valid_rows.
+
+        Args:
+            ptr: Base pointer to the Q buffer.
+
+        Returns:
+            A TileTensor with RuntimeInt rows and ComptimeInt strides.
+        """
+        return TileTensor[qtype, Self.QTileLayout, ImmutAnyOrigin](
+            ptr=ptr + Int(self.q_offset),
+            layout=Self.QTileLayout(
+                Coord(
+                    RuntimeInt[DType.int64](Int64(self.valid_rows)),
+                    Idx[Int(Self.q_depth)](),
+                ),
+                Coord(Idx[Self._q_stride0](), Idx[1]()),
+            ),
+        )
 
     @always_inline
     def get_output_tensor[
@@ -381,7 +398,53 @@ struct GlobalMemoryManager[
             masked=True,
         ],
     ):
-        return {ptr + Int(self.output_offset), self.output_runtime_layout}
+        # Construct RuntimeLayout on-the-fly from the single runtime value.
+        var output_rt = RuntimeLayout[
+            Self.output_gmem_layout,
+            element_type=DType.int32,
+            linear_idx_type=DType.int32,
+        ](
+            {Int(self.valid_rows), Int(Self.output_depth)},
+            {
+                Int(
+                    Self.num_heads
+                    * Self.output_depth if not Self.token_gen else Self.output_depth
+                ),
+                1,
+            },
+        )
+        return {ptr + Int(self.output_offset), output_rt}
+
+    @always_inline
+    def get_output_tile[
+        out_type: DType,
+    ](
+        self,
+        ptr: UnsafePointer[Scalar[out_type], MutAnyOrigin],
+    ) -> TileTensor[
+        out_type, Self.OutputTileLayout, MutAnyOrigin
+    ]:
+        """Return the output DRAM tile as a TileTensor with RuntimeInt valid_rows.
+
+        The RuntimeInt dim[0] ensures make_amd_buffer_resource computes
+        correct OOB clamping bounds when the tile exceeds valid data.
+
+        Args:
+            ptr: Base pointer to the output buffer.
+
+        Returns:
+            A TileTensor with RuntimeInt rows and ComptimeInt strides.
+        """
+        return TileTensor[out_type, Self.OutputTileLayout, MutAnyOrigin](
+            ptr=ptr + Int(self.output_offset),
+            layout=Self.OutputTileLayout(
+                Coord(
+                    RuntimeInt[DType.int64](Int64(self.valid_rows)),
+                    Idx[Int(Self.output_depth)](),
+                ),
+                Coord(Idx[Self._output_stride0](), Idx[1]()),
+            ),
+        )
 
     @always_inline
     def get_kv_tensor[
@@ -410,6 +473,38 @@ struct GlobalMemoryManager[
         )
 
         return {ptr, kv_runtime_layout}
+
+    @always_inline
+    def get_kv_tile[
+        kvtype: DType,
+        //,
+    ](
+        self,
+        ptr: UnsafePointer[Scalar[kvtype], ImmutAnyOrigin],
+        kv_tile_num_rows: UInt32,
+    ) -> TileTensor[kvtype, Self.KvTileLayout, ImmutAnyOrigin]:
+        """Return the KV DRAM tile as a TileTensor with RuntimeInt valid_rows.
+
+        The RuntimeInt dim[0] ensures make_amd_buffer_resource computes
+        correct OOB clamping bounds when the tile exceeds valid data.
+
+        Args:
+            ptr: Base pointer to the KV cache buffer.
+            kv_tile_num_rows: Number of valid rows in this tile.
+
+        Returns:
+            A TileTensor with RuntimeInt rows and ComptimeInt strides.
+        """
+        return TileTensor[kvtype, Self.KvTileLayout, ImmutAnyOrigin](
+            ptr=ptr,
+            layout=Self.KvTileLayout(
+                Coord(
+                    RuntimeInt[DType.int64](Int64(kv_tile_num_rows)),
+                    Idx[Int(Self.depth)](),
+                ),
+                Coord(Idx[Self._kv_stride0](), Idx[1]()),
+            ),
+        )
 
 
 comptime _alias_scope_attr = __mlir_attr.`[#llvm.alias_scope<id= "amdgpu.AsyncCopies", domain=#llvm.alias_scope_domain<id = "amdgpu.AsyncOps">>]`
@@ -623,7 +718,7 @@ def copy_dram_to_sram_lds[
             Scalar[DType.bfloat16],
             MutAnyOrigin,
             address_space=AddressSpace.BUFFER_RESOURCE,
-        ]()
+        ](_unsafe_null=())
 
         var ptr_to_ptr = UnsafePointer(to=desc_ptr_)
         var ptr_to_simd = UnsafePointer(to=bc.desc)

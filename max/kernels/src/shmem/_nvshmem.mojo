@@ -188,7 +188,7 @@ struct NVSHMEMXUniqueIDArgs:
             size_of[Self]() == 24
         ), "NVSHMEMXUniqueIDArgs must be 24 bytes"
         self.version = c_int((1 << 16) + size_of[NVSHMEMXUniqueIDArgs]())
-        self.id = UnsafePointer[NVSHMEMXUniqueID, MutAnyOrigin]()
+        self.id = {_unsafe_null = ()}
         self.myrank = 0
         self.nranks = 0
 
@@ -559,7 +559,7 @@ def nvshmemx_signal_op(
     signal: UInt64,
     sig_op: c_int,
     pe: c_int,
-):
+) abi("C"):
     ...
 
 
@@ -621,7 +621,7 @@ def nvshmemx_barrier_all_on_stream(stream: CUstream):
 @extern("nvshmem_signal_wait_until")
 def nvshmem_signal_wait_until(
     sig_addr: UnsafePointer[UInt64, MutAnyOrigin], cmp: c_int, cmp_value: UInt64
-):
+) abi("C"):
     ...
 
 
@@ -632,5 +632,5 @@ def nvshmem_signal_wait_until(
 
 
 @extern("nvshmem_fence")
-def nvshmem_fence():
+def nvshmem_fence() abi("C"):
     ...

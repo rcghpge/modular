@@ -13,7 +13,7 @@
 """Correction warp group logic for FA4 (SM100 Flash Attention)."""
 
 from std.sys import size_of
-from std.gpu import thread_idx_uint as thread_idx
+from std.gpu import thread_idx
 from std.gpu.compute.arch.tcgen05 import (
     tcgen05_ld,
     tcgen05_st,
@@ -68,8 +68,9 @@ def fa4_correction[
     pipeline_c1 = mbars.consumer_c1()
     pipeline_o = mbars.consumer_o()
 
+    comptime BM_mask: Int = config.BM_eff()
     var iter_count: UInt32 = (
-        mask.total_iters[BM, BN, page_size](score_row, num_keys) - 1
+        mask.total_iters[BM_mask, BN, page_size](score_row, num_keys) - 1
     )
 
     comptime batch_size = 16 if config.ov_depth % 16 == 0 else 8

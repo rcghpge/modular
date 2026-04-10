@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""Implements C string interoperability utilities."""
 
 from std.collections.string.string_slice import _unsafe_strlen
 from std.memory import UnsafeMaybeUninit
@@ -88,7 +89,7 @@ struct CStringSlice[origin: ImmutOrigin](
                 raise Error("getenv returned an error!")
         ```
         """
-        assert Bool(unsafe_from_ptr), (
+        assert unsafe_from_ptr._is_not_null(), (
             "Cannot construct a CStringSlice from a null pointer. Use"
             " Optional[CStringSlice] instead to represent nullability."
         )

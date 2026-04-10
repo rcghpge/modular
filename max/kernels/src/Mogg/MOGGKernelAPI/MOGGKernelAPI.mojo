@@ -136,6 +136,7 @@ from nn.bicubic import resize_bicubic
 from nn.concat import concat, fused_concat
 from nn.conv.conv import ConvInfoStatic, conv_gpu, conv_nhwc_direct, conv_shape
 from nn.conv.conv import pack_filter as _pack_conv_filter
+from nn.conv.conv import pack_filter_from_fcrs as _pack_conv_filter_from_fcrs
 from nn.conv.conv import pack_filter_shape as pack_filter_shape_conv
 from nn.conv.conv_transpose import (
     conv_transpose_shape,
@@ -293,11 +294,11 @@ from quantization.qmatmul_k import (
     matmul_Q6_K,
     matmul_Q6_K_pack_b,
 )
+from std.ffi import external_call
 from std.runtime.asyncrt import (
     DeviceContextPtr,
     DeviceContextPtrList,
     TaskGroup,
-    parallelism_level,
 )
 from std.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 from tensor import (
@@ -1995,7 +1996,7 @@ comptime _TransposeStrideTypes[
     input_stride_types: Variadic.TypesOfTrait[CoordLike],
 ] = _ReduceVariadicAndIdxToVariadic[
     BaseVal=Variadic.empty_of_trait[CoordLike],
-    VariadicType=Variadic.types[
+    ParamListType=Variadic.types[
         T=CoordLike,
         *Variadic.splat_type[Trait=CoordLike, rank, RuntimeInt[]],
     ],
@@ -2136,7 +2137,7 @@ comptime _SliceStrideTypes[
     step_types: Variadic.TypesOfTrait[CoordLike],
 ] = _ReduceVariadicAndIdxToVariadic[
     BaseVal=Variadic.empty_of_trait[CoordLike],
-    VariadicType=Variadic.types[
+    ParamListType=Variadic.types[
         T=CoordLike,
         *Variadic.splat_type[Trait=CoordLike, rank, RuntimeInt[]],
     ],
@@ -6868,7 +6869,7 @@ struct Struct_fused_qk_rope_ragged_paged[interleaved: Bool]:
     ) raises:
         # Dummy position_ids - won't be used since has_position_ids=False
         var dummy_position_ids = DynamicTensor[dtype=DType.uint32, rank=2, ...](
-            {}, IndexList[2](0)
+            {_unsafe_null = ()}, IndexList[2](0)
         )
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
@@ -9282,6 +9283,24 @@ def layout_transform_conv_filter_common[
     )
 
 
+def _layout_transform_conv_filter_from_fcrs[
+    dtype: DType, filter_rank: Int, packed_rank: Int, num_groups: Int
+](
+    packed_filter: ManagedTensorSlice[dtype=dtype, rank=packed_rank, ...],
+    filter: ManagedTensorSlice[dtype=dtype, rank=filter_rank, ...],
+):
+    comptime assert packed_rank == filter_rank + 1
+
+    # With the compiler-level FCRS→RSCF transpose in PatternFusion,
+    # this kernel should no longer be called. But keep it as a fallback
+    # using int64 convention (same as the RSCF path).
+    _pack_conv_filter_from_fcrs(
+        filter.to_tile_tensor[DType.int64](),
+        packed_filter.to_tile_tensor[DType.int64](),
+        num_groups,
+    )
+
+
 @compiler.register("layout_transform_QRSCF_to_FQRSCf")
 struct LayoutTransformQRSCF2FQRSCf:
     @always_inline
@@ -9308,6 +9327,39 @@ struct LayoutTransformRSCF2FRSCf:
         filter: InputTensor[dtype=dtype, rank=filter_rank, ...],
     ):
         layout_transform_conv_filter_common[num_groups=num_groups](
+            packed_filter, filter
+        )
+
+
+# Note: These FCRS/FCQRS kernels are currently unused — the compiler
+# transposes FCRS to RSCF in PatternFusion before packing, so only the
+# RSCF kernels above are invoked. Kept as fallback; can be removed in cleanup.
+@compiler.register("layout_transform_FCRS_to_FRSCf")
+struct LayoutTransformFCRS2FRSCf:
+    @always_inline
+    @staticmethod
+    def execute[
+        dtype: DType, filter_rank: Int, packed_rank: Int, num_groups: Int
+    ](
+        packed_filter: OutputTensor[dtype=dtype, rank=packed_rank, ...],
+        filter: InputTensor[dtype=dtype, rank=filter_rank, ...],
+    ):
+        _layout_transform_conv_filter_from_fcrs[num_groups=num_groups](
+            packed_filter, filter
+        )
+
+
+@compiler.register("layout_transform_FCQRS_to_FQRSCf")
+struct LayoutTransformFCQRS2FQRSCf:
+    @always_inline
+    @staticmethod
+    def execute[
+        dtype: DType, filter_rank: Int, packed_rank: Int, num_groups: Int
+    ](
+        packed_filter: OutputTensor[dtype=dtype, rank=packed_rank, ...],
+        filter: InputTensor[dtype=dtype, rank=filter_rank, ...],
+    ):
+        _layout_transform_conv_filter_from_fcrs[num_groups=num_groups](
             packed_filter, filter
         )
 
@@ -9952,12 +10004,18 @@ def _check_signal_buffer_size(
 
 
 @always_inline("nodebug")
-def task_id_for_device(device_id: Int, num_workers: Int) -> Int:
-    # Map from device ID to task ID for CPU affinity.
-    # Note: Keep in sync with taskIdForDevice() in MGPPrimitives.cpp
-    if num_workers <= 1:
-        return -1
-    return 1 + (device_id % (num_workers - 1))
+def task_id_for_device(device_id: Int) -> Int:
+    """Map from device ID to task ID for CPU affinity.
+
+    Delegates to the shared C++ implementation in DeviceAffinity.cpp which
+    handles explicit MODULAR_RUNTIME_DEVICE_TASK_CPU_IDS config,
+    NUMA-inferred GPU-to-CPU core mapping, and round-robin fallback.
+    """
+    return Int(
+        external_call["KGEN_CompilerRT_TaskIdForDevice", Int32](
+            Int32(device_id),
+        )
+    )
 
 
 @always_inline
@@ -9988,10 +10046,9 @@ def _launch_device_collective[
 
     # Set up a task group to launch the tasks in parallel.
     var tg = TaskGroup()
-    var num_workers = parallelism_level()
     comptime for i in range(num_devices):
         # Dispatch to the worker thread that has affinity for this device.
-        var worker_id = task_id_for_device(Int(dev_ctxs[i].id()), num_workers)
+        var worker_id = task_id_for_device(Int(dev_ctxs[i].id()))
         tg._create_task(wrapper[i](), desired_worker_id=worker_id)
 
     # Wait for all tasks to complete.
@@ -10066,7 +10123,7 @@ struct DistributedAllReduceSum:
         # Marshal signal buffers into the expected format.
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
         comptime for i in range(num_devices):
             rank_sigs[i] = signal_buffers[i]._ptr.bitcast[Signal]()
 
@@ -10198,7 +10255,7 @@ struct BundledAllReduceSum:
         var out_buf = output.to_tile_tensor[DType.int64]()
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
 
         comptime for i in range(num_devices):
             in_tensors[i] = rebind[InputTensorType](
@@ -10285,7 +10342,7 @@ struct DistributedReduceScatterSum:
         # Marshal signal buffers.
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
 
         comptime for i in range(num_devices):
             rank_sigs[i] = signal_buffers[i]._ptr.bitcast[Signal]()
@@ -10399,7 +10456,7 @@ struct DistributedAllGather:
         # Marshal signal buffers.
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
 
         comptime for i in range(num_devices):
             in_tensors[i] = TileTensor(
@@ -10510,7 +10567,7 @@ struct DistributedBroadcast:
 
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
 
         comptime for i in range(signal_buffers.size):
             rank_sigs[i] = signal_buffers[i]._ptr.bitcast[Signal]()
@@ -10594,7 +10651,7 @@ struct DistributedScatter:
         var in_tensors = InlineArray[InputTensorType, ngpus](uninitialized=True)
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
 
         comptime for i in range(ngpus):
             in_tensors[i] = rebind[InputTensorType](
@@ -10685,7 +10742,7 @@ struct DistributedAllReduceAddRMSNormQuantFP8:
         # Marshal signal buffers.
         var rank_sigs = InlineArray[
             UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS
-        ](fill={})
+        ](fill={_unsafe_null = ()})
 
         comptime for i in range(inputs.size):
             in_tensors[i] = rebind[InputTensorType](
@@ -11055,28 +11112,42 @@ struct QuantizeTensorDynamicScaledFloat8:
     @staticmethod
     def execute[
         input_type: DType,
+        scales_type: DType,
         output_type: DType,
+        //,
+        group_size_or_per_token: Int,
         target: StaticString,
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
-        scale: OutputTensor[dtype=DType.float32, rank=1, ...],
-        input: InputTensor[dtype=input_type, rank=2, ...],
+        scales: OutputTensor[dtype=scales_type, rank=2, ...],
+        input: FusedInputTensor[dtype=input_type, rank=2, ...],
+        scale_ub: Float32,
         ctx: DeviceContextPtr,
     ) raises:
         comptime assert is_gpu[target](), "only valid on GPUs"
-        comptime assert output_type in (
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fnuz,
-        ), "output dtype should be float8_e4m3fn or float8_e4m3fnuz"
-        var cuda_ctx = ctx.get_device_context()
+
+        @parameter
+        @always_inline
+        def input_fn[
+            width: Int, alignment: Int
+        ](row: Int, col: Int) capturing -> SIMD[input_type, width]:
+            return input._lambda_load[width=width, element_alignment=alignment](
+                Index(row, col)
+            )
+
         quantize_tensor_dynamic_scaled_fp8[
-            output_type,
-            input_type,
+            out_dtype=output_type,
+            in_dtype=input_type,
+            scales_dtype=scales_type,
+            input_fn,
+            group_size_or_per_token,
+            num_cols=Int(input.static_spec.shape_tuple[1]),
         ](
             output.to_tile_tensor[DType.int64](),
-            input.to_tile_tensor[DType.int64](),
-            scale.to_tile_tensor[DType.int64](),
-            cuda_ctx,
+            scales.to_tile_tensor[DType.int64](),
+            scale_ub,
+            ctx.get_device_context(),
+            num_rows=input.dim_size(0),
         )
 
 
@@ -11254,7 +11325,7 @@ struct MatmulStaticScaledFloat8:
         comptime N = type_of(weight_tt).static_shape[0]
         var M = Int(input_tt.dim[0]())
         var output_dummy = TileTensor(
-            UnsafePointer[Scalar[DType.float32], MutAnyOrigin](),
+            UnsafePointer[Scalar[DType.float32], MutAnyOrigin](_unsafe_null=()),
             row_major(Coord(RuntimeInt[DType.int64](Int64(M)), Idx[N]())),
         )
 

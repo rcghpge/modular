@@ -21,6 +21,7 @@ from std.sys import PrefetchLocality
 
 import std.math
 from std.collections.string.string_slice import _get_kgen_string
+from std.memory._poison import _check_not_poison_masked
 from std.sys.info import _is_sm_9x_or_newer, is_gpu
 
 
@@ -162,7 +163,10 @@ def gather[
         passthrough,
     )
     _ = base
-    return SIMD(mlir_value=result)
+    var loaded = SIMD[dtype, size](mlir_value=result)
+    comptime if dtype.is_floating_point():
+        _check_not_poison_masked[dtype, size](loaded, mask)
+    return loaded
 
 
 # ===-----------------------------------------------------------------------===#
@@ -538,17 +542,22 @@ def masked_load[
     Returns:
       The loaded memory stored in a vector of type SIMD[dtype, size].
     """
-    assert Bool(addr), "masked_load requires a valid (non-null) pointer"
+    assert (
+        addr._is_not_null()
+    ), "masked_load requires a valid (non-null) pointer"
 
     comptime if size == 1:
         return addr.load() if mask else passthrough[0]
 
-    return llvm_intrinsic["llvm.masked.load", SIMD[dtype, size]](
+    var result = llvm_intrinsic["llvm.masked.load", SIMD[dtype, size]](
         addr.bitcast[NoneType]().address,
         Int32(alignment),
         mask,
         passthrough,
     )
+    comptime if dtype.is_floating_point():
+        _check_not_poison_masked[dtype, size](result, mask)
+    return result
 
 
 # ===-----------------------------------------------------------------------===#
@@ -578,7 +587,9 @@ def masked_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    assert Bool(addr), "masked_store requires a valid (non-null) pointer"
+    assert (
+        addr._is_not_null()
+    ), "masked_store requires a valid (non-null) pointer"
 
     comptime if size == 1:
         if mask:
@@ -619,7 +630,9 @@ def compressed_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    assert Bool(addr), "compressed_store requires a valid (non-null) pointer"
+    assert (
+        addr._is_not_null()
+    ), "compressed_store requires a valid (non-null) pointer"
 
     comptime if size == 1:
         if mask:
@@ -664,7 +677,9 @@ def strided_load[
     Returns:
       A vector containing the loaded data.
     """
-    assert Bool(addr), "strided_load requires a valid (non-null) pointer"
+    assert (
+        addr._is_not_null()
+    ), "strided_load requires a valid (non-null) pointer"
 
     comptime if simd_width == 1:
         return addr.load[invariant=invariant]() if mask else Scalar[dtype]()
@@ -707,7 +722,9 @@ def strided_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    assert Bool(addr), "strided_store requires a valid (non-null) pointer"
+    assert (
+        addr._is_not_null()
+    ), "strided_store requires a valid (non-null) pointer"
 
     comptime if simd_width == 1:
         if mask:

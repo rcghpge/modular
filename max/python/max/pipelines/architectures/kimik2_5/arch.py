@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.graph.weights import WeightsFormat
-from max.interfaces import PipelineTask
+from max.interfaces import InputModality, PipelineTask
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     SupportedArchitecture,
@@ -25,6 +25,7 @@ from .context import KimiK2_5TextAndVisionContext
 from .model import KimiK2_5Model
 from .model_config import KimiK2_5Config, KimiK2_5TextConfig
 from .tokenizer import KimiK2_5VLTokenizer
+from .tool_parser import KimiToolParser
 from .unified_eagle_pipeline_model import Eagle3KimiK25Model
 
 
@@ -57,6 +58,7 @@ kimik2_5_arch = SupportedArchitecture(
         "float4_e2m1fnx2",
     },
     multi_gpu_supported=True,
+    input_modalities={InputModality.TEXT, InputModality.IMAGE},
     pipeline_model=KimiK2_5Model,
     tokenizer=KimiK2_5VLTokenizer,
     context_type=KimiK2_5TextAndVisionContext,
@@ -67,6 +69,7 @@ kimik2_5_arch = SupportedArchitecture(
     supports_empty_batches=True,
     requires_max_batch_context_length=True,
     config=KimiK2_5Config,
+    tool_parser=KimiToolParser,
 )
 
 kimivl_arch = SupportedArchitecture(
@@ -82,6 +85,7 @@ kimivl_arch = SupportedArchitecture(
         "float4_e2m1fnx2",
     },
     multi_gpu_supported=True,
+    input_modalities={InputModality.TEXT, InputModality.IMAGE},
     pipeline_model=KimiK2_5Model,
     tokenizer=KimiK2_5VLTokenizer,
     context_type=KimiK2_5TextAndVisionContext,
@@ -92,6 +96,7 @@ kimivl_arch = SupportedArchitecture(
     supports_empty_batches=True,
     requires_max_batch_context_length=True,
     config=KimiK2_5Config,
+    tool_parser=KimiToolParser,
 )
 
 eagle3_kimik25_arch = SupportedArchitecture(
@@ -115,4 +120,5 @@ eagle3_kimik25_arch = SupportedArchitecture(
     supports_empty_batches=True,
     requires_max_batch_context_length=True,
     config=KimiK2_5TextConfig,
+    tool_parser=KimiToolParser,
 )

@@ -16,13 +16,16 @@ from std.sys import simd_width_of, size_of
 from std.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     barrier,
-    thread_idx_uint as thread_idx,
-    warp_id_uint as warp_id,
+    syncwarp,
+    thread_idx,
+    warp_id,
 )
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from std.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
-from linalg.matmul.gpu.sm100_structured.structured_kernels.tmem import (
-    TmemAllocation,
+from std.gpu.compute.arch.tcgen05 import (
+    tcgen05_alloc,
+    tcgen05_dealloc,
+    tcgen05_release_allocation_lock,
 )
 from layout.tma_async import RaggedTMA3DTile
 from nn.attention.gpu.nvidia.sm100.attention import (
@@ -90,6 +93,11 @@ struct SM100MHA2Q[
     comptime padded_depth = Self.config.padded_qk_depth
     comptime num_q_heads = Self.config.num_q_heads
     comptime group = Self.config.group
+    comptime fuse_gqa = Self.config.fuse_gqa
+    # BM_eff: sequence positions per full tile (BM // group when fusing)
+    comptime BM_eff: Int = Self.config.BM_eff()
+    # BM_mask: the BM value passed to mask functions
+    comptime BM_mask: Int = Self.BM_eff
     comptime ragged = not Self.ValidLengthType.is_null
     comptime page_size = Self.KVLUTType.page_size
 
@@ -110,9 +118,6 @@ struct SM100MHA2Q[
         use_order_barriers=EnableForcedOrdering,
         use_fused_kv=Self.config.use_fused_kv,
     ]
-
-    # TMEM allocation type for this kernel's cta_group configuration
-    comptime TmemAllocType = TmemAllocation[Self.cta_group]
 
     # First MMA is Q@K' (can be staged by num_qk_stages)
     # (BM x depth) @ (BN x depth)' -> (BM x BN)
@@ -182,6 +187,7 @@ struct SM100MHA2Q[
             depth=Self.config.qk_depth,
             group=Self.config.group,
             decoding=False,
+            fuse_gqa=Self.fuse_gqa,
             num_qk_stages=Self.config.num_qk_stages,
         ],
         k_tma_op: KVTMATile[
@@ -201,6 +207,7 @@ struct SM100MHA2Q[
             Self.config.swizzle_mode,
             BM=Self.config.BM // 2,
             BN=Self.config.ov_depth,
+            group=Self.config.group if Self.fuse_gqa else 1,
         ],
         kv_lut: Self.KVLUTType,
         scale: Float32,
@@ -265,9 +272,10 @@ struct SM100MHA2Q[
             # Initialize all barriers (S/C/order/Q1Sync/K/V/O) in one call
             misc_mbars.init(lane_idx=Int32(thread_idx.x))
         elif warp_idx == 1:
-            _ = Self.TmemAllocType.allocate(
-                Self.TmemAllocType.SmemAddrStorage(smem.tmem_addr_ptr())
+            tcgen05_alloc[Int32(Self.cta_group)](
+                smem.tmem_addr_ptr(), UInt32(512)
             )
+            syncwarp()
         elif warp_idx == 2:
             e = elect()
             if e != 0:
@@ -285,8 +293,9 @@ struct SM100MHA2Q[
             # softmax $warp_group_idx
             warpgroup_reg_alloc[num_reg_softmax]()
             var seq_info: SeqInfo = get_seq_info[
-                Self.BM,
-                Self.num_q_heads,
+                Self.BM_eff,
+                Self.num_q_heads
+                // Self.group if Self.fuse_gqa else Self.num_q_heads,
                 Self.MaskType.get_type_name() == "CausalMask",
             ](batch_size, max_seq_len, valid_length, partition)
 
@@ -322,8 +331,9 @@ struct SM100MHA2Q[
             warpgroup_reg_dealloc[num_reg_correction]()
 
             var seq_info: SeqInfo = get_seq_info[
-                Self.BM,
-                Self.num_q_heads,
+                Self.BM_eff,
+                Self.num_q_heads
+                // Self.group if Self.fuse_gqa else Self.num_q_heads,
                 Self.MaskType.get_type_name() == "CausalMask",
             ](batch_size, max_seq_len, valid_length, partition)
             if not seq_info.is_valid():
@@ -345,8 +355,9 @@ struct SM100MHA2Q[
             if warp_idx == 13:  # produce
                 warpgroup_reg_dealloc[num_reg_other]()
                 var seq_info: SeqInfo = get_seq_info[
-                    Self.BM,
-                    Self.num_q_heads,
+                    Self.BM_eff,
+                    Self.num_q_heads
+                    // Self.group if Self.fuse_gqa else Self.num_q_heads,
                     Self.MaskType.get_type_name() == "CausalMask",
                 ](batch_size, max_seq_len, valid_length, partition)
 
@@ -385,17 +396,18 @@ struct SM100MHA2Q[
             elif warp_idx == 12:  # Q @ K', P @ V
                 warpgroup_reg_dealloc[num_reg_other]()
                 var seq_info: SeqInfo = get_seq_info[
-                    Self.BM,
-                    Self.num_q_heads,
+                    Self.BM_eff,
+                    Self.num_q_heads
+                    // Self.group if Self.fuse_gqa else Self.num_q_heads,
                     Self.MaskType.get_type_name() == "CausalMask",
                 ](batch_size, max_seq_len, valid_length, partition)
 
                 if not seq_info.is_valid():
-                    var tmem = Self.TmemAllocType.from_shared(
-                        Self.TmemAllocType.SmemAddrStorage(smem.tmem_addr_ptr())
+                    var tmem_addr = smem.tmem_addr_ptr()[]
+                    tcgen05_release_allocation_lock[Int32(Self.cta_group)]()
+                    tcgen05_dealloc[Int32(Self.cta_group)](
+                        tmem_addr, UInt32(512)
                     )
-                    tmem.release_lock()
-                    tmem.deallocate()
                     return
                 var pos: PositionSummary = PositionSummary.create[
                     ragged=Self.ragged,
@@ -426,7 +438,7 @@ struct SM100MHA2Q[
                 Int(score_row),
                 Int(kv_row),
             ),
-            Index[dtype=DType.int32](Self.BM, Self.BN),
+            Index[dtype=DType.int32](Self.BM_mask, Self.BN),
         )
 
     @staticmethod

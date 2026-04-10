@@ -97,7 +97,13 @@ def test_warmup_graph_capture_batch_size(
     pipeline._pipeline_config = MagicMock()
     pipeline._pipeline_config.runtime.max_batch_size = config_max_batch_size
     pipeline._kv_manager = MagicMock()
-    pipeline._kv_manager.params = MagicMock()
+    mock_kv_params = MagicMock()
+    mock_kv_params.page_size = 128
+    pipeline._kv_manager.params = mock_kv_params
+    pipeline._kv_manager.cache_params.return_value = mock_kv_params
+    pipeline._kv_manager._total_num_pages = 100
+    pipeline._spec_decode_state = None
+    pipeline._kv_manager.num_caches = 1
     pipeline.session = MagicMock()
 
     with patch(
@@ -113,7 +119,7 @@ def test_warmup_graph_capture_batch_size(
         assert call_kwargs["model"] is mock_model.model
         assert call_kwargs["execute_model"] is mock_model.execute
         assert call_kwargs["session"] is pipeline.session
-        assert call_kwargs["kv_params"] is pipeline._kv_manager.params
+        assert call_kwargs["kv_params"] is mock_kv_params
         assert callable(call_kwargs["warmup_model_inputs"])
         assert (
             call_kwargs["max_cache_length_upper_bound"]
@@ -161,3 +167,23 @@ def test_prefill_and_decode_gets_overlap_pipeline() -> None:
     )
     result = get_pipeline_for_task(PipelineTask.TEXT_GENERATION, config)
     assert result is OverlapTextGenerationPipeline[TextContext]
+
+
+def test_warmup_raises_for_multi_spec_tokens() -> None:
+    """_graph_capture_warmup_inputs raises ValueError when num_speculative_tokens > 1."""
+    pipeline = OverlapTextGenerationPipeline.__new__(
+        OverlapTextGenerationPipeline
+    )
+    pipeline._pipeline_config = MagicMock()
+    pipeline._pipeline_config.model.data_parallel_degree = 1
+
+    spec_state = MagicMock()
+    spec_state.num_speculative_tokens = 3
+    pipeline._spec_decode_state = spec_state
+
+    with pytest.raises(
+        ValueError,
+        match=r"Speculative decoding with multiple tokens is not supported with Device Graph Capture",
+    ):
+        with pipeline._warmup_model_inputs(batch_size=1):
+            pass

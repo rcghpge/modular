@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""Implements `TString`, a template string that captures interpolated values at compile-time."""
 from std.collections.string.format import _FormatUtils, _comptime_list_to_span
 from std.utils import Variant
 import std.format._utils as fmt
@@ -44,7 +45,7 @@ struct TString[
     """
 
     comptime _InjectedValues = VariadicPack[
-        origin=Self.origins, False, Writable, *Self.Ts
+        origin=Self.origins, element_trait=Writable, False, *Self.Ts
     ]
     var _values: Self._InjectedValues
 
@@ -73,7 +74,7 @@ struct TString[
 
         # Alternate writing NUL terminated string-literal part, followed
         # by the interpolated replacement field.
-        comptime for i in range(Variadic.size(Self.Ts)):
+        comptime for i in range(TypeList[*Self.Ts].size):
             var length = write_string()
             offset += length + 1
             self._values[i].write_to(writer)

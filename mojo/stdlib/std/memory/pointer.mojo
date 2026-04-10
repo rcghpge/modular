@@ -21,6 +21,7 @@ from std.memory import Pointer
 
 from std.format._utils import FormatStruct, Named, TypeNames
 from std.memory import UnsafeMaybeUninit
+from std.memory._nonnull import NonNullUnsafePointer
 from std.utils._nicheable import UnsafeSingleNicheable, NicheIndex
 
 # ===-----------------------------------------------------------------------===#
@@ -371,8 +372,10 @@ struct Pointer[
     # UnsafeNicheable
     # ===------------------------------------------------------------------===#
 
-    comptime _NullPointerType = UnsafePointer[
-        Self.type, MutAnyOrigin, address_space=Self.address_space
+    comptime _NonNull = NonNullUnsafePointer[
+        Self.type,
+        ExternalOrigin[mut=Self.mut],
+        address_space=Self.address_space,
     ]
 
     @staticmethod
@@ -381,7 +384,9 @@ struct Pointer[
     def write_niche(
         memory: UnsafePointer[mut=True, UnsafeMaybeUninit[Self], _]
     ):
-        memory.bitcast[Self._NullPointerType]().init_pointee_move({})
+        Self._NonNull.write_niche(
+            memory.bitcast[UnsafeMaybeUninit[Self._NonNull]]()
+        )
 
     @staticmethod
     @always_inline
@@ -389,4 +394,6 @@ struct Pointer[
     def isa_niche(
         memory: UnsafePointer[mut=False, UnsafeMaybeUninit[Self], _]
     ) -> Bool:
-        return not Bool(memory.bitcast[Self._NullPointerType]()[])
+        return Self._NonNull.isa_niche(
+            memory.bitcast[UnsafeMaybeUninit[Self._NonNull]]()
+        )

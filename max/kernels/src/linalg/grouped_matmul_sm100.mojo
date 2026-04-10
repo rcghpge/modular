@@ -13,6 +13,7 @@
 
 from std.collections import Optional
 from std.math import ceildiv
+from std.math.uutils import umod, ufloordiv
 from std.memory import bitcast
 from std.sys import align_of, simd_width_of, size_of
 from std.bit import next_power_of_two
@@ -28,9 +29,9 @@ from std.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.gpu.host.info import B200
 from std.gpu import (
     block_id_in_cluster,
-    lane_id_uint as lane_id,
-    thread_idx_uint as thread_idx,
-    warp_id_uint as get_warp_id,
+    thread_idx,
+    lane_id,
+    warp_id as get_warp_id,
 )
 from std.gpu.memory import (
     AddressSpace,
@@ -92,7 +93,7 @@ struct WarpRole(TrivialRegisterPassable):
     comptime Epilogue = Self(3)
 
     @always_inline
-    def __eq__(self, other: UInt) -> Bool:
+    def __eq__(self, other: Int) -> Bool:
         return self._role == Int32(other)
 
     @always_inline
@@ -104,7 +105,7 @@ struct WarpRole(TrivialRegisterPassable):
         return self._role != other._role
 
     @always_inline
-    def __ge__(self, other: UInt) -> Bool:
+    def __ge__(self, other: Int) -> Bool:
         return self._role >= Int32(other)
 
     @staticmethod
@@ -164,8 +165,8 @@ def load_AB[
         SharedMemBarrier, MutAnyOrigin, address_space=AddressSpace.SHARED
     ],
     producer_phase: PipelineState[Int(num_pipeline_stages)],
-    peer_cta_coord: Tuple[UInt, UInt, UInt],
-    work_tile_coord: Tuple[UInt, UInt],
+    peer_cta_coord: Tuple[Int, Int, Int],
+    work_tile_coord: Tuple[Int, Int],
     a_multicast_mask: UInt16,
     b_multicast_mask: UInt16,
     iter_idx: UInt32,
@@ -194,25 +195,25 @@ def load_AB[
     mma_mbar[stage].wait(phase)
 
     var a_gmem_slice_coord = Int32(
-        peer_cta_coord[2] * UInt(a_tma_rows) + work_tile_coord[0]
+        peer_cta_coord[2] * a_tma_rows + work_tile_coord[0]
     ) + expert_ids[Int(scheduler.current_group_idx)] * Int32(
         scheduler.static_MN
     )
     var b_gmem_slice_coord = (
-        Int(peer_cta_coord[1]) * b_tma_rows
-        + Int(peer_cta_coord[0]) * BN
-        + Int(work_tile_coord[1])
+        peer_cta_coord[1] * b_tma_rows
+        + peer_cta_coord[0] * BN
+        + work_tile_coord[1]
     )
 
     var a_smem_tile = a_smem_tiles[stage]
     var b_smem_tile = b_smem_tiles[stage]
 
     var a_smem_slice = type_of(a_smem_tile)(
-        a_smem_tile.ptr + peer_cta_coord[2] * UInt(a_tma_load_size),
+        a_smem_tile.ptr + peer_cta_coord[2] * a_tma_load_size,
         a_smem_tile.layout,
     )
     var b_smem_slice = type_of(b_smem_tile)(
-        b_smem_tile.ptr + peer_cta_coord[1] * UInt(b_tma_load_size),
+        b_smem_tile.ptr + peer_cta_coord[1] * b_tma_load_size,
         b_smem_tile.layout,
     )
 
@@ -273,8 +274,8 @@ def load_AB_cuda_core[
         SharedMemBarrier, MutAnyOrigin, address_space=AddressSpace.SHARED
     ],
     producer_phase: PipelineState[Int(num_pipeline_stages)],
-    peer_cta_coord: Tuple[UInt, UInt, UInt],
-    work_tile_coord: Tuple[UInt, UInt],
+    peer_cta_coord: Tuple[Int, Int, Int],
+    work_tile_coord: Tuple[Int, Int],
     iter_idx: UInt32,
     scheduler: TileScheduler,
 ):
@@ -292,16 +293,16 @@ def load_AB_cuda_core[
 
     # Tile base coordinates (Int32, same as TMA path).
     var a_row0 = Int32(
-        peer_cta_coord[2] * UInt(BM) + work_tile_coord[0]
+        peer_cta_coord[2] * BM + work_tile_coord[0]
     ) + expert_ids[Int(scheduler.current_group_idx)] * Int32(
         scheduler.static_MN
     )
     var a_col0 = Int32(iter_idx) * Int32(BK)
 
     var b_row0 = Int32(
-        Int(peer_cta_coord[1]) * (BN // cta_group)
-        + Int(peer_cta_coord[0]) * BN
-        + Int(work_tile_coord[1])
+        peer_cta_coord[1] * (BN // cta_group)
+        + peer_cta_coord[0] * BN
+        + work_tile_coord[1]
     )
     var b_col0 = Int32(iter_idx) * Int32(BK)
 
@@ -484,10 +485,8 @@ def stsm_helper[
         layout, element_type=DType.uint32, linear_idx_type=DType.uint32
     ]
     var stsm_lane_offset = UInt32(
-        (lane & 15) * UInt(stride0) + (lane >> 4)
-    ) * 8 if not transpose_c else RLayout32Bits[trans_st_matrix_layout]()(
-        Int(lane)
-    )
+        (lane & 15) * stride0 + (lane >> 4)
+    ) * 8 if not transpose_c else RLayout32Bits[trans_st_matrix_layout]()(lane)
 
     # Assume the dst tile has 16 rows and only use stsm in N dim.
     comptime for i in range(shape0 // stsmx4_row_size):
@@ -544,7 +543,7 @@ def multi_stage_store_C[
         SharedMemBarrier, MutAnyOrigin, address_space=AddressSpace.SHARED
     ],
     tmem_addr: UInt32,
-    work_tile_coord: Tuple[UInt, UInt],
+    work_tile_coord: Tuple[Int, Int],
     group_end_idx: UInt32,
     elect_one_warp: Bool,
     M: UInt32,
@@ -595,8 +594,8 @@ def multi_stage_store_C[
     # lets keep track of the of the starting row and column in GMEM
     # var c_row = work_tile_coord[0] * BM
     # var c_col = work_tile_coord[1] * MMA_N
-    var c_row = work_tile_coord[0]
-    var c_col = work_tile_coord[1]
+    var c_row = UInt(work_tile_coord[0])
+    var c_col = UInt(work_tile_coord[1])
 
     # before i start the process of transferring over num_stages * stageN= MMA_N from tensor memory to global, i should wait
     # on the accum_full_mbar barrier
@@ -651,10 +650,10 @@ def multi_stage_store_C[
             # contiguous row_major(stageN, 16) chunks.
             var c_smem_warp_tile_upper = c_smem_tile.tile[
                 stageN * 16 // stage_contiguous_size, stage_contiguous_size
-            ](2 * Int(warp_id), 0).reshape[Layout.row_major(stageN, 16)]()
+            ](2 * warp_id, 0).reshape[Layout.row_major(stageN, 16)]()
             var c_smem_warp_tile_lower = c_smem_tile.tile[
                 stageN * 16 // stage_contiguous_size, stage_contiguous_size
-            ](2 * Int(warp_id) + 1, 0).reshape[Layout.row_major(stageN, 16)]()
+            ](2 * warp_id + 1, 0).reshape[Layout.row_major(stageN, 16)]()
 
             # Pack the upper frag to shared memory
             stsm_helper[swizzle, transpose_c=transpose_c](
@@ -668,7 +667,7 @@ def multi_stage_store_C[
             named_barrier[Int32(num_output_warps * WARP_SIZE)]()
 
         else:
-            var c_smem_warp_tile = c_smem_tile.tile[32, stageN](Int(warp_id), 0)
+            var c_smem_warp_tile = c_smem_tile.tile[32, stageN](warp_id, 0)
 
             var c_smem_warp_tile_upper = c_smem_warp_tile.tile[
                 data_paths, stageN
@@ -693,17 +692,18 @@ def multi_stage_store_C[
         ].value() if MMA_M == 256 or cta_group == 1 else BM
 
         var elect_one_warp = (
-            warp_id == 0 if MMA_M == 256 or cta_group == 1 else warp_id % 2 == 0
+            warp_id == 0 if MMA_M == 256
+            or cta_group == 1 else umod(warp_id, 2) == 0
         )
         # var coord_n_mma_m256 = work_tile_coord[1] * MMA_N + stage * stageN
         # var coord_n_mma_m128 = (
         #     work_tile_coord[1] * MMA_N + stage * stageN + BN * (warp_id // 2)
         # )
-        var coord_n_mma_m256 = work_tile_coord[1] + UInt(stage * stageN)
+        var coord_n_mma_m256 = UInt(work_tile_coord[1]) + UInt(stage * stageN)
         var coord_n_mma_m128 = (
-            work_tile_coord[1]
+            UInt(work_tile_coord[1])
             + UInt(stage * stageN)
-            + UInt(BN * Int(warp_id // 2))
+            + UInt(BN * ufloordiv(warp_id, 2))
         )
 
         var coord_n = Int(
@@ -730,21 +730,23 @@ def multi_stage_store_C[
                         c_tma_op.async_store(
                             c_smem_warp_tile,
                             (
-                                Int(work_tile_coord[0]) + i * 16,
+                                work_tile_coord[0] + i * 16,
                                 coord_n,
                             ),
                         )
                 else:
-                    var c_smem_coord_m = 0 if MMA_M == 256 else (warp_id // 2)
+                    var c_smem_coord_m = 0 if MMA_M == 256 else ufloordiv(
+                        warp_id, 2
+                    )
                     var c_smem_split = c_smem_tile.tile[TMA_BM, stageN](
-                        Int(c_smem_coord_m), 0
+                        c_smem_coord_m, 0
                     )
                     c_tma_op.async_store(
                         c_smem_split,
                         (
                             coord_n,
                             # UInt(work_tile_coord[0] * BM),
-                            Int(work_tile_coord[0]),
+                            work_tile_coord[0],
                         ),
                     )
                 c_tma_op.commit_group()
@@ -851,7 +853,7 @@ def zero_output[
     var M = group_end_idx - coord[1]
     if UInt32(thread_idx.x) < min(row_thread_num, row_boundary):
         for i in range(min(M, UInt32(output_tile_shape[0]))):
-            (ptr + thread_idx.x * UInt(simd_size)).store[alignment=alignment](
+            (ptr + thread_idx.x * simd_size).store[alignment=alignment](
                 zero_vec
             )
             ptr += c_stride
@@ -1097,8 +1099,8 @@ def blackwell_tma_umma_warp_specialized_kernel[
 
     # (peer_id, mma_coord_m, mma_coord_n)
     var peer_cta_coord = (
-        rank_m % UInt(cta_group),
-        rank_m // UInt(cta_group),
+        umod(rank_m, cta_group),
+        ufloordiv(rank_m, cta_group),
         rank_n,
     )  # v,m,n
 
@@ -1115,7 +1117,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
 
     a_multicast_mask <<= UInt16(rank_m)
     b_multicast_mask <<= UInt16(peer_cta_coord[0])
-    b_multicast_mask <<= UInt16(rank_n * UInt(CLUSTER_M))
+    b_multicast_mask <<= UInt16(rank_n * CLUSTER_M)
 
     var self_mask = 1 << Int(block_rank_in_cluster())
     var peer_mask = 1 << Int(block_rank_in_cluster() + 1)
@@ -1148,7 +1150,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
                         tma_mbar,
                         producer_phase,
                         peer_cta_coord,
-                        (UInt(work_info.m), UInt(work_info.n)),
+                        (Int(work_info.m), Int(work_info.n)),
                         a_multicast_mask,
                         b_multicast_mask,
                         i,
@@ -1173,7 +1175,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
                         tma_mbar,
                         producer_phase,
                         peer_cta_coord,
-                        (UInt(work_info.m), UInt(work_info.n)),
+                        (Int(work_info.m), Int(work_info.n)),
                         i,
                         scheduler,
                     )
@@ -1306,7 +1308,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
                 accum_full_mbar,
                 accum_empty_mbar,
                 tmem_addr,
-                work_tile_coord=(UInt(work_info.m), UInt(work_info.n)),
+                work_tile_coord=(Int(work_info.m), Int(work_info.n)),
                 group_end_idx=rebind[Scalar[DType.uint32]](
                     scheduler.group_offsets[
                         Int(scheduler.current_group_idx + 1)

@@ -12,12 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.sys.info import _cdna_4_or_newer
+from std.math.uutils import umod
 
-from std.gpu import (
-    barrier,
-    block_idx_uint as block_idx,
-    lane_id_uint as lane_id,
-)
+from std.gpu import barrier, block_idx, lane_id
 from layout.swizzle import Swizzle
 from nn.attention.mha_utils import MHAConfig, get_start_and_end_for_partitions
 
@@ -25,8 +22,11 @@ from std.utils import IndexList
 from std.utils.numerics import get_accum_type
 
 from .attention import Attention, AttentionConfig
+from std.sys import get_defined_bool
+from std.gpu import warp_id as get_warp_id
 from .buffers import (
     KBuffer,
+    KBufferLDS,
     VBuffer,
     VBufferTransposeLoads,
 )
@@ -57,23 +57,23 @@ struct MHAAttentionConfig[token_gen: Bool, config: MHAConfig, group: Int](
     def q_head_idx() -> UInt:
         comptime if Self.token_gen:
             comptime mma_shape = Self.get_mma_shape()
-            var group_idx = lane_id() % UInt(mma_shape[0])
-            return block_idx.y * UInt(Self.group) + group_idx
+            var group_idx = umod(lane_id(), mma_shape[0])
+            return UInt(block_idx.y) * UInt(Self.group) + UInt(group_idx)
         else:
-            return block_idx.x
+            return UInt(block_idx.x)
 
     @staticmethod
     @always_inline
     def q_tile_idx() -> UInt:
-        return block_idx.y if not Self.token_gen else 0
+        return UInt(block_idx.y) if not Self.token_gen else 0
 
     @staticmethod
     @always_inline
     def kv_head_idx() -> UInt:
         # decode and prefill have different launch configs
-        return block_idx.y if Self.token_gen else Self.q_head_idx() // UInt(
-            Self.group
-        )
+        return UInt(
+            block_idx.y
+        ) if Self.token_gen else Self.q_head_idx() // UInt(Self.group)
 
     @staticmethod
     @always_inline
@@ -137,7 +137,7 @@ __extension Attention:
                 UInt32(tile_size), end - kv_tile_start_row
             )
 
-            var k_tile = self.gmem_manager.get_kv_tensor(
+            var k_tile = self.gmem_manager.get_kv_tile(
                 self.k.block_paged_ptr[Int(Self.BN)](
                     UInt32(self.get_batch_idx()),
                     kv_tile_start_row,
@@ -147,7 +147,7 @@ __extension Attention:
                 kv_tile_num_rows,
             )
 
-            var v_tile = self.gmem_manager.get_kv_tensor(
+            var v_tile = self.gmem_manager.get_kv_tile(
                 self.v.block_paged_ptr[Int(Self.BN)](
                     UInt32(self.get_batch_idx()),
                     kv_tile_start_row,
@@ -159,24 +159,14 @@ __extension Attention:
 
             self.zero_p_buffer()
 
-            var num_b_rows = Int(kv_tile_num_rows)
+            # Toggle between register-staged (KBuffer) and direct LDS
+            # (KBufferLDS) for K buffer DMA comparison.
+            comptime use_lds_k = get_defined_bool["use_lds_k", False]()
 
-            var k_buffer = KBuffer[
-                tensor_core_mma=Self.get_tensor_core_mma_qk(),
-                swizzle=Swizzle(3, 0, 4),
-                BN=Int(Self.BN),
-                WN=Int(Self.WN),
-                BK=Int(Self.BK),
-                depth=Int(Self.depth),
-                num_threads=Int(Self.num_threads),
-                num_stages=Self.num_stages,
-            ](
-                k_tile,
-                num_b_rows,
-                self.smem_manager.get_k_ptr[k_tile.dtype](),
-            )
+            comptime kv_layout = Self.GlobalMemoryManagerType.KvTileLayout
 
             var v_buffer = VBufferTransposeLoads[
+                kv_tile_layout=kv_layout,
                 tensor_core_mma=Self.get_tensor_core_mma_pv(),
                 BN=Int(Self.BN),
                 BK=Int(Self.BK),
@@ -190,7 +180,38 @@ __extension Attention:
             def prefetch_function():
                 v_buffer.load_from_dram()
 
-            self.mma_qk[prefetch_function=prefetch_function](k_buffer)
+            comptime if use_lds_k:
+                var k_buffer = KBufferLDS[
+                    kv_tile_layout=kv_layout,
+                    tensor_core_mma=Self.get_tensor_core_mma_qk(),
+                    swizzle=Swizzle(3, 0, 4),
+                    BN=Int(Self.BN),
+                    WN=Int(Self.WN),
+                    BK=Int(Self.BK),
+                    depth=Int(Self.depth),
+                    num_threads=Int(Self.num_threads),
+                ](
+                    k_tile,
+                    self.smem_manager.get_k_ptr[k_tile.dtype](),
+                    UInt32(get_warp_id()),
+                )
+                self.mma_qk[prefetch_function=prefetch_function](k_buffer)
+            else:
+                var k_buffer = KBuffer[
+                    kv_tile_layout=kv_layout,
+                    tensor_core_mma=Self.get_tensor_core_mma_qk(),
+                    swizzle=Swizzle(3, 0, 4),
+                    BN=Int(Self.BN),
+                    WN=Int(Self.WN),
+                    BK=Int(Self.BK),
+                    depth=Int(Self.depth),
+                    num_threads=Int(Self.num_threads),
+                    num_stages=Self.num_stages,
+                ](
+                    k_tile,
+                    self.smem_manager.get_k_ptr[k_tile.dtype](),
+                )
+                self.mma_qk[prefetch_function=prefetch_function](k_buffer)
 
             self.scale_p_reg()
 
@@ -243,7 +264,7 @@ __extension Attention:
 
             var kv_tile_num_rows = min(tile_size, end - kv_tile_start_row)
 
-            var k_tile = self.gmem_manager.get_kv_tensor(
+            var k_tile = self.gmem_manager.get_kv_tile(
                 self.k.block_paged_ptr[Int(Self.BN)](
                     UInt32(self.get_batch_idx()),
                     UInt32(kv_tile_start_row),
@@ -253,7 +274,7 @@ __extension Attention:
                 UInt32(kv_tile_num_rows),
             )
 
-            var v_tile = self.gmem_manager.get_kv_tensor(
+            var v_tile = self.gmem_manager.get_kv_tile(
                 self.v.block_paged_ptr[Int(Self.BN)](
                     UInt32(self.get_batch_idx()),
                     UInt32(kv_tile_start_row),
@@ -266,12 +287,10 @@ __extension Attention:
             self.zero_p_buffer()
 
             comptime swizzle = Swizzle(2, 0, 2)
-
-            var num_b_rows = Optional[Int](
-                kv_tile_num_rows
-            ) if not not_last_iter else Optional[Int]()
+            comptime kv_layout = Self.GlobalMemoryManagerType.KvTileLayout
 
             var k_buffer = KBuffer[
+                kv_tile_layout=kv_layout,
                 tensor_core_mma=Self.get_tensor_core_mma_qk(),
                 swizzle=swizzle,
                 BN=Int(Self.BN),
@@ -283,11 +302,10 @@ __extension Attention:
                 token_gen=Self.token_gen,
             ](
                 k_tile,
-                num_b_rows,
                 self.smem_manager.get_k_ptr[k_tile.dtype](),
             )
-            var v_tile_slice = v_tile.slice[:, : Self.output_depth]()
             var v_buffer = VBuffer[
+                kv_tile_layout=kv_layout,
                 tensor_core_mma=Self.get_tensor_core_mma_pv(),
                 swizzle=None,
                 BN=Int(Self.BN),
@@ -298,8 +316,7 @@ __extension Attention:
                 num_stages=Self.num_stages,
                 token_gen=Self.token_gen,
             ](
-                v_tile_slice,
-                num_b_rows,
+                v_tile,
                 self.smem_manager.get_v_ptr[v_tile.dtype](),
             )
 
@@ -335,7 +352,7 @@ __extension Attention:
             barrier()
 
         start, end = get_start_and_end_for_partitions[Int(Self.BN)](
-            self.num_keys, num_partitions, Int(block_idx.x)
+            self.num_keys, num_partitions, block_idx.x
         )
 
         for i in range(start, end, Int(Self.BN)):

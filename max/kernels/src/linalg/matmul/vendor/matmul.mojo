@@ -25,6 +25,7 @@ from layout import (
     TileTensor,
     row_major,
 )
+from layout.tile_tensor import NullableTileTensor
 
 from std.utils import Index, IndexList
 
@@ -36,7 +37,7 @@ def matmul[
     transpose_b: Bool = False,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
-    c: TileTensor[mut=True, ...],
+    c: NullableTileTensor[mut=True, ...],
     a: TileTensor,
     b: TileTensor,
     ctx: DeviceContext,

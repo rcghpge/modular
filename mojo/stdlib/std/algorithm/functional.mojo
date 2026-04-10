@@ -23,7 +23,6 @@ from std.collections.string.string_slice import get_static_string
 from std.math import ceildiv
 from std.gpu.host import DeviceContext
 from std.gpu.host.info import is_cpu, is_gpu
-from std.gpu.primitives.grid_controls import PDLLevel
 from std.runtime.asyncrt import DeviceContextPtr
 from std.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 
@@ -212,9 +211,15 @@ def elementwise[
         " DeviceContext to be able to use the GPU version"
     )
 
+    def func_unified[
+        width: Int, rank: Int, alignment: Int = 1
+    ](indices: IndexList[rank]) unified register_passable {}:
+        func[width, rank, alignment](indices)
+
     _elementwise_impl_cpu[
-        func=func, simd_width=simd_width, use_blocking_impl=use_blocking_impl
-    ](shape=shape)
+        simd_width=simd_width,
+        use_blocking_impl=use_blocking_impl,
+    ](func_unified, shape=shape)
 
 
 @always_inline
@@ -227,7 +232,6 @@ def elementwise[
     use_blocking_impl: Bool = False,
     target: StaticString = "cpu",
     _trace_description: StaticString = "",
-    pdl_level: PDLLevel = PDLLevel(),
 ](shape: Int, context: DeviceContext) raises:
     """Executes `func[width, rank](indices)`, possibly as sub-tasks, for a
     suitable combination of width and indices so as to cover shape. Returns when
@@ -239,7 +243,6 @@ def elementwise[
         use_blocking_impl: Do not invoke the function using asynchronous calls.
         target: The target to run on.
         _trace_description: Description of the trace.
-        pdl_level: The PDL level controlling kernel overlap behavior.
 
     Args:
         shape: The shape of the buffer.
@@ -254,7 +257,6 @@ def elementwise[
         simd_width=simd_width,
         use_blocking_impl=use_blocking_impl,
         target=target,
-        pdl_level=pdl_level,
     ](Index(shape), context)
 
 
@@ -270,7 +272,6 @@ def elementwise[
     use_blocking_impl: Bool = False,
     target: StaticString = "cpu",
     _trace_description: StaticString = "",
-    pdl_level: PDLLevel = PDLLevel(),
 ](shape: IndexList[rank, ...], context: DeviceContext) raises:
     """Executes `func[width, rank](indices)`, possibly as sub-tasks, for a
     suitable combination of width and indices so as to cover shape. Returns when
@@ -283,7 +284,6 @@ def elementwise[
         use_blocking_impl: Do not invoke the function using asynchronous calls.
         target: The target to run on.
         _trace_description: Description of the trace.
-        pdl_level: The PDL level controlling kernel overlap behavior.
 
     Args:
         shape: The shape of the buffer.
@@ -293,13 +293,16 @@ def elementwise[
         If the operation fails.
     """
 
+    def func_unified[
+        width: Int, rank: Int, alignment: Int = 1
+    ](indices: IndexList[rank]) unified register_passable {}:
+        func[width, rank, alignment](indices)
+
     _elementwise_impl[
-        func,
         simd_width,
         use_blocking_impl=use_blocking_impl,
         target=target,
-        pdl_level=pdl_level,
-    ](shape, context)
+    ](func_unified, shape, context)
 
 
 @always_inline
@@ -314,7 +317,6 @@ def elementwise[
     use_blocking_impl: Bool = False,
     target: StaticString = "cpu",
     _trace_description: StaticString = "",
-    pdl_level: PDLLevel = PDLLevel(1),
 ](shape: IndexList[rank, ...], context: DeviceContextPtr) raises:
     """Executes `func[width, rank](indices)`, possibly as sub-tasks, for a
     suitable combination of width and indices so as to cover shape. Returns when
@@ -327,7 +329,6 @@ def elementwise[
         use_blocking_impl: Do not invoke the function using asynchronous calls.
         target: The target to run on.
         _trace_description: Description of the trace.
-        pdl_level: The PDL level controlling kernel overlap behavior.
 
     Args:
         shape: The shape of the buffer.
@@ -355,43 +356,50 @@ def elementwise[
         task_id=get_safe_task_id(context),
     ):
         comptime if is_gpu[target]():
-            _elementwise_impl_gpu[
-                func=func, simd_width=simd_width, pdl_level=pdl_level
-            ](shape=shape, ctx=context[])
+
+            def gpu_func_unified[
+                width: Int, rank: Int, alignment: Int = 1
+            ](indices: IndexList[rank]) unified register_passable {}:
+                func[width, rank, alignment](indices)
+
+            _elementwise_impl_gpu[simd_width=simd_width](
+                gpu_func_unified, shape=shape, ctx=context[]
+            )
         else:
+
+            def cpu_func_unified[
+                width: Int, rank: Int, alignment: Int = 1
+            ](indices: IndexList[rank]) unified register_passable {}:
+                func[width, rank, alignment](indices)
+
             _elementwise_impl_cpu[
-                func=func,
                 simd_width=simd_width,
                 use_blocking_impl=use_blocking_impl,
-            ](shape=shape)
+            ](cpu_func_unified, shape=shape)
 
 
 @always_inline
 def _elementwise_impl[
     rank: Int,
     //,
-    func: def[width: Int, rank: Int, alignment: Int = 1](
-        IndexList[rank]
-    ) capturing[_] -> None,
     simd_width: Int,
+    FuncType: def[width: Int, rank: Int, alignment: Int = 1](
+        IndexList[rank]
+    ) unified register_passable -> None,
     /,
     *,
     use_blocking_impl: Bool = False,
     target: StaticString = "cpu",
-    pdl_level: PDLLevel = PDLLevel(),
-](shape: IndexList[rank, ...], context: DeviceContext) raises:
+](func: FuncType, shape: IndexList[rank, ...], context: DeviceContext) raises:
     comptime if is_cpu[target]():
         _elementwise_impl_cpu[
-            func=func,
             simd_width=simd_width,
             use_blocking_impl=use_blocking_impl,
-        ](shape=shape)
+        ](func, shape=shape)
     else:
-        _elementwise_impl_gpu[
-            func=func,
-            simd_width=simd_width,
-            pdl_level=pdl_level,
-        ](shape=shape, ctx=context)
+        _elementwise_impl_gpu[simd_width=simd_width](
+            func, shape=shape, ctx=context
+        )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -399,7 +407,69 @@ def _elementwise_impl[
 # ===-----------------------------------------------------------------------===#
 
 comptime stencil = _stencil_impl_cpu
-"""CPU implementation of stencil computation."""
+"""Computes stencil operation in parallel.
+
+Computes output as a function that processes input stencils, stencils are
+computed as a continuous region for each output point that is determined
+by map_fn : map_fn(y) -> lower_bound, upper_bound. The boundary conditions
+for regions that fail out of the input domain are handled by load_fn.
+
+
+Parameters:
+    shape_element_type: The element dtype of the shape.
+    input_shape_element_type: The element dtype of the input shape.
+    rank: Input and output domain rank.
+    stencil_rank: Rank of stencil subdomain slice.
+    stencil_axis: Stencil subdomain axes.
+    simd_width: The SIMD vector width to use.
+    dtype: The input and output data dtype.
+    map_fn: A function that a point in the output domain to the input co-domain.
+    map_strides: A function that returns the stride for the dim.
+    load_fn: A function that loads a vector of simd_width from input.
+    compute_init_fn: A function that initializes vector compute over the stencil.
+    compute_fn: A function the process the value computed for each point in the stencil.
+    compute_finalize_fn: A function that finalizes the computation of a point in the output domain given a stencil.
+
+Args:
+    shape: The shape of the output buffer.
+    input_shape: The shape of the input buffer.
+    map_fn_closure: Closure mapping output points to input co-domain bounds.
+    map_strides_closure: Closure returning the stride for a given dimension.
+    load_fn_closure: Closure loading a SIMD vector from input.
+    compute_init_fn_closure: Closure initializing the stencil accumulator.
+    compute_fn_closure: Closure processing each stencil point.
+    compute_finalize_fn_closure: Closure finalizing the output value.
+"""
 
 comptime stencil_gpu = _stencil_impl_gpu
-"""GPU implementation of stencil computation."""
+"""(Naive implementation) Computes stencil operation in parallel on GPU.
+
+Parameters:
+    shape_element_type: The element dtype of the shape.
+    input_shape_element_type: The element dtype of the input shape.
+    rank: Input and output domain rank.
+    stencil_rank: Rank of stencil subdomain slice.
+    stencil_axis: Stencil subdomain axes.
+    simd_width: The SIMD vector width to use.
+    dtype: The input and output data dtype.
+    MapFnType: A closure maps a point in the output domain to input co-domain bounds.
+    MapStridesType: A closure returns the stride for each dimension.
+    LoadFnType: A closure loads a SIMD vector from input.
+    ComputeInitFnType: A closure initializes the stencil accumulator.
+    ComputeFnType: A closure processes the value computed for each stencil point.
+    ComputeFinalizeFnType: A closure finalizes the output value from the stencil result.
+
+Args:
+    ctx: The DeviceContext to use for GPU execution.
+    shape: The shape of the output buffer.
+    input_shape: The shape of the input buffer.
+    map_func: Closure mapping output points to input co-domain bounds.
+    map_strides_func: Closure returning the stride for a given dimension.
+    load_func: Closure loading a SIMD vector from input.
+    compute_init_func: Closure initializing the stencil accumulator.
+    compute_func: Closure processing each stencil point.
+    compute_finalize_func: Closure finalizing the output value.
+
+Raises:
+    If the GPU kernel launch fails.
+"""

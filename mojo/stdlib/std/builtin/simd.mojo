@@ -2013,7 +2013,7 @@ struct SIMD[dtype: DType, size: Int](
             target: The target DType.
 
         Returns:
-            A new SIMD vector whose elements have been casted to the target
+            A new SIMD vector whose elements have been cast to the target
             element type.
 
         Casting behavior:
@@ -2371,8 +2371,8 @@ struct SIMD[dtype: DType, size: Int](
             position `i` is `(self + other)[permutation[i]]`.
         """
 
-        comptime assert output_size == Variadic.size(
-            mask
+        comptime assert (
+            output_size == ParameterList[*mask].size
         ), "size of the mask must match the output SIMD size"
 
         # FIXME: Support parameters on initializers better, removing __init__.

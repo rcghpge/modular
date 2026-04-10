@@ -45,12 +45,7 @@ from layout.tile_layout import row_major as tt_row_major
 from std.gpu.memory import AddressSpace
 from std.gpu.host import DeviceContext, FuncAttribute
 from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
-from std.gpu import (
-    barrier,
-    MAX_THREADS_PER_BLOCK_METADATA,
-    thread_idx_uint as thread_idx,
-    warp_id_uint as warp_id,
-)
+from std.gpu import MAX_THREADS_PER_BLOCK_METADATA, barrier, thread_idx, warp_id
 from nn.attention.mha_utils import (
     _is_decoding,
     MHAConfig,
@@ -150,6 +145,7 @@ __extension SM100MLA:
             Self.config.output_swizzle_mode,
             BM=Self.config.fa4_config.BM // 2,
             BN=Self.config.fa4_config.ov_depth,
+            group=config.fa4_config.group if config.fa4_config.fuse_gqa else 1,
         ],
         kv_lut: Self.KVLUTType,
         k_rope_lut: Self.KRopeType,

@@ -1913,6 +1913,180 @@ class TestReduceOps:
         expected = np.prod(x_np, axis=-1, keepdims=True)
         np.testing.assert_array_almost_equal(np.from_dlpack(y), expected)
 
+    # --- Bool reduce tests (issue #6067) ---
+
+    def test_reduce_max_bool(self) -> None:
+        """Test reduce_max on a bool tensor (logical OR)."""
+        x_np = np.array(
+            [[True, False, True], [False, False, False]], dtype=np.bool_
+        )
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.max(axis=-1)
+
+        expected = np.max(x_np, axis=-1, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_min_bool(self) -> None:
+        """Test reduce_min on a bool tensor (logical AND)."""
+        x_np = np.array(
+            [[True, False, True], [True, True, True]], dtype=np.bool_
+        )
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.min(axis=-1)
+
+        expected = np.min(x_np, axis=-1, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_max_bool_first_axis(self) -> None:
+        """Test reduce_max on a bool tensor along the first axis."""
+        x_np = np.array(
+            [[False, True, False], [False, False, True]], dtype=np.bool_
+        )
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.max(axis=0)
+
+        expected = np.max(x_np, axis=0, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_max_bool_all_false(self) -> None:
+        """Test reduce_max on an all-False bool tensor."""
+        x_np = np.zeros((2, 3), dtype=np.bool_)
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.max(axis=-1)
+
+        expected = np.max(x_np, axis=-1, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_max_bool_all_true(self) -> None:
+        """Test reduce_max on an all-True bool tensor."""
+        x_np = np.ones((2, 3), dtype=np.bool_)
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.max(axis=-1)
+
+        expected = np.max(x_np, axis=-1, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    # --- Additional tests requested in PR review ---
+
+    def test_reduce_min_bool_all_false(self) -> None:
+        """Test reduce_min on an all-False bool tensor."""
+        x_np = np.zeros((2, 3), dtype=np.bool_)
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.min(axis=-1)
+
+        expected = np.min(x_np, axis=-1, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_min_bool_all_true(self) -> None:
+        """Test reduce_min on an all-True bool tensor."""
+        x_np = np.ones((2, 3), dtype=np.bool_)
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            y = x.min(axis=-1)
+
+        expected = np.min(x_np, axis=-1, keepdims=True)
+        np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_bool_3d(self) -> None:
+        """Test reduce max/min on a 3D bool tensor across each axis."""
+        x_np = np.array(
+            [
+                [[True, False], [False, True], [True, True]],
+                [[False, False], [True, False], [False, True]],
+            ],
+            dtype=np.bool_,
+        )  # shape (2, 3, 2)
+
+        for axis in range(3):
+            for op_fn, np_fn in [
+                (Tensor.max, np.max),
+                (Tensor.min, np.min),
+            ]:
+                x = Tensor.from_dlpack(x_np)
+                with (
+                    rc.EagerRealizationContext(use_interpreter=True) as ctx,
+                    realization_context(ctx),
+                ):
+                    y = op_fn(x, axis=axis)
+
+                expected = np_fn(x_np, axis=axis, keepdims=True)
+                np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_bool_4d(self) -> None:
+        """Test reduce max/min on a 4D bool tensor across each axis."""
+        x_np = (
+            np.random.default_rng(42)
+            .choice([True, False], size=(2, 2, 3, 2))
+            .astype(np.bool_)
+        )
+
+        for axis in range(4):
+            for op_fn, np_fn in [
+                (Tensor.max, np.max),
+                (Tensor.min, np.min),
+            ]:
+                x = Tensor.from_dlpack(x_np)
+                with (
+                    rc.EagerRealizationContext(use_interpreter=True) as ctx,
+                    realization_context(ctx),
+                ):
+                    y = op_fn(x, axis=axis)
+
+                expected = np_fn(x_np, axis=axis, keepdims=True)
+                np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
+    def test_reduce_bool_single_element_axis(self) -> None:
+        """Test reduce max/min on a bool tensor with a size-1 axis."""
+        x_np = np.array([[True], [False], [True]], dtype=np.bool_)  # (3, 1)
+
+        for op_fn, np_fn in [
+            (Tensor.max, np.max),
+            (Tensor.min, np.min),
+        ]:
+            x = Tensor.from_dlpack(x_np)
+            with (
+                rc.EagerRealizationContext(use_interpreter=True) as ctx,
+                realization_context(ctx),
+            ):
+                y = op_fn(x, axis=1)
+
+            expected = np_fn(x_np, axis=1, keepdims=True)
+            np.testing.assert_array_equal(np.from_dlpack(y), expected)
+
 
 def _numpy_softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
     """Numerically stable softmax reference implementation."""
@@ -6008,3 +6182,45 @@ class TestResizeLinearOp:
         np.testing.assert_allclose(
             np.from_dlpack(out), ref, rtol=1e-4, atol=1e-4
         )
+
+
+class TestDistributedScatterSimulated:
+    """Test distributed_scatter on a simulated CPU mesh."""
+
+    def test_scatter_simulated_fallback(self) -> None:
+        """Simulated mesh: distributed_scatter falls back to transfer_to."""
+        from max.experimental.distributed_functional.collectives import (
+            distributed_scatter as df_scatter,
+        )
+        from max.experimental.distributed_functional.collectives import (
+            to_numpy,
+        )
+        from max.experimental.sharding import (
+            DeviceMesh,
+            PlacementMapping,
+            Sharded,
+        )
+
+        cpu = CPU()
+        mesh = DeviceMesh(
+            devices=(cpu, cpu), mesh_shape=(2,), axis_names=("dp",)
+        )
+
+        data = np.arange(8, dtype=np.float32).reshape(4, 2)
+        chunks = [
+            Tensor.from_dlpack(np.ascontiguousarray(data[:2])),
+            Tensor.from_dlpack(np.ascontiguousarray(data[2:])),
+        ]
+
+        mapping = PlacementMapping(mesh, (Sharded(0),))
+
+        with (
+            rc.EagerRealizationContext(use_interpreter=True) as ctx,
+            realization_context(ctx),
+        ):
+            result = df_scatter(chunks, mapping)
+
+        assert result.placements == (Sharded(0),)
+        assert len(result.local_shards) == 2
+        np.testing.assert_allclose(to_numpy(result.local_shards[0]), data[:2])
+        np.testing.assert_allclose(to_numpy(result.local_shards[1]), data[2:])

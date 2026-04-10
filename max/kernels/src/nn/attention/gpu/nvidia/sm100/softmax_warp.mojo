@@ -26,9 +26,11 @@ from std.gpu.sync import (
     cp_async_bulk_wait_group,
 )
 from std.gpu.compute.arch.tcgen05 import (
+    tcgen05_dealloc,
     tcgen05_fence_after,
     tcgen05_fence_before,
     tcgen05_ld,
+    tcgen05_release_allocation_lock,
     tcgen05_store_wait,
 )
 from structured_kernels.barriers import (
@@ -36,7 +38,6 @@ from structured_kernels.barriers import (
 )
 from linalg.matmul.gpu.sm100_structured.structured_kernels.tmem import (
     TMEM_LOWER_ROW_OFFSET,
-    TmemAllocation,
 )
 from std.gpu.primitives.warp import _vote_nvidia_helper
 from layout import row_major, stack_allocation as tt_stack_allocation
@@ -102,6 +103,7 @@ def fa4_scale_write_output[
         output_swizzle_mode,
         BM=config.BM // 2,
         BN=config.ov_depth,
+        group=config.group if config.fuse_gqa else 1,
     ],
     num_output_rows: Int32,
     out_head_idx: UInt32,
@@ -328,6 +330,7 @@ def fa4_softmax[
         _,
         BM=config.BM // 2,
         BN=config.ov_depth,
+        group=config.group if config.fuse_gqa else 1,
     ],
     sink_weights: SinkType,
     q_scale: QScaleType = NullPointer[DType.float32, AddressSpace.SHARED](),
@@ -339,6 +342,9 @@ def fa4_softmax[
     comptime BM = config.BM
     comptime BN = config.BN
     comptime HalfBM = BM // 2
+    comptime group = config.group
+    comptime fuse_gqa = config.fuse_gqa
+    comptime BM_mask: Int = config.BM_eff()
     comptime padded_ov_depth = config.padded_ov_depth
     comptime page_size = KVLUTType.page_size
     comptime ragged = not ValidLengthType.is_null
@@ -392,12 +398,8 @@ def fa4_softmax[
     var warp_idx: UInt32 = warp.broadcast(tid // 32)
     var warp_group_idx: UInt32 = warp.broadcast(tid // 128)
 
-    comptime if config.split_m:
-        # split-M: second S is (+16 rows) in st-matrix space
-        s_tmem += TMEM_LOWER_ROW_OFFSET * warp_group_idx
-    else:
-        # 2-Q path: S1 is at +BN columns
-        s_tmem += UInt32(config.BN) * warp_group_idx
+    # 2-Q path: S1 is at +BN columns
+    s_tmem += UInt32(config.BN) * warp_group_idx
 
     p_tmem = s_tmem
     c_tmem = p_tmem + UInt32(config.BN // 2)
@@ -412,10 +414,19 @@ def fa4_softmax[
         order_s_wait = mbars.pipeline_order_wait(warp_group_idx)
         order_s_arrive = mbars.pipeline_order_arrive(warp_group_idx)
     else:
-        order_s_wait = MBarType()
-        order_s_arrive = MBarType()
+        order_s_wait = {_unsafe_null = ()}
+        order_s_arrive = {_unsafe_null = ()}
 
-    var q_head_idx: UInt32 = seq_info.head_idx
+    # When fuse_gqa, head_idx is a kv_head_idx
+    # the output will match, so `head_idx` is what we use for writing
+    # sink and mask want q_head_idx
+    var head_idx: UInt32 = seq_info.head_idx
+    var q_head_idx: UInt32 = head_idx
+    comptime if config.fuse_gqa:
+        q_head_idx = UInt32(config.group) * head_idx + row % UInt32(
+            config.group
+        )
+
     var scale_log2e: Scalar[accum_dtype] = scale
     var correction_smem = smem.correction_smem() + tid
 
@@ -449,16 +460,19 @@ def fa4_softmax[
             kv_tile_start_row=Int32(kv_row),
             max_seq_len=max_seq_len,
             num_keys=Int32(num_keys),
-            score_row=Int32(score_row + tid),
+            score_row=Int32(
+                score_row + (tid // UInt32(group) if fuse_gqa else tid)
+            ),
         )
 
     # while waiting, offset output
     comptime splitBM = BM // 2
-    var num_output_rows = min(
+    comptime splitBM_seq = splitBM // group if fuse_gqa else splitBM
+    num_output_rows = min(
         Int32(seq_info.seq_len)
         - Int32(seq_info.prompt_offset)
-        - Int32(warp_group_idx) * Int32(splitBM),
-        Int32(splitBM),
+        - Int32(warp_group_idx) * Int32(splitBM_seq),
+        Int32(splitBM_seq),
     )
 
     gmem_row = PositionType.get_q_gmem_row[ragged=ragged](seq_info, max_seq_len)
@@ -813,18 +827,18 @@ def fa4_softmax[
             acc3 = add_ftz(acc3, s_load[i + 3]())
         return add_ftz(add_ftz(acc0, acc1), add_ftz(acc2, acc3))
 
-    var kv_row: UInt32 = mask.start_column[BM, BN, page_size](score_row)
-    comptime mask_sets = MaskType.nonfull_sets[BM, BN]()
-    comptime mask_strategies = MaskType.mask_strategies[BM, BN]()
+    var kv_row: UInt32 = mask.start_column[BM_mask, BN, page_size](score_row)
+    comptime mask_sets = MaskType.nonfull_sets[BM_mask, BN]()
+    comptime mask_strategies = MaskType.mask_strategies[BM_mask, BN]()
     comptime num_sets = len(mask_sets)
 
     var row_max: Float32
     var mask_iters: StaticTuple[UInt32, num_sets] = {}
 
     comptime if mask_sets[0] != TileMaskStatus.UNKNOWN_MASK:
-        mask_ends = mask.masked_set_ends[BM=BM, BN=BN, page_size=page_size](
-            score_row, num_keys
-        )
+        mask_ends = mask.masked_set_ends[
+            BM=BM_mask, BN=BN, page_size=page_size
+        ](score_row, num_keys)
         mask_iters[0] = mask_ends[0]
 
         comptime for i in range(1, num_sets):
@@ -864,12 +878,13 @@ def fa4_softmax[
         var sink_weights_ptr = rebind[
             UnsafePointer[Scalar[qkv_type], ImmutAnyOrigin]
         ](sink_weights.value())
-        var head_idx: UInt32 = seq_info.head_idx
 
         comptime if use_fma:
-            sink_weight = sink_weights_ptr[head_idx].cast[accum_dtype]()
+            sink_weight = sink_weights_ptr[q_head_idx].cast[accum_dtype]()
         else:
-            sink_weight = sink_weights_ptr[head_idx].cast[accum_dtype]() * log2e
+            sink_weight = (
+                sink_weights_ptr[q_head_idx].cast[accum_dtype]() * log2e
+            )
         row_max = max(row_max, sink_weight)
     else:
         sink_weight = 0.0
@@ -934,7 +949,7 @@ def fa4_softmax[
                 break
             cur_mask_status = mask.status(
                 Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
-                Index[dtype=DType.int32](BM, BN),
+                Index[dtype=DType.int32](BM_mask, BN),
             )
             if cur_mask_status == TileMaskStatus.FULL_MASK:
                 continue
@@ -997,11 +1012,11 @@ def fa4_softmax[
             o_tile,
             ragged_tma_store,
             num_output_rows,
-            q_head_idx,
-            gmem_row + warp_group_idx * UInt32(HalfBM),
+            head_idx,
+            gmem_row
+            + warp_group_idx * UInt32(HalfBM // group if fuse_gqa else HalfBM),
         )
     WarpGroupBarrier[2 * WARPGROUP_SIZE, 2].sync()
     if warp_idx == 0:
-        var tmem = TmemAllocation[cta_group](tmem_addr)
-        tmem.release_lock()
-        tmem.deallocate()
+        tcgen05_release_allocation_lock[Int32(cta_group)]()
+        tcgen05_dealloc[Int32(cta_group)](tmem_addr, UInt32(512))
