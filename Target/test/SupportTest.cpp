@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 #include <string>
 
-namespace {
+using namespace M::Target;
 
 //===----------------------------------------------------------------------===//
 // copyStatusMessage(char*, int64_t, const char*)
@@ -138,5 +138,3 @@ TEST(SupportTest, StandardStatusMessagesNonEmpty) {
         << "index " << i << " is empty";
   }
 }
-
-} // namespace

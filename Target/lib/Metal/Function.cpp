@@ -60,7 +60,7 @@ M_driver_runtime_bundle::load(M_driver_context_t context,
     library = NS::TransferPtr(
         mDevice->newLibrary(sourceString, options.get(), &error));
     if (error)
-      return tl::unexpected(context->device->driver->createStatus(
+      return tl::unexpected(context->device->driver->status.create(
           Twine("Failed to create Metal library (compiling MSL to AIR): ") +
           error->localizedDescription()->cString(NS::UTF8StringEncoding)));
   } else {
@@ -72,7 +72,7 @@ M_driver_runtime_bundle::load(M_driver_context_t context,
     NS::Error *error = nullptr;
     library = NS::TransferPtr(mDevice->newLibrary(binaryData, &error));
     if (error)
-      return tl::unexpected(context->device->driver->createStatus(
+      return tl::unexpected(context->device->driver->status.create(
           Twine("Failed to create Metal library (loading binary/metallib): ") +
           error->localizedDescription()->cString(NS::UTF8StringEncoding)));
 
@@ -101,7 +101,7 @@ M_driver_function::create(M_driver_context_t context,
   NS::SharedPtr<MTL::Function> mFunction =
       NS::TransferPtr(bundle->library->newFunction(funcName));
   if (!mFunction) {
-    return tl::unexpected(context->device->driver->createStatus(
+    return tl::unexpected(context->device->driver->status.create(
         "Failed to create Metal function: " + Twine(name)));
   }
 
@@ -120,18 +120,18 @@ M_driver_function::create(M_driver_context_t context,
           &error));
 
   if (error) {
-    return tl::unexpected(context->device->driver->createStatus(
+    return tl::unexpected(context->device->driver->status.create(
         Twine("Failed to create compute pipeline state (GPU machine code "
               "generation): ") +
         error->localizedDescription()->cString(NS::UTF8StringEncoding)));
   }
 
   if (!pipelineState)
-    return tl::unexpected(context->device->driver->createStatus(
+    return tl::unexpected(context->device->driver->status.create(
         "Failed to create compute pipeline state (no error returned)"));
 
   if (!reflection)
-    return tl::unexpected(context->device->driver->createStatus(
+    return tl::unexpected(context->device->driver->status.create(
         "Failed to extract pipeline argument information"));
 
   // Extract argument count from reflection, defaulting to 0 if unavailable

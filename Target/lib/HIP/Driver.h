@@ -9,12 +9,17 @@
 
 #include "Error.h"
 #include "HIPApi.h"
+#include "Target/lib/Support/Utils.h"
+
+using M::Target::CustomStatus;
 
 struct M_driver_driver {
 private:
   HIPApi rawHipApi;
 
 public:
+  CustomStatus status;
+
   [[nodiscard]] static DriverResult<M_driver_driver_t> create();
 
   static M_driver_status_t destroy(M_driver_driver_t driver) {
@@ -22,7 +27,11 @@ public:
     return M_DRIVER_STATUS_SUCCESS;
   }
 
-  M_driver_driver(HIPApi &&rawHipApi) : rawHipApi(std::move(rawHipApi)) {}
+  M_driver_driver(HIPApi &&rawHipApi)
+      : rawHipApi(std::move(rawHipApi)),
+        status(M_DRIVER_NUM_CUSTOM_STATUS_CODES) {
+    status.messages[M_DRIVER_STATUS_UNIMPLEMENTED] = "Unimplemented";
+  }
 
   ~M_driver_driver() { rawHipApi.unload(); }
 

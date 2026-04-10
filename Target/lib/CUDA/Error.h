@@ -10,13 +10,10 @@
 #include "HAL/M_driver_common.h"
 
 #include <cuda.h>
-#include <stdint.h>
 #include <tl/expected.hpp>
 
 #define M_DRIVER_STATUS_UNIMPLEMENTED (M_DRIVER_STATUS_CUSTOM_CODES_BASE - 0)
 #define M_DRIVER_NUM_CUSTOM_STATUS_CODES 1
-
-extern const char *customStatusMessages[M_DRIVER_NUM_CUSTOM_STATUS_CODES];
 
 #define CUDA_CHECK(stmt, errorCode)                                            \
   do {                                                                         \

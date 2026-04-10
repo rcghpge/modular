@@ -60,7 +60,7 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst, void *src,
   //                      TRACY_COLOR_PURPLE);
 
   if (src == nullptr)
-    return context->device->driver->createStatus("Source pointer is null");
+    return context->device->driver->status.create("Source pointer is null");
   if (size == 0)
     return M_DRIVER_STATUS_SUCCESS;
 
@@ -69,19 +69,19 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst, void *src,
 
   NS::UInteger bufferLength = dst->mBuffer->length();
   if (bufferLength == 0)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Metal buffer length is 0 - buffer may be invalid");
 
   // Check that copy fits within the buffer from the offset
   if (dst->offset + size > bufferLength)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Copy size exceeds Metal buffer length");
 
   // Source is regular host memory - use memcpy approach
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
   if (cmdBuffer == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Failed to create command buffer");
 
   // For memcpy operations, we need to wait for completion even though we commit
@@ -118,7 +118,7 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   if (dst == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Destination pointer cannot be null");
 
   if (size == 0)
@@ -126,7 +126,7 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
   if (cmdBuffer == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Failed to create command buffer");
 
   // For memcpy operations, we need to wait for completion even though we commit
@@ -167,7 +167,7 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
 
   void *dstContents = dst->mBuffer->contents();
   if (dstContents == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Shared buffer contents() returned null");
 
   // Apply offset to get actual destination pointer
@@ -175,13 +175,13 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
 
   size_t count = size / valueSize;
   if (reinterpret_cast<uintptr_t>(dstPtr) % valueSize != 0)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "destination buffer not properly aligned");
 
   // Push  an empty command buffer to the queue
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
   if (cmdBuffer == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Failed to create command buffer");
 
   // add completion handler to the command buffer
@@ -242,13 +242,13 @@ M_driver_queue::execute(M_driver_function_t function,
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
   if (cmdBuffer == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Failed to create command buffer");
 
   // Create compute encoder
   MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
   if (encoder == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Failed to create compute command encoder");
   encoder->setComputePipelineState(function->pipelineState.get());
 
@@ -256,13 +256,13 @@ M_driver_queue::execute(M_driver_function_t function,
   for (uint32_t i = 0; i < function->argumentCount; ++i) {
     if (args[i] == nullptr) {
       encoder->endEncoding();
-      return context->device->driver->createStatus("Null argument at index " +
-                                                   std::to_string(i));
+      return context->device->driver->status.create("Null argument at index " +
+                                                    std::to_string(i));
     }
 
     const size_t argSize = argSizes[i];
     if (argSize == 0)
-      return context->device->driver->createStatus(
+      return context->device->driver->status.create(
           "Unknown argument size at index " + std::to_string(i));
 
     // We have more complex argument, such as pointer to a struct. Allocate
@@ -313,7 +313,7 @@ M_driver_status_t M_driver_queue::synchronize() {
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
   if (cmdBuffer == nullptr)
-    return context->device->driver->createStatus(
+    return context->device->driver->status.create(
         "Failed to create command buffer for sync");
 
   // Submit an empty command buffer and wait for it to complete

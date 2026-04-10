@@ -11,6 +11,8 @@
 
 #include <cstring>
 
+namespace M::Target {
+
 void copyStatusMessage(char *dstMessageBuffer, int64_t dstMessageBufferSize,
                        const char *srcErrorString) {
   int64_t messageLength = (int64_t)strlen(srcErrorString);
@@ -31,3 +33,35 @@ void copyStatusMessage(char *dstMsgBuf, int64_t dstMsgBufSize,
   [[maybe_unused]] auto _ = strncpy(dstMsgBuf, str.data(), msgSize);
   dstMsgBuf[msgSize] = '\0';
 }
+
+M_driver_status_t CustomStatus::create(llvm::Twine message) {
+  M_driver_status_t status = customStatusCodeNext++;
+  llvm::SmallString<64> &storage = messages[status];
+  message.toVector(storage);
+  return status;
+}
+
+M_driver_status_t CustomStatus::getMessage(M_driver_status_t status,
+                                           char *buffer, int64_t size) {
+  if (size <= 0)
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+  if (status > 0)
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+  else if (status > -M_DRIVER_NUM_STANDARD_STATUS_CODES) {
+    copyStatusMessage(buffer, size, standardStatusMessages[-status]);
+    return M_DRIVER_STATUS_SUCCESS;
+  } else if (status > M_DRIVER_STATUS_CUSTOM_CODES_BASE)
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+
+  auto iter = messages.find(status);
+  if (iter != messages.end()) {
+    copyStatusMessage(buffer, size, iter->second);
+    if (status <= M_DRIVER_STATUS_CUSTOM_CODES_BASE - numCustomStatusCodes)
+      messages.erase(iter);
+  } else
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+} // namespace M::Target
