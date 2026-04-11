@@ -1,0 +1,482 @@
+/*===----------------------------------------------------------------------===*\
+|*                                                                            *|
+|* This file is Modular Inc proprietary.                                      *|
+|*                                                                            *|
+\*===----------------------------------------------------------------------===*/
+
+/// Minimal mock HAL plugin for testing the Mojo HAL bindings without GPU
+/// hardware. Implements all M_driver_* symbols expected by the Mojo Plugin
+/// struct with deterministic stub behaviour:
+///
+///   - 2 mock devices
+///   - status_message returns standard strings for all predefined codes
+///   - memory alloc returns malloc'd blocks; free calls free()
+///   - queue/event/bundle/function operations succeed silently
+
+#include "HAL/M_driver_api.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+// ---------------------------------------------------------------------------
+// Sentinel objects used as opaque handles.
+// NOTE: global state — not safe for concurrent test processes sharing
+// the same .so instance.
+// ---------------------------------------------------------------------------
+static int g_driver_sentinel;
+static int g_device_sentinels[2];
+static int g_context_sentinel;
+static int g_queue_sentinel;
+static int g_event_sentinel;
+static int g_bundle_sentinel;
+static int g_function_sentinel;
+
+#define MOCK_DEVICE_COUNT 2
+
+// ---------------------------------------------------------------------------
+// status_message
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_status_message(M_driver_driver_t driver,
+                                          M_driver_status_t status,
+                                          char *message_buffer,
+                                          int64_t message_buffer_size) {
+  (void)driver;
+  if (!message_buffer || message_buffer_size <= 0)
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+
+  const char *msg = NULL;
+  switch (status) {
+  case M_DRIVER_STATUS_SUCCESS:
+    msg = "success";
+    break;
+  case M_DRIVER_STATUS_INCOMPATIBLE_VERSION:
+    msg = "incompatible version";
+    break;
+  case M_DRIVER_STATUS_UNKNOWN_ERROR:
+    msg = "unknown error";
+    break;
+  case M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE:
+    msg = "argument out of range";
+    break;
+  case M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME:
+    msg = "unknown property name";
+    break;
+  case M_DRIVER_STATUS_NO_DEVICES:
+    msg = "no devices";
+    break;
+  case M_DRIVER_STATUS_BAD_DEVICE:
+    msg = "bad device";
+    break;
+  case M_DRIVER_STATUS_BAD_CONTEXT:
+    msg = "bad context";
+    break;
+  case M_DRIVER_STATUS_BAD_MEMORY:
+    msg = "bad memory";
+    break;
+  case M_DRIVER_STATUS_BAD_QUEUE:
+    msg = "bad queue";
+    break;
+  case M_DRIVER_STATUS_BAD_EVENT:
+    msg = "bad event";
+    break;
+  case M_DRIVER_STATUS_BAD_FUNCTION:
+    msg = "bad function";
+    break;
+  case M_DRIVER_STATUS_OUT_OF_MEMORY:
+    msg = "out of memory";
+    break;
+  case M_DRIVER_STATUS_INVALID_ARG:
+    msg = "invalid argument";
+    break;
+  case M_DRIVER_STATUS_INCOMPATIBLE:
+    msg = "incompatible";
+    break;
+  case M_DRIVER_STATUS_BAD_DRIVER:
+    msg = "bad driver";
+    break;
+  case M_DRIVER_STATUS_BAD_BUNDLE:
+    msg = "bad bundle";
+    break;
+  case M_DRIVER_STATUS_EXECUTE_MODE_NOT_SUPPORTED:
+    msg = "execute mode not supported";
+    break;
+  default:
+    return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
+  }
+
+  strncpy(message_buffer, msg, (size_t)message_buffer_size - 1);
+  message_buffer[message_buffer_size - 1] = '\0';
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Driver lifecycle
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_create(M_driver_version *version,
+                                  M_driver_driver_t *driver) {
+  if (!version || !driver)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  if (version->major != M_DRIVER_INTERFACE_VERSION_MAJOR)
+    return M_DRIVER_STATUS_INCOMPATIBLE_VERSION;
+
+  // Write back the mock plugin's version.
+  version->major = M_DRIVER_INTERFACE_VERSION_MAJOR;
+  version->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
+  version->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
+
+  *driver = (M_driver_driver_t)&g_driver_sentinel;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_destroy(M_driver_driver_t driver) {
+  (void)driver;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_property(M_driver_driver_t handle,
+                                    const char *property_name, void *value) {
+  if (!property_name || !value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  if (strcmp(property_name, M_DRIVER_PROPERTY_API) == 0) {
+    *(const char **)value = "mock";
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
+  if (strcmp(property_name, M_DRIVER_PROPERTY_VERSION) == 0) {
+    M_driver_version *v = (M_driver_version *)value;
+    v->major = M_DRIVER_INTERFACE_VERSION_MAJOR;
+    v->minor = M_DRIVER_INTERFACE_VERSION_MINOR;
+    v->patch = M_DRIVER_INTERFACE_VERSION_PATCH;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+// ---------------------------------------------------------------------------
+// Device
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
+                                        int64_t *count) {
+  (void)driver;
+  if (!count)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *count = MOCK_DEVICE_COUNT;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
+                                      int64_t device_id,
+                                      M_driver_device_t *device) {
+  (void)driver;
+  if (!device)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (device_id < 0 || device_id >= MOCK_DEVICE_COUNT)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  *device = (M_driver_device_t)&g_device_sentinels[device_id];
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_device_property(M_driver_device_t device,
+                                           const char *property_name,
+                                           void *value) {
+  (void)device;
+  if (!property_name || !value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+// ---------------------------------------------------------------------------
+// Context
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_context_create(M_driver_device_t device,
+                                          M_driver_context_t *context) {
+  (void)device;
+  if (!context)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *context = (M_driver_context_t)&g_context_sentinel;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
+  (void)context;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Memory
+// ---------------------------------------------------------------------------
+static M_driver_status_t mock_alloc(uint64_t size, M_driver_memory_t *memory) {
+  if (!memory)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (size == 0)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  void *p = malloc((size_t)size);
+  if (!p)
+    return M_DRIVER_STATUS_OUT_OF_MEMORY;
+  *memory = (M_driver_memory_t)p;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
+                                               uint64_t size,
+                                               M_driver_memory_t *memory) {
+  (void)context;
+  return mock_alloc(size, memory);
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
+                                              M_driver_memory_t memory) {
+  (void)context;
+  free((void *)memory);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
+                                             uint64_t size,
+                                             M_driver_memory_t *memory) {
+  (void)context;
+  return mock_alloc(size, memory);
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
+                                            M_driver_memory_t memory) {
+  (void)context;
+  free((void *)memory);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
+                                              uint64_t size,
+                                              M_driver_memory_t *memory) {
+  (void)queue;
+  return mock_alloc(size, memory);
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
+                                             M_driver_memory_t memory) {
+  (void)queue;
+  free((void *)memory);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
+                                           const char *property_name,
+                                           void *value) {
+  if (!property_name || !value)
+    return M_DRIVER_STATUS_INVALID_ARG;
+
+  if (strcmp(property_name, M_DRIVER_MEMORY_PROPERTY_ADDRESS) == 0) {
+    *(void **)value = (void *)memory;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
+  return M_DRIVER_STATUS_UNKNOWN_PROPERTY_NAME;
+}
+
+// ---------------------------------------------------------------------------
+// Queue
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_create(M_driver_context_t context,
+                                        M_driver_queue_t *queue) {
+  (void)context;
+  if (!queue)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *queue = (M_driver_queue_t)&g_queue_sentinel;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_destroy(M_driver_context_t context,
+                                         M_driver_queue_t queue) {
+  (void)context;
+  (void)queue;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
+                                                M_driver_memory_t dst,
+                                                void *src, uint64_t size) {
+  (void)queue;
+  if (dst && src && size > 0)
+    memcpy((void *)dst, src, (size_t)size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
+                                                  void *dst,
+                                                  M_driver_memory_t src,
+                                                  uint64_t size) {
+  (void)queue;
+  if (dst && src && size > 0)
+    memcpy(dst, (void *)src, (size_t)size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
+                                            M_driver_memory_t dst,
+                                            uint64_t size, uint64_t value,
+                                            uint64_t value_size) {
+  (void)queue;
+  if (!dst || size == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+
+  char *p = (char *)dst;
+  for (uint64_t i = 0; i < size; i += value_size) {
+    uint64_t remaining = size - i;
+    uint64_t n = remaining < value_size ? remaining : value_size;
+    memcpy(p + i, &value, (size_t)n);
+  }
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t
+M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
+                       M_driver_queue_execute_config_t *config, void **args,
+                       uint64_t *arg_sizes, uint32_t num_args) {
+  (void)queue;
+  (void)function;
+  (void)config;
+  (void)args;
+  (void)arg_sizes;
+  (void)num_args;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
+                                              M_driver_event_t event) {
+  (void)queue;
+  (void)event;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
+                                                M_driver_event_t event) {
+  (void)queue;
+  (void)event;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
+  (void)queue;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_event_create(M_driver_context_t context,
+                                        M_driver_event_t *event) {
+  (void)context;
+  if (!event)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *event = (M_driver_event_t)&g_event_sentinel;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_event_destroy(M_driver_context_t context,
+                                         M_driver_event_t event) {
+  (void)context;
+  (void)event;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_event_synchronize(M_driver_context_t context,
+                                             M_driver_event_t event) {
+  (void)context;
+  (void)event;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_is_event_ready(M_driver_context_t context,
+                                          M_driver_event_t event,
+                                          bool *is_ready) {
+  (void)context;
+  (void)event;
+  if (!is_ready)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *is_ready = true;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+// ---------------------------------------------------------------------------
+// Bundles and functions
+// ---------------------------------------------------------------------------
+M_DRIVER_API_EXPORT
+M_driver_status_t
+M_driver_bundle_load(M_driver_context_t context,
+                     M_driver_static_bundle_t bundle,
+                     M_driver_bundle_compilation_options_t opts,
+                     M_driver_runtime_bundle_t *runtime_bundle) {
+  (void)context;
+  (void)bundle;
+  (void)opts;
+  if (!runtime_bundle)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *runtime_bundle = (M_driver_runtime_bundle_t)&g_bundle_sentinel;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_bundle_unload(M_driver_context_t context,
+                                         M_driver_runtime_bundle_t bundle) {
+  (void)context;
+  (void)bundle;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_function_load(M_driver_context_t context,
+                                         M_driver_runtime_bundle_t bundle,
+                                         const char *function_name,
+                                         uint64_t function_name_len,
+                                         M_driver_function_t *function) {
+  (void)context;
+  (void)bundle;
+  (void)function_name;
+  (void)function_name_len;
+  if (!function)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *function = (M_driver_function_t)&g_function_sentinel;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_function_unload(M_driver_context_t context,
+                                           M_driver_function_t function) {
+  (void)context;
+  (void)function;
+  return M_DRIVER_STATUS_SUCCESS;
+}

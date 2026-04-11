@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "mojo_test")
+load("//bazel:api.bzl", "modular_cc_binary", "mojo_test")
 
 package(
     default_visibility = ["//MLRT:consumers"],
@@ -8,6 +8,38 @@ package(
     ],
 )
 
+# ---------------------------------------------------------------------------
+# Mock plugin — lightweight C implementation of M_driver_* for testing the
+# Mojo HAL bindings without GPU hardware.
+# ---------------------------------------------------------------------------
+modular_cc_binary(
+    name = "MockPlugin.so",
+    testonly = True,
+    srcs = ["mock_plugin.c"],
+    linkshared = True,
+    linkstatic = False,
+    deps = ["//SDK:HAL"],
+)
+
+# ---------------------------------------------------------------------------
+# Mock-based test — runs without GPU, exercises full HAL lifecycle.
+# ---------------------------------------------------------------------------
+mojo_test(
+    name = "test_hal_mock.mojo.test",
+    srcs = ["test_hal_mock.mojo"],
+    data = [":MockPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "Mock@$(rootpath :MockPlugin.so)",
+    },
+    deps = [
+        "@mojo//:std",
+        "@mojo//:test_utils",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# GPU-dependent smoke test (existing).
+# ---------------------------------------------------------------------------
 mojo_test(
     name = "test_hal_driver.mojo.test",
     srcs = ["test_hal_driver.mojo"],
