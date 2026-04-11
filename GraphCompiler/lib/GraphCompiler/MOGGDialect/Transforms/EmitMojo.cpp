@@ -124,13 +124,22 @@ struct EmitMojo
     // compiling function bodies, so ordering doesn't matter.
     auto mojoText = state.builder.str() + state.structDefsBuilder.str();
 
-#ifndef MODULAR_PRODUCTION
+    // Compute a base file name for the dump from the names of non-subgraph
+    // ModelOps. These correspond to user-visible model names. Falls back to
+    // "temp" when no such models are present.
+    std::string baseFileName;
+    for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
+      if (!modelOp.getIsSubgraph())
+        baseFileName += modelOp.getSymName().str();
+    }
+    if (baseFileName.empty())
+      baseFileName = "temp";
+
     // Save the emitted Mojo code to a file if max.temps_dir is set.
-    if (auto outFile = openIntermediateTextFile("emitted", ".mojo")) {
+    if (auto outFile = openIntermediateTextFile(baseFileName, ".mojo")) {
       outFile->os() << mojoText;
       outFile->keep();
     }
-#endif
 
     auto attrType =
         ArrayType::get((int64_t)mojoText.size(),
