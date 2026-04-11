@@ -142,7 +142,6 @@ modular_cc_library(
         ["include/GraphCompiler/GraphCompiler/Conversion/*.h"],
         # Deal with a circular dependency.
         exclude = [
-            "include/GraphCompiler/GraphCompiler/Conversion/DeviceBufferizationRegistry.h",
             "include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.h",
         ],
     ),
@@ -240,15 +239,6 @@ modular_cc_library(
         ":MOGGDialect.headers",
         ":MOGGFusionSupport",
         "//MLRT:Driver/DeviceContext",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-modular_cc_library(
-    name = "GraphCompilerDeviceBuggerizationRegistry",
-    hdrs = ["include/GraphCompiler/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"],
-    deps = [
-        ":GraphCompilerInterfaces",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -862,7 +852,6 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/MOGGDialect/Transforms/*.cpp"]),
     local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
-        ":GraphCompilerDeviceBuggerizationRegistry",
         ":MGPTransforms",
         ":MOAnalysis",
         ":MOGGDialect",
@@ -1337,7 +1326,6 @@ modular_cc_library(
     srcs = glob(["lib/GraphCompiler/Conversion/MOGGToMGP/*.cpp"]),
     deps = [
         ":CommonDriver",
-        ":GraphCompilerDeviceBuggerizationRegistry",
         ":MGPTransforms",
         ":MOAnalysis",
         ":MODialect",

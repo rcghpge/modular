@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
 #include "GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"

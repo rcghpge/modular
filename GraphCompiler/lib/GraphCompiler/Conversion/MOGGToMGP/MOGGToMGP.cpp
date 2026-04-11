@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.h"
-#include "GraphCompiler/GraphCompiler/Conversion/DeviceBufferizationRegistry.h"
 #include "GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GraphCompiler/GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
@@ -273,8 +272,8 @@ static SmallVector<DeviceRefAttr> getAllDevicesUsedInGraph(MO::GraphOp graph) {
 LogicalResult
 MOGraphLowering::setupTypeBuildersForAllDevices(MO::GraphOp graph) {
   for (DeviceRefAttr device : getAllDevicesUsedInGraph(graph)) {
-    if (failed(MO::makeTypeBuilder(device, loweringState)))
-      return failure();
+    loweringState.registerTypeBuilder(
+        device, std::make_unique<MGP::MGPTypeBuilder>(device));
   }
   return success();
 }
@@ -283,16 +282,39 @@ CompileDiagnosticOrSuccess MOGraphLowering::setupBufferBuildersForAllDevices() {
   DeviceRefAttr hostDevice =
       DeviceRefAttr::getDefault(loweringState.getModelOp()->getContext());
 
+  auto makeBufferBuilder =
+      [&](DeviceRefAttr targetDevice) -> CompileDiagnosticOrSuccess {
+    MGP::MGPBufferBuilder *hostBufferBuilder;
+    auto bufferBuilder = std::make_unique<MGP::MGPBufferBuilder>(targetDevice);
+    if (hostDevice == targetDevice) {
+      hostBufferBuilder = bufferBuilder.get();
+    } else {
+      hostBufferBuilder = static_cast<MGP::MGPBufferBuilder *>(
+          loweringState.getBufferBuilder(hostDevice));
+      ASSERT_STREAM(
+          hostBufferBuilder,
+          << "no buffer builder has been created for the host device '"
+          << hostDevice << "'");
+    }
+    auto inChain =
+        cast<TypedValue<MEF::ChainType>>(loweringState.getInitChain());
+    auto chain = bufferBuilder->setupForModel(
+        loweringState.getModelOp(), hostBufferBuilder,
+        loweringState.getInitOpBuilder(), loweringState.getGraph()->getLoc(),
+        inChain);
+    loweringState.setInitChain(chain);
+    loweringState.registerBufferBuilder(targetDevice, std::move(bufferBuilder));
+    return success();
+  };
+
   // Make the host buffer builder first.
-  if (auto err = MO::makeBufferBuilder(hostDevice, hostDevice, loweringState);
-      err.isError())
+  if (auto err = makeBufferBuilder(hostDevice); err.isError())
     return err;
 
   // Add the buffer builders for other supported devices.
   for (auto device : getAllDevicesUsedInGraph(loweringState.getGraph())) {
     if (device != hostDevice) {
-      if (auto err = MO::makeBufferBuilder(hostDevice, device, loweringState);
-          err.isError())
+      if (auto err = makeBufferBuilder(device); err.isError())
         return err;
     }
   }
@@ -2095,8 +2117,6 @@ struct MOGGToMGPPass : public MGP::impl::MOGGToMGPBase<MOGGToMGPPass> {
 
 void MOGGToMGPPass::getDependentDialects(DialectRegistry &registry) const {
   MOGGToMGPBase::getDependentDialects(registry);
-  // Bring in all the device-specific dialects.
-  MO::registerAllDeviceDialects(registry);
 }
 
 void MOGGToMGPPass::runOnOperation() {
