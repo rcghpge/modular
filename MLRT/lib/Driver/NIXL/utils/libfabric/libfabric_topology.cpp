@@ -648,11 +648,13 @@ bool nixlLibfabricTopology::isEfaDevice(hwloc_obj_t obj) const {
     return false;
   }
 
-  // Amazon EFA vendor ID is 0x1d0f, device ID can be 0xefa0, 0xefa1, or 0xefa2
+  // Amazon EFA vendor ID is 0x1d0f
+  // Known device IDs: 0xefa0 (v1), 0xefa1 (v1a), 0xefa2 (v2), 0xefa3 (v3)
   return obj->attr->pcidev.vendor_id == 0x1d0f &&
          (obj->attr->pcidev.device_id == 0xefa0 ||
           obj->attr->pcidev.device_id == 0xefa1 ||
-          obj->attr->pcidev.device_id == 0xefa2);
+          obj->attr->pcidev.device_id == 0xefa2 ||
+          obj->attr->pcidev.device_id == 0xefa3);
 }
 
 nixl_status_t nixlLibfabricTopology::groupNicsWithGpus(
