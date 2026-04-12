@@ -1056,10 +1056,10 @@ struct CustomOpWithStaticStringParams:
 
 
 comptime _WrapperLayout = TileLayout[
-    shape_types=TypeList[
+    shape_types=TypeListOf[
         type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
     ](),
-    stride_types=TypeList[
+    stride_types=TypeListOf[
         type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
     ](),
 ]
@@ -1084,12 +1084,12 @@ struct ToTensorWrapper:
         var shape = tensor.shape()
         var strides = tensor.strides()
         var shape_coord = Coord[
-            TypeList[
+            TypeListOf[
                 type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
             ]()
         ]()
         var stride_coord = Coord[
-            TypeList[
+            TypeListOf[
                 type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
             ]()
         ]()
