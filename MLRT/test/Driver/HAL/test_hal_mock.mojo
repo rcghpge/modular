@@ -34,7 +34,7 @@ from std.sys._hal.status import (
     STATUS_BAD_BUNDLE,
     STATUS_EXECUTE_MODE_NOT_SUPPORTED,
 )
-from std.testing import assert_equal, assert_true
+from std.testing import assert_equal, assert_raises, assert_true
 
 
 def _get_plugin_spec() -> String:
@@ -96,13 +96,9 @@ def test_driver_device_enumeration() raises:
 
 
 def test_invalid_device_id() raises:
-    var got_error = False
-    try:
-        var driver = Driver.create(_get_plugin_spec())
+    var driver = Driver.create(_get_plugin_spec())
+    with assert_raises():
         _ = driver.get_device(Int64(99))
-    except:
-        got_error = True
-    assert_true(got_error, "expected HALError for invalid device ID")
 
 
 def test_context_create() raises:
@@ -116,17 +112,9 @@ def test_context_create() raises:
 
 
 def test_invalid_device_error_message() raises:
-    var msg = String("")
-    try:
-        var driver = Driver.create(_get_plugin_spec())
+    var driver = Driver.create(_get_plugin_spec())
+    with assert_raises(contains="Invalid device ID"):
         _ = driver.get_device(Int64(99))
-    except e:
-        msg = String.write(e)
-    assert_true(msg.byte_length() > 0, "expected non-empty error message")
-    assert_true(
-        "Invalid device ID" in msg,
-        "error message should mention invalid device ID, got: " + msg,
-    )
 
 
 # ===-----------------------------------------------------------------------===#
