@@ -1084,14 +1084,10 @@ struct ToTensorWrapper:
         var shape = tensor.shape()
         var strides = tensor.strides()
         var shape_coord = Coord[
-            TypeListOf[
-                type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-            ]()
+            RuntimeInt[DType.int64], RuntimeInt[DType.int64]
         ]()
         var stride_coord = Coord[
-            TypeListOf[
-                type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-            ]()
+            RuntimeInt[DType.int64], RuntimeInt[DType.int64]
         ]()
         shape_coord[0] = rebind[RuntimeInt[DType.int64]](Int64(shape[0]))
         shape_coord[1] = rebind[RuntimeInt[DType.int64]](Int64(shape[1]))
