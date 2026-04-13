@@ -71,7 +71,11 @@ HAS_FALLBACK(MO::ConvOp)
 HAS_FALLBACK(MO::ConvTransposeOp)
 HAS_FALLBACK(MO::GatherOp)
 HAS_FALLBACK(MO::GatherNdOp)
+HAS_FALLBACK(MO::ReduceGroupNormOp)
 HAS_FALLBACK(MO::LayerNormOp)
+HAS_FALLBACK(MO::ReduceMinAndMaxOp)
+HAS_FALLBACK(MO::ReduceRMSNormOp)
+HAS_FALLBACK(MO::ReduceRMSNormFusedResidualAddOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MaxPoolCeilOp)
 HAS_FALLBACK(MO::MeanOp)
@@ -169,7 +173,11 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ConvTransposeOp)
       CALL_FALLBACK(MO::GatherOp)
       CALL_FALLBACK(MO::GatherNdOp)
+      CALL_FALLBACK(MO::ReduceGroupNormOp)
       CALL_FALLBACK(MO::LayerNormOp)
+      CALL_FALLBACK(MO::ReduceMinAndMaxOp)
+      CALL_FALLBACK(MO::ReduceRMSNormOp)
+      CALL_FALLBACK(MO::ReduceRMSNormFusedResidualAddOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MaxPoolCeilOp)
       CALL_FALLBACK(MO::MeanOp)
@@ -830,6 +838,51 @@ ErrorOrSuccess Fallback<MO::TileOp>::build(GraphOp &graph, OpBuilder &builder,
   buildForOpResult(graph, builder, op, MO::TileOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
+  return success();
+}
+
+ErrorOrSuccess Fallback<MO::ReduceRMSNormOp>::build(GraphOp &graph,
+                                                    OpBuilder &builder,
+                                                    MO::ReduceRMSNormOp op) {
+  buildForOpResult(graph, builder, op, MO::ReduceRMSNormOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/
+                   {{"multiply_before_cast", op.getMultiplyBeforeCastAttr()}},
+                   /*dataDepInputIdxs=*/{});
+  return success();
+}
+
+ErrorOrSuccess
+Fallback<MO::ReduceGroupNormOp>::build(GraphOp &graph, OpBuilder &builder,
+                                       MO::ReduceGroupNormOp op) {
+  buildForOpResult(graph, builder, op,
+                   MO::ReduceGroupNormOp::getOperationName(), op.getOperands(),
+                   op.getOutputParamDecls(),
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/{});
+  return success();
+}
+
+ErrorOrSuccess
+Fallback<MO::ReduceMinAndMaxOp>::build(GraphOp &graph, OpBuilder &builder,
+                                       MO::ReduceMinAndMaxOp op) {
+  buildForOpResult(graph, builder, op,
+                   MO::ReduceMinAndMaxOp::getOperationName(), op.getOperands(),
+                   op.getOutputParamDecls(),
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/{1});
+  return success();
+}
+
+ErrorOrSuccess Fallback<MO::ReduceRMSNormFusedResidualAddOp>::build(
+    GraphOp &graph, OpBuilder &builder,
+    MO::ReduceRMSNormFusedResidualAddOp op) {
+  // Both output and intermediate have the same shape as input.
+  buildForOpResult(graph, builder, op.getOutput(),
+                   MO::ReduceRMSNormFusedResidualAddOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/{},
+                   /*dataDepInputIdxs=*/{});
   return success();
 }
 

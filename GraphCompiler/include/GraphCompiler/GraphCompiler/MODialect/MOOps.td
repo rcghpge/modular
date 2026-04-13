@@ -1979,6 +1979,170 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
 }
 
 //===----------------------------------------------------------------------===//
+// Normalization ops
+//===----------------------------------------------------------------------===//
+
+def MO_ReduceRMSNormOp : MO_TensorOp<"reduce.rms_norm", [
+  Pure,
+  AllDTypesMatch<["input", "result"]>,
+  AllShapeAttrsMatch<["input", "result"]>,
+  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_ParamDeclaration,
+]> {
+  let summary = "RMS normalization operation";
+  let description = [{
+    Applies Root Mean Square normalization to the input tensor.
+
+    output = input / rms(input) * weight
+
+    where rms(x) = sqrt(mean(x^2) + epsilon).
+
+    When `multiply_before_cast` is false (Llama-style), the input is cast to
+    the output dtype before multiplication by the weight. When true
+    (Gemma-style), the multiplication is performed before the cast.
+
+    Example:
+
+    ```mlir
+      %res = mo.reduce.rms_norm(%input, %weight, %epsilon, %weight_offset)
+        {multiply_before_cast = false} :
+        (!mo.tensor<[2, 3], bf16, gpu:0>, !mo.tensor<[3], bf16, gpu:0>,
+         !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[2, 3], bf16, gpu:0>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$weight,
+    MO_Tensor:$epsilon,
+    MO_Tensor:$weightOffset,
+    BoolAttr:$multiply_before_cast,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_ReduceGroupNormOp : MO_TensorOp<"reduce.group_norm", [
+  Pure,
+  AllShapeAttrsMatch<["input", "result"]>,
+  MO_SingleDeviceWithHostOperands<["epsilon", "numGroups"]>,
+  MO_ParamDeclaration,
+]> {
+  let summary = "Group normalization operation";
+  let description = [{
+    Applies Group Normalization to the input tensor.
+
+    Divides channels into groups and computes normalization statistics
+    within each group.
+
+    Example:
+
+    ```mlir
+      %res = mo.reduce.group_norm(%input, %gamma, %beta, %epsilon, %num_groups) :
+        (!mo.tensor<[1, 32, 64, 64], f32, gpu:0>, !mo.tensor<[32], f32, gpu:0>,
+         !mo.tensor<[32], f32, gpu:0>, !mo.tensor<[], f32>, !mo.tensor<[], si32>)
+        -> !mo.tensor<[1, 32, 64, 64], f32, gpu:0>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$gamma,
+    MO_Tensor:$beta,
+    MO_Tensor:$epsilon,
+    MO_Tensor:$numGroups,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<["axis"]>,
+  MO_ParamDeclaration,
+]> {
+  let summary = "Combined minimum and maximum reduction operation";
+  let description = [{
+    Reduces the input tensor along the given axis, returning a single tensor
+    where the last dimension contains both the minimum and maximum values (in
+    that order).
+
+    For an input of shape [d0, ..., dN] reduced along axis `a`, the output
+    shape is [d0, ..., 2] (the reduced axis is replaced by a dimension of 2).
+
+    Example:
+
+    ```mlir
+      %res = mo.reduce.reduce_min_and_max(%input, %axis) :
+        (!mo.tensor<[2, 10], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 2], f32>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_RankedScalarIndexTensor:$axis,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+def MO_ReduceRMSNormFusedResidualAddOp : MO_TensorOp<"reduce.rms_norm_fused_residual_add", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<["epsilon1", "epsilon2", "weightOffset1", "weightOffset2"]>,
+  MO_ParamDeclaration,
+]> {
+  let summary = "Fused RMS norm with residual add operation";
+  let description = [{
+    Fused operation computing:
+      intermediate = rms_norm(input, gamma1, epsilon1, weight_offset1) + residual_input
+      output = rms_norm(intermediate, gamma2, epsilon2, weight_offset2)
+
+    Returns both the final output and the post-add intermediate tensor.
+
+    Example:
+
+    ```mlir
+      %output, %intermediate = mo.reduce.rms_norm_fused_residual_add(
+          %input, %residual, %gamma1, %gamma2, %eps1, %eps2, %offset1, %offset2) {
+          multiply_before_cast1 = false, multiply_before_cast2 = false} :
+        (...) -> (!mo.tensor<[3, 2], f32>, !mo.tensor<[3, 2], f32>)
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$residualInput,
+    MO_Tensor:$gamma1,
+    MO_Tensor:$gamma2,
+    MO_Tensor:$epsilon1,
+    MO_Tensor:$epsilon2,
+    MO_Tensor:$weightOffset1,
+    MO_Tensor:$weightOffset2,
+    BoolAttr:$multiply_before_cast,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$output, MO_Tensor:$intermediate);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Sliding window ops
 //===----------------------------------------------------------------------===//
 

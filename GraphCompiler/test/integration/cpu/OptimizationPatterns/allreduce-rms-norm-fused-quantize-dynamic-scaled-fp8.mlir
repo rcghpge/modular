@@ -32,22 +32,22 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
 
     // Add + RMNSNorm + Quant (GPU:0)
     %add0 = mo.add(%residual0, %allred#0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
-    %norm0 = mo.custom {device = #M.device_ref<"gpu", 0>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add0, %gamma0, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[16384], bf16, gpu:0>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
+    %norm0 = mo.reduce.rms_norm(%add0, %gamma0, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[16384], bf16, gpu:0>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
     %norm_quant0:2 = mo.custom {device = #M.device_ref<"gpu", 0>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm0, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:0>, !mo.tensor<[1, total_seq_len], bf16, gpu:0>)
 
     // Add + RMNSNorm + Quant (GPU:1)
     %add1 = mo.add(%residual1, %allred#1) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
-    %norm1 = mo.custom {device = #M.device_ref<"gpu", 1>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add1, %gamma1, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[16384], bf16, gpu:1>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
+    %norm1 = mo.reduce.rms_norm(%add1, %gamma1, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[16384], bf16, gpu:1>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
     %norm_quant1:2 = mo.custom {device = #M.device_ref<"gpu", 1>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm1, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:1>, !mo.tensor<[1, total_seq_len], bf16, gpu:1>)
 
     // Add + RMNSNorm + Quant (GPU:2)
     %add2 = mo.add(%residual2, %allred#2) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
-    %norm2 = mo.custom {device = #M.device_ref<"gpu", 2>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add2, %gamma2, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[16384], bf16, gpu:2>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
+    %norm2 = mo.reduce.rms_norm(%add2, %gamma2, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[16384], bf16, gpu:2>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
     %norm_quant2:2 = mo.custom {device = #M.device_ref<"gpu", 2>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm2, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:2>, !mo.tensor<[1, total_seq_len], bf16, gpu:2>)
 
     // Add + RMNSNorm + Quant (GPU:3)
     %add3 = mo.add(%residual3, %allred#3) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
-    %norm3 = mo.custom {device = #M.device_ref<"gpu", 3>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add3, %gamma3, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.tensor<[16384], bf16, gpu:3>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
+    %norm3 = mo.reduce.rms_norm(%add3, %gamma3, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.tensor<[16384], bf16, gpu:3>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
     %norm_quant3:2 = mo.custom {device = #M.device_ref<"gpu", 3>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm3, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:3>, !mo.tensor<[1, total_seq_len], bf16, gpu:3>)
 
     mo.output %norm_quant0#0, %norm_quant1#0, %norm_quant2#0, %norm_quant3#0, %out_chain : !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:0>, !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:1>, !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:2>, !mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:3>, !mo.chain
@@ -95,25 +95,25 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
 
     // Add + RMNSNorm + Quant + Residual use (GPU:0)
     %add0 = mo.add(%residual0, %allred#0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
-    %norm0 = mo.custom {device = #M.device_ref<"gpu", 0>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add0, %gamma0, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[16384], bf16, gpu:0>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
+    %norm0 = mo.reduce.rms_norm(%add0, %gamma0, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[16384], bf16, gpu:0>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
     %norm_quant0:2 = mo.custom {device = #M.device_ref<"gpu", 0>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm0, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:0>, !mo.tensor<[1, total_seq_len], bf16, gpu:0>)
     %out0 = mo.add(%other0, %add0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
 
     // Add + RMNSNorm + Quant + Residual use (GPU:1)
     %add1 = mo.add(%residual1, %allred#1) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
-    %norm1 = mo.custom {device = #M.device_ref<"gpu", 1>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add1, %gamma1, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[16384], bf16, gpu:1>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
+    %norm1 = mo.reduce.rms_norm(%add1, %gamma1, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[16384], bf16, gpu:1>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
     %norm_quant1:2 = mo.custom {device = #M.device_ref<"gpu", 1>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm1, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:1>, !mo.tensor<[1, total_seq_len], bf16, gpu:1>)
     %out1 = mo.add(%other1, %add1) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>
 
     // Add + RMNSNorm + Quant + Residual use (GPU:2)
     %add2 = mo.add(%residual2, %allred#2) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
-    %norm2 = mo.custom {device = #M.device_ref<"gpu", 2>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add2, %gamma2, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[16384], bf16, gpu:2>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
+    %norm2 = mo.reduce.rms_norm(%add2, %gamma2, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[16384], bf16, gpu:2>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
     %norm_quant2:2 = mo.custom {device = #M.device_ref<"gpu", 2>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm2, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:2>, !mo.tensor<[1, total_seq_len], bf16, gpu:2>)
     %out2 = mo.add(%other2, %add2) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>
 
     // Add + RMNSNorm + Quant + Residual use (GPU:3)
     %add3 = mo.add(%residual3, %allred#3) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
-    %norm3 = mo.custom {device = #M.device_ref<"gpu", 3>, parameters = {multiply_before_cast = true}, symbol = "rms_norm"}(%add3, %gamma3, %epsilon, %weight_offset) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.tensor<[16384], bf16, gpu:3>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
+    %norm3 = mo.reduce.rms_norm(%add3, %gamma3, %epsilon, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.tensor<[16384], bf16, gpu:3>, !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
     %norm_quant3:2 = mo.custom {device = #M.device_ref<"gpu", 3>, parameters = {group_size_or_per_token = 16384 : index}, symbol = "mo.quantize_dynamic_scaled_float8"}(%norm3, %scale_ub) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.tensor<[], f32>) -> (!mo.tensor<[total_seq_len, 16384], f8e4m3fn, gpu:3>, !mo.tensor<[1, total_seq_len], bf16, gpu:3>)
     %out3 = mo.add(%other3, %add3) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>
 

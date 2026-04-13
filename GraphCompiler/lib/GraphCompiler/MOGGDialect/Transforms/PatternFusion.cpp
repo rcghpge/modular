@@ -2662,69 +2662,54 @@ struct MultiHeadAttentionPattern
 };
 
 struct RMSNormFusedResidualAddPattern
-    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::CustomOp> {
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
+                                           MO::ReduceRMSNormOp> {
   RMSNormFusedResidualAddPattern(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 3) {}
 
   LogicalResult
-  deviceAwareMatchAndRewrite(MO::CustomOp op,
+  deviceAwareMatchAndRewrite(MO::ReduceRMSNormOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
     // Match the pattern: rms_norm(rms_norm(input) + residual_input)
-    // This means we're looking for a CustomOp with symbol "rms_norm" that takes
-    // as input the result of (rms_norm(input) + residual_input)
+    // This means we're looking for a RMSNormOp whose input is the result of
+    // (rms_norm(input) + residual_input)
 
-    if (op.getSymbol() != "rms_norm")
-      return rewriter.notifyMatchFailure(op, "not an rms_norm operation");
-
-    // Check that we have the right number of operands for rms_norm
-    if (op.getOperands().size() != 4)
-      return rewriter.notifyMatchFailure(op, "rms_norm expects 4 operands");
-
-    // The first operand should be the result of (rms_norm(input) +
-    // residual_input)
-    Value firstOperand = op.getOperand(0);
-
-    // Look for an add operation
-    auto addOp = firstOperand.getDefiningOp<MO::AddOp>();
+    // Look for an add operation feeding into this rms_norm's input
+    auto addOp = op.getInput().getDefiningOp<MO::AddOp>();
     if (!addOp)
       return rewriter.notifyMatchFailure(
           op, "first operand not from add operation");
 
-    // One of the add operands should be the original input
+    // One of the add operands should be the result of an inner rms_norm
     if (addOp.getOperands().size() != 2)
       return rewriter.notifyMatchFailure(op,
                                          "add operation expects 2 operands");
 
     Value innerRmsNormResult = addOp.getOperand(0);
     Value residualInput = addOp.getOperand(1);
-    auto innerRmsNorm = innerRmsNormResult.getDefiningOp<MO::CustomOp>();
-    if (!innerRmsNorm || innerRmsNorm.getSymbol() != "rms_norm") {
+    auto innerRmsNorm = innerRmsNormResult.getDefiningOp<MO::ReduceRMSNormOp>();
+    if (!innerRmsNorm) {
       innerRmsNormResult = addOp.getOperand(1);
       residualInput = addOp.getOperand(0);
-      innerRmsNorm = innerRmsNormResult.getDefiningOp<MO::CustomOp>();
-      if (!innerRmsNorm || innerRmsNorm.getSymbol() != "rms_norm")
+      innerRmsNorm = innerRmsNormResult.getDefiningOp<MO::ReduceRMSNormOp>();
+      if (!innerRmsNorm)
         return rewriter.notifyMatchFailure(op, "inner rms_norm not found");
     }
 
-    // Check that we have the right number of operands for inner rms_norm
-    if (innerRmsNorm.getOperands().size() != 4)
-      return rewriter.notifyMatchFailure(op,
-                                         "inner rms_norm expects 4 operands");
+    // Extract the original input fed into the inner rms_norm
+    Value originalInput = innerRmsNorm.getInput();
 
-    // Now we have the pattern: rms_norm(rms_norm(input, gamma1, eps1,
-    // weight_offset1) + residual_input) We need to extract the parameters from
-    // both rms_norm operations
-    Value originalInput = innerRmsNorm.getOperand(0);
+    // Extract parameters from outer rms_norm
+    Value gamma2 = op.getWeight();
+    Value eps2 = op.getEpsilon();
+    Value weightOffset2 = op.getWeightOffset();
+    // Use outer op's multiply_before_cast (inner assumed to match outer)
+    BoolAttr multiplyBeforeCast = op.getMultiplyBeforeCastAttr();
 
-    // Extract parameters from outer rms_norm (gamma2, eps2, weight_offset2)
-    Value gamma2 = op.getOperand(1);
-    Value eps2 = op.getOperand(2);
-    Value weightOffset2 = op.getOperand(3);
-
-    // Extract parameters from inner rms_norm (gamma1, eps1, weight_offset1)
-    Value gamma1 = innerRmsNorm.getOperand(1);
-    Value eps1 = innerRmsNorm.getOperand(2);
-    Value weightOffset1 = innerRmsNorm.getOperand(3);
+    // Extract parameters from inner rms_norm
+    Value gamma1 = innerRmsNorm.getWeight();
+    Value eps1 = innerRmsNorm.getEpsilon();
+    Value weightOffset1 = innerRmsNorm.getWeightOffset();
 
     // Check device consistency
     if (!rewriter.addOps({addOp, innerRmsNorm})) {
@@ -2732,37 +2717,20 @@ struct RMSNormFusedResidualAddPattern
           op, "matched ops have inconsistent devices");
     }
 
-    // Create the fused operation
-    SmallVector<Value> fusedOperands = {
-        originalInput, // input
-        residualInput, // residual_input
-        gamma1,        // gamma1
-        gamma2,        // gamma2
-        eps1,          // epsilon1
-        eps2,          // epsilon2
-        weightOffset1, // weight_offset1
-        weightOffset2  // weight_offset2
-    };
-
     // The fused operation returns two outputs: [output, intermediate]
     // where output = rms_norm(rms_norm(input) + residual)
     // and intermediate = rms_norm(input) + residual
-    SmallVector<Type> fusedResultTypes = {
-        op.getResultTypes()[0],    // output type (same as outer rms_norm)
-        addOp->getResultTypes()[0] // intermediate type (same as add result)
-    };
-
-    auto fusedOp = rewriter.create<MO::CustomOp>(
-        op.getLoc(), fusedResultTypes, fusedOperands,
-        StringAttr::get(getContext(), "rms_norm_fused_residual_add"),
-        op.getDevice(), op.getParameters(), op.getOutputParamDecls());
+    auto fusedOp = rewriter.create<MO::ReduceRMSNormFusedResidualAddOp>(
+        op.getLoc(), op.getResult().getType(), addOp.getResult().getType(),
+        originalInput, residualInput, gamma1, gamma2, eps1, eps2, weightOffset1,
+        weightOffset2, multiplyBeforeCast.getValue(), op.getOutputParamDecls());
 
     // Replace the outer rms_norm with the first output of the fused operation
-    rewriter.replaceOp(op, fusedOp.getResult(0));
+    rewriter.replaceOp(op, fusedOp.getOutput());
 
     // Replace all consumers of the add operation with the second output of the
     // fused operation
-    rewriter.replaceAllUsesWith(addOp.getResult(), fusedOp.getResult(1));
+    rewriter.replaceAllUsesWith(addOp.getResult(), fusedOp.getIntermediate());
 
     return mlir::success();
   }
@@ -2792,14 +2760,9 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     if (!input.hasOneUse())
       return rewriter.notifyMatchFailure(op, "input has multiple uses");
 
-    auto rmsNormOp = input.getDefiningOp<MO::CustomOp>();
+    auto rmsNormOp = input.getDefiningOp<MO::ReduceRMSNormOp>();
     if (!rmsNormOp)
-      return rewriter.notifyMatchFailure(op, "input not from custom operation");
-    if (rmsNormOp.getSymbol() != "rms_norm")
       return rewriter.notifyMatchFailure(op, "input not a rms_norm operation");
-    if (rmsNormOp.getOperands().size() != 4)
-      return rewriter.notifyMatchFailure(op,
-                                         "unexpected rms_norm operand count");
 
     TensorType inputTy = input.getType();
     if (!inputTy.hasRank())
@@ -2828,32 +2791,16 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
                                          "wrong group_size_or_per_token type");
     }
 
-    DictionaryAttr rmsNormOpParams = rmsNormOp.getParameters();
-    if (!rmsNormOpParams.empty()) {
-      if (rmsNormOpParams.size() > 1)
-        return rewriter.notifyMatchFailure(op, "unexpected parameters");
-      Attribute multiplyBeforeCastAttr =
-          rmsNormOpParams.get("multiply_before_cast");
-      if (!multiplyBeforeCastAttr)
-        return rewriter.notifyMatchFailure(op, "missing multiply_before_cast");
-      if (auto boolAttr = dyn_cast<BoolAttr>(multiplyBeforeCastAttr)) {
-        if (!boolAttr.getValue()) {
-          return rewriter.notifyMatchFailure(op,
-                                             "multiply_before_cast required");
-        }
-      } else {
-        return rewriter.notifyMatchFailure(op,
-                                           "wrong multiply_before_cast type");
-      }
-    }
+    if (!rmsNormOp.getMultiplyBeforeCast())
+      return rewriter.notifyMatchFailure(op, "multiply_before_cast required");
 
     // Otherwise only fuse the RMSNorm + Quant.
     SmallVector<Value> fusedOperands = {
-        rmsNormOp.getOperand(0), // rms_norm.input
-        rmsNormOp.getOperand(1), // rms_norm.gamma
-        rmsNormOp.getOperand(2), // rms_norm.epsilon
-        rmsNormOp.getOperand(3), // rms_norm.weight_offset
-        op.getOperand(1),        // quantize.scale_ub
+        rmsNormOp.getInput(),        // rms_norm.input
+        rmsNormOp.getWeight(),       // rms_norm.gamma
+        rmsNormOp.getEpsilon(),      // rms_norm.epsilon
+        rmsNormOp.getWeightOffset(), // rms_norm.weight_offset
+        op.getOperand(1),            // quantize.scale_ub
     };
 
     rewriter.replaceOpWithNewOp<MO::CustomOp>(
@@ -2897,15 +2844,15 @@ public:
     llvm::SmallVector<Value> scaleUbOperands;
     for (Value out : allReduceOp.getOutputs()) {
       DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
-      MO::CustomOp rmsNormOp = rmsNormOps.at(device);
+      MO::ReduceRMSNormOp rmsNormOp = rmsNormOps.at(device);
       MO::CustomOp quantizeOp = quantizeOps.at(device);
       outputTypes.push_back(quantizeOp->getResultTypes()[0]);
       outScaleTypes.push_back(quantizeOp->getResultTypes()[1]);
       outResidualTypes.push_back(residualOps.at(device).getResult().getType());
       residualOperands.push_back(residualValues.at(device));
-      gammaOperands.push_back(rmsNormOp.getOperand(1));
-      epsilonOperands.push_back(rmsNormOp.getOperand(2));
-      weightOffsetOperands.push_back(rmsNormOp.getOperand(3));
+      gammaOperands.push_back(rmsNormOp.getWeight());
+      epsilonOperands.push_back(rmsNormOp.getEpsilon());
+      weightOffsetOperands.push_back(rmsNormOp.getWeightOffset());
       scaleUbOperands.push_back(quantizeOp.getOperand(1));
     }
 
@@ -2934,7 +2881,7 @@ public:
     for (auto [i, out] : llvm::enumerate(allReduceOp.getOutputs())) {
       DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
       MO::AddOp residualOp = residualOps.at(device);
-      MO::CustomOp rmsNormOp = rmsNormOps.at(device);
+      MO::ReduceRMSNormOp rmsNormOp = rmsNormOps.at(device);
       MO::CustomOp quantizeOp = quantizeOps.at(device);
       // Replace the intermediate result.
       residualOp.getResult().replaceAllUsesExcept(
@@ -2953,7 +2900,7 @@ private:
   DeviceRefAttr targetDevice;
   OpBuilder builder;
   llvm::DenseMap<DeviceRefAttr, MO::AddOp> residualOps;
-  llvm::DenseMap<DeviceRefAttr, MO::CustomOp> rmsNormOps;
+  llvm::DenseMap<DeviceRefAttr, MO::ReduceRMSNormOp> rmsNormOps;
   llvm::DenseMap<DeviceRefAttr, MO::CustomOp> quantizeOps;
   llvm::DenseMap<DeviceRefAttr, Value> residualValues;
 
@@ -2966,24 +2913,23 @@ private:
       return false;
 
     MO::AddOp residualOp;
-    MO::CustomOp rmsNormOp;
+    MO::ReduceRMSNormOp rmsNormOp;
     MO::CustomOp quantizeOp;
     Value residualValue;
 
-    // Match add + custom["rms_norm"] +
-    // custom["mo.quantize_dynamic_scaled_float8"]
+    // Match add + rms_norm + custom["mo.quantize_dynamic_scaled_float8"]
     if (!matchResidualOp(allReduceOut, residualOp, residualValue))
       return false;
 
-    if (!matchCustomOp(residualOp.getResult(), rmsNormOp, "rms_norm"))
+    if (!matchRMSNormOp(residualOp.getResult(), rmsNormOp))
       return false;
 
-    if (!matchCustomOp(rmsNormOp.getResult(0), quantizeOp,
+    if (!matchCustomOp(rmsNormOp.getResult(), quantizeOp,
                        "mo.quantize_dynamic_scaled_float8"))
       return false;
 
     // Verify the quantize op.
-    if (quantizeOp.getOperand(0) != rmsNormOp.getResult(0))
+    if (quantizeOp.getOperand(0) != rmsNormOp.getResult())
       return false;
     TensorType inputTy = allReduceOut.getType();
     if (!inputTy.hasRank())
@@ -3004,19 +2950,10 @@ private:
     }
 
     // Verify the RMSNorm op.
-    if (rmsNormOp.getOperand(0) != residualOp.getResult())
+    if (rmsNormOp.getInput() != residualOp.getResult())
       return false;
-    DictionaryAttr rmsNormOpParams = rmsNormOp.getParameters();
-    if (Attribute multiplyBeforeCastAttr =
-            rmsNormOpParams.get("multiply_before_cast")) {
-      if (auto boolAttr = dyn_cast<BoolAttr>(multiplyBeforeCastAttr)) {
-        if (!boolAttr.getValue()) {
-          return false;
-        }
-      } else {
-        return false;
-      }
-    }
+    if (!rmsNormOp.getMultiplyBeforeCast())
+      return false;
 
     residualOps[device] = residualOp;
     rmsNormOps[device] = rmsNormOp;
@@ -3037,6 +2974,18 @@ private:
         continue;
       residualValue = addOp.getLhsInput();
       residualOp = addOp;
+      return true;
+    }
+
+    return false;
+  }
+
+  bool matchRMSNormOp(Value val, MO::ReduceRMSNormOp &rmsNormOp) {
+    for (Operation *user : val.getUsers()) {
+      auto op = dyn_cast<MO::ReduceRMSNormOp>(user);
+      if (!op)
+        continue;
+      rmsNormOp = op;
       return true;
     }
 
