@@ -347,14 +347,6 @@ public:
     execute.loweredValues.try_emplace(key, value);
   }
 
-  /// Remove a previously registered lowered-value entry.  Used to purge
-  /// stale keys before the defining operation is erased, preventing dangling
-  /// pointer aliasing when later operations are allocated at the same address.
-  void eraseExecuteLoweredValue(Value key) {
-    execute.loweredValues.erase(key);
-    execute.loweredBufferChains.erase(key);
-  }
-
   /// Return and increment the next available constant identifier.
   size_t getExecuteNextConstId() { return execute.nextConstId++; }
 

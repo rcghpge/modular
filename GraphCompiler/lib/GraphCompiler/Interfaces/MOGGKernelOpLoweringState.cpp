@@ -1182,18 +1182,14 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
                                              finalChain);
   }
 
-  // Purge lowering-state entries keyed by clone results before erasing them.
-  // After erasure the Value pointers dangle; if a later parallel op allocates
-  // new clones at the same addresses, the stale map entries would shadow the
-  // new registrations (try_emplace does not overwrite).
+  // Clone shells must stay alive: their result Values are referenced by
+  // loweredValues (and potentially bundleElements in downstream passes).
+  // Move them into the parallel op's body region so lowerBlock's
+  // graph-level iterator doesn't re-encounter them.  They become dead
+  // code destroyed when the MO graph region is replaced by MGP.
+  Block &bodyFront = parallelOp.getBodyRegion().front();
   for (Operation *clone : allClones)
-    for (Value res : clone->getResults())
-      loweringState.eraseExecuteLoweredValue(res);
-
-  // Erase clone shells in reverse order (later kernels may reference earlier
-  // kernels' results as operands).
-  for (Operation *clone : llvm::reverse(allClones))
-    clone->erase();
+    clone->moveBefore(&bodyFront, bodyFront.begin());
 
   return success();
 }
