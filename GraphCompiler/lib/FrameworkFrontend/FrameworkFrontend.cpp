@@ -349,8 +349,6 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
     return Error(Twine("Graph compilation failed:\n") +
                  diagnostics.formatMessage());
 
-  writeIntermediateFileIfRequested("mgp", moduleOp, /*options=*/nullptr,
-                                   BufferRef());
   auto bufOr = MO::convertMGPToMEF(moduleOp, enableMEFMetadata);
   if (bufOr)
     return bufOr.takeError();
@@ -397,11 +395,6 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
 
   mofLoweringOptions.setupContext(maxContext.copy());
   bool enableMEFMetadata = impl->getEnableMEFMetadata();
-
-  // Enable saving intermediate IR by setting `max.temps_dir` in modular.cfg.
-  // Save MO IR pre gc-pipeline.
-  writeIntermediateFileIfRequested("mo", *moduleOp, /*options=*/nullptr,
-                                   BufferRef());
 
   auto baseCacheDirOr = M::getMaxCacheDir();
 
@@ -579,9 +572,6 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
     // We have an MLIR model, try to lower it to a MEF-capable encoding.
     switch (format) {
     case FileFormat::kMODialect: {
-      writeIntermediateFileIfRequested("mo", compileCtx.module.get(),
-                                       impl->getCommonCLOptions(), file.copy());
-
       mofLoweringOptions.setupContext(compileCtx.context.copy());
 
       auto kernelLibraryPaths =
@@ -596,9 +586,6 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
       if (failed(runGcPipeline(compileCtx.module.get(), gcPipelineOptions)))
         return Error(Twine("Graph compilation failed") +
                      diagnostics.formatMessage());
-      writeIntermediateFileIfRequested("mgp", compileCtx.module.get(),
-                                       impl->getCommonCLOptions(), file.copy());
-
       format = FileFormat::kMGPDialect;
       break;
     }

@@ -440,6 +440,12 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
   if (baseFileName.empty())
     baseFileName = "temp";
 
+  // Dump the MO input before any pipeline stages run.
+  if (moduleOp && dumpIntermediates) {
+    M::writeIntermediateFileIfRequested("mo", moduleOp, /*options=*/nullptr,
+                                        BufferRef(), baseFileName);
+  }
+
   // --- mo-pipeline options ---
   MoPipelineOptions moOpts;
   moOpts.debugPrintAllTensors = opts.debugPrintAllTensors;
@@ -565,7 +571,7 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
               buildJitPipeline(p);
             }
           },
-          "")))
+          "mgp")))
     return failure();
 
   return success();
