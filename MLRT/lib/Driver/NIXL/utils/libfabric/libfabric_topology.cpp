@@ -423,6 +423,7 @@ nixl_status_t nixlLibfabricTopology::buildPcieToLibfabricMapping() {
   }
 
   hints->fabric_attr->prov_name = strdup("efa");
+  hints->fabric_attr->name = strdup("efa");
   int ret = fi_getinfo(FI_VERSION(1, 9), NULL, NULL, 0, hints, &info);
   if (ret) {
     NIXL_ERROR << "fi_getinfo failed for PCIe mapping: " << fi_strerror(-ret);

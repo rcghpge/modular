@@ -232,6 +232,9 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device, uint16_t id)
   hints->domain_attr->mr_key_size = 2;
   hints->domain_attr->name = strdup(device_name.c_str());
   hints->domain_attr->threading = FI_THREAD_SAFE;
+  // Request the "efa" fabric (not "efa-direct"). The efa-direct fabric
+  // bypasses the SRD middleware and cannot handle large RDMA transfers.
+  hints->fabric_attr->name = strdup("efa");
   // Get fabric info for this specific device
   int ret = fi_getinfo(FI_VERSION(1, 9), NULL, NULL, 0, hints, &info);
   if (ret) {
