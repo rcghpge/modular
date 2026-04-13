@@ -158,6 +158,12 @@ public:
     /// Keeps track of what runtime SSA values the graph SSA values lower to.
     DenseMap<Value, Value> loweredValues;
 
+    /// Maps !mo.bundle SSA values to their per-element MO-level values.
+    /// Populated by lowerTensorBundle; consumed by lowerParallelOp and
+    /// lowerTensorUnbundle to resolve individual elements without looking
+    /// through the defining TensorBundleOp.
+    DenseMap<Value, SmallVector<Value>> bundleElements;
+
     /// Maps each buffer / tensor onto each chain which protects the first write
     /// to the tensor / buffer. Any operation reading the buffer / tensor needs
     /// to depend on this chain.
@@ -345,6 +351,19 @@ public:
     guardValueWithChain(key, chain);
     guardValueWithChain(value, chain);
     execute.loweredValues.try_emplace(key, value);
+  }
+
+  /// Register per-element MO-level values for a bundle SSA value.
+  void emplaceBundleElements(Value bundleVal, SmallVector<Value> elements) {
+    execute.bundleElements.try_emplace(bundleVal, std::move(elements));
+  }
+
+  /// Look up per-element MO-level values for a bundle SSA value.
+  SmallVector<Value> lookupBundleElements(Value bundleVal) {
+    auto it = execute.bundleElements.find(bundleVal);
+    ASSERT_STREAM(it != execute.bundleElements.end(),
+                  << "bundle value has no registered elements");
+    return it->second;
   }
 
   /// Return and increment the next available constant identifier.

@@ -220,6 +220,12 @@ public:
   /// Lowers mo.parallel op
   LogicalResult lowerParallel(MO::ParallelOp parallelOp);
 
+  /// Lowers mo.tensor.bundle — packs per-element lowered values into a tuple.
+  LogicalResult lowerTensorBundle(MO::TensorBundleOp bundleOp);
+
+  /// Lowers mo.tensor.unbundle — extracts elements from a lowered tuple.
+  LogicalResult lowerTensorUnbundle(MO::TensorUnbundleOp unbundleOp);
+
 private:
   /// Lowers a Block
   LogicalResult lowerBlock(mlir::Block *block);
@@ -1890,6 +1896,18 @@ LogicalResult MOGraphLowering::lowerBlock(Block *block) {
       continue;
     }
 
+    if (auto bundleOp = dyn_cast<MO::TensorBundleOp>(op)) {
+      if (failed(lowerTensorBundle(bundleOp)))
+        return failure();
+      continue;
+    }
+
+    if (auto unbundleOp = dyn_cast<MO::TensorUnbundleOp>(op)) {
+      if (failed(lowerTensorUnbundle(unbundleOp)))
+        return failure();
+      continue;
+    }
+
     // Lower mo.parallel by expanding the body for each input.
     if (auto parallelOp = dyn_cast<MO::ParallelOp>(op)) {
       if (failed(lowerParallel(parallelOp)))
@@ -2017,6 +2035,30 @@ LogicalResult MOGraphLowering::lowerParallel(MO::ParallelOp parallelOp) {
   // stub creation, and async dispatch in a unified manner.
   MGP::MOGGKernelOpLoweringState state(parallelOp, loweringState);
   return state.lowerParallelOp(parallelOp);
+}
+
+LogicalResult MOGraphLowering::lowerTensorBundle(MO::TensorBundleOp bundleOp) {
+  SmallVector<Value> moElements = llvm::to_vector(bundleOp.getInputs());
+  loweringState.emplaceBundleElements(bundleOp.getResult(),
+                                      std::move(moElements));
+  return success();
+}
+
+LogicalResult
+MOGraphLowering::lowerTensorUnbundle(MO::TensorUnbundleOp unbundleOp) {
+  auto moElements = loweringState.lookupBundleElements(unbundleOp.getInput());
+  for (auto [result, moElem] :
+       llvm::zip_equal(unbundleOp.getOutputs(), moElements)) {
+    Value lowered = loweringState.lookupExecuteLoweredValue(moElem);
+    Value chain = loweringState.getChainGuardingValueOrNull(moElem);
+    if (!chain)
+      chain = loweringState.getChainGuardingValueOrNull(lowered);
+    if (chain)
+      loweringState.emplaceExecuteLoweredBufferValue(result, lowered, chain);
+    else
+      loweringState.emplaceExecuteLoweredValue(result, lowered);
+  }
+  return success();
 }
 
 LogicalResult MOGraphLowering::lowerCallGraph(MO::CallOp callOp) {
