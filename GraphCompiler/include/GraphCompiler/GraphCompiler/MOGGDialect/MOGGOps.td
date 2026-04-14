@@ -721,41 +721,6 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   let hasFolder = 1;
 }
 
-def MOGG_CreateAsyncMojoValueOp : MOGG_Op<"create_async_mojo_value"> {
-  let arguments = (ins
-      AnyType:$mojoPointer,
-      AnyType:$asyncVal
-  );
-  let summary = "Create an AsyncValue from a mojo pointer";
-  let description = [{
-    Create an AnySyncValue<MojoValue> from a mojo pointer.
-    This can't just be a mogg.call like for other asyncs, as the logic is a bit more complex.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-      functional-type(operands, results)
-  }];
-}
-
-def MOGG_ReleaseMojoValueOp : MOGG_Op<"release_mojo_value"> {
-  let arguments = (ins
-      AnyType:$mojoValue
-  );
-  let summary = "Call the mojo destructor on a mojo object";
-  let description = [{
-    Call the destructor method on a KGEN mojo value.
-    Mojo objects are usually stored in an AnySyncValue<MojoValue>.
-    But when fusing regions, some leftover objects are never released.
-    This op takes care of realising them.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-      functional-type(operands, results)
-  }];
-}
-
 def MOGG_AlignmentPlaceholderOp : MOGG_Op<"alignment_placeholder", [
     DeclareOpInterfaceMethods<ParamOpInterface>]>, OneParamDecl {
   let summary = "Inserts a placeholder for a value and the param name";
