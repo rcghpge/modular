@@ -1804,7 +1804,7 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []>
   }];
 }
 
-def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
+def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"reduce.logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x, axis))`, where `x` is input tensor, and `axis` is
@@ -1820,7 +1820,7 @@ def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"logsoftmax"> {
   }];
 }
 
-def MO_SoftmaxOp : MO_SoftmaxLikeOp<"softmax"> {
+def MO_SoftmaxOp : MO_SoftmaxLikeOp<"reduce.softmax"> {
   let summary = "Softmax operation";
   let description = [{
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
@@ -1870,7 +1870,7 @@ class MO_ReductionOp<string name, list<Trait> traits = []> : MO_TensorOp<
 class MO_MonotypeReductionOp<string name, list<Trait> traits = []> :
   MO_ReductionOp<name, traits # [AllDTypesMatch<["input", "result"]>]>;
 
-def MO_MeanOp : MO_MonotypeReductionOp<"mean"> {
+def MO_MeanOp : MO_MonotypeReductionOp<"reduce.mean"> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their mean value, changng that
@@ -3989,7 +3989,7 @@ class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []>
   let hasVerifier = 1;
 }
 
-def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
+def MO_ArgMaxOp : MO_ArgMinMaxOp<"reduce.arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -4016,7 +4016,7 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"arg_max"> {
     }];
 }
 
-def MO_ArgMinOp : MO_ArgMinMaxOp<"arg_min"> {
+def MO_ArgMinOp : MO_ArgMinMaxOp<"reduce.arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.
@@ -4607,7 +4607,7 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
 // Temp layer norm ops
 //===----------------------------------------------------------------------===//
 
-def MO_LayerNormOp : MO_TensorOp<"layer_norm", [
+def MO_LayerNormOp : MO_TensorOp<"reduce.layer_norm", [
   MO_ParamDeclaration,
   MO_SingleDeviceWithHostOperands<["epsilon"]>
 ]> {

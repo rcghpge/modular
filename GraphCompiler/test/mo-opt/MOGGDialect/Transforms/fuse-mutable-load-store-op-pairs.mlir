@@ -128,13 +128,13 @@ mo.graph @load_matmul_store_twice(%buf0: !mo.buffer<[4, 4], f32>, %arg1: !mo.ten
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[outTensor:%.*]], [[outChain:%.*]] = mo.mutable.load(%arg0, [[ch0]])
 // CHECK: [[ch1:%.*]] = mogg.kernel{{.*}}chain([[outChain]])
-// CHECK: fusionInfo = Epilogue("mo.layer_norm":{{[0-9]+}}, "mo.mutable.store":{{[0-9]+}}, operandIndices=[0])
+// CHECK: fusionInfo = Epilogue("mo.reduce.layer_norm":{{[0-9]+}}, "mo.mutable.store":{{[0-9]+}}, operandIndices=[0])
 mo.graph @write_layer_norm_store_same_buffer(%buf: !mo.buffer<[3, 2], f32>, %gamma: !mo.tensor<[2], f32>, %beta: !mo.tensor<[2], f32>, %eps: !mo.tensor<[], f32>) -> !mo.buffer<[3, 2], f32>
 {
   %ch0 = mo.chain.create()
 
   %loaded_tensor, %ch1 = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], f32>, !mo.chain) -> (!mo.tensor<[3, 2], f32>, !mo.chain)
-  %normalized = mo.layer_norm(%loaded_tensor, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
+  %normalized = mo.reduce.layer_norm(%loaded_tensor, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
   %ch2 = mo.mutable.store(%buf, %normalized, %ch1) : (!mo.buffer<[3, 2], f32>, !mo.tensor<[3, 2], f32>, !mo.chain) -> !mo.chain
 
   mo.output %buf : !mo.buffer<[3, 2], f32>
@@ -144,14 +144,14 @@ mo.graph @write_layer_norm_store_same_buffer(%buf: !mo.buffer<[3, 2], f32>, %gam
 // CHECK: [[ch0:%.*]] = mo.chain.create()
 // CHECK: [[ch1:%.*]] = mo.chain.create([[ch2:%.*]], [[ch0]])
 // CHECK: [[ch2]] = mogg.kernel{{.*}}chain([[ch1]])
-// CHECK: fusionInfo = MutableLoad("mo.mutable.load":{{[0-9]+}}, Epilogue("mo.layer_norm":{{[0-9]+}}, "mo.mutable.store":{{[0-9]+}}, operandIndices=[0]))
+// CHECK: fusionInfo = MutableLoad("mo.mutable.load":{{[0-9]+}}, Epilogue("mo.reduce.layer_norm":{{[0-9]+}}, "mo.mutable.store":{{[0-9]+}}, operandIndices=[0]))
 mo.graph @write_layer_norm_store_different_buffers(%src_buf: !mo.buffer<[3, 2], f32>, %dst_buf: !mo.buffer<[3, 2], f32>, %gamma: !mo.tensor<[2], f32>, %beta: !mo.tensor<[2], f32>, %eps: !mo.tensor<[], f32>) -> !mo.buffer<[3, 2], f32>
 {
   %ch0 = mo.chain.create()
 
   %loaded_tensor, %ch1 = mo.mutable.load(%src_buf, %ch0) : (!mo.buffer<[3, 2], f32>, !mo.chain) -> (!mo.tensor<[3, 2], f32>, !mo.chain)
 
-  %normalized = mo.layer_norm(%loaded_tensor, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
+  %normalized = mo.reduce.layer_norm(%loaded_tensor, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
 
   %ch2 = mo.mutable.store(%dst_buf, %normalized, %ch1) : (!mo.buffer<[3, 2], f32>, !mo.tensor<[3, 2], f32>, !mo.chain) -> !mo.chain
 

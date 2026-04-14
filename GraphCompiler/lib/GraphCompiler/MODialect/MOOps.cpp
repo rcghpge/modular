@@ -1915,7 +1915,7 @@ verifyWithRankedInput(Op *op, int64_t axis, int64_t resDim, TensorType inputTy,
   if (inDim != resDim) {
     if (resDim != 1)
       return op->emitOpError(
-          "mo.arg_max: output dimensions must match input "
+          "mo.reduce.arg_max: output dimensions must match input "
           "dimensions, except at the reduction axis where the "
           "output dimension must be 1");
     ++reducedDims;

@@ -41,7 +41,7 @@ mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb, %arg2: !tax) -> !tta {
     %2 = mo.add(%1, %arg1) : !ttb
     %3 = mo.static.reshape(%2) : !ttb -> !tta
 
-    %4 = mo.softmax(%3, %arg2) : (!tta, !tax) -> !tta
+    %4 = mo.reduce.softmax(%3, %arg2) : (!tta, !tax) -> !tta
 
     %5 = mo.relu(%4) : !tta
     %6 = mo.static.reshape(%5) : !tta -> !ttb

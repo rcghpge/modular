@@ -30,7 +30,7 @@ mo.graph @unsafe_bcast_norm_using_mul<B, S, KV_S, H, D, BCAST1>(
     %norm = mo.static.broadcast_to(%norm_scalar): !mo.tensor<[], f32> -> !mo.tensor<[BCAST1, H, S, KV_S], f32>
     %unsafeBCast1 = mo.static.broadcast_to(%attnMatrix): !mo.tensor<[B, H, S, KV_S], f32> -> !mo.tensor<[BCAST1, H, S, KV_S], f32>
     %attnMatrixNorm = mo.mul(%unsafeBCast1, %norm) : !mo.tensor<[BCAST1, H, S, KV_S], f32>
-    %attnMatrixSoftmax = mo.softmax(%attnMatrixNorm, %axis) : (!mo.tensor<[BCAST1, H, S, KV_S], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[BCAST1, H, S, KV_S], f32>
+    %attnMatrixSoftmax = mo.reduce.softmax(%attnMatrixNorm, %axis) : (!mo.tensor<[BCAST1, H, S, KV_S], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[BCAST1, H, S, KV_S], f32>
     %out_bhsd = mo.batch_matmul(%attnMatrixSoftmax, %V_bhsd) : (!mo.tensor<[BCAST1, H, S, KV_S], f32>, !mo.tensor<[BCAST1, H, KV_S, D], f32>) -> !mo.tensor<[BCAST1, H, S, D], f32>
     %out_bshd = mo.transpose(%out_bhsd, %perm0213) : (!mo.tensor<[BCAST1, H, S, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[BCAST1, S, H, D], f32>
     mo.output %out_bshd: !mo.tensor<[BCAST1, S, H, D], f32>

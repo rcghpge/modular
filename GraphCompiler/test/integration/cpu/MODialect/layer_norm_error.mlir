@@ -13,7 +13,7 @@ mo.graph @layer_norm_wrong_gamma<A, B, C, D, E, F>(
   %epsilon: !mo.tensor<[], f32>,
   %dummy_output_shape: !mo.tensor<[E, F], f32>
 ) -> !mo.tensor<[E, F], f32> {
-  %res = mo.layer_norm(
+  %res = mo.reduce.layer_norm(
     %input,
     %gamma,
     %beta,

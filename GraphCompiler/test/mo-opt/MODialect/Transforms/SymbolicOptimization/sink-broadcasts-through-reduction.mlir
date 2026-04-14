@@ -9,7 +9,7 @@ mo.graph @reduce_sinking_success<A, B, P1, P2, P3>(
 
   %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, P2, P3, A, B], f32>
   %reduce_axis1 = mo.reduce.add(%broadcasted_arg0, %axis3) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, P2, P3, 1, B], f32>
-  %reduce_axis2 = mo.mean(%broadcasted_arg0, %axis4) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, P2, P3, A, 1], f32>
+  %reduce_axis2 = mo.reduce.mean(%broadcasted_arg0, %axis4) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, P2, P3, A, 1], f32>
 
   mo.output %reduce_axis1, %reduce_axis2: !mo.tensor<[P1, P2, P3, 1, B], f32>, !mo.tensor<[P1, P2, P3, A, 1], f32>
 }
@@ -20,7 +20,7 @@ mo.graph @reduce_sinking_success<A, B, P1, P2, P3>(
 // CHECK-DAG: [[V1:%.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[], si64>
 // CHECK-NEXT: [[V2:%.*]] = mo.reduce.add([[INPUT]], [[V0]]) : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, [[B]]], f32>
 // CHECK-NEXT: [[V3:%.*]] = mo.static.broadcast_to([[V2]]) : !mo.tensor<[1, [[B]]], f32> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[B]]], f32>
-// CHECK-NEXT: [[V4:%.*]] = mo.mean([[INPUT]], [[V1]]) : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[A]], 1], f32>
+// CHECK-NEXT: [[V4:%.*]] = mo.reduce.mean([[INPUT]], [[V1]]) : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[A]], 1], f32>
 // CHECK-NEXT: [[V5:%.*]] = mo.static.broadcast_to([[V4]]) : !mo.tensor<[[[A]], 1], f32> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], 1], f32>
 // CHECK-NEXT: mo.output [[V3]], [[V5]] : !mo.tensor<[[[P1]], [[P2]], [[P3]], 1, [[B]]], f32>, !mo.tensor<[[[P1]], [[P2]], [[P3]], [[A]], 1], f32>
 
@@ -73,7 +73,7 @@ mo.graph @reduce_sinking_success_max_mean_on_new_bcasted_dim<A, B, P1, P2, P3>(
 
   %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, P2, P3, A, B], f32>
   %reduce_axis1 = mo.reduce.max(%broadcasted_arg0, %axis0) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, P2, P3, A, B], f32>
-  %reduce_axis2 = mo.mean(%broadcasted_arg0, %axis1) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, 1, P3, A, B], f32>
+  %reduce_axis2 = mo.reduce.mean(%broadcasted_arg0, %axis1) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, 1, P3, A, B], f32>
 
   mo.output %reduce_axis1, %reduce_axis2: !mo.tensor<[1, P2, P3, A, B], f32>, !mo.tensor<[P1, 1, P3, A, B], f32>
 }
@@ -145,8 +145,8 @@ mo.graph @reduce_sinking_success_argmin_on_new_bcasted_dim<A, B, P1, P2, P3>(
 ) -> (!mo.tensor<[1, P2, P3, A, B], si64>, !mo.tensor<[1, P2, P3, A, B], si64>) {
   %axis0 = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
   %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, P2, P3, A, B], f32>
-  %argmin_axis1 = mo.arg_min(%broadcasted_arg0, %axis0) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, P2, P3, A, B], si64>
-  %argmax_axis1 = mo.arg_max(%broadcasted_arg0, %axis0) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, P2, P3, A, B], si64>
+  %argmin_axis1 = mo.reduce.arg_min(%broadcasted_arg0, %axis0) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, P2, P3, A, B], si64>
+  %argmax_axis1 = mo.reduce.arg_max(%broadcasted_arg0, %axis0) : (!mo.tensor<[P1, P2, P3, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, P2, P3, A, B], si64>
   mo.output %argmin_axis1, %argmax_axis1 : !mo.tensor<[1, P2, P3, A, B], si64>, !mo.tensor<[1, P2, P3, A, B], si64>
 }
 // CHECK-LABEL: mo.graph
@@ -165,12 +165,12 @@ mo.graph @reduce_sinking_success_mean<A, B, P1>(
 ) -> !mo.tensor<[P1, A, 1], f32> {
   %axis2 = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
   %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, A, B], f32>
-  %reduce_axis1 = mo.mean(%broadcasted_arg0, %axis2) : (!mo.tensor<[P1, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, A, 1], f32>
+  %reduce_axis1 = mo.reduce.mean(%broadcasted_arg0, %axis2) : (!mo.tensor<[P1, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, A, 1], f32>
   mo.output %reduce_axis1: !mo.tensor<[P1, A, 1], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_mean<[[A:[A-Z]*]], [[B:[A-Z]*]]
-// CHECK: mo.mean
+// CHECK: mo.reduce.mean
 // CHECK-SAME : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[A]], 1], f32>
 
 mo.graph @reduce_sinking_success_reduce_mul<A, B, P1>(
@@ -230,12 +230,12 @@ mo.graph @reduce_sinking_success_arg_max<A, B, P1>(
 ) -> !mo.tensor<[P1, A, 1], si64> {
   %axis2 = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
   %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, A, B], f32>
-  %reduce_axis1 = mo.arg_max(%broadcasted_arg0, %axis2) : (!mo.tensor<[P1, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, A, 1], si64>
+  %reduce_axis1 = mo.reduce.arg_max(%broadcasted_arg0, %axis2) : (!mo.tensor<[P1, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, A, 1], si64>
   mo.output %reduce_axis1: !mo.tensor<[P1, A, 1], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_arg_max<[[A:[A-Z]*]], [[B:[A-Z]*]]
-// CHECK: mo.arg_max
+// CHECK: mo.reduce.arg_max
 // CHECK-SAME : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[A]], 1], si64>
 
 mo.graph @reduce_sinking_success_arg_min<A, B, P1>(
@@ -243,10 +243,10 @@ mo.graph @reduce_sinking_success_arg_min<A, B, P1>(
 ) -> !mo.tensor<[P1, A, 1], si64> {
   %axis2 = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
   %broadcasted_arg0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[A, B], f32> -> !mo.tensor<[P1, A, B], f32>
-  %reduce_axis1 = mo.arg_min(%broadcasted_arg0, %axis2) : (!mo.tensor<[P1, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, A, 1], si64>
+  %reduce_axis1 = mo.reduce.arg_min(%broadcasted_arg0, %axis2) : (!mo.tensor<[P1, A, B], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[P1, A, 1], si64>
   mo.output %reduce_axis1: !mo.tensor<[P1, A, 1], si64>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_arg_min<[[A:[A-Z]*]], [[B:[A-Z]*]]
-// CHECK: mo.arg_min
+// CHECK: mo.reduce.arg_min
 // CHECK-SAME : (!mo.tensor<[[[A]], [[B]]], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[[[A]], 1], si64>

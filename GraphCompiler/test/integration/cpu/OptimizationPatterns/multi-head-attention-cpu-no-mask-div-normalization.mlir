@@ -34,7 +34,7 @@ mo.graph @cpu_flash_attn_pattern<B, H, S, D>(
     // the actual calculation, attn is pretty simple huh?
     %attn_mat = mo.batch_matmul(%query, %keyT) : (!mo.tensor<[B, H, S, D], f32>, !mo.tensor<[B, H, D, S], f32>) -> !mo.tensor<[B, H, S, S], f32>
     %attn_mat_norm = mo.div(%attn_mat, %norm) : !mo.tensor<[B, H, S, S], f32>
-    %attn_mat_softmax = mo.softmax(%attn_mat_norm, %axis) : (!mo.tensor<[B, H, S, S], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[B, H, S, S], f32>
+    %attn_mat_softmax = mo.reduce.softmax(%attn_mat_norm, %axis) : (!mo.tensor<[B, H, S, S], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[B, H, S, S], f32>
     %reproj = mo.batch_matmul(%attn_mat_softmax, %value) : (!mo.tensor<[B, H, S, S], f32>, !mo.tensor<[B, H, S, D], f32>) -> !mo.tensor<[B, H, S, D], f32>
 
     mo.output %reproj: !mo.tensor<[B, H, S, D], f32>
@@ -96,7 +96,7 @@ mo.graph @cpu_flash_attn_not_pattern<B, H, S, D> (
     // the actual calculation, attn is pretty simple huh?
     %attn_mat = mo.batch_matmul(%query_reshaped, %keyT_reshaped) : (!mo.tensor<[mul_no_wrap(B, H), S, D], f32>, !mo.tensor<[mul_no_wrap(B, H), D, S], f32>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
     %attn_mat_norm = mo.mul(%attn_mat, %norm) : !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
-    %attn_mat_softmax = mo.softmax(%attn_mat_norm, %axis) : (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
+    %attn_mat_softmax = mo.reduce.softmax(%attn_mat_norm, %axis) : (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
 
     // This breaks pattern matching
     %attn_mat_softmax_copy = mo.custom {symbol = "copy", device = #M.device_ref<"cpu", 0>} (%attn_mat_softmax): (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>

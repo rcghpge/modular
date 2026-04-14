@@ -44,7 +44,7 @@ mo.graph @select_add_mask<SEQ, FIN_SEQ, DIM>(
     %maskedAgain = mo.add(%maskedNormAttnMatrix, %attn_mask): !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This is BHsS
-    %softmax = mo.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax = mo.reduce.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %perm2) : (!mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, FIN_SEQ, DIM], f32>
@@ -101,7 +101,7 @@ mo.graph @add_select_mask<SEQ, FIN_SEQ, DIM>(
     %maskedAgain = mo.select(%select_cond_bcast, %maskedNormAttnMatrix, %neg_inf_bcast) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This is BHsS
-    %softmax = mo.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax = mo.reduce.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %perm2) : (!mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, FIN_SEQ, DIM], f32>
@@ -155,7 +155,7 @@ mo.graph @select_add_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
     %maskedAgain = mo.select(%select_cond_bcast, %maskedNormAttnMatrix, %neg_inf_bcast) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This is BHsS
-    %softmax = mo.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax = mo.reduce.softmax(%maskedAgain, %axis) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This breaks pattern matching
     %softmax_copy = mo.custom {symbol = "copy", device = #M.device_ref<"cpu", 0>} (%softmax): (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>

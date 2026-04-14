@@ -106,7 +106,7 @@ mo.graph @batch_matmul_scale_on_gpu<batch, seq_len>(
     %8 = mo.batch_matmul(%5, %7) : (!mo.tensor<[batch, 18, seq_len, 128], bf16, gpu:0>, !mo.tensor<[batch, 18, 128, seq_len], bf16, gpu:0>) -> !mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>
     %9 = mo.mul(%8, %4) : !mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>
     %10 = mo.add(%9, %arg1) : !mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>
-    %11 = mo.softmax(%10, %1) : (!mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>
+    %11 = mo.reduce.softmax(%10, %1) : (!mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>, !mo.tensor<[], si64>) -> !mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>
 
     %12 = mo.batch_matmul(%11, %6) : (!mo.tensor<[batch, 18, seq_len, seq_len], bf16, gpu:0>, !mo.tensor<[batch, 18, seq_len, 128], bf16, gpu:0>) -> !mo.tensor<[batch, 18, seq_len, 128], bf16, gpu:0>
     %13 = mo.transpose(%12, %3) : (!mo.tensor<[batch, 18, seq_len, 128], bf16, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[batch, seq_len, 18, 128], bf16, gpu:0>

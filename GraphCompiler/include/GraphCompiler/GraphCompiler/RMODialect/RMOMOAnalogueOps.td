@@ -301,7 +301,7 @@ class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :  RMO_MOAnalogu
   }];
 }
 
-def RMO_MOLogSoftmaxOp : RMO_MOSoftmaxLikeOp<"logsoftmax"> {
+def RMO_MOLogSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
     Returns `log(softmax(x))`, where `x` is input tensor.
@@ -312,7 +312,7 @@ def RMO_MOLogSoftmaxOp : RMO_MOSoftmaxLikeOp<"logsoftmax"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.reduce.logsoftmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }
@@ -596,7 +596,7 @@ class RMO_MOAnaloguePureReductionOp<string name, bit input_result_same_dtype=1,
   let results = (outs MO_Tensor:$result);
 }
 
-def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"mean"> {
+def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
   let summary = "Mean reduction operation";
   let description = [{
     Reduces `input` elements across `axis` to their mean value, changng that
@@ -611,7 +611,7 @@ def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"mean"> {
       %arg: !mo.tensor<[2, 3], f32>
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-      %res = rmo.mo.mean(%arg, %axis) : (
+      %res = rmo.mo.reduce.mean(%arg, %axis) : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -706,7 +706,7 @@ class RMO_MOAnalogueArgMinMaxOp<string mnemonic> : RMO_MOAnaloguePureReductionOp
   let results = (outs MO_IndicesTensor:$result);
 }
 
-def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"arg_max"> {
+def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
     This op is equivalent to reduce_max, but returns indices instead of values.
@@ -728,12 +728,12 @@ def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"arg_max"> {
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<si32>
       } : !mo.tensor<[], si32>
-      %1 = rmo.mo.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = rmo.mo.reduce.arg_max(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
 
-def MO_MOArgMinOp : RMO_MOAnalogueArgMinMaxOp<"arg_min"> {
+def MO_MOArgMinOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
     This op is equivalent to reduce_min, but returns indices instead of values.
@@ -755,7 +755,7 @@ def MO_MOArgMinOp : RMO_MOAnalogueArgMinMaxOp<"arg_min"> {
       %axis = mo.constant {
         value = #M.dense_array<1> : tensor<si32>
       } : !mo.tensor<[], si32>
-      %1 = rmo.mo.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = rmo.mo.reduce.arg_min(%0, %axis) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -1851,7 +1851,7 @@ def RMO_MOBatchMatmulOp : RMO_MOAnaloguePureTensorOp<"batch_matmul"> {
   ];
 }
 
-def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"softmax"> {
+def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.softmax"> {
   let summary = "Softmax operation";
   let description = [{
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
@@ -1862,7 +1862,7 @@ def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"softmax"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.softmax(%arg) : !mo.tensor<[2, 3], f32>
+      %res = rmo.mo.reduce.softmax(%arg) : !mo.tensor<[2, 3], f32>
     ```
   }];
 }

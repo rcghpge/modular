@@ -10,13 +10,13 @@
 // CHECK-NEXT:  mogg.output {{.*}}, {{.*}} : f64, !pop.array<2, index>
 // CHECK:       }: (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64>
 // CHECK:       mogg.as_scalar
-// CHECK:       mogg.call.execute["mo.softmax"] inputs({{.*}}, {{.*}}, {{.*}} : !mo.tensor<[2, 3], f64>, !mo.scalar<si64>, !mogg.context) outputs({{.*}} : !mo.tensor<[2, 3], f64>)
-// CHECK:       fusionInfo = Prologue(Elementwise("mo.add":{{.*}}, "mo.cast":{{.*}}), "mo.softmax":{{.*}})
+// CHECK:       mogg.call.execute["mo.reduce.softmax"] inputs({{.*}}, {{.*}}, {{.*}} : !mo.tensor<[2, 3], f64>, !mo.scalar<si64>, !mogg.context) outputs({{.*}} : !mo.tensor<[2, 3], f64>)
+// CHECK:       fusionInfo = Prologue(Elementwise("mo.add":{{.*}}, "mo.cast":{{.*}}), "mo.reduce.softmax":{{.*}})
 
 mo.graph @softmax(%arg0: !mo.tensor<[2, 3], f32>, %arg1: !mo.tensor<[], si64>) -> (!mo.tensor<[2, 3], f64>) {
   %add = mo.add(%arg0, %arg0) : !mo.tensor<[2, 3], f32>
   %cast = mo.cast(%add) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64>
-  %0 = mo.softmax(%cast, %arg1) : (!mo.tensor<[2, 3], f64>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 3], f64>
+  %0 = mo.reduce.softmax(%cast, %arg1) : (!mo.tensor<[2, 3], f64>, !mo.tensor<[], si64>) -> !mo.tensor<[2, 3], f64>
   mo.output %0 : !mo.tensor<[2, 3], f64>
 }
 

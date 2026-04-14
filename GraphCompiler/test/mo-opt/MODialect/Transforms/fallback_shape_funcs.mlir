@@ -7,7 +7,7 @@ mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
   %axis: !mo.tensor<[], si64>
 ) -> !mo.tensor<[D2, D3], si64> {
 
-  %res = mo.arg_max<() -> D4, D5>(%input, %axis) :
+  %res = mo.reduce.arg_max<() -> D4, D5>(%input, %axis) :
     (!mo.tensor<[D0, D1], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[D4, D5], si64>
 
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], si64>
@@ -18,10 +18,10 @@ mo.graph @arg_max_fallback_shape_func<D0, D1 -> D2, D3>(
 // CHECK-SAME:   %[[AXIS:.*]]: !mo.tensor<[], si64>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], si64> {
 //
-// CHECK-NEXT: mo.invoke_shape_func["mo.arg_max"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[AXIS]])
+// CHECK-NEXT: mo.invoke_shape_func["mo.reduce.arg_max"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[AXIS]])
 // CHECK-SAME:   {dataDeptTensors = [1 : i32]} : (!mo.tensor<[[[D0]], [[D1]]], si64>, !mo.tensor<[], si64>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.arg_max(%[[INPUT]], %[[AXIS]]) :
+// CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[INPUT]], %[[AXIS]]) :
 // CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]]], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[[[D4]], [[D5]]], si64>
 //
 // CHECK-NEXT: mo.output<[[D4]], [[D5]]> %[[RES]] : !mo.tensor<[[[D4]], [[D5]]], si64>
@@ -175,7 +175,7 @@ mo.graph @layer_norm<D0, D1 -> D2, D3>(
   %epsilon: !mo.tensor<[], f32>
 ) -> !mo.tensor<[D2, D3], f32> {
 
-  %res = mo.layer_norm<() -> D4, D5>(%input, %gamma, %beta, %epsilon) :
+  %res = mo.reduce.layer_norm<() -> D4, D5>(%input, %gamma, %beta, %epsilon) :
     (!mo.tensor<[D0, D1], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D4, D5], f32>
 
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
@@ -188,11 +188,11 @@ mo.graph @layer_norm<D0, D1 -> D2, D3>(
 // CHECK-SAME:   %[[EPSILON:.*]]: !mo.tensor<[], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D2]], [[D3]]], f32> {
 //
-// CHECK-NEXT:   mo.invoke_shape_func["mo.layer_norm"]<() -> [[D4:.*]], [[D5:.*]]>(
+// CHECK-NEXT:   mo.invoke_shape_func["mo.reduce.layer_norm"]<() -> [[D4:.*]], [[D5:.*]]>(
 // CHECK-SAME:     %[[INPUT]], %[[GAMMA]], %[[BETA]], %[[EPSILON]]) {dataDeptTensors = []} :
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.layer_norm(%[[INPUT]], %[[GAMMA]], %[[BETA]], %[[EPSILON]]) :
+// CHECK-NEXT:   %[[RES:.*]] = mo.reduce.layer_norm(%[[INPUT]], %[[GAMMA]], %[[BETA]], %[[EPSILON]]) :
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
 // CHECK-SAME:     -> !mo.tensor<[[[D4]], [[D5]]], f32>
 //
