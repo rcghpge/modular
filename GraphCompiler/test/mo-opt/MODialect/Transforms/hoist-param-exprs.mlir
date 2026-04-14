@@ -130,6 +130,27 @@ mo.graph @complex_expression_non_mo<N, M>(%arg0: !mo.tensor<[N], f32>, %arg1: !m
   mo.output %2 : !mo.tensor<[add(N, M)], f32>
 }
 
+// CHECK-LABEL: mo.graph @expr_in_arg_type
+// CHECK-SAME: <N, M>(%arg0: !mo.tensor<[add(M, N)], f32>)
+mo.graph @expr_in_arg_type<N, M>(%arg0: !mo.tensor<[add(N, M)], f32>) -> (!mo.tensor<[add(N, M)], f32>) {
+  // CHECK-NEXT: kgen.param.declare [[ALIAS:[a-zA-Z0-9_]+]]: si64 = <add(M, N)>
+  // CHECK-NEXT: mo.rebind(%arg0) : !mo.tensor<[add(M, N)], f32> -> !mo.tensor<[[[ALIAS]]], f32>
+  // CHECK-NEXT: mo.mul
+  // CHECK-NEXT: mo.rebind
+  // CHECK-NEXT: mo.output
+  %1 = mo.mul(%arg0, %arg0) : !mo.tensor<[add(N, M)], f32>
+  mo.output %1 : !mo.tensor<[add(N, M)], f32>
+}
+
+// CHECK-LABEL: mo.graph @expr_in_arg_type_passthrough
+// CHECK-SAME: <N, M>(%arg0: !mo.tensor<[add(M, N)], f32>)
+mo.graph @expr_in_arg_type_passthrough<N, M>(%arg0: !mo.tensor<[add(N, M)], f32>) -> (!mo.tensor<[add(N, M)], f32>) {
+  // The output op is MOControlOpInterface, so hoist does not rewrite it.
+  // The expression in the arg type should be preserved as-is.
+  // CHECK-NEXT: mo.output %arg0
+  mo.output %arg0 : !mo.tensor<[add(N, M)], f32>
+}
+
 // CHECK-LABEL: mo.graph @dont_outline_unknown_dims
 mo.graph @dont_outline_unknown_dims<N, M>(%arg0: !mo.tensor<[N, ?], f32>, %arg1: !mo.tensor<[M, ?], f32>) -> (!mo.tensor<[add(N, M), ?], f32>) {
   // No question marks should disappear (there are 8 in the current IR)

@@ -602,21 +602,6 @@ OutputOp GraphOp::getOutputOp() {
 LogicalResult GraphOp::verify() {
   KGEN::ParameterCollector::Analysis cache;
   KGEN::ParameterUseDefGraph useDefGraph(getRegion());
-
-  // check that no expressions in the input parameters
-  mlir::AttrTypeWalker walker;
-  bool found = false;
-  walker.addWalk([&](KGEN::ParamOperatorAttr attr) {
-    found = true;
-    return WalkResult::interrupt();
-  });
-  for (auto ty : getArgumentTypes())
-    walker.walk(ty);
-  if (found) {
-    return emitError(
-        "Expressions are not (currently) allowed in function signatures");
-  }
-
   return useDefGraph.verify(nullptr, cache);
 }
 
