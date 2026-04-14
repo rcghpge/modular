@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef GENERICML_GRAPHCOMPILER_SUPPORT_DIMS_H
+#define GENERICML_GRAPHCOMPILER_SUPPORT_DIMS_H
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -32,3 +35,5 @@ inline void normalizeNegativeDims(llvm::MutableArrayRef<int64_t> dims,
 }
 
 } // namespace M
+
+#endif // GENERICML_GRAPHCOMPILER_SUPPORT_DIMS_H

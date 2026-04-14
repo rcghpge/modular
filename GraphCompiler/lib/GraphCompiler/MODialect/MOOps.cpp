@@ -3408,6 +3408,19 @@ void AllReduceAddRMSNormQuantFP8Op::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// ReduceRMSNormRoPEOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceRMSNormRoPEOp::verify() {
+  auto inputTy = cast<TensorType>(getInput().getType());
+  if (!inputTy.getDeviceRef())
+    return emitOpError("input must be on a device");
+  if (inputTy.getDeviceRef().getLabel() != M::kGPULabel)
+    return emitOpError("mo.reduce.rms_norm.RoPE is only supported on GPU");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 

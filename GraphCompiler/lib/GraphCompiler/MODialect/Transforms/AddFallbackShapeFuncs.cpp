@@ -75,6 +75,7 @@ HAS_FALLBACK(MO::ReduceGroupNormOp)
 HAS_FALLBACK(MO::LayerNormOp)
 HAS_FALLBACK(MO::ReduceMinAndMaxOp)
 HAS_FALLBACK(MO::ReduceRMSNormOp)
+HAS_FALLBACK(MO::ReduceRMSNormRoPEOp)
 HAS_FALLBACK(MO::ReduceRMSNormFusedResidualAddOp)
 HAS_FALLBACK(MO::MaxPoolOp)
 HAS_FALLBACK(MO::MaxPoolCeilOp)
@@ -177,6 +178,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::LayerNormOp)
       CALL_FALLBACK(MO::ReduceMinAndMaxOp)
       CALL_FALLBACK(MO::ReduceRMSNormOp)
+      CALL_FALLBACK(MO::ReduceRMSNormRoPEOp)
       CALL_FALLBACK(MO::ReduceRMSNormFusedResidualAddOp)
       CALL_FALLBACK(MO::MaxPoolOp)
       CALL_FALLBACK(MO::MaxPoolCeilOp)
@@ -845,6 +847,18 @@ ErrorOrSuccess Fallback<MO::ReduceRMSNormOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::ReduceRMSNormOp op) {
   buildForOpResult(graph, builder, op, MO::ReduceRMSNormOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/
+                   {{"multiply_before_cast", op.getMultiplyBeforeCastAttr()}},
+                   /*dataDepInputIdxs=*/{});
+  return success();
+}
+
+ErrorOrSuccess
+Fallback<MO::ReduceRMSNormRoPEOp>::build(GraphOp &graph, OpBuilder &builder,
+                                         MO::ReduceRMSNormRoPEOp op) {
+  buildForOpResult(graph, builder, op,
+                   MO::ReduceRMSNormRoPEOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/
                    {{"multiply_before_cast", op.getMultiplyBeforeCastAttr()}},

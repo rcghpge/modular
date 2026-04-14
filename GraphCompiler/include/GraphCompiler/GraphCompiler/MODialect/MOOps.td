@@ -2099,6 +2099,53 @@ def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
   }];
 }
 
+def MO_ReduceRMSNormRoPEOp : MO_TensorOp<"reduce.rms_norm.RoPE", [
+  Pure,
+  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_ParamDeclaration,
+]> {
+  let hasVerifier = 1;
+  let summary = "Fused RMS normalization with Rotary Position Embedding";
+  let description = [{
+    Fused operation computing RMS normalization followed by Rotary Position
+    Embedding (RoPE):
+
+      normed = rms_norm(input, weight, epsilon, weight_offset)
+      x1, x2 = split(normed, axis=-1)
+      rotated = concat(-x2, x1, axis=-1)
+      result = normed * cos_vals + rotated * sin_vals
+
+    Example:
+
+    ```mlir
+      %result = mo.reduce.rms_norm.RoPE(%input, %weight, %epsilon, %offset,
+                                         %cos_vals, %sin_vals)
+        {multiply_before_cast = false} :
+        (!mo.tensor<[2, 3, 128], bf16, gpu:0>, !mo.tensor<[128], bf16, gpu:0>,
+         !mo.tensor<[], bf16>, !mo.tensor<[], bf16>,
+         !mo.tensor<[2, 3, 128], f32, gpu:0>, !mo.tensor<[2, 3, 128], f32, gpu:0>)
+        -> !mo.tensor<[2, 3, 128], bf16, gpu:0>
+    ```
+  }];
+
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_Tensor:$weight,
+    MO_Tensor:$epsilon,
+    MO_Tensor:$weightOffset,
+    MO_Tensor:$cosVals,
+    MO_Tensor:$sinVals,
+    BoolAttr:$multiply_before_cast,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 def MO_ReduceRMSNormFusedResidualAddOp : MO_TensorOp<"reduce.rms_norm_fused_residual_add", [
   Pure,
   MO_SingleDeviceWithHostOperands<["epsilon1", "epsilon2", "weightOffset1", "weightOffset2"]>,
