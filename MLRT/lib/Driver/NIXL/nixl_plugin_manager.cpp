@@ -20,7 +20,7 @@
 #include <fstream>
 #include <string>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 namespace {
 
 using lock_guard = const std::lock_guard<std::mutex>;
@@ -662,4 +662,4 @@ nixlPluginManager::getBackendOptions(const nixl_backend_t &type) {
   return {};
 }
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

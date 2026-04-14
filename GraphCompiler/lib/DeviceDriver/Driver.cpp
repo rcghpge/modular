@@ -207,7 +207,7 @@ Device::createDeviceMemory(void *data, const TensorSpec &spec,
   return new DeviceMemory(M::copyRCRef(this), buf, spec);
 }
 
-ErrorOr<llvm::SmallVector<AsyncRT::AnyAsyncValueRef>>
+ErrorOr<llvm::SmallVector<MLRT::AnyAsyncValueRef>>
 M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     const ArrayRef<DeviceRef> deviceRefs, const DeviceMap &deviceMap,
     Runtime &runtime) {
@@ -222,7 +222,7 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     }
   }
 
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> deviceContexts;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> deviceContexts;
   for (const auto &devRef : deviceRefs) {
     // CPU device not explicitly set so deviceMap["cpu"] may be null
     if (devRef.label == kCPULabel) {

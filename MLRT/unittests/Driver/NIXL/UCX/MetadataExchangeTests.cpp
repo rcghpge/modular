@@ -23,8 +23,8 @@
 
 using namespace M;
 using namespace M::Driver;
-using namespace M::AsyncRT::NIXL;
-using namespace M::AsyncRT::NIXL::Test;
+using namespace M::MLRT::NIXL;
+using namespace M::MLRT::NIXL::Test;
 
 // Test loading remote VRAM metadata from a thread with wrong CUDA context.
 // This simulates what happens in the listener thread when it has a different

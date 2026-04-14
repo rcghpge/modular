@@ -81,10 +81,10 @@ static int setupMLIRAndRun(
     std::function<LogicalResult(Runtime &, MLIRContext *)> &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
-            AsyncRT::Runtime *runtime = context->get<Runtime>();
+            MLRT::Runtime *runtime = context->get<Runtime>();
             assert(runtime && "caller should have set up runtime for this");
             registerContext(*ctx, context);
-            return AsyncRT::runWithLeakCheckedRuntime(
+            return MLRT::runWithLeakCheckedRuntime(
                 testName, [&]() { return bodyFn(*runtime, ctx); });
           })))
     return EXIT_FAILURE;

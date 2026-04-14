@@ -21,7 +21,7 @@
 #include <sys/types.h>
 #include <vector>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 /**
  * @class nixlBasicDesc
@@ -332,6 +332,6 @@ using nixl_xfer_dlist_t = nixlDescList<nixlBasicDesc>;
  */
 using nixl_reg_dlist_t = nixlDescList<nixlBlobDesc>;
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_NIXL_DESCRIPTORS_H

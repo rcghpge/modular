@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include <vector>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 
 namespace {
 

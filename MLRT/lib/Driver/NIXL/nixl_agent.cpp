@@ -22,7 +22,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include <iostream>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 using namespace std::string_view_literals;
 
 namespace {

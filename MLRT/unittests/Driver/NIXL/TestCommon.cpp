@@ -15,13 +15,13 @@
 #include <thread>
 #include <unistd.h>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 std::ostream &operator<<(std::ostream &os, nixl_status_t status) {
   return os << NixlEnumStrings::statusStr(status);
 }
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
-namespace M::AsyncRT::NIXL::Test {
+namespace M::MLRT::NIXL::Test {
 
 void NixlAgentWithUCXBackend::registerMemory(nixl_mem_t memType,
                                              nixlBlobDesc desc) {
@@ -220,4 +220,4 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
   nixl1.agent->releaseXferReq(reqHandle);
 }
 
-} // namespace M::AsyncRT::NIXL::Test
+} // namespace M::MLRT::NIXL::Test

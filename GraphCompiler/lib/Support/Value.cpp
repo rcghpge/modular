@@ -44,7 +44,7 @@ std::ostream &M::GML::operator<<(std::ostream &os,
 
 Variant::Variant() : info(DenseMapInfoKey::Empty), value() {}
 
-Variant::Variant(const AsyncRT::AnyAsyncValueRef &other)
+Variant::Variant(const MLRT::AnyAsyncValueRef &other)
     : info(DenseMapInfoKey::Empty) {
   if (other.isValueAvailable()) {
     info = DenseMapInfoKey::Value;
@@ -58,13 +58,13 @@ Variant::Variant(const Variant &other) : info(other.info) {
 }
 
 Variant::Variant(const DenseMapInfoKey &info)
-    : info(info), value(AsyncRT::AnyAsyncValueRef()) {}
+    : info(info), value(MLRT::AnyAsyncValueRef()) {}
 
 std::string Variant::to_string() const { return valueToString(value); }
 
 DenseMapInfoKey Variant::getInfo() const { return info; }
 
-const AsyncRT::AnyAsyncValueRef &Variant::getValue() const { return value; }
+const MLRT::AnyAsyncValueRef &Variant::getValue() const { return value; }
 
 Variant &Variant::operator=(const Variant &other) {
   info = other.info;
@@ -118,7 +118,7 @@ std::ostream &M::GML::operator<<(std::ostream &os, const Variant &variant) {
 }
 
 ErrorOrSuccess M::GML::printGenericValue(raw_ostream &os,
-                                         const AsyncRT::AnyAsyncValueRef &value,
+                                         const MLRT::AnyAsyncValueRef &value,
                                          ResultOutputStyle style,
                                          unsigned precision) {
   if (List *list = dyn_cast<List>(value)) {
@@ -171,7 +171,7 @@ ErrorOrSuccess M::GML::printGenericValue(raw_ostream &os,
   return success();
 }
 
-std::string M::GML::valueToString(const AsyncRT::AnyAsyncValueRef &value) {
+std::string M::GML::valueToString(const MLRT::AnyAsyncValueRef &value) {
   std::stringstream ss;
   if (List *list = dyn_cast<List>(value))
     ss << *list;
@@ -198,8 +198,8 @@ std::string M::GML::valueToString(const AsyncRT::AnyAsyncValueRef &value) {
   return ss.str();
 }
 
-bool M::GML::valueEqual(const AsyncRT::AnyAsyncValueRef &lhs,
-                        const AsyncRT::AnyAsyncValueRef &rhs) {
+bool M::GML::valueEqual(const MLRT::AnyAsyncValueRef &lhs,
+                        const MLRT::AnyAsyncValueRef &rhs) {
   if (List *llist = dyn_cast<List>(lhs)) {
     if (List *rlist = dyn_cast<List>(rhs))
       return *llist == *rlist;
@@ -232,8 +232,8 @@ bool M::GML::valueEqual(const AsyncRT::AnyAsyncValueRef &lhs,
   return false;
 }
 
-bool M::GML::valueLessThan(const AsyncRT::AnyAsyncValueRef &lhs,
-                           const AsyncRT::AnyAsyncValueRef &rhs) {
+bool M::GML::valueLessThan(const MLRT::AnyAsyncValueRef &lhs,
+                           const MLRT::AnyAsyncValueRef &rhs) {
   if (List *llist = dyn_cast<List>(lhs)) {
     if (List *rlist = dyn_cast<List>(rhs))
       return *llist < *rlist;
@@ -266,7 +266,7 @@ bool M::GML::valueLessThan(const AsyncRT::AnyAsyncValueRef &lhs,
   return false;
 }
 
-size_t M::GML::valueHash(const AsyncRT::AnyAsyncValueRef &value) {
+size_t M::GML::valueHash(const MLRT::AnyAsyncValueRef &value) {
   if (List *list = dyn_cast<List>(value))
     return std::hash<ListLike>()(*list);
   else if (Tuple *tuple = dyn_cast<Tuple>(value))

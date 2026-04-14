@@ -19,7 +19,7 @@
 #include <limits>
 #include <map>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -147,6 +147,6 @@ public:
   std::string getTopologyString() const;
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // NIXL_SRC_UTILS_LIBFABRIC_LIBFABRIC_TOPOLOGY_H

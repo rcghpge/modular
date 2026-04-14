@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   // Create our context.
   ErrorOr<ContextRef> ctxOr = Init::createContext(
       "mo-opt", Init::Options().withRuntimeOptions(
-                    AsyncRT::RuntimeOptions().withLeakCheckedAllocator()));
+                    MLRT::RuntimeOptions().withLeakCheckedAllocator()));
   if (ctxOr.isError()) {
     llvm::errs() << "failed to create context: " << ctxOr.getError() << "\n";
     return 1;

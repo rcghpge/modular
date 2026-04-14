@@ -6,7 +6,7 @@
 
 #include "MLRT/Driver/NIXL/utils/common/str_tools.h"
 
-using namespace M::AsyncRT;
+using namespace M::MLRT;
 
 std::vector<std::string_view> NIXL::str_split_substr(std::string_view str,
                                                      std::string_view delim) {

@@ -67,7 +67,7 @@ private:
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-class ExecutorDriverOptions : public AsyncRT::RuntimeOptions,
+class ExecutorDriverOptions : public MLRT::RuntimeOptions,
                               public CommonOptions {
 
 public:
@@ -116,7 +116,7 @@ public:
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-class ExecutorDriverCLOptions : public AsyncRT::RuntimeCLOptions,
+class ExecutorDriverCLOptions : public MLRT::RuntimeCLOptions,
                                 public CommonCLOptions {
 public:
   ExecutorDriverOptions &options;

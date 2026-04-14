@@ -24,19 +24,19 @@ namespace {
 
 class KernelLoggerTest : public ::testing::Test {
 protected:
-  AsyncRT::RuntimeRef runtime;
+  MLRT::RuntimeRef runtime;
 
   void SetUp() override {
-    runtime = AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
-                                          AsyncRT::RuntimeOptions().forDebug());
+    runtime = MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
+                                       MLRT::RuntimeOptions().forDebug());
   }
 };
 
 TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
   // Create empty operands and results for basic testing
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
 
   // Capture log output
   std::string logOutput;
@@ -58,9 +58,9 @@ TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
 }
 
 TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
 
   // Capture log output
   std::string logOutput;
@@ -83,9 +83,9 @@ TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
 }
 
 TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
 
   // Capture log output
   std::string logOutput;
@@ -108,11 +108,11 @@ TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
 }
 
 TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results1;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results2;
-  results1.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
-  results2.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 43));
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> results1;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> results2;
+  results1.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  results2.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 43));
 
   // Capture log output
   std::string logOutput;
@@ -151,9 +151,9 @@ TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
 }
 
 TEST_F(KernelLoggerTest, LogsCorrectKernelAndDeviceInfo) {
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> operands;
-  llvm::SmallVector<AsyncRT::AnyAsyncValueRef> results;
-  results.push_back(AsyncRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
+  llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
 
   // Capture log output
   std::string logOutput;

@@ -11,7 +11,7 @@
 using namespace M;
 
 TensorBufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
-                                             AsyncRT::CompactRuntimePtr runtime,
+                                             MLRT::CompactRuntimePtr runtime,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   assert(bufferIndex < bufferCache.size() &&
@@ -55,7 +55,7 @@ ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex,
 }
 
 void StateSlot::updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
-                                    AsyncRT::CompactRuntimePtr runtime,
+                                    MLRT::CompactRuntimePtr runtime,
                                     size_t size,
                                     std::optional<size_t> alignment) {
   // Do nothing if size matches. The size will be 0 if the entry is

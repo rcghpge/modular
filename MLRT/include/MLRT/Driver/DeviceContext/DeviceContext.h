@@ -518,11 +518,11 @@ public:
 
   /// Set the outputs for the device graph collection by taking ownership of
   /// the set of provided async references.
-  void setOutputs(ArrayRef<AsyncRT::AnyAsyncValueRef> outputs);
+  void setOutputs(ArrayRef<MLRT::AnyAsyncValueRef> outputs);
 
   /// Get the output async values for the graph collection. These correspond
   /// to the outputs of the MEF model, not any particular DeviceGraph.
-  ArrayRef<AsyncRT::AnyAsyncValueRef> getOutputs() const;
+  ArrayRef<MLRT::AnyAsyncValueRef> getOutputs() const;
 
   /// Replay the graph collection by launching all graphs.
   ErrorOrSuccess replay() const;
@@ -551,7 +551,7 @@ private:
   ///
   /// Note: these outputs are the outputs of the entire MAX graph, not for any
   /// particular device.
-  SmallVector<AsyncRT::AnyAsyncValueRef> outputs;
+  SmallVector<MLRT::AnyAsyncValueRef> outputs;
 };
 
 /// A captured sequence of GPU operations that can be replayed.

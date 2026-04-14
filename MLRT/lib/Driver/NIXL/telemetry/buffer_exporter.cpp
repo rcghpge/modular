@@ -15,7 +15,7 @@
 
 #include <cstdlib>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 namespace {
 
 [[noreturn]] void bufferExporterFatal(const char *message) {
@@ -52,4 +52,4 @@ nixlTelemetryBufferExporter::exportEvent(const nixlTelemetryEvent &event) {
   return nixl_status_t::NIXL_SUCCESS;
 }
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

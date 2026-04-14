@@ -26,8 +26,8 @@
 #include <vector>
 
 using namespace M;
-using namespace M::AsyncRT;
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT;
+using namespace M::MLRT::NIXL;
 
 nixl_status_t NIXL::ucx_status_to_nixl(ucs_status_t status) {
   if (status == UCS_OK) {

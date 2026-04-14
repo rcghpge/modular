@@ -16,7 +16,7 @@
 
 #include <cstddef>
 
-namespace M::AsyncRT {
+namespace M::MLRT {
 
 /// Compute the worker task ID for a given GPU device.
 ///
@@ -47,6 +47,6 @@ launchDeviceCollective(Runtime &runtime, size_t totalCount,
       std::forward<CaptureTys>(captures)...);
 }
 
-} // namespace M::AsyncRT
+} // namespace M::MLRT
 
 #endif // MLRT_ASYNCRT_DEVICEAFFINITY_H

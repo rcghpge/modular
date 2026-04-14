@@ -16,15 +16,15 @@
 
 using namespace M;
 
-static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
-                                     AsyncRT::RuntimeOptions().forDebug());
+static MLRT::RuntimeRef getRuntime() {
+  return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
+                                  MLRT::RuntimeOptions().forDebug());
 }
 
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static Tensor makeTensor(AsyncRT::Runtime &runtime) {
+static Tensor makeTensor(MLRT::Runtime &runtime) {
   M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   Tensor result =
       Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
@@ -69,7 +69,7 @@ TEST(Tensor, FromBuffer) {
 
 // bitWidthT should be a type of the same bit-width as dtype
 template <typename bitWidthT>
-static void checkPrintTensor(AsyncRT::Runtime &runtime,
+static void checkPrintTensor(MLRT::Runtime &runtime,
                              std::initializer_list<int64_t> shape,
                              const DType &dtype, SmallVector<bitWidthT> &&data,
                              const std::string &checkString) {

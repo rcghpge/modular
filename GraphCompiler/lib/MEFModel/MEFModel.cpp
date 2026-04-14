@@ -65,7 +65,7 @@ getNamesAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {
 
 Model::Model(const ModelSpec &spec)
     : name(spec.name),
-      location(AsyncRT::UnknownLocationDecoder::getEncodedLocation()) {
+      location(MLRT::UnknownLocationDecoder::getEncodedLocation()) {
   auto inputSpecs = getSpecsAsVector(spec.inputs);
   auto outputSpecs = getSpecsAsVector(spec.outputs);
   auto inputNames = getNamesAsVector(spec.inputs);
@@ -145,7 +145,7 @@ Model::Model(std::string name, SmallVector<DeviceRef> devices,
   initializeSignature(inputSpecs, outputSpecs, inputNames, outputNames);
 }
 
-AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
+MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
 Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
              const M::GraphCompiler::Driver::DeviceMap &deviceMap) const {
   checkUniqueRuntime(runtime);
@@ -162,7 +162,7 @@ Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
   auto deviceContextsOr = GraphCompiler::Driver::mapDeviceRefsToDevices(
       getDevices(), deviceMap, runtime);
   if (deviceContextsOr.isError())
-    return AsyncRT::EncodedDiagnostic(
+    return MLRT::EncodedDiagnostic(
         Twine("setup for model ") + getName() +
             " failed to map DeviceRefs to Devices: " +
             Twine(deviceContextsOr.getError()),
@@ -176,7 +176,7 @@ Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
   for (AnyAsyncValueRef &result : results) {
     if (result.isError()) {
       auto diagnostic = result.takeDiagnostic();
-      return AsyncRT::EncodedDiagnostic(
+      return MLRT::EncodedDiagnostic(
           Twine("setup for model ") + getName() +
               " returned error: " + std::string(diagnostic.getMessage().get()),
           diagnostic.getLocation().copy());
@@ -311,14 +311,14 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
 
   // Set the thread local singleton runtime to the provided runtime. This is
   // referenced internally by some kernels.
-  AsyncRT::CompactRuntimePtr::setCurrentRuntime(getRuntime());
+  MLRT::CompactRuntimePtr::setCurrentRuntime(getRuntime());
 
   return getModel()->getExecuteFn()->invoke(passedArgs, getRuntime());
 }
 
 ErrorOrSuccess ExecutableModel::waitForModelSetup() {
-  AsyncRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
-  AsyncRT::await(extraArgs);
+  MLRT::await({chain.copy(), mgpContext.copy(), weightsRegistry.copy()});
+  MLRT::await(extraArgs);
   if (chain.isError())
     return Error(chain.takeDiagnostic().getMessage().get());
   if (mgpContext.isError())
@@ -422,7 +422,7 @@ static std::string graphKeysToString(ArrayRef<uint64_t> graphKeys) {
 // This keeps capture/replay tied to the same runtime devices as execution.
 static ErrorOr<SmallVector<Driver::DeviceStreamRef>>
 captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
-  if (auto err = AsyncRT::awaitOrError(extraArgs))
+  if (auto err = MLRT::awaitOrError(extraArgs))
     return err.takeError();
 
   SmallVector<Driver::DeviceStreamRef> results;
@@ -462,7 +462,7 @@ ExecutableModel::executeWithDeviceMemoryInputs(
   }
 
   SmallVector<AnyAsyncValueRef> results = execute(inputValues);
-  if (auto err = AsyncRT::awaitOrError(results))
+  if (auto err = MLRT::awaitOrError(results))
     return err.takeError();
 
   return results;
@@ -528,7 +528,7 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
   // Await the error, but don't propagate yet.
   // We want to ensure the capture results are materialized before extracting
   // the captured graphs, even if an error was present.
-  ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
+  ErrorOrSuccess err = MLRT::awaitOrError(graphResults);
 
   if (err.isError())
     return err.takeError();
@@ -625,9 +625,9 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
   if (normalizedKeys.size() == 1) {
     launchGraph(0);
   } else {
-    auto readyChain = AsyncRT::launchDeviceCollective(
+    auto readyChain = MLRT::launchDeviceCollective(
         runtime, normalizedKeys.size(), std::move(launchGraph));
-    AsyncRT::await(readyChain);
+    MLRT::await(readyChain);
   }
 
   for (ErrorOrSuccess &err : errors) {
@@ -727,7 +727,7 @@ ExecutableModel::processResultForBinaryOutput(const AnyAsyncValueRef &result,
 
     results.insertTensor(sanitizedName, tensor);
   } else {
-    ErrorOr<AsyncRT::AnyAsyncValueRef> outOrError =
+    ErrorOr<MLRT::AnyAsyncValueRef> outOrError =
         M::getResultForBinaryOutput(result, results);
     if (outOrError.isError())
       results.insertResultInfo(

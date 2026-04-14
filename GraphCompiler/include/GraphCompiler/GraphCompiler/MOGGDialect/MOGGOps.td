@@ -1448,7 +1448,7 @@ def MOGG_AsyncPlaceholderAnyAsyncValueRefOp : MOGG_Op<"async.placeholder.AnyAsyn
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let results = (outs PointerOf<PointerOf<KGEN_NoneType>>:$result);
-  let summary = "Returns an empty AsyncRT::AnyAsyncValueRef";
+  let summary = "Returns an empty MLRT::AnyAsyncValueRef";
   let description = [{
     Required to serve as the borrowee for mogg.async.pack.borrow when the value
     is coming from a mgp.buffer.constant. The content of the placeholder is

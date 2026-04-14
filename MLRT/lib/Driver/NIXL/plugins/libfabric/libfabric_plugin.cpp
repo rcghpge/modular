@@ -13,7 +13,7 @@
 #include "MLRT/Driver/NIXL/plugins/libfabric/libfabric_backend.h"
 
 // Plugin type alias for convenience
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -56,4 +56,4 @@ extern "C" NIXL_PLUGIN_EXPORT nixlBackendPlugin *nixl_plugin_init() {
 
 extern "C" NIXL_PLUGIN_EXPORT void nixl_plugin_fini() {}
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

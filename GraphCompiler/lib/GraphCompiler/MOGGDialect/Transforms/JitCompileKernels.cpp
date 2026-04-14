@@ -83,7 +83,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     KGEN::ObjectCompiler *objectCompiler;
     KGEN::KGENCompiler *compiler;
     TargetInfoAttr targetInfo;
-    AsyncRT::Runtime *runtime;
+    MLRT::Runtime *runtime;
     KGEN::CompilationOptions opts;
     OpBuilder builder;
     RCRef<Cache::TransformCache> mojoCache;
@@ -92,7 +92,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
                      OwningOpRef<ModuleOp> kgenModule,
                      KGEN::ObjectCompiler *objectCompiler,
                      KGEN::KGENCompiler *compiler, TargetInfoAttr targetInfo,
-                     AsyncRT::Runtime *runtime, KGEN::CompilationOptions opts)
+                     MLRT::Runtime *runtime, KGEN::CompilationOptions opts)
         : ctx(ctx), mgpModule(mgpModule), kgenModule(std::move(kgenModule)),
           objectCompiler(objectCompiler), compiler(compiler),
           targetInfo(targetInfo), runtime(runtime), opts(std::move(opts)),
@@ -557,7 +557,7 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
     }
 
     ContextRef maxContext = loadContext(ctx);
-    auto runtime = maxContext->get<AsyncRT::Runtime>();
+    auto runtime = maxContext->get<MLRT::Runtime>();
 
     auto targetInfo = targetInfoAttr.takeValue();
     auto opts = setupCompilationOptions(targetInfo, kernelLibraryPaths);

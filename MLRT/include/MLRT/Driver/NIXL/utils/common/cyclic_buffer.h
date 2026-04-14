@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <string>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 template <typename T>
 class sharedRingBuffer {
@@ -58,7 +58,7 @@ private:
   size_t bufferSize_ = 0;
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #include "cyclic_buffer.tpp"
 

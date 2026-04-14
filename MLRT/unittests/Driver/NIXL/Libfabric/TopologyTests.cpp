@@ -8,7 +8,7 @@
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_topology.h"
 #include "gtest/gtest.h"
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 
 TEST(LibfabricTopologyTests, DiscoversProviderAndDevices) {
   if (LibfabricUtils::getAvailableEfaDevices().empty()) {

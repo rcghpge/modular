@@ -57,7 +57,7 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
     return memory;
   }
 
-  AsyncRT::await(storageRef);
+  MLRT::await(storageRef);
 
   auto destructor = [context = std::move(context),
                      storageRef = storageRef.copy()]() mutable {

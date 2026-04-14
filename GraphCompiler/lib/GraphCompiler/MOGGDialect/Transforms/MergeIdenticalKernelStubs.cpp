@@ -244,7 +244,7 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
   SymbolTable symTable(module);
   CallGraph cg;
   cg.build(module, symTable);
-  cg.run(*loadContext(module.getContext())->get<AsyncRT::Runtime>());
+  cg.run(*loadContext(module.getContext())->get<MLRT::Runtime>());
 
   // At this point, the replacement is valid but non deterministic because the
   // analysis will pick the first candidate when deduplicating. The first

@@ -21,7 +21,7 @@
 #include <rdma/fabric.h>
 #include <rdma/fi_domain.h>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -790,4 +790,4 @@ nixl_status_t nixlLibfabricTopology::groupNicsWithGpus(
   return NIXL_SUCCESS;
 }
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

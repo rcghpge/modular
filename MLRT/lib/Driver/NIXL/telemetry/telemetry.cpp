@@ -22,7 +22,7 @@
 #include <optional>
 #include <string>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 namespace {
 
 constexpr std::chrono::milliseconds kDefaultTelemetryRunInterval(100);
@@ -293,4 +293,4 @@ std::string telemetryCategoryStr(nixl_telemetry_category_t category) {
 }
 
 } // namespace NixlEnumStrings
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

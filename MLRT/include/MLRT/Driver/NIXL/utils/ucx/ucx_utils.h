@@ -22,7 +22,7 @@ extern "C" {
 #include <string_view>
 #include <vector>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 enum class UcxCallbackOp : std::uint8_t { CONN_CHECK, NOTIF_STR, DISCONNECT };
 
@@ -216,6 +216,6 @@ ucx_err_mode_to_string(ucp_err_handling_mode_t t);
 [[nodiscard]] ucp_err_handling_mode_t
 ucx_err_mode_from_string(std::string_view s);
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_UTILS_UCX_UCX_UTILS_H

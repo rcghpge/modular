@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include <vector>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 namespace {
 
 class ScopedEnvVar {
@@ -311,4 +311,4 @@ TEST_F(TelemetryCoreTest, WritesQueuedBackendTelemetryEventsToSharedBuffer) {
 }
 
 } // namespace
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

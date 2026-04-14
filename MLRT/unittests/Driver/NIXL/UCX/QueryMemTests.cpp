@@ -23,8 +23,8 @@
 
 using namespace M;
 using namespace M::Driver;
-using namespace M::AsyncRT::NIXL;
-using namespace M::AsyncRT::NIXL::Test;
+using namespace M::MLRT::NIXL;
+using namespace M::MLRT::NIXL::Test;
 
 TEST_F(NixlUcxIntegrationTest, QueryMemNotSupportedForUcx) {
   NixlAgentWithUCXBackend nixl;

@@ -25,7 +25,7 @@
 #include "Support/SymbolExport.h"
 
 using namespace M;
-using namespace M::AsyncRT;
+using namespace M::MLRT;
 
 //===----------------------------------------------------------------------===//
 // Helpers

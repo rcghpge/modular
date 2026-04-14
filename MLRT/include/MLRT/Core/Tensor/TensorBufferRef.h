@@ -22,12 +22,12 @@ namespace M {
 struct OwnedMemoryBlock {
   OwnedMemoryBlock() = default;
   OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                   AsyncRT::CompactRuntimePtr rt, void *takePtr = nullptr);
+                   MLRT::CompactRuntimePtr rt, void *takePtr = nullptr);
   ~OwnedMemoryBlock();
   void *data;
   size_t size;
 
-  AsyncRT::CompactRuntimePtr runtime;
+  MLRT::CompactRuntimePtr runtime;
 };
 
 /// Profiler entry for tracking the lifetimes of owned buffers.
@@ -77,7 +77,7 @@ public:
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.
-  static TensorBufferRef createOwned(AsyncRT::CompactRuntimePtr runtime,
+  static TensorBufferRef createOwned(MLRT::CompactRuntimePtr runtime,
                                      size_t size,
                                      std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
@@ -86,7 +86,7 @@ public:
   /// buffer will be freed by TensorBufferRef when the reference is destroyed.
   /// Since the ownership lies with TensorBufferRef, caller should not free
   /// anything that has been taken by TensorBufferRef.
-  static TensorBufferRef take(AsyncRT::CompactRuntimePtr runtime, size_t size,
+  static TensorBufferRef take(MLRT::CompactRuntimePtr runtime, size_t size,
                               void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a TensorBufferRef.

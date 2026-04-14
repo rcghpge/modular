@@ -42,7 +42,7 @@ TensorBufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
                          makeMaybeAlign(alignment), std::move(profilerEntry));
 }
 
-TensorBufferRef TensorBufferRef::createOwned(AsyncRT::CompactRuntimePtr runtime,
+TensorBufferRef TensorBufferRef::createOwned(MLRT::CompactRuntimePtr runtime,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   // Special case for empty buffer
@@ -61,7 +61,7 @@ TensorBufferRef TensorBufferRef::createOwned(AsyncRT::CompactRuntimePtr runtime,
 
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
-TensorBufferRef TensorBufferRef::take(AsyncRT::CompactRuntimePtr runtime,
+TensorBufferRef TensorBufferRef::take(MLRT::CompactRuntimePtr runtime,
                                       size_t size, void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
@@ -104,7 +104,7 @@ void TensorBufferRef::swap(TensorBufferRef &rhs) {
 }
 
 OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                                   AsyncRT::CompactRuntimePtr rt, void *takePtr)
+                                   MLRT::CompactRuntimePtr rt, void *takePtr)
     : data(nullptr), size(size), runtime(rt) {
   if (takePtr)
     data = takePtr;

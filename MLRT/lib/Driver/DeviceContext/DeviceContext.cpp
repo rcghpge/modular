@@ -633,12 +633,12 @@ ErrorOr<float> DeviceEvent::elapsedTime(const DeviceEvent &end) const {
 //
 
 void DeviceGraphCollection::setOutputs(
-    ArrayRef<AsyncRT::AnyAsyncValueRef> values) {
+    ArrayRef<MLRT::AnyAsyncValueRef> values) {
   ASSERT_STREAM(outputs.empty(), "DeviceGraphCollection already has values");
   outputs = llvm::map_to_vector(values, [](auto &ref) { return ref.copy(); });
 }
 
-ArrayRef<AsyncRT::AnyAsyncValueRef> DeviceGraphCollection::getOutputs() const {
+ArrayRef<MLRT::AnyAsyncValueRef> DeviceGraphCollection::getOutputs() const {
   return outputs;
 }
 

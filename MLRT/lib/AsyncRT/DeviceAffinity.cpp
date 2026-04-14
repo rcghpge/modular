@@ -19,7 +19,7 @@
 
 using namespace llvm;
 
-namespace M::AsyncRT {
+namespace M::MLRT {
 
 /// Infer a mapping from each GPU device index to a NUMA-local CPU core.
 /// Returns an empty map on any failure (unsupported platform, missing
@@ -132,4 +132,4 @@ int taskIdForDevice(int deviceId, size_t numWorkers) {
   return 1 + (deviceId % static_cast<int>(numWorkers - 1));
 }
 
-} // namespace M::AsyncRT
+} // namespace M::MLRT

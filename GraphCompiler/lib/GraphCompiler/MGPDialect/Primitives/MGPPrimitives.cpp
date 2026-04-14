@@ -186,11 +186,11 @@ static void mgp_generic_execute(
   auto [deviceHint, deviceCtx] = deviceHintAndContextFor(operands);
 
   // Compute taskId for worker affinity via the shared DeviceAffinity logic.
-  AsyncRT::WorkQueue *workQueue = runtime.getWorkQueue();
-  int taskId = (deviceHint == kNoDevicePreference)
-                   ? kDefaultTaskId
-                   : AsyncRT::taskIdForDevice(deviceHint,
-                                              workQueue->getParallelismLevel());
+  MLRT::WorkQueue *workQueue = runtime.getWorkQueue();
+  int taskId =
+      (deviceHint == kNoDevicePreference)
+          ? kDefaultTaskId
+          : MLRT::taskIdForDevice(deviceHint, workQueue->getParallelismLevel());
 
   // Launch the kernel on a new thread when:
   // - isAsync = true: always run out of line.
@@ -244,7 +244,7 @@ static void mgp_generic_execute(
         };
 
     // Launch the kernel on a new thread with worker affinity.
-    AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
+    MLRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
     workQueue->addTask(std::move(workItem), taskId);
   } else {
     TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (sync kernel)",
@@ -553,7 +553,7 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
             KGEN::ExecutionEngineOptions options;
             options.registerPerfPlugins =
                 runtime.getProfilerDebuginfo() ==
-                M::AsyncRT::RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
+                M::MLRT::RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
             options.libraryPaths.push_back(cfg.getMGPRTPath());
             return KGEN::ExecutionEngine::createWithStandardLayers(
                 std::move(options), **targetMachineOr);

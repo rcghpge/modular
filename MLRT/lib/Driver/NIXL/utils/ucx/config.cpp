@@ -11,7 +11,7 @@
 #include <cstdlib>
 
 using namespace M;
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 
 ErrorOr<UCX::Config> UCX::Config::create() {
   auto configOrError = readUcpConfig();

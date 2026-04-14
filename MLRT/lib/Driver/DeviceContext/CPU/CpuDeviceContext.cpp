@@ -84,12 +84,12 @@ int CpuDevice::deviceCount() const {
 
 ErrorOrSuccess CpuDevice::chunkAlloc(void **ptr, size_t byteSize, bool isHost) {
   assert(byteSize != 0);
-  *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
+  *ptr = M::MLRT::TCMallocGlobals::tc_new(1, byteSize);
   return success();
 }
 
 ErrorOrSuccess CpuDevice::chunkFree(void *ptr, bool isHost) {
-  M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
+  M::MLRT::TCMallocGlobals::tc_delete(ptr);
   return success();
 }
 
@@ -200,8 +200,8 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 }
 
 // ===== CpuDeviceEvent ===== //
-CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device, AsyncRT::RuntimeRef runtime,
-                               AsyncRT::AnyAsyncValueRef value)
+CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device, MLRT::RuntimeRef runtime,
+                               MLRT::AnyAsyncValueRef value)
     : DeviceEvent(device), runtime(std::move(runtime)),
       value(std::move(value)) {}
 
@@ -221,10 +221,10 @@ CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {
   // This is safe as the other runtime users are guaranteeing they will wait on
   // the main thread to progress work. Otherwise CpuDeviceContext is invariant
   // to the runtime options, so this is safe.
-  runtime = AsyncRT::getOrCreateRuntime(
-      AsyncRT::RuntimeSource::CPUDeviceContext,
-      AsyncRT::RuntimeOptions().withMainWillNotDonate(),
-      /*allowUsingExistingOptions=*/true);
+  runtime =
+      MLRT::getOrCreateRuntime(MLRT::RuntimeSource::CPUDeviceContext,
+                               MLRT::RuntimeOptions().withMainWillNotDonate(),
+                               /*allowUsingExistingOptions=*/true);
 
   streamChain = runtime->getReadyChain().copy();
 }
@@ -239,7 +239,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(byteSize != 0);
-  *ptr = M::AsyncRT::TCMallocGlobals::tc_new(1, byteSize);
+  *ptr = M::MLRT::TCMallocGlobals::tc_new(1, byteSize);
   if (*ptr == nullptr) {
     RETURN_ERROR("Memory allocation failed");
   }
@@ -249,10 +249,10 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
   if (isHost) {
-    M::AsyncRT::TCMallocGlobals::tc_delete(ptr);
+    M::MLRT::TCMallocGlobals::tc_delete(ptr);
     return success();
   }
-  return enqueueWork([=]() { M::AsyncRT::TCMallocGlobals::tc_delete(ptr); });
+  return enqueueWork([=]() { M::MLRT::TCMallocGlobals::tc_delete(ptr); });
 }
 
 void *CpuDeviceContext::driverContext() const { return nullptr; }
@@ -260,10 +260,10 @@ void *CpuDeviceContext::driverContext() const { return nullptr; }
 // Enqueue work with stream-like semantics. Keep a chain to the last enqueued
 // function so the next task can await it.
 // Returns any pending error from previously enqueued async work.
-ErrorOrSuccess CpuDeviceContext::enqueueWork(AsyncRT::TaskFunction &&work) {
+ErrorOrSuccess CpuDeviceContext::enqueueWork(MLRT::TaskFunction &&work) {
   RETURN_IF_PENDING_ERROR(*this);
 
-  auto eventChain = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*runtime);
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
   streamChain.andThenAsync(
@@ -424,7 +424,7 @@ CpuDeviceContext::createExternalStream(void *externalStream) {
 ErrorOrSuccess CpuDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::synchronize", TRACY_COLOR_PURPLE);
   RETURN_IF_PENDING_ERROR(*this);
-  AsyncRT::AnyAsyncValueRef head;
+  MLRT::AnyAsyncValueRef head;
   {
     std::lock_guard<std::mutex> streamLock{streamChainMutex};
     head = streamChain.copy();
@@ -461,10 +461,10 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   RETURN_IF_PENDING_ERROR(*this);
 
   auto &cpuEvent = static_cast<CpuDeviceEvent &>(event);
-  auto eventChain = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*runtime);
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
-  AsyncRT::andThenAsync(
+  MLRT::andThenAsync(
       std::make_tuple(streamChain.copy(), cpuEvent.asyncValue().copy()),
       [eventChain = eventChain.copy()](auto, auto) mutable {
         std::move(eventChain).emplace();
@@ -478,11 +478,11 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   RETURN_IF_PENDING_ERROR(*this);
 
   auto &other = static_cast<CpuDeviceContext &>(ctx);
-  auto eventChain = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(*runtime);
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
 
   std::scoped_lock<std::mutex, std::mutex> lock{streamChainMutex,
                                                 other.streamChainMutex};
-  AsyncRT::andThenAsync(
+  MLRT::andThenAsync(
       std::make_tuple(streamChain.copy(), other.streamChain.copy()),
       [eventChain = eventChain.copy()](auto, auto) mutable {
         std::move(eventChain).emplace();

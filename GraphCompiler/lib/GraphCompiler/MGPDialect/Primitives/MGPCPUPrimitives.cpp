@@ -25,7 +25,7 @@
 #define DEBUG_TYPE "mgp"
 
 using namespace M;
-using namespace M::AsyncRT;
+using namespace M::MLRT;
 using namespace M::GML;
 using namespace M::MGP;
 

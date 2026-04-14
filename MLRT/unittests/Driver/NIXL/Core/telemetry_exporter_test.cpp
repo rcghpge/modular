@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <fstream>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 class TestTelemetryExporter : public nixlTelemetryExporter {
 public:
@@ -48,4 +48,4 @@ nixl_telemetry_plugin_init() {
 
 extern "C" NIXL_TELEMETRY_PLUGIN_EXPORT void nixl_telemetry_plugin_fini() {}
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

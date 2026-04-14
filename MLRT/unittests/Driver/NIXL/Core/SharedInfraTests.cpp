@@ -12,7 +12,7 @@
 #include <cstdlib>
 #include <string>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 
 TEST(NixlSharedInfraTest,
      PluginManagerSupportsExplicitSearchPathsWithoutEnvironmentVariable) {

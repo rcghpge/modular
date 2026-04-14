@@ -13,7 +13,7 @@
 #include "MLRT/Driver/NIXL/telemetry/telemetry_exporter.h"
 #include "MLRT/Driver/NIXL/telemetry/telemetry_plugin.h"
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 using buffer_exporter_plugin_t =
     nixlTelemetryPluginCreator<nixlTelemetryBufferExporter>;
@@ -30,4 +30,4 @@ nixl_telemetry_plugin_init() {
 
 extern "C" NIXL_TELEMETRY_PLUGIN_EXPORT void nixl_telemetry_plugin_fini() {}
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

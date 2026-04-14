@@ -195,7 +195,7 @@ public:
   /// `deviceMap` maps the `DeviceRef`s used in model compilation (e.g. to
   /// annotate location of Tensors) to runtime Device handles which can be used
   /// to interface with the Device (e.g. to allocate device memory).
-  AsyncRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
+  MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
   setup(Runtime &runtime, const WeightsRegistry *weightsRegistry = {},
         const M::GraphCompiler::Driver::DeviceMap &deviceMap =
             M::GraphCompiler::Driver::DeviceMap()) const;
@@ -266,8 +266,7 @@ private:
   SmallVector<DeviceRef> devices;
   SmallVector<DeviceRef> inputDevices;
   SmallVector<DeviceRef> outputDevices;
-  EncodedLocation location =
-      AsyncRT::UnknownLocationDecoder::getEncodedLocation();
+  EncodedLocation location = MLRT::UnknownLocationDecoder::getEncodedLocation();
 
   /// The model's signature.
   SmallVector<QuantTensorSpec> inputSpecs;

@@ -26,9 +26,9 @@ struct PayloadB : public ReferenceCounted<PayloadB> {
   char c;
 };
 
-static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
-                                     AsyncRT::RuntimeOptions().forDebug());
+static MLRT::RuntimeRef getRuntime() {
+  return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
+                                  MLRT::RuntimeOptions().forDebug());
 }
 
 #ifndef NDEBUG

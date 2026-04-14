@@ -27,25 +27,25 @@ namespace {
 
 struct ValueTest : ::testing::Test {};
 
-static AsyncRT::RuntimeRef getRuntime() {
-  return AsyncRT::getOrCreateRuntime(AsyncRT::RuntimeSource::Test,
-                                     AsyncRT::RuntimeOptions().forDebug());
+static MLRT::RuntimeRef getRuntime() {
+  return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
+                                  MLRT::RuntimeOptions().forDebug());
 }
 
-static Tensor makeTensor(AsyncRT::Runtime &runtime, size_t size) {
+static Tensor makeTensor(MLRT::Runtime &runtime, size_t size) {
   M::TensorSpec spec({size}, DType::f32);
   Tensor result =
       Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
   return result;
 }
 
-static List makeTensorList(AsyncRT::Runtime &runtime, size_t size) {
+static List makeTensorList(MLRT::Runtime &runtime, size_t size) {
   List list;
   for (size_t i = 0; i < size; ++i) {
     TensorSpec spec({i}, M::DType::f32);
 
     Tensor tensor = makeTensor(runtime, i);
-    list.getElements().push_back(AsyncRT::AnyAsyncValueRef::createReady<Tensor>(
+    list.getElements().push_back(MLRT::AnyAsyncValueRef::createReady<Tensor>(
         runtime, std::move(tensor)));
   }
 
@@ -80,7 +80,7 @@ TEST_F(ValueTest, ListTest) {
 
   for (Variant &elem : list1.getElements()) {
     list3.getElements().push_back(
-        AsyncRT::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
+        MLRT::AnyAsyncValueRef::copy(elem.getValue().getPointer()));
   }
 
   // Lists contain the same tensors, and are the same.
@@ -94,16 +94,16 @@ TEST_F(ValueTest, TupleOfNoneTest) {
   Tuple tuple3;
 
   tuple1.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime));
+      MLRT::AnyAsyncValueRef::createReady<None>(*runtime));
   tuple2.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime));
+      MLRT::AnyAsyncValueRef::createReady<None>(*runtime));
   tuple3.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime));
+      MLRT::AnyAsyncValueRef::createReady<None>(*runtime));
 
   tuple1.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime));
+      MLRT::AnyAsyncValueRef::createReady<None>(*runtime));
   tuple2.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime));
+      MLRT::AnyAsyncValueRef::createReady<None>(*runtime));
 
   ASSERT_EQ(tuple1, tuple2);
   ASSERT_NE(tuple1, tuple3);
@@ -119,20 +119,19 @@ TEST_F(ValueTest, DictTest) {
   Dict dict2;
   Dict dict3;
 
-  dict1.getElements()[AsyncRT::AnyAsyncValueRef::createReady<std::string>(
-      *runtime, "a")] = AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict1.getElements()[MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "a")] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
-  dict2.getElements()[AsyncRT::AnyAsyncValueRef::createReady<std::string>(
-      *runtime, "a")] = AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict2.getElements()[MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "a")] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
-  dict3.getElements()[AsyncRT::AnyAsyncValueRef::createReady<std::string>(
-      *runtime, "b")] = AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict3.getElements()[MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "b")] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
   Tensor tensor = makeTensor(*runtime, 1);
-  dict3.getElements()[AsyncRT::AnyAsyncValueRef::createReady<std::string>(
-      *runtime, "b")] =
-      AsyncRT::AnyAsyncValueRef::createReady<Tensor>(*runtime,
-                                                     std::move(tensor));
+  dict3.getElements()[MLRT::AnyAsyncValueRef::createReady<std::string>(*runtime,
+                                                                       "b")] =
+      MLRT::AnyAsyncValueRef::createReady<Tensor>(*runtime, std::move(tensor));
 
   ASSERT_EQ(std::to_string(dict1), "Dict{\"a\": <none>}");
 }
@@ -141,21 +140,19 @@ TEST_F(ValueTest, VariantDictKeys) {
   auto runtime = getRuntime();
   List list;
   list.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"));
+      MLRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"));
 
   list.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<int64_t>(*runtime, 2));
+      MLRT::AnyAsyncValueRef::createReady<int64_t>(*runtime, 2));
 
   Dict dict1;
   Dict dict2;
 
-  dict1.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<List>(*runtime, list))] =
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict1.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<List>(
+      *runtime, list))] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
-  dict2.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<List>(*runtime, list))] =
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict2.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<List>(
+      *runtime, list))] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
   ASSERT_EQ(dict1, dict2);
   ASSERT_EQ(std::to_string(dict1), "Dict{List[\"a\", 2]: <none>}");
@@ -166,13 +163,12 @@ TEST_F(ValueTest, YamlTest0) {
 
   Dict dict1;
 
-  dict1.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"))] =
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict1.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "a"))] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
   dict1.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<double>(*runtime, 1.0))] =
-      AsyncRT::AnyAsyncValueRef::createReady<int64_t>(*runtime, 5);
+      MLRT::AnyAsyncValueRef::createReady<double>(*runtime, 1.0))] =
+      MLRT::AnyAsyncValueRef::createReady<int64_t>(*runtime, 5);
 
   std::string ystring = toYamlString(dict1);
 
@@ -203,16 +199,15 @@ TEST_F(ValueTest, YamlTest1) {
 
   List list;
   list.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"));
+      MLRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"));
 
   list.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<int64_t>(*runtime, 2));
+      MLRT::AnyAsyncValueRef::createReady<int64_t>(*runtime, 2));
 
   Dict dict1;
 
-  dict1.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<List>(*runtime, list))] =
-      AsyncRT::AnyAsyncValueRef::createReady<None>(*runtime);
+  dict1.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<List>(
+      *runtime, list))] = MLRT::AnyAsyncValueRef::createReady<None>(*runtime);
 
   // Test YAML string.
   std::string ystring = toYamlString(dict1);
@@ -241,16 +236,16 @@ TEST_F(ValueTest, YamlTest2) {
 
   Tuple tuple;
   tuple.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<double>(*runtime, 1.5f));
+      MLRT::AnyAsyncValueRef::createReady<double>(*runtime, 1.5f));
 
   tuple.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<bool>(*runtime, true));
+      MLRT::AnyAsyncValueRef::createReady<bool>(*runtime, true));
 
   Dict dict1;
 
   dict1.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple))] =
-      AsyncRT::AnyAsyncValueRef::createReady<double>(*runtime, 3.5f);
+      MLRT::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple))] =
+      MLRT::AnyAsyncValueRef::createReady<double>(*runtime, 3.5f);
 
   // Test YAML string.
   std::string ystring = toYamlString(dict1);
@@ -280,21 +275,20 @@ TEST_F(ValueTest, ResultInfoTest) {
 
   Tuple tuple;
   tuple.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<double>(*runtime, 1.5f));
+      MLRT::AnyAsyncValueRef::createReady<double>(*runtime, 1.5f));
 
   tuple.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<bool>(*runtime, true));
+      MLRT::AnyAsyncValueRef::createReady<bool>(*runtime, true));
 
   Dict dict;
 
   dict.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple))] =
-      AsyncRT::AnyAsyncValueRef::createReady<TensorResultInfo>(
-          *runtime, "tensor1", "2x4xf32");
+      MLRT::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple))] =
+      MLRT::AnyAsyncValueRef::createReady<TensorResultInfo>(*runtime, "tensor1",
+                                                            "2x4xf32");
 
   std::shared_ptr<ResultInfo> resultInfo = std::make_shared<VariantResultInfo>(
-      "outputName",
-      AsyncRT::AnyAsyncValueRef::createReady<Dict>(*runtime, dict));
+      "outputName", MLRT::AnyAsyncValueRef::createReady<Dict>(*runtime, dict));
 
   // Test YAML string.
   std::string ystring = toYamlString(resultInfo);
@@ -323,38 +317,34 @@ TEST_F(ValueTest, ResultConversionTest) {
 
   // Create 4 different tensors.
   Tensor tensor = makeTensor(*runtime, 8);
-  AsyncRT::AnyAsyncValueRef wrappedTensor =
-      AsyncRT::AnyAsyncValueRef::createReady<Tensor>(*runtime,
-                                                     std::move(tensor));
+  MLRT::AnyAsyncValueRef wrappedTensor =
+      MLRT::AnyAsyncValueRef::createReady<Tensor>(*runtime, std::move(tensor));
 
   List list = makeTensorList(*runtime, 3);
 
   Dict dict;
 
   // Reuse some of the tensors occurring in the list in the dictionary as well.
-  dict.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "a"))] =
-      list.getElements()[0];
+  dict.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "a"))] = list.getElements()[0];
 
-  dict.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "b"))] =
-      wrappedTensor;
+  dict.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "b"))] = wrappedTensor;
 
-  dict.getElements()[Variant(
-      AsyncRT::AnyAsyncValueRef::createReady<std::string>(*runtime, "c"))] =
-      list.getElements()[2];
+  dict.getElements()[Variant(MLRT::AnyAsyncValueRef::createReady<std::string>(
+      *runtime, "c"))] = list.getElements()[2];
 
   Tuple tuple;
   tuple.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<List>(*runtime, list));
+      MLRT::AnyAsyncValueRef::createReady<List>(*runtime, list));
   tuple.getElements().push_back(
-      AsyncRT::AnyAsyncValueRef::createReady<Dict>(*runtime, dict));
+      MLRT::AnyAsyncValueRef::createReady<Dict>(*runtime, dict));
 
   // Conversion for YAML and binary serialization.
-  AsyncRT::AnyAsyncValueRef in =
-      AsyncRT::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple);
+  MLRT::AnyAsyncValueRef in =
+      MLRT::AnyAsyncValueRef::createReady<Tuple>(*runtime, tuple);
   ProcessedResults processedResults;
-  AsyncRT::AnyAsyncValueRef out =
+  MLRT::AnyAsyncValueRef out =
       M::getResultForBinaryOutput(in, processedResults).takeValue();
 
   std::shared_ptr<ResultInfo> resultInfo =

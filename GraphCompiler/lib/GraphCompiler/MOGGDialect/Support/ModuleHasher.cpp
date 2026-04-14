@@ -288,8 +288,8 @@ void M::MOGG::hashModuleContents(mlir::ModuleOp module) {
 
 void M::MOGG::hashModuleContents(mlir::ModuleOp module,
                                  const mlir::SymbolTable &symtab) {
-  AsyncRT::Runtime &runtime =
-      *loadContext(module.getContext())->get<AsyncRT::Runtime>();
+  MLRT::Runtime &runtime =
+      *loadContext(module.getContext())->get<MLRT::Runtime>();
 
   Graph graph;
   graph.build(module, symtab);

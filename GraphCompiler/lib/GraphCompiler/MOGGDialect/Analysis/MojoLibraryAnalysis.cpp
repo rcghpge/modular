@@ -55,7 +55,7 @@ static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
                  const std::shared_ptr<llvm::SourceMgr> &sourceMgr,
                  bool generateKGENLib) {
-  AsyncRT::Runtime &runtime = *loadContext(ctx)->get<AsyncRT::Runtime>();
+  MLRT::Runtime &runtime = *loadContext(ctx)->get<MLRT::Runtime>();
 
   // Intercept parsing diagnostics to display them at the end if an error occurs
   std::string errMsg;

@@ -15,7 +15,7 @@
 #include <cstring>
 #include <string>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 inline constexpr char TELEMETRY_BUFFER_SIZE_VAR[] =
     "MODULAR_NIXL_TELEMETRY_BUFFER_SIZE";
@@ -61,6 +61,6 @@ struct nixlTelemetryEvent {
       : nixlTelemetryEvent(timestampUs, category, eventName.c_str(), value) {}
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_TELEMETRY_TELEMETRY_EVENT_H

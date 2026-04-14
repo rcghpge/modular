@@ -32,7 +32,7 @@
 
 namespace {
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 using namespace M::Driver;
 
 constexpr std::string_view kBackend = "libfabric";

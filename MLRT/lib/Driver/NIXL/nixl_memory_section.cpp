@@ -19,7 +19,7 @@
 #include <iostream>
 #include <map>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 using namespace std::string_view_literals;
 
 /*** Class nixlMemSection implementation ***/

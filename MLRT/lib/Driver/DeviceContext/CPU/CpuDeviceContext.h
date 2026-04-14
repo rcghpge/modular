@@ -114,18 +114,18 @@ private:
 
 class CpuDeviceEvent : public DeviceEvent {
 public:
-  CpuDeviceEvent(CpuDevice &device, AsyncRT::RuntimeRef runtime,
-                 AsyncRT::AnyAsyncValueRef value);
+  CpuDeviceEvent(CpuDevice &device, MLRT::RuntimeRef runtime,
+                 MLRT::AnyAsyncValueRef value);
   ~CpuDeviceEvent() override = default;
 
   ErrorOrSuccess synchronize() override;
   ErrorOr<bool> isReady() const override;
 
-  AsyncRT::AnyAsyncValueRef &asyncValue() { return value; }
+  MLRT::AnyAsyncValueRef &asyncValue() { return value; }
 
 private:
-  AsyncRT::RuntimeRef runtime;
-  AsyncRT::AnyAsyncValueRef value;
+  MLRT::RuntimeRef runtime;
+  MLRT::AnyAsyncValueRef value;
 };
 
 class CpuDeviceContext : public DeviceContext {
@@ -192,13 +192,13 @@ private:
   MMapFileImplResult
   memmapFileImpl(const std::filesystem::path &filename) const override;
 
-  ErrorOrSuccess enqueueWork(AsyncRT::TaskFunction &&work);
+  ErrorOrSuccess enqueueWork(MLRT::TaskFunction &&work);
 
-  AsyncRT::RuntimeRef runtime;
+  MLRT::RuntimeRef runtime;
 
   // Contains the chain of the last enqueued operation, which may already have
   // completed
-  AsyncRT::AnyAsyncValueRef streamChain;
+  MLRT::AnyAsyncValueRef streamChain;
   std::mutex streamChainMutex{};
 };
 

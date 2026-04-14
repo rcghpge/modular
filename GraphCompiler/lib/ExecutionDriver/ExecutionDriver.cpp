@@ -554,7 +554,7 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 }
 
 /// Run `model` using the command line options flags configured by the user.
-LogicalResult M::runModel(const Model *model, AsyncRT::Runtime &runtime,
+LogicalResult M::runModel(const Model *model, MLRT::Runtime &runtime,
                           const ExecutorDriverOptions &options) {
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {

@@ -18,7 +18,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 using namespace std::string_view_literals;
 
 // SOCK_NONBLOCK cannot be ORed into the socket type on macOS — it is an fcntl

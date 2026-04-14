@@ -125,8 +125,7 @@ struct GlobalizeSlotIndicesPass
     if (models.empty() || llvm::hasSingleElement(models))
       return;
 
-    AsyncRT::Runtime &runtime =
-        *loadContext(&getContext())->get<AsyncRT::Runtime>();
+    MLRT::Runtime &runtime = *loadContext(&getContext())->get<MLRT::Runtime>();
 
     SymbolTable symtab(moduleOp);
 

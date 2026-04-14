@@ -23,7 +23,7 @@
 #include <string>
 #include <thread>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 
 namespace {
 

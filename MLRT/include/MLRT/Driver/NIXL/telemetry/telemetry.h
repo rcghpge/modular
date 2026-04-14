@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 inline constexpr char TELEMETRY_ENABLED_VAR[] = "MODULAR_NIXL_TELEMETRY_ENABLE";
 inline constexpr char TELEMETRY_DIR_VAR[] = "MODULAR_NIXL_TELEMETRY_DIR";
@@ -79,6 +79,6 @@ private:
   bool enabled_ = false;
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_TELEMETRY_TELEMETRY_H

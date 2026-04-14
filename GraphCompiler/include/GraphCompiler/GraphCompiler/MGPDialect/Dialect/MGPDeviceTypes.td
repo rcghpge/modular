@@ -69,7 +69,7 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     sequence writes and reads.
 
     `!mgp.buffer`s are represented by (subclasses of)
-    `AsyncRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
+    `MLRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 
@@ -125,7 +125,7 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     raw `void*` pointer.
 
     `!mgp.tensors`s are represented by (subclasses of)
-    `AsyncRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
+    `MLRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
     synchronization, see `!mgp.chain` for more details.
 

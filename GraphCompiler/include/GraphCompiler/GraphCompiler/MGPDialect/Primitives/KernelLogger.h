@@ -58,7 +58,7 @@ template <typename OperandContainer, typename LoggingPolicy>
 class KernelLogger {
 public:
   KernelLogger(llvm::StringRef kernelName, const OperandContainer &operands,
-               llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults,
+               llvm::ArrayRef<MLRT::AnyAsyncValueRef> outResults,
                llvm::raw_ostream &os = llvm::errs());
 
   ~KernelLogger();
@@ -73,7 +73,7 @@ private:
   uint64_t kernelId = 0;
   std::string kernelName;
   std::string deviceInfo;
-  llvm::ArrayRef<AsyncRT::AnyAsyncValueRef> outResults;
+  llvm::ArrayRef<MLRT::AnyAsyncValueRef> outResults;
   llvm::raw_ostream &outputStream;
 };
 

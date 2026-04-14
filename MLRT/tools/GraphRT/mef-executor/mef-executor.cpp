@@ -25,7 +25,7 @@
 #include "llvm/Support/SourceMgr.h"
 
 using namespace M;
-using namespace M::AsyncRT;
+using namespace M::MLRT;
 using mlir::MLIRContext;
 
 /// This method can be used to print the results of `invokable` in the
@@ -105,7 +105,7 @@ static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
            test.getName().data());
     fflush(stdout);
 
-    AsyncRT::Runtime &runtime = *ctx->get<AsyncRT::Runtime>();
+    MLRT::Runtime &runtime = *ctx->get<MLRT::Runtime>();
     auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
 
     // Block until the invokable results are fully resolved.

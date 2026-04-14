@@ -22,7 +22,7 @@
 
 constexpr int RECV_BUFFER_SIZE = 16384;
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 class nixlMetadataStream {
 protected:
@@ -88,6 +88,6 @@ public:
   std::string recvData();
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_UTILS_STREAM_METADATA_STREAM_H

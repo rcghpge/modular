@@ -17,7 +17,7 @@
 #include "llvm/Support/ErrorHandling.h"
 
 // Static round-robin counter for rail selection
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -901,4 +901,4 @@ std::vector<size_t> nixlLibfabricRailManager::snapshotActiveRails() const {
   return {active_rails_.begin(), active_rails_.end()};
 }
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL

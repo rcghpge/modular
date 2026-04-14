@@ -10,7 +10,7 @@
 #include <cerrno>
 #include <sys/socket.h>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 
 // Regression test for macOS compatibility
 TEST(MetadataStreamTest, ListenerSocketIsNonBlocking) {

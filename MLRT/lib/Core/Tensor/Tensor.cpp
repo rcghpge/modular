@@ -10,14 +10,14 @@
 
 using namespace M;
 
-Tensor Tensor::createOwned(TensorSpec spec, AsyncRT::CompactRuntimePtr runtime,
+Tensor Tensor::createOwned(TensorSpec spec, MLRT::CompactRuntimePtr runtime,
                            std::optional<size_t> alignment) {
   return Tensor(
       TensorBufferRef::createOwned(runtime, spec.getSizeInBytes(), alignment),
       std::move(spec));
 }
 
-Tensor Tensor::takeOwned(TensorSpec spec, AsyncRT::CompactRuntimePtr runtime,
+Tensor Tensor::takeOwned(TensorSpec spec, MLRT::CompactRuntimePtr runtime,
                          void *takeFrom) {
   return Tensor(TensorBufferRef::take(runtime, spec.getSizeInBytes(), takeFrom),
                 std::move(spec));

@@ -15,7 +15,7 @@ extern "C" {
 #include <ucp/api/ucp.h>
 }
 
-namespace M::AsyncRT::NIXL::UCX {
+namespace M::MLRT::NIXL::UCX {
 
 class Config {
 public:
@@ -50,6 +50,6 @@ private:
   std::unique_ptr<ucp_config_t, void (*)(ucp_config_t *)> config_;
 };
 
-} // namespace M::AsyncRT::NIXL::UCX
+} // namespace M::MLRT::NIXL::UCX
 
 #endif // MLRT_DRIVER_NIXL_UTILS_UCX_CONFIG_H

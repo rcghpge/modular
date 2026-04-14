@@ -22,7 +22,7 @@
 #include <string_view>
 #include <sys/uio.h>
 
-using namespace M::AsyncRT::NIXL;
+using namespace M::MLRT::NIXL;
 using namespace std::string_view_literals;
 
 // fix SOCK_NONBLOCK for e.g. macOS

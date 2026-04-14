@@ -21,7 +21,7 @@
 
 using namespace std::string_view_literals;
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 class MODULAR_CXX_EXPORT nixlSerDes {
 private:
@@ -57,6 +57,6 @@ public:
   static void _stringToBytes(void *fill_buf, const std::string &s, size_t size);
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_UTILS_SERDES_SERDES_H

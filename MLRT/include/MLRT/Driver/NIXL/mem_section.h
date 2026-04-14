@@ -22,7 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace M::AsyncRT::NIXL {
+namespace M::MLRT::NIXL {
 
 using section_key_t = std::pair<nixl_mem_t, nixlBackendEngine *>;
 using backend_set_t = std::set<nixlBackendEngine *>;
@@ -142,6 +142,6 @@ public:
   ~nixlRemoteSection();
 };
 
-} // namespace M::AsyncRT::NIXL
+} // namespace M::MLRT::NIXL
 
 #endif // MLRT_DRIVER_NIXL_MEM_SECTION_H
