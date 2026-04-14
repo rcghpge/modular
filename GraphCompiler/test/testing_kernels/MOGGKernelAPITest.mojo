@@ -1056,12 +1056,12 @@ struct CustomOpWithStaticStringParams:
 
 
 comptime _WrapperLayout = TileLayout[
-    shape_types=TypeListOf[
-        type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-    ](),
-    stride_types=TypeListOf[
-        type=CoordLike, RuntimeInt[DType.int64], RuntimeInt[DType.int64]
-    ](),
+    shape_types=Coord[
+        RuntimeInt[DType.int64], RuntimeInt[DType.int64]
+    ].element_types,
+    stride_types=Coord[
+        RuntimeInt[DType.int64], RuntimeInt[DType.int64]
+    ].element_types,
 ]
 
 
