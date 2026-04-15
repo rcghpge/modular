@@ -50,6 +50,7 @@ static bool containsDistributedOp(MOGG::KernelOp kernel) {
           kernelName.contains(MO::EPDispatchOp::getOperationName()) ||
           kernelName.contains(MO::EPDispatchFP8Op::getOperationName()) ||
           kernelName.contains(MO::EPDispatchNVFP4Op::getOperationName()) ||
+          kernelName.contains(MO::EPDispatchMXFP4Op::getOperationName()) ||
           kernelName.contains(MO::EPCombineOp::getOperationName()));
 }
 
