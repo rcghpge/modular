@@ -5434,6 +5434,173 @@ def MO_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"distributed.allreduce_a
   }];
 }
 
+def MO_EPDispatchOp : MO_DistributedOp<"distributed.ep.dispatch", [
+  MO_MultiDeviceFrom<"inputTokens">
+]> {
+  let summary = "Multi-device Expert Parallelism BF16 dispatch.";
+  let description = [{
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with BF16 output format.
+
+    All variadic operands and results have the same size (one per device).
+  }];
+  let hasVerifier = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputTokens,
+    Variadic<MO_Tensor>:$topkIds,
+    Variadic<MO_Tensor>:$sendPtrs,
+    Variadic<MO_Tensor>:$recvPtrs,
+    Variadic<MO_Tensor>:$recvCountPtrs,
+    Variadic<MO_Buffer>:$atomicCounters,
+    MO_Chain:$inChain,
+    I64Attr:$hidden_size,
+    I64Attr:$top_k,
+    I64Attr:$n_experts,
+    I64Attr:$max_token_per_rank,
+    I64Attr:$n_gpus_per_node,
+    I64Attr:$n_nodes,
+    BoolAttr:$fused_shared_expert
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputTokens,
+    Variadic<MO_Tensor>:$rowOffsets,
+    Variadic<MO_Tensor>:$expertIds,
+    Variadic<MO_Tensor>:$srcInfo,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_EPDispatchFP8Op : MO_DistributedOp<"distributed.ep.dispatch.fp8", [
+  MO_MultiDeviceFrom<"inputTokens">
+]> {
+  let summary = "Multi-device Expert Parallelism FP8 dispatch.";
+  let description = [{
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with blockwise FP8 quantized output format.
+
+    All variadic operands and results have the same size (one per device).
+  }];
+  let hasVerifier = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputTokens,
+    Variadic<MO_Tensor>:$topkIds,
+    Variadic<MO_Tensor>:$sendPtrs,
+    Variadic<MO_Tensor>:$recvPtrs,
+    Variadic<MO_Tensor>:$recvCountPtrs,
+    Variadic<MO_Buffer>:$atomicCounters,
+    MO_Chain:$inChain,
+    I64Attr:$hidden_size,
+    I64Attr:$top_k,
+    I64Attr:$n_experts,
+    I64Attr:$max_token_per_rank,
+    I64Attr:$n_gpus_per_node,
+    I64Attr:$n_nodes,
+    BoolAttr:$fused_shared_expert,
+    StrAttr:$dispatch_scale_granularity
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputTokens,
+    Variadic<MO_Tensor>:$outputScales,
+    Variadic<MO_Tensor>:$rowOffsets,
+    Variadic<MO_Tensor>:$expertIds,
+    Variadic<MO_Tensor>:$srcInfo,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_EPDispatchNVFP4Op : MO_DistributedOp<"distributed.ep.dispatch.nvfp4", [
+  MO_MultiDeviceFrom<"inputTokens">
+]> {
+  let summary = "Multi-device Expert Parallelism NVFP4 dispatch.";
+  let description = [{
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with NVFP4 quantized output format. Each device
+    routes its tokens based on top-k expert IDs, quantizes them to NVFP4,
+    and sends them to the appropriate peer via shared-memory or NVSHMEM
+    pointers.
+
+    All variadic operands and results have the same size (one per device).
+    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
+    tensors that are typically identical across devices (replicated N times
+    to satisfy the same-variadic-size constraint).
+  }];
+  let hasVerifier = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputTokens,
+    Variadic<MO_Tensor>:$topkIds,
+    Variadic<MO_Tensor>:$sendPtrs,
+    Variadic<MO_Tensor>:$recvPtrs,
+    Variadic<MO_Tensor>:$recvCountPtrs,
+    Variadic<MO_Tensor>:$inputScales,
+    Variadic<MO_Buffer>:$atomicCounters,
+    MO_Chain:$inChain,
+    I64Attr:$hidden_size,
+    I64Attr:$top_k,
+    I64Attr:$n_experts,
+    I64Attr:$max_token_per_rank,
+    I64Attr:$n_gpus_per_node,
+    I64Attr:$n_nodes,
+    BoolAttr:$fused_shared_expert
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputTokens,
+    Variadic<MO_Tensor>:$outputScales,
+    Variadic<MO_Tensor>:$rowOffsets,
+    Variadic<MO_Tensor>:$scalesOffsets,
+    Variadic<MO_Tensor>:$expertIds,
+    Variadic<MO_Tensor>:$srcInfo,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def MO_EPCombineOp : MO_DistributedOp<"distributed.ep.combine", [
+  MO_MultiDeviceFrom<"inputTokens">
+]> {
+  let summary = "Multi-device Expert Parallelism fused combine.";
+  let description = [{
+    Combines expert outputs back to their original devices across N GPUs.
+    Each device sends its expert outputs to the appropriate peers, waits
+    for all transfers, and computes the weighted sum of routed expert
+    outputs. The output supports epilogue fusion.
+
+    All variadic operands and results have the same size (one per device).
+  }];
+  let hasVerifier = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputTokens,
+    Variadic<MO_Tensor>:$srcInfo,
+    Variadic<MO_Tensor>:$sendPtrs,
+    Variadic<MO_Tensor>:$recvPtrs,
+    Variadic<MO_Tensor>:$recvCountPtrs,
+    Variadic<MO_Tensor>:$routerWeights,
+    Variadic<MO_Buffer>:$atomicCounters,
+    MO_Chain:$inChain,
+    I64Attr:$hidden_size,
+    I64Attr:$top_k,
+    I64Attr:$n_experts,
+    I64Attr:$max_token_per_rank,
+    I64Attr:$n_gpus_per_node,
+    I64Attr:$n_nodes,
+    BoolAttr:$fused_shared_expert
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputTokens,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 // Broadcast differs from other MO_DistributedOp subclasses: it has a single
 // input tensor (from root) rather than one input per device, so it uses
 // MO_MultiDeviceFrom<"outputs"> to infer execution devices from the variadic

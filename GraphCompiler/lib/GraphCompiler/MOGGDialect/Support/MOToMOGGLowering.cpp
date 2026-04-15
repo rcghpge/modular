@@ -168,7 +168,10 @@ MOGGKernelBuilder::MOGGKernelBuilder(
       forceSync || isa<MO::TransposeOp>(op) ||
       (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
       isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
-      isa<MO::DistributedBroadcastOp>(op) || isa<MO::DistributedScatterOp>(op);
+      isa<MO::DistributedBroadcastOp>(op) ||
+      isa<MO::DistributedScatterOp>(op) || isa<MO::EPDispatchOp>(op) ||
+      isa<MO::EPDispatchFP8Op>(op) || isa<MO::EPDispatchNVFP4Op>(op) ||
+      isa<MO::EPCombineOp>(op);
   isAsync = !isSyncRequired;
 
   // Get ready for building ops.

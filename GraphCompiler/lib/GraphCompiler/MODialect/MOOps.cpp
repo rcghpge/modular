@@ -3316,6 +3316,177 @@ void ReduceScatterSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// EPDispatchOp (BF16)
+//===----------------------------------------------------------------------===//
+
+LogicalResult EPDispatchOp::verify() {
+  auto inputTokens = getInputTokens();
+  if (inputTokens.empty())
+    return emitError("ep.dispatch requires at least one device");
+
+  size_t numDevices = inputTokens.size();
+
+  if (getTopkIds().size() != numDevices)
+    return emitError("topkIds count must match inputTokens count");
+  if (getSendPtrs().size() != numDevices)
+    return emitError("sendPtrs count must match inputTokens count");
+  if (getRecvPtrs().size() != numDevices)
+    return emitError("recvPtrs count must match inputTokens count");
+  if (getRecvCountPtrs().size() != numDevices)
+    return emitError("recvCountPtrs count must match inputTokens count");
+  if (getAtomicCounters().size() != numDevices)
+    return emitError("atomicCounters count must match inputTokens count");
+
+  if (getOutputTokens().size() != numDevices)
+    return emitError("outputTokens count must match inputTokens count");
+  if (getRowOffsets().size() != numDevices)
+    return emitError("rowOffsets count must match inputTokens count");
+  if (getExpertIds().size() != numDevices)
+    return emitError("expertIds count must match inputTokens count");
+  if (getSrcInfo().size() != numDevices)
+    return emitError("srcInfo count must match inputTokens count");
+
+  return success();
+}
+
+void EPDispatchOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange atomicCounters = getAtomicCountersMutable();
+  for (auto &counter : atomicCounters)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &counter);
+}
+
+//===----------------------------------------------------------------------===//
+// EPDispatchFP8Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult EPDispatchFP8Op::verify() {
+  auto inputTokens = getInputTokens();
+  if (inputTokens.empty())
+    return emitError("ep.dispatch.fp8 requires at least one device");
+
+  size_t numDevices = inputTokens.size();
+
+  if (getTopkIds().size() != numDevices)
+    return emitError("topkIds count must match inputTokens count");
+  if (getSendPtrs().size() != numDevices)
+    return emitError("sendPtrs count must match inputTokens count");
+  if (getRecvPtrs().size() != numDevices)
+    return emitError("recvPtrs count must match inputTokens count");
+  if (getRecvCountPtrs().size() != numDevices)
+    return emitError("recvCountPtrs count must match inputTokens count");
+  if (getAtomicCounters().size() != numDevices)
+    return emitError("atomicCounters count must match inputTokens count");
+
+  if (getOutputTokens().size() != numDevices)
+    return emitError("outputTokens count must match inputTokens count");
+  if (getOutputScales().size() != numDevices)
+    return emitError("outputScales count must match inputTokens count");
+  if (getRowOffsets().size() != numDevices)
+    return emitError("rowOffsets count must match inputTokens count");
+  if (getExpertIds().size() != numDevices)
+    return emitError("expertIds count must match inputTokens count");
+  if (getSrcInfo().size() != numDevices)
+    return emitError("srcInfo count must match inputTokens count");
+
+  return success();
+}
+
+void EPDispatchFP8Op::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange atomicCounters = getAtomicCountersMutable();
+  for (auto &counter : atomicCounters)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &counter);
+}
+
+//===----------------------------------------------------------------------===//
+// EPDispatchNVFP4Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult EPDispatchNVFP4Op::verify() {
+  auto inputTokens = getInputTokens();
+  if (inputTokens.empty())
+    return emitError("ep.dispatch.nvfp4 requires at least one device");
+
+  size_t numDevices = inputTokens.size();
+
+  // Verify all variadic operand groups have the same size.
+  if (getTopkIds().size() != numDevices)
+    return emitError("topkIds count must match inputTokens count");
+  if (getSendPtrs().size() != numDevices)
+    return emitError("sendPtrs count must match inputTokens count");
+  if (getRecvPtrs().size() != numDevices)
+    return emitError("recvPtrs count must match inputTokens count");
+  if (getRecvCountPtrs().size() != numDevices)
+    return emitError("recvCountPtrs count must match inputTokens count");
+  if (getInputScales().size() != numDevices)
+    return emitError("inputScales count must match inputTokens count");
+  if (getAtomicCounters().size() != numDevices)
+    return emitError("atomicCounters count must match inputTokens count");
+
+  // Verify all variadic result groups have the same size.
+  if (getOutputTokens().size() != numDevices)
+    return emitError("outputTokens count must match inputTokens count");
+  if (getOutputScales().size() != numDevices)
+    return emitError("outputScales count must match inputTokens count");
+  if (getRowOffsets().size() != numDevices)
+    return emitError("rowOffsets count must match inputTokens count");
+  if (getScalesOffsets().size() != numDevices)
+    return emitError("scalesOffsets count must match inputTokens count");
+  if (getExpertIds().size() != numDevices)
+    return emitError("expertIds count must match inputTokens count");
+  if (getSrcInfo().size() != numDevices)
+    return emitError("srcInfo count must match inputTokens count");
+
+  return success();
+}
+
+void EPDispatchNVFP4Op::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange atomicCounters = getAtomicCountersMutable();
+
+  for (auto &counter : atomicCounters)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &counter);
+}
+
+//===----------------------------------------------------------------------===//
+// EPCombineOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult EPCombineOp::verify() {
+  auto inputTokens = getInputTokens();
+  if (inputTokens.empty())
+    return emitError("ep.combine requires at least one device");
+
+  size_t numDevices = inputTokens.size();
+
+  if (getSrcInfo().size() != numDevices)
+    return emitError("srcInfo count must match inputTokens count");
+  if (getSendPtrs().size() != numDevices)
+    return emitError("sendPtrs count must match inputTokens count");
+  if (getRecvPtrs().size() != numDevices)
+    return emitError("recvPtrs count must match inputTokens count");
+  if (getRecvCountPtrs().size() != numDevices)
+    return emitError("recvCountPtrs count must match inputTokens count");
+  if (getRouterWeights().size() != numDevices)
+    return emitError("routerWeights count must match inputTokens count");
+  if (getAtomicCounters().size() != numDevices)
+    return emitError("atomicCounters count must match inputTokens count");
+
+  if (getOutputTokens().size() != numDevices)
+    return emitError("outputTokens count must match inputTokens count");
+
+  return success();
+}
+
+void EPCombineOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange atomicCounters = getAtomicCountersMutable();
+  for (auto &counter : atomicCounters)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &counter);
+}
+
+//===----------------------------------------------------------------------===//
 // AllGatherOp
 //===----------------------------------------------------------------------===//
 

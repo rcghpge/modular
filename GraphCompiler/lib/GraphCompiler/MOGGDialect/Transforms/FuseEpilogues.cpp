@@ -46,7 +46,11 @@ static bool containsDistributedOp(MOGG::KernelOp kernel) {
   return (kernelName.contains(MO::AllGatherOp::getOperationName()) ||
           kernelName.contains(MO::AllReduceSumOp::getOperationName()) ||
           kernelName.contains(MO::ReduceScatterSumOp::getOperationName()) ||
-          kernelName.contains(MO::DistributedBroadcastOp::getOperationName()));
+          kernelName.contains(MO::DistributedBroadcastOp::getOperationName()) ||
+          kernelName.contains(MO::EPDispatchOp::getOperationName()) ||
+          kernelName.contains(MO::EPDispatchFP8Op::getOperationName()) ||
+          kernelName.contains(MO::EPDispatchNVFP4Op::getOperationName()) ||
+          kernelName.contains(MO::EPCombineOp::getOperationName()));
 }
 
 static bool containsMutableStore(MOGG::KernelOp kernel) {
