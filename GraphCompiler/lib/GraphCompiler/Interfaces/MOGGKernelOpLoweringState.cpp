@@ -881,7 +881,8 @@ static bool isBundledKernel(MOGG::KernelOp kernelOp) {
 /// this clone corresponds to.
 static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
                                  size_t numLaunches,
-                                 ArrayRef<SmallVector<Value>> allLaunchInputs) {
+                                 ArrayRef<SmallVector<Value>> allLaunchInputs,
+                                 ArrayRef<SmallVector<Type>> allLaunchTypes) {
   if (numLaunches <= 1)
     return;
 
@@ -900,6 +901,8 @@ static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
   // Insert block args for ALL launches (including the current one) in
   // canonical order right after the original inputs. This produces an
   // identical block-arg layout regardless of which launch is "current."
+  // Block arg types use MO-level types (from allLaunchTypes) so the kernel
+  // body stays in MO type space for Mojo emission.
   SmallVector<SmallVector<Value>> groupBlockArgs(numGroups);
   for (size_t groupId = 0; groupId < numGroups; ++groupId)
     groupBlockArgs[groupId].resize(numLaunches);
@@ -908,7 +911,7 @@ static void nExpandBundledKernel(MOGG::KernelOp kernelOp, size_t currentLaunch,
   SmallVector<Value> extraOperands;
   for (size_t groupId = 0; groupId < numGroups; ++groupId) {
     for (size_t launch = 0; launch < numLaunches; ++launch) {
-      Type ty = allLaunchInputs[groupId][launch].getType();
+      Type ty = allLaunchTypes[groupId][launch];
       Value blockArg = kBody->insertArgument(insertPos, ty, loc);
       groupBlockArgs[groupId][launch] = blockArg;
       extraOperands.push_back(allLaunchInputs[groupId][launch]);
@@ -1012,16 +1015,34 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
   Location loc = parallelOp.getLoc();
 
   Block &bodyBlock = parallelOp.getBodyRegion().front();
-  size_t numLaunches = parallelOp.getInputs().size();
-  Value blockArg = bodyBlock.getArgument(0);
-  Value extraBlockArg =
-      bodyBlock.getNumArguments() > 1 ? bodyBlock.getArgument(1) : Value{};
+  size_t numLaunches = parallelOp.getNumLaunches();
+  size_t numBundleGroups = parallelOp.getInputs().size();
+  bool hasBuffers = parallelOp.hasBuffers();
 
   // The parallel op has explicit chain threading (inChain/outChain).
   // Do NOT call setCurrentExecuteChain here -- doing so would pollute
   // unrelated ops lowered after the parallel (like RoPE frequency kernels)
   // with the embedding/allreduce chain dependency, preventing
   // ExecInvariantCodeMotionPass from hoisting them to init.
+
+  // Resolve per-launch MO-level values from each bundle input via the
+  // lowering state (populated by lowerTensorBundle).  The optional buffer
+  // group comes directly from the parallel op's buffers() operand list.
+  size_t numGroups = numBundleGroups + (hasBuffers ? 1 : 0);
+  SmallVector<SmallVector<Value>> bundleElements(numGroups);
+
+  for (size_t group = 0; group < numBundleGroups; ++group) {
+    Value bundleVal = parallelOp.getInputs()[group];
+    auto moElements = loweringState.lookupBundleElements(bundleVal);
+    for (size_t launch = 0; launch < numLaunches; ++launch)
+      bundleElements[group].push_back(moElements[launch]);
+  }
+
+  if (hasBuffers) {
+    auto buffers = parallelOp.getBuffers();
+    for (size_t launch = 0; launch < numLaunches; ++launch)
+      bundleElements[numBundleGroups].push_back(buffers[launch]);
+  }
 
   SmallVector<MOGG::KernelOp> kernelOps;
   for (Operation &op : bodyBlock.without_terminator())
@@ -1056,9 +1077,8 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
 
     for (size_t launch = 0; launch < numLaunches; ++launch) {
       IRMapping mapper;
-      mapper.map(blockArg, parallelOp.getInputs()[launch]);
-      if (extraBlockArg)
-        mapper.map(extraBlockArg, parallelOp.getExtraInputs()[launch]);
+      for (size_t group = 0; group < numGroups; ++group)
+        mapper.map(bodyBlock.getArgument(group), bundleElements[group][launch]);
       for (auto &[origResult, cloneResults] : perLaunchCloneResults)
         mapper.map(origResult, cloneResults[launch]);
 
@@ -1071,8 +1091,12 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
       // For launches on other devices, update the clone's device attribute
       // and result types so that lowerKernelOp uses the correct device
       // context and allocates output buffers on the right device.
-      Value launchInput = parallelOp.getInputs()[launch];
-      if (auto inputTy = dyn_cast<MO::TensorType>(launchInput.getType())) {
+      // Device is read from the BundleType element types (MO-level metadata),
+      // not from the lowered SSA value types.
+      auto firstBundleTy =
+          cast<MO::BundleType>(parallelOp.getInputs()[0].getType());
+      if (auto inputTy = dyn_cast<MO::TensorType>(
+              firstBundleTy.getElementTypes()[launch])) {
         DeviceRefAttr launchDevice = inputTy.getDeviceRef();
         if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
           clonedKernel.setDeviceRef(launchDevice);
@@ -1089,35 +1113,33 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
 
       if (bundled) {
         SmallVector<SmallVector<Value>> allLaunchInputs;
+        SmallVector<SmallVector<Type>> allLaunchTypes;
 
-        // Resolve primary inputs for all launches. The kernel's first input
-        // is either the block arg (resolves to parallelOp.getInputs()) or a
-        // prior kernel's result (found in perLaunchCloneResults).
-        Value firstInput = kernelOp.getInputs().front();
-        bool fromPriorKernel = perLaunchCloneResults.count(firstInput);
-        ASSERT_STREAM(
-            fromPriorKernel || firstInput == blockArg,
-            << "bundled kernel's first input must be the block arg or a "
-               "prior kernel result");
-        SmallVector<Value> primaryInputs;
-        for (size_t launchIdx = 0; launchIdx < numLaunches; ++launchIdx) {
-          if (fromPriorKernel)
-            primaryInputs.push_back(
-                perLaunchCloneResults[firstInput][launchIdx]);
-          else
-            primaryInputs.push_back(parallelOp.getInputs()[launchIdx]);
-        }
-        allLaunchInputs.push_back(std::move(primaryInputs));
-
-        if (extraBlockArg) {
-          SmallVector<Value> extraInputs;
-          for (size_t launchIdx = 0; launchIdx < numLaunches; ++launchIdx)
-            extraInputs.push_back(parallelOp.getExtraInputs()[launchIdx]);
-          allLaunchInputs.push_back(std::move(extraInputs));
+        for (size_t group = 0; group < numGroups; ++group) {
+          Value bodyArg = bodyBlock.getArgument(group);
+          auto priorIt = perLaunchCloneResults.find(bodyArg);
+          bool fromPriorKernel = priorIt != perLaunchCloneResults.end();
+          SmallVector<Value> groupInputs;
+          SmallVector<Type> groupTypes;
+          for (size_t launchIdx = 0; launchIdx < numLaunches; ++launchIdx) {
+            groupInputs.push_back(fromPriorKernel
+                                      ? priorIt->second[launchIdx]
+                                      : bundleElements[group][launchIdx]);
+            if (group < numBundleGroups) {
+              auto bTy =
+                  cast<MO::BundleType>(parallelOp.getInputs()[group].getType());
+              groupTypes.push_back(bTy.getElementTypes()[launchIdx]);
+            } else {
+              groupTypes.push_back(
+                  parallelOp.getBuffers()[launchIdx].getType());
+            }
+          }
+          allLaunchInputs.push_back(std::move(groupInputs));
+          allLaunchTypes.push_back(std::move(groupTypes));
         }
 
-        nExpandBundledKernel(clonedKernel, launch, numLaunches,
-                             allLaunchInputs);
+        nExpandBundledKernel(clonedKernel, launch, numLaunches, allLaunchInputs,
+                             allLaunchTypes);
       }
 
       MOGGKernelOpLoweringState perLaunchState(clonedKernel, loweringState);
@@ -1152,26 +1174,20 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
     }
   }
 
-  // Map parallel op results to the lowered output tensors. The yield operands
-  // identify which kernel results flow out. For each, look up the per-launch
-  // clone result's lowered form (registered by lowerKernelOp → createOutputs).
+  // Register per-element clone results as the bundle elements for each
+  // parallel result so that lowerTensorUnbundle can resolve them.
   auto yieldOp = cast<MO::YieldOp>(bodyBlock.getTerminator());
   size_t resultIdx = 0;
   for (Value yieldOperand : yieldOp.getOperands()) {
     if (!isa<MO::TensorType>(yieldOperand.getType()))
       continue;
+    Value bundleResult = parallelOp.getResult(resultIdx++);
     SmallVector<Value> &cloneResults = perLaunchCloneResults[yieldOperand];
-    for (size_t launch = 0; launch < numLaunches; ++launch) {
-      Value parallelResult = parallelOp.getResult(resultIdx++);
-      Value cloneRes = cloneResults[launch];
-      Value loweredTensor = loweringState.lookupExecuteLoweredValue(cloneRes);
-      Value guardChain = loweringState.getChainGuardingValueOrNull(cloneRes);
-      if (guardChain)
-        loweringState.emplaceExecuteLoweredBufferValue(
-            parallelResult, loweredTensor, guardChain);
-      else
-        loweringState.emplaceExecuteLoweredValue(parallelResult, loweredTensor);
-    }
+
+    // Register clone results as the bundle elements for this result so that
+    // lowerTensorUnbundle can resolve them via lookupBundleElements.
+    loweringState.emplaceBundleElements(bundleResult,
+                                        SmallVector<Value>(cloneResults));
   }
 
   // Register the outChain result (when present) mapped to the final fused

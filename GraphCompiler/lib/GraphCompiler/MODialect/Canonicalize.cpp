@@ -1114,20 +1114,27 @@ LogicalResult TensorUnbundleOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 LogicalResult ParallelOp::canonicalize(ParallelOp op,
                                        PatternRewriter &rewriter) {
+  // Identity fold only applies to tensor-only parallels (no buffers/chain).
+  if (op.hasBuffers())
+    return failure();
+
   Block &body = op.getBodyRegion().front();
 
-  // If the body only contains the yield terminator and the yield simply
-  // passes through the block argument, the parallel op is a no-op.
+  // If the body only contains the yield terminator and every yield operand
+  // is the corresponding block argument, the parallel op is a no-op.
   if (!body.without_terminator().empty())
     return failure();
 
   auto yieldOp = cast<YieldOp>(body.getTerminator());
-  if (yieldOp.getOperand(0) != body.getArgument(0))
-    return failure();
+  for (size_t yieldIdx = 0; yieldIdx < yieldOp.getNumOperands(); ++yieldIdx) {
+    if (yieldIdx >= body.getNumArguments() ||
+        yieldOp.getOperand(yieldIdx) != body.getArgument(yieldIdx))
+      return failure();
+  }
 
-  SmallVector<Value> replacements(op.getInputs().begin(), op.getInputs().end());
-  if (op.hasChain())
-    replacements.push_back(op.getInChain());
+  SmallVector<Value> replacements;
+  for (size_t yieldIdx = 0; yieldIdx < yieldOp.getNumOperands(); ++yieldIdx)
+    replacements.push_back(op.getInputs()[yieldIdx]);
   rewriter.replaceOp(op, replacements);
   return success();
 }

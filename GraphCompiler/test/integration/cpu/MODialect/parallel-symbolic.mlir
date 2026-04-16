@@ -6,13 +6,14 @@ mo.graph @parallel_symbolic<N>(
     %arg0: !mo.tensor<[N, 3], si32>,
     %arg1: !mo.tensor<[N, 3], si32>)
     -> (!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>) {
-  %res:2 = mo.parallel %x in (%arg0 : !mo.tensor<[N, 3], si32>,
-                              %arg1 : !mo.tensor<[N, 3], si32>)
-         -> (!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>) {
+  %bundle = mo.tensor.bundle(%arg0, %arg1) : (!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>) -> (!mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>)
+  %res_bundle = mo.parallel (%x) in (%bundle : !mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>)
+         -> (!mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>) {
     %1 = mo.relu(%x) : !mo.tensor<[N, 3], si32>
     mo.yield %1 : !mo.tensor<[N, 3], si32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>]>) -> (!mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>
 }
 
 // CHECK: mogg.generic.compiled.region
@@ -27,14 +28,15 @@ mo.graph @parallel_symbolic_add_relu<N>(
     %arg0: !mo.tensor<[N, 3], f32>,
     %arg1: !mo.tensor<[N, 3], f32>)
     -> (!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>) {
-  %res:2 = mo.parallel %x in (%arg0 : !mo.tensor<[N, 3], f32>,
-                              %arg1 : !mo.tensor<[N, 3], f32>)
-         -> (!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>) {
+  %bundle = mo.tensor.bundle(%arg0, %arg1) : (!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>) -> (!mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>)
+  %res_bundle = mo.parallel (%x) in (%bundle : !mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>)
+         -> (!mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>) {
     %added = mo.add(%x, %x) : !mo.tensor<[N, 3], f32>
     %relu = mo.relu(%added) : !mo.tensor<[N, 3], f32>
     mo.yield %relu : !mo.tensor<[N, 3], f32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>]>) -> (!mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>
 }
 
 // CHECK: mogg.generic.compiled.region

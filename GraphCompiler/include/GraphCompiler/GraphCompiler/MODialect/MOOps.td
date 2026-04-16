@@ -639,55 +639,55 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
   let summary = "`parallel` region operation";
   let description = [{
     The `mo.parallel` operation takes a single "body" block, which is executed
-    in parallel for each set of inputs.
+    in parallel for each set of inputs.  Each input is an `!mo.bundle` whose
+    elements are the per-device values for one input group.  All bundles must
+    have the same number of elements (= number of launches).  The body block
+    receives one block argument per bundle input, typed as a representative
+    single-device value (the first element's type).
 
-    Type constraints:
-    1. All inputs must have the same type (tensor device IDs may differ).
-    2. The input types must match the block argument type.
-    3. The yield type must match the result types.
-    4. All results must have the same type (tensor device IDs may differ).
+    The yield may return one or more values.  Each yield operand produces one
+    `!mo.bundle` result whose elements are derived from the yield type with
+    per-launch devices taken from the first input bundle.
 
-    The input and result types may differ (e.g. when a pass annotates the
-    block argument with a layout attribute that the yield does not carry).
-    The block argument uses the first input's type as a representative.
+    An optional `buffers(...)` clause provides per-launch signal buffers for
+    collective operations (e.g. allreduce).  The number of buffers must equal
+    the number of launches.  When present, the body receives one additional
+    block argument typed as the first buffer's type.
 
-    An optional second input group (`extraInputs`) may be provided for
-    additional per-device operands (e.g., signal buffers). When present,
-    extraInputs must have the same length as inputs, and the body block
-    receives an additional argument for the extra input.
+    `buffers(...)` and `chain(...)` must be both present or both absent.  When
+    present, `chain(...)` provides a sequencing dependency and the trailing
+    `!mo.chain` result represents completion of all parallel launches.
 
-    A chain input (`inChain`) provides the sequencing dependency from prior
-    ops. The chain result (`outChain`) represents completion of all parallel
-    launches and can be used to sequence subsequent ops.
-
-    Example with individual types (different device IDs):
+    Example with one bundle input (no buffers, no chain):
     ```mlir
-    %res:2, %out_ch = mo.parallel %arg in
-        (%a : !mo.tensor<[3], f32, gpu:0>,
-         %b : !mo.tensor<[3], f32, gpu:1>) chain(%ch) {
+    %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
+    %res = mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
+        -> (!mo.bundle<[...]>) {
       %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
       mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
     }
     ```
 
-    Example with extra inputs (tupled per-device operands):
+    Example with buffers and chain (bundled allreduce):
     ```mlir
-    %res:2, %out_ch = mo.parallel (%arg, %sig) in
-        ((%a, %sig0) : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
-         (%b, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))
-        chain(%ch_in) {
-      %out, %ch = mo.bundled.allreduce.sum(%arg, %sig, %ch_in) : ...
+    %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
+    %res, %ch = mo.parallel (%arg, %sig) in (%dt : !mo.bundle<[...]>)
+        buffers(%s0 : !mo.buffer<[1], ui8, gpu:0>,
+                %s1 : !mo.buffer<[1], ui8, gpu:1>)
+        chain(%ch_in)
+        -> (!mo.bundle<[...]>, !mo.chain) {
+      %out, %ch1 = mo.bundled.allreduce.sum(%arg, %sig, %ch_in) : ...
       mo.yield %out : !mo.tensor<[3], f32, gpu:0>
     }
     ```
   }];
 
   let arguments = (ins
-    Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$extraInputs,
+    Variadic<MO_Bundle>:$inputs,
+    Variadic<MO_Buffer>:$buffers,
     Optional<MO_Chain>:$inChain
   );
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Bundle, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
 
   let extraClassDeclaration = [{
@@ -696,13 +696,18 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
 
-    /// Returns the number of launches (= inputs.size()).
-    size_t getNumLaunches() { return getInputs().size(); }
+    /// Returns the number of launches (elements per bundle).
+    size_t getNumLaunches() {
+      auto inputs = getInputs();
+      if (inputs.empty()) return 0;
+      return cast<BundleType>(inputs.front().getType()).getNumElements();
+    }
 
-    /// Returns the number of input groups (1 if no extraInputs, 2 otherwise).
-    size_t getNumInputGroups() { return getExtraInputs().empty() ? 1 : 2; }
+    /// Whether this parallel op has per-launch signal buffers.
+    bool hasBuffers() { return !getBuffers().empty(); }
 
     /// Whether this parallel op has explicit chain I/O.
+    /// Chain is present iff buffers are present.
     bool hasChain() { return static_cast<bool>(getInChain()); }
 
     /// Returns the trailing chain result. Only valid when hasChain().
@@ -712,9 +717,6 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     }
   }];
 
-  // Custom assembly format supports:
-  // 1. Individual types: mo.parallel %arg in (%a : type_a, %b : type_b) { ... }
-  // 2. Tupled: mo.parallel (%arg, %sig) in ((%a, %s0) : (t1, t2), ...) { ... }
   let hasCustomAssemblyFormat = 1;
   let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;

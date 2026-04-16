@@ -20,14 +20,15 @@
 mo.graph @parallel_neg_relu_f32() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
   %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
-  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32>,
-                                  %b : !mo.tensor<[2, 2], f32>)
-         -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+         -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %neg = mo.negative(%arg0) : !mo.tensor<[2, 2], f32>
     %relu = mo.relu(%neg) : !mo.tensor<[2, 2], f32>
     mo.yield %relu : !mo.tensor<[2, 2], f32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
 // CHECK: 'parallel_neg_relu_f32' returned tensor<2x2xf32>
@@ -48,15 +49,16 @@ mo.graph @parallel_neg_relu_f32() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2]
 mo.graph @parallel_three_ops() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
   %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
-  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32>,
-                                  %b : !mo.tensor<[2, 2], f32>)
-         -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+         -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %neg1 = mo.negative(%arg0) : !mo.tensor<[2, 2], f32>
     %relu = mo.relu(%neg1) : !mo.tensor<[2, 2], f32>
     %neg2 = mo.negative(%relu) : !mo.tensor<[2, 2], f32>
     mo.yield %neg2 : !mo.tensor<[2, 2], f32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
 // neg(0.0) = -0.0 in IEEE 754, so zeros become negative zero.

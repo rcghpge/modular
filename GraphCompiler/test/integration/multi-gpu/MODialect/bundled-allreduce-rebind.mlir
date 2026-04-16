@@ -21,19 +21,20 @@ mo.graph @bundled_allreduce_expr_dim_inputs<D0>(
   // Create tensors with expression-form dims (mimics VisionPatchMerger reshape).
   %r0 = mo.rebind(%in0) : !mo.tensor<[D0, 3], f32, gpu:0> -> !mo.tensor<[div(D0, 2), 3], f32, gpu:0>
   %r1 = mo.rebind(%in1) : !mo.tensor<[D0, 3], f32, gpu:1> -> !mo.tensor<[div(D0, 2), 3], f32, gpu:1>
+  %dt = mo.tensor.bundle(%r0, %r1) : (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>)
   %ch = mo.chain.create()
   // Parallel inputs have div(D0, 2) -- an expression-form dim that kernel
   // stubs must provide runtime values for.
-  %res:2, %out_ch = mo.parallel (%arg, %sig) in
-      ((%r0, %sig0) : (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
-       (%r1, %sig1) : (!mo.tensor<[div(D0, 2), 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))
-      chain(%ch) {
+  %res_bundle, %out_ch = mo.parallel (%arg, %sig) in (%dt : !mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>)
+      buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
+      chain(%ch) -> (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>) {
     %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
         : (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
        -> (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.chain)
     mo.yield %out : !mo.tensor<[div(D0, 2), 3], f32, gpu:0>
   }
-  %h0, %ch3 = mo.transfer[%out_ch] %res#0 : !mo.tensor<[div(D0, 2), 3], f32, gpu:0> to <"cpu", 0>
-  %h1, %ch4 = mo.transfer[%ch3] %res#1 : !mo.tensor<[div(D0, 2), 3], f32, gpu:1> to <"cpu", 0>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>) -> (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>)
+  %h0, %ch3 = mo.transfer[%out_ch] %res_0 : !mo.tensor<[div(D0, 2), 3], f32, gpu:0> to <"cpu", 0>
+  %h1, %ch4 = mo.transfer[%ch3] %res_1 : !mo.tensor<[div(D0, 2), 3], f32, gpu:1> to <"cpu", 0>
   mo.output %h0, %h1 : !mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>
 }

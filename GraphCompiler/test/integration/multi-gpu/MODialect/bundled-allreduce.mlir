@@ -14,21 +14,22 @@ mo.graph @bundled_allreduce(
   %in0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
   %in1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:1>
 
+  %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
   %ch = mo.chain.create()
   // CHECK: mo.parallel
   // CHECK: mo.bundled.allreduce.sum
-  %res:2, %out_ch = mo.parallel (%arg, %sig) in
-      ((%in0, %sig0) : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
-       (%in1, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))
-      chain(%ch) {
+  %res_bundle, %out_ch = mo.parallel (%arg, %sig) in (%dt : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+      buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
+      chain(%ch) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
     %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
        -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
     mo.yield %out : !mo.tensor<[3], f32, gpu:0>
   }
 
-  %res0_host, %ch3 = mo.transfer[%out_ch] %res#0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
-  %res1_host, %ch4 = mo.transfer[%ch3] %res#1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+  %res0_host, %ch3 = mo.transfer[%out_ch] %res_0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
+  %res1_host, %ch4 = mo.transfer[%ch3] %res_1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
   mo.output %res0_host, %res1_host : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
 }
 
@@ -44,14 +45,14 @@ mo.graph @bundled_allreduce_body_local_chain(
   %in0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
   %in1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:1>
 
+  %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
   %ch_outer = mo.chain.create()
   // CHECK: mo.parallel
   // CHECK: mo.chain.create
   // CHECK: mo.bundled.allreduce.sum
-  %res:2, %out_ch = mo.parallel (%arg, %sig) in
-      ((%in0, %sig0) : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
-       (%in1, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))
-      chain(%ch_outer) {
+  %res_bundle, %out_ch = mo.parallel (%arg, %sig) in (%dt : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+      buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
+      chain(%ch_outer) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
     %ch = mo.chain.create()
     %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
@@ -59,7 +60,8 @@ mo.graph @bundled_allreduce_body_local_chain(
     mo.yield %out : !mo.tensor<[3], f32, gpu:0>
   }
 
-  %res0_host, %ch3 = mo.transfer[%out_ch] %res#0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
-  %res1_host, %ch4 = mo.transfer[%ch3] %res#1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+  %res0_host, %ch3 = mo.transfer[%out_ch] %res_0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
+  %res1_host, %ch4 = mo.transfer[%ch3] %res_1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
   mo.output %res0_host, %res1_host : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
 }

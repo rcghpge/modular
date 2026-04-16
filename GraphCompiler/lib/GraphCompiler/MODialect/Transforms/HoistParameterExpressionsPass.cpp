@@ -90,6 +90,14 @@ struct RewriteParamExprTypes : public RewritePattern {
     if (op->getParentOfType<MO::ParallelOp>())
       return origRewriter.notifyMatchFailure(op, "skip parallel body ops");
 
+    // Skip structural bundle/unbundle grouping ops.  Their types are derived
+    // from the individual tensor operands/results; rewriting them separately
+    // would change BundleType shapes without updating the consuming parallel
+    // op's block argument types (which are not TensorType and thus wouldn't
+    // get output rebinds).
+    if (isa<MO::TensorBundleOp, MO::TensorUnbundleOp>(op))
+      return origRewriter.notifyMatchFailure(op, "skip bundle/unbundle ops");
+
     DeviceAwareRewriter rewriter(op, origRewriter);
 
     llvm::DenseSet<Value> rewriteInputs;

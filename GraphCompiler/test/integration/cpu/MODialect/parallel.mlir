@@ -19,13 +19,14 @@ mo.graph @sequential_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
 mo.graph @parallel_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
-                                  %const2 : !mo.tensor<[3], si32>)
-         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+         -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
     %1 = mo.relu(%arg0) : !mo.tensor<[3], si32>
     mo.yield %1 : !mo.tensor<[3], si32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
 }
 
 
@@ -34,14 +35,15 @@ mo.graph @parallel_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) 
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %bias = mo.constant {value = #M.dense_array<-5, -5, -5> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
-                                  %const2 : !mo.tensor<[3], si32>)
-         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+         -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
     %added = mo.add(%arg0, %bias) : !mo.tensor<[3], si32>
     %relu = mo.relu(%added) : !mo.tensor<[3], si32>
     mo.yield %relu : !mo.tensor<[3], si32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
 }
 
 // CHECK: 'parallel_add_relu' returned tensor<3xsi32> [0, 0, 0]
@@ -54,14 +56,15 @@ mo.graph @parallel_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) 
 mo.graph @parallel_self_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
-                                  %const2 : !mo.tensor<[3], si32>)
-         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+         -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
     %added = mo.add(%arg0, %arg0) : !mo.tensor<[3], si32>
     %relu = mo.relu(%added) : !mo.tensor<[3], si32>
     mo.yield %relu : !mo.tensor<[3], si32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
 }
 
 // add(x,x) = 2*x, then relu:
@@ -80,15 +83,16 @@ mo.graph @parallel_self_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si
 mo.graph @parallel_diamond() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %res:2 = mo.parallel %arg0 in (%const1 : !mo.tensor<[3], si32>,
-                                  %const2 : !mo.tensor<[3], si32>)
-         -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
+  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
+         -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
     %r = mo.relu(%arg0) : !mo.tensor<[3], si32>
     %n = mo.negative(%arg0) : !mo.tensor<[3], si32>
     %sum = mo.add(%r, %n) : !mo.tensor<[3], si32>
     mo.yield %sum : !mo.tensor<[3], si32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
 }
 
 // CHECK: 'parallel_diamond' returned tensor<3xsi32> [0, 2, 0]
@@ -120,4 +124,3 @@ mo.graph @parallel_diamond() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
 // CHECK-MGP:   mogg.call.stub.async @stub_{{[0-9]+}}({{.*}}) -> !mogg.task_handle
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
-

@@ -13,13 +13,14 @@
 mo.graph @parallel_matmul() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
   %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
-  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32>,
-                                  %b : !mo.tensor<[2, 2], f32>)
-         -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+         -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %mm = mo.matmul(%arg0, %arg0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
     mo.yield %mm : !mo.tensor<[2, 2], f32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
 // CHECK: 'parallel_matmul' returned tensor<2x2xf32>
@@ -35,14 +36,15 @@ mo.graph @parallel_matmul() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 mo.graph @parallel_matmul_relu() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
   %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
-  %res:2 = mo.parallel %arg0 in (%a : !mo.tensor<[2, 2], f32>,
-                                  %b : !mo.tensor<[2, 2], f32>)
-         -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
+  %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+  %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>)
+         -> (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) {
     %mm = mo.matmul(%arg0, %arg0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
     %relu = mo.relu(%mm) : !mo.tensor<[2, 2], f32>
     mo.yield %relu : !mo.tensor<[2, 2], f32>
   }
-  mo.output %res#0, %res#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>]>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  mo.output %res_0, %res_1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
 // CHECK: 'parallel_matmul_relu' returned tensor<2x2xf32>
