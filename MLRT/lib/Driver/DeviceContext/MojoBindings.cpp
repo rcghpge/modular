@@ -445,6 +445,24 @@ MODULAR_EXPORT const char *AsyncRT_DeviceStream_enqueueFunctionDirect(
       reinterpret_cast<CUlaunchAttribute *>(attrs), numAttrs, args));
 }
 
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueHostFunction(
+    DeviceContext *ctx, void (*resumeFunc)(int8_t *),
+    void (*destroyFunc)(int8_t *), int8_t *coroHandle) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_enqueueHostFunction",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(
+      ctx->enqueueHostFunction(resumeFunc, destroyFunc, coroHandle));
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceContext_enqueueHostFunctionRange(
+    DeviceContext *ctx, void (*resumeFunc)(int8_t *),
+    void (*destroyFunc)(int8_t *), int8_t **coroHandles, size_t numHandles) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_enqueueHostFunctionRange",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(ctx->enqueueHostFunctionRange(resumeFunc, destroyFunc,
+                                                    coroHandles, numHandles));
+}
+
 MODULAR_EXPORT const char *
 AsyncRT_DeviceFunction_getAttribute(int32_t *result, DeviceFunction *func,
                                     int32_t attrCode) {

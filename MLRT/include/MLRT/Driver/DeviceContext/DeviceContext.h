@@ -763,6 +763,19 @@ public:
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
       uint32_t argCount = 0, const size_t *argSizes = nullptr) = 0;
 
+  virtual ErrorOrSuccess enqueueHostFunction(void (*resumeFunc)(int8_t *),
+                                             void (*destroyFunc)(int8_t *),
+                                             int8_t *coroHandle) {
+    return Error("Not implemented;");
+  }
+
+  virtual ErrorOrSuccess enqueueHostFunctionRange(void (*resumeFunc)(int8_t *),
+                                                  void (*destroyFunc)(int8_t *),
+                                                  int8_t **coroHandle,
+                                                  size_t numHandles) {
+    return Error("Not implemented;");
+  }
+
   // Synchronize asynchronous operations.
   virtual ErrorOr<DeviceStreamRef> stream() const = 0;
   virtual ErrorOrSuccess streamPriorityRange(int *leastPriority,

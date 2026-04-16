@@ -398,6 +398,66 @@ ErrorOrSuccess CpuDeviceContext::enqueueFunctionExecDirect(
   RETURN_ERROR("Unimplemented");
 }
 
+ErrorOrSuccess
+CpuDeviceContext::enqueueHostFunction(void (*resumeFunc)(int8_t *),
+                                      void (*destroyFunc)(int8_t *),
+                                      int8_t *coroHandle) {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueHostFunction",
+                       TRACY_COLOR_PURPLE);
+  // Resume the coroutine to execute the enqueued function, then immediately
+  // destroy the coroutine as ownership of it has been transferred from Mojo by
+  // this point.
+  return enqueueWork([=]() {
+    resumeFunc(coroHandle);
+    destroyFunc(coroHandle);
+  });
+}
+
+ErrorOrSuccess CpuDeviceContext::enqueueHostFunctionRange(
+    void (*resumeFunc)(int8_t *), void (*destroyFunc)(int8_t *),
+    int8_t **coroHandles, size_t numHandles) {
+  TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueHostFunctionRange",
+                       TRACY_COLOR_PURPLE);
+  RETURN_IF_PENDING_ERROR(*this);
+
+  if (numHandles == 0)
+    return success();
+
+  size_t numWorkers = runtime->getWorkQueue()->getParallelismLevel();
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
+  std::lock_guard<std::mutex> streamLock{streamChainMutex};
+
+  // When the current streamChain is ready, fan out all coroutine handles
+  // across worker threads via parallelForEachNChainWithTaskIds, then
+  // complete eventChain when all handles have been processed.
+  // Copy the handles array since it may not outlive this call. Use a plain
+  // std::vector as we will typically have one handle per CPU thread which is
+  // too big for SmallVector.
+  streamChain.andThenSync([runtime = this->runtime, numWorkers, resumeFunc,
+                           destroyFunc, eventChain = eventChain.copy(),
+                           handles = std::vector<int8_t *>(
+                               coroHandles,
+                               coroHandles + numHandles)]() mutable {
+    size_t count = handles.size();
+    auto completionChain = MLRT::parallelForEachNChainWithTaskIds(
+        *runtime, count,
+        [numWorkers](size_t i) -> int {
+          return static_cast<int>(i % numWorkers);
+        },
+        [resumeFunc, destroyFunc](size_t i, std::vector<int8_t *> &handles) {
+          resumeFunc(handles[i]);
+          destroyFunc(handles[i]);
+        },
+        std::move(handles));
+    completionChain.andThenSync([eventChain = std::move(eventChain)]() mutable {
+      std::move(eventChain).emplace();
+    });
+  });
+
+  streamChain = std::move(eventChain);
+  return success();
+}
+
 ErrorOr<DeviceStreamRef> CpuDeviceContext::stream() const {
   // This function is const only for the duration of its execution;
   // `this` is non-const downstream so cast in order to provide
