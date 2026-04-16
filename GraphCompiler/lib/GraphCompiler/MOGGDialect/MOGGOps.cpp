@@ -2883,17 +2883,19 @@ LogicalResult LoadTensorOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
-  // Represent the empty buffer with a NULL pointer.
-  MojoValue nullPtr = MojoValue(HardcodedMojoSymbols::struct_UnsafePointer)[{
-      MojoValue(HardcodedMojoSymbols::struct_Scalar)[{
-          MojoValue(HardcodedMojoSymbols::struct_DType).get("int8")}],
-      MojoValue(HardcodedMojoSymbols::comptime_MutAnyOrigin)}]();
+  // Represent the empty buffer with a dangling pointer.
+  MojoValue danglingPointer =
+      MojoValue(HardcodedMojoSymbols::struct_UnsafePointer)
+          [{MojoValue(HardcodedMojoSymbols::struct_Scalar)[{
+                MojoValue(HardcodedMojoSymbols::struct_DType).get("int8")}],
+            MojoValue(HardcodedMojoSymbols::comptime_MutAnyOrigin)}]
+              .get("unsafe_dangling")();
   MojoValue zeroShape = MojoValue(HardcodedMojoSymbols::struct_IndexList)(
       {MojoValue("1")}, {MojoValue("0")});
   state.setMojoValueFor(
       getResult(),
       state.builder.var(MojoValue(HardcodedMojoSymbols::comptime_MutByteBuffer)(
-          {}, {nullPtr, zeroShape})));
+          {}, {danglingPointer, zeroShape})));
   return success();
 }
 
