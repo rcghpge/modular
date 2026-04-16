@@ -28,6 +28,9 @@ static bool containsMatmulOrConvOrConcat(MOGG::KernelOp kernel) {
 
   auto kernelName = callExecuteOp.getKernelNameAttr().strref();
 
+  if (kernelName.starts_with(MO::BatchMatmulOp::getOperationName()))
+    return true;
+
   return (kernelName.contains(MO::ConcatOp::getOperationName()) ||
           kernelName.contains(MO::MatmulOp::getOperationName()) ||
           kernelName.contains(MO::BatchMatmulOp::getOperationName()) ||
