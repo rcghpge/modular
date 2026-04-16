@@ -718,7 +718,7 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
   }];
 
   let hasCustomAssemblyFormat = 1;
-  let hasCanonicalizeMethod = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

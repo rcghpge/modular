@@ -1112,13 +1112,13 @@ LogicalResult TensorUnbundleOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//
-LogicalResult ParallelOp::canonicalize(ParallelOp op,
-                                       PatternRewriter &rewriter) {
+LogicalResult ParallelOp::fold(FoldAdaptor adaptor,
+                               SmallVectorImpl<OpFoldResult> &results) {
   // Identity fold only applies to tensor-only parallels (no buffers/chain).
-  if (op.hasBuffers())
+  if (hasBuffers())
     return failure();
 
-  Block &body = op.getBodyRegion().front();
+  Block &body = getBodyRegion().front();
 
   // If the body only contains the yield terminator and every yield operand
   // is the corresponding block argument, the parallel op is a no-op.
@@ -1132,10 +1132,7 @@ LogicalResult ParallelOp::canonicalize(ParallelOp op,
       return failure();
   }
 
-  SmallVector<Value> replacements;
-  for (size_t yieldIdx = 0; yieldIdx < yieldOp.getNumOperands(); ++yieldIdx)
-    replacements.push_back(op.getInputs()[yieldIdx]);
-  rewriter.replaceOp(op, replacements);
+  results = llvm::to_vector_of<OpFoldResult>(getInputs());
   return success();
 }
 
