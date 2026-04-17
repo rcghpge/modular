@@ -3326,6 +3326,102 @@ struct ReduceRMSNormRoPEPattern
   }
 };
 
+struct ConcatSlicePattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::SliceOp> {
+  ConcatSlicePattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::SliceOp sliceOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+
+    Value input = sliceOp.getInput();
+    MO::ConcatOp concatOp = input.getDefiningOp<MO::ConcatOp>();
+    if (!concatOp) {
+      return rewriter.notifyMatchFailure(sliceOp,
+                                         "slice input must be a concat");
+    }
+
+    // The fused op computes both the concat and the slice output.
+    // It's only usefull if the concat is used somewhere else.
+    if (input.hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          sliceOp,
+          "the input (ConcatOp) must have another use to be beneficial");
+    }
+
+    std::optional<SmallVector<int64_t>> startValues =
+        MO::tryGetConstantIntVector(sliceOp.getStart());
+    std::optional<SmallVector<int64_t>> stepValues =
+        MO::tryGetConstantIntVector(sliceOp.getStep());
+    if (!startValues.has_value() || !stepValues.has_value()) {
+      return rewriter.notifyMatchFailure(
+          sliceOp, "start / step operands must be constants");
+    }
+
+    if (isTrivialSlice(sliceOp, *stepValues)) {
+      return rewriter.notifyMatchFailure(sliceOp,
+                                         "for trivial slice we shouldn't fuse");
+    }
+
+    for (int64_t s : *stepValues) {
+      if (s < 0) {
+        return rewriter.notifyMatchFailure(sliceOp,
+                                           "negative step isn't supported");
+      }
+    }
+
+    auto innerInputDim =
+        sliceOp.getInput().getType().getTypedShapeAttr().getValues().back();
+    auto innerOutputDim =
+        sliceOp.getResult().getType().getTypedShapeAttr().getValues().back();
+    if (innerInputDim != innerOutputDim) {
+      return rewriter.notifyMatchFailure(
+          sliceOp, "slicing the inner dimension isn't supported");
+    }
+
+    auto startsAttr = rewriter.rewriter.getI64ArrayAttr(*startValues);
+    auto stepsAttr = rewriter.rewriter.getI64ArrayAttr(*stepValues);
+
+    auto fusedOp = rewriter.create<MO::FusedConcatSliceOp>(
+        sliceOp->getLoc(), concatOp.getResult().getType(),
+        sliceOp.getResult().getType(), concatOp.getAxis(), concatOp.getInputs(),
+        startsAttr, stepsAttr, concatOp.getOutputParamDecls());
+
+    rewriter.replaceAllUsesWith(concatOp.getResult(),
+                                fusedOp.getConcatResult());
+    rewriter.replaceOp(sliceOp, fusedOp.getSliceResult());
+    return mlir::success();
+  }
+
+private:
+  // returns true if the slice can be implemented with a buffer view operation
+  // (update offset).
+  static bool isTrivialSlice(MO::SliceOp sliceOp, ArrayRef<int64_t> step) {
+    for (int64_t s : step) {
+      if (s != 1)
+        return false;
+    }
+
+    TensorType inputTy = sliceOp.getInput().getType();
+    TensorType resultTy = sliceOp.getResult().getType();
+    unsigned rank = inputTy.getRank();
+    bool nonOneDim = false;
+
+    for (unsigned i = 0; i < rank; ++i) {
+      bool dimMightBeSliced = inputTy.getTypedShapeAttr().getValues()[i] !=
+                              resultTy.getTypedShapeAttr().getValues()[i];
+
+      if (dimMightBeSliced && nonOneDim)
+        return false;
+
+      if (inputTy.getIntDim(i) != 1)
+        nonOneDim = true;
+    }
+
+    return true;
+  }
+};
+
 } // namespace
 
 struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
@@ -3373,7 +3469,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
                  ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                  LayerNormPattern, RMSNormFusedResidualAddPattern,
-                 ReduceRMSNormRoPEPattern>(ctx);
+                 ReduceRMSNormRoPEPattern, ConcatSlicePattern>(ctx);
 
     patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                  RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,

@@ -3255,6 +3255,33 @@ def MO_SplitOp : MO_TensorOp<"split", [
   let hasFolder = 1;
 }
 
+def MO_FusedConcatSliceOp : MO_TensorOp<"fused_concat_slice", [
+  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
+  MO_SingleDeviceWithHostOperands<["axis"]>,
+]> {
+  let summary = "Fused Concatenation + slice operation";
+  let description = [{
+    This operation peforms two operations at once:
+    %concat = mo.concat[axis](inputs)
+    %slice = mo.slice(%concat)
+    And returns both the concat and the slice result.
+  }];
+
+  let arguments = (ins
+    MO_RankedScalarIndexTensor:$axis,
+    Variadic<MO_Tensor>:$inputs,
+    ArrayAttr:$static_starts,
+    ArrayAttr:$static_steps,
+    MO_ParamDecls:$outputParamDecls);
+  let results = (outs MO_Tensor:$concatResult, MO_Tensor: $sliceResult);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
+    `[` $axis `:` qualified(type($axis)) `]`
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+  }];
+}
+
 def MO_TransposeOp : MO_TensorOp<"transpose", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   MO_ParamDeclaration,
