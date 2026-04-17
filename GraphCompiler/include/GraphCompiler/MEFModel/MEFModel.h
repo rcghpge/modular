@@ -156,6 +156,10 @@ public:
   const MEFInvokable *getExecuteFn() const { return executeFn; }
   const EncodedLocation &getLocation() const { return location; }
 
+  /// Extract dSummary strings from all mgp.generic.execute primitives in the
+  /// model's execute function.
+  std::vector<std::string> getKernelSummaries() const;
+
   /// Return information about the input tensors.
   size_t getNumInputs() const { return inputSpecs.size(); }
   ArrayRef<QuantTensorSpec> getInputSpecs() const { return inputSpecs; }

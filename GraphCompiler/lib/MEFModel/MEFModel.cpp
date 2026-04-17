@@ -271,6 +271,32 @@ Model::getFromDescriptor(const PrimitiveDescriptor &desc) {
                                  desc.copyLocation());
 }
 
+std::vector<std::string> Model::getKernelSummaries() const {
+  assert(executeFn && "getKernelSummaries requires a compiled model with an "
+                      "execute function");
+
+  constexpr size_t kSummaryAttrIndex = 3;
+
+  // TODO(GEX-3543): This only traverses the execute region. Kernels in
+  // subgraph regions and the init region are not included.
+  std::vector<std::string> summaries;
+  auto result = executeFn->recursePrimitives(
+      MEFInvokable::kPreOrder,
+      [&](StringRef primitiveName,
+          const PrimitiveDescriptor &desc) -> ErrorOrSuccess {
+        if (primitiveName == "mgp.generic.execute" &&
+            desc.getNumAttrs() > kSummaryAttrIndex) {
+          const uint8_t *raw = desc.getRawAttr(kSummaryAttrIndex);
+          size_t len = decodeMEFArrayLength(raw);
+          summaries.emplace_back(reinterpret_cast<const char *>(raw), len);
+        }
+        return success();
+      });
+  (void)result; // Visitor always succeeds.
+
+  return summaries;
+}
+
 //===----------------------------------------------------------------------===//
 // ExecutableModel
 //===----------------------------------------------------------------------===//
