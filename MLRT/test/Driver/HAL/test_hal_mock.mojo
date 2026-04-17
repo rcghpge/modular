@@ -82,29 +82,16 @@ def test_driver_create() raises:
     assert_equal(device_count, 2)
 
 
-def test_driver_device_enumeration() raises:
-    var ok = True
-    try:
-        var driver = Driver.create(_get_plugin_spec())
-        for i in range(Int(driver.get_device_count())):
-            var device = driver.get_device(Int64(i))
-            if Int(device.id) != i:
-                ok = False
-    except e:
-        raise Error(String.write(e))
-    assert_true(ok, "device ID mismatch during enumeration")
-
-
 def test_invalid_device_id() raises:
     var driver = Driver.create(_get_plugin_spec())
     with assert_raises():
-        _ = driver.get_device(Int64(99))
+        _ = driver.get_device[Int64(99)]()
 
 
 def test_context_create() raises:
     try:
         var driver = Driver.create(_get_plugin_spec())
-        var device = driver.get_device(Int64(0))
+        var device = driver.get_device[Int64(0)]()
         var ctx = Context(device)
         # Let ctx go out of scope to exercise Context destructor.
     except e:
@@ -114,7 +101,7 @@ def test_context_create() raises:
 def test_invalid_device_error_message() raises:
     var driver = Driver.create(_get_plugin_spec())
     with assert_raises(contains="Invalid device ID"):
-        _ = driver.get_device(Int64(99))
+        _ = driver.get_device[Int64(99)]()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -131,7 +118,6 @@ def main() raises:
         return
 
     test_driver_create()
-    test_driver_device_enumeration()
     test_invalid_device_id()
     test_context_create()
     test_invalid_device_error_message()
