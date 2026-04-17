@@ -3012,15 +3012,15 @@ LogicalResult AsTupleOp::emitMojo(EmitMojoState &state) {
         MojoValue(HardcodedMojoSymbols::func_to_index_list)(
             {rank}, {inputWithStaticSpec.get("strides_tuple")}));
   }
-  MojoValue inputSpecsInternalsComptime =
-      state.builder.comptime(MojoValue(HardcodedMojoSymbols::struct_Variadic)
-                                 .get("values")[staticSpecInternals]);
-  MojoValue inputSpecsShapesComptime =
-      state.builder.comptime(MojoValue(HardcodedMojoSymbols::struct_Variadic)
-                                 .get("values")[staticSpecShapes]);
-  MojoValue inputSpecsStridesComptime =
-      state.builder.comptime(MojoValue(HardcodedMojoSymbols::struct_Variadic)
-                                 .get("values")[staticSpecStrides]);
+  MojoValue inputSpecsInternalsComptime = state.builder.comptime(
+      MojoValue(HardcodedMojoSymbols::struct_ParameterList)
+          .get("of")[staticSpecInternals]());
+  MojoValue inputSpecsShapesComptime = state.builder.comptime(
+      MojoValue(HardcodedMojoSymbols::struct_ParameterList)
+          .get("of")[staticSpecShapes]());
+  MojoValue inputSpecsStridesComptime = state.builder.comptime(
+      MojoValue(HardcodedMojoSymbols::struct_ParameterList)
+          .get("of")[staticSpecStrides]());
   MojoValue inputSpecsComptime = state.builder.comptime(
       MojoValue(HardcodedMojoSymbols::struct_StaticTensorSpecList)[{
           inputSpecsInternalsComptime, inputSpecsShapesComptime,

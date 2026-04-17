@@ -46,6 +46,7 @@ constexpr StringLiteral struct_MoggAsyncPackHelper =
     "MOGGPrimitives.MoggAsyncPackHelper";
 constexpr StringLiteral struct_Scalar = "Scalar";
 constexpr StringLiteral struct_Variadic = "Variadic";
+constexpr StringLiteral struct_ParameterList = "ParameterList";
 constexpr StringLiteral struct_StaticTensorSpec = "directives.StaticTensorSpec";
 constexpr StringLiteral struct_StaticTensorSpecList =
     "tensor.StaticTensorSpecList";
