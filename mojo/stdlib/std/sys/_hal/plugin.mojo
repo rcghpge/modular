@@ -16,7 +16,17 @@ Loads a HAL plugin shared library and resolves all required function pointers
 from the M_driver_* C API.
 """
 
-from std.ffi import _DLHandle, OwnedDLHandle, RTLD, CStringSlice
+from std.ffi import (
+    _DLHandle,
+    OwnedDLHandle,
+    RTLD,
+    CStringSlice,
+    UnsafeUnion,
+    c_uchar,
+    c_char,
+    c_uint,
+    c_int,
+)
 
 from std.memory import (
     alloc,
@@ -25,14 +35,68 @@ from std.memory import (
     UnsafePointer,
     UnsafeMaybeUninit,
 )
-from std.memory._nonnull import NonNullUnsafePointer
 
 from .status import STATUS_SUCCESS, STATUS_UNKNOWN_ERROR, HALError
+
+# ===-----------------------------------------------------------------------===#
+# Shared plugin structs across FFI
+# ===-----------------------------------------------------------------------===#
+
+
+@fieldwise_init
+struct M_driver_slice(TrivialRegisterPassable):
+    var data: ImmutPointer[UInt8, ImmutAnyOrigin]
+    var size: UInt64
+
+
+@fieldwise_init
+struct M_driver_static_bundle(TrivialRegisterPassable):
+    var mapped_data: M_driver_slice
+    var file_type: ImmutPointer[Int8, ImmutAnyOrigin]
+    var file_type_len: UInt64
+
+
+@fieldwise_init
+struct M_driver_dim(TrivialRegisterPassable):
+    var x: UInt32
+    var y: UInt32
+    var z: UInt32
+
+
+@fieldwise_init
+struct M_driver_queue_execute_config_gpu(TrivialRegisterPassable):
+    var grid: M_driver_dim
+    var block: M_driver_dim
+    var shared_mem_bytes: UInt32
+    var attributes: OpaquePointer[MutExternalOrigin]
+    var num_attributes: UInt32
+
+
+@fieldwise_init
+struct M_driver_queue_execute_mode(TrivialRegisterPassable):
+    var value: Int32
+
+    comptime GPU = Self(value=0)
+
+
+@fieldwise_init
+struct M_driver_queue_execute_config:
+    var mode: M_driver_queue_execute_mode
+    var config: UnsafeUnion[M_driver_queue_execute_config_gpu]
+
+
+@fieldwise_init
+struct M_driver_bundle_compilation_options(TrivialRegisterPassable):
+    var debug_level: ImmutPointer[Int8, ImmutAnyOrigin]
+    var debug_level_len: UInt64
+    var optimization_level: Int32
 
 
 # ===-----------------------------------------------------------------------===#
 # Opaque plugin structs for handles.
 # ===-----------------------------------------------------------------------===#
+
+
 struct M_driver_driver:
     pass
 
@@ -61,7 +125,7 @@ struct M_driver_memory:
     pass
 
 
-struct M_driver_bundle:
+struct M_driver_runtime_bundle:
     pass
 
 
@@ -88,7 +152,7 @@ struct DriverVersion(TrivialRegisterPassable):
 # ===-----------------------------------------------------------------------===#
 
 comptime Handle[T: AnyType] = UnsafePointer[T, MutExternalOrigin]
-comptime OutParam[T: TrivialRegisterPassable] = NonNullUnsafePointer[
+comptime OutParam[T: TrivialRegisterPassable] = UnsafePointer[
     UnsafeMaybeUninit[T], MutAnyOrigin
 ]
 
@@ -99,7 +163,10 @@ comptime QueueHandle = Handle[M_driver_queue]
 comptime EventHandle = Handle[M_driver_event]
 comptime FunctionHandle = Handle[M_driver_function]
 comptime MemoryHandle = Handle[M_driver_memory]
-comptime BundleHandle = Handle[M_driver_bundle]
+comptime StaticBundleHandle = Handle[M_driver_static_bundle]
+comptime RuntimeBundleHandle = Handle[M_driver_runtime_bundle]
+comptime ExecuteConfigHandle = Handle[M_driver_queue_execute_config]
+comptime CompilationOptionsHandle = Handle[M_driver_bundle_compilation_options]
 
 comptime PluginResultCode = Int64
 
@@ -140,21 +207,22 @@ struct Plugin(Movable):
     var status_message: HALFunction[
         "M_driver_status_message",
         def(
+            driver: DriverHandle,
             status: Int64,
             message_buffer: MutPointer[Int8, MutAnyOrigin],
             message_buffer_size: Int64,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var create: HALFunction[
         "M_driver_create",
         def(
             version: ImmutPointer[DriverVersion, ImmutAnyOrigin],
             driver: OutParam[DriverHandle],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var destroy: HALFunction[
         "M_driver_destroy",
-        def(driver: DriverHandle) -> PluginResultCode,
+        def(driver: DriverHandle) thin -> PluginResultCode,
     ]
     var property: HALFunction[
         "M_driver_property",
@@ -162,11 +230,13 @@ struct Plugin(Movable):
             handle: DriverHandle,
             property_name: CStringSlice,
             value: OutParam[OpaquePointer[ImmutExternalOrigin]],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var device_count: HALFunction[
         "M_driver_device_count",
-        def(driver: DriverHandle, count: OutParam[Int64]) -> PluginResultCode,
+        def(
+            driver: DriverHandle, count: OutParam[Int64]
+        ) thin -> PluginResultCode,
     ]
     var device_get: HALFunction[
         "M_driver_device_get",
@@ -174,17 +244,17 @@ struct Plugin(Movable):
             driver: DriverHandle,
             device_id: Int64,
             device: OutParam[DeviceHandle],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var context_create: HALFunction[
         "M_driver_context_create",
         def(
             device: DeviceHandle, context: OutParam[ContextHandle]
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var context_destroy: HALFunction[
         "M_driver_context_destroy",
-        def(context: ContextHandle) -> PluginResultCode,
+        def(context: ContextHandle) thin -> PluginResultCode,
     ]
     var memory_alloc_pinned: HALFunction[
         "M_driver_memory_alloc_pinned",
@@ -192,14 +262,14 @@ struct Plugin(Movable):
             context: ContextHandle,
             size: UInt64,
             memory: OutParam[MemoryHandle],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var memory_free_pinned: HALFunction[
         "M_driver_memory_free_pinned",
         def(
             context: ContextHandle,
             memory: MemoryHandle,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var memory_alloc_sync: HALFunction[
         "M_driver_memory_alloc_sync",
@@ -207,14 +277,14 @@ struct Plugin(Movable):
             context: ContextHandle,
             size: UInt64,
             memory: OutParam[MemoryHandle],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var memory_free_sync: HALFunction[
         "M_driver_memory_free_sync",
         def(
             context: ContextHandle,
             memory: MemoryHandle,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var memory_alloc_async: HALFunction[
         "M_driver_memory_alloc_async",
@@ -222,24 +292,26 @@ struct Plugin(Movable):
             queue: QueueHandle,
             size: UInt64,
             memory: OutParam[MemoryHandle],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var memory_free_async: HALFunction[
         "M_driver_memory_free_async",
         def(
             queue: QueueHandle,
             memory: MemoryHandle,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var queue_create: HALFunction[
         "M_driver_queue_create",
         def(
             context: ContextHandle, queue: OutParam[QueueHandle]
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var queue_destroy: HALFunction[
         "M_driver_queue_destroy",
-        def(context: ContextHandle, queue: QueueHandle) -> PluginResultCode,
+        def(
+            context: ContextHandle, queue: QueueHandle
+        ) thin -> PluginResultCode,
     ]
     var queue_copy_to_device: HALFunction[
         "M_driver_queue_copy_to_device",
@@ -248,40 +320,44 @@ struct Plugin(Movable):
             dst: MemoryHandle,
             src: UnsafePointer[UInt8, MutAnyOrigin],
             size: UInt64,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var queue_copy_from_device: HALFunction[
         "M_driver_queue_copy_from_device",
         def(
             queue: QueueHandle,
             dst: UnsafePointer[UInt8, MutAnyOrigin],
-            src: UnsafePointer[UInt8, MutAnyOrigin],
+            src: MemoryHandle,
             size: UInt64,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var queue_set_memory: HALFunction[
         "M_driver_queue_set_memory",
         def(
             queue: QueueHandle,
-            dst: UnsafePointer[UInt8, MutAnyOrigin],
+            dst: MemoryHandle,
             size: UInt64,
             value: UInt64,
             value_size: UInt64,
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var event_create: HALFunction[
         "M_driver_event_create",
         def(
             context: ContextHandle, event: OutParam[EventHandle]
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var event_destroy: HALFunction[
         "M_driver_event_destroy",
-        def(context: ContextHandle, event: EventHandle) -> PluginResultCode,
+        def(
+            context: ContextHandle, event: EventHandle
+        ) thin -> PluginResultCode,
     ]
     var event_synchronize: HALFunction[
         "M_driver_event_synchronize",
-        def(context: ContextHandle, event: EventHandle) -> PluginResultCode,
+        def(
+            context: ContextHandle, event: EventHandle
+        ) thin -> PluginResultCode,
     ]
     var is_event_ready: HALFunction[
         "M_driver_is_event_ready",
@@ -289,23 +365,78 @@ struct Plugin(Movable):
             context: ContextHandle,
             event: EventHandle,
             is_ready: OutParam[Bool],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var function_load: HALFunction[
         "M_driver_function_load",
         def(
             context: ContextHandle,
-            bundle: BundleHandle,
+            bundle: RuntimeBundleHandle,
             function_name: CStringSlice,
             function_name_len: UInt64,
             function: OutParam[FunctionHandle],
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
     ]
     var function_unload: HALFunction[
         "M_driver_function_unload",
         def(
             context: ContextHandle, function: FunctionHandle
-        ) -> PluginResultCode,
+        ) thin -> PluginResultCode,
+    ]
+    var device_property: HALFunction[
+        "M_driver_device_property",
+        def(
+            device: DeviceHandle,
+            property_name: CStringSlice,
+            value: OpaquePointer[MutAnyOrigin],
+        ) thin -> PluginResultCode,
+    ]
+    var memory_property: HALFunction[
+        "M_driver_memory_property",
+        def(
+            memory: MemoryHandle,
+            property_name: CStringSlice,
+            value: OpaquePointer[MutAnyOrigin],
+        ) thin -> PluginResultCode,
+    ]
+    var queue_execute: HALFunction[
+        "M_driver_queue_execute",
+        def(
+            queue: QueueHandle,
+            function: FunctionHandle,
+            config: ExecuteConfigHandle,
+            args: UnsafePointer[OpaquePointer[MutExternalOrigin], MutAnyOrigin],
+            arg_sizes: UnsafePointer[UInt64, MutAnyOrigin],
+            num_args: UInt32,
+        ) thin -> PluginResultCode,
+    ]
+    var queue_record_event: HALFunction[
+        "M_driver_queue_record_event",
+        def(queue: QueueHandle, event: EventHandle) thin -> PluginResultCode,
+    ]
+    var queue_wait_for_event: HALFunction[
+        "M_driver_queue_wait_for_event",
+        def(queue: QueueHandle, event: EventHandle) thin -> PluginResultCode,
+    ]
+    var queue_synchronize: HALFunction[
+        "M_driver_queue_synchronize",
+        def(queue: QueueHandle) thin -> PluginResultCode,
+    ]
+    var bundle_load: HALFunction[
+        "M_driver_bundle_load",
+        def(
+            context: ContextHandle,
+            bundle: StaticBundleHandle,
+            opts: CompilationOptionsHandle,
+            runtime_bundle: OutParam[RuntimeBundleHandle],
+        ) thin -> PluginResultCode,
+    ]
+    var bundle_unload: HALFunction[
+        "M_driver_bundle_unload",
+        def(
+            context: ContextHandle,
+            bundle: RuntimeBundleHandle,
+        ) thin -> PluginResultCode,
     ]
 
     def __init__(
@@ -356,6 +487,20 @@ struct Plugin(Movable):
         self.is_event_ready = type_of(self.is_event_ready)(handle, so_path)
         self.function_load = type_of(self.function_load)(handle, so_path)
         self.function_unload = type_of(self.function_unload)(handle, so_path)
+        self.device_property = type_of(self.device_property)(handle, so_path)
+        self.memory_property = type_of(self.memory_property)(handle, so_path)
+        self.queue_execute = type_of(self.queue_execute)(handle, so_path)
+        self.queue_record_event = type_of(self.queue_record_event)(
+            handle, so_path
+        )
+        self.queue_wait_for_event = type_of(self.queue_wait_for_event)(
+            handle, so_path
+        )
+        self.queue_synchronize = type_of(self.queue_synchronize)(
+            handle, so_path
+        )
+        self.bundle_load = type_of(self.bundle_load)(handle, so_path)
+        self.bundle_unload = type_of(self.bundle_unload)(handle, so_path)
 
     @staticmethod
     def load(plugin_spec: String) raises HALError -> Self:
@@ -385,10 +530,13 @@ struct Plugin(Movable):
                 message=String(t"Failed to load plugin '{so_path}': {e}"),
             )
 
-    def get_status_message(self, status: Int64) raises HALError -> HALError:
+    def get_status_message(
+        self, driver: DriverHandle, status: Int64
+    ) raises HALError -> HALError:
         """Retrieve the human-readable message associated with a status code."""
         var buf = List[Int8](length=1024, fill=0)
         var ret = self.status_message.f(
+            driver,
             status,
             MutPointer(
                 to=UnsafePointer[Int8, MutAnyOrigin](buf.unsafe_ptr())[]

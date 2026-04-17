@@ -8,6 +8,38 @@ This version is still a work in progress.
 
 ## Language enhancements
 
+- Unified closures now accept default capturing conventions when there are
+  explicit captures already.
+
+  ```mojo
+  def captures_with_default_convention():
+    var a, b, c, d = ("a", "b", "c", "d")
+    def my_fn() unified {mut a, b, c^, read}:
+      # capture:
+      # `a` by mut reference
+      # `b` by immut reference
+      # `c` by moving
+      # `d` by immut reference (the default 'read' convention)
+      use(a, b, c, d)
+  ```
+
+- Added `abi("C")` as a function effect for declaring C calling convention on
+  function definitions and function pointer types. Functions marked with
+  `abi("C")` use the platform C ABI (System V x86-64 / ARM64 AAPCS) for
+  struct arguments and return values, enabling safe interop with C libraries:
+
+  ```mojo
+  # C-ABI function definition (safe as a callback into C code)
+  def add(a: Int32, b: Int32) abi("C") -> Int32:
+      return a + b
+
+  # C-ABI function pointer type (safe for use with DLHandle.get_function)
+  var f = handle.get_function[def(Float64) abi("C") -> Float64]("sqrt")
+  ```
+
+  `DLHandle.get_function[]` now enforces that the type parameter carries
+  `abi("C")`, preventing silent ABI mismatches when loading C symbols.
+
 - String literals now support `\uXXXX` and `\UXXXXXXXX` unicode escape
   sequences, matching Python. The resulting code point is stored as UTF-8.
   Invalid code points and surrogates are rejected at parse time.
@@ -28,7 +60,32 @@ This version is still a work in progress.
   forwarder(1, "hello", 3.14)  # prints each value on a separate line
   ```
 
+- Heterogenous variadic packs can now be specified with a `SomeType` helper
+  function. These two are equivalent:
+
+  ```mojo
+  def foo[*arg_types: Copyable](*args: *arg_types) -> Int: ...
+  def foo(*args: *SomeTypeList[Copyable]) -> Int: ...
+  ```
+
 ## Language changes
+
+- Variadic parameters lists are now passed instead of `ParameterList` and
+  `TypeList` instead of `!kgen.param_list`. This makes it much more ergonomic to
+  work with these types, e.g. simple logic just works:
+
+  ```mojo
+  def callee[*values: Int]():
+      var v = 0
+      for i in range(len(values)):
+          v += values[i]
+      for elt in values:
+          v += elt
+  ```
+
+  Similarly, the `ParameterList`/`TypeList` structs have other methods for
+  transforming the value list. As such, a variety of values from the `Variadic`
+  struct have started moving over to being members of these types.
 
 - All Mojo functions now has a unique "function literal type". In practice, it
   means that:
@@ -47,6 +104,8 @@ This version is still a work in progress.
   available to the module.
 
 ## Library changes
+
+- `assert_raises` now catches custom `Writable` error types, not just `Error`.
 
 - Variadics of types have been moved to the `TypeList` struct.
   One can write operations such as:
@@ -97,6 +156,10 @@ This version is still a work in progress.
   - `Span`: `Writable`, `Hashable`
   - `Tuple`, `Optional`, `Variant`, and `UnsafeMaybeUninit`: `RegisterPassable`
   - `Variant`: `Copyable`, `ImplicitlyCopyable`
+
+- `OwnedDLHandle.get_symbol()` now returns `Optional[UnsafePointer[...]]`
+  instead of aborting when a symbol is not found. This allows callers to handle
+  missing symbols gracefully.
 
 - GPU primitive id accessors (e.g. `thread_idx`) have migrated from `UInt` to
   `Int`.
@@ -158,7 +221,8 @@ This version is still a work in progress.
     `drop_while`, `product`, `cycle`, `count`, `repeat`) now conform to
     `IterableOwned`.
   - Added owned overloads of `enumerate()`, `zip()`, `map()`, `peekable()`,
-    `take_while()`, and `drop_while()` that consume the input iterable.
+    `take_while()`, `drop_while()`, `product()`, and `cycle()` that consume the
+    input iterable.
 
 - `CStringSlice` can no longer represent a null pointer. To represent
   nullability use `Optional[CStringSlice]` which is guaranteed to have the same
@@ -166,6 +230,58 @@ This version is still a work in progress.
 
 - `external_call`'s `return_type`'s requirements has been relaxed from
   `TrivialRegisterPassable` to `RegisterPassable`.
+
+- Negative indexing on all stdlib collections has been removed to enable cheap
+  CPU bounds checks by default:
+  - `List`
+  - `Span`
+  - `InlineArray`
+  - `String`
+  - `StringSlice`
+  - `LinkedList`
+  - `Deque`
+  - `IntTuple`
+
+  Using a negative `IntLiteral` for indexing will now trigger a compile-time
+  error, for example:
+
+  ```text
+  /tmp/main.mojo:3:12: note: call expansion failed with parameter value(s): (..., ...)
+          print(x[-1])
+              ^
+  constraint failed: negative indexing is not supported, use e.g. `x[len(x) - 1]` instead
+  ```
+
+  Update any `x[-1]` to `x[len(x) - 1]`, following the compiler errors to
+  your call sites as above.
+
+  This does not affect any MAX ops that support negative indexing.
+
+- Bounds checking is now on by default for all collections on CPU, and will show
+  you the call site in your code where you triggered the out of bounds access:
+
+  ```mojo
+  def main():
+      var x = [1, 2, 3]
+      print(x[3])
+  ```
+
+  ```text
+  At: /tmp/main.mojo:3:12: Assert Error: index 3 is out of bounds, valid range is 0 to 2
+  ```
+
+  Bounds checking is still off by default for GPU to avoid performance
+  penalties. To enable it for tests:
+
+  ```bash
+  mojo build -D ASSERT=all main.mojo
+  ```
+
+  To turn off all asserts, including CPU bounds checking:
+
+  ```bash
+  mojo build -D ASSERT=none main.mojo
+  ```
 
 - `alloc[T](count, alignment)` will now `abort` if the underlying allocation
   failed.
@@ -207,6 +323,21 @@ This version is still a work in progress.
 - `String.__len__()` has been deprecated. Prefer to use `String.byte_length()`
   or `String.count_codepoints()`.
 
+- Added `map()` and `and_then()` methods to `Optional`. `map()` transforms
+  the contained value by applying a function, returning `Optional[To]`.
+  `and_then()` chains operations that themselves return an `Optional`, enabling
+  flat-mapping over fallible computations.
+
+  ```mojo
+  var o = Optional[Int](42)
+
+  def closure(n: Int) unified {} -> String:
+    return String(n + 1)
+
+  var mapped: Optional[String] = o.map[To=String](closure)
+  print(mapped) # Optional("43")
+  ```
+
 ## Tooling changes
 
 - The Mojo debugger now displays scalar types (e.g. `UInt8`, `Float32`) as
@@ -233,6 +364,10 @@ This version is still a work in progress.
   instead.
 
 ## 🛠️ Fixed
+
+- Fixed `RTLD.LOCAL` having the wrong value on Linux. It was set to `4`
+  (`RTLD_NOLOAD`) instead of `0`, causing `dlopen` with `RTLD.NOW | RTLD.LOCAL`
+  to fail. ([Issue #6410](https://github.com/modular/modular/issues/6410))
 
 - Fixed `mojo format` crashing after upgrading Mojo versions due to a stale
   grammar cache. ([Issue #6144](https://github.com/modular/modular/issues/6144))

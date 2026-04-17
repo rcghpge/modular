@@ -172,7 +172,7 @@ def _memcpy_impl(
         n: The number of bytes to copy.
     """
 
-    def copy[width: Int](offset: Int) unified {mut}:
+    def copy[width: Int](offset: Int) unified {read}:
         dest_data.store(offset, src_data.load[width=width](offset))
 
     comptime if is_gpu():
@@ -236,8 +236,8 @@ def memcpy[
     T: AnyType
 ](
     *,
-    dest: UnsafePointer[mut=True, T, _],
-    src: UnsafePointer[mut=False, T, _],
+    dest: OptionalUnsafePointer[mut=True, T, _],
+    src: OptionalUnsafePointer[T, _],
     count: Int,
 ):
     """Copy `count * size_of[T]()` bytes from src to dest.
@@ -252,17 +252,27 @@ def memcpy[
         dest: The destination pointer.
         src: The source pointer.
         count: The number of elements to copy.
+
+    Safety:
+        `dest` and `src` must be valid for at least `count * size_of[T]()`
+        bytes. `dest` or `src` can only be `None` when `count == 0`.
     """
-    var n = count * size_of[dest.type]()
+    if count == 0:
+        return
+
+    var n = count * size_of[dest.T.type]()
+
+    var dest_bytes = dest.unsafe_value().bitcast[Byte]()
+    var src_bytes = src.unsafe_value().bitcast[Byte]()
 
     if __is_run_in_comptime_interpreter:
         # A fast version for the interpreter to evaluate
         # this function during compile time.
         llvm_intrinsic["llvm.memcpy", NoneType](
-            dest.bitcast[Byte](), src.bitcast[Byte](), n
+            dest_bytes, src_bytes, n._int_mlir_index()
         )
     else:
-        _memcpy_impl(dest.bitcast[Byte](), src.bitcast[Byte](), n)
+        _memcpy_impl(dest_bytes, src_bytes, n)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -314,7 +324,7 @@ def memmove[
 def _memset_impl(
     ptr: UnsafePointer[mut=True, Byte, ...], value: Byte, count: Int
 ):
-    def fill[width: Int](offset: Int) unified {mut}:
+    def fill[width: Int](offset: Int) unified {read}:
         ptr.store(offset, SIMD[DType.uint8, width](value))
 
     comptime simd_width = simd_width_of[Byte]()
@@ -366,7 +376,7 @@ def memset_zero[
     comptime if count > 128:
         return memset_zero(ptr, count)
 
-    def fill[width: Int](offset: Int) unified {mut}:
+    def fill[width: Int](offset: Int) unified {read}:
         ptr.store(offset, SIMD[dtype, width](0))
 
     vectorize[simd_width_of[dtype]()](count, fill)
@@ -411,7 +421,7 @@ def _malloc[
         return ptr.bitcast[type]()
     else:
         return __mlir_op.`pop.aligned_alloc`[_type=type_of(res)._mlir_type](
-            alignment._mlir_value, size._mlir_value
+            alignment._int_mlir_index(), size._int_mlir_index()
         )
 
 

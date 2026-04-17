@@ -504,10 +504,11 @@ def get_seq_info[
         flip_prompt_idx=flip_prompt_idx,
         pair_cta=pair_cta,
     ]()
+    # SAFETY: Stored in MHATileState.sidx_ptr but never dereferenced.
     var state: MHATileState = scheduler.initial_state(
-        UnsafePointer[UInt32, MutAnyOrigin, address_space=AddressSpace.SHARED](
-            _unsafe_null=()
-        ),
+        UnsafePointer[
+            UInt32, MutAnyOrigin, address_space=AddressSpace.SHARED
+        ].unsafe_dangling(),
         tile_summary,
     )
     return scheduler.unsafe_seq_info(tile_summary, state)
@@ -1384,12 +1385,12 @@ def produce[
 
                 else:
                     comptime for d_idx in range(depth // 64):
-                        comptime d: UInt = UInt(d_idx * 64)
+                        comptime d: Int = d_idx * 64
                         q_tma_op.async_copy_4d(
                             q_producer(q_idx),
                             pq_mbar,
                             (
-                                Int(d),
+                                d,
                                 0,
                                 Int(position.head_idx),
                                 Int(position.q_row),

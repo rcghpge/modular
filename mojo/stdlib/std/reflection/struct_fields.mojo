@@ -218,7 +218,7 @@ def struct_field_type_by_name[
 #       comptime count = struct_field_count[T]()
 #
 # The implementation approach varies by API:
-# - struct_field_count: Uses #kgen.variadic.size<#kgen.struct_field_types<T>>
+# - struct_field_count: Uses #kgen.param_list.size<#kgen.struct_field_types<T>>
 # - struct_field_types/names: Use magic functions for type validation
 # - struct_field_index/type_by_name: Use KGEN attributes directly (require
 #   compile-time string literal for field name, only available with concrete
@@ -259,7 +259,7 @@ def struct_field_count[T: AnyType]() -> Int:
     # This avoids needing a dedicated struct_field_count attribute.
     return Int(
         mlir_value=__mlir_attr[
-            `#kgen.variadic.size<:!kgen.param_list<!kgen.type> `,
+            `#kgen.param_list.size<:!kgen.param_list<!kgen.type> `,
             `#kgen.struct_field_types<`,
             T,
             `>> : index`,
@@ -305,7 +305,7 @@ def struct_field_types[
             print_field_types[MyStruct]()  # Works with any struct!
         ```
     """
-    return __struct_field_types(T)
+    return __struct_field_types(T).values
 
 
 def _struct_field_names_raw[
@@ -316,7 +316,7 @@ def _struct_field_names_raw[
     This is an internal helper. Use `struct_field_names` for a more
     ergonomic API that returns `InlineArray[StaticString, N]`.
     """
-    return __struct_field_names(T)
+    return __struct_field_names(T).values
 
 
 def struct_field_names[
@@ -433,7 +433,7 @@ def _struct_field_offset_by_index[
             `#kgen.struct_field_offset_by_index<`,
             T,
             `, `,
-            idx,
+            idx._int_mlir_index(),
             `, `,
             target,
             `> : index`,

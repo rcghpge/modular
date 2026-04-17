@@ -261,6 +261,57 @@ def _handle_transfer(
     return [input_buffer.to(target_device), None]
 
 
+# Buffer operations
+
+
+@register_op_handler(mo.BufferCreateOp)
+def _handle_buffer_create(
+    op: mo.BufferCreateOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer]:
+    """Handle mo.buffer.create by allocating a zero-filled buffer.
+
+    ``BufferCreateOp`` has no operands and a single ``!mo.buffer<shape, dtype,
+    device>`` result.  Shape, dtype, and target device are extracted from the
+    result type.  The interpreter allocates a zeroed buffer so that downstream
+    ops (e.g. ``buffer.transfer``) have valid storage to write into.
+    """
+    result_type = graph.BufferType.from_mlir(
+        list(op.results)[0].type  # type: ignore[arg-type]
+    )
+    shape = result_type.shape
+    if not graph.Shape.is_static(shape):
+        raise NotImplementedError(
+            "Dynamic shapes not supported for buffer.create in interpreter"
+        )
+    target_device = result_type.device.to_device()
+    buf = Buffer(
+        dtype=result_type.dtype,
+        shape=graph.Shape(shape).static_dims,
+        device=target_device,
+    )
+    return [buf]
+
+
+@register_op_handler(mo.BufferTransferOp)
+def _handle_buffer_transfer(
+    op: mo.BufferTransferOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer | None]:
+    """Handle mo.buffer.transfer by copying src contents into dst.
+
+    Operand order: ``(src, dst, inChain)``.  The operation copies data from
+    ``src`` into ``dst`` (both must have matching shape and dtype).  The sole
+    result is an ``outChain`` which the interpreter represents as ``None``.
+    """
+    src = inputs[0]
+    dst = inputs[1]
+    assert isinstance(src, Buffer)
+    assert isinstance(dst, Buffer)
+    dst.inplace_copy_from(src)
+    return [None]
+
+
 # Debug operations
 
 
@@ -1053,6 +1104,39 @@ def _handle_shape_to_tensor(
     return [inputs[0]]
 
 
+@register_op_handler(mo.ShapeFromTensorOp)
+def _handle_shape_from_tensor(
+    op: mo.ShapeFromTensorOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer]:
+    """Handle mo.shape.from_tensor - converts a tensor to a shape value.
+
+    The input is a rank-1 integer tensor containing shape dimension values.
+    The output is a !mosh.ape shape value.  In the interpreter both are
+    represented as 1-D int64 Buffers, so this is a pass-through (symmetric
+    with ``_handle_shape_to_tensor``).
+    """
+    assert isinstance(inputs[0], Buffer)
+    return [inputs[0]]
+
+
+@register_op_handler(mo.IndexToTensorOp)
+def _handle_index_to_tensor(
+    op: mo.IndexToTensorOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer]:
+    """Handle mo.index.to_tensor - wraps an SI64 scalar into a rank-0 tensor.
+
+    The input is a scalar int64 value (stored by the interpreter as a
+    1-element Buffer from ``ParamToValueOp`` or similar).  The result is
+    a rank-0 ``!mo.tensor<[], si64>`` scalar tensor.
+    """
+    assert isinstance(inputs[0], Buffer)
+    val = int(inputs[0].to_numpy().item())
+    result_np = np.array(val, dtype=np.int64)
+    return [Buffer.from_numpy(result_np)]
+
+
 @register_op_handler(mosh.ParamToValueOp)
 def _handle_param_to_value(
     op: mosh.ParamToValueOp,
@@ -1217,19 +1301,19 @@ def _argmax_min_handler(
     return [output]
 
 
-@register_op_handler(mo.ArgMaxOp)
+@register_op_handler(mo.ReduceArgMaxOp)
 def _handle_argmax(
-    op: mo.ArgMaxOp, inputs: Sequence[Buffer | None]
+    op: mo.ReduceArgMaxOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.arg_max by dispatching to Mojo argmax kernel."""
+    """Handle mo.reduce.arg_max by dispatching to Mojo argmax kernel."""
     return _argmax_min_handler(op, inputs, ops.argmax_ops.ArgMax)
 
 
-@register_op_handler(mo.ArgMinOp)
+@register_op_handler(mo.ReduceArgMinOp)
 def _handle_argmin(
-    op: mo.ArgMinOp, inputs: Sequence[Buffer | None]
+    op: mo.ReduceArgMinOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.arg_min by dispatching to Mojo argmin kernel."""
+    """Handle mo.reduce.arg_min by dispatching to Mojo argmin kernel."""
     return _argmax_min_handler(op, inputs, ops.argmax_ops.ArgMin)
 
 
@@ -1327,11 +1411,11 @@ def _handle_cumsum(
 # Layer norm operations
 
 
-@register_op_handler(mo.LayerNormOp)
+@register_op_handler(mo.ReduceLayerNormOp)
 def _handle_layer_norm(
-    op: mo.LayerNormOp, inputs: Sequence[Buffer | None]
+    op: mo.ReduceLayerNormOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.layer_norm by dispatching to Mojo layer_norm kernel.
+    """Handle mo.reduce.layer_norm by dispatching to Mojo layer_norm kernel.
 
     Args:
         op: The layer_norm operation.
@@ -1707,6 +1791,34 @@ def _handle_gather(
     return [output]
 
 
+@register_op_handler(mo.GatherSumOp)
+def _handle_gather_sum(
+    op: mo.GatherSumOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.gather_sum via NumPy gather-then-sum.
+
+    This is a fused composite op used by DLRM-style multi-hot embeddings:
+    gather along axis 0, then reduce-add along axis 1.
+
+    ``output[i, k] = sum_j(input[indices[i, j], k])``
+
+    Operands: input (2-D+ tensor), indices (index tensor).
+    """
+    target_device = _get_target_device(op)
+    _check_cpu_only(op, target_device)
+
+    assert isinstance(inputs[0], Buffer)
+    assert isinstance(inputs[1], Buffer)
+
+    input_np = inputs[0].to_numpy()
+    indices_np = inputs[1].to_numpy().astype(np.intp)
+
+    gathered = np.take(input_np, indices_np, axis=0)
+    result = gathered.sum(axis=1, keepdims=True)
+
+    return [Buffer.from_numpy(np.ascontiguousarray(result))]
+
+
 @register_op_handler(mo.GatherNdOp)
 def _handle_gather_nd(
     op: mo.GatherNdOp, inputs: Sequence[Buffer | None]
@@ -1926,6 +2038,100 @@ def _handle_scatter_nd_add(
     return [output]
 
 
+def _scatter_nd_reduction_common(
+    op: mo.ScatterNdMaxOp | mo.ScatterNdMinOp | mo.ScatterNdMulOp,
+    inputs: Sequence[Buffer | None],
+    mojo_fn_name: str,
+) -> Sequence[Buffer]:
+    """Shared logic for scatter_nd_max/min/mul handlers.
+
+    Copies input to output, then applies the named Mojo scatter-nd kernel.
+
+    Args:
+        op: The scatter_nd reduction operation.
+        inputs: Input buffers - input, updates, indices, outputParamDecls.
+        mojo_fn_name: Name of the Mojo dispatcher function on
+            ``gather_scatter_ops`` (e.g. ``"ScatterNdMax"``).
+
+    Returns:
+        List containing the scatter_nd result buffer.
+    """
+    target_device = _get_target_device(op)
+
+    assert isinstance(inputs[0], Buffer)  # input
+    assert isinstance(inputs[1], Buffer)  # updates
+    assert isinstance(inputs[2], Buffer)  # indices
+
+    input_buffer = inputs[0]
+    updates_buffer = inputs[1]
+    indices_buffer = inputs[2]
+
+    in_shape = list(input_buffer.shape)
+    idx_shape = list(indices_buffer.shape)
+    index_depth = idx_shape[-1]
+
+    batch_size = 1
+    indices_outer_size = prod(idx_shape[:-1]) if len(idx_shape) > 1 else 1
+    suffix_size = (
+        prod(in_shape[index_depth:]) if index_depth < len(in_shape) else 1
+    )
+    input_data_stride = prod(in_shape) if in_shape else 1
+    input_inner_shape = in_shape
+
+    output = Buffer(
+        shape=in_shape, dtype=input_buffer.dtype, device=target_device
+    )
+    total_elements = prod(in_shape) if in_shape else 1
+    ctx_ptr = target_device._device_context_ptr()
+
+    ops.data_movement_ops.Memcpy(
+        output, input_buffer, 0, 0, total_elements, ctx_ptr
+    )
+
+    if indices_outer_size > 0:
+        mojo_fn = getattr(ops.gather_scatter_ops, mojo_fn_name)
+        mojo_fn(
+            output,
+            updates_buffer,
+            indices_buffer,
+            (
+                batch_size,
+                indices_outer_size,
+                index_depth,
+                suffix_size,
+                input_data_stride,
+                input_inner_shape,
+            ),
+            ctx_ptr,
+        )
+
+    return [output]
+
+
+@register_op_handler(mo.ScatterNdMaxOp)
+def _handle_scatter_nd_max(
+    op: mo.ScatterNdMaxOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.scatter_nd.max via the shared scatter-nd reduction helper."""
+    return _scatter_nd_reduction_common(op, inputs, "ScatterNdMax")
+
+
+@register_op_handler(mo.ScatterNdMinOp)
+def _handle_scatter_nd_min(
+    op: mo.ScatterNdMinOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.scatter_nd.min via the shared scatter-nd reduction helper."""
+    return _scatter_nd_reduction_common(op, inputs, "ScatterNdMin")
+
+
+@register_op_handler(mo.ScatterNdMulOp)
+def _handle_scatter_nd_mul(
+    op: mo.ScatterNdMulOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.scatter_nd.mul via the shared scatter-nd reduction helper."""
+    return _scatter_nd_reduction_common(op, inputs, "ScatterNdMul")
+
+
 # Split operations
 
 
@@ -2116,6 +2322,98 @@ def _handle_scatter_add(
     )
 
     return [output]
+
+
+def _scatter_reduction_common(
+    op: mo.ScatterMaxOp | mo.ScatterMinOp | mo.ScatterMulOp,
+    inputs: Sequence[Buffer | None],
+    mojo_fn_name: str,
+) -> Sequence[Buffer]:
+    """Shared logic for scatter_max, scatter_min, scatter_mul handlers.
+
+    All three reductions share the same operand layout (input, updates,
+    indices, axis) and the same pre-/post-processing: copy input to output,
+    then apply the Mojo reduction kernel.
+
+    Args:
+        op: The scatter reduction MO operation.
+        inputs: Input buffers - input, updates, indices, axis.
+        mojo_fn_name: Name of the Mojo kernel function to call
+            (``"ScatterMax"``, ``"ScatterMin"``, or ``"ScatterMul"``).
+
+    Returns:
+        List containing the scatter-reduced tensor buffer.
+    """
+    target_device = _get_target_device(op)
+
+    assert isinstance(inputs[0], Buffer)
+    assert isinstance(inputs[1], Buffer)
+    assert isinstance(inputs[2], Buffer)
+    assert isinstance(inputs[3], Buffer)
+
+    input_buffer = inputs[0]
+    updates_buffer = inputs[1]
+    indices_buffer = inputs[2]
+
+    axis = int(inputs[3].to_numpy().item())
+    in_shape = list(input_buffer.shape)
+    ndim = len(in_shape)
+    if axis < 0:
+        axis += ndim
+
+    inner_size = prod(in_shape[axis + 1 :]) if axis < ndim - 1 else 1
+    outer_size = prod(in_shape[:axis]) if axis > 0 else 1
+    axis_size = in_shape[axis]
+    upd_shape = list(updates_buffer.shape)
+    num_updates_axis = upd_shape[axis]
+
+    output = Buffer(
+        shape=in_shape,
+        dtype=input_buffer.dtype,
+        device=target_device,
+    )
+
+    total_elements = prod(in_shape)
+    ctx_ptr = target_device._device_context_ptr()
+
+    ops.data_movement_ops.Memcpy(
+        output, input_buffer, 0, 0, total_elements, ctx_ptr
+    )
+
+    mojo_fn = getattr(ops.gather_scatter_ops, mojo_fn_name)
+    mojo_fn(
+        output,
+        updates_buffer,
+        indices_buffer,
+        (outer_size, axis_size, inner_size, num_updates_axis),
+        ctx_ptr,
+    )
+
+    return [output]
+
+
+@register_op_handler(mo.ScatterMaxOp)
+def _handle_scatter_max(
+    op: mo.ScatterMaxOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.scatter.max by copying input then applying max reduction."""
+    return _scatter_reduction_common(op, inputs, "ScatterMax")
+
+
+@register_op_handler(mo.ScatterMinOp)
+def _handle_scatter_min(
+    op: mo.ScatterMinOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.scatter.min by copying input then applying min reduction."""
+    return _scatter_reduction_common(op, inputs, "ScatterMin")
+
+
+@register_op_handler(mo.ScatterMulOp)
+def _handle_scatter_mul(
+    op: mo.ScatterMulOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.scatter.mul by copying input then applying mul reduction."""
+    return _scatter_reduction_common(op, inputs, "ScatterMul")
 
 
 def _conv_out_dim(
@@ -3097,6 +3395,109 @@ def _handle_resize_linear(
     return [output]
 
 
+@register_op_handler(mo.ResizeNearestOp)
+def _handle_resize_nearest(
+    op: mo.ResizeNearestOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.resize.nearest via Mojo nearest-neighbor resize (CPU-only).
+
+    Operands (MO_HostOnly):
+      inputs[0]: input data tensor (host)
+      inputs[1]: size -- 1-D int64 tensor whose values give the full output
+                 shape (one value per input rank dimension).
+
+    Attributes on ``op``:
+      ``coordinate_transform_mode`` -- int 0-3 (half_pixel / align_corners /
+          asymmetric / half_pixel_1D).
+      ``round_mode`` -- int 0-3 (HalfDown / HalfUp / Floor / Ceil).
+
+    Args:
+        op: The resize-nearest operation.
+        inputs: Two buffers -- input data and size.
+
+    Returns:
+        List containing a single output buffer with shape given by ``size``
+        and the same dtype as ``input``.
+    """
+    target_device = _get_target_device(op)
+
+    assert isinstance(inputs[0], Buffer)  # input
+    assert isinstance(inputs[1], Buffer)  # size (int64 output-shape vector)
+
+    input_buffer = inputs[0]
+    size_buffer = inputs[1]
+
+    coord_mode = int(op.coordinate_transform_mode.value)
+    round_mode = int(op.round_mode)
+
+    in_shape = list(input_buffer.shape)
+    rank = len(in_shape)
+    out_shape = size_buffer.to_numpy().astype(int).flatten().tolist()
+
+    assert len(out_shape) == rank, (
+        f"resize_nearest: size rank {len(out_shape)} != input rank {rank}"
+    )
+
+    output = Buffer(shape=out_shape, dtype=input_buffer.dtype, device=CPU())
+    ops.resize_ops.ResizeNearest(
+        output,
+        input_buffer,
+        (coord_mode, round_mode, rank, in_shape, out_shape),
+        target_device._device_context_ptr(),
+    )
+    return [output]
+
+
+@register_op_handler(mo.ResizeBicubicOp)
+def _handle_resize_bicubic(
+    op: mo.ResizeBicubicOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.resize.bicubic via Mojo CPU bicubic kernel.
+
+    Operands:
+      inputs[0]: input data tensor (rank-4 NCHW).
+      inputs[1]: size -- 1-D int64 tensor whose values give the full output
+                 shape (4 values: N, C, H, W).
+
+    The kernel uses hardcoded half_pixel coordinate mapping and
+    a=-0.75 Catmull-Rom cubic filter.  No configurable attributes.
+
+    Args:
+        op: The resize-bicubic operation.
+        inputs: Two buffers -- input data and size.
+
+    Returns:
+        List containing a single output buffer with shape given by ``size``
+        and the same dtype as ``input``.
+    """
+    assert isinstance(inputs[0], Buffer)  # input
+    assert isinstance(inputs[1], Buffer)  # size (int64 output-shape vector)
+
+    input_buffer = inputs[0]
+    size_buffer = inputs[1]
+
+    in_shape = list(input_buffer.shape)
+    rank = len(in_shape)
+    out_shape = size_buffer.to_numpy().astype(int).flatten().tolist()
+
+    assert rank == 4, (
+        f"resize_bicubic: input must be rank 4 (NCHW), got rank {rank}"
+    )
+    assert len(out_shape) == 4, (
+        f"resize_bicubic: size must have 4 elements, got {len(out_shape)}"
+    )
+
+    target_device = _get_target_device(op)
+    output = Buffer(shape=out_shape, dtype=input_buffer.dtype, device=CPU())
+    ops.resize_ops.ResizeBicubic(
+        output,
+        input_buffer,
+        (in_shape, out_shape),
+        target_device._device_context_ptr(),
+    )
+    return [output]
+
+
 # Distributed operations
 
 
@@ -3240,6 +3641,115 @@ def _handle_distributed_scatter(
         result_type: mo.TensorType = result.type  # type: ignore[assignment]
         device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
         output_buffers.append(bufs[idx].to(device))
+
+    # Trailing None for the output chain.
+    output_buffers.append(None)
+    return output_buffers
+
+
+@register_op_handler(mo.DistributedBroadcastOp)
+def _handle_distributed_broadcast(
+    op: mo.DistributedBroadcastOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer | None]:
+    """Handle mo.distributed.broadcast by replicating input to all devices.
+
+    Operands (flat): 1 input tensor, N signal buffers, 1 input chain.
+    Results: N output tensors (one per device, all copies of the input),
+    1 output chain.
+
+    The interpreter executes sequentially on the host, so signal buffers
+    and chains are unused.
+
+    Args:
+        op: The broadcast operation.
+        inputs: Flat operand buffers from the interpreter dispatcher.
+
+    Returns:
+        N output buffers followed by None for the chain.
+    """
+    # op.root identifies the source device, but in the flat operand layout
+    # inputs[0] is always the root tensor; the interpreter simply copies it
+    # to every output device regardless of root index.
+    input_buf = inputs[0]
+    assert isinstance(input_buf, Buffer), "broadcast input is not a Buffer"
+
+    num_signal_bufs = len(op.signal_buffers)
+    results = list(op.results)
+    num_outputs = len(results) - 1  # exclude trailing chain
+    assert num_outputs == num_signal_bufs, (
+        f"broadcast expects one output per signal buffer, "
+        f"got {num_outputs} outputs and {num_signal_bufs} signal buffers"
+    )
+
+    output_buffers: list[Buffer | None] = []
+    for result in results[:-1]:
+        result_type: mo.TensorType = result.type  # type: ignore[assignment]
+        device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
+        output_buffers.append(input_buf.to(device))
+
+    # Trailing None for the output chain.
+    output_buffers.append(None)
+    return output_buffers
+
+
+@register_op_handler(mo.DistributedReducescatterSumOp)
+def _handle_distributed_reducescatter_sum(
+    op: mo.DistributedReducescatterSumOp,
+    inputs: Sequence[Buffer | None],
+) -> Sequence[Buffer | None]:
+    """Handle mo.distributed.reducescatter.sum by summing then splitting.
+
+    Operands (flat): N input tensors, N signal buffers, 1 input chain.
+    Results: N output tensors (one per device, each a chunk of the sum),
+    1 output chain.
+
+    The interpreter executes sequentially on the host, so signal buffers
+    and chains are unused.  Each input tensor is transferred to the CPU,
+    summed via NumPy, and the result is split along the scatter axis so
+    that each device receives its disjoint chunk.
+
+    Args:
+        op: The reduce-scatter sum operation.
+        inputs: Flat operand buffers from the interpreter dispatcher.
+
+    Returns:
+        N output buffers followed by None for the chain.
+    """
+    num_inputs = len(op.inputs)
+    bufs: list[Buffer] = []
+    for i in range(num_inputs):
+        b = inputs[i]
+        assert isinstance(b, Buffer), f"reducescatter input {i} is not a Buffer"
+        bufs.append(b)
+
+    axis = op.axis
+
+    # Sum all inputs on the CPU via NumPy.
+    total = bufs[0].to(CPU()).to_numpy().copy()
+    for buf in bufs[1:]:
+        total += buf.to(CPU()).to_numpy()
+
+    # Split the summed result along the scatter axis using ragged binning
+    # (same formula as ops/reducescatter.py).
+    dim = total.shape[axis]
+    chunk_sizes = [
+        (dim + (num_inputs - i - 1)) // num_inputs for i in range(num_inputs)
+    ]
+    chunks = np.split(total, np.cumsum(chunk_sizes[:-1]), axis=axis)
+
+    results = list(op.results)
+    num_outputs = len(results) - 1  # exclude trailing chain
+    assert num_outputs == num_inputs, (
+        f"reducescatter expects N inputs and N outputs, "
+        f"got {num_inputs} inputs and {num_outputs} outputs"
+    )
+
+    output_buffers: list[Buffer | None] = []
+    for idx, result in enumerate(results[:-1]):
+        result_type: mo.TensorType = result.type  # type: ignore[assignment]
+        device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
+        output_buffers.append(Buffer.from_numpy(chunks[idx]).to(device))
 
     # Trailing None for the output chain.
     output_buffers.append(None)

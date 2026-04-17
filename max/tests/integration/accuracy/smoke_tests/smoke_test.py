@@ -85,6 +85,10 @@ class ModelAlias(TypedDict):
 # configurations while keeping results separate in dashboards.
 # max_serve_args are only applied to MAX frameworks, not vllm/sglang.
 MODEL_ALIASES: dict[str, ModelAlias] = {
+    "google/gemma-4-26b-a4b-it__no_dgc": {
+        "hf_model_path": "google/gemma-4-26b-a4b-it",
+        "max_serve_args": "--max-num-steps 1 --no-device-graph-capture --force",
+    },
     "meta-llama/llama-3.1-8b-instruct__modulev3": {
         "hf_model_path": "meta-llama/llama-3.1-8b-instruct",
         "max_serve_args": "--prefer-module-v3",
@@ -105,6 +109,10 @@ MODEL_ALIASES: dict[str, ModelAlias] = {
         "hf_model_path": "microsoft/phi-4",
         "max_serve_args": "--prefer-module-v3",
     },
+    "google/gemma-3-4b-it__modulev3": {
+        "hf_model_path": "google/gemma-3-4b-it",
+        "max_serve_args": "--prefer-module-v3",
+    },
     "nvidia/deepseek-v3.1-nvfp4__fp8kv": {
         "hf_model_path": "nvidia/deepseek-v3.1-nvfp4",
         "max_serve_args": "--kv-cache-format float8_e4m3fn",
@@ -122,23 +130,33 @@ MODEL_ALIASES: dict[str, ModelAlias] = {
         "max_serve_args": "--enable-prefix-caching --enable-chunked-prefill --max-num-steps 1 --trust-remote-code",
     },
     "meta-llama/llama-3.1-8b-instruct__eagle": {
-        "hf_model_path": "meta-llama/Llama-3.1-8B-Instruct",
+        "hf_model_path": "meta-llama/llama-3.1-8b-instruct",
         "max_serve_args": (
-            "--draft-model-path atomicapple0/EAGLE-LLaMA3.1-Instruct-8B "
+            "--draft-model-path atomicapple0/eagle-llama3.1-instruct-8b "
             "--speculative-method eagle"
         ),
     },
     # Llama Eagle + CUDA Graph only works when num_speculative_tokens == 1
     # TODO: Remove this config once we support CUDA Graph for >1 draft tokens
     "meta-llama/llama-3.1-8b-instruct__eagle_1_draft_token": {
-        "hf_model_path": "meta-llama/Llama-3.1-8B-Instruct",
+        "hf_model_path": "meta-llama/llama-3.1-8b-instruct",
         "max_serve_args": (
-            "--draft-model-path atomicapple0/EAGLE-LLaMA3.1-Instruct-8B "
+            "--draft-model-path atomicapple0/eagle-llama3.1-instruct-8b "
             "--speculative-method eagle "
             "--num-speculative-tokens 1"
         ),
     },
     "nvidia/deepseek-v3.1-nvfp4__mtp": {
+        "hf_model_path": "nvidia/deepseek-v3.1-nvfp4",
+        "max_serve_args": (
+            "--speculative-method eagle "
+            "--kv-cache-format float8_e4m3fn "
+            "--num-speculative-tokens 3"
+        ),
+    },
+    # Deepseek MTP + CUDA Graph only works when num_speculative_tokens == 1
+    # TODO: Remove this config once we support CUDA Graph for >1 draft tokens
+    "nvidia/deepseek-v3.1-nvfp4__mtp_1_draft_token": {
         "hf_model_path": "nvidia/deepseek-v3.1-nvfp4",
         "max_serve_args": (
             "--speculative-method eagle "
@@ -149,13 +167,30 @@ MODEL_ALIASES: dict[str, ModelAlias] = {
     "nvidia/kimi-k2.5-nvfp4__eagle": {
         "hf_model_path": "nvidia/kimi-k2.5-nvfp4",
         "max_serve_args": (
-            "--draft-model-path nvidia/Kimi-K2.5-Thinking-Eagle3 "
+            "--draft-model-path nvidia/kimi-k2.5-thinking-eagle3 "
             "--draft-trust-remote-code "
             "--draft-devices gpu:0,1,2,3,4,5,6,7 "
             "--draft-data-parallel-degree 8 "
             "--draft-quantization-encoding bfloat16 "
             "--speculative-method eagle "
-            "--num-speculative-tokens 1 "
+            "--num-speculative-tokens 3 "
+            "--kv-cache-format float8_e4m3fn "
+            "--device-memory-utilization 0.75 "
+            "--max-batch-input-tokens 4096 "
+            "--max-length 163840 "
+            "--max-num-steps 1"
+        ),
+    },
+    "nvidia/kimi-k2.5-nvfp4__eagle_tp": {
+        "hf_model_path": "nvidia/kimi-k2.5-nvfp4",
+        "max_serve_args": (
+            "--draft-model-path nvidia/Kimi-K2.5-Thinking-Eagle3 "
+            "--draft-trust-remote-code "
+            "--draft-devices gpu:0,1,2,3,4,5,6,7 "
+            "--draft-data-parallel-degree 1 "
+            "--draft-quantization-encoding bfloat16 "
+            "--speculative-method eagle "
+            "--num-speculative-tokens 2 "
             "--kv-cache-format float8_e4m3fn "
             "--device-memory-utilization 0.75 "
             "--max-batch-input-tokens 4096 "
@@ -299,7 +334,7 @@ def get_server_cmd(
     if "gpt-oss" in model and framework in ["max-ci", "max"]:
         cmd += ["--enable-penalties"]
 
-    revision = _load_hf_repo_lock().get(model)
+    revision = _load_hf_repo_lock().get(model.casefold())
     if revision:
         if framework in ("max", "max-ci"):
             cmd += [
@@ -648,7 +683,8 @@ def smoke_test(
     if disable_timeouts:
         timeout = sys.maxsize
     elif is_huge_moe(model):
-        timeout = 1800
+        # TODO(GEX-3508): Reduce timeout once model build time is optimized
+        timeout = 2700
     else:
         timeout = 900
 

@@ -32,6 +32,7 @@ from std.gpu.memory import AddressSpace, external_memory
 from std.sys.info import has_apple_gpu_accelerator, is_apple_gpu
 from layout import (
     ComptimeInt,
+    Coord,
     Idx,
     RuntimeInt,
     TensorLayout,
@@ -195,6 +196,7 @@ def get_min_max_value[
     return Tuple[Float32, Float32](min_val, max_val)
 
 
+@__name(t"topk_mask_logits_{dtype}_{out_idx_type}", mangle=True)
 def TopKMaskLogitsKernel[
     block_size: Int,
     vec_size: Int,
@@ -349,8 +351,8 @@ def topk_mask_logits[
     out_idx_type: DType,
     block_size: Int = 1024,
     TopKArrLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
 ](
     ctx: DeviceContext,
@@ -400,12 +402,7 @@ def topk_mask_logits[
         if top_k_arr:
             top_k_buf = top_k_arr.value().to_device_buffer(ctx)
         else:
-            top_k_buf = DeviceBuffer[out_idx_type](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            top_k_buf = DeviceBuffer[out_idx_type].empty(ctx)
 
         @parameter
         def launch_kernel[vec_size: Int]() raises:
@@ -674,6 +671,10 @@ def _block_reduce_value_count[
     return result
 
 
+@__name(
+    t"topk_sampling_from_prob_{dtype}_{out_idx_type}_{deterministic}",
+    mangle=True,
+)
 def TopKSamplingFromProbKernel[
     ProbsLayoutType: TensorLayout,
     probs_origin: ImmutOrigin,
@@ -882,12 +883,12 @@ def topk_sampling_from_prob[
     out_idx_type: DType,
     block_size: Int = 1024,
     TopKArrLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
     IndicesLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
 ](
     ctx: DeviceContext,
@@ -962,22 +963,12 @@ def topk_sampling_from_prob[
         if indices:
             indices_buf = indices.value().to_device_buffer(ctx)
         else:
-            indices_buf = DeviceBuffer[out_idx_type](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            indices_buf = DeviceBuffer[out_idx_type].empty(ctx)
         var top_k_buf: DeviceBuffer[out_idx_type]
         if top_k_arr:
             top_k_buf = top_k_arr.value().to_device_buffer(ctx)
         else:
-            top_k_buf = DeviceBuffer[out_idx_type](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            top_k_buf = DeviceBuffer[out_idx_type].empty(ctx)
 
         @parameter
         def launch_kernel[vec_size: Int, deterministic: Bool]() raises:
@@ -1020,6 +1011,10 @@ def topk_sampling_from_prob[
             dispatch_vec_size[False]()
 
 
+@__name(
+    t"topk_topp_sampling_from_prob_{dtype}_{out_idx_type}_{deterministic}",
+    mangle=True,
+)
 def TopKTopPSamplingFromProbKernel[
     ProbsLayoutType: TensorLayout,
     probs_origin: ImmutOrigin,
@@ -1250,20 +1245,20 @@ def topk_topp_sampling_from_prob[
     out_idx_type: DType,
     block_size: Int = 1024,
     TopKArrLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
     IndicesLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
     TopPArrLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
     SeedLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
 ](
     ctx: DeviceContext,
@@ -1348,42 +1343,22 @@ def topk_topp_sampling_from_prob[
         if indices:
             indices_buf = indices.value().to_device_buffer(ctx)
         else:
-            indices_buf = DeviceBuffer[out_idx_type](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            indices_buf = DeviceBuffer[out_idx_type].empty(ctx)
         var top_k_buf: DeviceBuffer[out_idx_type]
         if top_k_arr:
             top_k_buf = top_k_arr.value().to_device_buffer(ctx)
         else:
-            top_k_buf = DeviceBuffer[out_idx_type](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            top_k_buf = DeviceBuffer[out_idx_type].empty(ctx)
         var top_p_buf: DeviceBuffer[DType.float32]
         if top_p_arr:
             top_p_buf = top_p_arr.value().to_device_buffer(ctx)
         else:
-            top_p_buf = DeviceBuffer[DType.float32](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            top_p_buf = DeviceBuffer[DType.float32].empty(ctx)
         var seed_buf: DeviceBuffer[DType.uint64]
         if rng_seed:
             seed_buf = rng_seed.value().to_device_buffer(ctx)
         else:
-            seed_buf = DeviceBuffer[DType.uint64](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            seed_buf = DeviceBuffer[DType.uint64].empty(ctx)
 
         @parameter
         def launch_kernel[vec_size: Int, deterministic: Bool]() raises:
@@ -1426,6 +1401,7 @@ def topk_topp_sampling_from_prob[
             dispatch_vec_size[False]()
 
 
+@__name(t"topk_softmax_sample_{dtype}_{out_idx_type}", mangle=True)
 def topk_softmax_sample_kernel[
     block_size: Int,
     vec_size: Int,
@@ -1642,16 +1618,16 @@ def topk_softmax_sample[
     out_idx_type: DType,
     block_size: Int = 1024,
     TopKArrLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
     TemperatureLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
     SeedLayoutType: TensorLayout = Layout[
-        shape_types=Variadic.types[RuntimeInt[DType.int64]],
-        stride_types=Variadic.types[ComptimeInt[1]],
+        shape_types=Coord[RuntimeInt[DType.int64]].element_types,
+        stride_types=Coord[ComptimeInt[1]].element_types,
     ],
 ](
     ctx: DeviceContext,
@@ -1762,32 +1738,17 @@ def topk_softmax_sample[
         if top_k_arr:
             top_k_buf = top_k_arr.value().to_device_buffer(ctx)
         else:
-            top_k_buf = DeviceBuffer[out_idx_type](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            top_k_buf = DeviceBuffer[out_idx_type].empty(ctx)
         var temp_buf: DeviceBuffer[DType.float32]
         if temperature:
             temp_buf = temperature.value().to_device_buffer(ctx)
         else:
-            temp_buf = DeviceBuffer[DType.float32](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            temp_buf = DeviceBuffer[DType.float32].empty(ctx)
         var seed_buf: DeviceBuffer[DType.uint64]
         if seed:
             seed_buf = seed.value().to_device_buffer(ctx)
         else:
-            seed_buf = DeviceBuffer[DType.uint64](
-                ctx,
-                {_unsafe_null = ()},
-                0,
-                owning=False,
-            )
+            seed_buf = DeviceBuffer[DType.uint64].empty(ctx)
 
         @parameter
         def launch_kernel[vec_size: Int]() raises:

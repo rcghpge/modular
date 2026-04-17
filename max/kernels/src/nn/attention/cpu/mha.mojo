@@ -36,6 +36,7 @@ from layout import (
     row_major,
 )
 from layout.int_tuple import to_index_list
+from layout.tile_tensor import stack_allocation as tt_stack_allocation
 from linalg.accumulate import _Accumulator
 from linalg.matmul.cpu.apple_accelerate import (
     _cblas_f32,
@@ -256,14 +257,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         comptime transpose_width = 4
         comptime tile_sizes = [transpose_width, 1]
 
-        comptime layout = Layout.row_major(transpose_width, transpose_width)
-        var transpose_stack = InlineArray[Scalar[Self.dtype], layout.size()](
-            uninitialized=True
+        var transpose_buffer = tt_stack_allocation[dtype=Self.dtype,](
+            row_major[transpose_width, transpose_width]()
         )
-        var transpose_buffer = LayoutTensor[
-            Self.dtype,
-            layout,
-        ](transpose_stack)
 
         @parameter
         @always_inline
@@ -273,14 +269,16 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 # input tensor.
                 comptime for i in range(transpose_width):
                     var val = input_b_fn[simd_width=transpose_width](n + i, k)
-                    transpose_buffer.store(Index(i, 0), val)
+                    transpose_buffer.store_linear[width=transpose_width](
+                        Index(i, 0), val
+                    )
 
                 transpose_inplace[4, 4](transpose_buffer)
 
                 comptime for i in range(transpose_width):
-                    var val = transpose_buffer.load[width=transpose_width](
-                        Index(i, 0)
-                    )
+                    var val = transpose_buffer.load_linear[
+                        width=transpose_width
+                    ](Index(i, 0))
                     packed_ptr.store((k + i) * aligned_n + n, val)
 
             else:
@@ -680,7 +678,9 @@ struct _FlashAttention[
             sum_vals[m] = sum_vals[m] * fixup_val + accum_val
 
             @always_inline
-            def do_correction[_simd_width: Int](idx: Int) unified {mut}:
+            def do_correction[
+                _simd_width: Int
+            ](idx: Int) unified {o_row_ptr, fixup_val, mut}:
                 var val = o_row_ptr.load[width=_simd_width](idx)
                 o_row_ptr.store(idx, val * fixup_val)
 
@@ -920,7 +920,9 @@ struct _FlashAttention[
                     var reciprocal = 1 / sum_vals[m][0]
 
                     @always_inline
-                    def do_final[_simd_width: Int](idx: Int) unified {mut}:
+                    def do_final[
+                        _simd_width: Int
+                    ](idx: Int) unified {oz_ptr, o_ptr, reciprocal, mut}:
                         var v = oz_ptr.load[width=_simd_width](idx)
                         o_ptr.store(idx, v * reciprocal)
 
@@ -1266,7 +1268,7 @@ def _flash_attention_kv_cache[
     comptime num_heads = Int(q.layout.shape[2])
     comptime head_size = cache_t.kv_params.head_size
     comptime output_shape = IndexList[4](
-        UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, Int(head_size)
+        UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, head_size
     )
 
     @always_inline
@@ -1385,8 +1387,8 @@ def _flash_attention_kv_cache[
     ].run(
         num_batches,
         num_heads,
-        Int(depth_dim),
-        Int(num_kv_heads),
+        depth_dim,
+        num_kv_heads,
         max_seq_len,
         scale,
         sink_weights,
@@ -1561,7 +1563,7 @@ def flash_attention_kv_cache[
     comptime num_heads = Int(q.layout.shape[q.rank - 2])
     comptime head_size = cache_t.kv_params.head_size
     comptime output_shape = IndexList[4](
-        UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, Int(head_size)
+        UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, head_size
     )
 
     _flash_attention_kv_cache[

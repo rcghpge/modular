@@ -1180,7 +1180,7 @@ class AndOp(max._core.Operation):
     @property
     def input_y(self) -> max._core.Value[TensorType]: ...
 
-class ArgMaxOp(max._core.Operation):
+class ReduceArgMaxOp(max._core.Operation):
     """
     This op is equivalent to reduce_max, but returns indices instead of values.
 
@@ -1246,7 +1246,7 @@ class ArgMaxOp(max._core.Operation):
         self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
     ) -> None: ...
 
-class ArgMinOp(max._core.Operation):
+class ReduceArgMinOp(max._core.Operation):
     """
     This op is equivalent to reduce_min, but returns indices instead of values.
 
@@ -2935,6 +2935,470 @@ class DivOp(max._core.Operation):
     @property
     def input_y(self) -> max._core.Value[TensorType]: ...
 
+class DistributedEpCombineOp(max._core.Operation):
+    """
+    Combines expert outputs back to their original devices across N GPUs.
+    Each device sends its expert outputs to the appropriate peers, waits
+    for all transfers, and computes the weighted sum of routed expert
+    outputs. The output supports epilogue fusion.
+
+    All variadic operands and results have the same size (one per device).
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        output_tokens: Sequence[max._core.Type],
+        out_chain: ChainType,
+        input_tokens: Sequence[max._core.Value[max._core.Type]],
+        src_info: Sequence[max._core.Value[max._core.Type]],
+        send_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_count_ptrs: Sequence[max._core.Value[max._core.Type]],
+        router_weights: Sequence[max._core.Value[max._core.Type]],
+        atomic_counters: Sequence[max._core.Value[max._core.Type]],
+        in_chain: max._core.Value[ChainType],
+        hidden_size: max._core.dialects.builtin.IntegerAttr,
+        top_k: max._core.dialects.builtin.IntegerAttr,
+        n_experts: max._core.dialects.builtin.IntegerAttr,
+        max_token_per_rank: max._core.dialects.builtin.IntegerAttr,
+        n_gpus_per_node: max._core.dialects.builtin.IntegerAttr,
+        n_nodes: max._core.dialects.builtin.IntegerAttr,
+        fused_shared_expert: max._core.dialects.builtin.BoolAttr,
+    ) -> None: ...
+    @property
+    def input_tokens(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def src_info(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def send_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_count_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def router_weights(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def atomic_counters(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def in_chain(self) -> max._core.Value[ChainType]: ...
+    @property
+    def hidden_size(self) -> int: ...
+    @hidden_size.setter
+    def hidden_size(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def top_k(self) -> int: ...
+    @top_k.setter
+    def top_k(self, arg: max._core.dialects.builtin.IntegerAttr, /) -> None: ...
+    @property
+    def n_experts(self) -> int: ...
+    @n_experts.setter
+    def n_experts(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def max_token_per_rank(self) -> int: ...
+    @max_token_per_rank.setter
+    def max_token_per_rank(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_gpus_per_node(self) -> int: ...
+    @n_gpus_per_node.setter
+    def n_gpus_per_node(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_nodes(self) -> int: ...
+    @n_nodes.setter
+    def n_nodes(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def fused_shared_expert(self) -> bool: ...
+    @fused_shared_expert.setter
+    def fused_shared_expert(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+
+class DistributedEpDispatchFp8Op(max._core.Operation):
+    """
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with blockwise FP8 quantized output format.
+
+    All variadic operands and results have the same size (one per device).
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        output_tokens: Sequence[max._core.Type],
+        output_scales: Sequence[max._core.Type],
+        row_offsets: Sequence[max._core.Type],
+        expert_ids: Sequence[max._core.Type],
+        src_info: Sequence[max._core.Type],
+        out_chain: ChainType,
+        input_tokens: Sequence[max._core.Value[max._core.Type]],
+        topk_ids: Sequence[max._core.Value[max._core.Type]],
+        send_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_count_ptrs: Sequence[max._core.Value[max._core.Type]],
+        atomic_counters: Sequence[max._core.Value[max._core.Type]],
+        in_chain: max._core.Value[ChainType],
+        hidden_size: max._core.dialects.builtin.IntegerAttr,
+        top_k: max._core.dialects.builtin.IntegerAttr,
+        n_experts: max._core.dialects.builtin.IntegerAttr,
+        max_token_per_rank: max._core.dialects.builtin.IntegerAttr,
+        n_gpus_per_node: max._core.dialects.builtin.IntegerAttr,
+        n_nodes: max._core.dialects.builtin.IntegerAttr,
+        fused_shared_expert: max._core.dialects.builtin.BoolAttr,
+        dispatch_scale_granularity: max._core.dialects.builtin.StringAttr,
+    ) -> None: ...
+    @property
+    def input_tokens(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def topk_ids(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def send_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_count_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def atomic_counters(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def in_chain(self) -> max._core.Value[ChainType]: ...
+    @property
+    def hidden_size(self) -> int: ...
+    @hidden_size.setter
+    def hidden_size(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def top_k(self) -> int: ...
+    @top_k.setter
+    def top_k(self, arg: max._core.dialects.builtin.IntegerAttr, /) -> None: ...
+    @property
+    def n_experts(self) -> int: ...
+    @n_experts.setter
+    def n_experts(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def max_token_per_rank(self) -> int: ...
+    @max_token_per_rank.setter
+    def max_token_per_rank(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_gpus_per_node(self) -> int: ...
+    @n_gpus_per_node.setter
+    def n_gpus_per_node(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_nodes(self) -> int: ...
+    @n_nodes.setter
+    def n_nodes(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def fused_shared_expert(self) -> bool: ...
+    @fused_shared_expert.setter
+    def fused_shared_expert(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+    @property
+    def dispatch_scale_granularity(self) -> str: ...
+    @dispatch_scale_granularity.setter
+    def dispatch_scale_granularity(
+        self, arg: max._core.dialects.builtin.StringAttr, /
+    ) -> None: ...
+
+class DistributedEpDispatchMxfp4Op(max._core.Operation):
+    """
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with MXFP4 quantized output format. Each device
+    routes its tokens based on top-k expert IDs, quantizes them to MXFP4,
+    and sends them to the appropriate peer via shared-memory or ROCSHMEM
+    pointers.
+
+    All variadic operands and results have the same size (one per device).
+    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
+    tensors that are typically identical across devices (replicated N times
+    to satisfy the same-variadic-size constraint).
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        output_tokens: Sequence[max._core.Type],
+        output_scales: Sequence[max._core.Type],
+        row_offsets: Sequence[max._core.Type],
+        scales_offsets: Sequence[max._core.Type],
+        expert_ids: Sequence[max._core.Type],
+        src_info: Sequence[max._core.Type],
+        out_chain: ChainType,
+        input_tokens: Sequence[max._core.Value[max._core.Type]],
+        topk_ids: Sequence[max._core.Value[max._core.Type]],
+        send_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_count_ptrs: Sequence[max._core.Value[max._core.Type]],
+        atomic_counters: Sequence[max._core.Value[max._core.Type]],
+        in_chain: max._core.Value[ChainType],
+        hidden_size: max._core.dialects.builtin.IntegerAttr,
+        top_k: max._core.dialects.builtin.IntegerAttr,
+        n_experts: max._core.dialects.builtin.IntegerAttr,
+        max_token_per_rank: max._core.dialects.builtin.IntegerAttr,
+        n_gpus_per_node: max._core.dialects.builtin.IntegerAttr,
+        n_nodes: max._core.dialects.builtin.IntegerAttr,
+        fused_shared_expert: max._core.dialects.builtin.BoolAttr,
+    ) -> None: ...
+    @property
+    def input_tokens(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def topk_ids(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def send_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_count_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def atomic_counters(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def in_chain(self) -> max._core.Value[ChainType]: ...
+    @property
+    def hidden_size(self) -> int: ...
+    @hidden_size.setter
+    def hidden_size(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def top_k(self) -> int: ...
+    @top_k.setter
+    def top_k(self, arg: max._core.dialects.builtin.IntegerAttr, /) -> None: ...
+    @property
+    def n_experts(self) -> int: ...
+    @n_experts.setter
+    def n_experts(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def max_token_per_rank(self) -> int: ...
+    @max_token_per_rank.setter
+    def max_token_per_rank(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_gpus_per_node(self) -> int: ...
+    @n_gpus_per_node.setter
+    def n_gpus_per_node(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_nodes(self) -> int: ...
+    @n_nodes.setter
+    def n_nodes(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def fused_shared_expert(self) -> bool: ...
+    @fused_shared_expert.setter
+    def fused_shared_expert(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+
+class DistributedEpDispatchNvfp4Op(max._core.Operation):
+    """
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with NVFP4 quantized output format. Each device
+    routes its tokens based on top-k expert IDs, quantizes them to NVFP4,
+    and sends them to the appropriate peer via shared-memory or NVSHMEM
+    pointers.
+
+    All variadic operands and results have the same size (one per device).
+    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
+    tensors that are typically identical across devices (replicated N times
+    to satisfy the same-variadic-size constraint).
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        output_tokens: Sequence[max._core.Type],
+        output_scales: Sequence[max._core.Type],
+        row_offsets: Sequence[max._core.Type],
+        scales_offsets: Sequence[max._core.Type],
+        expert_ids: Sequence[max._core.Type],
+        src_info: Sequence[max._core.Type],
+        out_chain: ChainType,
+        input_tokens: Sequence[max._core.Value[max._core.Type]],
+        topk_ids: Sequence[max._core.Value[max._core.Type]],
+        send_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_count_ptrs: Sequence[max._core.Value[max._core.Type]],
+        input_scales: Sequence[max._core.Value[max._core.Type]],
+        atomic_counters: Sequence[max._core.Value[max._core.Type]],
+        in_chain: max._core.Value[ChainType],
+        hidden_size: max._core.dialects.builtin.IntegerAttr,
+        top_k: max._core.dialects.builtin.IntegerAttr,
+        n_experts: max._core.dialects.builtin.IntegerAttr,
+        max_token_per_rank: max._core.dialects.builtin.IntegerAttr,
+        n_gpus_per_node: max._core.dialects.builtin.IntegerAttr,
+        n_nodes: max._core.dialects.builtin.IntegerAttr,
+        fused_shared_expert: max._core.dialects.builtin.BoolAttr,
+    ) -> None: ...
+    @property
+    def input_tokens(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def topk_ids(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def send_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_count_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def input_scales(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def atomic_counters(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def in_chain(self) -> max._core.Value[ChainType]: ...
+    @property
+    def hidden_size(self) -> int: ...
+    @hidden_size.setter
+    def hidden_size(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def top_k(self) -> int: ...
+    @top_k.setter
+    def top_k(self, arg: max._core.dialects.builtin.IntegerAttr, /) -> None: ...
+    @property
+    def n_experts(self) -> int: ...
+    @n_experts.setter
+    def n_experts(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def max_token_per_rank(self) -> int: ...
+    @max_token_per_rank.setter
+    def max_token_per_rank(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_gpus_per_node(self) -> int: ...
+    @n_gpus_per_node.setter
+    def n_gpus_per_node(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_nodes(self) -> int: ...
+    @n_nodes.setter
+    def n_nodes(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def fused_shared_expert(self) -> bool: ...
+    @fused_shared_expert.setter
+    def fused_shared_expert(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+
+class DistributedEpDispatchOp(max._core.Operation):
+    """
+    Dispatches input tokens to expert devices across N GPUs using the Expert
+    Parallelism protocol with BF16 output format.
+
+    All variadic operands and results have the same size (one per device).
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        output_tokens: Sequence[max._core.Type],
+        row_offsets: Sequence[max._core.Type],
+        expert_ids: Sequence[max._core.Type],
+        src_info: Sequence[max._core.Type],
+        out_chain: ChainType,
+        input_tokens: Sequence[max._core.Value[max._core.Type]],
+        topk_ids: Sequence[max._core.Value[max._core.Type]],
+        send_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_ptrs: Sequence[max._core.Value[max._core.Type]],
+        recv_count_ptrs: Sequence[max._core.Value[max._core.Type]],
+        atomic_counters: Sequence[max._core.Value[max._core.Type]],
+        in_chain: max._core.Value[ChainType],
+        hidden_size: max._core.dialects.builtin.IntegerAttr,
+        top_k: max._core.dialects.builtin.IntegerAttr,
+        n_experts: max._core.dialects.builtin.IntegerAttr,
+        max_token_per_rank: max._core.dialects.builtin.IntegerAttr,
+        n_gpus_per_node: max._core.dialects.builtin.IntegerAttr,
+        n_nodes: max._core.dialects.builtin.IntegerAttr,
+        fused_shared_expert: max._core.dialects.builtin.BoolAttr,
+    ) -> None: ...
+    @property
+    def input_tokens(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def topk_ids(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def send_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def recv_count_ptrs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def atomic_counters(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def in_chain(self) -> max._core.Value[ChainType]: ...
+    @property
+    def hidden_size(self) -> int: ...
+    @hidden_size.setter
+    def hidden_size(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def top_k(self) -> int: ...
+    @top_k.setter
+    def top_k(self, arg: max._core.dialects.builtin.IntegerAttr, /) -> None: ...
+    @property
+    def n_experts(self) -> int: ...
+    @n_experts.setter
+    def n_experts(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def max_token_per_rank(self) -> int: ...
+    @max_token_per_rank.setter
+    def max_token_per_rank(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_gpus_per_node(self) -> int: ...
+    @n_gpus_per_node.setter
+    def n_gpus_per_node(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def n_nodes(self) -> int: ...
+    @n_nodes.setter
+    def n_nodes(
+        self, arg: max._core.dialects.builtin.IntegerAttr, /
+    ) -> None: ...
+    @property
+    def fused_shared_expert(self) -> bool: ...
+    @fused_shared_expert.setter
+    def fused_shared_expert(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+
 class EqualOp(max._core.Operation):
     """
     Returns `x == y`, where `x` and `y` are input tensors.
@@ -3483,7 +3947,7 @@ class IsNanOp(max._core.Operation):
     @property
     def input_x(self) -> max._core.Value[TensorType]: ...
 
-class LayerNormOp(max._core.Operation):
+class ReduceLayerNormOp(max._core.Operation):
     """
     Layer normalization operation which operates on the last dimension of
     `input`:
@@ -3598,7 +4062,7 @@ class LogOp(max._core.Operation):
     @property
     def input(self) -> max._core.Value[TensorType]: ...
 
-class LogsoftmaxOp(max._core.Operation):
+class ReduceLogsoftmaxOp(max._core.Operation):
     """
     Returns `log(softmax(x, axis))`, where `x` is input tensor, and `axis` is
     the axis along which `softmax` is applied.
@@ -3831,7 +4295,7 @@ class MaxPoolOp(max._core.Operation):
         self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
     ) -> None: ...
 
-class MeanOp(max._core.Operation):
+class ReduceMeanOp(max._core.Operation):
     """
     Reduces `input` elements across `axis` to their mean value, changng that
     axis's dimension to 1.
@@ -4835,6 +5299,54 @@ class ReduceAddOp(max._core.Operation):
         self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
     ) -> None: ...
 
+class ReduceGroupNormOp(max._core.Operation):
+    """
+    Applies Group Normalization to the input tensor.
+
+    Divides channels into groups and computes normalization statistics
+    within each group.
+
+    Example:
+
+    ```mlir
+      %res = mo.reduce.group_norm(%input, %gamma, %beta, %epsilon, %num_groups) :
+        (!mo.tensor<[1, 32, 64, 64], f32, gpu:0>, !mo.tensor<[32], f32, gpu:0>,
+         !mo.tensor<[32], f32, gpu:0>, !mo.tensor<[], f32>, !mo.tensor<[], si32>)
+        -> !mo.tensor<[1, 32, 64, 64], f32, gpu:0>
+    ```
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        result: TensorType,
+        input: max._core.Value[TensorType],
+        gamma: max._core.Value[TensorType],
+        beta: max._core.Value[TensorType],
+        epsilon: max._core.Value[TensorType],
+        num_groups: max._core.Value[TensorType],
+        output_param_decls: max._core.dialects.kgen.ParamDeclArrayAttr,
+    ) -> None: ...
+    @property
+    def input(self) -> max._core.Value[TensorType]: ...
+    @property
+    def gamma(self) -> max._core.Value[TensorType]: ...
+    @property
+    def beta(self) -> max._core.Value[TensorType]: ...
+    @property
+    def epsilon(self) -> max._core.Value[TensorType]: ...
+    @property
+    def num_groups(self) -> max._core.Value[TensorType]: ...
+    @property
+    def output_param_decls(
+        self,
+    ) -> Sequence[max._core.dialects.kgen.ParamDeclAttr]: ...
+    @output_param_decls.setter
+    def output_param_decls(
+        self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
+    ) -> None: ...
+
 class ReduceMaxOp(max._core.Operation):
     """
     Reduces `input` elements across `axis` to their maximum, changing that
@@ -4881,6 +5393,45 @@ class ReduceMaxOp(max._core.Operation):
         input: max._core.Value[TensorType],
         axis: int,
         output_ty: TensorType = ...,
+    ) -> None: ...
+    @property
+    def input(self) -> max._core.Value[TensorType]: ...
+    @property
+    def axis(self) -> max._core.Value[TensorType]: ...
+    @property
+    def output_param_decls(
+        self,
+    ) -> Sequence[max._core.dialects.kgen.ParamDeclAttr]: ...
+    @output_param_decls.setter
+    def output_param_decls(
+        self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
+    ) -> None: ...
+
+class ReduceReduceMinAndMaxOp(max._core.Operation):
+    """
+    Reduces the input tensor along the given axis, returning a single tensor
+    where the last dimension contains both the minimum and maximum values (in
+    that order).
+
+    For an input of shape [d0, ..., dN] reduced along axis `a`, the output
+    shape is [d0, ..., 2] (the reduced axis is replaced by a dimension of 2).
+
+    Example:
+
+    ```mlir
+      %res = mo.reduce.reduce_min_and_max(%input, %axis) :
+        (!mo.tensor<[2, 10], f32>, !mo.tensor<[], si32>) -> !mo.tensor<[2, 2], f32>
+    ```
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        result: TensorType,
+        input: max._core.Value[TensorType],
+        axis: max._core.Value[TensorType],
+        output_param_decls: max._core.dialects.kgen.ParamDeclArrayAttr,
     ) -> None: ...
     @property
     def input(self) -> max._core.Value[TensorType]: ...
@@ -5006,6 +5557,193 @@ class ReduceMulOp(max._core.Operation):
     def input(self) -> max._core.Value[TensorType]: ...
     @property
     def axis(self) -> max._core.Value[TensorType]: ...
+    @property
+    def output_param_decls(
+        self,
+    ) -> Sequence[max._core.dialects.kgen.ParamDeclAttr]: ...
+    @output_param_decls.setter
+    def output_param_decls(
+        self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
+    ) -> None: ...
+
+class ReduceRmsNormFusedResidualAddOp(max._core.Operation):
+    """
+    Fused operation computing:
+      intermediate = rms_norm(input, gamma1, epsilon1, weight_offset1) + residual_input
+      output = rms_norm(intermediate, gamma2, epsilon2, weight_offset2)
+
+    Returns both the final output and the post-add intermediate tensor.
+
+    Example:
+
+    ```mlir
+      %output, %intermediate = mo.reduce.rms_norm_fused_residual_add(
+          %input, %residual, %gamma1, %gamma2, %eps1, %eps2, %offset1, %offset2) {
+          multiply_before_cast1 = false, multiply_before_cast2 = false} :
+        (...) -> (!mo.tensor<[3, 2], f32>, !mo.tensor<[3, 2], f32>)
+    ```
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        output: TensorType,
+        intermediate: TensorType,
+        input: max._core.Value[TensorType],
+        residual_input: max._core.Value[TensorType],
+        gamma1: max._core.Value[TensorType],
+        gamma2: max._core.Value[TensorType],
+        epsilon1: max._core.Value[TensorType],
+        epsilon2: max._core.Value[TensorType],
+        weight_offset1: max._core.Value[TensorType],
+        weight_offset2: max._core.Value[TensorType],
+        multiply_before_cast: max._core.dialects.builtin.BoolAttr,
+        output_param_decls: max._core.dialects.kgen.ParamDeclArrayAttr,
+    ) -> None: ...
+    @property
+    def input(self) -> max._core.Value[TensorType]: ...
+    @property
+    def residual_input(self) -> max._core.Value[TensorType]: ...
+    @property
+    def gamma1(self) -> max._core.Value[TensorType]: ...
+    @property
+    def gamma2(self) -> max._core.Value[TensorType]: ...
+    @property
+    def epsilon1(self) -> max._core.Value[TensorType]: ...
+    @property
+    def epsilon2(self) -> max._core.Value[TensorType]: ...
+    @property
+    def weight_offset1(self) -> max._core.Value[TensorType]: ...
+    @property
+    def weight_offset2(self) -> max._core.Value[TensorType]: ...
+    @property
+    def multiply_before_cast(self) -> bool: ...
+    @multiply_before_cast.setter
+    def multiply_before_cast(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+    @property
+    def output_param_decls(
+        self,
+    ) -> Sequence[max._core.dialects.kgen.ParamDeclAttr]: ...
+    @output_param_decls.setter
+    def output_param_decls(
+        self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
+    ) -> None: ...
+
+class ReduceRmsNormOp(max._core.Operation):
+    """
+    Applies Root Mean Square normalization to the input tensor.
+
+    output = input / rms(input) * weight
+
+    where rms(x) = sqrt(mean(x^2) + epsilon).
+
+    When `multiply_before_cast` is false (Llama-style), the input is cast to
+    the output dtype before multiplication by the weight. When true
+    (Gemma-style), the multiplication is performed before the cast.
+
+    Example:
+
+    ```mlir
+      %res = mo.reduce.rms_norm(%input, %weight, %epsilon, %weight_offset)
+        {multiply_before_cast = false} :
+        (!mo.tensor<[2, 3], bf16, gpu:0>, !mo.tensor<[3], bf16, gpu:0>,
+         !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[2, 3], bf16, gpu:0>
+    ```
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        result: TensorType,
+        input: max._core.Value[TensorType],
+        weight: max._core.Value[TensorType],
+        epsilon: max._core.Value[TensorType],
+        weight_offset: max._core.Value[TensorType],
+        multiply_before_cast: max._core.dialects.builtin.BoolAttr,
+        output_param_decls: max._core.dialects.kgen.ParamDeclArrayAttr,
+    ) -> None: ...
+    @property
+    def input(self) -> max._core.Value[TensorType]: ...
+    @property
+    def weight(self) -> max._core.Value[TensorType]: ...
+    @property
+    def epsilon(self) -> max._core.Value[TensorType]: ...
+    @property
+    def weight_offset(self) -> max._core.Value[TensorType]: ...
+    @property
+    def multiply_before_cast(self) -> bool: ...
+    @multiply_before_cast.setter
+    def multiply_before_cast(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
+    @property
+    def output_param_decls(
+        self,
+    ) -> Sequence[max._core.dialects.kgen.ParamDeclAttr]: ...
+    @output_param_decls.setter
+    def output_param_decls(
+        self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
+    ) -> None: ...
+
+class ReduceRmsNormRoPEOp(max._core.Operation):
+    """
+    Fused operation computing RMS normalization followed by Rotary Position
+    Embedding (RoPE):
+
+      normed = rms_norm(input, weight, epsilon, weight_offset)
+      x1, x2 = split(normed, axis=-1)
+      rotated = concat(-x2, x1, axis=-1)
+      result = normed * cos_vals + rotated * sin_vals
+
+    Example:
+
+    ```mlir
+      %result = mo.reduce.rms_norm.RoPE(%input, %weight, %epsilon, %offset,
+                                         %cos_vals, %sin_vals)
+        {multiply_before_cast = false} :
+        (!mo.tensor<[2, 3, 128], bf16, gpu:0>, !mo.tensor<[128], bf16, gpu:0>,
+         !mo.tensor<[], bf16>, !mo.tensor<[], bf16>,
+         !mo.tensor<[2, 3, 128], f32, gpu:0>, !mo.tensor<[2, 3, 128], f32, gpu:0>)
+        -> !mo.tensor<[2, 3, 128], bf16, gpu:0>
+    ```
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        result: TensorType,
+        input: max._core.Value[TensorType],
+        weight: max._core.Value[TensorType],
+        epsilon: max._core.Value[TensorType],
+        weight_offset: max._core.Value[TensorType],
+        cos_vals: max._core.Value[TensorType],
+        sin_vals: max._core.Value[TensorType],
+        multiply_before_cast: max._core.dialects.builtin.BoolAttr,
+        output_param_decls: max._core.dialects.kgen.ParamDeclArrayAttr,
+    ) -> None: ...
+    @property
+    def input(self) -> max._core.Value[TensorType]: ...
+    @property
+    def weight(self) -> max._core.Value[TensorType]: ...
+    @property
+    def epsilon(self) -> max._core.Value[TensorType]: ...
+    @property
+    def weight_offset(self) -> max._core.Value[TensorType]: ...
+    @property
+    def cos_vals(self) -> max._core.Value[TensorType]: ...
+    @property
+    def sin_vals(self) -> max._core.Value[TensorType]: ...
+    @property
+    def multiply_before_cast(self) -> bool: ...
+    @multiply_before_cast.setter
+    def multiply_before_cast(
+        self, arg: max._core.dialects.builtin.BoolAttr, /
+    ) -> None: ...
     @property
     def output_param_decls(
         self,
@@ -6114,7 +6852,7 @@ class SliceOp(max._core.Operation):
         self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
     ) -> None: ...
 
-class SoftmaxOp(max._core.Operation):
+class ReduceSoftmaxOp(max._core.Operation):
     """
     Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
 

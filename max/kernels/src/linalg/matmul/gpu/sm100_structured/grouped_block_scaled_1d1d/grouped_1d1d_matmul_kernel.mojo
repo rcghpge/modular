@@ -39,13 +39,14 @@ architecture.
 
 from std.collections import Optional
 from std.math import align_up, ceildiv
-from std.memory import Pointer, bitcast
-from std.math.uutils import ufloordiv, umod
+from std.memory import Pointer, UnsafePointer, bitcast
+from std.math.uutils import ufloordiv, umod, udiv_unchecked, udivmod_unchecked
 from std.sys import align_of, size_of
 
 from std.gpu import WARP_SIZE, block_id_in_cluster, thread_idx, lane_id
 from std.gpu.memory import (
     AddressSpace,
+    async_copy,
     external_memory,
     fence_mbarrier_init,
 )
@@ -55,7 +56,7 @@ from std.gpu.primitives.cluster import (
     elect_one_sync,
     elect_one_sync_with_mask,
 )
-from std.gpu.sync import syncwarp
+from std.gpu.sync import async_copy_arrive, syncwarp
 from std.gpu.compute.arch.tcgen05 import (
     tcgen05_fence_before,
     tcgen05_st,
@@ -563,6 +564,14 @@ struct Grouped1D1DMatmulKernel[
     @__llvm_arg_metadata(c_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(sfa_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(sfb_tma_op, `nvvm.grid_constant`)
+    @__name(
+        StaticString(Self.config.get_kernal_name())
+        + StaticString(
+            "_fused_compute_epi" if Self.elementwise_compute_lambda_fn
+            is not None else ""
+        ),
+        mangle=True,
+    )
     def run(
         # Grid-constant TMA descriptors
         a_tma_op: Self.ATmaOp,
@@ -581,6 +590,11 @@ struct Grouped1D1DMatmulKernel[
         num_active_experts: Int,
         # K dimension for iteration
         K: UInt32,
+        # Raw SFB pointer and strides for cp.async path (MMA_N < 64 only).
+        # When group_size < SF_MN_GROUP_SIZE, cp.async replaces TMA for SFB.
+        sfb_global_ptr: UnsafePointer[Scalar[Self.sfb_dtype], ImmutAnyOrigin],
+        sfb_n_stride: Int,
+        sfb_k_tiles: Int,
     ):
         """Grouped 1D-1D block-scaled GEMM kernel entry point.
 
@@ -681,11 +695,13 @@ struct Grouped1D1DMatmulKernel[
                     )
 
                 # Init SFB TMA pipeline barriers (SfbTMALoad ↔ MMA).
-                # Producer count = 1 (SfbTMALoad expect_bytes + TMA auto-arrive).
+                # Producer count = MMA_N to support both TMA and cp.async:
+                #   TMA: lane 0 expect_bytes (1 arrive) + lanes 1..MMA_N-1 bare arrive
+                #   cp.async: each of MMA_N lanes does async_copy_arrive + arrive
                 # Consumer count = 1 (MMA arrive after consuming TMEM data).
                 ProducerConsumerPipeline[Self.num_group_pipeline_stages](
                     smem.sfb_tma_mbars_ptr()
-                ).init_mbars(Int32(1), Int32(1))
+                ).init_mbars(Int32(Self.MMA_N), Int32(1))
 
             fence_mbarrier_init()
             cluster_sync()
@@ -855,17 +871,19 @@ struct Grouped1D1DMatmulKernel[
                         )
 
         # ===== SFB TMA LOAD WARP (MMA_N < 64 only) =====
-        # Dedicated warp that loads SFB scale factors from GMEM to SMEM
-        # via TMA, issuing one copy per k-atom with reduced tile height
-        # (MMA_N rows instead of full SF_ATOM_M[0]=32 rows).
+        # Dedicated warp that loads SFB scale factors from GMEM to SMEM.
+        # Dynamically chooses TMA or cp.async based on group_size:
+        #   group_size >= SF_MN_GROUP_SIZE (128): TMA (full atom, efficient)
+        #   group_size <  SF_MN_GROUP_SIZE (128): cp.async (exact rows, no waste)
         comptime if Self.MMA_N < 64:
             if WarpRole1D1D.is_sfb_tma_load():
                 var sfb_tma_pipeline = ProducerConsumerPipeline[
                     Self.num_group_pipeline_stages
                 ](smem.sfb_tma_mbars_ptr())
 
-                # Bytes per k-group iteration: all k-atoms × reduced tile.
+                # Bytes per k-group iteration for TMA path.
                 comptime ROW_STRIDE = SF_ATOM_M[1] * SF_ATOM_K
+                comptime K_TILE_ELEMS = SF_ATOM_M[0] * ROW_STRIDE
                 comptime sfb_single_copy_bytes = (
                     (Self.SFB_N_ALIGNED // SF_MN_GROUP_SIZE)
                     * Self.SFB_TMA_ROWS
@@ -890,6 +908,10 @@ struct Grouped1D1DMatmulKernel[
                     ),
                 )
 
+                # Global memory strides for cp.async path:
+                # flat offset = k_tile * K_TILE_ELEMS + row * ROW_STRIDE + col * SF_ATOM_K
+                # (K_TILE_ELEMS, ROW_STRIDE, SF_ATOM_K already defined above.)
+
                 var sfb_tma_iter = Self.WorkIterator(
                     num_active_experts,
                     a_offsets,
@@ -898,10 +920,37 @@ struct Grouped1D1DMatmulKernel[
                 )
 
                 for ctx in sfb_tma_iter:
+                    # Decide TMA vs cp.async based on group_size.
+                    var group_size = Int(ctx.m_end) - Int(ctx.m_start())
+                    var use_cpasync = group_size < SF_MN_GROUP_SIZE
+                    # AB_swapped: B = tokens, SFB covers token dimension.
+                    # Only lanes with real tokens do cp.async; rest zero-fill.
+                    # Non-swapped: B = weights, SFB covers feature dimension
+                    # (always large), so all MMA_N lanes are always needed.
+                    var sfb_active_lanes: Int
+                    comptime if Self.config.AB_swapped:
+                        sfb_active_lanes = min(group_size, Int(Self.MMA_N))
+                    else:
+                        sfb_active_lanes = Int(Self.MMA_N)
+
                     # Hoist loop-invariant SF coords outside k_tile loop.
-                    # These depend only on the work context, not k_tile.
+                    # sfb_n_coord must be visible to ALL lanes (cp.async
+                    # needs it per-lane), so compute outside elect_one_sync.
+                    var a_scale_offset = rebind[Scalar[DType.uint32]](
+                        a_scale_offsets[Int(ctx.group_idx())]
+                    )
+                    var _sfa_coord: Int
+                    var sfb_n_coord: Int
+                    _sfa_coord, sfb_n_coord = Self._get_sf_coords(
+                        ctx.m(),
+                        ctx.n(),
+                        ctx.expert_id(),
+                        a_scale_offset,
+                        ctx.m_start(),
+                    )
+
+                    # row_in_atom only needed by TMA path (single lane).
                     var row_in_atom: Int = 0
-                    var sfb_n_coord: Int = 0
                     if elect_one_sync():
                         comptime if Self.config.AB_swapped:
                             row_in_atom = (
@@ -910,28 +959,32 @@ struct Grouped1D1DMatmulKernel[
                         else:
                             row_in_atom = Int(ctx.n()) % SF_ATOM_M[0]
 
-                        var a_scale_offset = rebind[Scalar[DType.uint32]](
-                            a_scale_offsets[Int(ctx.group_idx())]
+                    # cp.async per-lane addressing (computed by all lanes).
+                    # outer = position within SF_MN_GROUP_SIZE (128),
+                    # matching the non-grouped cp.async formula.
+                    var cp_outer: Int
+                    comptime if Self.config.AB_swapped:
+                        cp_outer = (
+                            umod(Int(ctx.m() - ctx.m_start()), SF_MN_GROUP_SIZE)
+                            + lane_id()
                         )
-                        _, sfb_n_coord = Self._get_sf_coords(
-                            ctx.m(),
-                            ctx.n(),
-                            ctx.expert_id(),
-                            a_scale_offset,
-                            ctx.m_start(),
+                    else:
+                        cp_outer = (
+                            umod(Int(ctx.n()), SF_MN_GROUP_SIZE) + lane_id()
                         )
+                    var cp_sub_column, cp_row_in_atom = udivmod_unchecked(
+                        Int(cp_outer), SF_ATOM_M[0]
+                    )
 
                     for k_tile in range(num_k_iters):
                         sfb_tma_pipeline.wait_consumer()
                         var stage = sfb_tma_pipeline.producer_stage()
                         var sfb_tma_mbar = sfb_tma_pipeline.producer_mbar(stage)
 
-                        if elect_one_sync():
-                            if elect_one_cta:
-                                sfb_tma_mbar[0].expect_bytes(
-                                    Int32(sfb_tma_expected_bytes)
-                                )
-
+                        if use_cpasync:
+                            # === cp.async path ===
+                            # Each of MMA_N lanes loads SF_ATOM_K bytes per
+                            # k-atom directly from GMEM to SMEM.
                             comptime for kg in range(Self.config.k_group_size):
                                 var offset = stage * UInt32(
                                     Self.config.k_group_size
@@ -941,62 +994,156 @@ struct Grouped1D1DMatmulKernel[
                                 comptime for k_atom in range(
                                     Self.config.num_sf_k_tiles
                                 ):
-                                    var smem_offset = Int(
-                                        sfb_atom_layout(
-                                            Coord(
-                                                Idx[k_atom](),
-                                                RuntimeInt(
-                                                    Scalar[DType.int64](
-                                                        row_in_atom
-                                                    )
-                                                ),
+                                    if lane_id() < Self.MMA_N:
+                                        # SMEM offset must match SfbTMEMLoad read pattern:
+                                        # outer%32 * ROW_STRIDE + outer/32 * SF_ATOM_K
+                                        var smem_offset = (
+                                            k_atom * K_TILE_ELEMS
+                                            + cp_row_in_atom * ROW_STRIDE
+                                            + cp_sub_column * SF_ATOM_K
+                                        )
+                                        var k_tile_base = (
+                                            Int(
+                                                UInt32(k_tile)
+                                                * UInt32(
+                                                    Self.config.k_group_size
+                                                )
+                                                + UInt32(kg)
+                                            )
+                                            * Self.config.num_sf_k_tiles
+                                        )
+
+                                        var global_offset = (
+                                            sfb_n_coord * sfb_n_stride
+                                            + (k_tile_base + k_atom)
+                                            * K_TILE_ELEMS
+                                            + cp_row_in_atom * ROW_STRIDE
+                                            + cp_sub_column * SF_ATOM_K
+                                        )
+                                        # cp.async with src_size masking: when
+                                        # src_size=0 (OOB k-tile or lane beyond
+                                        # group_size), hardware fills SMEM with
+                                        # zero. No branch, no overhead.
+                                        comptime copy_size = (
+                                            SF_ATOM_K
+                                            * size_of[Self.sfb_dtype]()
+                                        )
+                                        var is_valid = (
+                                            lane_id() < sfb_active_lanes
+                                            and k_tile_base + k_atom
+                                            < sfb_k_tiles
+                                        )
+                                        async_copy[
+                                            size=copy_size,
+                                            fill=Scalar[Self.sfb_dtype](0),
+                                        ](
+                                            (
+                                                sfb_global_ptr + global_offset
+                                            ).address_space_cast[
+                                                AddressSpace.GLOBAL
+                                            ](),
+                                            (
+                                                sfb_smem_tile.ptr + smem_offset
+                                            ).address_space_cast[
+                                                AddressSpace.SHARED
+                                            ](),
+                                            src_size=Int32(
+                                                copy_size
+                                            ) if is_valid else Int32(0),
+                                        )
+
+                            # Barrier: all MMA_N lanes arrive uniformly.
+                            # Lanes that did zero-fill (not cp.async) commit
+                            # an empty async group — 0 bytes, harmless.
+                            if lane_id() < Self.MMA_N:
+                                async_copy_arrive(sfb_tma_mbar[0].unsafe_ptr())
+                                _ = sfb_tma_mbar[0].arrive()
+                        else:
+                            # === TMA path (adapted for MMA_N arrive count) ===
+                            # Lane 0: expect_bytes (1 arrive) + TMA copies.
+                            # Lanes 1..MMA_N-1: bare arrive().
+                            if lane_id() == 0:
+                                sfb_tma_mbar[0].expect_bytes(
+                                    Int32(sfb_tma_expected_bytes)
+                                )
+
+                                comptime for kg in range(
+                                    Self.config.k_group_size
+                                ):
+                                    var offset = stage * UInt32(
+                                        Self.config.k_group_size
+                                    ) + UInt32(kg)
+                                    var sfb_smem_tile = sfb_tiles[offset]
+
+                                    comptime for k_atom in range(
+                                        Self.config.num_sf_k_tiles
+                                    ):
+                                        var smem_offset = Int(
+                                            sfb_atom_layout(
+                                                Coord(
+                                                    Idx[k_atom](),
+                                                    RuntimeInt(
+                                                        Scalar[DType.int64](
+                                                            row_in_atom
+                                                        )
+                                                    ),
+                                                )
                                             )
                                         )
-                                    )
 
-                                    var atom_dst = TileTensor(
-                                        sfb_smem_tile.ptr + smem_offset,
-                                        row_major[
-                                            Self.SFB_TMA_ROWS, ROW_STRIDE
-                                        ](),
-                                    )
-
-                                    var k_tile_base = (
-                                        Int(
-                                            UInt32(k_tile)
-                                            * UInt32(Self.config.k_group_size)
-                                            + UInt32(kg)
+                                        var atom_dst = TileTensor(
+                                            sfb_smem_tile.ptr + smem_offset,
+                                            row_major[
+                                                Self.SFB_TMA_ROWS, ROW_STRIDE
+                                            ](),
                                         )
-                                        * Self.config.num_sf_k_tiles
-                                    )
 
-                                    # Cast SMEM pointer to uint16 for 4D TMA descriptor.
-                                    var atom_dst_u16 = TileTensor[
-                                        Self.sf_tma_dtype,
-                                        type_of(atom_dst).LayoutType,
-                                        MutAnyOrigin,
-                                        address_space=AddressSpace.SHARED,
-                                    ](
-                                        rebind[
-                                            UnsafePointer[
-                                                Scalar[Self.sf_tma_dtype],
-                                                MutAnyOrigin,
-                                                address_space=AddressSpace.SHARED,
-                                            ]
-                                        ](atom_dst.ptr),
-                                        atom_dst.layout,
-                                    )
-                                    sfb_tma_op.async_copy_4d[Self.cta_group](
-                                        atom_dst_u16,
-                                        sfb_tma_mbar[0],
-                                        (
-                                            row_in_atom
-                                            * (SF_ATOM_M[1] * SF_ATOM_K // 2),
-                                            k_tile_base + k_atom,
-                                            sfb_n_coord,
-                                            0,
-                                        ),
-                                    )
+                                        var k_tile_base = (
+                                            Int(
+                                                UInt32(k_tile)
+                                                * UInt32(
+                                                    Self.config.k_group_size
+                                                )
+                                                + UInt32(kg)
+                                            )
+                                            * Self.config.num_sf_k_tiles
+                                        )
+
+                                        var atom_dst_u16 = TileTensor[
+                                            Self.sf_tma_dtype,
+                                            type_of(atom_dst).LayoutType,
+                                            MutAnyOrigin,
+                                            address_space=AddressSpace.SHARED,
+                                        ](
+                                            rebind[
+                                                UnsafePointer[
+                                                    Scalar[Self.sf_tma_dtype],
+                                                    MutAnyOrigin,
+                                                    address_space=AddressSpace.SHARED,
+                                                ]
+                                            ](atom_dst.ptr),
+                                            atom_dst.layout,
+                                        )
+                                        sfb_tma_op.async_copy_4d[
+                                            Self.cta_group
+                                        ](
+                                            atom_dst_u16,
+                                            sfb_tma_mbar[0],
+                                            (
+                                                row_in_atom
+                                                * (
+                                                    SF_ATOM_M[1]
+                                                    * SF_ATOM_K
+                                                    // 2
+                                                ),
+                                                k_tile_base + k_atom,
+                                                sfb_n_coord,
+                                                0,
+                                            ),
+                                        )
+
+                            elif lane_id() < Self.MMA_N:
+                                _ = sfb_tma_mbar[0].arrive()
 
                         sfb_tma_pipeline.producer_step()
 
@@ -1087,25 +1234,23 @@ struct Grouped1D1DMatmulKernel[
                     # Compute N-position within SF group.
                     # work_ctx.n() is in element space (not tile index),
                     # so no multiplication by MMA_N needed.
-                    var outer: UInt
+                    var outer: Int
                     comptime if Self.config.AB_swapped:
                         # AB_swapped: N position is derived from M
-                        var m_in_group = UInt(work_ctx.m()) - UInt(
-                            work_ctx.m_start()
-                        )
-                        outer = m_in_group % UInt(SF_MN_GROUP_SIZE) + UInt(
-                            lane_id()
+                        var m_in_group = work_ctx.m() - work_ctx.m_start()
+                        outer = (
+                            umod(Int(m_in_group), SF_MN_GROUP_SIZE) + lane_id()
                         )
                     else:
-                        outer = UInt(work_ctx.n()) % UInt(
-                            SF_MN_GROUP_SIZE
-                        ) + UInt(lane_id())
+                        outer = (
+                            umod(Int(work_ctx.n()), SF_MN_GROUP_SIZE)
+                            + lane_id()
+                        )
 
                     var scales_offset = (
-                        UInt(sf_idx) * UInt(SFB_TILE_BYTES)
-                        + (outer % UInt(SF_ATOM_M[0]))
-                        * (UInt(SF_ATOM_M[1]) * UInt(SF_ATOM_K))
-                        + (outer / UInt(SF_ATOM_M[0])) * UInt(SF_ATOM_K)
+                        sf_idx * SFB_TILE_BYTES
+                        + umod(outer, SF_ATOM_M[0]) * (SF_ATOM_M[1] * SF_ATOM_K)
+                        + udiv_unchecked(outer, SF_ATOM_M[0]) * SF_ATOM_K
                     )
                     sfb_scales = sfb_smem_tile.ptr.load[
                         width=SF_ATOM_K,

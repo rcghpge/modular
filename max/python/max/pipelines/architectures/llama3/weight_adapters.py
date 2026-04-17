@@ -24,6 +24,10 @@ from transformers import LlamaConfig
 LLAMA_SAFETENSOR_MAPPING = {
     "model.": "",  # Removes the "model" prefix.
     "g_idx": "perm_idx",  # Specific to Llama GPT-Q weights.
+    # Remap unfused Q/K/V projections into StackedLinear namespace.
+    "self_attn.q_proj.": "self_attn.qkv_proj.q.",
+    "self_attn.k_proj.": "self_attn.qkv_proj.k.",
+    "self_attn.v_proj.": "self_attn.qkv_proj.v.",
 }
 
 
@@ -46,7 +50,7 @@ def _convert_safetensor_with_model_config(
     if model_config._quant:
         # hack: argsort the perm_idx array
         for key, weight_data in new_state_dict.items():
-            np_array = np.from_dlpack(weight_data.data)  # type: ignore
+            np_array = np.from_dlpack(weight_data.data)
             if key.endswith("perm_idx"):
                 new_state_dict[key] = WeightData.from_numpy(
                     np.argsort(np_array).astype(np.int32), key

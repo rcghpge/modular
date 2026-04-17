@@ -13,6 +13,7 @@
 
 from std.collections.string.string_slice import get_static_string
 from std.math import ceildiv
+from std.math.uutils import ufloordiv
 from std.os.atomic import Atomic
 from std.sys import simd_width_of, has_nvidia_gpu_accelerator
 from std.sys import align_of, size_of, get_defined_bool
@@ -53,6 +54,7 @@ from .matmul.gpu.sm100_structured.blockwise_fp8.blockwise_fp8_matmul import (
 from .utils import elementwise_epilogue_type
 from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
     MatmulConfig,
+    GEMMKind,
 )
 from .fp8_utils import compute_dynamic_fp8_scale, fp8_quantize
 from std.gpu.primitives.grid_controls import PDLLevel
@@ -1310,35 +1312,35 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
     if x >= M or y >= N:
         return
 
-    var MAT_A_ROWS_SCALE_SIZE: UInt
-    var MAT_A_COLS_SCALE_SIZE: UInt
-    var MAT_B_ROWS_SCALE_SIZE: UInt
-    var MAT_B_COLS_SCALE_SIZE: UInt
+    var MAT_A_ROWS_SCALE_SIZE: Int
+    var MAT_A_COLS_SCALE_SIZE: Int
+    var MAT_B_ROWS_SCALE_SIZE: Int
+    var MAT_B_COLS_SCALE_SIZE: Int
 
     comptime if scales_granularity_mnk:
         comptime scales_granularity = scales_granularity_mnk.value()
-        MAT_A_ROWS_SCALE_SIZE = UInt(scales_granularity[2])
-        MAT_A_COLS_SCALE_SIZE = UInt(scales_granularity[0])
-        MAT_B_ROWS_SCALE_SIZE = UInt(
-            scales_granularity[1]
-        ) if transpose_b else UInt(scales_granularity[2])
-        MAT_B_COLS_SCALE_SIZE = UInt(
-            scales_granularity[2]
-        ) if transpose_b else UInt(scales_granularity[1])
+        MAT_A_ROWS_SCALE_SIZE = scales_granularity[2]
+        MAT_A_COLS_SCALE_SIZE = scales_granularity[0]
+        MAT_B_ROWS_SCALE_SIZE = scales_granularity[
+            1
+        ] if transpose_b else scales_granularity[2]
+        MAT_B_COLS_SCALE_SIZE = scales_granularity[
+            2
+        ] if transpose_b else scales_granularity[1]
 
     else:
         var a_scale_0 = Int(a_scales.dim[0]())
         # var a_scale_1 = Int(a_scales.dim[1]())
         var b_scale_0 = Int(b_scales.dim[0]())
         var b_scale_1 = Int(b_scales.dim[1]())
-        MAT_A_ROWS_SCALE_SIZE = UInt(K // a_scale_0)
-        # MAT_A_COLS_SCALE_SIZE = UInt(M // a_scale_1)
+        MAT_A_ROWS_SCALE_SIZE = K // a_scale_0
+        # MAT_A_COLS_SCALE_SIZE = M // a_scale_1
         MAT_A_COLS_SCALE_SIZE = 1
-        MAT_B_ROWS_SCALE_SIZE = UInt(N // b_scale_0) if transpose_b else UInt(
-            K // b_scale_0
+        MAT_B_ROWS_SCALE_SIZE = (
+            N // b_scale_0 if transpose_b else K // b_scale_0
         )
-        MAT_B_COLS_SCALE_SIZE = UInt(K // b_scale_1) if transpose_b else UInt(
-            N // b_scale_1
+        MAT_B_COLS_SCALE_SIZE = (
+            K // b_scale_1 if transpose_b else N // b_scale_1
         )
 
     var accum = Scalar[accum_type](0)
@@ -1349,8 +1351,8 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
         var a_scale_factor = rebind[Scalar[a_scales_type]](
             a_scales.load_linear(
                 Index(
-                    k // Int(MAT_A_ROWS_SCALE_SIZE),
-                    Int(UInt(x) // MAT_A_COLS_SCALE_SIZE),
+                    k // MAT_A_ROWS_SCALE_SIZE,
+                    ufloordiv(x, MAT_A_COLS_SCALE_SIZE),
                 )
             )
         ).cast[accum_type]()
@@ -1365,8 +1367,8 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
             b_scale_factor = rebind[Scalar[b_scales_type]](
                 b_scales.load_linear(
                     Index(
-                        Int(UInt(y) // MAT_B_ROWS_SCALE_SIZE),
-                        k // Int(MAT_B_COLS_SCALE_SIZE),
+                        ufloordiv(y, MAT_B_ROWS_SCALE_SIZE),
+                        k // MAT_B_COLS_SCALE_SIZE,
                     )
                 )
             ).cast[accum_type]()
@@ -1377,8 +1379,8 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
             b_scale_factor = rebind[Scalar[b_scales_type]](
                 b_scales.load_linear(
                     Index(
-                        k // Int(MAT_B_ROWS_SCALE_SIZE),
-                        Int(UInt(y) // MAT_B_COLS_SCALE_SIZE),
+                        k // MAT_B_ROWS_SCALE_SIZE,
+                        ufloordiv(y, MAT_B_COLS_SCALE_SIZE),
                     )
                 )
             ).cast[accum_type]()
@@ -1540,27 +1542,27 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
     if n >= N or m_local >= M_local:
         return
 
-    var MAT_A_ROWS_SCALE_SIZE: UInt
-    var MAT_A_COLS_SCALE_SIZE: UInt
-    var MAT_B_ROWS_SCALE_SIZE: UInt
-    var MAT_B_COLS_SCALE_SIZE: UInt
+    var MAT_A_ROWS_SCALE_SIZE: Int
+    var MAT_A_COLS_SCALE_SIZE: Int
+    var MAT_B_ROWS_SCALE_SIZE: Int
+    var MAT_B_COLS_SCALE_SIZE: Int
 
     comptime if scales_granularity_mnk:
         comptime scales_granularity = scales_granularity_mnk.value()
-        MAT_A_ROWS_SCALE_SIZE = UInt(scales_granularity[2])
-        MAT_A_COLS_SCALE_SIZE = UInt(scales_granularity[0])
-        MAT_B_ROWS_SCALE_SIZE = UInt(scales_granularity[1])
-        MAT_B_COLS_SCALE_SIZE = UInt(scales_granularity[2])
+        MAT_A_ROWS_SCALE_SIZE = scales_granularity[2]
+        MAT_A_COLS_SCALE_SIZE = scales_granularity[0]
+        MAT_B_ROWS_SCALE_SIZE = scales_granularity[1]
+        MAT_B_COLS_SCALE_SIZE = scales_granularity[2]
 
     else:
         var a_s0 = a_scales.dim(0)
         var a_s1 = a_scales.dim(1)
         var b_s0 = b_scales.dim(1)
         var b_s1 = b_scales.dim(2)
-        MAT_A_ROWS_SCALE_SIZE = UInt(K // a_s0)
-        MAT_A_COLS_SCALE_SIZE = UInt(c.dim(0) // a_s1)
-        MAT_B_ROWS_SCALE_SIZE = UInt(N // b_s0)
-        MAT_B_COLS_SCALE_SIZE = UInt(K // b_s1)
+        MAT_A_ROWS_SCALE_SIZE = K // a_s0
+        MAT_A_COLS_SCALE_SIZE = c.dim(0) // a_s1
+        MAT_B_ROWS_SCALE_SIZE = N // b_s0
+        MAT_B_COLS_SCALE_SIZE = K // b_s1
 
     var a_start_row = Int(a_offsets[expert_idx])
     var expert = Int(expert_ids[expert_idx])
@@ -1575,8 +1577,8 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
             var a_val = rebind[Scalar[a_type]](a_row_ptr[k]).cast[accum_type]()
             var a_scale = rebind[Scalar[a_scales_type]](
                 a_scales[
-                    k // Int(MAT_A_ROWS_SCALE_SIZE),
-                    m_global // Int(MAT_A_COLS_SCALE_SIZE),
+                    k // MAT_A_ROWS_SCALE_SIZE,
+                    m_global // MAT_A_COLS_SCALE_SIZE,
                 ]
             ).cast[accum_type]()
             var b_val = rebind[Scalar[b_type]](b_expert_ptr[n * K + k]).cast[
@@ -1584,9 +1586,9 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
             ]()
             var b_scale = rebind[Scalar[b_scales_type]](
                 b_scales[
-                    UInt(expert),
-                    n // Int(MAT_B_ROWS_SCALE_SIZE),
-                    k // Int(MAT_B_COLS_SCALE_SIZE),
+                    expert,
+                    n // MAT_B_ROWS_SCALE_SIZE,
+                    k // MAT_B_COLS_SCALE_SIZE,
                 ]
             ).cast[accum_type]()
             accum += a_val * b_val * a_scale * b_scale
@@ -1722,6 +1724,7 @@ def blockwise_scaled_fp8_with_epilogue[
             ),
             mma_shape=umma_shape,
             cta_group=2,
+            gemm_kind=GEMMKind.BLOCK_SCALED_1D2D_FP8,
         )
 
         comptime if not elementwise_lambda_fn:
@@ -1782,7 +1785,7 @@ def blockwise_scaled_fp8_with_epilogue[
             var c_n = Int(c.dim[1]())
             var tmp_device_buffer = ctx.enqueue_create_buffer[c_type](c_m * c_n)
             var c_tmp = TileTensor(
-                tmp_device_buffer.unsafe_ptr(),
+                tmp_device_buffer,
                 row_major(Coord(Idx(c_m), Idx(c_n))),
             )
 

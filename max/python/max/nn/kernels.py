@@ -44,7 +44,6 @@ from .kv_cache import (
     PagedCacheValues,
     attention_dispatch_metadata,
 )
-from .no_opaque_kernels import PagedKVCacheTensorsNoOpaque
 
 _MHA_MASK_VARIANT_TO_ATTENTION_MASK = {
     MHAMaskVariant.CAUSAL_MASK: AttentionMaskVariant.CAUSAL_MASK,
@@ -257,6 +256,9 @@ def rope_split_store_ragged(
     layer_idx: TensorValue,
     n_heads: int,
     interleaved: bool = True,
+    position_ids: TensorValue | None = None,
+    mrope_section: list[int] | None = None,
+    fuse: bool = True,
 ) -> TensorValue:
     """Apply rope to Q and K from flat QKV buffer, store K/V to cache.
 
@@ -272,6 +274,15 @@ def rope_split_store_ragged(
         layer_idx: Layer index.
         n_heads: Number of query attention heads.
         interleaved: Whether freqs_cis uses interleaved (re, im) format.
+        position_ids: Optional ragged 2D array of position IDs. If None,
+            defaults to cache_length + token_idx for each token. When
+            ``num_sections > 1``, ``mrope_section`` must be provided.
+            Shape: [num_sections, total_seq_len].
+        mrope_section: Optional list of ints indicating the section of the
+            head_dim to apply RoPE to. Must be used with ``position_ids``.
+        fuse: If True (default), emit a single fused custom op. If False,
+            emit separate split, rope, and store ops for testing graph
+            compiler fusion.
 
     Returns:
         Roped Q output [total_seq_len, n_heads * head_dim].
@@ -300,16 +311,71 @@ def rope_split_store_ragged(
 
     output_dim = n_heads * kv_params.head_dim
 
-    return ops.inplace_custom(
-        "mo.rope_split_store.ragged.paged",
-        device=qkv.device,
-        values=[
+    if not fuse:
+        return _rope_split_store_ragged_unfused(
+            kv_params=kv_params,
+            qkv=qkv,
+            input_row_offsets=input_row_offsets,
+            freqs_cis=freqs_cis,
+            kv_collection=kv_collection,
+            layer_idx=layer_idx,
+            n_heads=n_heads,
+            interleaved=interleaved,
+        )
+
+    parameters: dict[str, bool | int | str | DType] = {
+        "interleaved": interleaved,
+    }
+
+    if mrope_section is not None and position_ids is None:
+        raise ValueError("mrope_section requires position_ids to be provided")
+
+    if position_ids is not None:
+        if position_ids.dtype != DType.uint32:
+            raise ValueError(
+                "expected position_ids to have dtype uint32, was"
+                f" {position_ids.dtype}"
+            )
+        if position_ids.rank != 2:
+            raise ValueError(
+                f"expected position_ids to be 2D, got rank {position_ids.rank}"
+            )
+        if mrope_section is not None:
+            if len(mrope_section) != position_ids.shape[0]:
+                raise ValueError(
+                    f"expected mrope_section to have length"
+                    f" {position_ids.shape[0]}, was {len(mrope_section)}"
+                )
+            scaled = [x * 2 for x in mrope_section]
+            prefix_sums = [sum(scaled[: i + 1]) for i in range(len(scaled))]
+            parameters["mrope_section"] = "_".join(str(x) for x in prefix_sums)
+        else:
+            parameters["mrope_section"] = ""
+
+    if position_ids is not None:
+        op_name = "mo.rope_split_store.ragged.paged.with_position_id"
+        values = [
+            qkv,
+            input_row_offsets,
+            freqs_cis,
+            *kv_collection,
+            position_ids,
+            layer_idx,
+        ]
+    else:
+        op_name = "mo.rope_split_store.ragged.paged"
+        values = [
             qkv,
             input_row_offsets,
             freqs_cis,
             *kv_collection,
             layer_idx,
-        ],
+        ]
+
+    return ops.inplace_custom(
+        op_name,
+        device=qkv.device,
+        values=values,
         out_types=[
             TensorType(
                 dtype=qkv.dtype,
@@ -317,8 +383,121 @@ def rope_split_store_ragged(
                 device=qkv.device,
             )
         ],
-        parameters={"interleaved": interleaved},
+        parameters=parameters,
     )[0].tensor
+
+
+def store_k_scale_cache_ragged(
+    kv_collection: PagedCacheValues,
+    x_k_scale: TensorValue,
+    input_row_offsets: TensorValue,
+    layer_idx: TensorValue,
+    quantization_granularity: int,
+) -> None:
+    """Store key scale tensor into the paged KV cache."""
+    if kv_collection.kv_scales is None:
+        raise ValueError(
+            "kv_collection.kv_scales is None, expected a buffer value"
+        )
+    ops.inplace_custom(
+        "mo.kv_cache.store_k_scales.paged.ragged",
+        device=x_k_scale.device,
+        values=[
+            x_k_scale,
+            kv_collection.kv_blocks,
+            kv_collection.cache_lengths,
+            kv_collection.lookup_table,
+            input_row_offsets,
+            kv_collection.max_lengths,
+            kv_collection.kv_scales,
+            layer_idx,
+        ],
+        parameters={
+            "quantization_granularity": quantization_granularity,
+        },
+    )
+
+
+def _rope_split_store_ragged_unfused(
+    kv_params: KVCacheParams,
+    qkv: TensorValue,
+    input_row_offsets: TensorValue,
+    freqs_cis: TensorValue,
+    kv_collection: PagedCacheValues,
+    layer_idx: TensorValue,
+    n_heads: int,
+    interleaved: bool,
+) -> TensorValue:
+    """Unfused rope + split + store for testing graph compiler fusion.
+
+    Emits separate slice, rope, and store ops instead of a single fused
+    custom op, so the graph compiler can attempt to fuse them.
+    """
+    head_dim = kv_params.head_dim
+    n_kv_heads = kv_params.n_kv_heads
+    q_dim = n_heads * head_dim
+    kv_dim = n_kv_heads * head_dim
+
+    # Split QKV into Q, K, V.
+    x_q, x_k, x_v = ops.split(qkv, [q_dim, kv_dim, kv_dim], axis=-1)
+
+    # Reshape to [total_seq_len, num_heads, head_dim] for rope.
+    x_q = x_q.reshape((-1, n_heads, head_dim))
+    x_k = x_k.reshape((-1, n_kv_heads, head_dim))
+    x_v = x_v.reshape((-1, n_kv_heads, head_dim))
+
+    # Apply RoPE to Q and K individually.
+    xq_rope = rope_ragged(
+        x_q,
+        input_row_offsets,
+        kv_collection.cache_lengths,
+        freqs_cis,
+        interleaved=interleaved,
+    )
+    xk_rope = rope_ragged(
+        x_k,
+        input_row_offsets,
+        kv_collection.cache_lengths,
+        freqs_cis,
+        interleaved=interleaved,
+    )
+
+    # Store K and V to cache individually.
+    kv_blocks = kv_collection.kv_blocks
+    cache_lengths = kv_collection.cache_lengths
+    lookup_table = kv_collection.lookup_table
+    max_lengths = kv_collection.max_lengths
+    ops.inplace_custom(
+        "mo.kv_cache.store.paged.ragged",
+        device=xk_rope.device,
+        values=[
+            xk_rope,
+            kv_blocks,
+            cache_lengths,
+            lookup_table,
+            input_row_offsets,
+            max_lengths,
+            layer_idx,
+        ],
+        parameters={"key_or_value": 0},
+    )
+    ops.inplace_custom(
+        "mo.kv_cache.store.paged.ragged",
+        device=x_v.device,
+        values=[
+            x_v,
+            kv_blocks,
+            cache_lengths,
+            lookup_table,
+            input_row_offsets,
+            max_lengths,
+            layer_idx,
+        ],
+        parameters={"key_or_value": 1},
+    )
+
+    # Return flat roped Q [total_seq_len, n_heads * head_dim].
+    return xq_rope.reshape((-1, q_dim))
 
 
 def _fused_qkv_ragged_matmul_scaled_float8(
@@ -1739,7 +1918,7 @@ def mla_fp8_index_top_k(
     q: TensorValue,
     q_s: TensorValue,
     input_row_offsets: TensorValue,
-    k_collection: PagedKVCacheTensorsNoOpaque,
+    k_collection: PagedCacheValues,
     layer_idx: TensorValue,
     top_k: int,
     quantization_granularity: int,
@@ -1781,8 +1960,8 @@ def mla_fp8_index_top_k(
         device=q.device,
     )
     _validate_argument_tensor(
-        "k_collection.blocks",
-        k_collection.blocks,
+        "k_collection.kv_blocks",
+        k_collection.kv_blocks,
         dtype=DType.float8_e4m3fn,
         rank=6,
         device=q.device,
@@ -2740,7 +2919,7 @@ def compute_mla_dispatch_args_scalar(
 ) -> TensorValue:
     """Computes scalar dispatch arguments for the MLA decode kernel.
 
-    Produces a CPU tensor of shape ``[4]`` containing pre-computed integer
+    Produces a CPU tensor of shape ``[3]`` containing pre-computed integer
     arguments used by the capturable MLA decode kernel variant to enable CUDA
     graph capture.
 
@@ -2754,7 +2933,7 @@ def compute_mla_dispatch_args_scalar(
         device: The :class:`~max.graph.DeviceRef` on which to run the op.
 
     Returns:
-        A CPU :class:`~max.graph.TensorValue` of shape ``[4]`` and dtype
+        A CPU :class:`~max.graph.TensorValue` of shape ``[3]`` and dtype
         ``int64`` containing the dispatch scalar arguments.
     """
     results = ops.custom(
@@ -3104,23 +3283,6 @@ def flare_mla_decompress_k_cache(
     return results[1].tensor
 
 
-def kv_cache_get_max_seq_len(
-    kv_params: KVCacheParams,
-    kv_collection: PagedCacheValues,
-) -> TensorValue:
-    """This kernel returns the maximum sequence length."""
-    assert kv_params.page_size is not None
-
-    return ops.inplace_custom(
-        "mo.kv_cache.get_max_seq_len.paged",
-        device=DeviceRef.CPU(),
-        values=[*kv_collection],
-        out_types=[
-            TensorType(dtype=DType.uint32, shape=[1], device=DeviceRef.CPU())
-        ],
-    )[0].tensor[0]
-
-
 def cross_attention_ragged(
     kv_params: KVCacheParams,
     input: TensorValue,
@@ -3467,6 +3629,12 @@ def moe_router_group_limited(
     routed_scaling_factor: float,
 ) -> tuple[TensorValue, TensorValue]:
     """Group limited MoE router.
+    When `n_groups > 1`, selects up to `topk_group` expert groups, then
+    picks ``n_experts_per_tok`` experts within those groups (DeepSeek-V3 style).
+    When ``n_groups == 1``, there is only one group, so group selection is
+    skipped and routing uses the dedicated GPU single-group path
+    (``mo.moe.single.group.router``, implemented as ``single_group_router`` in
+    Mojo). In that case ``topk_group`` is not used by the kernel.
 
     Reference: https://github.com/deepseek-ai/DeepSeek-V3/blob/9b4e9788e4a3a731f7567338ed15d3ec549ce03b/inference/model.py#L566.
 
@@ -3481,8 +3649,11 @@ def moe_router_group_limited(
             n_routed_experts.
         topk_group: The maximum number of expert groups that a token will be
             routed to.
-        norm_weights: Whether to normalize the selected expert weights.
-        routed_scaling_factor: The scaling factor for the routed expert weights.
+        norm_weights: Whether to normalize the selected expert weights when
+            n_groups > 1. When n_groups == 1, normalization is currently
+            always enabled (norm_weights is treated as True) so behavior
+            matches the previous graph path that always divided weights by their
+            sum per token.
 
     Returns:
         A tuple of two tensors:
@@ -3491,13 +3662,6 @@ def moe_router_group_limited(
         - expert_weights: The weights of the routed experts for each token.
             Shape: [num_tokens, n_experts_per_tok].
     """
-    parameters: dict[str, int | str | DType | bool] = {
-        "n_routed_experts": n_routed_experts,
-        "n_experts_per_tok": n_experts_per_tok,
-        "n_groups": n_groups,
-        "topk_group": topk_group,
-        "norm_weights": norm_weights,
-    }
 
     if expert_bias.rank != 1:
         raise ValueError(
@@ -3508,8 +3672,25 @@ def moe_router_group_limited(
             f"expected expert_bias of shape [num_experts] but got {expert_bias.shape}"
         )
 
+    if n_groups == 1:
+        parameters: dict[str, int | str | DType | bool] = {
+            "n_routed_experts": n_routed_experts,
+            "n_experts_per_tok": n_experts_per_tok,
+            "norm_weights": norm_weights,
+        }
+        op_name = "mo.moe.single.group.router"
+    else:
+        parameters = {
+            "n_routed_experts": n_routed_experts,
+            "n_experts_per_tok": n_experts_per_tok,
+            "n_groups": n_groups,
+            "topk_group": topk_group,
+            "norm_weights": norm_weights,
+        }
+        op_name = "mo.moe.router.group.limited"
+
     results = ops.custom(
-        "mo.moe.router.group.limited",
+        op_name,
         device=expert_scores.device,
         values=[
             expert_scores,
@@ -4235,87 +4416,6 @@ def quantize_dynamic_scaled_float8(
     return result[0].tensor, result[1].tensor
 
 
-def batched_quantize_dynamic_scaled_float8(
-    input: TensorValue,
-    input_scale_spec: InputScaleSpec,
-    weight_scale_spec: WeightScaleSpec,
-    scale_ub: float = 1200.0,
-    group_size_or_per_token: int = -1,
-    out_type: DType = DType.float8_e4m3fn,
-    scales_type: DType = DType.bfloat16,
-) -> tuple[TensorValue, TensorValue]:
-    """Dynamically quantize the input tensor to fp8.
-
-    Args:
-        input: The input tensor to quantize. Shape: [batch_size, seq_len, hidden_size]
-        scale_ub: The upper bound of the scale factor.
-        group_size_or_per_token: The group size for quantization. When set to -1,
-            the quantization is column-wise.
-        out_type: The type of the output tensor.
-        scales_type: The type of the scales tensor.
-
-    Returns:
-        The quantized tensor and the scales.
-    """
-    if input.rank != 3:
-        raise ValueError("input must be rank 3 tensor")
-
-    if out_type not in (DType.float8_e4m3fn, DType.float8_e4m3fnuz):
-        raise ValueError("out_type must be float8_e4m3fn or float8_e4m3fnuz")
-
-    if scales_type not in (DType.float32, DType.bfloat16, DType.float16):
-        raise ValueError("scales_type must be float32, bfloat16, or float16")
-
-    group_size = (
-        group_size_or_per_token
-        if group_size_or_per_token != -1
-        else input.shape[2]
-    )
-
-    a_scales_dim1 = input.shape[1]
-    if input_scale_spec.is_block or weight_scale_spec.is_block:
-        if not (input_scale_spec.is_block and weight_scale_spec.is_block):
-            raise ValueError(
-                "both input and weight must be blockwise scaled for blockwise scaling"
-            )
-
-        # For blockwise scaling pad the a_scales to 16 Bytes. This is required by NVIDIA SM90+ TMA instructions
-        padding_size = 16 // scales_type.size_in_bytes
-        a_scales_dim1 = (
-            (input.shape[1] + padding_size - 1) // padding_size
-        ) * padding_size
-
-    result = ops.custom(
-        "mo.batched.quantize.dynamic.scaled.fp8",
-        device=input.device,
-        values=[
-            input,
-            ops.constant(scale_ub, DType.float32, device=DeviceRef.CPU()),
-        ],
-        out_types=[
-            TensorType(
-                dtype=out_type,
-                shape=[input.shape[0], input.shape[1], input.shape[2]],
-                device=input.device,
-            ),
-            TensorType(
-                dtype=scales_type,
-                shape=[
-                    input.shape[0],
-                    input.shape[2] // group_size,
-                    a_scales_dim1,
-                ],
-                device=input.device,
-            ),
-        ],
-        parameters={
-            "group_size_or_per_token": group_size_or_per_token,
-        },
-    )
-
-    return result[0].tensor, result[1].tensor
-
-
 def dynamic_scaled_matmul(
     a: TensorValue,
     b: TensorValue,
@@ -4620,6 +4720,14 @@ def mxfp4_dequant(
     return result
 
 
+def _is_sm10x_gpu() -> bool:
+    """Checks if the current accelerator is NVIDIA SM100+ (Blackwell)."""
+    try:
+        return accelerator_architecture_name().startswith("sm_10")
+    except Exception:
+        return False
+
+
 def quantize_dynamic_block_scaled_fp4(
     input: TensorValue,
     tensor_sf: TensorValue | float,
@@ -4631,13 +4739,18 @@ def quantize_dynamic_block_scaled_fp4(
 
     Args:
         input: The input tensor to quantize. Shape: [seq_len, hidden_size]
-        tensor_sf: The tensor-wise scale factor (inverted as per quantization kernel requirement).
+        tensor_sf: The tensor-wise scale factor (inverted as per
+            quantization kernel requirement).
         sf_vector_size: The block size for the scaling factors.
+            16 for NVFP4, 32 for MXFP4.
         out_type: The type of the output tensor.
         scales_type: The type of the scales tensor.
+            ``float8_e4m3fn`` for NVFP4, ``float8_e8m0fnu`` for MXFP4.
 
     Returns:
-        The quantized tensor in [seq_len, hidden_size // 2] layout and the scales in [ceildiv(seq_len, 128), ceildiv(hidden_size, sf_vector_size * 4), 32, 4, 4] layout.
+        The quantized tensor and scales. Scales layout depends on hardware:
+        rank-5 interleaved on NVIDIA SM100, rank-2 ``[M, K // sf_vector_size]``
+        otherwise.
     """
     if input.rank != 2:
         raise ValueError("input tensor must be rank 2 tensor")
@@ -4648,28 +4761,45 @@ def quantize_dynamic_block_scaled_fp4(
     if out_type not in (DType.uint8,):
         raise ValueError("out_type must be uint8 (fp4-e2m1fnX2)")
 
-    if scales_type not in (DType.float8_e4m3fn,):
-        raise ValueError("scales_type must be float8_e4m3fn for NVFP4")
-
-    if sf_vector_size != 16:
-        raise ValueError("sf_vector_size must be 16 for NVFP4")
-
-    if int(input.shape[1]) % (sf_vector_size // 2) != 0:
+    if scales_type not in (DType.float8_e4m3fn, DType.float8_e8m0fnu):
         raise ValueError(
-            "input.shape[1] must be a multiple of (sf_vector_size // 2)"
+            "scales_type must be float8_e4m3fn (NVFP4) or"
+            " float8_e8m0fnu (MXFP4)"
         )
 
-    SF_ATOM_M = [32, 4]
-    SF_ATOM_K = 4
-    SF_MN_GROUP_SIZE = SF_ATOM_M[0] * SF_ATOM_M[1]  # 128
-    SF_K_GROUP_SIZE = SF_ATOM_K * sf_vector_size
+    if sf_vector_size not in (16, 32):
+        raise ValueError("sf_vector_size must be 16 (NVFP4) or 32 (MXFP4)")
 
-    # scales tensor shape: [ceildiv(M, SF_MN_GROUP_SIZE), ceildiv(N, sf_vector_size * 4), SF_ATOM_M[0], SF_ATOM_M[1], SF_ATOM_K]
-    scales_dim_0 = ceildiv(input.shape[0], Dim(SF_MN_GROUP_SIZE))
-    scales_dim_1 = ceildiv(input.shape[1], Dim(SF_K_GROUP_SIZE))
-    scales_dim_2 = SF_ATOM_M[0]
-    scales_dim_3 = SF_ATOM_M[1]
-    scales_dim_4 = SF_ATOM_K
+    # MXFP4 (sf_vector_size=32) requires K % 32 because the kernel's
+    # 4-thread cooperative scale reduction operates on 32-element groups.
+    # NVFP4 (sf_vector_size=16) only requires K % 8.
+    k_alignment = (
+        sf_vector_size if sf_vector_size == 32 else sf_vector_size // 2
+    )
+    if int(input.shape[1]) % k_alignment != 0:
+        raise ValueError(f"input.shape[1] must be a multiple of {k_alignment}")
+
+    if _is_sm10x_gpu():
+        # SM100 TCGEN05: rank-5 interleaved scales layout.
+        SF_ATOM_M = [32, 4]
+        SF_ATOM_K = 4
+        SF_MN_GROUP_SIZE = SF_ATOM_M[0] * SF_ATOM_M[1]  # 128
+        SF_K_GROUP_SIZE = SF_ATOM_K * sf_vector_size
+        scales_shape: list[Dim | int] = [
+            ceildiv(input.shape[0], Dim(SF_MN_GROUP_SIZE)),
+            ceildiv(input.shape[1], Dim(SF_K_GROUP_SIZE)),
+            SF_ATOM_M[0],
+            SF_ATOM_M[1],
+            SF_ATOM_K,
+        ]
+    else:
+        # Default: rank-2 scales [M, K // sf_vector_size].
+        # TODO: 2D is a proxy for CDNA4. The optimized layout is likely
+        # 6D (32x32 tiles) or 7D (16x16 tiles).
+        scales_shape = [
+            input.shape[0],
+            ceildiv(input.shape[1], Dim(sf_vector_size)),
+        ]
 
     tensor_sf_value: TensorValue
     if isinstance(tensor_sf, float):
@@ -4688,19 +4818,13 @@ def quantize_dynamic_block_scaled_fp4(
                 dtype=out_type,
                 shape=[
                     input.shape[0],
-                    input.shape[1] // 2,
-                ],  # each output element (uint8) is 2 fp4-e2m1fn values
+                    input.shape[1] // 2,  # each uint8 packs 2 fp4 values
+                ],
                 device=input.device,
             ),
             TensorType(
                 dtype=scales_type,
-                shape=[
-                    scales_dim_0,
-                    scales_dim_1,
-                    scales_dim_2,
-                    scales_dim_3,
-                    scales_dim_4,
-                ],
+                shape=scales_shape,
                 device=input.device,
             ),
         ],
@@ -4715,31 +4839,42 @@ def quantize_dynamic_block_scaled_fp4(
 def block_scales_interleave(
     scales: TensorValue,
     sf_vector_size: int = 16,
-    scales_type: DType = DType.float8_e4m3fn,
 ) -> TensorValue:
-    """Interleave the block scales tensor in [M, N] layout to [ceildiv(M, 128), ceildiv(N, sf_vector_size * 4), 32, 4, 4] layout.
+    """Interleaves rank-2 FP4 block scales into the rank-5 TCGEN layout.
 
     Args:
-        scales: The scales tensor to interleave in [M, N] layout.
-        sf_vector_size: The block size for the scaling factors.
+        scales: Rank-2 block scales in ``[M, K // sf_vector_size]`` layout.
+            Supported dtypes are ``float8_e4m3fn`` for NVFP4 and
+            ``float8_e8m0fnu`` for MXFP4.
+        sf_vector_size: Scale-factor vector size: 16 for NVFP4 or 32 for MXFP4.
 
     Returns:
-        The interleaved scales tensor in [ceildiv(M, 128), ceildiv(N, sf_vector_size * 4), 32, 4, 4] layout.
+        The interleaved scales tensor in
+        ``[ceildiv(M, 128), ceildiv(K // sf_vector_size, 4), 32, 4, 4]`` layout.
     """
     if scales.rank != 2:
-        raise ValueError("Both a and b must be rank 2 tensors")
+        raise ValueError("scales must be a rank 2 tensor")
 
-    if scales.dtype != DType.float8_e4m3fn:
-        raise ValueError("scales dtype must be float8_e4m3fn")
+    if scales.dtype not in (DType.float8_e4m3fn, DType.float8_e8m0fnu):
+        raise ValueError(
+            "scales dtype must be float8_e4m3fn (NVFP4) or"
+            " float8_e8m0fnu (MXFP4)"
+        )
 
-    if sf_vector_size != 16:
-        raise ValueError("sf_vector_size must be 16 for NVFP4")
+    expected_sf_vector_size = 32 if scales.dtype == DType.float8_e8m0fnu else 16
+    if sf_vector_size != expected_sf_vector_size:
+        raise ValueError(
+            "sf_vector_size must match scales dtype:"
+            " 16 for float8_e4m3fn (NVFP4),"
+            " 32 for float8_e8m0fnu (MXFP4)"
+        )
 
     SF_ATOM_M = [32, 4]
     SF_ATOM_K = 4
     SF_MN_GROUP_SIZE = SF_ATOM_M[0] * SF_ATOM_M[1]  # 128
 
-    # scales tensor shape: [ceildiv(M, SF_MN_GROUP_SIZE), ceildiv(N, sf_vector_size * 4), SF_ATOM_M[0], SF_ATOM_M[1], SF_ATOM_K]
+    # Interleaved scales shape:
+    # [ceildiv(M, 128), ceildiv(num_scale_cols, 4), 32, 4, 4].
     scales_dim_0 = ceildiv(scales.shape[0], Dim(SF_MN_GROUP_SIZE))
     scales_dim_1 = ceildiv(scales.shape[1], Dim(SF_ATOM_K))
     scales_dim_2 = SF_ATOM_M[0]
@@ -4752,7 +4887,7 @@ def block_scales_interleave(
         values=[scales],
         out_types=[
             TensorType(
-                dtype=scales_type,
+                dtype=scales.dtype,
                 shape=[
                     scales_dim_0,
                     scales_dim_1,

@@ -54,7 +54,7 @@ from .kv_cache import (
 from .layer import Layer, LayerList, Module, Shardable
 from .linear import MLP, ColumnParallelLinear, GPTQLinear, Linear
 from .lora import AttentionWithRopeAndLoRA, LinearLoRA, SupportsLoRA
-from .moe import MoE, MoEGate, MoEQuantized
+from .moe import MoE, MoEGate, MoEQuantized, forward_moe_sharded_layers
 from .norm import ConstantLayerNorm, GroupNorm, LayerNorm, RMSNorm
 from .quant_config import (
     InputScaleSpec,
@@ -81,6 +81,7 @@ from .sampling import (
     RejectionSamplerWithResiduals,
 )
 from .sequential import Sequential
+from .stacked_linear import StackedLinear
 from .transformer import (
     DistributedTransformer,
     DistributedTransformerBlock,
@@ -147,6 +148,7 @@ __all__ = [
     "Sequential",
     "Shardable",
     "Signals",
+    "StackedLinear",
     "SupportsLoRA",
     "TensorParallelAttentionWithRope",
     "TensorParallelLatentAttentionWithRope",
@@ -159,6 +161,7 @@ __all__ = [
     "YarnScalingParams",
     "build_max_lengths_tensor",
     "clamp",
+    "forward_moe_sharded_layers",
     "split_batch",
     "split_batch_replicated",
 ]

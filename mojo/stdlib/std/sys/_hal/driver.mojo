@@ -59,7 +59,7 @@ struct Driver(Movable):
             minor=M_DRIVER_INTERFACE_VERSION_MINOR,
             patch=M_DRIVER_INTERFACE_VERSION_PATCH,
         )
-        var handle = UnsafeMaybeUninit(DriverHandle(_unsafe_null=()))
+        var handle = UnsafeMaybeUninit[DriverHandle]()
 
         var status = plugin.create.f(
             ImmutPointer(
@@ -70,12 +70,10 @@ struct Driver(Movable):
             OutParam[DriverHandle](to=handle),
         )
         if status != STATUS_SUCCESS:
-            var err = plugin.get_status_message(status)
             raise HALError(
-                err.status,
+                status,
                 message=String(
-                    t"Failed to initialise driver plugin from {plugin.so_path}:"
-                    t" {err.message}"
+                    t"Failed to initialise driver plugin from {plugin.so_path}"
                 ),
             )
 
@@ -87,7 +85,7 @@ struct Driver(Movable):
         )
         if status != STATUS_SUCCESS:
             _ = plugin.destroy.f(driver_handle)
-            var err = plugin.get_status_message(status)
+            var err = plugin.get_status_message(driver_handle, status)
             raise HALError(
                 err.status,
                 message=String(t"Failed to get device count: {err.message}"),
@@ -100,10 +98,13 @@ struct Driver(Movable):
         )
 
     def __del__(deinit self):
-        var _ = self._plugin.destroy.f(self._handle)
-        # TODO: move Driver to @explicit_destroy,
-        # if status != STATUS_SUCCESS:
-        #    raise Error(self._plugin.get_status_message(status))
+        # Move `_plugin` into a local so its `OwnedDLHandle` stays alive
+        # until after the `destroy` call returns — ASAP destruction would
+        # otherwise `dlclose` the `.so` (unmapping the code page) before
+        # we call through the function pointer.
+        var plugin = self._plugin^
+        _ = plugin.destroy.f(self._handle)
+        _ = plugin^
 
     # ===-------------------------------------------------------------------===#
     # Queries

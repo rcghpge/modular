@@ -34,6 +34,10 @@ This version is still a work in progress.
 
 ### `max` CLI {#26-3-max-cli}
 
+- Added sweep benchmarking capabilities to `max benchmark`: iterate over
+  multiple concurrency and request-rate combinations, flush the prefix cache
+  between runs, and collect per-run structured JSON results.
+
 ### Python API {#26-3-max-python}
 
 - Fixed tensor slicing with negative integer indices (e.g. `hidden[:, -1]`)
@@ -110,6 +114,24 @@ This version is still a work in progress.
 - Added `scatter_add` op handler to the experimental eager interpreter (CPU),
   accumulating `updates` into a copy of `input` at `indices` along `axis`
   and summing duplicate indices via `max.experimental.functional.scatter_add`.
+- Added `max.graph.ops.scatter_max`, `max.graph.ops.scatter_min`, and
+  `max.graph.ops.scatter_mul` graph operations (and corresponding
+  `max.experimental.functional` wrappers) for element-wise scatter with
+  max, min, and multiply reductions at duplicate indices along an axis.
+- Added `scatter_max`, `scatter_min`, and `scatter_mul` op handlers to
+  the experimental eager interpreter (CPU), applying max, min, and
+  multiply reductions at duplicate scatter indices via
+  `max.experimental.functional.scatter_max`, `.scatter_min`, and
+  `.scatter_mul`.
+- Added `max.graph.ops.scatter_nd_max`, `max.graph.ops.scatter_nd_min`, and
+  `max.graph.ops.scatter_nd_mul` graph operations (and corresponding
+  `max.experimental.functional` wrappers) for N-dimensional scatter with
+  max, min, and multiply reductions at duplicate index vectors.
+- Added `scatter_nd_max`, `scatter_nd_min`, and `scatter_nd_mul` op handlers
+  to the experimental eager interpreter (CPU), applying max, min, and multiply
+  reductions at duplicate N-dimensional scatter indices via
+  `max.experimental.functional.scatter_nd_max`, `.scatter_nd_min`, and
+  `.scatter_nd_mul`.
 - `max.graph.ops.pad` (and `max.graph.experimental.functional.pad`) now
   accepts `mode='reflect'` and `mode='edge'` in addition to
   `mode='constant'`.
@@ -123,6 +145,29 @@ This version is still a work in progress.
   `InterpolationMode.BILINEAR` by delegating to `resize_linear`.
 - Added `resize_linear` op handler to the experimental eager interpreter
   (CPU) via `max.experimental.functional.resize_linear`.
+- Added `max.graph.ops.resize_nearest` for nearest-neighbor interpolation
+  resizing with configurable `coordinate_transform_mode` and `round_mode`;
+  `max.graph.ops.resize` now supports `InterpolationMode.NEAREST`.
+- Added `resize_nearest` op handler to the experimental eager interpreter
+  (CPU) via `max.experimental.functional.resize_nearest`.
+- Added `max.graph.ops.resize_bicubic` for bicubic interpolation resizing
+  (rank-4 NCHW, half_pixel coord mapping, a=-0.75 Catmull-Rom kernel);
+  `max.graph.ops.resize` now delegates its `InterpolationMode.BICUBIC` path
+  to `resize_bicubic`.
+- Added `resize_bicubic` op handler to the experimental eager interpreter
+  (CPU) via `max.experimental.functional.resize_bicubic`.
+- Added defensive `mo.shape.from_tensor` and `mo.index.to_tensor` handlers
+  to the experimental eager interpreter. These internal ops are typically
+  folded away by canonicalization; the handlers prevent crashes if they
+  survive into the interpreter.
+- Added defensive `mo.buffer.create` and `mo.buffer.transfer` handlers to
+  the experimental eager interpreter. These internal ops are typically
+  lowered by the graph compiler; the handlers prevent crashes if they
+  survive into the interpreter.
+- Added defensive `mo.gather_sum` handler to the experimental eager
+  interpreter. This fused composite op (gather axis 0 + sum axis 1) is
+  used by DLRM-style multi-hot embeddings; the handler prevents crashes
+  if the op survives into the interpreter.
 - Added `distributed.allreduce.sum` op handler to the experimental eager
   interpreter, enabling multi-GPU eager execution of allreduce collectives
 - Added `distributed.allgather` op handler to the experimental eager
@@ -133,6 +178,16 @@ This version is still a work in progress.
   without falling back to compilation.
 - Added `distributed_scatter` collective to `distributed_functional` for
   hardware-accelerated root-to-device tensor distribution.
+- Added `distributed.broadcast` op handler to the eager interpreter,
+  enabling multi-GPU eager execution of broadcast collectives
+  without falling back to compilation.
+- Added `distributed_broadcast` collective to `distributed_functional` for
+  hardware-accelerated root-to-all tensor replication.
+- Added `distributed.reducescatter.sum` op handler to the eager interpreter,
+  enabling multi-GPU eager execution of reduce-scatter collectives without
+  falling back to compilation.
+- Added `distributed_reducescatter_sum` collective to `distributed_functional`
+  for hardware-accelerated reduce-and-scatter tensor distribution.
 - `Module.compile()` now accepts a `custom_extensions` parameter for loading
   custom Mojo kernel libraries at graph construction time, fixing validation
   failures for kernels with struct-level parameters.
