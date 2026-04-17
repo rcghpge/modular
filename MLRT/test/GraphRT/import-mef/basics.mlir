@@ -92,20 +92,20 @@ mef.callable @attributes() {
   // MD: "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>
   "type.tensor"() {t = tensor<0x1x0xcomplex<si32>>} : () -> ()
 
-  // CHECK-NEXT: mef.opaque "type.quanttensor" [tensor<1x2x!quant.uniform<i16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>]()
-  // MD: "type.quanttensor"() {t = tensor<1x2x!quant.uniform<i16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>}
+  // CHECK-NEXT: mef.opaque "type.quanttensor" [tensor<1x2x!quant.uniform<si16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>]()
+  // MD: "type.quanttensor"() {t = tensor<1x2x!quant.uniform<si16:f32:1, {0.20000000298023224:128,0.10000000149011612:-128}>>}
   "type.quanttensor"() {t = tensor<1x2x!quant.uniform<i16:f32:1, {0.2:128, 0.1:-128}>>} : () -> ()
 
-  // CHECK-NEXT: mef.opaque "type.quant" [!quant.uniform<u8:f32, 0.0078119998797774315:128>]()
-  // MD: "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>
+  // CHECK-NEXT: mef.opaque "type.quant" [!quant.uniform<ui8:f32, 0.0078119998797774315:128>]()
+  // MD: "type.quant"() {t = !quant.uniform<ui8:f32, 0.0078119998797774315:128>
   "type.quant"() {t = !quant.uniform<u8:f32, 0.0078119998797774315:128>} : () -> ()
 
-  // CHECK-NEXT: mef.opaque "type.quant" [!quant.uniform<i8:f32, 0.0078119998797774315:-128>]()
-  // MD: "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>
+  // CHECK-NEXT: mef.opaque "type.quant" [!quant.uniform<si8:f32, 0.0078119998797774315:-128>]()
+  // MD: "type.quant"() {t = !quant.uniform<si8:f32, 0.0078119998797774315:-128>
   "type.quant"() {t = !quant.uniform<i8:f32, 0.0078119998797774315:-128>} : () -> ()
 
-  // CHECK-NEXT: mef.opaque "type.fn" [(si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>]()
-  // MD: "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>
+  // CHECK-NEXT: mef.opaque "type.fn" [(si32, !quant.uniform<si8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>]()
+  // MD: "type.fn"() {t = (si32, !quant.uniform<si8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>
   "type.fn"() {t = (si32, !quant.uniform<i8:f32, 0.0078119998797774315:-128>) -> tensor<4x100xf32>} : () -> ()
 
   // CHECK-NEXT: mef.opaque "type.fn" [() -> (si8, i1)]()
