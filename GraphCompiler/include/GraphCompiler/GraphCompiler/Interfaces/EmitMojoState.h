@@ -149,7 +149,6 @@ constexpr std::pair<StringLiteral, StringLiteral> packagesToImport[] = {
     {"std.runtime", ""},
     {"std.runtime.tracing", ""},
     {"std.memory", ""},
-    {"buffer", ""},
     {"std.collections", ""},
     {"layout", ""},
 };
