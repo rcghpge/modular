@@ -1373,14 +1373,33 @@ ErrorOrSuccess HIPDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
       HIP_CHECK_ERR(driver_.hipMemsetD32Async(dst, loBits, len, stream_));
     } else {
       size_t len = byteSize >> 3;
-      // For each 64-bit element, set the low and high 32-bit parts separately
-      for (size_t i = 0; i < len; ++i) {
-        void *loPtr =
-            reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(dst) + i * 8);
+      if (len > 0) {
+        // Seed the first 8 bytes with the uint64 pattern by writing its
+        // low and high 32-bit halves, then fill the rest via doubling
+        // device-to-device copies (log2(len) calls instead of O(len)).
+        //
+        // HIP has no single-call strided 32-bit memset that works here.
+        // `hipMemsetD2D32Async` looks like it should do the job in 2
+        // calls, but ROCm forwards `width` unchanged into byte-valued
+        // internal fields (sizeBytes = width * height * depth in
+        // `ihipMemset3DCommand`), making the API's contract "width in
+        // 32-bit elements" unusable: width=1 aborts with
+        // "Pattern Size: 4 cannot be greater than fill size: 1" at
+        // rocclr/device/blit.cpp:735, and width=4 (bytes) silently fails
+        // to fill rows 1..N-1 on pinned host memory. This bug is
+        // unchanged in ROCm 7.1.1, 7.2.0, 7.2.1, and 7.2.2.
         void *hiPtr = reinterpret_cast<void *>(
-            reinterpret_cast<uintptr_t>(dst) + i * 8 + 4);
-        HIP_CHECK_ERR(driver_.hipMemsetD32Async(loPtr, loBits, 1, stream_));
+            reinterpret_cast<uintptr_t>(dst) + sizeof(uint32_t));
+        HIP_CHECK_ERR(driver_.hipMemsetD32Async(dst, loBits, 1, stream_));
         HIP_CHECK_ERR(driver_.hipMemsetD32Async(hiPtr, hiBits, 1, stream_));
+        for (size_t filled = 1; filled < len;) {
+          size_t copyCount = std::min(filled, len - filled);
+          void *dstCopy = reinterpret_cast<void *>(
+              reinterpret_cast<uintptr_t>(dst) + filled * sizeof(uint64_t));
+          HIP_CHECK_ERR(driver_.hipMemcpyDtoDAsync(
+              dstCopy, dst, copyCount * sizeof(uint64_t), stream_));
+          filled += copyCount;
+        }
       }
     }
   }

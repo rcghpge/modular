@@ -9,6 +9,8 @@
 #include "Device.h"
 #include "Event.h"
 
+#include <algorithm>
+
 DriverResult<M_driver_queue_t> M_driver_queue::create(M_driver_context &ctx) {
   M_driver_device &dev = ctx.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
@@ -123,15 +125,39 @@ M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
         return M_DRIVER_STATUS_UNKNOWN_ERROR;
     } else {
       size_t len = size >> 3;
-      void *hiPtr = reinterpret_cast<void *>(
-          reinterpret_cast<uintptr_t>(dstPtr) + sizeof(uint32_t));
-      hipError_t result =
-          hip.hipMemsetD2D32Async(dstPtr, 8, loBits, 1, len, stream);
-      if (result != hipSuccess)
-        return M_DRIVER_STATUS_UNKNOWN_ERROR;
-      result = hip.hipMemsetD2D32Async(hiPtr, 8, hiBits, 1, len, stream);
-      if (result != hipSuccess)
-        return M_DRIVER_STATUS_UNKNOWN_ERROR;
+      if (len > 0) {
+        // Seed the first 8 bytes with the uint64 pattern by writing its
+        // low and high 32-bit halves, then fill the rest via doubling
+        // device-to-device copies (log2(len) calls instead of O(len)).
+        //
+        // `hipMemsetD2D32Async` would do this in 2 calls, but ROCm
+        // forwards `width` unchanged into byte-valued internal fields
+        // (sizeBytes = width * height * depth), making the documented
+        // "width in 32-bit elements" contract unusable: width=1 aborts
+        // with "Pattern Size: 4 cannot be greater than fill size: 1",
+        // and width=4 (bytes) silently fails to fill rows 1..N-1 on
+        // pinned host memory. This bug is unchanged in ROCm 7.1.1,
+        // 7.2.0, 7.2.1, and 7.2.2.
+        void *hiPtr = reinterpret_cast<void *>(
+            reinterpret_cast<uintptr_t>(dstPtr) + sizeof(uint32_t));
+        hipError_t result = hip.hipMemsetD32Async(dstPtr, loBits, 1, stream);
+        if (result != hipSuccess)
+          return M_DRIVER_STATUS_UNKNOWN_ERROR;
+        result = hip.hipMemsetD32Async(hiPtr, hiBits, 1, stream);
+        if (result != hipSuccess)
+          return M_DRIVER_STATUS_UNKNOWN_ERROR;
+        for (size_t filled = 1; filled < len;) {
+          size_t copyCount = std::min(filled, len - filled);
+          void *dstCopy = reinterpret_cast<void *>(
+              reinterpret_cast<uintptr_t>(dstPtr) + filled * sizeof(uint64_t));
+          result =
+              hip.hipMemcpyAsync(dstCopy, dstPtr, copyCount * sizeof(uint64_t),
+                                 hipMemcpyDeviceToDevice, stream);
+          if (result != hipSuccess)
+            return M_DRIVER_STATUS_UNKNOWN_ERROR;
+          filled += copyCount;
+        }
+      }
     }
     break;
   }

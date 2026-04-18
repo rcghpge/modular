@@ -49,7 +49,6 @@
   HIP_FN(hipMemsetAsync)                                                       \
   HIP_FN(hipMemsetD16Async)                                                    \
   HIP_FN(hipMemsetD32Async)                                                    \
-  HIP_FN(hipMemsetD2D32Async)                                                  \
   HIP_FN(hipEventCreateWithFlags)                                              \
   HIP_FN(hipEventDestroy)                                                      \
   HIP_FN(hipEventRecord)                                                       \
