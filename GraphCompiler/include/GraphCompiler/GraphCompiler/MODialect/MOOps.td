@@ -5628,7 +5628,6 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
     Variadic<MO_Tensor>:$outputTokens,
     Variadic<MO_Tensor>:$outputScales,
     Variadic<MO_Tensor>:$rowOffsets,
-    Variadic<MO_Tensor>:$scalesOffsets,
     Variadic<MO_Tensor>:$expertIds,
     Variadic<MO_Tensor>:$srcInfo,
     MO_Chain:$outChain

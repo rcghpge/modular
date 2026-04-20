@@ -3506,8 +3506,6 @@ LogicalResult EPDispatchMXFP4Op::verify() {
     return emitError("outputScales count must match inputTokens count");
   if (getRowOffsets().size() != numDevices)
     return emitError("rowOffsets count must match inputTokens count");
-  if (getScalesOffsets().size() != numDevices)
-    return emitError("scalesOffsets count must match inputTokens count");
   if (getExpertIds().size() != numDevices)
     return emitError("expertIds count must match inputTokens count");
   if (getSrcInfo().size() != numDevices)
