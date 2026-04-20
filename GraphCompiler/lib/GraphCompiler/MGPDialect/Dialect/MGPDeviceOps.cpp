@@ -539,19 +539,11 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
       state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
   MojoValue function = state.getOriginalMojoNameFor(litFunction);
 
-  // Calculate sizes: total allocations = staticSizes + runtimeSizes
-  size_t numStaticSizes = getStaticSizes() ? getStaticSizes()->size() : 0;
   size_t numRuntimeSizes = getRuntimeSizes().size();
 
-  MojoValue numStaticSizesParam = numStaticSizes;
-  MojoValue numRuntimeSizesParam = numRuntimeSizes;
-
-  // Emit compile-time InlineArray parameters for all lifetime arrays.
+  // Emit compile-time InlineArray parameters.
   MojoValue alignmentsParam = inlineArray(state, getAlignments());
-  MojoValue minPreParam = inlineArray(state, getMinPre());
-  MojoValue minPostParam = inlineArray(state, getMinPost());
-  MojoValue maxPreParam = inlineArray(state, getMaxPre());
-  MojoValue maxPostParam = inlineArray(state, getMaxPost());
+  MojoValue canShareParam = inlineArray(state, getCanShare());
 
   // Emit compile-time InlineArray for optional staticSizes attribute.
   MojoValue staticSizesParam;
@@ -583,12 +575,9 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
   }
 
   // Call the function with compile-time parameters and runtime arguments.
-  // Function signature: [num_static_sizes, num_runtime_sizes, alignments,
-  // minPre, minPost, maxPre, maxPost, staticSizes](runtimeSizes)
-  MojoValue result =
-      state.builder.var(function({alignmentsParam, minPreParam, minPostParam,
-                                  maxPreParam, maxPostParam, staticSizesParam},
-                                 {runtimeSizesArray}));
+  // Function signature: [alignments, canShare, staticSizes](runtimeSizes)
+  MojoValue result = state.builder.var(function(
+      {alignmentsParam, canShareParam, staticSizesParam}, {runtimeSizesArray}));
 
   // Extract results: result is a tuple (highWatermark, offsets)
   state.setMojoValueFor(getHighWatermark(), result[0]);
@@ -601,167 +590,6 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
 }
 
 namespace {
-
-/// Expand and contract each lifetime bound as far as the reuse constraints
-/// permit, reducing the number of distinct values.  The reuse condition is:
-///   canReuse(i, j) = (maxPre[i] < minPre[j]) AND (minPost[i] > maxPost[j])
-///
-/// Pre-order steps (applied in order):
-///   a) Expand maxPre[i] upward: upper bound is
-///      min(minPre[j] : canReuse(i,j)) - 1, or the global pre-value max.
-///   b) Contract minPre[i] downward: lower bound is
-///      max(maxPre_new[j] : canReuse(j,i)) + 1, or the global pre-value min.
-///
-/// Post-order steps (direction reversed because the post condition uses >):
-///   c) Contract minPost[i] downward: lower bound is
-///      max(maxPost[j] : canReuse(i,j)) + 1, or the global post-value min.
-///   d) Expand maxPost[i] upward: upper bound is
-///      min(minPost_new[j] : canReuse(j,i)) - 1, or the global post-value max.
-///
-/// After this pass, allocations with no reuse relationship collapse to the same
-/// global min/max values, while strictly-ordered pairs keep their relative
-/// ordering.
-struct ExpandContractBufferPlanLifetimes final
-    : public OpRewritePattern<BufferPlanOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(BufferPlanOp op,
-                                PatternRewriter &rewriter) const override {
-    if (op.getNumOperands() == 0)
-      return failure();
-
-    ArrayRef<uint64_t> minPre = op.getMinPre();
-    ArrayRef<uint64_t> maxPre = op.getMaxPre();
-    ArrayRef<uint64_t> minPost = op.getMinPost();
-    ArrayRef<uint64_t> maxPost = op.getMaxPost();
-    unsigned n = minPre.size();
-
-    auto canReuse = [&](unsigned i, unsigned j) {
-      return i != j && maxPre[i] < minPre[j] && minPost[i] > maxPost[j];
-    };
-
-    uint64_t globalMinPre =
-        std::min(*llvm::min_element(minPre), *llvm::min_element(maxPre));
-    uint64_t globalMaxPre =
-        std::max(*llvm::max_element(minPre), *llvm::max_element(maxPre));
-    uint64_t globalMinPost =
-        std::min(*llvm::min_element(minPost), *llvm::min_element(maxPost));
-    uint64_t globalMaxPost =
-        std::max(*llvm::max_element(minPost), *llvm::max_element(maxPost));
-
-    // Expand arr[i] upward toward globalMax, stopped by fence(j) for each j
-    // where pred(i, j) is true.
-    auto expand = [&](MutableArrayRef<uint64_t> arr, uint64_t globalMax,
-                      auto pred, auto fence) {
-      for (unsigned i : llvm::seq(n)) {
-        uint64_t upper = globalMax;
-        for (unsigned j : llvm::seq(n))
-          if (pred(i, j))
-            upper = std::min(upper, fence(j));
-        arr[i] = upper;
-      }
-    };
-
-    // Contract arr[i] downward toward globalMin, floored by floor(j) for each
-    // j where pred(j, i) is true.
-    auto contract = [&](MutableArrayRef<uint64_t> arr, uint64_t globalMin,
-                        auto pred, auto floor) {
-      for (unsigned i : llvm::seq(n)) {
-        uint64_t lower = globalMin;
-        for (unsigned j : llvm::seq(n))
-          if (pred(j, i))
-            lower = std::max(lower, floor(j));
-        arr[i] = lower;
-      }
-    };
-
-    // (a) canReuse(i, j) → maxPre[i] < minPre[j], so expand calls pred(i, j).
-    auto newMaxPre = llvm::to_vector(maxPre);
-    expand(newMaxPre, globalMaxPre, canReuse,
-           [&](unsigned j) { return minPre[j] - 1; });
-
-    // (b) canReuse(j, i) → maxPre[j] < minPre[i], so contract calls pred(j, i).
-    auto newMinPre = llvm::to_vector(minPre);
-    contract(newMinPre, globalMinPre, canReuse,
-             [&](unsigned j) { return newMaxPre[j] + 1; });
-
-    // (c) canReuse(i, j) → minPost[i] > maxPost[j], so j constrains i when
-    // canReuse(i, j).  contract calls pred(j, i), so flip.
-    auto newMinPost = llvm::to_vector(minPost);
-    contract(
-        newMinPost, globalMinPost,
-        [&](unsigned a, unsigned b) { return canReuse(b, a); },
-        [&](unsigned j) { return maxPost[j] + 1; });
-
-    // (d) canReuse(j, i) → minPost[j] > maxPost[i], so j constrains i when
-    // canReuse(j, i).  expand calls pred(i, j), so flip.
-    auto newMaxPost = llvm::to_vector(maxPost);
-    expand(
-        newMaxPost, globalMaxPost,
-        [&](unsigned a, unsigned b) { return canReuse(b, a); },
-        [&](unsigned j) { return newMinPost[j] - 1; });
-
-    if (ArrayRef<uint64_t>(newMinPre) == minPre &&
-        ArrayRef<uint64_t>(newMaxPre) == maxPre &&
-        ArrayRef<uint64_t>(newMinPost) == minPost &&
-        ArrayRef<uint64_t>(newMaxPost) == maxPost)
-      return failure();
-
-    rewriter.replaceOpWithNewOp<BufferPlanOp>(
-        op, op.getRuntimeSizes(), op.getAlignments(), newMinPre, newMinPost,
-        newMaxPre, newMaxPost, op.getStaticSizesAttr());
-    return success();
-  }
-};
-
-/// Replace each lifetime value with its rank in the joint sorted set of all
-/// pre values (minPre ∪ maxPre), and similarly for post values.  This
-/// eliminates differences in absolute DFS index values while preserving all
-/// strict-less-than relationships required by the reuse condition.
-struct NormalizeBufferPlanLifetimeRanks final
-    : public OpRewritePattern<BufferPlanOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(BufferPlanOp op,
-                                PatternRewriter &rewriter) const override {
-    ArrayRef<uint64_t> minPre = op.getMinPre();
-    ArrayRef<uint64_t> maxPre = op.getMaxPre();
-    ArrayRef<uint64_t> minPost = op.getMinPost();
-    ArrayRef<uint64_t> maxPost = op.getMaxPost();
-
-    auto computeRanks = [](ArrayRef<uint64_t> a, ArrayRef<uint64_t> b,
-                           SmallVectorImpl<uint64_t> &ra,
-                           SmallVectorImpl<uint64_t> &rb) {
-      SmallVector<uint64_t> all(a.begin(), a.end());
-      all.append(b.begin(), b.end());
-
-      llvm::sort(all);
-      all.erase(llvm::unique(all), all.end());
-
-      auto rank = [&](uint64_t v) -> uint64_t {
-        return llvm::lower_bound(all, v) - all.begin();
-      };
-
-      ra = llvm::map_to_vector(a, rank);
-      rb = llvm::map_to_vector(b, rank);
-    };
-
-    SmallVector<uint64_t> cMinPre, cMaxPre, cMinPost, cMaxPost;
-    computeRanks(minPre, maxPre, cMinPre, cMaxPre);
-    computeRanks(minPost, maxPost, cMinPost, cMaxPost);
-
-    if (ArrayRef<uint64_t>(cMinPre) == minPre &&
-        ArrayRef<uint64_t>(cMaxPre) == maxPre &&
-        ArrayRef<uint64_t>(cMinPost) == minPost &&
-        ArrayRef<uint64_t>(cMaxPost) == maxPost)
-      return failure();
-
-    rewriter.replaceOpWithNewOp<BufferPlanOp>(
-        op, op.getRuntimeSizes(), op.getAlignments(), cMinPre, cMinPost,
-        cMaxPre, cMaxPost, op.getStaticSizesAttr());
-    return success();
-  }
-};
 
 struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -817,6 +645,16 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
       return M::permute(attr, permutation);
     };
 
+    // Permute the NxN canShare matrix: both rows and columns must be reordered.
+    // permutation[newIdx] = oldIdx, so newMat[ni][nj] = oldMat[p[ni]][p[nj]].
+    size_t n = permutation.size();
+    ArrayRef<uint64_t> oldCanShare = op.getCanShare();
+    SmallVector<uint64_t> newCanShareVec(n * n);
+    for (size_t ni = 0; ni < n; ++ni)
+      for (size_t nj = 0; nj < n; ++nj)
+        newCanShareVec[ni * n + nj] =
+            oldCanShare[permutation[ni] * n + permutation[nj]];
+
     // Build new staticSizes attribute
     SmallVector<int64_t> newStaticSizes =
         llvm::to_vector(op.getStaticSizes().value_or(ArrayRef<int64_t>{}));
@@ -827,14 +665,11 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
         ArrayRef<int64_t>(newStaticSizes), IntegerType::Signed);
 
     // Create new operation with permuted attributes
-    auto newOp = BufferPlanOp::create(
-        rewriter, op.getLoc(),
-        /*runtimeSizes=*/newRuntimeSizes,
-        /*alignments=*/permuteAttr(op.getAlignments()),
-        /*minPre=*/permuteAttr(op.getMinPre()),
-        /*minPost=*/permuteAttr(op.getMinPost()),
-        /*maxPre=*/permuteAttr(op.getMaxPre()),
-        /*maxPost*/ permuteAttr(op.getMaxPost()), newStaticSizesAttr);
+    auto newOp =
+        BufferPlanOp::create(rewriter, op.getLoc(),
+                             /*runtimeSizes=*/newRuntimeSizes,
+                             /*alignments=*/permuteAttr(op.getAlignments()),
+                             /*canShare=*/newCanShareVec, newStaticSizesAttr);
 
     SmallVector<Value> newOffsets =
         llvm::to_vector(ValueRange(newOp.getOffsets()));
@@ -854,31 +689,50 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
 
 void BufferPlanOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                                MLIRContext *ctx) {
-  patterns.add<ExpandContractBufferPlanLifetimes,
-               NormalizeBufferPlanLifetimeRanks, StaticizeAllocSizes>(ctx);
+  patterns.add<StaticizeAllocSizes>(ctx);
 }
 
 LogicalResult BufferPlanOp::verify() {
   size_t numStaticSizes = getStaticSizes() ? getStaticSizes()->size() : 0;
   size_t numRuntimeSizes = getRuntimeSizes().size();
-  size_t totalSizes = numStaticSizes + numRuntimeSizes;
+  size_t totalAllocs = numStaticSizes + numRuntimeSizes;
 
   // The total number of offsets should equal staticSizes + runtimeSizes
-  if (getOffsets().size() != totalSizes) {
+  if (getOffsets().size() != totalAllocs) {
     return emitOpError("expected number of offsets (")
            << getOffsets().size() << ") to equal staticSizes size ("
            << numStaticSizes << ") + runtimeSizes size (" << numRuntimeSizes
-           << ") = " << totalSizes;
+           << ") = " << totalAllocs;
   }
 
-  // All lifetime and alignment attributes should match the total number of
-  // sizes
-  if (!llvm::all_equal({totalSizes, getAlignments().size(), getMinPre().size(),
-                        getMinPost().size(), getMaxPre().size(),
-                        getMaxPost().size()})) {
-    return emitOpError("expected alignments and lifetime info attributes to "
-                       "have size equal to total number of sizes (")
-           << totalSizes << ")";
+  if (getAlignments().size() != totalAllocs) {
+    return emitOpError("expected alignments to have size equal to total number "
+                       "of allocations (")
+           << totalAllocs << ")";
+  }
+
+  // canShare must be an NxN matrix
+  if (getCanShare().size() != totalAllocs * totalAllocs) {
+    return emitOpError("expected canShare to have size N*N = ")
+           << totalAllocs * totalAllocs << " for N=" << totalAllocs
+           << " allocations, but got " << getCanShare().size();
+  }
+
+  // Validate symmetry and zero diagonal
+  ArrayRef<uint64_t> mat = getCanShare();
+  for (size_t i : llvm::seq(totalAllocs)) {
+    if (mat[i * totalAllocs + i] != 0)
+      return emitOpError(
+                 "expected canShare diagonal to be zero (allocation cannot "
+                 "share with itself) at index ")
+             << i;
+    for (size_t j : llvm::seq(totalAllocs)) {
+      if (mat[i * totalAllocs + j] != mat[j * totalAllocs + i])
+        return emitOpError("expected canShare to be symmetric: canShare[")
+               << i << "][" << j << "]=" << mat[i * totalAllocs + j]
+               << " != canShare[" << j << "][" << i
+               << "]=" << mat[j * totalAllocs + i];
+    }
   }
 
   return success();

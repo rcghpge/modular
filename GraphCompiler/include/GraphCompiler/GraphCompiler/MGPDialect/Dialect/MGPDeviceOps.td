@@ -694,22 +694,19 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 ]> {
   let summary = "Runtime memory planning for buffers";
   let description = [{
-    Given the runtimeSize and lifetime information for a list of allocations,
-    returns the high watermark size and offsets for each allocation.
+    Given the size and sharing information for a list of allocations, returns
+    the high watermark size and offsets for each allocation.
 
-    Alloc lifetimes are represented as the min/max pre/postorder indices of the
-    uses of every allocation in the "dependency tree". An allocation A can reuse
-    an allocation B if A.maxPre < B.minPre && A.minPost > B.maxPost.
-    See MGPBufferLifetimeAnalysis.h for details.
+    canShare is a flat NxN matrix (row-major) where canShare[i*N+j]=1 iff
+    allocations i and j can share the same memory slot (i.e. their lifetimes
+    do not overlap). The matrix is symmetric with a zero diagonal.
+    N = len(staticSizes) + len(runtimeSizes).
   }];
 
   let arguments = (ins
     Variadic<Index>:$runtimeSizes,
     UI64ArrayElementsAttr:$alignments,
-    UI64ArrayElementsAttr:$minPre,
-    UI64ArrayElementsAttr:$minPost,
-    UI64ArrayElementsAttr:$maxPre,
-    UI64ArrayElementsAttr:$maxPost,
+    UI64ArrayElementsAttr:$canShare,
     OptionalAttr<SI64ArrayElementsAttr>:$staticSizes
   );
 

@@ -80,6 +80,14 @@ public:
   // Returns true if a is guaranteed to execute after b
   bool executesAfter(Operation *a, Operation *b) const;
 
+  // Returns true if all elements of a arg guaranteed to execute after all
+  // elements of b.
+  bool executesAfter(ArrayRef<Operation *> a, ArrayRef<Operation *> b) const;
+
+  // Returns the topological execution index of op (lower = executes earlier).
+  // op must be contained in this tree.
+  unsigned getTopoIndex(Operation *op) const;
+
   // Find the least common ancestor of two nodes in the tree.
   DependencyTreeNode *findLCA(DependencyTreeNode *a,
                               DependencyTreeNode *b) const;

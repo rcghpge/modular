@@ -692,12 +692,15 @@ requires host invocation makes the transformation necessary.
 The pass uses `BufferLifetimeAnalysis` to build a dependency tree and compute
 pre/post indices for lifetime ranges. With those, it constructs a
 `mgp.buffer.plan` op that has an implementation in MGPPrimitives library (a
-single-pass greedy algorithm that tries to reuse non-overlapping by lifetime
-memory blocks). The op returns a high watermark value and a set of offsets that
-are consumed by `mgp.buffer.slice`s, replacing original allocations. The high
-watermark value is computed at runtime and is used for the allocation. The
-alignment is computed as the least common multiple of all the allocations to be
-compatible with all the slices.
+single-pass greedy algorithm that tries to reuse non-overlapping memory blocks).
+The op stores a precomputed NxN sharing matrix (`canShare[i][j] = 1` iff
+allocations `i` and `j` can occupy the same slot) rather than raw pre/post
+indices, making the reuse structure directly readable and canonical. The op
+returns a high watermark value and a set of offsets that are consumed by
+`mgp.buffer.slice`s, replacing original allocations. The high watermark value
+is computed at runtime and is used for the allocation. The alignment is computed
+as the least common multiple of all the allocations to be compatible with all
+the slices.
 
 Only non-data-dependent allocations (so the sizes are trivially computable) in
 the execute block with uses and without untraceable aliases are considered.

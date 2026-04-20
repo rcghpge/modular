@@ -76,35 +76,28 @@ mgp.model @tensor_extract_fold : mof devices [#M.device_ref<"cpu", 0>] init (%we
 
 // -----
 
-// Test that two BufferPlanOps with the same all-zeros interference matrix but
-// different absolute pre/post indices canonicalize to the same form and are
-// deduplicated by CSE.
+// Test that two BufferPlanOps with the same sharing matrix and operands are
+// deduplicated by CSE. The sharing matrix is the canonical representation, so
+// no canonicalization pass is needed before CSE.
 //
 // CSE-PLAN-LABEL: mgp.model @buffer_plan_cse_after_canonicalize
 // CSE-PLAN: } execute (
 // CSE-PLAN: %[[HWM:.*]], %[[OFFS:.*]]:2 = mgp.buffer.plan
-// CSE-PLAN-SAME: minPre = #M.dense_array<0, 0>
+// CSE-PLAN-SAME: canShare = #M.dense_array<0, 0, 0, 0>
 // CSE-PLAN-NOT: mgp.buffer.plan
 mgp.model @buffer_plan_cse_after_canonicalize : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index) -> !mef.chain {
-  // GPU 0 subtree: alloc lifetimes from pre/post indices 100-250 / 50-120
+  // Both ops have the same canShare matrix and operands — CSE deduplicates.
   %hwm0, %off0a, %off0b = mgp.buffer.plan(%arg4, %arg5) {
     alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
-    minPre = #M.dense_array<100, 200> : !M.array<2xui64>,
-    minPost = #M.dense_array<50, 90> : !M.array<2xui64>,
-    maxPre = #M.dense_array<150, 250> : !M.array<2xui64>,
-    maxPost = #M.dense_array<80, 120> : !M.array<2xui64>
+    canShare = #M.dense_array<0, 0, 0, 0> : !M.array<4xui64>
   } : (index, index) -> (index, index, index)
-  // GPU 1 subtree: same interference structure, different absolute indices
   %hwm1, %off1a, %off1b = mgp.buffer.plan(%arg4, %arg5) {
     alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
-    minPre = #M.dense_array<300, 400> : !M.array<2xui64>,
-    minPost = #M.dense_array<60, 100> : !M.array<2xui64>,
-    maxPre = #M.dense_array<350, 450> : !M.array<2xui64>,
-    maxPost = #M.dense_array<90, 130> : !M.array<2xui64>
+    canShare = #M.dense_array<0, 0, 0, 0> : !M.array<4xui64>
   } : (index, index) -> (index, index, index)
   %ch = "use"(%arg0, %off0a, %off0b, %off1a, %off1b) : (!mef.chain, index, index, index, index) -> !mef.chain
   mef.output %ch : !mef.chain
@@ -112,40 +105,26 @@ mgp.model @buffer_plan_cse_after_canonicalize : mof devices [#M.device_ref<"gpu"
 
 // -----
 
-// Test that two BufferPlanOps with the same all-zeros interference matrix but
-// DIFFERENT tie patterns in their pre/post values canonicalize to the same form
-// and are deduplicated by CSE.
+// Test that two BufferPlanOps with identical sharing matrices are deduplicated
+// even without a canonicalization step.
 //
-// Op 1 has a three-way tie: minPre[0]==minPre[1]==maxPre[2]==191.
-// Op 2 has different ties: maxPre[0]==maxPre[1]==253==minPre[1].
-// Dense-rank alone cannot unify these. Phase 1 value-range reduction collapses
-// both to the same global min/max, making the canonical dense ranks equal.
-//
-// CSE-PLAN-LABEL: mgp.model @buffer_plan_cse_different_tie_patterns
+// CSE-PLAN-LABEL: mgp.model @buffer_plan_cse_identical_sharing
 // CSE-PLAN: } execute (
 // CSE-PLAN: %[[HWM:.*]], %[[OFFS:.*]]:3 = mgp.buffer.plan
-// CSE-PLAN-SAME: minPre = #M.dense_array<0, 0, 0>
+// CSE-PLAN-SAME: canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0>
 // CSE-PLAN-NOT: mgp.buffer.plan
-mgp.model @buffer_plan_cse_different_tie_patterns : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @buffer_plan_cse_identical_sharing : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
   %0 = grt.chain.create ()
   %1 = mgp.context.create 2
   mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index, %arg6: index) -> !mef.chain {
-  // Op 1: three-way tie minPre[0]==minPre[1]==maxPre[2]==191
   %hwm0, %off0a, %off0b, %off0c = mgp.buffer.plan(%arg4, %arg5, %arg6) {
     alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
-    minPre = #M.dense_array<191, 191, 188> : !M.array<3xui64>,
-    minPost = #M.dense_array<238, 245, 252> : !M.array<3xui64>,
-    maxPre = #M.dense_array<213, 202, 191> : !M.array<3xui64>,
-    maxPost = #M.dense_array<252, 252, 281> : !M.array<3xui64>
+    canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui64>
   } : (index, index, index) -> (index, index, index, index)
-  // Op 2: different tie pattern (maxPre[0]==maxPre[1]==253==minPre[1])
   %hwm1, %off1a, %off1b, %off1c = mgp.buffer.plan(%arg4, %arg5, %arg6) {
     alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
-    minPre = #M.dense_array<213, 253, 188> : !M.array<3xui64>,
-    minPost = #M.dense_array<238, 273, 276> : !M.array<3xui64>,
-    maxPre = #M.dense_array<260, 260, 253> : !M.array<3xui64>,
-    maxPost = #M.dense_array<276, 276, 281> : !M.array<3xui64>
+    canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui64>
   } : (index, index, index) -> (index, index, index, index)
   %ch = "use"(%arg0, %off0a, %off0b, %off0c, %off1a, %off1b, %off1c) : (!mef.chain, index, index, index, index, index, index) -> !mef.chain
   mef.output %ch : !mef.chain

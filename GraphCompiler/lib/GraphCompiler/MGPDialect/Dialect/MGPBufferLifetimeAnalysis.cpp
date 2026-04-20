@@ -340,6 +340,27 @@ bool DependencyTree::contains(Operation *op) const {
   return nodes.contains(op);
 }
 
+unsigned DependencyTree::getTopoIndex(Operation *op) const {
+  auto it = operationToIndex.find(op);
+  assert(it != operationToIndex.end() && "op not in dependency tree");
+  return it->second;
+}
+
+bool DependencyTree::executesAfter(ArrayRef<Operation *> a,
+                                   ArrayRef<Operation *> b) const {
+  return llvm::all_of(a, [&](Operation *aOp) {
+    auto itA = operationToIndex.find(aOp);
+    if (itA == operationToIndex.end())
+      return false;
+    unsigned indexA = itA->second;
+    return llvm::all_of(b, [&](Operation *bOp) {
+      auto itB = operationToIndex.find(bOp);
+      return itB != operationToIndex.end() &&
+             runsAfter[itB->second].test(indexA);
+    });
+  });
+}
+
 bool DependencyTree::executesAfter(Operation *a, Operation *b) const {
   assert(a && b && "Invalid operations provided");
 

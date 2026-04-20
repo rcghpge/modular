@@ -33,10 +33,10 @@ struct AllocInfo {
   MGP::BufferAllocOp alloc;
   Value runtimeSize;
   uint64_t alignment;
-  uint64_t minPre;
-  uint64_t maxPre;
-  uint64_t minPost;
-  uint64_t maxPost;
+  int minPre;
+  int maxPre;
+  int minPost;
+  int maxPost;
 };
 
 /// Return true if the given value is trivially computable (i.e.,
@@ -129,22 +129,21 @@ class DynamicMemoryPlanningPass
       if (!isTriviallyComputable(allocOp.getRuntimeSize(), trivialVals))
         continue;
 
-      uint64_t maxPre = std::numeric_limits<uint64_t>::min();
-      uint64_t minPre = std::numeric_limits<uint64_t>::max();
-      uint64_t minPost = std::numeric_limits<uint64_t>::max();
-      uint64_t maxPost = std::numeric_limits<uint64_t>::min();
-
+      int minPre = std::numeric_limits<int>::max();
+      int maxPre = std::numeric_limits<int>::min();
+      int minPost = std::numeric_limits<int>::max();
+      int maxPost = std::numeric_limits<int>::min();
       bool ineligibleAlloc = false;
-      for (auto use : allocUses.get()) {
+      for (auto *use : allocUses.get()) {
         DependencyTreeNode *node = tree.get(use);
         if (!node) {
           ineligibleAlloc = true;
           break;
         }
-        maxPre = std::max(maxPre, static_cast<uint64_t>(node->preIndex));
-        minPost = std::min(minPost, static_cast<uint64_t>(node->postIndex));
-        minPre = std::min(minPre, static_cast<uint64_t>(node->preIndex));
-        maxPost = std::max(maxPost, static_cast<uint64_t>(node->postIndex));
+        minPre = std::min(minPre, node->preIndex);
+        maxPre = std::max(maxPre, node->preIndex);
+        minPost = std::min(minPost, node->postIndex);
+        maxPost = std::max(maxPost, node->postIndex);
       }
 
       // If the tree didn't have information on every use of this alloc, skip
@@ -167,17 +166,14 @@ class DynamicMemoryPlanningPass
       if (allocs.size() <= 1)
         continue;
 
-      // Sort allocs by postorder
+      // Sort allocs by their earliest use so that allocations needed sooner
+      // are planned first. Higher preIndex = executes earlier in the tree.
       llvm::sort(allocs, [&](const auto &a, const auto &b) {
-        return a.minPost < b.minPost;
+        return a.minPre > b.minPre;
       });
 
       // Construct and populate BufferPlanOp input arrays
       SmallVector<uint64_t> alignments;
-      SmallVector<uint64_t> minPres;
-      SmallVector<uint64_t> minPosts;
-      SmallVector<uint64_t> maxPres;
-      SmallVector<uint64_t> maxPosts;
       SmallVector<Value> runtimeSizes;
 
       // Keep track of the LCM of all alignments so we can use this alignment
@@ -186,11 +182,28 @@ class DynamicMemoryPlanningPass
       for (const AllocInfo &a : allocs) {
         runtimeSizes.push_back(a.runtimeSize);
         alignments.push_back(a.alignment);
-        minPres.push_back(a.minPre);
-        minPosts.push_back(a.minPost);
-        maxPres.push_back(a.maxPre);
-        maxPosts.push_back(a.maxPost);
         totalAlignment = std::lcm(totalAlignment, a.alignment);
+      }
+
+      // Compute the NxN sharing matrix. canShare[i][j] = 1 iff all uses of
+      // allocation i are strictly before all uses of allocation j in the
+      // dependency tree (or vice versa), checked via pre/post DFS indices.
+      // Two allocations can share memory when their lifetimes don't overlap.
+      size_t n = allocs.size();
+      SmallVector<uint64_t> canShare(n * n, 0);
+      for (size_t i : llvm::seq(n)) {
+        for (size_t j : llvm::seq(i + 1, n)) {
+          // i's subtree is strictly before j's: all of i's uses are ancestors
+          // of all of j's uses in the DFS tree.
+          bool ij = allocs[i].maxPre < allocs[j].minPre &&
+                    allocs[i].minPost > allocs[j].maxPost;
+          // j's subtree is strictly before i's.
+          bool ji = allocs[j].maxPre < allocs[i].minPre &&
+                    allocs[j].minPost > allocs[i].maxPost;
+          uint64_t sharable = (ij || ji) ? 1 : 0;
+          canShare[i * n + j] = sharable;
+          canShare[j * n + i] = sharable;
+        }
       }
 
       auto locations = llvm::map_to_vector(
@@ -204,10 +217,9 @@ class DynamicMemoryPlanningPass
       ASSERT_STREAM(deviceContext, "Could not find device context for device");
 
       // Create BufferPlanOp in execute block
-      auto bufferPlanOp =
-          BufferPlanOp::create(execBuilder, loc, runtimeSizes, alignments,
-                               minPres, minPosts, maxPres, maxPosts,
-                               /*staticSizes=*/{});
+      auto bufferPlanOp = BufferPlanOp::create(execBuilder, loc, runtimeSizes,
+                                               alignments, canShare,
+                                               /*staticSizes=*/{});
 
       TypedValue<IndexType> poolSize = bufferPlanOp.getHighWatermark();
 
