@@ -221,6 +221,7 @@ gethipDeviceAttribute(Device::Attribute attr) {
     ENTRY(MAX_REGISTERS_PER_MULTIPROCESSOR, MaxRegistersPerMultiprocessor);
     RAISE_ENTRY(COOPERATIVE_LAUNCH);
     RAISE_ENTRY(MAX_BLOCKS_PER_MULTIPROCESSOR);
+    RAISE_ENTRY(MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
     RAISE_ENTRY(MAX_ACCESS_POLICY_WINDOW_SIZE);
     RAISE_ENTRY(METAL_DISABLE_LOGGING);
     // No `default:` to ensure that all possible enum values are handled.

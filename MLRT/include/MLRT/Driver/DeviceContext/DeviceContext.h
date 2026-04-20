@@ -974,6 +974,9 @@ enum class Device::Attribute : int {
   MAX_REGISTERS_PER_MULTIPROCESSOR = 82,
   // Device supports launching cooperative kernels
   COOPERATIVE_LAUNCH = 95,
+  // Maximum opt-in shared memory per block (CUDA:
+  // cudaDevAttrMaxSharedMemoryPerBlockOptin)
+  MAX_SHARED_MEMORY_PER_BLOCK_OPTIN = 97,
   // Maximum resident blocks per multiprocessor
   MAX_BLOCKS_PER_MULTIPROCESSOR = 106,
   // CUDA-only: Maximum value of CUaccessPolicyWindow::num_bytes.

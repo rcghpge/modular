@@ -211,7 +211,9 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   // section in the 'GPU implementation limits by family', same limit for
   // Apple7 - Apple10.
   case Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK:
-    return 33554432; // 32KB
+    return device_->maxThreadgroupMemoryLength();
+  case Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK_OPTIN:
+    ATTRIBUTE_UNSUPPORTED(MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
 
   // The SIMD-group size is a dynamic property which is accessible through the
   // computePipeline->threadExecutionWidth property, i.e. it's tied to a
@@ -295,7 +297,7 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
   // Threadgroup memory limit per kernel dispatch, queried directly from the
   // Metal device.  Apple Silicon is 32 KB; this may vary on future hardware.
   case Device::Attribute::MAX_SHARED_MEMORY_PER_MULTIPROCESSOR:
-    return device_->maxThreadgroupMemoryLength();
+    ATTRIBUTE_UNSUPPORTED(MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
 
   // Max registers per GPU core is not documented.
   case Device::Attribute::MAX_REGISTERS_PER_MULTIPROCESSOR:
@@ -950,10 +952,9 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
     encoder->useResource(it.second.buffer, MTL::ResourceUsageWrite);
 
   if (sharedMemBytes > 0) {
-    DEFINE_OR_RETURN_ERROR(
-        uint32_t, maxSharedMemBytes,
-        metalDevice.getAttribute(
-            Device::Attribute::MAX_SHARED_MEMORY_PER_MULTIPROCESSOR));
+    DEFINE_OR_RETURN_ERROR(uint32_t, maxSharedMemBytes,
+                           metalDevice.getAttribute(
+                               Device::Attribute::MAX_SHARED_MEMORY_PER_BLOCK));
     if (sharedMemBytes > maxSharedMemBytes) {
       encoder->endEncoding();
       RETURN_ERROR(
