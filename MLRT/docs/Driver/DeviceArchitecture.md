@@ -324,7 +324,7 @@ Load .so at runtime
 
 The `HIPCompilationDevice` exists to:
 
-1. Store the target architecture string (e.g., "gfx942" for MI300X)
+1. Store the target architecture string (e.g., "gfx950" for MI355X)
 2. Provide architecture via `getArchName()` to KGEN's ObjectCompiler
 3. Enable virtual device creation for compile-only mode
 
@@ -397,15 +397,15 @@ VirtualDevice
 **Example - Virtual HIP Device**:
 
 ```cpp
-// Create virtual AMD GPU device for gfx942 (MI300X)
-auto compilationDevOrErr = HIPCompilationDevice::create("gfx942");
+// Create virtual AMD GPU device for gfx950 (MI355X)
+auto compilationDevOrErr = HIPCompilationDevice::create("gfx950");
 auto virtualDevice = new VirtualDevice(
-    0, "virtual-gfx942", std::move(*compilationDevOrErr)
+    0, "virtual-gfx950", std::move(*compilationDevOrErr)
 );
 
 // Architecture is available for KGEN
-auto archOrErr = virtualDevice->getArchName();  // Returns "gfx942"
-// ✅ KGEN uses this to compile for AMD MI300X without physical GPU
+auto archOrErr = virtualDevice->getArchName();  // Returns "gfx950"
+// ✅ KGEN uses this to compile for AMD MI355X without physical GPU
 ```
 
 ### CPU Device
