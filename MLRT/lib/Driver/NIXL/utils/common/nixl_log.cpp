@@ -18,7 +18,7 @@
 #include <string_view>
 
 using namespace M;
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 namespace {
 
@@ -80,7 +80,7 @@ static void InitializeNixlLogging() {
   }
 }
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 bool shouldLog(NixlLogLevel level) {
   if (level == NixlLogLevel::kFatal) {
@@ -107,4 +107,4 @@ bool shouldLog(NixlLogLevel level) {
   return true;
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT

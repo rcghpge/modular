@@ -35,7 +35,7 @@
 #include <thread>
 #include <vector>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 class nixlUcxConnection : public nixlBackendConnMD {
 private:
@@ -303,6 +303,6 @@ private:
 
 nixlBackendPlugin *createStaticUcxPlugin();
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_PLUGINS_UCX_UCX_BACKEND_H

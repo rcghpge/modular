@@ -19,7 +19,7 @@
 #include <rdma/fabric.h>
 #include <rdma/fi_domain.h>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -95,4 +95,4 @@ std::vector<uint32_t> preallocateXferIds(size_t count) {
 
 } // namespace LibfabricUtils
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT

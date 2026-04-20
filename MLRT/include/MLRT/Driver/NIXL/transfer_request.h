@@ -15,7 +15,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Contains pointers to corresponding backend engine and its handler, and
 // populated and verified DescLists, and other state and metadata needed for a
@@ -74,6 +74,6 @@ public:
   friend class nixlAgent;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_TRANSFER_REQUEST_H

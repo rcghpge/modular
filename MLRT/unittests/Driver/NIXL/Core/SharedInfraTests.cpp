@@ -12,7 +12,7 @@
 #include <cstdlib>
 #include <string>
 
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 TEST(NixlSharedInfraTest,
      PluginManagerSupportsExplicitSearchPathsWithoutEnvironmentVariable) {

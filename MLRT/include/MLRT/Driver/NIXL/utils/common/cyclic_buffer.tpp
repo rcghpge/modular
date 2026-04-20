@@ -21,7 +21,7 @@
 #include <type_traits>
 #include <unistd.h>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 namespace {
 
@@ -202,6 +202,6 @@ void sharedRingBuffer<T>::openCyclicBuffer(const std::string &name,
   data_ = reinterpret_cast<T *>(static_cast<char *>(ptr) + sizeof(bufferHeader));
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_UTILS_COMMON_CYCLIC_BUFFER_TPP

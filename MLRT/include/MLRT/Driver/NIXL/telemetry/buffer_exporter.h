@@ -17,7 +17,7 @@
 
 #include <filesystem>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 class nixlTelemetryBufferExporter : public nixlTelemetryExporter {
 public:
@@ -31,6 +31,6 @@ private:
   sharedRingBuffer<nixlTelemetryEvent> buffer_;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_TELEMETRY_BUFFER_EXPORTER_H

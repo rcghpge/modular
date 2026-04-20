@@ -23,7 +23,7 @@
 #include <iostream>
 
 using namespace M;
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 using namespace std::string_view_literals;
 
 /*** Class nixlBasicDesc implementation ***/
@@ -50,25 +50,21 @@ bool nixlBasicDesc::operator<(const nixlBasicDesc &desc) const {
     return (len < desc.len);
 }
 
-bool M::MLRT::NIXL::operator==(const nixlBasicDesc &lhs,
-                               const nixlBasicDesc &rhs) {
+bool M::MLRT::operator==(const nixlBasicDesc &lhs, const nixlBasicDesc &rhs) {
   return ((lhs.addr == rhs.addr) && (lhs.len == rhs.len) &&
           (lhs.devId == rhs.devId));
 }
 
-bool M::MLRT::NIXL::operator!=(const nixlBasicDesc &lhs,
-                               const nixlBasicDesc &rhs) {
+bool M::MLRT::operator!=(const nixlBasicDesc &lhs, const nixlBasicDesc &rhs) {
   return !(lhs == rhs);
 }
 
-bool M::MLRT::NIXL::operator==(const nixlBlobDesc &lhs,
-                               const nixlBlobDesc &rhs) {
+bool M::MLRT::operator==(const nixlBlobDesc &lhs, const nixlBlobDesc &rhs) {
   return (((nixlBasicDesc)lhs == (nixlBasicDesc)rhs) &&
           (lhs.metaInfo == rhs.metaInfo));
 }
 
-bool M::MLRT::NIXL::operator!=(const nixlBlobDesc &lhs,
-                               const nixlBlobDesc &rhs) {
+bool M::MLRT::operator!=(const nixlBlobDesc &lhs, const nixlBlobDesc &rhs) {
   return !(lhs == rhs);
 }
 
@@ -302,8 +298,8 @@ void nixlDescList<T>::print() const {
 }
 
 template <class T>
-bool M::MLRT::NIXL::operator==(const nixlDescList<T> &lhs,
-                               const nixlDescList<T> &rhs) {
+bool M::MLRT::operator==(const nixlDescList<T> &lhs,
+                         const nixlDescList<T> &rhs) {
   if ((lhs.getType() != rhs.getType()) || (lhs.descCount() != rhs.descCount()))
     return false;
 
@@ -313,7 +309,7 @@ bool M::MLRT::NIXL::operator==(const nixlDescList<T> &lhs,
   return true;
 }
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Since we implement a template class declared in a header files, this is
 // necessary
@@ -397,4 +393,4 @@ void nixlSecDescList::resize(const size_t &count) {
   this->descs.resize(count);
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT

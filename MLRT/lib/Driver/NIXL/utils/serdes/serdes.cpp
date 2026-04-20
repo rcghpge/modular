@@ -13,7 +13,7 @@
 #include "Support/LLVMForwardDecls.h"
 #include "llvm/ADT/StringRef.h"
 
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 std::string nixlSerDes::_bytesToString(const void *buf, size_t size) {
   return std::string(reinterpret_cast<const char *>(buf), size);

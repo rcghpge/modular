@@ -8,8 +8,8 @@
 
 using namespace M::MLRT;
 
-std::vector<std::string_view> NIXL::str_split_substr(std::string_view str,
-                                                     std::string_view delim) {
+std::vector<std::string_view>
+M::MLRT::str_split_substr(std::string_view str, std::string_view delim) {
   std::vector<std::string_view> parts;
   std::size_t start = 0;
 

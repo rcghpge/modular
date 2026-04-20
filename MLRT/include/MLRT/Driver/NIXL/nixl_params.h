@@ -14,7 +14,7 @@
 #include "nixl_types.h"
 #include <cstdint>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 /**
  * @class nixlAgentConfig
@@ -69,6 +69,6 @@ struct nixlAgentConfig {
   friend class nixlAgentData;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_NIXL_PARAMS_H

@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 int main(int argc, char **argv) {
   if (argc != 2) {

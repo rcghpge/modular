@@ -22,7 +22,7 @@
 #include <chrono>
 #include <memory>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 /**
  * @class nixlAgent
@@ -538,6 +538,6 @@ public:
                               const nixl_xfer_dlist_t &descs) const;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_NIXL_H

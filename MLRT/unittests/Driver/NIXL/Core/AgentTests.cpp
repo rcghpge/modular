@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include <vector>
 
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 namespace {
 

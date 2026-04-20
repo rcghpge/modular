@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Forward declarations
 class nixlBackendEngine;
@@ -163,6 +163,6 @@ private:
                                 const std::string &pluginName);
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_PLUGIN_MANAGER_H

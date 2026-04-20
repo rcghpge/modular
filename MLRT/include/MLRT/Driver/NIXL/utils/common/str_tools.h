@@ -19,7 +19,7 @@
 #include <string_view>
 #include <vector>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Splits a string such that each view is a slice of the input.
 std::vector<std::string_view> str_split_substr(std::string_view str,
@@ -55,6 +55,6 @@ inline bool isEnabledFlagValue(std::string_view value) {
       .Default(false);
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_UTILS_COMMON_STR_TOOLS_H

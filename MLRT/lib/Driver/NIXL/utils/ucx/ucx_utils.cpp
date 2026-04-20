@@ -27,9 +27,8 @@
 
 using namespace M;
 using namespace M::MLRT;
-using namespace M::MLRT::NIXL;
 
-nixl_status_t NIXL::ucx_status_to_nixl(ucs_status_t status) {
+nixl_status_t M::MLRT::ucx_status_to_nixl(ucs_status_t status) {
   if (status == UCS_OK) {
     return nixl_status_t::NIXL_SUCCESS;
   }
@@ -50,7 +49,7 @@ nixl_status_t NIXL::ucx_status_to_nixl(ucs_status_t status) {
   }
 }
 
-[[nodiscard]] nixl_b_params_t NIXL::get_ucx_backend_common_options() {
+[[nodiscard]] nixl_b_params_t M::MLRT::get_ucx_backend_common_options() {
   nixl_b_params_t params = {{"ucx_devices", ""}, {"num_workers", "1"}};
 
   params.emplace(
@@ -60,7 +59,7 @@ nixl_status_t NIXL::ucx_status_to_nixl(ucs_status_t status) {
 }
 
 [[nodiscard]] std::string_view
-NIXL::ucx_err_mode_to_string(ucp_err_handling_mode_t t) {
+M::MLRT::ucx_err_mode_to_string(ucp_err_handling_mode_t t) {
   switch (t) {
   case UCP_ERR_HANDLING_MODE_NONE:
     return "none";
@@ -71,7 +70,7 @@ NIXL::ucx_err_mode_to_string(ucp_err_handling_mode_t t) {
 }
 
 [[nodiscard]] ucp_err_handling_mode_t
-NIXL::ucx_err_mode_from_string(std::string_view s) {
+M::MLRT::ucx_err_mode_from_string(std::string_view s) {
   constexpr std::array<ucp_err_handling_mode_t, 2> nixl_ucx_err_handling_modes =
       {
           UCP_ERR_HANDLING_MODE_NONE,
@@ -309,7 +308,7 @@ nixl_status_t nixlUcxEp::flushEp(nixlUcxReq &req) {
   return nixl_status_t::NIXL_IN_PROG;
 }
 
-bool NIXL::nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type) {
+bool M::MLRT::nixlUcxMtLevelIsSupported(nixl_ucx_mt_t mt_type) {
   ucp_lib_attr_t attr;
   attr.field_mask = UCP_LIB_ATTR_FIELD_MAX_THREAD_LEVEL;
   ucp_lib_query(&attr);

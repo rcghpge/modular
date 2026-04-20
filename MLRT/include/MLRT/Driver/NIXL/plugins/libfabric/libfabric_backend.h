@@ -31,7 +31,7 @@
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_common.h"
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_rail_manager.h"
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -514,6 +514,6 @@ public:
   void checkPendingNotifications();
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif

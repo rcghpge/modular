@@ -13,7 +13,7 @@
 
 #include <utility>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 template <typename T>
 class nixlLinkElem {
@@ -38,6 +38,6 @@ public:
   T *next() { return _next; }
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_UTILS_COMMON_LIST_ELEM_H

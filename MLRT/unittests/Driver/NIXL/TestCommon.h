@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 std::ostream &operator<<(std::ostream &os, nixl_status_t status);
 }
 
@@ -29,7 +29,7 @@ std::ostream &operator<<(std::ostream &os, nixl_status_t status);
     ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS) << #EXPR;                   \
   } while (false)
 
-namespace M::MLRT::NIXL::Test {
+namespace M::MLRT::Test {
 
 template <class T>
 nixlBlobDesc blobDescfromVector(const std::vector<T> &vec, uint64_t devId,
@@ -78,6 +78,6 @@ void transferDataWithFailure(NixlAgentWithUCXBackend &nixl1,
 
 class NixlUcxIntegrationTest : public ::testing::Test {};
 
-} // namespace M::MLRT::NIXL::Test
+} // namespace M::MLRT::Test
 
 #endif // MLRT_UNITTESTS_DRIVER_NIXL_TESTCOMMON_H

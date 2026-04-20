@@ -17,7 +17,7 @@
 #include <string>
 #include <string_view>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 enum class nixl_telemetry_plugin_api_version : unsigned int { V1 = 1 };
 
@@ -73,6 +73,6 @@ NIXL_TELEMETRY_PLUGIN_EXPORT nixlTelemetryPlugin *nixl_telemetry_plugin_init();
 NIXL_TELEMETRY_PLUGIN_EXPORT void nixl_telemetry_plugin_fini();
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_TELEMETRY_TELEMETRY_PLUGIN_H

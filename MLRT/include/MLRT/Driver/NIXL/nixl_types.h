@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 /*** Forward declarations ***/
 class nixlSerDes;
@@ -248,6 +248,6 @@ using nixl_opt_args_t = nixlAgentOptionalArgs;
  */
 constexpr std::string_view NIXL_INIT_AGENT = "";
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_NIXL_TYPES_H

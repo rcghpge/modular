@@ -22,7 +22,7 @@
 #include <iomanip>
 #include <numeric>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -1517,4 +1517,4 @@ void nixlLibfabricEngine::cleanup() {
   NIXL_DEBUG << "Cleanup all resources complete";
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT

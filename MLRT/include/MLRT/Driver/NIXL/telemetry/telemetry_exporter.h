@@ -17,7 +17,7 @@
 #include <cstddef>
 #include <string>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 inline constexpr char telemetryExporterVar[] =
     "MODULAR_NIXL_TELEMETRY_EXPORTER";
@@ -50,6 +50,6 @@ private:
   const size_t maxEventsBuffered_;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_TELEMETRY_TELEMETRY_EXPORTER_H

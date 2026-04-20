@@ -18,7 +18,7 @@
 
 // RequestPool Base Class Implementation
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -1124,4 +1124,4 @@ nixlLibfabricRail::findRequestFromContext(void *context) const {
   return nullptr;
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT

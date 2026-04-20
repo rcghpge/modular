@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 class nixlBackendEngine;
 using backend_list_t = std::vector<nixlBackendEngine *>;
@@ -251,6 +251,6 @@ public:
   }
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_BACKEND_BACKEND_ENGINE_H

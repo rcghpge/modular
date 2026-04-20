@@ -25,7 +25,7 @@
 #include "Support/ErrorOr.h"
 #include "llvm/Support/ErrorHandling.h"
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -345,6 +345,6 @@ private:
   processRemoteWriteCompletion(struct fi_cq_data_entry *comp) const;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // NIXL_SRC_UTILS_LIBFABRIC_LIBFABRIC_RAIL_H

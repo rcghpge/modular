@@ -74,7 +74,7 @@
     << NIXL_AGENT_INDEX_SHIFT) |                                               \
    (((uint64_t)(xfer_id) & NIXL_XFER_ID_MASK) << NIXL_XFER_ID_SHIFT))
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 using enum nixl_mem_t;
 using enum nixl_status_t;
 using enum nixl_xfer_op_t;
@@ -145,6 +145,6 @@ std::vector<std::string> getAvailableEfaDevices();
 std::string hexdump(const void *data);
 } // namespace LibfabricUtils
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // NIXL_SRC_UTILS_LIBFABRIC_LIBFABRIC_COMMON_H

@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <string>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 template <typename T>
 class sharedRingBuffer {
@@ -58,7 +58,7 @@ private:
   size_t bufferSize_ = 0;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #include "cyclic_buffer.tpp"
 

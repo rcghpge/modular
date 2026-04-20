@@ -27,8 +27,8 @@
 
 using namespace M;
 using namespace M::Driver;
-using namespace M::MLRT::NIXL;
-using namespace M::MLRT::NIXL::Test;
+using namespace M::MLRT;
+using namespace M::MLRT::Test;
 
 TEST_F(NixlUcxIntegrationTest, DramTransfer) {
   // Explicitly enable verbose logging for UCX.

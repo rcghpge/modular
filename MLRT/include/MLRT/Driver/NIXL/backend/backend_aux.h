@@ -17,7 +17,7 @@
 #include "llvm/ADT/Twine.h"
 #include <string>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Might be removed to be decided by backend, or changed to high
 // level direction or so.
@@ -101,6 +101,6 @@ public:
 
 using nixl_meta_dlist_t = nixlDescList<nixlMetaDesc>;
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_BACKEND_BACKEND_AUX_H

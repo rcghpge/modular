@@ -12,7 +12,6 @@
 #include "MLRT/Driver/NIXL/plugins/ucx/ucx_backend.h"
 
 using namespace M::MLRT;
-using namespace M::MLRT::NIXL;
 
 // Plugin version information
 static const char *PLUGIN_NAME = "UCX";

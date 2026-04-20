@@ -15,7 +15,7 @@
 #include "llvm/Support/FormatVariadic.h"
 
 using namespace M;
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 M::ErrorOr<std::unique_ptr<UCX::Rkey>>
 UCX::Rkey::create(const nixlUcxEp &ep, const void *rkeyBuffer) {

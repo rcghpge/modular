@@ -19,7 +19,7 @@ extern "C" {
 #include <ucp/api/ucp.h>
 }
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 class nixlUcxEp;
 
@@ -49,6 +49,6 @@ private:
 };
 
 } // namespace UCX
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_UTILS_UCX_RKEY_H

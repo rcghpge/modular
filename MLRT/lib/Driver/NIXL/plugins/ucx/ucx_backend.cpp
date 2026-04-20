@@ -42,7 +42,7 @@
 #include <unordered_map>
 
 using namespace M::Driver;
-using namespace M::MLRT::NIXL;
+using namespace M::MLRT;
 
 static void moveNotifList(notif_list_t &src, notif_list_t &tgt) {
   if (src.size() > 0) {
@@ -337,7 +337,7 @@ public:
  * Progress thread management
  *****************************************/
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 /*
  * This class encapsulates a thread that polls one or multiple UCX workers
  */
@@ -479,7 +479,7 @@ private:
   std::vector<pollfd> pollFds_;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 /****************************************
  * Constructor/Destructor

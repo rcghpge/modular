@@ -19,7 +19,7 @@
 
 #include <memory>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Internal typedef to define metadata communication request types
 // To be extended with ETCD operations
@@ -120,6 +120,6 @@ public:
   friend class nixlAgent;
 };
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_AGENT_DATA_H

@@ -16,7 +16,7 @@
 #include <mutex>
 #include <shared_mutex>
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 class nixlLock {
 public:
@@ -81,6 +81,6 @@ private:
 #define NIXL_SHARED_LOCK_GUARD(lock)                                           \
   const std::shared_lock<nixlLock> NIXL_UNIQUE_NAME(lock_guard)(lock)
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_SYNC_H

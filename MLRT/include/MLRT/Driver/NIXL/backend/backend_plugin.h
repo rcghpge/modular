@@ -16,7 +16,7 @@
 // Define the plugin API version
 #define NIXL_PLUGIN_API_VERSION 1
 
-namespace M::MLRT::NIXL {
+namespace M::MLRT {
 
 // Define the plugin interface class
 class nixlBackendPlugin {
@@ -56,6 +56,6 @@ NIXL_PLUGIN_EXPORT nixlBackendPlugin *nixl_plugin_init();
 NIXL_PLUGIN_EXPORT void nixl_plugin_fini();
 }
 
-} // namespace M::MLRT::NIXL
+} // namespace M::MLRT
 
 #endif // MLRT_DRIVER_NIXL_BACKEND_BACKEND_PLUGIN_H

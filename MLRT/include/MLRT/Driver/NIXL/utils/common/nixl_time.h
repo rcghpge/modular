@@ -13,7 +13,7 @@
 
 #include <chrono>
 
-namespace M::MLRT::NIXL::nixlTime {
+namespace M::MLRT::nixlTime {
 
 using namespace std::chrono;
 
@@ -41,6 +41,6 @@ static inline sec_t getSec() {
   return duration_cast<seconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-} // namespace M::MLRT::NIXL::nixlTime
+} // namespace M::MLRT::nixlTime
 
 #endif // MLRT_DRIVER_NIXL_UTILS_COMMON_NIXL_TIME_H
