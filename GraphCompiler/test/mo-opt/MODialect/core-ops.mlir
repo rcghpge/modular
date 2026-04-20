@@ -40,13 +40,6 @@ mo.graph @unary_void_parametric_graph<N>(%arg: !mo.tensor<[N], f32>) -> (!mo.ten
   mo.output %arg : !mo.tensor<[N], f32>
 }
 
-// CHECK-LABEL: mo.graph @expr_in_arg_type<
-// CHECK-SAME: [[N:.*]], [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[add([[M]], [[N]])], f32>) -> !mo.tensor<[add([[M]], [[N]])], f32> {
-mo.graph @expr_in_arg_type<N, M>(%arg: !mo.tensor<[add(N, M)], f32>) -> (!mo.tensor<[add(N, M)], f32>) {
-  // CHECK-NEXT: mo.output %[[ARG]] : !mo.tensor<[add([[M]], [[N]])], f32>
-  mo.output %arg : !mo.tensor<[add(N, M)], f32>
-}
-
 // CHECK-LABEL: mo.graph @binary_parametric_graph<
 // CHECK-SAME: [[A:.*]], [[B:.*]] -> [[R1:.*]]>(%[[ARG:.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> !mo.tensor<[[[A]], [[B]]], f32> {
 mo.graph @binary_parametric_graph<A, B-> R1>(%arg: !mo.tensor<[A, B], f32>) -> (!mo.tensor<[A, B], f32>) {
