@@ -20,12 +20,16 @@
 #include "Support/Profiling/Tracy.h"
 
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/LineIterator.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <set>
 #include <string>
 #include <sys/resource.h>
 #include <sys/utsname.h>
@@ -1237,6 +1241,57 @@ MetalDeviceContext::verified_cast(const DeviceContext *ctx) {
   return static_cast<const MetalDeviceContext *>(ctx);
 }
 
+/// Returns true if the installed SDK supports the indicated Major.Minor
+/// revision of the Metal Shading Language.
+/// Parses the SDK header once on first call and caches all discovered
+/// MTLLanguageVersion values for the process lifetime.
+static bool sdkSupportsMSLVersion(int maj, int min) {
+  static const auto supportedVersions = [] {
+    std::set<std::pair<int, int>> versions;
+
+    // Resolve the active Xcode developer directory.
+    std::filesystem::path devDir;
+    if (const char *env = std::getenv("DEVELOPER_DIR")) {
+      devDir = env;
+    } else {
+      // Same symlink that `xcode-select -p` resolves.
+      std::error_code ec;
+      devDir = std::filesystem::read_symlink("/var/db/xcode_select_link", ec);
+      if (ec)
+        return versions;
+    }
+
+    // Header that defines the MTLLanguageVersion enum.
+    std::filesystem::path headerPath =
+        devDir / "Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" /
+        "System/Library/Frameworks/Metal.framework" /
+        "Versions/A/Headers/MTLLibrary.h";
+    auto bufOrErr = llvm::MemoryBuffer::getFile(headerPath.c_str());
+    if (!bufOrErr)
+      return versions;
+
+    // Scan for MTLLanguageVersionX_Y enum entries.
+    StringRef prefix = "MTLLanguageVersion";
+    for (llvm::line_iterator it(**bufOrErr, /*SkipBlanks=*/true, '\0');
+         !it.is_at_end(); ++it) {
+      StringRef line = *it;
+      auto pos = line.find(prefix);
+      if (pos == StringRef::npos)
+        continue;
+      StringRef suffix = line.substr(pos + prefix.size());
+      auto [majStr, rest] = suffix.split('_');
+      int major = 0, minor = 0;
+      // majStr is clean (e.g. "1"); rest may have trailing text
+      // (e.g. "1 API_AVAILABLE(...)"), so use consumeInteger.
+      if (!majStr.getAsInteger(10, major) && !rest.consumeInteger(10, minor))
+        versions.emplace(major, minor);
+    }
+    return versions;
+  }();
+
+  return supportedVersions.count({maj, min}) > 0;
+}
+
 ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
   ensureThreadlocalAutoreleasePoolExists();
   MTL::Device *device = d ? d : MTL::CreateSystemDefaultDevice();
@@ -1246,10 +1301,10 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
 
   DEFINE_OR_RETURN_ERROR(int, cc, getComputeCapability(name));
   std::string archName = std::to_string(cc);
-  if (device->supportsFamily(MTL::GPUFamilyMetal4)) {
-    // Prefer to use latest supported Metal version by default.
-    // TODO: this might not be sufficient and may also need to check xcode's
-    // version.
+  if (device->supportsFamily(MTL::GPUFamilyMetal4) &&
+      sdkSupportsMSLVersion(4, 0)) {
+    // Prefer to use latest supported Metal version by default, but only if
+    // the installed Xcode's Metal compiler can actually handle Metal 4.0 AIR.
     archName += "-metal4";
   }
   return archName;
