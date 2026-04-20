@@ -1202,8 +1202,12 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
   HIP_WITH_CTX_ERR(*this);
   switch (mode) {
   case Device::AllocMode::ASYNC: {
-    HIP_CHECK_ERR(driver_.hipMallocAsync(ptr, byteSize, stream_));
-    MAYBE_SYNC(*this);
+    // We used to support async allocations but prefer only sync ones now.
+    return Error("Async allocation is not supported for HIP devices");
+
+    // Deprecated logic. Remove later.
+    // HIP_CHECK_ERR(driver_.hipMallocAsync(ptr, byteSize, stream_));
+    // MAYBE_SYNC(*this);
     break;
   }
   case Device::AllocMode::HOST: {
@@ -1230,7 +1234,7 @@ ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, bool isHost) {
     POLL_PENDING_EVENTS(*this);
     HIP_CHECK_ERR(driver_.hipHostFree(ptr));
   } else {
-    HIP_CHECK_ERR(driver_.hipFreeAsync(ptr, stream_));
+    HIP_CHECK_ERR(driver_.hipFree(ptr)); // We only support sync allocations.
     MAYBE_SYNC(*this);
   }
   return success();

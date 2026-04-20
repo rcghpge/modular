@@ -1337,8 +1337,12 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
   CUDA_WITH_CTX_ERR(*this);
   switch (mode) {
   case Device::AllocMode::ASYNC: {
-    CUDA_CHECK_ERR(driver_.cuMemAllocAsync(ptr, byteSize, stream_));
-    MAYBE_SYNC(*this);
+    // We used to support async allocations but prefer only sync ones now.
+    return Error("Async allocation is not supported for CUDA devices");
+
+    // Deprecated logic. Remove later.
+    // CUDA_CHECK_ERR(driver_.cuMemAllocAsync(ptr, byteSize, stream_));
+    // MAYBE_SYNC(*this);
     break;
   }
   case Device::AllocMode::HOST: {
@@ -1364,7 +1368,7 @@ ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, bool isHost) {
     POLL_PENDING_EVENTS(*this);
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
   } else {
-    CUDA_CHECK_ERR(driver_.cuMemFreeAsync(ptr, stream_));
+    CUDA_CHECK_ERR(driver_.cuMemFree_v2(ptr)); // Only support sync allocations.
     MAYBE_SYNC(*this);
   }
   return success();
