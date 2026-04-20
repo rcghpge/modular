@@ -649,10 +649,12 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     `!mo.bundle` result whose elements are derived from the yield type with
     per-launch devices taken from the first input bundle.
 
-    An optional `buffers(...)` clause provides per-launch signal buffers for
+    An optional `buffers(...)` clause declares per-launch signal buffers for
     collective operations (e.g. allreduce).  The number of buffers must equal
-    the number of launches.  When present, the body receives one additional
-    block argument typed as the first buffer's type.
+    the number of launches.  Buffers are operands of the parallel op for
+    chain guarding (memory effect tracking) but do NOT produce block
+    arguments.  Ops inside the body capture buffer values directly from the
+    enclosing scope.
 
     `buffers(...)` and `chain(...)` must be both present or both absent.  When
     present, `chain(...)` provides a sequencing dependency and the trailing
@@ -671,12 +673,13 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     Example with buffers and chain (bundled allreduce):
     ```mlir
     %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
-    %res, %ch = mo.parallel (%arg, %sig) in (%dt : !mo.bundle<[...]>)
+    %res, %ch = mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
         buffers(%s0 : !mo.buffer<[1], ui8, gpu:0>,
                 %s1 : !mo.buffer<[1], ui8, gpu:1>)
         chain(%ch_in)
-        -> (!mo.bundle<[...]>, !mo.chain) {
-      %out, %ch1 = mo.bundled.allreduce.sum(%arg, %sig, %ch_in) : ...
+        -> (!mo.bundle<[...]>) {
+      %p0, %p1 = mo.bundled.expand(%arg) : ...
+      %out, %ch1 = mo.bundled.allreduce.sum(%p0, %p1, %s0, %s1, %ch_in) : ...
       mo.yield %out : !mo.tensor<[3], f32, gpu:0>
     }
     ```
@@ -5300,44 +5303,74 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
   }];
 }
 
-def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
+def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
+  Pure,
+  MO_PreservedDuringKernelLowering,
+  ParentOneOf<["ParallelOp"]>
+]> {
+  let summary = "Expand a per-device tensor to all launches' tensors.";
+  let description = [{
+    Inside an `mo.parallel` body, takes a single-device tensor (typically a
+    block argument) and produces one tensor per launch with the corresponding
+    device placement.  This makes collective N-expansion explicit in the IR
+    rather than implicit during lowering.
+
+    The number of results must equal the parent parallel op's launch count.
+    Result types must have the same shape and dtype as the input but with
+    devices matching each launch (derived from the first input bundle).
+
+    Example:
+    ```mlir
+    mo.parallel (%arg) in (%dt : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
+                                              !mo.tensor<[3], f32, gpu:1>]>)
+        -> (!mo.bundle<[...]>) {
+      %peer0, %peer1 = mo.bundled.expand(%arg)
+          : !mo.tensor<[3], f32, gpu:0>
+         -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+      // ... use %peer0, %peer1 as inputs to a collective ...
+    }
+    ```
+  }];
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs Variadic<MO_Tensor>:$results);
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` type($input) `->` `(` type($results) `)`
+  }];
+  let hasVerifier = 1;
+}
+
+def MO_BundledAllReduceSumOp : Op<MODialect, "bundled.allreduce.sum", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  MO_BundledCollective,
-  MO_SameVariadicOperandSizeInterface,
-  MO_SingleDeviceWithHostOperands<["inChain"], ["input", "signalBuffer"]>,
-  AllTypesMatch<["input", "output"]>
+  MO_SameVariadicOperandSize
 ]> {
   let summary = "Per-device allreduce sum, for use inside mo.parallel.";
   let description = [{
-    Per-device entry point for allreduce sum. Unlike
-    `mo.distributed.allreduce.sum` (which takes N tensor inputs and N signal
-    buffers), this op takes a single tensor input, a single signal buffer, and
-    a chain. It is designed to be used inside an `mo.parallel` region with
-    tupled inputs, where the tensor and signal buffer both vary per launch.
+    Per-device entry point for allreduce sum, used inside an `mo.parallel`
+    region.  Takes N peer tensor inputs (from `mo.bundled.expand`), N
+    signal buffers (captured from graph scope — the `buffers(...)` clause
+    on the parent parallel op provides chain guarding), and a chain.
 
-    The lowering expands the single input and signal buffer to all N peer
-    inputs/buffers when constructing the kernel stub.
-
-    Example (inside mo.parallel with tupled inputs):
+    Example:
     ```mlir
-    %res:2, %out_ch = mo.parallel (%arg, %sig) in
-        ((%in0, %sig0) : (!mo.tensor<[3], f32, gpu:0>,
-                          !mo.buffer<[1], ui8, gpu:0>),
-         (%in1, %sig1) : (!mo.tensor<[3], f32, gpu:1>,
-                          !mo.buffer<[1], ui8, gpu:1>))
-        chain(%ch) {
-      %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
-          : (!mo.tensor<[3], f32, gpu:0>,
-             !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
+    mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
+        buffers(%sig0 : ..., %sig1 : ...) chain(%ch) -> (...) {
+      %peer0, %peer1 = mo.bundled.expand(%arg)
+          : !mo.tensor<[3], f32, gpu:0>
+         -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+      %out, %ch_out = mo.bundled.allreduce.sum(
+          %peer0, %peer1, %sig0, %sig1, %ch)
+          : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
+             !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>,
+             !mo.chain)
           -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
       mo.yield %out : !mo.tensor<[3], f32, gpu:0>
     }
     ```
   }];
   let arguments = (ins
-    MO_Tensor:$input,
-    MO_Buffer:$signalBuffer,
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
     MO_Chain:$inChain
   );
   let results = (outs

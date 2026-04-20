@@ -25,11 +25,12 @@ mo.graph @bundled_allreduce_expr_dim_inputs<D0>(
   %ch = mo.chain.create()
   // Parallel inputs have div(D0, 2) -- an expression-form dim that kernel
   // stubs must provide runtime values for.
-  %res_bundle, %out_ch = mo.parallel (%arg, %sig) in (%dt : !mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>)
+  %res_bundle, %out_ch = mo.parallel (%arg) in (%dt : !mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch) -> (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>]>) {
-    %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
-        : (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
+    %peer0, %peer1 = mo.bundled.expand(%arg) : !mo.tensor<[div(D0, 2), 3], f32, gpu:0> -> (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>)
+    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %ch)
+        : (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.tensor<[div(D0, 2), 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
        -> (!mo.tensor<[div(D0, 2), 3], f32, gpu:0>, !mo.chain)
     mo.yield %out : !mo.tensor<[div(D0, 2), 3], f32, gpu:0>
   }

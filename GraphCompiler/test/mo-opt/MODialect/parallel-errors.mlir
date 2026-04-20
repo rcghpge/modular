@@ -55,24 +55,3 @@ mo.graph @extra_input_bundle_mismatch(
   %r0, %r1 = mo.tensor.unbundle(%res) : (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>)
   mo.output %r0, %r1 : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
 }
-
-// -----
-
-// Buffer type mismatch: second buffer has a different dtype than the block arg.
-mo.graph @buffer_type_mismatch(
-    %buf0: !mo.buffer<[1], ui8, gpu:0>,
-    %buf1: !mo.buffer<[1], ui16, gpu:1>
-) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %a = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
-  %b = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:1>
-  %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-  %ch = mo.chain.create()
-  // expected-error @below {{'mo.parallel' op buffer #1 type '!mo.buffer<[1], ui16, gpu:1>' does not match block argument type '!mo.buffer<[1], ui8, gpu:0>'}}
-  %res, %out_ch = mo.parallel (%arg, %sig) in (%bundle : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-      buffers(%buf0 : !mo.buffer<[1], ui8, gpu:0>, %buf1 : !mo.buffer<[1], ui16, gpu:1>)
-      chain(%ch) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
-    mo.yield %arg : !mo.tensor<[3], f32, gpu:0>
-  }
-  %r0, %r1 = mo.tensor.unbundle(%res) : (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-  mo.output %r0, %r1 : !mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>
-}

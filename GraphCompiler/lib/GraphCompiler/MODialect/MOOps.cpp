@@ -1141,12 +1141,10 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
                            static_cast<int32_t>(bufferOps.size()),
                            static_cast<int32_t>(hasChain ? 1 : 0)}));
 
-  // Validate block arg count: one per bundle + optionally one for buffers.
-  size_t expectedBlockArgs = bundleOps.size() + (hasBuffers ? 1 : 0);
-  if (blockArgs.size() != expectedBlockArgs)
+  // Block args: one per bundle input.
+  if (blockArgs.size() != bundleOps.size())
     return parser.emitError(parser.getCurrentLocation(), "expected ")
-           << expectedBlockArgs << " block args (bundles=" << bundleOps.size()
-           << " + buffers=" << (hasBuffers ? 1 : 0) << "), got "
+           << bundleOps.size() << " block args (one per bundle input), got "
            << blockArgs.size();
 
   // Set block arg types from the first element of each bundle type.
@@ -1157,10 +1155,6 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
                               "expected non-empty mo.bundle type");
     blockArgs[group].type = bundleTy.getElementTypes()[0];
   }
-
-  // Set the buffer block arg type from the first buffer.
-  if (hasBuffers)
-    blockArgs[bundleOps.size()].type = bufferTypes[0];
 
   // Parse result types.
   SmallVector<Type> resultTypes;
@@ -1367,10 +1361,9 @@ LogicalResult ParallelOp::verify() {
   }
 
   Block &body = getBodyRegion().front();
-  size_t expectedBlockArgs = inputs.size() + (hasBuffers() ? 1 : 0);
-  if (body.getNumArguments() != expectedBlockArgs)
+  if (body.getNumArguments() != inputs.size())
     return emitOpError("body must have ")
-           << expectedBlockArgs << " block argument(s), got "
+           << inputs.size() << " block argument(s) (one per bundle input), got "
            << body.getNumArguments();
 
   // Ensure that the types within each input bundle match the type of the
@@ -1384,19 +1377,6 @@ LogicalResult ParallelOp::verify() {
         return emitOpError("bundle input #")
                << group << " element #" << launch << " type " << elemType
                << " does not match block argument type " << blockArgType;
-    }
-  }
-
-  if (hasBuffers()) {
-    // Ensure that the buffer types match the type of the
-    // buffer block argument.
-    Type bufferArgType = body.getArgument(inputs.size()).getType();
-    for (auto [launch, buffer] : llvm::enumerate(getBuffers())) {
-      auto bufferType = cast<BufferType>(buffer.getType());
-      if (!typesMatchIgnoringDeviceId(bufferType, bufferArgType))
-        return emitOpError("buffer #")
-               << launch << " type " << bufferType
-               << " does not match block argument type " << bufferArgType;
     }
   }
 
@@ -3200,13 +3180,47 @@ void AllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// BundledExpandOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BundledExpandOp::verify() {
+  auto parallelOp = (*this)->getParentOfType<ParallelOp>();
+  if (!parallelOp)
+    return emitOpError("must be inside an mo.parallel region");
+
+  size_t numLaunches = parallelOp.getNumLaunches();
+  if (getNumResults() != numLaunches)
+    return emitOpError("expected ")
+           << numLaunches << " results (one per launch), got "
+           << getNumResults();
+
+  auto firstBundle = cast<BundleType>(parallelOp.getInputs().front().getType());
+  for (auto [i, resultType] : llvm::enumerate(getResultTypes())) {
+    if (!typesMatchIgnoringDeviceId(resultType, getInput().getType()))
+      return emitOpError("result #")
+             << i << " type " << resultType
+             << " does not match input type (ignoring device) "
+             << getInput().getType();
+
+    auto expectedDevice =
+        cast<TensorType>(firstBundle.getElementTypes()[i]).getDeviceRef();
+    auto actualDevice = cast<TensorType>(resultType).getDeviceRef();
+    if (actualDevice != expectedDevice)
+      return emitOpError("result #")
+             << i << " device " << actualDevice
+             << " does not match launch device " << expectedDevice;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BundledAllReduceSumOp
 //===----------------------------------------------------------------------===//
 
 void BundledAllReduceSumOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  effects.emplace_back(mlir::MemoryEffects::Write::get(),
-                       &getSignalBufferMutable());
+  for (auto &sig : getSignalBuffersMutable())
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
 }
 
 //===----------------------------------------------------------------------===//

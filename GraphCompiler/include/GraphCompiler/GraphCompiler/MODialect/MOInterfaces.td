@@ -472,11 +472,6 @@ def MO_HostOnly : MO_OpTrait<"MOHostOnly">;
 // Marks an op that executes on the host using tensors from any device.
 def MO_ExecutesOnHost : MO_OpTrait<"MOExecutesOnHost">;
 
-// Marks a per-device collective op that must be used inside mo.parallel.
-// During lowering, the compiler N-expands each clone so it receives inputs
-// from ALL launches (devices), then dispatches one instance per device.
-def MO_BundledCollective : MO_OpTrait<"MOBundledCollective">;
-
 // Helper to get the operand numbers for the given operand names.
 class getOperandNumbers<list<string> operandNames> {
   string ret = !interleave(!foreach(name, operandNames,

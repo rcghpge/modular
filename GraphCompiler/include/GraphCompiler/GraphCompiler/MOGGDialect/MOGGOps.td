@@ -409,8 +409,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
     DefaultValuedOptionalAttr<ArrayAttr, "{}">:$allocIndices,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$isBundledCollective
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
 
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain, MOGG_ShapeFuncResult]>>:$results);
