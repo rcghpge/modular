@@ -39,6 +39,7 @@
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace M;
+using namespace M::MLRT;
 using namespace M::MO;
 
 namespace M::MO {
@@ -311,7 +312,7 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
 static RuntimeTensor extractRuntimeOutput(
     const AnyAsyncValueRef &ref, MLIRContext *ctx,
     llvm::DenseMap<M::MLRT::AsyncValue *, ElementsAttr> &cachedConstants) {
-  if (M::Tensor *tensor = dyn_cast<Tensor>(ref)) {
+  if (M::MLRT::Tensor *tensor = dyn_cast<Tensor>(ref)) {
     ElementsAttr constantsArr;
 
     auto [it, inserted] =

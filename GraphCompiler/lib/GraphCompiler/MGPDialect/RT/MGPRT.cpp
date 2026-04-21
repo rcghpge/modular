@@ -207,9 +207,9 @@ COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_BufferBorrow(AsyncRTWrapper<AnyAsyncValueRef> borrower,
                     TensorBufferRef *borrowee) {
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
-  TensorBufferRef buf =
-      ::M::TensorBufferRef::create(borrowee->getBuffer(), borrowee->getSize(),
-                                   borrowee->getMemStorageHandle());
+  TensorBufferRef buf = ::M::MLRT::TensorBufferRef::create(
+      borrowee->getBuffer(), borrowee->getSize(),
+      borrowee->getMemStorageHandle());
   if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
     borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
   } else {
@@ -226,7 +226,7 @@ MGP_RT_TensorBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
 
   TensorBufferRef buf =
-      mem ? ::M::TensorBufferRef::create(data, byteCount, mem->copy())
+      mem ? ::M::MLRT::TensorBufferRef::create(data, byteCount, mem->copy())
           : ::TensorBufferRef::createWithNonTrackedMemory(data, byteCount);
 
   // Pack buffer and spec into tensor.
@@ -246,7 +246,7 @@ MGP_RT_BufferBorrowV2(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
                       size_t size, AnyAsyncValueRef *mem) {
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
   TensorBufferRef buf =
-      mem ? ::M::TensorBufferRef::create(data, size, mem->copy())
+      mem ? ::M::MLRT::TensorBufferRef::create(data, size, mem->copy())
           : ::TensorBufferRef::createWithNonTrackedMemory(data, size);
   if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
     borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
@@ -272,7 +272,7 @@ MGP_RT_BufferUntracked(AsyncRTWrapper<AnyAsyncValueRef> borrower, void *data,
                        size_t size) {
   AnyAsyncValueRef &borrowerValue = unwrap(borrower);
   TensorBufferRef buf =
-      ::M::TensorBufferRef::createWithNonTrackedMemory(data, size);
+      ::M::MLRT::TensorBufferRef::createWithNonTrackedMemory(data, size);
   if (borrowerValue.getPointer() && borrowerValue.getPointer()->isIndirect()) {
     borrowerValue.copy().emplaceIndirect<TensorBufferRef>(std::move(buf));
   } else {
@@ -362,8 +362,8 @@ MGP_RT_CreateAsyncDeviceBufferRef(void *data, size_t size,
                                                              std::move(buf));
 
   // Finally, wrap the pointer and the AsyncValue wrapper in a TensorBufferRef.
-  auto tensorBufferRef =
-      ::M::TensorBufferRef::create(data, size, std::move(asyncDeviceBufferRef));
+  auto tensorBufferRef = ::M::MLRT::TensorBufferRef::create(
+      data, size, std::move(asyncDeviceBufferRef));
 
   if (value.getPointer() && value.getPointer()->isIndirect()) {
     value.copy().emplaceIndirect<TensorBufferRef>(std::move(tensorBufferRef));
@@ -400,7 +400,7 @@ MGP_RT_CreateAsyncNonTrackedTensor(void *data, size_t byteCount, size_t rank,
   AnyAsyncValueRef &value = unwrap(async);
 
   // Pack buffer and spec into tensor.
-  TensorBufferRef buf = ::M::TensorBufferRef::createWithNonTrackedMemory(
+  TensorBufferRef buf = ::M::MLRT::TensorBufferRef::createWithNonTrackedMemory(
       data, byteCount, /*alignment=*/std::nullopt);
   TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));
   if (value.getPointer() && value.getPointer()->isIndirect())
@@ -427,7 +427,7 @@ MGP_RT_CreateAsyncBufferWithBorrow(
     handle = handleOrTensor.get<Tensor>().getBufferRef().getMemStorageHandle();
   }
   TensorBufferRef buf =
-      ::M::TensorBufferRef::create(data, size, std::move(handle));
+      ::M::MLRT::TensorBufferRef::create(data, size, std::move(handle));
 
   // Emplace into the async value.
   if (outVal.getPointer() && outVal.getPointer()->isIndirect()) {
@@ -476,7 +476,7 @@ MGP_RT_CreateAsyncTensorWithBorrow(
     handle = handleOrTensor.get<Tensor>().getBufferRef().getMemStorageHandle();
   }
   TensorBufferRef buf =
-      ::M::TensorBufferRef::create(data, byteCount, std::move(handle));
+      ::M::MLRT::TensorBufferRef::create(data, byteCount, std::move(handle));
 
   // Pack buffer and spec into tensor.
   TensorSpec spec(ArrayRef<size_t>(dims, rank), DType(type));

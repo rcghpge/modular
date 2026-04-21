@@ -21,6 +21,7 @@
 #include "gtest/gtest.h"
 
 using namespace M;
+using namespace M::MLRT;
 using namespace GML;
 
 namespace {

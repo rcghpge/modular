@@ -63,6 +63,7 @@
 #endif // ENABLE_MGP_KERNEL_LOGGING
 
 using namespace M;
+using namespace M::MLRT;
 using namespace M::GML;
 using namespace M::MGP;
 

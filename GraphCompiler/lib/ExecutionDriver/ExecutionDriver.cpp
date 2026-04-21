@@ -32,6 +32,7 @@
 #include <numeric>
 
 using namespace M;
+using namespace M::MLRT;
 using mlir::MLIRContext;
 
 StringLiteral M::stringifyEnum(InputGenerationKind kind) {

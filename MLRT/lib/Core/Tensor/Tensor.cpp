@@ -9,15 +9,16 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace M;
+using namespace M::MLRT;
 
-Tensor Tensor::createOwned(TensorSpec spec, MLRT::CompactRuntimePtr runtime,
+Tensor Tensor::createOwned(TensorSpec spec, CompactRuntimePtr runtime,
                            std::optional<size_t> alignment) {
   return Tensor(
       TensorBufferRef::createOwned(runtime, spec.getSizeInBytes(), alignment),
       std::move(spec));
 }
 
-Tensor Tensor::takeOwned(TensorSpec spec, MLRT::CompactRuntimePtr runtime,
+Tensor Tensor::takeOwned(TensorSpec spec, CompactRuntimePtr runtime,
                          void *takeFrom) {
   return Tensor(TensorBufferRef::take(runtime, spec.getSizeInBytes(), takeFrom),
                 std::move(spec));

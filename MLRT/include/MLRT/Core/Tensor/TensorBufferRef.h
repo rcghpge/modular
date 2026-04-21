@@ -15,19 +15,19 @@
 
 #include <utility>
 
-namespace M {
+namespace M::MLRT {
 
 // A block of owned memory. When there are no more references to this it will
 // free the underlying memory.
 struct OwnedMemoryBlock {
   OwnedMemoryBlock() = default;
   OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                   MLRT::CompactRuntimePtr rt, void *takePtr = nullptr);
+                   CompactRuntimePtr rt, void *takePtr = nullptr);
   ~OwnedMemoryBlock();
   void *data;
   size_t size;
 
-  MLRT::CompactRuntimePtr runtime;
+  CompactRuntimePtr runtime;
 };
 
 /// Profiler entry for tracking the lifetimes of owned buffers.
@@ -77,8 +77,7 @@ public:
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.
-  static TensorBufferRef createOwned(MLRT::CompactRuntimePtr runtime,
-                                     size_t size,
+  static TensorBufferRef createOwned(CompactRuntimePtr runtime, size_t size,
                                      std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
   /// ptr that is allocated by caller. There is an assumption that the takeFrom
@@ -86,7 +85,7 @@ public:
   /// buffer will be freed by TensorBufferRef when the reference is destroyed.
   /// Since the ownership lies with TensorBufferRef, caller should not free
   /// anything that has been taken by TensorBufferRef.
-  static TensorBufferRef take(MLRT::CompactRuntimePtr runtime, size_t size,
+  static TensorBufferRef take(CompactRuntimePtr runtime, size_t size,
                               void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a TensorBufferRef.
@@ -165,13 +164,13 @@ inline raw_ostream &operator<<(raw_ostream &os, const TensorBufferRef &value) {
   return os;
 }
 
-} // namespace M
+} // namespace M::MLRT
 
 namespace std {
 
 // For ADL style swap.
 template <>
-inline void swap(M::TensorBufferRef &lhs, M::TensorBufferRef &rhs) {
+inline void swap(M::MLRT::TensorBufferRef &lhs, M::MLRT::TensorBufferRef &rhs) {
   lhs.swap(rhs);
 }
 

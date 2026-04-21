@@ -20,7 +20,7 @@ MODULAR_VISIBILITY_EXPORT
 ErrorOr<Driver::DeviceMemory *>
 constructDeviceMemoryFromTensor(M::ContextRef context,
                                 GraphCompiler::Driver::Device *device,
-                                M::Tensor tensor);
+                                M::MLRT::Tensor tensor);
 
 /// Transforms a DeviceTensor representation into an AnyAsyncValueRef executable
 /// returned by an ExecutableModel.

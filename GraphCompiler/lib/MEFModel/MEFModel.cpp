@@ -39,6 +39,7 @@
 #include <vector>
 
 using namespace M;
+using namespace M::MLRT;
 
 static SmallVector<QuantTensorSpec>
 getSpecsAsVector(ArrayRef<ModelSpec::ModelIOSpec> modelIOSpec) {

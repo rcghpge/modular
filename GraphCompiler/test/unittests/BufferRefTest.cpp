@@ -15,6 +15,7 @@
 #include "gtest/gtest.h"
 
 using namespace M;
+using namespace M::MLRT;
 
 static MLRT::RuntimeRef getRuntime() {
   return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,

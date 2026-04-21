@@ -23,6 +23,7 @@
 #include <utility>
 
 using namespace M;
+using namespace M::MLRT;
 
 //===----------------------------------------------------------------------===//
 // QuantTensorSpec

@@ -28,6 +28,7 @@
 #include <variant>
 
 using namespace M;
+using namespace M::MLRT;
 
 static ErrorOrSuccess fillWithElements(Tensor &tensor,
                                        InputGenerationKind inputGenKind,

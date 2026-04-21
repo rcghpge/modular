@@ -9,9 +9,10 @@
 #include "MLRT/Core/Tensor/TensorBufferRef.h"
 
 using namespace M;
+using namespace M::MLRT;
 
 TensorBufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
-                                             MLRT::CompactRuntimePtr runtime,
+                                             CompactRuntimePtr runtime,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   assert(bufferIndex < bufferCache.size() &&
@@ -55,8 +56,7 @@ ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex,
 }
 
 void StateSlot::updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
-                                    MLRT::CompactRuntimePtr runtime,
-                                    size_t size,
+                                    CompactRuntimePtr runtime, size_t size,
                                     std::optional<size_t> alignment) {
   // Do nothing if size matches. The size will be 0 if the entry is
   // uninitialized, thus forcing an allocation.

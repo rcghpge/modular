@@ -14,7 +14,7 @@
 #include "Support/ReferenceCounted.h"
 #include "Support/TypeID.h"
 
-namespace M {
+namespace M::MLRT {
 
 /// A type-erased wrapper for all context 'state slots'. Buffer allocations
 /// may be cached within a number of 'buffer slots' determined when the state
@@ -70,8 +70,7 @@ public:
   ///  - no other call to this method for the same state slot and buffer index
   ///    should be made while the returned reference is still in use.
   TensorBufferRef getOrCreateBuffer(size_t bufferIndex,
-                                    MLRT::CompactRuntimePtr runtime,
-                                    size_t size,
+                                    CompactRuntimePtr runtime, size_t size,
                                     std::optional<size_t> alignment);
 
   /// Returns a reference to the already allocated and cached buffer at
@@ -92,7 +91,7 @@ public:
   ErrorOrSuccess setBuffer(size_t bufferIndex, TensorBufferRef bufferRef);
 
   /// Returns the type id for the value held by this state slot.
-  M::TypeID getTypeID() const { return payload.getTypeID(); }
+  TypeID getTypeID() const { return payload.getTypeID(); }
 
   /// Returns the underlying payload pointer held by this state slot.
   void *getUnderlyingPointer() { return payload.getOpaquePointer(); }
@@ -101,7 +100,7 @@ private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
   static void updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
-                                  MLRT::CompactRuntimePtr runtime, size_t size,
+                                  CompactRuntimePtr runtime, size_t size,
                                   std::optional<size_t> alignment);
 
   /// The state slot payload.
@@ -162,6 +161,6 @@ private:
   T *payload;
 };
 
-} // namespace M
+} // namespace M::MLRT
 
 #endif // MLRT_CORE_TENSOR_STATESLOT_H

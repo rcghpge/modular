@@ -12,6 +12,7 @@
 #include <sstream>
 
 using namespace M;
+using namespace M::MLRT;
 using namespace GML;
 
 None &None::operator=(None &&other) { return *this; }

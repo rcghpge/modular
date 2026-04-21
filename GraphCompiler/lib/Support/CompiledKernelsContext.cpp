@@ -19,6 +19,7 @@
 #define DEBUG_TYPE "compiled-kernels-context"
 
 using namespace M;
+using namespace M::MLRT;
 using namespace M::GML;
 
 //===----------------------------------------------------------------------===//

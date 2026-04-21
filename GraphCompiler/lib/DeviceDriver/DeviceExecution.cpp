@@ -11,6 +11,8 @@ using M::AnyAsyncValueRef;
 using M::ErrorOr;
 using M::GraphCompiler::Driver::Device;
 using M::GraphCompiler::Driver::DeviceMemory;
+using M::MLRT::Tensor;
+using M::MLRT::TensorBufferRef;
 namespace {
 
 // A managed memory block used to transfer device memory to graph execution.
@@ -29,7 +31,7 @@ struct OwnedDeviceMemoryBlock {
 ErrorOr<DeviceMemory *>
 M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
                                                           Device *device,
-                                                          M::Tensor tensor) {
+                                                          Tensor tensor) {
 
   // Take ownership of underlying tensor storage.
   TensorBufferRef bufferRef = tensor.releaseBufferRef();

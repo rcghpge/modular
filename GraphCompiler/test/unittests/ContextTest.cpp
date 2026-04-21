@@ -13,6 +13,7 @@
 #include "gtest/gtest.h"
 
 using namespace M;
+using namespace M::MLRT;
 
 struct PayloadA : public ReferenceCounted<PayloadA> {
   explicit PayloadA(int i) : i(i) { resource = malloc(1); }

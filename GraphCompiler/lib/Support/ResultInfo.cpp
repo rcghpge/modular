@@ -9,6 +9,7 @@
 #include "llvm/Support/YAMLTraits.h"
 
 using namespace M;
+using namespace M::MLRT;
 
 ResultInfo::ResultInfo(std::string name) : name(std::move(name)) {}
 

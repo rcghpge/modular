@@ -11,6 +11,7 @@
 #include "llvm/Support/Format.h"
 
 using namespace M;
+using namespace M::MLRT;
 
 static constexpr llvm::MaybeAlign
 makeMaybeAlign(std::optional<size_t> alignment) {
@@ -42,7 +43,7 @@ TensorBufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
                          makeMaybeAlign(alignment), std::move(profilerEntry));
 }
 
-TensorBufferRef TensorBufferRef::createOwned(MLRT::CompactRuntimePtr runtime,
+TensorBufferRef TensorBufferRef::createOwned(CompactRuntimePtr runtime,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   // Special case for empty buffer
@@ -61,8 +62,8 @@ TensorBufferRef TensorBufferRef::createOwned(MLRT::CompactRuntimePtr runtime,
 
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
-TensorBufferRef TensorBufferRef::take(MLRT::CompactRuntimePtr runtime,
-                                      size_t size, void *takeFrom) {
+TensorBufferRef TensorBufferRef::take(CompactRuntimePtr runtime, size_t size,
+                                      void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
       runtime, size, std::nullopt, runtime, takeFrom);
@@ -104,7 +105,7 @@ void TensorBufferRef::swap(TensorBufferRef &rhs) {
 }
 
 OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                                   MLRT::CompactRuntimePtr rt, void *takePtr)
+                                   CompactRuntimePtr rt, void *takePtr)
     : data(nullptr), size(size), runtime(rt) {
   if (takePtr)
     data = takePtr;

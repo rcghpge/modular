@@ -9,7 +9,7 @@
 
 #include "MLRT/Core/Tensor/StateSlot.h"
 
-namespace M {
+namespace M::MLRT {
 
 /// A state context holds a number of 'state slots'. The number of state slots
 /// is set at construction time and cannot be changed. Each state slot can hold
@@ -109,6 +109,6 @@ private:
   std::unique_ptr<StateSlot[]> stateSlots;
 };
 
-} // namespace M
+} // namespace M::MLRT
 
 #endif // MLRT_CORE_TENSOR_STATECONTEXT_H
