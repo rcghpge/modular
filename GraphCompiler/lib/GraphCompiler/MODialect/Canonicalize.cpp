@@ -1097,6 +1097,48 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
 }
 
 //===----------------------------------------------------------------------===//
+// TensorBundleOp
+//===----------------------------------------------------------------------===//
+
+/// Fold `bundle(unbundle(%X)#0, unbundle(%X)#1, ..., unbundle(%X)#N-1)` back to
+/// `%X` when the inputs are the full set of results of a single unbundle op, in
+/// order, and the resulting bundle type matches the unbundle's input type.
+///
+/// This closes the symmetric direction of the existing `unbundle(bundle(...))`
+/// fold and lets downstream passes see SSA equality when a bundle value is
+/// transiently unbundled and re-bundled.
+OpFoldResult TensorBundleOp::fold(FoldAdaptor adaptor) {
+  auto inputs = getInputs();
+  if (inputs.empty())
+    return {};
+
+  auto firstOperand = dyn_cast<OpResult>(inputs.front());
+  if (!firstOperand)
+    return {};
+  auto unbundleOp = dyn_cast<TensorUnbundleOp>(firstOperand.getOwner());
+  if (!unbundleOp)
+    return {};
+
+  // All inputs must be results of the same unbundle, in order 0..N-1, and the
+  // unbundle must have exactly N results (no extra elements dropped).
+  if (unbundleOp.getNumResults() != inputs.size())
+    return {};
+  for (auto [i, input] : llvm::enumerate(inputs)) {
+    auto result = dyn_cast<OpResult>(input);
+    if (!result || result.getOwner() != unbundleOp.getOperation() ||
+        result.getResultNumber() != i)
+      return {};
+  }
+
+  // Type match is guaranteed by construction when the above holds, but double
+  // check to be defensive against unbundle/bundle type mismatches.
+  if (unbundleOp.getInput().getType() != getResult().getType())
+    return {};
+
+  return unbundleOp.getInput();
+}
+
+//===----------------------------------------------------------------------===//
 // TensorUnbundleOp
 //===----------------------------------------------------------------------===//
 

@@ -606,6 +606,7 @@ def MO_TensorBundleOp : Op<MODialect, "tensor.bundle",
     `(` $inputs `)` attr-dict `:` functional-type($inputs, $result)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle",
