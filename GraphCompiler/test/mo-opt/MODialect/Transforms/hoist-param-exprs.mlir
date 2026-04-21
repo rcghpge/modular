@@ -140,3 +140,29 @@ mo.graph @dont_outline_unknown_dims<N, M>(%arg0: !mo.tensor<[N, ?], f32>, %arg1:
   %2 = mo.mul(%1, %1) :!mo.tensor<[add(N, M), ?], f32>
   mo.output %2 : !mo.tensor<[add(N, M), ?], f32>
 }
+
+// Regression test for GEX-3545: mo.call result types with parameter expressions
+// must be rewritten to aliases. Previously, mo.call was skipped because it
+// implements MOControlOpInterface, which left expressions in its result types
+// and caused a "Missing dynamic dimension" assertion downstream in EmitMojo.
+//
+// mo.call is a MOControlOpInterface op, but its result types are plain
+// attributes and are safe to rewrite (the output rebind restores the original
+// type for downstream consumers, mirroring how mo.graph-returning ops are
+// handled elsewhere in this pass).
+
+// CHECK-LABEL: mo.graph @callee_subgraph
+mo.graph @callee_subgraph<Aliased>(%arg0: !mo.tensor<[Aliased], f32>) -> !mo.tensor<[Aliased], f32> attributes {isSubgraph} {
+  mo.output %arg0 : !mo.tensor<[Aliased], f32>
+}
+
+// CHECK-LABEL: mo.graph @call_with_expr_result
+mo.graph @call_with_expr_result<N, M, S>(%arg0: !mo.tensor<[S], f32>) -> !mo.tensor<[S], f32> {
+  // The call must be rewritten to use an alias for the add(N, M) result dim.
+  // CHECK-DAG: kgen.param.declare [[ALIAS:[a-zA-Z0-9_]+]]: si64 = <add(
+  // CHECK: mo.call @callee_subgraph({{.*}}) {{.*}} -> !mo.tensor<[[[ALIAS]]], f32>
+  %in = mo.rebind<() -> Aliased>(%arg0) {message = ""} : !mo.tensor<[S], f32> -> !mo.tensor<[Aliased], f32>
+  %0 = mo.call @callee_subgraph(%in) : (!mo.tensor<[Aliased], f32>) -> !mo.tensor<[add(N, M)], f32>
+  %out = mo.rebind(%0) {message = ""} : !mo.tensor<[add(N, M)], f32> -> !mo.tensor<[S], f32>
+  mo.output %out : !mo.tensor<[S], f32>
+}

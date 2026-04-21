@@ -81,7 +81,14 @@ struct RewriteParamExprTypes : public RewritePattern {
                                 PatternRewriter &origRewriter) const override {
     if (isa<KGEN::ParamDeclareOp>(op))
       return origRewriter.notifyMatchFailure(op, "skip parameter declarations");
-    if (isa<MO::MOControlOpInterface>(op))
+    // Skip true control-flow ops (mo.output, mo.if, mo.while) whose types
+    // are pinned by the enclosing graph's signature or whose regions carry
+    // non-tensor block arguments. mo.call is also a MOControlOpInterface op
+    // but it's just a symbol call whose result types can be freely rewritten
+    // (consumers pick up the new types via the output rebinds).
+    // TODO(GEX-3580): Revisit whether mo.call should implement
+    // MOControlOpInterface at all; dropping it would remove this exception.
+    if (isa<MO::MOControlOpInterface>(op) && !isa<MO::CallOp>(op))
       return origRewriter.notifyMatchFailure(op, "skip control flow");
 
     // Don't rewrite individual ops inside mo.parallel bodies -- the body
