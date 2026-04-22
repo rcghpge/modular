@@ -28,6 +28,7 @@
 #include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/AsyncRT/Runtime/Utils.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
+#include "Support/Configuration.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "Support/ErrorOr.h"
@@ -196,9 +197,15 @@ void MOFContext::overrideLoweringOptions(
     impl->mofConfig->overrideLoweringOptions(mofLoweringOptions,
                                              gcPipelineOptions);
 
-  // Enable NaN/Inf checking via environment variable.
-  if (llvm::sys::Process::GetEnv("MODULAR_MAX_NAN_CHECK"))
+  // Enable NaN/Inf checking from the new max-debug.nan-check config key or
+  // the legacy MODULAR_MAX_NAN_CHECK env var.  The legacy check will be
+  // removed in a follow-up PR once all callers have migrated.
+  if (llvm::sys::Process::GetEnv("MODULAR_MAX_NAN_CHECK")) {
     gcPipelineOptions.nanCheck = true;
+  } else if (auto configOr = M::Config::open(); !configOr.isError()) {
+    if (configOr->getValueAsBool("max-debug.nan-check", false))
+      gcPipelineOptions.nanCheck = true;
+  }
 }
 
 /// A diagnostic handler for the graph api.
@@ -469,16 +476,22 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     *keyBuf << (*bufferOr)->getBuffer();
   }
 
-  // Include MODULAR_MAX_DEBUG in the cache key so that builds with source
-  // notes (Python stack traces in error messages) are cached separately from
-  // builds without. Since locations are stripped below, the debug flag won't
-  // otherwise affect the key, causing stale cache hits. See GEX-2678.
-  if (auto debugEnv = llvm::sys::Process::GetEnv("MODULAR_MAX_DEBUG"))
+  // Include debug flags in the cache key so that builds with source notes
+  // (Python stack traces in error messages) and NaN/Inf checking are cached
+  // separately from builds without. Since locations are stripped below, the
+  // debug flags wouldn't otherwise affect the key, causing stale cache hits.
+  // See GEX-2678.  Check both the new max-debug.* config keys and the legacy
+  // env vars; legacy will be removed in a follow-up PR.
+  auto cacheKeyConfigOr = M::Config::open();
+  auto configHasFlag = [&](llvm::StringRef key) {
+    return !cacheKeyConfigOr.isError() &&
+           cacheKeyConfigOr->getValueAsBool(key, false);
+  };
+  if (llvm::sys::Process::GetEnv("MODULAR_MAX_DEBUG") ||
+      configHasFlag("max-debug.source-tracebacks"))
     *keyBuf << "MODULAR_MAX_DEBUG=1";
-
-  // Include MODULAR_MAX_NAN_CHECK in the cache key so that builds with NaN/Inf
-  // checking are cached separately from builds without.
-  if (auto nanCheckEnv = llvm::sys::Process::GetEnv("MODULAR_MAX_NAN_CHECK"))
+  if (llvm::sys::Process::GetEnv("MODULAR_MAX_NAN_CHECK") ||
+      configHasFlag("max-debug.nan-check"))
     *keyBuf << "MODULAR_MAX_NAN_CHECK=1";
 
   // We specifically use a version of the module without location information

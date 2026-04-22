@@ -51,6 +51,7 @@ modular_cc_library(
         "//MLRT:GraphRT/MEFExecutor",
         "//Support:Base",
         "//Support:Buffer",
+        "//Support:Configuration",
         "//Support:Context",
         "//max/internal:MOFDriver",
     ],
