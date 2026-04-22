@@ -230,15 +230,22 @@ class DynamicMemoryPlanningPass
 
       auto memPoolBuffer = cast<TypedValue<DeviceBufferType>>(alloc);
 
-      // Replace all allocations with slices into the memPoolBuffer.
-      // Since all planned runtimeSizes are not data-dependent, this
-      // shouldn't introduce any graph cycles.
-      for (size_t i = 0; i < allocs.size(); ++i) {
-        Value slice = BufferSliceOp::create(execBuilder, loc, memPoolBuffer,
-                                            bufferPlanOp.getOffsets()[i],
-                                            allocs[i].runtimeSize);
+      // Replace all allocations with slices into the memPoolBuffer via a single
+      // bulk-slice op.  Using one op instead of N individual buffer.slice ops
+      // avoids stressing sequence fusion, which can duplicate each slice op
+      // independently (O(N) fan-out).
+      SmallVector<Value> offsets(bufferPlanOp.getOffsets().begin(),
+                                 bufferPlanOp.getOffsets().end());
+      SmallVector<Value> sizes;
+      for (const AllocInfo &a : allocs)
+        sizes.push_back(a.runtimeSize);
 
-        allocs[i].alloc->replaceAllUsesWith(ValueRange{slice});
+      auto bulkSliceOp = BufferBulkSliceOp::create(
+          execBuilder, loc, memPoolBuffer, offsets, sizes);
+
+      for (size_t i = 0; i < allocs.size(); ++i) {
+        allocs[i].alloc->replaceAllUsesWith(
+            ValueRange{bulkSliceOp.getOutBuffers()[i]});
         allocsToDelete.push_back(allocs[i].alloc);
       }
     }

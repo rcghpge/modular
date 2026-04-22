@@ -759,17 +759,63 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
-  let arguments = (ins MGP_DeviceBufferType:$inBuffer,
-                       Index:$offset,
-                       Index:$size
-                       );
+  let arguments = (ins
+    MGP_DeviceBufferType:$inBuffer,
+    Index:$offset,
+    Index:$size
+  );
 
   let results = (outs MGP_DeviceBufferType:$outBuffer);
 
   let assemblyFormat = [{
-    $inBuffer `,` $offset `,` $size attr-dict
-      `:` type($inBuffer)
+    $inBuffer `,` $offset `,` $size attr-dict `:` type($inBuffer)
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// BufferBulkSliceOp
+//===----------------------------------------------------------------------===//
+
+def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
+    Pure,
+    InferTypeOpAdaptor,
+    AttrSizedOperandSegments,
+    DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+    DeclareOpInterfaceMethods<EmitsMojoInterface, ["resultsToPack"]>,
+]> {
+  let summary = "Bulk slice of a buffer pool into N sub-buffers.";
+  let description = [{
+    Given a pre-allocated pool buffer and N (offset, size) pairs, produces N
+    sub-buffers each borrowing a non-overlapping slice of the pool.
+    Semantically equivalent to N individual `mgp.buffer.slice` ops, but
+    represented as a single op to avoid stressing sequence fusion with a large
+    fan-out of duplicatable slice ops.
+
+    Example:
+    ```mlir
+    %base : !mgp.buffer<<"gpu", 0>>
+    %off0, %off1 : index
+    %sz0, %sz1 : index
+    %slice0, %slice1 =
+        mgp.buffer.bulk_slice %base offsets(%off0, %off1) sizes(%sz0, %sz1)
+          : !mgp.buffer<<"gpu", 0>>
+    ```
+  }];
+
+  let arguments = (ins
+    MGP_DeviceBufferType:$baseBuffer,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes
+  );
+
+  let results = (outs Variadic<MGP_DeviceBufferType>:$outBuffers);
+
+  let assemblyFormat = [{
+    $baseBuffer `offsets` `(` $offsets `)` `sizes` `(` $sizes `)` attr-dict
+      `:` type($baseBuffer)
+  }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

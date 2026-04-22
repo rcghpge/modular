@@ -56,6 +56,31 @@ static uint64_t getRawAlign(ElementsAttr value) {
   return optSizeToRawSize(*errOrOptAlign);
 }
 
+// Helper to emit a typed comptime InlineArray[Int, N] declaration from
+// attribute values and return the variable name.
+template <typename T>
+static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
+                                   ArrayRef<T> values, bool isComptime = true) {
+  auto mojoValues = llvm::map_to_vector(
+      values, [](T value) { return MOGG::MojoValue(value); });
+
+  std::string type;
+  llvm::raw_string_ostream os(type);
+
+  os << MOGG::HardcodedMojoSymbols::struct_InlineArray << "[" << "Int" << ", "
+     << values.size() << "]";
+
+  auto mojoType = MOGG::MojoValue(std::move(type));
+
+  if (isComptime)
+    return state.builder.comptime(state.builder.listLiteral(mojoValues),
+                                  /*type=*/&mojoType);
+
+  auto var = state.builder.varDecl(mojoType);
+  state.builder.assign(var, state.builder.listLiteral(mojoValues));
+  return var;
+}
+
 //===----------------------------------------------------------------------===//
 // RuntimeCreateOp
 //===----------------------------------------------------------------------===//
@@ -409,6 +434,7 @@ LogicalResult BufferSliceOp::emitMojo(MOGG::EmitMojoState &state) {
 
   return success();
 }
+
 LogicalResult BufferSliceOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
     SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -422,6 +448,68 @@ LogicalResult BufferSliceOp::inferReturnTypes(
 
 bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getInBufferMutable().getOperandNumber();
+}
+
+//===----------------------------------------------------------------------===//
+// BufferBulkSliceOp
+//===----------------------------------------------------------------------===//
+
+mlir::BitVector BufferBulkSliceOp::resultsToPack() {
+  return mlir::BitVector{getNumResults(), false};
+}
+
+LogicalResult BufferBulkSliceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto baseType = dyn_cast<DeviceBufferType>(adaptor.getBaseBuffer().getType());
+  if (!baseType)
+    return failure();
+
+  auto resultType = DeviceBufferType::get(context, baseType.getDevice());
+  inferredReturnTypes.append(adaptor.getOffsets().size(), resultType);
+  return success();
+}
+
+LogicalResult BufferBulkSliceOp::verify() {
+  if (!llvm::all_equal(
+          {getOffsets().size(), getSizes().size(), getOutBuffers().size()}))
+    return emitOpError("offsets, sizes, and results must have the same count");
+  return success();
+}
+
+bool BufferBulkSliceOp::extendsLifetime(size_t operandIndex,
+                                        size_t /*resultIndex*/) {
+  return operandIndex == getBaseBufferMutable().getOperandNumber();
+}
+
+LogicalResult BufferBulkSliceOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  KGEN::LIT::FnOp litFunction =
+      state.analysis.getRegisteredLITMojoKernelFor(getOperationName());
+  MojoValue function = state.getOriginalMojoNameFor(litFunction);
+
+  auto offsets = llvm::map_to_vector(
+      getOffsets(), [&](Value v) { return state.getMojoValueFor(v); });
+
+  auto sizes = llvm::map_to_vector(
+      getSizes(), [&](Value v) { return state.getMojoValueFor(v); });
+
+  MojoValue offsetsArray =
+      inlineArray(state, ArrayRef(offsets), /*isComptime=*/false);
+  MojoValue sizesArray =
+      inlineArray(state, ArrayRef(sizes), /*isComptime=*/false);
+  MojoValue baseArg = state.getMojoValueFor(getBaseBuffer());
+
+  // Call: mgp_buffer_bulk_slice(base, offsets, sizes)
+  // Returns InlineArray[MutByteBuffer, N]; extract each result by index.
+  MojoValue result =
+      state.builder.var(function({}, {baseArg, offsetsArray, sizesArray}));
+
+  for (auto &&[i, outBuf] : llvm::enumerate(getOutBuffers()))
+    state.setMojoValueFor(outBuf, result[i]);
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -507,30 +595,6 @@ BufferSetWithIndexOp::getInOutSemantics(size_t index) {
 //===----------------------------------------------------------------------===//
 // BufferPlanOp
 //===----------------------------------------------------------------------===//
-
-// Helper to emit a typed comptime InlineArray[Int, N] declaration from
-// attribute values and return the variable name.
-template <typename T>
-static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
-                                   ArrayRef<T> values) {
-  static_assert(std::is_integral_v<T>, "Must be an integer type");
-
-  auto mojoValues = llvm::map_to_vector(
-      values, [](T value) { return MOGG::MojoValue(value); });
-
-  std::string type;
-  llvm::raw_string_ostream os(type);
-
-  os << MOGG::HardcodedMojoSymbols::struct_InlineArray << "[" << "Int" << ", "
-     << values.size() << "]";
-
-  auto mojoType = MOGG::MojoValue(std::move(type));
-
-  MOGG::MojoValue name =
-      state.builder.comptime(state.builder.listLiteral(mojoValues),
-                             /*type=*/&mojoType);
-  return name;
-}
 
 LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;

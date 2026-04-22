@@ -790,6 +790,10 @@ void MOGraphLoweringState::lowerMOGGABI(Operation *kernelOp,
     } else if (auto bufferSliceOp = value.getDefiningOp<MGP::BufferSliceOp>()) {
       newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
                                                  bufferSliceOp.getInBuffer());
+    } else if (auto bulkSliceOp =
+                   value.getDefiningOp<MGP::BufferBulkSliceOp>()) {
+      newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
+                                                 bulkSliceOp.getBaseBuffer());
     } else if (auto tensorSliceOp = value.getDefiningOp<MGP::TensorSliceOp>()) {
       newValue = createAsyncPackBorrowWithUnpack(builder, loc, value,
                                                  tensorSliceOp.getInput());
