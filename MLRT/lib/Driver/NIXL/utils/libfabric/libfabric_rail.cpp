@@ -863,6 +863,34 @@ nixl_status_t nixlLibfabricRail::postRecv(nixlLibfabricReq *req) const {
   return NIXL_SUCCESS;
 }
 
+// On -FI_EAGAIN from a post, the EFA provider's own send queue is full; no
+// retry will make progress until the rail's completion queue is drained so
+// new TX slots free up. Drive progressCompletionQueue inline from the
+// caller thread before looping. Bumps the attempt counter and periodically
+// logs at NIXL_DEBUG so a stuck rail still surfaces in operator logs without
+// spamming on every retry.
+//
+// Returns true if the caller should retry the libfabric op, false if some
+// unrecoverable CQ error occurred.
+static bool progressAndLogForEagainRetry(nixlLibfabricRail *rail, int &attempt,
+                                         const char *op_name) {
+  ++attempt;
+  if (attempt % NIXL_LIBFABRIC_LOG_INTERVAL_ATTEMPTS == 0) {
+    NIXL_DEBUG << op_name << " still retrying EAGAIN on rail " << rail->rail_id
+               << " after " << attempt << " attempts";
+  } else {
+    NIXL_TRACE << op_name << " returned EAGAIN on rail " << rail->rail_id
+               << ", retrying (attempt " << attempt << ")";
+  }
+  nixl_status_t progress_status = rail->progressCompletionQueue(false);
+  if (progress_status != NIXL_SUCCESS && progress_status != NIXL_IN_PROG) {
+    NIXL_ERROR << "progressCompletionQueue failed on rail " << rail->rail_id
+               << " during " << op_name << " retry";
+    return false;
+  }
+  return true;
+}
+
 nixl_status_t nixlLibfabricRail::postSend(uint64_t immediate_data,
                                           fi_addr_t dest_addr,
                                           nixlLibfabricReq *req) const {
@@ -885,16 +913,32 @@ nixl_status_t nixlLibfabricRail::postSend(uint64_t immediate_data,
              << " dest_addr: " << dest_addr << std::dec
              << " context: " << &req->ctx;
 
-  // Libfabric fi_senddata call
-  int ret = fi_senddata(endpoint, req->buffer, req->buffer_size, desc,
-                        immediate_data, dest_addr, &req->ctx);
-  if (ret) {
-    NIXL_ERROR << "fi_senddata failed on rail " << rail_id << ": "
-               << fi_strerror(-ret);
-    return NIXL_ERR_BACKEND;
+  // Retry indefinitely on EAGAIN with inline CQ progress. See upstream
+  // ai-dynamo/nixl#856, #859, and #1335 for the matching upstream pattern.
+  int ret = -FI_EAGAIN;
+  int attempt = 0;
+  while (true) {
+    ret = fi_senddata(endpoint, req->buffer, req->buffer_size, desc,
+                      immediate_data, dest_addr, &req->ctx);
+    if (ret == 0) {
+      NIXL_TRACE << "Send posted successfully"
+                 << (attempt > 0
+                         ? " after " + std::to_string(attempt + 1) + " attempts"
+                         : "");
+      return NIXL_SUCCESS;
+    }
+    if (ret == -FI_EAGAIN) {
+      if (!progressAndLogForEagainRetry(const_cast<nixlLibfabricRail *>(this),
+                                        attempt, "fi_senddata")) {
+        return NIXL_ERR_BACKEND;
+      }
+      continue;
+    }
+    break;
   }
-  NIXL_TRACE << "Send posted successfully";
-  return NIXL_SUCCESS;
+  NIXL_ERROR << "fi_senddata failed on rail " << rail_id << ": "
+             << fi_strerror(-ret);
+  return NIXL_ERR_BACKEND;
 }
 
 nixl_status_t
@@ -916,18 +960,33 @@ nixlLibfabricRail::postWrite(const void *local_buffer, size_t length,
              << " remote_addr: " << (void *)remote_addr
              << " remote_key: " << remote_key << " context: " << &req->ctx;
 
-  // Libfabric fi_writedata call
-  int ret =
-      fi_writedata(endpoint, local_buffer, length, local_desc, immediate_data,
-                   dest_addr, remote_addr, remote_key, &req->ctx);
-
-  if (ret) {
-    NIXL_ERROR << "fi_writedata failed on rail " << rail_id << ": "
-               << fi_strerror(-ret);
-    return NIXL_ERR_BACKEND;
+  // Retry indefinitely on EAGAIN with inline CQ progress. See upstream
+  // ai-dynamo/nixl#856, #859, and #1335 for the matching upstream pattern.
+  int ret = -FI_EAGAIN;
+  int attempt = 0;
+  while (true) {
+    ret =
+        fi_writedata(endpoint, local_buffer, length, local_desc, immediate_data,
+                     dest_addr, remote_addr, remote_key, &req->ctx);
+    if (ret == 0) {
+      NIXL_TRACE << "RDMA write posted successfully"
+                 << (attempt > 0
+                         ? " after " + std::to_string(attempt + 1) + " attempts"
+                         : "");
+      return NIXL_SUCCESS;
+    }
+    if (ret == -FI_EAGAIN) {
+      if (!progressAndLogForEagainRetry(const_cast<nixlLibfabricRail *>(this),
+                                        attempt, "fi_writedata")) {
+        return NIXL_ERR_BACKEND;
+      }
+      continue;
+    }
+    break;
   }
-  NIXL_TRACE << "RDMA write posted successfully";
-  return NIXL_SUCCESS;
+  NIXL_ERROR << "fi_writedata failed on rail " << rail_id << ": "
+             << fi_strerror(-ret);
+  return NIXL_ERR_BACKEND;
 }
 
 nixl_status_t nixlLibfabricRail::postRead(void *local_buffer, size_t length,
@@ -946,15 +1005,32 @@ nixl_status_t nixlLibfabricRail::postRead(void *local_buffer, size_t length,
              << " remote_addr: " << (void *)remote_addr
              << " remote_key: " << remote_key << " context: " << &req->ctx;
 
-  int ret = fi_read(endpoint, local_buffer, length, local_desc, dest_addr,
-                    remote_addr, remote_key, &req->ctx);
-  if (ret) {
-    NIXL_ERROR << "fi_read failed on rail " << rail_id << ": "
-               << fi_strerror(-ret);
-    return NIXL_ERR_BACKEND;
+  // Retry indefinitely on EAGAIN with inline CQ progress. See upstream
+  // ai-dynamo/nixl#856, #859, and #1335 for the matching upstream pattern.
+  int ret = -FI_EAGAIN;
+  int attempt = 0;
+  while (true) {
+    ret = fi_read(endpoint, local_buffer, length, local_desc, dest_addr,
+                  remote_addr, remote_key, &req->ctx);
+    if (ret == 0) {
+      NIXL_TRACE << "RDMA read posted successfully"
+                 << (attempt > 0
+                         ? " after " + std::to_string(attempt + 1) + " attempts"
+                         : "");
+      return NIXL_SUCCESS;
+    }
+    if (ret == -FI_EAGAIN) {
+      if (!progressAndLogForEagainRetry(const_cast<nixlLibfabricRail *>(this),
+                                        attempt, "fi_read")) {
+        return NIXL_ERR_BACKEND;
+      }
+      continue;
+    }
+    break;
   }
-  NIXL_TRACE << "RDMA read posted successfully";
-  return NIXL_SUCCESS;
+  NIXL_ERROR << "fi_read failed on rail " << rail_id << ": "
+             << fi_strerror(-ret);
+  return NIXL_ERR_BACKEND;
 }
 
 // Memory Registration Methods

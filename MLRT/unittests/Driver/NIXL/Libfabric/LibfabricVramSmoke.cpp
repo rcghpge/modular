@@ -57,6 +57,16 @@ struct InitiatorOptions {
   int gpu = 0;
   size_t bytes = 64ULL * 1024 * 1024;
   size_t iterations = 1;
+  // Number of transfer requests to post before waiting for any to complete.
+  // Default 1 = the original sequential behaviour. Larger values force many
+  // concurrent fi_writedata posts per rail, used to stress the EFA TX send
+  // queue and probe the -FI_EAGAIN behaviour described in GEX-3539.
+  size_t burst = 1;
+  // Number of descriptors to pack into each transfer request. Default 1 is
+  // the legacy single-desc behaviour. Setting this > 1 mimics the real KV
+  // cache transfer shape where one postXferReq fans out to many per-page
+  // fi_writedata calls through striping / round-robin.
+  size_t descsPerXfer = 1;
 };
 
 struct TargetInfo {
@@ -152,7 +162,8 @@ void printUsage(const char *argv0) {
   std::cerr << "Usage:\n"
             << "  " << argv0 << " target <listen-port> [gpu] [bytes]\n"
             << "  " << argv0
-            << " initiator <target-host> <target-port> [gpu] [bytes] [iters]\n";
+            << " initiator <target-host> <target-port> [gpu] [bytes] [iters] "
+               "[burst] [descs-per-xfer]\n";
 }
 
 void ensureEfaAvailable() {
@@ -181,7 +192,7 @@ TargetOptions parseTargetArgs(int argc, char **argv) {
 }
 
 InitiatorOptions parseInitiatorArgs(int argc, char **argv) {
-  if (argc < 4 || argc > 7) {
+  if (argc < 4 || argc > 9) {
     printUsage(argv[0]);
     std::exit(EXIT_FAILURE);
   }
@@ -192,8 +203,16 @@ InitiatorOptions parseInitiatorArgs(int argc, char **argv) {
   opts.gpu = argc > 4 ? parseInt(argv[4]) : 0;
   opts.bytes = argc > 5 ? parseSize(argv[5]) : opts.bytes;
   opts.iterations = argc > 6 ? parseSize(argv[6]) : opts.iterations;
+  opts.burst = argc > 7 ? parseSize(argv[7]) : opts.burst;
+  opts.descsPerXfer = argc > 8 ? parseSize(argv[8]) : opts.descsPerXfer;
   if (opts.iterations == 0) {
     fail("iters must be greater than zero");
+  }
+  if (opts.burst == 0) {
+    fail("burst must be greater than zero");
+  }
+  if (opts.descsPerXfer == 0) {
+    fail("descs-per-xfer must be greater than zero");
   }
   return opts;
 }
@@ -315,7 +334,8 @@ void configureRuntimeEnvironment(const char *argv0) {
 }
 
 RegisteredVramBuffer prepareRegisteredVramBuffer(int gpu, size_t bytes,
-                                                 uint8_t fillValue) {
+                                                 uint8_t fillValue,
+                                                 size_t descsPerXfer = 1) {
   auto context = takeValueOrDie(DeviceContext::create(Device::gpuAPI, gpu),
                                 "failed to create GPU device context");
   auto buffer = takeValueOrDie(context->enqueueCreateBuffer(bytes),
@@ -325,13 +345,28 @@ RegisteredVramBuffer prepareRegisteredVramBuffer(int gpu, size_t bytes,
   checkSuccess(context->synchronize(),
                "failed to synchronize GPU buffer setup");
 
+  // Register the whole buffer as a single MR (matches real KV cache usage).
   nixl_reg_dlist_t regDescs(nixl_mem_t::VRAM_SEG);
   regDescs.addDesc(nixlBlobDesc(reinterpret_cast<uintptr_t>(buffer->ptr()),
                                 bytes, static_cast<uint64_t>(gpu), ""));
 
+  // Build the transfer descriptor list. `descsPerXfer == 1` keeps the legacy
+  // single-descriptor behaviour. Larger values partition the buffer into
+  // equal-sized chunks so one postXferReq fans out to many per-descriptor
+  // fi_writedata calls, which matches the real KV cache transfer shape.
   nixl_xfer_dlist_t xferDescs(nixl_mem_t::VRAM_SEG);
-  xferDescs.addDesc(nixlBasicDesc(reinterpret_cast<uintptr_t>(buffer->ptr()),
-                                  bytes, static_cast<uint64_t>(gpu)));
+  const size_t numChunks = std::max<size_t>(1, descsPerXfer);
+  const size_t chunkSize = bytes / numChunks;
+  if (chunkSize == 0) {
+    fail("descs-per-xfer larger than buffer size in bytes");
+  }
+  for (size_t i = 0; i < numChunks; ++i) {
+    const uintptr_t offset = static_cast<uintptr_t>(i) * chunkSize;
+    const size_t len = (i == numChunks - 1) ? (bytes - offset) : chunkSize;
+    xferDescs.addDesc(
+        nixlBasicDesc(reinterpret_cast<uintptr_t>(buffer->ptr()) + offset, len,
+                      static_cast<uint64_t>(gpu)));
+  }
 
   return {std::move(context), std::move(buffer), std::move(regDescs),
           std::move(xferDescs)};
@@ -366,6 +401,34 @@ void waitForTransferComplete(nixlAgent &agent, nixlXferReqH *request,
     if (status != nixl_status_t::NIXL_SUCCESS) {
       std::this_thread::sleep_for(kPollSleep);
     }
+  }
+}
+
+// Post a transfer request WITHOUT waiting for completion. Used by burst mode
+// to stack many in-flight posts and stress the EFA TX send queue. Returns the
+// initial postXferReq status so the caller can track per-request errors.
+nixl_status_t postTransferNoWait(nixlAgent &agent, nixlXferReqH *request,
+                                 size_t index) {
+  nixl_status_t status = agent.postXferReq(request);
+  if (isErrorStatus(status)) {
+    std::cerr << "postXferReq #" << index
+              << " failed: " << NixlEnumStrings::statusStr(status) << std::endl;
+  }
+  return status;
+}
+
+// Wait for a single already-posted transfer request to report NIXL_SUCCESS.
+void waitForPostedTransfer(nixlAgent &agent, nixlXferReqH *request,
+                           size_t index) {
+  nixl_status_t status = agent.getXferStatus(request);
+  while (status != nixl_status_t::NIXL_SUCCESS) {
+    if (isErrorStatus(status)) {
+      failWithDetail(std::string("posted transfer #") + std::to_string(index) +
+                         " failed during completion",
+                     NixlEnumStrings::statusStr(status));
+    }
+    std::this_thread::sleep_for(kPollSleep);
+    status = agent.getXferStatus(request);
   }
 }
 
@@ -453,7 +516,10 @@ void writeUInt64(int fd, uint64_t value) {
 }
 
 ScopedFd createListeningSocket(int port) {
-  ScopedFd server(::socket(AF_INET, SOCK_STREAM, 0));
+  // Bind the control listener on an IPv6 dual-stack socket so initiators can
+  // reach us over either IPv4 or IPv6 (many cluster environments only route
+  // one of the two between pods).
+  ScopedFd server(::socket(AF_INET6, SOCK_STREAM, 0));
   if (server.get() == -1) {
     failFromErrno("failed to create control listener socket");
   }
@@ -463,11 +529,14 @@ ScopedFd createListeningSocket(int port) {
                    sizeof(kEnable)) == -1) {
     failFromErrno("failed to configure control listener socket reuse");
   }
+  int v6only = 0;
+  (void)::setsockopt(server.get(), IPPROTO_IPV6, IPV6_V6ONLY, &v6only,
+                     sizeof(v6only));
 
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  addr.sin_port = htons(static_cast<uint16_t>(port));
+  sockaddr_in6 addr{};
+  addr.sin6_family = AF_INET6;
+  addr.sin6_addr = in6addr_any;
+  addr.sin6_port = htons(static_cast<uint16_t>(port));
   if (::bind(server.get(), reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) ==
       -1) {
     failFromErrno("failed to bind control listener socket");
@@ -583,11 +652,21 @@ void validateTargetInfo(const TargetInfo &handshake,
   }
 }
 
-nixl_xfer_dlist_t makeRemoteDescs(const TargetInfo &handshake) {
+nixl_xfer_dlist_t makeRemoteDescs(const TargetInfo &handshake,
+                                  size_t descsPerXfer = 1) {
   nixl_xfer_dlist_t remoteDescs(nixl_mem_t::VRAM_SEG);
-  remoteDescs.addDesc(nixlBasicDesc(static_cast<uintptr_t>(handshake.baseAddr),
-                                    static_cast<size_t>(handshake.bytes),
-                                    handshake.deviceId));
+  const size_t numChunks = std::max<size_t>(1, descsPerXfer);
+  const size_t chunkSize = static_cast<size_t>(handshake.bytes) / numChunks;
+  for (size_t i = 0; i < numChunks; ++i) {
+    const uintptr_t offset =
+        static_cast<uintptr_t>(i) * static_cast<uintptr_t>(chunkSize);
+    const size_t len = (i == numChunks - 1)
+                           ? static_cast<size_t>(handshake.bytes) - offset
+                           : chunkSize;
+    remoteDescs.addDesc(
+        nixlBasicDesc(static_cast<uintptr_t>(handshake.baseAddr) + offset, len,
+                      handshake.deviceId));
+  }
   return remoteDescs;
 }
 
@@ -642,8 +721,8 @@ void runInitiator(const InitiatorOptions &opts) {
   AgentWithBackend initiator(std::string(kInitiator), opts.gpu);
   const nixl_opt_args_t backendArgs = makeBackendArgs(initiator.backend);
 
-  auto buffer =
-      prepareRegisteredVramBuffer(opts.gpu, opts.bytes, kTransferPattern);
+  auto buffer = prepareRegisteredVramBuffer(
+      opts.gpu, opts.bytes, kTransferPattern, opts.descsPerXfer);
   checkStatus(initiator.agent.registerMem(buffer.regDescs, &backendArgs),
               "failed to register initiator VRAM");
 
@@ -659,7 +738,8 @@ void runInitiator(const InitiatorOptions &opts) {
     failWithDetail("loaded metadata for unexpected remote agent", remoteAgent);
   }
 
-  const nixl_xfer_dlist_t remoteDescs = makeRemoteDescs(targetInfo);
+  const nixl_xfer_dlist_t remoteDescs =
+      makeRemoteDescs(targetInfo, opts.descsPerXfer);
 
   nixlXferReqH *warmupRequest = createTransferRequest(
       initiator.agent, buffer.xferDescs, remoteDescs, backendArgs);
@@ -677,8 +757,47 @@ void runInitiator(const InitiatorOptions &opts) {
   }
 
   const auto start = std::chrono::steady_clock::now();
-  for (auto *request : requests) {
-    waitForTransferComplete(initiator.agent, request, "transfer request");
+  if (opts.burst <= 1) {
+    for (auto *request : requests) {
+      waitForTransferComplete(initiator.agent, request, "transfer request");
+    }
+  } else {
+    // Burst mode: post `burst` requests back-to-back before collecting
+    // completions, which forces many concurrent fi_writedata posts and
+    // pressures the libfabric/EFA TX send queue. Posts that fail (e.g.
+    // surface -FI_EAGAIN as NIXL_ERR_BACKEND) are counted and reported.
+    std::cout << "Burst mode: posting in windows of " << opts.burst
+              << " concurrent transfers" << std::endl;
+    size_t postedTotal = 0;
+    size_t postErrorsTotal = 0;
+    for (size_t base = 0; base < requests.size(); base += opts.burst) {
+      const size_t windowEnd = std::min(base + opts.burst, requests.size());
+      size_t windowPosted = 0;
+      size_t windowErrors = 0;
+      for (size_t i = base; i < windowEnd; ++i) {
+        nixl_status_t postStatus =
+            postTransferNoWait(initiator.agent, requests[i], i);
+        if (isErrorStatus(postStatus)) {
+          ++windowErrors;
+        } else {
+          ++windowPosted;
+        }
+      }
+      std::cout << "  window [" << base << ".." << (windowEnd - 1)
+                << "]: posted=" << windowPosted << " errors=" << windowErrors
+                << std::endl;
+      postedTotal += windowPosted;
+      postErrorsTotal += windowErrors;
+      // Drain this window before posting the next.
+      for (size_t i = base; i < windowEnd; ++i) {
+        waitForPostedTransfer(initiator.agent, requests[i], i);
+      }
+    }
+    std::cout << "Burst summary: posted=" << postedTotal
+              << " postErrors=" << postErrorsTotal << std::endl;
+    if (postErrorsTotal > 0) {
+      fail("burst posts surfaced errors; see preceding log for details");
+    }
   }
   const auto end = std::chrono::steady_clock::now();
 

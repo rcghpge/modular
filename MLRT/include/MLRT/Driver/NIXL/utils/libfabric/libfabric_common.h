@@ -32,6 +32,11 @@
 #define NIXL_LIBFABRIC_CQ_SREAD_TIMEOUT_SEC 1
 #define NIXL_LIBFABRIC_DEFAULT_STRIPING_THRESHOLD (128 * 1024) // 128KB
 #define NIXL_LIBFABRIC_MAX_XFER_IDS 1024 // Maximum XFER_IDs per notification
+// Log every N EAGAIN retry attempts in postSend/postWrite/postRead. Upstream
+// NIXL chose 100 to prevent log spam on transiently-saturated EFA send
+// queues while still surfacing a warning when the retry loop is not making
+// progress. See upstream ai-dynamo/nixl#859 for context.
+#define NIXL_LIBFABRIC_LOG_INTERVAL_ATTEMPTS 100
 #define LF_EP_NAME_MAX_LEN 56
 
 // The immediate data associated with an RDMA operation is 32 bits and is
