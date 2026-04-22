@@ -706,7 +706,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
   let arguments = (ins
     Variadic<Index>:$runtimeSizes,
     UI64ArrayElementsAttr:$alignments,
-    UI64ArrayElementsAttr:$canShare,
+    UI8ArrayElementsAttr:$canShare,
     OptionalAttr<SI64ArrayElementsAttr>:$staticSizes
   );
 

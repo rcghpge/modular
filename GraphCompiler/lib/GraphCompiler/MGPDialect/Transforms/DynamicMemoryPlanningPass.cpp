@@ -33,10 +33,7 @@ struct AllocInfo {
   MGP::BufferAllocOp alloc;
   Value runtimeSize;
   uint64_t alignment;
-  int minPre;
-  int maxPre;
-  int minPost;
-  int maxPost;
+  SmallVector<Operation *> uses;
 };
 
 /// Return true if the given value is trivially computable (i.e.,
@@ -129,21 +126,14 @@ class DynamicMemoryPlanningPass
       if (!isTriviallyComputable(allocOp.getRuntimeSize(), trivialVals))
         continue;
 
-      int minPre = std::numeric_limits<int>::max();
-      int maxPre = std::numeric_limits<int>::min();
-      int minPost = std::numeric_limits<int>::max();
-      int maxPost = std::numeric_limits<int>::min();
+      SmallVector<Operation *> uses;
       bool ineligibleAlloc = false;
       for (auto *use : allocUses.get()) {
-        DependencyTreeNode *node = tree.get(use);
-        if (!node) {
+        if (!tree.contains(use)) {
           ineligibleAlloc = true;
           break;
         }
-        minPre = std::min(minPre, node->preIndex);
-        maxPre = std::max(maxPre, node->preIndex);
-        minPost = std::min(minPost, node->postIndex);
-        maxPost = std::max(maxPost, node->postIndex);
+        uses.push_back(use);
       }
 
       // If the tree didn't have information on every use of this alloc, skip
@@ -153,8 +143,7 @@ class DynamicMemoryPlanningPass
 
       SmallVector<AllocInfo> &allocs = deviceToAllocs[allocOp.getDevice()];
       allocs.push_back({allocOp, allocOp.getRuntimeSize(),
-                        allocOp.getRawAlign(), minPre, maxPre, minPost,
-                        maxPost});
+                        allocOp.getRawAlign(), std::move(uses)});
     }
 
     // Set insertion point before the new chain because it makes the IR easier
@@ -166,10 +155,16 @@ class DynamicMemoryPlanningPass
       if (allocs.size() <= 1)
         continue;
 
-      // Sort allocs by their earliest use so that allocations needed sooner
-      // are planned first. Higher preIndex = executes earlier in the tree.
+      // Sort allocs by the topological index of their earliest use so that
+      // allocations needed sooner are planned first.
+      auto firstTopoIndex = [&](const AllocInfo &info) {
+        unsigned minIdx = std::numeric_limits<unsigned>::max();
+        for (Operation *use : info.uses)
+          minIdx = std::min(minIdx, tree.getTopoIndex(use));
+        return minIdx;
+      };
       llvm::sort(allocs, [&](const auto &a, const auto &b) {
-        return a.minPre > b.minPre;
+        return firstTopoIndex(a) < firstTopoIndex(b);
       });
 
       // Construct and populate BufferPlanOp input arrays
@@ -186,21 +181,18 @@ class DynamicMemoryPlanningPass
       }
 
       // Compute the NxN sharing matrix. canShare[i][j] = 1 iff all uses of
-      // allocation i are strictly before all uses of allocation j in the
-      // dependency tree (or vice versa), checked via pre/post DFS indices.
-      // Two allocations can share memory when their lifetimes don't overlap.
+      // allocation i are guaranteed to execute after all uses of allocation j,
+      // or vice versa. This is checked directly via the runsAfter sets.
       size_t n = allocs.size();
-      SmallVector<uint64_t> canShare(n * n, 0);
+      SmallVector<uint8_t> canShare(n * n, 0);
       for (size_t i : llvm::seq(n)) {
         for (size_t j : llvm::seq(i + 1, n)) {
-          // i's subtree is strictly before j's: all of i's uses are ancestors
-          // of all of j's uses in the DFS tree.
-          bool ij = allocs[i].maxPre < allocs[j].minPre &&
-                    allocs[i].minPost > allocs[j].maxPost;
-          // j's subtree is strictly before i's.
-          bool ji = allocs[j].maxPre < allocs[i].minPre &&
-                    allocs[j].minPost > allocs[i].maxPost;
-          uint64_t sharable = (ij || ji) ? 1 : 0;
+          uint8_t sharable =
+              (tree.executesAfter(allocs[i].uses, allocs[j].uses) ||
+               tree.executesAfter(allocs[j].uses, allocs[i].uses))
+                  ? 1
+                  : 0;
+
           canShare[i * n + j] = sharable;
           canShare[j * n + i] = sharable;
         }

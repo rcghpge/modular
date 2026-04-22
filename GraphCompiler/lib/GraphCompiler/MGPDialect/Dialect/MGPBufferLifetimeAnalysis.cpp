@@ -355,8 +355,16 @@ bool DependencyTree::executesAfter(ArrayRef<Operation *> a,
     unsigned indexA = itA->second;
     return llvm::all_of(b, [&](Operation *bOp) {
       auto itB = operationToIndex.find(bOp);
-      return itB != operationToIndex.end() &&
-             runsAfter[itB->second].test(indexA);
+      if (itB == operationToIndex.end())
+        return false;
+      // An operation cannot run strictly after itself. Without this check,
+      // the self-bit set during runsAfter construction (so that
+      // runsAfterCounts includes the op itself) would cause this function to
+      // return true when aOp == bOp, incorrectly marking two allocations that
+      // share a common use as non-overlapping.
+      if (itB->second == indexA)
+        return false;
+      return runsAfter[itB->second].test(indexA);
     });
   });
 }

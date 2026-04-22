@@ -712,8 +712,8 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
     // Permute the NxN canShare matrix: both rows and columns must be reordered.
     // permutation[newIdx] = oldIdx, so newMat[ni][nj] = oldMat[p[ni]][p[nj]].
     size_t n = permutation.size();
-    ArrayRef<uint64_t> oldCanShare = op.getCanShare();
-    SmallVector<uint64_t> newCanShareVec(n * n);
+    ArrayRef<uint8_t> oldCanShare = op.getCanShare();
+    SmallVector<uint8_t> newCanShareVec(n * n);
     for (size_t ni = 0; ni < n; ++ni)
       for (size_t nj = 0; nj < n; ++nj)
         newCanShareVec[ni * n + nj] =
@@ -783,7 +783,7 @@ LogicalResult BufferPlanOp::verify() {
   }
 
   // Validate symmetry and zero diagonal
-  ArrayRef<uint64_t> mat = getCanShare();
+  ArrayRef<uint8_t> mat = getCanShare();
   for (size_t i : llvm::seq(totalAllocs)) {
     if (mat[i * totalAllocs + i] != 0)
       return emitOpError(

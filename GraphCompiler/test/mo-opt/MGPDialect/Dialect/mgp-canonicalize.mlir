@@ -93,7 +93,7 @@ mgp.model @buffer_plan_extract_constants : mof devices [#M.device_ref<"cpu", 0>]
   // CHECK: mef.output {{.*}}, %[[HWM]], %[[OFF]]#0, %[[OFF]]#2, %[[OFF]]#1
   %hwm, %offsets:3 = mgp.buffer.plan(%c100, %dynamic_size, %c200) {
     alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
-    canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui64>
+    canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui8>
   } : (index, index, index) -> (index, index, index, index)
 
   mef.output %ch0, %hwm, %offsets#0, %offsets#1, %offsets#2 : !mef.chain, index, index, index, index
@@ -129,7 +129,7 @@ mgp.model @buffer_plan_extract_constants_with_sharing : mof devices [#M.device_r
   // CHECK: mef.output {{.*}}, %[[HWM]], %[[OFF]]#0, %[[OFF]]#2, %[[OFF]]#1
   %hwm, %offsets:3 = mgp.buffer.plan(%c100, %dynamic_size, %c200) {
     alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
-    canShare = #M.dense_array<0, 0, 1, 0, 0, 0, 1, 0, 0> : !M.array<9xui64>
+    canShare = #M.dense_array<0, 0, 1, 0, 0, 0, 1, 0, 0> : !M.array<9xui8>
   } : (index, index, index) -> (index, index, index, index)
 
   mef.output %ch0, %hwm, %offsets#0, %offsets#1, %offsets#2 : !mef.chain, index, index, index, index
@@ -154,7 +154,7 @@ mgp.model @buffer_plan_all_constants : mof devices [#M.device_ref<"cpu", 0>] ini
   // CHECK: mef.output {{.*}}, %[[HWM]], %[[OFF]]#0, %[[OFF]]#1, %[[OFF]]#2
   %hwm, %offsets:3 = mgp.buffer.plan(%c100, %c200, %c300) {
     alignments = #M.dense_array<16, 32, 64> : !M.array<3xui64>,
-    canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui64>
+    canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui8>
   } : (index, index, index) -> (index, index, index, index)
 
   mef.output %ch0, %hwm, %offsets#0, %offsets#1, %offsets#2 : !mef.chain, index, index, index, index
@@ -175,7 +175,7 @@ mgp.model @buffer_plan_no_constants : mof devices [#M.device_ref<"cpu", 0>] init
   // CHECK-NOT: staticSizes
   %hwm, %offsets:2 = mgp.buffer.plan(%size0, %size1) {
     alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
-    canShare = #M.dense_array<0, 0, 0, 0> : !M.array<4xui64>
+    canShare = #M.dense_array<0, 0, 0, 0> : !M.array<4xui8>
   } : (index, index) -> (index, index, index)
 
   mef.output %ch0, %hwm, %offsets#0, %offsets#1 : !mef.chain, index, index, index
@@ -197,7 +197,7 @@ mgp.model @already_canonical_buffer_plan : mof devices [#M.device_ref<"gpu", 0>]
   // CHECK-SAME: canShare = #M.dense_array<0, 1, 1, 0>
   %hwm, %off0, %off1 = mgp.buffer.plan(%arg4, %arg5) {
     alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
-    canShare = #M.dense_array<0, 1, 1, 0> : !M.array<4xui64>
+    canShare = #M.dense_array<0, 1, 1, 0> : !M.array<4xui8>
   } : (index, index) -> (index, index, index)
   %ch = "use"(%arg0, %off0, %off1) : (!mef.chain, index, index) -> !mef.chain
   mef.output %ch : !mef.chain

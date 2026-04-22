@@ -80,7 +80,7 @@ public:
   // Returns true if a is guaranteed to execute after b
   bool executesAfter(Operation *a, Operation *b) const;
 
-  // Returns true if all elements of a arg guaranteed to execute after all
+  // Returns true if all elements of a are guaranteed to execute after all
   // elements of b.
   bool executesAfter(ArrayRef<Operation *> a, ArrayRef<Operation *> b) const;
 
