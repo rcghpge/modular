@@ -25,7 +25,7 @@ namespace M::MLRT {
 /// Returns an empty map on any failure (unsupported platform, missing
 /// topology, device enumeration errors, etc.).
 static std::map<int, int> inferGpuToCpuCoreMapping() {
-  auto numaTopologyOrError = NUMATopology::get();
+  const auto &numaTopologyOrError = NUMATopology::get();
   if (numaTopologyOrError.isError())
     return {};
   const NUMATopology &numaTopology = *numaTopologyOrError;
