@@ -1024,6 +1024,11 @@ MODULAR_CXX_EXPORT void DeviceContext::unbindFromCurrentThread() {
   currentlyBoundContext = nullptr;
 }
 
+MODULAR_CXX_EXPORT ErrorOr<int>
+DeviceContext::getAttribute(DeviceContext::Attribute attr) const {
+  RETURN_ERROR("Unsupported DeviceContext attribute");
+}
+
 MODULAR_CXX_EXPORT ErrorOr<Device::MemInfo>
 DeviceContext::getMemoryInfo() const {
   // If we are using the memory manager, get memory information from it.

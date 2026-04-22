@@ -567,6 +567,14 @@ CpuDeviceContext::stopTimer(const DeviceTimer &timer) {
          CpuDeviceTimer::cast(timer).cpu_start();
 }
 
+ErrorOr<int> CpuDeviceContext::getAttribute(Attribute attr) const {
+  switch (attr) {
+  case Attribute::PARALLELISM_LEVEL:
+    return static_cast<int>(runtime->getWorkQueue()->getParallelismLevel());
+  }
+  RETURN_ERROR("Unsupported CpuDeviceContext attribute");
+}
+
 ErrorOr<Device::MemInfo> CpuDeviceContext::getDeviceMemoryInfo() const {
   return device().getMemoryInfo();
 }

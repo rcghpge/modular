@@ -508,6 +508,12 @@ AsyncRT_DeviceContext_getApiVersion(int *result, DeviceContext *ctx) {
 MODULAR_EXPORT const char *
 AsyncRT_DeviceContext_getAttribute(int *result, DeviceContext *ctx, int attr) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_getAttribute", TRACY_COLOR_GRAY);
+  // Context-level attributes (values >= 1000) are dispatched to the
+  // DeviceContext itself; everything else falls through to the Device.
+  if (attr >= 1000)
+    return checkVal(
+        result, 0,
+        ctx->getAttribute(static_cast<DeviceContext::Attribute>(attr)));
   return checkVal(
       result, 0,
       ctx->device().getAttribute(static_cast<Device::Attribute>(attr)));

@@ -802,6 +802,15 @@ public:
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const;
 
+  // Context-level attribute query. Subclasses override to provide
+  // context-specific values (e.g. CpuDeviceContext returns the runtime's
+  // parallelism level). Default returns an error for unknown attributes.
+  enum class Attribute : int {
+    // Number of parallel worker threads for CPU work dispatch.
+    PARALLELISM_LEVEL = 1000,
+  };
+  virtual ErrorOr<int> getAttribute(Attribute attr) const;
+
   virtual ErrorOrSuccess
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks,
                                             DeviceFunction &func, int blockSize,
