@@ -682,6 +682,7 @@ modular_cc_library(
         "@plugin//:__pkg__",
     ],
     deps = [
+        ":AsyncRT/DeviceAffinity",
         ":AsyncRT/Runtime",
         ":AsyncRT/RuntimeGlobals",
         ":Driver/DeviceContextAPI",
