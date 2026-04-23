@@ -197,12 +197,8 @@ void MOFContext::overrideLoweringOptions(
     impl->mofConfig->overrideLoweringOptions(mofLoweringOptions,
                                              gcPipelineOptions);
 
-  // Enable NaN/Inf checking from the new max-debug.nan-check config key or
-  // the legacy MODULAR_MAX_NAN_CHECK env var.  The legacy check will be
-  // removed in a follow-up PR once all callers have migrated.
-  if (llvm::sys::Process::GetEnv("MODULAR_MAX_NAN_CHECK")) {
-    gcPipelineOptions.nanCheck = true;
-  } else if (auto configOr = M::Config::open(); !configOr.isError()) {
+  // Enable NaN/Inf checking from the max-debug.nan-check config key.
+  if (auto configOr = M::Config::open(); !configOr.isError()) {
     if (configOr->getValueAsBool("max-debug.nan-check", false))
       gcPipelineOptions.nanCheck = true;
   }
@@ -490,9 +486,8 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   if (llvm::sys::Process::GetEnv("MODULAR_MAX_DEBUG") ||
       configHasFlag("max-debug.source-tracebacks"))
     *keyBuf << "MODULAR_MAX_DEBUG=1";
-  if (llvm::sys::Process::GetEnv("MODULAR_MAX_NAN_CHECK") ||
-      configHasFlag("max-debug.nan-check"))
-    *keyBuf << "MODULAR_MAX_NAN_CHECK=1";
+  if (configHasFlag("max-debug.nan-check"))
+    *keyBuf << "max-debug.nan-check=1";
 
   // We specifically use a version of the module without location information
   // for caching. Otherwise, python refactors that don't change the module would
