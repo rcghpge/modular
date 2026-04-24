@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "TestUtils.h"
 
@@ -88,15 +87,7 @@ $L__BB0_2:
 }
 )PTX";
 
-class GraphCaptureMultiDeviceTest : public ::testing::Test {
-protected:
-  void SetUp() override {
-    runtime_ = M::MLRT::getOrCreateRuntime(
-        M::MLRT::RuntimeSource::Test,
-        M::MLRT::RuntimeOptions().withMainWillNotDonate());
-  }
-  M::MLRT::RuntimeRef runtime_;
-};
+class GraphCaptureMultiDeviceTest : public ::testing::Test {};
 
 TEST_F(GraphCaptureMultiDeviceTest, MultiDeviceGraphSupport) {
   int numDevices = Device::numberOfDevices(Device::cudaAPI);
@@ -149,7 +140,7 @@ TEST_F(GraphCaptureMultiDeviceTest, MultiDeviceGraphSupport) {
 
   // Capture an execution of the kernel on each device.
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture(*runtime_, streams, [&]() -> ErrorOrSuccess {
+      DeviceGraph::capture(streams, [&]() -> ErrorOrSuccess {
         for (auto id : llvm::seq(numDevices)) {
           void *outPtr = std::get<0>(kernelArgs[id])->ptr();
           void *bufIn0 = std::get<1>(kernelArgs[id])->ptr();
@@ -256,7 +247,7 @@ TEST_F(GraphCaptureMultiDeviceTest, DebugVerifyReplayMultiDeviceSuccess) {
 
   // Capture execution on all devices
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture(*runtime_, streams, execute);
+      DeviceGraph::capture(streams, execute);
   EXPECT_FALSE(captured.isError());
   EXPECT_EQ(captured->numGraphs(), numDevices);
 
@@ -337,7 +328,7 @@ TEST_F(GraphCaptureMultiDeviceTest,
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture(*runtime_, streams, captureExecute);
+      DeviceGraph::capture(streams, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify: execute TWICE on the first device (creates mismatch on device 0)
@@ -452,7 +443,7 @@ TEST_F(GraphCaptureMultiDeviceTest,
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture(*runtime_, streams, captureExecute);
+      DeviceGraph::capture(streams, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify: different grid dimension on the last device
@@ -558,7 +549,7 @@ TEST_F(GraphCaptureMultiDeviceTest,
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture(*runtime_, streams, captureExecute);
+      DeviceGraph::capture(streams, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify: skip execution on the last device (trace will be empty)
@@ -676,7 +667,7 @@ TEST_F(GraphCaptureMultiDeviceTest,
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture(*runtime_, streams, captureExecute);
+      DeviceGraph::capture(streams, captureExecute);
   EXPECT_FALSE(captured.isError());
   EXPECT_EQ(captured->numGraphs(), numDevices);
 

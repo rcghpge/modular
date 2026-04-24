@@ -12,7 +12,6 @@
 #define MLRT_DRIVER_DEVICECONTEXT_DEVICECONTEXT_H
 
 #include "ErrorMacros.h"
-#include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
@@ -562,10 +561,8 @@ public:
   Device &device() const { return *device_; }
 
   /// Capture a graph and baseline launch trace by executing a callback.
-  /// Instantiates per-device graphs in parallel using AsyncRT's
-  /// per-device worker threads.
   static ErrorOr<DeviceGraphCollection>
-  capture(M::MLRT::Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
+  capture(ArrayRef<DeviceStreamRef> streams,
           llvm::function_ref<ErrorOrSuccess()> execute);
 
   /// Replay the captured operations on the stored capture stream.

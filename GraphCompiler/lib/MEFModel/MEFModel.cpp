@@ -34,7 +34,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/JSON.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <cstdint>
 #include <vector>
@@ -541,15 +540,14 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
   SmallVector<AnyAsyncValueRef> graphResults;
 
   ErrorOr<Driver::DeviceGraphCollection> graphOrErr =
-      Driver::DeviceGraph::capture(
-          runtime, *streamsOr, [&]() -> ErrorOrSuccess {
-            auto maybeResult = executeWithDeviceMemoryInputs(inputs);
-            if (maybeResult.isError())
-              return maybeResult.takeError();
+      Driver::DeviceGraph::capture(*streamsOr, [&]() -> ErrorOrSuccess {
+        auto maybeResult = executeWithDeviceMemoryInputs(inputs);
+        if (maybeResult.isError())
+          return maybeResult.takeError();
 
-            graphResults = maybeResult.takeValue();
-            return success();
-          });
+        graphResults = maybeResult.takeValue();
+        return success();
+      });
 
   if (graphOrErr.isError())
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());

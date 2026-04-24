@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
 #include "CPU/CpuDeviceContext.h"
@@ -36,6 +35,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
+
 #include <atomic>
 #include <cstdio>
 #include <mutex>
@@ -858,56 +858,38 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
 //
 // ===== DeviceGraph ===== //
 //
-/// Shared helper: begin capture on all streams and run the execute lambda.
-/// Populates \p captures with per-stream capture contexts.
-static ErrorOrSuccess
-beginCaptureAndExecute(ArrayRef<DeviceStreamRef> streams,
-                       llvm::function_ref<ErrorOrSuccess()> execute,
-                       SmallVectorImpl<DeviceGraphCaptureContext> &captures) {
+ErrorOr<DeviceGraphCollection>
+DeviceGraph::capture(ArrayRef<DeviceStreamRef> streams,
+                     llvm::function_ref<ErrorOrSuccess()> execute) {
+  SmallVector<DeviceGraphCaptureContext> captures;
   captures.reserve(streams.size());
 
+  // Begin capture on all streams.
   for (const DeviceStreamRef &stream : streams) {
     auto capture = DeviceGraphCaptureContext::beginCapture(stream);
     if (capture.isError())
       return capture.takeError();
+
     captures.push_back(capture.takeValue());
   }
 
-  return execute();
-}
+  ErrorOrSuccess execResult = execute();
 
-ErrorOr<DeviceGraphCollection>
-DeviceGraph::capture(Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
-                     llvm::function_ref<ErrorOrSuccess()> execute) {
-  SmallVector<DeviceGraphCaptureContext, 8> captures;
-  if (ErrorOrSuccess err = beginCaptureAndExecute(streams, execute, captures))
-    return err.takeError();
+  if (execResult.isError())
+    return execResult.takeError();
 
-  // Parallelize cuGraphInstantiateWithParams across devices using AsyncRT.
-  SmallVector<ErrorOrSuccess, 8> errors(captures.size());
-  SmallVector<DeviceGraphRef> graphs(captures.size());
+  SmallVector<DeviceGraphRef> results;
+  results.reserve(streams.size());
 
-  auto endCaptureTask = [&](size_t deviceIdx) {
-    ErrorOr<DeviceGraphRef> graphOr = captures[deviceIdx].endCapture();
+  for (DeviceGraphCaptureContext &context : captures) {
+    ErrorOr<DeviceGraphRef> graphOr = context.endCapture();
     if (graphOr.isError())
-      errors[deviceIdx] = graphOr.takeError();
-    else
-      graphs[deviceIdx] = graphOr.takeValue();
-  };
+      return graphOr.takeError();
 
-  if (captures.size() == 1) {
-    endCaptureTask(0);
-  } else {
-    auto readyChain = MLRT::launchDeviceCollective(runtime, captures.size(),
-                                                   std::move(endCaptureTask));
-    MLRT::await(readyChain);
+    results.push_back(graphOr.takeValue());
   }
 
-  for (ErrorOrSuccess &err : errors)
-    if (err)
-      return err.takeError();
-
-  return DeviceGraphCollection(std::move(graphs));
+  return DeviceGraphCollection(std::move(results));
 }
 
 void DeviceGraph::setStream(DeviceStreamRef stream) {
