@@ -27,6 +27,7 @@ namespace HardcodedMojoSymbols {
 constexpr StringLiteral struct_IO = "io_spec.IO";
 constexpr StringLiteral struct_IndexList = "std.utils.IndexList";
 constexpr StringLiteral struct_UnsafePointer = "UnsafePointer";
+constexpr StringLiteral struct_Optional = "Optional";
 constexpr StringLiteral struct_String = "String";
 constexpr StringLiteral struct_DeviceContextPtr =
     "std.runtime.asyncrt.DeviceContextPtr";
@@ -73,6 +74,7 @@ constexpr StringLiteral func_stack_allocation = "stack_allocation";
 constexpr StringLiteral func_to_managed_tensor_slice =
     "MOGGPrimitives.to_managed_tensor_slice";
 constexpr StringLiteral func_UnsafePointer_bitcast = "bitcast";
+constexpr StringLiteral func_UnsafePointer_unsafe_dangling = "unsafe_dangling";
 constexpr StringLiteral func_simd_load_from_managed_tensor_slice =
     "tensor.simd_load_from_managed_tensor_slice";
 constexpr StringLiteral func_simd_load_from_tensor_pointer =

@@ -2759,7 +2759,8 @@ LogicalResult AsyncUnpackAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
                           ? (size_t)MGPRT_BorroweeType::kBuffer
                           : (size_t)MGPRT_BorroweeType::kTensor;
   auto opaquePtr = state.builder.var(
-      MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}());
+      MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}.get(
+          HardcodedMojoSymbols::func_UnsafePointer_unsafe_dangling)());
   auto opaquePtrPtr = state.builder.var(
       MojoValue{HardcodedMojoSymbols::struct_UnsafePointer}(
           {}, MojoValue("to").equal(opaquePtr))
@@ -2892,7 +2893,7 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
           [{MojoValue(HardcodedMojoSymbols::struct_Scalar)[{
                 MojoValue(HardcodedMojoSymbols::struct_DType).get("int8")}],
             MojoValue(HardcodedMojoSymbols::comptime_MutAnyOrigin)}]
-              .get("unsafe_dangling")();
+              .get(HardcodedMojoSymbols::func_UnsafePointer_unsafe_dangling)();
   MojoValue zeroShape = MojoValue(HardcodedMojoSymbols::struct_IndexList)(
       {MojoValue("1")}, {MojoValue("0")});
   state.setMojoValueFor(
@@ -3444,8 +3445,9 @@ LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 LogicalResult
 AsyncPlaceholderAnyAsyncValueRefOp::emitMojo(EmitMojoState &state) {
-  MojoValue result = state.builder.var(
-      MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}());
+  MojoValue result =
+      state.builder.var(MojoValue{HardcodedMojoSymbols::struct_Optional}[{
+          MojoValue{HardcodedMojoSymbols::comptime_OpaquePointer}}]());
   state.setMojoValueFor(getResult(), result);
   return success();
 }
