@@ -13,6 +13,7 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "gtest/gtest.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -850,6 +851,35 @@ TEST_F(CUDADeviceContextTest, NVMLEccErrorsQueryable) {
   // Should succeed or return NOT_SUPPORTED (e.g., consumer GPUs without ECC).
   EXPECT_TRUE(result == NVML::SUCCESS || result == NVML::NOT_SUPPORTED)
       << "Unexpected NVML result: " << result;
+}
+
+static void bumpAtomicCounter(void *userData) {
+  auto *counter = reinterpret_cast<std::atomic<int> *>(userData);
+  counter->fetch_add(1, std::memory_order_relaxed);
+}
+
+TEST_F(CUDADeviceContextTest, EnqueueHostFuncRunsCallback) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::cudaAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+  std::atomic<int> counter{0};
+  constexpr int kCount = 8;
+  for (int i = 0; i < kCount; ++i)
+    EXPECT_NO_ERR(stream->enqueueHostFunc(&bumpAtomicCounter, &counter));
+
+  EXPECT_NO_ERR(stream->synchronize());
+  EXPECT_EQ(counter.load(std::memory_order_relaxed), kCount);
+}
+
+TEST_F(CUDADeviceContextTest, EnqueueHostFuncUnsupportedOnCpu) {
+  ASSIGN_NO_ERR(DeviceContextRef, cpuCtx,
+                DeviceContext::create(Device::cpuAPI, /*id=*/0));
+  ASSIGN_NO_ERR(DeviceStreamRef, cpuStream, cpuCtx->stream());
+
+  std::atomic<int> counter{0};
+  EXPECT_ERR(cpuStream->enqueueHostFunc(&bumpAtomicCounter, &counter));
+  EXPECT_EQ(counter.load(std::memory_order_relaxed), 0);
 }
 
 TEST_F(CUDADeviceContextTest, NVMLComputeProcessesQueryable) {

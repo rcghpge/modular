@@ -1000,6 +1000,15 @@ CUDADeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   return success();
 }
 
+ErrorOrSuccess CUDADeviceStream::enqueueHostFunc(void (*fn)(void *),
+                                                 void *userData) const {
+  const auto &cudaDevice = CUDADevice::cast(this->device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+  CUDA_CHECK_ERR(
+      cudaDevice.cudaDriver().cuLaunchHostFunc(stream_, fn, userData));
+  return success();
+}
+
 ErrorOrSuccess CUDADeviceStream::eventRecord(const DeviceEvent &event) const {
   const auto &cudaEvent = CUDADeviceEvent::cast(event);
   const auto &cudaDevice = CUDADevice::cast(this->device());

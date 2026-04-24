@@ -631,6 +631,18 @@ public:
   virtual ErrorOrSuccess
   enqueueWaitForEvent(const DeviceEvent &event) const = 0;
 
+  /// Enqueue a host callback that runs after all preceding work on this
+  /// stream completes. `fn` must not call any device APIs (per the
+  /// `cuLaunchHostFunc` contract). Currently only implemented for CUDA
+  /// streams; other backends return an error.
+  ///
+  /// TODO: Add AMD GPU (HIP) support via `hipLaunchHostFunc`, which has the
+  /// same signature and semantics as `cuLaunchHostFunc`.
+  virtual ErrorOrSuccess enqueueHostFunc(void (*fn)(void *),
+                                         void *userData) const {
+    return Error("enqueueHostFunc is not supported on this device");
+  }
+
   // Raw device driver pointer to enable passing to PyTorch and similar APIs.
   virtual void *ptr() const = 0;
 

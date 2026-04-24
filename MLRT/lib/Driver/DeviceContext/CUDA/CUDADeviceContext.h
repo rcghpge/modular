@@ -233,6 +233,9 @@ public:
 
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
+  ErrorOrSuccess enqueueHostFunc(void (*fn)(void *),
+                                 void *userData) const override;
+
   virtual ErrorOrSuccess
   enqueueFunctionExecDirect(const DeviceFunction &func, uint32_t gridX,
                             uint32_t gridY, uint32_t gridZ, uint32_t blockX,
