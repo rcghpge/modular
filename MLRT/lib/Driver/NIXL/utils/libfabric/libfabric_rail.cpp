@@ -180,9 +180,10 @@ nixlLibfabricReq *DataRequestPool::allocate(nixlLibfabricReq::OpType op_type) {
 // Rail Class Implementation
 
 M::ErrorOr<std::unique_ptr<nixlLibfabricRail>>
-nixlLibfabricRail::create(const std::string &device, uint16_t id) {
-  auto rail =
-      std::unique_ptr<nixlLibfabricRail>(new nixlLibfabricRail(device, id));
+nixlLibfabricRail::create(const std::string &device, uint16_t id,
+                          bool enable_hmem) {
+  auto rail = std::unique_ptr<nixlLibfabricRail>(
+      new nixlLibfabricRail(device, id, enable_hmem));
   if (rail->getInitStatus() != NIXL_SUCCESS) {
     return M::Error(rail->getInitError().empty()
                         ? "Failed to initialize libfabric rail."
@@ -191,7 +192,8 @@ nixlLibfabricRail::create(const std::string &device, uint16_t id) {
   return rail;
 }
 
-nixlLibfabricRail::nixlLibfabricRail(const std::string &device, uint16_t id)
+nixlLibfabricRail::nixlLibfabricRail(const std::string &device, uint16_t id,
+                                     bool enable_hmem)
     : rail_id(id), device_name(device), blocking_cq_sread_supported(true),
       control_request_pool_(CONTROL_REQUESTS_PER_RAIL, id),
       data_request_pool_(DATA_REQUESTS_PER_RAIL, id) {
@@ -222,13 +224,16 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device, uint16_t id)
              ".");
     return;
   }
-  hints->caps = 0;
-  hints->caps = FI_MSG | FI_RMA | FI_HMEM;
+  hints->caps = FI_MSG | FI_RMA;
+  if (enable_hmem)
+    hints->caps |= FI_HMEM;
   hints->caps |= FI_LOCAL_COMM | FI_REMOTE_COMM;
   hints->mode = FI_CONTEXT | FI_CONTEXT2;
   hints->ep_attr->type = FI_EP_RDM;
-  hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR |
-                                FI_MR_ALLOCATED | FI_MR_PROV_KEY;
+  hints->domain_attr->mr_mode =
+      FI_MR_LOCAL | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED | FI_MR_PROV_KEY;
+  if (enable_hmem)
+    hints->domain_attr->mr_mode |= FI_MR_HMEM;
   hints->domain_attr->mr_key_size = 2;
   hints->domain_attr->name = strdup(device_name.c_str());
   hints->domain_attr->threading = FI_THREAD_SAFE;

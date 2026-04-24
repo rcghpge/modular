@@ -25,9 +25,9 @@ using enum nixl_xfer_op_t;
 static std::atomic<size_t> round_robin_counter{0};
 
 M::ErrorOr<std::unique_ptr<nixlLibfabricRailManager>>
-nixlLibfabricRailManager::create(size_t striping_threshold) {
+nixlLibfabricRailManager::create(size_t striping_threshold, bool enable_hmem) {
   auto rail_manager = std::unique_ptr<nixlLibfabricRailManager>(
-      new nixlLibfabricRailManager(striping_threshold));
+      new nixlLibfabricRailManager(striping_threshold, enable_hmem));
   if (rail_manager->getInitStatus() != NIXL_SUCCESS) {
     return M::Error(rail_manager->getInitError().empty()
                         ? "Failed to initialize libfabric rail manager."
@@ -37,8 +37,9 @@ nixlLibfabricRailManager::create(size_t striping_threshold) {
       std::move(rail_manager));
 }
 
-nixlLibfabricRailManager::nixlLibfabricRailManager(size_t striping_threshold)
-    : striping_threshold_(striping_threshold) {
+nixlLibfabricRailManager::nixlLibfabricRailManager(size_t striping_threshold,
+                                                   bool enable_hmem)
+    : striping_threshold_(striping_threshold), enable_hmem_(enable_hmem) {
   NIXL_DEBUG << "Creating rail manager with striping threshold: "
              << striping_threshold_ << " bytes";
 
@@ -97,8 +98,8 @@ nixl_status_t nixlLibfabricRailManager::createDataRails(
   data_rails_.reserve(num_data_rails_);
 
   for (size_t i = 0; i < num_data_rails_; ++i) {
-    auto rail_or_error =
-        nixlLibfabricRail::create(efa_devices[i], static_cast<uint16_t>(i));
+    auto rail_or_error = nixlLibfabricRail::create(
+        efa_devices[i], static_cast<uint16_t>(i), enable_hmem_);
     if (rail_or_error.isError()) {
       init_error_ = rail_or_error.getError();
       NIXL_ERROR << "Failed to create data rail " << i << ": " << init_error_;
@@ -124,8 +125,8 @@ nixl_status_t nixlLibfabricRailManager::createControlRails(
   control_rails_.reserve(num_control_rails_);
 
   for (size_t i = 0; i < num_control_rails_; ++i) {
-    auto rail_or_error =
-        nixlLibfabricRail::create(efa_devices[i], static_cast<uint16_t>(i));
+    auto rail_or_error = nixlLibfabricRail::create(
+        efa_devices[i], static_cast<uint16_t>(i), enable_hmem_);
     if (rail_or_error.isError()) {
       init_error_ = rail_or_error.getError();
       NIXL_ERROR << "Failed to create control rail " << i << ": "

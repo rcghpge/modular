@@ -167,9 +167,16 @@ nixlLibfabricEngine::nixlLibfabricEngine(
   }
 
   // Initialize Rail Manager which will discover the topology and create all
-  // rails.
+  // rails. Only request FI_HMEM when GPU devices are present — dKV and other
+  // CPU-only agents must not request FI_HMEM because it causes EFA's fi_getinfo
+  // to require an active CUDA context, making initialization fail in containers
+  // without GPU device access.
+  const bool enable_hmem = gpu_contexts_->hasAnyGpuDevice();
+  NIXL_DEBUG << "Initializing rail manager with FI_HMEM "
+             << (enable_hmem ? "enabled" : "disabled")
+             << " (GPU devices present: " << enable_hmem << ")";
   auto rail_manager_or_error =
-      nixlLibfabricRailManager::create(striping_threshold_);
+      nixlLibfabricRailManager::create(striping_threshold_, enable_hmem);
   if (rail_manager_or_error.isError()) {
     NIXL_ERROR << "Failed to create libfabric rail manager: "
                << rail_manager_or_error.getError();

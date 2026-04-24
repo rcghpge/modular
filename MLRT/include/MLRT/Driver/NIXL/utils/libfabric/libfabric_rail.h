@@ -193,7 +193,7 @@ inline std::ostream &operator<<(std::ostream &os,
 class nixlLibfabricRail {
 public:
   static M::ErrorOr<std::unique_ptr<nixlLibfabricRail>>
-  create(const std::string &device, uint16_t id);
+  create(const std::string &device, uint16_t id, bool enable_hmem);
 
   uint16_t rail_id;                 ///< Unique rail identifier
   std::string device_name;          ///< EFA device name for this rail
@@ -202,8 +202,12 @@ public:
       blocking_cq_sread_supported; ///< Whether blocking CQ reads are supported
   struct fid_ep *endpoint;         ///< Libfabric endpoint handle
 
-  /** Initialize libfabric rail with all resources */
-  nixlLibfabricRail(const std::string &device, uint16_t id);
+  /** Initialize libfabric rail with all resources.
+   *  @param enable_hmem When true, FI_HMEM capability is requested so the
+   *                     rail can transfer GPU (VRAM) memory directly. Pass
+   *                     false for CPU-only agents to avoid requiring a CUDA
+   *                     context during fi_getinfo. */
+  nixlLibfabricRail(const std::string &device, uint16_t id, bool enable_hmem);
 
   /** Destroy rail and cleanup all libfabric resources */
   ~nixlLibfabricRail();

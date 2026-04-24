@@ -35,13 +35,15 @@ class nixlLibfabricTopology;
 class nixlLibfabricRailManager {
 public:
   static M::ErrorOr<std::unique_ptr<nixlLibfabricRailManager>>
-  create(size_t striping_threshold);
+  create(size_t striping_threshold, bool enable_hmem);
 
   /** Initialize rail manager with topology discovery and create rails based on
    * available EFA devices
    * @param striping_threshold Size threshold for enabling multi-rail striping
+   * @param enable_hmem When true, rails request FI_HMEM for GPU memory
+   *                    transfers. Pass false for CPU-only agents.
    */
-  nixlLibfabricRailManager(size_t striping_threshold);
+  nixlLibfabricRailManager(size_t striping_threshold, bool enable_hmem);
   /** Destroy rail manager and cleanup all resources */
   ~nixlLibfabricRailManager();
 
@@ -263,6 +265,7 @@ private:
   nixl_status_t init_status_ = NIXL_SUCCESS;
   std::string init_error_;
   size_t striping_threshold_;
+  bool enable_hmem_;
   // Rail allocation
   std::vector<std::unique_ptr<nixlLibfabricRail>> data_rails_;
   std::vector<std::unique_ptr<nixlLibfabricRail>> control_rails_;
