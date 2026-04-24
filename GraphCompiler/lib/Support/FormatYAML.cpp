@@ -486,7 +486,7 @@ llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::
 M::GML::Variant
 llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::denormalize(
     IO &) {
-  MLRT::Runtime &runtime = Runtime::getCurrentRuntime();
+  MLRT::Runtime *runtime = Runtime::getCurrentRuntimeOrNull();
   M::GML::Variant variant;
   if (stringValue) {
     variant =
