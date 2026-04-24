@@ -76,12 +76,13 @@ from .hann_window import hann_window
 from .irfft import irfft
 from .layer_norm import layer_norm
 from .matmul import matmul
+from .nms import non_maximum_suppression
 from .nonzero import nonzero
 from .outer import outer
 from .pad import pad
 from .parallel import parallel
 from .permute import permute
-from .pooling import avg_pool2d, max_pool2d
+from .pooling import avg_pool2d, max_pool2d, roi_align
 from .quantized import dequantize, qmatmul
 from .range import range
 from .rebind import rebind

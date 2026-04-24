@@ -32,6 +32,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 import msgspec
+from dkv import BlockDescriptor, DKVClient, ReadBlocksResult
 from max._core import nixl
 from max.driver import Device
 from max.interfaces import RequestID, TextGenerationContext
@@ -46,9 +47,6 @@ from max.kv_cache.paged_kv_cache.transfer_engine import (
 from max.nn.kv_cache import KVCacheBuffer, KVCacheParams
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.profiler import traced
-
-from .client import DKVClient
-from .protocol import BlockDescriptor
 
 logger = logging.getLogger("max.pipelines")
 
@@ -207,8 +205,8 @@ class DKVConnector:
         self._pending_loads: dict[str, list[_PendingLoad]] = {}
         # Per-request inflight NIXL reads
         self._inflight_reads: dict[str, _InflightRead] = {}
-        # Per-request held blocks (need decrement after the read transfer completes)
-        self._held_blocks: dict[str, list[BlockDescriptor]] = {}
+        # Per-request read result (need decrement after the read transfer completes)
+        self._held_blocks: dict[str, ReadBlocksResult] = {}
 
         # Write pipeline: each entry is one save() call's (block_ids, hashes).
         self._pending_acquires: list[tuple[list[int], list[int]]] = []
@@ -477,7 +475,7 @@ class DKVConnector:
 
         # Release dKV read pins (decrement read_ref_count).
         for held in self._held_blocks.values():
-            if held:
+            if held.dram_seq_hashes or held.disk_locations:
                 try:
                     self._client.decrement_blocks(held)
                 except Exception:
@@ -702,9 +700,10 @@ class DKVConnector:
         self._nixl_read_blocks_remote += remote_count
 
         # Pin blocks in dKV for reading (increment read_ref_count).
+        # The result carries the tier-split seq hashes needed for decrement.
         try:
             t0 = time.monotonic()
-            self._client.read_blocks(descriptors)
+            read_result = self._client.read_blocks(descriptors)
             self._rpc_read_latency_total_ms += (time.monotonic() - t0) * 1000
             self._rpc_read_latency_count += 1
         except (ConnectionError, TimeoutError) as exc:
@@ -750,7 +749,7 @@ class DKVConnector:
                 exc_info=True,
             )
             try:
-                self._client.decrement_blocks(descriptors)
+                self._client.decrement_blocks(read_result)
             except Exception:
                 logger.warning(
                     (
@@ -767,7 +766,7 @@ class DKVConnector:
                 exc_info=True,
             )
             try:
-                self._client.decrement_blocks(descriptors)
+                self._client.decrement_blocks(read_result)
             except Exception:
                 logger.warning(
                     (
@@ -778,7 +777,7 @@ class DKVConnector:
                 )
             return []
 
-        self._held_blocks[request_id] = descriptors
+        self._held_blocks[request_id] = read_result
         self._inflight_reads[request_id] = _InflightRead(
             transfers=transfers,
             descriptors=descriptors,
@@ -1156,7 +1155,7 @@ class DKVConnector:
         # Decrement held blocks only if transfer handles are released.
         if handles_released:
             for held in self._held_blocks.values():
-                if held:
+                if held.dram_seq_hashes or held.disk_locations:
                     try:
                         self._client.decrement_blocks(held)
                     except Exception:
@@ -1320,8 +1319,10 @@ class DKVConnector:
 
     def _decrement_held_blocks(self, request_id: str) -> None:
         """Release dKV read pins once transfers have completed."""
-        held = self._held_blocks.pop(request_id, [])
-        if not held:
+        held = self._held_blocks.pop(request_id, None)
+        if held is None or (
+            not held.dram_seq_hashes and not held.disk_locations
+        ):
             return
 
         try:

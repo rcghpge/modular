@@ -47,14 +47,14 @@ def free(ptr: UnsafePointer[mut=True, NoneType, ...]):
 
 
 @always_inline
-def free(ptr: _CPointer[NoneType, ExternalOrigin[mut=True]]):
+def free(ptr: OptionalUnsafePointer[mut=True, NoneType, ...]):
     """Frees memory previously allocated by `malloc`, `calloc`, or `realloc`.
 
-    This overload accepts an `_CPointer` because it is valid in C to call
-    `free` on a null pointer (it is a no-op).
+    This overload accepts an `Optional[UnsafePointer]` because it is valid in
+    C to call `free` on a null pointer (it is a no-op).
 
     Args:
-        ptr: A c-pointer to the memory to free.
+        ptr: A pointer to the memory to free.
     """
     free(
         UnsafePointer(to=ptr).bitcast[
@@ -160,6 +160,37 @@ def posix_spawnp[
         argv,
         envp,
     )
+
+
+@always_inline
+def _get_environ() -> (
+    _CPointer[Optional[CStringSlice[ImmutAnyOrigin]], ImmutAnyOrigin]
+):
+    """Returns the process environment pointer (POSIX `environ`).
+
+    Returns:
+        A pointer to the null-terminated array of environment strings,
+        suitable for passing as the `envp` argument to `posix_spawnp`.
+    """
+    comptime _EnvpType = _CPointer[
+        Optional[CStringSlice[ImmutAnyOrigin]], ImmutAnyOrigin
+    ]
+    comptime if CompilationTarget.is_macos():
+        # _NSGetEnviron() from <crt_externs.h> returns char ***,
+        # a pointer to the `environ` variable.
+        return external_call[
+            "_NSGetEnviron",
+            _CPointer[_EnvpType, ExternalOrigin[mut=False]],
+        ]().value()[]
+    elif CompilationTarget.is_linux():
+        # On Linux, look up `environ` via dlsym(RTLD_DEFAULT, "environ").
+        # RTLD_DEFAULT is ((void *)0) on Linux.
+        return dlsym[_EnvpType](
+            _CPointer[NoneType, MutExternalOrigin](),
+            "environ".as_c_string_slice().unsafe_ptr(),
+        ).value()[]
+    else:
+        CompilationTarget.unsupported_target_error[operation="_get_environ"]()
 
 
 # ===-----------------------------------------------------------------------===#

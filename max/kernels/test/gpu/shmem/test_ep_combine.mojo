@@ -223,7 +223,9 @@ def test_combine[
         n_tokens_per_rank,
         type_of(format_handler),
     ]
-    var func_dispatch_wait = ctx.compile_function_experimental[dispatch_wait]()
+    var func_dispatch_wait = ctx.compile_function[
+        dispatch_wait, dispatch_wait
+    ]()
 
     comptime combine_async = combine_async_kernel[
         input_type,
@@ -268,14 +270,12 @@ def test_combine[
     @parameter
     def run_full_dispatch(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
-        var recv_buf_ptrs = InlineArray[UnsafePointer[UInt8, MutAnyOrigin], 1](
-            fill={}
-        )
-        var recv_count_ptrs = InlineArray[
+        var recv_buf_ptrs: InlineArray[
+            UnsafePointer[UInt8, MutAnyOrigin], 1
+        ] = [recv_buf]
+        var recv_count_ptrs: InlineArray[
             UnsafePointer[UInt64, MutAnyOrigin], 1
-        ](fill={})
-        recv_buf_ptrs[0] = recv_buf
-        recv_count_ptrs[0] = recv_count
+        ] = [recv_count]
 
         ctx.enqueue_function(
             func,
@@ -315,14 +315,12 @@ def test_combine[
     @parameter
     def run_combine_async(ctx: DeviceContext) raises:
         # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
-        var combine_recv_buf_ptrs = InlineArray[
+        var combine_recv_buf_ptrs: InlineArray[
             UnsafePointer[UInt8, MutAnyOrigin], 1
-        ](fill={})
-        var combine_recv_count_ptrs = InlineArray[
+        ] = [send_buf]
+        var combine_recv_count_ptrs: InlineArray[
             UnsafePointer[UInt64, MutAnyOrigin], 1
-        ](fill={})
-        combine_recv_buf_ptrs[0] = send_buf
-        combine_recv_count_ptrs[0] = recv_count
+        ] = [recv_count]
 
         ctx.enqueue_function(
             func_combine_async,

@@ -24,10 +24,6 @@ from transformers import LlamaConfig
 LLAMA_SAFETENSOR_MAPPING = {
     "model.": "",  # Removes the "model" prefix.
     "g_idx": "perm_idx",  # Specific to Llama GPT-Q weights.
-    # Remap unfused Q/K/V projections into StackedLinear namespace.
-    "self_attn.q_proj.": "self_attn.qkv_proj.q.",
-    "self_attn.k_proj.": "self_attn.qkv_proj.k.",
-    "self_attn.v_proj.": "self_attn.qkv_proj.v.",
 }
 
 
@@ -88,8 +84,7 @@ def _convert_safetensor_with_model_config(
     if hasattr(huggingface_config, "quantization_config"):
         UNUSED_KEYS = [".bias", ".qzeros"]
         if huggingface_config.quantization_config.get("desc_act") is True:
-            UNUSED_KEYS.append("v_proj.perm_idx")
-            UNUSED_KEYS.append("k_proj.perm_idx")
+            UNUSED_KEYS.extend(["v_proj.perm_idx", "k_proj.perm_idx"])
         else:
             UNUSED_KEYS.append("perm_idx")
         keys_to_remove = [
@@ -115,7 +110,7 @@ def convert_safetensor_state_dict(
 
 
 # Maps from GGUF to MAX weight names.
-LLAMA_GGUF_MAPPING = {
+LLAMA_GGUF_UNFUSED_QKV_MAPPING = {
     "token_embd": "embed_tokens",
     "blk": "layers",
     "ffn_up": "mlp.up_proj",
@@ -131,15 +126,26 @@ LLAMA_GGUF_MAPPING = {
     "output_norm": "norm",
 }
 
+LLAMA_GGUF_QUANTIZED_MAPPING = LLAMA_GGUF_UNFUSED_QKV_MAPPING
+
 
 def convert_gguf_state_dict(
-    state_dict: dict[str, Weights], **unused_kwargs
+    state_dict: dict[str, Weights],
+    pipeline_config: PipelineConfig | None = None,
+    **unused_kwargs,
 ) -> dict[str, WeightData]:
+    gguf_mapping = LLAMA_GGUF_UNFUSED_QKV_MAPPING
+    if (
+        pipeline_config is not None
+        and pipeline_config.model.graph_quantization_encoding is not None
+    ):
+        gguf_mapping = LLAMA_GGUF_QUANTIZED_MAPPING
+
     new_state_dict: dict[str, WeightData] = {}
     # Map the weight names.
     for gguf_name, value in state_dict.items():
         max_name = gguf_name
-        for before, after in LLAMA_GGUF_MAPPING.items():
+        for before, after in gguf_mapping.items():
             max_name = max_name.replace(before, after)
         new_state_dict[max_name] = value.data()
 

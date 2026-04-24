@@ -31,7 +31,11 @@ from std.collections.string._utf8 import (
     _is_utf8_start_byte,
 )
 from std.collections.string.format import _FormatUtils
-from std.collections.string.iterators import CodepointSliceIter, CodepointsIter
+from std.collections.string.iterators import (
+    CodepointSliceIter,
+    CodepointsIter,
+    GraphemeSliceIter,
+)
 from std.hashlib.hasher import Hasher
 from std.format._utils import _TotalWritableBytes, _WriteBufferStack
 from std.math import align_down
@@ -841,10 +845,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         other_type: type_of(StringSlice[_]),
     ](
         self,
-        out result: StringSlice[
-            mut=Self.mut & other_type.origin.mut,
-            origin_of(Self.origin, other_type.origin),
-        ],
+        out result: StringSlice[origin_of(Self.origin, other_type.origin)],
     ):
         """Returns a string slice with merged origins.
 
@@ -860,25 +861,6 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             .unsafe_origin_cast[result.origin](),
             length = self.byte_length(),
         }
-
-    @always_inline("nodebug")
-    def __merge_with__[
-        other_type: type_of(String),
-    ](self, out result: String):
-        """Returns a string slice merge with a String.
-
-        Parameters:
-            other_type: The type of the origin to merge with.
-
-        Returns:
-            A String this is merged with.
-        """
-        # Note, this is used to disambiguate some cases because String converts
-        # to StringSlice and StringSlice converts to string.  Ideally this would
-        # return a StringSlice, but the __merge_with__ protocol is type
-        # directed, not value directed.  Types don't carry the origins of a
-        # value.
-        return String(self)
 
     # ===------------------------------------------------------------------===#
     # Methods
@@ -1114,12 +1096,11 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             An iterator type that returns successive `Codepoint` values stored in
             this string slice.
 
-        # Examples
+        **Examples:**
 
         Print the characters in a string:
 
         ```mojo
-
         from std.testing import assert_equal, assert_raises
 
         var s = StringSlice("abc")
@@ -1135,7 +1116,6 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
         codepoints:
 
         ```mojo
-
         from std.testing import assert_equal, assert_raises
 
         # A visual character composed of a combining sequence of 2 codepoints.
@@ -1173,6 +1153,50 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             A reversed iterator of references to the string slice elements.
         """
         return CodepointSliceIter[Self.origin, forward=False](self)
+
+    def graphemes(self) -> GraphemeSliceIter[Self.origin]:
+        """Return an iterator over the grapheme clusters in this string.
+
+        A grapheme cluster is what a user would typically think of as a
+        single "character" on screen. This handles combining marks, emoji
+        ZWJ sequences, flag emoji, Hangul syllables, and other
+        multi-codepoint clusters as defined by UAX #29.
+
+        Returns:
+            An iterator yielding each grapheme cluster as a `StringSlice`.
+
+        Example:
+
+        ```mojo
+        %# from testing import assert_equal
+        # "café" with combining accent: c, a, f, e + combining acute
+        var s = StringSlice("cafe\\u{0301}")
+        var count = 0
+        for g in s.graphemes():
+            count += 1
+        assert_equal(count, 4)
+        ```
+        """
+        return GraphemeSliceIter(self)
+
+    def count_graphemes(self) -> Int:
+        """Count the number of grapheme clusters in this string.
+
+        This is an O(n) operation that scans the full string to identify
+        grapheme cluster boundaries using UAX #29 rules.
+
+        Returns:
+            The number of grapheme clusters.
+
+        Example:
+
+        ```mojo
+        %# from testing import assert_equal
+        var s = StringSlice("Hello")
+        assert_equal(s.count_graphemes(), 5)
+        ```
+        """
+        return len(self.graphemes())
 
     @always_inline
     def as_bytes(self) -> Span[Byte, Self.origin]:
@@ -1370,7 +1394,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             end: The end offset in bytes from which to check.
 
         Returns:
-            True if the `self[start:end]` is prefixed by the input prefix.
+            True if the `self[byte=start:end]` is prefixed by the input prefix.
         """
         if end == -1:
             return self.find(prefix, start) == start
@@ -1393,7 +1417,7 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             end: The end offset in bytes from which to check.
 
         Returns:
-            True if the `self[start:end]` is suffixed by the input suffix.
+            True if the `self[byte=start:end]` is suffixed by the input suffix.
         """
         if suffix.byte_length() > self.byte_length():
             return False
@@ -1414,8 +1438,8 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             prefix: The prefix to remove from the string.
 
         Returns:
-            `string[len(prefix):]` if the string starts with the prefix string,
-            or a copy of the original string otherwise.
+            `string[byte=prefix.byte_length():]` if the string starts with the
+            prefix string, or a copy of the original string otherwise.
 
         Examples:
 
@@ -1435,8 +1459,8 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
             suffix: The suffix to remove from the string.
 
         Returns:
-            `string[:-suffix.byte_length()]` if the string ends with the suffix string,
-            or a copy of the original string otherwise.
+            `string[byte=:(self.byte_length()-suffix.byte_length())]` if the string ends with the
+            suffix string, or a copy of the original string otherwise.
 
         Examples:
 
@@ -2023,9 +2047,9 @@ struct StringSlice[mut: Bool, //, origin: Origin[mut=mut]](
 
         ```mojo
         var s = StringSlice("hello")
-        print(s.center(10))        # "  hello   "
-        print(s.center(11, "*"))   # "***hello***"
-        print(s.center(3))         # "hello" (no padding)
+        print(s.ascii_center(10))        # "  hello   "
+        print(s.ascii_center(11, "*"))   # "***hello***"
+        print(s.ascii_center(3))         # "hello" (no padding)
         ```
         """
         return self._justify(width - self.byte_length() >> 1, width, fillchar)

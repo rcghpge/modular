@@ -81,6 +81,7 @@ from layout.layout_tensor import (
 )
 from layout.swizzle import make_swizzle
 from layout.tensor_core import get_fragment_size, get_mma_shape
+from layout.tile_tensor import NullableTileTensor
 from linalg.matmul.gpu._multistage_gemm_gpu import multistage_mma
 from std.memory import stack_allocation
 from nn._ragged_utils import get_batch_from_row_offsets
@@ -146,7 +147,7 @@ def flare_mla_decoding[
     ],
     scale: Float32,
     ctx: DeviceContext,
-    scalar_args_buf: TileTensor[
+    scalar_args_buf: NullableTileTensor[
         DType.int64, address_space=AddressSpace.GENERIC, ...
     ],
     q_max_seq_len: OptionalReg[Int] = None,
@@ -159,32 +160,30 @@ def flare_mla_decoding[
     # Per-token Q scale pointer: float32 array with one scale per Q token.
     # sigma_Q[q_token_idx] is folded into scale_log2e inside the Softmax function.
     # Default is null (sigma_Q = 1.0, no effect).
-    q_scale_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
+    q_scale_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
     # Sparse indices: when non-null, the kernel uses gather4 TMA with
     # pre-computed physical row indices instead of page-table lookups.
     # d_indices[batch * indices_stride + token] = physical KV row index.
-    d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
     # Per-batch topk lengths: when non-null, topk_lengths[batch_idx] gives
     # the actual number of valid sparse indices for that batch. indices_stride
     # is the allocation stride (max topk across all batches).
-    topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
-    attn_sink_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
+    topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    attn_sink_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
     # Extra KV: separate always-attend cache. Tokens from extra_k are
     # appended after the topk tokens in a unified attention loop.
     extra_k: OptionalReg[cache_t] = None,
-    extra_d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
-    extra_topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    extra_scales_ptr: UnsafePointer[
-        Scalar[DType.float32], origin=MutAnyOrigin
-    ] = {_unsafe_null = ()},
+    extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
 ) raises:
     """MLA decoding kernel that would only be called in the optimized compute
     graph.
@@ -351,7 +350,7 @@ def flare_mla_decoding[
     mask_functor: mask_t,
     scale: Float32,
     ctx: DeviceContext,
-    scalar_args_buf: TileTensor[
+    scalar_args_buf: NullableTileTensor[
         DType.int64, address_space=AddressSpace.GENERIC, ...
     ],
     # if not set, we select num_partitions based on heuristics
@@ -375,7 +374,9 @@ def flare_mla_decoding[
     )
 
     var valid_length = TileTensor(
-        UnsafePointer[UInt32, MutExternalOrigin](),
+        UnsafePointer[
+            Scalar[DType.uint32], MutExternalOrigin
+        ].unsafe_dangling(),
         row_major(Coord(Idx(0))),
     )
 
@@ -434,7 +435,7 @@ def flare_mla_decoding_dispatch[
     max_cache_valid_length: Int,
     scale: Float32,
     ctx: DeviceContext,
-    scalar_args_buf: TileTensor[
+    scalar_args_buf: NullableTileTensor[
         DType.int64, address_space=AddressSpace.GENERIC, ...
     ],
     kv_input_row_offsets: OptionalReg[
@@ -443,25 +444,23 @@ def flare_mla_decoding_dispatch[
         ]
     ] = None,
     num_partitions: Optional[Int] = None,
-    q_scale_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    q_scale_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
-    topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
-    attn_sink_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
+    topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    attn_sink_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
     # Extra KV: separate always-attend cache operand.
     extra_k: OptionalReg[k_t] = None,
-    extra_d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
-    extra_topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    extra_scales_ptr: UnsafePointer[
-        Scalar[DType.float32], origin=MutAnyOrigin
-    ] = {_unsafe_null = ()},
+    extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
 ) raises:
     comptime num_heads = config.num_heads
     comptime depth = config.depth
@@ -499,7 +498,7 @@ def flare_mla_decoding_dispatch[
     # TileTensor always has static shapes for the last two dims.
 
     comptime if _is_sm10x_gpu(ctx.default_device_info):
-        if scalar_args_buf.ptr._is_not_null():
+        if scalar_args_buf.ptr:
             # Capturable path: GPU buffer is pre-computed, compute host-side
             # dispatch args from inputs.
             var batch_size: Int
@@ -530,7 +529,7 @@ def flare_mla_decoding_dispatch[
                 scale,
                 valid_length,
                 mask_functor,
-                scalar_args_buf,
+                scalar_args_buf.value(),
                 batch_size,
                 max_prompt_len,
                 max_cache_valid_length,
@@ -620,12 +619,23 @@ def flare_mla_decoding_dispatch[
         # only A100 or H100 have the enough smem to store the full BM * head_dim Q tensor.
         comptime has_enough_smem = ctx.default_device_info == A100 or ctx.default_device_info == H100
 
-        comptime preferred_BM = 16 if (
-            not has_enough_smem or has_amd_gpu_accelerator()
-        ) else 32
-        comptime BM = preferred_BM if preferred_BM <= num_heads else num_heads
+        # AMD FP8 MLA decode uses 32x32x64 MMA (depth=576 is not a multiple
+        # of 128, so the 16x16x128 path is unusable). That requires BM>=32
+        # and BK>=64. BF16 AMD MLA keeps BM=16, BK=32 (16x16x32 MMA).
+        # For amd_fp8 we always use BM=32 even when num_heads<32; the top
+        # num_heads rows of the tile carry real work and the bottom rows
+        # do wasted MMA work (OOB Q reads return 0 via AMD buffer_load).
+        comptime amd_fp8 = has_amd_gpu_accelerator() and q.dtype.is_float8()
+        comptime preferred_BM = 32 if amd_fp8 else (
+            16 if (not has_enough_smem or has_amd_gpu_accelerator()) else 32
+        )
+        comptime BM = preferred_BM if (
+            amd_fp8 or preferred_BM <= num_heads
+        ) else num_heads
         comptime BN = 64 if has_nvidia_gpu_accelerator() else 128
-        comptime BK = 64 if has_nvidia_gpu_accelerator() else 32  # need 8 mma_tile per row to resolve the bank conflict on nvidia
+        comptime BK = 64 if (
+            has_nvidia_gpu_accelerator() or amd_fp8
+        ) else 32  # need 8 mma_tile per row to resolve the bank conflict on nvidia
         comptime WM = BM
         comptime WN = 16 if has_nvidia_gpu_accelerator() else 32
         # num warps in M and N, multiplied by warp size.
@@ -650,7 +660,7 @@ def flare_mla_decoding_dispatch[
             shared_mem_bytes if has_nvidia_gpu_accelerator() else 0
         )
 
-        comptime num_blocks_y = num_heads // BM
+        comptime num_blocks_y = ceildiv(num_heads, BM)
 
         comptime kernel = mla_decoding[
             q.dtype,
@@ -767,13 +777,13 @@ def mla_decoding[
     )
     var exp_sum_offset = qk_max_offset
 
-    # split-k intermediate buffers
-    var qk_max_batch_ptr = type_of(qk_max_ptr)(_unsafe_null=())
-    if qk_max_ptr._is_not_null():
+    # split-k intermediate buffers — only used when num_partitions > 1
+    var qk_max_batch_ptr = qk_max_ptr
+    if num_partitions > 1:
         qk_max_batch_ptr = qk_max_ptr + qk_max_offset
 
-    var exp_sum_batch_ptr = type_of(exp_sum_ptr)(_unsafe_null=())
-    if exp_sum_ptr._is_not_null():
+    var exp_sum_batch_ptr = exp_sum_ptr
+    if num_partitions > 1:
         exp_sum_batch_ptr = exp_sum_ptr + exp_sum_offset
 
     var seq_len: Int
@@ -3403,7 +3413,7 @@ def _k_cache_to_buffer[
 
     def copy_fn_unified[
         width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]) unified register_passable {}:
+    ](idx: IndexList[rank]) unified register_passable:
         copy_fn[width, rank, alignment](idx)
 
     _elementwise_impl_gpu[simd_width=target_simd_width](

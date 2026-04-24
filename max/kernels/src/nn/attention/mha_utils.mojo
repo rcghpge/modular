@@ -369,7 +369,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
 
 @always_inline
 def _kernel_mask[
-    dtype: DType, width: Int
+    dtype: DType, width: SIMDSize
 ](
     coord: IndexList[2, ...], bound: IndexList[2, ...], vec: SIMD[dtype, width]
 ) -> SIMD[dtype, width]:
@@ -799,9 +799,6 @@ struct SplitKPartition[dtype: DType](
         ptr: UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin],
         num_partitions_value: UInt32,
     ):
-        assert ptr != UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin](
-            _unsafe_null=()
-        )
         self.ptr = ptr
         self.num_partitions_value = num_partitions_value
 

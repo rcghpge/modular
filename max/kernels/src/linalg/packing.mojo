@@ -16,7 +16,7 @@ from std.sys.info import CompilationTarget
 from std.sys.intrinsics import PrefetchOptions
 
 from std.algorithm import unswitch
-from buffer.buffer import partial_simd_load
+from linalg.utils import partial_simd_load
 from layout import Coord, Idx, TileTensor
 from layout.tile_tensor import stack_allocation as tt_stack_allocation
 from std.sys import prefetch
@@ -921,9 +921,9 @@ struct BTileGenerator[
         Self.b_packed,
         Self.origin,
     ]:
-        var b_tile_stack_ptr = UnsafePointer[Scalar[Self.b_type], MutAnyOrigin](
-            _unsafe_null=()
-        )
+        var b_tile_stack_ptr = UnsafePointer[
+            Scalar[Self.b_type], MutAnyOrigin
+        ].unsafe_dangling()
 
         assert not (
             Self.transpose_b and Self.b_packed

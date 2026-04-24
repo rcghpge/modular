@@ -53,7 +53,7 @@ from std.memory import stack_allocation
 from nn.gather_scatter import normalize_neg_index
 from nn.reshape import reshape
 from nn.softmax import softmax_with_temperature
-from nn.topk_fi import topk_topp_sampling_from_prob
+from nn.topk_fi import apply_min_p_mask_kernel, topk_topp_sampling_from_prob
 from std.runtime.asyncrt import DeviceContextPtr
 from std.runtime.tracing import Trace, TraceLevel, trace_arg
 
@@ -216,7 +216,8 @@ def top_k[
                 out_vals,
                 out_idxs,
                 grain_size,
-                sorted,
+                sorted=sorted,
+                ctx=ctx.get_optional_device_context(),
                 k=k,
             )
         else:
@@ -251,6 +252,7 @@ def _top_k_cpu[
     out_idxs: TileTensor[mut=True, out_idx_type, ...],
     parallelism_grain_size: Int,  # impl detail, exposed for testing
     sorted: Bool,
+    ctx: Optional[DeviceContext] = None,
     k: Optional[TileTensor[DType.int64, KLayoutType, ImmutAnyOrigin]] = None,
 ):
     comptime assert (
@@ -287,7 +289,7 @@ def _top_k_cpu[
             def indices_to_val(idx: Int64) -> Scalar[dtype]:
                 indices[axis] = Int(idx)
                 var input_idx = input.layout(Coord(indices))
-                return input.ptr[input_idx]
+                return input.raw_load(input_idx)
 
             comptime if largest:
 
@@ -322,12 +324,12 @@ def _top_k_cpu[
                 while i < shape[axis] - 1:
                     indices[axis] = Int(idxs[i])
                     var input_idx = input.layout(Coord(indices))
-                    var curr = input.ptr[input_idx]
+                    var curr = input.raw_load(input_idx)
                     var num_equal = 1
                     for j in range(i + 1, shape[axis]):
                         indices[axis] = Int(idxs[j])
                         var input_idx = input.layout(Coord(indices))
-                        var next = input.ptr[input_idx]
+                        var next = input.raw_load(input_idx)
                         if curr != next:
                             break
                         num_equal += 1
@@ -343,16 +345,18 @@ def _top_k_cpu[
             for i in range(k_val):
                 indices[axis] = Int(idxs[i])
                 var input_idx = input.layout(Coord(indices))
-                var val = input.ptr[input_idx]
+                var val = input.raw_load(input_idx)
                 indices[axis] = i
                 var out_vals_idx = out_vals.layout(Coord(indices))
                 var out_idxs_idx = out_idxs.layout(Coord(indices))
-                out_vals.ptr[out_vals_idx] = val
+                out_vals.raw_store(out_vals_idx, val)
                 out_idxs.ptr[out_idxs_idx] = rebind[Scalar[out_idx_type]](
                     idxs[i]
                 )
 
-    parallelize_over_rows[process_rows](shape, axis, parallelism_grain_size)
+    parallelize_over_rows[process_rows](
+        shape, axis, parallelism_grain_size, ctx
+    )
 
 
 @always_inline
@@ -440,7 +444,7 @@ def fused_token_sampling_cpu[
             bound_max_k,
             input,
             out_vals,
-            TileTensor(out_idxs.ptr.bitcast[Int64](), out_idxs.layout),
+            out_idxs.bitcast[DType.int64](),
             k,
             temperature,
             top_p,
@@ -781,7 +785,7 @@ def _warp_reduce_topk[
     # Shuffle function for TopK_2 structure
     @parameter
     def shuffle_topk2(v: TopK_2[T, largest], offset: Int) -> TopK_2[T, largest]:
-        comptime fn_type = def[dtype: DType, simd_width: Int](
+        comptime fn_type = def[dtype: DType, simd_width: SIMDSize](
             val: SIMD[dtype, simd_width], offset: UInt32
         ) thin -> SIMD[dtype, simd_width]
         comptime xor_fn: fn_type = warp.shuffle_xor
@@ -910,7 +914,7 @@ def _topk_stage1_old_no_shmem[
     out_idx_type: DType,
     largest: Bool = True,
 ](
-    K: UnsafePointer[Int64, ImmutAnyOrigin],
+    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     max_k: Int,
     num_elements: Int,
     num_blocks_per_input: Int,
@@ -949,8 +953,8 @@ def _topk_stage1_old_no_shmem[
             partial.insert(_in_buffer[i], i)
 
         var k_batch = max_k
-        if K._is_not_null():
-            var k_raw = Int(K[batch_id])
+        if K:
+            var k_raw = Int(K.unsafe_value()[batch_id])
             k_batch = max_k if k_raw == -1 else k_raw
 
         # Find top-K elements via repeated warp reductions.
@@ -991,7 +995,7 @@ def _topk_stage1_old[
     out_idx_type: DType,
     largest: Bool = True,
 ](
-    K: UnsafePointer[Int64, ImmutAnyOrigin],
+    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     max_k: Int,
     num_elements: Int,
     num_blocks_per_input: Int,
@@ -1056,8 +1060,8 @@ def _topk_stage1_old[
             topk_sram[tid].insert(_in_buffer[i], i)
         barrier()
         var k_batch = max_k
-        if K._is_not_null():
-            var k_raw = Int(K[batch_id])
+        if K:
+            var k_raw = Int(K.unsafe_value()[batch_id])
             k_batch = max_k if k_raw == -1 else k_raw
         # Prepare for K iterations to find the local top-K elements
         for k in range(k_batch):
@@ -1099,7 +1103,7 @@ def _topk_stage1_no_shmem[
     out_idx_type: DType,
     largest: Bool = True,
 ](
-    K: UnsafePointer[Int64, ImmutAnyOrigin],
+    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     max_k: Int,
     num_elements: Int,
     num_blocks_per_input: Int,
@@ -1138,8 +1142,8 @@ def _topk_stage1_no_shmem[
     var out_idxs = local_topk_idxs + bid * max_k
 
     var k_batch = max_k
-    if K._is_not_null():
-        var k_raw = Int(K[batch_id])
+    if K:
+        var k_raw = Int(K.unsafe_value()[batch_id])
         k_batch = max_k if k_raw == -1 else k_raw
 
     # Clamp k_batch to the number of elements we can actually draw from
@@ -1209,7 +1213,7 @@ def _topk_stage1[
     out_idx_type: DType,
     largest: Bool = True,
 ](
-    K: UnsafePointer[Int64, ImmutAnyOrigin],
+    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     max_k: Int,
     num_elements: Int,
     num_blocks_per_input: Int,
@@ -1265,8 +1269,8 @@ def _topk_stage1[
     var out_idxs = local_topk_idxs + bid * max_k
 
     var k_batch = max_k
-    if K._is_not_null():
-        var k_raw = Int(K[batch_id])
+    if K:
+        var k_raw = Int(K.unsafe_value()[batch_id])
         k_batch = max_k if k_raw == -1 else k_raw
 
     # Clamp k_batch to the number of elements we can actually draw from
@@ -1351,7 +1355,7 @@ def _topk_stage2[
     sampling: Bool = True,
     largest: Bool = True,
 ](
-    K: UnsafePointer[Int64, ImmutAnyOrigin],
+    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     max_k: Int,
     num_blocks_per_input: Int,
     local_topk_vals: UnsafePointer[
@@ -1366,9 +1370,10 @@ def _topk_stage2[
     global_topk_idxs: UnsafePointer[
         Scalar[out_idx_type], MutAnyOrigin
     ],  # sampling ? sampled token : Output array of size K
-    temperature: UnsafePointer[Float32, ImmutAnyOrigin],
-    top_p: UnsafePointer[Float32, ImmutAnyOrigin],
-    seed: UnsafePointer[UInt64, ImmutAnyOrigin],
+    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    top_p: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    min_p: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
 ):
     """
     Computes the global Top-K elements from the local Top-K results produced by stage 1.
@@ -1392,6 +1397,8 @@ def _topk_stage2[
         global_topk_idxs: Pointer to store the final global Top-K indices (size: batch_size * (1 if sampling else K)).
         temperature: The temperature based scaling.
         top_p: Only use the tokens whose cumulative probability exceeds this threshold.
+        min_p: Per-row min-p threshold. Tokens with probability below
+            ``min_p * max_prob`` are excluded from sampling.
         seed: The seed to use for the random number generator.
 
     The function uses shared memory to store and process the local Top-K results,
@@ -1434,8 +1441,8 @@ def _topk_stage2[
     with PDL():
         # Handle the case where stage 1 is executed with a single block
         var k_batch = max_k
-        if K._is_not_null():
-            var k_raw = Int(K[batch_id])
+        if K:
+            var k_raw = Int(K.unsafe_value()[batch_id])
             k_batch = max_k if k_raw == -1 else k_raw
 
         # Clamp k_batch to not exceed the reduced elements per batch and max_k
@@ -1511,8 +1518,8 @@ def _topk_stage2[
                     batch_i_topk_vals[k] = total.u
                     s_id[k] = total.p
                     var temp_val = Float32(1.0)
-                    if temperature._is_not_null():
-                        temp_val = temperature[batch_id]
+                    if temperature:
+                        temp_val = temperature.unsafe_value()[batch_id]
                     total.u = exp(
                         (total.u - max_logit) / max(temp_val.cast[T](), 1e-6)
                     )
@@ -1531,9 +1538,23 @@ def _topk_stage2[
         # do sampling
         comptime if sampling:
             if tid == 0:
+                # Apply min_p mask: zero out probs below min_p * max_prob.
+                # Since s_val2[0] = exp(0/temp) = 1.0 is the max, the
+                # threshold in this unnormalized softmax domain is simply
+                # min_p_val.
+                if min_p:
+                    var min_p_val = Scalar[T](
+                        min_p.unsafe_value()[batch_id].cast[T]()
+                    )
+                    if min_p_val > 0:
+                        for ki in range(k_batch):
+                            if s_val2[ki] < min_p_val:
+                                s_sum[0] -= s_val2[ki]
+                                s_val2[ki] = Scalar[T](0)
+
                 var top_p_val = Scalar[T](1.0)
-                if top_p._is_not_null():
-                    top_p_val = top_p[batch_id].cast[T]()
+                if top_p:
+                    top_p_val = top_p.unsafe_value()[batch_id].cast[T]()
                 var _top_p = _adjust_top_p[T](
                     top_p_val, s_val2, k_batch, s_sum[0]
                 )
@@ -1542,8 +1563,8 @@ def _topk_stage2[
                 # generator, so that we don't use the same random number for every
                 # token in the sequence.
                 var seed_val = UInt64(0)
-                if seed._is_not_null():
-                    seed_val = seed[batch_id]
+                if seed:
+                    seed_val = seed.unsafe_value()[batch_id]
                 var rng_state = Random(seed=seed_val)
                 var rng = rng_state.step_uniform()
                 var softmax_norm = s_sum[0]
@@ -1572,6 +1593,7 @@ def _topk_gpu[
         RuntimeInt[DType.int64]
     ],
     TopPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
+    MinPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
     SeedLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
 ](
     ctx: DeviceContext,
@@ -1589,6 +1611,9 @@ def _topk_gpu[
     num_blocks_per_input: Optional[Int] = None,
     top_p: Optional[
         TileTensor[DType.float32, TopPLayoutType, ImmutAnyOrigin]
+    ] = None,
+    min_p: Optional[
+        TileTensor[DType.float32, MinPLayoutType, ImmutAnyOrigin]
     ] = None,
     seed: Optional[
         TileTensor[DType.uint64, SeedLayoutType, ImmutAnyOrigin]
@@ -1609,6 +1634,7 @@ def _topk_gpu[
         KLayoutType: Layout type of the k buffer.
         TemperatureLayoutType: Layout type of the temperature buffer.
         TopPLayoutType: Layout type of the top_p buffer.
+        MinPLayoutType: Layout type of the min_p buffer.
         SeedLayoutType: Layout type of the seed buffer.
 
     Args:
@@ -1636,6 +1662,8 @@ def _topk_gpu[
             This is the equivalent of "BLOCKS_PER_BEAM" in TRT-LLM kernel allowing for much larger
             batch sizes through packing several elements per thread in the first stage.
         top_p: Only use the tokens whose cumulative probability exceeds this threshold.
+        min_p: Per-row min-p threshold. Tokens with probability below
+            ``min_p * max_prob`` are excluded from sampling.
         seed: The seed to use for the random number generator.
 
     The implementation uses shared memory and warp-level primitives for efficient GPU execution.
@@ -1684,16 +1712,9 @@ def _topk_gpu[
     var block_dim_stage1 = effective_block_size
 
     # Handle optional k parameter
-    var k_ptr: UnsafePointer[Int64, ImmutAnyOrigin]
+    var k_ptr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]] = None
     if k:
         k_ptr = rebind[UnsafePointer[Int64, ImmutAnyOrigin]](k.value().ptr)
-    else:
-        k_ptr = UnsafePointer[Int64, ImmutAnyOrigin](
-            _unsafe_null=()
-        )  # null pointer
-
-    var k_size = k.value().num_elements() if k else 0
-    var k_device = DeviceBuffer[DType.int64](ctx, k_ptr, k_size, owning=False)
 
     # Enqueue the first kernel (stage 1)
     comptime if get_defined_bool[
@@ -1706,7 +1727,7 @@ def _topk_gpu[
                 dtype, out_idx_type, largest
             ]
             ctx.enqueue_function[kernel_1, kernel_1](
-                k_device,
+                k_ptr,
                 max_k,
                 N,
                 num_blocks_per_input_,
@@ -1721,7 +1742,7 @@ def _topk_gpu[
             var shared_mem_bytes_1 = _get_shmem_size_stg_1[dtype](block_size)
             comptime kernel_1 = _topk_stage1_old[dtype, out_idx_type, largest]
             ctx.enqueue_function[kernel_1, kernel_1](
-                k_device,
+                k_ptr,
                 max_k,
                 N,
                 num_blocks_per_input_,
@@ -1742,7 +1763,7 @@ def _topk_gpu[
                 dtype, out_idx_type, largest
             ]
             ctx.enqueue_function[kernel_1, kernel_1](
-                k_device,
+                k_ptr,
                 max_k,
                 N,
                 num_blocks_per_input_,
@@ -1756,7 +1777,7 @@ def _topk_gpu[
         else:
             comptime kernel_1 = _topk_stage1[dtype, out_idx_type, largest]
             ctx.enqueue_function[kernel_1, kernel_1](
-                k_device,
+                k_ptr,
                 max_k,
                 N,
                 num_blocks_per_input_,
@@ -1797,71 +1818,45 @@ def _topk_gpu[
     var block_dim_stage2 = block_size
 
     # Handle optional temperature parameter
-    var temp_ptr: UnsafePointer[Float32, ImmutAnyOrigin]
+    var temp_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
     if temperature:
         temp_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
             temperature.value().ptr
         )
-    else:
-        temp_ptr = UnsafePointer[Float32, ImmutAnyOrigin](
-            _unsafe_null=()
-        )  # null pointer
-    var temp_size = temperature.value().num_elements() if temperature else 0
 
     # Handle optional top_p parameter
-    var top_p_ptr: UnsafePointer[Float32, ImmutAnyOrigin]
+    var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
     if top_p:
         top_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
             top_p.value().ptr
         )
-    else:
-        top_p_ptr = UnsafePointer[Float32, ImmutAnyOrigin](
-            _unsafe_null=()
-        )  # null pointer
-    var top_p_size = top_p.value().num_elements() if top_p else 0
+
+    # Handle optional min_p parameter
+    var min_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+    if min_p:
+        min_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
+            min_p.value().ptr
+        )
 
     # Handle optional seed parameter
-    var seed_ptr: UnsafePointer[UInt64, ImmutAnyOrigin]
+    var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
     if seed:
         seed_ptr = seed.value().ptr
-    else:
-        seed_ptr = UnsafePointer[UInt64, ImmutAnyOrigin](
-            _unsafe_null=()
-        )  # null pointer
-    var seed_size = seed.value().num_elements() if seed else 0
-
-    var temp_device = DeviceBuffer[DType.float32](
-        ctx,
-        temp_ptr,
-        temp_size,
-        owning=False,
-    )
-    var top_p_device = DeviceBuffer[DType.float32](
-        ctx,
-        top_p_ptr,
-        top_p_size,
-        owning=False,
-    )
-    var seed_device = DeviceBuffer[DType.uint64](
-        ctx,
-        seed_ptr,
-        seed_size,
-        owning=False,
-    )
 
     # Enqueue the second kernel (stage 2)
     comptime kernel_2 = _topk_stage2[dtype, out_idx_type, sampling, largest]
     ctx.enqueue_function[kernel_2, kernel_2](
-        k_device,
+        k_ptr,
         max_k,
         num_blocks_per_input_,
         device_local_topk_vals.to_device_buffer(ctx),
         device_local_topk_idxs.to_device_buffer(ctx),
         out_vals.to_device_buffer(ctx),
         out_idxs.to_device_buffer(ctx),
-        temp_device,
-        top_p_device,
-        seed_device,
+        temp_ptr,
+        top_p_ptr,
+        min_p_ptr,
+        seed_ptr,
         grid_dim=grid_dim_stage2,
         block_dim=block_dim_stage2,
         shared_mem_bytes=shared_mem_bytes_2,
@@ -1882,6 +1877,7 @@ def topk_gpu[
         RuntimeInt[DType.int64]
     ],
     TopPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
+    MinPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
     SeedLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
 ](
     ctx: DeviceContext,
@@ -1897,6 +1893,9 @@ def topk_gpu[
     ] = None,
     top_p: Optional[
         TileTensor[DType.float32, TopPLayoutType, ImmutAnyOrigin]
+    ] = None,
+    min_p: Optional[
+        TileTensor[DType.float32, MinPLayoutType, ImmutAnyOrigin]
     ] = None,
     seed: Optional[
         TileTensor[DType.uint64, SeedLayoutType, ImmutAnyOrigin]
@@ -1916,6 +1915,7 @@ def topk_gpu[
         KLayoutType: Layout type of the k buffer.
         TemperatureLayoutType: Layout type of the temperature buffer.
         TopPLayoutType: Layout type of the top_p buffer.
+        MinPLayoutType: Layout type of the min_p buffer.
         SeedLayoutType: Layout type of the seed buffer.
 
     Args:
@@ -1940,6 +1940,8 @@ def topk_gpu[
             Device buffer of top elements to keep for each batch element.
         temperature: The temperature based scaling.
         top_p: Only use the tokens whose cumulative probability exceeds this threshold.
+        min_p: Per-row min-p threshold. Tokens with probability below
+            ``min_p * max_prob`` are excluded from sampling.
         seed: The seed to use for the random number generator.
     """
     comptime assert input.rank > 0, "Input rank must be positive"
@@ -2114,6 +2116,7 @@ def topk_gpu[
             block_size=block_size_,
             num_blocks_per_input=num_blocks_per_input_,
             top_p=top_p,
+            min_p=min_p,
             seed=seed,
         )
 
@@ -2130,6 +2133,7 @@ def _topk_topp_sampling_fi[
         RuntimeInt[DType.int64]
     ],
     TopPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
+    MinPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
     SeedLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
 ](
     ctx: DeviceContext,
@@ -2144,13 +2148,17 @@ def _topk_topp_sampling_fi[
     top_p: Optional[
         TileTensor[DType.float32, TopPLayoutType, ImmutAnyOrigin]
     ] = None,
+    min_p: Optional[
+        TileTensor[DType.float32, MinPLayoutType, ImmutAnyOrigin]
+    ] = None,
     rng_seed: Optional[
         TileTensor[DType.uint64, SeedLayoutType, ImmutAnyOrigin]
     ] = None,
 ) raises:
-    """Top-K + top-P sampling.
+    """Top-K + top-P + min-P sampling.
 
-    Applies softmax with per-row temperature scaling, then performs top-k+top-p
+    Applies softmax with per-row temperature scaling, optionally masks
+    probabilities below ``min_p * max_prob``, then performs top-k+top-p
     rejection sampling via the dual-pivot algorithm.
     """
     var shape = coord_to_index_list(input.layout.shape_coord())
@@ -2169,6 +2177,18 @@ def _topk_topp_sampling_fi[
         probs,
         temperature_arr=temperature,
     )
+
+    # Step 1b: apply min_p mask (zero probs below min_p * max_prob).
+    if min_p:
+        comptime MASK_BLOCK_SIZE = 256
+        comptime mask_kernel = apply_min_p_mask_kernel[dtype, MASK_BLOCK_SIZE]
+        ctx.enqueue_function[mask_kernel, mask_kernel](
+            probs_buf,
+            min_p.value().to_device_buffer(ctx),
+            d,
+            grid_dim=batch_size,
+            block_dim=MASK_BLOCK_SIZE,
+        )
 
     # Step 2: top-k + top-p rejection sampling from probabilities.
     # Reshape out_idxs from [batch, 1] (rank 2) to [batch] (rank 1).
@@ -2201,6 +2221,7 @@ def fused_token_sampling_gpu[
         RuntimeInt[DType.int64]
     ],
     TopPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
+    MinPLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
     SeedLayoutType: TensorLayout = RowMajorLayout[RuntimeInt[DType.int64]],
 ](
     ctx: DeviceContext,
@@ -2216,6 +2237,9 @@ def fused_token_sampling_gpu[
     ] = None,
     top_p: Optional[
         TileTensor[DType.float32, TopPLayoutType, ImmutAnyOrigin]
+    ] = None,
+    min_p: Optional[
+        TileTensor[DType.float32, MinPLayoutType, ImmutAnyOrigin]
     ] = None,
     seed: Optional[
         TileTensor[DType.uint64, SeedLayoutType, ImmutAnyOrigin]
@@ -2266,7 +2290,7 @@ def fused_token_sampling_gpu[
 
         comptime assert input.flat_rank == 2
 
-        var vocab_size = input.layout.shape[1]().value()
+        var vocab_size = Int(input.layout.shape[1]().value())
         var adjusted_max_k = vocab_size if max_k == -1 else max_k
 
         # softmax with temperature, then top-k+top-p rejection sampling.
@@ -2285,6 +2309,7 @@ def fused_token_sampling_gpu[
                 ](k),
                 temperature=temperature,
                 top_p=top_p,
+                min_p=min_p,
                 rng_seed=seed,
             )
             return
@@ -2308,6 +2333,7 @@ def fused_token_sampling_gpu[
             k=k,
             temperature=temperature,
             top_p=top_p,
+            min_p=min_p,
             block_size=block_size,
             num_blocks_per_input=num_blocks_per_input,
             seed=seed,
@@ -2331,8 +2357,8 @@ def apply_gumbel_noise_kernel[
 ](
     output: TileTensor[mut=True, dtype, OutputLayoutType, MutAnyOrigin],
     input: TileTensor[dtype, InputLayoutType, ImmutAnyOrigin],
-    temperature: UnsafePointer[Float32, ImmutAnyOrigin],
-    seed: UnsafePointer[UInt64, ImmutAnyOrigin],
+    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
 ):
     comptime EPS = Float32(1e-20)
     comptime LOG2 = Float32(0.6931471806)
@@ -2361,12 +2387,12 @@ def apply_gumbel_noise_kernel[
 
         for tok_idx in range(group_id, Int(num_tokens), num_groups):
             var temp_val = Float32(1.0)
-            if temperature._is_not_null():
-                temp_val = temperature[tok_idx]
+            if temperature:
+                temp_val = temperature.unsafe_value()[tok_idx]
 
             var seed_val = UInt64(0)
-            if seed._is_not_null():
-                seed_val = seed[tok_idx]
+            if seed:
+                seed_val = seed.unsafe_value()[tok_idx]
 
             var ld_ptr = input.ptr + tok_idx * N
             var st_ptr = output.ptr + tok_idx * N
@@ -2486,11 +2512,20 @@ def gumbel_sampling_gpu[
             hw_info.max_thread_block_size,
         ]
 
+        var temperature_ptr: Optional[
+            UnsafePointer[Float32, ImmutAnyOrigin]
+        ] = None
+        if temperature:
+            temperature_ptr = temperature.value().ptr
+        var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
+        if seed:
+            seed_ptr = seed.value().ptr
+
         ctx.enqueue_function[gumbel_kernel, gumbel_kernel](
             noised_input,
             input.as_immut(),
-            temperature.value().to_device_buffer(ctx),
-            seed.value().to_device_buffer(ctx),
+            temperature_ptr,
+            seed_ptr,
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
             attributes=pdl_launch_attributes(PDLLevel(1)),

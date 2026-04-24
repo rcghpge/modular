@@ -33,7 +33,7 @@ from std.builtin.device_passable import DevicePassable
 from std.builtin.rebind import downcast
 from std.builtin.format_int import _write_int
 from std.builtin.simd import _simd_construction_checks
-from std.builtin.variadics import Variadic
+from std.collections import OptionalReg
 from std.compile import get_type_name
 from std.format._utils import FormatStruct, Named, TypeNames
 from std.memory import memcpy
@@ -113,6 +113,18 @@ struct _UnsafePointerNicheStorage[
         )
 
 
+@always_inline("nodebug")
+@doc_hidden
+def pointer_offset[
+    T: AnyType, origin: Origin, address_space: AddressSpace, //
+](
+    pointer: OptionalReg[UnsafePointer[T, origin, address_space=address_space]],
+    idx: Some[Indexer],
+) -> type_of(pointer):
+    var offset = UnsafePointer(to=pointer).bitcast[type_of(pointer).T]()[] + idx
+    return UnsafePointer(to=offset).bitcast[type_of(pointer)]()[]
+
+
 # ===----------------------------------------------------------------------=== #
 # unsafe_cast
 # ===----------------------------------------------------------------------=== #
@@ -136,6 +148,30 @@ def unsafe_cast[
         UnsafePointer[from_type, from_origin, address_space=from_address_space]
     ],
     out result: Optional[
+        UnsafePointer[Type, origin, address_space=address_space]
+    ],
+):
+    result = UnsafePointer(to=pointer).bitcast[type_of(result)]()[]
+
+
+@always_inline
+@doc_hidden
+def unsafe_cast[
+    from_mut: Bool,
+    from_type: AnyType,
+    from_origin: Origin[mut=from_mut],
+    from_address_space: AddressSpace,
+    mut: Bool = from_mut,
+    //,
+    *,
+    Type: AnyType = from_type,
+    origin: Origin[mut=mut] = from_origin,
+    address_space: AddressSpace = from_address_space,
+](
+    pointer: OptionalReg[
+        UnsafePointer[from_type, from_origin, address_space=from_address_space]
+    ],
+    out result: OptionalReg[
         UnsafePointer[Type, origin, address_space=address_space]
     ],
 ):
@@ -204,9 +240,9 @@ def alloc[
         count,
     )
     var pointer = _malloc[type](size_of_t * count, alignment=alignment)
-    if unlikely(not pointer._is_not_null()):
+    if unlikely(not pointer):
         abort("alloc failed: returned a null pointer")
-    return pointer
+    return pointer.unsafe_value()
 
 
 # ===----------------------------------------------------------------------=== #
@@ -982,39 +1018,29 @@ struct UnsafePointer[
     @staticmethod
     def _is_convertible_to_device_type[T: AnyType]() -> Bool:
         comptime if Self.mut:
-            return Variadic.contains[
-                T,
-                Variadic.types[
-                    T=AnyType,
-                    Self,
-                    Self._OriginCastType[MutAnyOrigin],
-                    Self._OriginCastType[MutExternalOrigin],
-                    Self._OriginCastType[ImmutAnyOrigin],
-                    Self._OriginCastType[ImmutExternalOrigin],
-                    Self._UnsafePointerType,
-                    Self._UnsafePointerType._OriginCastType[MutAnyOrigin],
-                    Self._UnsafePointerType._OriginCastType[MutExternalOrigin],
-                    Self._UnsafePointerType._OriginCastType[ImmutAnyOrigin],
-                    Self._UnsafePointerType._OriginCastType[
-                        ImmutExternalOrigin
-                    ],
-                ],
-            ]
+            return TypeList.of[
+                Trait=AnyType,
+                Self,
+                Self._OriginCastType[MutAnyOrigin],
+                Self._OriginCastType[MutExternalOrigin],
+                Self._OriginCastType[ImmutAnyOrigin],
+                Self._OriginCastType[ImmutExternalOrigin],
+                Self._UnsafePointerType,
+                Self._UnsafePointerType._OriginCastType[MutAnyOrigin],
+                Self._UnsafePointerType._OriginCastType[MutExternalOrigin],
+                Self._UnsafePointerType._OriginCastType[ImmutAnyOrigin],
+                Self._UnsafePointerType._OriginCastType[ImmutExternalOrigin],
+            ]().contains[T]()
         else:
-            return Variadic.contains[
-                T,
-                Variadic.types[
-                    T=AnyType,
-                    Self,
-                    Self._OriginCastType[ImmutAnyOrigin],
-                    Self._OriginCastType[ImmutExternalOrigin],
-                    Self._UnsafePointerType,
-                    Self._UnsafePointerType._OriginCastType[ImmutAnyOrigin],
-                    Self._UnsafePointerType._OriginCastType[
-                        ImmutExternalOrigin
-                    ],
-                ],
-            ]
+            return TypeList.of[
+                Trait=AnyType,
+                Self,
+                Self._OriginCastType[ImmutAnyOrigin],
+                Self._OriginCastType[ImmutExternalOrigin],
+                Self._UnsafePointerType,
+                Self._UnsafePointerType._OriginCastType[ImmutAnyOrigin],
+                Self._UnsafePointerType._OriginCastType[ImmutExternalOrigin],
+            ]().contains[T]()
 
     def _to_device_type(self, target: MutOpaquePointer[_]):
         """Device dtype mapping from DeviceBuffer to the device's UnsafePointer.

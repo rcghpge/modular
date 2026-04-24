@@ -38,6 +38,24 @@ class StackedLinear(Module):
       modules whose weights are concatenated at graph-build time.
       Use when the checkpoint stores separate projections (e.g. ``q_proj``,
       ``k_proj``, ``v_proj``).
+
+    In **unfused** mode (``stacked=False``), the module sets
+    :attr:`~max.nn.Module._omit_module_attr_name`: its own attribute name
+    (typically ``qkv_proj``) is omitted from the FQN of its child weights.
+    The child names supplied via the ``names`` argument therefore double
+    as the external (checkpoint) names. For QKV stacking that means using
+    ``names=["q_proj", "k_proj", "v_proj"]`` so that
+    ``self.qkv_proj = StackedLinear(...)`` exposes weights at
+    ``self_attn.q_proj.weight`` rather than
+    ``self_attn.qkv_proj.q_proj.weight``. This removes the need for
+    per-architecture ``q_proj -> qkv_proj.q`` mapping in weight adapters.
+
+    In **stacked** mode (``stacked=True``), the attribute name is *not*
+    omitted: the single fused ``weight``/``bias`` would otherwise lose
+    all namespace context and collide with sibling attributes.
+    Stacked-mode weights remain at ``<attr>.weight`` / ``<attr>.bias``
+    (e.g. ``self_attn.qkv_proj.weight``) and weight adapters must
+    continue to map fused checkpoint names into that namespace.
     """
 
     def __init__(
@@ -59,7 +77,12 @@ class StackedLinear(Module):
         Args:
             in_dim: The input dimension shared by all projections.
             out_dims: Output dimension for each projection.
-            names: Attribute name for each child (e.g. ``["q", "k", "v"]``).
+            names: Attribute name for each child (e.g.
+                ``["q_proj", "k_proj", "v_proj"]``). In unfused mode these
+                names are also the FQNs the children's weights are exposed
+                under (see class docstring on
+                ``_omit_module_attr_name``), so they should match the
+                corresponding checkpoint names.
             dtype: Data type for all weights.
             device: Device for weight placement.
             stacked: When ``True``, create a single pre-stacked weight
@@ -122,6 +145,19 @@ class StackedLinear(Module):
                         clip_weight=clip_weight,
                     ),
                 )
+
+    @property
+    def _omit_module_attr_name(self) -> bool:
+        """Only unfused mode omits its attribute name from descendant FQNs.
+
+        Computed from ``self._stacked`` rather than stored as instance state
+        so it stays correct regardless of how the instance was constructed
+        (``__init__`` vs ``__new__`` / ``copy.copy`` / custom
+        deserialization). Stacked mode keeps its attribute name as the
+        prefix because the single fused weight has no per-projection name
+        to fall back on.
+        """
+        return not self._stacked
 
     def _child(self, name: str) -> Linear:
         return getattr(self, name)
@@ -308,12 +344,16 @@ class StackedLinear(Module):
         devices = list(devices)
         num_devices = len(devices)
 
+        # Per-shard out_dims so downstream consumers (notably
+        # ``stacked_weight_scale``'s broadcast for dynamic tensor-wise
+        # FP8) see shapes aligned with the sharded child weights.
+        shard_out_dims = [d // num_devices for d in self._out_dims]
+
         if self._stacked:
             weight_shards = self.weight.shard(devices)
             bias_shards = self.bias.shard(devices) if self._has_bias else None
             shards = []
             for i, device in enumerate(devices):
-                shard_out_dims = [d // num_devices for d in self._out_dims]
                 sl = StackedLinear(
                     in_dim=self._in_dim,
                     out_dims=shard_out_dims,
@@ -321,6 +361,9 @@ class StackedLinear(Module):
                     dtype=self.weight.dtype,
                     device=device,
                     stacked=True,
+                    has_bias=self._has_bias,
+                    quant_config=self._quant_config,
+                    clip_weight=self._clip_weight,
                     _is_sharding=True,
                 )
                 sl.weight = weight_shards[i]
@@ -333,16 +376,21 @@ class StackedLinear(Module):
             for n in self._names:
                 child_shards[n] = self._child(n).shard(devices)
 
+            # Re-use the parent's linear_cls so a re-shard wouldn't
+            # silently fall back to the default ``Linear``.
+            linear_cls = type(self._child(self._names[0]))
+
             shards = []
             for i, device in enumerate(devices):
                 sl = StackedLinear(
                     in_dim=self._in_dim,
-                    out_dims=self._out_dims,
+                    out_dims=shard_out_dims,
                     names=self._names,
                     dtype=self._child(self._names[0]).weight.dtype,
                     device=device,
                     stacked=False,
                     has_bias=self._has_bias,
+                    linear_cls=linear_cls,
                     quant_config=self._quant_config,
                     clip_weight=self._clip_weight,
                     _is_sharding=True,

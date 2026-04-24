@@ -389,6 +389,16 @@ class PixelGenerationTokenizer(
     def _resize_with_center_crop(
         image: PIL.Image.Image, target_width: int, target_height: int
     ) -> PIL.Image.Image:
+        # When the source is already at or above the target on both dims,
+        # do a pure PIL center crop to match the reference behavior.
+        # See `Flux2ImageProcessor._resize_and_crop` in `diffusers`.
+        w, h = image.size
+        if w >= target_width and h >= target_height:
+            left = (w - target_width) // 2
+            top = (h - target_height) // 2
+            return image.crop(
+                (left, top, left + target_width, top + target_height)
+            )
         ratio = target_width / target_height
         src_ratio = image.width / image.height
 
@@ -1065,13 +1075,20 @@ class PixelGenerationTokenizer(
         # 2. Preprocess input image if provided
         preprocessed_image_array = None
         if input_image is not None:
+            _preserve_aspect = (
+                self._pipeline_class_name != PipelineClassName.ZIMAGE
+            )
             preprocessed_image = self._preprocess_input_image(
                 input_image,
-                target_height=image_options.height,
-                target_width=image_options.width,
-                preserve_aspect_ratio=(
-                    self._pipeline_class_name != PipelineClassName.ZIMAGE
-                ),
+                # Only pass the user's output dims as preprocessing targets
+                # when the pipeline opts out of aspect preservation. For
+                # aspect-preserving pipelines, passing them would force-resize the
+                # input image to the output shape and defeat aspect preservation.
+                target_height=None
+                if _preserve_aspect
+                else image_options.height,
+                target_width=None if _preserve_aspect else image_options.width,
+                preserve_aspect_ratio=_preserve_aspect,
             )
             height = image_options.height or preprocessed_image.height
             width = image_options.width or preprocessed_image.width

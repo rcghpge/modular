@@ -26,6 +26,7 @@ from std.sys import CompilationTarget
 from std.sys._libc import (
     waitpid,
     posix_spawnp,
+    _get_environ,
     kill,
     SignalCodes,
     pipe,
@@ -92,8 +93,12 @@ struct Pipe:
     """Create a pipe for interprocess communication.
 
     Example usage:
-    ```
-    pipe().write_bytes("TEST".as_bytes())
+    ```mojo
+    from os.process import Pipe
+
+    def main() raises:
+        var pipe = Pipe()
+        pipe.write_bytes("TEST".as_bytes())
     ```
     """
 
@@ -209,10 +214,13 @@ struct Process:
     """Create and manage child processes from file executables.
 
     Example usage:
-    ```
-    child_process = Process.run("ls", List[String]("-lha"))
-    if child_process.interrupt():
-        print("Successfully interrupted.")
+    ```mojo
+    from os.process import Process
+
+    def main() raises:
+        var child_process = Process.run("ls", ["-lha"])
+        if child_process.interrupt():
+            print("Successfully interrupted.")
     ```
     """
 
@@ -417,7 +425,7 @@ struct Process:
             path.as_c_string_slice(),
             # Safety: `argv_array_ptr_cstr_ptr` has at least 2 elements so is non-null
             argv_array_ptr_cstr_ptr.unsafe_ptr(),
-            {},
+            _get_environ(),  # inherit parent's environment
         )
 
         if has_error_code > 0:

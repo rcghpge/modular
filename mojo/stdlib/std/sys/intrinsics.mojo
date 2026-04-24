@@ -108,7 +108,9 @@ def gather[
     In general, for some vector of pointers `base`, mask `mask`, and passthrough
     `passthrough` a call of the form:
 
-    ```mojo
+    ```text
+    from std.sys.intrinsics import gather
+
     result = gather(base, mask, passthrough)
     ```
 
@@ -207,7 +209,9 @@ def scatter[
     In general, for some vector `value`, vector of pointers `base`, and mask
     `mask` a call of the form:
 
-    ```mojo
+    ```text
+    from std.sys.intrinsics import scatter
+
     scatter(value, base, mask)
     ```
 
@@ -542,10 +546,6 @@ def masked_load[
     Returns:
       The loaded memory stored in a vector of type SIMD[dtype, size].
     """
-    assert (
-        addr._is_not_null()
-    ), "masked_load requires a valid (non-null) pointer"
-
     comptime if size == 1:
         return addr.load() if mask else passthrough[0]
 
@@ -587,10 +587,6 @@ def masked_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    assert (
-        addr._is_not_null()
-    ), "masked_store requires a valid (non-null) pointer"
-
     comptime if size == 1:
         if mask:
             addr.store(value[0])
@@ -630,10 +626,6 @@ def compressed_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    assert (
-        addr._is_not_null()
-    ), "compressed_store requires a valid (non-null) pointer"
-
     comptime if size == 1:
         if mask:
             addr.store(value[0])
@@ -677,10 +669,6 @@ def strided_load[
     Returns:
       A vector containing the loaded data.
     """
-    assert (
-        addr._is_not_null()
-    ), "strided_load requires a valid (non-null) pointer"
-
     comptime if simd_width == 1:
         return addr.load[invariant=invariant]() if mask else Scalar[dtype]()
 
@@ -722,10 +710,6 @@ def strided_store[
       mask: A binary vector which prevents memory access to certain lanes of
         `value`.
     """
-    assert (
-        addr._is_not_null()
-    ), "strided_store requires a valid (non-null) pointer"
-
     comptime if simd_width == 1:
         if mask:
             addr.store(value[0])
@@ -932,21 +916,6 @@ def implicitarg_ptr(
 
 
 @always_inline
-def readfirstlane(value: Int32) -> Int32:
-    """
-    Get the value in the lowest active lane of the input operand.
-
-    Args:
-        value: The input value.
-
-    Returns:
-        The value in the lowest active lane of the input operand.
-    """
-    comptime assert is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"
-    return llvm_intrinsic["llvm.amdgcn.readfirstlane.i32", Int32, Int32](value)
-
-
-@always_inline
 def readfirstlane(value: UnsafePointer) -> type_of(value):
     """
     Get the value in the lowest active lane of the input operand.
@@ -977,6 +946,31 @@ def readfirstlane(value: Int) -> type_of(value):
     comptime assert is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"
     return llvm_intrinsic[
         "llvm.amdgcn.readfirstlane", type_of(value), type_of(value)
+    ](value)
+
+
+@always_inline
+def readfirstlane[dtype: DType](value: Scalar[dtype]) -> Scalar[dtype]:
+    """Gets the value in the lowest active lane of the input operand.
+
+    Constraints:
+        The scalar type must be 2, 4, or 8 bytes wide.
+
+    Parameters:
+        dtype: The element type.
+
+    Args:
+        value: The input scalar value.
+
+    Returns:
+        The value in the lowest active lane of the input operand.
+    """
+    comptime assert is_amd_gpu(), "This intrinsic is only defined for AMD GPUs"
+    comptime assert (
+        size_of[Scalar[dtype]]() >= 2
+    ), "readfirstlane requires a scalar type of at least 16 bits"
+    return llvm_intrinsic[
+        "llvm.amdgcn.readfirstlane", Scalar[dtype], Scalar[dtype]
     ](value)
 
 

@@ -29,7 +29,7 @@ import subprocess
 import sys
 import time
 import warnings
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -116,7 +116,7 @@ from max.benchmark.benchmark_shared.request import (
     get_request_driver_class,
 )
 from max.benchmark.benchmark_shared.server_metrics import (
-    collect_server_metrics,
+    collect_benchmark_metrics,
     fetch_spec_decode_metrics,
     print_server_metrics,
 )
@@ -144,7 +144,7 @@ BENCHMARK_SERVING_ARGPARSER_DESCRIPTION = (
     " before running this command."
 )
 
-logger = logging.getLogger("benchmark_serving")
+logger = logging.getLogger(__name__)
 
 
 def compute_output_len(
@@ -692,8 +692,10 @@ def print_benchmark_summary(
     print("=" * 50)
     if lora_manager:
         print_lora_benchmark_results(lora_manager)
-    if metrics.server_metrics:
-        print_server_metrics(metrics.server_metrics)
+    for label, pm in metrics.metrics_by_endpoint.items():
+        if len(metrics.metrics_by_endpoint) > 1:
+            print(f"\n--- Metrics: {label} ---")
+        print_server_metrics(pm)
     print("=" * 50)
 
 
@@ -737,6 +739,23 @@ def _parse_metadata(metadata: list[str] | None) -> dict[str, str]:
     return result
 
 
+def _serialize_parsed_metrics(pm: ParsedMetrics) -> dict[str, object]:
+    """Serialize a ParsedMetrics into the JSON-ready dict format."""
+    return {
+        "counters": pm.counters,
+        "gauges": pm.gauges,
+        "histograms": {
+            name: {
+                "buckets": hist.buckets,
+                "sum": hist.sum,
+                "count": hist.count,
+                "mean": hist.mean,
+            }
+            for name, hist in pm.histograms.items()
+        },
+    }
+
+
 def _add_optional_result(
     result: dict[str, Any],
     metrics: BenchmarkMetrics | PixelGenerationBenchmarkMetrics,
@@ -750,33 +769,28 @@ def _add_optional_result(
             "unload_times_ms": lora_manager.metrics.unload_times_ms,
         }
 
-    if metrics.server_metrics is None:
+    if not metrics.metrics_by_endpoint:
         return
 
-    result["server_metrics"] = {
-        "counters": metrics.server_metrics.counters,
-        "gauges": metrics.server_metrics.gauges,
-        "histograms": {
-            name: {
-                "buckets": hist.buckets,
-                "sum": hist.sum,
-                "count": hist.count,
-                "mean": hist.mean,
-            }
-            for name, hist in metrics.server_metrics.histograms.items()
-        },
-    }
-
+    # Backwards compat: `server_metrics` mirrors the first endpoint so existing
+    # BigQuery/analysis consumers keep working. `server_metrics_by_endpoint`
+    # carries the full per-endpoint breakdown.
+    first_pm = next(iter(metrics.metrics_by_endpoint.values()))
+    result["server_metrics"] = _serialize_parsed_metrics(first_pm)
     if isinstance(metrics, BenchmarkMetrics):
         result["server_metrics"].update(
             {
-                # Convenience fields for prefill/decode breakdown.
                 "prefill_batch_execution_time_ms": metrics.mean_prefill_batch_time_ms,
                 "prefill_batch_count": metrics.prefill_batch_count,
                 "decode_batch_execution_time_ms": metrics.mean_decode_batch_time_ms,
                 "decode_batch_count": metrics.decode_batch_count,
             }
         )
+
+    result["server_metrics_by_endpoint"] = {
+        label: _serialize_parsed_metrics(pm)
+        for label, pm in metrics.metrics_by_endpoint.items()
+    }
 
 
 def hash_string(s: str) -> str:
@@ -1040,7 +1054,7 @@ def calculate_metrics(
     max_concurrency: int | None,
     max_concurrent_conversations: int | None,
     collect_gpu_stats: bool,
-    server_metrics: ParsedMetrics | None = None,
+    metrics_by_endpoint: Mapping[str, ParsedMetrics] | None = None,
 ) -> tuple[BenchmarkMetrics, list[int]]:
     actual_output_lens: list[int] = []
     nonempty_response_chunks = 0
@@ -1171,7 +1185,7 @@ def calculate_metrics(
         available_gpu_memory_mib=available_gpu_memory_mib,
         gpu_utilization=gpu_utilization,
         cpu_metrics=cpu_metrics,
-        server_metrics=server_metrics,
+        metrics_by_endpoint=metrics_by_endpoint or {},
     )
 
     # Override TPOT mean with weighted average: sum(ITL) / decode_tokens.
@@ -1193,7 +1207,7 @@ def calculate_pixel_generation_metrics(
     cpu_metrics: CPUMetrics | None,
     max_concurrency: int | None,
     collect_gpu_stats: bool,
-    server_metrics: ParsedMetrics | None = None,
+    metrics_by_endpoint: Mapping[str, ParsedMetrics] | None = None,
 ) -> PixelGenerationBenchmarkMetrics:
     completed = 0
     failures = 0
@@ -1241,7 +1255,7 @@ def calculate_pixel_generation_metrics(
         available_gpu_memory_mib=available_gpu_memory_mib,
         gpu_utilization=gpu_utilization,
         cpu_metrics=cpu_metrics,
-        server_metrics=server_metrics,
+        metrics_by_endpoint=metrics_by_endpoint or {},
     )
 
 
@@ -1834,7 +1848,7 @@ def _build_pixel_generation_result(
     cpu_metrics: CPUMetrics | None,
     max_concurrency: int | None,
     collect_gpu_stats: bool,
-    server_metrics: ParsedMetrics | None,
+    metrics_by_endpoint: Mapping[str, ParsedMetrics] | None = None,
 ) -> tuple[dict[str, object], PixelGenerationBenchmarkMetrics]:
     """Compute metrics and build the result dict for pixel-generation tasks."""
     if not _is_pixel_generation_outputs(outputs):
@@ -1849,7 +1863,7 @@ def _build_pixel_generation_result(
         cpu_metrics=cpu_metrics,
         max_concurrency=max_concurrency,
         collect_gpu_stats=collect_gpu_stats,
-        server_metrics=server_metrics,
+        metrics_by_endpoint=metrics_by_endpoint,
     )
     result = metrics.to_result_dict()
     result.update(
@@ -1882,8 +1896,8 @@ def _build_text_generation_result(
     max_concurrency: int | None,
     max_concurrent_conversations: int | None,
     collect_gpu_stats: bool,
-    server_metrics: ParsedMetrics | None,
-    spec_decode_stats: SpecDecodeStats | None,
+    metrics_by_endpoint: Mapping[str, ParsedMetrics] | None = None,
+    spec_decode_stats: SpecDecodeStats | None = None,
 ) -> tuple[dict[str, object], BenchmarkMetrics]:
     """Compute metrics and build the result dict for text-generation tasks."""
     if not _is_text_generation_outputs(outputs):
@@ -1902,7 +1916,7 @@ def _build_text_generation_result(
         max_concurrency=max_concurrency,
         max_concurrent_conversations=max_concurrent_conversations,
         collect_gpu_stats=collect_gpu_stats,
-        server_metrics=server_metrics,
+        metrics_by_endpoint=metrics_by_endpoint,
     )
 
     result = text_metrics.to_result_dict()
@@ -1939,7 +1953,7 @@ def _build_text_generation_result(
         max_concurrency=max_concurrency,
         max_concurrent_conversations=max_concurrent_conversations,
         collect_gpu_stats=collect_gpu_stats,
-        server_metrics=server_metrics,
+        metrics_by_endpoint=metrics_by_endpoint,
     )
 
     return result, text_metrics
@@ -1955,7 +1969,7 @@ def _add_steady_state_result(
     max_concurrency: int | None,
     max_concurrent_conversations: int | None,
     collect_gpu_stats: bool,
-    server_metrics: ParsedMetrics | None,
+    metrics_by_endpoint: Mapping[str, ParsedMetrics] | None,
 ) -> None:
     """Detect steady-state window and add its metrics to *result*."""
     steady = detect_steady_state(outputs)
@@ -1997,7 +2011,7 @@ def _add_steady_state_result(
                 max_concurrency=max_concurrency,
                 max_concurrent_conversations=max_concurrent_conversations,
                 collect_gpu_stats=collect_gpu_stats,
-                server_metrics=server_metrics,
+                metrics_by_endpoint=metrics_by_endpoint,
             )
             for suffix, value in _steady_state_metric_values(ss_metrics):
                 result[f"steady_state_{suffix}"] = value
@@ -2126,6 +2140,7 @@ async def benchmark(
     collect_gpu_stats: bool,
     collect_cpu_stats: bool,
     collect_server_stats: bool,
+    metrics_urls: Mapping[str, str],
     print_inputs_and_outputs: bool,
     max_requests: int,
     skip_first_n_requests: int,
@@ -2280,18 +2295,13 @@ async def benchmark(
             )
 
         # Capture baseline server metrics before benchmark starts
-        baseline_server_metrics = None
+        baseline_endpoints: Mapping[str, ParsedMetrics] = {}
         if collect_server_stats:
             try:
-                baseline_server_metrics = collect_server_metrics(
-                    backend, base_url
+                baseline_endpoints = collect_benchmark_metrics(
+                    metrics_urls, backend, base_url
                 )
-                logger.info(
-                    f"Captured baseline server metrics: "
-                    f"{len(baseline_server_metrics.counters)} counters, "
-                    f"{len(baseline_server_metrics.gauges)} gauges, "
-                    f"{len(baseline_server_metrics.histograms)} histograms"
-                )
+                logger.info("Captured baseline server metrics")
             except Exception as e:
                 logger.warning(
                     f"Failed to capture baseline server metrics: {e}"
@@ -2471,26 +2481,13 @@ async def benchmark(
         cpu_metrics_result = cpu_collector.dump_stats()
 
     # Collect server-side metrics from Prometheus endpoint (with delta from baseline)
-    server_metrics = None
+    endpoint_metrics: Mapping[str, ParsedMetrics] = {}
     if collect_server_stats:
         try:
-            server_metrics = collect_server_metrics(
-                backend, base_url, baseline_server_metrics
+            endpoint_metrics = collect_benchmark_metrics(
+                metrics_urls, backend, base_url, baseline=baseline_endpoints
             )
-            if baseline_server_metrics is not None:
-                logger.info(
-                    f"Computed server metrics delta: "
-                    f"{len(server_metrics.counters)} counters, "
-                    f"{len(server_metrics.gauges)} gauges, "
-                    f"{len(server_metrics.histograms)} histograms"
-                )
-            else:
-                logger.info(
-                    f"Collected server metrics: "
-                    f"{len(server_metrics.counters)} counters, "
-                    f"{len(server_metrics.gauges)} gauges, "
-                    f"{len(server_metrics.histograms)} histograms"
-                )
+            logger.info("Collected server metrics (final)")
         except Exception as e:
             logger.warning(f"Failed to collect server metrics: {e}")
 
@@ -2513,7 +2510,7 @@ async def benchmark(
             cpu_metrics=cpu_metrics_result,
             max_concurrency=max_concurrency,
             collect_gpu_stats=collect_gpu_stats,
-            server_metrics=server_metrics,
+            metrics_by_endpoint=endpoint_metrics,
         )
     else:
         result, metrics = _build_text_generation_result(
@@ -2527,7 +2524,7 @@ async def benchmark(
             max_concurrency=max_concurrency,
             max_concurrent_conversations=max_concurrent_conversations,
             collect_gpu_stats=collect_gpu_stats,
-            server_metrics=server_metrics,
+            metrics_by_endpoint=endpoint_metrics,
             spec_decode_stats=spec_decode_stats,
         )
 
@@ -2581,16 +2578,28 @@ def _apply_workload_to_config(
 
     Keys are converted from kebab-case to snake_case.  Path objects are
     stringified and env vars in string values are expanded.
+
+    Fields already in `config.model_fields_set` (i.e. explicitly provided
+    by the caller, whether via CLI args or direct construction) are left
+    unchanged so that CLI values always take precedence over workload YAML.
     """
     for k, v in workload.items():
         field_name = k.replace("-", "_")
-        if field_name not in config.model_fields:
+        if field_name not in ServingBenchmarkConfig.model_fields:
             logger.warning(f"Ignoring unknown workload key: {k}")
+            continue
+        if field_name in config.model_fields_set:
+            logger.info(
+                f"CLI flag --{k} takes precedence over workload YAML"
+                f" (CLI: {getattr(config, field_name)!r},"
+                f" workload: {v!r})"
+            )
             continue
         if isinstance(v, Path):
             v = str(v)
         elif isinstance(v, str):
             v = os.path.expandvars(v)
+        logger.info(f"Applying workload YAML value: --{k}={v!r}")
         setattr(config, field_name, v)
 
 
@@ -2631,7 +2640,7 @@ def flush_prefix_cache(
 class BenchmarkRunResult:
     """Result of one (max_concurrency, request_rate) benchmark configuration.
 
-    Returned by :func:`main_with_parsed_args` — one entry per (mc, rr) combo
+    Yielded by :func:`main_with_parsed_args` — one entry per (mc, rr) combo
     after median selection across ``num_iters`` iterations.
     """
 
@@ -2738,6 +2747,7 @@ def _execute_benchmark(
             collect_gpu_stats=args.collect_gpu_stats,
             collect_cpu_stats=args.collect_cpu_stats,
             collect_server_stats=args.collect_server_stats,
+            metrics_urls=args.metrics_urls,
             print_inputs_and_outputs=args.print_inputs_and_outputs,
             max_requests=args.num_prompts,
             skip_first_n_requests=skip_first,
@@ -2853,11 +2863,11 @@ def _save_output_lengths(
 
 def main_with_parsed_args(
     args: ServingBenchmarkConfig,
-) -> list[BenchmarkRunResult]:
+) -> Iterator[BenchmarkRunResult]:
     logging.basicConfig(
         format="%(asctime)s.%(msecs)03d %(levelname)s: %(name)s: %(message)s",
         datefmt="%H:%M:%S",
-        level=logging.INFO,
+        level=logging.DEBUG if args.verbose else logging.INFO,
     )
 
     logger.info(args)
@@ -2878,8 +2888,10 @@ def main_with_parsed_args(
                 if not path.is_absolute():
                     path = Path(args.workload_config).parent / path
                 workload[key] = path
-        # CLI max_concurrency always takes precedence over the YAML.
-        workload.pop("max-concurrency", None)
+        # Resolve max_concurrency: CLI > YAML.
+        yaml_max_concurrency = workload.pop("max-concurrency", None)
+        if yaml_max_concurrency is not None and args.max_concurrency is None:
+            args.max_concurrency = str(yaml_max_concurrency)
         # Resolve num_prompts: CLI > YAML > default (deferred).
         cli_num_prompts = args.num_prompts is not None
         yaml_num_prompts = workload.pop("num-prompts", None)
@@ -2890,25 +2902,26 @@ def main_with_parsed_args(
         w_duration = workload.pop("max-benchmark-duration-s", None)
         if w_duration is not None and args.max_benchmark_duration_s is None:
             args.max_benchmark_duration_s = int(w_duration)
-        # Warn + default when nothing constrains run length.
-        has_prompts = args.num_prompts is not None
-        has_duration = args.max_benchmark_duration_s is not None
-        has_multiplier = args.num_prompts_multiplier is not None
-        # The multiplier dynamically computes num_prompts per-mc, but only
-        # when no explicit duration also constrains the run.
-        multiplier_will_resolve = has_multiplier and not has_duration
-        if not has_prompts and not has_duration and not has_multiplier:
-            logger.warning(
-                "Neither --num-prompts nor --max-benchmark-duration-s is"
-                " specified. Defaulting to --num-prompts 1000 and"
-                " --max-benchmark-duration-s 300"
-            )
-            args.num_prompts = 1000
-            args.max_benchmark_duration_s = 300
-        elif not has_prompts and not multiplier_will_resolve:
-            args.num_prompts = 1000
         _apply_workload_to_config(args, workload)
         args.skip_test_prompt = True
+
+    # Warn + default when nothing constrains run length (common to both paths).
+    has_prompts = args.num_prompts is not None
+    has_duration = args.max_benchmark_duration_s is not None
+    has_multiplier = args.num_prompts_multiplier is not None
+    # The multiplier dynamically computes num_prompts per-mc, but only
+    # when no explicit duration also constrains the run.
+    multiplier_will_resolve = has_multiplier and not has_duration
+    if not has_prompts and not has_duration and not has_multiplier:
+        logger.warning(
+            "Neither --num-prompts nor --max-benchmark-duration-s is"
+            " specified. Defaulting to --num-prompts 1000 and"
+            " --max-benchmark-duration-s 300"
+        )
+        args.num_prompts = 1000
+        args.max_benchmark_duration_s = 300
+    elif not has_prompts and not multiplier_will_resolve:
+        args.num_prompts = 1000
 
     # ---- Parse sweep ranges ----
     concurrency_range = parse_comma_separated(args.max_concurrency, int_or_none)
@@ -2931,7 +2944,6 @@ def main_with_parsed_args(
 
     # ---- Dry run ----
     if args.dry_run:
-        results: list[BenchmarkRunResult] = []
         for mc in concurrency_range:
             for rr in request_rate_range:
                 print(
@@ -2944,14 +2956,12 @@ def main_with_parsed_args(
                     f" max_benchmark_duration_s="
                     f"{args.max_benchmark_duration_s}"
                 )
-                results.append(
-                    BenchmarkRunResult(
-                        max_concurrency=mc,
-                        request_rate=rr,
-                        num_prompts=args.num_prompts or 0,
-                    )
+                yield BenchmarkRunResult(
+                    max_concurrency=mc,
+                    request_rate=rr,
+                    num_prompts=args.num_prompts or 0,
                 )
-        return results
+        return
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -3380,8 +3390,6 @@ def main_with_parsed_args(
     )
 
     # ---- Sweep loop ----
-    run_results: list[BenchmarkRunResult] = []
-
     for mc in concurrency_range:
         if use_dynamic_num_prompts:
             assert args.num_prompts_multiplier is not None
@@ -3437,17 +3445,13 @@ def main_with_parsed_args(
             # Output lengths recording (for the median iteration).
             _save_output_lengths(args, best_result, session.benchmark_task)
 
-            run_results.append(
-                BenchmarkRunResult(
-                    mc,
-                    rr,
-                    args.num_prompts or 0,
-                    best_metrics,
-                    best_result,
-                )
+            yield BenchmarkRunResult(
+                mc,
+                rr,
+                args.num_prompts or 0,
+                best_metrics,
+                best_result,
             )
-
-    return run_results
 
 
 def _extract_metadata_args(

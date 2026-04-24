@@ -13,7 +13,7 @@
 """This module implements the low level concurrency library."""
 
 from std.os import abort
-from std.os.atomic import Atomic
+from std.atomic import Atomic
 from std.ffi import _CPointer, external_call
 from std.gpu.host.device_context import _DeviceContextPtr
 
@@ -140,6 +140,29 @@ def parallelism_level() -> Int:
             Int32,
         ]()
     )
+
+
+def parallelism_level(ctx: Optional[DeviceContext]) -> Int:
+    """Gets the parallelism level from a DeviceContext.
+
+    For CPU contexts this returns the number of worker threads in the
+    runtime associated with that context. Falls back to the global
+    parallelism level if the context is None or the query fails.
+
+    Args:
+        ctx: The device context to query.
+
+    Returns:
+        The parallelism level of the context.
+    """
+    from std.gpu.host import DeviceAttribute
+
+    if ctx:
+        try:
+            return ctx.value().get_attribute(DeviceAttribute.PARALLELISM_LEVEL)
+        except:
+            pass
+    return parallelism_level()
 
 
 def create_task(
@@ -674,6 +697,15 @@ struct DeviceContextPtr(Defaultable, ImplicitlyCopyable, RegisterPassable):
             The `DeviceContext` that this pointer points to.
         """
         return self[]
+
+    def get_optional_device_context(self) -> Optional[DeviceContext]:
+        """Get the `DeviceContext` that this pointer points to if it is non-null,
+        otherwise None.
+
+        Returns:
+            The `DeviceContext` that this pointer points to, or `None`.
+        """
+        return Optional(self[]) if self._handle else None
 
 
 struct DeviceContextPtrList[size: Int](Sized, TrivialRegisterPassable):

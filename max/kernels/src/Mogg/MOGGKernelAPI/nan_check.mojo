@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""NaN/Inf detection kernels for the MODULAR_MAX_NAN_CHECK feature.
+"""NaN/Inf detection kernels for the max-debug.nan-check feature.
 
 These kernels are registered as custom ops in MOGGKernelAPI and inserted
 by the NanCheckPass compiler pass. The architecture is:
@@ -28,7 +28,7 @@ from std.algorithm import elementwise
 from std.gpu import barrier, block_dim, block_idx, thread_idx
 from std.gpu.host.info import is_cpu
 from std.memory import alloc, stack_allocation
-from std.os import Atomic
+from std.atomic import Atomic
 from std.sys import simd_width_of
 from std.utils.numerics import isinf, isnan
 
@@ -123,7 +123,9 @@ def nan_check_count[
             if infs > 0:
                 _ = Atomic.fetch_add(inf_acc, infs)
 
-        elementwise[scan, simd_width_of[dtype]()](total)
+        elementwise[scan, simd_width_of[dtype]()](
+            total, ctx.get_optional_device_context()
+        )
 
         nan_count_out.unsafe_ptr()[] = nan_acc[]
         inf_count_out.unsafe_ptr()[] = inf_acc[]

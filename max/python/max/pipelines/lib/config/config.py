@@ -115,7 +115,7 @@ _AUTO_ENABLE_OVERLAP_SCHEDULER_ARCHITECTURES = (
     "Gemma4ForConditionalGeneration",
     "UnifiedEagleLlama3ForCausalLM",
     "UnifiedMTPDeepseekV3ForCausalLM",
-    "UnifiedEagleKimik25ForCausalLM",
+    "Eagle3DeepseekV2ForCausalLM",
 )
 
 _AUTO_ENABLE_DEVICE_GRAPH_CAPTURE_ARCHITECTURES = (
@@ -128,6 +128,7 @@ _AUTO_ENABLE_DEVICE_GRAPH_CAPTURE_ARCHITECTURES = (
     "Gemma4ForConditionalGeneration",
     "UnifiedEagleLlama3ForCausalLM",
     "UnifiedMTPDeepseekV3ForCausalLM",
+    "Eagle3DeepseekV2ForCausalLM",
 )
 
 
@@ -878,11 +879,6 @@ class PipelineConfig(ConfigFileModel):
                 and self._is_eligible_for_overlap_serve_optimizations()
                 # Device graph capture is not supported for prefill-only workers.
                 and self.runtime.pipeline_role != "prefill_only"
-                # TODO: Support device graph capture for num_speculative_tokens > 1
-                and (
-                    self.speculative is None
-                    or self.speculative.num_speculative_tokens == 1
-                )
             ):
                 self.runtime.device_graph_capture = True
                 logger.info(

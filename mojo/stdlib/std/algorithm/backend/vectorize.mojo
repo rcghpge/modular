@@ -49,6 +49,7 @@ def vectorize[
 
     ```mojo
     from std.algorithm.functional import vectorize
+    from std.memory import alloc
     from std.sys import simd_width_of
 
     # The amount of elements to loop through
@@ -83,7 +84,7 @@ def vectorize[
     You can also unroll the loop to potentially improve performance at the cost
     of binary size:
 
-    ```
+    ```text
     vectorize[closure, width, unroll_factor=2](size)
     ```
 
@@ -91,7 +92,7 @@ def vectorize[
     fewer arithmetic, comparison, and conditional jump operations. The assembly
     would look like this in pseudocode:
 
-    ```
+    ```text
     closure[4](0)
     closure[4](4)
     # Remainder loop won't unroll unless `size` is passed as a parameter
@@ -163,6 +164,7 @@ def vectorize[
 
     ```mojo
     from std.algorithm.functional import vectorize
+    from std.memory import alloc
     from std.sys import simd_width_of
     from std.math import iota
     from std.sys.intrinsics import masked_store
@@ -209,7 +211,7 @@ def vectorize[
     You can also unroll the main loop to potentially improve performance at the
     cost of binary size:
 
-    ```
+    ```text
     vectorize[simd_width, unroll_factor=2](size, closure)
     ```
 
@@ -217,7 +219,7 @@ def vectorize[
     in fewer arithmetic, comparison, and conditional jump operations. In
     pseudocode:
 
-    ```
+    ```text
     closure[4](0, 4)
     closure[4](4, 4)
     closure[4](8, 2)  # single predicated tail call
@@ -281,6 +283,7 @@ def vectorize[
 
     ```mojo
     from std.algorithm.functional import vectorize
+    from std.memory import alloc
     from std.sys import simd_width_of
 
     # The amount of elements to loop through
@@ -289,7 +292,7 @@ def vectorize[
     comptime simd_width = simd_width_of[DType.int32]()  # assumed to be 4 in this example
 
     def main():
-        var p = UnsafePointer[Int32].alloc(size)
+        var p = alloc[Int32](size)
 
         # The closure can capture the `p` pointer with unified {mut}
         def closure[width: Int](i: Int) unified {mut}:
@@ -319,7 +322,7 @@ def vectorize[
     You can also unroll the main loop to potentially improve performance at the
     cost of binary size:
 
-    ```
+    ```text
     vectorize[width, size=size, unroll_factor=2](closure)
     ```
 
@@ -327,7 +330,7 @@ def vectorize[
     fewer arithmetic, comparison, and conditional jump operations. The assembly
     would look like this in pseudocode:
 
-    ```
+    ```text
     closure[4](0)
     closure[4](4)
     closure[2](8)

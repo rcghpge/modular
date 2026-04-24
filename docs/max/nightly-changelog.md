@@ -40,6 +40,18 @@ This version is still a work in progress.
 
 ### Python API {#26-3-max-python}
 
+- Added `ops.roi_align` graph op and `F.roi_align` functional wrapper for
+  ROI Align pooling over NHWC inputs with configurable spatial scale, sampling
+  ratio, alignment mode, and AVG/MAX pooling.
+- Added `roi_align` op handler to the MO eager interpreter, enabling
+  eager-mode execution of ROI Align pooling without graph compilation.
+- Added `ConstantExternalOp` and `ConstantScalarOp` handlers to the MO eager
+  interpreter, allowing graphs with external weights and scalar constants to
+  run without falling back to full compilation.
+- Added `ReduceRmsNormOp` handler to the MO eager interpreter, enabling
+  eager-mode execution of RMS normalization without graph compilation.
+- Added `ReduceGroupNormOp` handler to the MO eager interpreter, enabling
+  eager-mode execution of group normalization without graph compilation.
 - Fixed tensor slicing with negative integer indices (e.g. `hidden[:, -1]`)
   which previously raised a `RuntimeError` at compile time.
 - Setting `MODULAR_MAX_UNINITIALIZED_READ_CHECK=true` enables detection of
@@ -164,6 +176,15 @@ This version is still a work in progress.
   the experimental eager interpreter. These internal ops are typically
   lowered by the graph compiler; the handlers prevent crashes if they
   survive into the interpreter.
+- Added `mo.mutable.store` and `mo.mutable.store.slice` handlers to the
+  experimental eager interpreter. These complement the existing
+  `mo.mutable.load` handler and enable eager execution of in-place buffer
+  writes (full-tensor stores and slice-indexed stores).
+- Rewrote the eager-interpreter `mo.mutable.store.slice` handler to write
+  slices via a device-side Mojo kernel instead of a host numpy round-trip.
+  GPU buffers no longer full-buffer D→H→D on every call, and `bfloat16`
+  and `float8_*` dtypes are now supported. `float4_e2m1fn` remains
+  unsupported.
 - Added defensive `mo.gather_sum` handler to the experimental eager
   interpreter. This fused composite op (gather axis 0 + sum axis 1) is
   used by DLRM-style multi-hot embeddings; the handler prevents crashes
@@ -183,11 +204,27 @@ This version is still a work in progress.
   without falling back to compilation.
 - Added `distributed_broadcast` collective to `distributed_functional` for
   hardware-accelerated root-to-all tensor replication.
+- Added `non_maximum_suppression` op handler to the experimental eager
+  interpreter (CPU), enabling NMS to run through the interpreter without
+  falling back to compilation.
+- Added `max.graph.ops.non_maximum_suppression` graph operation (and
+  `max.experimental.functional.non_maximum_suppression` wrapper) for
+  constructing ONNX-style non-maximum suppression in MAX graphs.
 - Added `distributed.reducescatter.sum` op handler to the eager interpreter,
   enabling multi-GPU eager execution of reduce-scatter collectives without
   falling back to compilation.
 - Added `distributed_reducescatter_sum` collective to `distributed_functional`
   for hardware-accelerated reduce-and-scatter tensor distribution.
+- Added `max.nn.StackedLinear` for QKV-style stacked projections, with a
+  fused (`stacked=True`) and an unfused (`stacked=False`) layout. Unfused
+  mode opts into a new `Module._omit_module_attr_name` flag, which drops
+  the wrapper's own attribute name from descendant weight FQNs, so a
+  `self.qkv_proj = StackedLinear(names=["q_proj", "k_proj", "v_proj"],
+  stacked=False)` exposes weights at `self_attn.q_proj.weight` rather
+  than `self_attn.qkv_proj.q_proj.weight`. This lets HuggingFace
+  checkpoint names flow into models without per-architecture remapping
+  in their `weight_adapters.py`.
+
 - `Module.compile()` now accepts a `custom_extensions` parameter for loading
   custom Mojo kernel libraries at graph construction time, fixing validation
   failures for kernels with struct-level parameters.
@@ -235,6 +272,25 @@ This version is still a work in progress.
 - Optimized GPU `topk` stage-1 kernel with a per-thread register heap that
   caches the top-8 elements during a single scan pass, eliminating redundant
   global memory re-reads for the first 8 extraction iterations.
+
+- Moved `partial_simd_load` and `partial_simd_store` from
+  `buffer.buffer` to `linalg.utils` and removed the `buffer` package. Update
+  imports from `from buffer.buffer import ...` to
+  `from linalg.utils import ...`.
+
+## 🛠️ Fixed {#26-3-fixed}
+
+- Fixed MAX tools aborting at startup with
+  `std::filesystem::filesystem_error` when `$HOME` is not traversable by the
+  running UID (common in containerized CI where the image's build-time UID
+  differs from the runtime UID). The config search now treats permission
+  errors as "not found" and falls through to the next candidate.
+  ([Issue #6412](https://github.com/modular/modular/issues/6412))
+
+- Fixed `enqueue_fill()` taking O(N) HIP API calls for `float64` buffers on
+  AMD GPUs when the high and low 32-bit halves of the fill value differ (e.g.,
+  `2.0`), reducing the call count to O(log N).
+  ([Issue #6417](https://github.com/modular/modular/issues/6417))
 
 ## Mojo language {#26-3-mojo}
 

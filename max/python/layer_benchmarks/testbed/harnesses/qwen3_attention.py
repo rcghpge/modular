@@ -42,32 +42,21 @@ import torch
 from max.driver import DLPackArray
 from max.dtype import DType
 from max.graph import DeviceRef, Graph, TensorType, ops
-from max.nn.kv_cache import KVCacheParams, unflatten_ragged_attention_inputs
+from max.nn.kv_cache import KVCacheParams
 from max.nn.rotary_embedding import RotaryEmbedding
-from max.pipelines.architectures.qwen3.layers.attention import (
-    Qwen3Attention,
-)
+from max.pipelines.architectures.qwen3.layers.attention import Qwen3Attention
 from transformers.models.qwen3.configuration_qwen3 import Qwen3Config
 from transformers.models.qwen3.modeling_qwen3 import (
     Qwen3Attention as HFQwen3Attention,
 )
-from transformers.models.qwen3.modeling_qwen3 import (
-    Qwen3RotaryEmbedding,
-)
+from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding
 
 from testbed.harnesses.ragged_attention_harness import (
-    HF_TO_HARNESS_BASE,
     AttentionDynamicParams,
     AttentionStaticParams,
     RaggedAttentionHarness,
 )
 from testbed.registry import register_harness
-
-_HF_TO_HARNESS = {
-    **HF_TO_HARNESS_BASE,
-    "q_norm.weight": "q_norm.weight",
-    "k_norm.weight": "k_norm.weight",
-}
 
 
 @dataclass
@@ -139,15 +128,15 @@ class Qwen3AttentionHarness(RaggedAttentionHarness[Qwen3AttentionStaticParams]):
         kv_dim = n_kv_heads * head_dim
 
         weights: dict[str, torch.Tensor] = {
-            "qkv_proj.q.weight": torch.randn(
+            "q_proj.weight": torch.randn(
                 q_dim, hidden_size, dtype=torch.bfloat16
             )
             * 0.0344,
-            "qkv_proj.k.weight": torch.randn(
+            "k_proj.weight": torch.randn(
                 kv_dim, hidden_size, dtype=torch.bfloat16
             )
             * 0.0317,
-            "qkv_proj.v.weight": torch.randn(
+            "v_proj.weight": torch.randn(
                 kv_dim, hidden_size, dtype=torch.bfloat16
             )
             * 0.0316,
@@ -184,9 +173,11 @@ class Qwen3AttentionHarness(RaggedAttentionHarness[Qwen3AttentionStaticParams]):
             ),
         ) as graph:
             inputs, input_row_offsets, *kv_cache = graph.inputs
-            kv_collection = unflatten_ragged_attention_inputs(
-                kv_cache, n_devices=1
-            )[0]
+            kv_collection = (
+                kv_params.get_symbolic_inputs()
+                .unflatten(iter(kv_cache))
+                .inputs[0]
+            )
             layer_idx_const = ops.constant(
                 0, DType.uint32, device=DeviceRef.CPU()
             )
@@ -236,9 +227,8 @@ class Qwen3AttentionHarness(RaggedAttentionHarness[Qwen3AttentionStaticParams]):
 
         # Load matching weights.
         for name, param in layer.named_parameters():
-            harness_name = _HF_TO_HARNESS.get(name, name)
-            if harness_name in self._torch_weights:
-                param.data = self._torch_weights[harness_name].to(
+            if name in self._torch_weights:
+                param.data = self._torch_weights[name].to(
                     device=device, dtype=torch.bfloat16
                 )
 

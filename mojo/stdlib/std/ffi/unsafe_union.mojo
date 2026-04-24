@@ -26,7 +26,6 @@ type-checked sum types.
 """
 
 from std.builtin.rebind import downcast
-from std.builtin.variadics import Variadic
 from std.format._utils import FormatStruct, Named, TypeNames
 from std.memory import UnsafePointer
 from std.sys import align_of, size_of
@@ -153,6 +152,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
     Example for C FFI:
 
     ```mojo
+    from std.ffi import UnsafeUnion
+
     # Matches C: union { int32_t i; float f; }
     comptime CUnion = UnsafeUnion[Int32, Float32]
 
@@ -216,6 +217,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         Example:
 
         ```mojo
+        from std.ffi import UnsafeUnion
+
         var u = UnsafeUnion[Int32, Float32](Int32(42))
         ```
         """
@@ -287,6 +290,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         Example:
 
         ```mojo
+        from std.ffi import UnsafeUnion
+
         var u = UnsafeUnion[Int32, Float32](Int32(42))
         ref val = u.unsafe_get[Int32]()
         print(val)  # => 42
@@ -307,6 +312,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         Example:
 
         ```mojo
+        from std.ffi import UnsafeUnion
+
         var u = UnsafeUnion[Int32, Float32](Int32(42))
         print(u)  # => UnsafeUnion[Int32, Float32](size=4, align=4)
         ```
@@ -353,6 +360,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         Example:
 
         ```mojo
+        from std.ffi import UnsafeUnion
+
         var u = UnsafeUnion[Int32, Float32](Int32(42))
         var val = u.unsafe_take[Int32]()  # val = 42, u is now uninitialized
         ```
@@ -379,6 +388,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         Example:
 
         ```mojo
+        from std.ffi import UnsafeUnion
+
         var u = UnsafeUnion[Int32, Float32](Int32(0))
         u.unsafe_set(Float32(3.14))
         ```
@@ -410,6 +421,8 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
         Example:
 
         ```mojo
+        from std.ffi import UnsafeUnion
+
         var u = UnsafeUnion[Int32, Float32](Int32(0))
         var ptr = u.unsafe_ptr[Int32]()
         ptr[] = 42
@@ -427,4 +440,4 @@ struct UnsafeUnion[*Ts: AnyType](ImplicitlyCopyable, Movable, Writable):
 
         Returns True if found, False otherwise.
         """
-        return Variadic.contains[type=T, element_types=Self.Ts.values]
+        return Self.Ts.contains[T]()

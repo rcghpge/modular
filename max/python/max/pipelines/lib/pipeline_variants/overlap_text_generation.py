@@ -158,7 +158,7 @@ _MAGIC_DRAFT_TOKEN_ID = 42
 class _UnifiedEagleInputs(Protocol):
     tokens: Buffer
     input_row_offsets: Buffer
-    kv_cache_inputs: KVCacheInputs
+    kv_cache_inputs: KVCacheInputs[Buffer, Buffer]
 
     draft_tokens: Buffer | None
     draft_kv_blocks: list[Buffer] | None
@@ -176,7 +176,7 @@ def _get_draft_kv_blocks(
     draft_kv_inputs = draft_kv_manager.runtime_inputs(
         [[] for _ in range(data_parallel_degree)]
     )
-    return [per_dev.blocks for per_dev in draft_kv_inputs.inputs]
+    return [per_dev.kv_blocks for per_dev in draft_kv_inputs.inputs]
 
 
 @dataclass
@@ -426,14 +426,39 @@ class AsyncBatch(Generic[TextGenerationContextType]):
                 max_seq_len=max_seq_len,
             )
 
+            batch_size = len(self.inputs.flat_batch)
+            is_dummy_draft_tokens: list[bool] = [
+                all(draft_tokens_np[batch_idx, :] == _MAGIC_DRAFT_TOKEN_ID)
+                for batch_idx in range(batch_size)
+            ]
+
             num_speculative_tokens = next_draft_tokens.shape[1]
             num_draft_tokens_to_verify = draft_tokens_np.shape[1]
 
+            # Compute per-position acceptance counts.
+            # For each position i, count how many requests accepted at least i+1 tokens.
+            accepted_per_position = [0] * num_draft_tokens_to_verify
+            for is_dummy, accepted_count in zip(
+                is_dummy_draft_tokens, num_accepted_draft_tokens, strict=True
+            ):
+                if is_dummy:
+                    continue
+                for pos in range(int(accepted_count)):
+                    if pos < num_draft_tokens_to_verify:
+                        accepted_per_position[pos] += 1
+
+            # Only count verifications when there are real draft tokens to verify.
+            # Otherwise we'd dilute the per-position acceptance rate.
+            num_verifications = (
+                batch_size - sum(is_dummy_draft_tokens)
+                if num_draft_tokens_to_verify > 0
+                else 0
+            )
+
             metrics = SpeculativeDecodingMetrics(
                 num_speculative_tokens=num_speculative_tokens,
-                draft_tokens_accepted=num_accepted_draft_tokens.sum(),
-                draft_tokens_generated=num_draft_tokens_to_verify
-                * len(self.inputs.flat_batch),
+                accepted_per_position=accepted_per_position,
+                num_verifications=num_verifications,
             )
 
             wrapped_outputs = _AsyncBatchOutput(
@@ -782,7 +807,9 @@ def build_realize_future_token_graph(
             else:
                 # TP > 1
                 assert spec_decode.signal_buffers is not None
-                cache_length_u32 = curr_cache_lenghts[0]
+                cache_length_u32 = ops.rebind(
+                    curr_cache_lenghts[0], ["curr_batch_size"]
+                )
                 cache_length_adjusted = (
                     cache_length_u32.cast(DType.int64) + batch_increments_i64
                 ).cast(DType.uint32)
@@ -826,6 +853,7 @@ class RealizeFutureTokenProcessor:
                 enable_dp=enable_dp,
             )
         )
+        self._enable_dp = enable_dp
         self._num_speculative_tokens = num_speculative_tokens
 
     def _compute_mappings(
@@ -938,9 +966,11 @@ class RealizeFutureTokenProcessor:
                 prev_batch.spec_decode.draft_tokens_to_verify_device
             )
             signal_buffers = getattr(model_inputs, "signal_buffers", None)
-            data_parallel_splits = getattr(
-                model_inputs, "data_parallel_splits", None
-            )
+
+            if self._enable_dp:
+                data_parallel_splits = model_inputs.data_parallel_splits
+            else:
+                data_parallel_splits = None
             if num_draft_tokens_to_verify == 0:
                 prev_batch_size = prev_generated_draft_tokens.shape[0]
                 prev_generated_draft_tokens = Buffer(
@@ -1134,6 +1164,17 @@ class OverlapTextGenerationPipeline(
                 pipeline_config=self._pipeline_config,
             )
             self._kv_manager = self._spec_decode_state.target_kv_manager
+            if (
+                self._pipeline_config.speculative is not None
+                and self._pipeline_config.speculative.synthetic_acceptance_rate
+                is not None
+            ):
+                logger.info(
+                    "Synthetic acceptance rate is enabled (rate=%.2f). "
+                    "Actual model acceptance will be overridden. "
+                    "Results are for benchmarking only.",
+                    self._pipeline_config.speculative.synthetic_acceptance_rate,
+                )
 
         # Load sampler.
         self._sampler: Model | None = (
@@ -1146,6 +1187,10 @@ class OverlapTextGenerationPipeline(
             if not is_spec_decode
             else None
         )
+
+        # Overlap pipeline doesn't use structured output, so no pinned buffer
+        # needed for async token transfers.
+        self._pinned_new_tokens: Buffer | None = None
 
         # Overlap scheduling specific initialization.
 
@@ -1224,10 +1269,6 @@ class OverlapTextGenerationPipeline(
             if self._spec_decode_state is not None
             else 0
         )
-        if num_speculative_tokens > 1:
-            raise ValueError(
-                "Speculative decoding with multiple tokens is not supported with Device Graph Capture."
-            )
 
         # For unified Eagle/MTP models, the graph merges prompt tokens with
         # draft tokens internally. Each request contributes 1 decode token
@@ -1250,17 +1291,12 @@ class OverlapTextGenerationPipeline(
                     for idx in range(batch_size)
                 ]
             )
-        with self._kv_manager.reserve(
-            replica_batches,
-            num_steps=1,
-            num_speculative_steps=num_speculative_tokens,
-        ):
+        with self._kv_manager.reserve(replica_batches, num_steps=1):
             max_cache_length = self._effective_max_cache_length
             kv_cache_inputs = self._kv_manager.runtime_inputs(
                 replica_batches,
                 num_steps=1,
                 max_cache_length=max_cache_length,
-                num_speculative_steps=num_speculative_tokens,
             )
 
             return_n_logits = (
@@ -1366,13 +1402,9 @@ class OverlapTextGenerationPipeline(
         """
         if draft_tokens is not None:
             assert self._spec_decode_state is not None
-            num_speculative_steps = (
-                self._spec_decode_state.num_speculative_tokens
-            )
             num_draft_tokens_to_verify = draft_tokens.shape[1]
         else:
             assert self._spec_decode_state is None
-            num_speculative_steps = 0
             num_draft_tokens_to_verify = 0
 
         runner = self._graph_capture_runner
@@ -1400,13 +1432,10 @@ class OverlapTextGenerationPipeline(
                     inputs.batches,
                     num_steps=1,
                     max_cache_length=self._graph_capture_runner._max_cache_length_upper_bound,
-                    num_speculative_steps=num_speculative_steps,
                 )
         else:
             kv_cache_inputs = self._kv_manager.runtime_inputs(
-                inputs.batches,
-                num_steps=1,
-                num_speculative_steps=num_speculative_steps,
+                inputs.batches, num_steps=1
             )
 
         return_n_logits = (
@@ -1426,9 +1455,7 @@ class OverlapTextGenerationPipeline(
             debug_verify_model_inputs = copy.copy(model_inputs)
             debug_verify_model_inputs.update(
                 kv_cache_inputs=self._kv_manager.runtime_inputs(
-                    inputs.batches,
-                    num_steps=1,
-                    num_speculative_steps=num_speculative_steps,
+                    inputs.batches, num_steps=1
                 )
             )
 
@@ -1511,6 +1538,7 @@ class OverlapTextGenerationPipeline(
                 context_batch=flat_batch,
                 num_steps=1,
                 device=device0,
+                pinned_new_tokens=self._pinned_new_tokens,
             )
 
         model_outputs = self._run_forward(inputs)
@@ -1585,7 +1613,7 @@ class OverlapTextGenerationPipeline(
 
         context_batch = inputs.flat_batch
         verify_draft_tokens = all(
-            ctx.tokens.generated_length > 1 for ctx in context_batch
+            ctx.tokens.generated_length > 0 for ctx in context_batch
         )
         num_draft_tokens_to_verify = (
             num_speculative_tokens if verify_draft_tokens else 0
@@ -1804,6 +1832,16 @@ class OverlapTextGenerationPipeline(
     def kv_manager(self) -> PagedKVCacheManager:
         """Returns the KV cache manager for this pipeline."""
         return self._kv_manager
+
+    @property
+    def draft_kv_blocks(self) -> list[Buffer] | None:
+        """Returns the draft KV cache block buffers, one per DP replica.
+
+        Returns None when speculative decoding is not active.
+        """
+        if self._spec_decode_state is None:
+            return None
+        return self._spec_decode_state.draft_kv_blocks
 
     def spec_decode_metrics(self) -> SpeculativeDecodingMetrics | None:
         """Returns the draft token acceptance metrics for speculative decoding."""

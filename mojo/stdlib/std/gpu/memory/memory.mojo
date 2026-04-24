@@ -689,6 +689,7 @@ def async_copy[
         ), "Non zero filling is supported only for 16B access."
 
         # Pack filling values into 4B registers.
+        @parameter
         @always_inline
         def _i32_repr[fill: Scalar[dtype]]() -> Int32:
             comptime if size_of[dtype]() == 1:
@@ -982,7 +983,7 @@ def fence_mbarrier_init():
 
 
 @always_inline("nodebug")
-def cp_async_bulk_shared_cta_global[
+def cp_async_bulk_shared_cluster_global[
     dst_type: AnyType,
     src_type: AnyType,
     mbr_type: AnyType,
@@ -1007,7 +1008,7 @@ def cp_async_bulk_shared_cta_global[
     via the mbarrier specified by `mem_bar`.
 
     Both `dst_mem` and `src_mem` must be 16-byte aligned, and `size` must be a
-    multiple of 16. Requires sm_90 or higher.
+    multiple of 16. Requires sm_100 or higher.
 
     Parameters:
         dst_type: The element type of the destination shared memory.
@@ -1076,7 +1077,7 @@ def cp_async_bulk_global_shared_cta[
     `cp_async_bulk_wait_group` from `std.gpu.sync` to synchronize.
 
     Both `dst_mem` and `src_mem` must be 16-byte aligned, and `size` must be a
-    multiple of 16. Requires sm_90 or higher.
+    multiple of 16. Requires sm_100 or higher.
 
     Parameters:
         dst_type: The element type of the destination global memory.
@@ -1134,7 +1135,7 @@ def cp_async_bulk_prefetch[
     guarantee the data will be in cache when accessed.
 
     `src_mem` must be 16-byte aligned and `size` must be a multiple of 16.
-    Requires sm_90 or higher.
+    Requires sm_100 or higher.
 
     Parameters:
         src_type: The element type of the source global memory.
@@ -2857,11 +2858,11 @@ def multimem_st[
 
     Example:
 
-    ```mojo
+    ```text
     from std.gpu.memory.memory import *
 
     # Store 2 float32 values to multimem address.
-    multimem_st[DType.float32, count=2, scope=Scope.CTA, consistency=Consistency.RELAXED](
+    multimem_st[DType.float32, count=2, scope=Scope.BLOCK, consistency=Consistency.RELAXED](
         addr, StaticTuple[DType.float32, 2](val1, val2)
     )
 

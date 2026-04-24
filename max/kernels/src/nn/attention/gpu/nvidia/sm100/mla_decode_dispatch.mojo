@@ -704,25 +704,23 @@ def mla_decode_sm100_dispatch[
     q_max_seq_len: Int,
     max_cache_valid_length: Int,
     ctx: DeviceContext,
-    q_scale_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    q_scale_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
-    topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
-    attn_sink_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
+    topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    attn_sink_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
     # Extra KV parameters (forwarded to mla_decode_sm100_sink_split_k).
     extra_k: OptionalReg[k_t] = None,
-    extra_d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
-    extra_topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    extra_scales_ptr: UnsafePointer[
-        Scalar[DType.float32], origin=MutAnyOrigin
-    ] = {_unsafe_null = ()},
+    extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
 ) raises:
     var scales_ptr = k.scales_raw_ptr()
 
@@ -878,25 +876,23 @@ def _mla_decode_sm100_dispatch_impl[
     num_partitions: Int,
     effective_max_cache_len: Int,
     ctx: DeviceContext,
-    q_scale_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    q_scale_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
-    topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
-    attn_sink_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
+    topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    attn_sink_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
     # Extra KV parameters (forwarded to mla_decode_sm100_sink_split_k).
     extra_k: OptionalReg[k_t] = None,
-    extra_d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
-    extra_topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    extra_scales_ptr: UnsafePointer[
-        Scalar[DType.float32], origin=MutAnyOrigin
-    ] = {_unsafe_null = ()},
+    extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
 ) raises:
     comptime hw_info = ctx.default_device_info
     comptime sm_count = hw_info.sm_count
@@ -1041,6 +1037,29 @@ def _mla_decode_sm100_dispatch_impl[
                 )
 
             @parameter
+            def launch_combine_split_parallel[n_splits: Int]() raises:
+                mla_decode_combine_partial_outputs[
+                    output_type=output_type,
+                    accum_type=AccumType,
+                    head_dim=v_depth,
+                    num_splits=n_splits,
+                    ragged=ragged,
+                    warps_per_head=1,
+                    has_attn_sink=_has_attn_sink,
+                    split_parallel=True,
+                ](
+                    o_accum_split,
+                    lse_accum_split,
+                    output,
+                    input_row_offsets_ptr,
+                    attn_sink_ptr,
+                    batch_size,
+                    q_max_seq_len,
+                    Int(num_heads),
+                    ctx,
+                )
+
+            @parameter
             def dispatch_combine[wph: Int]() raises:
                 """Dispatch the combine kernel with the given warps_per_head,
                 matching num_partitions to the correct compile-time bucket.
@@ -1058,7 +1077,42 @@ def _mla_decode_sm100_dispatch_impl[
                                 _get_partition_bucket[_half_sms, _b](), wph
                             ]()
 
-            # Choose warps_per_head (wph) for the combine kernel.
+            @parameter
+            def dispatch_combine_split_parallel() raises:
+                """Dispatch the split-parallel combine kernel, matching
+                num_partitions to the correct compile-time bucket.
+
+                Raises:
+                    If the kernel dispatch fails.
+                """
+                comptime for _b in range(_NUM_PARTITION_BUCKETS):
+                    comptime if _get_partition_bucket[_half_sms, _b]() >= 2:
+                        if (
+                            num_partitions
+                            == _get_partition_bucket[_half_sms, _b]()
+                        ):
+                            launch_combine_split_parallel[
+                                _get_partition_bucket[_half_sms, _b]()
+                            ]()
+
+            # Choose combine strategy based on split count and batch size.
+            #
+            # Split-parallel combine: 8 warps per CTA each process a range
+            # of splits independently, then tree-reduce in shared memory.
+            # This gives 8x memory stream parallelism and avoids the massive
+            # compile-time unrolled loop of the original kernel. Best for
+            # long KV cache (>= 16384 tokens) where the many splits benefit
+            # from 8x parallel memory streams.
+            #
+            # Original combine: warps cooperate on head_dim within each split.
+            # Better for moderate cache lengths where the per-split overhead
+            # of split-parallel dominates.
+            #
+            # Decision: use split-parallel when cache_length >= 16384.
+            # For shorter cache, use the original kernel with wph tuning.
+            #
+            # The original kernel's wph selection logic follows (unchanged):
+            #
             # The combine grid is (batch_size, seq_len, ceildiv(num_heads, hpb))
             # where hpb = heads_per_block = 8 // wph. Each CTA processes hpb
             # heads, using wph warps per head. The total combine CTA count is:
@@ -1096,10 +1150,11 @@ def _mla_decode_sm100_dispatch_impl[
             #   combine_ctas_base >= 512  <==> bs >= 16
             #
             # Decision matrix (empirically tuned for B200 with 148 SMs):
-            #   BF16: ctas >= 4096 AND np <= 4 AND cache <= 1280: wph=1
-            #   ctas >= 2048 AND np > 4:                          wph=2
-            #   ctas >= 512:                                      wph=4
-            #   ctas < 512 (small grid):                          wph=8
+            #   cache_len >= 16384:                                 split-parallel
+            #   BF16: ctas >= 4096 AND np <= 4 AND cache <= 1280:   wph=1
+            #   ctas >= 2048 AND np > 4:                            wph=2
+            #   ctas >= 512:                                        wph=4
+            #   ctas < 512 (small grid):                            wph=8
             #
             # The wph=1 path is BF16-only. FP8 decode finishes ~2x faster
             # (half the KV bytes), leaving less PDL overlap for the combine
@@ -1128,7 +1183,9 @@ def _mla_decode_sm100_dispatch_impl[
             #         256 CTAs (1.7 waves).
             comptime _ctas_wph8 = ceildiv(num_heads, 1)  # hpb=1 at wph=8
 
-            if (
+            if effective_max_cache_len >= 16384 and batch_size <= 2:
+                dispatch_combine_split_parallel()
+            elif (
                 combine_ctas_base >= 4096
                 and num_partitions <= 4
                 and effective_max_cache_len <= 1280
@@ -1244,27 +1301,25 @@ def mla_decode_sm100_sink_split_k[
         DType.int64, address_space=AddressSpace.GENERIC, ...
     ],
     ctx: DeviceContext,
-    q_scale_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    q_scale_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
-    topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
-    attn_sink_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
+    topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    attn_sink_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
     # Extra KV: separate always-attend cache. When extra_k is provided
     # (non-default), the sparse kernel appends extra_topk tokens after
     # the original topk tokens in a unified loop.
     extra_k: OptionalReg[k_t] = None,
-    extra_d_indices: UnsafePointer[Int32, MutAnyOrigin] = {_unsafe_null = ()},
+    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
-    extra_topk_lengths: UnsafePointer[Int32, MutAnyOrigin] = {
-        _unsafe_null = ()
-    },
-    extra_scales_ptr: UnsafePointer[
-        Scalar[DType.float32], origin=MutAnyOrigin
-    ] = {_unsafe_null = ()},
+    extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ] = None,
 ) raises:
     comptime _scale_block_size = k_t.quantization_granularity if k_t.quantization_enabled else 0
     # Use native FP8 path when:
@@ -2082,7 +2137,9 @@ def launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
     q_max_seq_len: Int,
     valid_len: ValidLengthType,
     mask: MaskType,
-    q_scale_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
+    q_scale_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ],
     scalar_args_buf: TileTensor[
         DType.int64, address_space=AddressSpace.GENERIC, ...
     ],
@@ -2222,11 +2279,13 @@ def launch_mla_sm100_decode_sparse[
     q_max_seq_len: Int,
     valid_len: ValidLengthType,
     mask: MaskType,
-    d_indices: UnsafePointer[Int32, MutAnyOrigin],
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
-    topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
+    topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    attn_sink_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
+    attn_sink_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ],
     # Extra KV parameters (separate always-attend cache).
     extra_k_nope_tma: TMATensorTile[
         DType.int64,
@@ -2269,10 +2328,12 @@ def launch_mla_sm100_decode_sparse[
         ),
     ],
     extra_kv_lut: KVLUTType,
-    extra_d_indices: UnsafePointer[Int32, MutAnyOrigin],
-    extra_topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
+    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+    extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_indices_stride: Int,
-    extra_scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
+    extra_scales_ptr: OptionalReg[
+        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
+    ],
     scalar_args_buf: TileTensor[
         DType.int64, address_space=AddressSpace.GENERIC, ...
     ],

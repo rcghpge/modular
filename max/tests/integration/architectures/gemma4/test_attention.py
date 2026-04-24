@@ -31,10 +31,7 @@ from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType
 from max.kv_cache import PagedKVCacheManager
 from max.nn.kernels import KVCacheParams
-from max.nn.kv_cache import unflatten_ragged_attention_inputs
-from max.nn.rotary_embedding import (
-    Llama3RotaryEmbedding,
-)
+from max.nn.rotary_embedding import Llama3RotaryEmbedding
 from max.pipelines.architectures.gemma4.layers.attention import (
     Gemma4Attention as MaxGemma4Attention,
 )
@@ -241,28 +238,12 @@ def generate_max_outputs(
     device_ref = DeviceRef.GPU() if is_gpu else DeviceRef.CPU()
     input_seq_len = input_tensor.shape[1]
 
-    # Remap HuggingFace weight names to MAX StackedLinear names.
-    # Sliding/local layers use qkv_proj; global/full layers use qk_proj.
-    is_sliding = text_config.layer_types[layer_idx] == "sliding_attention"
-    if is_sliding:
-        _HF_TO_MAX = {
-            "q_proj.": "qkv_proj.q.",
-            "k_proj.": "qkv_proj.k.",
-            "v_proj.": "qkv_proj.v.",
-        }
-    else:
-        _HF_TO_MAX = {
-            "q_proj.": "qk_proj.q.",
-            "k_proj.": "qk_proj.k.",
-        }
-    state_dict = {}
-    for weight_name, value in attention_weights.items():
-        max_name = weight_name
-        for hf, mx in _HF_TO_MAX.items():
-            if max_name.startswith(hf):
-                max_name = mx + max_name[len(hf) :]
-                break
-        state_dict[max_name] = value.cpu()
+    # No remapping required for either sliding/local (QKV) or
+    # global/full (QK) layer types.
+    state_dict = {
+        weight_name: value.cpu()
+        for weight_name, value in attention_weights.items()
+    }
 
     kv_params_local = KVCacheParams(
         dtype=dtype,
@@ -359,9 +340,9 @@ def generate_max_outputs(
         ),
     ) as graph:
         inputs, input_row_offsets, *kv_cache = graph.inputs
-        kv_collection = unflatten_ragged_attention_inputs(
-            kv_cache, n_devices=1
-        )[0]
+        kv_collection = (
+            kv_params.get_symbolic_inputs().unflatten(iter(kv_cache)).inputs[0]
+        )
 
         graph.output(
             attention(
@@ -385,7 +366,7 @@ def generate_max_outputs(
         Buffer.from_numpy(np.array([0, input_seq_len], dtype=np.uint32)).to(
             device
         ),
-        kv_runtime_inputs.blocks.to(device),
+        kv_runtime_inputs.kv_blocks.to(device),
         kv_runtime_inputs.cache_lengths.to(device),
         kv_runtime_inputs.lookup_table.to(device),
         kv_runtime_inputs.max_lengths,

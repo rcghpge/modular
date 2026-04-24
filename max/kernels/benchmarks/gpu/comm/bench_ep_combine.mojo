@@ -238,8 +238,8 @@ def bench_dispatch[
             FormatHandlerType,
         ]
 
-        var func_dispatch_wait = ctx.compile_function_experimental[
-            dispatch_wait
+        var func_dispatch_wait = ctx.compile_function[
+            dispatch_wait, dispatch_wait
         ]()
 
         comptime combine_async = combine_async_kernel[
@@ -279,14 +279,12 @@ def bench_dispatch[
         @parameter
         def run_dispatch_async(ctx: DeviceContext) raises:
             # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
-            var recv_buf_ptrs = InlineArray[
+            var recv_buf_ptrs: InlineArray[
                 UnsafePointer[UInt8, MutAnyOrigin], 1
-            ](fill={})
-            var recv_count_ptrs = InlineArray[
+            ] = [recv_buf]
+            var recv_count_ptrs: InlineArray[
                 UnsafePointer[UInt64, MutAnyOrigin], 1
-            ](fill={})
-            recv_buf_ptrs[0] = recv_buf
-            recv_count_ptrs[0] = recv_count
+            ] = [recv_count]
 
             ctx.enqueue_function(
                 func,
@@ -335,14 +333,12 @@ def bench_dispatch[
         @parameter
         def run_combine_async(ctx: DeviceContext) raises:
             # the recv_buf ptrs and recv_count ptrs need to be passed in a InlinedArray
-            var combine_recv_buf_ptrs = InlineArray[
+            var combine_recv_buf_ptrs: InlineArray[
                 UnsafePointer[UInt8, MutAnyOrigin], 1
-            ](fill={})
-            var combine_recv_count_ptrs = InlineArray[
+            ] = [send_buf]
+            var combine_recv_count_ptrs: InlineArray[
                 UnsafePointer[UInt64, MutAnyOrigin], 1
-            ](fill={})
-            combine_recv_buf_ptrs[0] = send_buf
-            combine_recv_count_ptrs[0] = recv_count
+            ] = [recv_count]
 
             ctx.enqueue_function(
                 func_combine_async,
@@ -500,12 +496,9 @@ def bench_dispatch[
             n_local_experts * n_ranks * n_tokens_per_rank * msg_bytes
         )
 
-        var bf16_output = TileTensor[
-            DType.bfloat16, output_tensor.LayoutType, MutAnyOrigin
-        ](
-            ptr=output_tensor.ptr.bitcast[Scalar[DType.bfloat16]](),
-            layout=output_tensor.layout,
-        )
+        var bf16_output = output_tensor.bitcast[
+            DType.bfloat16
+        ]().as_any_origin()
         var format_handler = token_fmt_type(bf16_output)
 
         setup_and_run_benchmark[
@@ -529,12 +522,7 @@ def bench_dispatch[
             top_k,
         ]
 
-        var fp8_output = TileTensor[
-            token_dtype, output_tensor.LayoutType, MutAnyOrigin
-        ](
-            ptr=output_tensor.ptr.bitcast[Scalar[token_dtype]](),
-            layout=output_tensor.layout,
-        )
+        var fp8_output = output_tensor.bitcast[token_dtype]().as_any_origin()
         var format_handler = token_fmt_type(fp8_output, output_scales_tensor)
 
         setup_and_run_benchmark[

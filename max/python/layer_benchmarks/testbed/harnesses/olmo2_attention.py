@@ -42,32 +42,21 @@ import torch
 from max.driver import DLPackArray
 from max.dtype import DType
 from max.graph import DeviceRef, Graph, TensorType, ops
-from max.nn.kv_cache import KVCacheParams, unflatten_ragged_attention_inputs
+from max.nn.kv_cache import KVCacheParams
 from max.nn.rotary_embedding import RotaryEmbedding
-from max.pipelines.architectures.olmo2.layers.attention import (
-    Olmo2Attention,
-)
+from max.pipelines.architectures.olmo2.layers.attention import Olmo2Attention
 from transformers.models.olmo2.configuration_olmo2 import Olmo2Config
 from transformers.models.olmo2.modeling_olmo2 import (
     Olmo2Attention as HFOlmo2Attention,
 )
-from transformers.models.olmo2.modeling_olmo2 import (
-    Olmo2RotaryEmbedding,
-)
+from transformers.models.olmo2.modeling_olmo2 import Olmo2RotaryEmbedding
 
 from testbed.harnesses.ragged_attention_harness import (
-    HF_TO_HARNESS_BASE,
     AttentionDynamicParams,
     AttentionStaticParams,
     RaggedAttentionHarness,
 )
 from testbed.registry import register_harness
-
-_HF_TO_HARNESS = {
-    **HF_TO_HARNESS_BASE,
-    "q_norm.weight": "q_norm.weight",
-    "k_norm.weight": "k_norm.weight",
-}
 
 
 @dataclass
@@ -137,15 +126,15 @@ class Olmo2AttentionHarness(RaggedAttentionHarness[Olmo2AttentionStaticParams]):
         kv_dim = n_kv_heads * head_dim
 
         weights: dict[str, torch.Tensor] = {
-            "qkv_proj.q.weight": torch.randn(
+            "q_proj.weight": torch.randn(
                 q_dim, hidden_size, dtype=torch.bfloat16
             )
             * 0.0155,
-            "qkv_proj.k.weight": torch.randn(
+            "k_proj.weight": torch.randn(
                 kv_dim, hidden_size, dtype=torch.bfloat16
             )
             * 0.0150,
-            "qkv_proj.v.weight": torch.randn(
+            "v_proj.weight": torch.randn(
                 kv_dim, hidden_size, dtype=torch.bfloat16
             )
             * 0.0188,
@@ -184,9 +173,11 @@ class Olmo2AttentionHarness(RaggedAttentionHarness[Olmo2AttentionStaticParams]):
             ),
         ) as graph:
             inputs, input_row_offsets, *kv_cache = graph.inputs
-            kv_collection = unflatten_ragged_attention_inputs(
-                kv_cache, n_devices=1
-            )[0]
+            kv_collection = (
+                kv_params.get_symbolic_inputs()
+                .unflatten(iter(kv_cache))
+                .inputs[0]
+            )
             layer_idx_const = ops.constant(
                 0, DType.uint32, device=DeviceRef.CPU()
             )
@@ -237,9 +228,8 @@ class Olmo2AttentionHarness(RaggedAttentionHarness[Olmo2AttentionStaticParams]):
 
         # Load matching weights.
         for name, param in layer.named_parameters():
-            harness_name = _HF_TO_HARNESS.get(name, name)
-            if harness_name in self._torch_weights:
-                param.data = self._torch_weights[harness_name].to(
+            if name in self._torch_weights:
+                param.data = self._torch_weights[name].to(
                     device=device, dtype=torch.bfloat16
                 )
 

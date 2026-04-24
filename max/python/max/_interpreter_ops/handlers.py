@@ -20,14 +20,14 @@ the operation, and input buffers, and returns output buffers.
 Handlers are registered using the @register_op_handler decorator.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from math import ceil, prod
 from typing import Any
 
 import max._interpreter_ops as ops
 import numpy as np
 from max import _core, graph
-from max._core.dialects import mo, mosh
+from max._core.dialects import builtin, mo, mosh
 from max.driver import CPU, Buffer, Device
 from max.dtype import DType
 
@@ -186,6 +186,86 @@ def _handle_constant(
     return [cpu_buffer]
 
 
+@register_op_handler(mo.ConstantScalarOp)
+def _handle_constant_scalar(
+    op: mo.ConstantScalarOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.constant.scalar by extracting the scalar value attribute.
+
+    Scalar constants have a ``value`` attribute that is an ``IntegerAttr``,
+    ``FloatAttr``, or ``BoolAttr``.  The result type is ``!mo.scalar<dtype>``
+    which we materialise as a rank-0 ``Buffer`` on CPU.
+
+    Args:
+        op: The constant scalar operation.
+        inputs: Input buffers (empty for constants).
+
+    Returns:
+        List containing a rank-0 Buffer with the scalar value.
+    """
+    result_type: mo.ScalarType = op.results[0].type  # type: ignore[assignment]
+    dtype = DType(result_type.dtype)
+
+    attr = op.value
+    value: bool | int | float
+    if isinstance(attr, builtin.BoolAttr):
+        value = attr.value
+    elif isinstance(attr, builtin.IntegerAttr):
+        value = attr.value
+    elif isinstance(attr, builtin.FloatAttr):
+        value = attr.value
+    else:
+        raise ValueError(
+            f"Unsupported scalar attribute type: {type(attr).__name__}"
+        )
+
+    np_val = np.array(value, dtype=dtype.to_numpy())
+    # Rank-0 bool arrays are not supported by Buffer.from_dlpack;
+    # wrap as int8 (same underlying representation).
+    if np_val.dtype == np.bool_:
+        np_val = np_val.view(np.int8)
+    return [Buffer.from_numpy(np_val)]
+
+
+# Module-level weights registry set by MOInterpreter during execution.
+_weights_registry: Mapping[str, Buffer] | None = None
+
+
+@register_op_handler(mo.ConstantExternalOp)
+def _handle_constant_external(
+    op: mo.ConstantExternalOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.constant.external by looking up the named weight.
+
+    External constants reference named weights whose backing data is provided
+    at runtime via the weights registry.  The interpreter stashes the registry
+    in the module-level ``_weights_registry`` for the duration of execution.
+
+    Args:
+        op: The constant external operation.
+        inputs: Input buffers (empty for constants).
+
+    Returns:
+        List containing the looked-up weight buffer.
+
+    Raises:
+        RuntimeError: If no weights registry is available or the name is
+            not found.
+    """
+    name = op.name
+    if _weights_registry is None:
+        raise RuntimeError(
+            f"No weights registry provided to interpreter, cannot resolve "
+            f"external constant '{name}'"
+        )
+    if name not in _weights_registry:
+        raise RuntimeError(
+            f"Weight '{name}' not found in weights registry. "
+            f"Available: {list(_weights_registry.keys())}"
+        )
+    return [_weights_registry[name]]
+
+
 # Mutable load operations
 
 
@@ -211,6 +291,93 @@ def _handle_mutable_load(
     # The interpreter executes sequentially, so chains are not needed.
     # Use None to avoid unnecessary buffer allocation.
     return [inputs[0], None]
+
+
+# Mutable store operations
+
+
+@register_op_handler(mo.MutableStoreOp)
+def _handle_mutable_store(
+    op: mo.MutableStoreOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer | None]:
+    """Handle mo.mutable.store by copying the tensor into the buffer.
+
+    ``mo.mutable.store`` writes a full tensor value into a mutable tensor
+    slot. Operand order is ``(in_buffer, in_tensor, in_chain)`` and the sole
+    result is ``out_chain``. The interpreter represents chains as ``None``.
+
+    Args:
+        op: The mutable store operation (unused).
+        inputs: Input buffers - ``(in_buffer, in_tensor, in_chain)``.
+            ``in_chain`` is ``None`` since chain values are skipped.
+
+    Returns:
+        List containing ``None`` for the out_chain.
+    """
+    in_buffer = inputs[0]
+    in_tensor = inputs[1]
+    assert isinstance(in_buffer, Buffer)
+    assert isinstance(in_tensor, Buffer)
+    in_buffer.inplace_copy_from(in_tensor)
+    return [None]
+
+
+@register_op_handler(mo.MutableStoreSliceOp)
+def _handle_mutable_store_slice(
+    op: mo.MutableStoreSliceOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer | None]:
+    """Handle mo.mutable.store.slice via MOGG's MutableStoreSlice kernel.
+
+    Operand order: ``(in_buffer, slice, start, stop, step, in_chain)``;
+    result is ``out_chain``. Numpy slice semantics apply to start/stop/step.
+
+    Args:
+        op: The mutable store slice operation (unused).
+        inputs: ``(in_buffer, slice, start, stop, step, in_chain)``.
+
+    Returns:
+        List containing ``None`` for the out_chain.
+    """
+    in_buffer = inputs[0]
+    slice_tensor = inputs[1]
+    start_buf = inputs[2]
+    stop_buf = inputs[3]
+    step_buf = inputs[4]
+    assert isinstance(in_buffer, Buffer)
+    assert isinstance(slice_tensor, Buffer)
+    assert isinstance(start_buf, Buffer)
+    assert isinstance(stop_buf, Buffer)
+    assert isinstance(step_buf, Buffer)
+
+    # fp4 needs sub-byte addressing the kernel doesn't do yet.
+    dtype = in_buffer.dtype
+    if dtype is DType.float4_e2m1fn:
+        raise NotImplementedError(
+            f"mo.mutable.store.slice interpreter handler does not yet "
+            f"support dtype {dtype}"
+        )
+
+    # fp8 isn't in dispatch_dtype; reinterpret as uint8 (same storage size,
+    # pure byte copy).
+    dst = in_buffer
+    src = slice_tensor
+    if dtype.is_float8():
+        dst = in_buffer.view(DType.uint8)
+        src = slice_tensor.view(DType.uint8)
+
+    starts_list = [int(s) for s in start_buf.to_numpy().flatten()]
+    stops_list = [int(s) for s in stop_buf.to_numpy().flatten()]
+    steps_list = [int(s) for s in step_buf.to_numpy().flatten()]
+
+    ops.data_movement_ops.MutableStoreSlice(
+        dst,
+        src,
+        starts_list,
+        stops_list,
+        steps_list,
+        in_buffer.device._device_context_ptr(),
+    )
+    return [None]
 
 
 # Transfer operations
@@ -1447,6 +1614,99 @@ def _handle_layer_norm(
         inputs[1],
         inputs[2],
         inputs[3],
+        target_device._device_context_ptr(),
+    )
+
+    return [output]
+
+
+# RMS norm operations
+
+
+@register_op_handler(mo.ReduceRmsNormOp)
+def _handle_rms_norm(
+    op: mo.ReduceRmsNormOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.reduce.rms_norm by dispatching to Mojo rms_norm kernel.
+
+    Args:
+        op: The rms_norm operation.
+        inputs: Input buffers - input tensor, weight, epsilon, weight_offset.
+            Epsilon and weight_offset are always on CPU
+            (MO_SingleDeviceWithHostOperands).
+
+    Returns:
+        List containing the normalized tensor buffer.
+    """
+    result_type = graph.Type.from_mlir(list(op.results)[0].type)
+    assert isinstance(result_type, graph.TensorType)
+    target_device = result_type.device.to_device()
+
+    assert isinstance(inputs[0], Buffer)  # input
+    assert isinstance(inputs[1], Buffer)  # weight
+    assert isinstance(inputs[2], Buffer)  # epsilon (always CPU)
+    assert isinstance(inputs[3], Buffer)  # weight_offset (always CPU)
+
+    output = Buffer(
+        shape=inputs[0].shape,
+        dtype=inputs[0].dtype,
+        device=target_device,
+    )
+
+    multiply_before_cast = int(bool(op.multiply_before_cast))
+
+    ops.rms_norm_ops.RmsNorm(
+        output,
+        inputs[0],
+        inputs[1],
+        inputs[2],
+        (inputs[3], multiply_before_cast),
+        target_device._device_context_ptr(),
+    )
+
+    return [output]
+
+
+# Group norm operations
+
+
+@register_op_handler(mo.ReduceGroupNormOp)
+def _handle_group_norm(
+    op: mo.ReduceGroupNormOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.reduce.group_norm by dispatching to Mojo group_norm kernel.
+
+    Args:
+        op: The group_norm operation.
+        inputs: Input buffers - input tensor, gamma, beta, epsilon,
+            num_groups. Epsilon and num_groups are always on CPU
+            (MO_SingleDeviceWithHostOperands).
+
+    Returns:
+        List containing the normalized tensor buffer.
+    """
+    result_type = graph.Type.from_mlir(list(op.results)[0].type)
+    assert isinstance(result_type, graph.TensorType)
+    target_device = result_type.device.to_device()
+
+    assert isinstance(inputs[0], Buffer)  # input
+    assert isinstance(inputs[1], Buffer)  # gamma
+    assert isinstance(inputs[2], Buffer)  # beta
+    assert isinstance(inputs[3], Buffer)  # epsilon (always CPU)
+    assert isinstance(inputs[4], Buffer)  # num_groups (always CPU, int32)
+
+    output = Buffer(
+        shape=inputs[0].shape,
+        dtype=inputs[0].dtype,
+        device=target_device,
+    )
+
+    ops.group_norm_ops.GroupNorm(
+        output,
+        inputs[0],
+        inputs[1],
+        inputs[2],
+        (inputs[3], inputs[4]),
         target_device._device_context_ptr(),
     )
 
@@ -2948,6 +3208,98 @@ def _handle_avg_pool_ceil(
     return _avg_pool_common(op, inputs, ceil_mode=True)
 
 
+# ROI Align operation
+
+
+@register_op_handler(mo.RoiAlignOp)
+def _handle_roi_align(
+    op: mo.RoiAlignOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.roi_align (ROI Align pooling, NHWC).
+
+    Operands: input (4D), rois (2D), output_height, output_width,
+    spatial_scale, sampling_ratio.
+    Attributes: aligned (bool), mode (string: "AVG" or "MAX").
+
+    Args:
+        op: The roi_align operation.
+        inputs: Input buffers.
+
+    Returns:
+        List containing the ROI-aligned output buffer.
+    """
+    target_device = _get_target_device(op)
+
+    assert isinstance(inputs[0], Buffer)  # input [N, H, W, C]
+    assert isinstance(inputs[1], Buffer)  # rois [M, 5]
+    assert isinstance(inputs[2], Buffer)  # output_height (scalar)
+    assert isinstance(inputs[3], Buffer)  # output_width (scalar)
+    assert isinstance(inputs[4], Buffer)  # spatial_scale (scalar)
+    assert isinstance(inputs[5], Buffer)  # sampling_ratio (scalar)
+
+    input_buffer = inputs[0]
+    rois_buffer = inputs[1]
+
+    in_shape = list(input_buffer.shape)
+    if len(in_shape) != 4:
+        raise ValueError(
+            f"roi_align expects rank-4 NHWC input, got rank {len(in_shape)}"
+        )
+
+    rois_shape = list(rois_buffer.shape)
+    if len(rois_shape) != 2 or rois_shape[1] != 5:
+        raise ValueError(
+            f"roi_align expects [M, 5] rois, got shape {rois_shape}"
+        )
+
+    out_h = int(inputs[2].to_numpy().item())
+    out_w = int(inputs[3].to_numpy().item())
+    spatial_scale = float(inputs[4].to_numpy().item())
+    sampling_ratio = float(inputs[5].to_numpy().item())
+
+    n_regions = rois_shape[0]
+    height = in_shape[1]
+    width = in_shape[2]
+    channels = in_shape[3]
+
+    aligned = bool(op.aligned)
+    mode_str = str(op.mode.value)
+    if mode_str not in ("AVG", "MAX"):
+        raise ValueError(
+            f"roi_align mode must be 'AVG' or 'MAX', got '{mode_str}'"
+        )
+    mode_flag = 0 if mode_str == "AVG" else 1
+    aligned_flag = 1 if aligned else 0
+
+    output = Buffer(
+        shape=[n_regions, out_h, out_w, channels],
+        dtype=input_buffer.dtype,
+        device=target_device,
+    )
+    ctx_ptr = target_device._device_context_ptr()
+
+    ops.roi_align_ops.RoiAlign(
+        output,
+        input_buffer,
+        rois_buffer,
+        (
+            n_regions,
+            height,
+            width,
+            channels,
+            out_h,
+            out_w,
+            spatial_scale,
+            sampling_ratio,
+            aligned_flag,
+            mode_flag,
+        ),
+        ctx_ptr,
+    )
+
+    return [output]
+
+
 # Top-K operation
 
 
@@ -3691,6 +4043,90 @@ def _handle_distributed_broadcast(
     # Trailing None for the output chain.
     output_buffers.append(None)
     return output_buffers
+
+
+# Non-maximum suppression
+
+
+@register_op_handler(mo.NonMaximumSuppressionOp)
+def _handle_non_maximum_suppression(
+    op: mo.NonMaximumSuppressionOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer]:
+    """Handle mo.non_maximum_suppression via single-pass Mojo NMS kernel.
+
+    Operands (MO_HostOnly):
+      inputs[0]: boxes -- [batch, num_boxes, 4] float
+      inputs[1]: scores -- [batch, num_classes, num_boxes] float
+      inputs[2]: max_output_boxes_per_class -- scalar int64
+      inputs[3]: iou_threshold -- scalar float
+      inputs[4]: score_threshold -- scalar float
+
+    The output shape [num_selected, 3] is data-dependent.  We allocate an
+    upper-bound buffer (batch * classes * max_output_per_class), run NMS
+    once, then truncate to the actual result size.
+
+    Args:
+        op: The non-maximum suppression operation.
+        inputs: Five buffers as described above.
+
+    Returns:
+        List containing a single [num_selected, 3] int64 output buffer
+        where each row is [batch_index, class_index, box_index].
+    """
+    target_device = _get_target_device(op)
+
+    assert isinstance(inputs[0], Buffer)  # boxes
+    assert isinstance(inputs[1], Buffer)  # scores
+    assert isinstance(inputs[2], Buffer)  # max_output_boxes_per_class
+    assert isinstance(inputs[3], Buffer)  # iou_threshold
+    assert isinstance(inputs[4], Buffer)  # score_threshold
+
+    boxes_buffer = inputs[0]
+    scores_buffer = inputs[1]
+    max_output_boxes = int(inputs[2].to_numpy().item())
+    iou_threshold = float(inputs[3].to_numpy().item())
+    score_threshold = float(inputs[4].to_numpy().item())
+
+    boxes_shape = list(boxes_buffer.shape)
+    scores_shape = list(scores_buffer.shape)
+
+    batch_size = boxes_shape[0]
+    num_boxes = boxes_shape[1]
+    num_classes = scores_shape[1]
+
+    upper_bound = batch_size * num_classes * max_output_boxes
+    if upper_bound == 0:
+        return [Buffer(shape=[0, 3], dtype=DType.int64, device=CPU())]
+
+    ctx_ptr = target_device._device_context_ptr()
+
+    params = (
+        batch_size,
+        num_classes,
+        num_boxes,
+        max_output_boxes,
+        iou_threshold,
+        score_threshold,
+    )
+
+    # Single pass: run NMS into an upper-bound buffer.
+    count_buf = Buffer(shape=[1], dtype=DType.int64, device=CPU())
+    work_buf = Buffer(shape=[upper_bound, 3], dtype=DType.int64, device=CPU())
+    ops.nms_ops.NmsRun(
+        count_buf,
+        work_buf,
+        boxes_buffer,
+        scores_buffer,
+        params,
+        ctx_ptr,
+    )
+    num_selected = int(count_buf.to_numpy().item())
+
+    if num_selected == 0:
+        return [Buffer(shape=[0, 3], dtype=DType.int64, device=CPU())]
+
+    # Truncate upper-bound buffer to actual result size.
+    return [Buffer.from_numpy(work_buf.to_numpy()[:num_selected].copy())]
 
 
 @register_op_handler(mo.DistributedReducescatterSumOp)

@@ -17,7 +17,8 @@
 Runs Wan text-to-video generation with both backends, performs warmup runs,
 benchmarks with split preprocessing/execution timings, and prints a
 side-by-side summary.  Supports Wan 2.1/2.2 T2V models (including MoE
-variants) via the `--model` argument.  Each iteration uses a different
+variants) via the `--model` argument.  Also includes 1-frame (text-to-image)
+configs in the iteration set.  Each iteration uses a different
 `(height, width, num_frames, num_inference_steps)` tuple and cycles through
 a fixed set of prompts with different sequence lengths to stress test
 eager-mode recompilation and text-encoder performance.
@@ -76,8 +77,9 @@ from PIL import Image
 
 # Varying-input configurations for systematic memory/performance testing.
 # Each tuple is `(height, width, num_frames, num_inference_steps)`.
-# Ordered from smallest to largest estimated memory footprint so we can
-# identify the exact configuration that causes an OOM or other failure.
+# Ordered from largest to smallest estimated memory footprint so the
+# biggest allocation lands first while the memory manager has maximum
+# headroom, allowing more configurations to succeed before OOM.
 #
 # B200 memory budget (192 GB HBM3e, ~185 GB usable):
 #   - DiT weights (14B, bf16) x 2 experts (MoE dual-load): ~56 GB
@@ -94,13 +96,23 @@ from PIL import Image
 #   720p/49f   → ~77 GB   (seq_len ~47k)
 #   720p/81f   → ~80 GB   (seq_len ~76k)
 #
+# 1-frame image generation configs (height, width, num_frames, steps).
+# Run these first to establish a text-to-image baseline.
+IMAGE_CONFIGS: list[tuple[int, int, int, int]] = [
+    (1152, 2048, 1, 20),
+    (1536, 2048, 1, 20),
+    (2048, 2048, 1, 20),
+]
+
 VARIED_CONFIGS: list[tuple[int, int, int, int]] = [
-    # --- Tier 1: Small / fast (well under 80 GB) ---
-    (480, 832, 49, 30),  # ~74 GB — baseline sanity check
-    (480, 832, 81, 50),  # ~76 GB — standard 480p
+    # --- Image configs (1 frame) — run first ---
+    *IMAGE_CONFIGS,
     # --- Tier 2: Medium 720p (80-90 GB) ---
-    (720, 1280, 49, 30),  # ~77 GB — 720p short clip
     (720, 1280, 81, 50),  # ~80 GB — standard 720p, 81 frames
+    (720, 1280, 49, 30),  # ~77 GB — 720p short clip
+    # --- Tier 1: Small / fast (well under 80 GB) ---
+    (480, 832, 81, 50),  # ~76 GB — standard 480p
+    (480, 832, 49, 30),  # ~74 GB — baseline sanity check
 ]
 
 # Prompts following the Wan2.1 recommended formula:
@@ -494,11 +506,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip saving generated video frames to disk.",
     )
     parser.add_argument(
-        "--save-mp4",
-        action="store_true",
-        help="Save output as MP4 video (requires imageio[ffmpeg]).",
-    )
-    parser.add_argument(
         "--model-override",
         type=str,
         action="append",
@@ -550,93 +557,59 @@ def _truncate_prompt(prompt: str, max_len: int = 40) -> str:
     return prompt[: max_len - 1] + "…"
 
 
-def _save_frames(
-    frames: np.ndarray,
-    output_dir: str,
-    prefix: str,
-    max_saved: int = 8,
-) -> list[str]:
-    """Save a subset of video frames as PNG images.
-
-    Args:
-        frames: Video frames as numpy array, shape (T, H, W, C) or (T, C, H, W).
-        output_dir: Directory to save frames in.
-        prefix: Filename prefix for saved frames.
-        max_saved: Maximum number of frames to save (evenly spaced).
-
-    Returns:
-        List of saved file paths.
-    """
-    os.makedirs(output_dir, exist_ok=True)
+def _normalize_frames(frames: np.ndarray) -> np.ndarray:
+    """Normalize frames to (T, H, W, C) uint8."""
     if frames.ndim == 5:
         # (B, C, T, H, W) -> take first batch element -> (C, T, H, W)
         frames = frames[0]
-    if frames.ndim == 4 and frames.shape[0] in (1, 3):
-        # (C, T, H, W) -> (T, H, W, C)
+    # Check last dim first: if it's 1/3, the data is already (T, H, W, C).
+    # Only then fall back to interpreting shape[0] as the channel dim (which
+    # would otherwise mis-trigger on (N=1, H, W, C) 1-frame outputs).
+    if frames.ndim == 4 and frames.shape[-1] in (1, 3):
+        pass  # already (T, H, W, C)
+    elif frames.ndim == 4 and frames.shape[0] in (1, 3):
         frames = np.transpose(frames, (1, 2, 3, 0))
-    elif frames.ndim == 4 and frames.shape[-1] not in (1, 3):
-        # (T, C, H, W) -> (T, H, W, C)
+    elif frames.ndim == 4:
         frames = np.transpose(frames, (0, 2, 3, 1))
 
-    num_frames = frames.shape[0]
-    indices = np.linspace(
-        0, num_frames - 1, min(max_saved, num_frames), dtype=int
-    )
-    saved = []
-    for idx in indices:
-        frame = frames[idx]
-        # Normalize to [0, 255] if needed.
-        if frame.dtype == np.float32 or frame.dtype == np.float64:
-            frame = np.clip(frame * 255.0, 0, 255).astype(np.uint8)
-        elif frame.dtype == np.float16:
-            frame = np.clip(frame.astype(np.float32) * 255.0, 0, 255).astype(
-                np.uint8
-            )
-        # Handle single-channel by squeezing.
-        if frame.ndim == 3 and frame.shape[-1] == 1:
-            frame = frame.squeeze(-1)
-        img = Image.fromarray(frame)
-        fname = f"{prefix}_frame{idx:04d}.png"
-        path = os.path.join(output_dir, fname)
-        img.save(path)
-        saved.append(fname)
-    return saved
-
-
-def _save_video(
-    frames: np.ndarray,
-    output_dir: str,
-    prefix: str,
-    fps: int = 16,
-) -> str:
-    """Save video frames as an MP4 file using PyAV.
-
-    Args:
-        frames: Video frames, shape (T, H, W, C) or (T, C, H, W) uint8/float.
-        output_dir: Directory to save the video in.
-        prefix: Filename prefix.
-        fps: Frames per second for the output video.
-
-    Returns:
-        The saved filename.
-    """
-    import av
-
-    os.makedirs(output_dir, exist_ok=True)
-    if frames.ndim == 5:
-        frames = frames[0]
-    if frames.ndim == 4 and frames.shape[0] in (1, 3):
-        frames = np.transpose(frames, (1, 2, 3, 0))
-    elif frames.ndim == 4 and frames.shape[-1] not in (1, 3):
-        frames = np.transpose(frames, (0, 2, 3, 1))
-
-    # Normalize to uint8 if needed.
     if frames.dtype in (np.float32, np.float64):
         frames = np.clip(frames * 255.0, 0, 255).astype(np.uint8)
     elif frames.dtype == np.float16:
         frames = np.clip(frames.astype(np.float32) * 255.0, 0, 255).astype(
             np.uint8
         )
+    return frames
+
+
+def _save_output(
+    frames: np.ndarray,
+    output_dir: str,
+    prefix: str,
+    fps: int = 16,
+) -> str:
+    """Save frames as a PNG (single frame) or MP4 (multiple frames).
+
+    Args:
+        frames: Video frames, shape (T, H, W, C) or (T, C, H, W) uint8/float.
+        output_dir: Directory to save the output in.
+        prefix: Filename prefix.
+        fps: Frames per second for the output video (multi-frame only).
+
+    Returns:
+        The saved filename.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    frames = _normalize_frames(frames)
+
+    if frames.shape[0] == 1:
+        frame = frames[0]
+        if frame.ndim == 3 and frame.shape[-1] == 1:
+            frame = frame.squeeze(-1)
+        fname = f"{prefix}.png"
+        Image.fromarray(frame).save(os.path.join(output_dir, fname))
+        return fname
+
+    import av
 
     fname = f"{prefix}.mp4"
     path = os.path.join(output_dir, fname)
@@ -840,15 +813,8 @@ def run_diffusers(
                         f"iter{i}_torch_{req.width}x{req.height}"
                         f"_{req.num_frames}f_{req.num_inference_steps}s"
                     )
-                    if args.save_mp4:
-                        fname = _save_video(frames, output_dir, prefix)
-                        print(f"    saved video: {fname}")
-                    else:
-                        saved = _save_frames(frames, output_dir, prefix)
-                        print(
-                            f"    saved {len(saved)} frames:"
-                            f" {saved[0]} ... {saved[-1]}"
-                        )
+                    fname = _save_output(frames, output_dir, prefix)
+                    print(f"    saved: {fname}")
                 except Exception as e:
                     print(f"    WARNING: Failed to save output: {e}")
         except Exception as e:
@@ -1122,15 +1088,8 @@ def run_max(
                             f"_{req.num_frames}f_{req.num_inference_steps}s"
                         )
                         stacked = np.stack(frames)
-                        if args.save_mp4:
-                            fname = _save_video(stacked, output_dir, prefix)
-                            print(f"    saved video: {fname}")
-                        else:
-                            saved = _save_frames(stacked, output_dir, prefix)
-                            print(
-                                f"    saved {len(saved)} frames:"
-                                f" {saved[0]} ... {saved[-1]}"
-                            )
+                        fname = _save_output(stacked, output_dir, prefix)
+                        print(f"    saved: {fname}")
         except Exception as e:
             error_msg = str(e)
             mem_at_error = GPUMemorySnapshot.capture_nvidia_smi()

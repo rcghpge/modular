@@ -8,6 +8,17 @@ This version is still a work in progress.
 
 ## Language enhancements
 
+- Mojo now uses `NoneType` instead of an empty tuple to mark constructor using
+  literals.
+
+- The ternary `if/else` expression now coerces each element to its contextual
+  type when it is obvious. For example, this works instead of producing an
+  error about incompatible metatypes:
+
+  ```mojo
+    comptime some_type: Movable = Int if cond else String
+  ```
+
 - Unified closures now accept default capturing conventions when there are
   explicit captures already.
 
@@ -68,6 +79,13 @@ This version is still a work in progress.
   def foo(*args: *SomeTypeList[Copyable]) -> Int: ...
   ```
 
+- T-strings can now be used in `comptime assert` messages:
+
+  ```mojo
+    def foo[i: Int]():
+        comptime assert i > 5, t"expected i > 5, got {i}"
+  ```
+
 ## Language changes
 
 - Variadic parameters lists are now passed instead of `ParameterList` and
@@ -105,7 +123,35 @@ This version is still a work in progress.
 
 ## Library changes
 
+- The `Variadic` suite of low-level operation has been refactored and migrated
+  to being members of the `TypeList` and `ParameterList` types, making them more
+  ergonomic to work with and more accessible.
+
+- Atomic operations have moved to a dedicated `std.atomic` module. The
+  `Consistency` type has been renamed to `Ordering` and its `MONOTONIC`
+  member has been renamed to `RELAXED` to align with conventions used by
+  other languages. Update existing code as follows:
+
+  ```mojo
+  # Before
+  from std.os import Atomic
+  from std.os.atomic import Atomic, Consistency, fence
+
+  _ = atom.load[ordering=Consistency.MONOTONIC]()
+
+  # After
+  from std.atomic import Atomic, Ordering, fence
+
+  _ = atom.load[ordering=Ordering.RELAXED]()
+  ```
+
 - `assert_raises` now catches custom `Writable` error types, not just `Error`.
+
+- Added UAX #29 grapheme cluster segmentation to `String` and `StringSlice`.
+  New APIs: `graphemes()` returns a `GraphemeSliceIter` that yields each
+  user-perceived "character" as a `StringSlice`, and `count_graphemes()` returns
+  the grapheme cluster count. This correctly handles combining marks, emoji ZWJ
+  sequences, flag emoji, Hangul syllables, and other multi-codepoint clusters.
 
 - Variadics of types have been moved to the `TypeList` struct.
   One can write operations such as:
@@ -156,6 +202,10 @@ This version is still a work in progress.
   - `Span`: `Writable`, `Hashable`
   - `Tuple`, `Optional`, `Variant`, and `UnsafeMaybeUninit`: `RegisterPassable`
   - `Variant`: `Copyable`, `ImplicitlyCopyable`
+
+- `Tuple` now conditionally conforms to `Defaultable`, so generic
+  `T: Defaultable` code can default-construct tuples when all element types are
+  `Defaultable`.
 
 - `OwnedDLHandle.get_symbol()` now returns `Optional[UnsafePointer[...]]`
   instead of aborting when a symbol is not found. This allows callers to handle
@@ -338,6 +388,14 @@ This version is still a work in progress.
   print(mapped) # Optional("43")
   ```
 
+- `parallelize`, `parallelize_over_rows` (in
+  `std.algorithm.backend.cpu.parallelize`) and the `elementwise` overloads in
+  `std.algorithm.functional` now accept an optional trailing
+  `ctx: Optional[DeviceContext] = None` parameter. When supplied, the provided
+  CPU `DeviceContext` is forwarded to `sync_parallelize` so that parallel work
+  runs on that context; when omitted, the previous behavior is preserved. This
+  is a step toward running CPU ops on specific NUMA nodes.
+
 ## Tooling changes
 
 - The Mojo debugger now displays scalar types (e.g. `UInt8`, `Float32`) as
@@ -363,8 +421,46 @@ This version is still a work in progress.
 - The deprecated `@doc_private` decorator has been removed. Use `@doc_hidden`
   instead.
 
+- Removed the `store_release`, `store_relaxed`, `load_acquire`, and
+  `load_relaxed` helpers from `std.gpu.intrinsics`. Use
+  [`Atomic[dtype, scope=...].store`](/mojo/std/atomic/atomic/Atomic/#store) and
+  [`Atomic[dtype, scope=...].load`](/mojo/std/atomic/atomic/Atomic/#load) with
+  the desired [`Ordering`](/mojo/std/atomic/atomic/Ordering/) instead:
+
+  ```mojo
+  # Before
+  from std.gpu.intrinsics import store_release, load_acquire
+  store_release[scope=Scope.GPU](ptr, value)
+  var v = load_acquire[scope=Scope.GPU](ptr)
+
+  # After
+  from std.atomic import Atomic, Ordering
+  Atomic[dtype, scope="device"].store[ordering=Ordering.RELEASE](ptr, value)
+  var v = Atomic[dtype, scope="device"].load[ordering=Ordering.ACQUIRE](ptr)
+  ```
+
 ## 🛠️ Fixed
 
+- Fixed pack inference failing with `could not infer type of parameter pack ...
+  given value with unresolved type` when passing list, dict, set, or slice
+  literals to a `*Ts`-bound variadic pack parameter (e.g.
+  `def foo[*Ts: Iterable](*args: *Ts)`). Pack inference now applies the same
+  default-type fallback that single-argument trait-bound parameters already
+  use, so `foo([1, 2, 3], [4, 5, 6])` resolves each literal to its default
+  type (e.g. `List[Int]`) before binding the pack.
+
+- Fixed `mojo` aborting at startup with `std::filesystem::filesystem_error`
+  when `$HOME` is not traversable by the running UID (common in containerized
+  CI where the image's build-time UID differs from the runtime UID). The
+  config search now treats permission errors as "not found" and falls through
+  to the next candidate.
+  ([Issue #6412](https://github.com/modular/modular/issues/6412))
+
+- Fixed `libpython` auto-discovery failing for Python 3.14 free-threaded builds.
+  The discovery script constructed the library filename without the ABI flags
+  suffix (e.g. looked for `libpython3.14.dylib` instead of
+  `libpython3.14t.dylib`).
+  ([Issue #6366](https://github.com/modular/modular/issues/6366))
 - Fixed `RTLD.LOCAL` having the wrong value on Linux. It was set to `4`
   (`RTLD_NOLOAD`) instead of `0`, causing `dlopen` with `RTLD.NOW | RTLD.LOCAL`
   to fail. ([Issue #6410](https://github.com/modular/modular/issues/6410))
@@ -382,3 +478,15 @@ This version is still a work in progress.
   default `Writable`, `Equatable`, or `Hashable` implementations on structs
   with MLIR-type fields (e.g. `__mlir_type.index`). The compiler now correctly
   reports that the field does not implement the required trait.
+
+- Fixed `Atomic.store` silently dropping the requested `scope`. The previous
+  implementation lowered to `atomicrmw xchg` without forwarding `syncscope`,
+  so `Atomic[..., scope="device"].store(...)` was emitting a system-scope
+  store on NVPTX (extra L2/NVLink fences) and an over-synchronized store on
+  AMDGPU. `Atomic.store` now lowers via `pop.store atomic syncscope(...)`,
+  emitting `st.release.<scope>` on NVPTX and a properly-scoped LLVM atomic
+  store on AMDGPU. The Mojo API surface is unchanged.
+
+- Fixed `Process.run()` not inheriting the parent's environment variables.
+  Child processes spawned via `Process.run()` now correctly receive the
+  parent's environment.

@@ -27,9 +27,6 @@ INTERNVL_LANGUAGE_MODEL_MAPPING = {
     # InternVLLanguageModel expects: "lm_head.weight"
     "language_model.lm_head.": "lm_head.",
     # Remap unfused Q/K/V projections into StackedLinear namespace.
-    "self_attn.q_proj.": "self_attn.qkv_proj.q.",
-    "self_attn.k_proj.": "self_attn.qkv_proj.k.",
-    "self_attn.v_proj.": "self_attn.qkv_proj.v.",
 }
 
 # Maps from InternVL checkpoint names to InternVLVisionModel weight names.
@@ -60,6 +57,7 @@ def convert_internvl_language_model_state_dict(
     Qwen2/Llama3 naming without this prefix.
 
     This adapter:
+
     1. Filters to only include language model weights (those with
        `language_model.` prefix).
     2. Strips the `language_model.model.` prefix to match InternVLLanguageModel
@@ -98,6 +96,7 @@ def convert_internvl_vision_model_state_dict(
     `vision_model.`, but InternVLVisionModel expects that prefix dropped.
 
     This adapter:
+
     1. Filters to only include vision model weights (those with
        `vision_model.` prefix).
     2. Strips the `vision_model.` prefix to match InternVLVisionModel

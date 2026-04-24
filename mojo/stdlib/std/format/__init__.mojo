@@ -104,6 +104,7 @@ trait Writer(ImplicitlyDestructible):
     Example:
 
     ```mojo
+    @fieldwise_init
     struct StringBuilder(Writer):
         var s: String
 
@@ -207,11 +208,16 @@ trait Writable(ImplicitlyDestructible):
         Args:
             writer: The destination for formatted output.
 
-        ## Example
+        **Example:**
 
         ```mojo
-        def write_to(self, mut writer: Some[Writer]):
-            writer.write("(", self.x, ", ", self.y, ")")
+        @fieldwise_init
+        struct Point(Writable):
+            var x: Float64
+            var y: Float64
+
+            def write_to(self, mut writer: Some[Writer]):
+                writer.write("(", self.x, ", ", self.y, ")")
         ```
         """
 
@@ -237,11 +243,16 @@ trait Writable(ImplicitlyDestructible):
         Args:
             writer: The destination for formatted output.
 
-        ## Example
+        **Example:**
 
         ```mojo
-        def write_repr_to(self, mut writer: Some[Writer]):
-            writer.write("Point: x=", self.x, ", y=", self.y)
+        @fieldwise_init
+        struct Point(Writable):
+            var x: Float64
+            var y: Float64
+
+            def write_repr_to(self, mut writer: Some[Writer]):
+                writer.write("Point: x=", self.x, ", y=", self.y)
         ```
 
         Notes:

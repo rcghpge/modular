@@ -1928,26 +1928,23 @@ class BufferTransferOp(max._core.Operation):
 
 class BundledAllreduceSumOp(max._core.Operation):
     """
-    Per-device entry point for allreduce sum. Unlike
-    `mo.distributed.allreduce.sum` (which takes N tensor inputs and N signal
-    buffers), this op takes a single tensor input, a single signal buffer, and
-    a chain. It is designed to be used inside an `mo.parallel` region with
-    tupled inputs, where the tensor and signal buffer both vary per launch.
+    Per-device entry point for allreduce sum, used inside an `mo.parallel`
+    region.  Takes N peer tensor inputs (from `mo.bundled.expand`), N
+    signal buffers (captured from graph scope — the `buffers(...)` clause
+    on the parent parallel op provides chain guarding), and a chain.
 
-    The lowering expands the single input and signal buffer to all N peer
-    inputs/buffers when constructing the kernel stub.
-
-    Example (inside mo.parallel with tupled inputs):
+    Example:
     ```mlir
-    %res:2, %out_ch = mo.parallel (%arg, %sig) in
-        ((%in0, %sig0) : (!mo.tensor<[3], f32, gpu:0>,
-                          !mo.buffer<[1], ui8, gpu:0>),
-         (%in1, %sig1) : (!mo.tensor<[3], f32, gpu:1>,
-                          !mo.buffer<[1], ui8, gpu:1>))
-        chain(%ch) {
-      %out, %ch_out = mo.bundled.allreduce.sum(%arg, %sig, %ch)
-          : (!mo.tensor<[3], f32, gpu:0>,
-             !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
+    mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
+        buffers(%sig0 : ..., %sig1 : ...) chain(%ch) -> (...) {
+      %peer0, %peer1 = mo.bundled.expand(%arg)
+          : !mo.tensor<[3], f32, gpu:0>
+         -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+      %out, %ch_out = mo.bundled.allreduce.sum(
+          %peer0, %peer1, %sig0, %sig1, %ch)
+          : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>,
+             !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>,
+             !mo.chain)
           -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
       mo.yield %out : !mo.tensor<[3], f32, gpu:0>
     }
@@ -1960,16 +1957,50 @@ class BundledAllreduceSumOp(max._core.Operation):
         location: Location,
         output: TensorType,
         out_chain: ChainType,
-        input: max._core.Value[TensorType],
-        signal_buffer: max._core.Value[BufferType],
+        inputs: Sequence[max._core.Value[max._core.Type]],
+        signal_buffers: Sequence[max._core.Value[max._core.Type]],
         in_chain: max._core.Value[ChainType],
     ) -> None: ...
     @property
-    def input(self) -> max._core.Value[TensorType]: ...
+    def inputs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
     @property
-    def signal_buffer(self) -> max._core.Value[BufferType]: ...
+    def signal_buffers(self) -> Sequence[max._core.Value[max._core.Type]]: ...
     @property
     def in_chain(self) -> max._core.Value[ChainType]: ...
+
+class BundledExpandOp(max._core.Operation):
+    """
+    Inside an `mo.parallel` body, takes a single-device tensor (typically a
+    block argument) and produces one tensor per launch with the corresponding
+    device placement.  This makes collective N-expansion explicit in the IR
+    rather than implicit during lowering.
+
+    The number of results must equal the parent parallel op's launch count.
+    Result types must have the same shape and dtype as the input but with
+    devices matching each launch (derived from the first input bundle).
+
+    Example:
+    ```mlir
+    mo.parallel (%arg) in (%dt : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
+                                              !mo.tensor<[3], f32, gpu:1>]>)
+        -> (!mo.bundle<[...]>) {
+      %peer0, %peer1 = mo.bundled.expand(%arg)
+          : !mo.tensor<[3], f32, gpu:0>
+         -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+      // ... use %peer0, %peer1 as inputs to a collective ...
+    }
+    ```
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        results: Sequence[max._core.Type],
+        input: max._core.Value[TensorType],
+    ) -> None: ...
+    @property
+    def input(self) -> max._core.Value[TensorType]: ...
 
 class CallOp(max._core.Operation):
     """
@@ -3140,7 +3171,6 @@ class DistributedEpDispatchMxfp4Op(max._core.Operation):
         output_tokens: Sequence[max._core.Type],
         output_scales: Sequence[max._core.Type],
         row_offsets: Sequence[max._core.Type],
-        scales_offsets: Sequence[max._core.Type],
         expert_ids: Sequence[max._core.Type],
         src_info: Sequence[max._core.Type],
         out_chain: ChainType,
@@ -3491,6 +3521,51 @@ class FloorOp(max._core.Operation):
     ) -> None: ...
     @property
     def input(self) -> max._core.Value[TensorType]: ...
+
+class FusedConcatSliceOp(max._core.Operation):
+    """
+    This operation peforms two operations at once:
+    %concat = mo.concat[axis](inputs)
+    %slice = mo.slice(%concat)
+    And returns both the concat and the slice result.
+    """
+
+    def __init__(
+        self,
+        builder: max._core.OpBuilder,
+        location: Location,
+        concat_result: TensorType,
+        slice_result: TensorType,
+        axis: max._core.Value[TensorType],
+        inputs: Sequence[max._core.Value[max._core.Type]],
+        static_starts: max._core.dialects.builtin.ArrayAttr,
+        static_steps: max._core.dialects.builtin.ArrayAttr,
+        output_param_decls: max._core.dialects.kgen.ParamDeclArrayAttr,
+    ) -> None: ...
+    @property
+    def axis(self) -> max._core.Value[TensorType]: ...
+    @property
+    def inputs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    @property
+    def static_starts(self) -> max._core.dialects.builtin.ArrayAttr: ...
+    @static_starts.setter
+    def static_starts(
+        self, arg: max._core.dialects.builtin.ArrayAttr, /
+    ) -> None: ...
+    @property
+    def static_steps(self) -> max._core.dialects.builtin.ArrayAttr: ...
+    @static_steps.setter
+    def static_steps(
+        self, arg: max._core.dialects.builtin.ArrayAttr, /
+    ) -> None: ...
+    @property
+    def output_param_decls(
+        self,
+    ) -> Sequence[max._core.dialects.kgen.ParamDeclAttr]: ...
+    @output_param_decls.setter
+    def output_param_decls(
+        self, arg: max._core.dialects.kgen.ParamDeclArrayAttr, /
+    ) -> None: ...
 
 class GatherNdOp(max._core.Operation):
     """
@@ -4933,44 +5008,47 @@ class PadRepeatOp(max._core.Operation):
 class ParallelOp(max._core.Operation):
     """
     The `mo.parallel` operation takes a single "body" block, which is executed
-    in parallel for each set of inputs.
+    in parallel for each set of inputs.  Each input is an `!mo.bundle` whose
+    elements are the per-device values for one input group.  All bundles must
+    have the same number of elements (= number of launches).  The body block
+    receives one block argument per bundle input, typed as a representative
+    single-device value (the first element's type).
 
-    Type constraints:
-    1. All inputs must have the same type (tensor device IDs may differ).
-    2. The input types must match the block argument type.
-    3. The yield type must match the result types.
-    4. All results must have the same type (tensor device IDs may differ).
+    The yield may return one or more values.  Each yield operand produces one
+    `!mo.bundle` result whose elements are derived from the yield type with
+    per-launch devices taken from the first input bundle.
 
-    The input and result types may differ (e.g. when a pass annotates the
-    block argument with a layout attribute that the yield does not carry).
-    The block argument uses the first input's type as a representative.
+    An optional `buffers(...)` clause declares per-launch signal buffers for
+    collective operations (e.g. allreduce).  The number of buffers must equal
+    the number of launches.  Buffers are operands of the parallel op for
+    chain guarding (memory effect tracking) but do NOT produce block
+    arguments.  Ops inside the body capture buffer values directly from the
+    enclosing scope.
 
-    An optional second input group (`extraInputs`) may be provided for
-    additional per-device operands (e.g., signal buffers). When present,
-    extraInputs must have the same length as inputs, and the body block
-    receives an additional argument for the extra input.
+    `buffers(...)` and `chain(...)` must be both present or both absent.  When
+    present, `chain(...)` provides a sequencing dependency and the trailing
+    `!mo.chain` result represents completion of all parallel launches.
 
-    A chain input (`inChain`) provides the sequencing dependency from prior
-    ops. The chain result (`outChain`) represents completion of all parallel
-    launches and can be used to sequence subsequent ops.
-
-    Example with individual types (different device IDs):
+    Example with one bundle input (no buffers, no chain):
     ```mlir
-    %res:2, %out_ch = mo.parallel %arg in
-        (%a : !mo.tensor<[3], f32, gpu:0>,
-         %b : !mo.tensor<[3], f32, gpu:1>) chain(%ch) {
+    %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
+    %res = mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
+        -> (!mo.bundle<[...]>) {
       %1 = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
       mo.yield %1 : !mo.tensor<[3], f32, gpu:0>
     }
     ```
 
-    Example with extra inputs (tupled per-device operands):
+    Example with buffers and chain (bundled allreduce):
     ```mlir
-    %res:2, %out_ch = mo.parallel (%arg, %sig) in
-        ((%a, %sig0) : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>),
-         (%b, %sig1) : (!mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:1>))
-        chain(%ch_in) {
-      %out, %ch = mo.bundled.allreduce.sum(%arg, %sig, %ch_in) : ...
+    %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
+    %res, %ch = mo.parallel (%arg) in (%dt : !mo.bundle<[...]>)
+        buffers(%s0 : !mo.buffer<[1], ui8, gpu:0>,
+                %s1 : !mo.buffer<[1], ui8, gpu:1>)
+        chain(%ch_in)
+        -> (!mo.bundle<[...]>) {
+      %p0, %p1 = mo.bundled.expand(%arg) : ...
+      %out, %ch1 = mo.bundled.allreduce.sum(%p0, %p1, %s0, %s1, %ch_in) : ...
       mo.yield %out : !mo.tensor<[3], f32, gpu:0>
     }
     ```
@@ -4982,13 +5060,13 @@ class ParallelOp(max._core.Operation):
         location: Location,
         results: Sequence[max._core.Type],
         inputs: Sequence[max._core.Value[max._core.Type]],
-        extra_inputs: Sequence[max._core.Value[max._core.Type]],
+        buffers: Sequence[max._core.Value[max._core.Type]],
         in_chain: max._core.Value[ChainType],
     ) -> None: ...
     @property
     def inputs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
     @property
-    def extra_inputs(self) -> Sequence[max._core.Value[max._core.Type]]: ...
+    def buffers(self) -> Sequence[max._core.Value[max._core.Type]]: ...
     @property
     def in_chain(self) -> max._core.Value[ChainType]: ...
 

@@ -238,6 +238,16 @@ struct Optional[T: Movable](
         """
         self = Self()
 
+    @always_inline("nodebug")
+    @implicit
+    @doc_hidden
+    def __init__[
+        U: TrivialRegisterPassable
+    ](out self: Optional[U], optional_reg: OptionalReg[U]):
+        """Implicitly cast an `OptionalReg[T]` to an `Optional[T]`."""
+        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(self))
+        UnsafePointer(to=self).bitcast[OptionalReg[U]]()[] = optional_reg
+
     @always_inline
     @implicit
     @doc_hidden
@@ -488,20 +498,6 @@ struct Optional[T: Movable](
         if not self:
             raise EmptyOptionalError[Self.T]()
         return self.unsafe_value()
-
-    @always_inline("nodebug")
-    def __merge_with__[
-        other_type: type_of(Bool),
-    ](self) -> Bool:
-        """Merge with other bools in an expression.
-
-        Parameters:
-            other_type: The type of the bool to merge with.
-
-        Returns:
-            A Bool after merging with the specified `other_type`.
-        """
-        return self.__bool__()
 
     def _write_to[
         *, is_repr: Bool
@@ -837,7 +833,7 @@ struct Optional[T: Movable](
 
         ```mojo
         var opt = Optional("hello")
-        var length = opt.map[To=Int](String.__len__)
+        var length = opt.map[To=Int](String.byte_length)
         print(length.value())  # Output: 5
         ```
 
@@ -845,7 +841,7 @@ struct Optional[T: Movable](
 
         ```mojo
         var opt = Optional[String](None)
-        var length = opt.map[To=Int](String.__len__)
+        var length = opt.map[To=Int](String.byte_length)
         print(length.or_else(-1))  # Output: -1
         ```
         """
@@ -1132,20 +1128,6 @@ struct OptionalReg[T: TrivialRegisterPassable](
         """
         return self.__bool__()
 
-    @always_inline("nodebug")
-    def __merge_with__[
-        other_type: type_of(Bool),
-    ](self) -> Bool:
-        """Merge with other bools in an expression.
-
-        Parameters:
-            other_type: The type of the bool to merge with.
-
-        Returns:
-            A Bool after merging with the specified `other_type`.
-        """
-        return self.__bool__()
-
     # ===-------------------------------------------------------------------===#
     # Trait implementations
     # ===-------------------------------------------------------------------===#
@@ -1194,3 +1176,14 @@ struct OptionalReg[T: TrivialRegisterPassable](
         if self:
             return self.value()
         return default
+
+    @always_inline("nodebug")
+    def _unsafe_nullable[
+        U: AnyType, origin: Origin, address_space: AddressSpace
+    ](
+        self: OptionalReg[
+            UnsafePointer[U, origin, address_space=address_space]
+        ],
+        out result: type_of(self).T,
+    ):
+        result = UnsafePointer(to=self).bitcast[type_of(result)]()[]

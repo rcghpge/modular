@@ -275,12 +275,14 @@ struct PythonModuleBuilder:
 
     Example:
         ```mojo
+        from std.python import PythonObject
         from std.python.bindings import PythonModuleBuilder
+
+        def my_func(arg: PythonObject) -> PythonObject:
+            return arg
 
         var builder = PythonModuleBuilder("my_module")
         builder.def_function[my_func]("my_func", "Documentation for my_func")
-
-        _ = builder.add_type[MyType]("MyType").def_method[my_method]("my_method")
 
         var module = builder.finalize()
         ```
@@ -439,6 +441,9 @@ struct PythonModuleBuilder:
 
         Example signatures:
         ```mojo
+        from std.python import PythonObject
+        from std.collections.dict import OwnedKwargsDict
+
         def func(arg1: PythonObject) -> PythonObject: ...
         def func(arg1: PythonObject, arg2: PythonObject) raises: ...
         def func(kwargs: OwnedKwargsDict[PythonObject]) -> PythonObject: ...
@@ -704,16 +709,7 @@ struct PythonTypeBuilder(Copyable):
         Raises:
             If the slot insertion fails.
         """
-
-        @always_inline
-        def raising_wrapper[
-            init_func: def(
-                out t: T, args: PythonObject, kwargs: PythonObject
-            ) thin
-        ](out t: T, args: PythonObject, kwargs: PythonObject) raises:
-            t = init_func(args, kwargs)
-
-        return self.def_py_init[raising_wrapper[init_func]]()
+        return self.def_py_init[_raising_py_init_wrapper[T, init_func]]()
 
     def def_py_init[
         T: Movable & ImplicitlyDestructible,
@@ -889,6 +885,8 @@ struct PythonTypeBuilder(Copyable):
 
         Example signatures:
         ```mojo
+        from std.python import PythonObject
+
         def method(mut self: PythonObject) -> PythonObject: ...
         def method(mut self: PythonObject, arg1: PythonObject) raises: ...
         ```
@@ -928,6 +926,8 @@ struct PythonTypeBuilder(Copyable):
 
         Example signatures:
         ```mojo
+        from std.python import PythonObject
+
         def static_method(arg1: PythonObject) -> PythonObject: ...
         def static_method(arg1: PythonObject, arg2: PythonObject) raises: ...
         ```
@@ -1015,6 +1015,14 @@ def _py_init_function_wrapper[
             error_type, error_message.as_c_string_slice().unsafe_ptr()
         )
         return -1
+
+
+@always_inline
+def _raising_py_init_wrapper[
+    T: Movable & ImplicitlyDestructible,
+    init_func: def(args: PythonObject, kwargs: PythonObject) thin -> T,
+](out t: T, args: PythonObject, kwargs: PythonObject) raises:
+    t = init_func(args, kwargs)
 
 
 @always_inline
