@@ -476,16 +476,14 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   // (Python stack traces in error messages) and NaN/Inf checking are cached
   // separately from builds without. Since locations are stripped below, the
   // debug flags wouldn't otherwise affect the key, causing stale cache hits.
-  // See GEX-2678.  Check both the new max-debug.* config keys and the legacy
-  // env vars; legacy will be removed in a follow-up PR.
+  // See GEX-2678.
   auto cacheKeyConfigOr = M::Config::open();
   auto configHasFlag = [&](llvm::StringRef key) {
     return !cacheKeyConfigOr.isError() &&
            cacheKeyConfigOr->getValueAsBool(key, false);
   };
-  if (llvm::sys::Process::GetEnv("MODULAR_MAX_DEBUG") ||
-      configHasFlag("max-debug.source-tracebacks"))
-    *keyBuf << "MODULAR_MAX_DEBUG=1";
+  if (configHasFlag("max-debug.source-tracebacks"))
+    *keyBuf << "max-debug.source-tracebacks=1";
   if (configHasFlag("max-debug.nan-check"))
     *keyBuf << "max-debug.nan-check=1";
 

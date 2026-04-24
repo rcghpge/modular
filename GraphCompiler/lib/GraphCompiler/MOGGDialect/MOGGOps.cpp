@@ -1485,7 +1485,10 @@ static unsigned getTraceMaxFrames() {
 /// collectSourceNotes for the FusedLoc tree walk, then reformats each trace
 /// to show only the bottom N frames in compact `path:line:func` form.
 /// N is controlled by MODULAR_TRACE_MAX_FRAMES (default 10). Source detail is
-/// non-empty only when MODULAR_MAX_DEBUG=1 was set at graph construction time.
+/// non-empty only when the `max-debug.source-tracebacks` config key was
+/// enabled at graph construction time (for example, via
+/// `Graph.debug.source_tracebacks = True` or
+/// `MODULAR_DEBUG=source-tracebacks`).
 static std::string collectCompactSourceNotes(Location rootLoc) {
   unsigned maxFrames = getTraceMaxFrames();
   auto notes = collectSourceNotes(rootLoc);
