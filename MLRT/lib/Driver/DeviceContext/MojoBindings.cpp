@@ -293,6 +293,14 @@ AsyncRT_DeviceStream_eventRecord(DeviceStream *stream, DeviceEvent *event) {
   return checkSuccess(stream->eventRecord(*event));
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceStream_enqueueHostFunc(DeviceStream *stream, void (*fn)(void *),
+                                     void *userData) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceStream_enqueueHostFunc",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(stream->enqueueHostFunc(fn, userData));
+}
+
 MODULAR_EXPORT const char *AsyncRT_DeviceEvent_synchronize(DeviceEvent *event) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceEvent_synchronize", TRACY_COLOR_GRAY);
   return checkSuccess(event->synchronize());
