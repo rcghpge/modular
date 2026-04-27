@@ -3129,6 +3129,16 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
           op, "Slice dimension must be statically known");
     }
 
+    // Bail out if the slice reduces the axis to a unit dimension. The reshape
+    // analysis below skips 1-dims, which means an axis-of-size-1 in sliceType
+    // gets remapped to a different (non-1) axis, but the rebuild logic still
+    // uses the original sliceAxis to compute the new reshape size. That
+    // produces a malformed reshape whose numel does not match the input.
+    if (sliceType.getIntDim(sliceAxis) == 1) {
+      return rewriter.notifyMatchFailure(
+          op, "Slice that reduces an axis to size 1 is not supported");
+    }
+
     // start/stop/step must be constants so that we can rebuild them.
     auto startValues = tryGetConstantIntVector(op.getStart());
     auto stopValues = tryGetConstantIntVector(op.getStop());

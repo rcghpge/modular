@@ -156,3 +156,22 @@ mo.graph @no_conversion_expansion_unaligned_start(%arg0: !mo.tensor<[2, 8], f32>
   %reshape = mo.static.reshape(%slice) : !mo.tensor<[2, 4], f32> -> !mo.tensor<[2, 2, 2], f32>
   mo.output %reshape : !mo.tensor<[2, 2, 2], f32>
 }
+
+// -----
+
+// No conversion: slice reduces the leading axis to size 1 and the reshape
+// squeezes that axis away. The rebuild logic uses an inconsistent axis
+// mapping in this case, so the pattern must bail.
+
+// CHECK-LABEL: mo.graph @no_conversion_slice_to_unit_dim_then_squeeze
+// CHECK:       mo.slice
+// CHECK:       mo.static.reshape
+
+mo.graph @no_conversion_slice_to_unit_dim_then_squeeze(%arg0: !mo.tensor<[2, 3], si32>) -> !mo.tensor<[3], si32> {
+  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<1, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %slice = mo.slice(%arg0, %start, %stop, %step) : (!mo.tensor<[2, 3], si32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[1, 3], si32>
+  %reshape = mo.static.reshape(%slice) : !mo.tensor<[1, 3], si32> -> !mo.tensor<[3], si32>
+  mo.output %reshape : !mo.tensor<[3], si32>
+}
