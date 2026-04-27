@@ -11,6 +11,7 @@
 #include "CUDADeviceContext.h"
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
+
 #include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "NVML.h"
@@ -1075,6 +1076,25 @@ ErrorOrSuccess CUDADeviceStream::beginCapture() const {
   return success();
 }
 
+static std::unique_lock<std::mutex> getCudaProfilerLock() {
+  // CUPTI's graph-tracing hooks (active when any CUDA injection profiler such
+  // as nsys or ncu is running) are not thread-safe for concurrent
+  // cuGraphInstantiateWithParams calls, even on distinct CUgraph objects.
+  // Serialize instantiation under a process-wide mutex when profiling is
+  // detected via CUDA_INJECTION64_PATH.
+
+  static const bool kUnderCudaProfiler =
+      llvm::sys::Process::GetEnv("CUDA_INJECTION64_PATH").has_value();
+
+  if (kUnderCudaProfiler) {
+    static std::mutex sInstantiateMutex;
+    std::unique_lock<std::mutex> profilingLock(sInstantiateMutex);
+    return profilingLock;
+  }
+
+  return {};
+}
+
 ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() {
   CUstreamCaptureStatus status = getCaptureStatus();
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE)
@@ -1119,8 +1139,12 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() {
   };
 
   CUgraphExec exec = nullptr;
-  CUDADriver::Result res = cudaDevice.cudaDriver().cuGraphInstantiateWithParams(
-      &exec, graph, &params);
+  CUDADriver::Result res = [&] {
+    auto lock = getCudaProfilerLock();
+    return cudaDevice.cudaDriver().cuGraphInstantiateWithParams(&exec, graph,
+                                                                &params);
+  }();
+
   if (res != CUDADriver::SUCCESS) {
     // Clean up graph on failure with enhanced error reporting
     cudaDevice.cudaDriver().cuGraphDestroy(graph);

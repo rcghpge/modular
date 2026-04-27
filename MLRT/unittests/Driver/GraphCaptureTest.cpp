@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
@@ -204,7 +205,15 @@ static bool supportsKernelReflection(const DeviceContext &ctx) {
   return llvm::is_contained({Device::cudaAPI}, ctx.device().api());
 }
 
-class GraphCaptureTest : public ::testing::Test {};
+class GraphCaptureTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    runtime_ = M::MLRT::getOrCreateRuntime(
+        M::MLRT::RuntimeSource::Test,
+        M::MLRT::RuntimeOptions().withMainWillNotDonate());
+  }
+  M::MLRT::RuntimeRef runtime_;
+};
 
 TEST_F(GraphCaptureTest, BeginAndEndCapture) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx,
@@ -313,7 +322,7 @@ TEST_F(GraphCaptureTest, CaptureProducesGraphs) {
   const uint32_t gridDim = (length + blockDim - 1) / blockDim;
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+      DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
         return stream->enqueueFunctionExecDirect(
             *deviceFunc,
             /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
@@ -389,7 +398,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplaySuccess) {
 
   // Capture the execution
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, execute);
+      DeviceGraph::capture(*runtime_, {stream}, execute);
   EXPECT_FALSE(captured.isError());
 
   // Verify that replaying the same execution matches the captured graph
@@ -438,7 +447,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsMismatch) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, captureExecute);
+      DeviceGraph::capture(*runtime_, {stream}, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify with TWO kernel launches (should mismatch)
@@ -507,7 +516,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayDetectsDifferentGridDim) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, captureExecute);
+      DeviceGraph::capture(*runtime_, {stream}, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify with different grid dimension
@@ -534,7 +543,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayWithExecutionFailure) {
   auto captureExecute = [&]() -> ErrorOrSuccess { return success(); };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, captureExecute);
+      DeviceGraph::capture(*runtime_, {stream}, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify with an execution that fails
@@ -556,7 +565,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayEmptyGraph) {
   auto emptyExecute = [&]() -> ErrorOrSuccess { return success(); };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, emptyExecute);
+      DeviceGraph::capture(*runtime_, {stream}, emptyExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify empty execution should succeed
@@ -624,7 +633,7 @@ TEST_F(GraphCaptureTest, DebugVerifyReplayHandlesReorderedExecution) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, captureExecute);
+      DeviceGraph::capture(*runtime_, {stream}, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Verify: Execute kernel B then kernel A (different order)
@@ -694,7 +703,7 @@ TEST_F(GraphCaptureTest, CaptureWithSyncMode) {
   const uint32_t gridDim = (length + blockDim - 1) / blockDim;
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+      DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
         return stream->enqueueFunctionExecDirect(
             *deviceFunc,
             /*gridX=*/gridDim, /*gridY=*/1, /*gridZ=*/1,
@@ -757,7 +766,7 @@ TEST_F(GraphCaptureTest, TraceDetectsScalarParameterChange) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, captureExecute);
+      DeviceGraph::capture(*runtime_, {stream}, captureExecute);
   EXPECT_FALSE(captured.isError());
 
   // Replay with different length=2048 should detect mismatch
@@ -825,7 +834,7 @@ TEST_F(GraphCaptureTest, TraceStableAcrossBufferReallocation) {
 
   // Capture with first set of buffers
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, execute1);
+      DeviceGraph::capture(*runtime_, {stream}, execute1);
   EXPECT_FALSE(captured.isError());
 
   // Free first set of buffers and allocate new ones (likely at different
@@ -903,7 +912,7 @@ TEST_F(GraphCaptureTest, DISABLED_TraceMixedPointerAndScalarParams) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, execute1);
+      DeviceGraph::capture(*runtime_, {stream}, execute1);
   EXPECT_FALSE(captured.isError());
 
   // Replay with different scalar (length=1024) should mismatch
@@ -965,7 +974,7 @@ TEST_F(GraphCaptureTest, TraceDetectsSubPointerSizedScalarChanges) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, execute1);
+      DeviceGraph::capture(*runtime_, {stream}, execute1);
   EXPECT_FALSE(captured.isError());
 
   // Test 2: Change the first u32 scalar - should be DETECTED
@@ -1046,7 +1055,7 @@ TEST_F(GraphCaptureTest, TraceDistinguishesScalarsFromPointerBitPatterns) {
   };
 
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, execute1);
+      DeviceGraph::capture(*runtime_, {stream}, execute1);
   EXPECT_FALSE(captured.isError());
 
   // Verify that changing pointer-sized (8-byte) scalar parameters is NOT
@@ -1092,7 +1101,7 @@ TEST_F(GraphCaptureTest, LoopWithUnfreedAllocationNoReplay) {
 
     // Capture a graph that allocates memory without freeing it
     ErrorOr<DeviceGraphCollection> captured =
-        DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+        DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
           // Allocate a buffer inside the capture
           DEFINE_OR_RETURN_ERROR(DeviceBufferRef, buf,
                                  ctx->enqueueCreateBuffer(allocSize));
@@ -1127,7 +1136,7 @@ TEST_F(GraphCaptureTest, LoopWithUnfreedAllocationReplay) {
 
     // Capture a graph that allocates memory without freeing it
     ErrorOr<DeviceGraphCollection> captured =
-        DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+        DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
           // Allocate a buffer inside the capture
           DEFINE_OR_RETURN_ERROR(DeviceBufferRef, buf,
                                  ctx->enqueueCreateBuffer(allocSize));
@@ -1162,7 +1171,7 @@ TEST_F(GraphCaptureTest, GraphCaptureDoesNotEncodeAllocNodes) {
   // Capture a graph that allocates a buffer inside the callback.
   DeviceBufferRef capturedBuf = {};
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+      DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
         DEFINE_OR_RETURN_ERROR(DeviceBufferRef, buf,
                                ctx->enqueueCreateBuffer(allocSize));
         capturedBuf = std::move(buf);
@@ -1207,7 +1216,7 @@ TEST_F(GraphCaptureTest, EventHandlerCalledAfterCapture) {
   // Perform graph capture. Inside the capture, enqueue an event handler that
   // records whether it was invoked.
   ErrorOr<DeviceGraphCollection> captured =
-      DeviceGraph::capture({stream}, [&]() -> ErrorOrSuccess {
+      DeviceGraph::capture(*runtime_, {stream}, [&]() -> ErrorOrSuccess {
         return ctx->enqueueEventHandler(
             [&handlerCalled]() { handlerCalled = true; });
       });
