@@ -236,12 +236,11 @@ public:
   ErrorOrSuccess enqueueHostFunc(void (*fn)(void *),
                                  void *userData) const override;
 
-  virtual ErrorOrSuccess
-  enqueueFunctionExecDirect(const DeviceFunction &func, uint32_t gridX,
-                            uint32_t gridY, uint32_t gridZ, uint32_t blockX,
-                            uint32_t blockY, uint32_t blockZ,
-                            uint32_t sharedMemBytes, void *attrs,
-                            uint32_t numAttrs, void **args) const override;
+  virtual ErrorOrSuccess enqueueFunctionExecDirect(
+      const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
+      uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+      uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
+      uint32_t argCount = 0, const size_t *argSizes = nullptr) const override;
 
   void *ptr() const override;
 

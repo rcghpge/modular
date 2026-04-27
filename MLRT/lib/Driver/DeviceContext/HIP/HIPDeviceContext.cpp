@@ -943,7 +943,8 @@ ErrorOrSuccess HIPDeviceStream::waitEvent(const DeviceEvent &event,
 ErrorOrSuccess HIPDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t numAttrs, void **args) const {
+    void *attrs, uint32_t numAttrs, void **args, uint32_t /*argCount*/,
+    const size_t * /*argSizes*/) const {
   const auto &hipFunc = HIPDeviceFunction::cast(func);
   const auto &hipDevice = HIPDevice::cast(this->device());
   HIP_WITH_DEV_ERR(hipDevice);

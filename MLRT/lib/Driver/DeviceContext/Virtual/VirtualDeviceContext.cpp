@@ -149,7 +149,8 @@ VirtualDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
 ErrorOrSuccess VirtualDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
-    void *attrs, uint32_t numAttrs, void **args) const {
+    void *attrs, uint32_t numAttrs, void **args, uint32_t /*argCount*/,
+    const size_t * /*argSizes*/) const {
   assert(false &&
          "VirtualDeviceStream::enqueueFunctionExecDirect not implemented");
   RETURN_ERROR("VirtualDevice does not support function execution");
