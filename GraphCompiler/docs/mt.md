@@ -88,7 +88,6 @@ General options:
   --temps-dir=<string>            - The directory in which to store 'temporary' intermediate files. No files will be saved here unless `-save-temps` is also specified.
   --verify-diagnostics            - Check that emitted diagnostics match expected-* lines on the corresponding line
   --workqueue=<value>             - Specify workqueue type:
-    =default                      -   Auto-select based on # threads
     =single-thread                -   Work queue that only ever uses one thread
     =thread-pool                  -   Default threaded work queue based on std::thread
 ```
