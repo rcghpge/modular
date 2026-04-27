@@ -3326,6 +3326,165 @@ struct ReduceRMSNormRoPEPattern
   }
 };
 
+//===----------------------------------------------------------------------===//
+// GEMV + Partial RMS Norm Fusion Pattern
+//===----------------------------------------------------------------------===//
+//
+// Pattern: matmul(x, W.T) where x is [M=1, K] and W is [N, K]
+//          followed by RMS norm on the first N_normed columns,
+//          with the remaining columns passing through unchanged.
+//
+// Graph pattern detected:
+//   %gemv = mo.matmul(%x, %W) {transpose_b = true} : [1, K] x [N, K] -> [1, N]
+//   %normed_slice = mo.slice(%gemv) : [1, N] -> [1, N_normed]
+//   %normed = mo.reduce.rms_norm(%normed_slice, %gamma, ...) : [1, N_normed]
+//   %unnormed_slice = mo.slice(%gemv) : [1, N] -> [1, N - N_normed]
+//
+// Fused into:
+//   %normed, %unnormed = mo.matmul_fused_partial_rms_norm(%x, %W, %gamma, ...)
+//
+//===----------------------------------------------------------------------===//
+
+struct MatmulFusedPartialRMSNormPattern
+    : public MO::DeviceAwareRewritePattern<OpRewritePattern,
+                                           MO::ReduceRMSNormOp> {
+  MatmulFusedPartialRMSNormPattern(MLIRContext *ctx)
+      : DeviceAwareRewritePattern(ctx, 2) {}
+
+  LogicalResult
+  deviceAwareMatchAndRewrite(MO::ReduceRMSNormOp rmsNormOp,
+                             MO::DeviceAwareRewriter &rewriter) const override {
+    // Only fuse on GPU - the kernel is GPU-only
+    auto normedOutputTy = cast<MO::TensorType>(rmsNormOp.getResult().getType());
+    DeviceRefAttr device = normedOutputTy.getDeviceRef();
+    if (!device || device.getLabel() != M::kGPULabel) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "GEMV+partial RMS norm fusion only supported on GPU");
+    }
+
+    // Check that RMS norm input comes from a split of a matmul output
+    Value rmsInput = rmsNormOp.getInput();
+    auto rmsInputSplitOp = rmsInput.getDefiningOp<MO::SplitOp>();
+    if (!rmsInputSplitOp) {
+      return rewriter.notifyMatchFailure(rmsNormOp,
+                                         "RMS norm input is not from a split");
+    }
+
+    // Check that the split input is from a matmul
+    Value splitInput = rmsInputSplitOp.getInput();
+    auto matmulOp = splitInput.getDefiningOp<MO::MatmulOp>();
+    if (!matmulOp) {
+      return rewriter.notifyMatchFailure(rmsNormOp,
+                                         "Split input is not from a matmul");
+    }
+
+    // Verify matmul has transpose_b = true (required for the kernel)
+    if (!matmulOp.getTransposeB()) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "matmul must have transpose_b=true for fusion");
+    }
+
+    // The kernel hardcodes multiply_before_cast=True, so only fuse when
+    // the RMS norm has this setting (Gemma-style).
+    if (!rmsNormOp.getMultiplyBeforeCast()) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp,
+          "multiply_before_cast=true required (kernel hardcodes this)");
+    }
+
+    // Check matmul output is M=1 (GEMV)
+    auto matmulResultTy = cast<MO::TensorType>(matmulOp.getResult().getType());
+    auto matmulShape = matmulResultTy.getIntDims();
+    if (matmulShape.size() != 2 || matmulShape[0] != 1) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "matmul must be GEMV (M=1) for fusion");
+    }
+
+    // The split must produce exactly 2 results
+    if (rmsInputSplitOp.getNumResults() != 2) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "split must produce exactly 2 results");
+    }
+
+    // Check that the split is on the last axis (axis=1 for rank-2)
+    auto axisValue = tryGetConstantInt(rmsInputSplitOp.getAxis());
+    if (!axisValue) {
+      return rewriter.notifyMatchFailure(rmsNormOp,
+                                         "split axis must be constant");
+    }
+    int64_t axis = normalizeAxis(*axisValue, 2);
+    if (axis != 1) {
+      return rewriter.notifyMatchFailure(rmsNormOp,
+                                         "split must be on the last axis");
+    }
+
+    // Get the split sizes - must be constant with 2 elements
+    auto splitSizes =
+        MO::tryGetConstantIntVector(rmsInputSplitOp.getSplitSizes());
+    assert(splitSizes && splitSizes->size() == 2 &&
+           "split must have 2 constant sizes");
+
+    // The RMS norm input must be the first result of the split (normed portion)
+    // Check that rmsInput is result(0) of the split
+    if (rmsInput != rmsInputSplitOp.getResult(0)) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "RMS norm must consume the first split result");
+    }
+
+    // Check normed split result has single use (the rms_norm op)
+    if (!rmsInputSplitOp.getResult(0).hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "normed split result must have exactly one use");
+    }
+
+    // The unnormed output is the second result of the split
+    Value unnormedOutput = rmsInputSplitOp.getResult(1);
+
+    // Verify matmul users are exactly the split op
+    // This prevents fusion when the GEMV output has other consumers
+    for (Operation *user : matmulOp.getResult().getUsers()) {
+      if (user != rmsInputSplitOp) {
+        return rewriter.notifyMatchFailure(
+            rmsNormOp, "matmul has unexpected user (not the split op)");
+      }
+    }
+
+    // Check device consistency (include all matched ops)
+    if (!rewriter.addOps({rmsInputSplitOp, matmulOp})) {
+      return rewriter.notifyMatchFailure(
+          rmsNormOp, "matched ops have inconsistent devices");
+    }
+
+    // Create the fused custom op at the RMSNorm location (default insertion
+    // point)
+    auto normedResultTy = rmsNormOp.getResult().getType();
+    auto unnormedResultTy = cast<MO::TensorType>(unnormedOutput.getType());
+
+    SmallVector<Value> customOpInputs = {
+        matmulOp.getInputA(),       // input (x)
+        matmulOp.getInputB(),       // weight (W)
+        rmsNormOp.getWeight(),      // gamma
+        rmsNormOp.getEpsilon(),     // epsilon
+        rmsNormOp.getWeightOffset() // weight_offset
+    };
+
+    SmallVector<Type> customOpResultTypes = {normedResultTy, unnormedResultTy};
+
+    // Create the fused custom op. The kernel hardcodes
+    // multiply_before_cast=True and transpose_b=True, so we don't need to pass
+    // these as attributes.
+    auto fusedOp = rewriter.create<MO::CustomOp>(
+        rmsNormOp->getLoc(), customOpResultTypes, customOpInputs,
+        StringAttr::get(getContext(), "mo.matmul_fused_partial_rms_norm"));
+
+    // Replace uses - CSE will clean up unused ops
+    rewriter.replaceAllUsesWith(rmsNormOp.getResult(), fusedOp.getResult(0));
+    rewriter.replaceAllUsesWith(unnormedOutput, fusedOp.getResult(1));
+
+    return mlir::success();
+  }
+};
+
 struct ConcatSlicePattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::SliceOp> {
   ConcatSlicePattern(MLIRContext *ctx) : DeviceAwareRewritePattern(ctx, 2) {}
@@ -3469,7 +3628,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     patterns.add<GatherSumPattern, MatmulTranspBPattern, ConcatZeroAxisPattern,
                  ConvTransposeConstFilterPattern, SplitZeroAxisPattern,
                  LayerNormPattern, RMSNormFusedResidualAddPattern,
-                 ReduceRMSNormRoPEPattern, ConcatSlicePattern>(ctx);
+                 ReduceRMSNormRoPEPattern, ConcatSlicePattern,
+                 MatmulFusedPartialRMSNormPattern>(ctx);
 
     patterns.add<ForceMatmulTransposeBForGPU, BatchMatmulAdjBPattern,
                  RMSNormFusedQuantizeDynamicScaledFP8Pattern>(ctx,
