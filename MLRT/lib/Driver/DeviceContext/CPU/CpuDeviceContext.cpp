@@ -240,7 +240,7 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(byteSize != 0);
-  *ptr = M::MLRT::TCMallocGlobals::tc_new(1, byteSize);
+  *ptr = runtime->getAllocator()->allocateBytes(byteSize, /*alignment=*/1);
   if (*ptr == nullptr) {
     RETURN_ERROR("Memory allocation failed");
   }
@@ -249,11 +249,14 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
 
 ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
+  // The Runtime's allocator outlives any work enqueued on its work queue, so
+  // capturing a raw pointer here (rather than a RuntimeRef) is safe.
+  auto *allocator = runtime->getAllocator();
   if (isHost) {
-    M::MLRT::TCMallocGlobals::tc_delete(ptr);
+    allocator->deallocateBytes(ptr);
     return success();
   }
-  return enqueueWork([=]() { M::MLRT::TCMallocGlobals::tc_delete(ptr); });
+  return enqueueWork([=]() { allocator->deallocateBytes(ptr); });
 }
 
 void *CpuDeviceContext::driverContext() const { return nullptr; }
