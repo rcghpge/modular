@@ -174,7 +174,7 @@ modular_cc_library(
     name = "Support",
     srcs = glob(["lib/Support/*.cpp"]),
     hdrs = glob(["lib/Support/*.h"]),
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
         "//SDK:HAL",
         "@llvm-project//llvm:Support",
