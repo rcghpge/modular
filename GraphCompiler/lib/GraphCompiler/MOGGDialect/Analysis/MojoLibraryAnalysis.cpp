@@ -548,7 +548,7 @@ std::optional<StringRef> MojoLibraryAnalysis::getFullyQualifiedOpaqueTypeName(
 /// `!kgen.struct<(pointer<none>, index)>`
 static bool isStaticStringLoweredPattern(Type ty) {
   auto structTy = dyn_cast<KGEN::StructType>(ty);
-  if (!structTy)
+  if (!structTy || structTy.getIsParamPack())
     return false;
 
   std::optional<SmallVector<Type>> elementTypes = structTy.getElementTypes();
