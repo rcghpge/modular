@@ -134,11 +134,16 @@ private:
 
 class HIPDeviceGraph : public DeviceGraph {
 public:
-  HIPDeviceGraph(HIPDevice &device, hipGraphExec_t exec,
-                 DeviceStreamRef stream = {})
-      : DeviceGraph(device, std::move(stream)), exec_(exec) {}
+  /// Construct an uninstantiated graph from a raw hipGraph_t returned by
+  /// hipStreamEndCapture. Call instantiate() before replay().
+  HIPDeviceGraph(HIPDevice &device, hipGraph_t rawGraph, DeviceStreamRef stream)
+      : DeviceGraph(device, std::move(stream)), rawGraph_(rawGraph) {}
 
   ~HIPDeviceGraph() override;
+
+  /// Instantiate the captured hipGraph_t into a hipGraphExec_t. Expensive;
+  /// safe to call in parallel with instantiation of other graphs.
+  ErrorOrSuccess instantiate() override;
 
   /// Replay using the stored stream (set during capture).
   ErrorOrSuccess replay() const override;
@@ -147,7 +152,8 @@ public:
   bool hasStream() const { return hasCaptureStream(); }
 
 private:
-  hipGraphExec_t exec_;
+  hipGraph_t rawGraph_ = nullptr; // non-null until instantiate() is called
+  hipGraphExec_t exec_ = nullptr; // non-null after instantiate() succeeds
 };
 
 class HIPDeviceStream : public DeviceStream {

@@ -201,11 +201,16 @@ private:
 
 class CUDADeviceGraph : public DeviceGraph {
 public:
-  CUDADeviceGraph(CUDADevice &device, CUgraphExec exec,
-                  DeviceStreamRef stream = {})
-      : DeviceGraph(device, std::move(stream)), exec_(exec) {}
+  /// Construct an uninstantiated graph from a raw CUgraph returned by
+  /// cuStreamEndCapture. Call instantiate() before replay().
+  CUDADeviceGraph(CUDADevice &device, CUgraph rawGraph, DeviceStreamRef stream)
+      : DeviceGraph(device, std::move(stream)), rawGraph_(rawGraph) {}
 
   ~CUDADeviceGraph() override;
+
+  /// Instantiate the captured CUgraph into a CUgraphExec. Expensive; safe to
+  /// call in parallel with instantiation of other graphs.
+  ErrorOrSuccess instantiate() override;
 
   /// Replay using the stored stream (set during capture).
   ErrorOrSuccess replay() const override;
@@ -214,7 +219,8 @@ public:
   bool hasStream() const { return hasCaptureStream(); }
 
 private:
-  CUgraphExec exec_;
+  CUgraph rawGraph_ = nullptr; // non-null until instantiate() is called
+  CUgraphExec exec_ = nullptr; // non-null after instantiate() succeeds
 };
 
 class CUDADeviceStream : public DeviceStream {

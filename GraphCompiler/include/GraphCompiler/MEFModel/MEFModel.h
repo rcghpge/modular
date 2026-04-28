@@ -88,6 +88,11 @@ public:
   debugVerifyReplay(ArrayRef<uint64_t> graphKeys,
                     ArrayRef<GraphCompiler::Driver::DeviceMemory *> inputs);
 
+  /// Await all pending device graph instantiations across every captured
+  /// per-device graph entry.  Call this after a capture loop to ensure all
+  /// async instantiation tasks have completed before the graphs are used.
+  ErrorOrSuccess awaitDeviceGraphs();
+
   ExecutableModel(const ExecutableModel &) = delete;
   ExecutableModel &operator=(const ExecutableModel &) = delete;
 
@@ -121,7 +126,7 @@ private:
   SmallVector<AnyAsyncValueRef> extraArgs;
 
   struct CapturedPerDeviceGraphEntry {
-    Driver::DeviceGraphRef graph;
+    Driver::AsyncDeviceGraphRef graph;
     // Capture-time device-local input fingerprint
     // (input index + address + shape + dtype for non-host buffers on the
     // device's runtime stream). This is intentionally distinct from graphKey

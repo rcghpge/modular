@@ -14,6 +14,7 @@
 #include "ErrorMacros.h"
 #include "MLRT/AsyncRT/ForwardDecls.h"
 #include "MLRT/AsyncRT/Runtime/AnyAsyncValueRef.h"
+#include "MLRT/AsyncRT/Runtime/AsyncValueRef.h"
 #include "Support/Buffer.h"
 #include "Support/Configuration.h"
 #include "Support/ErrorOr.h"
@@ -172,6 +173,7 @@ using DeviceContextRef = RCRef<DeviceContext>;
 using DeviceEventRef = RCRef<DeviceEvent>;
 using DeviceFunctionRef = RCRef<DeviceFunction>;
 using DeviceGraphRef = RCRef<DeviceGraph>;
+using AsyncDeviceGraphRef = AsyncValueRef<DeviceGraphRef>;
 using DeviceMulticastBufferRef = RCRef<DeviceMulticastBuffer>;
 using DeviceStreamRef = RCRef<DeviceStream>;
 using DeviceTimerRef = RCRef<DeviceTimer>;
@@ -522,7 +524,7 @@ private:
 /// memory lives as long as the allocating DeviceGraph.
 class DeviceGraphCollection {
 public:
-  explicit DeviceGraphCollection(SmallVector<DeviceGraphRef> &&graphs)
+  explicit DeviceGraphCollection(SmallVector<AsyncDeviceGraphRef> &&graphs)
       : graphs(std::move(graphs)) {}
 
   /// Set the outputs for the device graph collection by taking ownership of
@@ -546,13 +548,13 @@ public:
   int64_t numGraphs() const;
 
   /// Get captured device graphs in stream-capture order.
-  ArrayRef<DeviceGraphRef> getGraphs() const { return graphs; }
+  ArrayRef<AsyncDeviceGraphRef> getGraphs() const { return graphs; }
 
 private:
   /// A DeviceGraphCollection holds the set of captured device graphs which
   /// correspond to a single capture session of a MAX graph. There will be
   /// one graph per device context used by the graph.
-  SmallVector<DeviceGraphRef> graphs;
+  SmallVector<AsyncDeviceGraphRef> graphs;
 
   /// The set of outputs produced during a capture session of a MAX graph.
   /// The memory allocated for these outputs is stable and has a lifetime tied
@@ -570,14 +572,18 @@ public:
   Device &device() const { return *device_; }
 
   /// Capture a graph and baseline launch trace by executing a callback.
-  /// Instantiates per-device graphs in parallel using AsyncRT's
-  /// per-device worker threads.
+  /// Stream capture is ended synchronously for all streams, then graph
+  /// instantiation is parallelized across AsyncRT's work queue threads.
   static ErrorOr<DeviceGraphCollection>
   capture(M::MLRT::Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
           llvm::function_ref<ErrorOrSuccess()> execute);
 
   /// Replay the captured operations on the stored capture stream.
   virtual ErrorOrSuccess replay() const = 0;
+
+  /// Instantiate the captured graph, completing the two-phase capture process.
+  /// Must be called exactly once after endCapture() before replay() is used.
+  virtual ErrorOrSuccess instantiate() = 0;
 
   /// Set the stream associated with the device graph.
   void setStream(DeviceStreamRef stream);

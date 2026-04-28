@@ -564,7 +564,7 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
 
   Driver::DeviceGraphCollection graphs = graphOrErr.takeValue();
 
-  ArrayRef<Driver::DeviceGraphRef> capturedGraphs = graphs.getGraphs();
+  ArrayRef<Driver::AsyncDeviceGraphRef> capturedGraphs = graphs.getGraphs();
   if (capturedGraphs.size() != deviceCount) {
     return Error(Twine("captured graph count mismatch: expected ") +
                  Twine(deviceCount) + ", got " + Twine(capturedGraphs.size()));
@@ -644,7 +644,13 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
     ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
 
     const CapturedPerDeviceGraphEntry &entry = it->second;
-    if (ErrorOrSuccess err = entry.graph->replay())
+
+    if (ErrorOrSuccess err = MLRT::awaitOrError(entry.graph)) {
+      errors[deviceIdx] = err.takeError();
+      return;
+    }
+
+    if (ErrorOrSuccess err = (*entry.graph)->replay())
       errors[deviceIdx] = err.takeError();
   };
 
@@ -714,7 +720,7 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
   if (ErrorOrSuccess err = validateCapturedPerDeviceKeys(normalizedKeys))
     return err.takeError();
 
-  SmallVector<Driver::DeviceGraphRef> selectedGraphs;
+  SmallVector<Driver::AsyncDeviceGraphRef> selectedGraphs;
   selectedGraphs.reserve(normalizedKeys.size());
   for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx) {
     const auto &deviceMap = perDeviceGraphs[deviceIdx];
@@ -731,6 +737,16 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
       return result.takeError();
     return success();
   });
+}
+
+ErrorOrSuccess ExecutableModel::awaitDeviceGraphs() {
+  for (auto &deviceMap : perDeviceGraphs) {
+    for (auto &[key, entry] : deviceMap) {
+      if (ErrorOrSuccess err = MLRT::awaitOrError(entry.graph))
+        return err.takeError();
+    }
+  }
+  return success();
 }
 
 ErrorOrSuccess ExecutableModel::printValue(raw_ostream &os,

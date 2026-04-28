@@ -64,7 +64,7 @@ static std::map<int, int> inferGpuToCpuCoreMapping() {
 }
 
 /// Cached wrapper around inferGpuToCpuCoreMapping().
-static std::map<int, int> getGpuToCpuCoreMapping() {
+static const std::map<int, int> &getGpuToCpuCoreMapping() {
   static std::map<int, int> mapping = inferGpuToCpuCoreMapping();
   return mapping;
 }
@@ -72,7 +72,7 @@ static std::map<int, int> getGpuToCpuCoreMapping() {
 /// Parse and validate the runtime.device_task_cpu_ids config (env var
 /// MODULAR_RUNTIME_DEVICE_TASK_CPU_IDS). Initialized once; aborts on
 /// invalid input (matching the original MGPPrimitives.cpp behavior).
-static SmallVector<int, 8> getDeviceTaskCpuIds() {
+static ArrayRef<int> getDeviceTaskCpuIds() {
   static SmallVector<int, 8> deviceTaskCpuIds = []() {
     SmallVector<int, 8> result;
     auto config = Config::open();

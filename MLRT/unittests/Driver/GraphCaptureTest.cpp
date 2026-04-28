@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MLRT/AsyncRT/Runtime/Runtime.h"
 #include "MLRT/AsyncRT/Runtime/RuntimeManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "ScopedEnvVar.h"
@@ -253,6 +254,9 @@ TEST_F(GraphCaptureTest, CaptureAndReplayEmpty) {
   EXPECT_NO_ERR(stream->beginCapture());
   ASSIGN_NO_ERR(DeviceGraphRef, graph, stream->endCapture());
 
+  // Instantiate before replaying (endCapture only ends stream capture).
+  EXPECT_NO_ERR(graph->instantiate());
+
   // Replay the captured graph
   EXPECT_NO_ERR(graph->replay());
 }
@@ -264,6 +268,9 @@ TEST_F(GraphCaptureTest, ReplayMultipleTimes) {
 
   EXPECT_NO_ERR(stream->beginCapture());
   ASSIGN_NO_ERR(DeviceGraphRef, graph, stream->endCapture());
+
+  // Instantiate before replaying (endCapture only ends stream capture).
+  EXPECT_NO_ERR(graph->instantiate());
 
   // Replay multiple times
   EXPECT_NO_ERR(graph->replay());
@@ -354,6 +361,9 @@ TEST_F(GraphCaptureTest, CaptureOnDefaultStream) {
   EXPECT_NO_ERR(stream->beginCapture());
   ASSIGN_NO_ERR(DeviceGraphRef, graph, stream->endCapture());
   EXPECT_TRUE(graph);
+
+  // Instantiate before replaying (endCapture only ends stream capture).
+  EXPECT_NO_ERR(graph->instantiate());
 
   // Replay on the same stream
   EXPECT_NO_ERR(graph->replay());

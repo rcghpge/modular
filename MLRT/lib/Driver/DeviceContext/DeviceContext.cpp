@@ -10,6 +10,8 @@
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/AsyncRT/DeviceAffinity.h"
+#include "MLRT/AsyncRT/Runtime/Algorithms.h"
+#include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
 #include "CPU/CpuDeviceContext.h"
@@ -661,10 +663,12 @@ ArrayRef<MLRT::AnyAsyncValueRef> DeviceGraphCollection::getOutputs() const {
 }
 
 ErrorOrSuccess DeviceGraphCollection::replay() const {
-  for (const DeviceGraphRef &graph : graphs)
-    if (auto err = graph->replay())
+  for (const AsyncDeviceGraphRef &graph : graphs) {
+    if (auto err = MLRT::awaitOrError(graph))
+      return err.takeError();
+    if (auto err = (*graph)->replay())
       return err;
-
+  }
   return success();
 }
 
@@ -676,7 +680,10 @@ int64_t DeviceGraphCollection::numGraphs() const {
 class DeviceGraphCaptureContext {
 public:
   DeviceGraphCaptureContext(const DeviceGraphCaptureContext &other) = delete;
+  DeviceGraphCaptureContext &
+  operator=(const DeviceGraphCaptureContext &) = delete;
   DeviceGraphCaptureContext(DeviceGraphCaptureContext &&other) = default;
+  DeviceGraphCaptureContext &operator=(DeviceGraphCaptureContext &&) = default;
 
   /// Initiate capture on a particular stream.
   static ErrorOr<DeviceGraphCaptureContext>
@@ -832,14 +839,16 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
     llvm::function_ref<ErrorOrSuccess()> execute) const {
   // Step 1: Validate graphs and begin tracing on all streams
   SmallVector<DeviceGraphCaptureContext> traceContexts;
-  for (const DeviceGraphRef &graph : graphs) {
-    if (!graph->hasCaptureStream())
+  for (const AsyncDeviceGraphRef &graph : graphs) {
+    if (auto err = MLRT::awaitOrError(graph))
+      return err.takeError();
+    if (!(*graph)->hasCaptureStream())
       RETURN_ERROR("No capture stream stored for graph");
-    if (!graph->hasBaselineLaunchTrace())
+    if (!(*graph)->hasBaselineLaunchTrace())
       RETURN_ERROR("No baseline launch trace for graph");
 
     traceContexts.push_back(
-        DeviceGraphCaptureContext::beginTrace(graph->captureStreamRef()));
+        DeviceGraphCaptureContext::beginTrace((*graph)->captureStreamRef()));
   }
 
   // Step 2: Execute once for all devices
@@ -856,7 +865,7 @@ ErrorOrSuccess DeviceGraphCollection::debugVerifyReplay(
     // Step 4: Compare with baseline (as sorted permutations to handle
     // non-deterministic execution order)
     ArrayRef<KernelLaunchMetadata> baseline =
-        graphs[graphIdx]->baselineLaunchTrace();
+        (*graphs[graphIdx])->baselineLaunchTrace();
 
     // Compute the diff between current trace and baseline
     LaunchTraceDiff diff = computeLaunchTraceDiff(currentTrace, baseline);
@@ -901,31 +910,57 @@ DeviceGraph::capture(Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
   if (ErrorOrSuccess err = beginCaptureAndExecute(streams, execute, captures))
     return err.takeError();
 
-  // Parallelize cuGraphInstantiateWithParams across devices using AsyncRT.
-  SmallVector<ErrorOrSuccess, 8> errors(captures.size());
-  SmallVector<DeviceGraphRef> graphs(captures.size());
-
-  auto endCaptureTask = [&](size_t deviceIdx) {
-    ErrorOr<DeviceGraphRef> graphOr = captures[deviceIdx].endCapture();
+  // Phase 1: End stream capture SYNCHRONOUSLY for all streams.
+  // cuStreamEndCapture / hipStreamEndCapture must complete before a new
+  // capture session can begin on the same stream, so this cannot be deferred
+  // to async tasks. Each call is cheap (no GPU graph instantiation here).
+  SmallVector<DeviceGraphRef> uninstantiatedGraphs;
+  uninstantiatedGraphs.reserve(captures.size());
+  for (DeviceGraphCaptureContext &ctx : captures) {
+    ErrorOr<DeviceGraphRef> graphOr = ctx.endCapture();
     if (graphOr.isError())
-      errors[deviceIdx] = graphOr.takeError();
-    else
-      graphs[deviceIdx] = graphOr.takeValue();
-  };
-
-  if (captures.size() == 1) {
-    endCaptureTask(0);
-  } else {
-    auto readyChain = MLRT::launchDeviceCollective(runtime, captures.size(),
-                                                   std::move(endCaptureTask));
-    MLRT::await(readyChain);
+      return graphOr.takeError();
+    uninstantiatedGraphs.push_back(graphOr.takeValue());
   }
 
-  for (ErrorOrSuccess &err : errors)
-    if (err)
-      return err.takeError();
+  // Phase 2: Instantiate graphs in PARALLEL using AsyncRT.
+  // cuGraphInstantiateWithParams / hipGraphInstantiateWithFlags are the
+  // expensive operations. Each graph is independent, so concurrent
+  // instantiation is safe (modulo the profiler mutex in the CUDA backend).
+  //
+  // launchNonDeviceCollective routes tasks to threads that are NOT
+  // per-device-affinitized (reserved for GPU command dispatch), avoiding
+  // contention with ongoing kernel launches. Consumer copies of each
+  // AsyncDeviceGraphRef go into DeviceGraphCollection; producer copies are
+  // moved into the captured vectors so they live until instantiation completes.
+  // The returned chain is discarded; per-graph completion is tracked via the
+  // individual AsyncDeviceGraphRef values awaited lazily by callers.
+  size_t numGraphs = uninstantiatedGraphs.size();
 
-  return DeviceGraphCollection(std::move(graphs));
+  SmallVector<AsyncDeviceGraphRef> asyncGraphs;
+  asyncGraphs.reserve(numGraphs);
+  for (auto _ : llvm::seq(numGraphs))
+    asyncGraphs.push_back(AsyncDeviceGraphRef::allocate(runtime));
+
+  SmallVector<AsyncDeviceGraphRef> producers;
+  producers.reserve(numGraphs);
+  for (AsyncDeviceGraphRef &av : asyncGraphs)
+    producers.push_back(av.copy());
+
+  MLRT::launchNonDeviceCollective(
+      runtime, numGraphs,
+      [graphs = std::move(uninstantiatedGraphs),
+       results = std::move(producers)](size_t i) mutable {
+        if (ErrorOrSuccess err = graphs[i]->instantiate()) {
+          std::move(results[i])
+              .setToError(
+                  MLRT::UnknownLocationDecoder::getDiagnostic(err.takeError()));
+        } else {
+          std::move(results[i]).emplace(std::move(graphs[i]));
+        }
+      });
+
+  return DeviceGraphCollection(std::move(asyncGraphs));
 }
 
 void DeviceGraph::setStream(DeviceStreamRef stream) {

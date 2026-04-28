@@ -855,9 +855,30 @@ const HIPDeviceEvent &HIPDeviceEvent::cast(const DeviceEvent &event) {
 HIPDeviceGraph::~HIPDeviceGraph() {
   const auto &hipDevice = HIPDevice::cast(this->device());
   HIP_WITH_DEV(hipDevice);
-  if (exec_) {
+  if (rawGraph_)
+    HIP_CHECK(hipDevice.hipDriver().hipGraphDestroy(rawGraph_));
+  if (exec_)
     HIP_CHECK(hipDevice.hipDriver().hipGraphExecDestroy(exec_));
-  }
+}
+
+ErrorOrSuccess HIPDeviceGraph::instantiate() {
+  const auto &hipDevice = HIPDevice::cast(this->device());
+  HIP_WITH_DEV_ERR(hipDevice);
+
+  hipGraphExec_t exec = nullptr;
+  HIPDriver::Result res = hipDevice.hipDriver().hipGraphInstantiateWithFlags(
+      &exec, rawGraph_,
+      M::to_underlying(
+          hipGraphInstantiateFlags::hipGraphInstantiateFlagAutoFreeOnLaunch));
+
+  if (res != HIPDriver::SUCCESS)
+    RETURN_ERROR("failed to instantiate HIP graph");
+
+  // Destroy the raw graph now that instantiation succeeded; exec_ takes over.
+  HIP_CHECK_ERR(hipDevice.hipDriver().hipGraphDestroy(rawGraph_));
+  rawGraph_ = nullptr;
+  exec_ = exec;
+  return success();
 }
 
 ErrorOrSuccess HIPDeviceGraph::replay() const {
@@ -1020,21 +1041,11 @@ ErrorOr<DeviceGraphRef> HIPDeviceStream::endCapture() {
             hipGraphDebugDotFlags::hipGraphDebugDotFlagsVerbose));
   }
 
-  hipGraphExec_t exec = nullptr;
-  HIPDriver::Result res = hipDevice.hipDriver().hipGraphInstantiateWithFlags(
-      &exec, graph,
-      M::to_underlying(
-          hipGraphInstantiateFlags::hipGraphInstantiateFlagAutoFreeOnLaunch));
-  if (res != HIPDriver::SUCCESS) {
-    // Clean up graph on failure.
-    hipDevice.hipDriver().hipGraphDestroy(graph);
-    RETURN_ERROR("failed to instantiate HIP graph");
-  }
-  HIP_CHECK_ERR(hipDevice.hipDriver().hipGraphDestroy(graph));
-
-  // Store the stream for replay/verification.
+  // Return an uninstantiated graph. The caller must call instantiate() before
+  // replay(). Keeping endCapture() cheap ensures the stream is released for
+  // the next capture session before the expensive instantiation begins.
   return HIPDeviceGraphRef::create(
-      hipDevice, exec,
+      hipDevice, graph,
       DeviceStreamRef::copy(static_cast<DeviceStream *>(this)));
 }
 

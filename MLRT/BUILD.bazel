@@ -685,6 +685,7 @@ modular_cc_library(
         ":AsyncRT/DeviceAffinity",
         ":AsyncRT/Runtime",
         ":AsyncRT/RuntimeGlobals",
+        ":AsyncRT/Support",
         ":Driver/DeviceContextAPI",
         "//SDK:HAL",
         "//Support:Base",

@@ -933,9 +933,70 @@ const CUDADeviceEvent &CUDADeviceEvent::cast(const DeviceEvent &event) {
 CUDADeviceGraph::~CUDADeviceGraph() {
   const auto &cudaDevice = CUDADevice::cast(device());
   CUDA_WITH_DEV(cudaDevice);
-  if (exec_) {
+  if (rawGraph_)
+    CUDA_CHECK(cudaDevice.cudaDriver().cuGraphDestroy(rawGraph_));
+  if (exec_)
     CUDA_CHECK(cudaDevice.cudaDriver().cuGraphExecDestroy(exec_));
+}
+
+static std::unique_lock<std::mutex> getCudaProfilerLock() {
+  // CUPTI's graph-tracing hooks (active when any CUDA injection profiler such
+  // as nsys or ncu is running) are not thread-safe for concurrent
+  // cuGraphInstantiateWithParams calls, even on distinct CUgraph objects.
+  // Serialize instantiation under a process-wide mutex when profiling is
+  // detected via CUDA_INJECTION64_PATH.
+
+  static const bool kUnderCudaProfiler =
+      llvm::sys::Process::GetEnv("CUDA_INJECTION64_PATH").has_value();
+
+  if (kUnderCudaProfiler) {
+    static std::mutex sInstantiateMutex;
+    std::unique_lock<std::mutex> profilingLock(sInstantiateMutex);
+    return profilingLock;
   }
+
+  return {};
+}
+
+ErrorOrSuccess CUDADeviceGraph::instantiate() {
+  const auto &cudaDevice = CUDADevice::cast(device());
+  CUDA_WITH_DEV_ERR(cudaDevice);
+
+  // Prepare instantiation parameters with enhanced error reporting.
+  CUDA_GRAPH_INSTANTIATE_PARAMS params = {
+      .flags =
+          M::to_underlying(CUgraphInstantiateFlags::
+                               CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH),
+      .hUploadStream = nullptr,
+      .hErrNode_out = nullptr,
+      .result_out = CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS};
+
+  CUgraphExec exec = nullptr;
+  CUDADriver::Result res = [&] {
+    auto lock = getCudaProfilerLock();
+    return cudaDevice.cudaDriver().cuGraphInstantiateWithParams(
+        &exec, rawGraph_, &params);
+  }();
+
+  if (res != CUDADriver::SUCCESS) {
+    std::string errorMsg = "failed to instantiate CUDA graph";
+    if (params.result_out !=
+        CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS) {
+      errorMsg += ": ";
+      errorMsg += toString(params.result_out);
+    }
+    if (params.hErrNode_out != nullptr) {
+      errorMsg +=
+          " at node " + llvm::formatv("{0}", (void *)params.hErrNode_out).str();
+    }
+    RETURN_ERROR(errorMsg);
+  }
+
+  // Destroy the raw graph now that instantiation succeeded; exec_ takes over.
+  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuGraphDestroy(rawGraph_));
+  rawGraph_ = nullptr;
+  exec_ = exec;
+  return success();
 }
 
 ErrorOrSuccess CUDADeviceGraph::replay() const {
@@ -1076,25 +1137,6 @@ ErrorOrSuccess CUDADeviceStream::beginCapture() const {
   return success();
 }
 
-static std::unique_lock<std::mutex> getCudaProfilerLock() {
-  // CUPTI's graph-tracing hooks (active when any CUDA injection profiler such
-  // as nsys or ncu is running) are not thread-safe for concurrent
-  // cuGraphInstantiateWithParams calls, even on distinct CUgraph objects.
-  // Serialize instantiation under a process-wide mutex when profiling is
-  // detected via CUDA_INJECTION64_PATH.
-
-  static const bool kUnderCudaProfiler =
-      llvm::sys::Process::GetEnv("CUDA_INJECTION64_PATH").has_value();
-
-  if (kUnderCudaProfiler) {
-    static std::mutex sInstantiateMutex;
-    std::unique_lock<std::mutex> profilingLock(sInstantiateMutex);
-    return profilingLock;
-  }
-
-  return {};
-}
-
 ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() {
   CUstreamCaptureStatus status = getCaptureStatus();
   if (status == CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE)
@@ -1127,45 +1169,9 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() {
         static_cast<unsigned>(CUgraphDotFlags::Verbose));
   }
 
-  // Prepare instantiation parameters with enhanced error reporting
-  CUDA_GRAPH_INSTANTIATE_PARAMS params = {
-      .flags =
-          M::to_underlying(CUgraphInstantiateFlags::
-                               CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH),
-      .hUploadStream = nullptr, // No upload stream needed
-      .hErrNode_out = nullptr,  // CUDA will write error node here if failure
-      .result_out = CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS
-      // CUDA will write detailed result here
-  };
-
-  CUgraphExec exec = nullptr;
-  CUDADriver::Result res = [&] {
-    auto lock = getCudaProfilerLock();
-    return cudaDevice.cudaDriver().cuGraphInstantiateWithParams(&exec, graph,
-                                                                &params);
-  }();
-
-  if (res != CUDADriver::SUCCESS) {
-    // Clean up graph on failure with enhanced error reporting
-    cudaDevice.cudaDriver().cuGraphDestroy(graph);
-
-    std::string errorMsg = "failed to instantiate CUDA graph";
-    if (params.result_out !=
-        CUgraphInstantiateResult::CUDA_GRAPH_INSTANTIATE_SUCCESS) {
-      errorMsg += ": ";
-      errorMsg += toString(params.result_out);
-    }
-    if (params.hErrNode_out != nullptr) {
-      errorMsg +=
-          " at node " + llvm::formatv("{0}", (void *)params.hErrNode_out).str();
-    }
-    RETURN_ERROR(errorMsg);
-  }
-  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuGraphDestroy(graph));
-
   // Store the stream for replay/verification.
   return CUDADeviceGraphRef::create(
-      cudaDevice, exec,
+      cudaDevice, graph,
       DeviceStreamRef::copy(static_cast<DeviceStream *>(this)));
 }
 
