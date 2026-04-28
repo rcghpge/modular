@@ -440,6 +440,14 @@ public:
 
   void setDestructorFn(llvm::unique_function<void()> destructor);
 
+  // Returns the placeholder/dangling pointer for when a DeviceBuffer
+  // is created with size `0`. This is needed as in Mojo, the DeviceBuffer
+  // class's `device_ptr` field cannot be NULL, so we use a dangling pointer
+  // instead of a null pointer. We can track weather this pointer is valid
+  // or not by querying the size of this DeviceBuffer instead of relying on
+  // the "nullability" of the device pointer.
+  static void *emptyBufferPointer();
+
 private:
   friend class DeviceContext;
 

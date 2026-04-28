@@ -269,7 +269,7 @@ TEST_F(GPUDeviceContextTest, DeviceBuffers) {
     int allocLen = copyLengths[i];
 
     ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf, ctx->enqueueCreateBuffer(0));
-    EXPECT_EQ(emptyBuf->ptr(), nullptr);
+    EXPECT_EQ(emptyBuf->ptr(), DeviceBuffer::emptyBufferPointer());
     EXPECT_EQ(emptyBuf->byteSize(), 0);
 
     std::cerr << "DeviceContext copies(len: " << allocLen << ")\n";

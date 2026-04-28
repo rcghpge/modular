@@ -429,23 +429,33 @@ void Device::clearFunctionCache() const {
   funcMap_.clear();
 }
 
+constexpr void *buffer_pointer_for(void *ptr, size_t byteSize) {
+  if (byteSize == 0) {
+    return DeviceBuffer::emptyBufferPointer();
+  }
+  return ptr;
+}
+
 //
 // ===== DeviceBuffer ===== //
 //
 DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
                            bool isHost)
-    : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
-      byteSize_(byteSize), isHost_(isHost) {}
+    : context_(DeviceContextRef::copy(&context)),
+      ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
+      isHost_(isHost) {}
 DeviceBuffer::DeviceBuffer(DeviceContext &context, DeviceBuffer &parent,
                            void *ptr, size_t byteSize, bool isHost)
     : context_(DeviceContextRef::copy(&context)),
-      parent_(DeviceBufferRef::copy(&parent)), ptr_(ptr), byteSize_(byteSize),
+      parent_(DeviceBufferRef::copy(&parent)),
+      ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
       isHost_(isHost) {}
 // TODO: Remove the V1 compatibility.
 DeviceBuffer::DeviceBuffer(DeviceContext &context, void *ptr, size_t byteSize,
                            bool isHost, bool owning)
-    : context_(DeviceContextRef::copy(&context)), ptr_(ptr),
-      byteSize_(byteSize), isHost_(isHost), owning_(owning) {}
+    : context_(DeviceContextRef::copy(&context)),
+      ptr_(buffer_pointer_for(ptr, byteSize)), byteSize_(byteSize),
+      isHost_(isHost), owning_(owning) {}
 
 MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (!owning_) {
@@ -462,6 +472,10 @@ MODULAR_CXX_EXPORT DeviceBuffer::~DeviceBuffer() {
   if (destructorFn_) {
     (*destructorFn_)();
     ptr_ = nullptr;
+    return;
+  }
+  // If byte size is 0, we don't need to call free
+  if (byteSize_ == 0) {
     return;
   }
   // Release the GPU memory now or enqueue an event based release for host
@@ -507,6 +521,10 @@ MODULAR_CXX_EXPORT void *DeviceBuffer::releasePtr() {
 MODULAR_CXX_EXPORT size_t DeviceBuffer::byteSize() const { return byteSize_; }
 
 MODULAR_CXX_EXPORT bool DeviceBuffer::isHost() const { return isHost_; }
+
+void *DeviceBuffer::emptyBufferPointer() {
+  return reinterpret_cast<void *>(-1);
+}
 
 void DeviceBuffer::setDestructorFn(llvm::unique_function<void()> destructor) {
   destructorFn_ = std::move(destructor);

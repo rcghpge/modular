@@ -107,7 +107,7 @@ TEST(DeviceContextTest, DeviceBuffers) {
   const int numCopyLengths = 2;
 
   ASSIGN_NO_ERR(DeviceBufferRef, emptyBuf, ctx->enqueueCreateBuffer(0));
-  EXPECT_EQ(emptyBuf->ptr(), nullptr);
+  EXPECT_EQ(emptyBuf->ptr(), DeviceBuffer::emptyBufferPointer());
   EXPECT_EQ(emptyBuf->byteSize(), 0);
 
   for (int i = 0; i < numCopyLengths; ++i) {
