@@ -9,6 +9,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/Configuration.h"
 #include "Support/Threading/HWInfo.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -130,6 +131,70 @@ int taskIdForDevice(int deviceId, size_t numWorkers) {
 
   // Tier 3: round-robin across workers 1..N-1 (skip worker 0).
   return 1 + (deviceId % static_cast<int>(numWorkers - 1));
+}
+
+static ArrayRef<int> getNonDeviceTaskIds() {
+  static SmallVector<int> nonDeviceIds = [] {
+    SmallVector<int> allDeviceTaskIds;
+
+    // Treat taskID 0 as a device thread as well to avoid assigning to thread 0,
+    // which is the MEF executor thread.
+    allDeviceTaskIds.push_back(0);
+    llvm::append_range(allDeviceTaskIds, getDeviceTaskCpuIds());
+
+    for (auto [_, v] : getGpuToCpuCoreMapping())
+      allDeviceTaskIds.push_back(v);
+
+    llvm::sort(allDeviceTaskIds);
+
+    allDeviceTaskIds.push_back(std::numeric_limits<int>::max());
+
+    int largestId = allDeviceTaskIds.back();
+    int counter = 0;
+
+    SmallVector<int> nextNonDeviceId;
+    for (int _ : llvm::seq(largestId)) {
+      int next = counter++;
+
+      // Find the next non-device ID entry.
+      while (llvm::binary_search(allDeviceTaskIds, next))
+        next = counter++;
+
+      nextNonDeviceId.push_back(next);
+    }
+
+    return nextNonDeviceId;
+  }();
+
+  return nonDeviceIds;
+}
+
+int taskIdForNonDevice(int taskId, size_t numWorkers) {
+  ArrayRef<int> deviceTaskIds = getNonDeviceTaskIds();
+
+  auto getNextId = [&](int taskId) {
+    if (taskId >= (int)deviceTaskIds.size()) {
+      int diff = (taskId - (int)deviceTaskIds.size());
+      taskId = diff + deviceTaskIds.back();
+    } else {
+      taskId = deviceTaskIds[taskId];
+    }
+
+    return taskId;
+  };
+
+  // Get the next available non-device task ID.
+  int nextId = getNextId(taskId % static_cast<int>(numWorkers));
+
+  // If it is outside the number of workers, try again from 0.
+  if (nextId >= (int)numWorkers)
+    nextId = getNextId(0);
+
+  // Give up if no valide ID was found.
+  if (nextId >= (int)numWorkers)
+    nextId = kDefaultTaskId;
+
+  return nextId;
 }
 
 } // namespace M::MLRT
