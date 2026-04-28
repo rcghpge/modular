@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2> %t.mgp
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2>&1 | tee %t.mgp
 // RUN: FileCheck %s < %t.mgp
 
 // Symbolic-dim parallel: relu with a named dimension parameter.

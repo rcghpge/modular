@@ -1,5 +1,6 @@
-// RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2> %t.mgp
-// RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2>&1 | tee %t.mgp
+// RUN: mt --execute --result-output-style=full %t.mlir 2>&1 | tee %t.out
+// RUN: FileCheck %s < %t.out
 // RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
 // Verify that the parallel body contains multiple kernels before lowering.
 // RUN: mo-opt %s --mo-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
