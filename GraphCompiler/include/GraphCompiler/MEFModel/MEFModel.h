@@ -93,6 +93,22 @@ public:
   /// async instantiation tasks have completed before the graphs are used.
   ErrorOrSuccess awaitDeviceGraphs();
 
+  /// Release previously captured device graphs for per-device keys.
+  ///
+  /// Drops the per-device entries identified by ``graphKeys`` from the
+  /// internal capture map. Stream ordering semantics ensure that any
+  /// in-flight replay completes before the device-side graph and its
+  /// working memory are freed: the destruction of the underlying graph
+  /// resources is sequenced behind any prior replay launches enqueued on
+  /// the same stream.
+  ///
+  /// Releasing a key that was never captured is not an error and is a
+  /// no-op for that key. If no captures exist on this model yet, the call
+  /// is a no-op for every key. Returns an error if the key count does not
+  /// match the number of capture-capable device streams (matching the
+  /// validation performed by ``capture``/``replay``).
+  ErrorOrSuccess releaseCapturedGraphs(ArrayRef<uint64_t> graphKeys);
+
   ExecutableModel(const ExecutableModel &) = delete;
   ExecutableModel &operator=(const ExecutableModel &) = delete;
 

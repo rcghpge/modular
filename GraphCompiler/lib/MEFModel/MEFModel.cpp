@@ -749,6 +749,33 @@ ErrorOrSuccess ExecutableModel::awaitDeviceGraphs() {
   return success();
 }
 
+ErrorOrSuccess
+ExecutableModel::releaseCapturedGraphs(ArrayRef<uint64_t> graphKeys) {
+  // Releasing on a model with no captures yet is a no-op for every key.
+  if (perDeviceGraphs.empty())
+    return success();
+
+  // Derive device count from the live capture streams (matching capture/
+  // replay/debugVerifyReplay) rather than from perDeviceGraphs.size(), so
+  // that key-count mismatch errors are reported against the same device set
+  // the sibling APIs validate against.
+  ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
+      captureStreams(extraArgs);
+  if (streamsOr.isError())
+    return streamsOr.takeError();
+
+  ErrorOr<SmallVector<uint64_t>> normalizedKeysOr =
+      normalizeGraphKeysForDevices(graphKeys, streamsOr->size(), "release");
+  if (normalizedKeysOr.isError())
+    return normalizedKeysOr.takeError();
+  ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
+
+  for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx)
+    perDeviceGraphs[deviceIdx].erase(normalizedKeys[deviceIdx]);
+
+  return success();
+}
+
 ErrorOrSuccess ExecutableModel::printValue(raw_ostream &os,
                                            AnyAsyncValueRef const &value,
                                            ResultOutputStyle style,
