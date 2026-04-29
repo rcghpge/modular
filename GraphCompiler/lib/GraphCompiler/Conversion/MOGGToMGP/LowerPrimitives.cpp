@@ -12,7 +12,6 @@
 #include "GraphCompiler/GraphCompiler/Interfaces/LowerableToMGPInterface.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
@@ -43,8 +42,7 @@ namespace {
 using CompiledRegionBodyBuilder = std::function<ErrorOr<SmallVector<Value>>(
     OpBuilder &, Location, Operation *, ValueRange)>;
 struct LowerPrimitivesPass
-    : public MOGG::MojoLibraryAnalysisPass<
-          MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass>> {
+    : public MGP::impl::LowerPrimitivesBase<LowerPrimitivesPass> {
   using Base::Base;
 
   void runOnOperation() override;
@@ -249,10 +247,3 @@ void LowerPrimitivesPass::runOnOperation() {
 } // namespace
 
 } // namespace M::MGP
-
-std::unique_ptr<mlir::Pass> M::MGP::createLowerPrimitives(
-    const LowerPrimitivesOptions &opts,
-    std::shared_ptr<MOGG::MojoLibraryAnalysis> libraryAnalysis) {
-  return std::make_unique<LowerPrimitivesPass>(opts,
-                                               std::move(libraryAnalysis));
-}

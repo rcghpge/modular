@@ -18,8 +18,7 @@ namespace M::MOGG {
 
 namespace M::MOGG {
 
-struct DumpMojo
-    : public MOGG::MojoLibraryAnalysisPass<impl::DumpMojoBase<DumpMojo>> {
+struct DumpMojo : public impl::DumpMojoBase<DumpMojo> {
   using Base::Base;
 
   void runOnOperation() override {

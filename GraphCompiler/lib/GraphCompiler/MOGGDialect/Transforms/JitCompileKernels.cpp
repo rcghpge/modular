@@ -10,7 +10,6 @@
 
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/MojoLibraryAnalysis.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/KGENStubCompiler.h"
@@ -43,8 +42,8 @@ namespace M::MOGG {
 namespace {
 
 // Convert all possible operations directly to the available operation.
-struct JitCompileKernels : public MojoLibraryAnalysisPass<
-                               impl::JitCompileKernelsBase<JitCompileKernels>> {
+struct JitCompileKernels
+    : public impl::JitCompileKernelsBase<JitCompileKernels> {
   using Base::Base;
 
   void runOnOperation() override {
@@ -629,9 +628,3 @@ struct JitCompileKernels : public MojoLibraryAnalysisPass<
 } // namespace
 
 } // namespace M::MOGG
-
-std::unique_ptr<mlir::Pass> M::MOGG::createJitCompileKernels(
-    const JitCompileKernelsOptions &opts,
-    std::shared_ptr<MojoLibraryAnalysis> libraryAnalysis) {
-  return std::make_unique<JitCompileKernels>(opts, std::move(libraryAnalysis));
-}

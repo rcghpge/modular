@@ -374,7 +374,7 @@ void M::MO::buildMgpPipeline(
   MGP::LowerPrimitivesOptions lowerPrimOpts;
   lowerPrimOpts.kernelLibraryPaths = kernelLibraryPaths;
   lowerPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
-  pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts, libraryAnalysis));
+  pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
   pm.addPass(MOGG::createSequenceFusion());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
@@ -566,8 +566,7 @@ gcPipelineImpl(mlir::OpPassManager &pm, const GCPipelineOptions &opts,
           [&](auto &p) {
             buildMgpPipeline(p, mgpOpts, libraryAnalysis);
             if (!skipJit) {
-              p.addPass(
-                  MOGG::createJitCompileKernels(jitOpts, libraryAnalysis));
+              p.addPass(MOGG::createJitCompileKernels(jitOpts));
               buildJitPipeline(p);
             }
           },
