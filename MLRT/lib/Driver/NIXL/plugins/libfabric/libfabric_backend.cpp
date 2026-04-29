@@ -961,6 +961,18 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     return NIXL_ERR_BACKEND;
   }
 
+  // GEX-3606: control_request is allocated up front and used as scratch
+  // for binary_notif while submitting the data WRITEs. Ownership only
+  // transfers off our hands when notifSendPriv succeeds — every other
+  // exit (the error returns below, plus the no-notification success
+  // path) must release it back to the pool, otherwise the 256-slot
+  // control rail leaks one slot per call until allocation fails and
+  // every subsequent transfer fails fast.
+  auto release_control_request = [&]() {
+    rail_manager->getControlRail(control_rail_id)
+        .releaseRequest(control_request);
+  };
+
   // Create BinaryNotification directly in the control request buffer
   BinaryNotification *binary_notif =
       reinterpret_cast<BinaryNotification *>(control_request->buffer);
@@ -987,12 +999,14 @@ nixl_status_t nixlLibfabricEngine::postXfer(
         static_cast<nixlLibfabricPublicMetadata *>(remote[desc_idx].metadataP);
     if (!local_md || !remote_md || !remote_md->conn_) {
       NIXL_ERROR << "Invalid metadata pointers for descriptor " << desc_idx;
+      release_control_request();
       return NIXL_ERR_INVALID_PARAM;
     }
 
     // Validate connection for this descriptor
     if (remote_md->conn_ != conn_it->second) {
       NIXL_ERROR << "Connection mismatch for descriptor " << desc_idx;
+      release_control_request();
       return NIXL_ERR_MISMATCH;
     }
     // Get transfer info for THIS descriptor
@@ -1020,6 +1034,7 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     if (status != NIXL_SUCCESS) {
       NIXL_ERROR << "prepareAndSubmitTransfer failed for descriptor "
                  << desc_idx << " GPU " << gpu_id;
+      release_control_request();
       return status;
     }
 
@@ -1028,8 +1043,8 @@ nixl_status_t nixlLibfabricEngine::postXfer(
   }
 
   NIXL_DEBUG << "Processing complete: submitted " << binary_notif->xfer_id_count
-             << " requests from " << desc_count << " descriptors" << " with "
-             << binary_notif->xfer_id_count << " total XFER_IDs";
+             << " requests from " << desc_count << " descriptors"
+             << " with " << binary_notif->xfer_id_count << " total XFER_IDs";
 
   // Adjust to actual request count after all submissions complete
   backend_handle->adjust_total_requests(binary_notif->xfer_id_count);
@@ -1046,10 +1061,24 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     nixl_status_t notif_status = notifSendPriv(remote_agent, control_request);
     if (notif_status != NIXL_SUCCESS) {
       NIXL_ERROR << "Failed to send immediate notification";
+      // GEX-3606: release control_request on error path. notifSendPriv
+      // hands the request to the control rail's send queue on success;
+      // on failure we still own it.
+      release_control_request();
       return notif_status;
     }
     NIXL_DEBUG << "Immediate notification sent successfully with "
                << binary_notif->xfer_id_count << " XFER_IDs";
+  } else {
+    // No notification requested by the caller. The control_request was
+    // allocated up front and used as scratch space for binary_notif
+    // while submitting the data WRITEs, but it was never handed to
+    // notifSendPriv, which is the only path that would otherwise
+    // transfer ownership to the control rail's send queue and have its
+    // CQ completion release it back to the pool. Release it here so
+    // the control pool stays bounded across many postXfer calls
+    // regardless of how the caller drives the API.
+    release_control_request();
   }
 
   // Progress data rails to kick off transfers

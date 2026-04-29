@@ -12,6 +12,7 @@
 #include "MLRT/Driver/NIXL/utils/libfabric/libfabric_rail.h"
 #include "MLRT/Driver/NIXL/utils/common/nixl_log.h"
 
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <sys/uio.h>
@@ -341,6 +342,36 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device, uint16_t id,
     return;
   }
 
+  // GEX-3606 (AWS suggestion): set FI_OPT_EFA_HOMOGENEOUS_PEERS=true to
+  // bypass the EFA RDM provider's per-peer handshake that runs before the
+  // first RMA write to that peer. Per fi_efa(7): "When set to true, it
+  // indicates all peers are homogeneous, meaning they run on the same
+  // platform, use the same software versions, and share identical
+  // capabilities. It accelerates the initial communication setup as
+  // interoperability between peers is guaranteed." Both peers in DI run
+  // identical MAX/MLRT binaries against identical libfabric, so this is
+  // always safe to enable. Must be called before fi_enable().
+  //
+  // Without this, the original GEX-3606 symptom returns: rail 0's first
+  // RMA write to a never-before-seen peer can hit a silent EAGAIN spin
+  // (the rail's CQ stops producing TX completions while sibling rails
+  // drain normally), wedging the workload at WARN log level. Enabling
+  // it bypasses the handshake and lets the data write proceed directly.
+  {
+    bool homogeneous = true;
+    int hp_ret =
+        fi_setopt(&endpoint->fid, FI_OPT_ENDPOINT, FI_OPT_EFA_HOMOGENEOUS_PEERS,
+                  &homogeneous, sizeof(homogeneous));
+    if (hp_ret) {
+      NIXL_WARN << "fi_setopt(FI_OPT_EFA_HOMOGENEOUS_PEERS=true) failed on "
+                   "rail "
+                << rail_id << ": " << fi_strerror(-hp_ret);
+    } else {
+      NIXL_DEBUG << "rail " << rail_id
+                 << ": fi_setopt(FI_OPT_EFA_HOMOGENEOUS_PEERS=true) ok";
+    }
+  }
+
   ret = fi_enable(endpoint);
   if (ret) {
     fi_freeinfo(hints);
@@ -539,9 +570,58 @@ nixl_status_t nixlLibfabricRail::progressCompletionQueue(bool use_blocking) {
                    << " with error: " << fi_strerror(err_entry.err)
                    << " prov_errno: " << err_entry.prov_errno
                    << " len: " << err_entry.len;
-      } else {
-        NIXL_ERROR << "fi_cq_readerr failed with " << err_ret;
+
+        // GEX-3606: a per-request CQ error (e.g. EFA prov_errno=7
+        // REMOTE_ERROR_BAD_ADDRESS from a briefly mis-registered receiver
+        // MR, observed on production p6-b200.48xlarge) was previously
+        // logged and dropped here without finding the failed request.
+        // Each event leaked one slot from the data or control request
+        // pool. After ~1024 leaks per data rail or ~256 leaks on the
+        // control rail, postXfer could no longer allocate new requests
+        // and ALL subsequent transfers failed with "Failed to allocate
+        // {control,data} request" — turning a transient receiver hiccup
+        // into a fatal pool-exhaustion that wedged the workload (a
+        // production prefill log showed 2,133 prov_errno=7 events
+        // exhausting rail 0's data pool, then leaking the control pool
+        // via postXfer's error-return paths, leaving only 17/300
+        // requests successful).
+        //
+        // Look up the failed request via err_entry.op_context, invoke
+        // its completion callback so the upper-layer transfer handle
+        // advances instead of hanging until the app-level timeout, then
+        // release it back to its pool. The data never reached the
+        // destination, so the receiver will see whatever was at
+        // remote_addr — that's a pre-existing failure mode of the failed
+        // write itself; what we eliminate here is the cascade that took
+        // every other in-flight request down with it.
+        nixlLibfabricReq *failed_req =
+            findRequestFromContext(err_entry.op_context);
+        if (failed_req) {
+          if (failed_req->completion_callback) {
+            failed_req->completion_callback();
+          }
+          releaseRequest(failed_req);
+        } else {
+          NIXL_WARN << "GEX-3606: no request found for failed completion "
+                       "context "
+                    << err_entry.op_context << " on rail " << rail_id
+                    << " (cannot release; pool slot leaked)";
+        }
+        // Return SUCCESS so callers (postWrite's EAGAIN retry loop via
+        // progressAndLogForEagainRetry, postSend's EAGAIN retry loop,
+        // progressActiveDataRails) do not interpret a single bad write
+        // as a rail-level failure. The rail itself is healthy; only this
+        // one transfer (now released and accounted for) failed. Without
+        // this, every prov_errno=7 would also poison whatever postWrite
+        // happened to be progressing the CQ at the time, multiplying
+        // one transient EFA error into many independent transfer
+        // failures (b200-aws workspace run: 7,147 prov_errno=7 events
+        // → only 15/300 failures with this path, vs 266/300 without).
+        return NIXL_SUCCESS;
       }
+      NIXL_ERROR << "fi_cq_readerr failed with " << err_ret;
+      // err_ret <= 0 here means we could not even drain the error entry
+      // from the CQ; that's a genuine CQ-machinery failure, propagate it.
       return NIXL_ERR_BACKEND;
     }
   }
@@ -876,9 +956,26 @@ nixl_status_t nixlLibfabricRail::postRecv(nixlLibfabricReq *req) const {
 // spamming on every retry.
 //
 // Returns true if the caller should retry the libfabric op, false if some
-// unrecoverable CQ error occurred.
+// unrecoverable CQ error occurred or the wall-clock retry deadline expired.
+//
+// GEX-3606: bound the wall-clock time spent in the EAGAIN retry loop. The
+// EFA RDM provider can silently stop producing TX completions on a peer
+// (described in the original ticket as the rail-0 wedge); without a
+// deadline, postWrite/postSend/postRead spin in this helper indefinitely
+// while the upper-layer scheduler hangs in initiate_send_transfer, taking
+// down the whole DI pipeline. 30 s is well above any healthy fi_writedata
+// turnaround and lets the operation surface as NIXL_ERR_BACKEND so
+// upper-layer retry/cancellation can run. The deadline is per-call (reset
+// once attempt hits 1) so a long-lived loop that drains many successful
+// retries doesn't accidentally trip it.
+static constexpr int kEagainRetryDeadlineSeconds = 30;
 static bool progressAndLogForEagainRetry(nixlLibfabricRail *rail, int &attempt,
                                          const char *op_name) {
+  static thread_local std::chrono::steady_clock::time_point retry_deadline{};
+  if (attempt == 0) {
+    retry_deadline = std::chrono::steady_clock::now() +
+                     std::chrono::seconds(kEagainRetryDeadlineSeconds);
+  }
   ++attempt;
   if (attempt % NIXL_LIBFABRIC_LOG_INTERVAL_ATTEMPTS == 0) {
     NIXL_DEBUG << op_name << " still retrying EAGAIN on rail " << rail->rail_id
@@ -891,6 +988,13 @@ static bool progressAndLogForEagainRetry(nixlLibfabricRail *rail, int &attempt,
   if (progress_status != NIXL_SUCCESS && progress_status != NIXL_IN_PROG) {
     NIXL_ERROR << "progressCompletionQueue failed on rail " << rail->rail_id
                << " during " << op_name << " retry";
+    return false;
+  }
+  if (std::chrono::steady_clock::now() > retry_deadline) {
+    NIXL_ERROR << op_name << " exceeded " << kEagainRetryDeadlineSeconds
+               << "s EAGAIN retry deadline on rail " << rail->rail_id
+               << " after " << attempt
+               << " attempts; surfacing as backend error (GEX-3606)";
     return false;
   }
   return true;
