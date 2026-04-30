@@ -12,20 +12,19 @@
 // CHECK-LABEL: mo.graph @merge_simple
 mo.graph @merge_simple(%arg0: !mo.tensor<[3], f32, gpu:0>,
                        %arg1: !mo.tensor<[3], f32, gpu:1>)
-    -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
-                    !mo.tensor<[3], f32, gpu:1>]>) {
+    -> (!mo.bundle<[3], f32, gpu:0-1>) {
   %b = mo.tensor.bundle(%arg0, %arg1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-     -> !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+     -> !mo.bundle<[3], f32, gpu:0-1>
   %a = mo.parallel (%arg) in (%b
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+        : !mo.bundle<[3], f32, gpu:0-1>)
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %r = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %r : !mo.tensor<[3], f32, gpu:0>
   }
   %c = mo.parallel (%arg) in (%a
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+        : !mo.bundle<[3], f32, gpu:0-1>)
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %n = mo.negative(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %n : !mo.tensor<[3], f32, gpu:0>
   }
@@ -40,7 +39,7 @@ mo.graph @merge_simple(%arg0: !mo.tensor<[3], f32, gpu:0>,
   // CHECK-NOT: mo.parallel
 
   mo.output %c
-      : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+      : !mo.bundle<[3], f32, gpu:0-1>
 }
 
 // ============================================================================
@@ -53,14 +52,13 @@ mo.graph @merge_simple(%arg0: !mo.tensor<[3], f32, gpu:0>,
 mo.graph @merge_with_non_shared_between(
     %arg0: !mo.tensor<[3], f32, gpu:0>, %arg1: !mo.tensor<[3], f32, gpu:1>,
     %r0: !mo.tensor<[3], f32, gpu:0>,   %r1: !mo.tensor<[3], f32, gpu:1>)
-    -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
-                    !mo.tensor<[3], f32, gpu:1>]>) {
+    -> (!mo.bundle<[3], f32, gpu:0-1>) {
   %b = mo.tensor.bundle(%arg0, %arg1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-     -> !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+     -> !mo.bundle<[3], f32, gpu:0-1>
   %a = mo.parallel (%arg) in (%b
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+        : !mo.bundle<[3], f32, gpu:0-1>)
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
@@ -68,12 +66,12 @@ mo.graph @merge_with_non_shared_between(
   // still inserted before %a and takes it as an operand.
   %residuals = mo.tensor.bundle(%r0, %r1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-     -> !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+     -> !mo.bundle<[3], f32, gpu:0-1>
   %c = mo.parallel (%arg_a, %arg_r) in (%a
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>,
+        : !mo.bundle<[3], f32, gpu:0-1>,
                                            %residuals
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+        : !mo.bundle<[3], f32, gpu:0-1>)
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %s = mo.add(%arg_a, %arg_r) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %s : !mo.tensor<[3], f32, gpu:0>
   }
@@ -87,7 +85,7 @@ mo.graph @merge_with_non_shared_between(
   // CHECK-NOT: mo.parallel
 
   mo.output %c
-      : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+      : !mo.bundle<[3], f32, gpu:0-1>
 }
 
 // ============================================================================
@@ -99,27 +97,26 @@ mo.graph @merge_with_non_shared_between(
 mo.graph @merge_chain_both(
     %arg0: !mo.tensor<[3], f32, gpu:0>, %arg1: !mo.tensor<[3], f32, gpu:1>,
     %sig0: !mo.buffer<[1], ui8, gpu:0>, %sig1: !mo.buffer<[1], ui8, gpu:1>)
-    -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
-                    !mo.tensor<[3], f32, gpu:1>]>, !mo.chain) {
+    -> (!mo.bundle<[3], f32, gpu:0-1>, !mo.chain) {
   %b = mo.tensor.bundle(%arg0, %arg1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-     -> !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+     -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
   %a:2 = mo.parallel (%arg) in (%b
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+        : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   %c:2 = mo.parallel (%arg) in (%a#0
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+        : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%a#1)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %n = mo.negative(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %n : !mo.tensor<[3], f32, gpu:0>
   }
@@ -134,7 +131,7 @@ mo.graph @merge_chain_both(
   // CHECK-NOT: mo.parallel
 
   mo.output %c#0, %c#1
-      : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>,
+      : !mo.bundle<[3], f32, gpu:0-1>,
         !mo.chain
 }
 
@@ -148,27 +145,26 @@ mo.graph @no_merge_buffer_mismatch(
     %arg0: !mo.tensor<[3], f32, gpu:0>, %arg1: !mo.tensor<[3], f32, gpu:1>,
     %sigA0: !mo.buffer<[1], ui8, gpu:0>, %sigA1: !mo.buffer<[1], ui8, gpu:1>,
     %sigB0: !mo.buffer<[1], ui8, gpu:0>, %sigB1: !mo.buffer<[1], ui8, gpu:1>)
-    -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
-                    !mo.tensor<[3], f32, gpu:1>]>, !mo.chain) {
+    -> (!mo.bundle<[3], f32, gpu:0-1>, !mo.chain) {
   %b = mo.tensor.bundle(%arg0, %arg1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-     -> !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+     -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
   %a:2 = mo.parallel (%arg) in (%b
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+        : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sigA0 : !mo.buffer<[1], ui8, gpu:0>,
               %sigA1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   %c:2 = mo.parallel (%arg) in (%a#0
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+        : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sigB0 : !mo.buffer<[1], ui8, gpu:0>,
               %sigB1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%a#1)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %n = mo.negative(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %n : !mo.tensor<[3], f32, gpu:0>
   }
@@ -179,7 +175,7 @@ mo.graph @no_merge_buffer_mismatch(
   // CHECK: mo.parallel
 
   mo.output %c#0, %c#1
-      : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>,
+      : !mo.bundle<[3], f32, gpu:0-1>,
         !mo.chain
 }
 
@@ -192,24 +188,23 @@ mo.graph @no_merge_buffer_mismatch(
 mo.graph @merge_chain_producer_only(
     %arg0: !mo.tensor<[3], f32, gpu:0>, %arg1: !mo.tensor<[3], f32, gpu:1>,
     %sig0: !mo.buffer<[1], ui8, gpu:0>, %sig1: !mo.buffer<[1], ui8, gpu:1>)
-    -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>,
-                    !mo.tensor<[3], f32, gpu:1>]>, !mo.chain) {
+    -> (!mo.bundle<[3], f32, gpu:0-1>, !mo.chain) {
   %b = mo.tensor.bundle(%arg0, %arg1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
-     -> !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>
+     -> !mo.bundle<[3], f32, gpu:0-1>
   %ch = mo.chain.create()
   %a:2 = mo.parallel (%arg) in (%b
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+        : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>,
               %sig1 : !mo.buffer<[1], ui8, gpu:1>)
       chain(%ch)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %x = mo.relu(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %x : !mo.tensor<[3], f32, gpu:0>
   }
   %c = mo.parallel (%arg) in (%a#0
-        : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+        : !mo.bundle<[3], f32, gpu:0-1>)
+      -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %n = mo.negative(%arg) : !mo.tensor<[3], f32, gpu:0>
     mo.yield %n : !mo.tensor<[3], f32, gpu:0>
   }
@@ -223,6 +218,6 @@ mo.graph @merge_chain_producer_only(
   // CHECK-NOT: mo.parallel
 
   mo.output %c, %a#1
-      : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>,
+      : !mo.bundle<[3], f32, gpu:0-1>,
         !mo.chain
 }
