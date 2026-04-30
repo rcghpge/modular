@@ -56,6 +56,14 @@ TEST_F(DebugAllocPoisonTest, BFloat16) {
   constexpr size_t numElements = 16;
   TensorSpec spec({numElements}, DType::bf16);
 
+  // Both host and device fills use the largest-finite bit pattern (e.g.
+  // 0x7F7F for bf16); a non-NaN, non-Inf value chosen so the poison fill
+  // doesn't conflict with the nan-check debug pass.
+  const llvm::fltSemantics *sem = spec.getEltType().getFloatSemantics();
+  llvm::APFloat largest = llvm::APFloat::getLargest(*sem);
+  uint16_t expectedPattern =
+      static_cast<uint16_t>(largest.bitcastToAPInt().getZExtValue());
+
   if (!gpuOrErr.isError()) {
     auto gpu = gpuOrErr.takeValue();
 
@@ -72,22 +80,15 @@ TEST_F(DebugAllocPoisonTest, BFloat16) {
     EXPECT_NO_ERR(gpuMem->copyTo(*hostMem));
     EXPECT_NO_ERR(gpu->synchronize());
 
-    // Expect qNaN pattern for device allocation
-    const llvm::fltSemantics *sem = spec.getEltType().getFloatSemantics();
-    llvm::APFloat nan = llvm::APFloat::getQNaN(*sem);
-    uint16_t expectedPattern =
-        static_cast<uint16_t>(nan.bitcastToAPInt().getZExtValue());
-
     check16BitPattern(hostMem->data(), numElements, expectedPattern);
   } else {
-    // No GPU: test host allocation with 0xFF pattern on CPU device
     auto cpu = makeCPU();
 
     ASSIGN_NO_ERR(DeviceMemory *, hostMem,
                   cpu->createDeviceMemory(spec, /*hostAlloc=*/true));
     std::unique_ptr<DeviceMemory> hostMemGuard(hostMem);
 
-    check16BitPattern(hostMem->data(), numElements, 0xFFFF);
+    check16BitPattern(hostMem->data(), numElements, expectedPattern);
   }
 }
 

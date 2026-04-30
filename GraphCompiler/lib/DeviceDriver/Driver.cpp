@@ -13,6 +13,8 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cassert>
+#include <cstdint>
 #include <cstring>
 
 using namespace M::GraphCompiler::Driver;
@@ -128,64 +130,84 @@ Device::createDeviceMemory(const TensorSpec &spec, bool hostAlloc) {
                             : ctx->enqueueCreateBuffer(spec.getSizeInBytes()));
 
   // Debug allocation poisoning: fills newly allocated memory with default
-  // patterns to help detect use of uninitialized memory. Float types are filled
-  // with qNaN patterns, integers with 0xCD.
+  // patterns to help detect use of uninitialized memory. Floats are filled
+  // with the bit pattern of the largest finite value (e.g. FLT_MAX); this is
+  // non-NaN/non-Inf so it doesn't conflict with the nan-check pass when EP
+  // kernels leave allocation padding un-overwritten. Integers are filled
+  // with 0xCD. Host and device fills use the same per-type pattern so the
+  // Mojo stdlib uninit-read check has a single value to look for.
   // Enable via: MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison
   if (ctx->isDebugAllocatorEnabled("uninitialized-poison")) {
     DType dtype = spec.getEltType();
+    size_t totalBytes = spec.getSizeInBytes();
+
+    uint64_t bits;
+    size_t patternBytes;
+    const char *patternKind;
+    if (const llvm::fltSemantics *sem = dtype.getFloatSemantics()) {
+      if (llvm::APFloat::getSizeInBits(*sem) < 8) {
+        // Sub-byte float types (e.g. float4_e2m1fn): the byte-granularity
+        // fill below can't write a single 4-bit lane, and the Mojo poison
+        // check excludes these dtypes too. Skip the fill so host and check
+        // contracts stay in agreement.
+        llvm::errs() << "DEBUG_ALLOC_POISON: skipping " << dtype
+                     << " allocation (" << totalBytes
+                     << " bytes; sub-byte float type)\n";
+        return new DeviceMemory(M::copyRCRef(this), buf, spec);
+      }
+      // The Mojo poison check has no `max_finite` for the scale-only /
+      // no-mantissa formats `float8_e3m4` and `float8_e8m0fnu`. Skip the
+      // fill for these so the host write and the load-site check stay in
+      // agreement.
+      if (dtype == DType::f8e3m4 || dtype == DType::f8e8m0fnu) {
+        llvm::errs() << "DEBUG_ALLOC_POISON: skipping " << dtype
+                     << " allocation (" << totalBytes
+                     << " bytes; not in Mojo poison-check set)\n";
+        return new DeviceMemory(M::copyRCRef(this), buf, spec);
+      }
+      llvm::APFloat largest = llvm::APFloat::getLargest(*sem);
+      bits = largest.bitcastToAPInt().getZExtValue();
+      patternBytes = llvm::APFloat::getSizeInBits(*sem) / 8;
+      patternKind = "largest-finite";
+    } else {
+      // Integer types. Every float dtype we support has LLVM APFloat
+      // semantics (see `Support/include/Support/ML/FloatTypes.def`), so
+      // a future float type without semantics is the only way to land
+      // here as a float — at which point this code needs to grow a fill
+      // strategy for it rather than silently fall through to 0xCD.
+      assert(!dtype.isFloat() && "float dtype lacks LLVM APFloat semantics");
+      bits = 0xCD;
+      patternBytes = 1;
+      patternKind = "byte-fill";
+    }
+
+    llvm::errs() << "DEBUG_ALLOC_POISON: Filling "
+                 << (hostAlloc ? "host" : "device") << " " << dtype
+                 << " allocation (" << totalBytes << " bytes) with "
+                 << patternKind << " pattern ";
+    (llvm::errs().changeColor(llvm::raw_ostream::RED)
+     << "0x" << llvm::format_hex_no_prefix(bits, patternBytes * 2))
+        .resetColor();
+    llvm::errs() << "\n";
 
     if (hostAlloc) {
-      if (dtype.isFloat()) {
-        llvm::errs() << "DEBUG_ALLOC_POISON: Filling host " << dtype
-                     << " allocation (" << spec.getSizeInBytes()
-                     << " bytes) with ";
-        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xFF")
-            .resetColor();
-        llvm::errs() << "\n";
-        std::memset(buf->ptr(), 0xFF, spec.getSizeInBytes());
+      uint8_t *dst = static_cast<uint8_t *>(buf->ptr());
+      if (patternBytes == 1) {
+        std::memset(dst, static_cast<uint8_t>(bits), totalBytes);
       } else {
-        llvm::errs() << "DEBUG_ALLOC_POISON: Filling host " << dtype
-                     << " allocation (" << spec.getSizeInBytes()
-                     << " bytes) with ";
-        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xCD")
-            .resetColor();
-        llvm::errs() << "\n";
-        std::memset(buf->ptr(), 0xCD, spec.getSizeInBytes());
+        // Replicate the patternBytes-byte little-endian pattern across the
+        // buffer. We avoid `std::fill_n` through a `uint{16,32,64}_t *`
+        // because `createHostBuffer` does not guarantee `alignof(T)` for
+        // T larger than a byte, and a misaligned typed store is UB. The
+        // `bits` argument to `memcpy` is taken by address but read as a
+        // contiguous byte sequence, so no alignment requirement applies.
+        for (size_t off = 0; off + patternBytes <= totalBytes;
+             off += patternBytes) {
+          std::memcpy(dst + off, &bits, patternBytes);
+        }
       }
     } else {
-      ErrorOrSuccess err = success();
-      if (const llvm::fltSemantics *sem = dtype.getFloatSemantics()) {
-        // Use APFloat to generate the correct qNaN for any float type
-        llvm::APFloat nan = llvm::APFloat::getQNaN(*sem);
-        uint64_t bits = nan.bitcastToAPInt().getZExtValue();
-        size_t byteSize = llvm::APFloat::getSizeInBits(*sem) / 8;
-        llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << dtype
-                     << " allocation (" << spec.getSizeInBytes()
-                     << " bytes) with qNaN pattern ";
-        (llvm::errs().changeColor(llvm::raw_ostream::RED)
-         << "0x" << llvm::format_hex_no_prefix(bits, byteSize * 2))
-            .resetColor();
-        llvm::errs() << "\n";
-        err = ctx->enqueueSetMemory(*buf, bits, byteSize);
-      } else if (dtype.isFloat()) {
-        // Float type not known to LLVM, use generic pattern
-        llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << dtype
-                     << " allocation (" << spec.getSizeInBytes()
-                     << " bytes) with ";
-        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xFF")
-            .resetColor();
-        llvm::errs() << "\n";
-        err = ctx->enqueueSetMemory(*buf, 0xFF, 1);
-      } else {
-        // Integer types
-        llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << dtype
-                     << " allocation (" << spec.getSizeInBytes()
-                     << " bytes) with ";
-        (llvm::errs().changeColor(llvm::raw_ostream::RED) << "0xCD")
-            .resetColor();
-        llvm::errs() << "\n";
-        err = ctx->enqueueSetMemory(*buf, 0xCD, 1);
-      }
+      ErrorOrSuccess err = ctx->enqueueSetMemory(*buf, bits, patternBytes);
       if (err.isError())
         return err.takeError();
       err = ctx->synchronize();
