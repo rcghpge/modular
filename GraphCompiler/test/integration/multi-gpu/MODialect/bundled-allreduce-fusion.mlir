@@ -29,15 +29,15 @@ mo.graph @bundled_allreduce_then_relu(
   %in0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
   %in1 = mo.constant {value = #M.dense_array<4.0, -5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:1>
 
-  %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+  %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[3], f32, gpu:0-1>)
   %ch = mo.chain.create()
   // CHECK: mo.parallel
   // CHECK: mo.bundled.expand
   // CHECK: mo.bundled.allreduce.sum
   // CHECK: mo.relu
-  %res_bundle, %out_ch = mo.parallel (%arg) in (%dt : !mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>)
+  %res_bundle, %out_ch = mo.parallel (%arg) in (%dt : !mo.bundle<[3], f32, gpu:0-1>)
       buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>, %sig1 : !mo.buffer<[1], ui8, gpu:1>)
-      chain(%ch) -> (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) {
+      chain(%ch) -> (!mo.bundle<[3], f32, gpu:0-1>) {
     %peer0, %peer1 = mo.bundled.expand(%arg) : !mo.tensor<[3], f32, gpu:0> -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
     %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %peer1, %sig0, %sig1, %ch)
         : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
@@ -46,7 +46,7 @@ mo.graph @bundled_allreduce_then_relu(
     mo.yield %relu : !mo.tensor<[3], f32, gpu:0>
   }
 
-  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>]>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], f32, gpu:0-1>) -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
   %res0_host, %ch3 = mo.transfer[%out_ch] %res_0 : !mo.tensor<[3], f32, gpu:0> to <"cpu", 0>
   %res1_host, %ch4 = mo.transfer[%ch3] %res_1 : !mo.tensor<[3], f32, gpu:1> to <"cpu", 0>
   mo.output %res0_host, %res1_host : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>

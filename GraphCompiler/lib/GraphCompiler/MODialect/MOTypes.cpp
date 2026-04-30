@@ -730,28 +730,221 @@ Type ListType::cloneWithNewDevice(DeviceRefAttr device) const {
 // BundleType
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+/// Description of a bundle whose element tensor types can all be reconstructed
+/// from a single shape/dtype/device-range tuple. Used by the BundleType
+/// printer and parser to share the compact-form representation.
+struct CompactBundleInfo {
+  TypedAttr shapeAttr;
+  DType dtype;
+  // Shared device of every element. Non-null.
+  DeviceRefAttr deviceRef;
+  DictionaryAttr metadata;
+  // ID of element 0 and element N-1. These are equal for single-element
+  // bundles.
+  DeviceId firstId;
+  DeviceId lastId;
+};
+
+/// Returns a CompactBundleInfo if `elementTypes` can be pretty-printed in the
+/// compact form. A bundle is compact-eligible iff all elements are TensorTypes
+/// with identical shape, dtype, device label, and metadata, and their device
+/// IDs are ordered and contiguous (`ids[i] == ids[0] + i`).
+std::optional<CompactBundleInfo>
+computeCompactBundleInfo(ArrayRef<Type> elementTypes) {
+  if (elementTypes.empty())
+    return std::nullopt;
+
+  auto first = llvm::dyn_cast<TensorType>(elementTypes.front());
+  if (!first)
+    return std::nullopt;
+
+  DeviceRefAttr firstDevice = first.getDeviceRef();
+  if (!firstDevice)
+    return std::nullopt;
+
+  DeviceId firstId = firstDevice.getId();
+  for (auto [idx, ty] : llvm::enumerate(elementTypes)) {
+    auto tensor = llvm::dyn_cast<TensorType>(ty);
+    if (!tensor)
+      return std::nullopt;
+    if (tensor.getShapeAttr() != first.getShapeAttr())
+      return std::nullopt;
+    if (tensor.getDtype() != first.getDtype())
+      return std::nullopt;
+    if (tensor.getMetadata() != first.getMetadata())
+      return std::nullopt;
+    DeviceRefAttr devRef = tensor.getDeviceRef();
+    if (!devRef || devRef.getLabel() != firstDevice.getLabel())
+      return std::nullopt;
+    if (devRef.getId() != firstId + static_cast<DeviceId>(idx))
+      return std::nullopt;
+  }
+
+  DeviceId lastId = firstId + static_cast<DeviceId>(elementTypes.size() - 1);
+  return CompactBundleInfo{first.getShapeAttr(), first.getDtype(), firstDevice,
+                           first.getMetadata(),  firstId,          lastId};
+}
+
+} // namespace
+
 Type BundleType::parse(AsmParser &parser) {
   if (parser.parseLess() || parser.parseLSquare())
     return {};
+
+  // Lookahead: the verbose form has a tensor type at this point; the compact
+  // form has a shape `[...]` dim list (integers / `?` / param refs), which is
+  // not a type.
+  Type firstType;
+  OptionalParseResult typeRes = parser.parseOptionalType(firstType);
+  if (typeRes.has_value()) {
+    if (failed(*typeRes))
+      return {};
+
+    // Verbose form: finish parsing the remaining tensor types.
+    SmallVector<Type> elementTypes{firstType};
+    while (succeeded(parser.parseOptionalComma())) {
+      Type ty;
+      if (parser.parseType(ty))
+        return {};
+      elementTypes.push_back(ty);
+    }
+    if (parser.parseRSquare() || parser.parseGreater())
+      return {};
+    return BundleType::get(parser.getContext(), elementTypes);
+  }
+
+  // Compact form: the outer `[` has been consumed; parse the shape dims that
+  // would normally live inside it.
+  MLIRContext *ctx = parser.getContext();
+  auto shapeTy = parser.getBuilder().getType<ShapeType>();
+  SmallVector<TypedAttr> shapeDims;
+  if (MOSH::parseShapeValue(parser, shapeDims) || parser.parseRSquare())
+    return {};
+  auto shapeAttr = parser.getChecked<ShapeAttr>(shapeDims, shapeTy);
+  if (!shapeAttr)
+    return {};
+
+  if (parser.parseComma())
+    return {};
+
+  FailureOr<DType> dtypeOr = mlir::FieldParser<DType>::parse(parser);
+  if (failed(dtypeOr))
+    return {};
+  DType dtype = dtypeOr.value();
+
+  // Optional device section: `, <label>:<id>[-<lastId>]`.
+  DeviceRefAttr firstDevice;
+  DeviceId firstId = 0;
+  DeviceId lastId = 0;
+  bool hasExplicitDevice = false;
+  DictionaryAttr metadata;
+
+  if (succeeded(parser.parseOptionalComma())) {
+    StringRef deviceLabel;
+    if (succeeded(parser.parseOptionalKeyword(&deviceLabel))) {
+      hasExplicitDevice = true;
+      if (parser.parseColon() || parser.parseInteger(firstId))
+        return {};
+      lastId = firstId;
+
+      // MLIR's AsmParser lacks a parseMinus primitive. Use the fact that the
+      // lexer tokenizes `-1` as a signed integer literal: try to consume an
+      // optional signed integer; if present it must be negative, and its
+      // absolute value is the range end.
+      int64_t rangeEnd = 0;
+      OptionalParseResult rangeRes = parser.parseOptionalInteger(rangeEnd);
+      if (rangeRes.has_value()) {
+        if (failed(*rangeRes))
+          return {};
+        if (rangeEnd >= 0) {
+          parser.emitError(parser.getCurrentLocation())
+              << "expected '-' before compact bundle device range end";
+          return {};
+        }
+        lastId = static_cast<DeviceId>(-rangeEnd);
+        if (lastId < firstId) {
+          parser.emitError(parser.getCurrentLocation())
+              << "compact bundle device range must be ordered "
+              << "(firstId <= lastId)";
+          return {};
+        }
+      }
+
+      firstDevice = DeviceRefAttr::get(ctx, deviceLabel, firstId);
+
+      // Optional metadata after the device section.
+      if (succeeded(parser.parseOptionalComma())) {
+        if (parser.parseAttribute(metadata))
+          return {};
+      }
+    } else {
+      // No device keyword; the comma introduces a metadata attribute.
+      if (parser.parseAttribute(metadata))
+        return {};
+    }
+  }
+
+  if (parser.parseGreater())
+    return {};
+
+  if (!hasExplicitDevice)
+    firstDevice = DeviceRefAttr::getDefault(ctx);
+  if (!metadata)
+    metadata = DictionaryAttr::get(ctx);
+
+  // Materialize one TensorType per device ID in the range.
+  size_t numElements =
+      hasExplicitDevice ? static_cast<size_t>(lastId - firstId + 1) : 1;
   SmallVector<Type> elementTypes;
-  if (parser.parseCommaSeparatedList([&]() -> ParseResult {
-        Type ty;
-        if (parser.parseType(ty))
-          return failure();
-        elementTypes.push_back(ty);
-        return success();
-      }))
-    return {};
-  if (parser.parseRSquare() || parser.parseGreater())
-    return {};
-  return BundleType::get(parser.getContext(), elementTypes);
+  elementTypes.reserve(numElements);
+  for (size_t i = 0; i < numElements; ++i) {
+    DeviceRefAttr devRef =
+        hasExplicitDevice
+            ? DeviceRefAttr::get(ctx, firstDevice.getLabel(), firstId + i)
+            : firstDevice;
+    auto tensor =
+        parser.getChecked<TensorType>(ctx, shapeAttr, dtype, devRef, metadata);
+    if (!tensor)
+      return {};
+    elementTypes.push_back(tensor);
+  }
+  return BundleType::get(ctx, elementTypes);
 }
 
 void BundleType::print(AsmPrinter &printer) const {
-  printer << '<' << '[';
-  llvm::interleaveComma(getElementTypes(), printer,
+  ArrayRef<Type> elementTypes = getElementTypes();
+
+  if (auto info = computeCompactBundleInfo(elementTypes)) {
+    printer << '<';
+    MOSH::printShapeTypedAttr(printer, info->shapeAttr);
+    printer << ", " << info->dtype.getAsString();
+
+    // Elide the device section only when the parser would re-derive the
+    // correct bundle from its absence: a single element on the default host
+    // device.
+    auto defaultDev = DeviceRefAttr::getDefault(getContext());
+    bool singleDefault =
+        elementTypes.size() == 1 && info->deviceRef == defaultDev;
+    if (!singleDefault) {
+      printer << ", " << info->deviceRef.getLabel() << ':' << info->firstId;
+      if (info->firstId != info->lastId)
+        printer << '-' << info->lastId;
+    }
+
+    if (info->metadata && !info->metadata.empty())
+      printer << ", " << info->metadata;
+
+    printer << '>';
+    return;
+  }
+
+  // Verbose fallback: print the full list of element tensor types.
+  printer << "<[";
+  llvm::interleaveComma(elementTypes, printer,
                         [&](Type ty) { printer.printType(ty); });
-  printer << ']' << '>';
+  printer << "]>";
 }
 
 LogicalResult BundleType::verify(function_ref<InFlightDiagnostic()> emitError,

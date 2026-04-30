@@ -11,14 +11,14 @@
 mo.graph @parallel_multi_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:1>
-  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>)
+  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) -> (!mo.bundle<[3], si32, gpu:0-1>)
   %res_bundle = mo.parallel (%arg0) in
-      (%bundle : !mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>) {
+      (%bundle : !mo.bundle<[3], si32, gpu:0-1>)
+      -> (!mo.bundle<[3], si32, gpu:0-1>) {
     %1 = mo.relu(%arg0) : !mo.tensor<[3], si32, gpu:0>
     mo.yield %1 : !mo.tensor<[3], si32, gpu:0>
   }
-  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>) -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>)
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], si32, gpu:0-1>) -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>)
   // Transfer GPU results back to CPU for output
   // %res_0 is on gpu:0, %res_1 is on gpu:1
   %ch0 = mo.chain.create()
@@ -35,15 +35,15 @@ mo.graph @parallel_multi_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si3
 mo.graph @parallel_multi_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
   %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
   %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:1>
-  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>)
+  %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>) -> (!mo.bundle<[3], si32, gpu:0-1>)
   %res_bundle = mo.parallel (%arg0) in
-      (%bundle : !mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>)
-      -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>) {
+      (%bundle : !mo.bundle<[3], si32, gpu:0-1>)
+      -> (!mo.bundle<[3], si32, gpu:0-1>) {
     %neg = mo.negative(%arg0) : !mo.tensor<[3], si32, gpu:0>
     %relu = mo.relu(%neg) : !mo.tensor<[3], si32, gpu:0>
     mo.yield %relu : !mo.tensor<[3], si32, gpu:0>
   }
-  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>]>) -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>)
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle) : (!mo.bundle<[3], si32, gpu:0-1>) -> (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:1>)
   %ch0 = mo.chain.create()
   %res0_host, %ch1 = mo.transfer[%ch0] %res_0 : !mo.tensor<[3], si32, gpu:0> to <"cpu", 0>
   %res1_host, %ch2 = mo.transfer[%ch1] %res_1 : !mo.tensor<[3], si32, gpu:1> to <"cpu", 0>
