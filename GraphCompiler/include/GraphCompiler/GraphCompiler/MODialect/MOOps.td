@@ -694,6 +694,21 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
   let results = (outs Variadic<AnyTypeOf<[MO_Bundle, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
 
+  let builders = [
+    /// Build a chainless ParallelOp with an empty body region.  One block
+    /// argument is added per bundle input, typed as the bundle's first
+    /// element type.
+    OpBuilder<(ins "ValueRange":$inputs,
+                   "TypeRange":$resultTypes)>,
+    /// Build a ParallelOp with an empty body region.  One block argument is
+    /// added per bundle input, typed as the bundle's first element type.
+    /// `buffers` and `inChain` must be both present or both absent.
+    OpBuilder<(ins "ValueRange":$inputs,
+                   "ValueRange":$buffers,
+                   "Value":$inChain,
+                   "TypeRange":$resultTypes)>,
+  ];
+
   let extraClassDeclaration = [{
     /// Implement the DeclInterface methods with our own parameter
     /// implementation in MO.

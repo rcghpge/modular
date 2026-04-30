@@ -1047,6 +1047,37 @@ LogicalResult TensorUnbundleOp::verify() {
 ArrayRef<ParamDeclAttr> ParallelOp::getInputParams() { return {}; }
 SmallVector<ParamDeclAttr> ParallelOp::getAllParams() { return {}; }
 
+void ParallelOp::build(OpBuilder &builder, OperationState &state,
+                       ValueRange inputs, TypeRange resultTypes) {
+  build(builder, state, inputs, /*buffers=*/{}, /*inChain=*/Value{},
+        resultTypes);
+}
+
+void ParallelOp::build(OpBuilder &builder, OperationState &state,
+                       ValueRange inputs, ValueRange buffers, Value inChain,
+                       TypeRange resultTypes) {
+  assert(buffers.empty() == !inChain &&
+         "buffers and inChain must be both present or both absent");
+  state.addOperands(inputs);
+  state.addOperands(buffers);
+  if (inChain)
+    state.addOperands(inChain);
+  state.addTypes(resultTypes);
+  state.addAttribute(
+      ParallelOp::getOperandSegmentSizesAttrName(state.name),
+      builder.getDenseI32ArrayAttr({static_cast<int32_t>(inputs.size()),
+                                    static_cast<int32_t>(buffers.size()),
+                                    static_cast<int32_t>(inChain ? 1 : 0)}));
+  // Block argument types are the first element type of each bundle input.
+  Block &block = state.addRegion()->emplaceBlock();
+  SmallVector<Type> argTypes;
+  for (Value input : inputs)
+    argTypes.push_back(
+        cast<BundleType>(input.getType()).getElementTypes().front());
+  SmallVector<Location> locs(argTypes.size(), state.location);
+  block.addArguments(argTypes, locs);
+}
+
 /// Parse block arguments: `(%arg0)` or `(%arg0, %arg1, ...)`.
 static ParseResult
 parseBlockArgs(OpAsmParser &parser,
