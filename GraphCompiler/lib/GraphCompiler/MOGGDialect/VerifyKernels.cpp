@@ -4,18 +4,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
-#include "KGEN/MOGGPreElab/Passes.h"
-#include "mlir/Pass/Pass.h"
 
 using namespace M;
 using namespace KGEN;
 using namespace MOGGPreElab;
 
-namespace M::KGEN::MOGGPreElab {
+namespace M::MOGG {
+
 #define GEN_PASS_DEF_VERIFYKERNELS
-#include "KGEN/MOGGPreElab/MOGGPreElabPasses.h.inc"
-} // namespace M::KGEN::MOGGPreElab
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
 
@@ -422,11 +421,8 @@ struct KernelFuncs {
   LIT::FnOp shape;
   LIT::FnOp elementwise;
 };
-} // namespace
 
-class VerifyKernelsPass
-    : public M::KGEN::MOGGPreElab::impl::VerifyKernelsBase<VerifyKernelsPass> {
-public:
+struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
@@ -505,6 +501,10 @@ public:
     }
 
     if (failed)
-      this->signalPassFailure();
+      signalPassFailure();
   }
 };
+
+} // namespace
+
+} // namespace M::MOGG

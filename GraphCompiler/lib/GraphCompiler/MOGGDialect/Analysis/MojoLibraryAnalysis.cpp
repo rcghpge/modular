@@ -4,11 +4,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/SourceMgr.h"
 
@@ -17,9 +19,12 @@
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Analysis/Support.h"
 #include "GraphCompiler/GraphCompiler/MOGGDialect/Support/OperandMapper.h"
 #include "KGEN/Compiler/KGENCompiler.h"
+#include "KGEN/KGENDialect/KGENOps.h"
+#include "KGEN/KGENDialect/ParameterEvaluator.h"
 #include "KGEN/LITDialect/LITOps.h"
 #include "KGEN/LITDialect/LITUtils.h"
 #include "KGEN/MOGGPreElab/MOGGPreElabDecorators.h"
+#include "KGEN/MOGGPreElab/MOGGPreElabHelpers.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
 #include "KGEN/MojoParser/EntryPoint.h"
 #include "KGEN/MojoParser/SharedState.h"
@@ -34,6 +39,8 @@
 
 using namespace M;
 using namespace MOGG;
+using namespace KGEN;
+using namespace MOGGPreElab;
 
 // TODO(GEX-2488): The following are Mojo module names hardcoded for
 // convenience. We should determine them programmatically instead.
@@ -50,6 +57,843 @@ getFile(llvm::StringRef filepath) {
 
   return memBufferOr;
 }
+
+//===----------------------------------------------------------------------===//
+// AnnotateKernels logic (inlined from KGEN/lib/MOGGPreElab/AnnotateKernels.cpp)
+//===----------------------------------------------------------------------===//
+
+static constexpr llvm::StringLiteral kExecuteFuncName = "execute";
+static constexpr llvm::StringLiteral kShapeFuncName = "shape";
+static constexpr llvm::StringLiteral kUpdateViewFuncName = "update_input_view";
+static constexpr llvm::StringLiteral kElementwiseFuncName = "elementwise";
+
+static constexpr std::array<StringLiteral, 3> kIOSpec = {"tensor", "io_spec",
+                                                         "IOSpec"};
+
+static constexpr std::array<StringLiteral, 3> kMaxManagedTensorSlice = {
+    "tensor", "managed_tensor_slice", "ManagedTensorSlice"};
+static constexpr std::array<StringLiteral, 3> kMaxVariadicTensors = {
+    "tensor", "managed_tensor_slice", "VariadicTensors"};
+static constexpr std::array<StringLiteral, 3> kMaxFusedInputVariadicTensors = {
+    "tensor", "managed_tensor_slice", "_FusedInputVariadicTensors"};
+static constexpr std::array<StringLiteral, 3> kMaxFusedOutputVariadicTensors = {
+    "tensor", "managed_tensor_slice", "_FusedOutputVariadicTensors"};
+
+enum class ManagedTensorSliceParams {
+  kMut,
+  kInput,
+  kDType,
+  kRank,
+  kIOSpec,
+  kStaticSpec,
+  kNumParams
+};
+
+enum class VariadicTensorsParams {
+  kMut,
+  kInput,
+  kDType,
+  kRank,
+  kSize,
+  kIOSpec,
+  kStaticSpecs,
+  kNumParams
+};
+
+enum class FusedVariadicTensorsParams {
+  kDType,
+  kRank,
+  kSize,
+  kStaticSpecs,
+  kNumParams
+};
+
+enum class SIMDParams { kDType, kSize, kNumParams };
+enum class ListParams { kElementType, kNumParams };
+enum class DeviceContextPtrListParams { kSize, kNumParams };
+
+template <typename T>
+constexpr int toIndex(T value) {
+  return static_cast<int>(value);
+}
+
+constexpr StringLiteral MAX_PREFIX = "max";
+constexpr StringLiteral COMPILER_PREFIX_INTERNAL = "compiler_internal";
+constexpr StringLiteral COMPILER_PREFIX = "compiler";
+constexpr StringLiteral INTERNAL_PREFIX = "register";
+
+static bool symbolMatches(mlir::SymbolRefAttr symbol,
+                          llvm::ArrayRef<llvm::StringLiteral> path) {
+  if (symbol.getNestedReferences().size() != path.size() - 1)
+    return false;
+
+  if (!symbol.getRootReference().strref().contains(path.front()))
+    return false;
+
+  for (auto [i, ref] : llvm::enumerate(symbol.getNestedReferences())) {
+    if (!ref.getValue().contains(path[i + 1]))
+      return false;
+  }
+
+  return true;
+}
+
+static std::optional<SymbolRefAttr> getDecoratorSymbol(TypedAttr attr) {
+  auto directSym = sugarDynCast<SymbolConstantAttr>(attr);
+  if (directSym) {
+    return directSym.getSymbol();
+  }
+
+  ParamOperatorAttr apply;
+  apply = sugarDynCast<ParamOperatorAttr>(attr);
+  if (apply) {
+    if (auto sym = sugarDynCast<SymbolConstantAttr>(apply.getOperand(0))) {
+      return sym.getSymbol();
+    }
+  }
+
+  return std::nullopt;
+}
+
+static bool decoratorIsPartOfMAXCompiler(SymbolRefAttr symbol) {
+  auto rootName = symbol.getRootReference().strref();
+  return rootName == MAX_PREFIX || rootName == INTERNAL_PREFIX ||
+         rootName == COMPILER_PREFIX || rootName == COMPILER_PREFIX_INTERNAL;
+}
+
+static StringAttr getStringAttrFromStaticStringDecorator(TypedAttr operand) {
+  operand = ParamOperatorAttr::stripRebind(operand);
+  auto initApply = sugarDynCast<ParamOperatorAttr>(operand);
+  assert(initApply && initApply.getOpcode() == POC::Apply &&
+         "Expected a call to StringSlice.__init__");
+  auto callee = sugarDynCast<SymbolConstantAttr>(initApply.getOperand(0));
+  assert(callee && callee.getParamValues().size() == 4 &&
+         "Expected a symbol reference to StringSlice.__init__");
+  return cast<StringAttr>(callee.getParamValues()[3]);
+}
+
+static StringAttr getFullyResolvedMojoName(LIT::ASTDeclInterface op) {
+  MLIRContext *ctx = op.getContext();
+  SmallVector<std::string> names;
+  do {
+    names.push_back(op.getDeclName().str());
+  } while ((op = dyn_cast<LIT::ASTDeclInterface>(op->getParentOp())));
+
+  std::stringstream ss;
+  ss << names.back();
+  names.pop_back();
+  for (auto name : llvm::reverse(names))
+    ss << "." << name;
+
+  return StringAttr::get(ctx, ss.str());
+}
+
+template <typename StructDeclOrFnTy>
+static void replaceMOGGPreElabDecoratorsWithAttributes(StructDeclOrFnTy obj) {
+  SmallVector<TypedAttr> decoratorsToCopy;
+  OpBuilder builder{obj.getContext()};
+  SmallVector<NamedAttribute> newAttrs;
+  SmallVector<Attribute> kernelRegistrations;
+
+  for (TypedAttr decorator : obj.getDecorators()) {
+    decoratorsToCopy.push_back(decorator);
+
+    auto decoratorSymbolOr = getDecoratorSymbol(decorator);
+    if (!decoratorSymbolOr)
+      continue;
+    auto decoratorSymbol = *decoratorSymbolOr;
+
+    if (!decoratorIsPartOfMAXCompiler(decoratorSymbol))
+      continue;
+
+    StringRef decoratorName = decoratorSymbol.getLeafReference().strref();
+    auto apply = sugarDynCast<ParamOperatorAttr>(decorator);
+    if (!apply)
+      continue;
+
+    if (decoratorName.starts_with(Decorators::REGISTER_INTERNAL_FUNCTION)) {
+      kernelRegistrations.push_back(
+          getStringAttrFromStaticStringDecorator(apply.getOperand(1)));
+      kernelRegistrations.push_back(builder.getI64IntegerAttr(-1));
+      decoratorsToCopy.pop_back();
+      if constexpr (std::is_same_v<StructDeclOrFnTy, LIT::FnOp>)
+        obj.setExportKind(ExportKind::Exported);
+    } else if (decoratorName.starts_with(Decorators::REGISTER_MOGG_INTRINSIC)) {
+      auto str = getStringAttrFromStaticStringDecorator(apply.getOperand(1));
+      newAttrs.push_back(NamedAttribute{str, builder.getUnitAttr()});
+      decoratorsToCopy.pop_back();
+    }
+    obj->setAttr(builder.getStringAttr(mojoSymbolName),
+                 getFullyResolvedMojoName(obj));
+  }
+
+  if (!kernelRegistrations.empty()) {
+    obj.setDecorators(DecoratorsAttr::get(obj.getContext(), decoratorsToCopy));
+    newAttrs.push_back(
+        NamedAttribute{builder.getStringAttr(kernelRegistrationAttr),
+                       builder.getArrayAttr(kernelRegistrations)});
+  }
+
+  for (auto &namedAttr : newAttrs)
+    obj->setAttr(namedAttr.getName(), namedAttr.getValue());
+}
+
+static std::optional<SmallVector<TypedAttr>>
+getDecoratorLambdaArgument(ModuleOp mod, TypedAttr decorator,
+                           StringRef expectedFuncAttr,
+                           ArrayRef<size_t> indicesToFetch) {
+  auto apply = sugarDynCast<ParamOperatorAttr>(decorator);
+  if (!apply)
+    return std::nullopt;
+
+  auto sym = sugarDynCast<SymbolConstantAttr>(apply.getOperand(0));
+  if (!sym)
+    return std::nullopt;
+
+  auto decoratorFunc = mod.lookupSymbol<LIT::FnOp>(sym.getSymbol());
+  if (!decoratorFunc || !decoratorFunc->hasAttr(expectedFuncAttr))
+    return std::nullopt;
+
+  SmallVector<TypedAttr> answer;
+  for (size_t i : indicesToFetch) {
+    if (i >= apply.getNumOperands())
+      return std::nullopt;
+    answer.push_back(apply.getOperand(i));
+  }
+  return answer;
+}
+
+// Forward declaration — defined later in this file.
+static LIT::StructType getAsStructType(Type t);
+
+static LogicalResult checkByRefTensorArgs(LIT::FnOp func) {
+  LIT::FnTypeGeneratorType signature = func.getFuncTypeGenerator();
+  for (auto [index, litType] : llvm::enumerate(signature.getArguments())) {
+    if (LIT::StructType structType = getAsStructType(litType)) {
+      if (isExtensibilityFunc(func) && isDPSTensor(structType) &&
+          sugarIsa<LIT::RefType>(litType)) {
+        return func.emitError()
+               << " Only the borrowed argument (read) convention is supported "
+                  "for tensor arguments ("
+               << signature.getArgName(index) << " is mutable here).";
+      }
+    }
+  }
+
+  return success();
+}
+
+static LogicalResult annotateTypesForKernel(LIT::FnOp func) {
+  // Anything taking a tensor needs the annotation.
+  bool takesTensor = false;
+  for (Type litType : func.getArgumentTypes()) {
+    if (LIT::StructType structType = getAsStructType(litType)) {
+      takesTensor |= isExtensibilityTensor(structType);
+      takesTensor |= isDPSTensor(structType);
+    }
+  }
+
+  if (!isKernel(func) && !isExtensibilityFunc(func) && !takesTensor)
+    return success();
+
+  if (failed(checkByRefTensorArgs(func)))
+    return failure();
+
+  OpBuilder builder{func.getContext()};
+
+  SmallVector<Attribute> observedParams, typeNames, sourceName;
+  observedParams.reserve(func.getNumArguments());
+
+  Attribute emptyAttr = builder.getUnitAttr();
+
+  auto litTypeToSourceName = [&](Type litType) -> Attribute {
+    LIT::StructType structType = getAsStructType(litType);
+    if (!structType)
+      return emptyAttr;
+
+    std::string combinedName =
+        Twine(structType.getSymbol().getRootReference().strref())
+            .concat("::")
+            .concat(structType.getSymbol().getLeafReference().strref())
+            .str();
+    return builder.getStringAttr(combinedName);
+  };
+
+  auto litTypeToParams = [&](Type litType) -> Attribute {
+    LIT::StructType structType = getAsStructType(litType);
+
+    if (!structType || structType.getParamValues().empty())
+      return emptyAttr;
+
+    SmallVector<Attribute> attrs;
+    for (TypedAttr param : structType.getParamValues())
+      attrs.push_back(param);
+    return builder.getArrayAttr(attrs);
+  };
+
+  for (auto [i, litType] : llvm::enumerate(func.getArgumentTypes())) {
+    observedParams.push_back(litTypeToParams(litType));
+    typeNames.push_back(litTypeToSourceName(litType));
+
+    sourceName.push_back(func.getFuncTypeGenerator().getArgName(i));
+  }
+
+  Type resultType = func.getResultTypes()[0];
+  if (!sugarIsa<KGEN::NoneType>(resultType)) {
+    func->setDiscardableAttr(MOGG_RESULT_TYPE_NAME,
+                             litTypeToSourceName(resultType));
+  }
+
+  func->setDiscardableAttr(MOGG_ARG_TYPE_NAMES,
+                           builder.getArrayAttr(typeNames));
+
+  if (!sourceName.empty()) {
+    func->setDiscardableAttr(MOGG_ARG_SRC_NAMES,
+                             builder.getArrayAttr(sourceName));
+  }
+
+  {
+    auto parameterNames =
+        llvm::map_to_vector(func.getInputParams(), [](auto decl) -> Attribute {
+          return decl.getName();
+        });
+
+    auto pogs = func.getFuncTypeGenerator().getParamListAttrs();
+
+    ParameterEvaluator evaluator;
+    for (ParamDeclAttr param : func.getInputParams())
+      evaluator.appendIndexBinding(ParamDeclRefAttr::get(param));
+
+    size_t numImplicitOrigins =
+        func.getFuncTypeGenerator().getNumImplicitOriginDecls();
+
+    NamedAttrList defaultValues;
+    for (auto [index, decl] :
+         llvm::enumerate(func.getInputParams().drop_back(numImplicitOrigins))) {
+      if (auto defaultValue = pogs.getDefault(index))
+        defaultValues.append(LIT::demangleParameterName(decl.getName()),
+                             evaluator.getReboundAttribute(defaultValue));
+    }
+
+    func->setDiscardableAttr(kKernelParameterNamesAttrName,
+                             builder.getArrayAttr(parameterNames));
+    func->setDiscardableAttr(kKernelDefaultParameterAttrName,
+                             builder.getDictionaryAttr(defaultValues));
+  }
+
+  SmallVector<Attribute> types;
+  if (auto structDeclOp = func->getParentOfType<LIT::StructDeclOp>()) {
+    for (auto inputParameter : structDeclOp.getInputParams())
+      types.push_back(litTypeToSourceName(inputParameter.getType()));
+  }
+
+  for (auto inputParameter : func.getInputParams())
+    types.push_back(litTypeToSourceName(inputParameter.getType()));
+
+  if (!types.empty()) {
+    func->setDiscardableAttr(MOGG_INPUT_PARAM_TYPES,
+                             builder.getArrayAttr(types));
+  }
+
+  return success();
+}
+
+static std::pair<TypedAttr, TypedAttr>
+extractMutInputFromTensorStruct(LIT::StructType structType) {
+  auto allParameters = structType.getParamValues();
+  ASSERT_STREAM(
+      allParameters.size() >= toIndex(ManagedTensorSliceParams::kNumParams),
+      << "Expected at least " << toIndex(ManagedTensorSliceParams::kNumParams)
+      << " parameters on the tensor type");
+
+  auto mut = allParameters[toIndex(ManagedTensorSliceParams::kMut)];
+  auto input = allParameters[toIndex(ManagedTensorSliceParams::kInput)];
+
+  return std::make_pair(mut, input);
+}
+
+static Attribute getUnboundParameters(KGENModule &kgenModule,
+                                      LIT::StructType type) {
+  Builder builder(type.getContext());
+
+  auto allValues = type.getParamValues();
+  if (allValues.empty())
+    return builder.getUnitAttr();
+
+  auto structDecl = kgenModule.lookup<LIT::StructDeclOp>(type.getSymbol());
+
+  ASSERT_STREAM(structDecl.getInputParams().size() == allValues.size(),
+                << "number of parameters does not match struct declaration");
+
+  SmallVector<NamedAttribute> result;
+  result.reserve(allValues.size());
+
+  for (auto [paramDecl, value] :
+       llvm::zip(structDecl.getInputParams(), allValues)) {
+    Attribute stubbedValue = value;
+    if (!stubbedValue)
+      stubbedValue = builder.getUnitAttr();
+
+    result.emplace_back(LIT::demangleParameterName(paramDecl.getName()),
+                        stubbedValue);
+  }
+
+  return builder.getDictionaryAttr(result);
+}
+
+static ArrayAttr labelParameters(MLIRContext *ctx, KGENModule &kgenModule,
+                                 TypeRange types) {
+  Builder builder(ctx);
+
+  SmallVector<Attribute> valueParameters;
+  for (Type litType : types) {
+    LIT::StructType asStructType = getAsStructType(litType);
+    Builder builder(litType.getContext());
+    if (!asStructType) {
+      valueParameters.push_back(builder.getUnitAttr());
+      continue;
+    }
+
+    auto parameters = getUnboundParameters(kgenModule, asStructType);
+    valueParameters.push_back(parameters);
+  }
+
+  return builder.getArrayAttr(valueParameters);
+}
+
+static void labelTensorParamsInKernel(KGENModule &kgenModule,
+                                      LIT::FnOp funcOp) {
+  if (!isExtensibilityFunc(funcOp) && !isElemwiseForeachFunc(funcOp) &&
+      !isViewMaterializeFunc(funcOp) && !isKernel(funcOp))
+    return;
+
+  ArrayAttr argumentParameters = labelParameters(
+      funcOp.getContext(), kgenModule, funcOp.getArgumentTypes());
+
+  ArrayAttr resultParameters =
+      labelParameters(funcOp.getContext(), kgenModule, funcOp.getResultTypes());
+
+  funcOp->setDiscardableAttr(kKernelValueParameterAttrName, argumentParameters);
+  funcOp->setDiscardableAttr(kKernelResultParameterAttrName, resultParameters);
+}
+
+namespace {
+
+struct ExtensibilityAPIStructInfo {
+  bool isViewKernel = false;
+  bool isElementwiseKernel = false;
+  StringAttr registrationName{};
+};
+
+static ErrorOr<bool>
+isExtensibilityAPIStruct(LIT::StructDeclOp structDeclOp, ModuleOp moduleOp,
+                         ExtensibilityAPIStructInfo &registrationInfo) {
+  auto decorators = structDeclOp.getDecorators();
+
+  for (auto decorator : decorators) {
+    if (auto directSym = sugarDynCast<SymbolConstantAttr>(decorator)) {
+      auto decoratorFunc =
+          moduleOp.lookupSymbol<LIT::FnOp>(directSym.getSymbol());
+
+      if (decoratorFunc && decoratorFunc->hasAttr(MOGG_INTRINSIC_VIEW_KERNEL)) {
+        if (registrationInfo.isViewKernel)
+          return Error("Kernel has multiple view annotations");
+        registrationInfo.isViewKernel = true;
+        continue;
+      }
+    }
+
+    std::optional<SmallVector<TypedAttr>> registerOperand =
+        getDecoratorLambdaArgument(moduleOp, decorator, MOGG_INTRINSIC_REGISTER,
+                                   SmallVector<size_t>{1});
+    if (!registerOperand.has_value())
+      continue;
+
+    auto name =
+        getStringAttrFromStaticStringDecorator(registerOperand.value().front());
+    if (registrationInfo.registrationName)
+      return Error("Only one op can be registered per kernel");
+
+    registrationInfo.registrationName = name;
+  }
+
+  return registrationInfo.registrationName != nullptr;
+}
+
+static std::pair<TypedAttr, TypedAttr>
+extractIOSpecSubFields(LIT::StructType structType) {
+  if (symbolMatches(structType.getSymbol(), kMaxManagedTensorSlice)) {
+    return extractMutInputFromTensorStruct(structType);
+  }
+
+  if (symbolMatches(structType.getSymbol(), kMaxFusedInputVariadicTensors) ||
+      symbolMatches(structType.getSymbol(), kMaxFusedOutputVariadicTensors)) {
+    return std::make_pair(TypedAttr(), TypedAttr());
+  }
+
+  if (symbolMatches(structType.getSymbol(), kMaxVariadicTensors)) {
+    auto allParameters = structType.getParamValues();
+    ASSERT_STREAM(
+        allParameters.size() >= 7,
+        << "Expected at least 7 parameters on the variadic tensors type");
+
+    auto mut = allParameters[toIndex(VariadicTensorsParams::kMut)];
+    auto input = allParameters[toIndex(VariadicTensorsParams::kInput)];
+    return std::make_pair(mut, input);
+  }
+
+  return std::make_pair(TypedAttr(), TypedAttr());
+}
+
+static std::optional<IOSpec> maybeGetIOSpec(TypedAttr mutAttr,
+                                            TypedAttr inputAttr, Location loc,
+                                            StringRef argName,
+                                            bool isShapeFunc) {
+  mutAttr = getCanonicalAttr(mutAttr);
+  inputAttr = getCanonicalAttr(inputAttr);
+
+  auto processMut = [&]() -> std::optional<bool> {
+    auto mutStruct = sugarDynCast<LIT::LITStructAttr>(mutAttr);
+    if (!mutStruct) {
+      if (!isShapeFunc) {
+        emitError(loc, "Error for argument '" + argName +
+                           "': 'mut' inferred parameter must be set");
+      }
+      return std::nullopt;
+    }
+
+    auto [_, mutValueAttr] = mutStruct.getValues().front();
+    auto mutIntAttr = sugarDynCast<IntegerAttr>(mutValueAttr);
+    ASSERT_STREAM(mutIntAttr,
+                  << "Error for argument '" << argName
+                  << "': Expected integer attribute for mut parameter value");
+    return mutIntAttr.getValue().getBoolValue();
+  };
+
+  auto processInput = [&]() -> std::optional<int64_t> {
+    auto inputStruct = sugarDynCast<LIT::LITStructAttr>(inputAttr);
+    if (!inputStruct) {
+      if (!isShapeFunc) {
+        emitError(loc, "Error for argument '" + argName +
+                           "': 'input' inferred parameter must be set");
+      }
+      return std::nullopt;
+    }
+
+    auto [_, inputValueAttr] = inputStruct.getValues().front();
+    auto inputStructAttr = sugarDynCast<LIT::LITStructAttr>(inputValueAttr);
+    ASSERT_STREAM(
+        inputStructAttr && !inputStructAttr.getValues().empty(),
+        << "Error for argument '" << argName
+        << "': Expected struct attribute with value for input parameter");
+
+    auto [__, inputIntValueAttr] = inputStructAttr.getValues().front();
+    auto inputIntAttr = sugarDynCast<IntegerAttr>(inputIntValueAttr);
+    ASSERT_STREAM(inputIntAttr,
+                  << "Error for argument '" << argName
+                  << "': Expected integer attribute for input parameter value");
+
+    return inputIntAttr.getValue().getSExtValue();
+  };
+
+  auto mutValue = processMut();
+  auto inputValue = processInput();
+
+  if (!mutValue || !inputValue) {
+    return std::nullopt;
+  }
+
+  auto mut = mutValue.value();
+  auto input = inputValue.value();
+
+  if (mut == kIOSpecMutable && input == kIOSpecIOOutput)
+    return IOSpec::OutputTensor;
+  else if (mut == kIOSpecImmutable && input == kIOSpecIOInput)
+    return IOSpec::InputTensor;
+  else if (mut == kIOSpecMutable && input == kIOSpecIOInput)
+    return IOSpec::MutableInputTensor;
+  else if (mut == kIOSpecImmutable && input == kIOSpecIOFusedInput)
+    return IOSpec::FusedInputTensor;
+  else if (mut == kIOSpecMutable && input == kIOSpecIOFusedOutput)
+    return IOSpec::FusedOutputTensor;
+  else if (mut == kIOSpecMutable && input == kIOSpecIOFusedComputeOutput)
+    return IOSpec::FusedComputeOutputTensor;
+
+  emitError(loc, "Error for argument '" + argName + "': Invalid " +
+                     kIOSpec.back() +
+                     " param. Valid configs are: [False,IO.Input]=Input, "
+                     "[True,IO.Output]=Output, [True,IO.Input]=MutableInput");
+
+  return std::nullopt;
+}
+
+static std::optional<SmallVector<std::pair<size_t, IOSpec>>>
+processIOSpecs(LIT::FnOp func, bool isShapeFunc = false) {
+  SmallVector<std::pair<size_t, IOSpec>> specs;
+
+  bool error = false;
+  bool foundNonOutputOperand = false;
+
+  for (auto &&[argIdx, argType] : llvm::enumerate(func.getArgumentTypes())) {
+    auto structType = getAsStructType(argType);
+
+    if (!structType) {
+      foundNonOutputOperand = true;
+      continue;
+    }
+
+    auto argName = func.getFuncTypeGenerator().getArgName(argIdx);
+    auto loc = func.getBodyRegion().getArgument(argIdx).getLoc();
+
+    std::optional<IOSpec> ioSpec;
+    if (symbolMatches(structType.getSymbol(), kMaxFusedInputVariadicTensors)) {
+      ioSpec = IOSpec::FusedInputTensor;
+    } else if (symbolMatches(structType.getSymbol(),
+                             kMaxFusedOutputVariadicTensors)) {
+      ioSpec = IOSpec::FusedOutputTensor;
+    } else {
+      auto [mut, input] = extractIOSpecSubFields(structType);
+
+      if (!mut && !input)
+        continue;
+
+      ioSpec = maybeGetIOSpec(mut, input, loc, argName, isShapeFunc);
+    }
+
+    auto hasIOSpec = ioSpec.has_value();
+
+    if (isShapeFunc && (!hasIOSpec || *ioSpec != IOSpec::InputTensor)) {
+      emitError(loc, "Error for argument '" + argName.strref() +
+                         "': Tensor arguments to shape functions must be "
+                         "'InputTensor'");
+      error = true;
+      continue;
+    }
+
+    if (!hasIOSpec) {
+      error = true;
+      continue;
+    }
+
+    bool isOutput = isOutputIOSpec(*ioSpec);
+
+    if (!isOutput)
+      foundNonOutputOperand = true;
+
+    if (isOutput && foundNonOutputOperand) {
+      emitError(loc,
+                "Output tensor argument '" +
+                    func.getFuncTypeGenerator().getArgName(argIdx).strref() +
+                    "' must come before other non-output tensor "
+                    "arguments");
+      continue;
+    }
+
+    specs.push_back({argIdx, *ioSpec});
+  }
+
+  if (error)
+    return std::nullopt;
+
+  return specs;
+}
+
+static LogicalResult processStructFuncCommon(
+    LIT::StructDeclOp structDeclOp, ExtensibilityAPIStructInfo registrationInfo,
+    LIT::FnOp func, StringLiteral annotation, Builder &builder) {
+  if (!func.getIsStatic()) {
+    func->emitError("This function must be static");
+    return failure();
+  }
+
+  if (annotation == kMOGGShapeFunctionLabel) {
+    auto result = processIOSpecs(func, /*isShapeFunc=*/true);
+    if (!result.has_value())
+      return failure();
+  }
+
+  if (auto sourceName = structDeclOp.getSourceName()) {
+    func->setAttr(builder.getStringAttr(kMOGGKernelStructName),
+                  sourceName->getName());
+  }
+
+  func->setAttr(builder.getStringAttr(annotation),
+                registrationInfo.registrationName);
+  func.setExported();
+  if (failed(annotateTypesForKernel(func)))
+    return failure();
+
+  return success();
+}
+
+static bool
+processStructExecuteFunc(ModuleOp moduleOp,
+                         ExtensibilityAPIStructInfo registrationInfo,
+                         LIT::StructDeclOp structDeclOp, LIT::FnOp func,
+                         StringLiteral annotation, Builder &builder) {
+  if (failed(processStructFuncCommon(structDeclOp, registrationInfo, func,
+                                     annotation, builder)))
+    return false;
+
+  for (auto param : func.getInputParams()) {
+    if (param.getName() == kMOGGTargetParameterName) {
+      func->setDiscardableAttr(builder.getStringAttr(kMOGGTargetLabel), param);
+    } else if (param.getName() == kMOGGLambdasHaveFusionParameterName) {
+      func->setDiscardableAttr(
+          builder.getStringAttr(kMOGGLambdasHaveFusionLabel), param);
+    } else if (param.getName() == kMOGGTraceNameParameterName) {
+      func->setDiscardableAttr(builder.getStringAttr(kMOGGTraceNameLabel),
+                               param);
+    }
+  }
+
+  if (registrationInfo.isViewKernel)
+    func->setAttr(kMOGGViewKernel, UnitAttr::get(func->getContext()));
+
+  if (registrationInfo.isElementwiseKernel)
+    func->setAttr(kMOGGElementwiseKernel, UnitAttr::get(func->getContext()));
+
+  SmallVector<std::pair<size_t, IOSpec>> ioSpecs;
+  auto result = processIOSpecs(func);
+  if (!result)
+    return false;
+  ioSpecs = std::move(*result);
+
+  auto numOutputs = llvm::count_if(
+      ioSpecs, [](auto &&elem) { return isOutputIOSpec(elem.second); });
+
+  func->setDiscardableAttr(kMOGGNumDPSOutputs,
+                           builder.getIndexAttr(numOutputs));
+
+  SmallVector<Attribute> fusableIdxs;
+  for (auto [idx, spec] : ioSpecs) {
+    if (isFusableIOSpec(spec)) {
+      fusableIdxs.push_back(builder.getIndexAttr(idx));
+    }
+  }
+
+  if (!fusableIdxs.empty()) {
+    func->setAttr(kMOGGFusableArgs, builder.getArrayAttr(fusableIdxs));
+  }
+
+  SmallVector<Attribute> argsIoSpecs;
+  Attribute nullIoSpecAttr = builder.getUnitAttr();
+  for (auto [idx, spec] : ioSpecs) {
+    if (idx >= argsIoSpecs.size()) {
+      argsIoSpecs.resize(idx + 1, nullIoSpecAttr);
+    }
+    argsIoSpecs[idx] = builder.getStringAttr(toString(spec));
+  }
+  if (!argsIoSpecs.empty()) {
+    func->setAttr(kMOGGArgsIOSpecs, builder.getArrayAttr(argsIoSpecs));
+  }
+
+  return true;
+}
+
+} // namespace
+
+static LogicalResult annotatePackage(ModuleOp moduleOp) {
+  OpBuilder builder{moduleOp.getContext()};
+
+  moduleOp->walk([](Operation *operation) {
+    if (auto func = dyn_cast<LIT::FnOp>(operation)) {
+      replaceMOGGPreElabDecoratorsWithAttributes(func);
+      if (failed(annotateTypesForKernel(func)))
+        return WalkResult::interrupt();
+    } else if (auto structDeclOp = dyn_cast<LIT::StructDeclOp>(operation)) {
+      replaceMOGGPreElabDecoratorsWithAttributes(structDeclOp);
+    }
+    return WalkResult::advance();
+  });
+
+  auto walker = [&](LIT::StructDeclOp structDeclOp) {
+    auto decorators = structDeclOp.getDecorators();
+    if (decorators.empty())
+      return WalkResult::advance();
+
+    ExtensibilityAPIStructInfo registrationInfo;
+    ErrorOr<bool> isExtensibilityStruct =
+        isExtensibilityAPIStruct(structDeclOp, moduleOp, registrationInfo);
+    if (isExtensibilityStruct.isError()) {
+      structDeclOp->emitError(isExtensibilityStruct.getError());
+      return WalkResult::interrupt();
+    }
+
+    if (!isExtensibilityStruct.takeValue())
+      return WalkResult::advance();
+
+    LIT::FnOp executeOp, updateViewOp, elementwiseOp;
+    for (auto &curOp : structDeclOp.getFields().front()) {
+      auto func = dyn_cast<LIT::FnOp>(curOp);
+      if (!func)
+        continue;
+
+      func->setAttr(builder.getStringAttr(mojoSymbolName),
+                    getFullyResolvedMojoName(func));
+
+      if (func.getSourceName() == kExecuteFuncName) {
+        if (!processStructExecuteFunc(moduleOp, registrationInfo, structDeclOp,
+                                      func, kMOGGExecuteFunctionLabel, builder))
+          return WalkResult::interrupt();
+        executeOp = func;
+      } else if (func.getSourceName() == kShapeFuncName) {
+        if (failed(processStructFuncCommon(structDeclOp, registrationInfo, func,
+                                           kMOGGShapeFunctionLabel, builder)))
+          return WalkResult::interrupt();
+      } else if (func.getSourceName() == kUpdateViewFuncName) {
+        if (failed(processStructFuncCommon(structDeclOp, registrationInfo, func,
+                                           kMOGGUpdateViewFunctionLabel,
+                                           builder)))
+          return WalkResult::interrupt();
+        updateViewOp = func;
+      } else if (func.getSourceName() == kElementwiseFuncName) {
+        if (failed(processStructFuncCommon(structDeclOp, registrationInfo, func,
+                                           kMOGGElementwiseFunctionLabel,
+                                           builder)))
+          return WalkResult::interrupt();
+        elementwiseOp = func;
+        registrationInfo.isElementwiseKernel = true;
+      }
+    }
+
+    if (!executeOp && !elementwiseOp) {
+      structDeclOp.emitError(llvm::formatv(
+          "The kernel must have an entry point named {0}", kExecuteFuncName));
+      return WalkResult::interrupt();
+    }
+
+    if (registrationInfo.isViewKernel && !updateViewOp) {
+      structDeclOp.emitError(llvm::formatv(
+          "View kernels must have a view update function named {0}",
+          kUpdateViewFuncName));
+      return WalkResult::interrupt();
+    }
+
+    return WalkResult::advance();
+  };
+
+  bool walkerInterrupted = moduleOp.walk(walker).wasInterrupted();
+
+  mlir::SymbolTableCollection symtab;
+  KGENModule kgenModule(moduleOp, symtab);
+
+  moduleOp.walk(
+      [&](LIT::FnOp funcOp) { labelTensorParamsInKernel(kgenModule, funcOp); });
+
+  return walkerInterrupted ? failure() : success();
+}
+
+// Exposed for use by the AnnotateKernels pass in MOGGTransforms.
+namespace M::MOGG {
+LogicalResult runAnnotatePackage(ModuleOp moduleOp) {
+  return ::annotatePackage(moduleOp);
+}
+} // namespace M::MOGG
+
+//===----------------------------------------------------------------------===//
+// End of inlined AnnotateKernels logic
+//===----------------------------------------------------------------------===//
 
 static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
@@ -85,8 +929,17 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
   // Reset the old state of the diagnostic handler
   sourceMgr->setDiagHandler(oldHandler, oldCtx);
 
-  if (!generateKGENLib)
+  if (!generateKGENLib) {
+    if (failed(annotatePackage(*ownedModule)))
+      return Error("failed to annotate Mojo package: " + path);
+
+    mlir::PassManager pm(ownedModule->getContext());
+    pm.addPass(createVerifyKernels());
+    if (failed(pm.run(*ownedModule)))
+      return Error("failed to verify Mojo package: " + path);
+
     return ownedModule;
+  }
 
   // Generate a library from the package, ensuring that dependencies are
   // materialized to make it self contained.

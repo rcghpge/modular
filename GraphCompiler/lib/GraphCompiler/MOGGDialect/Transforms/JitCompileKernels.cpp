@@ -416,7 +416,6 @@ struct JitCompileKernels
           std::filesystem::path(libraryPath).parent_path().string());
     }
     opts.saveTempsPrefix = saveTempPrefix.getValue();
-    opts.runMOGGPreElab = false;
     return opts;
   }
 

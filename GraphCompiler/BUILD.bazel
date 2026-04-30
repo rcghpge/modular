@@ -839,6 +839,7 @@ modular_cc_library(
         ":MOGGFusionSupport",
         ":MOSHDialect",
         ":Support",
+        "//KGEN:MOGGPreElab",
         "//KGEN:MojoParser",
         "//KGEN:ObjectCompiler",
         "//MLRT:Driver/DeviceContext",

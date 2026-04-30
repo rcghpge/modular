@@ -432,4 +432,32 @@ def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
   ];
 }
 
+def AnnotateKernels: Pass<"mogg-annotate-kernels", "ModuleOp"> {
+  let summary = "Annotate mojo kernel IR with MOGG attributes";
+  let description = [{
+    Annotates the MLIR IR produced by the Mojo compiler with MOGG-specific
+    attributes needed for kernel verification and graph compilation. This pass
+    is primarily useful for testing the kernel verification and dump passes.
+  }];
+}
+
+def VerifyKernels: Pass<"mogg-verify-kernels", "ModuleOp"> {
+  let summary = "Verifies that kernels are well constructed";
+  let description = [{
+    This pass ensures that the kernels present in the module are well
+    constructed. Among other things, it checks that shape functions match
+    execute functions and that inputs appear after outputs in the function's
+    signature.
+  }];
+}
+
+def DumpKernels: Pass<"mogg-dump-kernels", "ModuleOp"> {
+  let summary = "Prints the internal representation of kernels";
+  let description = [{
+    Prints the internal in-memory representation of kernels for debugging
+    purposes. This pass can be run on both `LIT` and `KGEN` kernels because the
+    underlying representation is compatible with both.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGPASSES_TD

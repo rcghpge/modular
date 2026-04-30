@@ -4,30 +4,27 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "KGEN/MOGGPreElab/MojoKernelAdaptor.h"
-#include "KGEN/MOGGPreElab/Passes.h"
-#include "mlir/Pass/Pass.h"
 
 using namespace M;
 using namespace KGEN;
 using namespace MOGGPreElab;
 
-namespace M::KGEN::MOGGPreElab {
+namespace M::MOGG {
+
 #define GEN_PASS_DEF_DUMPKERNELS
-#include "KGEN/MOGGPreElab/MOGGPreElabPasses.h.inc"
-} // namespace M::KGEN::MOGGPreElab
+#include "GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
+
 struct KernelFuncs {
   Operation *execute;
   Operation *shape;
   Operation *elementwise;
 };
-} // namespace
 
-class DumpKernelsPass
-    : public M::KGEN::MOGGPreElab::impl::DumpKernelsBase<DumpKernelsPass> {
-public:
+struct DumpKernelsPass : public impl::DumpKernelsBase<DumpKernelsPass> {
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
@@ -54,3 +51,7 @@ public:
     }
   }
 };
+
+} // namespace
+
+} // namespace M::MOGG
