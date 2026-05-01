@@ -101,6 +101,25 @@ using hipMemAccessDesc = struct hipMemAccessDesc_st {
   hipMemAccessFlags flags;
 };
 
+/// Minimal dim3 definition for graph node parameter structs.
+/// Matches the layout of the HIP/CUDA runtime dim3 type.
+struct hipDim3 {
+  unsigned int x = 1;
+  unsigned int y = 1;
+  unsigned int z = 1;
+};
+
+/// Kernel node parameters for hipGraphAddKernelNode.
+/// Layout matches hipKernelNodeParams from hip_runtime_api.h.
+using hipKernelNodeParams = struct hipKernelNodeParams_t {
+  hipDim3 blockDim;        ///< Block dimensions (threads per block)
+  void **extra;            ///< Extra launch options (typically nullptr)
+  void *func;              ///< Kernel function pointer
+  hipDim3 gridDim;         ///< Grid dimensions (blocks per grid)
+  void **kernelParams;     ///< Array of pointers to kernel arguments
+  unsigned int sharedMemBytes; ///< Dynamic shared-memory size in bytes
+};
+
 // HSA Runtime types (for getting device architecture info).
 using hsaStatus_t = uint32_t;
 using hsaAgent_t = uint64_t;

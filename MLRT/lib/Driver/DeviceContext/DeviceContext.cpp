@@ -12,6 +12,7 @@
 #include "MLRT/AsyncRT/DeviceAffinity.h"
 #include "MLRT/AsyncRT/Runtime/Algorithms.h"
 #include "MLRT/AsyncRT/Support/UnknownLocationDecoder.h"
+#include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
 #include "CPU/CpuDeviceContext.h"
@@ -1526,6 +1527,10 @@ void DeviceContext::decSyncMode() {
 }
 
 bool DeviceContext::isGraphCapturing() const { return false; }
+
+ErrorOr<DeviceGraphBuilderRef> DeviceContext::createGraphBuilder() {
+  RETURN_ERROR("createGraphBuilder() not supported on this device context");
+}
 
 bool DeviceContext::configAsBool(StringRef key, bool defaultValue,
                                  bool *isDefault) {

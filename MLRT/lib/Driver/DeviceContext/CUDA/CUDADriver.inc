@@ -63,6 +63,10 @@ CUDA_FUNC(cuStreamBeginCapture, Result, CUstream, CUstreamCaptureMode)
 CUDA_FUNC(cuStreamEndCapture, Result, CUstream, CUgraph *)
 CUDA_FUNC(cuStreamIsCapturing, Result, CUstream, CUstreamCaptureStatus *)
 
+CUDA_FUNC(cuGraphCreate, Result, CUgraph *, unsigned int)
+CUDA_FUNC(cuGraphAddKernelNode, Result, CUgraphNode *, CUgraph,
+          const CUgraphNode *, size_t, const CUDA_KERNEL_NODE_PARAMS_v2 *)
+
 CUDA_FUNC(cuGraphInstantiate, Result, CUgraphExec *, CUgraph, CUgraphNode *,
           char *, size_t)
 CUDA_FUNC(cuGraphInstantiateWithFlags, Result, CUgraphExec *, CUgraph,

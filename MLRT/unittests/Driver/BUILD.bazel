@@ -39,6 +39,19 @@ GRAPH_CAPTURE_HSACO_DATA = [
     for arch in AMDGPU_GRAPH_CAPTURE_ARCHES
 ]
 
+modular_cc_library(
+    name = "DeviceGraphTestUtils",
+    testonly = True,
+    hdrs = ["DeviceGraphTestUtils.h"],
+    deps = [
+        "//MLRT:Driver/DeviceContextAPI",
+        "//Support:Base",
+        "@bazel_tools//tools/cpp/runfiles",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//third-party/unittest:gtest",
+    ],
+)
+
 # Header adding test helpers for using gtest with `ErrorOr<T>`.
 modular_cc_library(
     name = "TestUtils",
@@ -291,11 +304,30 @@ modular_cc_test(
     }),
     tags = ["gpu"],
     deps = [
+        ":DeviceGraphTestUtils",
         ":TestUtils",
         "//MLRT:AsyncRT/Runtime",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Base",
         "@bazel_tools//tools/cpp/runfiles",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "DeviceGraphBuilderTest",
+    size = "small",
+    srcs = ["DeviceGraphBuilderTest.cpp"],
+    data = GRAPH_CAPTURE_HSACO_DATA,
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": ["//:has_gpu"],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":DeviceGraphTestUtils",
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
         "@llvm-project//llvm:Support",
     ],
 )

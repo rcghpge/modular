@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "HIPDeviceContext.h"
+#include "HIPDeviceGraphBuilder.h"
 
 #include "HIPDriver.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
@@ -1168,6 +1169,10 @@ const HIPDeviceFunction &HIPDeviceFunction::cast(const DeviceFunction &func) {
   return static_cast<const HIPDeviceFunction &>(func);
 }
 
+hipFunction_t HIPDeviceFunction::hipFunction() const {
+  return moduleFunction_->hipFunction();
+}
+
 hipModule_t HIPDeviceFunction::hipModule() const {
   return moduleFunction_->hipModule();
 }
@@ -1527,6 +1532,10 @@ ErrorOrSuccess HIPDeviceContext::streamPriorityRange(int *leastPriority,
   HIP_CHECK_ERR(
       driver_.hipDeviceGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
+}
+
+ErrorOr<DeviceGraphBuilderRef> HIPDeviceContext::createGraphBuilder() {
+  return HIPDeviceGraphBuilder::create(*this);
 }
 
 ErrorOr<DeviceStreamRef> HIPDeviceContext::createStream(int priority) {

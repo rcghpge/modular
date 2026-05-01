@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "CUDADeviceContext.h"
+#include "CUDADeviceGraphBuilder.h"
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
@@ -1197,6 +1198,10 @@ CUDAModuleFunction::~CUDAModuleFunction() {
 }
 
 const CUDADriver &CUDAModuleFunction::cudaDriver() const { return driver_; }
+CUfunction CUDADeviceFunction::cudaFunction() const {
+  return moduleFunction_->cudaFunction();
+}
+
 CUmodule CUDAModuleFunction::cudaModule() const { return module_; }
 CUfunction CUDAModuleFunction::cudaFunction() const { return function_; }
 
@@ -1717,6 +1722,10 @@ ErrorOrSuccess CUDADeviceContext::streamPriorityRange(int *leastPriority,
   CUDA_CHECK_ERR(
       driver_.cuCtxGetStreamPriorityRange(leastPriority, greatestPriority));
   return success();
+}
+
+ErrorOr<DeviceGraphBuilderRef> CUDADeviceContext::createGraphBuilder() {
+  return CUDADeviceGraphBuilder::create(*this);
 }
 
 ErrorOr<DeviceStreamRef> CUDADeviceContext::createStream(int priority) {

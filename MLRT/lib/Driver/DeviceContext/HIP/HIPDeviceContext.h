@@ -244,6 +244,7 @@ public:
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
                                             size_t dynamicSharedMemSize);
 
+  hipFunction_t hipFunction() const;
   hipModule_t hipModule() const;
 
 private:
@@ -303,6 +304,7 @@ public:
                                      int *greatestPriority) override;
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
   ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
+  ErrorOr<DeviceGraphBuilderRef> createGraphBuilder() override;
 
   ErrorOrSuccess synchronize() override;
 

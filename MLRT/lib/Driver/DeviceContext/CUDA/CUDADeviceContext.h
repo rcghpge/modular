@@ -313,6 +313,7 @@ public:
   occupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, int blockSize,
                                             size_t dynamicSharedMemSize);
 
+  CUfunction cudaFunction() const;
   CUmodule cudaModule() const;
 
   static const CUDADeviceFunction &cast(const DeviceFunction &func);
@@ -375,6 +376,7 @@ public:
                                      int *greatestPriority) override;
   ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
   ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
+  ErrorOr<DeviceGraphBuilderRef> createGraphBuilder() override;
 
   ErrorOrSuccess synchronize() override;
 

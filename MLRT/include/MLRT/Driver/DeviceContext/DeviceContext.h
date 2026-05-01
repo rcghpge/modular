@@ -161,6 +161,7 @@ class DeviceContext;
 class DeviceEvent;
 class DeviceFunction;
 class DeviceGraph;
+class DeviceGraphBuilder;
 class DeviceFunctionCacheEntry;
 class DeviceMulticastBuffer;
 class DeviceStream;
@@ -173,6 +174,7 @@ using DeviceContextRef = RCRef<DeviceContext>;
 using DeviceEventRef = RCRef<DeviceEvent>;
 using DeviceFunctionRef = RCRef<DeviceFunction>;
 using DeviceGraphRef = RCRef<DeviceGraph>;
+using DeviceGraphBuilderRef = RCRef<DeviceGraphBuilder>;
 using AsyncDeviceGraphRef = AsyncValueRef<DeviceGraphRef>;
 using DeviceMulticastBufferRef = RCRef<DeviceMulticastBuffer>;
 using DeviceStreamRef = RCRef<DeviceStream>;
@@ -812,6 +814,8 @@ public:
 
   virtual ErrorOr<DeviceStreamRef>
   createExternalStream(void *externalStream) = 0;
+
+  virtual ErrorOr<DeviceGraphBuilderRef> createGraphBuilder();
 
   virtual ErrorOrSuccess synchronize() = 0;
 
