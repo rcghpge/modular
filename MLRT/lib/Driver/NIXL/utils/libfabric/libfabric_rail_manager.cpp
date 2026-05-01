@@ -343,6 +343,23 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
 std::vector<size_t> nixlLibfabricRailManager::selectRailsForMemory(
     void *mem_addr, nixl_mem_t mem_type, uint64_t dev_id) const {
   if (mem_type == VRAM_SEG) {
+    // VRAM is physically reachable from every EFA NIC on the host (just at
+    // varying PCIe-traversal cost depending on which root the NIC and GPU
+    // share). Register on ALL rails so that a remote GPU endpoint (which
+    // selects rails by its OWN GPU<->EFA topology) will always find a
+    // valid rkey for the rail it chooses, even when the local and remote
+    // GPU indices differ.
+    //
+    // This handles disaggregated-inference KV transfers where a prefill
+    // replica on GPU N sends its KV to a decode replica on GPU M (N != M)
+    // -- the proxy load-balancer pairs DP replicas independently of GPU
+    // index. Without all-rail registration, prefill picks rail N (local)
+    // but decode only registered rail M, leaving remote_keys[N]=0 and
+    // failing the transfer with NIXL_ERR_INVALID_PARAM. Mirrors the DRAM
+    // fix in PR #84921 (GEX-3676).
+    //
+    // Log the GPU-preferred rail subset for diagnostics, but always
+    // return the full rail set.
     int gpu_id = static_cast<int>(dev_id);
     if (dev_id == std::numeric_limits<uint64_t>::max()) {
       NIXL_ERROR << "Missing device ID for VRAM memory " << mem_addr;
@@ -351,44 +368,39 @@ std::vector<size_t> nixlLibfabricRailManager::selectRailsForMemory(
     if (gpu_id < 0) {
       NIXL_ERROR << "Invalid GPU ID " << gpu_id << " for VRAM memory "
                  << mem_addr;
-      return {}; // Return empty vector to indicate failure
+      return {};
     }
     std::vector<std::string> gpu_efa_devices =
         topology->getEfaDevicesForGpu(gpu_id);
-    if (gpu_efa_devices.empty()) {
-      NIXL_ERROR << "No EFA devices found for GPU " << gpu_id;
-      return {}; // Return empty vector to indicate failure
-    }
-    std::vector<size_t> gpu_rails;
-    for (const std::string &efa_device : gpu_efa_devices) {
-      auto it = efa_device_to_rail_map.find(efa_device);
-      if (it != efa_device_to_rail_map.end()) {
-        // Bounds check: ensure rail index is valid
-        if (it->second < data_rails_.size()) {
-          gpu_rails.push_back(it->second);
-          NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id
-                     << " mapped to rail " << it->second
-                     << " (EFA device: " << efa_device << ")";
-        } else {
-          NIXL_WARN << "EFA device " << efa_device << " maps to rail "
-                    << it->second << " but only " << data_rails_.size()
-                    << " rails available";
+    if (!gpu_efa_devices.empty()) {
+      std::string preferred_rails;
+      for (const std::string &efa_device : gpu_efa_devices) {
+        auto it = efa_device_to_rail_map.find(efa_device);
+        if (it != efa_device_to_rail_map.end() &&
+            it->second < data_rails_.size()) {
+          preferred_rails += std::to_string(it->second) + " ";
         }
-      } else {
-        NIXL_WARN << "EFA device " << efa_device
-                  << " not found in rail mapping for GPU " << gpu_id;
       }
+      NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id
+                 << " GPU-preferred rails: [" << preferred_rails
+                 << "] -- registering on all " << data_rails_.size()
+                 << " rails for cross-GPU transfer compatibility";
     }
 
-    if (gpu_rails.empty()) {
-      NIXL_ERROR << "No valid rail mapping found for GPU " << gpu_id
-                 << " (checked " << gpu_efa_devices.size() << " EFA devices)";
+    std::vector<size_t> all_rails;
+    all_rails.reserve(data_rails_.size());
+    for (size_t i = 0; i < data_rails_.size(); ++i) {
+      all_rails.push_back(i);
+    }
+
+    if (all_rails.empty()) {
+      NIXL_ERROR << "No data rails available for VRAM memory " << mem_addr;
       return {};
     }
 
     NIXL_DEBUG << "VRAM memory " << mem_addr << " on GPU " << gpu_id
-               << " will use " << gpu_rails.size() << " rails total";
-    return gpu_rails;
+               << " will use all " << all_rails.size() << " rails";
+    return all_rails;
   }
   if (mem_type == DRAM_SEG) {
     // DRAM is physically reachable from every EFA NIC on the host -- any
