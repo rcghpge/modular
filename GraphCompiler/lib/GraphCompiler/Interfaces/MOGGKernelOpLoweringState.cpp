@@ -99,7 +99,15 @@ KernelOperandsMapping::getTensorDynamicDimensions(MO::TensorType asTensor,
                                                   bool isInsideStub) {
   SmallVector<Value> dynamicDimensions;
   for (auto dim : asTensor.getDims()) {
-    if (auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim))
+    if (isa<IntegerAttr>(dim))
+      continue;
+    auto dimParamAttr = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
+    ASSERT_STREAM(dimParamAttr,
+                  "getTensorDynamicDimensions: unsupported dim attr kind. "
+                  "Expected IntegerAttr or KGEN::ParamDeclRefAttr but got: "
+                      << dim << " (type=" << dim.getType() << ")"
+                      << " in tensor type " << asTensor << ".");
+    if (dimParamAttr)
       dynamicDimensions.push_back(get(dimParamAttr.getName(), isInsideStub));
   }
 
