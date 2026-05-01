@@ -10,6 +10,7 @@
 
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDADriver.h"
 #include "MLRT/lib/Driver/DeviceContext/HIP/HIPDeviceContext.h"
@@ -801,6 +802,87 @@ AsyncRT_DeviceContext_metal_device(MTL::Device **result, DeviceContext *ctx) {
 #else
   return raiseError("Not a MetalContext");
 #endif
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraph / DeviceGraphBuilder
+//===----------------------------------------------------------------------===//
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_createGraphBuilder(DeviceGraphBuilder **result,
+                                         DeviceContext *ctx) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_createGraphBuilder",
+                       TRACY_COLOR_GRAY);
+  return checkRef(result, ctx->createGraphBuilder());
+}
+
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphBuilder_retain(DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_retain", TRACY_COLOR_GRAY);
+  DeviceGraphBuilderRef::lowLevelAddRef(builder);
+}
+
+MODULAR_EXPORT void
+AsyncRT_DeviceGraphBuilder_release(DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_release", TRACY_COLOR_GRAY);
+  DeviceGraphBuilderRef::lowLevelDropRef(builder);
+}
+
+// Adds a kernel dispatch node to the graph under construction.
+// The parameter layout mirrors AsyncRT_DeviceContext_enqueueFunctionDirect so
+// that DeviceGraphBuilder can implement the _FunctionEnqueuer Mojo trait and
+// reuse DeviceFunction._call_with_pack_checked without modification.
+// argSizes is accepted for ABI compatibility but is not used by the graph
+// builder (the CUDA/HIP graph APIs do not require it).
+MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_addFunctionDirect(
+    DeviceGraphBuilder *builder, DeviceFunction *func, uint32_t gridX,
+    uint32_t gridY, uint32_t gridZ, uint32_t blockX, uint32_t blockY,
+    uint32_t blockZ, uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs,
+    void **args, uint32_t argCount, const size_t * /*argSizes*/) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addFunctionDirect",
+                       TRACY_COLOR_GRAY);
+  DeviceFunctionLaunchParams params;
+  params.gridX = gridX;
+  params.gridY = gridY;
+  params.gridZ = gridZ;
+  params.blockX = blockX;
+  params.blockY = blockY;
+  params.blockZ = blockZ;
+  params.sharedMemBytes = sharedMemBytes;
+  params.attrs = attrs;
+  params.numAttrs = numAttrs;
+  params.args = args;
+  params.argCount = argCount;
+  // Node handle is intentionally discarded; dependency edges are not yet
+  // exposed in the Mojo API.
+  ErrorOr<DeviceGraphNode> nodeOrErr =
+      builder->addFunctionDirect(*func, params);
+  if (nodeOrErr.isError())
+    return raiseError(nodeOrErr.getError());
+  return nullptr;
+}
+
+MODULAR_EXPORT const char *
+AsyncRT_DeviceGraphBuilder_instantiate(DeviceGraph **result,
+                                       DeviceGraphBuilder *builder) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_instantiate",
+                       TRACY_COLOR_GRAY);
+  return checkRef(result, builder->instantiate());
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceGraph_retain(DeviceGraph *graph) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_retain", TRACY_COLOR_GRAY);
+  DeviceGraphRef::lowLevelAddRef(graph);
+}
+
+MODULAR_EXPORT void AsyncRT_DeviceGraph_release(DeviceGraph *graph) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_release", TRACY_COLOR_GRAY);
+  DeviceGraphRef::lowLevelDropRef(graph);
+}
+
+MODULAR_EXPORT const char *AsyncRT_DeviceGraph_replay(DeviceGraph *graph) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_replay", TRACY_COLOR_GRAY);
+  return checkSuccess(graph->replay());
 }
 
 //
