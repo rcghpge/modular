@@ -101,6 +101,18 @@ private:
   std::atomic<size_t>
       total_requests_used_; // Total number of requests for this transfer
 
+  /// Reference count covering the owning ``nixlXferReqH`` plus every
+  /// in-flight request whose ``completion_callback`` closure dereferences
+  /// this handle. Constructor seeds it at 1 (the owner). ``postXfer``
+  /// retains once per successful submit; the matching closure's
+  /// ``release()`` runs when the request's CQ entry is processed (success
+  /// or GEX-3606 fake-completion). ``releaseReqH`` releases the owner
+  /// reference. ``release()`` is the SOLE path to ``delete this``: the
+  /// last of {owner, in-flight callbacks} to drop wins by virtue of the
+  /// atomic ``fetch_sub == 1`` check, so deletion never races with
+  /// progress-thread callbacks still mid-execution on this object.
+  std::atomic<int> ref_count_;
+
 public:
   nixlLibfabricBackendH();
   ~nixlLibfabricBackendH();
@@ -122,6 +134,15 @@ public:
 
   /** Adjust total request count to actual value after submissions complete */
   void adjust_total_requests(size_t actual_count);
+
+  /** Bump ref count for an additional reference (e.g. an in-flight
+   *  request whose completion_callback closure dereferences this handle).
+   *  Pairs 1:1 with a later ``release()``. */
+  void retain();
+
+  /** Drop one reference. ``delete this`` when the last reference is
+   *  released. Safe to call from progress-thread callbacks. */
+  void release();
 };
 
 class nixlLibfabricEngine : public nixlBackendEngine {

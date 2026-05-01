@@ -150,6 +150,8 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
     const std::vector<struct fid_mr *> &local_mrs,
     const std::vector<uint64_t> &remote_keys,
     const std::vector<fi_addr_t> &dest_addrs, uint16_t agent_idx,
+    std::function<void()> retain_callback,
+    std::function<void()> release_callback,
     std::function<void()> completion_callback,
     BinaryNotification *binary_notif) {
   if (selected_rails.empty()) {
@@ -157,21 +159,79 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
     return NIXL_ERR_INVALID_PARAM;
   }
 
-  // Determine striping strategy
+  // Filter to rails that BOTH endpoints actually registered memory on.
+  // VRAM picks rails by GPU<->EFA topology; DRAM picks by NUMA<->EFA
+  // topology (see selectRailsForMemory). For heterogeneous transfers
+  // (e.g. dKV server DRAM <-> MAX worker VRAM) those subsets can
+  // diverge, leaving zero entries in remote_keys for some local rails.
+  // Posting fi_writedata against rkey=0 produces an EFA NACK; GEX-3606's
+  // CQ-error release handler then advances the transfer by faking
+  // completion to break the cascade, but the data never arrives so the
+  // receiver silently sees stale memory. Filtering up front keeps the
+  // submitted set well-formed and avoids the corruption path entirely.
+  std::vector<size_t> valid_rails;
+  valid_rails.reserve(selected_rails.size());
+  size_t dropped_oob = 0;
+  size_t dropped_missing_local_mr = 0;
+  size_t dropped_missing_remote_key = 0;
+  for (size_t rail_id : selected_rails) {
+    if (rail_id >= local_mrs.size() || rail_id >= remote_keys.size() ||
+        rail_id >= dest_addrs.size()) {
+      ++dropped_oob;
+      continue;
+    }
+    if (local_mrs[rail_id] == nullptr) {
+      ++dropped_missing_local_mr;
+      continue;
+    }
+    if (remote_keys[rail_id] == 0) {
+      ++dropped_missing_remote_key;
+      continue;
+    }
+    valid_rails.push_back(rail_id);
+  }
+
+  if (valid_rails.empty()) {
+    NIXL_ERROR << "No rails have both local mr and remote key registered:"
+               << " local_selected=" << selected_rails.size()
+               << " dropped_oob=" << dropped_oob
+               << " dropped_missing_local_mr=" << dropped_missing_local_mr
+               << " dropped_missing_remote_key=" << dropped_missing_remote_key
+               << "; check VRAM (GPU topology) vs DRAM (NUMA topology) rail"
+               << " selection across the two endpoints.";
+    return NIXL_ERR_INVALID_PARAM;
+  }
+
+  if (valid_rails.size() < selected_rails.size()) {
+    NIXL_DEBUG << "Filtered rails for transfer: " << selected_rails.size()
+               << " -> " << valid_rails.size()
+               << " (dropped: oob=" << dropped_oob
+               << " missing_local_mr=" << dropped_missing_local_mr
+               << " missing_remote_key=" << dropped_missing_remote_key << ")";
+  }
+
+  // Determine striping strategy against the filtered rail set so we don't
+  // stripe across rails that can't carry the transfer.
   bool use_striping =
-      shouldUseStriping(transfer_size) && selected_rails.size() > 1;
+      shouldUseStriping(transfer_size) && valid_rails.size() > 1;
 
   if (!use_striping) {
     // Round-robin: use one rail for entire transfer
-    size_t rail_idx = round_robin_counter.fetch_add(1) % selected_rails.size();
-    size_t rail_id = selected_rails[rail_idx];
+    size_t rail_idx = round_robin_counter.fetch_add(1) % valid_rails.size();
+    size_t rail_id = valid_rails[rail_idx];
     // Allocate request
     nixlLibfabricReq *req = data_rails_[rail_id]->allocateDataRequest(op_type);
     if (!req) {
       NIXL_ERROR << "Failed to allocate request for rail " << rail_id;
       return NIXL_ERR_BACKEND;
     }
-    // Set completion callback and populate request
+    // Retain BEFORE installing the completion callback or posting so the
+    // caller's reference count is bumped before the progress thread can
+    // observe a completion entry for this request and run the callback's
+    // matching release. If post fails below, we release_callback() to
+    // undo this retain.
+    retain_callback();
+    // Set callbacks and populate request
     req->completion_callback = completion_callback;
     req->chunk_offset = 0;
     req->chunk_size = transfer_size;
@@ -194,6 +254,9 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
           dest_addrs[rail_id], req->remote_addr, req->remote_key, req);
     }
     if (status != NIXL_SUCCESS) {
+      // Post never reached libfabric, so the closure won't fire. Undo
+      // the retain we just did and recycle the request.
+      release_callback();
       data_rails_[rail_id]->releaseRequest(req);
       return status;
     }
@@ -210,11 +273,11 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
 
   } else {
     // Striping: distribute across multiple rails
-    size_t num_rails = selected_rails.size();
+    size_t num_rails = valid_rails.size();
     size_t chunk_size = transfer_size / num_rails;
     size_t remainder = transfer_size % num_rails;
     for (size_t i = 0; i < num_rails; ++i) {
-      size_t rail_id = selected_rails[i];
+      size_t rail_id = valid_rails[i];
       size_t current_chunk_size =
           chunk_size + (i == num_rails - 1 ? remainder : 0);
       if (current_chunk_size == 0)
@@ -227,6 +290,8 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
         return NIXL_ERR_BACKEND;
       }
 
+      // See round-robin branch for retain ordering rationale.
+      retain_callback();
       req->completion_callback = completion_callback;
 
       // Calculate and populate chunk info
@@ -252,6 +317,7 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
             dest_addrs[rail_id], req->remote_addr, req->remote_key, req);
       }
       if (status != NIXL_SUCCESS) {
+        release_callback();
         data_rails_[rail_id]->releaseRequest(req);
         return status;
       }
@@ -325,36 +391,50 @@ std::vector<size_t> nixlLibfabricRailManager::selectRailsForMemory(
     return gpu_rails;
   }
   if (mem_type == DRAM_SEG) {
+    // DRAM is physically reachable from every EFA NIC on the host -- any
+    // NIC can DMA into CPU memory regardless of NUMA affinity. Register on
+    // ALL rails so that a remote GPU endpoint (which selects rails by
+    // GPU<->EFA topology) will always find a valid rkey for the rail it
+    // chooses. Restricting to NUMA-optimal rails causes a mismatch: the
+    // GPU picks rail N, but the CPU only registered on NUMA-local rails
+    // that may not include rail N, leaving remote_keys[N]=0 and making
+    // every cross-device-type transfer fail with NIXL_ERR_INVALID_PARAM.
+    //
+    // Log the NUMA-preferred subset for diagnostics, but always return the
+    // full rail set.
     int numa_node = topology->detectNumaNodeForMemory(mem_addr);
-    if (numa_node < 0) {
-      NIXL_ERROR << "Could not detect NUMA node for DRAM memory " << mem_addr;
-      return {};
-    }
-    std::vector<std::string> numa_efa_devices =
-        topology->getEfaDevicesForNumaNode(numa_node);
-    if (numa_efa_devices.empty()) {
-      NIXL_ERROR << "No EFA devices found for NUMA node " << numa_node;
-      return {};
-    }
-    std::vector<size_t> numa_rails;
-    for (const std::string &efa_device : numa_efa_devices) {
-      auto it = efa_device_to_rail_map.find(efa_device);
-      if (it != efa_device_to_rail_map.end()) {
-        numa_rails.push_back(it->second);
+    if (numa_node >= 0) {
+      std::vector<std::string> numa_efa_devices =
+          topology->getEfaDevicesForNumaNode(numa_node);
+      if (!numa_efa_devices.empty()) {
+        std::string preferred_rails;
+        for (const std::string &dev : numa_efa_devices) {
+          auto it = efa_device_to_rail_map.find(dev);
+          if (it != efa_device_to_rail_map.end()) {
+            preferred_rails += std::to_string(it->second) + " ";
+          }
+        }
         NIXL_DEBUG << "DRAM memory " << mem_addr << " on NUMA node "
-                   << numa_node << " mapped to rail " << it->second
-                   << " (EFA device: " << efa_device << ")";
+                   << numa_node << " NUMA-preferred rails: [" << preferred_rails
+                   << "] -- registering on all " << data_rails_.size()
+                   << " rails for cross-device-type transfer compatibility";
       }
     }
 
-    if (numa_rails.empty()) {
-      NIXL_ERROR << "No rail mapping found for NUMA node " << numa_node;
+    std::vector<size_t> all_rails;
+    all_rails.reserve(data_rails_.size());
+    for (size_t i = 0; i < data_rails_.size(); ++i) {
+      all_rails.push_back(i);
+    }
+
+    if (all_rails.empty()) {
+      NIXL_ERROR << "No data rails available for DRAM memory " << mem_addr;
       return {};
     }
 
-    NIXL_DEBUG << "DRAM memory " << mem_addr << " on NUMA node " << numa_node
-               << " will use " << numa_rails.size() << " rails";
-    return numa_rails;
+    NIXL_DEBUG << "DRAM memory " << mem_addr << " will use all "
+               << all_rails.size() << " rails";
+    return all_rails;
   }
 
   // For unsupported memory types, return empty vector

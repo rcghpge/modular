@@ -87,7 +87,7 @@ M::ErrorOrSuccess createGpuContextScope(
  *****************************************/
 
 nixlLibfabricBackendH::nixlLibfabricBackendH()
-    : completed_requests_(0), total_requests_used_(0) {
+    : completed_requests_(0), total_requests_used_(0), ref_count_(1) {
   NIXL_DEBUG << "constructor called, this: " << this
              << " total_requests_used=" << total_requests_used_.load();
 }
@@ -105,9 +105,18 @@ void nixlLibfabricBackendH::init_request_tracking(size_t num_requests) {
 }
 
 void nixlLibfabricBackendH::increment_completed_requests() {
-  size_t completed = completed_requests_.fetch_add(1);
-  NIXL_DEBUG << "Request completed, total completed: " << completed << "/"
-             << total_requests_used_.load();
+  // Snapshot ``total_requests_used_`` BEFORE the fetch_add so the log line
+  // that follows does not dereference *this after the increment. After
+  // fetch_add, the closure that called us proceeds to release(); the
+  // matching retain() done at submit time is still live, so *this is
+  // guaranteed alive for the NIXL_DEBUG that follows. Reading total before
+  // the fetch_add isn't racy: total is set by init_request_tracking +
+  // adjust_total_requests, both of which happen on the owner thread before
+  // any callback can fire.
+  size_t total_before = total_requests_used_.load(std::memory_order_acquire);
+  size_t prev = completed_requests_.fetch_add(1, std::memory_order_acq_rel);
+  NIXL_DEBUG << "Request completed, total completed: " << (prev + 1) << "/"
+             << total_before;
 }
 
 size_t nixlLibfabricBackendH::get_completed_requests_count() const {
@@ -128,6 +137,23 @@ bool nixlLibfabricBackendH::is_completed() const {
   // NIXL_DEBUG << "Request completed, total completed: " <<
   // completed_requests_.load();
   return completed_requests_.load() == total_requests_used_.load();
+}
+
+void nixlLibfabricBackendH::retain() {
+  ref_count_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void nixlLibfabricBackendH::release() {
+  // The ``acq_rel`` ordering on the decrement publishes any prior writes
+  // to *this (e.g. completed_requests_ updates from the callback we just
+  // ran) to whichever thread happens to drop the last reference. After
+  // ``fetch_sub`` returns 1, the caller owns the only remaining reference
+  // and ``delete this`` is the unique transition; no other thread can be
+  // mid-method on *this because that would imply they hold a reference
+  // they have not yet released, contradicting our seeing 1.
+  if (ref_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+    delete this;
+  }
 }
 
 /****************************************
@@ -991,7 +1017,18 @@ nixl_status_t nixlLibfabricEngine::postXfer(
   size_t max_possible_requests = desc_count * rail_manager->getNumDataRails();
   backend_handle->init_request_tracking(max_possible_requests);
 
-  // Core transfer submission to process each descriptor with direct submission
+  // Core transfer submission to process each descriptor with direct
+  // submission. On every error return below this lambda collapses the
+  // initial ``init_request_tracking`` overestimate down to whatever was
+  // actually submitted before the failure. Handle lifetime is owned by
+  // the atomic refcount in retain()/release(); this adjustment is purely
+  // for ``is_completed()`` status reporting via ``checkXfer``, so a
+  // dropped transfer is reported "complete" once its in-flight requests
+  // drain instead of staying IN_PROG forever waiting on submits that
+  // never happened.
+  auto adjust_for_error_return = [&] {
+    backend_handle->adjust_total_requests(binary_notif->xfer_id_count);
+  };
   for (int desc_idx = 0; desc_idx < desc_count; ++desc_idx) {
     auto *local_md =
         static_cast<nixlLibfabricPrivateMetadata *>(local[desc_idx].metadataP);
@@ -999,6 +1036,7 @@ nixl_status_t nixlLibfabricEngine::postXfer(
         static_cast<nixlLibfabricPublicMetadata *>(remote[desc_idx].metadataP);
     if (!local_md || !remote_md || !remote_md->conn_) {
       NIXL_ERROR << "Invalid metadata pointers for descriptor " << desc_idx;
+      adjust_for_error_return();
       release_control_request();
       return NIXL_ERR_INVALID_PARAM;
     }
@@ -1006,6 +1044,7 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     // Validate connection for this descriptor
     if (remote_md->conn_ != conn_it->second) {
       NIXL_ERROR << "Connection mismatch for descriptor " << desc_idx;
+      adjust_for_error_return();
       release_control_request();
       return NIXL_ERR_MISMATCH;
     }
@@ -1020,20 +1059,31 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     // Prepare and submit transfer (use per-descriptor remote address, not
     // the metadata base address, so each descriptor targets the correct
     // offset within the remote buffer).
+    //
+    // The retain/release/completion triple anchors the lifetime of
+    // ``backend_handle`` against in-flight progress-thread callbacks.
+    // ``prepareAndSubmitTransfer`` calls ``retain_callback`` before each
+    // libfabric post, so the count is bumped before the CQ entry can
+    // fire the matching ``release()`` from inside the completion
+    // closure. On post failure the function calls ``release_callback``
+    // synchronously to balance the retain it just did.
     nixl_status_t status = rail_manager->prepareAndSubmitTransfer(
         op_type, transfer_addr, transfer_size, remote[desc_idx].addr,
         local_md->selected_rails_, local_md->rail_mr_list_,
         remote_md->rail_remote_key_list_,
         conn_it->second->rail_remote_addr_list_, conn_it->second->agent_index_,
+        [backend_handle]() { backend_handle->retain(); },
+        [backend_handle]() { backend_handle->release(); },
         [backend_handle]() {
           backend_handle->increment_completed_requests();
-        },           // Completion callback
-        binary_notif // Populate BinaryNotification
-    );
+          backend_handle->release();
+        },
+        binary_notif);
 
     if (status != NIXL_SUCCESS) {
       NIXL_ERROR << "prepareAndSubmitTransfer failed for descriptor "
                  << desc_idx << " GPU " << gpu_id;
+      adjust_for_error_return();
       release_control_request();
       return status;
     }
@@ -1116,18 +1166,32 @@ nixl_status_t nixlLibfabricEngine::checkXfer(nixlBackendReqH *handle) const {
 }
 
 nixl_status_t nixlLibfabricEngine::releaseReqH(nixlBackendReqH *handle) const {
-  // Add any necessary cleanup for libfabric specific request handling
-  // For example, if we're using a custom request structure:
-  // nixlLibfabricReqH* req = static_cast<nixlLibfabricReqH*>(handle);
-  // // Perform any necessary cleanup
-  // delete req;
-
+  // The NIXL agent layer (releaseXferReq + ~nixlXferReqH) calls into here
+  // exactly once per ``nixlLibfabricBackendH*`` allocated by ``prepXfer``,
+  // but does not itself ``delete`` the handle -- that's the backend's
+  // responsibility. The previous stub left this as a no-op with a stale
+  // "Let NIXL framework handle the deletion" comment, leaking one
+  // ``nixlLibfabricBackendH`` per call.
+  //
+  // ``release()`` drops the owner reference seeded in the handle's
+  // constructor; the progress-thread callbacks installed by
+  // ``prepareAndSubmitTransfer`` each hold their own reference (taken via
+  // ``retain_callback`` before each successful post) and drop it from the
+  // matching ``release()`` inside the completion closure. ``delete this``
+  // happens from whichever party drops the last reference -- typically the
+  // last completion callback, but releaseReqH itself when no requests are
+  // in flight (e.g. the rail-filter all-or-nothing rejection path).
+  // Conditional checks like ``is_completed()`` are intentionally NOT used
+  // here: an external decision based on ``completed_requests_`` would race
+  // with the very callbacks that bump it, leading to either UAF (delete
+  // while a callback is mid-method) or permanent leak (defer delete after
+  // all callbacks already fired). The atomic refcount in ``release()``
+  // resolves both at once.
   if (!handle) {
     return NIXL_SUCCESS;
   }
-
-  // Let NIXL framework handle the deletion
-  NIXL_DEBUG << "releaseReqH completed successfully";
+  static_cast<nixlLibfabricBackendH *>(handle)->release();
+  NIXL_DEBUG << "releaseReqH dropped owner reference on backend handle";
   return NIXL_SUCCESS;
 }
 

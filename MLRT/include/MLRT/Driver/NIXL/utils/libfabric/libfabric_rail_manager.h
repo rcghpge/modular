@@ -150,9 +150,37 @@ public:
    * @param remote_keys Remote access keys
    * @param dest_addrs Destination addresses for each rail
    * @param agent_idx Remote agent index for immediate data
-   * @param completion_callback Callback for completion notification
+   * @param retain_callback Called BEFORE every libfabric post so the
+   *                       caller can bump a reference count keeping the
+   *                       request's completion-callback target alive.
+   *                       Must be paired 1:1 with either a successful
+   *                       CQ entry firing ``completion_callback`` or
+   *                       (on post failure) a synchronous
+   *                       ``release_callback`` invocation from inside
+   *                       this function.
+   * @param release_callback Inverse of ``retain_callback``. Called from
+   *                       inside this function whenever a retained
+   *                       request fails to reach libfabric (post
+   *                       returned non-success), to keep the count
+   *                       balanced.
+   * @param completion_callback Callback installed on each successfully
+   *                       posted request. Invoked exactly once per
+   *                       request when the CQ entry is processed, on
+   *                       both success and GEX-3606's fake-completion
+   *                       error path.
    * @param binary_notif Binary notification to populate with XFER_IDs
    * @return NIXL_SUCCESS on success, error code on failure
+   *
+   * Rails in ``selected_rails`` whose ``local_mrs[rail_id]`` is null or
+   * whose ``remote_keys[rail_id]`` is zero are filtered out before
+   * striping/round-robin. This prevents posting RDMA writes against
+   * rails the remote agent never registered on (a common case when MAX
+   * picks rails by GPU topology and the dKV server picks by NUMA
+   * topology), which on EFA otherwise produces silent CQ errors that
+   * GEX-3606's CQ-error release handler then advances by faking
+   * completion -- safe but causes silent data corruption at the
+   * receiver. Filtering up front avoids posting against the bad rkey
+   * in the first place.
    */
   nixl_status_t prepareAndSubmitTransfer(
       nixlLibfabricReq::OpType op_type, void *local_addr, size_t transfer_size,
@@ -160,6 +188,8 @@ public:
       const std::vector<struct fid_mr *> &local_mrs,
       const std::vector<uint64_t> &remote_keys,
       const std::vector<fi_addr_t> &dest_addrs, uint16_t agent_idx,
+      std::function<void()> retain_callback,
+      std::function<void()> release_callback,
       std::function<void()> completion_callback,
       BinaryNotification *binary_notif);
   /** Determine if striping should be used for given transfer size
