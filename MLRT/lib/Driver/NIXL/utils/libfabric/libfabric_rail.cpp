@@ -556,7 +556,16 @@ nixl_status_t nixlLibfabricRail::progressCompletionQueue(bool use_blocking) {
       ret = fi_cq_read(cq, &completion, 1);
     }
 
-    if (ret < 0 && ret != -FI_EAGAIN) {
+    // -FI_EINTR is raised when fi_cq_sread is interrupted by a signal
+    // (commonly seen with OpenMPI's signal-based bookkeeping on AWS EFA).
+    // It is not a CQ error — fi_cq_readerr returns -FI_EAGAIN with nothing
+    // in the error queue — and the correct POSIX response is to retry on
+    // the next iteration, exactly like -FI_EAGAIN. Treating it as an error
+    // caused the CM thread to bail out and the surrounding poll loops to
+    // spin without progress, wedging every chat completion (1600% CPU,
+    // 0/300 requests, observed on production p6-b200.48xlarge during
+    // GEX-3606 investigation).
+    if (ret < 0 && ret != -FI_EAGAIN && ret != -FI_EINTR) {
       NIXL_ERROR << "fi_cq_read returned error " << ret << " on rail "
                  << rail_id << ": " << fi_strerror(-ret);
 
@@ -627,7 +636,7 @@ nixl_status_t nixlLibfabricRail::progressCompletionQueue(bool use_blocking) {
   }
   // CQ lock released here - completion is now local data
 
-  if (ret == -FI_EAGAIN) {
+  if (ret == -FI_EAGAIN || ret == -FI_EINTR) {
     return NIXL_IN_PROG; // No completions available
   }
 
