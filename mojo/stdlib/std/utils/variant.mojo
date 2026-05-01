@@ -13,7 +13,6 @@
 """Defines a Variant type."""
 
 from std.builtin.rebind import downcast
-from std.compile import get_type_name
 from std.format._utils import (
     FormatStruct,
     TypeNames,
@@ -36,7 +35,6 @@ from ._nicheable import (
     UnsafeCustomNicheStorage,
 )
 from std.os import abort
-from std.reflection import struct_field_count
 from std.sys import align_of, size_of
 from std.sys.intrinsics import _type_is_eq
 from std.utils.type_functions import ConditionalType
@@ -350,9 +348,9 @@ struct _DefaultVariantStorage[*Ts: AnyType](
 
 # TODO(MOCO-3653): size_of[T]() == 0 does not work correctly in some cases when
 # an `Optional` is used as a comptime parameter's field.
-comptime _IsEmptyType[T: AnyType]: Bool = struct_field_count[
+comptime _IsEmptyType[T: AnyType]: Bool = reflect[
     T
-]() == 0 and conforms_to(T, TrivialRegisterPassable)
+]().field_count() == 0 and conforms_to(T, TrivialRegisterPassable)
 """True if `T` is a zero-sized, trivially passable type (i.e. carries no state,
 like `NoneType`). Used to identify the "empty" arm of a niche-optimized variant."""
 
@@ -740,9 +738,7 @@ struct Variant[*Ts: Movable](
         var isa = self.isa[T]()
         var storage = self._storage^
         if not isa:
-            __mlir_op.`lit.ownership.mark_destroyed`(
-                __get_mvalue_as_litref(storage)
-            )
+            std.memory.forget_deinit(storage^)
             abort("taking the wrong type!")
 
         return storage^.take[T]()
@@ -928,9 +924,7 @@ struct Variant[*Ts: Movable](
         var isa = self.isa[T]()
         var storage = self._storage^
         if not isa:
-            __mlir_op.`lit.ownership.mark_destroyed`(
-                __get_mvalue_as_litref(storage)
-            )
+            std.memory.forget_deinit(storage^)
             abort("Variant.destroy_with: wrong variant type")
 
         destroy_func(storage^.take[T]())

@@ -20,6 +20,7 @@ from std.collections.string._utf8 import UTF8Chunks, _is_valid_utf8
 from std.collections.string.format import _FormatUtils
 from std.collections.string.string_slice import (
     CodepointSliceIter,
+    GraphemeIndicesIter,
     GraphemeSliceIter,
     _to_string_list,
     _unsafe_strlen,
@@ -41,6 +42,7 @@ from std.sys.info import is_32bit
 from std.bit import count_leading_zeros
 from std.memory import memcmp, memcpy, memset
 from std.python import ConvertibleFromPython, ConvertibleToPython, PythonObject
+from std.reflection.traits import AllWritable
 
 # ===----------------------------------------------------------------------=== #
 # String
@@ -477,6 +479,8 @@ struct String(
         _ = variadic_pack_to_string(1, ", ", 2.0, ", ", "three")
         ```
         """
+        comptime assert AllWritable[*Ts]  # satisfy where clause.
+
         var total_bytes = _TotalWritableBytes()
         args._write_to(total_bytes, end=end, sep=sep)
 
@@ -506,6 +510,8 @@ struct String(
         Returns:
             A string formed by formatting the argument sequence.
         """
+        comptime assert AllWritable[*Ts]  # satisfy where clause.
+
         var total_bytes = _TotalWritableBytes()
         args._write_to(total_bytes, end=end, sep=sep)
 
@@ -529,6 +535,8 @@ struct String(
         Args:
             args: Sequence of arguments to write to this Writer.
         """
+        comptime assert AllWritable[*Ts]  # satisfy where clause.
+
         var total_bytes = _TotalWritableBytes()
         total_bytes.size += self.byte_length()
         args._write_to(total_bytes, sep="")
@@ -1166,6 +1174,62 @@ struct String(
             An iterator yielding each grapheme cluster as a `StringSlice`.
         """
         return StringSlice(self).graphemes()
+
+    def graphemes_reversed(
+        self,
+    ) -> GraphemeSliceIter[origin_of(self), False]:
+        """Return an iterator over the grapheme clusters in this string,
+        yielding them in reverse order.
+
+        See `graphemes()` for the definition of a grapheme cluster.
+
+        Returns:
+            A reverse iterator yielding each grapheme cluster as a
+            `StringSlice`.
+        """
+        return StringSlice(self).graphemes_reversed()
+
+    def grapheme_indices(self) -> GraphemeIndicesIter[origin_of(self)]:
+        """Return an iterator over grapheme clusters paired with their byte
+        offsets.
+
+        Each yielded element is a `Tuple[Int, StringSlice]` where the first
+        element is the byte offset at which the grapheme begins.
+
+        Returns:
+            An iterator yielding `(byte_offset, grapheme)` pairs.
+        """
+        return StringSlice(self).grapheme_indices()
+
+    def nth_grapheme(self, n: Int) -> Optional[StringSlice[origin_of(self)]]:
+        """Return the `n`-th grapheme cluster (0-indexed), or `None` if out
+        of range.
+
+        Args:
+            n: The zero-based grapheme index. Must be non-negative.
+
+        Returns:
+            The `n`-th grapheme cluster, or `None` if `n` is out of range.
+        """
+        return StringSlice(self).nth_grapheme(n)
+
+    def split_at_grapheme(
+        self, n: Int
+    ) -> Tuple[
+        StringSlice[ImmutOrigin(origin_of(self))],
+        StringSlice[ImmutOrigin(origin_of(self))],
+    ]:
+        """Split this string at the `n`-th grapheme-cluster boundary.
+
+        Args:
+            n: The grapheme-cluster boundary at which to split. Must be
+                non-negative.
+
+        Returns:
+            A tuple `(prefix, suffix)` of `StringSlice`s. The prefix covers
+            grapheme clusters `[0, n)` and the suffix covers the rest.
+        """
+        return StringSlice(self).split_at_grapheme(n)
 
     def count_graphemes(self) -> Int:
         """Count the number of grapheme clusters in this string.

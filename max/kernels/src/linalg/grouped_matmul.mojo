@@ -740,7 +740,7 @@ def grouped_matmul_amd_kernel_launcher[
             var elements_to_process = thread_end - thread_start
 
             @always_inline
-            def process_elements[width: Int](idx: Int) unified {mut}:
+            def process_elements[width: Int](idx: Int) {mut}:
                 var elem_idx = thread_start + idx
                 var tile_row, tile_col = divmod(elem_idx, BN)
                 var local_row: UInt32 = UInt32(block_m * BM + tile_row)
@@ -896,6 +896,9 @@ def grouped_matmul_amd[
     comptime assert a_offsets.flat_rank == 1, "a_offsets must be rank 1"
     comptime assert expert_ids.flat_rank == 1, "expert_ids must be rank 1"
     comptime assert b.flat_rank == 3, "b must be rank 3"
+
+    if num_active_experts == 0 or max_num_tokens_per_expert == 0:
+        return
 
     comptime num_experts = b.static_shape[0]
     comptime N = b.static_shape[1]

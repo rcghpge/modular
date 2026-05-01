@@ -30,7 +30,7 @@
 
 from std.memory import UnsafeMaybeUninit
 from std.os import abort
-from std.reflection import offset_of
+from std.reflection import call_location
 from std.utils._nicheable import UnsafeNicheable, NicheIndex
 
 # ===----------------------------------------------------------------------=== #
@@ -448,7 +448,7 @@ struct DelCounter[counter_origin: ImmutOrigin, *, trivial_del: Bool = False](
 
 
 @fieldwise_init
-struct AbortOnDel(ImplicitlyCopyable):
+struct AbortOnDel(Copyable):
     """Type that aborts if its destructor is called.
 
     Used to test that destructors are not called in certain scenarios.
@@ -457,9 +457,13 @@ struct AbortOnDel(ImplicitlyCopyable):
     var value: Int
     """Test value payload."""
 
+    @always_inline
     def __del__(deinit self):
         """Aborts the program if called."""
-        abort("We should never call the destructor of AbortOnDel")
+        abort(
+            "We should never call the destructor of AbortOnDel",
+            location=call_location(),
+        )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -610,7 +614,9 @@ struct Observable[
         Args:
             memory: Pointer to uninitialized storage sized and aligned for `Self`.
         """
-        comptime niche_offset = offset_of[Self, name="_always_zero"]()
+        comptime niche_offset = reflect[Self]().field_offset[
+            name="_always_zero"
+        ]()
         (memory.bitcast[Byte]() + niche_offset).store(Byte(index + 1))
 
     @staticmethod
@@ -626,7 +632,9 @@ struct Observable[
         Returns:
             The niche index of the memory.
         """
-        comptime niche_offset = offset_of[Self, name="_always_zero"]()
+        comptime niche_offset = reflect[Self]().field_offset[
+            name="_always_zero"
+        ]()
         var value = (memory.bitcast[Byte]() + niche_offset).load()
         if value == 0:
             return NicheIndex.NotANiche

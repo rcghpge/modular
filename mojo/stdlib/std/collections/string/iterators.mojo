@@ -19,7 +19,11 @@ from std.collections.string._utf8 import (
 )
 from std.collections.string._grapheme_break import (
     _GraphemeBreakState,
+    _find_safe_grapheme_start,
     _is_grapheme_break,
+    _is_safe_ascii_for_grapheme,
+    _reset_grapheme_state_to_other,
+    GBP_PREPEND,
 )
 
 
@@ -412,6 +416,7 @@ struct GraphemeSliceIter[
     mut: Bool,
     //,
     origin: Origin[mut=mut],
+    forward: Bool = True,
 ](ImplicitlyCopyable, Iterable, Iterator, Sized):
     """Iterator over grapheme clusters in a string, yielding each cluster as a
     `StringSlice`.
@@ -424,22 +429,38 @@ struct GraphemeSliceIter[
     Parameters:
         mut: Whether the slice is mutable.
         origin: The origin of the underlying string data.
+        forward: The iteration direction. `False` is backwards.
 
-    Note: Only forward iteration is supported. Backward grapheme iteration
-    would require a different algorithm since the UAX #29 state machine is
-    inherently forward-scanning.
+    The `forward` parameter only controls the behavior of the `__next__()`
+    method used for normal iteration. Calls to `next()` will always take an
+    element from the front of the iterator, and calls to `next_back()` will
+    always take an element from the end. Mixing `next()` and `next_back()`
+    on the same iterator is supported: they share the remaining byte range
+    but use independent state (forward iteration keeps incremental UAX #29
+    state; reverse iteration caches a safe restart boundary). This is safe
+    because forward priming only consults the codepoint at the start of the
+    remaining range, and `next_back()` shrinks the range from the end without
+    moving that start. A forward `next()` advances the front and invalidates
+    the cached reverse safe-start so the next reverse call recomputes it.
 
     Note: `len()` is an O(n) operation that must scan all remaining bytes
     to count grapheme boundaries. Avoid calling it in a loop; prefer
     iterating with `for g in s.graphemes()` or calling `next()` until
     `None`.
 
-    # TODO: Add a SIMD fast path for ASCII runs — every ASCII byte is its
-    # own grapheme, so chunks of `< 0x80` bytes can be counted directly
-    # without entering the state machine.
-    # TODO: Add `next_back()` for reverse grapheme iteration (needed for
-    # cursor movement, backspace, rtrim). Approach: back up a bounded
-    # number of codepoints to a safe restart point, then scan forward.
+    Note: Reverse iteration costs more per element than forward iteration.
+    The UAX #29 state machine is forward-scanning, so `next_back()` backs
+    up to a guaranteed grapheme boundary (typically a line break or the
+    start of the string) and forward-scans from there. The safe boundary
+    is cached across reverse calls (a forward `next()` invalidates the
+    cache), so per-call cost is dominated by forward-scan length: small
+    in text with frequent Control/CR/LF codepoints, growing with the
+    distance back to such a codepoint in long runs without them.
+
+    # TODO: Vectorize the existing scalar safe-ASCII fast path. Runs of
+    # safe-ASCII bytes (U+0020..U+007E) are already skipped one-by-one
+    # without entering the state machine; a SIMD check (e.g. `>= 0x20 &
+    # <= 0x7E`) could extend a run by a whole vector width per iteration.
 
     Example:
 
@@ -471,11 +492,22 @@ struct GraphemeSliceIter[
     """Remaining bytes to iterate over."""
 
     var _state: _GraphemeBreakState
-    """UAX #29 segmentation state."""
+    """UAX #29 segmentation state for forward iteration."""
 
     var _state_primed: Bool
     """True if the state machine already processed the first codepoint of
     the next grapheme (from the previous break detection)."""
+
+    var _back_safe_known: Bool
+    """True if `_back_safe_start` holds a usable safe boundary for reverse
+    iteration. Cleared whenever forward `next()` advances the front of the
+    range; preserved across `next_back()` calls because shrinking from the
+    end does not move the data pointer."""
+
+    var _back_safe_start: Int
+    """Cached byte offset in `_slice` at which a fresh forward UAX #29 scan
+    can restart and reproduce the same boundaries it would from offset 0.
+    Only meaningful when `_back_safe_known` is True."""
 
     @doc_hidden
     def __init__(out self, str_slice: StringSlice[Self.origin]):
@@ -487,6 +519,8 @@ struct GraphemeSliceIter[
         self._slice = str_slice
         self._state = _GraphemeBreakState()
         self._state_primed = False
+        self._back_safe_known = False
+        self._back_safe_start = 0
 
     # ===-------------------------------------------------------------------===#
     # Trait implementations
@@ -504,6 +538,9 @@ struct GraphemeSliceIter[
     def __next__(mut self) raises StopIteration -> StringSlice[Self.origin]:
         """Get the next grapheme cluster.
 
+        If `forward` is set to `False`, this will return the next grapheme
+        cluster from the end of the string.
+
         Returns:
             The next grapheme cluster as a `StringSlice`.
 
@@ -512,7 +549,10 @@ struct GraphemeSliceIter[
         """
         if self._slice.byte_length() <= 0:
             raise StopIteration()
-        return self.next().value()
+        comptime if Self.forward:
+            return self.next().value()
+        else:
+            return self.next_back().value()
 
     def __len__(self) -> Int:
         """Return the number of remaining grapheme clusters.
@@ -529,16 +569,32 @@ struct GraphemeSliceIter[
         var count = 0
         var state = _GraphemeBreakState()
         var remaining = self._slice
+        var ptr = remaining.unsafe_ptr()
+        var pos = 0
+        var total = remaining.byte_length()
 
-        while remaining.byte_length() > 0:
-            var cp, num_bytes = Codepoint.unsafe_decode_utf8_codepoint(
-                remaining._slice
-            )
+        while pos < total:
+            # ASCII fast path. Safe-ASCII bytes all have GBP_OTHER. Two
+            # consecutive safe-ASCII bytes always have a break between them
+            # (GB999), and the first in such a run is a break start provided
+            # the previous codepoint's GBP is not Prepend (GB9b). Runs of
+            # safe-ASCII bytes are therefore one-grapheme-per-byte.
+            if _is_safe_ascii_for_grapheme(ptr[pos]) and (
+                state.prev_gbp != GBP_PREPEND
+            ):
+                var run_start = pos
+                while pos < total and _is_safe_ascii_for_grapheme(ptr[pos]):
+                    pos += 1
+                count += pos - run_start
+                _reset_grapheme_state_to_other(state)
+                continue
+
+            # Slow path: decode one codepoint and feed the state machine.
+            var sub = Span[Byte, Self.origin](ptr=ptr + pos, length=total - pos)
+            var cp, num_bytes = Codepoint.unsafe_decode_utf8_codepoint(sub)
             if _is_grapheme_break(state, cp.to_u32()):
                 count += 1
-
-            remaining._slice._data += num_bytes
-            remaining._slice._len -= num_bytes
+            pos += num_bytes
 
         return count
 
@@ -593,8 +649,188 @@ struct GraphemeSliceIter[
 
         self._state_primed = found_break
 
-        # Advance the slice past this grapheme cluster.
+        # Advance the slice past this grapheme cluster. This moves the data
+        # pointer, so any previously-cached reverse safe-start (an offset
+        # relative to the old data pointer) is now stale.
         self._slice._slice._data += consumed
         self._slice._slice._len -= consumed
+        self._back_safe_known = False
 
         return StringSlice[Self.origin](ptr=start_ptr, length=consumed)
+
+    def peek_back(mut self) -> Optional[StringSlice[Self.origin]]:
+        """Return the last grapheme cluster without advancing the iterator.
+
+        Repeated calls return the same value. The first reverse call (`peek_back`
+        or `next_back`) does the backward scan to find a safe restart boundary
+        and caches it; subsequent reverse calls reuse the cache and only pay
+        for the forward scan from that boundary.
+
+        Returns:
+            The last grapheme cluster as a `StringSlice`, or `None` if the
+            iterator is empty.
+        """
+        var total = self._slice.byte_length()
+        if total <= 0:
+            return None
+        var grapheme_start = self._grapheme_start_of_last_cluster(total)
+        return StringSlice[Self.origin](
+            ptr=self._slice.unsafe_ptr() + grapheme_start,
+            length=total - grapheme_start,
+        )
+
+    def next_back(mut self) -> Optional[StringSlice[Self.origin]]:
+        """Get the last grapheme cluster in the underlying string, or `None`
+        if the iterator is empty.
+
+        This consumes one grapheme from the end of the remaining range. It
+        does not share state with forward iteration (`next()`), so the two
+        can be interleaved freely.
+
+        The UAX #29 state machine is inherently forward-scanning, so
+        `next_back()` backs up to a guaranteed grapheme boundary — a
+        Control/CR/LF codepoint or the start of the string — and then
+        forward-scans from that boundary. The safe boundary, once found,
+        is cached and reused across subsequent reverse calls (a forward
+        `next()` invalidates the cache because it moves the front pointer).
+        Per-call cost is therefore dominated by the forward scan length:
+        roughly proportional to the distance from the most recent Control/
+        CR/LF codepoint to the cluster being returned. For text containing
+        line breaks or whitespace this is small; for long runs without
+        Control/CR/LF the forward scan extends back toward the start of
+        the string and the per-call cost grows accordingly.
+
+        Returns:
+            The last grapheme cluster as a `StringSlice`, or `None`.
+        """
+        var total = self._slice.byte_length()
+        if total <= 0:
+            return None
+        var grapheme_start = self._grapheme_start_of_last_cluster(total)
+        var result = StringSlice[Self.origin](
+            ptr=self._slice.unsafe_ptr() + grapheme_start,
+            length=total - grapheme_start,
+        )
+        # Shrink the range from the end. Data pointer is unchanged, so the
+        # cached `_back_safe_start` (if set) remains valid for future calls
+        # — `_back_safe_start <= grapheme_start <= new total`.
+        self._slice._slice._len = grapheme_start
+        return result
+
+    @doc_hidden
+    def _grapheme_start_of_last_cluster(mut self, end: Int) -> Int:
+        """Return the byte offset in `self._slice[:end]` where the last
+        grapheme cluster begins, using the cached safe-start when available.
+
+        Args:
+            end: The end of the range to scan, in `(0, self._slice.byte_length()]`.
+
+        Returns:
+            The byte offset `<= end` that begins the last grapheme cluster.
+        """
+        var span = self._slice.as_bytes()
+        # Invalidate the cache when the iter has shrunk down to (or past) the
+        # cached safe-start: an empty forward-scan range would return that
+        # offset as the boundary, producing a zero-length cluster and an
+        # infinite loop.
+        if not self._back_safe_known or self._back_safe_start >= end:
+            self._back_safe_start = _find_safe_grapheme_start(span, end)
+            self._back_safe_known = True
+        var state = _GraphemeBreakState()
+        var last_boundary = self._back_safe_start
+        var pos = self._back_safe_start
+        while pos < end:
+            var cp, num_bytes = Codepoint.unsafe_decode_utf8_codepoint(
+                span[pos:end]
+            )
+            if _is_grapheme_break(state, cp.to_u32()):
+                last_boundary = pos
+            pos += num_bytes
+        return last_boundary
+
+
+struct GraphemeIndicesIter[mut: Bool, //, origin: Origin[mut=mut]](
+    ImplicitlyCopyable, Iterable, Iterator
+):
+    """Iterator over grapheme clusters paired with their starting byte offset.
+
+    Each call to `__next__()` yields a `Tuple[Int, StringSlice[origin]]` where
+    the first element is the byte offset (relative to the original string)
+    at which the grapheme begins, and the second is the grapheme slice
+    itself.
+
+    Parameters:
+        mut: Whether the slice is mutable.
+        origin: The origin of the underlying string data.
+
+    Mirrors `str::grapheme_indices` from Rust's `unicode-segmentation` crate.
+    Useful for text editors and UIs that need to map cursor byte positions
+    back to grapheme boundaries.
+
+    Example:
+
+    ```mojo
+    %# from testing import assert_equal
+    var s = StringSlice("abc")
+    var pairs = List[Tuple[Int, String]]()
+    for off, g in s.grapheme_indices():
+        pairs.append((off, String(g)))
+    assert_equal(len(pairs), 3)
+    assert_equal(pairs[0][0], 0)
+    assert_equal(pairs[1][0], 1)
+    assert_equal(pairs[2][0], 2)
+    ```
+    """
+
+    comptime IteratorType[
+        iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
+    ]: Iterator = Self
+    """The iterator type for this grapheme indices iterator.
+
+    Parameters:
+        iterable_mut: Whether the iterable is mutable.
+        iterable_origin: The origin of the iterable.
+    """
+
+    comptime Element = Tuple[Int, StringSlice[Self.origin]]
+    """The element type yielded by iteration."""
+
+    var _inner: GraphemeSliceIter[Self.origin]
+    """Underlying grapheme slice iterator."""
+
+    var _byte_offset: Int
+    """Running byte offset of the next grapheme, relative to the original
+    string."""
+
+    @doc_hidden
+    def __init__(out self, str_slice: StringSlice[Self.origin]):
+        self._inner = GraphemeSliceIter(str_slice)
+        self._byte_offset = 0
+
+    def __iter__(ref self) -> Self.IteratorType[origin_of(self)]:
+        """Iterate over the grapheme indices in the underlying string slice.
+
+        Returns:
+            An iterator yielding `(byte_offset, grapheme)` pairs.
+        """
+        return self.copy()
+
+    @always_inline
+    def __next__(
+        mut self,
+    ) raises StopIteration -> Tuple[Int, StringSlice[Self.origin]]:
+        """Get the next `(byte_offset, grapheme)` pair.
+
+        Returns:
+            The byte offset at which the next grapheme starts and the
+            grapheme slice itself.
+
+        Raises:
+            `StopIteration` if the iterator has been exhausted.
+        """
+        var g = self._inner.next()
+        if not g:
+            raise StopIteration()
+        var offset = self._byte_offset
+        self._byte_offset += g.unsafe_value().byte_length()
+        return (offset, g.unsafe_value())

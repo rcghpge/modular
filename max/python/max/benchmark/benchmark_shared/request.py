@@ -25,7 +25,7 @@ import threading
 import time
 import traceback
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterable, AsyncIterator, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -158,6 +158,48 @@ class BaseRequestFuncOutput:
         return self.request_submit_time + self.latency
 
 
+def measured_window_duration(
+    outputs: Iterable[BaseRequestFuncOutput], fallback: float
+) -> float:
+    """Wall-clock seconds from the first submit to the last complete.
+
+    The window covers only requests with both a ``request_submit_time`` and a
+    ``request_complete_time``. If no such request exists, return ``fallback``.
+    Otherwise return ``max(last_complete - first_submit, 1e-9)`` so callers
+    can safely divide.
+
+    This is the same window math the steady-state block uses and is the
+    correct denominator for aggregate throughput / TPM over a sliced benchmark
+    region — warmup/tail wall time is excluded along with warmup/tail tokens.
+    """
+    first_submit: float | None = None
+    last_complete: float | None = None
+    for o in outputs:
+        submit = o.request_submit_time
+        if submit is None:
+            continue
+        complete = o.request_complete_time
+        if complete is None:
+            continue
+        if first_submit is None or submit < first_submit:
+            first_submit = submit
+        if last_complete is None or complete > last_complete:
+            last_complete = complete
+    if first_submit is None or last_complete is None:
+        return fallback
+    return max(last_complete - first_submit, 1e-9)
+
+
+@dataclass
+class ServerTokenStats:
+    """Server-reported token counts from the stream_options usage chunk."""
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    cached_tokens: int = 0
+
+
 # TODO: We shouldn't have to maintain two separate RequestFuncOutput classes for
 # text generation and TTS benchmarks respectively.
 @dataclass
@@ -171,6 +213,9 @@ class RequestFuncOutput(BaseRequestFuncOutput):
     generated_text: str = ""
     ttft: float = 0.0  # Time to first token
     prompt_len: int = 0
+    server_token_stats: ServerTokenStats = field(
+        default_factory=ServerTokenStats
+    )
 
 
 @dataclass
@@ -540,7 +585,24 @@ async def _run_openai_stream_request(
 
                         data = json.loads(chunk)
 
-                        # Skip metadata chunks with no choices (e.g. usage-only chunks)
+                        # Parse usage from any chunk that reports it.
+                        usage = data.get("usage")
+                        if usage:
+                            details = usage.get("prompt_tokens_details")
+                            output.server_token_stats = ServerTokenStats(
+                                prompt_tokens=usage.get("prompt_tokens"),
+                                completion_tokens=usage.get(
+                                    "completion_tokens"
+                                ),
+                                total_tokens=usage.get("total_tokens"),
+                                cached_tokens=(
+                                    details.get("cached_tokens", 0)
+                                    if details
+                                    else 0
+                                ),
+                            )
+
+                        # Skip content processing for chunks with no choices.
                         if not data.get("choices"):
                             continue
 
@@ -667,6 +729,7 @@ class OpenAIChatCompletionsRequestDriver(RequestDriver):
             "model": request_func_input.model,
             "messages": messages_data,
             "stream": True,
+            "stream_options": {"include_usage": True},
             "ignore_eos": request_func_input.ignore_eos,
         }
 

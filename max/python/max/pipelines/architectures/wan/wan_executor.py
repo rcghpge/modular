@@ -241,11 +241,12 @@ class WanExecutor(
         )
 
         # Compute RoPE for the latent resolution.
-        rope_cos, rope_sin = self.transformer.compute_rope(
-            num_frames=int(latents.shape[2]) if latents.ndim == 5 else 1,
-            height=int(latents.shape[3]) if latents.ndim == 5 else 1,
-            width=int(latents.shape[4]) if latents.ndim == 5 else 1,
-        )
+        with Tracer("compute_rope"):
+            rope_cos, rope_sin = self.transformer.compute_rope(
+                num_frames=int(latents.shape[2]) if latents.ndim == 5 else 1,
+                height=int(latents.shape[3]) if latents.ndim == 5 else 1,
+                width=int(latents.shape[4]) if latents.ndim == 5 else 1,
+            )
 
         # Spatial shape carrier.
         p_t, p_h, p_w = self.transformer.config.patch_size
@@ -266,12 +267,39 @@ class WanExecutor(
             device=self._model_device,
         )
 
-        # Token buffers.
-        tokens = Buffer.from_dlpack(context.tokens.array)
-
-        negative_tokens: Buffer | None = None
-        if context.negative_tokens is not None:
-            negative_tokens = Buffer.from_dlpack(context.negative_tokens.array)
+        # Token buffers. When CFG will apply (guidance > 1.0, uncond
+        # available, not I2V), pre-concat [cond; uncond] along axis 0 so
+        # the executor can fuse the cond + uncond DiT forwards into a
+        # single B=2 pass without any per-call host-side concat. Tokens
+        # are int64 and tiny, so the host concat is essentially free.
+        cfg_will_batch = (
+            float(context.guidance_scale) > 1.0
+            and context.negative_tokens is not None
+            and context.input_image is None
+        )
+        if cfg_will_batch:
+            assert context.negative_tokens is not None
+            # ``context.{,negative_}tokens.array`` may be 1D ``[seq_len]``
+            # (single prompt). Promote to 2D before concatenating along
+            # the batch axis so the encoder sees ``[2, seq_len]`` not
+            # ``[2*seq_len]``.
+            cond_np = np.atleast_2d(np.from_dlpack(context.tokens.array))
+            uncond_np = np.atleast_2d(
+                np.from_dlpack(context.negative_tokens.array)
+            )
+            tokens = Buffer.from_numpy(
+                np.ascontiguousarray(
+                    np.concatenate([cond_np, uncond_np], axis=0)
+                )
+            )
+            negative_tokens: Buffer | None = None
+        else:
+            tokens = Buffer.from_dlpack(context.tokens.array)
+            negative_tokens = None
+            if context.negative_tokens is not None:
+                negative_tokens = Buffer.from_dlpack(
+                    context.negative_tokens.array
+                )
 
         # Optional fields.
         input_image: Buffer | None = None
@@ -332,9 +360,23 @@ class WanExecutor(
         device = self._model_device
 
         # Bulk device transfer.
-        inputs = inputs.to(device)
+        with Tracer("inputs_to_device"):
+            inputs = inputs.to(device)
 
         # 1. Encode prompts.
+        # ``prepare_inputs`` already decides whether to batch CFG: when it
+        # does, ``inputs.tokens`` arrives at B=2 ([cond; uncond]) and
+        # ``inputs.negative_tokens`` is ``None``. When it doesn't,
+        # ``inputs.tokens`` is B=1 and ``inputs.negative_tokens`` may be
+        # set for sequential CFG. So a single text-encoder call on
+        # ``inputs.tokens`` produces the right embedding shape for both
+        # paths.
+        cfg_batched = int(inputs.tokens.shape[0]) > 1
+        guidance_scale_val = self._buffer_to_scalar_f32(inputs.guidance_scale)
+        do_cfg = cfg_batched or (
+            guidance_scale_val > 1.0 and inputs.negative_tokens is not None
+        )
+
         # num_images_per_prompt includes the frame count for
         # pixel_generation's output count check; use 1 video per prompt
         # for text encoding.
@@ -350,17 +392,12 @@ class WanExecutor(
                 inputs.tokens,
                 num_videos_per_prompt=num_videos_per_prompt,
             )
-
             negative_prompt_embeds: Buffer | None = None
-            if inputs.negative_tokens is not None:
+            if not cfg_batched and inputs.negative_tokens is not None:
                 negative_prompt_embeds = self.text_encoder(
                     inputs.negative_tokens,
                     num_videos_per_prompt=num_videos_per_prompt,
                 )
-
-        # Determine CFG mode.
-        guidance_scale_val = self._buffer_to_scalar_f32(inputs.guidance_scale)
-        do_cfg = guidance_scale_val > 1.0 and negative_prompt_embeds is not None
 
         # 2. Prepare latents.
         latents = inputs.latents
@@ -441,29 +478,13 @@ class WanExecutor(
             step_state: WanUniPCState = (None, None, None)
 
             # High-noise phase (or full denoising if no MoE).
-            latents, step_state = self._run_denoising_phase(
-                latents=latents,
-                use_secondary_transformer=False,
-                prompt_embeds=prompt_embeds,
-                negative_prompt_embeds=negative_prompt_embeds,
-                rope_cos=inputs.rope_cos,
-                rope_sin=inputs.rope_sin,
-                batched_timesteps=batched_timesteps,
-                coeff_buffers=coeff_buffers,
-                do_cfg=do_cfg,
-                guidance_scale=guidance_scale_high,
-                step_range=range(boundary_step_idx),
-                desc="Denoising (high-noise)" if has_moe else "Denoising",
-                spatial_shape=inputs.spatial_shape,
-                step_state=step_state,
-                i2v_condition=i2v_condition,
+            high_phase_name = (
+                "denoising_phase_high_noise" if has_moe else "denoising_phase"
             )
-
-            # Low-noise phase (MoE only).
-            if has_moe and boundary_step_idx < num_steps:
-                latents, _ = self._run_denoising_phase(
+            with Tracer(high_phase_name):
+                latents, step_state = self._run_denoising_phase(
                     latents=latents,
-                    use_secondary_transformer=True,
+                    use_secondary_transformer=False,
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=negative_prompt_embeds,
                     rope_cos=inputs.rope_cos,
@@ -471,13 +492,34 @@ class WanExecutor(
                     batched_timesteps=batched_timesteps,
                     coeff_buffers=coeff_buffers,
                     do_cfg=do_cfg,
-                    guidance_scale=guidance_scale_low,
-                    step_range=range(boundary_step_idx, num_steps),
-                    desc="Denoising (low-noise)",
+                    guidance_scale=guidance_scale_high,
+                    step_range=range(boundary_step_idx),
+                    desc="Denoising (high-noise)" if has_moe else "Denoising",
                     spatial_shape=inputs.spatial_shape,
                     step_state=step_state,
                     i2v_condition=i2v_condition,
                 )
+
+            # Low-noise phase (MoE only).
+            if has_moe and boundary_step_idx < num_steps:
+                with Tracer("denoising_phase_low_noise"):
+                    latents, _ = self._run_denoising_phase(
+                        latents=latents,
+                        use_secondary_transformer=True,
+                        prompt_embeds=prompt_embeds,
+                        negative_prompt_embeds=negative_prompt_embeds,
+                        rope_cos=inputs.rope_cos,
+                        rope_sin=inputs.rope_sin,
+                        batched_timesteps=batched_timesteps,
+                        coeff_buffers=coeff_buffers,
+                        do_cfg=do_cfg,
+                        guidance_scale=guidance_scale_low,
+                        step_range=range(boundary_step_idx, num_steps),
+                        desc="Denoising (low-noise)",
+                        spatial_shape=inputs.spatial_shape,
+                        step_state=step_state,
+                        i2v_condition=i2v_condition,
+                    )
 
         # 6. Decode.
         with Tracer("decode_outputs"):
@@ -512,6 +554,12 @@ class WanExecutor(
         i2v_condition: Buffer | None = None,
     ) -> tuple[Buffer, WanUniPCState]:
         """Run a denoising phase (high-noise or low-noise)."""
+        # CFG batching: when ``execute()`` decides to fuse cond + uncond at
+        # the text-encoder level, ``prompt_embeds`` arrives here at B=2 and
+        # ``negative_prompt_embeds`` is ``None``. We then dispatch a single
+        # B=2 DiT forward per step instead of two B=1 forwards.
+        cfg_batched = do_cfg and int(prompt_embeds.shape[0]) > 1
+
         # Select transformer call.
         if use_secondary_transformer:
             transformer_call = self.transformer.call_secondary
@@ -536,38 +584,54 @@ class WanExecutor(
             with Tracer(f"{desc}:step_{i}"):
                 dit_timestep = batched_timesteps[i]
 
-                # Transformer forward — positive prompt.
+                # Transformer forward — cond + uncond in one B=2 pass when
+                # batched CFG applies, otherwise sequential B=1 calls.
                 with Tracer("transformer"):
-                    noise_pred_cond = transformer_call(
-                        latents,
-                        dit_timestep,
-                        prompt_embeds,
-                        rope_cos,
-                        rope_sin,
-                        spatial_shape,
-                        i2v_condition=i2v_condition,
-                    )
-
-                    # Negative prompt (CFG) or zero buffer (no CFG).
-                    if do_cfg and negative_prompt_embeds is not None:
-                        noise_pred_uncond = transformer_call(
+                    if cfg_batched:
+                        noise_pred_cond, noise_pred_uncond = (
+                            self.transformer.call_cfg_batched(
+                                latents,
+                                dit_timestep,
+                                prompt_embeds,
+                                rope_cos,
+                                rope_sin,
+                                spatial_shape,
+                                use_secondary_transformer=use_secondary_transformer,
+                            )
+                        )
+                    else:
+                        noise_pred_cond = transformer_call(
                             latents,
                             dit_timestep,
-                            negative_prompt_embeds,
+                            prompt_embeds,
                             rope_cos,
                             rope_sin,
                             spatial_shape,
                             i2v_condition=i2v_condition,
                         )
-                    else:
-                        if noise_uncond_buf is None:
-                            shape = tuple(int(d) for d in noise_pred_cond.shape)
-                            noise_uncond_buf = self._make_zero_buffer(
-                                shape,
-                                dtype=self._model_dtype,
-                                device=latents.device,
+
+                        # Negative prompt (CFG) or zero buffer (no CFG).
+                        if do_cfg and negative_prompt_embeds is not None:
+                            noise_pred_uncond = transformer_call(
+                                latents,
+                                dit_timestep,
+                                negative_prompt_embeds,
+                                rope_cos,
+                                rope_sin,
+                                spatial_shape,
+                                i2v_condition=i2v_condition,
                             )
-                        noise_pred_uncond = noise_uncond_buf
+                        else:
+                            if noise_uncond_buf is None:
+                                shape = tuple(
+                                    int(d) for d in noise_pred_cond.shape
+                                )
+                                noise_uncond_buf = self._make_zero_buffer(
+                                    shape,
+                                    dtype=self._model_dtype,
+                                    device=latents.device,
+                                )
+                            noise_pred_uncond = noise_uncond_buf
 
                 # Fused guidance + UniPC scheduler step.
                 with Tracer("guided_schedule"):
@@ -774,15 +838,14 @@ class WanExecutor(
     def _make_zero_buffer(
         shape: tuple[int, ...], *, dtype: DType, device: Device
     ) -> Buffer:
-        """Create a zero-filled buffer with the given shape and dtype."""
-        if dtype == DType.bfloat16:
-            return (
-                Buffer.from_numpy(np.zeros(shape, dtype=np.uint16))
-                .to(device)
-                .view(dtype=DType.bfloat16, shape=list(shape))
-            )
-        np_dtype = np.float32
-        return Buffer.from_numpy(np.zeros(shape, dtype=np_dtype)).to(device)
+        """Create a zero-filled buffer allocated directly on ``device``.
+
+        Uses :meth:`Buffer.zeros` so no host memory is allocated and no
+        ``cuMemcpyHtoDAsync`` is issued. The previous
+        ``Buffer.from_numpy(np.zeros(...)).to(device)`` implementation
+        blocked the compute stream for ~290 ms on latent-sized buffers.
+        """
+        return Buffer.zeros(shape, dtype, device=device)
 
     @staticmethod
     def _buffer_to_scalar_f32(buf: Buffer) -> float:

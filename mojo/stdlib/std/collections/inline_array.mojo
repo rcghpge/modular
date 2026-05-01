@@ -37,8 +37,8 @@ from std.builtin.device_passable import DevicePassable
 from std.builtin.rebind import downcast
 from std.builtin.constrained import _constrained_conforms_to
 from std.collections import check_bounds
-from std.compile import get_type_name
 import std.format._utils as fmt
+from std.reflection import reflect
 from std.hashlib.hasher import Hasher
 from std.memory import UnsafeMaybeUninit, uninit_move_n
 
@@ -161,7 +161,6 @@ struct _InlineArrayIterOwned[T: Copyable, size: Int](
             src=take._array.unsafe_ptr() + take._index,
             count=Self.size - take._index,
         )
-        __mlir_op.`lit.ownership.mark_destroyed`(__get_mvalue_as_litref(take))
 
     @always_inline
     def __del__(deinit self):
@@ -187,7 +186,7 @@ struct _InlineArrayIterOwned[T: Copyable, size: Int](
 
         # Mark the array as destroyed so InlineArray.__del__ doesn't
         # double-destroy the elements we already handled.
-        __mlir_op.`lit.ownership.mark_destroyed`(__get_mvalue_as_litref(array))
+        std.memory.forget_deinit(array^)
 
     @always_inline
     def __iter__(var self) -> Self.IteratorOwnedType:
@@ -298,7 +297,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
         """
         return String(
             "InlineArray[",
-            get_type_name[Self.ElementType](),
+            reflect[Self.ElementType]().name(),
             ", ",
             Self.size,
             "]",
@@ -643,9 +642,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
             True if all elements are equal, False otherwise.
         """
         comptime for i in range(Self.size):
-            if trait_downcast[Equatable](self.unsafe_get(i)) != trait_downcast[
-                Equatable
-            ](other.unsafe_get(i)):
+            if self.unsafe_get(i) != other.unsafe_get(i):
                 return False
         return True
 
@@ -662,9 +659,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
             True if any elements are not equal, False otherwise.
         """
         comptime for i in range(Self.size):
-            if trait_downcast[Equatable](self.unsafe_get(i)) != trait_downcast[
-                Equatable
-            ](other.unsafe_get(i)):
+            if self.unsafe_get(i) != other.unsafe_get(i):
                 return True
         return False
 
@@ -680,7 +675,7 @@ struct InlineArray[ElementType: Copyable, size: Int](
             hasher: The hasher instance.
         """
         comptime for i in range(Self.size):
-            trait_downcast[Hashable](self.unsafe_get(i)).__hash__(hasher)
+            self.unsafe_get(i).__hash__(hasher)
 
     # ===------------------------------------------------------------------===#
     # Methods
@@ -785,9 +780,8 @@ struct InlineArray[ElementType: Copyable, size: Int](
             element for equality with the given value. The element type must
             implement the `Equatable` trait to support equality comparison.
         """
-        ref rhs = trait_downcast[Equatable](value)
         comptime for i in range(Self.size):
-            if trait_downcast[Equatable](self[i]) == rhs:
+            if self[i] == value:
                 return True
         return False
 

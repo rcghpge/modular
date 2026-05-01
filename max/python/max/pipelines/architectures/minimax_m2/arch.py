@@ -29,11 +29,13 @@ minimax_m2_arch = SupportedArchitecture(
     example_repo_ids=[
         "MiniMaxAI/MiniMax-M2.7",
         "MiniMaxAI/MiniMax-M2.5",
+        "lukealonso/MiniMax-M2.7-NVFP4",
     ],
     default_weights_format=WeightsFormat.safetensors,
     default_encoding="float8_e4m3fn",
     supported_encodings={
         "float8_e4m3fn",
+        "float4_e2m1fnx2",
     },
     pipeline_model=MiniMaxM2Model,
     tokenizer=TextTokenizer,

@@ -233,6 +233,40 @@ def _Model_debug_verify_replay(
     self._debug_verify_replay(normalized_keys, list(inputs))
 
 
+def _Model_release_captured_graph(
+    self: Model, graph_keys: int | Sequence[int]
+) -> None:
+    """Releases a previously captured device graph and its working memory.
+
+    Drops the runtime-side reference for the given key(s); the underlying
+    device graph and its captured-time scratch buffers are freed once any
+    in-flight replay completes. Releasing a key that was never captured is
+    a no-op.
+
+    Note that the caller is still responsible for dropping any output
+    :class:`Buffer` handles returned by the corresponding
+    :meth:`Model.capture` call. Those buffers reference device memory that
+    the runtime cannot reclaim while Python references remain.
+
+    Args:
+        self: The model whose captured graph should be released.
+        graph_keys: Caller-provided graph key or per-device keys identifying
+            captured graphs to release.
+
+    Raises:
+        TypeError: If ``graph_keys`` is neither an int nor a sequence of ints.
+        ValueError: If any key in ``graph_keys`` is out of uint64 range.
+
+    Example:
+        >>> outputs = model.capture(42, input_tensor)
+        >>> model.replay(42, input_tensor)
+        >>> del outputs  # Drop Python-side handles first.
+        >>> model.release_captured_graph(42)
+    """
+    normalized_keys = _normalize_graph_keys(graph_keys)
+    self._release_captured_graph(normalized_keys)
+
+
 Model.execute = _Model_execute  # type: ignore[method-assign]
 Model.__call__ = _Model_call  # type: ignore[method-assign]
 Model.__repr__ = _Model_repr  # type: ignore[method-assign]
@@ -240,6 +274,7 @@ Model.signature = property(_Model_signature)  # type: ignore[assignment]
 Model.capture = _Model_capture  # type: ignore[method-assign]
 Model.replay = _Model_replay  # type: ignore[method-assign]
 Model.debug_verify_replay = _Model_debug_verify_replay  # type: ignore[method-assign]
+Model.release_captured_graph = _Model_release_captured_graph  # type: ignore[method-assign]
 
 
 def _TensorSpec_str(self: TensorSpec) -> str:
@@ -403,21 +438,14 @@ class InferenceSession:
             # Ignore errors if SIGUSR2 is already registered or unavailable
             pass
 
-        # Prefer the new max-debug.op-log-level config (covers MODULAR_MAX_DEBUG_OP_LOG_LEVEL
-        # env var, modular.cfg, and InferenceSession.debug.op_log_level Python setter).
-        # Fall back to the legacy MOJO_LOGGING_LEVEL env var.  The legacy
-        # fallback will be removed in a follow-up PR.
-        if log_level := (
-            _InferenceSession.debug.op_log_level
-            or os.getenv("MOJO_LOGGING_LEVEL")
-        ):
+        # Read the op log level from the max-debug.op-log-level config key
+        # (covers MODULAR_MAX_DEBUG_OP_LOG_LEVEL env var, modular.cfg, and
+        # InferenceSession.debug.op_log_level Python setter).
+        if log_level := _InferenceSession.debug.op_log_level:
             self.set_mojo_log_level(log_level)
 
-        # Same pattern for assert level.
-        if assert_level_str := (
-            _InferenceSession.debug.assert_level
-            or os.getenv("MOJO_ASSERT_LEVEL")
-        ):
+        # Read the assert level from the max-debug.assert-level Config key.
+        if assert_level_str := _InferenceSession.debug.assert_level:
             try:
                 assert_level = AssertLevel[assert_level_str.upper()]
             except KeyError as e:
@@ -436,16 +464,9 @@ class InferenceSession:
         if val := os.getenv("ENABLE_PER_TENSOR_FP8_QUANTIZE"):
             self.enable_per_tensor_fp8_quantize(val)
 
-        # Prefer the new max-debug.uninitialized-read-check config; fall
-        # back to the legacy MODULAR_MAX_UNINITIALIZED_READ_CHECK env var.
-        # The legacy fallback will be removed in a follow-up PR.
-        if (
-            _InferenceSession.debug.uninitialized_read_check
-            or os.environ.get(
-                "MODULAR_MAX_UNINITIALIZED_READ_CHECK", ""
-            ).lower()
-            == "true"
-        ):
+        # Read the uninit-read check from the max-debug.uninitialized-read-check
+        # Config key.
+        if _InferenceSession.debug.uninitialized_read_check:
             # Enable debug allocator poison
             existing = os.environ.get("MODULAR_DEBUG_DEVICE_ALLOCATOR", "")
             if existing:
@@ -595,8 +616,10 @@ class InferenceSession:
                         "Failed to compile the model. Please file an issue, "
                         "all models should be correct by construction and "
                         "this error should have been caught during construction.\n"
-                        "For more detailed failure information run with the "
-                        "environment variable `MODULAR_MAX_DEBUG=True`."
+                        "For more detailed failure information enable the "
+                        "`max-debug.source-tracebacks` config key (for example, "
+                        "`Graph.debug.source_tracebacks = True` or "
+                        "`MODULAR_DEBUG=source-tracebacks`)."
                     ) from e
         else:
             raise RuntimeError("The model is not a valid path or module.")

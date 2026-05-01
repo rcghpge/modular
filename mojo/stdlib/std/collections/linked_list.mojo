@@ -94,7 +94,7 @@ struct Node[
         Args:
             writer: The writer to write the value to.
         """
-        writer.write(trait_downcast[Writable](self.value))
+        writer.write(self.value)
 
 
 def _make_node[
@@ -630,12 +630,10 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
         Notes:
             Time Complexity: O(n) in len(self) compares.
         """
-        ref rhs = trait_downcast[Equatable](elem)
         var current = self._head
         var count = 0
         while current:
-            ref lhs = trait_downcast[Equatable](current.value()[].value)
-            if lhs == rhs:
+            if current.value()[].value == elem:
                 count += 1
 
             current = current.value()[].next()
@@ -656,11 +654,9 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
         Notes:
             Time Complexity: O(n) in len(self) compares.
         """
-        ref rhs = trait_downcast[Equatable](value)
         var current = self._head
         while current:
-            ref lhs = trait_downcast[Equatable](current.value()[].value)
-            if lhs == rhs:
+            if current.value()[].value == value:
                 return True
             current = current.value()[].next()
 
@@ -688,9 +684,7 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
         var other_cursor = other._head
 
         while self_cursor:
-            ref lhs = trait_downcast[Equatable](self_cursor.value()[].value)
-            ref rhs = trait_downcast[Equatable](other_cursor.value()[].value)
-            if lhs != rhs:
+            if self_cursor.value()[].value != other_cursor.value()[].value:
                 return False
 
             self_cursor = self_cursor.value()[].next()
@@ -708,9 +702,26 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
         """
         var curr = self._head
         while curr:
-            ref elt = trait_downcast[Hashable](curr.value()[].value)
-            elt.__hash__(hasher)
+            curr.value()[].value.__hash__(hasher)
             curr = curr.value()[].next()
+
+    @always_inline
+    def get_nth[I: Indexer](ref self, idx: I) -> ref[self] Self.ElementType:
+        """Get the element at the specified index.
+
+        Parameters:
+            I: The type of index to use.
+
+        Args:
+            idx: The index of the element to get.
+
+        Returns:
+            The element at the specified index.
+
+        Notes:
+            Time Complexity: O(n/2) in len(self).
+        """
+        return self._get_node_ptr(idx).value()[].value
 
     @always_inline
     def _get_node_ptr[I: Indexer, //](ref self, idx: I) -> Self._NodePointer:
@@ -729,7 +740,7 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
             This method optimizes traversal by starting from either the head or
             tail depending on which is closer to the target index.
 
-            Time Complexity: O(n) in len(self).
+            Time Complexity: O(n/2) in len(self).
         """
         var i = index(idx)
         var l = len(self)
@@ -745,25 +756,6 @@ struct LinkedList[ElementType: Copyable & ImplicitlyDestructible](
             for _ in range(l - i - 1):
                 curr = curr.value()[].prev()
             return curr
-
-    # TODO(MSTDL-2576): remove this method to avoid accidentally quadratic for-loops
-    @always_inline
-    def __getitem__[I: Indexer](ref self, idx: I) -> ref[self] Self.ElementType:
-        """Get the element at the specified index.
-
-        Parameters:
-            I: The type of index to use.
-
-        Args:
-            idx: The index of the element to get.
-
-        Returns:
-            The element at the specified index.
-
-        Notes:
-            Time Complexity: O(n) in len(self).
-        """
-        return self._get_node_ptr(idx).value()[].value
 
     def __len__(self) -> Int:
         """Get the number of elements in the list.

@@ -33,7 +33,27 @@ from std.collections.string._grapheme_break_lookups import (
     _INCB_RANGE_STARTS,
     _INCB_RANGE_VALUES,
 )
+from std.collections.string._utf8 import _is_utf8_continuation_byte
 from std.memory import Span
+
+
+# ===----------------------------------------------------------------------=== #
+# ASCII fast-path helpers
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+def _is_safe_ascii_for_grapheme(b: Byte) -> Bool:
+    """Return `True` if byte `b` is in the safe-ASCII range for grapheme
+    iteration.
+
+    Safe-ASCII bytes (U+0020..U+007E, printable ASCII excluding DEL) all
+    have `GBP_OTHER`. A safe-ASCII byte is always its own grapheme
+    cluster when the previous codepoint's GBP is not `PREPEND` and the
+    next codepoint (if any) is also safe-ASCII — GB9/GB9a/GB9b only
+    trigger with non-ASCII GBPs.
+    """
+    return b >= 0x20 and b <= 0x7E
 
 
 # ===----------------------------------------------------------------------=== #
@@ -196,6 +216,22 @@ struct _GraphemeBreakState(ImplicitlyCopyable):
 
 
 @always_inline
+def _reset_grapheme_state_to_other(mut state: _GraphemeBreakState):
+    """Mutate `state` to the configuration after consuming an `Other`
+    codepoint.
+
+    Shared by the ASCII fast paths. After consuming a safe-ASCII byte,
+    `prev_gbp` is `Other`, there is no in-progress RI/ZWJ/InCB sequence,
+    and the state is ready to decide the next grapheme boundary.
+    """
+    state.prev_gbp = GBP_OTHER
+    state.ri_count_is_odd = False
+    state.in_ext_pict_seq = False
+    state.in_incb_conjunct = False
+    state.seen_incb_linker = False
+
+
+@always_inline
 def _is_grapheme_break(mut state: _GraphemeBreakState, cp: UInt32) -> Bool:
     """Determine if there is a grapheme cluster boundary before `cp`.
 
@@ -319,3 +355,95 @@ def _is_grapheme_break(mut state: _GraphemeBreakState, cp: UInt32) -> Bool:
 
     # GB999: Otherwise, break everywhere.
     return True
+
+
+# ===----------------------------------------------------------------------=== #
+# Reverse-scan helpers
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+def _decode_previous_codepoint(
+    span: Span[mut=False, Byte, ...], end: Int
+) -> Tuple[UInt32, Int]:
+    """Decode the codepoint whose last byte is at `end - 1`.
+
+    Walks backward from `end - 1` over continuation bytes to find the
+    codepoint's lead byte, then decodes it forward.
+
+    Args:
+        span: The byte span containing valid UTF-8.
+        end: One past the last byte of the codepoint to decode. Must be
+            in `(0, len(span)]`.
+
+    Returns:
+        A tuple `(codepoint_value, byte_length)` for the decoded codepoint.
+    """
+    var pos = end - 1
+    while pos > 0 and _is_utf8_continuation_byte(span[pos]):
+        pos -= 1
+    var byte_len = end - pos
+    var cp, _ = Codepoint.unsafe_decode_utf8_codepoint(span[pos:end])
+    return (cp.to_u32(), byte_len)
+
+
+def _find_safe_grapheme_start(
+    span: Span[mut=False, Byte, ...], end: Int
+) -> Int:
+    """Find a byte offset `<= end` that is a guaranteed grapheme boundary.
+
+    Used by reverse grapheme iteration: given the end of a range, walk
+    backward until we find a position where the UAX #29 state machine can
+    safely restart and produce the same grapheme boundaries it would from
+    a full-text forward scan.
+
+    A position `p` is a guaranteed boundary when either:
+      - `p == 0` (start-of-text, GB1).
+      - The codepoint at `p` has GBP ∈ {Control, CR, LF} (GB5), except the
+        CR × LF case (GB3).
+      - The codepoint immediately before `p` has GBP ∈ {Control, CR, LF}
+        (GB4), again excluding CR × LF.
+
+    In pathological inputs (e.g., a long run with no Control/CR/LF), this
+    falls back to `0`.
+
+    Args:
+        span: The byte span, valid UTF-8.
+        end: The byte offset to back up from. Must be in `[0, len(span)]`.
+
+    Returns:
+        A byte offset `safe` with `0 <= safe <= end` that is a guaranteed
+        grapheme-cluster boundary in `span`.
+    """
+    var safe = end
+    var cur_gbp = GBP_OTHER
+    var has_cur = False
+    while safe > 0:
+        var cp: UInt32
+        var n: Int
+        cp, n = _decode_previous_codepoint(span, safe)
+        var prev_gbp = _gbp_lookup(cp)
+        var candidate = safe - n
+
+        # A boundary exists between `prev_gbp` (the codepoint just before
+        # `safe`, i.e. at byte offset `candidate`) and `cur_gbp` (the
+        # codepoint at byte offset `safe`, if we've already seen one) iff
+        # either gbp is Control/CR/LF and we're not in the CR × LF
+        # no-break case.
+        if has_cur:
+            var is_crlf = prev_gbp == GBP_CR and cur_gbp == GBP_LF
+            if not is_crlf and (
+                prev_gbp == GBP_CONTROL
+                or prev_gbp == GBP_CR
+                or prev_gbp == GBP_LF
+                or cur_gbp == GBP_CONTROL
+                or cur_gbp == GBP_CR
+                or cur_gbp == GBP_LF
+            ):
+                return safe
+
+        cur_gbp = prev_gbp
+        has_cur = True
+        safe = candidate
+
+    return 0
