@@ -47,6 +47,19 @@ struct RewriteParamExprTypes : public RewritePattern {
   /// any shapes with unknown dimension (e.g. `?`).
   bool collectComplexParams(DeviceAwareRewriter &rewriter, Operation *op,
                             Type ty) const {
+    // Bundle types are containers of tensor types; their element shapes can
+    // carry `KGEN::ParamOperatorAttr` dims just like top-level tensor types.
+    // Recurse so the same `kgen.param.declare` aliases get emitted, and the
+    // subsequent `recursivelyReplaceElementsIn` rewrites the bundle's element
+    // types consistently with their consumers.
+    if (auto bundleTy = dyn_cast<MO::BundleType>(ty)) {
+      bool found = false;
+      for (Type elemTy : bundleTy.getElementTypes())
+        if (collectComplexParams(rewriter, op, elemTy))
+          found = true;
+      return found;
+    }
+
     auto graphOp = op->getParentOfType<GraphOp>();
 
     bool found = false;
@@ -93,17 +106,12 @@ struct RewriteParamExprTypes : public RewritePattern {
 
     // Don't rewrite individual ops inside mo.parallel bodies -- the body
     // must remain kernel-only (no rebinds).  The parallel op itself is
-    // rewritten as a whole.
+    // rewritten as a whole, and
+    // `AttrTypeReplacer::recursivelyReplaceElementsIn` walks the parallel op's
+    // region to keep block-arg and body-op stored types consistent with the
+    // rewritten bundle element types.
     if (op->getParentOfType<MO::ParallelOp>())
       return origRewriter.notifyMatchFailure(op, "skip parallel body ops");
-
-    // Skip structural bundle/unbundle grouping ops.  Their types are derived
-    // from the individual tensor operands/results; rewriting them separately
-    // would change BundleType shapes without updating the consuming parallel
-    // op's block argument types (which are not TensorType and thus wouldn't
-    // get output rebinds).
-    if (isa<MO::TensorBundleOp, MO::TensorUnbundleOp>(op))
-      return origRewriter.notifyMatchFailure(op, "skip bundle/unbundle ops");
 
     DeviceAwareRewriter rewriter(op, origRewriter);
 
@@ -111,10 +119,20 @@ struct RewriteParamExprTypes : public RewritePattern {
     bool containsComplexExprs = false;
     for (auto [operand, ty] :
          llvm::zip(op->getOperands(), op->getOperandTypes())) {
-      if (collectComplexParams(rewriter, op, ty)) {
-        rewriteInputs.insert(operand);
+      bool foundComplex = collectComplexParams(rewriter, op, ty);
+      if (foundComplex && isa<MO::TensorType>(ty)) {
+        // Tensor operand: schedule an input rebind from the original
+        // operator-attr type to the alias type, and trigger overall
+        // pattern application.
         containsComplexExprs = true;
+        rewriteInputs.insert(operand);
       }
+      // For `MO::BundleType` operands no further code is needed: the call
+      // to `collectComplexParams` above has already recursed into the
+      // bundle's element tensor types and declared the alias
+      // `kgen.param.declare` ops; `AttrTypeReplacer` later rewrites the
+      // bundle's element types in place. We don't insert an input rebind
+      // (`MO::RebindOp` is tensor-only).
     }
     for (Type resType : op->getResultTypes())
       if (collectComplexParams(rewriter, op, resType))

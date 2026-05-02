@@ -166,3 +166,34 @@ mo.graph @call_with_expr_result<N, M, S>(%arg0: !mo.tensor<[S], f32>) -> !mo.ten
   %out = mo.rebind(%0) {message = ""} : !mo.tensor<[add(N, M)], f32> -> !mo.tensor<[S], f32>
   mo.output %out : !mo.tensor<[S], f32>
 }
+
+// Regression test for mo.parallel with parameter-expression dims in
+// `MO::BundleType` element types.
+
+// CHECK-LABEL: mo.graph @parallel_bundle_param_expr
+mo.graph @parallel_bundle_param_expr<D0>(
+    %arg0: !mo.tensor<[D0, 3], f32>,
+    %arg1: !mo.tensor<[D0, 3], f32>)
+    -> (!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>) {
+  // CHECK-DAG: kgen.param.declare [[ALIAS_PARALLEL:[a-zA-Z0-9_]+]]: si64 = <div(D0, 2)>
+  %r0 = mo.rebind(%arg0) : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[div(D0, 2), 3], f32>
+  %r1 = mo.rebind(%arg1) : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[div(D0, 2), 3], f32>
+  // CHECK-DAG: mo.tensor.bundle{{.*}} -> !mo.bundle<[!mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>, !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>]>
+  %bundle = mo.tensor.bundle(%r0, %r1)
+      : (!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>)
+      -> (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>]>)
+  // CHECK-DAG: mo.parallel {{.*}} : !mo.bundle<[!mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>, !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>]>
+  %res_bundle = mo.parallel (%x) in
+      (%bundle : !mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>]>)
+      -> (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>]>) {
+    // CHECK-DAG: mo.relu({{.*}}) : !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>
+    %1 = mo.relu(%x) : !mo.tensor<[div(D0, 2), 3], f32>
+    mo.yield %1 : !mo.tensor<[div(D0, 2), 3], f32>
+  }
+  // CHECK-DAG: mo.tensor.unbundle{{.*}} -> (!mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>, !mo.tensor<[[[ALIAS_PARALLEL]], 3], f32>)
+  %res_0, %res_1 = mo.tensor.unbundle(%res_bundle)
+      : (!mo.bundle<[!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>]>)
+      -> (!mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>)
+  mo.output %res_0, %res_1
+      : !mo.tensor<[div(D0, 2), 3], f32>, !mo.tensor<[div(D0, 2), 3], f32>
+}
