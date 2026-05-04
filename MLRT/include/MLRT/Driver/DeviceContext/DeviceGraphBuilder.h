@@ -72,6 +72,9 @@ class DeviceGraphBuilder : public ReferenceCounted<DeviceGraphBuilder> {
 public:
   virtual ~DeviceGraphBuilder();
 
+  /// Returns the DeviceContext that owns this graph builder.
+  virtual DeviceContext &context() const = 0;
+
   /// Add a kernel-dispatch node to the graph.
   ///
   /// \param func   The device function (kernel) to launch.
@@ -82,6 +85,58 @@ public:
   virtual ErrorOr<DeviceGraphNode>
   addFunctionDirect(const DeviceFunction &func,
                     const DeviceFunctionLaunchParams &params) = 0;
+
+  // Memcpy nodes — argument shapes mirror DeviceContext::enqueueCopy*.
+
+  /// Add a host-to-device memcpy node.
+  virtual ErrorOr<DeviceGraphNode>
+  addCopyHostToDevice(void *dst, const void *src, size_t byteSize) = 0;
+
+  ErrorOr<DeviceGraphNode> addCopyHostToDevice(const DeviceBuffer &dst,
+                                               const void *src) {
+    if (dst.context().device().api() != context().device().api())
+      RETURN_ERROR("API mismatch between buffer and context");
+    return addCopyHostToDevice(dst.ptr(), src, dst.byteSize());
+  }
+
+  /// Add a device-to-host memcpy node.
+  virtual ErrorOr<DeviceGraphNode>
+  addCopyDeviceToHost(void *dst, const void *src, size_t byteSize) = 0;
+
+  ErrorOr<DeviceGraphNode> addCopyDeviceToHost(void *dst,
+                                               const DeviceBuffer &src) {
+    if (src.context().device().api() != context().device().api())
+      RETURN_ERROR("API mismatch between buffer and context");
+    return addCopyDeviceToHost(dst, src.ptr(), src.byteSize());
+  }
+
+  /// Add a device-to-device memcpy node. Both buffers must belong to a context
+  /// using the same API as this builder; cross-context copies are not
+  /// supported in graphs.
+  ErrorOr<DeviceGraphNode> addCopyDeviceToDevice(DeviceBuffer &dst,
+                                                 DeviceBuffer &src) {
+    return addCopyDeviceToDevice(dst, src, 0, src.byteSize());
+  }
+
+  virtual ErrorOr<DeviceGraphNode>
+  addCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,
+                        size_t srcByteOffset, size_t srcByteSize) = 0;
+
+  // Memset nodes — argument shapes mirror DeviceContext::enqueueSetMemory.
+
+  /// Add a memset node. \p valSize must be 1, 2, 4, or 8 bytes; for 8-byte
+  /// patterns the high and low halves must match (the streaming form of
+  /// `enqueueSetMemory` issues two ops in that case, which cannot be
+  /// represented as a single graph node).
+  virtual ErrorOr<DeviceGraphNode>
+  addSetMemory(void *dst, size_t byteSize, uint64_t val, size_t valSize) = 0;
+
+  ErrorOr<DeviceGraphNode> addSetMemory(const DeviceBuffer &dst, uint64_t val,
+                                        size_t valSize) {
+    if (dst.context().device().api() != context().device().api())
+      RETURN_ERROR("API mismatch between buffer and context");
+    return addSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
+  }
 
   /// Instantiate the currently constructed device graph into its executable
   /// format. Can be subsequently replayed multiple times.

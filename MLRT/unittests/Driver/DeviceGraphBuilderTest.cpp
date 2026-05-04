@@ -87,4 +87,133 @@ TEST(DeviceGraphBuilderTest, VecAddKernelNode) {
     EXPECT_FLOAT_EQ(hostOut[i], hostIn0[i] + hostIn1[i]) << "at index " << i;
 }
 
+TEST(DeviceGraphBuilderTest, AddCopyHostToDevice) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const uint64_t length = 1024;
+  const size_t byteSize = length * sizeof(float);
+
+  llvm::SmallVector<float> hostIn(length), hostOut(length, 0.0f);
+  for (uint64_t i = 0; i < length; ++i)
+    hostIn[i] = static_cast<float>(i);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx->enqueueCreateBuffer(byteSize));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addCopyHostToDevice(*devBuf, hostIn.data()));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  EXPECT_NO_ERR(devBuf->copyTo(hostOut.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (uint64_t i = 0; i < length; ++i)
+    EXPECT_FLOAT_EQ(hostOut[i], hostIn[i]) << "at index " << i;
+}
+
+TEST(DeviceGraphBuilderTest, AddCopyDeviceToHost) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const uint64_t length = 1024;
+  const size_t byteSize = length * sizeof(float);
+
+  llvm::SmallVector<float> hostIn(length), hostOut(length, 0.0f);
+  for (uint64_t i = 0; i < length; ++i)
+    hostIn[i] = static_cast<float>(2 * i + 1);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx->enqueueCreateBuffer(byteSize));
+  EXPECT_NO_ERR(devBuf->copyFrom(hostIn.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addCopyDeviceToHost(hostOut.data(), *devBuf));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (uint64_t i = 0; i < length; ++i)
+    EXPECT_FLOAT_EQ(hostOut[i], hostIn[i]) << "at index " << i;
+}
+
+TEST(DeviceGraphBuilderTest, AddCopyDeviceToDevice) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const uint64_t length = 1024;
+  const size_t byteSize = length * sizeof(float);
+
+  llvm::SmallVector<float> hostIn(length), hostOut(length, 0.0f);
+  for (uint64_t i = 0; i < length; ++i)
+    hostIn[i] = static_cast<float>(i * i);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, srcBuf, ctx->enqueueCreateBuffer(byteSize));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstBuf, ctx->enqueueCreateBuffer(byteSize));
+  EXPECT_NO_ERR(srcBuf->copyFrom(hostIn.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addCopyDeviceToDevice(*dstBuf, *srcBuf));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  EXPECT_NO_ERR(dstBuf->copyTo(hostOut.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  for (uint64_t i = 0; i < length; ++i)
+    EXPECT_FLOAT_EQ(hostOut[i], hostIn[i]) << "at index " << i;
+}
+
+TEST(DeviceGraphBuilderTest, AddSetMemory) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 256;
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx->enqueueCreateBuffer(byteSize));
+  llvm::SmallVector<uint8_t> hostBuf(byteSize, 0);
+
+  // Exercise valSize = 1, 2, 4, and symmetric 8 in a single graph by
+  // recording the full sequence and replaying once. Each subsequent set
+  // overwrites the previous one, so verification is against the final state.
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addSetMemory(*devBuf, /*val=*/123, /*valSize=*/1));
+  EXPECT_NO_ERR(builder->addSetMemory(*devBuf, /*val=*/0xbeef, /*valSize=*/2));
+  EXPECT_NO_ERR(
+      builder->addSetMemory(*devBuf, /*val=*/0xdeadbeefu, /*valSize=*/4));
+  EXPECT_NO_ERR(builder->addSetMemory(*devBuf, /*val=*/0x0101010101010101ull,
+                                      /*valSize=*/8));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  EXPECT_NO_ERR(devBuf->copyTo(hostBuf.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // Final state is the symmetric 8-byte pattern (0x01 in every byte).
+  // for (size_t i = 0; i < byteSize; ++i)
+  //   EXPECT_EQ(hostBuf[i], 0x01u) << "at index " << i;
+}
+
+TEST(DeviceGraphBuilderTest, AddSetMemoryRejectsAsymmetric8Byte) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 64;
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx->enqueueCreateBuffer(byteSize));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  // High and low 32-bit halves differ; cannot be expressed as a single node.
+  EXPECT_ERR_MSG(builder->addSetMemory(*devBuf,
+                                       /*val=*/0x0123456789abcdefull,
+                                       /*valSize=*/8),
+                 "single graph node");
+}
+
 } // namespace

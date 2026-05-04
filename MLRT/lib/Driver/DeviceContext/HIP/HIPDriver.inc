@@ -55,6 +55,11 @@ HIP_FUNC(hipStreamIsCapturing, Result, hipStream_t, hipStreamCaptureStatus *)
 HIP_FUNC(hipGraphCreate, Result, hipGraph_t *, unsigned int)
 HIP_FUNC(hipGraphAddKernelNode, Result, hipGraphNode_t *, hipGraph_t,
          const hipGraphNode_t *, size_t, const hipKernelNodeParams *)
+HIP_FUNC(hipGraphAddMemcpyNode1D, Result, hipGraphNode_t *, hipGraph_t,
+         const hipGraphNode_t *, size_t, void *, const void *, size_t,
+         hipMemcpyKind)
+HIP_FUNC(hipGraphAddMemsetNode, Result, hipGraphNode_t *, hipGraph_t,
+         const hipGraphNode_t *, size_t, const hipMemsetParams *)
 
 HIP_FUNC(hipGraphInstantiate, Result, hipGraphExec_t *, hipGraph_t, hipGraphNode_t *,
           char *, size_t)

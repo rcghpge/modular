@@ -52,6 +52,8 @@ HIPDeviceGraphBuilder::create(HIPDeviceContext &ctx) {
   return HIPDeviceGraphBuilderRef::create(ctx, graph);
 }
 
+DeviceContext &HIPDeviceGraphBuilder::context() const { return *ctx_; }
+
 ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addFunctionDirect(
     const DeviceFunction &func, const DeviceFunctionLaunchParams &params) {
   DeviceContextScope scope(*ctx_);
@@ -71,6 +73,128 @@ ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addFunctionDirect(
   hipGraphNode_t node = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddKernelNode(
       &node, graph_, nullptr, 0, &nodeParams));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode>
+HIPDeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
+                                           size_t byteSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  hipGraphNode_t node = nullptr;
+  HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemcpyNode1D(
+      &node, graph_, nullptr, 0, dst, src, byteSize,
+      hipMemcpyKind::hipMemcpyHostToDevice));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode>
+HIPDeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
+                                           size_t byteSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  hipGraphNode_t node = nullptr;
+  HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemcpyNode1D(
+      &node, graph_, nullptr, 0, dst, src, byteSize,
+      hipMemcpyKind::hipMemcpyDeviceToHost));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addCopyDeviceToDevice(
+    DeviceBuffer &dst, DeviceBuffer &src, size_t srcByteOffset,
+    size_t srcByteSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  // Graph DtoD nodes only support same-context copies; reject peer copies.
+  if (HIPDeviceContext::verified_cast(&src.context()) != ctx_.getPointer() ||
+      HIPDeviceContext::verified_cast(&dst.context()) != ctx_.getPointer()) {
+    RETURN_ERROR("device-to-device graph copy requires src and dst buffers to "
+                 "share the builder's HIP context");
+  }
+  if (srcByteOffset + srcByteSize > src.byteSize()) {
+    RETURN_ERROR("source range exceeds source buffer size");
+  }
+  if (srcByteSize != dst.byteSize()) {
+    RETURN_ERROR("source and destination byte sizes must match");
+  }
+
+  void *srcPtr = static_cast<uint8_t *>(src.ptr()) + srcByteOffset;
+
+  hipGraphNode_t node = nullptr;
+  HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemcpyNode1D(
+      &node, graph_, nullptr, 0, dst.ptr(), srcPtr, srcByteSize,
+      hipMemcpyKind::hipMemcpyDeviceToDevice));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addSetMemory(void *dst,
+                                                             size_t byteSize,
+                                                             uint64_t val,
+                                                             size_t valSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  hipMemsetParams params = {};
+  params.dst = dst;
+  params.pitch = 0;
+  params.height = 1;
+
+  switch (valSize) {
+  case 1:
+    params.elementSize = 1;
+    params.value = static_cast<uint8_t>(val);
+    params.width = byteSize;
+    break;
+  case 2:
+    if ((byteSize & 1) != 0)
+      RETURN_ERROR("byteSize of buffer is misaligned");
+    params.elementSize = 2;
+    params.value = static_cast<uint16_t>(val);
+    params.width = byteSize >> 1;
+    break;
+  case 4:
+    if ((byteSize & 3) != 0)
+      RETURN_ERROR("byteSize of buffer is misaligned");
+    params.elementSize = 4;
+    params.value = static_cast<uint32_t>(val);
+    params.width = byteSize >> 2;
+    break;
+  case 8: {
+    if ((byteSize & 7) != 0)
+      RETURN_ERROR("byteSize of buffer is misaligned");
+    uint32_t hiBits = static_cast<uint32_t>(val >> 32);
+    uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
+    if (hiBits != loBits) {
+      RETURN_ERROR("8-byte memset with differing high/low halves cannot be "
+                   "expressed as a single graph node");
+    }
+    params.elementSize = 4;
+    params.value = loBits;
+    params.width = byteSize >> 2;
+    break;
+  }
+  default:
+    RETURN_ERROR("unsupported valSize");
+  }
+
+  hipGraphNode_t node = nullptr;
+  HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemsetNode(
+      &node, graph_, nullptr, 0, &params));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);

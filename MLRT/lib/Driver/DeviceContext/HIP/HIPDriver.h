@@ -120,6 +120,27 @@ using hipKernelNodeParams = struct hipKernelNodeParams_t {
   unsigned int sharedMemBytes; ///< Dynamic shared-memory size in bytes
 };
 
+/// Memcpy direction for hipGraphAddMemcpyNode1D.
+/// Layout matches hipMemcpyKind from hip_runtime_api.h.
+enum class hipMemcpyKind {
+  hipMemcpyHostToHost = 0,
+  hipMemcpyHostToDevice = 1,
+  hipMemcpyDeviceToHost = 2,
+  hipMemcpyDeviceToDevice = 3,
+  hipMemcpyDefault = 4,
+};
+
+/// Memset node parameters for hipGraphAddMemsetNode.
+/// Layout matches hipMemsetParams from hip_runtime_api.h.
+using hipMemsetParams = struct hipMemsetParams_t {
+  void *dst;
+  size_t elementSize;
+  size_t height;
+  size_t pitch;
+  unsigned int value;
+  size_t width;
+};
+
 // HSA Runtime types (for getting device architecture info).
 using hsaStatus_t = uint32_t;
 using hsaAgent_t = uint64_t;

@@ -35,9 +35,25 @@ public:
   /// Allocate a new empty hipGraph_t and return a builder for it.
   static ErrorOr<DeviceGraphBuilderRef> create(HIPDeviceContext &ctx);
 
+  DeviceContext &context() const override;
+
   ErrorOr<DeviceGraphNode>
   addFunctionDirect(const DeviceFunction &func,
                     const DeviceFunctionLaunchParams &params) override;
+
+  using DeviceGraphBuilder::addCopyHostToDevice;
+  ErrorOr<DeviceGraphNode> addCopyHostToDevice(void *dst, const void *src,
+                                               size_t byteSize) override;
+  using DeviceGraphBuilder::addCopyDeviceToHost;
+  ErrorOr<DeviceGraphNode> addCopyDeviceToHost(void *dst, const void *src,
+                                               size_t byteSize) override;
+  using DeviceGraphBuilder::addCopyDeviceToDevice;
+  ErrorOr<DeviceGraphNode> addCopyDeviceToDevice(DeviceBuffer &dst,
+                                                 DeviceBuffer &src,
+                                                 size_t srcByteOffset,
+                                                 size_t srcByteSize) override;
+  ErrorOr<DeviceGraphNode> addSetMemory(void *dst, size_t byteSize,
+                                        uint64_t val, size_t valSize) override;
 
   ErrorOr<DeviceGraphRef> instantiate() override;
 

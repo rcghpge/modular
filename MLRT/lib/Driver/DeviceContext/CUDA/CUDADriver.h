@@ -205,6 +205,49 @@ using CUmemorytype = enum CUmemorytype_enum {
   CU_MEMORYTYPE_UNIFIED = 0x04
 };
 
+using CUarray = struct CUarray_st *;
+
+/// Memcpy node parameters for cuGraphAddMemcpyNode.
+/// Layout matches CUDA_MEMCPY3D_v2 from the CUDA driver.
+struct CUDA_MEMCPY3D_v2 {
+  size_t srcXInBytes;
+  size_t srcY;
+  size_t srcZ;
+  size_t srcLOD;
+  CUmemorytype srcMemoryType;
+  const void *srcHost;
+  CUdeviceptr srcDevice;
+  CUarray srcArray;
+  void *reserved0;
+  size_t srcPitch;
+  size_t srcHeight;
+  size_t dstXInBytes;
+  size_t dstY;
+  size_t dstZ;
+  size_t dstLOD;
+  CUmemorytype dstMemoryType;
+  void *dstHost;
+  CUdeviceptr dstDevice;
+  CUarray dstArray;
+  void *reserved1;
+  size_t dstPitch;
+  size_t dstHeight;
+  size_t WidthInBytes;
+  size_t Height;
+  size_t Depth;
+};
+
+/// Memset node parameters for cuGraphAddMemsetNode.
+/// Layout matches CUDA_MEMSET_NODE_PARAMS from the CUDA driver.
+struct CUDA_MEMSET_NODE_PARAMS {
+  CUdeviceptr dst;
+  size_t pitch;
+  unsigned int value;
+  unsigned int elementSize;
+  size_t width;
+  size_t height;
+};
+
 using CUpointer_attribute = enum CUpointer_attribute_enum {
   CU_POINTER_ATTRIBUTE_CONTEXT = 1,
   CU_POINTER_ATTRIBUTE_MEMORY_TYPE = 2,

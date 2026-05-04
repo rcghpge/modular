@@ -53,6 +53,8 @@ CUDADeviceGraphBuilder::create(CUDADeviceContext &ctx) {
   return CUDADeviceGraphBuilderRef::create(ctx, graph);
 }
 
+DeviceContext &CUDADeviceGraphBuilder::context() const { return *ctx_; }
+
 ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
     const DeviceFunction &func, const DeviceFunctionLaunchParams &params) {
   DeviceContextScope scope(*ctx_);
@@ -76,6 +78,155 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
       &node, graph_, nullptr, 0, &nodeParams));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+namespace {
+// Build a 1D CUDA_MEMCPY3D_v2 covering \p byteSize bytes from \p src to \p dst
+// with the given memory-type tags. Caller fills in src/dst pointer fields.
+CUDA_MEMCPY3D_v2 make1DMemcpyParams(size_t byteSize) {
+  CUDA_MEMCPY3D_v2 params = {};
+  params.WidthInBytes = byteSize;
+  params.Height = 1;
+  params.Depth = 1;
+  return params;
+}
+} // namespace
+
+ErrorOr<DeviceGraphNode>
+CUDADeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
+                                            size_t byteSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  CUDA_MEMCPY3D_v2 params = make1DMemcpyParams(byteSize);
+  params.srcMemoryType = CU_MEMORYTYPE_HOST;
+  params.srcHost = src;
+  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.dstDevice = dst;
+
+  CUgraphNode node = nullptr;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
+      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode>
+CUDADeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
+                                            size_t byteSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  CUDA_MEMCPY3D_v2 params = make1DMemcpyParams(byteSize);
+  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.srcDevice = const_cast<void *>(src);
+  params.dstMemoryType = CU_MEMORYTYPE_HOST;
+  params.dstHost = dst;
+
+  CUgraphNode node = nullptr;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
+      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToDevice(
+    DeviceBuffer &dst, DeviceBuffer &src, size_t srcByteOffset,
+    size_t srcByteSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  // Graph DtoD nodes only support same-context copies; reject peer copies.
+  const auto &srcCtx = CUDADeviceContext::cast(src.context());
+  const auto &dstCtx = CUDADeviceContext::cast(dst.context());
+  if (srcCtx.cudaContext() != ctx_->cudaContext() ||
+      dstCtx.cudaContext() != ctx_->cudaContext()) {
+    RETURN_ERROR("device-to-device graph copy requires src and dst buffers to "
+                 "share the builder's CUDA context");
+  }
+  if (srcByteOffset + srcByteSize > src.byteSize()) {
+    RETURN_ERROR("source range exceeds source buffer size");
+  }
+  if (srcByteSize != dst.byteSize()) {
+    RETURN_ERROR("source and destination byte sizes must match");
+  }
+
+  CUDA_MEMCPY3D_v2 params = make1DMemcpyParams(srcByteSize);
+  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.srcDevice = static_cast<uint8_t *>(src.ptr()) + srcByteOffset;
+  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.dstDevice = dst.ptr();
+
+  CUgraphNode node = nullptr;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
+      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+
+  DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
+  nodes_.push_back(node);
+  return DeviceGraphNode{id};
+}
+
+ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addSetMemory(void *dst,
+                                                              size_t byteSize,
+                                                              uint64_t val,
+                                                              size_t valSize) {
+  DeviceContextScope scope(*ctx_);
+  RETURN_IF_ERROR(scope.err());
+
+  CUDA_MEMSET_NODE_PARAMS params = {};
+  params.dst = dst;
+  params.pitch = 0;
+  params.height = 1;
+
+  switch (valSize) {
+  case 1:
+    params.elementSize = 1;
+    params.value = static_cast<uint8_t>(val);
+    params.width = byteSize;
+    break;
+  case 2:
+    if ((byteSize & 1) != 0)
+      RETURN_ERROR("byteSize of buffer is misaligned");
+    params.elementSize = 2;
+    params.value = static_cast<uint16_t>(val);
+    params.width = byteSize >> 1;
+    break;
+  case 4:
+    if ((byteSize & 3) != 0)
+      RETURN_ERROR("byteSize of buffer is misaligned");
+    params.elementSize = 4;
+    params.value = static_cast<uint32_t>(val);
+    params.width = byteSize >> 2;
+    break;
+  case 8: {
+    if ((byteSize & 7) != 0)
+      RETURN_ERROR("byteSize of buffer is misaligned");
+    uint32_t hiBits = static_cast<uint32_t>(val >> 32);
+    uint32_t loBits = static_cast<uint32_t>(val & 0xfffffffful);
+    if (hiBits != loBits) {
+      RETURN_ERROR("8-byte memset with differing high/low halves cannot be "
+                   "expressed as a single graph node");
+    }
+    params.elementSize = 4;
+    params.value = loBits;
+    params.width = byteSize >> 2;
+    break;
+  }
+  default:
+    RETURN_ERROR("unsupported valSize");
+  }
+
+  CUgraphNode node = nullptr;
+  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemsetNode(
+      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
