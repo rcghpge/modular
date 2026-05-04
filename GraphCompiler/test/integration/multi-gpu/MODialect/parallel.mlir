@@ -1,5 +1,3 @@
-// UNSUPPORTED: DISABLED
-// GEX-3581, QUA-261
 // RUN: mo-opt %s --gc-pipeline=constant-fold=false --mlir-print-ir-after=mogg-to-mgp -o %t.mlir 2>&1 | tee %t.mgp
 // RUN: mt --execute --result-output-style=full %t.mlir 2>&1 | tee %t.out
 // RUN: FileCheck %s < %t.out
