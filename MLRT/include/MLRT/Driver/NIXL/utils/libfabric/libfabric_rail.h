@@ -332,13 +332,13 @@ private:
   ControlRequestPool control_request_pool_; // 256 CONTROL requests (SEND/RECV)
                                             // with internal buffers
   DataRequestPool
-      data_request_pool_; // 1024 DATA requests (WRITE/read) - no buffers needed
+      data_request_pool_; // 8192 DATA requests (WRITE/read) - no buffers needed
 
   // Configuration constants
   static constexpr size_t CONTROL_REQUESTS_PER_RAIL =
       256; // SEND/RECV operations (1:1 with buffers)
   static constexpr size_t DATA_REQUESTS_PER_RAIL =
-      1024; // WRITE/read operations (no buffers)
+      8192; // WRITE/read operations (no buffers)
 
   nixl_status_t processCompletionQueueEntry(struct fi_cq_data_entry *comp);
   nixl_status_t processLocalSendCompletion(struct fi_cq_data_entry *comp);
