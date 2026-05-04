@@ -1587,12 +1587,15 @@ void MORandomNormalOp::inferMOTypesImpl(
                                      shapeParamDecls, dev));
   moInputParamDecls.push_back(std::move(shapeParamDecls));
 
-  // `mean` / `variance` / `seed` must be scalars.
+  // `mean` / `variance` are scalars.
   moOperandTypes.push_back(mean.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(variance.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
-  moOperandTypes.push_back(seed.getType().cloneWith(ArrayRef<TypedAttr>{}));
+
+  // `seed` is rank-1 `[1]`.
+  moOperandTypes.push_back(seed.getType().cloneWith(
+      SmallVector<TypedAttr>{createStaticDimensionType(graphOp, 1)}));
   moInputParamDecls.push_back({});
 
   // Output has static or dynamic rank.
@@ -1637,14 +1640,17 @@ void MORandomUniformOp::inferMOTypesImpl(
                                      shapeParamDecls, dev));
   moInputParamDecls.push_back(std::move(shapeParamDecls));
 
-  // `lowerBound` / `upperBound` / `seed` must be scalars.
+  // `lowerBound` / `upperBound` are scalars.
   moOperandTypes.push_back(
       lowerBound.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(
       upperBound.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
-  moOperandTypes.push_back(seed.getType().cloneWith(ArrayRef<TypedAttr>{}));
+
+  // `seed` is rank-1 `[1]`.
+  moOperandTypes.push_back(seed.getType().cloneWith(
+      SmallVector<TypedAttr>{createStaticDimensionType(graphOp, 1)}));
   moInputParamDecls.push_back({});
 
   // Output has static or dynamic rank.

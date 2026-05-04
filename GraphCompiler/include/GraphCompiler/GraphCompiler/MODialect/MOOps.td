@@ -4143,16 +4143,16 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"reduce.arg_min"> {
 //===----------------------------------------------------------------------===//
 
 def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
-  MO_SingleDeviceWithHostOperands<["shape", "mean", "variance", "seed"]>,
+  MO_SingleDeviceWithHostOperands<["shape", "mean", "variance"]>,
   MO_ParamDeclaration,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["mean", "variance"]>,
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
-    Returns a tensor with shape `shape` populated with random
-    values from a normal distribution, with the mean of the distribution equal
-    to `mean` and the standard deviation equal to `variance`.
+    Returns a tensor with shape `shape` populated with random values from a
+    normal distribution, with the mean of the distribution equal to `mean`
+    and the standard deviation equal to `variance`.
 
   Example:
     ```mlir
@@ -4163,10 +4163,10 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
       %variance = mo.constant {
         value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
       %seed = mo.constant {
-        value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+        value = #M.dense_array<1> : tensor<1xui64> } : !mo.tensor<[1], ui64>
       %res = mo.random.normal(%size, %mean, %variance, %seed) :
             (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
-            !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+            !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     ```
   }];
 
@@ -4174,7 +4174,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
     MO_IndicesTensor:$shape,
     MO_RankedScalarFloatTensor:$mean,
     MO_RankedScalarFloatTensor:$variance,
-    MO_RankedScalarIndexTensor:$seed,
+    MO_Rank1IndexTensor:$seed,
     MO_ParamDecls:$outputParamDecls
   );
 
@@ -4190,7 +4190,7 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 //===----------------------------------------------------------------------===//
 
 def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
-  MO_SingleDeviceWithHostOperands<["shape", "lowerBound", "upperBound", "seed"]>,
+  MO_SingleDeviceWithHostOperands<["shape", "lowerBound", "upperBound"]>,
   MO_ParamDeclaration,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   AllDTypesMatch<["lowerBound", "upperBound", "result"]>,
@@ -4209,10 +4209,10 @@ def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
     %upperBound = mo.constant {
       value = #M.dense_array<0.5> : tensor<1xf32> } : !mo.tensor<[], f32>
     %seed = mo.constant {
-      value = #M.dense_array<1> : tensor<1xsi64> } : !mo.tensor<[], si64>
+      value = #M.dense_array<1> : tensor<1xui64> } : !mo.tensor<[1], ui64>
     %res = mo.random.uniform(%size, %lowerBound, %upperBound, %seed) :
           (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>,
-          !mo.tensor<[], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+          !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     ```
   }];
 
@@ -4220,7 +4220,7 @@ def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
     MO_IndicesTensor:$shape,
     MO_RankedScalarTensor:$lowerBound,
     MO_RankedScalarTensor:$upperBound,
-    MO_RankedScalarIndexTensor:$seed,
+    MO_Rank1IndexTensor:$seed,
     MO_ParamDecls:$outputParamDecls
   );
 

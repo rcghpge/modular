@@ -833,11 +833,11 @@ mo.graph @onnx_select_neg_ones_bcast<D9>(%arg0: !mo.tensor<[1, 32, D9, 10], si64
 // CHECK-LABEL: mo.graph @random_normal_const
 // CHECK-SAME:  (
 // CHECK-SAME:    %[[FLOAT:.*]]: !mo.tensor<[], f32>,
-// CHECK-SAME:    %[[SEED:.*]]: !mo.tensor<[], si64>
+// CHECK-SAME:    %[[SEED:.*]]: !mo.tensor<[1], ui64>
 // CHECK-SAME:  ) -> !mo.tensor<[128], f32> {
-mo.graph @random_normal_const(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[], si64>) -> !mo.tensor<[128], f32> {
+mo.graph @random_normal_const(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[1], ui64>) -> !mo.tensor<[128], f32> {
     %0 = mo.constant {value = #M.dense_array<128> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-    %1 = mo.random.normal(%0, %arg0, %arg0, %arg1) : (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[128], f32>
+    %1 = mo.random.normal(%0, %arg0, %arg0, %arg1) : (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[1], ui64>) -> !mo.tensor<[128], f32>
     mo.output %1 : !mo.tensor<[128], f32>
 }
 
@@ -845,12 +845,12 @@ mo.graph @random_normal_const(%arg0: !mo.tensor<[], f32>, %arg1: !mo.tensor<[], 
 // CHECK-SAME:  <[[N:.*]]>(
 // CHECK-SAME:    %[[DUMMY:.*]]: !mo.tensor<[[[N]]], f32>,
 // CHECK-SAME:    %[[FLOAT:.*]]: !mo.tensor<[], f32>,
-// CHECK-SAME:    %[[SEED:.*]]: !mo.tensor<[], si64>
+// CHECK-SAME:    %[[SEED:.*]]: !mo.tensor<[1], ui64>
 // CHECK-SAME:  ) -> !mo.tensor<[[[N]]], f32> {
-mo.graph @random_normal_dyn<N>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[], f32>, %arg2: !mo.tensor<[], si64>) -> !mo.tensor<[N], f32> {
+mo.graph @random_normal_dyn<N>(%arg0: !mo.tensor<[N], f32>, %arg1: !mo.tensor<[], f32>, %arg2: !mo.tensor<[1], ui64>) -> !mo.tensor<[N], f32> {
     %0 = mosh.param.to_value: !mosh.ape = <[N]>
     %1 = mo.shape.to_tensor(%0) -> !mo.tensor<[1], si64>
-    %2 = mo.random.normal(%1, %arg1, %arg1, %arg2) : (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], si64>) -> !mo.tensor<[N], f32>
+    %2 = mo.random.normal(%1, %arg1, %arg1, %arg2) : (!mo.tensor<[1], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[1], ui64>) -> !mo.tensor<[N], f32>
     mo.output %2 : !mo.tensor<[N], f32>
 }
 
