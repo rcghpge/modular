@@ -40,6 +40,16 @@ config_setting(
     flag_values = {":worker_stats": "true"},
 )
 
+bool_flag(
+    name = "alloc_logging",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "alloc_logging_setting",
+    flag_values = {":alloc_logging": "true"},
+)
+
 # Core targets
 
 modular_cc_library(
@@ -133,6 +143,9 @@ modular_cc_library(
     local_defines = select({
         ":worker_stats_setting": ["ASYNCRT_WORKER_STATS=1"],
         "//conditions:default": ["ASYNCRT_WORKER_STATS=0"],
+    }) + select({
+        ":alloc_logging_setting": ["MODULAR_ALLOC_LOGGING=1"],
+        "//conditions:default": ["MODULAR_ALLOC_LOGGING=0"],
     }),
     visibility = ["//MLRT:consumers"],
     deps = [
@@ -142,6 +155,7 @@ modular_cc_library(
         "//Support:Base",
         "//Support:ConcurrentAppendingVector",
         "//Support:Configuration",
+        "//Support:Log",
         "//Support:MArchTargetMinimal",
         "//Support:Profiling",
         "//Support:SymbolExport",
