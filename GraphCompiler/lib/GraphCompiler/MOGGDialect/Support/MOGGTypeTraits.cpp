@@ -29,7 +29,7 @@ llvm::SmallVector<mlir::TypedAttr>
 convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
                     mlir::MLIRContext *context, const void *data,
                     int64_t numElems, const llvm::fltSemantics &semantic) {
-  auto simdType = KGEN::POP::SIMDType::get(context, 1, moggType);
+  auto simdType = KGEN::SIMDType::get(context, 1, moggType);
   auto sizeInBytes = moggType.getSizeInBytes();
 
   llvm::SmallVector<mlir::TypedAttr> values;
@@ -41,8 +41,8 @@ convertFloatsToSIMD(DType moggType, KGEN::KGENDType kgenType,
     auto valuePtr = reinterpret_cast<const uint8_t *>(data) + sizeInBytes * i;
     llvm::LoadIntFromMemory(loadedValue, valuePtr, sizeInBytes);
 
-    KGEN::POP::DTypeValue dtypeValue(APFloat(semantic, loadedValue), kgenType);
-    values[i] = KGEN::POP::SIMDAttr::get(dtypeValue, simdType);
+    KGEN::DTypeValue dtypeValue(APFloat(semantic, loadedValue), kgenType);
+    values[i] = KGEN::SIMDAttr::get(dtypeValue, simdType);
   }
 
   return values;
@@ -53,7 +53,7 @@ llvm::SmallVector<mlir::TypedAttr> convertIntsToSIMD(DType moggType,
                                                      mlir::MLIRContext *context,
                                                      const void *data,
                                                      int64_t numElems) {
-  auto simdType = KGEN::POP::SIMDType::get(context, 1, moggType);
+  auto simdType = KGEN::SIMDType::get(context, 1, moggType);
   auto sizeInBytes = moggType.getSizeInBytes();
 
   llvm::SmallVector<mlir::TypedAttr> values;
@@ -65,8 +65,8 @@ llvm::SmallVector<mlir::TypedAttr> convertIntsToSIMD(DType moggType,
     auto valuePtr = reinterpret_cast<const uint8_t *>(data) + sizeInBytes * i;
     llvm::LoadIntFromMemory(loadedValue, valuePtr, sizeInBytes);
 
-    KGEN::POP::DTypeValue dtypeVal(loadedValue, kgenType);
-    values[i] = KGEN::POP::SIMDAttr::get(dtypeVal, simdType);
+    KGEN::DTypeValue dtypeVal(loadedValue, kgenType);
+    values[i] = KGEN::SIMDAttr::get(dtypeVal, simdType);
   }
 
   return values;

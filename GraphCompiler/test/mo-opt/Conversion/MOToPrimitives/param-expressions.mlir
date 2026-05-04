@@ -8,14 +8,14 @@ mo.graph @add_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[D0]], %[[D1]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[D0]], %[[D1]] : !kgen.scalar<si64>
   kgen.param.declare A0: si64 = <add(X, Y)>
   kgen.param.declare A1: si64 = <add(Y, X)>
 
   // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
-  // CHECK-DAG: %[[ADD2:.*]] = pop.add %[[ADD1]], %[[C2]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[ADD2:.*]] = pop.add %[[ADD1]], %[[C2]] : !kgen.scalar<si64>
   // CHECK: mef.output
   kgen.param.declare A2: si64 = <add(A0, 2)>
   mo.output
@@ -30,8 +30,8 @@ mo.graph @sub_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[NEG1:.*]] = kgen.param.constant: scalar<si64> = <-1>
   // CHECK-DAG: %[[MUL:.*]] = pop.mul %[[D1]], %[[NEG1]]
   // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[MUL]], %[[D0]]
@@ -53,8 +53,8 @@ mo.graph @mul_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[MUL0:.*]] = pop.mul %[[D0]], %[[D1]]
   kgen.param.declare M0: si64 = <mul_no_wrap(X, Y)>
   kgen.param.declare M1: si64 = <mul_no_wrap(Y, X)>
@@ -75,8 +75,8 @@ mo.graph @mod_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[REM0:.*]] = pop.rem %[[D0]], %[[D1]]
   kgen.param.declare M0: si64 = <mod(X, Y)>
 
@@ -84,7 +84,7 @@ mo.graph @mod_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   kgen.param.declare M1: si64 = <mod(Y, X)>
 
   // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
-  // CHECK-DAG: %[[REM3:.*]] = pop.rem %[[REM0]], %[[C2]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[REM3:.*]] = pop.rem %[[REM0]], %[[C2]] : !kgen.scalar<si64>
   //     CHECK: mef.output
   kgen.param.declare M2: si64 = <mod(M0, 2)>
   mo.output
@@ -99,8 +99,8 @@ mo.graph @eq_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   //     CHECK: %[[CMP:.*]] = pop.cmp eq(%[[D0]], %[[D1]])
 
   // There should be only one pop.cmp as all comparisons are the same
@@ -121,8 +121,8 @@ mo.graph @lt_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[CMP0:.*]] = pop.cmp lt(%[[D0]], %[[D1]])
   kgen.param.declare LT0: i1 = <lt(:si64 X, Y)>
 
@@ -144,8 +144,8 @@ mo.graph @le_expressions<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
 
   // CHECK-DAG: %[[CMP0:.*]] = pop.cmp le(%[[D0]], %[[D1]])
   kgen.param.declare LE0: i1 = <le(:si64 X, Y)>
@@ -168,8 +168,8 @@ mo.graph @cond_expression<X, Y>(%arg0: !mo.tensor<[X, Y], f32>) {
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
   // CHECK-DAG: %[[CMP:.*]] = pop.cmp le(%[[D0]], %[[D1]])
   kgen.param.declare B: i1 = <le(:si64 X, Y)>
 
@@ -195,8 +195,8 @@ mo.graph @bool_expressions<E0, E1>(%arg0: !mo.tensor<[E0, E1], f32>) -> !mo.tens
   //     CHECK: %[[DIM1:.*]] = mgp.tensor_spec.get_dim[1] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
 
   // CHECK-DAG: %[[OR:.*]] = pop.simd.or %[[D0]], %[[D1]] : <1, si64>
   kgen.param.declare O0: si64 = <or(E0, E1)>
@@ -229,13 +229,13 @@ mo.graph @complex_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
   // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !kgen.scalar<si64>
 
-  // CHECK-DAG: %[[MUL0:.*]] = pop.mul %[[D0]], %[[D1]] : !pop.scalar<si64>
-  // CHECK-DAG: %[[MUL1:.*]] = pop.mul %[[D1]], %[[D2]] : !pop.scalar<si64>
-  // CHECK-DAG: %[[ADD:.*]] = pop.add %[[MUL0]], %[[MUL1]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[MUL0:.*]] = pop.mul %[[D0]], %[[D1]] : !kgen.scalar<si64>
+  // CHECK-DAG: %[[MUL1:.*]] = pop.mul %[[D1]], %[[D2]] : !kgen.scalar<si64>
+  // CHECK-DAG: %[[ADD:.*]] = pop.add %[[MUL0]], %[[MUL1]] : !kgen.scalar<si64>
   //     CHECK: mef.output
   kgen.param.declare C0: si64 = <add(mul_no_wrap(X, Y), mul_no_wrap(Y, Z))>
   mo.output
@@ -250,12 +250,12 @@ mo.graph @variadic_exprs<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
   // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !kgen.scalar<si64>
 
-  // CHECK-DAG: %[[ADD0:.*]] = pop.add %[[D0]], %[[D1]] : !pop.scalar<si64>
-  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[ADD0]], %[[D2]] : !pop.scalar<si64>
+  // CHECK-DAG: %[[ADD0:.*]] = pop.add %[[D0]], %[[D1]] : !kgen.scalar<si64>
+  // CHECK-DAG: %[[ADD1:.*]] = pop.add %[[ADD0]], %[[D2]] : !kgen.scalar<si64>
   //     CHECK: mef.output
   kgen.param.declare C0: si64 = <add(X, Y, Z)>
   mo.output
@@ -297,11 +297,11 @@ mo.graph @param_expr_in_output_shape<D0>(
 ) -> !mo.tensor<[mul_no_wrap(D0, 2), 2], f32> {
   //     CHECK: %[[DIM0:.*]] = mgp.tensor_spec.get_dim[0] %{{.*}}
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]] : index to si64
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
 
   // CHECK-DAG: %[[C2:.*]] = kgen.param.constant: scalar<si64> = <2>
-  // CHECK-DAG: %[[MUL:.*]] = pop.mul %[[D0]], %[[C2]] : !pop.scalar<si64>
-  // CHECK-DAG: %[[MULSI:.*]] = pop.cast_to_builtin %[[MUL]] : !pop.scalar<si64> to si64
+  // CHECK-DAG: %[[MUL:.*]] = pop.mul %[[D0]], %[[C2]] : !kgen.scalar<si64>
+  // CHECK-DAG: %[[MULSI:.*]] = pop.cast_to_builtin %[[MUL]] : !kgen.scalar<si64> to si64
   // CHECK-DAG: %[[INDEX:.*]] = index.casts %[[MULSI]] : si64 to index
   // CHECK-DAG: %[[SPEC:.*]] = mgp.tensor_spec.create %[[INDEX]] : !mgp.tensor_spec<?x2xf32>
   // CHECK-DAG: %[[TENSOR:.*]] = mgp.tensor.create %{{.*}}, %{{.*}}, %[[SPEC]] : !mgp.tensor<?x2xf32>
@@ -321,9 +321,9 @@ mo.graph @shift_expressions<X, Y, Z>(%arg0: !mo.tensor<[X, Y, Z], f32>) {
   // CHECK-DAG: %[[I0:.*]] = index.casts %[[DIM0]]
   // CHECK-DAG: %[[I1:.*]] = index.casts %[[DIM1]]
   // CHECK-DAG: %[[I2:.*]] = index.casts %[[DIM2]]
-  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !pop.scalar<si64>
-  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !pop.scalar<si64>
+  // CHECK-DAG: %[[D0:.*]] = pop.cast_from_builtin %[[I0]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D1:.*]] = pop.cast_from_builtin %[[I1]] : si64 to !kgen.scalar<si64>
+  // CHECK-DAG: %[[D2:.*]] = pop.cast_from_builtin %[[I2]] : si64 to !kgen.scalar<si64>
 
   // CHECK-DAG: %[[SLH:.*]] = pop.shl %[[D0]], %[[D1]]
   kgen.param.declare SHL: si64 = <shl(X, Y)>

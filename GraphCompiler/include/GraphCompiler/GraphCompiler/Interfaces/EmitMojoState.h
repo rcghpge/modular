@@ -311,7 +311,7 @@ public:
              "only bool/integer MO::ScalarType expected in fusion captures; "
              "extend this to handle float/other dtypes if needed");
       return HardcodedMojoSymbols::struct_Int;
-    } else if (auto simdType = dyn_cast<KGEN::POP::SIMDType>(mlirType)) {
+    } else if (auto simdType = dyn_cast<KGEN::SIMDType>(mlirType)) {
       /// FIXME(GEX-2867)
       // The only reason we would be manipulating SIMD types in the IR is for
       // doing shape calculations which all operate on index/Int.

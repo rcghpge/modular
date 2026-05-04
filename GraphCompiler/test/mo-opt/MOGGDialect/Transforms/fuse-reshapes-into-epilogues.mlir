@@ -92,9 +92,9 @@ mo.graph @dont_fuse_kernel_across_blocks<seq_len>(%arg0: !mo.tensor<[seq_len, 40
 // CHECK-NEXT: mogg.kernel
 
 // CHECK: %[[OUT_PH:.*]] = mogg.output_placeholders : !mo.tensor<[N, K, 4096], f32>
-// CHECK-NEXT: %[[NEW_DIM:.*]] = mogg.get_dim <K> -> !pop.scalar<si64>
+// CHECK-NEXT: %[[NEW_DIM:.*]] = mogg.get_dim <K> -> !kgen.scalar<si64>
 // CHECK: %[[BIND:.*]] = mogg.bind (%[[OUT_PH]]) output_lambda (%{{.*}}: f32, %[[INDICES:.*]]: !pop.array<2, index>) {
-// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "mo.split_dim"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index} : !pop.array<2, index>, !pop.scalar<si64> -> !pop.array<3, index>
+// CHECK-NEXT: %[[NEW_IND:.*]] = mogg.call.affine "mo.split_dim"(%[[INDICES]], %[[NEW_DIM]]) {axis = 0 : index} : !pop.array<2, index>, !kgen.scalar<si64> -> !pop.array<3, index>
 // CHECK-NEXT: mogg.output %{{.*}}, %[[NEW_IND]] : f32, !pop.array<3, index>
 
 // CHECK: mogg.call.execute["mo.matmul"] inputs(%{{.*}}, %{{.*}} : {{.*}}) outputs(%[[BIND]] : {{.*}}) {isThrows, kernel_param = {packed_b = false, transpose_b = false}}

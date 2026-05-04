@@ -51,8 +51,8 @@ class MOGG_KernelTerminatorOp<string mnemonic, list<Trait> traits = []>
               DeclareOpInterfaceMethods<MOGG_KernelTerminator>
             ]>;
 
-def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!pop.simd<1, si64>">,
-    BuildableType<"KGEN::POP::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
+def DimensionType : ScalarOfDType<BoundAnd<DTypeConstraint<"*$_self == KGEN::KGENDType::si64">>, "!kgen.simd<1, si64>">,
+    BuildableType<"KGEN::SIMDType::get(1, KGEN::DTypeConstantAttr::get("
                                    "$_builder.getContext(), KGEN::KGENDType::si64))">;
 
 //===----------------------------------------------------------------------===//

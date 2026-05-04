@@ -172,36 +172,36 @@ kgen.generator @bar_recursive_2(%arg0: si32, %arg1: si32) -> si32 {
 
 // CHECK-LABEL: @parameter_function_1
 // CHECK: semantic_hash = "[[FUNC_HASH:.*]]"
-kgen.generator @parameter_function_1(%arg0: !pop.scalar<si32>) -> !pop.scalar<si32> {
-  %x = pop.add %arg0, %arg0 : !pop.scalar<si32>
-  kgen.return %x : !pop.scalar<si32>
+kgen.generator @parameter_function_1(%arg0: !kgen.scalar<si32>) -> !kgen.scalar<si32> {
+  %x = pop.add %arg0, %arg0 : !kgen.scalar<si32>
+  kgen.return %x : !kgen.scalar<si32>
 }
 
 // CHECK-LABEL: @parameter_function_2
 // CHECK-NOT: semantic_hash = "[[FUNC_HASH]]"
-kgen.generator @parameter_function_2(%arg0: !pop.scalar<si32>) -> !pop.scalar<si32> {
-  %x = pop.sub %arg0, %arg0 : !pop.scalar<si32>
-  kgen.return %x : !pop.scalar<si32>
+kgen.generator @parameter_function_2(%arg0: !kgen.scalar<si32>) -> !kgen.scalar<si32> {
+  %x = pop.sub %arg0, %arg0 : !kgen.scalar<si32>
+  kgen.return %x : !kgen.scalar<si32>
 }
 
-kgen.generator @enqueue_function<callable: (!pop.scalar<si32>) -> (!pop.scalar<si32>)>() -> !pop.scalar<si32> {
-  %c0 = kgen.param.constant : !pop.scalar<si32> = <1>
-  %callee = kgen.param.constant : (!pop.scalar<si32>) -> !pop.scalar<si32> = <callable>
-  %call = kgen.call_indirect %callee(%c0) : (!pop.scalar<si32>) -> !pop.scalar<si32>
-  kgen.return %call : !pop.scalar<si32>
+kgen.generator @enqueue_function<callable: (!kgen.scalar<si32>) -> (!kgen.scalar<si32>)>() -> !kgen.scalar<si32> {
+  %c0 = kgen.param.constant : !kgen.scalar<si32> = <1>
+  %callee = kgen.param.constant : (!kgen.scalar<si32>) -> !kgen.scalar<si32> = <callable>
+  %call = kgen.call_indirect %callee(%c0) : (!kgen.scalar<si32>) -> !kgen.scalar<si32>
+  kgen.return %call : !kgen.scalar<si32>
 }
 
 // CHECK-LABEL: @main_1
 // CHECK: semantic_hash = "[[MAIN_HASH:.*]]"
 kgen.generator @main_1() {
-  kgen.call @enqueue_function<:(!pop.scalar<si32>) -> !pop.scalar<si32> @parameter_function_1>() : () -> ()
+  kgen.call @enqueue_function<:(!kgen.scalar<si32>) -> !kgen.scalar<si32> @parameter_function_1>() : () -> ()
   kgen.return
 }
 
 // CHECK-LABEL: @main_2
 // CHECK-NOT: semantic_hash = "[[MAIN_HASH]]"
 kgen.generator @main_2() {
-  kgen.call @enqueue_function<:(!pop.scalar<si32>) -> !pop.scalar<si32> @parameter_function_2>() : () -> ()
+  kgen.call @enqueue_function<:(!kgen.scalar<si32>) -> !kgen.scalar<si32> @parameter_function_2>() : () -> ()
   kgen.return
 }
 

@@ -490,11 +490,11 @@ LogicalResult emitMojo(KGEN::POP::SIMDXOrOp op, EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult emitMojo(KGEN::ParamConstantOp op, EmitMojoState &state) {
-  if (auto vals = dyn_cast<KGEN::POP::SIMDAttr>(op.getValue())) {
+  if (auto vals = dyn_cast<KGEN::SIMDAttr>(op.getValue())) {
     ASSERT_STREAM(vals, << "Expected a SIMD parameter constant");
     ASSERT_STREAM(vals.getValues().size() == 1,
                   << "Only scalars are supported");
-    KGEN::POP::DTypeValue val = vals.getValues().front();
+    KGEN::DTypeValue val = vals.getValues().front();
     KGEN::KGENDType valDType = val.getDType();
     if (valDType.isBool())
       state.setMojoValueFor(op.getResult(), val.getBoolVal());

@@ -35,11 +35,11 @@ static FailureOr<Type> builtinTypeToDType(mlir::MLIRContext *ctx, Type type) {
   else
     return failure();
 
-  return KGEN::POP::SIMDType::get(ctx, 1, dtype);
+  return KGEN::SIMDType::get(ctx, 1, dtype);
 }
 
 static Value popScalarToBuiltinType(OpBuilder &builder, Location loc, Value v) {
-  auto type = cast<KGEN::POP::SIMDType>(v.getType());
+  auto type = cast<KGEN::SIMDType>(v.getType());
   auto maybeDtype = type.getResolvedDType();
   assert(maybeDtype && "unable to resolve dtype");
 
@@ -368,7 +368,7 @@ static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
 
 /// Convert the given KGEN::POC operation to the equivalent operation in
 /// in the POP dialect. This function assumes that input/output types
-/// are !pop.scalar values.
+/// are !kgen.scalar values.
 static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
                                       Location loc, ValueRange operands,
                                       Type resultType) {
@@ -446,7 +446,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
                                          ValueRange operands) {
   auto resultType = opAttr.getType();
 
-  // Get !pop.scalar dtype that corresponds to the expected output type.
+  // Get !kgen.scalar dtype that corresponds to the expected output type.
   auto popResultType = builtinTypeToDType(builder.getContext(), resultType);
   if (failed(popResultType))
     return Error("unable to convert result type");
@@ -454,13 +454,13 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   SmallVector<Value> popOperands;
   popOperands.reserve(operands.size());
 
-  // Convert operands to equivalent !pop.scalar type
+  // Convert operands to equivalent !kgen.scalar type
   for (auto operand : operands) {
     auto scalarType =
         builtinTypeToDType(builder.getContext(), operand.getType());
 
     if (failed(scalarType))
-      return Error("unable to convert operand to !pop.scalar");
+      return Error("unable to convert operand to !kgen.scalar");
 
     if (scalarType == operand.getType()) {
       popOperands.push_back(operand);
@@ -478,7 +478,7 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   if (maybeResult.isError())
     return maybeResult;
 
-  // Convert the !pop.scalar value back to the corresponding builtin type.
+  // Convert the !kgen.scalar value back to the corresponding builtin type.
   return popScalarToBuiltinType(builder, loc, maybeResult.takeValue());
 }
 
