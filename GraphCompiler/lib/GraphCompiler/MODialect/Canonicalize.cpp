@@ -278,6 +278,37 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
 }
 
 //===----------------------------------------------------------------------===//
+// BundledAllReduceSumOp
+//===----------------------------------------------------------------------===//
+LogicalResult
+BundledAllReduceSumOp::fold(FoldAdaptor adaptor,
+                            SmallVectorImpl<OpFoldResult> &results) {
+  // If the bundled all-reduce has 1 input (and 1 signal buffer), it is an
+  // identity op.
+  if (getInputs().size() == 1 && getSignalBuffers().size() == 1 &&
+      getInputs()[0].getType() == getOutput().getType()) {
+    results.push_back(getInputs()[0]);
+    results.push_back(getInChain());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// BundledExpandOp
+//===----------------------------------------------------------------------===//
+LogicalResult BundledExpandOp::fold(FoldAdaptor adaptor,
+                                    SmallVectorImpl<OpFoldResult> &results) {
+  // In a single-launch parent parallel op, the expand has a single result
+  // whose type matches the input.  Fold to the input.
+  if (getNumResults() == 1 && getResult(0).getType() == getInput().getType()) {
+    results.push_back(getInput());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceScatterSumOp
 //===----------------------------------------------------------------------===//
 LogicalResult ReduceScatterSumOp::fold(FoldAdaptor adaptor,
@@ -1156,8 +1187,26 @@ LogicalResult TensorUnbundleOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 LogicalResult ParallelOp::fold(FoldAdaptor adaptor,
                                SmallVectorImpl<OpFoldResult> &results) {
-  // Identity fold only applies to tensor-only parallels (no buffers/chain).
-  if (hasBuffers())
+  // Identity fold is sound when each per-launch body would be a no-op.
+  // For parallels with buffers/chain, the buffer and chain operands must
+  // not be referenced inside the body region; otherwise erasing the
+  // parallel would drop work that depends on them.
+  Operation *thisOp = getOperation();
+  auto hasUserInBody = [thisOp](Value v) {
+    for (Operation *user : v.getUsers()) {
+      if (user == thisOp)
+        continue;
+      for (Operation *p = user; p; p = p->getParentOp()) {
+        if (p == thisOp)
+          return true;
+      }
+    }
+    return false;
+  };
+  for (Value buf : getBuffers())
+    if (hasUserInBody(buf))
+      return failure();
+  if (hasChain() && hasUserInBody(getInChain()))
     return failure();
 
   Block &body = getBodyRegion().front();
@@ -1175,6 +1224,8 @@ LogicalResult ParallelOp::fold(FoldAdaptor adaptor,
   }
 
   results = llvm::to_vector_of<OpFoldResult>(getInputs());
+  if (hasChain())
+    results.push_back(getInChain());
   return success();
 }
 

@@ -5353,6 +5353,7 @@ def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
     `(` $input `)` attr-dict `:` type($input) `->` `(` type($results) `)`
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
@@ -5385,6 +5386,7 @@ def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
     }
     ```
   }];
+  let hasFolder = 1;
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,

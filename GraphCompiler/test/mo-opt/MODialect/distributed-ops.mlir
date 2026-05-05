@@ -94,3 +94,34 @@ mo.graph @reduce_scatter_folds(%in0: !mo.tensor<[2, 17], f32, gpu:0>, %sig0: !mo
   %out, %outChain = mo.distributed.reducescatter.sum(%in0, %sig0, %ch) : (!mo.tensor<[2, 17], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain) -> (!mo.tensor<[2, 17], f32, gpu:0>, !mo.chain)
   mo.output %out, %outChain : !mo.tensor<[2, 17], f32, gpu:0>, !mo.chain
 }
+
+// Single-device `mo.parallel { mo.bundled.expand -> mo.bundled.allreduce.sum }`
+// folds away entirely:
+//   - `mo.bundled.allreduce.sum` folds to its input via the new identity fold.
+//   - `mo.bundled.expand` (single result, type matches input) folds to its
+//     input and is then DCE'd as a Pure op with no users.
+//   - `mo.parallel` folds because its body is `mo.yield %arg` and its buffers
+//     and chain have no users in the body.
+// CHECK-LABEL: mo.graph @bundled_all_reduce_folds
+// CHECK: (%[[IN:.*]]: !mo.tensor<[3], f32, gpu:0>, %[[SIG0:.*]]: !mo.buffer<[1], ui8, gpu:0>, %[[CH:.*]]: !mo.chain)
+mo.graph @bundled_all_reduce_folds(
+    %in: !mo.tensor<[3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %ch: !mo.chain) -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain) {
+  %dt = mo.tensor.bundle(%in) : (!mo.tensor<[3], f32, gpu:0>) -> (!mo.bundle<[3], f32, gpu:0>)
+  // CHECK-NOT: mo.parallel
+  // CHECK-NOT: mo.bundled.expand
+  // CHECK-NOT: mo.bundled.allreduce.sum
+  %res, %out_ch = mo.parallel (%arg) in (%dt : !mo.bundle<[3], f32, gpu:0>)
+      buffers(%sig0 : !mo.buffer<[1], ui8, gpu:0>)
+      chain(%ch) -> (!mo.bundle<[3], f32, gpu:0>) {
+    %peer0 = mo.bundled.expand(%arg) : !mo.tensor<[3], f32, gpu:0> -> (!mo.tensor<[3], f32, gpu:0>)
+    %out, %ch_out = mo.bundled.allreduce.sum(%peer0, %sig0, %ch)
+        : (!mo.tensor<[3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.chain)
+       -> (!mo.tensor<[3], f32, gpu:0>, !mo.chain)
+    mo.yield %out : !mo.tensor<[3], f32, gpu:0>
+  }
+  %unb = mo.tensor.unbundle(%res) : (!mo.bundle<[3], f32, gpu:0>) -> (!mo.tensor<[3], f32, gpu:0>)
+  // CHECK: mo.output %[[IN]], %[[CH]]
+  mo.output %unb, %out_ch : !mo.tensor<[3], f32, gpu:0>, !mo.chain
+}
