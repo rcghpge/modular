@@ -691,6 +691,26 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
   return success();
 }
 
+LogicalResult Impl::verifyPeerInputDevices(Operation *op) {
+  DeviceRefAttr executionDevice = getFirstResultDevice(op);
+  if (!executionDevice)
+    return failure();
+
+  for (size_t i = 0; i < op->getNumOperands(); ++i) {
+    Value operand = op->getOperand(i);
+    auto deviceType = dyn_cast<MOHasDeviceTypeInterface>(operand.getType());
+    if (!deviceType)
+      continue;
+    DeviceRefAttr operandDevice = deviceType.getDeviceRef();
+    if (operandDevice.getLabel() != executionDevice.getLabel())
+      return op->emitError("Operand ")
+             << i << " device label '" << operandDevice.getLabel()
+             << "' does not match execution device label '"
+             << executionDevice.getLabel() << "'.";
+  }
+  return success();
+}
+
 LogicalResult Impl::verifyExplicitDevice(Operation *op) {
   if (op->getAttr(MO::kOperationDeviceRefAttrName))
     return success();

@@ -530,6 +530,12 @@ def MO_MultiDevice : MO_MultiDeviceFrom<"inputs">;
 // deviceRef attribute on the op.
 def MO_ExplicitDevice : MO_OpTrait<"MOExplicitDevice">;
 
+// Marks an op that executes on a single device, with inputs allowed to be on
+// peer devices sharing the same device label (but potentially different device
+// IDs). The execution device is inferred from the first result.
+def MO_SingleDeviceWithPeerInputs
+    : MO_OpTrait<"MOSingleDeviceWithPeerInputs">;
+
 // Note: we could add a MO_ExplicitDevices trait if we ever add a multi-device
 // op where we can't just infer the devices from the operands and results.
 

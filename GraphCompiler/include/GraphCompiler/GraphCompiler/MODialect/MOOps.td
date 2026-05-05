@@ -5355,7 +5355,8 @@ def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
   let hasVerifier = 1;
 }
 
-def MO_BundledAllReduceSumOp : Op<MODialect, "bundled.allreduce.sum", [
+def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
+  MO_SingleDeviceWithPeerInputs,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_SameVariadicOperandSize

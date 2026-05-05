@@ -182,6 +182,7 @@ LogicalResult verifyExecutesOnHost(Operation *op);
 LogicalResult verifySingleDevice(Operation *op,
                                  ArrayRef<size_t> hostOperandIndices,
                                  ArrayRef<size_t> deviceOperandIndices);
+LogicalResult verifyPeerInputDevices(Operation *op);
 DeviceRefAttr getFirstResultDevice(Operation *op);
 
 LogicalResult verifyExplicitDevice(Operation *op);
@@ -283,6 +284,20 @@ public:
         getConcreteOp().getDeviceOperandIndices()[0]);
     return {
         cast<MOHasDeviceTypeInterface>(deviceOperand.getType()).getDeviceRef()};
+  }
+};
+
+template <typename ConcreteType>
+class MOSingleDeviceWithPeerInputs
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      MOSingleDeviceWithPeerInputs> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return Impl::verifyPeerInputDevices(op);
+  }
+
+  llvm::SmallVector<DeviceRefAttr> getExecutionDevices() {
+    return {Impl::getFirstResultDevice(this->getOperation())};
   }
 };
 
