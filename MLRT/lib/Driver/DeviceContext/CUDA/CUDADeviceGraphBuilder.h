@@ -63,6 +63,16 @@ public:
   CUgraphNode cudaNode(DeviceGraphNodeId id) const { return nodes_[id]; }
 
 private:
+  /// Dependency list to chain a new node after the previously added one,
+  /// matching the sequential ordering produced by stream capture. Returns an
+  /// empty range when no nodes have been added yet (the new node becomes a
+  /// graph root).
+  llvm::ArrayRef<CUgraphNode> sequentialDeps() const {
+    if (nodes_.empty())
+      return {};
+    return llvm::ArrayRef<CUgraphNode>(&nodes_.back(), 1);
+  }
+
   CUDADeviceContextRef ctx_;
   CUgraph graph_;
   llvm::SmallVector<CUgraphNode> nodes_;

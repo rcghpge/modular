@@ -70,9 +70,10 @@ ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addFunctionDirect(
       .sharedMemBytes = params.sharedMemBytes,
   };
 
+  llvm::ArrayRef<hipGraphNode_t> deps = sequentialDeps();
   hipGraphNode_t node = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddKernelNode(
-      &node, graph_, nullptr, 0, &nodeParams));
+      &node, graph_, deps.data(), deps.size(), &nodeParams));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
@@ -85,9 +86,10 @@ HIPDeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
+  llvm::ArrayRef<hipGraphNode_t> deps = sequentialDeps();
   hipGraphNode_t node = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemcpyNode1D(
-      &node, graph_, nullptr, 0, dst, src, byteSize,
+      &node, graph_, deps.data(), deps.size(), dst, src, byteSize,
       hipMemcpyKind::hipMemcpyHostToDevice));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
@@ -101,9 +103,10 @@ HIPDeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
   DeviceContextScope scope(*ctx_);
   RETURN_IF_ERROR(scope.err());
 
+  llvm::ArrayRef<hipGraphNode_t> deps = sequentialDeps();
   hipGraphNode_t node = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemcpyNode1D(
-      &node, graph_, nullptr, 0, dst, src, byteSize,
+      &node, graph_, deps.data(), deps.size(), dst, src, byteSize,
       hipMemcpyKind::hipMemcpyDeviceToHost));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
@@ -132,9 +135,10 @@ ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addCopyDeviceToDevice(
 
   void *srcPtr = static_cast<uint8_t *>(src.ptr()) + srcByteOffset;
 
+  llvm::ArrayRef<hipGraphNode_t> deps = sequentialDeps();
   hipGraphNode_t node = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemcpyNode1D(
-      &node, graph_, nullptr, 0, dst.ptr(), srcPtr, srcByteSize,
+      &node, graph_, deps.data(), deps.size(), dst.ptr(), srcPtr, srcByteSize,
       hipMemcpyKind::hipMemcpyDeviceToDevice));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
@@ -192,9 +196,10 @@ ErrorOr<DeviceGraphNode> HIPDeviceGraphBuilder::addSetMemory(void *dst,
     RETURN_ERROR("unsupported valSize");
   }
 
+  llvm::ArrayRef<hipGraphNode_t> deps = sequentialDeps();
   hipGraphNode_t node = nullptr;
   HIP_GRAPH_CHECK_ERR(ctx_->hipDriver().hipGraphAddMemsetNode(
-      &node, graph_, nullptr, 0, &params));
+      &node, graph_, deps.data(), deps.size(), &params));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);

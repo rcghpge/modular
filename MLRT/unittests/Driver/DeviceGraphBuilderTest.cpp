@@ -197,8 +197,8 @@ TEST(DeviceGraphBuilderTest, AddSetMemory) {
   EXPECT_NO_ERR(ctx->synchronize());
 
   // Final state is the symmetric 8-byte pattern (0x01 in every byte).
-  // for (size_t i = 0; i < byteSize; ++i)
-  //   EXPECT_EQ(hostBuf[i], 0x01u) << "at index " << i;
+  for (size_t i = 0; i < byteSize; ++i)
+    EXPECT_EQ(hostBuf[i], 0x01u) << "at index " << i;
 }
 
 TEST(DeviceGraphBuilderTest, AddSetMemoryRejectsAsymmetric8Byte) {
@@ -214,6 +214,38 @@ TEST(DeviceGraphBuilderTest, AddSetMemoryRejectsAsymmetric8Byte) {
                                        /*val=*/0x0123456789abcdefull,
                                        /*valSize=*/8),
                  "single graph node");
+}
+
+// Two graph operations that mutate the same buffer with different values.
+// If the builder doesn't sequence consecutive nodes, both writes are graph
+// roots and execute concurrently — the final state of the buffer is then a
+// race between the memset and the host-to-device copy. With sequencing, the
+// copy is forced to run after the memset and the buffer must hold the copy's
+// pattern.
+TEST(DeviceGraphBuilderTest, SequencesConsecutiveOpsOnSameBuffer) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  const size_t byteSize = 4096;
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf, ctx->enqueueCreateBuffer(byteSize));
+
+  llvm::SmallVector<uint8_t> hostIn(byteSize, 0xBBu);
+  llvm::SmallVector<uint8_t> hostOut(byteSize, 0);
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  EXPECT_NO_ERR(builder->addSetMemory(*devBuf, /*val=*/0xAAu, /*valSize=*/1));
+  EXPECT_NO_ERR(builder->addCopyHostToDevice(*devBuf, hostIn.data()));
+
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_NO_ERR(graph->replay());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  EXPECT_NO_ERR(devBuf->copyTo(hostOut.data()));
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  // The copy must observe a fully-written memset and overwrite every byte.
+  for (size_t i = 0; i < byteSize; ++i)
+    EXPECT_EQ(hostOut[i], 0xBBu) << "at index " << i;
 }
 
 } // namespace

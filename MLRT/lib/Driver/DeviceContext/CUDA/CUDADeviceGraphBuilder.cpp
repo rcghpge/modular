@@ -75,9 +75,10 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
       .extra = nullptr,
   };
 
+  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
-      &node, graph_, nullptr, 0, &nodeParams));
+      &node, graph_, deps.data(), deps.size(), &nodeParams));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
@@ -108,9 +109,10 @@ CUDADeviceGraphBuilder::addCopyHostToDevice(void *dst, const void *src,
   params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
   params.dstDevice = dst;
 
+  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
-      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+      &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
@@ -129,9 +131,10 @@ CUDADeviceGraphBuilder::addCopyDeviceToHost(void *dst, const void *src,
   params.dstMemoryType = CU_MEMORYTYPE_HOST;
   params.dstHost = dst;
 
+  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
-      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+      &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
@@ -165,9 +168,10 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addCopyDeviceToDevice(
   params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
   params.dstDevice = dst.ptr();
 
+  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemcpyNode(
-      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+      &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
@@ -224,9 +228,10 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addSetMemory(void *dst,
     RETURN_ERROR("unsupported valSize");
   }
 
+  llvm::ArrayRef<CUgraphNode> deps = sequentialDeps();
   CUgraphNode node = nullptr;
   CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddMemsetNode(
-      &node, graph_, nullptr, 0, &params, ctx_->cudaContext()));
+      &node, graph_, deps.data(), deps.size(), &params, ctx_->cudaContext()));
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);

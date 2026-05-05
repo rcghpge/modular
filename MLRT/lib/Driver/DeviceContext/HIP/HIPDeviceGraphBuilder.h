@@ -63,6 +63,16 @@ public:
   hipGraphNode_t hipNode(DeviceGraphNodeId id) const { return nodes_[id]; }
 
 private:
+  /// Dependency list to chain a new node after the previously added one,
+  /// matching the sequential ordering produced by stream capture. Returns an
+  /// empty range when no nodes have been added yet (the new node becomes a
+  /// graph root).
+  llvm::ArrayRef<hipGraphNode_t> sequentialDeps() const {
+    if (nodes_.empty())
+      return {};
+    return llvm::ArrayRef<hipGraphNode_t>(&nodes_.back(), 1);
+  }
+
   HIPDeviceContextRef ctx_;
   hipGraph_t graph_;
   llvm::SmallVector<hipGraphNode_t> nodes_;
