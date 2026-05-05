@@ -1311,6 +1311,21 @@ ErrorOr<std::string> MetalDevice::getArchName(MTL::Device *d) {
   return archName;
 }
 
+ErrorOr<const char *> MetalDevice::getArchName() const {
+  // Lazily compute the arch string on first call and cache it. The static
+  // `getArchName(MTL::Device *)` form requires Metal device introspection
+  // (autorelease pool + name parsing + Metal4 feature detection) so we avoid
+  // paying that cost at construction time. Mirrors HIPDevice's cached
+  // `arch_` pattern (HIPDeviceContext.cpp:414), but with lazy population
+  // since MetalDevice's constructor does not receive an arch parameter.
+  std::lock_guard<std::mutex> lock(archMutex_);
+  if (arch_.empty()) {
+    DEFINE_OR_RETURN_ERROR(std::string, computed, getArchName(device_.get()));
+    arch_ = std::move(computed);
+  }
+  return arch_.c_str();
+}
+
 MTL::LogState *MetalDeviceContext::getOrCreateLogState(bool enable) {
   if (!enable)
     return nullptr;

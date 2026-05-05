@@ -85,6 +85,7 @@ public:
   static ErrorOr<MetalDevice &> get(int id);
   static ErrorOr<int> numberOfGPUs();
 
+  ErrorOr<const char *> getArchName() const override;
   static ErrorOr<std::string> getArchName(MTL::Device *d = nullptr);
 
   MTL::Device *metalDevice() const { return device_.get(); }
@@ -102,6 +103,14 @@ private:
   std::string name_;
   Device::MemInfo memInfo_;
   mutable DriverVersion driverVersion_;
+
+  // Lazily-populated cache of the architecture name string returned by the
+  // virtual `getArchName() const` override. The static `getArchName(MTL::Device
+  // *)` form is expensive (autorelease pool + MTL device introspection + Metal4
+  // feature detection), so the cache is computed on first call rather than at
+  // construction. `mutable` because the override is `const`.
+  mutable std::string arch_;
+  mutable std::mutex archMutex_;
 
   // Device-level buffer tracking (sorted by base address for range-based
   // lookup)
