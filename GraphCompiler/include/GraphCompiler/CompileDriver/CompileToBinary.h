@@ -22,14 +22,14 @@ namespace M {
 struct CompileToBinaryCtx {
   CompileToBinaryCtx(M::ContextRef ctx)
       : prevRuntimeProfilingTypeMask(Trace::kFullyEnabled),
-        context(std::move(ctx)), runtime(context->get<Runtime>()),
+        context(std::move(ctx)), cpuDevice(context->get<CPUDevice>()),
         mlirCtx(mlir::MLIRContext::Threading::DISABLED),
         diagHandler(sourceMgr, &mlirCtx) {
-    assert(runtime && "expected to have a runtime");
+    assert(cpuDevice && "expected to have a cpuDevice");
     registerContext(mlirCtx, context);
     configureMLIRContext(mlirCtx);
 
-    std::optional<TimeTraceProfiler> &profilerOr = runtime->getProfiler();
+    std::optional<TimeTraceProfiler> &profilerOr = cpuDevice->getProfiler();
     if (profilerOr) {
       // Cache the previous profiling type mask to restore it upon destruction.
       prevRuntimeProfilingTypeMask = profilerOr->runtimeProfilingTypeMask();
@@ -42,14 +42,14 @@ struct CompileToBinaryCtx {
 
   /// Here the default reverse-order-of-declaration destruction is important.
   ~CompileToBinaryCtx() {
-    std::optional<TimeTraceProfiler> &profilerOr = runtime->getProfiler();
+    std::optional<TimeTraceProfiler> &profilerOr = cpuDevice->getProfiler();
     if (profilerOr)
       profilerOr->setRuntimeProfilingTypeMask(prevRuntimeProfilingTypeMask);
   }
 
   uint64_t prevRuntimeProfilingTypeMask;
   M::ContextRef context;
-  MLRT::Runtime *runtime;
+  MLRT::CPUDevice *cpuDevice;
   mlir::MLIRContext mlirCtx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 

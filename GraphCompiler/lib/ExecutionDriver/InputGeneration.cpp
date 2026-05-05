@@ -79,8 +79,8 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
 }
 
 static ErrorOr<Tensor> allocateInput(const QuantTensorSpec &modelSpec,
-                                     Runtime &runtime, size_t alignment) {
-  return Tensor::createOwned({modelSpec, modelSpec.getEltType()}, runtime,
+                                     CPUDevice &cpuDevice, size_t alignment) {
+  return Tensor::createOwned({modelSpec, modelSpec.getEltType()}, cpuDevice,
                              alignment);
 }
 
@@ -95,9 +95,9 @@ static ErrorOrSuccess fillInput(InputGenerationKind inputGenKind,
 
 static ErrorOr<Tensor> allocateAndFillInput(InputGenerationKind inputGenKind,
                                             const QuantTensorSpec &modelSpec,
-                                            Runtime &runtime,
+                                            CPUDevice &cpuDevice,
                                             size_t alignment) {
-  auto resultOr = allocateInput(modelSpec, runtime, alignment);
+  auto resultOr = allocateInput(modelSpec, cpuDevice, alignment);
   if (resultOr.isError())
     return resultOr.takeError();
   auto result = std::move(*resultOr);
@@ -111,10 +111,10 @@ class FilledTensorGenerator : public ITensorGenerator {
 public:
   static ErrorOr<FilledTensorGenerator> create(InputGenerationKind genKind,
                                                const QuantTensorSpec &modelSpec,
-                                               Runtime &runtime,
+                                               CPUDevice &cpuDevice,
                                                size_t alignment) {
     auto tensorOr =
-        allocateAndFillInput(genKind, modelSpec, runtime, alignment);
+        allocateAndFillInput(genKind, modelSpec, cpuDevice, alignment);
     if (tensorOr.isError())
       return tensorOr.takeError();
     return FilledTensorGenerator(std::move(*tensorOr));
@@ -140,7 +140,7 @@ class FileTensorGenerator : public ITensorGenerator {
 public:
   static ErrorOr<FileTensorGenerator>
   create(const std::filesystem::path &filename, const QuantTensorSpec &spec,
-         Runtime &runtime, size_t alignment, TensorGeneratorFlag flags) {
+         CPUDevice &cpuDevice, size_t alignment, TensorGeneratorFlag flags) {
     std::vector<Tensor> tensors;
     std::string errorMsg;
     auto data = mlir::openInputFile(filename.string(), llvm::Align(alignment),
@@ -158,7 +158,7 @@ public:
     auto dataStart = data->getBufferStart();
     for (size_t i = 0, n = data->getBufferSize() / stride; i < n; ++i) {
       auto tensor =
-          Tensor::createOwned({spec, spec.getEltType()}, runtime, alignment);
+          Tensor::createOwned({spec, spec.getEltType()}, cpuDevice, alignment);
       auto tensorBuf = static_cast<char *>(tensor.getMutableBuffer());
       std::memcpy(tensorBuf, dataStart + i * stride, tensor.getSizeInBytes());
       tensors.push_back(std::move(tensor));
@@ -209,7 +209,7 @@ ErrorOr<ITensorGeneratorPtr>
 M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                          ArrayRef<InputDataSpec> inputDataSpecs,
                          const QuantTensorSpec &modelSpec,
-                         size_t minimumCpuAlignment, Runtime &runtime) {
+                         size_t minimumCpuAlignment, CPUDevice &cpuDevice) {
   std::optional<InputDataSpec> spec;
   for (const auto &inputDataSpec : inputDataSpecs) {
     if (inputDataSpec.tensorIdx == tensorIdx)
@@ -223,7 +223,7 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
 
   if (!spec || inputGenKindPtr) {
     auto filledGeneratorOr = FilledTensorGenerator::create(
-        inputGenKindPtr ? *inputGenKindPtr : defaultGen, modelSpec, runtime,
+        inputGenKindPtr ? *inputGenKindPtr : defaultGen, modelSpec, cpuDevice,
         minimumCpuAlignment);
     if (filledGeneratorOr.isError())
       return filledGeneratorOr.takeError();
@@ -234,7 +234,7 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
   auto filename = *std::get_if<std::filesystem::path>(&spec->inputGen);
   // pack vector of flags into single int
   auto fileGeneratorOr = FileTensorGenerator::create(
-      filename, modelSpec, runtime, minimumCpuAlignment, spec->genFlags);
+      filename, modelSpec, cpuDevice, minimumCpuAlignment, spec->genFlags);
   if (fileGeneratorOr.isError())
     return fileGeneratorOr.takeError();
   return std::make_unique<FileTensorGenerator>(std::move(*fileGeneratorOr));
@@ -244,7 +244,7 @@ ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
 M::createTensorGenerators(InputGenerationKind inputGenKind,
                           ArrayRef<QuantTensorSpec> inputShapeSpecs,
                           ArrayRef<InputDataSpec> inputDataSpecs,
-                          size_t minimumCpuAlignment, Runtime &runtime) {
+                          size_t minimumCpuAlignment, CPUDevice &cpuDevice) {
   auto numInputs = inputShapeSpecs.size();
 
   for (const auto &inputData : inputDataSpecs) {
@@ -261,7 +261,7 @@ M::createTensorGenerators(InputGenerationKind inputGenKind,
     const auto &modelSpec = inputShapeSpecs[i];
     auto generatorOrError =
         createTensorGenerator(i, inputGenKind, inputDataSpecs, modelSpec,
-                              minimumCpuAlignment, runtime);
+                              minimumCpuAlignment, cpuDevice);
     if (generatorOrError) {
       return Error("Input " + llvm::Twine(i) + ": " +
                    generatorOrError.getError());

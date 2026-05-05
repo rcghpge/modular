@@ -50,7 +50,7 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
                     MEFDynamicAttr bImage, MEFAttr<StringRef> cFunctionSymbols,
                     MEFAttr<StringRef> dConstantSymbols,
                     MEFAttr<uint64_t> eDeviceId, MEFAttr<uint64_t> fModuleIndex,
-                    MEFAttr<bool> debuginfo, Runtime &runtime) {
+                    MEFAttr<bool> debuginfo, CPUDevice &cpuDevice) {
   KernelExecutionState &kernelExecutionState =
       theContext.getStateSlotPayload<KernelExecutionState>(
           static_cast<size_t>(*aRuntimeSlot));
@@ -67,8 +67,8 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
       RCRef<CompiledKernelsContext>::create(
           kernelExecutionState.engine,
           debuginfo.get() ||
-              runtime.getProfilerDebuginfo() ==
-                  RuntimeOptions::ProfilerDebuginfo::kSOProfiler);
+              cpuDevice.getProfilerDebuginfo() ==
+                  CPUDeviceOptions::ProfilerDebuginfo::kSOProfiler);
   CompiledKernelsContext &module =
       *kernelExecutionState.modules[fModuleIndex.get()];
 

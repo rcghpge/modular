@@ -148,21 +148,21 @@ Model::Model(std::string name, SmallVector<DeviceRef> devices,
 }
 
 MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
+Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
              const M::GraphCompiler::Driver::DeviceMap &deviceMap) const {
-  checkUniqueRuntime(runtime);
+  checkUniqueCPUDevice(cpuDevice);
 
   SmallVector<AnyAsyncValueRef> initArgs;
   initArgs.reserve(kMgpModelNumFixedImplicitInitArgs + devices.size());
 
   // Populate init block args with a borrowed ref to the weights registry.
   initArgs.push_back(AnyAsyncValueRef::createReady<MojoValue>(
-      runtime, MojoValue::createRef(weightsRegistry ? weightsRegistry->opaque()
-                                                    : nullptr)));
+      cpuDevice, MojoValue::createRef(
+                     weightsRegistry ? weightsRegistry->opaque() : nullptr)));
 
   // Set device contexts from the device ref to device mapping.
   auto deviceContextsOr = GraphCompiler::Driver::mapDeviceRefsToDevices(
-      getDevices(), deviceMap, runtime);
+      getDevices(), deviceMap, cpuDevice);
   if (deviceContextsOr.isError())
     return MLRT::EncodedDiagnostic(
         Twine("setup for model ") + getName() +
@@ -173,7 +173,7 @@ Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
                   std::make_move_iterator(deviceContextsOr->end()));
 
   // Run the init block.
-  auto results = initFn->invoke(initArgs, runtime);
+  auto results = initFn->invoke(initArgs, cpuDevice);
 
   for (AnyAsyncValueRef &result : results) {
     if (result.isError()) {
@@ -194,7 +194,7 @@ Model::setup(Runtime &runtime, const WeightsRegistry *weightsRegistry,
       /*chain=*/std::move(results[0]),
       /*mgpContext=*/std::move(results[1]),
       /*weightsRegistry=*/std::move(results[2]),
-      /*extraArgs*/ std::move(extraArgs), this, runtime))};
+      /*extraArgs*/ std::move(extraArgs), this, cpuDevice))};
 }
 
 ErrorOr<std::unique_ptr<Model>>
@@ -307,8 +307,8 @@ ExecutableModel::ExecutableModel(AnyAsyncValueRef chain,
                                  AnyAsyncValueRef mgpContext,
                                  AnyAsyncValueRef weightsRegistry,
                                  SmallVector<AnyAsyncValueRef> &&extraArgs,
-                                 const Model *model, Runtime &runtime)
-    : model(model), runtime(runtime), chain(std::move(chain)),
+                                 const Model *model, CPUDevice &cpuDevice)
+    : model(model), cpuDevice(cpuDevice), chain(std::move(chain)),
       mgpContext(std::move(mgpContext)),
       weightsRegistry(std::move(weightsRegistry)),
       extraArgs(std::move(extraArgs)) {}
@@ -319,7 +319,7 @@ SmallVector<AnyAsyncValueRef>
 ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
   TRACY_ZONE_SCOPED_NC("ExecutableModel::execute", TRACY_COLOR_TEAL);
 
-  checkUniqueRuntime(getRuntime());
+  checkUniqueCPUDevice(getCPUDevice());
 
   // Pass fixed execute args (chain, context, and weights registry), devices,
   // init->exec context bundles, and inputs to the forward pass.
@@ -337,11 +337,11 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
   for (AnyAsyncValueRef &arg : args)
     passedArgs.emplace_back(std::move(arg));
 
-  // Set the thread local singleton runtime to the provided runtime. This is
+  // Set the thread local singleton cpuDevice to the provided cpuDevice. This is
   // referenced internally by some kernels.
-  MLRT::CompactRuntimePtr::setCurrentRuntime(getRuntime());
+  MLRT::CompactCPUDevicePtr::setCurrentCPUDevice(getCPUDevice());
 
-  return getModel()->getExecuteFn()->invoke(passedArgs, getRuntime());
+  return getModel()->getExecuteFn()->invoke(passedArgs, getCPUDevice());
 }
 
 ErrorOrSuccess ExecutableModel::waitForModelSetup() {
@@ -363,7 +363,7 @@ ErrorOrSuccess ExecutableModel::waitForModelSetup() {
 // Compute a stable device-local input-signature hash
 // (input index + memory address + shape + dtype).
 //
-// Only non-host inputs resident on the same runtime device are included. This
+// Only non-host inputs resident on the same cpuDevice device are included. This
 // keeps per-device safety checks compatible with replay that mixes device keys
 // from different capture sessions.
 static uint64_t
@@ -447,7 +447,7 @@ static std::string graphKeysToString(ArrayRef<uint64_t> graphKeys) {
 }
 
 // Return all graph-capture-capable streams from the model's device contexts.
-// This keeps capture/replay tied to the same runtime devices as execution.
+// This keeps capture/replay tied to the same cpuDevice devices as execution.
 static ErrorOr<SmallVector<Driver::DeviceStreamRef>>
 captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
   if (auto err = MLRT::awaitOrError(extraArgs))
@@ -486,7 +486,7 @@ ExecutableModel::executeWithDeviceMemoryInputs(
       return viewOrErr.takeError();
     GraphCompiler::Driver::DeviceMemory *view = viewOrErr.takeValue();
     inputValues.push_back(GraphCompiler::Driver::prepareInput(
-        getRuntime(), view, view->getSpec()));
+        getCPUDevice(), view, view->getSpec()));
   }
 
   SmallVector<AnyAsyncValueRef> results = execute(inputValues);
@@ -542,7 +542,7 @@ ErrorOr<SmallVector<AnyAsyncValueRef>> ExecutableModel::capture(
 
   ErrorOr<Driver::DeviceGraphCollection> graphOrErr =
       Driver::DeviceGraph::capture(
-          runtime, *streamsOr, [&]() -> ErrorOrSuccess {
+          cpuDevice, *streamsOr, [&]() -> ErrorOrSuccess {
             auto maybeResult = executeWithDeviceMemoryInputs(inputs);
             if (maybeResult.isError())
               return maybeResult.takeError();
@@ -661,7 +661,7 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
     launchGraph(0);
   } else {
     auto readyChain = MLRT::launchDeviceCollective(
-        runtime, normalizedKeys.size(), std::move(launchGraph));
+        cpuDevice, normalizedKeys.size(), std::move(launchGraph));
     MLRT::await(readyChain);
   }
 
@@ -715,7 +715,7 @@ ErrorOrSuccess ExecutableModel::debugVerifyReplay(
   ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
 
   // debugVerifyReplay validates eager launch traces, not replay safety.
-  // Allow non-capture input signatures so runtime-shaped eager executions can
+  // Allow non-capture input signatures so cpuDevice-shaped eager executions can
   // be compared against captured graphs.
   if (ErrorOrSuccess err = validateCapturedPerDeviceKeys(normalizedKeys))
     return err.takeError();

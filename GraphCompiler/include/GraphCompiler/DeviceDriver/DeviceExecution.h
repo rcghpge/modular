@@ -24,8 +24,8 @@ constructDeviceMemoryFromTensor(M::ContextRef context,
 
 /// Transforms a DeviceTensor representation into an AnyAsyncValueRef executable
 /// returned by an ExecutableModel.
-MODULAR_VISIBILITY_EXPORT AnyAsyncValueRef
-prepareInput(Runtime &runtime, DeviceMemory *inputMemory, TensorSpec inputSpec);
+MODULAR_VISIBILITY_EXPORT AnyAsyncValueRef prepareInput(
+    CPUDevice &cpuDevice, DeviceMemory *inputMemory, TensorSpec inputSpec);
 
 } // namespace M::GraphCompiler::Driver
 

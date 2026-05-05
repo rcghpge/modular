@@ -17,18 +17,18 @@
 using namespace M;
 using namespace M::MLRT;
 
-static MLRT::RuntimeRef getRuntime() {
-  return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
-                                  MLRT::RuntimeOptions().forDebug());
+static MLRT::CPUDeviceRef getCPUDevice() {
+  return MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
+                                    MLRT::CPUDeviceOptions().forDebug());
 }
 
 constexpr size_t kN = 4;
 constexpr size_t kM = 6;
 
-static Tensor makeTensor(MLRT::Runtime &runtime) {
+static Tensor makeTensor(MLRT::CPUDevice &cpuDevice) {
   M::TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
   Tensor result =
-      Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
+      Tensor::createOwned(std::move(spec), cpuDevice, /*alignment=*/{});
   for (size_t i = 0, e = result.getSizeInBytes(); i < e; ++i)
     result.getMutableBuffer<uint8_t>()[i] = static_cast<uint8_t>(i);
   return result;
@@ -47,8 +47,8 @@ static bool haveSameContents(Tensor &lhs, Tensor &rhs) {
 }
 
 TEST(Tensor, Borrow) {
-  auto runtime = getRuntime();
-  Tensor tensor = makeTensor(*runtime);
+  auto cpuDevice = getCPUDevice();
+  Tensor tensor = makeTensor(*cpuDevice);
   Tensor borrow = tensor.borrow();
   ASSERT_TRUE(haveSameContents(tensor, borrow));
   incrementContents(tensor);
@@ -56,9 +56,9 @@ TEST(Tensor, Borrow) {
 }
 
 TEST(Tensor, FromBuffer) {
-  auto runtime = getRuntime();
+  auto cpuDevice = getCPUDevice();
   TensorSpec spec({kN, kM}, *DType::getInt(8, /*isSigned=*/false));
-  TensorBufferRef ref = TensorBufferRef::createOwned(*runtime, kN * kM,
+  TensorBufferRef ref = TensorBufferRef::createOwned(*cpuDevice, kN * kM,
                                                      /*alignment=*/{});
 
   const void *data = ref.getBuffer();
@@ -70,7 +70,7 @@ TEST(Tensor, FromBuffer) {
 
 // bitWidthT should be a type of the same bit-width as dtype
 template <typename bitWidthT>
-static void checkPrintTensor(MLRT::Runtime &runtime,
+static void checkPrintTensor(MLRT::CPUDevice &cpuDevice,
                              std::initializer_list<int64_t> shape,
                              const DType &dtype, SmallVector<bitWidthT> &&data,
                              const std::string &checkString) {
@@ -81,7 +81,7 @@ static void checkPrintTensor(MLRT::Runtime &runtime,
 
   M::TensorSpec spec(shape, dtype);
   Tensor tensor =
-      Tensor::createOwned(std::move(spec), runtime, /*alignment=*/{});
+      Tensor::createOwned(std::move(spec), cpuDevice, /*alignment=*/{});
   ASSERT_EQ(tensor.getSizeInBytes(), data.size() * sizeof(bitWidthT));
   memcpy((void *)tensor.getMutableBuffer(), (void *)data.data(),
          sizeof(bitWidthT) * data.size());
@@ -96,49 +96,49 @@ static void checkPrintTensor(MLRT::Runtime &runtime,
 
 /// Test GML::printTensorCompact
 TEST(Tensor, printTensor) {
-  auto runtime = getRuntime();
-  checkPrintTensor<uint8_t>(*runtime, {}, DType::ui8, {0},
+  auto cpuDevice = getCPUDevice();
+  checkPrintTensor<uint8_t>(*cpuDevice, {}, DType::ui8, {0},
                             "tensor([[0]], dtype=ui8, shape=[])\n");
-  checkPrintTensor<uint8_t>(*runtime, {1}, DType::ui8, {0},
+  checkPrintTensor<uint8_t>(*cpuDevice, {1}, DType::ui8, {0},
                             "tensor([[0]], dtype=ui8, shape=[1])\n");
-  checkPrintTensor<uint8_t>(*runtime, {3}, DType::ui8, {0, 1, 2},
+  checkPrintTensor<uint8_t>(*cpuDevice, {3}, DType::ui8, {0, 1, 2},
                             "tensor([[0, 1, 2]], dtype=ui8, shape=[3])\n");
-  checkPrintTensor<uint8_t>(*runtime, {5, 2}, DType::ui8,
+  checkPrintTensor<uint8_t>(*cpuDevice, {5, 2}, DType::ui8,
                             {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
                             "tensor([[0, 1],\n[2, 3],\n[4, 5],\n[6, 7],\n[8, "
                             "9]], dtype=ui8, shape=[5,2])\n");
 
-  checkPrintTensor<int32_t>(*runtime, {}, DType::si32, {0},
+  checkPrintTensor<int32_t>(*cpuDevice, {}, DType::si32, {0},
                             "tensor([[0]], dtype=si32, shape=[])\n");
-  checkPrintTensor<int32_t>(*runtime, {1}, DType::si32, {0},
+  checkPrintTensor<int32_t>(*cpuDevice, {1}, DType::si32, {0},
                             "tensor([[0]], dtype=si32, shape=[1])\n");
-  checkPrintTensor<int32_t>(*runtime, {3}, DType::si32, {0, 1, 2},
+  checkPrintTensor<int32_t>(*cpuDevice, {3}, DType::si32, {0, 1, 2},
                             "tensor([[0, 1, 2]], dtype=si32, shape=[3])\n");
-  checkPrintTensor<int32_t>(*runtime, {5, 2}, DType::si32,
+  checkPrintTensor<int32_t>(*cpuDevice, {5, 2}, DType::si32,
                             {0, -1, 2, 3, 4, 5, 6, 7, 8, 9},
                             "tensor([[0, -1],\n[2, 3],\n[4, 5],\n[6, 7],\n[8, "
                             "9]], dtype=si32, shape=[5,2])\n");
 
-  checkPrintTensor<float>(*runtime, {}, DType::f32, {0},
+  checkPrintTensor<float>(*cpuDevice, {}, DType::f32, {0},
                           "tensor([[0.0000]], dtype=f32, shape=[])\n");
-  checkPrintTensor<float>(*runtime, {1}, DType::f32, {0},
+  checkPrintTensor<float>(*cpuDevice, {1}, DType::f32, {0},
                           "tensor([[0.0000]], dtype=f32, shape=[1])\n");
   checkPrintTensor<float>(
-      *runtime, {3}, DType::f32, {0, 1, 2},
+      *cpuDevice, {3}, DType::f32, {0, 1, 2},
       "tensor([[0.0000, 1.0000, 2.0000]], dtype=f32, shape=[3])\n");
   checkPrintTensor<float>(
-      *runtime, {5, 2}, DType::f32, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9.123},
+      *cpuDevice, {5, 2}, DType::f32, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9.123},
       "tensor([[0.0000, 1.0000],\n[2.0000, 3.0000],\n[4.0000, "
       "5.0000],\n[6.0000, 7.0000],\n[8.0000, "
       "9.1230]], dtype=f32, shape=[5,2])\n");
 
   // float16
   checkPrintTensor<uint16_t>(
-      *runtime, {3}, DType::f16, {0x4248, 0xDD10, 0x4400},
+      *cpuDevice, {3}, DType::f16, {0x4248, 0xDD10, 0x4400},
       "tensor([[3.1406, -324.0000, 4.0000]], dtype=f16, shape=[3])\n");
 
   // bfloat16
   checkPrintTensor<uint16_t>(
-      *runtime, {3}, DType::bf16, {0x4049, 0xC467, 0x4080},
+      *cpuDevice, {3}, DType::bf16, {0x4049, 0xC467, 0x4080},
       "tensor([[3.1406, -924.0000, 4.0000]], dtype=bf16, shape=[3])\n");
 }

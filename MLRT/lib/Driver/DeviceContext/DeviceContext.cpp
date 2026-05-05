@@ -905,7 +905,7 @@ beginCaptureAndExecute(ArrayRef<DeviceStreamRef> streams,
 }
 
 ErrorOr<DeviceGraphCollection>
-DeviceGraph::capture(Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
+DeviceGraph::capture(CPUDevice &cpuDevice, ArrayRef<DeviceStreamRef> streams,
                      llvm::function_ref<ErrorOrSuccess()> execute) {
   SmallVector<DeviceGraphCaptureContext, 8> captures;
   if (ErrorOrSuccess err = beginCaptureAndExecute(streams, execute, captures))
@@ -941,7 +941,7 @@ DeviceGraph::capture(Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
   SmallVector<AsyncDeviceGraphRef> asyncGraphs;
   asyncGraphs.reserve(numGraphs);
   for (auto _ : llvm::seq(numGraphs))
-    asyncGraphs.push_back(AsyncDeviceGraphRef::allocate(runtime));
+    asyncGraphs.push_back(AsyncDeviceGraphRef::allocate(cpuDevice));
 
   SmallVector<AsyncDeviceGraphRef> producers;
   producers.reserve(numGraphs);
@@ -949,7 +949,7 @@ DeviceGraph::capture(Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
     producers.push_back(av.copy());
 
   MLRT::launchNonDeviceCollective(
-      runtime, numGraphs,
+      cpuDevice, numGraphs,
       [graphs = std::move(uninstantiatedGraphs),
        results = std::move(producers)](size_t i) mutable {
         if (ErrorOrSuccess err = graphs[i]->instantiate()) {

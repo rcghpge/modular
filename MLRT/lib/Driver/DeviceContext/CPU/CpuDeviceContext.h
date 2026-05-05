@@ -112,7 +112,7 @@ private:
 
 class CpuDeviceEvent : public DeviceEvent {
 public:
-  CpuDeviceEvent(CpuDevice &device, MLRT::RuntimeRef runtime,
+  CpuDeviceEvent(CpuDevice &device, MLRT::CPUDeviceRef cpuDevice,
                  MLRT::AnyAsyncValueRef value);
   ~CpuDeviceEvent() override = default;
 
@@ -122,7 +122,7 @@ public:
   MLRT::AnyAsyncValueRef &asyncValue() { return value; }
 
 private:
-  MLRT::RuntimeRef runtime;
+  MLRT::CPUDeviceRef cpuDevice;
   MLRT::AnyAsyncValueRef value;
 };
 
@@ -203,7 +203,7 @@ private:
 
   ErrorOrSuccess enqueueWork(MLRT::TaskFunction &&work);
 
-  MLRT::RuntimeRef runtime;
+  MLRT::CPUDeviceRef cpuDevice;
 
   // Contains the chain of the last enqueued operation, which may already have
   // completed

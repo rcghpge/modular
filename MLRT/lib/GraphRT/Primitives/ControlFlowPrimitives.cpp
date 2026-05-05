@@ -26,8 +26,8 @@ using namespace M;
 /// Strictly wait for all the input operands (if any), then return a ready
 /// chain.
 static AsyncValueRef<Chain> grt_chain_create(RemainingArguments arguments,
-                                             Runtime &runtime) {
-  return runtime.getReadyChain().copy();
+                                             CPUDevice &cpuDevice) {
+  return cpuDevice.getReadyChain().copy();
 }
 
 //===----------------------------------------------------------------------===//
@@ -36,11 +36,11 @@ static AsyncValueRef<Chain> grt_chain_create(RemainingArguments arguments,
 
 static void grt_invoke(RemainingArguments arguments, RemainingResults results,
                        MEFAttr<MEFSymbolRef> targetName, MEFInvokable *target,
-                       Runtime &runtime) {
+                       CPUDevice &cpuDevice) {
   // We don't use the attrs passed in - it's just the symbol name.
   assert(target->getNumArgs() == arguments.size() && "argument count mismatch");
   assert(target->getNumResults() == results.size() && "result count mismatch");
-  target->invoke(arguments.get(), results.get(), runtime);
+  target->invoke(arguments.get(), results.get(), cpuDevice);
 }
 
 //===----------------------------------------------------------------------===//
@@ -58,7 +58,7 @@ static void grt_invoke(RemainingArguments arguments, RemainingResults results,
 /// condition.
 static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
                    RemainingResults results, MEFInvokable *trueInv,
-                   MEFInvokable *falseInv, Runtime &runtime) {
+                   MEFInvokable *falseInv, CPUDevice &cpuDevice) {
   assert(trueInv->getNumArgs() == args.size() && "argument count mismatch");
   assert(trueInv->getNumResults() == results.size() && "result count mismatch");
   assert(trueInv->getNumArgs() == falseInv->getNumArgs() &&
@@ -69,7 +69,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
   // overhead.
   if (cond.getPointer()->isValueAvailable()) {
     MEFInvokable *bodyInv = *cond ? trueInv : falseInv;
-    bodyInv->invoke(args.get(), results.get(), runtime);
+    bodyInv->invoke(args.get(), results.get(), cpuDevice);
     return;
   }
 
@@ -103,7 +103,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
           (*cond ? trueInvokable : falseInvokable).getPointer();
       SmallVector<AnyAsyncValueRef> bodyResults;
       bodyResults.resize(ifResults.size());
-      bodyInvokable->invoke(operands, bodyResults, cond.getRuntime());
+      bodyInvokable->invoke(operands, bodyResults, cond.getCPUDevice());
 
       // We complete by passing the final result values to the output of the
       // overall grt.if op.
@@ -131,7 +131,7 @@ static void grt_if(AsyncValueRef<bool> cond, RemainingArguments args,
 /// current value of the while arguments.
 static void grt_while(RemainingArguments args, RemainingResults results,
                       MEFInvokable *cond, MEFInvokable *body,
-                      Runtime &runtime) {
+                      CPUDevice &cpuDevice) {
   assert(args.size() == results.size());
   assert(cond->getNumArgs() == args.size() &&
          cond->getNumResults() == results.size() + 1);
@@ -145,7 +145,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.
   struct WhileState {
-    Runtime &runtime;
+    CPUDevice &cpuDevice;
     RCRef<MEFInvokable> condInvokable;
     RCRef<MEFInvokable> bodyInvokable;
     SmallVector<AnyAsyncValueRef> currentOperands;
@@ -170,7 +170,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
       // Start executing the 'cond' block, consuming the current operands.
       SmallVector<AnyAsyncValueRef> condResults;
       condResults.resize(whileResults.size() + 1);
-      condInvokable->invoke(currentOperands, condResults, runtime);
+      condInvokable->invoke(currentOperands, condResults, cpuDevice);
 
       // When all the results of the 'cond' block complete, look at the
       // condition to decide if we should proceed to the 'body'. We could
@@ -197,7 +197,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
               return std::move(state).finish();
 
             // Execute the body (and following cond) in a sub-task.
-            addTask(state.runtime, [state = std::move(state)]() mutable {
+            addTask(state.cpuDevice, [state = std::move(state)]() mutable {
               std::move(state).evalBody();
             });
           });
@@ -208,7 +208,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
       // Start executing the 'body' block, consuming the current operands.
       SmallVector<AnyAsyncValueRef> bodyResults;
       bodyResults.resize(whileResults.size());
-      bodyInvokable->invoke(currentOperands, bodyResults, runtime);
+      bodyInvokable->invoke(currentOperands, bodyResults, cpuDevice);
 
       // When all results of the 'body' block are ready, go around again
       // with the 'cond' block. We could directly proceed with the 'cond' block
@@ -224,18 +224,18 @@ static void grt_while(RemainingArguments args, RemainingResults results,
               currentOperand = std::move(bodyResult);
 
             // And we'll need to go around again to eval the condition.
-            addTask(state.runtime, [state = std::move(state)]() mutable {
+            addTask(state.cpuDevice, [state = std::move(state)]() mutable {
               std::move(state).evalCond();
             });
           });
     }
   };
 
-  WhileState state = {runtime, copyRCRef(cond), copyRCRef(body),
+  WhileState state = {cpuDevice, copyRCRef(cond), copyRCRef(body),
                       args.takeAsVector(), results.copyAsVector()};
 
   // Start the ball rolling on a separate task.
-  addTask(runtime, [state = std::move(state)]() mutable {
+  addTask(cpuDevice, [state = std::move(state)]() mutable {
     std::move(state).evalCond();
   });
 }
@@ -251,7 +251,7 @@ static void grt_while(RemainingArguments args, RemainingResults results,
 /// primitive, and the count may not be available yet.
 static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
                        RemainingResults results, MEFInvokable *body,
-                       Runtime &runtime) {
+                       CPUDevice &cpuDevice) {
   assert(args.size() == results.size() && args.size() == body->getNumArgs() &&
          results.size() == body->getNumResults());
 
@@ -262,7 +262,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
   /// Capture and add-ref each argument and result AsyncValue into a state we
   /// can manage.
   struct RepeatState {
-    Runtime &runtime;
+    CPUDevice &cpuDevice;
     RCRef<MEFInvokable> bodyInvokable;
     SmallVector<AnyAsyncValueRef> currentOperands;
     SmallVector<AnyAsyncValueRef> repeatResults;
@@ -297,7 +297,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
       iterationsLeft = *count;
 
       // Start executing the body.
-      addTask(runtime, [state = std::move(*this)]() mutable {
+      addTask(cpuDevice, [state = std::move(*this)]() mutable {
         std::move(state).doIteration();
       });
     }
@@ -315,7 +315,7 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
 
       SmallVector<AnyAsyncValueRef> bodyResults;
       bodyResults.resize(repeatResults.size());
-      bodyInvokable->invoke(currentOperands, bodyResults, runtime);
+      bodyInvokable->invoke(currentOperands, bodyResults, cpuDevice);
 
       // When all the results of the previous computation complete, kick off
       // the next iteration. We could just "unroll the loop" completely, which
@@ -329,14 +329,14 @@ static void repeat_i32(AsyncValueRef<int32_t> count, RemainingArguments args,
                  llvm::zip(state.currentOperands, values))
               currentOperand = std::move(value);
 
-            addTask(state.runtime, [state = std::move(state)]() mutable {
+            addTask(state.cpuDevice, [state = std::move(state)]() mutable {
               std::move(state).doIteration();
             });
           });
     }
   };
 
-  RepeatState state = {runtime, copyRCRef(body), args.takeAsVector(),
+  RepeatState state = {cpuDevice, copyRCRef(body), args.takeAsVector(),
                        results.copyAsVector(), 0};
 
   // Dispatch when the `count` becomes available (possibly immediately).

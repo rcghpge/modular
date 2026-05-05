@@ -21,7 +21,7 @@ using namespace M;
 /// This can be set into a result or used for other purposes.
 AnyAsyncValueRef RunnablePrimitiveDescriptor::getError(Error cause) {
   return AnyAsyncValueRef::createError(
-      runtime, EncodedDiagnostic(std::move(cause), copyLocation()));
+      cpuDevice, EncodedDiagnostic(std::move(cause), copyLocation()));
 }
 
 /// Mark that execution of the primitive failed with the specified reason.

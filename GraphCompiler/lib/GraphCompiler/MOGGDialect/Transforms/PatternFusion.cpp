@@ -2067,7 +2067,7 @@ struct MultiHeadAttentionPattern
     if (beforeShape == afterShape)
       return;
 
-    // Inserts a runtime guard checking (beforeShape == afterShape)
+    // Inserts a cpuDevice guard checking (beforeShape == afterShape)
     IntegerType boolTy = rewriter.rewriter.getI1Type();
     TypedAttr cmpAttr =
         KGEN::emitMLIROperationCall(MOSH::EqualOp::getOperationName(), {},
@@ -2075,7 +2075,7 @@ struct MultiHeadAttentionPattern
     KGEN::ParamDeclAttr condAttr = graphOp.getNewParamOfType(checkName, boolTy);
     rewriter.create<KGEN::ParamDeclareOp>(loc, condAttr, cmpAttr);
 
-    // Add runtime assertion into graph
+    // Add cpuDevice assertion into graph
     TypedAttr assertAttr = MO::AssertOp::emitStaticCall(
         KGEN::ParamDeclRefAttr::get(condAttr), errorMsg);
     auto chainTy = rewriter.getType<ChainType>();
@@ -2088,7 +2088,8 @@ struct MultiHeadAttentionPattern
                         DeviceAwareRewriter &rewriter) const {
     // We expect all bcasts matched in the pattern with `allowUnsafeBCast`
     // to be no-ops (e.g. they don't change shape). This guards against this
-    // condition by inserting runtime checks against a potentially unsafe bcast.
+    // condition by inserting cpuDevice checks against a potentially unsafe
+    // bcast.
     //
     // Note, at this point in the program it is assumed shape functions have
     // been inlined so no internal ops of the pattern produce result parameters.
@@ -2480,7 +2481,7 @@ struct MultiHeadAttentionPattern
     // The transpose to turn the layout from BHSD --> BSHD.
     //
     // In practice this is impossible to always prove so for many models
-    // we assume the transpose is to BSHD and insert a dynamic runtime check
+    // we assume the transpose is to BSHD and insert a dynamic cpuDevice check
     // later in case this is violated.
     //
     // However if we can prove this is false at compile time, e.g. if the shapes
@@ -2653,7 +2654,8 @@ struct MultiHeadAttentionPattern
     // the middle of the pattern so we must be 100% sure the rewrite will
     // succeed now.
 
-    // If we have unsafe broadcasts, we want to add runtime guards against them.
+    // If we have unsafe broadcasts, we want to add cpuDevice guards against
+    // them.
     for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts())
       guardUnsafeBCast(unsafeBCast, rewriter);
 

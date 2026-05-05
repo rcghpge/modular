@@ -355,12 +355,12 @@ static LogicalResult outputResults(const ExecutableModel *model,
 // will borrow, at 'execute' scope, from the underlying generotar's 'next'
 // tensor.
 static SmallVector<AnyAsyncValueRef, 3>
-buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
+buildArgs(CPUDevice &cpuDevice, ArrayRef<ITensorGeneratorPtr> generators) {
   SmallVector<AnyAsyncValueRef, 3> args;
   args.reserve(generators.size());
   for (const auto &generator : generators) {
     args.emplace_back(AsyncValueRef<Tensor>::createReady(
-        runtime, generator->getNextTensor().borrow()));
+        cpuDevice, generator->getNextTensor().borrow()));
   }
   return args;
 }
@@ -368,10 +368,9 @@ buildArgs(Runtime &runtime, ArrayRef<ITensorGeneratorPtr> generators) {
 /// Call executableModel->execute(args), await the results, and return them.
 /// If checkResults is true, return any error which any result contains.
 /// Otherwise, assume the consumer of the results will check for errors.
-static ErrorOr<SmallVector<AnyAsyncValueRef>>
-executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
-                          MutableArrayRef<AnyAsyncValueRef> args,
-                          bool checkResults) {
+static ErrorOr<SmallVector<AnyAsyncValueRef>> executeModelSynchronously(
+    CPUDevice &cpuDevice, ExecutableModel &executableModel,
+    MutableArrayRef<AnyAsyncValueRef> args, bool checkResults) {
   auto results = executableModel.execute(args);
 
   if (checkResults) {
@@ -386,9 +385,9 @@ executeModelSynchronously(Runtime &runtime, ExecutableModel &executableModel,
 }
 
 /// Repeatedly evaluate the model (numRuns to be exact) and capture and print
-/// the runtime for each evaluation.
+/// the cpuDevice for each evaluation.
 static ErrorOr<std::unique_ptr<ExecutableModel>>
-executeModel(const Model *model, Runtime &runtime,
+executeModel(const Model *model, CPUDevice &cpuDevice,
              const ExecutorDriverOptions &options,
              ArrayRef<QuantTensorSpec> inputSpecs, unsigned int numRuns,
              unsigned int numWarmup) {
@@ -408,7 +407,7 @@ executeModel(const Model *model, Runtime &runtime,
   std::unique_ptr<ExecutableModel> executableModel;
   {
     TimeTraceScope scope(DriverProfilerEntry::create("executeModel.setup"));
-    auto executableModel1Or = model->setup(runtime);
+    auto executableModel1Or = model->setup(cpuDevice);
     if (executableModel1Or.isError())
       return executableModel1Or.takeError().getMessage().copy();
     auto executableModel1 = executableModel1Or.takeValue();
@@ -423,7 +422,7 @@ executeModel(const Model *model, Runtime &runtime,
   // Tensor's with lifetime matching the generator itself.
   auto inputTensorGeneratorsOr = createTensorGenerators(
       options.inputGenKind, inputSpecs, options.inputData,
-      options.minimumCpuAlignment, runtime);
+      options.minimumCpuAlignment, cpuDevice);
   if (inputTensorGeneratorsOr.isError())
     return inputTensorGeneratorsOr.takeError();
   auto inputTensorGenerators = std::move(*inputTensorGeneratorsOr);
@@ -437,11 +436,12 @@ executeModel(const Model *model, Runtime &runtime,
   }
   for (unsigned i = 0; i < numWarmup; ++i) {
     TimeTraceScope scope(DriverProfilerEntry::create("executeModel.warmup"));
-    auto args = buildArgs(runtime, inputTensorGenerators);
+    auto args = buildArgs(cpuDevice, inputTensorGenerators);
 
     // Execute the model synchronously. Propagate any error back to caller.
-    auto resultsOr = executeModelSynchronously(runtime, *executableModel, args,
-                                               /*checkResults=*/true);
+    auto resultsOr =
+        executeModelSynchronously(cpuDevice, *executableModel, args,
+                                  /*checkResults=*/true);
     if (resultsOr.isError())
       return resultsOr.takeError();
     // Ignore results value.
@@ -457,7 +457,7 @@ executeModel(const Model *model, Runtime &runtime,
   }
 
   for (unsigned i = 0; i < numRuns; ++i) {
-    auto args = buildArgs(runtime, inputTensorGenerators);
+    auto args = buildArgs(cpuDevice, inputTensorGenerators);
 
     if (i > 0 && i % 100 == 0)
       llvm::outs() << "--- Run " << i << "...\n";
@@ -471,7 +471,7 @@ executeModel(const Model *model, Runtime &runtime,
     // Otherwise, we need only wait for the results and errors will be
     // reported when printing the results below.
     auto resultsOr = executeModelSynchronously(
-        runtime, *executableModel, args,
+        cpuDevice, *executableModel, args,
         /*checkResults=*/options.resultOutputStyle == ResultOutputStyle::kNone);
     if (resultsOr.isError())
       return resultsOr.takeError();
@@ -555,7 +555,7 @@ static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
 }
 
 /// Run `model` using the command line options flags configured by the user.
-LogicalResult M::runModel(const Model *model, MLRT::Runtime &runtime,
+LogicalResult M::runModel(const Model *model, MLRT::CPUDevice &cpuDevice,
                           const ExecutorDriverOptions &options) {
   SmallVector<TensorSpec> userInputSpecs;
   if (!options.inputSpecs.empty()) {
@@ -573,9 +573,9 @@ LogicalResult M::runModel(const Model *model, MLRT::Runtime &runtime,
     return failure(options.reportError(shapesOrErr.getError()));
   }
   const auto &inputSpecs = shapesOrErr.takeValue();
-  saveInputSpecs(inputSpecs, runtime.getProfiler());
+  saveInputSpecs(inputSpecs, cpuDevice.getProfiler());
 
-  auto executableModelOr = executeModel(model, runtime, options, inputSpecs,
+  auto executableModelOr = executeModel(model, cpuDevice, options, inputSpecs,
                                         options.numRuns, options.numWarmup);
   if (executableModelOr.isError())
     return failure(options.reportError(executableModelOr.getError()));

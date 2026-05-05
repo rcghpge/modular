@@ -21,9 +21,9 @@ namespace M::MLRT {
 /// returned is simply a ready chain.
 class AsyncSideEffectMap {
 public:
-  explicit AsyncSideEffectMap(Runtime &runtime) : runtime(runtime) {}
+  explicit AsyncSideEffectMap(CPUDevice &cpuDevice) : cpuDevice(cpuDevice) {}
 
-  Runtime &getRuntime() { return runtime; }
+  CPUDevice &getRuntime() { return cpuDevice; }
 
   /// Map an Operation to a chain. This simply moves the provided AsyncValue
   /// into the map.
@@ -72,8 +72,8 @@ public:
   }
 
 private:
-  /// The map needs a runtime reference to be able to create ready chains.
-  Runtime &runtime;
+  /// The map needs a cpuDevice reference to be able to create ready chains.
+  CPUDevice &cpuDevice;
 
   /// Store a map of Operation * -> AsyncValue to keep track of in-flight side
   /// effects.

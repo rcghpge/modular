@@ -899,7 +899,7 @@ static ErrorOr<OwningOpRef<ModuleOp>>
 parseMojoPackage(MLIRContext *ctx, StringRef path,
                  const std::shared_ptr<llvm::SourceMgr> &sourceMgr,
                  bool generateKGENLib) {
-  MLRT::Runtime &runtime = *loadContext(ctx)->get<MLRT::Runtime>();
+  MLRT::CPUDevice &cpuDevice = *loadContext(ctx)->get<MLRT::CPUDevice>();
 
   // Intercept parsing diagnostics to display them at the end if an error occurs
   std::string errMsg;
@@ -918,7 +918,7 @@ parseMojoPackage(MLIRContext *ctx, StringRef path,
       },
       &errMsgStream);
   OwningOpRef<ModuleOp> ownedModule =
-      KGEN::LIT::importStandaloneMojoBinaryPackage(runtime, sourceMgr, ctx,
+      KGEN::LIT::importStandaloneMojoBinaryPackage(cpuDevice, sourceMgr, ctx,
                                                    path);
   if (!ownedModule)
     return Error("failed to load Mojo package: " + path +

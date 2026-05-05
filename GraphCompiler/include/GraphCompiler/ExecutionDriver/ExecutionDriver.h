@@ -61,7 +61,7 @@ inline bool isSet(TensorGeneratorFlag a, TensorGeneratorFlag b) {
 std::optional<TensorGeneratorFlag> symbolizeTensorGeneratorFlag(StringRef s);
 
 /// Run `model` using the command line options flags configured by the user.
-LogicalResult runModel(const Model *model, MLRT::Runtime &runtime,
+LogicalResult runModel(const Model *model, MLRT::CPUDevice &cpuDevice,
                        const ExecutorDriverOptions &options);
 
 } // namespace M

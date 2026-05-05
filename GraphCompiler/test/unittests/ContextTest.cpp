@@ -27,9 +27,9 @@ struct PayloadB : public ReferenceCounted<PayloadB> {
   char c;
 };
 
-static MLRT::RuntimeRef getRuntime() {
-  return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
-                                  MLRT::RuntimeOptions().forDebug());
+static MLRT::CPUDeviceRef getCPUDevice() {
+  return MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
+                                    MLRT::CPUDeviceOptions().forDebug());
 }
 
 #ifndef NDEBUG
@@ -53,7 +53,7 @@ TEST(ContextTest, StateSlotTest) {
 }
 
 TEST(ContextTest, getOrCreateBufferTest) {
-  auto runtime = getRuntime();
+  auto cpuDevice = getCPUDevice();
   {
     // Add scope to make sure that the allocator outlives the context.
     StateContext ctx(/*numSlots=*/1);
@@ -62,12 +62,12 @@ TEST(ContextTest, getOrCreateBufferTest) {
     auto &stateSlot = ctx.getStateSlot(/*slotIndex=*/0);
     {
       auto buffer = stateSlot.getOrCreateBuffer(
-          /*bufferIndex=*/0, *runtime, /*size=*/1, /*alignment=*/{});
+          /*bufferIndex=*/0, *cpuDevice, /*size=*/1, /*alignment=*/{});
 
       // getOrCreateBuffer call with the same slot and the same size returns a
       // cached buffer.
       auto buffer2 = stateSlot.getOrCreateBuffer(
-          /*bufferIndex=*/0, *runtime, /*size=*/1, /*alignment=*/{});
+          /*bufferIndex=*/0, *cpuDevice, /*size=*/1, /*alignment=*/{});
       EXPECT_EQ(buffer.getBuffer(), buffer2.getBuffer());
 
       // We're done with the above buffers, so safe to reallocate.
@@ -75,7 +75,7 @@ TEST(ContextTest, getOrCreateBufferTest) {
 
     // Call with a different size will allocate a new buffer.
     auto buffer3 = stateSlot.getOrCreateBuffer(
-        /*bufferIndex=*/0, *runtime, /*size=*/2, /*alignment=*/{});
+        /*bufferIndex=*/0, *cpuDevice, /*size=*/2, /*alignment=*/{});
     EXPECT_NE(buffer3.getSize(), 1UL);
   }
 }

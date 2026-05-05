@@ -67,7 +67,7 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
     storageRef.reset();
 
     // When graph deallocates CPU memory it is done through AsyncRT Runtime. So
-    // we need to keep runtime alive until the usage of output is complete.
+    // we need to keep cpuDevice alive until the usage of output is complete.
     // During `mojo run` this happens automatically since `mojo` maintains
     // context. However for `mojo build` we need to make sure of that.
     // TODO: Ideally this should be done by graph and not driver.
@@ -82,16 +82,16 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(M::ContextRef context,
 }
 
 AnyAsyncValueRef M::GraphCompiler::Driver::prepareInput(
-    Runtime &runtime, DeviceMemory *inputMemory, TensorSpec inputSpec) {
+    CPUDevice &cpuDevice, DeviceMemory *inputMemory, TensorSpec inputSpec) {
   // Convert inputs from device memory we received to AsyncValue of tensor as
   // expected by graph. We take ownership of inputs here.
   AnyAsyncValueRef storageRef =
-      storageRef.createReady<OwnedDeviceMemoryBlock>(runtime, inputMemory);
+      storageRef.createReady<OwnedDeviceMemoryBlock>(cpuDevice, inputMemory);
   // FIXME: Get alignment of device memory.
   Tensor tensor(TensorBufferRef::create(
                     inputMemory->data(), inputMemory->bytecount(),
                     std::move(storageRef), llvm::MaybeAlign(std::nullopt)),
                 std::move(inputSpec));
 
-  return AnyAsyncValueRef::createReady<Tensor>(runtime, std::move(tensor));
+  return AnyAsyncValueRef::createReady<Tensor>(cpuDevice, std::move(tensor));
 }

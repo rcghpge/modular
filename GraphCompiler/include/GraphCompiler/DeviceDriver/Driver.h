@@ -23,7 +23,7 @@
 namespace M {
 namespace GraphCompiler {
 namespace Driver {
-// Maps compile time device info to runtime device handle
+// Maps compile time device info to cpuDevice device handle
 
 struct Device;
 struct CPUDeviceMemory;
@@ -179,7 +179,7 @@ inline std::string formatTarget(const DeviceSpec &deviceSpec) {
 /// mojo impl of the MAX driver).
 MODULAR_VISIBILITY_EXPORT ErrorOr<llvm::SmallVector<MLRT::AnyAsyncValueRef>>
 mapDeviceRefsToDevices(const ArrayRef<DeviceRef> deviceRefs,
-                       const DeviceMap &deviceMap, Runtime &runtime);
+                       const DeviceMap &deviceMap, CPUDevice &cpuDevice);
 
 } // namespace Driver
 } // namespace GraphCompiler

@@ -70,7 +70,7 @@ public:
   ///  - no other call to this method for the same state slot and buffer index
   ///    should be made while the returned reference is still in use.
   TensorBufferRef getOrCreateBuffer(size_t bufferIndex,
-                                    CompactRuntimePtr runtime, size_t size,
+                                    CompactCPUDevicePtr cpuDevice, size_t size,
                                     std::optional<size_t> alignment);
 
   /// Returns a reference to the already allocated and cached buffer at
@@ -100,7 +100,7 @@ private:
   /// Ensure the buffer in entry is allocated with size, reallocating
   /// any existing buffer if required.
   static void updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
-                                  CompactRuntimePtr runtime, size_t size,
+                                  CompactCPUDevicePtr cpuDevice, size_t size,
                                   std::optional<size_t> alignment);
 
   /// The state slot payload.

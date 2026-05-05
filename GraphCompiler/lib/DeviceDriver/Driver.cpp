@@ -232,7 +232,7 @@ Device::createDeviceMemory(void *data, const TensorSpec &spec,
 ErrorOr<llvm::SmallVector<MLRT::AnyAsyncValueRef>>
 M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     const ArrayRef<DeviceRef> deviceRefs, const DeviceMap &deviceMap,
-    Runtime &runtime) {
+    CPUDevice &cpuDevice) {
 
   // We need to explicitly synchronize the device here until MGP shares the same
   // DeviceContext as the driver. Otherwise there may be an async alloc/copy
@@ -250,7 +250,7 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     if (devRef.label == kCPULabel) {
       ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::create("cpu", 0));
       deviceContexts.push_back(
-          AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(runtime,
+          AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(cpuDevice,
                                                                      ctx));
     } else {
       if (auto it = deviceMap.find(devRef);
@@ -258,7 +258,7 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
         const RCRef<Device> &dev = it->second;
         deviceContexts.push_back(
             AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(
-                runtime, dev->tmpGetDeviceContext()));
+                cpuDevice, dev->tmpGetDeviceContext()));
       } else {
         ASSERT_STREAM(devRef.label == kGPULabel,
                       "Only accelerator device context supported");
@@ -274,8 +274,8 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
         ASSIGN_OR_RETURN(ctx, M::Driver::DeviceContext::create(
                                   M::Driver::Device::gpuAPI, devRef.id));
         deviceContexts.push_back(
-            AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(runtime,
-                                                                       ctx));
+            AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(
+                cpuDevice, ctx));
       }
     }
   }

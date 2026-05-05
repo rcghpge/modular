@@ -117,12 +117,12 @@ static GRTTestcase findTestcase(MEFFile *mefFile, llvm::StringRef name) {
   return testcases[0];
 }
 
-/// Create a runtime with 32 threads for async primitive execution.
-static RuntimeRef createBenchmarkRuntime() {
-  RuntimeOptions opts;
+/// Create a cpuDevice with 32 threads for async primitive execution.
+static CPUDeviceRef createBenchmarkCPUDevice() {
+  CPUDeviceOptions opts;
   opts.numThreads = 32;
   opts.withMainWillNotDonate();
-  return getOrCreateRuntime(RuntimeSource::Test, opts);
+  return getOrCreateCPUDevice(CPUDeviceSource::Test, opts);
 }
 
 //===----------------------------------------------------------------------===//
@@ -137,12 +137,12 @@ static void BM_PrimitiveDispatch_Baseline(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_primitives");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_primitive_baseline");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
     // Intentionally not awaiting - testcase has no outputs so this just
     // measures the cost of scheduling the async work.
-    testcase.getBody()->invoke({}, *runtime);
+    testcase.getBody()->invoke({}, *cpuDevice);
   }
 }
 BENCHMARK(BM_PrimitiveDispatch_Baseline)
@@ -154,10 +154,10 @@ static void BM_PrimitiveDispatch_1(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_primitives");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_primitive_1");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -170,10 +170,10 @@ static void BM_PrimitiveDispatch_10(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_primitives");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_primitive_10");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -189,10 +189,10 @@ BENCHMARK(BM_PrimitiveDispatch_10)
 static void BM_ControlFlowIf_True(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_control_flow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_if_true");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -204,10 +204,10 @@ BENCHMARK(BM_ControlFlowIf_True)
 static void BM_ControlFlowIf_False(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_control_flow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_if_false");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -223,10 +223,10 @@ BENCHMARK(BM_ControlFlowIf_False)
 static void BM_ControlFlowWhile_1(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_control_flow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_while_1");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -238,10 +238,10 @@ BENCHMARK(BM_ControlFlowWhile_1)
 static void BM_ControlFlowWhile_10(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_control_flow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_while_10");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -257,10 +257,10 @@ BENCHMARK(BM_ControlFlowWhile_10)
 static void BM_ControlFlowRepeat_1(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_control_flow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_repeat_1");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -272,10 +272,10 @@ BENCHMARK(BM_ControlFlowRepeat_1)
 static void BM_ControlFlowRepeat_10(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_control_flow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_repeat_10");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -292,10 +292,10 @@ static void BM_InvokableCall_Depth1(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_invokable");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_call_depth_1");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -308,10 +308,10 @@ static void BM_InvokableCall_Depth10(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_invokable");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_call_depth_10");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -324,10 +324,10 @@ static void BM_InvokableCall_ChainCall5(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_invokable");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_chain_call_5");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -343,10 +343,10 @@ BENCHMARK(BM_InvokableCall_ChainCall5)
 static void BM_DataflowParallel_2(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_dataflow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_parallel_2");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -358,10 +358,10 @@ BENCHMARK(BM_DataflowParallel_2)
 static void BM_DataflowParallel_8(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_dataflow");
   auto testcase = findTestcase(loadedMef.file.getPointer(), "bench_parallel_8");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -374,10 +374,10 @@ static void BM_DataflowSequential_8(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_dataflow");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_sequential_8");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -390,10 +390,10 @@ static void BM_DataflowParallelInvoke_8(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_dataflow");
   auto testcase =
       findTestcase(loadedMef.file.getPointer(), "bench_parallel_invoke_8");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -413,10 +413,10 @@ static void BM_GPUSimultaneousReady_2(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_dataflow");
   auto testcase = findTestcase(loadedMef.file.getPointer(),
                                "bench_gpu_simultaneous_ready_2");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }
@@ -429,10 +429,10 @@ static void BM_GPUSimultaneousReady_8(benchmark::State &state) {
   auto loadedMef = loadMEFFile("bench_dataflow");
   auto testcase = findTestcase(loadedMef.file.getPointer(),
                                "bench_gpu_simultaneous_ready_8");
-  auto runtime = createBenchmarkRuntime();
+  auto cpuDevice = createBenchmarkCPUDevice();
 
   for (auto _ : state) {
-    auto results = testcase.getBody()->invoke({}, *runtime);
+    auto results = testcase.getBody()->invoke({}, *cpuDevice);
     await(results);
   }
 }

@@ -22,7 +22,7 @@ void AsyncSideEffectMap::andThenSync(Operation *key,
 AnyAsyncValueRef AsyncSideEffectMap::getChain(mlir::Operation *key) {
   auto found = chainMap.find(key);
   if (found == chainMap.end())
-    return AsyncValueRef<Chain>::createReady(runtime);
+    return AsyncValueRef<Chain>::createReady(cpuDevice);
 
   return found->getSecond().copy();
 }

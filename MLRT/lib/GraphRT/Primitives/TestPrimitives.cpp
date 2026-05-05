@@ -38,9 +38,9 @@ static Chain print_hello(Chain chain) {
   fflush(stdout);
   return chain;
 }
-static void memory_leak_one_int32(Runtime &runtime) {
+static void memory_leak_one_int32(CPUDevice &cpuDevice) {
   // We allocate an integer to intentionally cause a memory leak for testing.
-  runtime.getAllocator()->allocate<int32_t>();
+  cpuDevice.getAllocator()->allocate<int32_t>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -383,21 +383,22 @@ static std::pair<ErrorOr<int32_t>, ErrorOr<int32_t>> partial_fail() {
 //===----------------------------------------------------------------------===//
 
 static AsyncValueRef<int32_t> async_add_i32(int32_t lhs, int32_t rhs,
-                                            Runtime &runtime) {
+                                            CPUDevice &cpuDevice) {
   // Even though a single scalar add is trivial, we can do it on a background
   // thread if we'd like!
-  return addTask(runtime, [lhs, rhs] { return lhs + rhs; });
+  return addTask(cpuDevice, [lhs, rhs] { return lhs + rhs; });
 }
 
 /// Async sleep primitive that simulates GPU kernel launch latency.
 /// Takes delayNs attribute specifying nanoseconds to sleep on a background
 /// thread. This is useful for benchmarking MEF executor scheduling overhead.
 static void test_sleep(Chain inChain, Result<Chain> outChain,
-                       MEFAttr<int32_t> delayNs, Runtime &runtime) {
-  addTask(runtime, [delayNs = *delayNs, outChain = outChain.copy()]() mutable {
-    std::this_thread::sleep_for(std::chrono::nanoseconds(delayNs));
-    std::move(outChain).emplace();
-  });
+                       MEFAttr<int32_t> delayNs, CPUDevice &cpuDevice) {
+  addTask(cpuDevice,
+          [delayNs = *delayNs, outChain = outChain.copy()]() mutable {
+            std::this_thread::sleep_for(std::chrono::nanoseconds(delayNs));
+            std::move(outChain).emplace();
+          });
 }
 
 // It is silly to do this for add of course, but this shows how to handle this.
@@ -441,10 +442,10 @@ static void async_add_any(AnyAsyncValueRef lhs, AnyAsyncValueRef rhs,
 /// Example that shows an example that produces an error on a background thread,
 /// requiring use of fancy IndirectResult APIs.
 static void async_error(IndirectResult result1, IndirectResult result2,
-                        EncodedLocation manualLoc, Runtime &runtime) {
+                        EncodedLocation manualLoc, CPUDevice &cpuDevice) {
   // Setting an AsyncValue to an error requires an EncodedLocation, which can be
   // copied/moved into the task manually and painfully as in this example...
-  addTask(runtime,
+  addTask(cpuDevice,
           [result1 = result1.copy(), loc = std::move(manualLoc)]() mutable {
             std::move(result1).setToError(
                 {"error generated on a background thread!", std::move(loc)});
@@ -453,16 +454,17 @@ static void async_error(IndirectResult result1, IndirectResult result2,
   // ... but please don't!  It is more convenient to use the `copyWithLocation`
   // method on [Indirect]Result, which brings it forward for you and has a
   // convenience method to set the error.
-  addTask(runtime, [result2 = result2.copyWithLocation()]() mutable {
+  addTask(cpuDevice, [result2 = result2.copyWithLocation()]() mutable {
     std::move(result2).setToError("error generated on a background thread #2!");
   });
 }
 
 /// This creates a programmatic number of waiters on an async value, then
 /// completes it.
-static int32_t test_async_many_waiters(MEFAttr<int32_t> num, Runtime &runtime) {
-  auto av = AsyncValueRef<int32_t>::allocate(runtime);
-  auto done = AsyncValueRef<Chain>::allocate(runtime);
+static int32_t test_async_many_waiters(MEFAttr<int32_t> num,
+                                       CPUDevice &cpuDevice) {
+  auto av = AsyncValueRef<int32_t>::allocate(cpuDevice);
+  auto done = AsyncValueRef<Chain>::allocate(cpuDevice);
   std::atomic<int32_t> result = 0;
   /// Add 'num' waiters that just increment result.
   for (int32_t i = 0, e = *num; i != e; ++i)
@@ -478,7 +480,7 @@ static int32_t test_async_many_waiters(MEFAttr<int32_t> num, Runtime &runtime) {
 /// This creates a programmatic # tasks as stress test.  This is not written
 /// in an idiomatic style, do not follow this pattern!
 static void test_many_tasks(Result<int32_t> result, MEFAttr<int32_t> num,
-                            Runtime &runtime) {
+                            CPUDevice &cpuDevice) {
   if (*num == 0)
     return std::move(result).setToError("zero not supported");
   std::atomic<int32_t> counter(*num);
@@ -489,11 +491,11 @@ static void test_many_tasks(Result<int32_t> result, MEFAttr<int32_t> num,
   // Add 'num' tasks that just decrements the atomic, which then completes the
   // AV.  This is really horrible, never do something like this in your code.
   for (int32_t i = 0, e = *num; i != e; ++i) {
-    addTask(runtime,
+    addTask(cpuDevice,
             // Capture a bunch of stuff so we exceed the inline size of lambdas.
             [numVal, &counter, result = result.copy(), a = int64_t(numVal + 1),
-             b = int64_t(numVal * 2), c = int64_t(numVal * 42), r = &runtime,
-             s = &runtime + 1, t = &runtime + 2]() mutable {
+             b = int64_t(numVal * 2), c = int64_t(numVal * 42), r = &cpuDevice,
+             s = &cpuDevice + 1, t = &cpuDevice + 2]() mutable {
               // Note: tasks shouldn't sleep or block!
               std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
@@ -517,18 +519,18 @@ static void test_many_tasks(Result<int32_t> result, MEFAttr<int32_t> num,
 /// This test is a nasty test that tries to cause havoc when a thread pool is
 /// being torn down, by creating tasks that take a long time to run (thus
 /// allowing the test driver to get to the point where it is tearing down the
-/// runtime), and then add another task to the thread after workqueue teardown
+/// cpuDevice), and then add another task to the thread after workqueue teardown
 /// has started.
-static void test_crash_threadpool_shutdown(Runtime &runtime) {
-  addTask(runtime, [&]() {
+static void test_crash_threadpool_shutdown(CPUDevice &cpuDevice) {
+  addTask(cpuDevice, [&]() {
     for (int i = 0; i < 4; ++i) {
-      addTask(runtime, [&runtime, i]() {
+      addTask(cpuDevice, [&cpuDevice, i]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         printf("task %d\n", i);
-        addTask(runtime, [&runtime, i]() {
+        addTask(cpuDevice, [&cpuDevice, i]() {
           std::this_thread::sleep_for(std::chrono::milliseconds(5));
           printf("task %d middle\n", i);
-          addTask(runtime, [i]() {
+          addTask(cpuDevice, [i]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             printf("task %d shutdown\n", i);
           });
@@ -616,12 +618,12 @@ static ErrorOr<TestVector> vec_add(const TestVector &lhs,
 /// background task.
 static void vec_add_async(AsyncValueRef<TestVector> lhs,
                           AsyncValueRef<TestVector> rhs,
-                          Result<TestVector> result, Runtime &runtime) {
+                          Result<TestVector> result, CPUDevice &cpuDevice) {
   if (lhs->values.size() != rhs->values.size())
     return std::move(result).setToError("vector length mismatch");
 
-  addTask(runtime, [lhs = std::move(lhs), rhs = std::move(rhs),
-                    result = result.copy()]() mutable {
+  addTask(cpuDevice, [lhs = std::move(lhs), rhs = std::move(rhs),
+                      result = result.copy()]() mutable {
     auto &lhsValues = lhs->values, &rhsValues = rhs->values;
     TestVector resultValues;
     for (int32_t i = 0, e = lhsValues.size(); i != e; ++i)
@@ -637,14 +639,14 @@ static void vec_add_async(AsyncValueRef<TestVector> lhs,
 /// This is similar to vec_add_async, but uses `parallelForEachNCompletion`.
 static void vec_add_async2(AsyncValueRef<TestVector> lhs,
                            AsyncValueRef<TestVector> rhs,
-                           Result<TestVector> result, Runtime &runtime) {
+                           Result<TestVector> result, CPUDevice &cpuDevice) {
   size_t lhsValueSize = lhs->values.size();
   if (lhsValueSize != rhs->values.size())
     return std::move(result).setToError("vector length mismatch");
 
   // Process each element in parallel.
   parallelForEachNFinishing(
-      runtime, lhsValueSize, TestVector(lhsValueSize), result.copy(),
+      cpuDevice, lhsValueSize, TestVector(lhsValueSize), result.copy(),
       [lhs = std::move(lhs), rhs = std::move(rhs)](size_t n,
                                                    TestVector &resultVec) {
         resultVec.values[n] = lhs->values[n] + rhs->values[n];
@@ -660,8 +662,8 @@ static TestVector::ValueType vec_accumulate(const TestVector &vec) {
 /// using one background task.
 static void vec_accumulate_async(AsyncValueRef<TestVector> vec,
                                  Result<TestVector::ValueType> result,
-                                 Runtime &runtime) {
-  addTask(runtime, [vec = std::move(vec), result = result.copy()]() mutable {
+                                 CPUDevice &cpuDevice) {
+  addTask(cpuDevice, [vec = std::move(vec), result = result.copy()]() mutable {
     auto accum = std::accumulate(vec->values.begin(), vec->values.end(), 0);
     // After we've computed the sum, set it into the result value.
     std::move(result).emplace(accum);
@@ -674,15 +676,15 @@ static void vec_accumulate_async(AsyncValueRef<TestVector> vec,
 /// This version uses atomics to perform the global accumulation.
 static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
                                   Result<TestVector::ValueType> result,
-                                  Runtime &runtime) {
+                                  CPUDevice &cpuDevice) {
   // Get the number of elements in the input vector
   size_t vecLen = vec->values.size();
-  // Get the number of tasks to spawn in parallel from the runtime
+  // Get the number of tasks to spawn in parallel from the cpuDevice
   //
   // NOTE: In practice you want to use a batch size that is a multiple of the
   // of the size of the workqueue. This would remove blocking on a big/little
   // system
-  size_t numBatches = runtime.getWorkQueue()->getParallelismLevel();
+  size_t numBatches = cpuDevice.getWorkQueue()->getParallelismLevel();
   // The batchSize is the number of elements each thread will process
   // we round up the division so that the numBatches*batchSize
   // is at least equal to vecLen.
@@ -694,7 +696,7 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
   // Process each batch in parallel. The completion function will be called
   // when all threads have completed.
   parallelForEachNCustomCompletion(
-      runtime, numBatches,
+      cpuDevice, numBatches,
       [vec = std::move(vec),
        batchSize](size_t n, std::atomic<TestVector::ValueType> &accumResult) {
         ArrayRef<TestVector::ValueType> vecValues = vec->values;
@@ -753,7 +755,7 @@ static void vec_accumulate_async2(AsyncValueRef<TestVector> vec,
 /// The implementation uses the same ideas in vec_accumulate_async2.
 static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
                               Result<TestFloat32Vector> output,
-                              Runtime &runtime) {
+                              CPUDevice &cpuDevice) {
   using ElementType = TestFloat32Vector::ValueType;
 
   // Get the number of elements in the input vector
@@ -762,16 +764,16 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   // the number of batchSize to be large enough to fully utilize the processor's
   // capabilities.
   size_t batchSize = 1024;
-  // The number of tasks to spawn in parallel from the runtime.
+  // The number of tasks to spawn in parallel from the cpuDevice.
   // We round up the division so that the numBatches*batchSize
   // is at least equal to vecLen.
   size_t numBatches = (vecLen + batchSize - 1) / batchSize;
 
-  auto maxVal = AnyAsyncValueRef::allocate<ElementType>(runtime);
+  auto maxVal = AnyAsyncValueRef::allocate<ElementType>(cpuDevice);
 
   // STAGE 1: Find the max value in the input vector
   parallelForEachNCustomCompletion(
-      runtime, numBatches,
+      cpuDevice, numBatches,
       [input = input.copy(), vecLen,
        batchSize](size_t n, std::atomic<ElementType> &maxValueResult) {
         ArrayRef<ElementType> inputValues = input->values;
@@ -808,7 +810,7 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   };
 
   auto denomAndExpVectorAV =
-      AsyncValueRef<DenomAndExpVector>::allocate(runtime);
+      AsyncValueRef<DenomAndExpVector>::allocate(cpuDevice);
 
   // STAGE 2: Compute the exponential and denominator.
   // STAGE 2 is only executed when maxVal is ready (i.e. STAGE 1 is complete)
@@ -816,10 +818,10 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   // Note: we do not mark the output as ready until STAGE 3 is complete.
   std::move(maxVal).andThenSync(
       [input = input.copy(), denomAndExpVectorAV = denomAndExpVectorAV.copy(),
-       batchSize, &runtime, vecLen,
+       batchSize, &cpuDevice, vecLen,
        numBatches](AnyAsyncValueRef &&maxVal) mutable {
         parallelForEachNCustomCompletion(
-            runtime, numBatches,
+            cpuDevice, numBatches,
             [input = std::move(input), maxVal = maxVal.get<ElementType>(),
              vecLen, batchSize](size_t n, TestFloat32Vector &expElements,
                                 std::atomic<ElementType> &denom) {
@@ -851,13 +853,13 @@ static void vec_softmax_async(AsyncValueRef<TestFloat32Vector> input,
   // STAGE 3 is only executed when denom is ready (i.e. STAGE 2 is complete)
   std::move(denomAndExpVectorAV)
       .andThenSync(
-          [output = output.copy(), batchSize, &runtime, vecLen,
+          [output = output.copy(), batchSize, &cpuDevice, vecLen,
            numBatches](AsyncValueRef<DenomAndExpVector> &&denomAndExpVector) {
             // compute STAGE 3 in parallel and mark the output is ready when all
             // work is done
             parallelForEachNFinishing(
-                runtime, numBatches, std::move(denomAndExpVector->expElements),
-                output.copy(),
+                cpuDevice, numBatches,
+                std::move(denomAndExpVector->expElements), output.copy(),
                 [vecLen, batchSize, denom = denomAndExpVector->denom](
                     size_t n, TestFloat32Vector &expElements) {
                   size_t startPos = n * batchSize;

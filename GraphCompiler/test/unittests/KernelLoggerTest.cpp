@@ -24,11 +24,11 @@ namespace {
 
 class KernelLoggerTest : public ::testing::Test {
 protected:
-  MLRT::RuntimeRef runtime;
+  MLRT::CPUDeviceRef cpuDevice;
 
   void SetUp() override {
-    runtime = MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
-                                       MLRT::RuntimeOptions().forDebug());
+    cpuDevice = MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
+                                           MLRT::CPUDeviceOptions().forDebug());
   }
 };
 
@@ -36,7 +36,7 @@ TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
   // Create empty operands and results for basic testing
   llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;
@@ -60,7 +60,7 @@ TEST_F(KernelLoggerTest, SyncLoggerBehavesCorrectly) {
 TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
   llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;
@@ -85,7 +85,7 @@ TEST_F(KernelLoggerTest, AsyncLoggerBehavesCorrectly) {
 TEST_F(KernelLoggerTest, LogsNormalCompletionEvent) {
   llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;
@@ -111,8 +111,8 @@ TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
   llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<MLRT::AnyAsyncValueRef> results1;
   llvm::SmallVector<MLRT::AnyAsyncValueRef> results2;
-  results1.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
-  results2.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 43));
+  results1.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
+  results2.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 43));
 
   // Capture log output
   std::string logOutput;
@@ -153,7 +153,7 @@ TEST_F(KernelLoggerTest, GeneratesUniqueKernelIds) {
 TEST_F(KernelLoggerTest, LogsCorrectKernelAndDeviceInfo) {
   llvm::SmallVector<MLRT::AnyAsyncValueRef> operands;
   llvm::SmallVector<MLRT::AnyAsyncValueRef> results;
-  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*runtime, 42));
+  results.push_back(MLRT::AnyAsyncValueRef::createReady<int>(*cpuDevice, 42));
 
   // Capture log output
   std::string logOutput;

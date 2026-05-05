@@ -116,18 +116,19 @@ public:
         });
   }
 
-  /// Invoke this using the specified runtime, passing the specified
+  /// Invoke this using the specified cpuDevice, passing the specified
   /// arguments. This fills in one AsyncValue for each result.  The caller
   /// is allowed to take from the `arguments` async values.
   virtual void invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
                       MutableArrayRef<AnyAsyncValueRef> results,
-                      Runtime &runtime) const = 0;
+                      CPUDevice &cpuDevice) const = 0;
 
-  /// Invoke this using the specified runtime, passing the specified
+  /// Invoke this using the specified cpuDevice, passing the specified
   /// arguments. This fills in one AsyncValue for each result.  The caller is
   /// allowed to take from the `arguments` async values.
   SmallVector<AnyAsyncValueRef, 1>
-  invoke(MutableArrayRef<AnyAsyncValueRef> arguments, Runtime &runtime) const;
+  invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
+         CPUDevice &cpuDevice) const;
 
   /// Add a new reference to this object.  The lifetime of invokables are
   /// generally tied to the file they are loaded from (e.g. a MEFFile) so they

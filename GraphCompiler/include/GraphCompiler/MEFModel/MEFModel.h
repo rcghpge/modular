@@ -50,7 +50,7 @@ public:
   ~ExecutableModel();
 
   const class Model *getModel() const { return model; }
-  Runtime &getRuntime() const { return runtime; }
+  CPUDevice &getCPUDevice() const { return cpuDevice; }
 
   /// Wait for model setup to finish.
   ErrorOrSuccess waitForModelSetup();
@@ -118,7 +118,7 @@ private:
   ExecutableModel(AnyAsyncValueRef chain, AnyAsyncValueRef mgpContext,
                   AnyAsyncValueRef weightsRegistry,
                   SmallVector<AnyAsyncValueRef> &&extraArgs,
-                  const class Model *model, Runtime &runtime);
+                  const class Model *model, CPUDevice &cpuDevice);
 
   struct CapturedPerDeviceGraphEntry;
 
@@ -135,7 +135,7 @@ private:
   ErrorOrSuccess launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const;
 
   const class Model *model;
-  Runtime &runtime;
+  CPUDevice &cpuDevice;
   AnyAsyncValueRef chain;
   AnyAsyncValueRef mgpContext;
   AnyAsyncValueRef weightsRegistry;
@@ -145,7 +145,7 @@ private:
     Driver::AsyncDeviceGraphRef graph;
     // Capture-time device-local input fingerprint
     // (input index + address + shape + dtype for non-host buffers on the
-    // device's runtime stream). This is intentionally distinct from graphKey
+    // device's cpuDevice stream). This is intentionally distinct from graphKey
     // and is used only as a safety guard to reject unsafe graphKey reuse.
     uint64_t inputSignature = 0;
   };
@@ -215,13 +215,13 @@ public:
   size_t getNumOutputs() const { return outputSpecs.size(); }
   ArrayRef<QuantTensorSpec> getOutputSpecs() const { return outputSpecs; }
 
-  /// Initialize the model using `runtime`, allocating memory, setting up data
+  /// Initialize the model using `cpuDevice`, allocating memory, setting up data
   /// structures, or whatever else the model needs. This never blocks.
   /// `deviceMap` maps the `DeviceRef`s used in model compilation (e.g. to
-  /// annotate location of Tensors) to runtime Device handles which can be used
-  /// to interface with the Device (e.g. to allocate device memory).
+  /// annotate location of Tensors) to cpuDevice Device handles which can be
+  /// used to interface with the Device (e.g. to allocate device memory).
   MLRT::ErrorDiagnosticOr<std::unique_ptr<ExecutableModel>>
-  setup(Runtime &runtime, const WeightsRegistry *weightsRegistry = {},
+  setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry = {},
         const M::GraphCompiler::Driver::DeviceMap &deviceMap =
             M::GraphCompiler::Driver::DeviceMap()) const;
 

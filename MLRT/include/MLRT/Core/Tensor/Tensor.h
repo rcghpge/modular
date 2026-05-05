@@ -35,19 +35,19 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Creates a tensor whose buffer is allocated from the allocator in
-  /// runtime with size appropriate for spec.
+  /// cpuDevice with size appropriate for spec.
   ///
   /// TODO(#5799): We're requiring all callers to be explicit about alignment
   /// (or lack thereof) to help track down 'forgotten alignment' problems.
-  static Tensor createOwned(TensorSpec spec, CompactRuntimePtr runtime,
+  static Tensor createOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
                             std::optional<size_t> alignment);
 
   /// Creates an owned tensor whose buffer is from a taken void* pointer -- This
   /// taken pointer is allocated by caller and taken to construct the underlying
   /// bufferRef which has control over the lifetime. There is an assumption that
-  /// the takeFrom pointer is allocated by caller via runtime->getAllocator().
+  /// the takeFrom pointer is allocated by caller via cpuDevice->getAllocator().
   /// Lifetime of the allocated memory follows any Owned Tensor (via bufferRef)
-  static Tensor takeOwned(TensorSpec spec, CompactRuntimePtr runtime,
+  static Tensor takeOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
                           void *takeFrom);
 
   /// Creates a tensor whose buffer is at the given pointer. It is assumed the

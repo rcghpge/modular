@@ -201,13 +201,13 @@ const CpuDeviceTimer &CpuDeviceTimer::cast(const DeviceTimer &timer) {
 }
 
 // ===== CpuDeviceEvent ===== //
-CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device, MLRT::RuntimeRef runtime,
+CpuDeviceEvent::CpuDeviceEvent(CpuDevice &device, MLRT::CPUDeviceRef cpuDevice,
                                MLRT::AnyAsyncValueRef value)
-    : DeviceEvent(device), runtime(std::move(runtime)),
+    : DeviceEvent(device), cpuDevice(std::move(cpuDevice)),
       value(std::move(value)) {}
 
 ErrorOrSuccess CpuDeviceEvent::synchronize() {
-  runtime->getWorkQueue()->await({&value, 1});
+  cpuDevice->getWorkQueue()->await({&value, 1});
   return success();
 }
 
@@ -217,30 +217,30 @@ ErrorOr<bool> CpuDeviceEvent::isReady() const { return value.isReady(); }
 // ===== CpuDeviceContext === //
 //
 CpuDeviceContext::CpuDeviceContext(CpuDevice &device) : DeviceContext(device) {
-  // Get or create the runtime. Request mainWillDonate=false if this is the only
-  // runtime user, but allow using the existing runtime options if they are set.
-  // This is safe as the other runtime users are guaranteeing they will wait on
-  // the main thread to progress work. Otherwise CpuDeviceContext is invariant
-  // to the runtime options, so this is safe.
-  runtime =
-      MLRT::getOrCreateRuntime(MLRT::RuntimeSource::CPUDeviceContext,
-                               MLRT::RuntimeOptions().withMainWillNotDonate(),
-                               /*allowUsingExistingOptions=*/true);
+  // Get or create the cpuDevice. Request mainWillDonate=false if this is the
+  // only cpuDevice user, but allow using the existing cpuDevice options if they
+  // are set. This is safe as the other cpuDevice users are guaranteeing they
+  // will wait on the main thread to progress work. Otherwise CpuDeviceContext
+  // is invariant to the cpuDevice options, so this is safe.
+  cpuDevice = MLRT::getOrCreateCPUDevice(
+      MLRT::CPUDeviceSource::CPUDeviceContext,
+      MLRT::CPUDeviceOptions().withMainWillNotDonate(),
+      /*allowUsingExistingOptions=*/true);
 
-  streamChain = runtime->getReadyChain().copy();
+  streamChain = cpuDevice->getReadyChain().copy();
 }
 
 CpuDeviceContext::~CpuDeviceContext() {
   // Wait for pending work to finish
   if (!streamChain.isReady())
-    runtime->getWorkQueue()->await({&streamChain, 1});
+    cpuDevice->getWorkQueue()->await({&streamChain, 1});
 }
 
 ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                           Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
   assert(byteSize != 0);
-  *ptr = runtime->getAllocator()->allocateBytes(byteSize, /*alignment=*/1);
+  *ptr = cpuDevice->getAllocator()->allocateBytes(byteSize, /*alignment=*/1);
   if (*ptr == nullptr) {
     RETURN_ERROR("Memory allocation failed");
   }
@@ -250,8 +250,8 @@ ErrorOrSuccess CpuDeviceContext::memAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess CpuDeviceContext::memFree(void *ptr, bool isHost) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::memFree", TRACY_COLOR_PURPLE);
   // The Runtime's allocator outlives any work enqueued on its work queue, so
-  // capturing a raw pointer here (rather than a RuntimeRef) is safe.
-  auto *allocator = runtime->getAllocator();
+  // capturing a raw pointer here (rather than a CPUDeviceRef) is safe.
+  auto *allocator = cpuDevice->getAllocator();
   if (isHost) {
     allocator->deallocateBytes(ptr);
     return success();
@@ -267,7 +267,7 @@ void *CpuDeviceContext::driverContext() const { return nullptr; }
 ErrorOrSuccess CpuDeviceContext::enqueueWork(MLRT::TaskFunction &&work) {
   RETURN_IF_PENDING_ERROR(*this);
 
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
   streamChain.andThenAsync(
@@ -427,8 +427,8 @@ ErrorOrSuccess CpuDeviceContext::enqueueHostFunctionRange(
   if (numHandles == 0)
     return success();
 
-  size_t numWorkers = runtime->getWorkQueue()->getParallelismLevel();
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
+  size_t numWorkers = cpuDevice->getWorkQueue()->getParallelismLevel();
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
 
   // When the current streamChain is ready, fan out all coroutine handles
@@ -437,14 +437,14 @@ ErrorOrSuccess CpuDeviceContext::enqueueHostFunctionRange(
   // Copy the handles array since it may not outlive this call. Use a plain
   // std::vector as we will typically have one handle per CPU thread which is
   // too big for SmallVector.
-  streamChain.andThenSync([runtime = this->runtime, numWorkers, resumeFunc,
+  streamChain.andThenSync([cpuDevice = this->cpuDevice, numWorkers, resumeFunc,
                            destroyFunc, eventChain = eventChain.copy(),
                            handles = std::vector<int8_t *>(
                                coroHandles,
                                coroHandles + numHandles)]() mutable {
     size_t count = handles.size();
     auto completionChain = MLRT::parallelForEachNChainWithTaskIds(
-        *runtime, count,
+        *cpuDevice, count,
         [numWorkers](size_t i) -> int {
           return static_cast<int>(i % numWorkers);
         },
@@ -493,7 +493,7 @@ ErrorOrSuccess CpuDeviceContext::synchronize() {
     std::lock_guard<std::mutex> streamLock{streamChainMutex};
     head = streamChain.copy();
   }
-  runtime->getWorkQueue()->await({&head, 1});
+  cpuDevice->getWorkQueue()->await({&head, 1});
   RETURN_IF_ERROR(pollPendingEvents());
   return checkPendingError();
 }
@@ -501,8 +501,8 @@ ErrorOrSuccess CpuDeviceContext::synchronize() {
 ErrorOr<DeviceEventRef> CpuDeviceContext::enqueueEvent() {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::enqueueEvent", TRACY_COLOR_PURPLE);
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
-  return CpuDeviceEventRef::create(static_cast<CpuDevice &>(device()), runtime,
-                                   streamChain.copy());
+  return CpuDeviceEventRef::create(static_cast<CpuDevice &>(device()),
+                                   cpuDevice, streamChain.copy());
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) {
@@ -516,8 +516,9 @@ ErrorOrSuccess CpuDeviceContext::enqueueEvent(const DeviceEvent &event) {
 
 ErrorOr<DeviceEventRef> CpuDeviceContext::eventCreate(bool enableTiming) {
   TRACY_ZONE_SCOPED_NC("CpuDeviceContext::eventCreate", TRACY_COLOR_PURPLE);
-  return CpuDeviceEventRef::create(static_cast<CpuDevice &>(device()), runtime,
-                                   runtime->getReadyChain().copy());
+  return CpuDeviceEventRef::create(static_cast<CpuDevice &>(device()),
+                                   cpuDevice,
+                                   cpuDevice->getReadyChain().copy());
 }
 
 ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceEvent &event) {
@@ -525,7 +526,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceEvent &event) {
   RETURN_IF_PENDING_ERROR(*this);
 
   auto &cpuEvent = static_cast<CpuDeviceEvent &>(event);
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
 
   std::lock_guard<std::mutex> streamLock{streamChainMutex};
   MLRT::andThenAsync(
@@ -542,7 +543,7 @@ ErrorOrSuccess CpuDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   RETURN_IF_PENDING_ERROR(*this);
 
   auto &other = static_cast<CpuDeviceContext &>(ctx);
-  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*runtime);
+  auto eventChain = MLRT::AsyncValueRef<MLRT::Chain>::allocate(*cpuDevice);
 
   std::scoped_lock<std::mutex, std::mutex> lock{streamChainMutex,
                                                 other.streamChainMutex};
@@ -574,7 +575,7 @@ CpuDeviceContext::stopTimer(const DeviceTimer &timer) {
 ErrorOr<int> CpuDeviceContext::getAttribute(Attribute attr) const {
   switch (attr) {
   case Attribute::PARALLELISM_LEVEL:
-    return static_cast<int>(runtime->getWorkQueue()->getParallelismLevel());
+    return static_cast<int>(cpuDevice->getWorkQueue()->getParallelismLevel());
   }
   RETURN_ERROR("Unsupported CpuDeviceContext attribute");
 }

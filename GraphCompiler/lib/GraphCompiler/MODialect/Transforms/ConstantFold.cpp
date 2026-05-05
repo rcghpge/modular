@@ -234,7 +234,8 @@ static bool isMaybeConstantFoldable(Operation *op) {
 /// If the constant op's users are all in this subgraph, then this returns a
 /// tensor that owns the underlying resource blob.
 /// Otherwise the returned tensor's data is borrowed.
-static Tensor denseResourceAsTensor(MLRT::Runtime &runtime, ConstantOp constant,
+static Tensor denseResourceAsTensor(MLRT::CPUDevice &cpuDevice,
+                                    ConstantOp constant,
                                     DenseResourceElementsAttr denseResource,
                                     const Subgraph &subgraph) {
   mlir::AsmResourceBlob *blob = denseResource.getRawHandle().getBlob();
@@ -257,8 +258,8 @@ static Tensor denseResourceAsTensor(MLRT::Runtime &runtime, ConstantOp constant,
   if (usersOutsideSubgraph.empty() && blob->getDeleter()) {
     // Take ownership of the deleting function.
     auto async = AsyncValue::createReady<GML::BlobLifetimeManager>(
-        runtime.getCompactPtr(), std::move(blob->getDeleter()), blob->getData(),
-        blob->getDataAlignment());
+        cpuDevice.getCompactPtr(), std::move(blob->getDeleter()),
+        blob->getData(), blob->getDataAlignment());
     blob->getDeleter() = nullptr;
     auto ref = AnyAsyncValueRef::take(async);
 
@@ -278,7 +279,7 @@ static Tensor denseResourceAsTensor(MLRT::Runtime &runtime, ConstantOp constant,
 /// `ref` is expected to hold a reference to a tensor object.
 static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
                                            MLIRContext *ctx) {
-  // Output shape has runtime-dependent size so we need to read out what
+  // Output shape has cpuDevice-dependent size so we need to read out what
   // the size is.
   Tensor &tensor = ref.get<Tensor>();
   TensorShape shape = tensor.getShape();
@@ -353,8 +354,8 @@ static RuntimeTensor extractRuntimeOutput(
 static MLRT::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
              const SubgraphsInfo &subgraphsInfo) {
-  MLRT::Runtime &runtime = *loadContext(ctx)->get<MLRT::Runtime>();
-  auto executableModelOr = model->setup(runtime);
+  MLRT::CPUDevice &cpuDevice = *loadContext(ctx)->get<MLRT::CPUDevice>();
+  auto executableModelOr = model->setup(cpuDevice);
   if (executableModelOr.isError())
     return executableModelOr.takeError();
 
@@ -375,8 +376,8 @@ executeModel(MLIRContext *ctx, const Model *model,
               dyn_cast<DenseResourceElementsAttr>(constant.getValueAttr())) {
         inputTensorsInMEFIndexOrder.push_back(
             AsyncValueRef<Tensor>::createReady(
-                runtime, denseResourceAsTensor(runtime, constant, denseResource,
-                                               subgraph)));
+                cpuDevice, denseResourceAsTensor(cpuDevice, constant,
+                                                 denseResource, subgraph)));
       }
     }
   }

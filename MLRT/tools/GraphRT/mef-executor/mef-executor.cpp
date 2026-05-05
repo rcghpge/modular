@@ -97,7 +97,7 @@ static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
   // all execution before moving on to the next one.  This makes the leak
   // checker work better in the face of side effecting kernels that aren't
   // properly chained together (which is useful for testing).  As such, we run
-  // each testcase with its own runtime instance and own leak checker.
+  // each testcase with its own cpuDevice instance and own leak checker.
   runWithLeakCheckedRuntime(test.getName().str().c_str(), [&]() {
     // Actually run the invokable.  We use printf here because it has atomic
     // output behavior w.r.t. the printfs in various TestPrimitives.
@@ -105,8 +105,8 @@ static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
            test.getName().data());
     fflush(stdout);
 
-    MLRT::Runtime &runtime = *ctx->get<MLRT::Runtime>();
-    auto results = test.getBody()->invoke(/*arguments=*/{}, runtime);
+    MLRT::CPUDevice &cpuDevice = *ctx->get<MLRT::CPUDevice>();
+    auto results = test.getBody()->invoke(/*arguments=*/{}, cpuDevice);
 
     // Block until the invokable results are fully resolved.
     await(results);
@@ -127,7 +127,7 @@ static ErrorOrSuccess runTestcase(ContextRef ctx, const GRTTestcase &test,
 }
 
 namespace {
-class MEFExecutorCLOptions : public CommonOptions, public RuntimeOptions {
+class MEFExecutorCLOptions : public CommonOptions, public CPUDeviceOptions {
 public:
   CommonCLOptions parser;
   RuntimeCLOptions rtParser;
@@ -149,14 +149,15 @@ public:
 static LogicalResult
 runTestcases(SmallVectorImpl<GRTTestcase> &testcasesToExecute,
              const MEFExecutorCLOptions &options, MLIRContext *context) {
-  // Create a copy of the runtime options from the MEFExecutorCLOptions options.
-  RuntimeOptions runtimeOptions = options.copy();
+  // Create a copy of the cpuDevice options from the MEFExecutorCLOptions
+  // options.
+  CPUDeviceOptions cpuDeviceOptions = options.copy();
 
   // Create our execution context. Note that we limit the scope of this
-  // context in order to ensure that the full runtime is torn-down before
+  // context in order to ensure that the full cpuDevice is torn-down before
   // the mefFile is reset, since there may still be operations outstanding.
   ErrorOr<ContextRef> ctxOr = Init::createContext(
-      "mef-executor", Init::Options().withRuntimeOptions(runtimeOptions));
+      "mef-executor", Init::Options().withCPUDeviceOptions(cpuDeviceOptions));
   if (ctxOr.isError())
     return ctxOr.takeError();
 

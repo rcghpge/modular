@@ -22,12 +22,12 @@ namespace M::MLRT {
 struct OwnedMemoryBlock {
   OwnedMemoryBlock() = default;
   OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                   CompactRuntimePtr rt, void *takePtr = nullptr);
+                   CompactCPUDevicePtr rt, void *takePtr = nullptr);
   ~OwnedMemoryBlock();
   void *data;
   size_t size;
 
-  CompactRuntimePtr runtime;
+  CompactCPUDevicePtr cpuDevice;
 };
 
 /// Profiler entry for tracking the lifetimes of owned buffers.
@@ -36,7 +36,7 @@ using BufferRefLifetimeProfilerEntry =
 
 /// A reference (aka smart pointer) to an underlying buffer of known size but
 /// uninterpreted and possibly uninitialized bytes, along with metadata needed
-/// to interop with the Modular runtime. Each buffer has an async value to its
+/// to interop with the Modular cpuDevice. Each buffer has an async value to its
 /// storage which will be freed on deconstruction.
 class TensorBufferRef {
 public:
@@ -77,15 +77,15 @@ public:
 
   /// Creates an 'owning' reference by allocating a new underlying buffer of
   /// size and alignment.
-  static TensorBufferRef createOwned(CompactRuntimePtr runtime, size_t size,
+  static TensorBufferRef createOwned(CompactCPUDevicePtr cpuDevice, size_t size,
                                      std::optional<size_t> alignment);
   /// Creates an 'owning' reference of size and alignment using takeFrom void*
   /// ptr that is allocated by caller. There is an assumption that the takeFrom
-  /// pointer is allocated by caller via runtime->getAllocator(). The allocated
-  /// buffer will be freed by TensorBufferRef when the reference is destroyed.
-  /// Since the ownership lies with TensorBufferRef, caller should not free
-  /// anything that has been taken by TensorBufferRef.
-  static TensorBufferRef take(CompactRuntimePtr runtime, size_t size,
+  /// pointer is allocated by caller via cpuDevice->getAllocator(). The
+  /// allocated buffer will be freed by TensorBufferRef when the reference is
+  /// destroyed. Since the ownership lies with TensorBufferRef, caller should
+  /// not free anything that has been taken by TensorBufferRef.
+  static TensorBufferRef take(CompactCPUDevicePtr cpuDevice, size_t size,
                               void *takeFrom);
   //===--------------------------------------------------------------------===//
   // Core APIs for working with a TensorBufferRef.

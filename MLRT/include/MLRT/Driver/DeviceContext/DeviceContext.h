@@ -577,7 +577,7 @@ public:
   /// Stream capture is ended synchronously for all streams, then graph
   /// instantiation is parallelized across AsyncRT's work queue threads.
   static ErrorOr<DeviceGraphCollection>
-  capture(M::MLRT::Runtime &runtime, ArrayRef<DeviceStreamRef> streams,
+  capture(M::MLRT::CPUDevice &cpuDevice, ArrayRef<DeviceStreamRef> streams,
           llvm::function_ref<ErrorOrSuccess()> execute);
 
   /// Replay the captured operations on the stored capture stream.
@@ -835,7 +835,7 @@ public:
   ErrorOr<Device::MemInfo> getMemoryInfo() const;
 
   // Context-level attribute query. Subclasses override to provide
-  // context-specific values (e.g. CpuDeviceContext returns the runtime's
+  // context-specific values (e.g. CpuDeviceContext returns the cpuDevice's
   // parallelism level). Default returns an error for unknown attributes.
   enum class Attribute : int {
     // Number of parallel worker threads for CPU work dispatch.

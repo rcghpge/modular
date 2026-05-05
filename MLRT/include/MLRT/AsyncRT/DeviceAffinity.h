@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Shared device-to-worker affinity logic used by both the graph compiler
-// (MGPPrimitives) and the Mojo runtime (via CompilerRT).
+// (MGPPrimitives) and the Mojo cpuDevice (via CompilerRT).
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,19 +37,19 @@ int taskIdForNonDevice(int taskId, size_t numWorkers);
 
 /// Like parallelForEachNChainWithTaskIds, but automatically pins each element
 /// to the worker thread with affinity for device `elementIdx`, using
-/// taskIdForDevice to compute the thread assignment from the runtime's work
+/// taskIdForDevice to compute the thread assignment from the cpuDevice's work
 /// queue parallelism level.
 template <typename... CaptureTys, typename ElementFn>
 static inline AsyncValueRef<Chain>
-launchDeviceCollective(Runtime &runtime, size_t totalCount,
+launchDeviceCollective(CPUDevice &cpuDevice, size_t totalCount,
                        ElementFn &&elementFn, CaptureTys &&...captures) {
-  WorkQueue *workQueue = runtime.getWorkQueue();
+  WorkQueue *workQueue = cpuDevice.getWorkQueue();
   auto taskIdFn = [workQueue](size_t deviceIdx) {
     return taskIdForDevice(static_cast<int>(deviceIdx),
                            workQueue->getParallelismLevel());
   };
   return parallelForEachNChainWithTaskIds(
-      runtime, totalCount, taskIdFn, std::forward<ElementFn>(elementFn),
+      cpuDevice, totalCount, taskIdFn, std::forward<ElementFn>(elementFn),
       std::forward<CaptureTys>(captures)...);
 }
 
@@ -59,16 +59,16 @@ launchDeviceCollective(Runtime &runtime, size_t totalCount,
 /// across the remaining pool of worker threads.
 template <typename... CaptureTys, typename ElementFn>
 static inline AsyncValueRef<Chain>
-launchNonDeviceCollective(Runtime &runtime, size_t totalCount,
+launchNonDeviceCollective(CPUDevice &cpuDevice, size_t totalCount,
                           ElementFn &&elementFn, size_t start = 0) {
-  WorkQueue *workQueue = runtime.getWorkQueue();
+  WorkQueue *workQueue = cpuDevice.getWorkQueue();
   size_t numWorkers = workQueue->getParallelismLevel();
 
   auto taskIdFn = [numWorkers](size_t i) -> int {
     return taskIdForNonDevice(static_cast<int>(i), numWorkers);
   };
 
-  return parallelForEachNChainWithTaskIds(runtime, totalCount,
+  return parallelForEachNChainWithTaskIds(cpuDevice, totalCount,
                                           std::move(taskIdFn),
                                           std::forward<ElementFn>(elementFn));
 }

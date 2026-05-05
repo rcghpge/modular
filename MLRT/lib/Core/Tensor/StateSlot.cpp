@@ -12,13 +12,13 @@ using namespace M;
 using namespace M::MLRT;
 
 TensorBufferRef StateSlot::getOrCreateBuffer(size_t bufferIndex,
-                                             CompactRuntimePtr runtime,
+                                             CompactCPUDevicePtr cpuDevice,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   assert(bufferIndex < bufferCache.size() &&
          "buffer index out of bounds in StateSlot");
   auto &entry = bufferCache[bufferIndex];
-  updateCacheIfNeeded(entry, runtime, size, alignment);
+  updateCacheIfNeeded(entry, cpuDevice, size, alignment);
   // Return a borrowed reference to the cached buffer.
   return entry->borrow();
 }
@@ -56,7 +56,7 @@ ErrorOrSuccess StateSlot::setBuffer(size_t bufferIndex,
 }
 
 void StateSlot::updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
-                                    CompactRuntimePtr runtime, size_t size,
+                                    CompactCPUDevicePtr cpuDevice, size_t size,
                                     std::optional<size_t> alignment) {
   // Do nothing if size matches. The size will be 0 if the entry is
   // uninitialized, thus forcing an allocation.
@@ -66,5 +66,5 @@ void StateSlot::updateCacheIfNeeded(std::optional<TensorBufferRef> &entry,
   // Free the existing buffer if exists and create a new one.
   // Since the compiler follows the 'one shot' rules for reallocating
   // buffers, this cannot invalidate any existing borrows.
-  entry = TensorBufferRef::createOwned(runtime, size, alignment);
+  entry = TensorBufferRef::createOwned(cpuDevice, size, alignment);
 }

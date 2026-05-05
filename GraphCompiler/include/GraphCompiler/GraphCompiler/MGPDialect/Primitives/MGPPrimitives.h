@@ -19,7 +19,7 @@ namespace MGP {
 /// Represents the State for kernel execution on CPU/Host device.
 /// This is explicitly the storage of kernel and loaded modules
 struct KernelExecutionState : public ReferenceCounted<KernelExecutionState> {
-  // Execution engine held by the runtime and shared by all loaded modules.
+  // Execution engine held by the cpuDevice and shared by all loaded modules.
   KGEN::ExecutionEngine *engine;
 
   // The kernel context for each loaded module. Modules are referenced by
@@ -40,10 +40,11 @@ struct KernelExecutionState : public ReferenceCounted<KernelExecutionState> {
       // Since this dtor is about to unload the object files rendering the
       // string pointers invalid, intern the strings into the profiler so that
       // the strings are accessible upon `TimeTraceProfiler::write()` call.
-      if (auto runtime = MLRT::Runtime::getCurrentRuntimeOrNull()) {
+      if (auto cpuDevice = MLRT::CPUDevice::getCurrentCPUDeviceOrNull()) {
         // Make sure any borrowed strings accumulated during profiling are
         // converted to owned strings.
-        if (std::optional<TimeTraceProfiler> &profiler = runtime->getProfiler())
+        if (std::optional<TimeTraceProfiler> &profiler =
+                cpuDevice->getProfiler())
           profiler->intern();
       }
     }

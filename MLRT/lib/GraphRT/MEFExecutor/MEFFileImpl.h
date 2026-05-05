@@ -82,11 +82,11 @@ public:
       std::function<ErrorOrSuccess(StringRef, const PrimitiveDescriptor &)>
           visitor) const override;
 
-  /// Invokable this using the specified runtime, passing the specified
+  /// Invokable this using the specified cpuDevice, passing the specified
   /// arguments. This returns one AsyncValue for each result.
   void invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
               MutableArrayRef<AnyAsyncValueRef> results,
-              Runtime &runtime) const override;
+              CPUDevice &cpuDevice) const override;
 
   /// Add a new reference to this object.  The lifetime of invokables are
   /// generally tied to the file they are loaded from (e.g. a MEFFile) so they

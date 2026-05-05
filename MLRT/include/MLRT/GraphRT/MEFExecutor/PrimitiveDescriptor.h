@@ -21,7 +21,7 @@ class MEFAttr;
 
 /// This class captures the states associated with an invocation of a primitive,
 /// including the input arguments, attributes, result values, location and
-/// runtime.
+/// cpuDevice.
 ///
 /// The implementation of a primitive is responsible for creating AsyncValue
 /// objects and setting them into the frame.  The correct number of results are
@@ -151,7 +151,7 @@ public:
 /// AsyncValue objects that are needed to run a primitive.
 class RunnablePrimitiveDescriptor : public PrimitiveDescriptor {
 public:
-  Runtime &getRuntime() const { return runtime; }
+  CPUDevice &getRuntime() const { return cpuDevice; }
 
   //===--------------------------------------------------------------------===//
   // Arguments
@@ -202,7 +202,7 @@ public:
   template <typename T, typename... Args>
   void emplaceResult(size_t index, Args &&...args) {
     setResult(index, AsyncValueRef<T>::createReady(
-                         runtime, std::forward<Args>(args)...));
+                         cpuDevice, std::forward<Args>(args)...));
   }
 
   //===--------------------------------------------------------------------===//
@@ -218,11 +218,13 @@ public:
   void fail(Error cause);
 
 protected:
-  RunnablePrimitiveDescriptor(Runtime &runtime, ArrayRef<uint8_t> attrSection,
+  RunnablePrimitiveDescriptor(CPUDevice &cpuDevice,
+                              ArrayRef<uint8_t> attrSection,
                               LocationDecoder &locationDecoder)
-      : PrimitiveDescriptor(attrSection, locationDecoder), runtime(runtime) {}
+      : PrimitiveDescriptor(attrSection, locationDecoder),
+        cpuDevice(cpuDevice) {}
 
-  Runtime &runtime;
+  CPUDevice &cpuDevice;
 
   /// We store arguments and results in a single SmallVector for efficiency:
   /// one less vector to overflow.
@@ -240,10 +242,10 @@ protected:
 ///
 class RunnablePrimitiveDescriptorBuilder : public RunnablePrimitiveDescriptor {
 public:
-  RunnablePrimitiveDescriptorBuilder(Runtime &runtime,
+  RunnablePrimitiveDescriptorBuilder(CPUDevice &cpuDevice,
                                      ArrayRef<uint8_t> attrSection,
                                      LocationDecoder &locationDecoder)
-      : RunnablePrimitiveDescriptor(runtime, attrSection, locationDecoder) {}
+      : RunnablePrimitiveDescriptor(cpuDevice, attrSection, locationDecoder) {}
 
   /// Clear all fields.
   void reset() {

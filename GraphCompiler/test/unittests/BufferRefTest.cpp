@@ -17,9 +17,9 @@
 using namespace M;
 using namespace M::MLRT;
 
-static MLRT::RuntimeRef getRuntime() {
-  return MLRT::getOrCreateRuntime(MLRT::RuntimeSource::Test,
-                                  MLRT::RuntimeOptions().forDebug());
+static MLRT::CPUDeviceRef getCPUDevice() {
+  return MLRT::getOrCreateCPUDevice(MLRT::CPUDeviceSource::Test,
+                                    MLRT::CPUDeviceOptions().forDebug());
 }
 
 TEST(TensorBufferRef, Default) {
@@ -31,16 +31,16 @@ TEST(TensorBufferRef, Default) {
 }
 
 TEST(TensorBufferRef, CreateOwned) {
-  auto runtime = getRuntime();
-  TensorBufferRef ref = TensorBufferRef::createOwned(*runtime, /*size=*/4,
+  auto cpuDevice = getCPUDevice();
+  TensorBufferRef ref = TensorBufferRef::createOwned(*cpuDevice, /*size=*/4,
                                                      /*alignment=*/128);
   ASSERT_TRUE(llvm::isAddrAligned(llvm::Align(128), ref.getBuffer()));
   ASSERT_TRUE((bool)ref.getMemStorageHandle());
 }
 
 TEST(TensorBufferRef, CreateEmptyOwned) {
-  auto runtime = getRuntime();
-  TensorBufferRef ref = TensorBufferRef::createOwned(*runtime, /*size=*/0,
+  auto cpuDevice = getCPUDevice();
+  TensorBufferRef ref = TensorBufferRef::createOwned(*cpuDevice, /*size=*/0,
                                                      /*alignment=*/128);
   ASSERT_EQ(ref.getSize(), 0u);
   ASSERT_EQ(ref.getBuffer(), nullptr);
@@ -66,9 +66,9 @@ TEST(TensorBufferRef, CreateEmptyBorrowed) {
 }
 
 TEST(TensorBufferRef, Move) {
-  auto runtime = getRuntime();
+  auto cpuDevice = getCPUDevice();
   TensorBufferRef ref =
-      TensorBufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
+      TensorBufferRef::createOwned(*cpuDevice, sizeof(int), /*alignment=*/16);
   const void *data = ref.getBuffer();
 
   TensorBufferRef ref2 = std::move(ref);
@@ -77,18 +77,18 @@ TEST(TensorBufferRef, Move) {
 }
 
 TEST(TensorBufferRef, Borrow) {
-  auto runtime = getRuntime();
+  auto cpuDevice = getCPUDevice();
   TensorBufferRef ref =
-      TensorBufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
+      TensorBufferRef::createOwned(*cpuDevice, sizeof(int), /*alignment=*/16);
   TensorBufferRef bor = ref.borrow();
   ASSERT_EQ(bor.getBuffer(), ref.getBuffer());
   ASSERT_EQ(bor.getSize(), ref.getSize());
 }
 
 TEST(TensorBufferRef, Destructor) {
-  // We are relying on the use of the profiling Allocator in getRuntime.
-  auto runtime = getRuntime();
-  void *data = runtime->getAllocator()->allocateBytes(sizeof(int), 16);
+  // We are relying on the use of the profiling Allocator in getCPUDevice.
+  auto cpuDevice = getCPUDevice();
+  void *data = cpuDevice->getAllocator()->allocateBytes(sizeof(int), 16);
   {
     TensorBufferRef ref =
         TensorBufferRef::createWithNonTrackedMemory(data, sizeof(int),
@@ -96,20 +96,20 @@ TEST(TensorBufferRef, Destructor) {
     TensorBufferRef ref2 = std::move(ref);
     // No deallocation.
   }
-  runtime->getAllocator()->deallocateBytes(data, sizeof(int));
+  cpuDevice->getAllocator()->deallocateBytes(data, sizeof(int));
 
   {
     TensorBufferRef ref =
-        TensorBufferRef::createOwned(*runtime, sizeof(int), /*alignment=*/16);
+        TensorBufferRef::createOwned(*cpuDevice, sizeof(int), /*alignment=*/16);
     TensorBufferRef ref2 = std::move(ref);
     // Will deallocate.
   }
 }
 
 TEST(TensorBufferRef, GetMemStorageHandle) {
-  auto runtime = getRuntime();
+  auto cpuDevice = getCPUDevice();
   TensorBufferRef *ref =
-      new TensorBufferRef(TensorBufferRef::createOwned(*runtime, 4,
+      new TensorBufferRef(TensorBufferRef::createOwned(*cpuDevice, 4,
                                                        /*alignment=*/{}));
   AnyAsyncValueRef memory = ref->getMemStorageHandle();
   ASSERT_TRUE(memory);

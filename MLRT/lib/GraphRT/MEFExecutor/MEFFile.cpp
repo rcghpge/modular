@@ -191,11 +191,11 @@ bool MEFFileReader::readNextSection() {
 MEFFileImpl::~MEFFileImpl() {
   if constexpr (PrimitiveProfilerEntry::isEnabled()) {
     // Profilers only exist in their owning `Runtime`.
-    if (auto runtime = MLRT::Runtime::getCurrentRuntimeOrNull()) {
+    if (auto cpuDevice = MLRT::CPUDevice::getCurrentCPUDeviceOrNull()) {
       // Make sure any borrowed strings accumulated during profiling are
       // converted to owned strings before the MEFFile they are borrowed from is
       // destroyed.
-      if (std::optional<TimeTraceProfiler> &profiler = runtime->getProfiler())
+      if (std::optional<TimeTraceProfiler> &profiler = cpuDevice->getProfiler())
         profiler->intern();
     }
   }

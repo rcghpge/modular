@@ -67,7 +67,7 @@ private:
 
 /// Contains the core CLI options for *-executor, so that other executables
 /// can use these without duplicating them.
-class ExecutorDriverOptions : public MLRT::RuntimeOptions,
+class ExecutorDriverOptions : public MLRT::CPUDeviceOptions,
                               public CommonOptions {
 
 public:
@@ -215,7 +215,7 @@ private:
       "minimum-cpu-alignment",
       cl::desc(
           "The minimum byte alignment for all CPU-allocated buffers. Default "
-          "is 64 bytes for compatibility with the stock TensorFlow runtime."),
+          "is 64 bytes for compatibility with the stock TensorFlow cpuDevice."),
       llvm::cl::location(options.minimumCpuAlignment),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 

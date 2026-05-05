@@ -75,11 +75,11 @@ static bool supportsKernelReflection(const DeviceContext &ctx) {
 class GraphCaptureTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    runtime_ = M::MLRT::getOrCreateRuntime(
-        M::MLRT::RuntimeSource::Test,
-        M::MLRT::RuntimeOptions().withMainWillNotDonate());
+    runtime_ = M::MLRT::getOrCreateCPUDevice(
+        M::MLRT::CPUDeviceSource::Test,
+        M::MLRT::CPUDeviceOptions().withMainWillNotDonate());
   }
-  M::MLRT::RuntimeRef runtime_;
+  M::MLRT::CPUDeviceRef runtime_;
 };
 
 TEST_F(GraphCaptureTest, BeginAndEndCapture) {

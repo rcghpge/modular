@@ -168,11 +168,13 @@ deviceHintAndContextFor(const RemainingArguments &operands) {
   return {kNoDevicePreference, M::Driver::DeviceContextRef{}};
 }
 
-static void mgp_generic_execute(
-    StateContext &ctx, RemainingArguments operands, RemainingResults outResults,
-    MEFAttr<uint64_t> aSlot, MEFAttr<uint64_t> bModuleIndex,
-    MEFAttr<uint64_t> cFunctionIndex, MEFAttr<StringRef> dSummary,
-    MEFAttr<bool> eIsAsync, MEFListAttr fConstantResources, Runtime &runtime) {
+static void
+mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
+                    RemainingResults outResults, MEFAttr<uint64_t> aSlot,
+                    MEFAttr<uint64_t> bModuleIndex,
+                    MEFAttr<uint64_t> cFunctionIndex,
+                    MEFAttr<StringRef> dSummary, MEFAttr<bool> eIsAsync,
+                    MEFListAttr fConstantResources, CPUDevice &cpuDevice) {
   TRACY_ZONE_SCOPED_NCT("mgp_generic_execute", TRACY_COLOR_TEAL,
                         "(Summary: " + dSummary.get().str() + ")");
 
@@ -187,7 +189,7 @@ static void mgp_generic_execute(
   auto [deviceHint, deviceCtx] = deviceHintAndContextFor(operands);
 
   // Compute taskId for worker affinity via the shared DeviceAffinity logic.
-  MLRT::WorkQueue *workQueue = runtime.getWorkQueue();
+  MLRT::WorkQueue *workQueue = cpuDevice.getWorkQueue();
   int taskId =
       (deviceHint == kNoDevicePreference)
           ? kDefaultTaskId
@@ -520,17 +522,17 @@ static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
 
 void mgp_runtime_create(Chain inChain, StateContext &theContext,
                         Result<Chain> outChain, MEFAttr<uint64_t> aRuntimeSlot,
-                        Runtime &runtime) {
+                        CPUDevice &cpuDevice) {
   TRACY_ZONE_SCOPED_NC("mgp_runtime_create", TRACY_COLOR_TEAL);
 
   // Primitives are invoked by the MEF executor with a fixed frame (chain,
-  // state, runtime, etc.); Context is not in the invocation ABI. Callers
+  // state, cpuDevice, etc.); Context is not in the invocation ABI. Callers
   // (engine, mt, mo-opt) create the M::Context, and this is then retrieved
   // here by calling Init::getContext().
   M::ContextRef ctxRef = Init::getContext();
 
   // Establish an execution engine, to be shared amongst all loaded models
-  // across all models using this runtime.
+  // across all models using this cpuDevice.
   //
   // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
   //               this engine.
@@ -553,8 +555,8 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
             // Create the execution engine.
             KGEN::ExecutionEngineOptions options;
             options.registerPerfPlugins =
-                runtime.getProfilerDebuginfo() ==
-                M::MLRT::RuntimeOptions::ProfilerDebuginfo::kPerfProfiler;
+                cpuDevice.getProfilerDebuginfo() ==
+                M::MLRT::CPUDeviceOptions::ProfilerDebuginfo::kPerfProfiler;
             options.libraryPaths.push_back(cfg.getMGPRTPath());
             return KGEN::ExecutionEngine::createWithStandardLayers(
                 std::move(options), **targetMachineOr);
@@ -577,7 +579,8 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
 static void mgp_buffer_cache(Chain inChain, StateContext &theContext,
                              AsyncValueRef<TensorBufferRef> buffer,
                              Result<Chain> outChain,
-                             MEFAttr<uint64_t> bBufferSlot, Runtime &runtime) {
+                             MEFAttr<uint64_t> bBufferSlot,
+                             CPUDevice &cpuDevice) {
   TRACY_ZONE_SCOPED_NC("mgp_buffer_cache", TRACY_COLOR_TEAL);
 
   theContext.emplaceStateSlot<DefaultStateSlot>(

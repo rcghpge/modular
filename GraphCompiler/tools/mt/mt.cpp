@@ -78,14 +78,14 @@ private:
 static int setupMLIRAndRun(
     ContextRef context, const ExecutorDriverOptions &options,
     const char *testName, std::unique_ptr<llvm::MemoryBuffer> &&file,
-    std::function<LogicalResult(Runtime &, MLIRContext *)> &&bodyFn) {
+    std::function<LogicalResult(CPUDevice &, MLIRContext *)> &&bodyFn) {
   if (failed(options.configureMLIRContextAndExecute(
           std::move(file), [&](MLIRContext *ctx) {
-            MLRT::Runtime *runtime = context->get<Runtime>();
-            assert(runtime && "caller should have set up runtime for this");
+            MLRT::CPUDevice *cpuDevice = context->get<CPUDevice>();
+            assert(cpuDevice && "caller should have set up cpuDevice for this");
             registerContext(*ctx, context);
             return MLRT::runWithLeakCheckedRuntime(
-                testName, [&]() { return bodyFn(*runtime, ctx); });
+                testName, [&]() { return bodyFn(*cpuDevice, ctx); });
           })))
     return EXIT_FAILURE;
   return EXIT_SUCCESS;
@@ -99,12 +99,13 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
   const ExecutorDriverOptions *driverOptions = ctx.getExecutorDriverOptions();
   assert(driverOptions && "cannot run a binary file via the API");
 
-  auto runModels = [&, context = maxCtx.copy()](
-                       Runtime &runtime, MLIRContext *ctx) -> LogicalResult {
+  auto runModels = [&, context =
+                           maxCtx.copy()](CPUDevice &cpuDevice,
+                                          MLIRContext *ctx) -> LogicalResult {
     mofLoweringOptions.setupContext(context);
     bool hadFailure = false;
     for (const auto &model : models) {
-      if (failed(runModel(model.get(), runtime, *driverOptions))) {
+      if (failed(runModel(model.get(), cpuDevice, *driverOptions))) {
         hadFailure = true;
         if (driverOptions->stopOnFirstError())
           return failure();
@@ -187,7 +188,7 @@ int main(int argc, char **argv) {
 
   // Create a context used by this command (compile/execute/benchmark) run.
   Init::Options contextOptions;
-  contextOptions.withRuntimeOptions(options);
+  contextOptions.withCPUDeviceOptions(options);
   auto contextOr =
       Init::createContext(options.getProgramName(), contextOptions);
   if (contextOr.isError())

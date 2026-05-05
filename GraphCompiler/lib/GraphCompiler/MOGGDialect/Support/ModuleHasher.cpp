@@ -288,12 +288,12 @@ void M::MOGG::hashModuleContents(mlir::ModuleOp module) {
 
 void M::MOGG::hashModuleContents(mlir::ModuleOp module,
                                  const mlir::SymbolTable &symtab) {
-  MLRT::Runtime &runtime =
-      *loadContext(module.getContext())->get<MLRT::Runtime>();
+  MLRT::CPUDevice &cpuDevice =
+      *loadContext(module.getContext())->get<MLRT::CPUDevice>();
 
   Graph graph;
   graph.build(module, symtab);
-  graph.run(runtime);
+  graph.run(cpuDevice);
 }
 
 std::string M::MOGG::getSemanticHash(KGEN::GeneratorOp generator) {

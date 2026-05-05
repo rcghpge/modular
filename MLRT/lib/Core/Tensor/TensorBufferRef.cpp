@@ -43,7 +43,7 @@ TensorBufferRef::createWithNonTrackedMemory(void *buffer, size_t size,
                          makeMaybeAlign(alignment), std::move(profilerEntry));
 }
 
-TensorBufferRef TensorBufferRef::createOwned(CompactRuntimePtr runtime,
+TensorBufferRef TensorBufferRef::createOwned(CompactCPUDevicePtr cpuDevice,
                                              size_t size,
                                              std::optional<size_t> alignment) {
   // Special case for empty buffer
@@ -53,8 +53,8 @@ TensorBufferRef TensorBufferRef::createOwned(CompactRuntimePtr runtime,
   }
 
   AnyAsyncValueRef storageRef;
-  storageRef = storageRef.createReady<OwnedMemoryBlock>(runtime, size,
-                                                        alignment, runtime);
+  storageRef = storageRef.createReady<OwnedMemoryBlock>(cpuDevice, size,
+                                                        alignment, cpuDevice);
   void *buffer = storageRef.get<OwnedMemoryBlock>().data;
   return TensorBufferRef::create(buffer, size, std::move(storageRef),
                                  makeMaybeAlign(alignment));
@@ -62,11 +62,11 @@ TensorBufferRef TensorBufferRef::createOwned(CompactRuntimePtr runtime,
 
 // Create an owned reference from a taken void* pointer -- This taken
 // pointer will not be freed by anyone else except by the buffer-ref now.
-TensorBufferRef TensorBufferRef::take(CompactRuntimePtr runtime, size_t size,
-                                      void *takeFrom) {
+TensorBufferRef TensorBufferRef::take(CompactCPUDevicePtr cpuDevice,
+                                      size_t size, void *takeFrom) {
   AnyAsyncValueRef storageRef;
   storageRef = storageRef.createReady<OwnedMemoryBlock>(
-      runtime, size, std::nullopt, runtime, takeFrom);
+      cpuDevice, size, std::nullopt, cpuDevice, takeFrom);
   void *buffer = storageRef.get<OwnedMemoryBlock>().data;
   return TensorBufferRef::create(buffer, size, std::move(storageRef));
 }
@@ -105,15 +105,15 @@ void TensorBufferRef::swap(TensorBufferRef &rhs) {
 }
 
 OwnedMemoryBlock::OwnedMemoryBlock(size_t size, std::optional<size_t> alignment,
-                                   CompactRuntimePtr rt, void *takePtr)
-    : data(nullptr), size(size), runtime(rt) {
+                                   CompactCPUDevicePtr rt, void *takePtr)
+    : data(nullptr), size(size), cpuDevice(rt) {
   if (takePtr)
     data = takePtr;
   else
-    data = runtime->getAllocator()->allocateBytes(
+    data = cpuDevice->getAllocator()->allocateBytes(
         size, alignment.value_or(kPreferredMemoryAlignment));
 }
 
 OwnedMemoryBlock::~OwnedMemoryBlock() {
-  runtime->getAllocator()->deallocateBytes(data, size);
+  cpuDevice->getAllocator()->deallocateBytes(data, size);
 }

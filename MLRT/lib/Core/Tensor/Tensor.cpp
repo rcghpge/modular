@@ -11,17 +11,18 @@
 using namespace M;
 using namespace M::MLRT;
 
-Tensor Tensor::createOwned(TensorSpec spec, CompactRuntimePtr runtime,
+Tensor Tensor::createOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
                            std::optional<size_t> alignment) {
   return Tensor(
-      TensorBufferRef::createOwned(runtime, spec.getSizeInBytes(), alignment),
+      TensorBufferRef::createOwned(cpuDevice, spec.getSizeInBytes(), alignment),
       std::move(spec));
 }
 
-Tensor Tensor::takeOwned(TensorSpec spec, CompactRuntimePtr runtime,
+Tensor Tensor::takeOwned(TensorSpec spec, CompactCPUDevicePtr cpuDevice,
                          void *takeFrom) {
-  return Tensor(TensorBufferRef::take(runtime, spec.getSizeInBytes(), takeFrom),
-                std::move(spec));
+  return Tensor(
+      TensorBufferRef::take(cpuDevice, spec.getSizeInBytes(), takeFrom),
+      std::move(spec));
 }
 
 Tensor Tensor::createBorrowed(void *buffer, TensorSpec spec,

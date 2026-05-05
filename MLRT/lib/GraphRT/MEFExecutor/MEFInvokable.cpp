@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This file implements logic required to execute a invokable.  This is the core
-// execution logic for the MEF executor runtime.
+// execution logic for the MEF executor cpuDevice.
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,7 +48,7 @@ struct RegisterInfo {
 
   /// Return the AsyncValue for this register, creating it on demand as
   /// necessary.
-  AsyncValue *getOrCreateIndirectValue(Runtime &runtime);
+  AsyncValue *getOrCreateIndirectValue(CPUDevice &cpuDevice);
 
   /// Set this register to the specified value when the primitive that
   /// constructs it has completed.  This returns the actual value held by the
@@ -82,7 +82,7 @@ private:
 
 /// Return the AsyncValue for this register, creating it on demand as
 /// necessary.
-AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
+AsyncValue *RegisterInfo::getOrCreateIndirectValue(CPUDevice &cpuDevice) {
   // In the normal case, just load the pointer and return it.
   AsyncValue *valuePtr = getValue();
   if (valuePtr)
@@ -91,7 +91,7 @@ AsyncValue *RegisterInfo::getOrCreateIndirectValue(Runtime &runtime) {
   // If it doesn't exist, we create an IndirectAsyncValue for this.  We have to
   // be a bit careful though because a concurrent task could swap in the actual
   // result while we're working on this.
-  AsyncValue *indirect = AsyncValue::createIndirect(runtime);
+  AsyncValue *indirect = AsyncValue::createIndirect(cpuDevice);
   AsyncValue *existing = nullptr;
 
   // Speculatively set refcount to `userCount` refs with the expectation that
@@ -228,8 +228,9 @@ class MEFExecutor final
       public LocationDecoder,
       public llvm::TrailingObjects<MEFExecutor, RegisterInfo, PrimitiveInfo> {
 public:
-  MEFExecutor(MEFFileImpl *file, Runtime &runtime, MEFInvokableDecoder &decoder)
-      : mefFile(copyRCRef(file)), runtime(runtime),
+  MEFExecutor(MEFFileImpl *file, CPUDevice &cpuDevice,
+              MEFInvokableDecoder &decoder)
+      : mefFile(copyRCRef(file)), cpuDevice(cpuDevice),
         numRegisters(decoder.numRegisters),
         numPrimitives(decoder.numPrimitives) {}
   ~MEFExecutor() override {
@@ -252,8 +253,8 @@ public:
     this->~MEFExecutor();
     auto sizeInBytes = totalSizeToAlloc<RegisterInfo, PrimitiveInfo>(
         numRegisters, numPrimitives);
-    runtime.getAllocator()->deallocateBytes(const_cast<MEFExecutor *>(this),
-                                            sizeInBytes);
+    cpuDevice.getAllocator()->deallocateBytes(const_cast<MEFExecutor *>(this),
+                                              sizeInBytes);
   }
 
   /// Provide access to the inline-allocated RegisterInfo table.
@@ -299,7 +300,7 @@ private:
   /// Make sure the MEF file doesn't get deallocated while we're
   /// asynchronously running stuff.
   RCRef<MEFFileImpl> mefFile;
-  Runtime &runtime;
+  CPUDevice &cpuDevice;
 
   const unsigned numRegisters, numPrimitives;
 
@@ -455,7 +456,7 @@ void MEFExecutor::execute(const MEFInvokableImpl &invokable,
     // that array.  This 'takes' the reference because the refcount was
     // initialized to know that a reference from this result exists.
     results[i] = takeRCRef(
-        regTable[resultRegIndex[i]].getOrCreateIndirectValue(runtime));
+        regTable[resultRegIndex[i]].getOrCreateIndirectValue(cpuDevice));
   }
 }
 
@@ -553,7 +554,8 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
   TRACY_ZONE_SCOPED_NC("MEFExecutor::decrementOperandsNotReadyCounts",
                        TRACY_COLOR_RED);
 
-  RunnablePrimitiveDescriptorBuilder frame(runtime, mefFile->attributes, *this);
+  RunnablePrimitiveDescriptorBuilder frame(cpuDevice, mefFile->attributes,
+                                           *this);
 
   MutableArrayRef<RegisterInfo> registers = getRegisterInfoTable();
   MutableArrayRef<PrimitiveInfo> primitives = getPrimitiveInfoTable();
@@ -597,7 +599,7 @@ void MEFExecutor::decrementOperandsNotReadyCounts(
       // The operand register may not be available for non-strict primitives
       // that are started before all operands are available. In that case, we
       // use an IndirectAsyncValue so it can be resolved later.
-      AsyncValue *value = reg.getOrCreateIndirectValue(runtime);
+      AsyncValue *value = reg.getOrCreateIndirectValue(cpuDevice);
       frame.addArg(takeRCRef(value));
 
       // If any operand is an error, we implicitly propagate it through to all
@@ -799,7 +801,7 @@ MEFInvokableImpl::decode(const EncodedLocation &loc) const {
 /// for each result.
 void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
                               MutableArrayRef<AnyAsyncValueRef> results,
-                              Runtime &runtime) const {
+                              CPUDevice &cpuDevice) const {
   TRACY_ZONE_SCOPED_NC("MEFInvokableImpl::invoke", TRACY_COLOR_RED);
 
   ASSERT_STREAM(arguments.size() == getNumArgs(),
@@ -817,9 +819,10 @@ void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
   // well as reducing #allocations.
   auto sizeInBytes = MEFExecutor::totalSizeToAlloc<RegisterInfo, PrimitiveInfo>(
       decoder.numRegisters, decoder.numPrimitives);
-  void *rawPtr =
-      runtime.getAllocator()->allocateBytes(sizeInBytes, alignof(MEFExecutor));
-  auto executor = takeRCRef(new (rawPtr) MEFExecutor(owner, runtime, decoder));
+  void *rawPtr = cpuDevice.getAllocator()->allocateBytes(sizeInBytes,
+                                                         alignof(MEFExecutor));
+  auto executor =
+      takeRCRef(new (rawPtr) MEFExecutor(owner, cpuDevice, decoder));
 
   // Parse the rest of the tables now that we allocated memory.
   if (headerParseFailure || executor->decodeTables(decoder)) {
@@ -834,8 +837,8 @@ void MEFInvokableImpl::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
     auto curLocation = EncodedLocation(
         /*some location=*/0, takeRCRef(const_cast<MEFInvokableImpl *>(this)));
     results[0] = AnyAsyncValueRef::createError(
-        runtime, EncodedDiagnostic{std::move(decoder.mefFormatError.value()),
-                                   std::move(curLocation)});
+        cpuDevice, EncodedDiagnostic{std::move(decoder.mefFormatError.value()),
+                                     std::move(curLocation)});
     // Fill in the rest with the same error.
     for (size_t i = 1, e = results.size(); i != e; ++i)
       results[i] = results[0].copy();
@@ -932,15 +935,15 @@ ErrorOrSuccess MEFInvokableImpl::walkPrimitives(
 // other kinds of invokables someday.
 void MEFInvokable::vtableAnchor() {}
 
-/// Invoke this using the specified runtime, passing the specified
+/// Invoke this using the specified cpuDevice, passing the specified
 /// arguments. This fills in one AsyncValue for each result.  The caller is
 /// allowed to take from the `arguments` async values.
 SmallVector<AnyAsyncValueRef, 1>
 MEFInvokable::invoke(MutableArrayRef<AnyAsyncValueRef> arguments,
-                     Runtime &runtime) const {
+                     CPUDevice &cpuDevice) const {
   SmallVector<AnyAsyncValueRef, 1> results;
   results.resize(getNumResults());
-  invoke(arguments, results, runtime);
+  invoke(arguments, results, cpuDevice);
   return results;
 }
 

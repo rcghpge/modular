@@ -245,7 +245,7 @@ public:
   template <typename T, typename... Args>
   void emplace(Args &&...args) && {
     std::move(*this).resolve(AnyAsyncValueRef::createReady<T, Args...>(
-        result.getRuntime(), std::forward<Args>(args)...));
+        result.getCPUDevice(), std::forward<Args>(args)...));
   }
 };
 
@@ -258,8 +258,8 @@ public:
 class RemainingResults {
 public:
   explicit RemainingResults(MutableArrayRef<AnyAsyncValueRef> results,
-                            Runtime &runtime)
-      : runtime(runtime), results(results) {}
+                            CPUDevice &cpuDevice)
+      : cpuDevice(cpuDevice), results(results) {}
 
   /// Returns reference to underlying results array.
   /// CAUTION: The results are shared between the producer (eg a primitive)
@@ -278,7 +278,7 @@ public:
   void allocateIndirectResults() {
     for (auto &elt : results)
       if (!elt)
-        elt = AnyAsyncValueRef::createIndirect(runtime);
+        elt = AnyAsyncValueRef::createIndirect(cpuDevice);
   }
 
   /// Return the AsyncValues as a SmallVector where every element is copied out.
@@ -295,11 +295,11 @@ public:
   void setAllToError(Error error, const EncodedLocation &loc) && {
     for (auto &result : results)
       result = AnyAsyncValueRef::createError(
-          runtime, EncodedDiagnostic(error.copy(), loc.copy()));
+          cpuDevice, EncodedDiagnostic(error.copy(), loc.copy()));
   }
 
 private:
-  Runtime &runtime;
+  CPUDevice &cpuDevice;
   MutableArrayRef<AnyAsyncValueRef> results;
 };
 
@@ -684,9 +684,9 @@ struct PrimitiveImpl<Return (*)(Args...), implFn> {
 
   /// If this requires a Runtime, pass it along.
   template <typename Dummy>
-  struct Value<Runtime &, Dummy> : public FrameworkValue {
+  struct Value<CPUDevice &, Dummy> : public FrameworkValue {
     template <typename IndicesT>
-    static Runtime &process(RunnablePrimitiveDescriptor &frame) {
+    static CPUDevice &process(RunnablePrimitiveDescriptor &frame) {
       return frame.getRuntime();
     }
   };

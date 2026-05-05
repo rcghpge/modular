@@ -82,7 +82,7 @@ struct JitCompileKernels
     KGEN::ObjectCompiler *objectCompiler;
     KGEN::KGENCompiler *compiler;
     TargetInfoAttr targetInfo;
-    MLRT::Runtime *runtime;
+    MLRT::CPUDevice *cpuDevice;
     KGEN::CompilationOptions opts;
     OpBuilder builder;
     RCRef<Cache::TransformCache> mojoCache;
@@ -91,10 +91,10 @@ struct JitCompileKernels
                      OwningOpRef<ModuleOp> kgenModule,
                      KGEN::ObjectCompiler *objectCompiler,
                      KGEN::KGENCompiler *compiler, TargetInfoAttr targetInfo,
-                     MLRT::Runtime *runtime, KGEN::CompilationOptions opts)
+                     MLRT::CPUDevice *cpuDevice, KGEN::CompilationOptions opts)
         : ctx(ctx), mgpModule(mgpModule), kgenModule(std::move(kgenModule)),
           objectCompiler(objectCompiler), compiler(compiler),
-          targetInfo(targetInfo), runtime(runtime), opts(std::move(opts)),
+          targetInfo(targetInfo), cpuDevice(cpuDevice), opts(std::move(opts)),
           builder(ctx), mojoCache(objectCompiler->getTransformCache()) {}
   };
 
@@ -456,8 +456,8 @@ struct JitCompileKernels
     // KGENToElaboratedKGEN
     if (state.compiler
             ->runElaborationPipeline(
-                *state.kgenModule, state.targetInfo, *state.runtime,
-                state.runtime->getReadyChain().copy(),
+                *state.kgenModule, state.targetInfo, *state.cpuDevice,
+                state.cpuDevice->getReadyChain().copy(),
                 Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
                     "JitCompileKernels::elaborateKGEN",
                     "mogg.elaborate.kgen.cache.miss.time",
@@ -555,7 +555,7 @@ struct JitCompileKernels
     }
 
     ContextRef maxContext = loadContext(ctx);
-    auto runtime = maxContext->get<MLRT::Runtime>();
+    auto cpuDevice = maxContext->get<MLRT::CPUDevice>();
 
     auto targetInfo = targetInfoAttr.takeValue();
     auto opts = setupCompilationOptions(targetInfo, kernelLibraryPaths);
@@ -596,7 +596,7 @@ struct JitCompileKernels
 
     CompilationState state(ctx, module, std::move(parsedMojoModule),
                            (*objectCompiler).get(), &compiler, targetInfo,
-                           runtime, opts);
+                           cpuDevice, opts);
 
     auto cachingResultOr = erasePreviouslyCompiledKernels(state);
     if (cachingResultOr.isError()) {

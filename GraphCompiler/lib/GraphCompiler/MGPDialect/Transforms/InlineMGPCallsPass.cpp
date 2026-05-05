@@ -333,13 +333,14 @@ struct InlineMGPCallsPass
     if (models.empty() || llvm::hasSingleElement(models))
       return;
 
-    MLRT::Runtime &runtime = *loadContext(&getContext())->get<MLRT::Runtime>();
+    MLRT::CPUDevice &cpuDevice =
+        *loadContext(&getContext())->get<MLRT::CPUDevice>();
 
     SymbolTable symtab(moduleOp);
 
     MGPCallGraph callGraph;
     callGraph.build(moduleOp, symtab);
-    callGraph.run(runtime);
+    callGraph.run(cpuDevice);
 
     if (callGraph.numErrors > 0)
       return signalPassFailure();

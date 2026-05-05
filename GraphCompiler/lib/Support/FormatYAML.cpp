@@ -384,12 +384,12 @@ void llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>>::mapping(
 ErrorOr<MLRT::AnyAsyncValueRef>
 M::getResultForBinaryOutput(const MLRT::AnyAsyncValueRef &out,
                             ProcessedResults &processedResults) {
-  M::MLRT::CompactRuntimePtr runtime = out.getRuntime();
+  M::MLRT::CompactCPUDevicePtr cpuDevice = out.getCPUDevice();
 
   if (GML::List *castListValue = dyn_cast<GML::List>(out)) {
     // Create a new list.
     MLRT::AnyAsyncValueRef out =
-        MLRT::AnyAsyncValueRef::createReady<GML::List>(runtime);
+        MLRT::AnyAsyncValueRef::createReady<GML::List>(cpuDevice);
     out.get<GML::List>().getElements().reserve(
         castListValue->getElements().size());
     for (GML::Variant &elem : castListValue->getElements()) {
@@ -404,7 +404,7 @@ M::getResultForBinaryOutput(const MLRT::AnyAsyncValueRef &out,
   if (GML::Tuple *castTupleValue = dyn_cast<GML::Tuple>(out)) {
     // Create a new tuple.
     MLRT::AnyAsyncValueRef out =
-        MLRT::AnyAsyncValueRef::createReady<GML::Tuple>(runtime);
+        MLRT::AnyAsyncValueRef::createReady<GML::Tuple>(cpuDevice);
     out.get<GML::Tuple>().getElements().reserve(
         castTupleValue->getElements().size());
     for (GML::Variant &elem : castTupleValue->getElements()) {
@@ -419,7 +419,7 @@ M::getResultForBinaryOutput(const MLRT::AnyAsyncValueRef &out,
   if (GML::Dict *castDictValue = dyn_cast<GML::Dict>(out)) {
     // Create a new dict.
     MLRT::AnyAsyncValueRef out =
-        MLRT::AnyAsyncValueRef::createReady<GML::Dict>(runtime);
+        MLRT::AnyAsyncValueRef::createReady<GML::Dict>(cpuDevice);
     out.get<GML::Dict>().getElements().reserve(
         castDictValue->getElements().size());
     for (auto &[key, value] : castDictValue->getElements()) {
@@ -443,7 +443,7 @@ M::getResultForBinaryOutput(const MLRT::AnyAsyncValueRef &out,
     // information, so if the tensors differ in shape due to a reshape, they are
     // still the same if the underlying buffer (pointer and size) is the same.
     MLRT::AnyAsyncValueRef out =
-        MLRT::AnyAsyncValueRef::createReady<TensorResultInfo>(runtime, name,
+        MLRT::AnyAsyncValueRef::createReady<TensorResultInfo>(cpuDevice, name,
                                                               *castTensorValue);
     return out;
   }
@@ -486,30 +486,31 @@ llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::
 M::GML::Variant
 llvm::yaml::MappingTraits<M::GML::Variant>::NormalizedVariant::denormalize(
     IO &) {
-  MLRT::Runtime *runtime = Runtime::getCurrentRuntimeOrNull();
+  MLRT::CPUDevice *cpuDevice = CPUDevice::getCurrentCPUDeviceOrNull();
   M::GML::Variant variant;
   if (stringValue) {
-    variant =
-        MLRT::AnyAsyncValueRef::createReady<std::string>(runtime, *stringValue);
+    variant = MLRT::AnyAsyncValueRef::createReady<std::string>(cpuDevice,
+                                                               *stringValue);
   } else if (doubleValue) {
     variant =
-        MLRT::AnyAsyncValueRef::createReady<double>(runtime, *doubleValue);
+        MLRT::AnyAsyncValueRef::createReady<double>(cpuDevice, *doubleValue);
   } else if (longValue) {
-    variant = MLRT::AnyAsyncValueRef::createReady<int64_t>(runtime, *longValue);
+    variant =
+        MLRT::AnyAsyncValueRef::createReady<int64_t>(cpuDevice, *longValue);
   } else if (boolValue) {
-    variant = MLRT::AnyAsyncValueRef::createReady<bool>(runtime, *boolValue);
+    variant = MLRT::AnyAsyncValueRef::createReady<bool>(cpuDevice, *boolValue);
   } else if (listValue) {
     variant =
-        MLRT::AnyAsyncValueRef::createReady<GML::List>(runtime, *listValue);
+        MLRT::AnyAsyncValueRef::createReady<GML::List>(cpuDevice, *listValue);
   } else if (tupleValue) {
     variant =
-        MLRT::AnyAsyncValueRef::createReady<GML::Tuple>(runtime, *tupleValue);
+        MLRT::AnyAsyncValueRef::createReady<GML::Tuple>(cpuDevice, *tupleValue);
   } else if (dictValue) {
     variant =
-        MLRT::AnyAsyncValueRef::createReady<GML::Dict>(runtime, *dictValue);
+        MLRT::AnyAsyncValueRef::createReady<GML::Dict>(cpuDevice, *dictValue);
   } else if (noneValue) {
     variant =
-        MLRT::AnyAsyncValueRef::createReady<GML::None>(runtime, *noneValue);
+        MLRT::AnyAsyncValueRef::createReady<GML::None>(cpuDevice, *noneValue);
   }
   return variant;
 }
