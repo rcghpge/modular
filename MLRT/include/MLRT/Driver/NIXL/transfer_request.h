@@ -35,6 +35,9 @@ private:
   nixl_xfer_op_t backendOp;
   nixl_status_t status;
   bool telemetryEnabled = false;
+  // True after the backend supplied a completion timestamp via
+  // ``getCompletionTime``.
+  bool telemetryAvailable = false;
   nixl_xfer_telem_t telemetry;
 
 public:

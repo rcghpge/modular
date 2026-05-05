@@ -113,6 +113,10 @@ private:
   /// progress-thread callbacks still mid-execution on this object.
   std::atomic<int> ref_count_;
 
+  /// ns-since-epoch (steady_clock) at which the last in-flight request
+  /// completed; 0 until then.
+  std::atomic<int64_t> completion_time_ns_{0};
+
 public:
   nixlLibfabricBackendH();
   ~nixlLibfabricBackendH();
@@ -143,6 +147,10 @@ public:
   /** Drop one reference. ``delete this`` when the last reference is
    *  released. Safe to call from progress-thread callbacks. */
   void release();
+
+  /** Returns ns-since-epoch of progress-thread completion, or 0 if the
+   *  transfer has not completed. */
+  int64_t completion_time_ns() const;
 };
 
 class nixlLibfabricEngine : public nixlBackendEngine {
@@ -477,6 +485,17 @@ public:
    * @return NIXL_SUCCESS on success, error code on failure
    */
   nixl_status_t releaseReqH(nixlBackendReqH *handle) const override;
+
+  /**
+   * @brief Return the ns-precision steady-clock time at which the
+   *        progress thread observed the transfer complete.
+   *
+   * @param[in]  handle Request handle to query
+   * @param[out] out    Completion time, valid only on NIXL_SUCCESS
+   * @return NIXL_SUCCESS if recorded, NIXL_IN_PROG if not yet complete
+   */
+  nixl_status_t getCompletionTime(const nixlBackendReqH *handle,
+                                  chrono_point_t &out) const override;
 
   // Notification system
   /**

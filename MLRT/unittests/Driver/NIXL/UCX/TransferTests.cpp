@@ -398,6 +398,114 @@ TEST_F(NixlUcxIntegrationTest, GetXferTelemetryEnabledByEnv) {
   unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
 }
 
+// Pins the contract that ``xferDuration`` reflects when the backend's
+// progress thread observed the transfer complete, NOT the wall-clock at
+// which the agent's poll loop happened to call ``getXferStatus``.
+//
+// The test forces a large gap between actual completion and the first
+// poll: it waits for the receiver's notification to land (proxy for
+// "the transfer is done"), sleeps 50ms, *then* makes its first
+// ``getXferStatus`` call. With the old poll-time stamping, xferDuration
+// would inflate to 50ms+. With ``getCompletionTime`` plumbed through
+// it stays bounded by the actual transfer.
+TEST_F(NixlUcxIntegrationTest, XferDurationDoesNotInflateUnderPollDelay) {
+  namespace fs = std::filesystem;
+
+  setenv("MODULAR_NIXL_TELEMETRY_ENABLE", "y", 1);
+  const fs::path telemetryDir =
+      fs::temp_directory_path() /
+      ("nixl_ucx_telem_progress_" + std::to_string(getpid()) + "_" +
+       std::to_string(available_port()));
+  fs::create_directories(telemetryDir);
+  setenv("MODULAR_NIXL_TELEMETRY_DIR", telemetryDir.c_str(), 1);
+  setenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL", "1", 1);
+
+  size_t bufferSize = 1024;
+  NixlAgentWithUCXBackend nixl1;
+  NixlAgentWithUCXBackend::create(nixl1, "TestAgent_XferDurationBounded1",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer1(bufferSize, 'S');
+  nixl1.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer1, 0));
+
+  NixlAgentWithUCXBackend nixl2;
+  NixlAgentWithUCXBackend::create(nixl2, "TestAgent_XferDurationBounded2",
+                                  available_port(), "ucx");
+  std::vector<char> dramBuffer2(bufferSize, 'D');
+  nixl2.registerMemory(nixl_mem_t::DRAM_SEG,
+                       blobDescfromVector(dramBuffer2, 0));
+
+  exchangeMetadata(nixl1, nixl2);
+
+  nixl_xfer_dlist_t srcDescs(nixl_mem_t::DRAM_SEG);
+  srcDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer1.data(), dramBuffer1.size()}, 0));
+  nixl_xfer_dlist_t dstDescs(nixl_mem_t::DRAM_SEG);
+  dstDescs.addDesc(basicDescfromArrayRef(
+      llvm::ArrayRef{dramBuffer2.data(), dramBuffer2.size()}, 0));
+
+  nixlXferReqH *reqHandle = nullptr;
+  nixlAgentOptionalArgs xferArgs;
+  xferArgs.notifMsg = "progress_thread_completion";
+  xferArgs.hasNotif = true;
+  ASSERT_SUCCESS(nixl1.agent->createXferReq(nixl_xfer_op_t::NIXL_WRITE,
+                                            srcDescs, dstDescs, nixl2.agentName,
+                                            reqHandle, &xferArgs));
+  ASSERT_NE(reqHandle, nullptr);
+
+  nixl_status_t status = nixl1.agent->postXferReq(reqHandle);
+  ASSERT_TRUE(status == nixl_status_t::NIXL_SUCCESS ||
+              status == nixl_status_t::NIXL_IN_PROG);
+
+  // Wait for the receiver to see the notification: by that time the
+  // sender's progress thread has also flipped the request to SUCCESS,
+  // but we deliberately have NOT called getXferStatus yet.
+  ASSERT_TRUE(wait_until_true([&]() {
+    nixl_notifs_t notifMap;
+    if (nixl2.agent->getNotifs(notifMap) != nixl_status_t::NIXL_SUCCESS) {
+      return false;
+    }
+    auto it = notifMap.find(nixl1.agentName);
+    return it != notifMap.end() && !it->second.empty();
+  }));
+
+  // Inject a polling gap. xferDuration must not absorb this delay.
+  // Busy-wait rather than ``sleep_for`` so the gap has a guaranteed
+  // lower bound regardless of OS scheduling.
+  constexpr auto kPollGap = std::chrono::milliseconds(50);
+  const auto deadline = std::chrono::steady_clock::now() + kPollGap;
+  while (std::chrono::steady_clock::now() < deadline) {
+  }
+
+  status = nixl1.agent->getXferStatus(reqHandle);
+  ASSERT_EQ(status, nixl_status_t::NIXL_SUCCESS);
+
+  nixl_xfer_telem_t telemetry;
+  ASSERT_SUCCESS(nixl1.agent->getXferTelemetry(reqHandle, telemetry));
+  EXPECT_LT(telemetry.xferDuration, kPollGap)
+      << "xferDuration=" << telemetry.xferDuration.count()
+      << "us; expected to reflect progress-thread completion, not the "
+      << kPollGap.count() << "ms poll delay.";
+
+  ASSERT_SUCCESS(nixl1.agent->releaseXferReq(reqHandle));
+  ASSERT_SUCCESS(nixl1.agent->invalidateRemoteMD(nixl2.agentName));
+  ASSERT_SUCCESS(nixl2.agent->invalidateRemoteMD(nixl1.agentName));
+  nixl_reg_dlist_t regDescs1(nixl_mem_t::DRAM_SEG);
+  regDescs1.addDesc(blobDescfromVector(dramBuffer1, 0));
+  nixl_opt_args_t regArgs1;
+  regArgs1.backends = {nixl1.backend};
+  ASSERT_SUCCESS(nixl1.agent->deregisterMem(regDescs1, &regArgs1));
+  nixl_reg_dlist_t regDescs2(nixl_mem_t::DRAM_SEG);
+  regDescs2.addDesc(blobDescfromVector(dramBuffer2, 0));
+  nixl_opt_args_t regArgs2;
+  regArgs2.backends = {nixl2.backend};
+  ASSERT_SUCCESS(nixl2.agent->deregisterMem(regDescs2, &regArgs2));
+  fs::remove_all(telemetryDir);
+  unsetenv("MODULAR_NIXL_TELEMETRY_RUN_INTERVAL");
+  unsetenv("MODULAR_NIXL_TELEMETRY_DIR");
+  unsetenv("MODULAR_NIXL_TELEMETRY_ENABLE");
+}
+
 TEST_F(NixlUcxIntegrationTest, GetXferTelemetryEnabledForMakeXferReq) {
   namespace fs = std::filesystem;
 

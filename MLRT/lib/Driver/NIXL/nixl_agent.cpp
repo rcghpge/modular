@@ -1155,7 +1155,9 @@ nixlAgent::postXferReq(nixlXferReqH *req_hndl,
         std::chrono::duration_cast<chrono_period_us_t>(
             std::chrono::steady_clock::now() - postStart);
     if (ret == nixl_status_t::NIXL_SUCCESS) {
+      // Synchronous SUCCESS: postDuration == xferDuration.
       req_hndl->telemetry.xferDuration = req_hndl->telemetry.postDuration;
+      req_hndl->telemetryAvailable = true;
       if (data->telemetry) {
         data->telemetry->addPostTime(req_hndl->telemetry.postDuration);
         data->telemetry->addXferTime(req_hndl->telemetry.xferDuration,
@@ -1186,17 +1188,25 @@ nixl_status_t nixlAgent::getXferStatus(nixlXferReqH *req_hndl) const {
     }
     if (req_hndl->telemetryEnabled &&
         req_hndl->status == nixl_status_t::NIXL_SUCCESS) {
-      req_hndl->telemetry.xferDuration =
-          std::chrono::duration_cast<chrono_period_us_t>(
-              std::chrono::steady_clock::now() - req_hndl->telemetry.startTime);
-      if (data->telemetry) {
-        data->telemetry->addPostTime(req_hndl->telemetry.postDuration);
-        data->telemetry->addXferTime(req_hndl->telemetry.xferDuration,
-                                     req_hndl->backendOp ==
-                                         nixl_xfer_op_t::NIXL_WRITE,
-                                     req_hndl->telemetry.totalBytes);
-        data->telemetry->recordBackendEvents(
-            req_hndl->engine->getTelemetryEvents());
+      chrono_point_t completion;
+      auto rc = req_hndl->engine->getCompletionTime(req_hndl->backendHandle,
+                                                    completion);
+      if (rc != nixl_status_t::NIXL_SUCCESS) {
+        req_hndl->telemetryAvailable = false;
+      } else {
+        req_hndl->telemetry.xferDuration =
+            std::chrono::duration_cast<chrono_period_us_t>(
+                completion - req_hndl->telemetry.startTime);
+        req_hndl->telemetryAvailable = true;
+        if (data->telemetry) {
+          data->telemetry->addPostTime(req_hndl->telemetry.postDuration);
+          data->telemetry->addXferTime(req_hndl->telemetry.xferDuration,
+                                       req_hndl->backendOp ==
+                                           nixl_xfer_op_t::NIXL_WRITE,
+                                       req_hndl->telemetry.totalBytes);
+          data->telemetry->recordBackendEvents(
+              req_hndl->engine->getTelemetryEvents());
+        }
       }
     }
   }
@@ -1216,6 +1226,10 @@ nixl_status_t nixlAgent::getXferTelemetry(const nixlXferReqH *req_hndl,
 
   if (req_hndl->status != nixl_status_t::NIXL_SUCCESS) {
     return req_hndl->status;
+  }
+
+  if (!req_hndl->telemetryAvailable) {
+    return nixl_status_t::NIXL_ERR_NO_TELEMETRY;
   }
 
   telemetry = req_hndl->telemetry;

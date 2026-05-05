@@ -249,6 +249,13 @@ public:
                                       void *signal) const {
     return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
   }
+
+  // Returns the steady_clock time at which the backend's progress thread
+  // observed the request complete.
+  virtual nixl_status_t getCompletionTime(const nixlBackendReqH *handle,
+                                          chrono_point_t &out) const {
+    return nixl_status_t::NIXL_ERR_NOT_SUPPORTED;
+  }
 };
 
 } // namespace M::MLRT

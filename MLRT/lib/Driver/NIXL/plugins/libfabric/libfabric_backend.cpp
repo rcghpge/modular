@@ -115,8 +115,18 @@ void nixlLibfabricBackendH::increment_completed_requests() {
   // any callback can fire.
   size_t total_before = total_requests_used_.load(std::memory_order_acquire);
   size_t prev = completed_requests_.fetch_add(1, std::memory_order_acq_rel);
+  if (prev + 1 == total_before) {
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  std::chrono::steady_clock::now().time_since_epoch())
+                  .count();
+    completion_time_ns_.store(ns, std::memory_order_release);
+  }
   NIXL_DEBUG << "Request completed, total completed: " << (prev + 1) << "/"
              << total_before;
+}
+
+int64_t nixlLibfabricBackendH::completion_time_ns() const {
+  return completion_time_ns_.load(std::memory_order_acquire);
 }
 
 size_t nixlLibfabricBackendH::get_completed_requests_count() const {
@@ -1163,6 +1173,20 @@ nixl_status_t nixlLibfabricEngine::checkXfer(nixlBackendReqH *handle) const {
     return NIXL_SUCCESS;
   }
   return NIXL_IN_PROG;
+}
+
+nixl_status_t
+nixlLibfabricEngine::getCompletionTime(const nixlBackendReqH *handle,
+                                       chrono_point_t &out) const {
+  const auto *backend_handle =
+      static_cast<const nixlLibfabricBackendH *>(handle);
+  int64_t ns = backend_handle->completion_time_ns();
+  if (ns == 0) {
+    return NIXL_IN_PROG;
+  }
+  out = chrono_point_t(std::chrono::duration_cast<chrono_point_t::duration>(
+      std::chrono::nanoseconds(ns)));
+  return NIXL_SUCCESS;
 }
 
 nixl_status_t nixlLibfabricEngine::releaseReqH(nixlBackendReqH *handle) const {

@@ -236,6 +236,8 @@ protected:
   nixlTime::ns_t start_time_ns;
   int device_id;
   bool logged_completion;
+  // Set the first time status() observes NIXL_SUCCESS.
+  std::optional<chrono_point_t> completion_time;
 
   // Notification to be sent after completion of all requests.
   struct Notif {
@@ -246,6 +248,10 @@ protected:
 
 public:
   std::optional<Notif> &notification() { return notif; }
+
+  std::optional<chrono_point_t> completionTime() const {
+    return completion_time;
+  }
 
   nixlUcxBackendH(nixlUcxWorker *worker_, size_t worker_id_, size_t num_bytes_,
                   int device_id_)
@@ -316,6 +322,7 @@ public:
 
     if (out_ret == nixl_status_t::NIXL_SUCCESS && !logged_completion) {
       logged_completion = true;
+      completion_time = std::chrono::steady_clock::now();
       double mib = num_bytes / 1024.0 / 1024.0;
       double gib = mib / 1024.0;
       double endTimeNs = nixlTime::getNs();
@@ -1072,6 +1079,17 @@ nixlUcxEngine::checkXferWithoutLock(nixlBackendReqH *handle) const {
 nixl_status_t nixlUcxEngine::checkXfer(nixlBackendReqH *handle) const {
   std::lock_guard<std::mutex> lock(inflightSendXfersMtx);
   return checkXferWithoutLock(handle);
+}
+
+nixl_status_t nixlUcxEngine::getCompletionTime(const nixlBackendReqH *handle,
+                                               chrono_point_t &out) const {
+  const auto *intHandle = static_cast<const nixlUcxBackendH *>(handle);
+  auto t = intHandle->completionTime();
+  if (!t) {
+    return nixl_status_t::NIXL_IN_PROG;
+  }
+  out = *t;
+  return nixl_status_t::NIXL_SUCCESS;
 }
 
 nixl_status_t nixlUcxEngine::releaseReqH(nixlBackendReqH *handle) const {
