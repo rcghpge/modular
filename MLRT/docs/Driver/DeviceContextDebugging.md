@@ -23,7 +23,7 @@ fn kernel(res: UnsafePointer[UInt32]):
 def test_function_error(ctx: DeviceContext):
     try:
       var res_host = UnsafePointer[UInt32].alloc(1)
-      ctx.enqueue_function[kernel, kernel](res_host, block_dim=(1), grid_dim=(1))
+      ctx.enqueue_function[kernel](res_host, block_dim=(1), grid_dim=(1))
       ctx.synchronize()
       res_host.free()
     except e:
@@ -56,7 +56,7 @@ Setting that environment variable will cause all `DeviceContext` methods which
 launch device operations to implicitly synchronize.
 
 When the example code is run with `MODULAR_DEVICE_CONTEXT_SYNC_MODE=1`, a Mojo
-error is raised from `ctx.enqueue_function[kernel, kernel](...)` rather than
+error is raised from `ctx.enqueue_function[kernel](...)` rather than
 `ctx.synchronize()`.
 
 The full error generated looks like the following:
