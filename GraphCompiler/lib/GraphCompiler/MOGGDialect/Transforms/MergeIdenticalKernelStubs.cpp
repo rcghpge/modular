@@ -263,10 +263,15 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
         });
     finalReplacements[replacement] = finalCandidate.name;
 
-    if (finalCandidate.callOp) {
-      for (auto &callOp : replacedCallOps)
+    // Rewrite any CallStubOp entries to point at the chosen canonical name.
+    // The list may also hold pure StringAttr entries (callOp == nullptr) for
+    // top-level KernelStubOps recorded on the `node->callers.empty()` path
+    // above; those have no in-graph callsite to rewrite here and are
+    // separately handled by the ExecuteCompiledOp/CallStubAsyncOp walk
+    // below via `topLevelReplacements` + `finalReplacements`.
+    for (auto &callOp : replacedCallOps)
+      if (callOp.callOp)
         callOp.callOp.setName(finalCandidate.name.strref());
-    }
   }
 
   // The SCC call graph only tracks CallStubOp edges between KernelStubOps.
