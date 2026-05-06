@@ -74,12 +74,12 @@ struct DeviceMemory {
   ErrorOr<DeviceMemory *> createViewOn(Device &device) const;
 
   /// Create a view of this memory with a different TensorSpec and optional
-  /// offset.
+  /// byte offset into the underlying buffer.
   ///
   /// This view is a new DeviceMemory object that is backed by the same
   /// underlying memory.
   ErrorOr<DeviceMemory *> createView(const TensorSpec &spec,
-                                     size_t offset = 0) const;
+                                     size_t byteOffset = 0) const;
 
   /// Sets the contents of the device memory to the provided value.
   ErrorOrSuccess memset(int value);

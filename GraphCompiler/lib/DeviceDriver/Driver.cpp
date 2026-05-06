@@ -46,8 +46,7 @@ DeviceMemory::createViewOn(Device &device) const {
 }
 
 MODULAR_DRIVER_EXPORT ErrorOr<DeviceMemory *>
-DeviceMemory::createView(const TensorSpec &spec, size_t offset) const {
-  size_t byteOffset = this->spec.getEltType().getSizeInBytes(offset);
+DeviceMemory::createView(const TensorSpec &spec, size_t byteOffset) const {
   if ((spec.getSizeInBytes() + byteOffset) > this->spec.getSizeInBytes())
     RETURN_ERROR("Can't create a view larger than the initial buffer");
 
