@@ -150,12 +150,14 @@ M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::waitForEvent(M_driver_event_t event) {
+M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
+                                                uint32_t num_events) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   CUDALoader &cuda = context.device.driver.rawCuda;
-  CUDA_CHECK(cuda.cuStreamWaitEvent(stream, event->event, 0),
-             M_DRIVER_STATUS_UNKNOWN_ERROR);
+  for (uint32_t i = 0; i < num_events; ++i)
+    CUDA_CHECK(cuda.cuStreamWaitEvent(stream, events[i]->event, 0),
+               M_DRIVER_STATUS_UNKNOWN_ERROR);
   return M_DRIVER_STATUS_SUCCESS;
 }
 

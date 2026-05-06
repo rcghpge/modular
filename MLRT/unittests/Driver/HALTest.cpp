@@ -258,6 +258,7 @@ TEST_F(DriverHALQueueTest, CopyToDeviceThenFromDevice) {
     result.fill(0);
     errorOr = queue->copyFromDevice(result.data(), buffer, size);
     ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+    EXPECT_NO_ERR(queue->synchronize());
     ASSERT_EQ(content, result);
   }
 }
@@ -278,6 +279,7 @@ TEST_F(DriverHALQueueTest, SetMemory) {
     result.fill(0);
     errorOr = queue->copyFromDevice(result.data(), buffer, size);
     ASSERT_FALSE(errorOr.isError()) << errorOr.getError();
+    EXPECT_NO_ERR(queue->synchronize());
     std::array<uint8_t, size> expected;
     expected.fill(42);
     ASSERT_EQ(expected, result);

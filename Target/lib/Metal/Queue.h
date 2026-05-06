@@ -8,6 +8,9 @@
 #include "HAL/M_driver_queue.h"
 #include "MetalCpp.h"
 
+#include <mutex>
+#include <vector>
+
 struct M_driver_queue {
   [[nodiscard]] static DriverResult<M_driver_queue_t>
   create(M_driver_context_t context);
@@ -22,10 +25,25 @@ struct M_driver_queue {
 
   M_driver_status_t synchronize();
 
+  M_driver_status_t recordEvent(M_driver_event_t event);
+  M_driver_status_t waitForEvents(M_driver_event_t *events, uint32_t numEvents);
+
   M_driver_status_t execute(M_driver_function_t function,
                             M_driver_queue_execute_config_t *config,
                             void **args, uint64_t *argSizes, uint32_t numArgs);
 
+  void encodePendingWaits(MTL::CommandBuffer *cb);
+
   M_driver_context_t context;
   NS::SharedPtr<MTL::CommandQueue> mCommandQueue;
+
+  // Completion events for in-flight ops on this queue.
+  std::vector<NS::SharedPtr<MTL::Event>> mPending;
+
+  // External events stashed by `waitForEvents` to encode during subsequent
+  // operations. This is required because each operation creates a new
+  // command-buffer for encoding.
+  std::vector<NS::SharedPtr<MTL::SharedEvent>> mPendingWaits;
+
+  std::mutex mMutex;
 };

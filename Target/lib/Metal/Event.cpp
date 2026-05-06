@@ -14,14 +14,17 @@
 // ---------------------------------------------------------------------------
 
 DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
-  auto autoreleasePool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  MTL::SharedEvent *rawEvent = ctx.device->mDevice->newSharedEvent();
+  if (rawEvent == nullptr)
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
 
-  MTL::Device *device = ctx.device->mDevice;
-  NS::SharedPtr<MTL::Event> event = NS::TransferPtr(device->newEvent());
-  if (!event)
-    return tl::unexpected(M_DRIVER_STATUS_UNKNOWN_ERROR);
-
-  return new M_driver_event(std::move(event), /*targetValue=*/1);
+  M_driver_event_t event = new (std::nothrow) M_driver_event();
+  if (event == nullptr) {
+    rawEvent->release();
+    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+  }
+  event->sharedEvent = NS::TransferPtr(rawEvent);
+  return event;
 }
 
 M_driver_status_t M_driver_event::destroy(M_driver_context &ctx,
@@ -32,16 +35,14 @@ M_driver_status_t M_driver_event::destroy(M_driver_context &ctx,
 
 M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
                                               M_driver_event_t event) {
-  std::unique_lock<std::mutex> lock(event->mutex);
-  event->cv.wait(lock, [&] { return event->ready; });
+  event->sharedEvent->waitUntilSignaledValue(1, UINT64_MAX);
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
                                           M_driver_event_t event,
                                           bool *is_ready) {
-  std::lock_guard<std::mutex> lock(event->mutex);
-  *is_ready = event->ready;
+  *is_ready = (event->sharedEvent->signaledValue() >= 1);
   return M_DRIVER_STATUS_SUCCESS;
 }
 

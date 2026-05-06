@@ -10,23 +10,15 @@
 #include "Common.h"
 #include "MetalCpp.h"
 
-#include <condition_variable>
-#include <mutex>
-
 struct M_driver_context;
 
 struct M_driver_event {
-  NS::SharedPtr<MTL::Event> mEvent;
-  uint64_t targetValue;
+  NS::SharedPtr<MTL::SharedEvent> sharedEvent;
 
-  // CPU-side synchronization state. MTL::Event has no CPU-visible API, so we
-  // track readiness ourselves via a command-buffer completion handler.
-  std::mutex mutex;
-  std::condition_variable cv;
-  bool ready;
+  M_driver_event() = default;
 
-  M_driver_event(NS::SharedPtr<MTL::Event> mEvent, uint64_t targetValue)
-      : mEvent(std::move(mEvent)), targetValue(targetValue), ready(true) {}
+  explicit M_driver_event(NS::SharedPtr<MTL::SharedEvent> sharedEvent)
+      : sharedEvent(std::move(sharedEvent)) {}
 
   [[nodiscard]] static DriverResult<M_driver_event_t>
   create(M_driver_context &ctx);

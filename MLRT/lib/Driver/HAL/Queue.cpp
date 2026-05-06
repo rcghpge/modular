@@ -70,12 +70,17 @@ ErrorOr<EventRef> Queue::recordEvent() {
   return event;
 }
 
-ErrorOrSuccess Queue::waitForEvent(EventRef event) {
+ErrorOrSuccess Queue::waitForEvents(M_driver_event_t *events,
+                                    uint32_t numEvents) {
   if (M_driver_status_t status =
-          context->device->driver->plugin.queue_wait_for_event(handle,
-                                                               event->handle))
+          context->device->driver->plugin.queue_wait_for_events(handle, events,
+                                                                numEvents))
     return Error(context->device->driver->getStatusMessage(status));
   return success();
+}
+
+ErrorOrSuccess Queue::waitForEvent(EventRef event) {
+  return waitForEvents(&event->handle, 1);
 }
 
 ErrorOrSuccess Queue::synchronize() {

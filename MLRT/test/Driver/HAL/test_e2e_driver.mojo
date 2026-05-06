@@ -27,7 +27,7 @@ def vec_add(
 
 
 def do_execute[
-    device_origin: MutOrigin,
+    device_origin: ImmutOrigin,
     device_spec: DeviceSpec,
 ](mut ctx: Context[device_origin, device_spec]) raises:
     # Compile the kernel and load it into the plugin.

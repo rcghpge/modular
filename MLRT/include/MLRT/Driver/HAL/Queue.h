@@ -43,6 +43,8 @@ public:
   /// Record a new event on this queue. The returned event will be signaled
   /// once all operations enqueued before this call have completed.
   ErrorOr<EventRef> recordEvent();
+  /// Make this queue wait until the given events have been signaled.
+  ErrorOrSuccess waitForEvents(M_driver_event_t *events, uint32_t numEvents);
   /// Make this queue wait until the given event has been signaled.
   ErrorOrSuccess waitForEvent(EventRef event);
   ErrorOrSuccess synchronize();

@@ -9,6 +9,8 @@
 
 #include "M_driver_common.h"
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -188,11 +190,12 @@ typedef M_driver_status_t (*M_driver_queue_record_event_func_ptr_t)(
  * @return Standard Status Protocol.
  */
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
-                                                M_driver_event_t event);
+M_driver_status_t M_driver_queue_wait_for_events(M_driver_queue_t queue,
+                                                 M_driver_event_t *events,
+                                                 uint32_t num_events);
 
-typedef M_driver_status_t (*M_driver_queue_wait_for_event_func_ptr_t)(
-    M_driver_queue_t queue, M_driver_event_t event);
+typedef M_driver_status_t (*M_driver_queue_wait_for_events_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_event_t *events, uint32_t num_events);
 
 /**
  * Block the calling thread until all operations on the queue have completed.
@@ -205,6 +208,20 @@ M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue);
 
 typedef M_driver_status_t (*M_driver_queue_synchronize_func_ptr_t)(
     M_driver_queue_t queue);
+
+/**
+ * Query whether the queue is implemented as an in-order stream under the hood.
+ *
+ * @param[in] queue The queue to inspect.
+ * @param[out] is_stream Set to true if the queue is natively in-order.
+ * @return Standard Status Protocol.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
+                                           bool *is_stream);
+
+typedef M_driver_status_t (*M_driver_queue_is_stream_func_ptr_t)(
+    M_driver_queue_t queue, bool *is_stream);
 
 #ifdef __cplusplus
 }

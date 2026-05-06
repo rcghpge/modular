@@ -181,15 +181,18 @@ M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::waitForEvent(M_driver_event_t event) {
+M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
+                                                uint32_t num_events) {
   M_driver_device &dev = context.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return preamble.error();
 
   HIPApi &hip = dev.getDriver().hip();
-  hipError_t result = hip.hipStreamWaitEvent(stream, event->event, 0);
-  if (result != hipSuccess)
-    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  for (uint32_t i = 0; i < num_events; ++i) {
+    hipError_t result = hip.hipStreamWaitEvent(stream, events[i]->event, 0);
+    if (result != hipSuccess)
+      return M_DRIVER_STATUS_UNKNOWN_ERROR;
+  }
 
   return M_DRIVER_STATUS_SUCCESS;
 }

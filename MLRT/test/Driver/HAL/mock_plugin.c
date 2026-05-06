@@ -377,16 +377,28 @@ M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
 }
 
 M_DRIVER_API_EXPORT
-M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
-                                                M_driver_event_t event) {
+M_driver_status_t M_driver_queue_wait_for_events(M_driver_queue_t queue,
+                                                 M_driver_event_t *events,
+                                                 uint32_t num_events) {
   (void)queue;
-  (void)event;
+  for (uint32_t i = 0; i < num_events; ++i)
+    (void)events[i];
   return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
   (void)queue;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
+                                           bool *is_stream) {
+  (void)queue;
+  if (!is_stream)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *is_stream = false;
   return M_DRIVER_STATUS_SUCCESS;
 }
 

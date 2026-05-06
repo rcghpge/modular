@@ -14,6 +14,9 @@ handling paths.
 from std.os import getenv
 from std.sys._hal import Driver
 from std.sys._hal.context import Context
+from std.sys._hal.queue import Queue
+from std.sys._hal.stream import Stream
+from std.sys._hal.event import Event
 from std.sys._hal.status import (
     STATUS_SUCCESS,
     STATUS_INCOMPATIBLE_VERSION,
@@ -105,6 +108,94 @@ def test_invalid_device_error_message() raises:
 
 
 # ===-----------------------------------------------------------------------===#
+# Queue tests
+# ===-----------------------------------------------------------------------===#
+
+
+def test_queue_create_and_sync() raises:
+    try:
+        var driver = Driver.create(_get_plugin_spec())
+        var device = driver.get_device[Int64(0)]()
+        var ctx = Context(device)
+        var queue = ctx.create_queue()
+        queue.synchronize()
+    except e:
+        raise Error(String.write(e))
+
+
+def test_queue_record_event() raises:
+    var ready: Bool
+    try:
+        var driver = Driver.create(_get_plugin_spec())
+        var device = driver.get_device[Int64(0)]()
+        var ctx = Context(device)
+        var queue = ctx.create_queue()
+        var event = queue.record_event()
+        ready = event.is_ready()
+        event.synchronize()
+    except e:
+        raise Error(String.write(e))
+    assert_true(ready)
+
+
+def test_queue_wait_for_events() raises:
+    try:
+        var driver = Driver.create(_get_plugin_spec())
+        var device = driver.get_device[Int64(0)]()
+        var ctx = Context(device)
+        var queue1 = ctx.create_queue()
+        var queue2 = ctx.create_queue()
+        var e1 = queue1.record_event()
+        var e2 = queue1.record_event()
+        queue2.wait_for_events([e1, e2])
+        queue2.synchronize()
+    except e:
+        raise Error(String.write(e))
+
+
+# ===-----------------------------------------------------------------------===#
+# Stream tests
+# ===-----------------------------------------------------------------------===#
+
+
+def test_stream_create_and_sync() raises:
+    try:
+        var driver = Driver.create(_get_plugin_spec())
+        var device = driver.get_device[Int64(0)]()
+        var ctx = Context(device)
+        var stream = ctx.create_stream()
+        stream.synchronize()
+    except e:
+        raise Error(String.write(e))
+
+
+def test_stream_record_event() raises:
+    try:
+        var driver = Driver.create(_get_plugin_spec())
+        var device = driver.get_device[Int64(0)]()
+        var ctx = Context(device)
+        var stream = ctx.create_stream()
+        var event = stream.record_event()
+        event.synchronize()
+    except e:
+        raise Error(String.write(e))
+
+
+def test_stream_wait_for_events() raises:
+    try:
+        var driver = Driver.create(_get_plugin_spec())
+        var device = driver.get_device[Int64(0)]()
+        var ctx = Context(device)
+        var producer = ctx.create_stream()
+        var consumer = ctx.create_stream()
+        var ev = producer.record_event()
+        consumer.wait_for_events([ev])
+        consumer.synchronize()
+    except e:
+        raise Error(String.write(e))
+
+
+# ===-----------------------------------------------------------------------===#
 # Entry point
 # ===-----------------------------------------------------------------------===#
 
@@ -121,3 +212,9 @@ def main() raises:
     test_invalid_device_id()
     test_context_create()
     test_invalid_device_error_message()
+    test_queue_create_and_sync()
+    test_queue_record_event()
+    test_queue_wait_for_events()
+    test_stream_create_and_sync()
+    test_stream_record_event()
+    test_stream_wait_for_events()

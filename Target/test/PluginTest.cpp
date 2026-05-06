@@ -270,9 +270,6 @@ TEST_F(DriverPluginContextTest, EventCreateDestroy) {
 }
 
 TEST_F(DriverPluginContextTest, EventRecordWait) {
-  if (api == "Metal")
-    GTEST_SKIP() << "Unimplemented for " << api;
-
   constexpr size_t numElems = 256;
   constexpr size_t byteSize = numElems * sizeof(unsigned int);
   std::array<unsigned int, numElems> src;
@@ -293,7 +290,7 @@ TEST_F(DriverPluginContextTest, EventRecordWait) {
     ASSERT_SUCCESS(event_create(ctx, &event));
     ASSERT_SUCCESS(queue_record_event(queueA, event));
 
-    ASSERT_SUCCESS(queue_wait_for_event(queueB, event));
+    ASSERT_SUCCESS(queue_wait_for_events(queueB, &event, 1));
     std::array<unsigned int, numElems> dst;
     dst.fill(0);
     ASSERT_SUCCESS(
@@ -329,11 +326,13 @@ TEST_F(DriverPluginQueueTest, CopyToDeviceThenFromDevice) {
 
     ASSERT_SUCCESS(queue_copy_to_device(queue, /*dst=*/memory,
                                         /*src=*/content.data(), size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> result;
     result.fill(0);
     ASSERT_SUCCESS(queue_copy_from_device(queue, /*dst=*/result.data(),
                                           /*src=*/memory, size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
 
     ASSERT_EQ(content, result);
   }
@@ -351,10 +350,12 @@ TEST_F(DriverPluginQueueTest, SetMemory) {
 
     ASSERT_SUCCESS(queue_set_memory(queue, /*dst=*/memory, /*size=*/size,
                                     uint8_t(42), sizeof(uint8_t)));
+    ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> result;
     ASSERT_SUCCESS(queue_copy_from_device(queue, /*dst=*/result.data(),
                                           /*src=*/memory, size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> expected;
     expected.fill(42);

@@ -32,7 +32,8 @@ struct M_driver_queue {
                               uint64_t value, uint64_t valueSize);
 
   M_driver_status_t recordEvent(M_driver_event_t event);
-  M_driver_status_t waitForEvent(M_driver_event_t event);
+  M_driver_status_t waitForEvents(M_driver_event_t *events,
+                                  uint32_t num_events);
 
   M_driver_status_t synchronize();
 };

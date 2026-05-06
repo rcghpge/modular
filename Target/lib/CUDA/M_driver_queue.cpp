@@ -63,19 +63,30 @@ M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
   return queue->recordEvent(event);
 }
 
-M_driver_status_t M_driver_queue_wait_for_event(M_driver_queue_t queue,
-                                                M_driver_event_t event) {
+M_driver_status_t M_driver_queue_wait_for_events(M_driver_queue_t queue,
+                                                 M_driver_event_t *events,
+                                                 uint32_t num_events) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
-  if (event == nullptr)
+  if (events == nullptr)
     return M_DRIVER_STATUS_BAD_EVENT;
-  return queue->waitForEvent(event);
+  return queue->waitForEvents(events, num_events);
 }
 
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   return queue->synchronize();
+}
+
+M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
+                                           bool *is_stream) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (is_stream == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *is_stream = true;
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 M_driver_status_t
