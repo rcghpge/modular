@@ -1140,6 +1140,7 @@ modular_cc_library(
         ":Support",
         "//MLRT:Driver/DeviceContext",
         "//MLRT:GraphRT/MEFDialect",
+        "//Support:Diagnostics",
         "//Support:HashUtils",
         "@llvm-project//llvm:Support",
     ],

@@ -264,15 +264,13 @@ private:
       //
       // 3. When an error occurs, this diagnostic handler retrieves the stack.
       if (auto attr = RMO::PythonFrameAttr::fromLocation(diag.getLocation())) {
-        os << "\nBuild Time Traceback (most recent call last):\n"
+        os << "\nSource Traceback:\n"
            // attr.stack_trace() calls the frame_traceback() function that
            // uses Python's traceback.format_list to convert the frames to a
            // human-readable form.
-           << attr.stack_trace() << "\nMAX Compile Error: " << diag << "\n";
-      } else {
-        // First emit the formatted diag itself before processing notes.
-        FormatScopedDiagnosticHandler::emitDiagLocSeverity(os, diag);
+           << attr.stack_trace() << '\n';
       }
+      FormatScopedDiagnosticHandler::emitDiagnosticSeverityToStream(os, diag);
 
       for (const Diagnostic &note : diag.getNotes()) {
         // Skip printing the operation to avoid dumping lots of IR.

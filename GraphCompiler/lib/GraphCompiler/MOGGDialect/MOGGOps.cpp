@@ -3296,20 +3296,19 @@ LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
   std::string tracebackContent;
   if (!notesList.empty()) {
     llvm::raw_string_ostream os(tracebackContent);
-    constexpr size_t kMaxInlineTraces = 3;
-    bool showAllTraces = notesList.size() <= kMaxInlineTraces;
-    if (showAllTraces) {
-      for (auto note : notesList)
-        os << note << '\n';
-    }
+    constexpr size_t kMaxInlineTraces = 32;
+    size_t numShown = std::min(notesList.size(), kMaxInlineTraces);
+    for (size_t i = 0; i < numShown; ++i)
+      os << notesList[i] << '\n';
     if (notesList.size() > 1) {
-      if (showAllTraces) {
-        os << "\nNote: these operations were fused into a single kernel.\n"
-           << "The source traceback for each fused op is above.\n";
+      os << "\nNote: " << notesList.size()
+         << " distinct Python source locations contributed ops to this fused"
+            " kernel. ";
+      if (numShown == notesList.size()) {
+        os << "The source traceback for each location is above.\n";
       } else {
-        os << "Note: " << notesList.size()
-           << " operations were fused into a single kernel.\n"
-           << "The crash occurred in one of the operations below.\n";
+        os << "Only the first " << kMaxInlineTraces
+           << " source tracebacks are shown above.\n";
       }
     }
   }

@@ -7,6 +7,7 @@
 #include "GraphCompiler/GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/GraphCompiler/RMODialect/RMOAttrs.h"
+#include "Support/Diagnostics/FormatScopedDiagnosticHandler.h"
 #include "mlir/IR/Visitors.h"
 
 #define DEBUG_TYPE "attach-python-stack-traces"
@@ -34,47 +35,76 @@ namespace {
 //    via collectSourceNotes). See GEX-2678.
 //  - Strips the OpaqueLoc (replacing it with the fallback location), since
 //    OpaqueLoc does not serialize correctly to bytecode. See GEX-1435.
+//  - If OpaqueLocs are nested inside a FusedLoc, each is individually
+//    replaced with its fallback, preserving the location tree structure.
 
 struct AttachPythonStackTraces
     : public impl::AttachPythonStackTracesBase<AttachPythonStackTraces> {
   using AttachPythonStackTracesBase::AttachPythonStackTracesBase;
 
-  void runOnOperation() override {
-    mlir::MLIRContext *ctx = &getContext();
-
-    WalkResult result = getOperation()->walk([&ctx](Operation *op) {
-      Location loc = op->getLoc();
-      auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc);
-      if (!opaqueLoc)
-        return WalkResult::advance();
-
+  /// Recursively strip OpaqueLocs from a location tree, converting each to
+  // its fallback location or a FusedLoc carrying the Python stack trace.
+  static std::optional<Location> stripOpaqueLocs(mlir::MLIRContext *ctx,
+                                                 Location loc) {
+    if (auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc)) {
       Location fallback = opaqueLoc.getFallbackLocation();
       auto pythonFrame = RMO::PythonFrameAttr::fromOpaque(opaqueLoc);
       char *stackTrace = pythonFrame ? pythonFrame.stack_trace() : nullptr;
+      if (stackTrace && *stackTrace)
+        return mlir::FusedLoc::get(ctx, {fallback},
+                                   StringAttr::get(ctx, stackTrace));
+      return fallback;
+    }
 
-      if (stackTrace && *stackTrace) {
-        // Embed the trace into the assert message for better diagnostics.
-        if (auto assertOp = dyn_cast<AssertOp>(op)) {
-          std::string fullMsg =
-              "\nBuild Time Traceback (most recent call last):\n";
-          llvm::raw_string_ostream ss(fullMsg);
-          ss << stackTrace;
-          StringAttr msg = mlir::cast<StringAttr>(assertOp.getMessageAttr());
-          ss << "\nMAX Runtime Error: " << msg.str() << '\n';
-          assertOp.setMessageAttr(StringAttr::get(ctx, fullMsg));
+    if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
+      SmallVector<Location> children;
+      bool changed = false;
+      for (Location child : fusedLoc.getLocations()) {
+        if (auto newChild = stripOpaqueLocs(ctx, child)) {
+          children.push_back(*newChild);
+          changed = true;
+        } else {
+          children.push_back(child);
         }
-        // Encode the trace as FusedLoc metadata before stripping OpaqueLoc.
-        op->setLoc(mlir::FusedLoc::get(ctx, {fallback},
-                                       StringAttr::get(ctx, stackTrace)));
-      } else {
-        op->setLoc(fallback);
+      }
+      if (changed)
+        return mlir::FusedLoc::get(ctx, children, fusedLoc.getMetadata());
+      return std::nullopt;
+    }
+
+    return std::nullopt;
+  }
+
+  void runOnOperation() override {
+    mlir::MLIRContext *ctx = &getContext();
+
+    getOperation()->walk([&ctx](Operation *op) {
+      Location loc = op->getLoc();
+
+      // Embed the trace into the assert message for better diagnostics.
+      // Only inspect the op's immediate OpaqueLoc; nested OpaqueLocs inside a
+      // FusedLoc don't apply here.
+      if (auto assertOp = dyn_cast<AssertOp>(op)) {
+        if (auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc)) {
+          auto pythonFrame = RMO::PythonFrameAttr::fromOpaque(opaqueLoc);
+          char *stackTrace = pythonFrame ? pythonFrame.stack_trace() : nullptr;
+          if (stackTrace && *stackTrace) {
+            std::string fullMsg = "\nSource Traceback:\n";
+            llvm::raw_string_ostream ss(fullMsg);
+            ss << stackTrace << '\n';
+            StringAttr msg = mlir::cast<StringAttr>(assertOp.getMessageAttr());
+            mlir::Diagnostic diag(loc, mlir::DiagnosticSeverity::Error);
+            diag << msg.str();
+            FormatScopedDiagnosticHandler::emitDiagnosticSeverityToStream(ss,
+                                                                          diag);
+            assertOp.setMessageAttr(StringAttr::get(ctx, fullMsg));
+          }
+        }
       }
 
-      return WalkResult::advance();
+      if (auto newLoc = stripOpaqueLocs(ctx, loc))
+        op->setLoc(*newLoc);
     });
-
-    if (result.wasInterrupted())
-      return signalPassFailure();
   }
 };
 
