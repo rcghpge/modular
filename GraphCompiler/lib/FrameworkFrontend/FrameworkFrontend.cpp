@@ -343,7 +343,11 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
   if (failed(libraryAnalysis))
     return libraryAnalysis.takeError();
 
-  bool const dumpStages = !!llvm::sys::Process::GetEnv("MODULAR_MAX_TEMPS_DIR");
+  // Gate IR dumping on the unified Config-driven directory: this picks up
+  // `MODULAR_DEBUG=ir-output-dir=...`, `[max-debug] ir-output-dir = ...`,
+  // `InferenceSession.debug.ir_output_dir = ...`, and the legacy
+  // `MODULAR_MAX_TEMPS_DIR` env var alike.  See `getMaxIRDumpDir`.
+  bool const dumpStages = !getMaxIRDumpDir().empty();
   GraphApiDiagnosticHandler diagnostics(moduleOp.getContext());
   if (failed(MO::runGCPipeline(moduleOp, options, libraryAnalysis.takeValue(),
                                dumpStages)))

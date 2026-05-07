@@ -37,6 +37,19 @@ M::ErrorOr<std::string> M::getFileContentIdentity(const BufferRef &file,
   }
 }
 
+std::string M::getMaxIRDumpDir() {
+  auto configOr = Config::open();
+  if (configOr.isError())
+    return {};
+
+  // Prefer the user-facing debug option; fall back to the legacy save-temps
+  // key (which is also where `MODULAR_MAX_TEMPS_DIR` lands).
+  StringRef dir = configOr->getValue("max-debug.ir-output-dir");
+  if (dir.empty())
+    dir = configOr->getValue("max.temps_dir");
+  return dir.str();
+}
+
 void M::writeIntermediateFileIfRequested(const std::string &identifier,
                                          ModuleOp module,
                                          const CommonOptions *options,
@@ -69,18 +82,20 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
     return;
   }
 
-  // Else check in config and use the value there.
-  auto configOr = Config::open();
-  if (!configOr.isError()) {
-    StringRef tempsDir = configOr->getValue("max.temps_dir");
-    bool writeFileLocally =
+  // Else fall back to the unified Config-driven directory (which combines
+  // `max-debug.ir-output-dir` and the legacy `max.temps_dir` keys).
+  std::string tempsDir = getMaxIRDumpDir();
+  if (tempsDir.empty())
+    return;
+
+  bool writeFileLocally = false;
+  if (auto configOr = Config::open(); !configOr.isError()) {
+    writeFileLocally =
         configOr->getValueAsBool("max.temps_use_local_scope", false);
-    if (!tempsDir.empty()) {
-      CommonOptions tempOptions;
-      tempOptions.saveTemps = true;
-      tempOptions.printTempsLocalScope = writeFileLocally;
-      tempOptions.tempsDir = tempsDir.str();
-      writeFile(&tempOptions);
-    }
   }
+  CommonOptions tempOptions;
+  tempOptions.saveTemps = true;
+  tempOptions.printTempsLocalScope = writeFileLocally;
+  tempOptions.tempsDir = std::move(tempsDir);
+  writeFile(&tempOptions);
 }

@@ -35,6 +35,20 @@ void writeIntermediateFileIfRequested(const std::string &identifier,
                                       const BufferRef &file,
                                       llvm::StringRef baseName = "temp");
 
+/// Returns the directory where intermediate compiler IR should be dumped
+/// (per-pipeline-stage MLIR files), or an empty string if dumping is disabled.
+///
+/// Consulted Config keys, in order of preference:
+///   1. `max-debug.ir-output-dir` (set via `MODULAR_DEBUG=ir-output-dir=...`,
+///      `[max-debug] ir-output-dir = ...` in `modular.cfg`, or
+///      `InferenceSession.debug.ir_output_dir = ...`).
+///   2. `max.temps_dir` (legacy, also driven by the `MODULAR_MAX_TEMPS_DIR`
+///      env var via `Config`'s automatic env-var mapping).
+///
+/// All callers that gate or destination IR dumping should funnel through this
+/// helper so a single user-facing setting drives both.
+std::string getMaxIRDumpDir();
+
 } // namespace M
 
 #endif // GENERICML_COMMONDRIVER_UTILS_H
