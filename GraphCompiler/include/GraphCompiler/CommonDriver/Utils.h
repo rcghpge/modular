@@ -45,7 +45,7 @@ void writeIntermediateFileIfRequested(const std::string &identifier,
 ///   2. `max.temps_dir` (legacy, also driven by the `MODULAR_MAX_TEMPS_DIR`
 ///      env var via `Config`'s automatic env-var mapping).
 ///
-/// All callers that gate or destination IR dumping should funnel through this
+/// All callers that gate for destination IR dumping should funnel through this
 /// helper so a single user-facing setting drives both.
 std::string getMaxIRDumpDir();
 
