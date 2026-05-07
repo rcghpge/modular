@@ -285,3 +285,30 @@ TEST_F(DriverHALQueueTest, SetMemory) {
     ASSERT_EQ(expected, result);
   }
 }
+
+TEST_F(DriverHALQueueTest, CopyDeviceToDevice) {
+  constexpr size_t size = 128;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < size; i++)
+    content[i] = static_cast<uint8_t>(i);
+
+  for (size_t i = 0; i < contexts.size(); i++) {
+    ContextRef context = contexts[i];
+    QueueRef queue = queues[i];
+
+    ASSIGN_NO_ERR(BufferRef, srcBuffer, context->allocBufferSync(size));
+    ASSIGN_NO_ERR(BufferRef, dstBuffer, context->allocBufferSync(size));
+
+    EXPECT_NO_ERR(queue->copyToDevice(srcBuffer, content.data(), size));
+    EXPECT_NO_ERR(queue->synchronize());
+
+    EXPECT_NO_ERR(queue->copyDeviceToDevice(dstBuffer, srcBuffer, size));
+    EXPECT_NO_ERR(queue->synchronize());
+
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    EXPECT_NO_ERR(queue->copyFromDevice(result.data(), dstBuffer, size));
+    EXPECT_NO_ERR(queue->synchronize());
+    ASSERT_EQ(content, result);
+  }
+}

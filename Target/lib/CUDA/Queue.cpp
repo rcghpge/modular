@@ -90,6 +90,19 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_queue::copyDeviceToDevice(M_driver_memory_t dst,
+                                                     M_driver_memory_t src,
+                                                     uint64_t size) {
+  ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
+  QUICK_RETURN_IF_ERROR(scope.status);
+  auto &cuda = context.device.driver.rawCuda;
+  CUDA_CHECK(cuda.cuMemcpyDtoDAsync(reinterpret_cast<CUdeviceptr>(dst->ptr),
+                                    reinterpret_cast<CUdeviceptr>(src->ptr),
+                                    size, stream),
+             M_DRIVER_STATUS_UNKNOWN_ERROR);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t size, uint64_t value,
                                             uint64_t valueSize) {

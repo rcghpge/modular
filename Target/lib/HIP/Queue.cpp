@@ -77,6 +77,22 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_queue::copyDeviceToDevice(M_driver_memory_t dst,
+                                                     M_driver_memory_t src,
+                                                     uint64_t size) {
+  M_driver_device &dev = context.getDevice();
+  if (auto preamble = dev.deviceMethodPreamble(); !preamble)
+    return preamble.error();
+
+  HIPApi &hip = dev.getDriver().hip();
+  hipError_t result = hip.hipMemcpyAsync(dst->ptr, src->ptr, size,
+                                         hipMemcpyDeviceToDevice, stream);
+  if (result != hipSuccess)
+    return M_DRIVER_STATUS_UNKNOWN_ERROR;
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t size, uint64_t value,
                                             uint64_t valueSize) {

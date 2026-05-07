@@ -81,6 +81,27 @@ typedef M_driver_status_t (*M_driver_queue_copy_from_device_func_ptr_t)(
     M_driver_queue_t queue, void *dst, M_driver_memory_t src, uint64_t size);
 
 /**
+ * Copy data between two memory regions on the same device.
+ *
+ * Both @p dst and @p src must reside on the device backing @p queue.
+ *
+ * @param[in] queue The queue to use for the copy operation.
+ * @param[in] dst Pointer to the destination device memory.
+ * @param[in] src Pointer to the source device memory.
+ * @param[in] size The number of bytes to copy.
+ * @return Standard Status Protocol.
+ */
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_copy_device_to_device(M_driver_queue_t queue,
+                                                       M_driver_memory_t dst,
+                                                       M_driver_memory_t src,
+                                                       uint64_t size);
+
+typedef M_driver_status_t (*M_driver_queue_copy_device_to_device_func_ptr_t)(
+    M_driver_queue_t queue, M_driver_memory_t dst, M_driver_memory_t src,
+    uint64_t size);
+
+/**
  * Fill device memory with a repeated value.
  *
  * @param[in] queue The queue to use for the set operation.

@@ -128,13 +128,33 @@ def do_execute[
         var expected = (fi % 2) * -fi * 2 + fi
         assert_equal(out_host[i], expected)
 
+    # Also test out DtoD copies
+    var out_dev_copy = ctx.alloc_sync(UInt64(buf_size))
+    var out_host_copy = alloc[Float32](length)
+    for i in range(length):
+        out_host_copy[i] = Float32(0.0)
+
+    queue.copy_device_to_device(out_dev_copy, out_dev, UInt64(buf_size))
+    queue.synchronize()
+    queue.copy_from_device(
+        rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host_copy),
+        out_dev_copy,
+        UInt64(buf_size),
+    )
+    queue.synchronize()
+
+    for i in range(length):
+        assert_equal(out_host_copy[i], out_host[i])
+
     # Cleanup.
+    out_host_copy.free()
     args.free()
     arg_sizes.free()
     in0_host.free()
     in1_host.free()
     out_host.free()
     ctx.unload_function(func)
+    ctx.free_sync(out_dev_copy^)
     ctx.free_sync(out_dev^)
     ctx.free_sync(in1_dev^)
     ctx.free_sync(in0_dev^)

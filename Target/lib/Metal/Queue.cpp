@@ -174,6 +174,52 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_queue::copyDeviceToDevice(M_driver_memory_t dst,
+                                                     M_driver_memory_t src,
+                                                     uint64_t size) {
+  if (size == 0)
+    return M_DRIVER_STATUS_SUCCESS;
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (dst->offset + size > dst->mBuffer->length())
+    return context->device->driver->status.create(
+        "Copy size exceeds Metal destination buffer length");
+  if (src->offset + size > src->mBuffer->length())
+    return context->device->driver->status.create(
+        "Copy size exceeds Metal source buffer length");
+
+  NS::SharedPtr<MTL::Event> doneEvent =
+      NS::TransferPtr(context->device->mDevice->newEvent());
+  if (!doneEvent)
+    return context->device->driver->status.create(
+        "Failed to create MTL::Event for copyDeviceToDevice");
+
+  std::lock_guard<std::mutex> lock(mMutex);
+
+  MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
+  if (cmdBuffer == nullptr)
+    return context->device->driver->status.create(
+        "Failed to create command buffer");
+
+  encodePendingWaits(cmdBuffer);
+
+  MTL::BlitCommandEncoder *encoder = cmdBuffer->blitCommandEncoder();
+  if (encoder == nullptr)
+    return context->device->driver->status.create(
+        "Failed to create blit command encoder");
+  encoder->copyFromBuffer(src->mBuffer.get(), src->offset, dst->mBuffer.get(),
+                          dst->offset, size);
+  encoder->endEncoding();
+
+  cmdBuffer->encodeSignalEvent(doneEvent.get(), 1);
+  cmdBuffer->commit();
+  mPending.push_back(doneEvent);
+
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t M_driver_queue::setMemory(M_driver_memory_t dst,
                                             uint64_t size, uint64_t value,
                                             uint64_t valueSize) {
@@ -450,6 +496,17 @@ M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
   if (src == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
   return queue->copyFromDevice(dst, src, size);
+}
+
+M_driver_status_t M_driver_queue_copy_device_to_device(M_driver_queue_t queue,
+                                                       M_driver_memory_t dst,
+                                                       M_driver_memory_t src,
+                                                       uint64_t size) {
+  if (queue == nullptr)
+    return M_DRIVER_STATUS_BAD_QUEUE;
+  if (dst == nullptr || src == nullptr)
+    return M_DRIVER_STATUS_BAD_MEMORY;
+  return queue->copyDeviceToDevice(dst, src, size);
 }
 
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,

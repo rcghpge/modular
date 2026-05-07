@@ -50,6 +50,15 @@ ErrorOrSuccess Queue::copyFromDevice(void *dst, BufferRef src,
   return success();
 }
 
+ErrorOrSuccess Queue::copyDeviceToDevice(BufferRef dst, BufferRef src,
+                                         size_t byteSize) {
+  if (M_driver_status_t status =
+          context->device->driver->plugin.queue_copy_device_to_device(
+              handle, dst->handle, src->handle, byteSize))
+    return Error(context->device->driver->getStatusMessage(status));
+  return success();
+}
+
 ErrorOrSuccess Queue::setMemory(BufferRef dst, uint64_t value,
                                 size_t valueSize) {
   if (M_driver_status_t status =

@@ -363,3 +363,39 @@ TEST_F(DriverPluginQueueTest, SetMemory) {
     ASSERT_EQ(expected, result);
   }
 }
+
+TEST_F(DriverPluginQueueTest, CopyDeviceToDevice) {
+  constexpr size_t size = 256;
+  std::array<uint8_t, size> content;
+  for (size_t i = 0; i < size; i++)
+    content[i] = static_cast<uint8_t>(i);
+
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t srcMem = nullptr;
+    M_driver_memory_t dstMem = nullptr;
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &srcMem));
+    ASSERT_SUCCESS(memory_alloc_sync(context, size, &dstMem));
+    auto defer = llvm::scope_exit([&]() {
+      memory_free_sync(context, dstMem);
+      memory_free_sync(context, srcMem);
+    });
+
+    // Sync between each pair so the test is correct regardless of whether
+    // the plugin's raw queue is a stream.
+    ASSERT_SUCCESS(queue_copy_to_device(queue, srcMem, content.data(), size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    ASSERT_SUCCESS(queue_copy_device_to_device(queue, dstMem, srcMem, size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    std::array<uint8_t, size> result;
+    result.fill(0);
+    ASSERT_SUCCESS(queue_copy_from_device(queue, result.data(), dstMem, size));
+    ASSERT_SUCCESS(queue_synchronize(queue));
+
+    ASSERT_EQ(content, result);
+  }
+}

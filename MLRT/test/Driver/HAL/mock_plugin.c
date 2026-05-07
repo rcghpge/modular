@@ -337,6 +337,17 @@ M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
 }
 
 M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_queue_copy_device_to_device(M_driver_queue_t queue,
+                                                       M_driver_memory_t dst,
+                                                       M_driver_memory_t src,
+                                                       uint64_t size) {
+  (void)queue;
+  if (dst && src && size > 0)
+    memcpy((void *)dst, (void *)src, (size_t)size);
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_t dst,
                                             uint64_t size, uint64_t value,
