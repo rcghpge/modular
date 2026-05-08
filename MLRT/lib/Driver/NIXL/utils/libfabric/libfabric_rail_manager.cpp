@@ -152,8 +152,8 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
     const std::vector<fi_addr_t> &dest_addrs, uint16_t agent_idx,
     std::function<void()> retain_callback,
     std::function<void()> release_callback,
-    std::function<void()> completion_callback,
-    BinaryNotification *binary_notif) {
+    std::function<void()> completion_callback, BinaryNotification *binary_notif,
+    size_t &submitted_count) {
   if (selected_rails.empty()) {
     NIXL_ERROR << "No rails selected for transfer";
     return NIXL_ERR_INVALID_PARAM;
@@ -261,9 +261,15 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
       return status;
     }
 
-    // Collect XFER_ID directly in BinaryNotification
-    if (binary_notif &&
-        binary_notif->xfer_id_count < NIXL_LIBFABRIC_MAX_XFER_IDS) {
+    // Track the actual submission. ``binary_notif->addXferId`` may drop
+    // the xfer_id when the notification's fixed-size array is full
+    // (NIXL_LIBFABRIC_MAX_XFER_IDS); ``submitted_count`` is the source
+    // of truth for the backend's completion accounting either way.
+    // Drop is intentionally silent here; the backend logs a single
+    // aggregate WARN at the end of postXfer when it observes
+    // ``submitted_count > binary_notif->xfer_id_count``.
+    ++submitted_count;
+    if (binary_notif) {
       binary_notif->addXferId(req->xfer_id);
     }
 
@@ -322,20 +328,20 @@ nixl_status_t nixlLibfabricRailManager::prepareAndSubmitTransfer(
         return status;
       }
 
-      // Collect XFER_ID directly in BinaryNotification
-      if (binary_notif &&
-          binary_notif->xfer_id_count < NIXL_LIBFABRIC_MAX_XFER_IDS) {
+      // See round-robin branch for the rationale on tracking
+      // ``submitted_count`` independently of the notification capacity
+      // and on leaving overflow logging to the postXfer aggregate.
+      ++submitted_count;
+      if (binary_notif) {
         binary_notif->addXferId(req->xfer_id);
       }
     }
-    NIXL_DEBUG << "Striping: submitted "
-               << (binary_notif ? binary_notif->xfer_id_count : 0)
-               << " requests for " << transfer_size << " bytes";
+    NIXL_DEBUG << "Striping: submitted " << submitted_count << " requests for "
+               << transfer_size << " bytes";
   }
 
-  NIXL_DEBUG << "Successfully submitted "
-             << (binary_notif ? binary_notif->xfer_id_count : 0)
-             << " requests for " << transfer_size << " bytes";
+  NIXL_DEBUG << "Successfully submitted " << submitted_count << " requests for "
+             << transfer_size << " bytes";
 
   return NIXL_SUCCESS;
 }

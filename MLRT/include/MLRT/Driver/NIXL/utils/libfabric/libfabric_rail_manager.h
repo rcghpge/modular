@@ -169,6 +169,14 @@ public:
    *                       both success and GEX-3606's fake-completion
    *                       error path.
    * @param binary_notif Binary notification to populate with XFER_IDs
+   * @param submitted_count Out-param incremented for each RDMA actually
+   *                       posted to a data rail. Tracks submissions
+   *                       independently from ``binary_notif->xfer_id_count``,
+   *                       which is capped by ``NIXL_LIBFABRIC_MAX_XFER_IDS``
+   *                       and may diverge from the true submission count
+   *                       on large batches. The backend uses this value
+   *                       (not the notification count) to drive its
+   *                       completion accounting.
    * @return NIXL_SUCCESS on success, error code on failure
    *
    * Rails in ``selected_rails`` whose ``local_mrs[rail_id]`` is null or
@@ -191,7 +199,7 @@ public:
       std::function<void()> retain_callback,
       std::function<void()> release_callback,
       std::function<void()> completion_callback,
-      BinaryNotification *binary_notif);
+      BinaryNotification *binary_notif, size_t &submitted_count);
   /** Determine if striping should be used for given transfer size
    * @param transfer_size Size of the transfer in bytes
    * @return true if striping should be used, false for round-robin

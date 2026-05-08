@@ -42,6 +42,19 @@ modular_cc_test(
     ],
 )
 
+modular_cc_test(
+    name = "BinaryNotificationTests",
+    size = "small",
+    srcs = ["BinaryNotificationTests.cpp"],
+    target_compatible_with = select({
+        "//:linux_x86_64": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//MLRT:Driver/NIXLLibfabricUtils",
+    ],
+)
+
 modular_cc_binary(
     name = "LibfabricVramSmoke",
     srcs = ["LibfabricVramSmoke.cpp"],

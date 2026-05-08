@@ -29,10 +29,21 @@
 // Libfabric configuration constants
 #define NIXL_LIBFABRIC_HAVE_CUDA 0
 #define NIXL_LIBFABRIC_DEFAULT_CONTROL_RAILS 1
-#define NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE 8192
+// Per-control-request scratch buffer size. Sized to fit a
+// ``BinaryNotification`` (currently 17668 bytes with
+// ``NIXL_LIBFABRIC_MAX_XFER_IDS = 4096``); rounded to 32 KiB for
+// alignment / future headroom. Cost per rail is
+// ``NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE * CONTROL_REQUESTS_PER_RAIL``.
+#define NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE 32768
 #define NIXL_LIBFABRIC_CQ_SREAD_TIMEOUT_SEC 1
 #define NIXL_LIBFABRIC_DEFAULT_STRIPING_THRESHOLD (128 * 1024) // 128KB
-#define NIXL_LIBFABRIC_MAX_XFER_IDS 1024 // Maximum XFER_IDs per notification
+// Maximum XFER_IDs per notification. With 8 EFA rails on AWS B200 each
+// 4 MiB block stripes to 8 RDMAs, so a cap of 4096 supports batches up
+// to 4096/8 = 512 blocks (= 2 GiB) before the receiver-visible
+// notification starts losing xfer_ids. Submitted requests beyond the
+// cap still complete on the sender; only the receiver's notification
+// list is bounded.
+#define NIXL_LIBFABRIC_MAX_XFER_IDS 4096
 // Log every N EAGAIN retry attempts in postSend/postWrite/postRead. Upstream
 // NIXL chose 100 to prevent log spam on transiently-saturated EFA send
 // queues while still surfacing a warning when the retry loop is not making
@@ -97,7 +108,6 @@ struct BinaryNotification {
   char message[1024];     // Fixed-size message (null-terminated)
   uint32_t xfer_id_count; // Number of XFER_IDs
   uint32_t xfer_ids[NIXL_LIBFABRIC_MAX_XFER_IDS]; // Fixed array of XFER_IDs
-                                                  // (max 128 per notification)
 
   /** @brief Clear all fields to zero */
   void clear() { memset(this, 0, sizeof(BinaryNotification)); }
@@ -114,11 +124,19 @@ struct BinaryNotification {
     message[sizeof(message) - 1] = '\0';
   }
 
-  /** @brief Add XFER_ID if space available */
-  void addXferId(uint32_t xfer_id) {
+  /** @brief Add XFER_ID if space available. Returns true on success, false
+   *  if the fixed-size xfer_ids array is full (caller can log/diagnose).
+   *  Callers must not equate the post-call ``xfer_id_count`` with the
+   *  number of RDMAs they submitted: the two diverge whenever this
+   *  returns false, and any submission-count tracking that consumes the
+   *  notification field will leave the sender's completion accounting
+   *  wedged on the unaccounted tail. */
+  bool addXferId(uint32_t xfer_id) {
     if (xfer_id_count < NIXL_LIBFABRIC_MAX_XFER_IDS) {
       xfer_ids[xfer_id_count++] = xfer_id;
+      return true;
     }
+    return false;
   }
 
   /** @brief Get agent name as string */

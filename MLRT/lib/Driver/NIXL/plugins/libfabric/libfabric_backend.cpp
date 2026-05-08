@@ -143,10 +143,14 @@ void nixlLibfabricBackendH::adjust_total_requests(size_t actual_count) {
 }
 
 bool nixlLibfabricBackendH::is_completed() const {
-  // Transfer is completed when all requests have completed
-  // NIXL_DEBUG << "Request completed, total completed: " <<
-  // completed_requests_.load();
-  return completed_requests_.load() == total_requests_used_.load();
+  // Transfer is completed when at least every submitted request has
+  // completed. ``>=`` (not strict ``==``) so that any bookkeeping
+  // mismatch where ``completed_requests_`` overshoots
+  // ``total_requests_used_`` doesn't wedge the sender into an
+  // unrecoverable poll loop. The submission path is still expected to
+  // set ``total_requests_used_`` to the exact count of in-flight RDMAs;
+  // this is defense-in-depth.
+  return completed_requests_.load() >= total_requests_used_.load();
 }
 
 void nixlLibfabricBackendH::retain() {
@@ -1027,6 +1031,15 @@ nixl_status_t nixlLibfabricEngine::postXfer(
   size_t max_possible_requests = desc_count * rail_manager->getNumDataRails();
   backend_handle->init_request_tracking(max_possible_requests);
 
+  // Track the actual number of RDMAs submitted across every call to
+  // ``prepareAndSubmitTransfer`` below. We can't infer this from
+  // ``binary_notif->xfer_id_count``: that field is capped by the
+  // notification's fixed ``NIXL_LIBFABRIC_MAX_XFER_IDS`` array, so on
+  // large batches the notification count silently lags the true
+  // submission count and the backend's completion-tracker would never
+  // converge.
+  size_t submitted_count = 0;
+
   // Core transfer submission to process each descriptor with direct
   // submission. On every error return below this lambda collapses the
   // initial ``init_request_tracking`` overestimate down to whatever was
@@ -1037,7 +1050,7 @@ nixl_status_t nixlLibfabricEngine::postXfer(
   // drain instead of staying IN_PROG forever waiting on submits that
   // never happened.
   auto adjust_for_error_return = [&] {
-    backend_handle->adjust_total_requests(binary_notif->xfer_id_count);
+    backend_handle->adjust_total_requests(submitted_count);
   };
   for (int desc_idx = 0; desc_idx < desc_count; ++desc_idx) {
     auto *local_md =
@@ -1088,7 +1101,7 @@ nixl_status_t nixlLibfabricEngine::postXfer(
           backend_handle->increment_completed_requests();
           backend_handle->release();
         },
-        binary_notif);
+        binary_notif, submitted_count);
 
     if (status != NIXL_SUCCESS) {
       NIXL_ERROR << "prepareAndSubmitTransfer failed for descriptor "
@@ -1099,15 +1112,35 @@ nixl_status_t nixlLibfabricEngine::postXfer(
     }
 
     NIXL_DEBUG << "Successfully processed descriptor " << desc_idx << " with "
-               << binary_notif->xfer_id_count << " requests submitted";
+               << submitted_count << " requests submitted";
   }
 
-  NIXL_DEBUG << "Processing complete: submitted " << binary_notif->xfer_id_count
+  NIXL_DEBUG << "Processing complete: submitted " << submitted_count
              << " requests from " << desc_count << " descriptors"
              << " with " << binary_notif->xfer_id_count << " total XFER_IDs";
 
-  // Adjust to actual request count after all submissions complete
-  backend_handle->adjust_total_requests(binary_notif->xfer_id_count);
+  // A single aggregate warning per postXfer when the notification's
+  // fixed xfer_ids array couldn't hold every submitted RDMA. The
+  // receiver still completes (data lands via RDMA WRITE imm_data; the
+  // receiver only waits for the xfer_ids it was told about), but its
+  // tracking set keeps the unaccounted arrivals as stragglers. Logged
+  // once per postXfer rather than per-xfer_id to avoid log floods on
+  // large batches.
+  if (submitted_count > binary_notif->xfer_id_count) {
+    NIXL_WARN << "BinaryNotification xfer_id capacity ("
+              << NIXL_LIBFABRIC_MAX_XFER_IDS << ") exceeded: "
+              << (submitted_count - binary_notif->xfer_id_count) << " of "
+              << submitted_count
+              << " xfer_ids were not relayed to the receiver. Sender-side"
+                 " completion tracking is unaffected.";
+  }
+
+  // Adjust to actual request count after all submissions complete. Use
+  // ``submitted_count`` (the true RDMA count) rather than the
+  // notification's xfer_id_count, which is capped by
+  // ``NIXL_LIBFABRIC_MAX_XFER_IDS`` and would otherwise leave the
+  // backend's completion-tracker waiting on phantom missing requests.
+  backend_handle->adjust_total_requests(submitted_count);
 
   // Send notification immediately after successful request submission
   if (opt_args && opt_args->hasNotif) {
