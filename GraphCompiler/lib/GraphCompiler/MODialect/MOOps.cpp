@@ -1040,6 +1040,20 @@ LogicalResult TensorUnbundleOp::verify() {
   return success();
 }
 
+void TensorBundleOp::build(OpBuilder &builder, OperationState &state,
+                           ValueRange inputs) {
+  SmallVector<Type> elementTypes =
+      llvm::map_to_vector(inputs, [](Value v) { return v.getType(); });
+  build(builder, state, BundleType::get(builder.getContext(), elementTypes),
+        inputs);
+}
+
+void TensorUnbundleOp::build(OpBuilder &builder, OperationState &state,
+                             Value input) {
+  build(builder, state, cast<BundleType>(input.getType()).getElementTypes(),
+        input);
+}
+
 //===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//

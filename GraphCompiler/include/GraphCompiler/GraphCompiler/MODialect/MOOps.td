@@ -607,6 +607,10 @@ def MO_TensorBundleOp : Op<MODialect, "tensor.bundle",
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "ValueRange":$inputs)>,
+  ];
 }
 
 def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle",
@@ -619,6 +623,10 @@ def MO_TensorUnbundleOp : Op<MODialect, "tensor.unbundle",
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
