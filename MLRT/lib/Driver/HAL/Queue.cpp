@@ -68,8 +68,8 @@ ErrorOrSuccess Queue::setMemory(BufferRef dst, uint64_t value,
   return success();
 }
 
-ErrorOr<EventRef> Queue::recordEvent() {
-  ErrorOr<EventRef> event = context->createEvent();
+ErrorOr<EventRef> Queue::recordEvent(M_driver_event_flags_t flags) {
+  ErrorOr<EventRef> event = context->createEvent(flags);
   if (event.isError())
     return event.takeError();
   if (M_driver_status_t status =

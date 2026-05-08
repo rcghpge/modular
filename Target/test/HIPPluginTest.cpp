@@ -220,7 +220,7 @@ TEST_F(DriverPluginContextTest, EventCreateDestroyMultiple) {
     M_driver_event_t events[kNumEvents];
     for (int i = 0; i < kNumEvents; i++) {
       events[i] = nullptr;
-      ASSERT_SUCCESS(event_create(ctx, &events[i]));
+      ASSERT_SUCCESS(event_create(ctx, M_DRIVER_EVENT_FLAG_NONE, &events[i]));
       ASSERT_NE(events[i], nullptr);
     }
     for (int i = 0; i < kNumEvents; i++) {
@@ -231,7 +231,8 @@ TEST_F(DriverPluginContextTest, EventCreateDestroyMultiple) {
 
 TEST_F(DriverPluginContextTest, EventNullContext) {
   M_driver_event_t event = nullptr;
-  ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT, event_create(nullptr, &event));
+  ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT,
+            event_create(nullptr, M_DRIVER_EVENT_FLAG_NONE, &event));
 
   ASSERT_EQ(M_DRIVER_STATUS_BAD_CONTEXT, event_destroy(nullptr, event));
 

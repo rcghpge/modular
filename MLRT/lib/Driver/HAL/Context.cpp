@@ -35,9 +35,11 @@ Context::Context(DeviceRef device, M_driver_context_t handle)
 
 Context::~Context() {
   funcCache.clear();
-  for (M_driver_event_t event : eventCache)
-    device->driver->plugin.event_destroy(handle, event);
-  eventCache.clear();
+  for (auto &[_, bucket] : eventRecycler) {
+    for (M_driver_event_t event : bucket)
+      device->driver->plugin.event_destroy(handle, event);
+  }
+  eventRecycler.clear();
   device->driver->plugin.context_destroy(handle);
 }
 
@@ -78,29 +80,31 @@ ErrorOr<QueueRef> Context::createQueue() {
   return QueueRef::take(queue);
 }
 
-ErrorOr<EventRef> Context::createEvent() {
+ErrorOr<EventRef> Context::createEvent(M_driver_event_flags_t flags) {
   M_driver_event_t eventHandle = nullptr;
   {
-    std::lock_guard<std::mutex> lock(eventCacheMutex);
-    if (!eventCache.empty()) {
-      eventHandle = eventCache.back();
-      eventCache.pop_back();
+    std::lock_guard<std::mutex> lock(eventRecyclerMutex);
+    auto it = eventRecycler.find(flags);
+    if (it != eventRecycler.end() && !it->second.empty()) {
+      eventHandle = it->second.back();
+      it->second.pop_back();
     }
   }
   if (!eventHandle) {
     if (M_driver_status_t status =
-            device->driver->plugin.event_create(handle, &eventHandle))
+            device->driver->plugin.event_create(handle, flags, &eventHandle))
       return Error(device->driver->getStatusMessage(status));
   }
-  auto *event = new (std::nothrow) Event(copyRCRef(this), eventHandle);
+  auto *event = new (std::nothrow) Event(copyRCRef(this), eventHandle, flags);
   if (!event)
     return Error("Failed to allocate memory for Event object");
   return EventRef::take(event);
 }
 
-void Context::recycleEventHandle(M_driver_event_t eventHandle) {
-  std::lock_guard<std::mutex> lock(eventCacheMutex);
-  eventCache.push_back(eventHandle);
+void Context::recycleEventHandle(M_driver_event_t eventHandle,
+                                 M_driver_event_flags_t flags) {
+  std::lock_guard<std::mutex> lock(eventRecyclerMutex);
+  eventRecycler[flags].push_back(eventHandle);
 }
 
 ErrorOr<BundleRef> Context::loadBundle(llvm::StringRef bundleName,

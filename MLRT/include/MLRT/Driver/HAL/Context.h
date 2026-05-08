@@ -86,15 +86,19 @@ public:
 private:
   explicit Context(DeviceRef device, M_driver_context_t handle);
 
-  ErrorOr<EventRef> createEvent();
+  ErrorOr<EventRef> createEvent(M_driver_event_flags_t flags);
 
-  void recycleEventHandle(M_driver_event_t handle);
+  void recycleEventHandle(M_driver_event_t handle,
+                          M_driver_event_flags_t flags);
 
   DeviceRef device;
   M_driver_context_t handle;
 
-  std::mutex eventCacheMutex;
-  std::vector<M_driver_event_t> eventCache;
+  std::mutex eventRecyclerMutex;
+  // Keyed by flags bitmask so a CPU_VISIBLE event is never handed out
+  // when intra-GPU was requested, and vice versa.
+  llvm::DenseMap<M_driver_event_flags_t, std::vector<M_driver_event_t>>
+      eventRecycler;
 
   std::shared_mutex bundleCacheMutex;
   llvm::DenseMap<BundleCacheKey, BundleRef> bundleCache;

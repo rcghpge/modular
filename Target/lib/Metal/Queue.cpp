@@ -58,10 +58,6 @@ M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
 }
 
 void M_driver_queue::encodePendingWaits(MTL::CommandBuffer *cb) {
-  // Erase already signaled events; encode waits on the rest.
-  std::erase_if(mPendingWaits, [](const NS::SharedPtr<MTL::SharedEvent> &e) {
-    return e->signaledValue() >= 1;
-  });
   for (const auto &e : mPendingWaits)
     cb->encodeWait(e.get(), 1);
 }
@@ -412,9 +408,10 @@ M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
 
   std::lock_guard<std::mutex> lock(mMutex);
 
-  if (mPending.empty() && mPendingWaits.empty()) {
-    // Queue is empty and nothing to wait on — signal the user event
-    // immediately on the host.
+  // Empty-queue host-signal optimization: only available when the user
+  // event is CPU-visible (a plain device MTL::Event has no host-side
+  // signal API).
+  if (mPending.empty() && mPendingWaits.empty() && event->sharedEvent) {
     event->sharedEvent->setSignaledValue(1);
     return M_DRIVER_STATUS_SUCCESS;
   }
@@ -431,13 +428,16 @@ M_driver_status_t M_driver_queue::recordEvent(M_driver_event_t event) {
 
   for (const NS::SharedPtr<MTL::Event> &e : mPending)
     cmdBuffer->encodeWait(e.get(), 1);
-  cmdBuffer->encodeSignalEvent(event->sharedEvent.get(), 1);
+  cmdBuffer->encodeSignalEvent(event->getEvent(), 1);
   cmdBuffer->commit();
 
   // Anyone waiting on user_event transitively waits on everything we just
   // encoded.
   mPending.clear();
-  mPending.push_back(event->sharedEvent);
+  if (event->sharedEvent)
+    mPending.push_back(event->sharedEvent);
+  else
+    mPending.push_back(event->deviceEvent);
 
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -451,8 +451,12 @@ M_driver_status_t M_driver_queue::waitForEvents(M_driver_event_t *events,
   // them before its own work.
   std::lock_guard<std::mutex> lock(mMutex);
   mPendingWaits.reserve(mPendingWaits.size() + numEvents);
-  for (uint32_t i = 0; i < numEvents; ++i)
-    mPendingWaits.push_back(events[i]->sharedEvent);
+  for (uint32_t i = 0; i < numEvents; ++i) {
+    if (events[i]->sharedEvent)
+      mPendingWaits.push_back(events[i]->sharedEvent);
+    else
+      mPendingWaits.push_back(events[i]->deviceEvent);
+  }
   return M_DRIVER_STATUS_SUCCESS;
 }
 

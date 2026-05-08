@@ -10,25 +10,44 @@
 #include "M_driver_common.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
+ * Bitmask describing capabilities an event must support.
+ */
+typedef uint32_t M_driver_event_flags_t;
+
+// Default (no bits set) is intra-GPU synchronization only.
+#define M_DRIVER_EVENT_FLAG_NONE ((M_driver_event_flags_t)0u)
+// Host may call M_driver_event_synchronize / M_driver_is_event_ready on
+// this event.
+#define M_DRIVER_EVENT_FLAG_CPU_VISIBLE ((M_driver_event_flags_t)(1u << 0))
+
+// Union of all defined flag bits. Plugins use this to reject unknown bits.
+// Update when adding a new flag.
+#define M_DRIVER_EVENT_FLAGS_ALL (M_DRIVER_EVENT_FLAG_CPU_VISIBLE)
+
+/**
  * Create an event for the given context.
  *
  * @param[in] context The context to create the event for.
+ * @param[in] flags Bitmask describing required capabilities.
  * @param[out] event The event.
  * @return Standard Status Protocol or M_DRIVER_STATUS_BAD_CONTEXT if the
  *         context is not valid.
  */
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_event_create(M_driver_context_t context,
+                                        M_driver_event_flags_t flags,
                                         M_driver_event_t *event);
 
 typedef M_driver_status_t (*M_driver_event_create_func_ptr_t)(
-    M_driver_context_t context, M_driver_event_t *event);
+    M_driver_context_t context, M_driver_event_flags_t flags,
+    M_driver_event_t *event);
 
 /**
  * Destroy an event.

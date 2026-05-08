@@ -418,8 +418,11 @@ M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
 // ---------------------------------------------------------------------------
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_event_create(M_driver_context_t context,
+                                        M_driver_event_flags_t flags,
                                         M_driver_event_t *event) {
   (void)context;
+  if (flags & ~M_DRIVER_EVENT_FLAGS_ALL)
+    return M_DRIVER_STATUS_INVALID_ARG;
   if (!event)
     return M_DRIVER_STATUS_INVALID_ARG;
   *event = (M_driver_event_t)&g_event_sentinel;

@@ -8,20 +8,31 @@
 #define TARGET_LIB_METAL_EVENT_H
 
 #include "Common.h"
+#include "HAL/M_driver_event.h"
 #include "MetalCpp.h"
 
 struct M_driver_context;
 
 struct M_driver_event {
+  // Exactly one is populated based on the EVENT_FLAG_CPU_VISIBLE bit at
+  // creation time.
+  //
+  // - sharedEvent: requested CPU-visible. Supports both host-side ops
+  //   (setSignaledValue, signaledValue, waitUntilSignaledValue) and GPU-
+  //   side encode ops via the MTL::Event base class.
+  // - deviceEvent: intra-GPU only (no host-side query/wait API).
   NS::SharedPtr<MTL::SharedEvent> sharedEvent;
+  NS::SharedPtr<MTL::Event> deviceEvent;
 
   M_driver_event() = default;
 
-  explicit M_driver_event(NS::SharedPtr<MTL::SharedEvent> sharedEvent)
-      : sharedEvent(std::move(sharedEvent)) {}
+  MTL::Event *getEvent() const {
+    return sharedEvent ? static_cast<MTL::Event *>(sharedEvent.get())
+                       : deviceEvent.get();
+  }
 
   [[nodiscard]] static DriverResult<M_driver_event_t>
-  create(M_driver_context &ctx);
+  create(M_driver_context &ctx, M_driver_event_flags_t flags);
 
   static M_driver_status_t destroy(M_driver_context &ctx,
                                    M_driver_event_t event);

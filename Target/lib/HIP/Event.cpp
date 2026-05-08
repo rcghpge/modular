@@ -8,10 +8,15 @@
 #include "Context.h"
 #include "Device.h"
 
-DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
+DriverResult<M_driver_event_t>
+M_driver_event::create(M_driver_context &ctx, M_driver_event_flags_t flags) {
   M_driver_device &dev = ctx.getDevice();
   if (auto preamble = dev.deviceMethodPreamble(); !preamble)
     return tl::unexpected(preamble.error());
+
+  // HIP events are always host-queryable, so CPU_VISIBLE
+  // and currently has no effect.
+  (void)flags;
 
   HIPApi &hip = dev.getDriver().hip();
   hipEvent_t event;

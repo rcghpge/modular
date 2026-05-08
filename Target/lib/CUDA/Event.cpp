@@ -8,10 +8,15 @@
 #include "Context.h"
 #include "Device.h"
 
-DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
+DriverResult<M_driver_event_t>
+M_driver_event::create(M_driver_context &ctx, M_driver_event_flags_t flags) {
   ScopedContext scope(ctx.primaryCtx, ctx.device.driver.rawCuda);
   RETURN_IF_ERROR(scope.status, tl::unexpected(status));
   CUDALoader &cuda = ctx.device.driver.rawCuda;
+
+  // CUDA events are always host-queryable, so CPU_VISIBLE
+  // and currently has no effect.
+  (void)flags;
 
   CUevent event;
   CUDA_CHECK_DR(cuda.cuEventCreate(&event, CU_EVENT_DISABLE_TIMING),

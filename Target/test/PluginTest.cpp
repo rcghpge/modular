@@ -263,7 +263,7 @@ TEST_F(DriverPluginContextTest, QueueAsyncAllocSync) {
 TEST_F(DriverPluginContextTest, EventCreateDestroy) {
   for (M_driver_context_t ctx : contexts) {
     M_driver_event_t event = nullptr;
-    ASSERT_SUCCESS(event_create(ctx, &event));
+    ASSERT_SUCCESS(event_create(ctx, M_DRIVER_EVENT_FLAG_NONE, &event));
     ASSERT_NE(event, nullptr);
     EXPECT_SUCCESS(event_destroy(ctx, event));
   }
@@ -287,7 +287,7 @@ TEST_F(DriverPluginContextTest, EventRecordWait) {
 
     ASSERT_SUCCESS(queue_copy_to_device(queueA, memory, src.data(), byteSize));
     M_driver_event_t event = nullptr;
-    ASSERT_SUCCESS(event_create(ctx, &event));
+    ASSERT_SUCCESS(event_create(ctx, M_DRIVER_EVENT_FLAG_CPU_VISIBLE, &event));
     ASSERT_SUCCESS(queue_record_event(queueA, event));
 
     ASSERT_SUCCESS(queue_wait_for_events(queueB, &event, 1));

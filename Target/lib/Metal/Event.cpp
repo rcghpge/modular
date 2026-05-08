@@ -13,17 +13,33 @@
 // Implementation
 // ---------------------------------------------------------------------------
 
-DriverResult<M_driver_event_t> M_driver_event::create(M_driver_context &ctx) {
-  MTL::SharedEvent *rawEvent = ctx.device->mDevice->newSharedEvent();
-  if (rawEvent == nullptr)
-    return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+DriverResult<M_driver_event_t>
+M_driver_event::create(M_driver_context &ctx, M_driver_event_flags_t flags) {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
   M_driver_event_t event = new (std::nothrow) M_driver_event();
-  if (event == nullptr) {
-    rawEvent->release();
+  if (event == nullptr)
     return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+
+  if (flags & M_DRIVER_EVENT_FLAG_CPU_VISIBLE) {
+    NS::SharedPtr<MTL::SharedEvent> shared =
+        NS::TransferPtr(ctx.device->mDevice->newSharedEvent());
+    if (!shared) {
+      delete event;
+      return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+    }
+    event->sharedEvent = std::move(shared);
+  } else {
+    NS::SharedPtr<MTL::Event> plain =
+        NS::TransferPtr(ctx.device->mDevice->newEvent());
+    if (!plain) {
+      delete event;
+      return tl::unexpected(M_DRIVER_STATUS_OUT_OF_MEMORY);
+    }
+    event->deviceEvent = std::move(plain);
   }
-  event->sharedEvent = NS::TransferPtr(rawEvent);
+
   return event;
 }
 
@@ -35,6 +51,8 @@ M_driver_status_t M_driver_event::destroy(M_driver_context &ctx,
 
 M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
                                               M_driver_event_t event) {
+  if (!event->sharedEvent)
+    return M_DRIVER_STATUS_INVALID_ARG;
   event->sharedEvent->waitUntilSignaledValue(1, UINT64_MAX);
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -42,6 +60,8 @@ M_driver_status_t M_driver_event::synchronize(M_driver_context &ctx,
 M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
                                           M_driver_event_t event,
                                           bool *is_ready) {
+  if (!event->sharedEvent)
+    return M_DRIVER_STATUS_INVALID_ARG;
   *is_ready = (event->sharedEvent->signaledValue() >= 1);
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -51,10 +71,14 @@ M_driver_status_t M_driver_event::isReady(M_driver_context &ctx,
 // ---------------------------------------------------------------------------
 
 M_driver_status_t M_driver_event_create(M_driver_context_t context,
+                                        M_driver_event_flags_t flags,
                                         M_driver_event_t *event) {
   if (context == nullptr)
     return M_DRIVER_STATUS_BAD_CONTEXT;
-  DriverResult<M_driver_event_t> result = M_driver_event::create(*context);
+  if (flags & ~M_DRIVER_EVENT_FLAGS_ALL)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  DriverResult<M_driver_event_t> result =
+      M_driver_event::create(*context, flags);
   if (!result)
     return result.error();
   *event = *result;

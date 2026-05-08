@@ -40,12 +40,25 @@ struct M_driver_queue {
   NS::SharedPtr<MTL::CommandQueue> mCommandQueue;
 
   // Completion events for in-flight ops on this queue.
+  //
+  // Every queue op builds its own MTL::CommandBuffer and ends it with
+  // `encodeSignalEvent` on a freshly created event — the "done
+  // event" for that op. We push that done event into `mPending` so the *next*
+  // op's CB can encode-wait on every entry here before doing its own work if
+  // necessary.
+  //
+  // mPending is cleared out in two places:
+  //   - `synchronize()`: the queue has been drained, nothing in-flight.
+  //   - `recordEvent()`: the user's event is encoded to signal after every
+  //     current entry, then *replaces* mPending as the sole gating event —
+  //     anyone waiting on the user event transitively waits on everything
+  //     that came before, so we can drop the prior entries.
   std::vector<NS::SharedPtr<MTL::Event>> mPending;
 
   // External events stashed by `waitForEvents` to encode during subsequent
   // operations. This is required because each operation creates a new
   // command-buffer for encoding.
-  std::vector<NS::SharedPtr<MTL::SharedEvent>> mPendingWaits;
+  std::vector<NS::SharedPtr<MTL::Event>> mPendingWaits;
 
   std::mutex mMutex;
 };

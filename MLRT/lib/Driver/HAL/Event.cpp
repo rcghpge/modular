@@ -11,10 +11,11 @@
 
 namespace M::Driver::HAL {
 
-Event::Event(ContextRef context, M_driver_event_t handle)
-    : context(std::move(context)), handle(handle) {}
+Event::Event(ContextRef context, M_driver_event_t handle,
+             M_driver_event_flags_t flags)
+    : context(std::move(context)), handle(handle), flags(flags) {}
 
-Event::~Event() { context->recycleEventHandle(handle); }
+Event::~Event() { context->recycleEventHandle(handle, flags); }
 
 ErrorOrSuccess Event::synchronize() {
   if (M_driver_status_t status =

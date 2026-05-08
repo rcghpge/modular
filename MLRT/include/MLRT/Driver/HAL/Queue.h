@@ -43,7 +43,12 @@ public:
   ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
   /// Record a new event on this queue. The returned event will be signaled
   /// once all operations enqueued before this call have completed.
-  ErrorOr<EventRef> recordEvent();
+  ///
+  /// \param flags Capability bitmask. Default `M_DRIVER_EVENT_FLAG_NONE`
+  ///   is intra-GPU only; pass `M_DRIVER_EVENT_FLAG_CPU_VISIBLE` to enable
+  ///   host-side `synchronize()` / `isReady()` on the returned event.
+  ErrorOr<EventRef>
+  recordEvent(M_driver_event_flags_t flags = M_DRIVER_EVENT_FLAG_NONE);
   /// Make this queue wait until the given events have been signaled.
   ErrorOrSuccess waitForEvents(M_driver_event_t *events, uint32_t numEvents);
   /// Make this queue wait until the given event has been signaled.

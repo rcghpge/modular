@@ -31,10 +31,14 @@ public:
   ErrorOr<bool> isReady();
 
 private:
-  explicit Event(ContextRef context, M_driver_event_t handle);
+  explicit Event(ContextRef context, M_driver_event_t handle,
+                 M_driver_event_flags_t flags);
 
   ContextRef context;
   M_driver_event_t handle;
+  // Remembered so the destructor can return the handle to the right cache
+  // bucket on Context.
+  M_driver_event_flags_t flags;
 
   friend Context;
   friend class Queue;

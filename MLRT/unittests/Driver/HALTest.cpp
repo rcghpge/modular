@@ -214,7 +214,8 @@ TEST_F(DriverHALContextTest, EventRecordWait) {
     ASSIGN_NO_ERR(BufferRef, buffer, context->allocBufferSync(byteSize));
 
     EXPECT_NO_ERR(queueA->copyToDevice(buffer, src.data(), byteSize));
-    ASSIGN_NO_ERR(EventRef, event, queueA->recordEvent());
+    ASSIGN_NO_ERR(EventRef, event,
+                  queueA->recordEvent(M_DRIVER_EVENT_FLAG_CPU_VISIBLE));
 
     EXPECT_NO_ERR(queueB->waitForEvent(event));
     std::array<unsigned int, numElems> dst;
