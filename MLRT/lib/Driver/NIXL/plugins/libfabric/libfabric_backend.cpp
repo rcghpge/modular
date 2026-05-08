@@ -1483,8 +1483,9 @@ void nixlLibfabricEngine::processNotification(
     }
     xfer_ids_log << "] (total: " << expected_xfer_ids.size() << ")";
     NIXL_TRACE << xfer_ids_log.str();
-    // Check if all expected XFER_IDs have already arrived
-    if (allXferIdsReceived(expected_xfer_ids)) {
+    // Check if all expected XFER_IDs have already arrived. consume* erases
+    // them on match so received_remote_writes_ does not grow unboundedly.
+    if (consumeReceivedXferIds(expected_xfer_ids)) {
       NIXL_TRACE << "All XFER_IDs already received, processing binary "
                     "notification immediately";
       std::lock_guard<std::mutex> lock(notif_mutex_);
@@ -1613,10 +1614,10 @@ void nixlLibfabricEngine::addReceivedXferId(uint32_t xfer_id) {
   checkPendingNotifications();
 }
 
-bool nixlLibfabricEngine::allXferIdsReceived(
+bool nixlLibfabricEngine::consumeReceivedXferIds(
     const std::unordered_set<uint32_t> &expected) {
   std::lock_guard<std::mutex> lock(receiver_tracking_mutex_);
-  // Check if all expected XFER_IDs are in the received set
+  // Verify all expected XFER_IDs are present before mutating the set.
   for (uint32_t xfer_id : expected) {
     if (received_remote_writes_.find(xfer_id) ==
         received_remote_writes_.end()) {
@@ -1624,8 +1625,13 @@ bool nixlLibfabricEngine::allXferIdsReceived(
       return false;
     }
   }
-  NIXL_DEBUG << "All " << expected.size()
-             << " expected XFER_IDs have been received";
+  // All matched: erase them so the tracking set does not grow unboundedly.
+  for (uint32_t xfer_id : expected) {
+    received_remote_writes_.erase(xfer_id);
+  }
+  NIXL_DEBUG << "Consumed all " << expected.size()
+             << " expected XFER_IDs (remaining tracked: "
+             << received_remote_writes_.size() << ")";
   return true;
 }
 
@@ -1655,6 +1661,12 @@ void nixlLibfabricEngine::checkPendingNotifications() {
       {
         std::lock_guard<std::mutex> notif_lock(notif_mutex_);
         notifMainList_.push_back({it->remote_agent, it->message});
+      }
+
+      // Erase the matched XFER_IDs so received_remote_writes_ does not grow
+      // unboundedly. Safe under the held receiver_tracking_mutex_.
+      for (uint32_t xfer_id : it->expected_xfer_ids) {
+        received_remote_writes_.erase(xfer_id);
       }
 
       NIXL_TRACE << "Processed queued notification: " << it->message;

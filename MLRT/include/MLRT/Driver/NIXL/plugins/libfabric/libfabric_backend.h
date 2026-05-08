@@ -535,14 +535,19 @@ public:
   void addReceivedXferId(uint32_t xfer_id);
 
   /**
-   * @brief Check if all expected XFER_IDs have been received
+   * @brief Atomically check for and consume the expected XFER_IDs
    *
-   * Determines if all transfers associated with a notification have completed.
+   * If every expected XFER_ID is present in the global tracking set, erases
+   * them and returns true. If any are missing, the set is left unchanged and
+   * the call returns false. Erasing on match bounds the memory growth of
+   * `received_remote_writes_`, which would otherwise accumulate one entry per
+   * RDMA WRITE for the lifetime of the process.
    *
    * @param[in] expected Set of expected XFER_IDs
-   * @return true if all expected IDs received, false otherwise
+   * @return true if all expected IDs were present (and were erased), false
+   *         otherwise
    */
-  bool allXferIdsReceived(const std::unordered_set<uint32_t> &expected);
+  bool consumeReceivedXferIds(const std::unordered_set<uint32_t> &expected);
 
   // Notification Queuing Helper Methods
   /**
