@@ -364,7 +364,7 @@ TEST_F(DriverPluginQueueTest, SetMemory) {
   }
 }
 
-TEST_F(DriverPluginQueueTest, CopyDeviceToDevice) {
+TEST_F(DriverPluginQueueTest, CopyIntraDevice) {
   constexpr size_t size = 256;
   std::array<uint8_t, size> content;
   for (size_t i = 0; i < size; i++)
@@ -388,7 +388,7 @@ TEST_F(DriverPluginQueueTest, CopyDeviceToDevice) {
     ASSERT_SUCCESS(queue_copy_to_device(queue, srcMem, content.data(), size));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
-    ASSERT_SUCCESS(queue_copy_device_to_device(queue, dstMem, srcMem, size));
+    ASSERT_SUCCESS(queue_copy_intra_device(queue, dstMem, srcMem, size));
     ASSERT_SUCCESS(queue_synchronize(queue));
 
     std::array<uint8_t, size> result;

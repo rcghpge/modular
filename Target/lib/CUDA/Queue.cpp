@@ -90,9 +90,9 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::copyDeviceToDevice(M_driver_memory_t dst,
-                                                     M_driver_memory_t src,
-                                                     uint64_t size) {
+M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
+                                                  M_driver_memory_t src,
+                                                  uint64_t size) {
   ScopedContext scope(context.primaryCtx, context.device.driver.rawCuda);
   QUICK_RETURN_IF_ERROR(scope.status);
   auto &cuda = context.device.driver.rawCuda;

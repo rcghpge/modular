@@ -39,8 +39,7 @@ public:
 
   ErrorOrSuccess copyToDevice(BufferRef dst, void *src, size_t byteSize);
   ErrorOrSuccess copyFromDevice(void *dst, BufferRef src, size_t byteSize);
-  ErrorOrSuccess copyDeviceToDevice(BufferRef dst, BufferRef src,
-                                    size_t byteSize);
+  ErrorOrSuccess copyIntraDevice(BufferRef dst, BufferRef src, size_t byteSize);
   ErrorOrSuccess setMemory(BufferRef dst, uint64_t value, size_t valueSize);
   /// Record a new event on this queue. The returned event will be signaled
   /// once all operations enqueued before this call have completed.

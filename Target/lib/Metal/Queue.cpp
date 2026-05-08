@@ -174,9 +174,9 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
-M_driver_status_t M_driver_queue::copyDeviceToDevice(M_driver_memory_t dst,
-                                                     M_driver_memory_t src,
-                                                     uint64_t size) {
+M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
+                                                  M_driver_memory_t src,
+                                                  uint64_t size) {
   if (size == 0)
     return M_DRIVER_STATUS_SUCCESS;
 
@@ -194,7 +194,7 @@ M_driver_status_t M_driver_queue::copyDeviceToDevice(M_driver_memory_t dst,
       NS::TransferPtr(context->device->mDevice->newEvent());
   if (!doneEvent)
     return context->device->driver->status.create(
-        "Failed to create MTL::Event for copyDeviceToDevice");
+        "Failed to create MTL::Event for copyIntraDevice");
 
   std::lock_guard<std::mutex> lock(mMutex);
 
@@ -498,15 +498,15 @@ M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
   return queue->copyFromDevice(dst, src, size);
 }
 
-M_driver_status_t M_driver_queue_copy_device_to_device(M_driver_queue_t queue,
-                                                       M_driver_memory_t dst,
-                                                       M_driver_memory_t src,
-                                                       uint64_t size) {
+M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
+                                                   M_driver_memory_t dst,
+                                                   M_driver_memory_t src,
+                                                   uint64_t size) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (dst == nullptr || src == nullptr)
     return M_DRIVER_STATUS_BAD_MEMORY;
-  return queue->copyDeviceToDevice(dst, src, size);
+  return queue->copyIntraDevice(dst, src, size);
 }
 
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,

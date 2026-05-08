@@ -134,7 +134,7 @@ def do_execute[
     for i in range(length):
         out_host_copy[i] = Float32(0.0)
 
-    queue.copy_device_to_device(out_dev_copy, out_dev, UInt64(buf_size))
+    queue.copy_intra_device(out_dev_copy, out_dev, UInt64(buf_size))
     queue.synchronize()
     queue.copy_from_device(
         rebind[UnsafePointer[UInt8, MutAnyOrigin]](out_host_copy),

@@ -286,7 +286,7 @@ TEST_F(DriverHALQueueTest, SetMemory) {
   }
 }
 
-TEST_F(DriverHALQueueTest, CopyDeviceToDevice) {
+TEST_F(DriverHALQueueTest, CopyIntraDevice) {
   constexpr size_t size = 128;
   std::array<uint8_t, size> content;
   for (size_t i = 0; i < size; i++)
@@ -302,7 +302,7 @@ TEST_F(DriverHALQueueTest, CopyDeviceToDevice) {
     EXPECT_NO_ERR(queue->copyToDevice(srcBuffer, content.data(), size));
     EXPECT_NO_ERR(queue->synchronize());
 
-    EXPECT_NO_ERR(queue->copyDeviceToDevice(dstBuffer, srcBuffer, size));
+    EXPECT_NO_ERR(queue->copyIntraDevice(dstBuffer, srcBuffer, size));
     EXPECT_NO_ERR(queue->synchronize());
 
     std::array<uint8_t, size> result;
