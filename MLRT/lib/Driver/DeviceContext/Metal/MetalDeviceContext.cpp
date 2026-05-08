@@ -340,22 +340,25 @@ ErrorOrSuccess MetalDevice::chunkAlloc(void **ptr, size_t byteSize,
   // Create Metal buffer with shared storage mode for all allocations
   MTL::ResourceOptions options = MTL::ResourceStorageModeShared;
 
-  NS::SharedPtr<MTL::Buffer> buf =
-      NS::TransferPtr(metalDev->newBuffer(byteSize, options));
-  if (!buf)
+  // Donate newBuffer's +1 to the tracker; chunkFree releases.
+  // NS::SharedPtr + detach() is UB here: ~SharedPtr does nullptr->release().
+  MTL::Buffer *buf = metalDev->newBuffer(byteSize, options);
+  if (buf == nullptr)
     RETURN_ERROR("Failed to create Metal buffer in chunkAlloc");
 
   // For both host and device allocations, return the contents pointer
   // The memory manager will manage the memory layout
   void *contents = buf->contents();
-  if (contents == nullptr)
+  if (contents == nullptr) {
+    buf->release();
     RETURN_ERROR("Failed to get contents from Metal buffer");
+  }
 
   *ptr = contents;
 
-  // Track this allocation
-  trackBuffer(contents, buf.get());
-  buf.detach();
+  // Track this allocation. The +1 from newBuffer is now owned by the
+  // tracker; chunkFree releases it.
+  trackBuffer(contents, buf);
 
   return success();
 }
@@ -1096,15 +1099,11 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
 
   // create the Metal buffer
   MTL::ResourceOptions options = getResourceOptions(mode);
-  // TODO: Ideally this should be stored in an NS::SharedPtr for RAII refcount
-  // management, however this causes "Trace/breakpoint trap" crashes in some
-  // tests. This points to a subtle interaction with how MTL::Buffer* objects
-  // are currently managed by MetalDevice::trackBuffer() and
-  // MetalDevice::untrackBuffer().
+  // Donate newBuffer's +1 to the tracker; memFree releases.
+  // NS::SharedPtr + detach() is UB here: ~SharedPtr does nullptr->release().
   MTL::Buffer *buf = metalDev->newBuffer(byteSize, options);
   if (buf == nullptr)
     RETURN_ERROR("Failed to create Metal buffer");
-  buf->retain();
 
   // Based on mode of allocation, return the appropriate pointer
   switch (mode) {
@@ -1118,7 +1117,8 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
     // TODO: Update ptr() to return from MTL::Buffer
     *ptr = contents;
 
-    // Track this allocation at device level
+    // Track this allocation at device level. The +1 from newBuffer is
+    // now owned by the tracker; memFree releases it.
     MetalDevice::cast(device()).trackBuffer(contents, buf);
     return success();
   }
@@ -1132,7 +1132,8 @@ ErrorOrSuccess MetalDeviceContext::memAlloc(void **ptr, size_t byteSize,
     }
     *ptr = reinterpret_cast<void *>(gpuAddress);
 
-    // Track this allocation at device level
+    // Track this allocation at device level. See HOST branch for
+    // ownership semantics.
     // TODO: Remove tracking of device buffers and add a new field to the
     // deviceBuffer class to track the MTL::buffer
     MetalDevice::cast(device()).trackBuffer(

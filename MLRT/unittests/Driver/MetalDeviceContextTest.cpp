@@ -736,4 +736,26 @@ TEST_F(MetalDeviceContextTestBase, MetalPrint_DisabledByAttribute) {
       << "Expected no GPU print output with logging disabled; got: " << output;
 }
 
+// Regression test: memAlloc must donate newBuffer's +1 directly to the
+// tracker. A previous version added a spurious buf->retain(), leaving the
+// MTL::Buffer at refcount 2; memFree's release() then leaked it.
+TEST_F(MetalDeviceContextTestBase, MemAllocDonatesRefcountToTracker) {
+  ASSERT_TRUE(ctx_);
+  const MetalDevice &metalDev = MetalDevice::cast(*device_);
+  const size_t baseline = metalDev.getTrackedBuffers().size();
+
+  void *ptr = nullptr;
+  EXPECT_NO_ERR(
+      ctx_->memAlloc(&ptr, /*byteSize=*/4096, Device::AllocMode::HOST));
+  ASSERT_NE(ptr, nullptr);
+  ASSERT_EQ(metalDev.getTrackedBuffers().size(), baseline + 1);
+
+  MTL::Buffer *buf = metalDev.getTrackedBuffer(ptr);
+  ASSERT_NE(buf, nullptr);
+  EXPECT_EQ(buf->retainCount(), 1u);
+
+  EXPECT_NO_ERR(ctx_->memFree(ptr, /*isHost=*/true));
+  EXPECT_EQ(metalDev.getTrackedBuffers().size(), baseline);
+}
+
 } // namespace M::Driver

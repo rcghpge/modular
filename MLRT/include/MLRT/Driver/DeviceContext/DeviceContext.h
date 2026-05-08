@@ -933,6 +933,9 @@ private:
   // Following line is equivalent to:
   // FRIEND_TEST(GPUDeviceContextTest, DeviceContextScope)
   friend class GPUDeviceContextTest_DeviceContextScope_Test;
+  // Following line is equivalent to:
+  // FRIEND_TEST(MetalDeviceContextTestBase, MemAllocDonatesRefcountToTracker)
+  friend class MetalDeviceContextTestBase_MemAllocDonatesRefcountToTracker_Test;
 
   class PendingEventHandler;
 
