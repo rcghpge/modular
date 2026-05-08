@@ -33,6 +33,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/FormatVariadic.h"
 #include <cstdlib>
 #include <future>
 
@@ -2604,10 +2605,45 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
             });
       });
 
-  // 3. Launch the task: var task_N = asyncrt.create_task(wrapper_N())
-  MojoValue taskVar = state.builder.var(
-      MojoValue(HardcodedMojoSymbols::func_create_task)({}, {wrapper({}, {})}),
-      /*cache=*/false);
+  // 3. Launch the task.
+  //
+  // For GPU launches, pin the task to the CPU worker with NUMA affinity for
+  // that device by using the affinity-aware _create_task variant.  For all
+  // other cases (no affinity hint, CPU/host device) fall back to the standard
+  // create_task which passes desired_worker_id=-1 to the AsyncRT scheduler.
+  //
+  // The device ID is stored as $affinity_device_id (I64Attr) rather than
+  // being read from $device (DeviceRefAttr), because mogg-emit-mojo internally
+  // runs stripDeviceIdsAndDynamicShapes before emission — that pass zeroes all
+  // DeviceRefAttr IDs, destroying the per-launch device ordinal.  A plain
+  // integer attribute is not affected by that transformation.
+  MojoValue taskVar;
+  auto affinityId = getAffinityDeviceIdAttr();
+  if (affinityId) {
+    int64_t deviceId = affinityId.getInt();
+    // var worker_id_N = std.runtime.asyncrt.task_id_for_device(<deviceId>)
+    MojoValue workerIdVar = state.builder.var(
+        MojoValue(HardcodedMojoSymbols::func_task_id_for_device)(
+            /*params=*/{}, /*args=*/{MojoValue(deviceId)}),
+        /*cache=*/false);
+    // var task_N = std.runtime.asyncrt._create_task(
+    //     wrapper_N(), desired_worker_id=worker_id_N)
+    // MojoBuilder has no built-in keyword-argument support, so we construct
+    // the call text directly.
+    taskVar = state.builder.var(
+        MojoValue(
+            llvm::formatv("{}({}, desired_worker_id={})",
+                          HardcodedMojoSymbols::func_create_task_with_affinity,
+                          wrapper({}, {}).text, workerIdVar.text)
+                .str()),
+        /*cache=*/false);
+  } else {
+    // var task_N = std.runtime.asyncrt.create_task(wrapper_N())
+    taskVar =
+        state.builder.var(MojoValue(HardcodedMojoSymbols::func_create_task)(
+                              {}, {wrapper({}, {})}),
+                          /*cache=*/false);
+  }
 
   // 4. Record task handle info for AsyncJoinOp to consume
   state.taskHandleInfos[getTaskHandle()] = {taskVar, errorVar};

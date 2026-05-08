@@ -770,7 +770,8 @@ MOGGKernelOpLoweringState::lowerKernelOp(MOGG::KernelOp moggKernelOp) {
   // (if any) in the output op of the new kernel.
   callStubOp = MOGG::CallStubOp::create(
       builder, loc, stubReturnType ? TypeRange{stubReturnType} : TypeRange{},
-      SymbolRefAttr::get(stubName), stubCallOperands);
+      FlatSymbolRefAttr::get(stubName), stubCallOperands,
+      /*affinity_device_id=*/mlir::IntegerAttr{});
   auto readyChain = MOGG::AsyncReadyOp::create(builder, loc);
 
   SmallVector<Value> outputs;
@@ -891,13 +892,18 @@ fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
   fusedRegion.setInOutSignatureAttr(InOutSignatureAttr::get(ctx, sig));
 
   // Replace each synchronous mogg.call.stub with mogg.call.stub.async.
+  // Propagate the optional $device attribute so the emitter can choose an
+  // affinity-aware create_task form for GPU launches.
   Block &body = fusedRegion.getBody().front();
   SmallVector<Value> taskHandles;
   body.walk([&](MOGG::CallStubOp callStub) {
+    // Forward the affinity device ordinal (set on GPU launches only by
+    // lowerParallelOp) straight from CallStubOp to CallStubAsyncOp.
     OpBuilder b(ctx);
     b.setInsertionPoint(callStub);
     MOGG::CallStubAsyncOp asyncCall = MOGG::CallStubAsyncOp::create(
-        b, callStub.getLoc(), callStub.getName(), callStub.getInputs());
+        b, callStub.getLoc(), callStub.getName(), callStub.getInputs(),
+        callStub.getAffinityDeviceIdAttr());
     taskHandles.push_back(asyncCall.getTaskHandle());
     callStub.erase();
   });
@@ -1033,9 +1039,10 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
       // not from the lowered SSA value types.
       auto firstBundleTy =
           cast<MO::BundleType>(parallelOp.getInputs()[0].getType());
+      DeviceRefAttr launchDevice;
       if (auto inputTy = dyn_cast<MO::TensorType>(
               firstBundleTy.getElementTypes()[launch])) {
-        DeviceRefAttr launchDevice = inputTy.getDeviceRef();
+        launchDevice = inputTy.getDeviceRef();
         if (launchDevice != MO::getDeviceOrDefaultAny(clonedKernel)) {
           clonedKernel.setDeviceRef(launchDevice);
           clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
@@ -1052,6 +1059,21 @@ MOGGKernelOpLoweringState::lowerParallelOp(MO::ParallelOp parallelOp) {
       MOGGKernelOpLoweringState perLaunchState(clonedKernel, loweringState);
       if (failed(perLaunchState.lowerKernelOp(clonedKernel)))
         return failure();
+
+      // For GPU launches, stamp the integer device ordinal onto every
+      // CallStubOp so that fuseAndConvertToAsync can forward it unchanged
+      // to the async variant.  The ordinal is stored as a plain I64Attr
+      // rather than a DeviceRefAttr because mogg-emit-mojo internally runs
+      // stripDeviceIdsAndDynamicShapes (which zeroes DeviceRefAttr IDs)
+      // before emitting Mojo text.
+      if (launchDevice && launchDevice.getLabel() == M::kGPULabel) {
+        auto affinityId =
+            mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),
+                                   static_cast<int64_t>(launchDevice.getId()));
+        perLaunchState.mgpRegion->walk([&](MOGG::CallStubOp callStub) {
+          callStub.setAffinityDeviceIdAttr(affinityId);
+        });
+      }
 
       groupRegions.push_back(perLaunchState.mgpRegion);
       kernelClones.push_back(clonedOp);

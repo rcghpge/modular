@@ -198,7 +198,9 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [
 ]> {
   let summary = "Calls into an outlined stub";
   let description = [{}];
-  let arguments = (ins FlatSymbolRefAttr:$name, Variadic<AnyType>:$inputs);
+  let arguments = (ins FlatSymbolRefAttr:$name,
+                       Variadic<AnyType>:$inputs,
+                       OptionalAttr<I64Attr>:$affinity_device_id);
   let results = (outs Variadic<AnyType>: $outputs);
   let assemblyFormat = "$name ($inputs^ `:` type($inputs))? (`->` type($outputs)^)? attr-dict";
 
@@ -217,10 +219,21 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
   let summary = "Calls into an outlined stub asynchronously";
   let description = [{
     Dispatches an async call to an outlined kernel stub using Mojo-native
-    `create_task`. Returns a TaskHandle representing the running task and
-    its error slot.
+    `create_task`. When `affinity_device_id` is set, the emitter passes a
+    `desired_worker_id = task_id_for_device(affinity_device_id)` to the
+    AsyncRT scheduler to pin the task to a CPU core with NUMA affinity for
+    that GPU. When absent the standard `create_task` form (no affinity hint)
+    is emitted.
+
+    The device ordinal is stored as a plain integer rather than as a
+    DeviceRefAttr because `mogg-emit-mojo` internally runs
+    `stripDeviceIdsAndDynamicShapes` (which zeroes DeviceRefAttr IDs for
+    deduplication) before emitting Mojo text. A plain I64Attr is unaffected
+    by that transformation.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$name, Variadic<AnyType>:$inputs);
+  let arguments = (ins FlatSymbolRefAttr:$name,
+                       Variadic<AnyType>:$inputs,
+                       OptionalAttr<I64Attr>:$affinity_device_id);
   let results = (outs MOGG_TaskHandle:$task_handle);
   let assemblyFormat = "$name (`(` $inputs^ `:` type($inputs) `)`)? `->` type(results) attr-dict";
 

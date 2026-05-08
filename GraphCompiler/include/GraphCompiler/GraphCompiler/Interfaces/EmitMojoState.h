@@ -120,6 +120,13 @@ constexpr StringLiteral func_ms_simd_store_into_tensor_pointer =
 constexpr StringLiteral func_ms_foreach = "managed_tensor_slice.foreach";
 constexpr StringLiteral func_to_index_list = "layout.to_index_list";
 constexpr StringLiteral func_create_task = "std.runtime.asyncrt.create_task";
+// Affinity-aware variant: _create_task(handle, *, desired_worker_id=<id>).
+// Only emitted for GPU-device launches; maps to the package-private function
+// added alongside task_id_for_device in std.runtime.asyncrt.
+constexpr StringLiteral func_create_task_with_affinity =
+    "std.runtime.asyncrt._create_task";
+constexpr StringLiteral func_task_id_for_device =
+    "std.runtime.asyncrt.task_id_for_device";
 constexpr StringLiteral func_get_safe_task_id =
     "std.runtime.tracing.get_safe_task_id";
 
