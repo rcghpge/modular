@@ -182,7 +182,7 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
       builtinTypeToDType(builder.getContext(), previousValue.getType());
 
   Value isEqual = KGEN::POP::CmpOp::create(
-      builder, loc, KGEN::POP::CmpPredicate::EQ,
+      builder, loc, KGEN::CmpPredicate::EQ,
       builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
                                                          previousValue),
       builder.createOrFold<KGEN::POP::CastFromBuiltinOp>(loc, *targetType,
@@ -372,14 +372,14 @@ static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
 static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
                                       Location loc, ValueRange operands,
                                       Type resultType) {
-  auto getPopCmpPredicate = [](KGEN::POC poc) -> KGEN::POP::CmpPredicate {
+  auto getCmpPredicate = [](KGEN::POC poc) -> KGEN::CmpPredicate {
     switch (poc) {
     case KGEN::POC::EQ:
-      return KGEN::POP::CmpPredicate::EQ;
+      return KGEN::CmpPredicate::EQ;
     case KGEN::POC::LT:
-      return KGEN::POP::CmpPredicate::LT;
+      return KGEN::CmpPredicate::LT;
     case KGEN::POC::LE:
-      return KGEN::POP::CmpPredicate::LE;
+      return KGEN::CmpPredicate::LE;
     default:
       llvm_unreachable("unrecognized predicate");
     }
@@ -391,7 +391,7 @@ static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
   case KGEN::POC::LT:
   case KGEN::POC::LE:
     return KGEN::POP::CmpOp::create(builder, loc, resultType,
-                                    getPopCmpPredicate(poc), operands[0],
+                                    getCmpPredicate(poc), operands[0],
                                     operands[1]);
 
   // All potentially variadic ops

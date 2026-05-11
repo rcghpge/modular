@@ -366,22 +366,22 @@ LogicalResult emitMojo(KGEN::POP::CmpOp op, EmitMojoState &state) {
   auto operands = state.getMojoValuesFor(op->getOperands());
   MojoValue replacementValue;
   switch (op.getPred()) {
-  case KGEN::POP::CmpPredicate::EQ:
+  case KGEN::CmpPredicate::EQ:
     replacementValue = operands[0].eq(operands[1]);
     break;
-  case KGEN::POP::CmpPredicate::NE:
+  case KGEN::CmpPredicate::NE:
     replacementValue = operands[0].neq(operands[1]);
     break;
-  case KGEN::POP::CmpPredicate::GE:
+  case KGEN::CmpPredicate::GE:
     replacementValue = operands[0].ge(operands[1]);
     break;
-  case KGEN::POP::CmpPredicate::GT:
+  case KGEN::CmpPredicate::GT:
     replacementValue = operands[0].gt(operands[1]);
     break;
-  case KGEN::POP::CmpPredicate::LE:
+  case KGEN::CmpPredicate::LE:
     replacementValue = operands[0].le(operands[1]);
     break;
-  case KGEN::POP::CmpPredicate::LT:
+  case KGEN::CmpPredicate::LT:
     replacementValue = operands[0].lt(operands[1]);
     break;
   }
